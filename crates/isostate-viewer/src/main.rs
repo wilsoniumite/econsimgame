@@ -45,6 +45,7 @@ struct Args {
     wait: f32,
     tilt: bool,
     views: Vec<ShotSpec>,
+    season: Option<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -71,6 +72,7 @@ fn parse_args() -> Args {
         wait: 45.0,
         tilt: true,
         views: Vec::new(),
+        season: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -95,6 +97,7 @@ fn parse_args() -> Args {
             "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
             "--wait" => { a.wait = next(i).parse().unwrap_or(45.0); i += 1; }
             "--no-tilt" => a.tilt = false,
+            "--season" => { a.season = next(i).parse().ok(); i += 1; }
             "--view" => {
                 // path,year,x,z,yaw,pitch,dist
                 let p: Vec<String> = next(i).split(',').map(String::from).collect();
@@ -181,6 +184,18 @@ struct UiFont(Handle<Font>);
 #[derive(Resource)]
 struct Tilt(bool);
 
+/// Materials that change with the seasons.
+#[derive(Resource)]
+struct SeasonMats {
+    terrain: Handle<StandardMaterial>,
+    trees: Handle<StandardMaterial>,
+    /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
+    forced: Option<f32>,
+}
+
+#[derive(Component)]
+struct Sun;
+
 #[derive(Component)]
 struct MainCam;
 #[derive(Component)]
@@ -263,15 +278,19 @@ fn main() {
         .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.5 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt))
+        .insert_resource(ForcedSeason(args.season))
         .init_resource::<Toasts>()
         .add_systems(Startup, (setup_world, setup_ui).chain())
-        .add_systems(Update, (time_input, advance_time, rebuild_year, camera_input, apply_camera, labels, info_text, toasts).chain());
+        .add_systems(Update, (time_input, advance_time, rebuild_year, seasons, camera_input, apply_camera, labels, info_text, toasts).chain());
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
         app.add_systems(Update, take_shot.after(toasts));
     }
     app.run();
 }
+
+#[derive(Resource)]
+struct ForcedSeason(Option<f32>);
 
 #[derive(Resource)]
 struct ShotPlanArgs {
@@ -307,6 +326,7 @@ fn setup_world(
     orbit: Res<Orbit>,
     tilt: Res<Tilt>,
     shot: Option<Res<ShotPlanArgs>>,
+    forced: Res<ForcedSeason>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
@@ -326,7 +346,7 @@ fn setup_world(
         reflectance: 0.18,
         ..default()
     });
-    commands.spawn((Mesh3d(meshes.add(terrain::terrain_mesh(g))), MeshMaterial3d(terrain_mat)));
+    commands.spawn((Mesh3d(meshes.add(terrain::terrain_mesh(g))), MeshMaterial3d(terrain_mat.clone())));
 
     // the sea: a clear sheet of water over the painted sea floor, and a deep floor beyond the map
     let (w, h) = (r.w as f32, r.h as f32);
@@ -362,7 +382,9 @@ fn setup_world(
         roads: meshes.add(placeholder_mesh()),
         rails: meshes.add(placeholder_mesh()),
     };
-    commands.spawn((Mesh3d(handles.trees.clone()), MeshMaterial3d(vc.clone())));
+    let tree_mat = vertex_coloured(&mut materials, 0.9);
+    commands.spawn((Mesh3d(handles.trees.clone()), MeshMaterial3d(tree_mat.clone())));
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
     let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: 0.3, ..default() });
@@ -373,6 +395,7 @@ fn setup_world(
 
     // a warm low sun from the south-west, and soft sky light
     commands.spawn((
+        Sun,
         DirectionalLight { color: Color::srgb(1.0, 0.94, 0.84), illuminance: 9000.0, shadow_maps_enabled: true, ..default() },
         Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.75, -0.72, 0.0)),
         CascadeShadowConfigBuilder { num_cascades: 3, first_cascade_far_bound: 12.0, maximum_distance: 220.0, ..default() }.build(),
@@ -462,6 +485,55 @@ fn rebuild_year(
         if let Some(mut m) = meshes.get_mut(h) {
             *m = non_empty(b);
         }
+    }
+}
+
+/// Phase of the year: while playing the months roll by; a paused year shows high summer.
+fn season_phase(tl: &Timeline, forced: Option<f32>) -> f32 {
+    if let Some(f) = forced {
+        return f.rem_euclid(1.0);
+    }
+    if tl.playing { tl.t.fract() } else { 0.55 }
+}
+
+fn seasons(
+    tl: Res<Timeline>,
+    sm: Res<SeasonMats>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
+    mut last: Local<Option<i32>>,
+) {
+    let ph = season_phase(&tl, sm.forced);
+    // only touch the materials when the season visibly moves
+    let step = (ph * 48.0).floor() as i32;
+    if *last == Some(step) {
+        return;
+    }
+    *last = Some(step);
+    // 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
+    let keys: [(f32, [f32; 3], [f32; 3]); 5] = [
+        (0.0, [1.04, 1.06, 1.12], [0.78, 0.74, 0.70]),
+        (0.25, [0.96, 1.04, 0.94], [0.92, 1.12, 0.86]),
+        (0.5, [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]),
+        (0.75, [1.06, 0.97, 0.86], [1.35, 0.88, 0.52]),
+        (1.0, [1.04, 1.06, 1.12], [0.78, 0.74, 0.70]),
+    ];
+    let i = keys.iter().position(|k| k.0 > ph).unwrap_or(4).max(1);
+    let (a, b) = (keys[i - 1], keys[i]);
+    let t = ((ph - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
+    let l = |x: [f32; 3], y: [f32; 3]| Color::srgb(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t);
+    if let Some(mut m) = materials.get_mut(&sm.terrain) {
+        m.base_color = l(a.1, b.1);
+    }
+    if let Some(mut m) = materials.get_mut(&sm.trees) {
+        m.base_color = l(a.2, b.2);
+    }
+    // the sun rides higher and warmer in summer
+    let summer = 0.5 - 0.5 * (ph * std::f32::consts::TAU).cos();
+    for (mut light, mut tf) in &mut sun {
+        light.illuminance = 7000.0 + 3000.0 * summer;
+        light.color = Color::srgb(1.0, 0.90 + 0.05 * summer, 0.78 + 0.07 * summer);
+        *tf = Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.75, -0.5 - 0.35 * summer, 0.0));
     }
 }
 

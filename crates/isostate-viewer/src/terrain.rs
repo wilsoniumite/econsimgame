@@ -105,7 +105,7 @@ pub fn tex_static(r: &Replay, g: &Ground) -> TexStatic {
                 let texel = 1.0 / TS as f32;
                 hedge.push((((0.017 - d) / texel + 0.5).clamp(0.0, 1.0) * 255.0) as u8);
                 let h = world::height_at(g, fx, fy);
-                let k = if h < -0.004 { 2u8 } else if h < 0.045 { 1 } else { 0 };
+                let k = if h < -0.004 { 2u8 } else if h < 0.03 { 1 } else { 0 };
                 kind.push(k);
                 depth.push(((-h).clamp(0.0, 1.0) * 255.0) as u8);
                 let e = 0.02;
