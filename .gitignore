@@ -5,3 +5,6 @@ runs/
 dist/*.html
 !dist/.keep
 .ipynb_checkpoints/
+
+# Rust
+target/
