@@ -1,0 +1,2 @@
+# Python-generated fixtures are large (about 350 MB per time point); regenerate them with dump_state.py
+fixtures/
