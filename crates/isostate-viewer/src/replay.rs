@@ -54,6 +54,9 @@ pub struct Firm {
     pub born: i32,
     #[serde(default)]
     pub died: i32,
+    /// the sums that made its founders build here (see firms.reason_record)
+    #[serde(default)]
+    pub reason: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Clone, Debug)]

@@ -46,6 +46,7 @@ struct Args {
     tilt: bool,
     views: Vec<ShotSpec>,
     season: Option<f32>,
+    describe: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -73,6 +74,7 @@ fn parse_args() -> Args {
         tilt: true,
         views: Vec::new(),
         season: None,
+        describe: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -98,6 +100,11 @@ fn parse_args() -> Args {
             "--wait" => { a.wait = next(i).parse().unwrap_or(45.0); i += 1; }
             "--no-tilt" => a.tilt = false,
             "--season" => { a.season = next(i).parse().ok(); i += 1; }
+            "--describe" => {
+                let s = next(i);
+                if let Some((x, z)) = s.split_once(',') { a.describe = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
+                i += 1;
+            }
             "--view" => {
                 // path,year,x,z,yaw,pitch,dist
                 let p: Vec<String> = next(i).split(',').map(String::from).collect();
@@ -206,6 +213,25 @@ struct InfoText;
 struct ToastBox;
 #[derive(Component)]
 struct TownLabel(usize);
+#[derive(Component)]
+struct InspectPanel;
+#[derive(Component)]
+struct InspectText;
+
+/// What the player clicked on last.
+#[derive(Resource, Default)]
+struct Picked {
+    what: Option<Pick>,
+    press: Option<Vec2>,
+    moved: f32,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Pick {
+    Firm(usize),
+    Town(usize),
+    Cell(usize),
+}
 
 static FREDOKA: &[u8] = include_bytes!("../assets/fonts/Fredoka.ttf");
 
@@ -229,6 +255,15 @@ fn main() {
         Some(y) => (y - r.y0).clamp(0, r.ny as i32 - 1) as usize,
         None => r.ny - 1,
     };
+    if let Some((x, z)) = args.describe {
+        // print what a click at this spot would show, then stop
+        let hit = Vec3::new(x, world::height_at(&g, x, z), z);
+        match choose(&r, &slots, &cen, hit, k0) {
+            Some(p) => println!("{}", describe(&r, p, k0)),
+            None => println!("nothing there"),
+        }
+        return;
+    }
     // the island's land, for the opening view
     let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, 0f32, 0f32);
     for c in 0..r.n {
@@ -280,8 +315,9 @@ fn main() {
         .insert_resource(Tilt(args.tilt))
         .insert_resource(ForcedSeason(args.season))
         .init_resource::<Toasts>()
+        .init_resource::<Picked>()
         .add_systems(Startup, (setup_world, setup_ui).chain())
-        .add_systems(Update, (time_input, advance_time, rebuild_year, seasons, camera_input, apply_camera, labels, info_text, toasts).chain());
+        .add_systems(Update, (time_input, advance_time, rebuild_year, seasons, camera_input, apply_camera, labels, info_text, toasts, pick, inspect_panel).chain());
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
         app.add_systems(Update, take_shot.after(toasts));
@@ -715,6 +751,26 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
         },
         ToastBox,
     ));
+    // the inspector, bottom right
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(18.0),
+                bottom: Val::Px(16.0),
+                width: Val::Px(380.0),
+                padding: UiRect::axes(Val::Px(16.0), Val::Px(12.0)),
+                flex_direction: FlexDirection::Column,
+                border_radius: BorderRadius::all(Val::Px(14.0)),
+                ..default()
+            },
+            BackgroundColor(PAPER),
+            Visibility::Hidden,
+            InspectPanel,
+        ))
+        .with_children(|p| {
+            p.spawn((text(f, "", 15.0, INK), InspectText));
+        });
     // town labels
     for t in 0..data.r.header.towns.len().min(data.r.n_towns) {
         commands
@@ -957,4 +1013,193 @@ fn take_shot(
     }
     commands.spawn(Screenshot::image(plan.image.clone())).observe(save_to_disk(v.path.clone()));
     plan.capturing = 6;
+}
+
+// ------------------------------------------------------------------ click to inspect
+
+fn ground_hit(g: &Ground, ray: Ray3d) -> Option<Vec3> {
+    let dir = *ray.direction;
+    let mut t = 0.0f32;
+    let mut prev = ray.origin;
+    for _ in 0..4000 {
+        let step = 0.02 + t * 0.004;
+        t += step;
+        let p = ray.origin + dir * t;
+        let h = world::height_at(g, p.x, p.z).max(0.0);
+        if p.y <= h {
+            // refine between prev and p
+            let (mut a, mut b) = (prev, p);
+            for _ in 0..12 {
+                let m = (a + b) * 0.5;
+                if m.y <= world::height_at(g, m.x, m.z).max(0.0) { b = m } else { a = m }
+            }
+            return Some(b);
+        }
+        prev = p;
+        if t > 600.0 {
+            break;
+        }
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pick(
+    buttons: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    motion: Res<AccumulatedMouseMotion>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    cams: Query<(&Camera, &GlobalTransform), With<MainCam>>,
+    data: Res<Data>,
+    tl: Res<Timeline>,
+    mut picked: ResMut<Picked>,
+) {
+    if keys.just_pressed(KeyCode::Escape) {
+        picked.what = None;
+    }
+    let Ok(window) = windows.single() else { return };
+    let Some(cursor) = window.cursor_position() else { return };
+    if buttons.just_pressed(MouseButton::Left) {
+        picked.press = Some(cursor);
+        picked.moved = 0.0;
+    }
+    if buttons.pressed(MouseButton::Left) {
+        picked.moved += motion.delta.length();
+    }
+    if !buttons.just_released(MouseButton::Left) || picked.press.is_none() || picked.moved > 5.0 {
+        return;
+    }
+    picked.press = None;
+    let Ok((cam, cam_t)) = cams.single() else { return };
+    let Ok(ray) = cam.viewport_to_world(cam_t, cursor) else { return };
+    let Some(hit) = ground_hit(&data.g, ray) else { return };
+    let k = (tl.t.floor() as usize).min(data.r.ny - 1);
+    picked.what = choose(&data.r, &data.slots, &data.cen, hit, k);
+}
+
+/// The nearest works standing this year, then the nearest town, then the land itself.
+fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: usize) -> Option<Pick> {
+    // the nearest works standing this year, then the nearest town, then the land itself
+    let mut best: Option<(f32, usize)> = None;
+    for (f, firm) in r.header.firms.iter().enumerate() {
+        let (x, z, _) = slots.firm_pos[f];
+        let d = ((x - hit.x).powi(2) + (z - hit.z).powi(2)).sqrt();
+        if d < 0.12 && replay::firm_k(r, f, k) > 0.0 && r.header.methods[firm.method].name != "services" && best.map_or(true, |b| d < b.0) {
+            best = Some((d, f));
+        }
+    }
+    if let Some((_, f)) = best {
+        return Some(Pick::Firm(f));
+    }
+    for t in 0..r.n_towns.min(r.header.towns.len()) {
+        if r.town_active[k * r.n_towns + t] == 0 {
+            continue;
+        }
+        let (x, z) = cen[r.header.towns[t].node];
+        if ((x - hit.x).powi(2) + (z - hit.z).powi(2)).sqrt() < 0.35 {
+            return Some(Pick::Town(t));
+        }
+    }
+    if hit.x >= 0.0 && hit.z >= 0.0 && (hit.x as usize) < r.w && (hit.z as usize) < r.h {
+        let c = hit.z as usize * r.w + hit.x as usize;
+        if r.terrain[c] > 0 {
+            return Some(Pick::Cell(c));
+        }
+    }
+    None
+}
+
+const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
+
+fn describe(r: &Replay, what: Pick, k: usize) -> String {
+    let year = r.y0 + k as i32;
+    match what {
+        Pick::Firm(f) => {
+            let firm = &r.header.firms[f];
+            let m = &r.header.methods[firm.method];
+            let good = r.header.goods.get(m.out).map(|g| g.label.to_lowercase()).unwrap_or_default();
+            let kk = replay::firm_k(r, f, k);
+            let size = kk / m.k0.max(1e-6);
+            let since = if firm.born < r.y0 { "working before 1750".to_string() } else { format!("since {}", firm.born) };
+            let mut s = format!("{}\n{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, since, kk, good, size);
+            if let Some(rs) = &firm.reason {
+                let num = |key: &str| rs.get(key).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                let town = rs.get("town").and_then(|v| v.as_i64()).and_then(|t| r.header.towns.get(t as usize)).map(|t| t.name.clone()).unwrap_or_else(|| "a nearby town".into());
+                let kind = rs.get("kind").and_then(|v| v.as_str()).unwrap_or("new");
+                let lead = match kind {
+                    "old" => format!("Already at work in 1750; built new, it would return about {:.0}% a year.", num("roi") * 100.0),
+                    "expansion" => format!("A second site, opened in {} when the first ran out of room; about {:.0}% a year expected.", num("year") as i64, num("roi") * 100.0),
+                    _ => format!("Built in {} with money from {}. The best of {} sites priced: about {:.0}% a year on the capital.", num("year") as i64, town, num("n_cand") as i64, num("roi") * 100.0),
+                };
+                s.push_str(&format!("\n\nWhy here?  {}\nPer unit of {}: sells at {:.2}", lead, good, num("pout")));
+                if let Some(ins) = rs.get("inputs").and_then(|v| v.as_array()) {
+                    for q in ins {
+                        let g = q.get(0).and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                        let a = q.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let p = q.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let label = r.header.goods.get(g).map(|g| g.label.to_lowercase()).unwrap_or_default();
+                        s.push_str(&format!(", {:.2} {} at {:.2}", a, label, p));
+                    }
+                }
+                if let Some(l) = rs.get("labor").and_then(|v| v.as_array()) {
+                    let (a, w) = (l.first().and_then(|v| v.as_f64()).unwrap_or(0.0), l.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0));
+                    if a > 0.0 {
+                        s.push_str(&format!(", {:.2} months of work at {:.2}", a, w));
+                    }
+                }
+                s.push_str(&format!(", leaving {:.2}.", num("margin")));
+                let displaced = rs.get("displaced").and_then(|v| v.as_str()).unwrap_or("the land");
+                s.push_str(&format!("\nBid {:.2} a month for the ground, outbidding {}.", num("rent"), displaced));
+            }
+            s
+        }
+        Pick::Town(t) => {
+            let town = &r.header.towns[t];
+            let i = k * r.n_towns + t;
+            let since = if town.founded < r.y0 { "a market town before 1750".to_string() } else { format!("founded {}", town.founded) };
+            format!("{}\n{}\n{} people in its market area, {} in the town, in {}.", town.name, since, fmt_pop(r.town_pop[i]), fmt_pop(r.town_urban[i]), year)
+        }
+        Pick::Cell(c) => {
+            let off = k * r.n + c;
+            let (a, b, sh) = (r.mix_a[off] as usize, r.mix_b[off] as usize, r.mix_s[off] as f32 / 255.0);
+            let title = { let n = DISP_NAMES[a % 12]; let mut t = n.to_string(); if let Some(f) = t.get_mut(0..1) { f.make_ascii_uppercase(); } t };
+            let mut s = format!("{}, {} km east and {} km south of the north-west corner\n", title, (c % r.w) * 2, (c / r.w) * 2);
+            if a == b {
+                s.push_str(&format!("All {} in {}.", DISP_NAMES[a % 12], year));
+            } else {
+                s.push_str(&format!("{:.0}% {} and {:.0}% {} in {}.", sh * 100.0, DISP_NAMES[a % 12], (1.0 - sh) * 100.0, DISP_NAMES[b % 12], year));
+            }
+            let t = r.catch[off] as i64 - 1;
+            if t >= 0 {
+                if let Some(town) = r.header.towns.get(t as usize) {
+                    s.push_str(&format!("\nSells its produce in {}.", town.name));
+                }
+            }
+            s
+        }
+    }
+}
+
+fn inspect_panel(
+    picked: Res<Picked>,
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    mut panel: Query<&mut Visibility, With<InspectPanel>>,
+    mut txt: Query<&mut Text, With<InspectText>>,
+    mut last: Local<Option<(Option<Pick>, usize)>>,
+) {
+    let k = (tl.t.floor() as usize).min(data.r.ny - 1);
+    if *last == Some((picked.what, k)) {
+        return;
+    }
+    *last = Some((picked.what, k));
+    for mut v in &mut panel {
+        *v = if picked.what.is_some() { Visibility::Visible } else { Visibility::Hidden };
+    }
+    if let Some(w) = picked.what {
+        let s = describe(&data.r, w, k);
+        for mut t in &mut txt {
+            t.0 = s.clone();
+        }
+    }
 }
