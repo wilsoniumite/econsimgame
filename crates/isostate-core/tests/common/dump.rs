@@ -105,14 +105,12 @@ pub fn graph_from_edges(H: usize, W: usize, a: &[usize], b: &[usize], w: &[f64],
     Graph::new(N, W, H, gw, gr)
 }
 
-/// Everything the dump holds, in the Rust state's layout.
+/// The world arrays of a dump (`world_<name>`).
 #[allow(non_snake_case)]
-pub fn load_state(dir: &Path) -> State {
-    let d = Dump::open(dir);
-    let mut st = State::default();
+pub fn load_world(d: &Dump) -> World {
     let W = d.sf64("world_W") as usize;
     let H = d.sf64("world_H") as usize;
-    st.world = World {
+    World {
         W,
         H,
         land: d.bool("world_land"),
@@ -133,7 +131,15 @@ pub fn load_state(dir: &Path) -> State {
         jitter: d.f64("world_jitter"),
         town_sites: d.scalar("world_town_sites").as_array().unwrap().iter().map(|v| num(v) as usize).collect(),
         forest0: d.f64("world_forest0"),
-    };
+    }
+}
+
+/// Everything the dump holds, in the Rust state's layout.
+#[allow(non_snake_case)]
+pub fn load_state(dir: &Path) -> State {
+    let d = Dump::open(dir);
+    let mut st = State::default();
+    st.world = load_world(&d);
     st.N = d.sf64("N") as usize;
     st.T_max = d.sf64("T_max") as usize;
 
@@ -265,10 +271,21 @@ pub fn load_state(dir: &Path) -> State {
         st.ex_out = d.f64("ex_out");
     }
 
-    st.graph = graph_from_edges(H, W, &d.usize("graph_a"), &d.usize("graph_b"), &d.f64("graph_w"), &d.bool("graph_railed"));
+    st.graph = graph_from_edges(st.world.H, st.world.W, &d.usize("graph_a"), &d.usize("graph_b"), &d.f64("graph_w"), &d.bool("graph_railed"));
     st.dist = d.mat("dist");
     let pred = d.mat("pred");
     st.pred = (0..pred.rows).map(|r| pred.row(r).iter().map(|&x| x as i64).collect()).collect();
+    // Python keeps no settle order; the order a Dijkstra search settles cells is
+    // by increasing distance, which is all `update_roads` needs (children after
+    // parents). Equal distances are ordered by cell index.
+    st.settle = (0..st.dist.rows)
+        .map(|r| {
+            let row = st.dist.row(r);
+            let mut cells: Vec<u32> = (0..row.len() as u32).filter(|&c| row[c as usize].is_finite()).collect();
+            cells.sort_by(|&x, &y| row[x as usize].total_cmp(&row[y as usize]).then(x.cmp(&y)));
+            cells
+        })
+        .collect();
     st.catch = d.i64("catch");
     st.dcatch = d.f64("dcatch");
     st.town_cost = d.mat("town_cost");
@@ -302,8 +319,11 @@ pub fn load_state(dir: &Path) -> State {
             supply: d.f64("ms_supply"),
         };
     }
-    st.subcost = d.f64("subcost");
-    st.food_ratio = d.f64("food_ratio");
+    // set by the first month (absent from the state init_state returns)
+    if d.has("subcost") {
+        st.subcost = d.f64("subcost");
+        st.food_ratio = d.f64("food_ratio");
+    }
 
     if d.has("pbar") {
         st.pbar = d.mat("pbar");

@@ -6,10 +6,40 @@
 //! not bit-compatible with numpy; the sampling algorithms below follow numpy's so
 //! that the distributions are the same.
 
+use std::collections::VecDeque;
+
 use rand::{RngExt, SeedableRng};
 use rand_pcg::Pcg64;
 
-pub type Rng = Pcg64;
+/// One random stream: a PCG64 generator, or in parity tests a recorded sequence
+/// of the draws numpy made (`parity/dump_state.py`), replayed in order so a Rust
+/// function can be checked against the Python one draw for draw.
+#[derive(Clone, Debug)]
+pub struct Rng {
+    pcg: Pcg64,
+    replay: Option<VecDeque<f64>>,
+}
+
+impl Rng {
+    pub fn from_seed(seed: [u8; 32]) -> Rng {
+        Rng { pcg: Pcg64::from_seed(seed), replay: None }
+    }
+
+    /// A stream that returns the recorded draws: each `random` the next value,
+    /// each `integers` the next value as an integer.
+    pub fn replaying(draws: Vec<f64>) -> Rng {
+        Rng { pcg: Pcg64::from_seed([0; 32]), replay: Some(draws.into()) }
+    }
+
+    /// Recorded draws not used yet (None for a generator).
+    pub fn replay_left(&self) -> Option<usize> {
+        self.replay.as_ref().map(|q| q.len())
+    }
+
+    fn next_replayed(&mut self) -> Option<f64> {
+        self.replay.as_mut().map(|q| q.pop_front().expect("replayed draws exhausted"))
+    }
+}
 
 /// Python: `RNG_STREAMS = ["world", "names", "firms", "tech", "people", "rail", "misc"]`.
 pub const RNG_STREAMS: [&str; 7] = ["world", "names", "firms", "tech", "people", "rail", "misc"];
@@ -41,7 +71,7 @@ pub fn make_rngs(seed: u64) -> Rngs {
         for chunk in bytes.chunks_exact_mut(8) {
             chunk.copy_from_slice(&splitmix64(&mut x).to_le_bytes());
         }
-        Pcg64::from_seed(bytes)
+        Rng::from_seed(bytes)
     };
     Rngs {
         world: stream(0),
@@ -56,7 +86,10 @@ pub fn make_rngs(seed: u64) -> Rngs {
 
 /// `rng.random()`: uniform on [0, 1) with 53 random bits, as numpy.
 pub fn random(rng: &mut Rng) -> f64 {
-    rng.random::<f64>()
+    match rng.next_replayed() {
+        Some(v) => v,
+        None => rng.pcg.random::<f64>(),
+    }
 }
 
 /// `rng.random(n)`.
@@ -72,7 +105,13 @@ pub fn uniform(rng: &mut Rng, lo: f64, hi: f64) -> f64 {
 /// `rng.integers(0, n)`: uniform on 0..n.
 pub fn integers(rng: &mut Rng, n: usize) -> usize {
     assert!(n > 0, "integers(0, 0)");
-    rng.random_range(0..n)
+    match rng.next_replayed() {
+        Some(v) => {
+            assert!(v >= 0.0 && (v as usize) < n, "replayed integer {v} not in 0..{n}");
+            v as usize
+        }
+        None => rng.pcg.random_range(0..n),
+    }
 }
 
 /// `rng.choice(seq)` for a sequence of length n: numpy draws `integers(0, n)`.

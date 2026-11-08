@@ -21,11 +21,25 @@ use crate::state::{Event, State};
 use crate::tech;
 use crate::transport as tr;
 use crate::util::{argsort, bincount, pairwise_sum};
-use crate::world::{generate_world, site_context};
+use crate::world::{World, generate_world, site_context};
 
+/// The initial state: world, towns, the first land allocation and the first firms.
 pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
-    let mut rng = make_rngs(P.seed);
+    init_state_with(P, C, make_rngs(P.seed))
+}
+
+/// `init_state` with the random streams given (the parity tests replay numpy's draws).
+pub fn init_state_with(P: &Params, C: &Content, mut rng: Rngs) -> (State, Rngs) {
     let world = generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58);
+    let (mut st, pbar, wbar) = init_before_firms(P, C, world, &mut rng);
+    seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
+    (st, rng)
+}
+
+/// Everything in `init_state` between generating the world and `seed_firms`:
+/// towns, the first roads and the first land allocation. Returns the state and
+/// the prices and wages the first firms are planned with.
+pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) -> (State, Mat, Vec<f64>) {
     let (W, H) = (world.W, world.H);
     let (N, T, G, Fm) = (W * H, P.T_max, C.G, P.F_max);
     let mut st = State { N, T_max: T, ..State::default() };
@@ -200,8 +214,7 @@ pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
     firms::update_productivity(&mut st, C, P);
     land::update_land_use(&mut st, C, P, C.start_year, &pbar, &wbar, true);
     land::delta_fields(&mut st, C, P);
-    seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
-    (st, rng)
+    (st, pbar, wbar)
 }
 
 /// Bookkeeping that depends on catchments.
@@ -482,8 +495,14 @@ pub struct Sim {
 
 /// World, warm-up and the 1750 baselines: everything before the first recorded month.
 pub fn start(P: &Params, content: Content) -> Sim {
+    let (st, rngs) = init_state(P, &content);
+    start_from(P, content, st, rngs)
+}
+
+/// `start` from a given initial state and streams (the replay test uses
+/// Python's world and draws).
+pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -> Sim {
     let mut C = content;
-    let (mut st, mut rngs) = init_state(P, &C);
     let y0 = C.start_year;
     let y1 = P.end_year.unwrap_or(C.end_year);
     C.end_year = y1;

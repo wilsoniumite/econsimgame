@@ -148,25 +148,38 @@ pub struct Paths {
     pub order: Vec<u32>,
 }
 
-/// Shortest paths from one or more sources, each entered at a starting distance.
-/// One source at 0.0 is scipy's `dijkstra(indices=s)`; several sources at their
-/// offsets is the virtual source of `multi_source_field` (a node joined to each
-/// source by an edge of that length; relaxing those edges first gives exactly
-/// these starting distances).
+/// Shortest paths from one or more sources, each entered at a starting distance:
+/// scipy's `dijkstra(indices=s, return_predecessors=True)`, tie for tie.
+///
+/// scipy keeps a `std::priority_queue` of (-distance, cell) pairs, so it settles
+/// cells by increasing distance and, at equal distance, the higher cell index
+/// first; a cell's predecessor is the first settled neighbour that reaches it at
+/// its final distance (relaxation needs a strict improvement). A binary heap with
+/// the same ordering settles cells in exactly the same order, so the predecessor
+/// trees match scipy's even where two paths cost exactly the same. That matters:
+/// the first roads, the yearly traffic and the railway routes follow these trees.
 ///
 /// With `target`, the search stops once the target is settled. Its distance and
 /// the predecessors along its path are final at that point, so they are the same
 /// as after a full search; other cells may be unfinished.
-///
-/// Nodes are settled in order of distance, either from Dial's bucket queue (see
-/// `dijkstra_buckets`) or, when the edge weights span too wide a range for
-/// buckets, from a binary heap. Both give exactly the distances a textbook
-/// Dijkstra gives; only which of two equally short paths is kept can differ.
 pub fn dijkstra(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> Paths {
+    dijkstra_heap(g, sources, target)
+}
+
+/// Path costs only, from one or more sources entered at starting distances. Several
+/// sources at their offsets is the virtual source of `multi_source_field` (a node
+/// joined to each source by an edge of that length; relaxing those edges first
+/// gives exactly these starting distances).
+///
+/// Distances do not depend on how ties are broken, so this uses Dial's bucket
+/// queue (see `dijkstra_buckets`), about twice as fast as the heap, unless the
+/// edge weights span too wide a range for buckets. Both give exactly the
+/// distances scipy gives.
+pub fn distances(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
     if g.min_w > 0.0 && g.max_w / g.min_w < 65_536.0 {
-        dijkstra_buckets(g, sources, target)
+        dijkstra_buckets(g, sources, None).dist
     } else {
-        dijkstra_heap(g, sources, target)
+        dijkstra_heap(g, sources, None).dist
     }
 }
 
@@ -280,16 +293,18 @@ fn dijkstra_heap(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> 
     let mut pred = vec![NO_PRED; N];
     let mut done = vec![false; N];
     let mut order: Vec<u32> = Vec::with_capacity(N);
-    // distances are never negative, so their bit patterns sort like the values
-    let mut heap: BinaryHeap<Reverse<(u64, u32)>> = BinaryHeap::new();
+    // A max-heap of (Reverse(distance), cell): the shortest distance comes out
+    // first and, among equal distances, the highest cell index, as in scipy.
+    // Distances are never negative, so their bit patterns sort like the values.
+    let mut heap: BinaryHeap<(Reverse<u64>, u32)> = BinaryHeap::new();
     for &(s, d0) in sources {
         debug_assert!(d0 >= 0.0);
         if d0 < dist[s] {
             dist[s] = d0;
-            heap.push(Reverse((d0.to_bits(), s as u32)));
+            heap.push((Reverse(d0.to_bits()), s as u32));
         }
     }
-    while let Some(Reverse((dbits, u))) = heap.pop() {
+    while let Some((Reverse(dbits), u)) = heap.pop() {
         let u = u as usize;
         if done[u] || f64::from_bits(dbits) > dist[u] {
             continue;
@@ -308,7 +323,7 @@ fn dijkstra_heap(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> 
             if nd < dist[v] {
                 dist[v] = nd;
                 pred[v] = u as i64;
-                heap.push(Reverse((nd.to_bits(), v as u32)));
+                heap.push((Reverse(nd.to_bits()), v as u32));
             }
         });
     }
@@ -372,7 +387,7 @@ pub fn multi_source_field(g: &Graph, sources: &[usize], offsets: &[f64]) -> Vec<
     }
     let shift = offsets.iter().cloned().fold(f64::INFINITY, f64::min);
     let init: Vec<(usize, f64)> = sources.iter().zip(offsets).map(|(&s, &o)| (s, o - shift + 1e-6)).collect();
-    dijkstra(g, &init, None).dist.into_iter().map(|v| v + shift).collect()
+    distances(g, &init).into_iter().map(|v| v + shift).collect()
 }
 
 /// Push cell flows up a shortest-path tree toward its root, adding to traffic.

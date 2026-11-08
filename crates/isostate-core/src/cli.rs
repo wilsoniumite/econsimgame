@@ -1,6 +1,8 @@
 //! Command line: run a scenario and save it. Python: `cli.py`.
 //!
-//!     isostate-core run --seed 7 --regime landlords --out runs/landlords [--end-year 1800] [--lite]
+//! ```text
+//! isostate-core run --seed 7 --regime landlords --out runs/landlords [--end-year 1800] [--lite]
+//! ```
 //!
 //! writes run.bin, series_monthly.csv, events.json and params.json like
 //! `python -m isostate run`. Embedding runs into the HTML viewer stays in Python:

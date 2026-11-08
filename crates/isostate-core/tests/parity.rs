@@ -2,12 +2,18 @@
 //! deterministic step, run the Rust step, and compare with the state Python had
 //! just after it.
 //!
-//! Fixtures (about 150 MB each, not committed), from the repository root:
+//! The steps that draw random numbers (firms.review, firms.entry, tech.discovery,
+//! people.found_towns) are checked the same way, with the numbers numpy drew
+//! replayed in order (`Rng::replaying`), so they must match draw for draw.
+//!
+//! Fixtures (0.5 to 0.8 GB each, not committed), from the repository root:
 //!
 //!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1752 --month 3 \
-//!         --out crates/isostate-core/parity/fixtures/s7_1752
-//!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1836 --month 5 \
-//!         --out crates/isostate-core/parity/fixtures/s7_1836
+//!         --found-towns --stochastic --init --out crates/isostate-core/parity/fixtures/s7_1752
+//!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1843 --month 11 \
+//!         --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1843
+//!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1847 --month 5 \
+//!         --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1847
 //!
 //! Every fixture directory named `s*` under `parity/fixtures` (or `$ISOSTATE_PARITY_DIR`)
 //! is checked. Tolerance: relative 1e-9, plus an absolute floor of 1e-12 times the
@@ -18,7 +24,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use common::dump::{Dump, load_state};
+use common::dump::{Dump, load_state, load_world};
 use common::{atol_for, compare, fixtures_root};
 use isostate_core::content::{Content, default_content};
 use isostate_core::econ;
@@ -26,7 +32,9 @@ use isostate_core::firms;
 use isostate_core::land;
 use isostate_core::people;
 use isostate_core::rail;
-use isostate_core::rng::make_rngs;
+use isostate_core::rng::{Rng, Rngs, make_rngs};
+use isostate_core::observer;
+use isostate_core::sim;
 use isostate_core::tech;
 use isostate_core::mat::Mat;
 use isostate_core::params::Params;
@@ -142,9 +150,12 @@ fn econ_step_month_matches_python() {
         econ::step_month(&mut st, &C, &P);
 
         let mut ck = Checker::new(format!("{} econ.step_month", set.display()));
-        // money is conserved by the Rust step itself
+        // money is conserved by the Rust step itself, up to rounding in the sums
+        // (a relative drift of a few 1e-16; the comparison is absolute because the
+        // ideal value is zero)
         let drift = econ::money_total(&st) - (money_before + (st.issued - issued_before));
-        ck.scalar("money drift / money", drift / econ::money_total(&st), 0.0);
+        let rel_drift = (drift / econ::money_total(&st)).abs();
+        ck.exact("money conserved to 1e-12", &[rel_drift < 1e-12], &[true]);
 
         for (name, got, w) in [
             ("hh_cash", &st.hh_cash, &want.hh_cash),
@@ -347,6 +358,37 @@ fn sets_with(tag: &str) -> Vec<PathBuf> {
     fixture_sets().into_iter().filter(|s| s.join(format!("{tag}_before")).is_dir()).collect()
 }
 
+/// The numbers numpy drew during the step, if the fixture recorded them, ready to
+/// replay; otherwise a fresh stream (for steps that draw nothing).
+fn recorded_draws(set: &PathBuf, tag: &str) -> Option<Rng> {
+    let dir = set.join(format!("{tag}_after"));
+    dir.join("draws.npy").exists().then(|| Rng::replaying(Dump::open(&dir).f64("draws")))
+}
+
+/// The events Python added during the step (`<tag>_after/events.json`).
+fn recorded_events(set: &PathBuf, tag: &str) -> Option<Vec<serde_json::Value>> {
+    let p = set.join(format!("{tag}_after")).join("events.json");
+    p.exists().then(|| serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap())
+}
+
+/// Compare the events a Rust step added with the ones the Python step added.
+fn check_events(ck: &mut Checker, got: &[isostate_core::Event], want: &[serde_json::Value]) {
+    ck.exact("event count", &[got.len()], &[want.len()]);
+    for (k, (g, w)) in got.iter().zip(want).enumerate() {
+        let g = serde_json::to_value(g).unwrap();
+        for key in ["year", "kind", "title", "text", "town", "cell", "tech"] {
+            ck.exact(&format!("event{k} {key}"), &[g[key].to_string()], &[w[key].to_string()]);
+        }
+    }
+}
+
+/// The draws must all be used: one left over means the Rust step drew less.
+fn check_draws_used(ck: &mut Checker, rng: &Rng) {
+    if let Some(left) = rng.replay_left() {
+        ck.exact("recorded draws left unused", &[left], &[0]);
+    }
+}
+
 #[test]
 #[allow(non_snake_case)]
 fn people_growth_and_migration_match_python() {
@@ -410,10 +452,12 @@ fn firms_review_matches_python() {
         let d = Dump::open(&set.join("review_before"));
         let mut st = load_state(&set.join("review_before"));
         let want = load_state(&set.join("review_after"));
-        // review draws no random numbers (sister firms are named after their parent)
-        let mut rng = make_rngs(0);
-        let closed = firms::review(&mut st, &C, &P, &mut rng.firms, d.arg_f64("year") as i64, &d.arg_mat("pbar"), &d.arg_vec("wbar"));
+        // review draws no random numbers (sister firms are named after their parent),
+        // which the recorded draws, when present, confirm
+        let mut rng = recorded_draws(&set, "review").unwrap_or_else(|| make_rngs(0).firms);
+        let closed = firms::review(&mut st, &C, &P, &mut rng, d.arg_f64("year") as i64, &d.arg_mat("pbar"), &d.arg_vec("wbar"));
         let mut ck = Checker::new(format!("{} firms.review", set.display()));
+        check_draws_used(&mut ck, &rng);
         ck.exact("F_count", &[st.F_count], &[want.F_count]);
         ck.exact("closed", &closed, &want.closed_year);
         ck.exact("new_firms_year", &st.new_firms_year, &want.new_firms_year);
@@ -450,15 +494,20 @@ fn rail_planning_matches_python() {
             let d = Dump::open(&set.join(format!("{tag}_before")));
             let mut st = load_state(&set.join(format!("{tag}_before")));
             let want = load_state(&set.join(format!("{tag}_after")));
-            let mut rng = make_rngs(0);
+            // the planners draw nothing, which recorded draws, when present, confirm
+            let mut rng = recorded_draws(&set, tag).unwrap_or_else(|| make_rngs(0).rail);
             let mut events = Vec::new();
             let (year, pbar) = (d.arg_f64("year") as i64, d.arg_mat("pbar"));
             if spurs {
-                rail::plan_spurs(&mut st, &C, &P, &mut rng.rail, year, &pbar, &mut events);
+                rail::plan_spurs(&mut st, &C, &P, &mut rng, year, &pbar, &mut events);
             } else {
-                rail::plan(&mut st, &C, &P, &mut rng.rail, year, &pbar, &mut events);
+                rail::plan(&mut st, &C, &P, &mut rng, year, &pbar, &mut events);
             }
             let mut ck = Checker::new(format!("{} rail.{tag} ({} projects)", set.display(), want.projects.len()));
+            check_draws_used(&mut ck, &rng);
+            if let Some(want_events) = recorded_events(&set, tag) {
+                check_events(&mut ck, &events, &want_events);
+            }
             ck.exact("project count", &[st.projects.len()], &[want.projects.len()]);
             for (k, (a, b)) in st.projects.iter().zip(&want.projects).enumerate() {
                 ck.exact(&format!("project{k} towns"), &[a.a, a.b, a.town, a.spur as usize], &[b.a, b.b, b.town, b.spur as usize]);
@@ -490,11 +539,19 @@ fn people_found_towns_matches_python() {
         let d = Dump::open(&set.join("found_towns_before"));
         let mut st = load_state(&set.join("found_towns_before"));
         let want = load_state(&set.join("found_towns_after"));
-        let mut rng = make_rngs(0);
+        let replay = recorded_draws(&set, "found_towns");
+        let names_replayed = replay.is_some();
+        let mut rng = replay.unwrap_or_else(|| make_rngs(0).people);
         let mut events = Vec::new();
-        let founded = people::found_towns(&mut st, &C, &P, &mut rng.people, d.arg_f64("year") as i64, &mut events);
+        let founded = people::found_towns(&mut st, &C, &P, &mut rng, d.arg_f64("year") as i64, &mut events);
         let mut ck = Checker::new(format!("{} people.found_towns (founded {founded:?})", set.display()));
-        // where and when a town is founded is deterministic; only its name is drawn
+        // where and when a town is founded is deterministic; only its name is drawn,
+        // so names and events are compared only when the draws were recorded
+        if names_replayed {
+            check_draws_used(&mut ck, &rng);
+            ck.exact("town_name", &st.town_name, &want.town_name);
+            check_events(&mut ck, &events, &recorded_events(&set, "found_towns").unwrap());
+        }
         ck.exact("town_active", &f(&st.town_active), &f(&want.town_active));
         ck.exact("town_node", &uv(&st.town_node), &uv(&want.town_node));
         ck.exact("town_founded", &iv(&st.town_founded), &iv(&want.town_founded));
@@ -507,6 +564,472 @@ fn people_found_towns_matches_python() {
         ck.vec("tools_mult", &st.tools_mult, &want.tools_mult);
         ck.vec("imp_pc", &st.imp_pc, &want.imp_pc);
         assert!(!founded.is_empty(), "the fixture year should found a town");
+        ck.finish();
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn firms_entry_matches_python_draw_for_draw() {
+    for set in sets_with("entry") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("entry_before"));
+        let mut st = load_state(&set.join("entry_before"));
+        let want = load_state(&set.join("entry_after"));
+        let mut rng = recorded_draws(&set, "entry").expect("entry fixtures record their draws");
+        let n0 = st.F_count;
+        let made = firms::entry(&mut st, &C, &P, &mut rng, d.arg_f64("year") as i64, &d.arg_mat("pbar"), &d.arg_vec("wbar"), None);
+        let mut ck = Checker::new(format!("{} firms.entry ({made} new firms)", set.display()));
+        check_draws_used(&mut ck, &rng);
+        ck.exact("F_count", &[st.F_count], &[want.F_count]);
+        ck.exact("new_firms_year", &st.new_firms_year, &want.new_firms_year);
+        ck.exact("f_name", &st.f_name, &want.f_name);
+        ck.exact("f_alive", &f(&st.f_alive), &f(&want.f_alive));
+        ck.exact("f_town", &uv(&st.f_town), &uv(&want.f_town));
+        ck.exact("f_method", &uv(&st.f_method), &uv(&want.f_method));
+        ck.exact("f_cell", &uv(&st.f_cell), &uv(&want.f_cell));
+        ck.exact("f_born", &iv(&st.f_born), &iv(&want.f_born));
+        ck.exact("f_parent", &iv(&st.f_parent), &iv(&want.f_parent));
+        ck.exact("firm_at", &iv(&st.firm_at), &iv(&want.firm_at));
+        for (name, got, w) in [
+            ("f_K", &st.f_K, &want.f_K),
+            ("f_order_K", &st.f_order_K, &want.f_order_K),
+            ("f_cash", &st.f_cash, &want.f_cash),
+            ("f_rent", &st.f_rent, &want.f_rent),
+            ("f_u", &st.f_u, &want.f_u),
+            ("hh_cash", &st.hh_cash, &want.hh_cash),
+            ("lord_cash", &st.lord_cash, &want.lord_cash),
+            ("cell_K_share", &st.cell_K_share, &want.cell_K_share),
+        ] {
+            ck.vec(name, got, w);
+        }
+        ck.mat("f_order", &st.f_order, &want.f_order);
+        // the inspector's record of why each new firm was made (rounded as Python rounds)
+        let reasons = Dump::open(&set.join("entry_after")).scalars["f_reason"].as_array().unwrap().clone();
+        let want_new = &reasons[n0..];
+        let got_new = serde_json::to_value(&st.f_reason[st.f_reason.len() - made..]).unwrap();
+        ck.exact("reason count", &[got_new.as_array().unwrap().len()], &[want_new.len()]);
+        for (k, (g, w)) in got_new.as_array().unwrap().iter().zip(want_new).enumerate() {
+            ck.exact(&format!("f_reason[{}]", n0 + k), &[g.to_string()], &[w.to_string()]);
+        }
+        assert!(made > 0, "the fixture year should make new firms");
+        ck.finish();
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn tech_discovery_matches_python_draw_for_draw() {
+    for set in sets_with("discovery") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("discovery_before"));
+        let mut st = load_state(&set.join("discovery_before"));
+        let want = load_state(&set.join("discovery_after"));
+        let mut rng = recorded_draws(&set, "discovery").expect("discovery fixtures record their draws");
+        let mut events = Vec::new();
+        let found = tech::discovery(&mut st, &C, &P, &mut rng, d.arg_f64("year") as i64, &mut events);
+        let mut ck = Checker::new(format!("{} tech.discovery (found {found:?})", set.display()));
+        check_draws_used(&mut ck, &rng);
+        ck.exact("tech_year", &iv(&st.tech_year), &iv(&want.tech_year));
+        ck.exact("tech_town", &iv(&st.tech_town), &iv(&want.tech_town));
+        ck.mat("know", &st.know, &want.know);
+        check_events(&mut ck, &events, &recorded_events(&set, "discovery").unwrap());
+        ck.finish();
+    }
+}
+
+/// Compare the railway projects of two states.
+fn check_projects(ck: &mut Checker, got: &isostate_core::State, want: &isostate_core::State) {
+    ck.exact("project count", &[got.projects.len()], &[want.projects.len()]);
+    for (k, (a, b)) in got.projects.iter().zip(&want.projects).enumerate() {
+        ck.exact(&format!("project{k} towns"), &[a.a, a.b, a.town, a.spur as usize], &[b.a, b.b, b.town, b.spur as usize]);
+        ck.exact(&format!("project{k} cells"), &a.cells, &b.cells);
+        ck.vec(&format!("project{k} need"), &a.need, &b.need);
+        ck.vec(&format!("project{k} order"), &a.order, &b.order);
+        ck.scalar(&format!("project{k} cash"), a.cash, b.cash);
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn rail_progress_matches_python() {
+    for set in sets_with("rail_progress") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("rail_progress_before"));
+        let mut st = load_state(&set.join("rail_progress_before"));
+        let want = load_state(&set.join("rail_progress_after"));
+        let mut events = Vec::new();
+        rail::progress(&mut st, &C, &P, d.arg_f64("year_float"), &mut events);
+        let mut ck = Checker::new(format!("{} rail.progress ({} projects)", set.display(), want.projects.len()));
+        check_projects(&mut ck, &st, &want);
+        ck.exact("rail", &u(&st.rail), &u(&want.rail));
+        ck.vec("lord_cash", &st.lord_cash, &want.lord_cash);
+        ck.exact("rail_links", &st.rail_links.iter().copied().collect::<Vec<_>>(), &want.rail_links.iter().copied().collect::<Vec<_>>());
+        check_events(&mut ck, &events, &recorded_events(&set, "rail_progress").unwrap());
+        ck.finish();
+    }
+}
+
+/// The whole yearly step, glue included (roads, after_transport, resettlement,
+/// notable closures and the year's bookkeeping), with every stream replayed.
+#[test]
+#[allow(non_snake_case)]
+fn sim_yearly_matches_python_draw_for_draw() {
+    for set in sets_with("yearly") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("yearly_before"));
+        let mut st = load_state(&set.join("yearly_before"));
+        let want = load_state(&set.join("yearly_after"));
+        let after = Dump::open(&set.join("yearly_after"));
+        let stream = |k: &str| Rng::replaying(after.f64(&format!("draws_{k}")));
+        let mut rngs = Rngs {
+            world: stream("world"),
+            names: stream("names"),
+            firms: stream("firms"),
+            tech: stream("tech"),
+            people: stream("people"),
+            rail: stream("rail"),
+            misc: stream("misc"),
+        };
+        let mut events = Vec::new();
+        let year = d.arg_f64("year") as i64;
+        sim::yearly(&mut st, &C, &P, &mut rngs, year, &mut events, false);
+        let mut ck = Checker::new(format!("{} sim.yearly({year})", set.display()));
+        for rng in [&rngs.world, &rngs.names, &rngs.firms, &rngs.tech, &rngs.people, &rngs.rail, &rngs.misc] {
+            check_draws_used(&mut ck, rng);
+        }
+        check_events(&mut ck, &events, &recorded_events(&set, "yearly").unwrap());
+        // towns and people
+        ck.exact("town_active", &f(&st.town_active), &f(&want.town_active));
+        ck.exact("town_name", &st.town_name, &want.town_name);
+        ck.exact("tech_year", &iv(&st.tech_year), &iv(&want.tech_year));
+        for (name, got, w) in [
+            ("pop", &st.pop, &want.pop),
+            ("hh_cash", &st.hh_cash, &want.hh_cash),
+            ("lord_cash", &st.lord_cash, &want.lord_cash),
+            ("merch_cash", &st.merch_cash, &want.merch_cash),
+            ("wage", &st.wage, &want.wage),
+            ("y_ratio", &st.y_ratio, &want.y_ratio),
+            ("tools_mult", &st.tools_mult, &want.tools_mult),
+            ("ag_labor", &st.ag_labor, &want.ag_labor),
+            ("ind_labor", &st.ind_labor, &want.ind_labor),
+            ("food_min_acc", &st.food_min_acc, &want.food_min_acc),
+            ("wbar", &st.wbar, &want.wbar),
+        ] {
+            ck.vec(name, got, w);
+        }
+        for (name, got, w) in [
+            ("price", &st.price, &want.price),
+            ("know", &st.know, &want.know),
+            ("pbar", &st.pbar, &want.pbar),
+            ("town_prod_year", &st.town_prod_year, &want.town_prod_year),
+            ("trade_F_year", &st.trade_F_year, &want.trade_F_year),
+            ("migration_flow", &st.migration_flow, &want.migration_flow),
+            ("dist", &st.dist, &want.dist),
+            ("town_cost", &st.town_cost, &want.town_cost),
+            ("delta", &st.delta, &want.delta),
+            ("lam", &st.lam, &want.lam),
+        ] {
+            ck.mat(name, got, w);
+        }
+        // the map: roads, rails, land use, rents
+        ck.exact("road", &u(&st.road), &u(&want.road));
+        ck.exact("road_quiet", &iv(&st.road_quiet), &iv(&want.road_quiet));
+        ck.exact("rail", &u(&st.rail), &u(&want.rail));
+        ck.exact("land_use", &u(&st.land_use), &u(&want.land_use));
+        ck.exact("catch", &iv(&st.catch), &iv(&want.catch));
+        ck.exact("urban", &f(&st.urban), &f(&want.urban));
+        ck.exact("derelict_timer", &iv(&st.derelict_timer), &iv(&want.derelict_timer));
+        for (name, got, w) in [
+            ("traffic", &st.traffic, &want.traffic),
+            ("cell_K_share", &st.cell_K_share, &want.cell_K_share),
+            ("cell_rent", &st.cell_rent, &want.cell_rent),
+            ("land_rent_only", &st.land_rent_only, &want.land_rent_only),
+            ("cover", &st.cover, &want.cover),
+            ("dcatch", &st.dcatch, &want.dcatch),
+            ("urban_res", &st.urban_res, &want.urban_res),
+        ] {
+            ck.vec(name, got, w);
+        }
+        // the extractive units
+        ck.exact("ex_cell", &uv(&st.ex_cell), &uv(&want.ex_cell));
+        ck.exact("ex_sector", &uv(&st.ex_sector), &uv(&want.ex_sector));
+        ck.exact("ex_town", &uv(&st.ex_town), &uv(&want.ex_town));
+        for (name, got, w) in [
+            ("ex_lam", &st.ex_lam, &want.ex_lam),
+            ("ex_field", &st.ex_field, &want.ex_field),
+            ("ex_tau", &st.ex_tau, &want.ex_tau),
+            ("ex_Lprev", &st.ex_Lprev, &want.ex_Lprev),
+        ] {
+            ck.vec(name, got, w);
+        }
+        // the firms
+        ck.exact("F_count", &[st.F_count], &[want.F_count]);
+        ck.exact("f_name", &st.f_name, &want.f_name);
+        ck.exact("f_alive", &f(&st.f_alive), &f(&want.f_alive));
+        ck.exact("f_cell", &uv(&st.f_cell), &uv(&want.f_cell));
+        ck.exact("f_method", &uv(&st.f_method), &uv(&want.f_method));
+        ck.exact("f_died", &iv(&st.f_died), &iv(&want.f_died));
+        ck.exact("new_firms_year", &st.new_firms_year, &want.new_firms_year);
+        ck.exact("closed_year", &st.closed_year, &want.closed_year);
+        for (name, got, w) in [
+            ("f_K", &st.f_K, &want.f_K),
+            ("f_order_K", &st.f_order_K, &want.f_order_K),
+            ("f_cash", &st.f_cash, &want.f_cash),
+            ("f_rent", &st.f_rent, &want.f_rent),
+            ("f_prod", &st.f_prod, &want.f_prod),
+            ("f_profit_acc", &st.f_profit_acc, &want.f_profit_acc),
+        ] {
+            ck.vec(name, got, w);
+        }
+        ck.mat("f_order", &st.f_order, &want.f_order);
+        // the railways
+        check_projects(&mut ck, &st, &want);
+        let cool = |s: &isostate_core::State| s.rail_cooldown.iter().map(|(&(a, b), &y)| (a, b, y)).collect::<Vec<_>>();
+        ck.exact("rail_cooldown", &cool(&st), &cool(&want));
+        ck.finish();
+    }
+}
+
+/// The observer's monthly series (what series_monthly.csv holds), from the same state.
+#[test]
+#[allow(non_snake_case)]
+fn observer_record_month_matches_python() {
+    for set in sets_with("record_month") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("record_month_before"));
+        let mut st = load_state(&set.join("record_month_before"));
+        let (t, n_months) = (d.arg_f64("t") as usize, d.arg_f64("n_months") as usize);
+        observer::init(&mut st, &C, &P, n_months);
+        observer::record_month(&mut st, &C, &P, t);
+        let text = std::fs::read_to_string(set.join("record_month_after").join("series.json")).unwrap();
+        let want: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&text).unwrap();
+        let mut ck = Checker::new(format!("{} observer.record_month(t = {t})", set.display()));
+        let got_names: Vec<&str> = st.series.names.iter().map(|s| s.as_str()).collect();
+        let want_names: Vec<&str> = want.keys().map(|s| s.as_str()).collect();
+        ck.exact("series names", &got_names, &want_names);
+        for (name, w) in &want {
+            let got = st.series.get(name)[t];
+            match w.as_f64() {
+                Some(w) => ck.scalar(name, got, w),
+                None => ck.exact(&format!("{name} is NaN"), &[got.is_nan()], &[true]),
+            }
+        }
+        ck.finish();
+    }
+}
+
+fn check_world(ck: &mut Checker, w: &isostate_core::world::World, ww: &isostate_core::world::World) {
+    ck.exact("world W, H", &[w.W, w.H], &[ww.W, ww.H]);
+    ck.exact("world land", &f(&w.land), &f(&ww.land));
+    ck.exact("world terrain", &u(&w.terrain), &u(&ww.terrain));
+    ck.exact("world river", &f(&w.river), &f(&ww.river));
+    ck.exact("world navigable", &f(&w.navigable), &f(&ww.navigable));
+    ck.exact("world coast", &f(&w.coast), &f(&ww.coast));
+    ck.exact("world town_sites", &w.town_sites, &ww.town_sites);
+    for (name, got, wv) in [
+        ("world h", &w.h, &ww.h),
+        ("world fertility", &w.fertility, &ww.fertility),
+        ("world pasture", &w.pasture, &ww.pasture),
+        ("world forest_pot", &w.forest_pot, &ww.forest_pot),
+        ("world rock", &w.rock, &ww.rock),
+        ("world clay", &w.clay, &ww.clay),
+        ("world ore", &w.ore, &ww.ore),
+        ("world coal", &w.coal, &ww.coal),
+    ] {
+        ck.vec(name, got, wv);
+    }
+}
+
+/// The initial state, world generation included, with every stream replayed.
+#[test]
+#[allow(non_snake_case)]
+fn sim_init_state_matches_python_draw_for_draw() {
+    for set in fixture_sets().into_iter().filter(|s| s.join("init_after").is_dir()) {
+        let (C, P) = setup(&set);
+        let after = Dump::open(&set.join("init_after"));
+        let want = load_state(&set.join("init_after"));
+        let stream = |k: &str| Rng::replaying(after.f64(&format!("draws_{k}")));
+        // the world first, on its own stream
+        let mut world_rng = stream("world");
+        let world = isostate_core::world::generate_world(&mut world_rng, P.W, P.H, P.n_towns, 0.58);
+        let mut ck = Checker::new(format!("{} world::generate_world", set.display()));
+        check_draws_used(&mut ck, &world_rng);
+        check_world(&mut ck, &world, &want.world);
+        ck.finish();
+
+        // Then the rest of init_state on Python's world. The two worlds differ by
+        // rounding (scipy's cubic zoom is matched to about 1e-12, not bit for bit),
+        // and that is enough to break exact ties in the first road paths
+        // differently, so the rest is checked from Python's world.
+        let mut rngs = Rngs {
+            world: stream("world"),
+            names: stream("names"),
+            firms: stream("firms"),
+            tech: stream("tech"),
+            people: stream("people"),
+            rail: stream("rail"),
+            misc: stream("misc"),
+        };
+        let python_world = load_state(&set.join("seed_firms_before")).world;
+        let (mut st, pbar, wbar) = sim::init_before_firms(&P, &C, python_world, &mut rngs);
+        let want = load_state(&set.join("seed_firms_before"));
+        let mut ck = Checker::new(format!("{} sim.init_state up to seed_firms, from Python's world", set.display()));
+        check_draws_used(&mut ck, &rngs.names);
+        ck.exact("town_name", &st.town_name, &want.town_name);
+        ck.exact("road", &u(&st.road), &u(&want.road));
+        ck.exact("land_use", &u(&st.land_use), &u(&want.land_use));
+        ck.exact("catch", &iv(&st.catch), &iv(&want.catch));
+        ck.exact("water", &f(&st.water), &f(&want.water));
+        ck.exact("ex_cell", &uv(&st.ex_cell), &uv(&want.ex_cell));
+        for (name, got, wv) in [
+            ("pop", &st.pop, &want.pop),
+            ("dcatch", &st.dcatch, &want.dcatch),
+            ("cover", &st.cover, &want.cover),
+            ("any_counts", &st.any_counts, &want.any_counts),
+            ("ex_lam", &st.ex_lam, &want.ex_lam),
+            ("wage", &st.wage, &want.wage),
+        ] {
+            ck.vec(name, got, wv);
+        }
+        for (name, got, wv) in [
+            ("price", &st.price, &want.price),
+            ("dist", &st.dist, &want.dist),
+            ("delta", &st.delta, &want.delta),
+            ("same_counts", &st.same_counts, &want.same_counts),
+            ("lam", &st.lam, &want.lam),
+        ] {
+            ck.mat(name, got, wv);
+        }
+        ck.finish();
+        sim::seed_firms(&mut st, &C, &P, &mut rngs, &pbar, &wbar);
+        let want = load_state(&set.join("init_after"));
+        let mut ck = Checker::new(format!("{} sim.init_state, from Python's world", set.display()));
+        for rng in [&rngs.names, &rngs.firms, &rngs.tech, &rngs.people, &rngs.rail, &rngs.misc] {
+            check_draws_used(&mut ck, rng);
+        }
+        // towns, land and the first firms
+        ck.exact("town_active", &f(&st.town_active), &f(&want.town_active));
+        ck.exact("town_node", &uv(&st.town_node), &uv(&want.town_node));
+        ck.exact("town_name", &st.town_name, &want.town_name);
+        ck.exact("land_use", &u(&st.land_use), &u(&want.land_use));
+        ck.exact("catch", &iv(&st.catch), &iv(&want.catch));
+        ck.exact("ex_cell", &uv(&st.ex_cell), &uv(&want.ex_cell));
+        ck.exact("ex_sector", &uv(&st.ex_sector), &uv(&want.ex_sector));
+        ck.exact("F_count", &[st.F_count], &[want.F_count]);
+        ck.exact("f_name", &st.f_name, &want.f_name);
+        ck.exact("f_cell", &uv(&st.f_cell), &uv(&want.f_cell));
+        ck.exact("f_method", &uv(&st.f_method), &uv(&want.f_method));
+        ck.exact("f_town", &uv(&st.f_town), &uv(&want.f_town));
+        for (name, got, wv) in [
+            ("pop", &st.pop, &want.pop),
+            ("hh_cash", &st.hh_cash, &want.hh_cash),
+            ("lord_cash", &st.lord_cash, &want.lord_cash),
+            ("merch_cash", &st.merch_cash, &want.merch_cash),
+            ("wage", &st.wage, &want.wage),
+            ("cover", &st.cover, &want.cover),
+            ("cell_K_share", &st.cell_K_share, &want.cell_K_share),
+            ("dcatch", &st.dcatch, &want.dcatch),
+            ("ex_lam", &st.ex_lam, &want.ex_lam),
+            ("ex_field", &st.ex_field, &want.ex_field),
+            ("ex_tau", &st.ex_tau, &want.ex_tau),
+            ("f_K", &st.f_K, &want.f_K),
+            ("f_cash", &st.f_cash, &want.f_cash),
+            ("f_rent", &st.f_rent, &want.f_rent),
+        ] {
+            ck.vec(name, got, wv);
+        }
+        for (name, got, wv) in [
+            ("price", &st.price, &want.price),
+            ("inv", &st.inv, &want.inv),
+            ("know", &st.know, &want.know),
+            ("dist", &st.dist, &want.dist),
+            ("town_cost", &st.town_cost, &want.town_cost),
+            ("delta", &st.delta, &want.delta),
+            ("lam", &st.lam, &want.lam),
+            ("f_order", &st.f_order, &want.f_order),
+        ] {
+            ck.mat(name, got, wv);
+        }
+        ck.finish();
+    }
+}
+
+/// A whole run: Python's world (recorded by parity/record_run.py), every stream
+/// replayed, and every monthly series compared. Fixture directories named
+/// `run_*` under the fixtures root.
+///
+/// Every draw lining up means every stochastic decision of the run (each site
+/// picked, firm founded and named, discovery made) is the one Python made. The
+/// continuous values agree to rounding at first and then drift apart: the wage
+/// search is a bisection, so a rounding difference that flips the sign of excess
+/// demand at a midpoint moves the wage by about 1e-12, and the economy amplifies
+/// such differences by roughly a factor of ten every two to three years. The
+/// first recorded decade must agree to 1e-8; later decades are reported. Sooner
+/// or later a near-tie falls the other way and the draws stop lining up (for
+/// seed 7 in 1786; the yearly step of 1786 from Python's state matches exactly),
+/// so the recorded run should end before that.
+#[test]
+#[allow(non_snake_case)]
+fn full_run_matches_python_draw_for_draw() {
+    let root = fixtures_root();
+    let mut runs: Vec<PathBuf> = std::fs::read_dir(&root)
+        .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_dir() && p.file_name().unwrap().to_string_lossy().starts_with("run_")).collect())
+        .unwrap_or_default();
+    runs.sort();
+    for dir in runs {
+        let P = Params::from_json_str(&std::fs::read_to_string(dir.join("params.json")).unwrap()).unwrap();
+        let C = default_content();
+        let d = Dump::open(&dir);
+        let stream = |k: &str| Rng::replaying(d.f64(&format!("draws_{k}")));
+        let mut rngs = Rngs {
+            world: Rng::replaying(Vec::new()),
+            names: stream("names"),
+            firms: stream("firms"),
+            tech: stream("tech"),
+            people: stream("people"),
+            rail: stream("rail"),
+            misc: stream("misc"),
+        };
+        let (mut st, pbar, wbar) = sim::init_before_firms(&P, &C, load_world(&d), &mut rngs);
+        sim::seed_firms(&mut st, &C, &P, &mut rngs, &pbar, &wbar);
+        let mut run = sim::start_from(&P, C, st, rngs);
+        while run.year <= run.end_year {
+            sim::run_year(&mut run).unwrap();
+        }
+        let mut ck = Checker::new(format!("{} whole run to {}", dir.display(), run.end_year));
+        for rng in [&run.rngs.names, &run.rngs.firms, &run.rngs.tech, &run.rngs.people, &run.rngs.rail, &run.rngs.misc] {
+            check_draws_used(&mut ck, rng);
+        }
+        let names: Vec<String> = serde_json::from_str(&std::fs::read_to_string(dir.join("series.json")).unwrap()).unwrap();
+        let want = d.mat("series");
+        let got_names: Vec<&str> = run.st.series.names.iter().map(|s| s.as_str()).collect();
+        ck.exact("series names", &got_names, &names.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        // the largest relative difference over all series, decade by decade
+        let y0 = run.content.start_year;
+        let mut worst_by_decade: Vec<(i64, f64, String)> = Vec::new();
+        for (k, name) in names.iter().enumerate() {
+            let got = run.st.series.get(name);
+            let w = want.row(k);
+            for (t, (&g, &x)) in got.iter().zip(w).enumerate() {
+                let decade = (y0 + (t / 12) as i64) / 10 * 10;
+                let rel = if g.is_nan() && x.is_nan() { 0.0 } else { (g - x).abs() / x.abs().max(1e-300) };
+                let rel = if (g - x).abs() <= 1e-12 * x.abs().max(1.0) { 0.0 } else { rel };
+                match worst_by_decade.iter_mut().find(|e| e.0 == decade) {
+                    Some(e) => {
+                        if rel > e.1 || rel.is_nan() {
+                            *e = (decade, rel, name.clone());
+                        }
+                    }
+                    None => worst_by_decade.push((decade, rel, name.clone())),
+                }
+            }
+        }
+        for (decade, rel, name) in &worst_by_decade {
+            eprintln!("  {decade}s: largest relative difference {rel:.2e} ({name})");
+        }
+        let first = &worst_by_decade[0];
+        ck.exact(&format!("series in the {}s agree to 1e-8", first.0), &[first.1 <= 1e-8], &[true]);
         ck.finish();
     }
 }
