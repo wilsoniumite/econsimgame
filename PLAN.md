@@ -2,6 +2,12 @@
 
 Three stages: a lab you can tinker with, a visual tool you can steer, then a game people step into. Detail is front-loaded on purpose; later stages will be rewritten once the earlier ones teach us what matters.
 
+## Decisions so far (November 2026)
+
+- **Rust all the way.** The simulation moves to a Rust crate (`crates/isostate-core`), ported module by module and checked against the Python version, which stays as the reference and the notebook lab. The 3D client is Bevy (`crates/isostate-viewer`). Desktop first.
+- **Look: a cosy diorama in the spirit of Tiny Glade.** Character comes from palette, silhouette, light and small moving life, not from hand-drawn assets, so it survives an island that rebuilds itself every year.
+- **Buildings feel placed, the economy stays smooth.** Under the hood the economy works in shares and densities per 2 km cell. The viewer turns those into stable things: each firm is a building on a fixed plot that grows in tiers, and every tree, house and farmstead has a fixed slot that fills in once its cell's density passes a fixed threshold. Nothing reshuffles from year to year.
+
 ## Where we are
 
 A first full demo. The sim runs 1750 to 1900 on one procedural island in about 80 seconds, conserves money exactly, and exports a replay that a single HTML page turns into a scrubbable map, news feed, charts and a per-firm "why here" inspector. Two scenarios (landlords and shared rent) can be compared in the charts. The main weakness is economic, not technical: structural change is too weak (see README, Known problems).
@@ -36,7 +42,8 @@ A first full demo. The sim runs 1750 to 1900 on one procedural island in about 8
 
 ## Stage 2: the visual tool (sparser)
 
-- Run the sim live rather than as a replay. Options: Pyodide for the current code (simplest, slow), or port the monthly step to Rust or Zig compiled to WebAssembly once the model stops changing every week. The replay format stays as the save-game and sharing format.
+- The Bevy viewer already plays replays. Next for the look: a terrain shader for fields, hedges and crops (crisp at any zoom, seasons from the monthly clock), houses that line streets, moving trains and boats, construction that pops up with a puff of dust, click-to-inspect with each works' "why here" sums.
+- Run the sim live inside the Bevy app once the Rust core is ported and checked. The replay format stays as the save-game and sharing format.
 - Interventions: pause, change a parameter or place a thing (a canal, a tariff, a land tax), resume, and compare the branch against the baseline on the same seed.
 - A diff view on the map: where two branches differ, in rent, use and population.
 - Agent drill-down: follow one firm or town over time, with its decisions and their reasons in a timeline.
