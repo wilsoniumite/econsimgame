@@ -96,13 +96,13 @@ pub fn num(v: &Value) -> f64 {
 #[allow(non_snake_case)]
 pub fn graph_from_edges(H: usize, W: usize, a: &[usize], b: &[usize], w: &[f64], railed: &[bool]) -> Graph {
     let N = H * W;
-    let mut g = Graph { N, W, H, w: vec![f64::INFINITY; N * 8], railed: vec![false; N * 8] };
+    let (mut gw, mut gr) = (vec![f64::INFINITY; N * 8], vec![false; N * 8]);
     for e in 0..a.len() {
         let k = (0..8).find(|&k| neighbour(H, W, a[e], k) == Some(b[e])).expect("edge between neighbours");
-        g.w[a[e] * 8 + k] = w[e];
-        g.railed[a[e] * 8 + k] = railed[e];
+        gw[a[e] * 8 + k] = w[e];
+        gr[a[e] * 8 + k] = railed[e];
     }
-    g
+    Graph::new(N, W, H, gw, gr)
 }
 
 /// Everything the dump holds, in the Rust state's layout.

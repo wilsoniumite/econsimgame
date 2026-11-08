@@ -85,11 +85,82 @@ pub fn argmin(a: &[f64]) -> usize {
 /// tie order depends on the platform's SIMD sort; here ties are broken by index.
 /// The sim's uses only see ties in measure-zero cases (noted where they matter).
 pub fn argsort(a: &[f64]) -> Vec<usize> {
-    let mut idx: Vec<usize> = (0..a.len()).collect();
-    idx.sort_by(|&i, &j| a[i].total_cmp(&a[j]).then(i.cmp(&j)));
-    idx
+    // sort (key, index) pairs: the key orders like f64::total_cmp, the index breaks ties
+    let mut keyed: Vec<(u64, u32)> = a.iter().enumerate().map(|(i, &v)| (crate::world::ord_key(v), i as u32)).collect();
+    keyed.sort_unstable();
+    keyed.into_iter().map(|(_, i)| i as usize).collect()
 }
 
 pub fn bool_f(b: bool) -> f64 {
     if b { 1.0 } else { 0.0 }
+}
+
+// ---------------- Python number formatting used in event text and output files
+
+/// Python's `round(x, n)` for a float: correctly rounded, ties to even (Rust's
+/// fixed-precision formatting rounds the same way).
+pub fn round_dp(x: f64, n: usize) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    format!("{x:.n$}").parse().unwrap()
+}
+
+/// Python's `f"{v:.{n}%}"`: the value times 100 in floating point, fixed, then "%".
+pub fn fmt_pct(v: f64, n: usize) -> String {
+    format!("{:.n$}%", v * 100.0)
+}
+
+/// Python's `f"{v:+.{n}%}"`.
+pub fn fmt_pct_signed(v: f64, n: usize) -> String {
+    format!("{:+.n$}%", v * 100.0)
+}
+
+fn group_thousands(digits: &str) -> String {
+    let (sign, digits) = if let Some(d) = digits.strip_prefix('-') { ("-", d) } else { ("", digits) };
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    format!("{sign}{out}")
+}
+
+/// Python's `f"{n:,}"` for an integer.
+pub fn fmt_thousands(n: i64) -> String {
+    group_thousands(&n.to_string())
+}
+
+/// Python's `f"{x:,.0f}"`.
+pub fn fmt_thousands_f0(x: f64) -> String {
+    group_thousands(&format!("{x:.0}"))
+}
+
+/// Python's `f"{x:.6g}"`, as the CLI writes the monthly series.
+pub fn fmt_g6(x: f64) -> String {
+    if x.is_nan() {
+        return "nan".to_string();
+    }
+    if x.is_infinite() {
+        return if x > 0.0 { "inf".to_string() } else { "-inf".to_string() };
+    }
+    if x == 0.0 {
+        return if x.is_sign_negative() { "-0".to_string() } else { "0".to_string() };
+    }
+    const P: i32 = 6;
+    // the exponent after rounding to P significant digits decides the style
+    let e_repr = format!("{:.*e}", (P - 1) as usize, x);
+    let (mantissa, exp) = e_repr.split_once('e').unwrap();
+    let exp: i32 = exp.parse().unwrap();
+    let strip = |s: &str| -> String {
+        if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s.to_string() }
+    };
+    if (-4..P).contains(&exp) {
+        strip(&format!("{:.*}", (P - 1 - exp) as usize, x))
+    } else {
+        let sign = if exp < 0 { '-' } else { '+' };
+        format!("{}e{}{:02}", strip(mantissa), sign, exp.abs())
+    }
 }

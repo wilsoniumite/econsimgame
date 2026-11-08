@@ -1,1 +1,3 @@
-fn main() {}
+fn main() {
+    isostate_core::cli::main();
+}

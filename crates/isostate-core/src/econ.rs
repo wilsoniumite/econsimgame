@@ -176,6 +176,72 @@ pub fn pay_rent(st: &mut State, P: &Params, amount: &[f64]) {
     st.m_rent += total;
 }
 
+/// Midpoints this close to the root of excess demand are evaluated, not predicted.
+/// Newton finds the root to about 1e-15; the final bisection interval is 1.3e-12 wide.
+pub const ROOT_MARGIN: f64 = 1e-11;
+
+/// Python's labour-market bisection for one town: 40 halvings of [lo, hi] in log
+/// wage, moving up whenever demand at the midpoint exceeds supply; the result is
+/// the midpoint of the last interval.
+///
+/// Each halving needs only the sign of excess demand at its midpoint, and excess
+/// demand falls as the wage rises. Given `root`, the log wage where it changes
+/// sign, a midpoint further than `ROOT_MARGIN` below the root must move up and one
+/// further above must move down, so only the few midpoints within the margin are
+/// evaluated, exactly as the plain bisection evaluates every one. With `root` None
+/// every midpoint is evaluated.
+pub fn bisect_log_wage(mut lo: f64, mut hi: f64, too_much: &dyn Fn(f64) -> bool, root: Option<f64>) -> f64 {
+    for _ in 0..40 {
+        let mid = 0.5 * (lo + hi);
+        let up = match root {
+            Some(r) if mid < r - ROOT_MARGIN => true,
+            Some(r) if mid > r + ROOT_MARGIN => false,
+            _ => too_much(mid),
+        };
+        if up {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    0.5 * (lo + hi)
+}
+
+/// Where excess demand changes sign in (lo, hi): -inf if it never exceeds supply
+/// above lo, +inf if it still does at hi, otherwise the root found by Newton steps
+/// on `f` (excess demand and its slope), kept inside the bracket by bisection.
+/// None if the steps do not settle (the bisection then evaluates every midpoint).
+pub fn excess_demand_root(lo: f64, hi: f64, too_much: &dyn Fn(f64) -> bool, f: impl Fn(f64) -> (f64, f64)) -> Option<f64> {
+    if !too_much(lo) {
+        return Some(f64::NEG_INFINITY);
+    }
+    if too_much(hi) {
+        return Some(f64::INFINITY);
+    }
+    let (mut a, mut b) = (lo, hi);
+    let mut x = 0.5 * (lo + hi);
+    for _ in 0..100 {
+        let (fx, dfx) = f(x);
+        if !fx.is_finite() || !dfx.is_finite() {
+            return None;
+        }
+        if fx > 0.0 {
+            a = x;
+        } else {
+            b = x;
+        }
+        let mut xn = x - fx / dfx;
+        if !(dfx < 0.0 && xn > a && xn < b) {
+            xn = 0.5 * (a + b);
+        }
+        if (xn - x).abs() <= 1e-15 * (1.0 + x.abs()) || b - a <= 1e-15 * (1.0 + a.abs()) {
+            return Some(xn);
+        }
+        x = xn;
+    }
+    None
+}
+
 pub fn money_total(st: &State) -> f64 {
     let firm_cash: Vec<f64> =
         (0..st.f_cash.len()).filter(|&f| st.f_alive[f] || st.f_cash[f] != 0.0).map(|f| st.f_cash[f]).collect();
@@ -322,91 +388,115 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let Lprev_ex = st.ex_Lprev.clone();
     let Lprev_f: Vec<f64> = fi.iter().map(|&i| st.f_labor[i]).collect();
 
-    // Firm demand at town wages w: utilisation follows the margin through a sigmoid.
-    let firm_demand = |w: &[f64], i: usize| -> (f64, f64) {
-        let m = pout[i] - nonlabor[i] - l[i] * w[ft[i]];
+    // Firm demand at its town's wage w: utilisation follows the margin through a sigmoid.
+    let firm_demand = |w: f64, i: usize| -> (f64, f64) {
+        let m = pout[i] - nonlabor[i] - l[i] * w;
         let u = sigmoid((m / pout[i].max(1e-9) - P.util_target_margin) / P.util_band) * bool_f(pout[i] > 0.0);
         let Lf = Lprev_f[i] + kf * (K[i] * u * l[i] * phi_prev[i] - Lprev_f[i]);
         (Lf.max(0.0), u)
     };
 
-    // The bisection evaluates total demand per town 40 times. The land part,
+    // The bisection asks 40 times per town whether demand exceeds supply. The land part,
     //   Lx = Lprev + kx * (lam * (Cc / w)^(1/alpha) - Lprev),
     // is linear in w^(-1/alpha) once lam * Cc^(1/alpha) is known, so it is summed
-    // per (town, sector) once and each step costs T * NS powers instead of one per
+    // per (town, sector) once and each step costs NS powers instead of one per
     // unit. Python clamps Lx at zero, which never binds for 0 <= kx <= 1 (Lprev,
-    // lam and Cc are not negative); otherwise the units are evaluated one by one.
+    // lam and Cc are not negative); otherwise the units are summed one by one.
     let aggregate = (0.0..=1.0).contains(&kx);
     let mut x_pow = vec![0.0; NE]; // lam * Cc^(1/alpha)
     let mut sum_x = vec![0.0; T * NS];
     let mut sum_l = vec![0.0; T];
     let sector_inv_alpha: Vec<f64> = C.sector_alpha.iter().map(|&x| 1.0 / x).collect();
+    let mut town_units: Vec<Vec<usize>> = vec![Vec::new(); T];
     for u in 0..NE {
         x_pow[u] = lam[u] * Cc[u].powf(inv_alpha[u]);
         sum_x[et[u] * NS + sec[u]] += x_pow[u];
         sum_l[et[u]] += Lprev_ex[u];
-    }
-    let mut w = vec![0.0; T];
-    let mut wneg = vec![0.0; T * NS]; // w^(-1/alpha) per (town, sector)
-    let mut D = vec![0.0; T];
-    for _ in 0..40 {
-        for t in 0..T {
-            w[t] = (0.5 * (lo[t] + hi[t])).exp();
+        if !aggregate {
+            town_units[et[u]].push(u);
         }
-        D.iter_mut().for_each(|d| *d = 0.0);
+    }
+    // each town's firms, in the order the bisection sums them
+    let mut town_firms: Vec<Vec<usize>> = vec![Vec::new(); T];
+    for i in 0..NFI {
+        town_firms[ft[i]].push(i);
+    }
+    // Labour demand of town t at log wage x, summed as one bisection step sums it,
+    // and (with `slope`) its derivative in x for the Newton steps.
+    let town_demand = |t: usize, x: f64, slope: bool| -> (f64, f64) {
+        let wt = x.exp();
+        let (mut d, mut dd) = (0.0, 0.0);
         if aggregate {
-            for t in 0..T {
-                let mut s_tw = 0.0;
-                for s in 0..NS {
-                    let x = sum_x[t * NS + s];
-                    if x != 0.0 {
-                        wneg[t * NS + s] = w[t].powf(-sector_inv_alpha[s]);
-                        s_tw += x * wneg[t * NS + s];
-                    }
+            let mut s_tw = 0.0;
+            for s in 0..NS {
+                let sx = sum_x[t * NS + s];
+                if sx != 0.0 {
+                    let wp = wt.powf(-sector_inv_alpha[s]);
+                    s_tw += sx * wp;
+                    dd -= kx * sector_inv_alpha[s] * sx * wp;
                 }
-                D[t] = sum_l[t] + kx * (s_tw - sum_l[t]);
             }
+            d = sum_l[t] + kx * (s_tw - sum_l[t]);
         } else {
-            for u in 0..NE {
-                let Lx = Lprev_ex[u] + kx * (lam[u] * (Cc[u] / w[et[u]]).powf(inv_alpha[u]) - Lprev_ex[u]);
-                D[et[u]] += Lx.max(0.0);
+            for &u in &town_units[t] {
+                let Lx = Lprev_ex[u] + kx * (lam[u] * (Cc[u] / wt).powf(inv_alpha[u]) - Lprev_ex[u]);
+                d += Lx.max(0.0);
+                if Lx > 0.0 {
+                    dd -= kx * inv_alpha[u] * lam[u] * (Cc[u] / wt).powf(inv_alpha[u]);
+                }
             }
         }
-        let mut Df = vec![0.0; T];
-        for i in 0..NFI {
-            Df[ft[i]] += firm_demand(&w, i).0;
-        }
-        for t in 0..T {
-            D[t] += Df[t];
-            let too_much = D[t] > supply[t];
-            let mid = 0.5 * (lo[t] + hi[t]);
-            if too_much {
-                lo[t] = mid;
-            } else {
-                hi[t] = mid;
+        let mut df = 0.0;
+        for &i in &town_firms[t] {
+            let (lf, u) = firm_demand(wt, i);
+            df += lf;
+            if slope && lf > 0.0 && u > 0.0 {
+                // dLf/dx = kf K l phi du/dx, du/dx = u (1 - u) dz/dx, dz/dx = -l w / (pout band)
+                let z = ((pout[i] - nonlabor[i] - l[i] * wt) / pout[i].max(1e-9) - P.util_target_margin) / P.util_band;
+                if z.abs() < 50.0 {
+                    let dz = -l[i] * wt / pout[i].max(1e-9) / P.util_band;
+                    dd += kf * K[i] * l[i] * phi_prev[i] * u * (1.0 - u) * dz;
+                }
             }
         }
-    }
+        (d + df, dd)
+    };
+    let mut w = vec![0.0; T];
     for t in 0..T {
-        w[t] = (0.5 * (lo[t] + hi[t])).exp();
+        let too_much = |x: f64| town_demand(t, x, false).0 > supply[t];
+        let root = excess_demand_root(lo[t], hi[t], &too_much, |x| {
+            let (d, dd) = town_demand(t, x, true);
+            (d - supply[t], dd)
+        });
+        w[t] = bisect_log_wage(lo[t], hi[t], &too_much, root).exp();
         if !st.town_active[t] {
             w[t] = 0.0;
         }
     }
-    // final demand at the clearing wage, unit by unit as in Python
+    // final demand at the clearing wage, unit by unit. Python evaluates
+    // lam * (Cc / w)^(1/alpha); lam * Cc^(1/alpha) * w^(-1/alpha) is the same number
+    // (to an ulp or two) and reuses the power already taken for the bisection.
     let wq: Vec<f64> = w.iter().map(|&x| x.max(1e-9)).collect();
+    let mut wpow = vec![0.0; T * NS];
+    for t in 0..T {
+        for s in 0..NS {
+            wpow[t * NS + s] = wq[t].powf(-sector_inv_alpha[s]);
+        }
+    }
     let Lex: Vec<f64> = (0..NE)
-        .map(|u| (Lprev_ex[u] + kx * (lam[u] * (Cc[u] / wq[et[u]]).powf(inv_alpha[u]) - Lprev_ex[u])).max(0.0))
+        .map(|u| (Lprev_ex[u] + kx * (x_pow[u] * wpow[et[u] * NS + sec[u]] - Lprev_ex[u])).max(0.0))
         .collect();
     let mut Lf = vec![0.0; NFI];
     let mut ufirm = vec![0.0; NFI];
     for i in 0..NFI {
-        let (x, u) = firm_demand(&wq, i);
+        let (x, u) = firm_demand(wq[ft[i]], i);
         Lf[i] = x;
         ufirm[i] = u;
     }
     st.ex_Lprev = Lex.clone();
-    let Y: Vec<f64> = (0..NE).map(|u| A[u] * f[u] * lam[u].powf(alpha[u]) * Lex[u].powf(1.0 - alpha[u])).collect();
+    // Python: A * f * lam**alpha * Lex**(1 - alpha). lam > 0 on every unit, so
+    // lam * (Lex / lam)**(1 - alpha) is the same number with one power instead of two.
+    let Y: Vec<f64> = (0..NE).map(|u| A[u] * f[u] * (lam[u] * (Lex[u] / lam[u]).powf(1.0 - alpha[u]))).collect();
     let q_des: Vec<f64> = (0..NFI)
         .map(|i| {
             let q = if l[i] > 0.0 { Lf[i] / (l[i] * phi_prev[i].max(0.05)).max(1e-12) } else { 0.0 };
@@ -506,13 +596,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             inv_got[(r, g)] = req_inv[(r, g)] * fill[(ot[r], g)];
         }
     }
-    for g in 0..G {
-        let by_firm = bincount(&ft, &column(&use_f, g), T);
-        let by_order = bincount(&ot, &column(&inv_got, g), T);
-        for t in 0..T {
-            sold[(t, g)] += by_firm[t];
-            sold[(t, g)] += by_order[t];
-        }
+    // per good: sold += bincount(ft, use_f[:, g]); sold += bincount(ot, inv_got[:, g])
+    let by_firm = sum_by_town(T, &ft, &use_f);
+    let by_order = sum_by_town(T, &ot, &inv_got);
+    for k in 0..T * G {
+        sold.data[k] += by_firm.data[k];
+        sold.data[k] += by_order.data[k];
     }
     add_column(&mut sold, gm, &bincount(&et, &mach_got, T));
     add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
@@ -896,8 +985,17 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     };
 }
 
-fn column(m: &Mat, g: usize) -> Vec<f64> {
-    (0..m.rows).map(|r| m[(r, g)]).collect()
+/// For each good, `np.bincount(town, weights=rows[:, g], minlength=T)`, in one pass
+/// (each (town, good) total still sums the rows in order).
+fn sum_by_town(T: usize, town: &[usize], rows: &Mat) -> Mat {
+    let G = rows.cols;
+    let mut acc = Mat::zeros(T, G);
+    for (r, &t) in town.iter().enumerate() {
+        for g in 0..G {
+            acc[(t, g)] += rows[(r, g)];
+        }
+    }
+    acc
 }
 
 fn add_to(a: &mut [f64], b: &[f64]) {
@@ -914,13 +1012,7 @@ fn add_column(m: &mut Mat, g: usize, v: &[f64]) {
 
 /// `for g: R[:, g] += np.bincount(town, weights=rows[:, g], minlength=T)`.
 fn add_by_town(R: &mut Mat, town: &[usize], rows: &Mat) {
-    let (T, G) = (R.rows, R.cols);
-    let mut acc = Mat::zeros(T, G);
-    for (r, &t) in town.iter().enumerate() {
-        for g in 0..G {
-            acc[(t, g)] += rows[(r, g)];
-        }
-    }
+    let acc = sum_by_town(R.rows, town, rows);
     for (x, y) in R.data.iter_mut().zip(&acc.data) {
         *x += y;
     }

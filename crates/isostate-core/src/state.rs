@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::mat::Mat;
+use crate::observer::{ObserverState, Series};
 use crate::transport::Graph;
 use crate::world::World;
 
@@ -260,8 +261,12 @@ pub struct State {
     pub graph: Graph,
     /// (T, N): path cost from each town to every cell.
     pub dist: Mat,
-    /// Predecessor tree of each town's shortest paths (`transport::NO_PRED` at roots).
+    /// Predecessor tree of each town's shortest paths (`transport::NO_PRED` at roots;
+    /// empty for inactive towns).
     pub pred: Vec<Vec<i64>>,
+    /// The cells each town's search settled, nearest first (not in Python, which
+    /// sorts by distance where it needs this order).
+    pub settle: Vec<Vec<u32>>,
     /// Market town of each cell, -1 for none.
     pub catch: Vec<i64>,
     pub dcatch: Vec<f64>,
@@ -303,4 +308,8 @@ pub struct State {
     pub wage_base: f64,
     pub money_start: f64,
     pub money_now: f64,
+
+    // ---------------- the observer's registry and memory (never read by the sim)
+    pub series: Series,
+    pub obs: ObserverState,
 }

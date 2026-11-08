@@ -42,12 +42,7 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
     let graph = tr::build_graph(&st.world, &st.road, &st.rail, &port, &st.cover);
     let first = (0..T).find(|&i| st.town_active[i]).expect("no active town");
     let nodes: Vec<usize> = (0..T).map(|i| if st.town_active[i] { st.town_node[i] } else { st.town_node[first] }).collect();
-    let (mut dist, pred) = tr::town_paths(&graph, &nodes);
-    for i in 0..T {
-        if !st.town_active[i] {
-            dist.row_mut(i).iter_mut().for_each(|d| *d = f64::INFINITY);
-        }
-    }
+    let (dist, pred, settle) = tr::town_paths(&graph, &nodes, &st.town_active);
     let (catch, dmin) = tr::catchments(&dist, &st.town_active, &st.world.land);
     let mut tc = Mat::filled(T, T, f64::INFINITY);
     for i in 0..T {
@@ -60,6 +55,7 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
     st.graph = graph;
     st.dist = dist;
     st.pred = pred;
+    st.settle = settle;
     st.catch = catch;
     st.dcatch = dmin;
     st.town_cost = tc;
