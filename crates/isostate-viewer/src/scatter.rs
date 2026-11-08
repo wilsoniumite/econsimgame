@@ -85,8 +85,25 @@ pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
                 if town_nodes.contains(&cell) && i == 1 && j == 1 {
                     continue; // leave the market square free
                 }
-                plots.push(((i as f32 + 0.5) / 3.0, (j as f32 + 0.5) / 3.0));
+                let (px, pz) = ((i as f32 + 0.5) / 3.0, (j as f32 + 0.5) / 3.0);
+                if world::height_at(g, cx + px, cy + pz) >= 0.07 {
+                    plots.push((px, pz)); // never build in the sea or on the beach
+                }
             }
+        }
+        if plots.is_empty() {
+            // a coastal sliver: use its highest point
+            let mut best = (0.5, 0.5, f32::MIN);
+            for j in 0..7 {
+                for i in 0..7 {
+                    let (px, pz) = ((i as f32 + 0.5) / 7.0, (j as f32 + 0.5) / 7.0);
+                    let h = world::height_at(g, cx + px, cy + pz);
+                    if h > best.2 {
+                        best = (px, pz, h);
+                    }
+                }
+            }
+            plots.push((best.0, best.1));
         }
         plots.sort_by(|a, b| {
             let ka = world::hash2((a.0 * 7.0) as i32, (a.1 * 7.0) as i32, cell as i32);
@@ -96,8 +113,12 @@ pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
         for (n, &f) in fs.iter().enumerate() {
             let (px, pz) = plots[n % plots.len()];
             let round = (n / plots.len()) as f32;
-            let jx = (world::hash2(f as i32, 7, 3) - 0.5) * 0.12 + round * 0.07;
-            let jz = (world::hash2(f as i32, 8, 3) - 0.5) * 0.12;
+            let mut jx = (world::hash2(f as i32, 7, 3) - 0.5) * 0.12 + round * 0.07;
+            let mut jz = (world::hash2(f as i32, 8, 3) - 0.5) * 0.12;
+            if world::height_at(g, cx + px + jx, cy + pz + jz) < 0.07 {
+                jx = 0.0;
+                jz = 0.0;
+            }
             let yaw = (world::hash2(f as i32, 9, 3) * 4.0).floor() * std::f32::consts::FRAC_PI_2 + (world::hash2(f as i32, 10, 3) - 0.5) * 0.3;
             firm_pos[f] = (cx + px + jx, cy + pz + jz, yaw);
         }
@@ -148,15 +169,64 @@ fn chimney(b: &mut Builder, p: Vec3, h: f32, r: f32) {
     b.frustum(p, r, r * 0.8, h, 6, hex(0xa9553f), Some(hex(0x3a3330)));
 }
 
+/// A chimney with a few puffs of smoke drifting downwind.
+fn smoking_chimney(b: &mut Builder, smoke: &mut Builder, p: Vec3, h: f32, r: f32, seed: f32) {
+    chimney(b, p, h, r);
+    let puff = hex(0xeeece8);
+    for i in 0..3 {
+        let t = i as f32;
+        let c = p + Vec3::new(0.012 + 0.022 * t + 0.004 * seed.sin(), h + 0.018 + 0.016 * t, 0.006 * (seed * 3.0 + t).sin());
+        smoke.ball(c, 0.011 + 0.006 * t, 0.009 + 0.005 * t, 6, 3, shade(puff, 1.0 - 0.04 * t), seed + t);
+    }
+}
+
+fn church(b: &mut Builder, p: Vec3, yaw: f32, big: bool) {
+    let stone = hex(0xddd5c4);
+    let slate = hex(0x55617a);
+    let k = if big { 1.35 } else { 1.0 };
+    let q = bevy::math::Quat::from_rotation_y(yaw);
+    b.block(p, 0.085 * k, 0.04 * k, 0.034 * k, yaw, stone, None, 0.03);
+    b.gable(p, 0.085 * k, 0.04 * k, 0.034 * k, 0.026 * k, yaw, 0.003, slate, stone);
+    let tower = p + q * Vec3::new(-0.05 * k, 0.0, 0.0);
+    b.block(tower, 0.028 * k, 0.028 * k, 0.075 * k, yaw, stone, Some(stone), 0.03);
+    b.frustum(tower + Vec3::Y * 0.075 * k, 0.021 * k, 0.0, 0.07 * k, 4, slate, None);
+}
+
+fn station(b: &mut Builder, p: Vec3, yaw: f32) {
+    let q = bevy::math::Quat::from_rotation_y(yaw);
+    b.block(p, 0.09, 0.035, 0.03, yaw, hex(0xf1e3c6), None, 0.03);
+    b.gable(p, 0.09, 0.035, 0.03, 0.018, yaw, 0.004, hex(0xb5523f), hex(0xf1e3c6));
+    // platform canopy
+    let c = p + q * Vec3::new(0.0, 0.0, 0.035);
+    b.block(c, 0.12, 0.03, 0.002, yaw, hex(0x6b5a4e), None, 0.0);
+    b.block(c + Vec3::Y * 0.022, 0.13, 0.034, 0.004, yaw, hex(0x7a8a6a), Some(hex(0x7a8a6a)), 0.0);
+    // clock turret
+    b.block(p + q * Vec3::new(0.0, 0.0, 0.0), 0.016, 0.016, 0.06, yaw, hex(0xf1e3c6), Some(hex(0xf1e3c6)), 0.0);
+    b.frustum(p + Vec3::Y * 0.06, 0.013, 0.0, 0.022, 4, hex(0xb5523f), None);
+}
+
+fn lighthouse(b: &mut Builder, p: Vec3) {
+    let white = hex(0xf7f5ef);
+    let red = hex(0xc94b3c);
+    for i in 0..4 {
+        let y = i as f32 * 0.024;
+        let r0 = 0.016 - 0.0012 * i as f32;
+        b.frustum(p + Vec3::Y * y, r0, r0 - 0.0012, 0.024, 8, if i % 2 == 0 { white } else { red }, None);
+    }
+    b.frustum(p + Vec3::Y * 0.096, 0.012, 0.012, 0.014, 8, hex(0xffe58a), None);
+    b.frustum(p + Vec3::Y * 0.11, 0.014, 0.0, 0.014, 8, red, None);
+}
+
 // ------------------------------------------------------------------ works
 
-fn works(b: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), g: &Ground) {
+fn works(b: &mut Builder, smoke: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), g: &Ground) {
     let firm = &r.header.firms[f];
     let m = &r.header.methods[firm.method];
     let kk = replay::firm_k(r, f, k);
     let ratio = (kk / m.k0.max(1e-6)).max(0.05);
     let tier = (ratio.log2() + 1.5).floor().clamp(1.0, 4.0);
     let s = 0.8 + 0.2 * tier;
+    let seed = f as f32 * 0.37;
     let p = ground(g, pos.0, pos.1);
     let yaw = pos.2;
     let q = bevy::math::Quat::from_rotation_y(yaw);
@@ -176,7 +246,7 @@ fn works(b: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), 
         "smithy" | "millwright" => {
             b.block(p, 0.06 * s, 0.045 * s, 0.026, yaw, if name == "smithy" { stone } else { timber }, None, 0.03);
             b.gable(p, 0.06 * s, 0.045 * s, 0.026, 0.022, yaw, 0.004, slate, stone);
-            chimney(b, at(0.02 * s, 0.0), 0.06, 0.006);
+            smoking_chimney(b, smoke, at(0.02 * s, 0.0), 0.06, 0.006, seed);
         }
         "charcoal_burning" => {
             for i in 0..(tier as usize + 1) {
@@ -194,7 +264,7 @@ fn works(b: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), 
             b.gable(at(0.02, 0.025), 0.07 * s, 0.04, 0.025, 0.018, yaw, 0.003, slate, brick);
             if name == "coke_furnace" {
                 for i in 0..tier as usize {
-                    chimney(b, at(0.06, -0.03 + i as f32 * 0.02), 0.13 + 0.02 * tier, 0.008);
+                    smoking_chimney(b, smoke, at(0.06, -0.03 + i as f32 * 0.02), 0.13 + 0.02 * tier, 0.008, seed + i as f32);
                 }
                 b.block(at(-0.02, 0.06), 0.11 * s, 0.022, 0.014, yaw, dark, Some(hex(0x5a4a42)), 0.02);
             }
@@ -209,14 +279,14 @@ fn works(b: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), 
                 b.block(wp - Vec3::Y * 0.0, len * 0.9, 0.001, 0.008, yaw, hex(0xf3e2b0), None, 0.0);
             }
             b.gable(p, len, 0.04, 0.075, 0.016, yaw, 0.003, slate, brick);
-            chimney(b, at(len * 0.5 + 0.015, 0.0), 0.16 + 0.02 * tier, 0.009);
+            smoking_chimney(b, smoke, at(len * 0.5 + 0.015, 0.0), 0.16 + 0.02 * tier, 0.009, seed);
         }
         "engine_works" | "forge_rails" | "rolling_mill" | "steel_rolling" | "bessemer" => {
             let len = 0.09 + 0.03 * tier;
             b.block(p, len, 0.06, 0.04, yaw, if name == "engine_works" { brick } else { dark }, None, 0.03);
             b.gable(p, len, 0.06, 0.04, 0.025, yaw, 0.004, slate, brick);
             for i in 0..(tier as usize).max(1) {
-                chimney(b, at(-len * 0.4 + i as f32 * 0.03, -0.045), 0.12 + 0.02 * tier, 0.008);
+                smoking_chimney(b, smoke, at(-len * 0.4 + i as f32 * 0.03, -0.045), 0.12 + 0.02 * tier, 0.008, seed + i as f32);
             }
             if name == "bessemer" {
                 for i in 0..2 {
@@ -250,12 +320,14 @@ pub struct YearMeshes {
     pub trees: Builder,
     pub houses: Builder,
     pub works: Builder,
+    pub smoke: Builder,
 }
 
-pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, k: usize) -> YearMeshes {
+pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize) -> YearMeshes {
     let mut trees = Builder::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
+    let mut smoke = Builder::default();
 
     // firm plots in use this year, so houses keep clear of them
     let mut plots: std::collections::HashMap<usize, Vec<(f32, f32)>> = Default::default();
@@ -265,7 +337,49 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, k: usize) -> YearMeshes
         }
         let p = slots.firm_pos[f];
         plots.entry(firm.cell).or_default().push((p.0, p.1));
-        works(&mut works_b, r, f, k, p, g);
+        works(&mut works_b, &mut smoke, r, f, k, p, g);
+    }
+    // each town: a church on its market square, a station once the railway arrives,
+    // and a lighthouse if it is a harbour
+    let nt = r.n_towns.min(r.header.towns.len());
+    for t in 0..nt {
+        if r.town_active[k * r.n_towns + t] == 0 {
+            continue;
+        }
+        let node = r.header.towns[t].node;
+        let (x, z) = cen[node];
+        let yaw = (world::hash2(t as i32, 1, 5) * 4.0).floor() * std::f32::consts::FRAC_PI_2;
+        let big = r.town_urban[k * r.n_towns + t] > 12000.0;
+        church(&mut houses, ground(g, x, z), yaw, big);
+        plots.entry(node).or_default().push((x, z));
+        if r.trans[k * r.n + node] & 4 != 0 {
+            let q = bevy::math::Quat::from_rotation_y(yaw);
+            let o = q * Vec3::new(0.0, 0.0, 0.2);
+            station(&mut houses, ground(g, x + o.x, z + o.z), yaw);
+            plots.entry(node).or_default().push((x + o.x, z + o.z));
+        }
+        let (cx, cy) = ((node % r.w) as isize, (node / r.w) as isize);
+        let mut sea: Option<(f32, f32)> = None;
+        for (dx, dy) in [(1isize, 0isize), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)] {
+            let (nx, ny) = (cx + dx, cy + dy);
+            if nx >= 0 && ny >= 0 && (nx as usize) < r.w && (ny as usize) < r.h && r.terrain[ny as usize * r.w + nx as usize] == 0 {
+                sea = Some((dx as f32, dy as f32));
+                break;
+            }
+        }
+        if let Some((dx, dy)) = sea {
+            // walk toward the sea until the ground is nearly at the waterline
+            let (mut lx, mut lz) = (x, z);
+            for _ in 0..40 {
+                let (nx, nz) = (lx + dx * 0.025, lz + dy * 0.025);
+                if world::height_at(g, nx, nz) < 0.03 {
+                    break;
+                }
+                lx = nx;
+                lz = nz;
+            }
+            lighthouse(&mut houses, ground(g, lx, lz));
+        }
     }
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
@@ -309,7 +423,8 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, k: usize) -> YearMeshes
             houses.block(p, w, d, h, yaw, wall, None, 0.03);
             houses.gable(p, w, d, h, d * 0.35, yaw, 0.003, hex(0x4a5468), wall);
             if s.u < 0.12 {
-                chimney(&mut houses, p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.35, 0.0, 0.0), h + 0.07, 0.006);
+                let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.35, 0.0, 0.0);
+                smoking_chimney(&mut houses, &mut smoke, cp, h + 0.07, 0.006, s.yaw);
             }
             continue;
         }
@@ -329,7 +444,12 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, k: usize) -> YearMeshes
         let (w, d) = (0.045 + 0.02 * s.v, 0.035 + 0.008 * s.u);
         house(&mut houses, p, w, d, storeys, yaw, wall, roof);
         if s.u < 0.2 {
-            chimney(&mut houses, p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.3, 0.0, 0.0), 0.024 * storeys + 0.03, 0.004);
+            let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.3, 0.0, 0.0);
+            if s.v > 0.8 {
+                smoking_chimney(&mut houses, &mut smoke, cp, 0.024 * storeys + 0.03, 0.004, s.yaw);
+            } else {
+                chimney(&mut houses, cp, 0.024 * storeys + 0.03, 0.004);
+            }
         }
     }
 
@@ -386,7 +506,7 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, k: usize) -> YearMeshes
         }
     }
 
-    YearMeshes { trees, houses, works: works_b }
+    YearMeshes { trees, houses, works: works_b, smoke }
 }
 
 fn houses_haystack(b: &mut Builder, p: Vec3) {

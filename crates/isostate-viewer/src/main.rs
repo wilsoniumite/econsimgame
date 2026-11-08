@@ -134,6 +134,7 @@ struct Handles {
     trees: Handle<Mesh>,
     houses: Handle<Mesh>,
     works: Handle<Mesh>,
+    smoke: Handle<Mesh>,
     roads: Handle<Mesh>,
     rails: Handle<Mesh>,
 }
@@ -357,12 +358,15 @@ fn setup_world(
         trees: meshes.add(placeholder_mesh()),
         houses: meshes.add(placeholder_mesh()),
         works: meshes.add(placeholder_mesh()),
+        smoke: meshes.add(placeholder_mesh()),
         roads: meshes.add(placeholder_mesh()),
         rails: meshes.add(placeholder_mesh()),
     };
     commands.spawn((Mesh3d(handles.trees.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
+    let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: 0.3, ..default() });
+    commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
     commands.insert_resource(handles);
@@ -452,9 +456,9 @@ fn rebuild_year(
     if let Some(mut img) = images.get_mut(&handles.terrain_img) {
         terrain::update_image(&mut img, data.ts.tw, data.ts.th, rgba);
     }
-    let ym = scatter::build_year(r, g, &data.slots, k);
+    let ym = scatter::build_year(r, g, &data.slots, &data.cen, k);
     let nets = network::year_nets(r, g, &data.cen, k);
-    for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.roads, nets.roads), (&handles.rails, nets.rails)] {
+    for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails)] {
         if let Some(mut m) = meshes.get_mut(h) {
             *m = non_empty(b);
         }

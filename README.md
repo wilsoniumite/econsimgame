@@ -6,6 +6,8 @@ Nothing on the map is placed by hand. Households, landlords, investors and railw
 
 The name is von Thünen's: *Der isolierte Staat* (1826) is where the rings of land use around a market town were first worked out. Here they form on their own and then bend around rivers, roads and rails.
 
+![Kirkford in 1900, in the 3D viewer](docs/shots/kirkford-1900.jpg)
+
 ## Quick start
 
 ```bash
@@ -26,6 +28,14 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 
 For poking at things interactively, `notebooks/explore.py` is a set of `# %%` cells.
 
+### The 3D viewer (Rust)
+
+```bash
+cargo run -p isostate-viewer --release -- runs/landlords/run.bin
+```
+
+A Bevy diorama of the same replay: fields, woods, towns and works grow and change as you scrub through the years. See `crates/isostate-viewer/README.md` for controls and how the picture is made. The simulation itself is being ported to Rust in `crates/isostate-core`, checked against this Python version.
+
 ## Layout
 
 ```
@@ -44,7 +54,9 @@ isostate/
   record.py           yearly snapshots and the binary export
   sim.py              init_state, yearly, run
   cli.py              the commands above
-viewer/index.html     the single-file viewer; record.build_html embeds runs into it
+viewer/index.html     the single-file web viewer; record.build_html embeds runs into it
+crates/isostate-viewer  the 3D viewer (Rust, Bevy)
+crates/isostate-core    the Rust port of the simulation
 tests/                money conservation, determinism, rent gradient, no hard walls, export round trip
 notebooks/explore.py  notebook-style cells for analysis
 ```
