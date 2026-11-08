@@ -7,8 +7,8 @@ A 3D replay viewer for Isolated State runs, in Bevy 0.20. It reads a `run.bin` w
 ## Running
 
 ```bash
-python -m isostate run --seed 7 --regime landlords --out runs/landlords     # or the Rust core's CLI
-cargo run -p isostate-viewer --release -- runs/landlords/run.bin
+cargo run -p isostate-core --release -- run --seed 7 --regime landlords --out runs/rust7   # or the Python package
+cargo run -p isostate-viewer --release -- runs/rust7/run.bin
 ```
 
 The first build compiles Bevy and takes a while. On Linux you need `pkg-config`, `libwayland-dev` and `libxkbcommon-dev` to build; Windows and macOS need nothing extra.

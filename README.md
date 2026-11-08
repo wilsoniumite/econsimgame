@@ -34,7 +34,16 @@ For poking at things interactively, `notebooks/explore.py` is a set of `# %%` ce
 cargo run -p isostate-viewer --release -- runs/landlords/run.bin
 ```
 
-A Bevy diorama of the same replay: fields, woods, towns and works grow and change as you scrub through the years. See `crates/isostate-viewer/README.md` for controls and how the picture is made. The simulation itself is being ported to Rust in `crates/isostate-core`, checked against this Python version.
+A Bevy diorama of the same replay: fields, woods, towns and works grow and change as you scrub through the years. See `crates/isostate-viewer/README.md` for controls and how the picture is made.
+
+### The simulation in Rust
+
+```bash
+cargo run -p isostate-core --release -- run --seed 7 --regime landlords --out runs/rust7   # about 20 seconds
+cargo test -p isostate-core --release
+```
+
+`crates/isostate-core` is a line-by-line port of the Python package, which stays as the reference. Every step is checked against it: deterministic steps agree to about 1e-14, and given Python's random numbers the stochastic steps make exactly the same draws and decisions. A seed gives a different island in Rust than in Python because the random streams differ; across 16 seeds the two agree within chance. `crates/isostate-core/PORTING.md` has the mapping, every deviation, the parity tables and a list of oddities found in the Python along the way.
 
 ## Layout
 
