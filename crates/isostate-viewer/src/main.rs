@@ -11,6 +11,7 @@ mod network;
 mod replay;
 mod scatter;
 mod terrain;
+mod trains;
 mod world;
 
 use bevy::app::ScheduleRunnerPlugin;
@@ -215,6 +216,23 @@ struct ToastBox;
 struct TownLabel(usize);
 #[derive(Component)]
 struct InspectPanel;
+
+#[derive(Resource)]
+struct TrainAssets {
+    mesh: Handle<Mesh>,
+    mat: Handle<StandardMaterial>,
+}
+
+#[derive(Resource, Default)]
+struct Rails(Vec<trains::TrainPath>);
+
+#[derive(Component)]
+struct Train {
+    path: usize,
+    s: f32,
+    dir: f32,
+    speed: f32,
+}
 #[derive(Component)]
 struct InspectText;
 
@@ -316,8 +334,9 @@ fn main() {
         .insert_resource(ForcedSeason(args.season))
         .init_resource::<Toasts>()
         .init_resource::<Picked>()
+        .init_resource::<Rails>()
         .add_systems(Startup, (setup_world, setup_ui).chain())
-        .add_systems(Update, (time_input, advance_time, rebuild_year, seasons, camera_input, apply_camera, labels, info_text, toasts, pick, inspect_panel).chain());
+        .add_systems(Update, (time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, info_text, toasts, pick, inspect_panel).chain());
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
         app.add_systems(Update, take_shot.after(toasts));
@@ -423,6 +442,7 @@ fn setup_world(
     commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
+    commands.insert_resource(TrainAssets { mesh: meshes.add(trains::train_mesh().into_mesh()), mat: vc.clone() });
     let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: 0.3, ..default() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
@@ -497,10 +517,15 @@ fn orbit_transform(o: &Orbit) -> Transform {
 
 // ------------------------------------------------------------------ the year
 
+#[allow(clippy::too_many_arguments)]
 fn rebuild_year(
+    mut commands: Commands,
     mut tl: ResMut<Timeline>,
     data: Res<Data>,
     handles: Res<Handles>,
+    ta: Res<TrainAssets>,
+    mut rails: ResMut<Rails>,
+    old_trains: Query<Entity, With<Train>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
@@ -517,6 +542,25 @@ fn rebuild_year(
     }
     let ym = scatter::build_year(r, g, &data.slots, &data.cen, k);
     let nets = network::year_nets(r, g, &data.cen, k);
+    // trains: one for every eight units of line, up to three, spread along it
+    for e in &old_trains {
+        commands.entity(e).despawn();
+    }
+    rails.0 = trains::rail_paths(r, g, &data.cen, k);
+    for (pi, p) in rails.0.iter().enumerate() {
+        let count = (1 + (p.len / 8.0) as usize).min(3);
+        for i in 0..count {
+            let s = p.len * (i as f32 + 0.5) / count as f32;
+            let (pos, yaw) = p.at(s);
+            let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
+            commands.spawn((
+                Mesh3d(ta.mesh.clone()),
+                MeshMaterial3d(ta.mat.clone()),
+                Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
+                Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
+            ));
+        }
+    }
     for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails)] {
         if let Some(mut m) = meshes.get_mut(h) {
             *m = non_empty(b);
@@ -1201,5 +1245,23 @@ fn inspect_panel(
         for mut t in &mut txt {
             t.0 = s.clone();
         }
+    }
+}
+
+fn move_trains(time: Res<Time>, rails: Res<Rails>, mut q: Query<(&mut Train, &mut Transform)>) {
+    let dt = time.delta_secs().min(0.1);
+    for (mut t, mut tf) in &mut q {
+        let Some(p) = rails.0.get(t.path) else { continue };
+        t.s += t.dir * t.speed * dt;
+        if t.s > p.len {
+            t.s = p.len;
+            t.dir = -1.0;
+        } else if t.s < 0.0 {
+            t.s = 0.0;
+            t.dir = 1.0;
+        }
+        let (pos, yaw) = p.at(t.s);
+        tf.translation = pos;
+        tf.rotation = Quat::from_rotation_y(yaw + if t.dir < 0.0 { std::f32::consts::PI } else { 0.0 });
     }
 }

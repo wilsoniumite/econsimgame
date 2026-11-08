@@ -156,7 +156,7 @@ fn tree(b: &mut Builder, p: Vec3, s: f32, conifer: bool, v: f32, seed: f32) {
 
 // ------------------------------------------------------------------ houses
 
-const WALLS: [u32; 6] = [0xf2e6cb, 0xf6f1e6, 0xf0d9a2, 0xe9c4b3, 0xd6dcc3, 0xf2e6cb];
+const WALLS: [u32; 6] = [0xf6deb4, 0xfaf0dc, 0xf4d38f, 0xf0bfa3, 0xdfe2bf, 0xf6deb4];
 const ROOFS: [u32; 5] = [0xc6604a, 0x5b6b86, 0xc6604a, 0x6e8f5c, 0xb5523f];
 
 fn house(b: &mut Builder, p: Vec3, w: f32, d: f32, storeys: f32, yaw: f32, wall: [f32; 4], roof: [f32; 4]) {
