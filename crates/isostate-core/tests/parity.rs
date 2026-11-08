@@ -3,20 +3,25 @@
 //! just after it.
 //!
 //! The steps that draw random numbers (firms.review, firms.entry, tech.discovery,
-//! people.found_towns) are checked the same way, with the numbers numpy drew
-//! replayed in order (`Rng::replaying`), so they must match draw for draw.
+//! people.found_towns, and the whole yearly step, init_state and a whole run) are
+//! checked the same way, with the numbers numpy drew replayed in order
+//! (`Rng::replaying`), so they must match draw for draw.
 //!
 //! Fixtures (0.5 to 0.8 GB each, not committed), from the repository root:
 //!
 //!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1752 --month 3 \
 //!         --found-towns --stochastic --init --out crates/isostate-core/parity/fixtures/s7_1752
+//!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1786 --month 11 \
+//!         --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1786
 //!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1843 --month 11 \
 //!         --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1843
 //!     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1847 --month 5 \
 //!         --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1847
+//!     python3 crates/isostate-core/parity/record_run.py --seed 7 --end-year 1785 \
+//!         --out crates/isostate-core/parity/fixtures/run_s7_1785
 //!
 //! Every fixture directory named `s*` under `parity/fixtures` (or `$ISOSTATE_PARITY_DIR`)
-//! is checked. Tolerance: relative 1e-9, plus an absolute floor of 1e-12 times the
+//! is checked, and every `run_*` directory by the whole-run test. Tolerance: relative 1e-9, plus an absolute floor of 1e-12 times the
 //! largest magnitude in the array, for entries that are differences of much larger
 //! numbers (an inventory emptied to nearly zero, a firm's cash after paying out).
 

@@ -42,6 +42,8 @@ Usage (from the repository root):
 
     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1752 --month 3 \
         --found-towns --stochastic --init --out crates/isostate-core/parity/fixtures/s7_1752
+    python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1786 --month 11 \
+        --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1786
     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1843 --month 11 \
         --stochastic --whole-year --out crates/isostate-core/parity/fixtures/s7_1843
     python3 crates/isostate-core/parity/dump_state.py --seed 7 --year 1847 --month 5 \
