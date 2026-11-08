@@ -1,0 +1,21 @@
+[package]
+name = "isostate-core"
+description = "Isolated State: an agent-based spatial economy on a procedural island, 1750 to 1900 (Rust port of the Python sim)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+name = "isostate_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "isostate-core"
+path = "src/main.rs"
+
+[dependencies]
+rand = { version = "0.10.3", default-features = false }
+rand_pcg = "0.10"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+toml = "1.2.1"
