@@ -315,6 +315,9 @@ pub fn load_state(dir: &Path) -> State {
     if d.has("cell_labor") {
         st.cell_labor = d.f64("cell_labor");
     }
+    if d.has("migration_flow") {
+        st.migration_flow = d.mat("migration_flow");
+    }
     if d.has("cumprod_1750") {
         st.cumprod_1750 = d.f64("cumprod_1750");
         st.disc_X0 = d.mat("disc_X0");

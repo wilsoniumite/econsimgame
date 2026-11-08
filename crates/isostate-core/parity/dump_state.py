@@ -10,6 +10,10 @@ module functions, saves the full state just before and just after one call of:
   tech.diffusion            tag "diffusion"
   people.growth             tag "growth"
   people.migration          tag "migration"
+  firms.review              tag "review"
+  people.found_towns        tag "found_towns"   (only in a year a town is founded)
+  rail.plan                 tag "rail_plan"
+  rail.plan_spurs           tag "rail_spurs"
 
 Every numpy array in the state dict goes to `<out>/<tag>_<when>/<name>.npy`
 (booleans as uint8), world arrays as `world_<name>.npy`, rail projects as
@@ -43,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 sys.dont_write_bytecode = True
 os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp/numba_cache")
 
-from isostate import econ, firms, land, people, sim, tech  # noqa: E402
+from isostate import econ, firms, land, people, rail, sim, tech  # noqa: E402
 from isostate.params import default_params  # noqa: E402
 
 
@@ -150,6 +154,7 @@ def main(argv=None):
     ap.add_argument("--year", type=int, default=1752)
     ap.add_argument("--month", type=int, default=3)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--found-towns", action="store_true", help="also capture people.found_towns (the year must found a town)")
     a = ap.parse_args(argv)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -158,7 +163,11 @@ def main(argv=None):
 
     y0 = 1750
     target_month = P["warmup_years"] * 12 + (a.year - y0) * 12 + a.month
-    yearly_tags = {"land", "transport", "productivity", "diffusion", "growth", "migration"}
+    yearly_tags = {"land", "transport", "productivity", "diffusion", "growth", "migration", "review"}
+    if a.year >= 1800:
+        yearly_tags |= {"rail_plan", "rail_spurs"}
+    if a.found_towns:
+        yearly_tags |= {"found_towns"}
     pending = {"econ"} | yearly_tags
     state = dict(month_calls=0, year=None, warm=None)
 
@@ -181,7 +190,8 @@ def main(argv=None):
                 return orig(*args, **kwargs)
             st = args[0]
             extra = {}
-            for name, val in zip(arg_names, args[3:]):
+            rest = args[4:] if fname in ("review", "plan", "plan_spurs", "found_towns") else args[3:]
+            for name, val in zip(arg_names, rest):
                 extra[name] = val
             for name, val in kwargs.items():
                 extra[name] = val
@@ -215,6 +225,10 @@ def main(argv=None):
     wrap(tech, "diffusion", "diffusion")
     wrap(people, "growth", "growth", arg_names=("year",))
     wrap(people, "migration", "migration")
+    wrap(firms, "review", "review", arg_names=("year", "pbar", "wbar"))
+    wrap(people, "found_towns", "found_towns", arg_names=("year",))
+    wrap(rail, "plan", "rail_plan", arg_names=("year", "pbar"))
+    wrap(rail, "plan_spurs", "rail_spurs", arg_names=("year", "pbar"))
     try:
         sim.run(P, progress=False)
     except Done:

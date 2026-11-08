@@ -22,7 +22,12 @@ use common::dump::{Dump, load_state};
 use common::{atol_for, compare, fixtures_root};
 use isostate_core::content::{Content, default_content};
 use isostate_core::econ;
+use isostate_core::firms;
 use isostate_core::land;
+use isostate_core::people;
+use isostate_core::rail;
+use isostate_core::rng::make_rngs;
+use isostate_core::tech;
 use isostate_core::mat::Mat;
 use isostate_core::params::Params;
 
@@ -333,6 +338,175 @@ fn land_update_transport_and_delta_fields_match_python() {
         }
         eprintln!("pred: {differ} of {total} land-cell predecessors differ (exact ties)");
         assert!((differ as f64) < 0.01 * total as f64, "too many predecessor differences: {differ} of {total}");
+        ck.finish();
+    }
+}
+
+/// The fixture sets that captured `tag`.
+fn sets_with(tag: &str) -> Vec<PathBuf> {
+    fixture_sets().into_iter().filter(|s| s.join(format!("{tag}_before")).is_dir()).collect()
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn people_growth_and_migration_match_python() {
+    for set in sets_with("growth") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("growth_before"));
+        let mut st = load_state(&set.join("growth_before"));
+        let want = load_state(&set.join("growth_after"));
+        let mut events = Vec::new();
+        people::growth(&mut st, &C, &P, d.arg_f64("year") as i64, &mut events);
+        let mut ck = Checker::new(format!("{} people.growth", set.display()));
+        ck.vec("pop", &st.pop, &want.pop);
+        ck.vec("y_ratio", &st.y_ratio, &want.y_ratio);
+        ck.vec("y_acc", &st.y_acc, &want.y_acc);
+        ck.vec("food_min_acc", &st.food_min_acc, &want.food_min_acc);
+        ck.finish();
+    }
+    for set in sets_with("migration") {
+        let (C, P) = setup(&set);
+        let mut st = load_state(&set.join("migration_before"));
+        let want = load_state(&set.join("migration_after"));
+        people::migration(&mut st, &C, &P);
+        let mut ck = Checker::new(format!("{} people.migration", set.display()));
+        ck.vec("pop", &st.pop, &want.pop);
+        ck.vec("hh_cash", &st.hh_cash, &want.hh_cash);
+        ck.mat("migration_flow", &st.migration_flow, &want.migration_flow);
+        ck.finish();
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn tech_diffusion_and_firm_productivity_match_python() {
+    for set in sets_with("diffusion") {
+        let (C, P) = setup(&set);
+        let mut st = load_state(&set.join("diffusion_before"));
+        let want = load_state(&set.join("diffusion_after"));
+        tech::diffusion(&mut st, &C, &P);
+        let mut ck = Checker::new(format!("{} tech.diffusion", set.display()));
+        ck.mat("know", &st.know, &want.know);
+        ck.finish();
+    }
+    for set in sets_with("productivity") {
+        let (C, P) = setup(&set);
+        let mut st = load_state(&set.join("productivity_before"));
+        let want = load_state(&set.join("productivity_after"));
+        firms::update_productivity(&mut st, &C, &P);
+        let mut ck = Checker::new(format!("{} firms.update_productivity", set.display()));
+        ck.vec("method_A", &st.method_A, &want.method_A);
+        ck.mat("same_counts", &st.same_counts, &want.same_counts);
+        ck.vec("f_prod", &st.f_prod, &want.f_prod);
+        ck.finish();
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn firms_review_matches_python() {
+    for set in sets_with("review") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("review_before"));
+        let mut st = load_state(&set.join("review_before"));
+        let want = load_state(&set.join("review_after"));
+        // review draws no random numbers (sister firms are named after their parent)
+        let mut rng = make_rngs(0);
+        let closed = firms::review(&mut st, &C, &P, &mut rng.firms, d.arg_f64("year") as i64, &d.arg_mat("pbar"), &d.arg_vec("wbar"));
+        let mut ck = Checker::new(format!("{} firms.review", set.display()));
+        ck.exact("F_count", &[st.F_count], &[want.F_count]);
+        ck.exact("closed", &closed, &want.closed_year);
+        ck.exact("new_firms_year", &st.new_firms_year, &want.new_firms_year);
+        ck.exact("f_name", &st.f_name, &want.f_name);
+        ck.exact("f_alive", &f(&st.f_alive), &f(&want.f_alive));
+        ck.exact("f_died", &iv(&st.f_died), &iv(&want.f_died));
+        ck.exact("f_loss_years", &iv(&st.f_loss_years), &iv(&want.f_loss_years));
+        ck.exact("f_parent", &iv(&st.f_parent), &iv(&want.f_parent));
+        ck.exact("derelict_timer", &iv(&st.derelict_timer), &iv(&want.derelict_timer));
+        for (name, got, w) in [
+            ("f_K", &st.f_K, &want.f_K),
+            ("f_order_K", &st.f_order_K, &want.f_order_K),
+            ("f_cash", &st.f_cash, &want.f_cash),
+            ("f_rent", &st.f_rent, &want.f_rent),
+            ("f_profit_acc", &st.f_profit_acc, &want.f_profit_acc),
+            ("hh_cash", &st.hh_cash, &want.hh_cash),
+            ("lord_cash", &st.lord_cash, &want.lord_cash),
+            ("merch_cash", &st.merch_cash, &want.merch_cash),
+            ("cell_K_share", &st.cell_K_share, &want.cell_K_share),
+        ] {
+            ck.vec(name, got, w);
+        }
+        ck.mat("f_order", &st.f_order, &want.f_order);
+        ck.finish();
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn rail_planning_matches_python() {
+    for (tag, spurs) in [("rail_plan", false), ("rail_spurs", true)] {
+        for set in sets_with(tag) {
+            let (C, P) = setup(&set);
+            let d = Dump::open(&set.join(format!("{tag}_before")));
+            let mut st = load_state(&set.join(format!("{tag}_before")));
+            let want = load_state(&set.join(format!("{tag}_after")));
+            let mut rng = make_rngs(0);
+            let mut events = Vec::new();
+            let (year, pbar) = (d.arg_f64("year") as i64, d.arg_mat("pbar"));
+            if spurs {
+                rail::plan_spurs(&mut st, &C, &P, &mut rng.rail, year, &pbar, &mut events);
+            } else {
+                rail::plan(&mut st, &C, &P, &mut rng.rail, year, &pbar, &mut events);
+            }
+            let mut ck = Checker::new(format!("{} rail.{tag} ({} projects)", set.display(), want.projects.len()));
+            ck.exact("project count", &[st.projects.len()], &[want.projects.len()]);
+            for (k, (a, b)) in st.projects.iter().zip(&want.projects).enumerate() {
+                ck.exact(&format!("project{k} towns"), &[a.a, a.b, a.town, a.spur as usize], &[b.a, b.b, b.town, b.spur as usize]);
+                ck.exact(&format!("project{k} cells"), &a.cells, &b.cells);
+                ck.exact(&format!("project{k} new"), &a.new, &b.new);
+                ck.vec(&format!("project{k} need"), &a.need, &b.need);
+                ck.vec(&format!("project{k} order"), &a.order, &b.order);
+                ck.scalar(&format!("project{k} cash"), a.cash, b.cash);
+                ck.scalar(&format!("project{k} roi"), a.roi, b.roi);
+                ck.scalar(&format!("project{k} cost"), a.cost, b.cost);
+                ck.scalar(&format!("project{k} km"), a.length_km, b.length_km);
+            }
+            ck.vec("hh_cash", &st.hh_cash, &want.hh_cash);
+            ck.vec("lord_cash", &st.lord_cash, &want.lord_cash);
+            let cool = |s: &isostate_core::State| s.rail_cooldown.iter().map(|(&(a, b), &y)| (a, b, y)).collect::<Vec<_>>();
+            ck.exact("rail_cooldown", &cool(&st), &cool(&want));
+            ck.exact("rail_links", &st.rail_links.iter().copied().collect::<Vec<_>>(), &want.rail_links.iter().copied().collect::<Vec<_>>());
+            ck.exact("spur_done", &st.spur_done.iter().copied().collect::<Vec<_>>(), &want.spur_done.iter().copied().collect::<Vec<_>>());
+            ck.finish();
+        }
+    }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn people_found_towns_matches_python() {
+    for set in sets_with("found_towns") {
+        let (C, P) = setup(&set);
+        let d = Dump::open(&set.join("found_towns_before"));
+        let mut st = load_state(&set.join("found_towns_before"));
+        let want = load_state(&set.join("found_towns_after"));
+        let mut rng = make_rngs(0);
+        let mut events = Vec::new();
+        let founded = people::found_towns(&mut st, &C, &P, &mut rng.people, d.arg_f64("year") as i64, &mut events);
+        let mut ck = Checker::new(format!("{} people.found_towns (founded {founded:?})", set.display()));
+        // where and when a town is founded is deterministic; only its name is drawn
+        ck.exact("town_active", &f(&st.town_active), &f(&want.town_active));
+        ck.exact("town_node", &uv(&st.town_node), &uv(&want.town_node));
+        ck.exact("town_founded", &iv(&st.town_founded), &iv(&want.town_founded));
+        ck.exact("town_new", &f(&st.town_new), &f(&want.town_new));
+        ck.exact("town count", &[st.town_name.len()], &[want.town_name.len()]);
+        ck.mat("price", &st.price, &want.price);
+        ck.mat("fill", &st.fill, &want.fill);
+        ck.mat("know", &st.know, &want.know);
+        ck.vec("wage", &st.wage, &want.wage);
+        ck.vec("tools_mult", &st.tools_mult, &want.tools_mult);
+        ck.vec("imp_pc", &st.imp_pc, &want.imp_pc);
+        assert!(!founded.is_empty(), "the fixture year should found a town");
         ck.finish();
     }
 }
