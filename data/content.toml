@@ -1,0 +1,385 @@
+# Isolated State content: everything the economy is made of.
+#
+# Units: quantities are "units" of a good, time is one month, labor is
+# worker-months. Prices are in an arbitrary money unit (grain starts near 1).
+# Transport bulk ("weight") multiplies freight cost per unit of path cost.
+
+[meta]
+start_year = 1750
+end_year = 1900
+
+goods = [
+  { name = "grain",    label = "Grain",     weight = 1.0, price = 1.0,  color = "#d6b85a" },
+  { name = "wool",     label = "Wool",      weight = 0.6, price = 1.5,  color = "#e8e1cf" },
+  { name = "timber",   label = "Timber",    weight = 1.6, price = 0.8,  color = "#7a5a32" },
+  { name = "stone",    label = "Stone",     weight = 2.2, price = 0.6,  color = "#9a9590" },
+  { name = "clay",     label = "Clay",      weight = 2.0, price = 0.4,  color = "#c08a5a" },
+  { name = "iron_ore", label = "Iron ore",  weight = 1.8, price = 0.8,  color = "#8e4a34" },
+  { name = "coal",     label = "Coal",      weight = 1.6, price = 0.9,  color = "#2e2b28" },
+  { name = "charcoal", label = "Charcoal",  weight = 0.9, price = 2.4,  color = "#4a4038" },
+  { name = "iron",     label = "Iron",      weight = 1.0, price = 6.0,  color = "#5b6670" },
+  { name = "steel",    label = "Steel",     weight = 1.0, price = 30.0, color = "#3d5a73" },
+  { name = "tools",    label = "Tools",     weight = 0.4, price = 8.0,  color = "#6e5b45" },
+  { name = "cloth",    label = "Cloth",     weight = 0.3, price = 5.0,  color = "#a8476b" },
+  { name = "bricks",   label = "Bricks",    weight = 1.6, price = 1.8,  color = "#a4492f" },
+  { name = "machinery",label = "Machinery", weight = 1.2, price = 70.0, color = "#2f4b3c" },
+  { name = "rails",    label = "Rails",     weight = 1.3, price = 18.0, color = "#4b4b55" },
+  { name = "services", label = "Services",  weight = 4.0, price = 3.0,  color = "#8a6fa8" },
+]
+
+# Households buy *services*. Any good with a property for a service can supply
+# it, so iron can be used as a (bad) tool and wool spun at home is (bad) cloth.
+# Services are bought from the cheapest suppliers via a logit mix.
+[services]
+names = ["food", "warmth", "shelter", "clothing", "implements", "comfort"]
+labels = ["Food", "Warmth", "Shelter", "Clothing", "Implements", "Comfort"]
+subsistence = [1.0, 0.25, 0.06, 0.03, 0.002, 0.0]   # per capita per month
+shares = [0.28, 0.14, 0.22, 0.19, 0.07, 0.10]       # marginal budget shares above subsistence
+lord_shares = [0.04, 0.08, 0.30, 0.22, 0.08, 0.28]  # landlords spend on comfort, not bread
+
+[services.props]
+grain = { food = 1.0 }
+timber = { warmth = 1.0, shelter = 0.6 }
+charcoal = { warmth = 1.8 }
+coal = { warmth = 2.4 }
+stone = { shelter = 0.5 }
+bricks = { shelter = 1.0 }
+wool = { clothing = 0.35 }
+cloth = { clothing = 1.0 }
+iron = { implements = 0.35 }
+steel = { implements = 3.0 }
+tools = { implements = 1.0 }
+machinery = { implements = 3.0 }
+services = { comfort = 1.0 }
+
+# Heat value of fuels, used both by households (warmth) and industry (heat input).
+[heat]
+timber = 1.0
+charcoal = 1.8
+coal = 2.4
+
+# Land-based sectors. Each cell runs Cobb-Douglas Y = A * f * L^(1-alpha) where
+# f is the cell's resource field. Land rent is the alpha share.
+[[sector]]
+name = "farm"
+label = "Farmland"
+good = "grain"
+alpha = 0.28
+A = 22.0
+field = "fertility"
+
+[[sector]]
+name = "pasture"
+label = "Pasture"
+good = "wool"
+alpha = 0.4
+A = 7.0
+field = "pasture"
+
+[[sector]]
+name = "forestry"
+label = "Woodland"
+good = "timber"
+alpha = 0.3
+A = 14.0
+field = "forest"
+
+[[sector]]
+name = "quarry"
+label = "Quarry"
+good = "stone"
+alpha = 0.25
+A = 20.0
+field = "rock"
+
+[[sector]]
+name = "claypit"
+label = "Clay pit"
+good = "clay"
+alpha = 0.25
+A = 20.0
+field = "clay"
+
+[[sector]]
+name = "ironmine"
+label = "Iron mine"
+good = "iron_ore"
+alpha = 0.3
+A = 18.0
+field = "ore"
+mine = true
+
+[[sector]]
+name = "coalmine"
+label = "Colliery"
+good = "coal"
+alpha = 0.3
+A = 28.0
+field = "coal"
+mine = true
+
+# Firm methods: Leontief recipes run by firms placed on the map.
+# inputs: goods per unit output; heat: heat units per unit output;
+# labor: worker-months per unit output; capital: goods per unit of monthly capacity.
+# K0: scale at which the method is reasonably efficient (smaller is allowed, just worse).
+# A0, Q0, b: learning curve A = A0 * (1 + Q/Q0)^b on cumulative output Q.
+# discover: cumulative production of goods needed before the method can be found.
+[[method]]
+name = "charcoal_burning"
+label = "Charcoal burning"
+output = "charcoal"
+inputs = { timber = 2.0 }
+heat = 0.0
+labor = 0.3
+capital = { timber = 30 }
+K0 = 20.0
+known = true
+
+[[method]]
+name = "bloomery"
+label = "Bloomery"
+output = "iron"
+inputs = { iron_ore = 2.5, charcoal = 2.5 }
+heat = 0.0
+labor = 1.2
+capital = { stone = 60, clay = 30 }
+K0 = 3.0
+known = true
+
+[[method]]
+name = "charcoal_furnace"
+label = "Charcoal blast furnace"
+output = "iron"
+inputs = { iron_ore = 2.0, charcoal = 2.0 }
+heat = 0.0
+labor = 0.4
+capital = { stone = 80, bricks = 40 }
+K0 = 20.0
+known = true
+
+[[method]]
+name = "coke_furnace"
+label = "Coke blast furnace"
+output = "iron"
+inputs = { iron_ore = 2.0, coal = 2.3 }
+heat = 0.0
+labor = 0.35
+capital = { stone = 80, bricks = 55 }
+K0 = 40.0
+known = false
+A0 = 0.55
+Q0 = 2000.0
+b = 0.45
+discover = { coal = "x35", iron = "x30" }
+headline = "Iron smelted with coke at {town}"
+story = "{who} fires a blast furnace with coked coal instead of charcoal. The first iron is brittle, but coal is cheap and the forests are not."
+
+[[method]]
+name = "services"
+label = "Shops and trades"
+output = "services"
+inputs = { }
+heat = 0.0
+labor = 1.0
+capital = { bricks = 4 }
+K0 = 200.0
+known = true
+Q0 = 2000000.0
+b = 0.08
+
+[[method]]
+name = "smithy"
+label = "Smithy"
+output = "tools"
+inputs = { iron = 0.55 }
+heat = 0.6
+labor = 1.0
+Q0 = 100000.0
+b = 0.1
+capital = { stone = 10, bricks = 10 }
+K0 = 5.0
+known = true
+
+[[method]]
+name = "hand_loom"
+label = "Handloom weaving"
+output = "cloth"
+inputs = { wool = 1.2 }
+heat = 0.0
+labor = 0.9
+capital = { timber = 12.5 }
+K0 = 80.0
+known = true
+
+[[method]]
+name = "textile_mill"
+label = "Powered mill"
+output = "cloth"
+inputs = { wool = 1.1 }
+heat = 0.35
+labor = 0.15
+capital = { bricks = 25, timber = 10, machinery = 0.3 }
+K0 = 150.0
+known = false
+A0 = 0.5
+Q0 = 3000.0
+b = 0.5
+discover = { machinery = 900.0, cloth = "x40" }
+headline = "First powered mill at {town}"
+story = "{who} puts the looms behind an engine. One mill does the work of a village of weavers."
+
+[[method]]
+name = "brickworks"
+label = "Brickworks"
+output = "bricks"
+inputs = { clay = 1.5 }
+heat = 0.6
+labor = 0.2
+Q0 = 200000.0
+b = 0.12
+capital = { timber = 10, stone = 10 }
+K0 = 60.0
+known = true
+
+[[method]]
+name = "millwright"
+label = "Millwright"
+output = "machinery"
+inputs = { timber = 6.0, iron = 2.0, tools = 0.6 }
+heat = 1.0
+labor = 14.0
+capital = { timber = 20, tools = 5 }
+K0 = 0.5
+known = true
+
+[[method]]
+name = "engine_works"
+label = "Engine works"
+output = "machinery"
+inputs = { iron = 3.0, tools = 0.4 }
+heat = 2.0
+labor = 6.0
+capital = { bricks = 150, stone = 60, tools = 20 }
+K0 = 3.0
+known = false
+A0 = 0.4
+Q0 = 100.0
+b = 0.5
+discover = { iron = "x30", coal = "x28", machinery = 6000.0 }
+headline = "Engine works opens at {town}"
+story = "{who} builds steam engines to order. They are enormous and wasteful, and they run."
+
+[[method]]
+name = "crucible_steel"
+label = "Crucible steel"
+output = "steel"
+inputs = { iron = 1.3, clay = 0.3 }
+heat = 3.0
+labor = 4.0
+capital = { bricks = 30, clay = 15 }
+K0 = 4.0
+known = false
+A0 = 0.5
+Q0 = 50.0
+b = 0.3
+discover = { iron = "x18", coal = "x15" }
+headline = "Crucible steel cast at {town}"
+story = "{who} melts iron in clay pots and pours true steel, a few pounds at a time."
+
+[[method]]
+name = "bessemer"
+label = "Air-blown converter"
+output = "steel"
+inputs = { iron = 1.15 }
+heat = 0.6
+labor = 0.5
+capital = { bricks = 150, machinery = 2 }
+K0 = 150.0
+known = false
+A0 = 0.5
+Q0 = 2000.0
+b = 0.4
+discover = { steel = 30000.0, machinery = 170000.0, iron = "x220" }
+headline = "Steel by the ton at {town}"
+story = "{who} blows air through molten iron and gets steel in twenty minutes instead of a week."
+
+[[method]]
+name = "forge_rails"
+label = "Forged rails"
+output = "rails"
+inputs = { iron = 1.25 }
+heat = 1.5
+labor = 2.5
+capital = { stone = 10, bricks = 10 }
+K0 = 2.0
+known = true
+
+[[method]]
+name = "rolling_mill"
+label = "Rolling mill"
+output = "rails"
+inputs = { iron = 1.1 }
+heat = 0.8
+labor = 0.8
+capital = { bricks = 100, machinery = 1 }
+K0 = 40.0
+known = false
+A0 = 0.5
+Q0 = 800.0
+b = 0.35
+discover = { rails = 60000.0, machinery = 12000.0 }
+headline = "Rails rolled at {town}"
+story = "{who} passes hot iron between grooved rollers and gets rails by the yard."
+
+[[method]]
+name = "steel_rolling"
+label = "Steel rail mill"
+output = "rails"
+inputs = { steel = 1.05 }
+heat = 0.6
+labor = 0.7
+capital = { bricks = 120, machinery = 1.5 }
+K0 = 80.0
+known = false
+A0 = 0.6
+Q0 = 2000.0
+b = 0.3
+discover = { steel = 2500000.0, rails = 400000.0, machinery = 300000.0 }
+headline = "Steel rails at {town}"
+story = "{who} rolls rails from steel. They last ten times as long as iron."
+
+# Knowledge that changes how existing activities work rather than adding firms.
+[[tech]]
+name = "steam_pumping"
+label = "Steam pumping"
+known = true
+headline = "Steam engines drain the pits at {town}"
+story = "Engines pump water from the workings around {town}. The miners can go deeper than ever."
+
+[[tech]]
+name = "wagonway"
+label = "Iron wagonways"
+known = true
+headline = "Iron wagonways at {town}"
+story = "The pits around {town} lay iron rails so one horse can haul what four did."
+
+[[tech]]
+name = "railway"
+label = "Railways"
+discover = { rails = 150000.0, machinery = 60000.0 }
+headline = "A locomotive runs at {town}"
+story = "{who} puts a steam engine on wheels and runs it along the wagonway at {town}. Investors start drawing lines on maps."
+
+[[tech]]
+name = "improved_husbandry"
+label = "Improved husbandry"
+discover = { grain = "x25", tools = "x30" }
+headline = "New rotations at {town}"
+story = "Farmers around {town} sow turnips and clover in place of fallow and keep more livestock through the winter. Yields climb."
+
+[[tech]]
+name = "farm_machinery"
+label = "Farm machinery"
+discover = { machinery = 150000.0, grain = "x110" }
+headline = "Steam threshing at {town}"
+story = "Portable engines and iron reapers appear on the farms around {town}. Fewer hands bring in the same harvest."

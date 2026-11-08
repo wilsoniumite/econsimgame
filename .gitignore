@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+runs/
+dist/*.html
+!dist/.keep
+.ipynb_checkpoints/
