@@ -414,6 +414,9 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
 /// A works at full size grows by opening a new site next door.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, parent: usize, year: i64, pbar: &Mat, wbar: &[f64]) -> Option<usize> {
+    if !families::may_spawn(st, C, parent) {
+        return None; // a family works opens sister works only under a growing branch
+    }
     let (i, m) = (st.f_town[parent], st.f_method[parent]);
     let (H, W) = (st.world.H, st.world.W);
     let (y, x) = (st.f_cell[parent] / W, st.f_cell[parent] % W);

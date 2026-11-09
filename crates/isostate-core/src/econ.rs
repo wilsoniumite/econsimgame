@@ -671,6 +671,17 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.f_out_acc[i] += q[k];
         st.f_cost_m[i] = pay_in[k] + wages_f[k] + rent_f[k];
     }
+    // family works with no branch over them pay a hired manager out of their profit
+    if let Some(cut) = families::hired_cut(st, C, P, &fi) {
+        for (k, &i) in fi.iter().enumerate() {
+            let profit = rev[k] - pay_in[k] - wages_f[k] - rent_f[k];
+            if cut[k] > 0.0 && profit > 0.0 {
+                let pay = cut[k] * profit;
+                st.f_cash[i] -= pay;
+                hh_inc[ft[k]] += pay;
+            }
+        }
+    }
     add_to(&mut merch, &bincount(&ft, &merch_f, T));
     st.m_merch_margin = pairwise_sum(&margin_v);
     add_to(&mut sales_value, &bincount(&ft, &pay_in, T));

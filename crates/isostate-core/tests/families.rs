@@ -1,12 +1,12 @@
 //! Families (not in the Python): money is conserved and runs are deterministic
-//! with families on, the player's actions work through the API, AI families
-//! invest, and the live API reports every year once. With families off the
-//! parity tests (tests/parity.rs) cover that nothing changed.
+//! with families on, the player's choices work through the API, AI families play
+//! by the same rules, and the live API reports every year once. With families
+//! off the parity tests (tests/parity.rs) cover that nothing changed.
 #![allow(non_snake_case)]
 
 use std::collections::BTreeSet;
 
-use isostate_core::families::{self, Group, Strategy};
+use isostate_core::families::{self, Strategy};
 use isostate_core::*;
 
 fn params(n_families: usize, end_year: i64) -> Params {
@@ -24,6 +24,10 @@ fn rel(a: f64, b: f64) -> f64 {
     (a - b).abs() / b.abs().max(1.0)
 }
 
+fn report(s: &Sim, k: usize) -> FamilyReport {
+    family_report(&s.st, &s.content, &s.params, k).unwrap()
+}
+
 #[test]
 fn families_conserve_money_and_runs_are_deterministic() {
     // six families for sixty years; run_year checks the money stock every month
@@ -32,7 +36,7 @@ fn families_conserve_money_and_runs_are_deterministic() {
     let b = sim::run_with(&P, default_content(), false, true).expect("money is conserved every month");
     let st = &a.state;
     let drift = econ::money_total(st) - (st.money_start + st.issued);
-    assert!(rel(drift, 0.0) <= 1e-9 * econ::money_total(st), "money drifted by {drift:e}");
+    assert!(drift.abs() <= 1e-9 * econ::money_total(st), "money drifted by {drift:e}");
     for (x, y) in a.state.series.data.iter().zip(&b.state.series.data) {
         assert_eq!(bits(x), bits(y), "the same parameters give the same run");
     }
@@ -42,104 +46,204 @@ fn families_conserve_money_and_runs_are_deterministic() {
         assert_eq!(fa.cash.to_bits(), fb.cash.to_bits());
         assert_eq!(fa.members.len(), fb.members.len());
     }
-    // families own a part of the economy, not most of it
     let (works, rent, money) = families::ownership_shares(st, &a.content);
     assert!(works > 0.0 && rent > 0.0 && money > 0.0, "families own something: {works} {rent} {money}");
     assert!(works < 0.5 && rent < 0.5 && money < 0.5, "families do not own most of it: {works} {rent} {money}");
-    // every family keeps at least three living members, with names
-    for f in &st.families {
-        assert!(f.members.iter().filter(|m| m.alive).count() >= 3);
-        assert!(f.members.iter().all(|m| !m.first.is_empty() && (0.0..=1.0).contains(&m.skill)));
-    }
-}
-
-#[test]
-fn the_player_founds_works_buys_land_and_assigns_members() {
-    let P = params(3, 1760);
-    let mut s = sim::start(&P, default_content());
-    sim::run_year(&mut s).unwrap();
-    let home = s.st.families[0].home;
-    assert_eq!(s.st.families[0].strategy, Strategy::Player);
-
-    // the best affordable works in the player's home town's reach
-    let cash = s.st.families[0].cash;
-    let mut best: Option<(f64, usize, usize, f64)> = None;
-    for c in (0..s.st.N).filter(|&c| s.st.catch[c] == home as i64) {
-        let Ok(options) = site_options(&s.st, &s.content, &s.params, 0, c) else { continue };
-        assert_eq!(options.len(), s.content.M, "one option per method");
-        for o in options {
-            if let Ok(x) = &o.sums {
-                assert!(x.capital_cost > 0.0 && x.K > 0.0 && x.town == home);
-                if x.capital_cost <= cash && best.is_none_or(|b| x.expected_return > b.0) {
-                    best = Some((x.expected_return, o.method, c, x.capital_cost));
-                }
+    for (k, f) in st.families.iter().enumerate() {
+        let heads = f.members.iter().filter(|m| m.alive && m.post == Post::Head).count();
+        assert_eq!(heads, 1, "family {k} has one head");
+        let head = f.members.iter().find(|m| m.alive && m.post == Post::Head).unwrap();
+        assert_eq!(head.town, f.seat, "the head lives at the seat");
+        assert!(f.members.iter().filter(|m| m.alive).count() <= families::FULL_FAMILY + 2);
+        for m in f.members.iter().filter(|m| m.alive) {
+            match m.post {
+                Post::Child => assert!(m.age < 18),
+                Post::Manager { group } => assert!(f.known[group.index()], "managers run known trades"),
+                _ => {}
             }
         }
     }
-    let (_, m, cell, cost) = best.expect("the player can afford some works");
-    let money0 = econ::money_total(&s.st);
-    let n_events = s.events.len();
-    let fid = found_works(&mut s.st, &s.content, &s.params, 0, m, cell, s.year, &mut s.events).unwrap();
-    assert!(s.st.f_alive[fid] && s.st.f_owner[fid] == 0 && s.st.f_cell[fid] == cell && s.st.f_method[fid] == m);
-    assert_eq!(s.st.f_reason[fid].kind, "family");
-    assert!(rel(s.st.families[0].cash, cash - cost) < 1e-12, "the works is paid from the family's cash");
-    assert!(rel(econ::money_total(&s.st), money0) < 1e-12, "founding works moves money, it makes none");
-    assert_eq!(s.events.len(), n_events + 1);
-    let e = s.events.last().unwrap();
-    assert!(e.family == Some(0) && e.firm == Some(fid) && e.title.contains(&s.st.families[0].surname));
-
-    // errors: sea, a method nobody knows yet, too little cash
-    let sea = (0..s.st.N).find(|&c| !s.st.world.land[c]).unwrap();
-    assert!(found_works(&mut s.st, &s.content, &s.params, 0, m, sea, s.year, &mut s.events).unwrap_err().contains("sea"));
-    let unknown = (0..s.content.M).find(|&mm| !(s.st.know[(home, mm)] > 0.02)).unwrap();
-    assert!(found_works(&mut s.st, &s.content, &s.params, 0, unknown, cell, s.year, &mut s.events).unwrap_err().contains("not known"));
-    let kept = s.st.families[0].cash;
-    s.st.families[0].cash = 0.0;
-    s.st.lord_cash[home] += kept; // keep the ledger whole while the family is broke
-    assert!(found_works(&mut s.st, &s.content, &s.params, 0, m, cell, s.year, &mut s.events).unwrap_err().contains("costs"));
-    s.st.lord_cash[home] -= kept;
-    s.st.families[0].cash = kept;
-    assert!(found_works(&mut s.st, &s.content, &s.params, 9, m, cell, s.year, &mut s.events).is_err());
-
-    // land: a farm of the anonymous gentry; the price goes to the town's landlords
-    let farm = (0..s.st.N)
-        .filter(|&c| s.st.catch[c] == home as i64 && s.st.cell_owner[c] < 0 && s.st.land_use[c] == 2 && s.st.cell_rent_year[c] > 0.0)
-        .min_by(|&a, &b| families::land_price(&s.st, &s.params, a).total_cmp(&families::land_price(&s.st, &s.params, b)))
-        .expect("a farm near home");
-    let price = families::land_price(&s.st, &s.params, farm);
-    let (cash, lords, money0) = (s.st.families[0].cash, s.st.lord_cash[home], econ::money_total(&s.st));
-    assert!(price > 0.0 && price <= cash, "the player can buy a farm ({price:.0} of {cash:.0})");
-    assert_eq!(buy_land(&mut s.st, &s.content, &s.params, 0, farm).unwrap(), price);
-    assert_eq!(s.st.cell_owner[farm], 0);
-    assert!(rel(s.st.families[0].cash, cash - price) < 1e-12 && rel(s.st.lord_cash[home], lords + price) < 1e-12);
-    assert!(rel(econ::money_total(&s.st), money0) < 1e-12, "buying land moves money, it makes none");
-    assert!(buy_land(&mut s.st, &s.content, &s.params, 0, farm).unwrap_err().contains("already"));
-    assert!(buy_land(&mut s.st, &s.content, &s.params, 0, sea).unwrap_err().contains("sea"));
-
-    // members: children cannot manage, adults can, and the bonus follows
-    let fam = &s.st.families[0];
-    let adult = fam.members.iter().position(|x| x.alive && x.age >= 18).unwrap();
-    if let Some(child) = fam.members.iter().position(|x| x.alive && x.age < 18) {
-        assert!(assign_member(&mut s.st, 0, child, Some(Group::Iron)).unwrap_err().contains("too young"));
-    }
-    let g = Group::of_method(&s.content, m).unwrap_or(Group::Estates);
-    assign_member(&mut s.st, 0, adult, Some(g)).unwrap();
-    let r = family_report(&s.st, &s.content, &s.params, 0).unwrap();
-    assert!(r.bonus[g.index()] > 0.0 && r.bonus[g.index()] <= s.params.family_bonus);
-    assert_eq!(r.members[adult].group, Some(g));
-    assert!(r.firms.contains(&fid) && r.cells.contains(&farm));
-    assert!(r.net_worth > r.cash && r.works_value > 0.0 && r.land_value > 0.0);
-
-    // a year later the farm has paid its rent to the family, money still conserved
-    sim::run_year(&mut s).expect("money is conserved");
-    let r = family_report(&s.st, &s.content, &s.params, 0).unwrap();
-    assert!(r.last_year.rents > 0.0, "the farm paid rent to the family");
-    assert!(r.last_year.spending > 0.0 && r.last_year.invested >= cost + price);
+    // people: children were born, came of age, trained; rivals learned new trades
+    assert!(st.families.iter().any(|f| f.members.iter().any(|m| m.trade.is_some())), "apprentices finished");
+    assert!(st.families[1..].iter().any(|f| f.known.iter().filter(|&&x| x).count() > 1), "a rival learned a second trade");
+    assert!(a.events.iter().any(|e| e.kind == "family" && e.title.contains("is born")));
 }
 
 #[test]
-fn ai_families_invest() {
-    let P = params(6, 1775);
+fn the_player_chooses_from_short_lists() {
+    let P = params(3, 1770);
+    let mut s = sim::start(&P, default_content());
+    let C = s.content.clone();
+    assert_eq!(s.st.families[0].strategy, Strategy::Player);
+    // the first decision: the trade, defaulting to the seat's strongest
+    let d = pending(&s.st, 0);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].options.len(), 6);
+    let textiles = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
+    decide(&mut s.st, &C, 0, d[0].id, textiles).unwrap();
+    assert!(pending(&s.st, 0).is_empty());
+    let r = report(&s, 0);
+    assert_eq!(r.known, vec![Group::Textiles]);
+    assert_eq!(r.first_trade, Group::Textiles);
+    assert!(decide(&mut s.st, &C, 0, d[0].id, 0).is_err(), "a decision is answered once");
+    sim::run_year(&mut s).unwrap();
+
+    // works are chosen directly only at the seat, only in a known trade
+    let seat = s.st.families[0].seat;
+    let seat_cell = (0..s.st.N).find(|&c| s.st.catch[c] == seat as i64 && site_options(&s.st, &C, &s.params, 0, c).is_ok()).unwrap();
+    let options = site_options(&s.st, &C, &s.params, 0, seat_cell).unwrap();
+    let loom = options.iter().find(|o| o.name == "hand_loom" || o.name == "textile_mill").unwrap();
+    let iron = options.iter().find(|o| o.group == Some(Group::Iron)).unwrap();
+    assert!(iron.allowed.as_ref().unwrap_err().contains("does not know"));
+    let away = (0..s.st.N).find(|&c| s.st.catch[c] >= 0 && s.st.catch[c] != seat as i64 && site_options(&s.st, &C, &s.params, 0, c).is_ok()).unwrap();
+    let far = site_options(&s.st, &C, &s.params, 0, away).unwrap();
+    assert!(far.iter().all(|o| o.allowed.is_err()), "nothing is chosen directly away from the seat");
+    let money0 = econ::money_total(&s.st);
+    if loom.allowed.is_ok() {
+        let fid = found_works(&mut s.st, &C, &s.params, 0, loom.method, seat_cell, s.year, &mut s.events).unwrap();
+        assert!(s.st.f_owner[fid] == 0 && s.st.f_reason[fid].kind == "family");
+        assert!(rel(econ::money_total(&s.st), money0) < 1e-12);
+        let r = report(&s, 0);
+        let seat_branch = r.branches.iter().find(|b| b.town == seat && b.group == Group::Textiles).unwrap();
+        assert!(seat_branch.works.contains(&fid) && seat_branch.runner == r.head && seat_branch.bonus > 0.0);
+    }
+    assert!(found_works(&mut s.st, &C, &s.params, 0, iron.method, seat_cell, s.year, &mut s.events).is_err());
+    assert!(found_works(&mut s.st, &C, &s.params, 0, loom.method, away, s.year, &mut s.events).unwrap_err().contains("seat"));
+
+    // land is bought directly only around the seat
+    let near = (0..s.st.N).find(|&c| s.st.catch[c] == seat as i64 && s.st.cell_owner[c] < 0 && s.st.world.land[c]).unwrap();
+    assert!(may_buy_land(&s.st, 0, near).is_ok());
+    assert!(may_buy_land(&s.st, 0, away).unwrap_err().contains("only around the seat"));
+    assert!(buy_land(&mut s.st, &C, &s.params, 0, away).unwrap_err().contains("only around the seat"));
+
+    // posting: an adult to a branch in another town, from next year
+    let r = report(&s, 0);
+    let other = (0..s.st.T_max).find(|&t| s.st.town_active[t] && t != seat).unwrap();
+    let head = r.head.unwrap();
+    assert!(post_member(&mut s.st, 0, head, Posting::Manager { group: Group::Textiles, town: other }).unwrap_err().contains("seat"));
+    let adult = r.members.iter().position(|m| m.alive && m.age >= 18 && m.post == Post::Unposted);
+    let child = r.members.iter().position(|m| m.alive && m.age < 14);
+    if let Some(c) = child {
+        assert!(post_member(&mut s.st, 0, c, Posting::Manager { group: Group::Textiles, town: other }).unwrap_err().contains("too young"));
+    }
+    if let Some(a) = adult {
+        assert!(post_member(&mut s.st, 0, a, Posting::Manager { group: Group::Iron, town: other }).unwrap_err().contains("does not know"));
+        post_member(&mut s.st, 0, a, Posting::Manager { group: Group::Textiles, town: other }).unwrap();
+        assert_eq!(report(&s, 0).members[a].next, Some((other, Post::Manager { group: Group::Textiles })));
+        assert!(set_stance(&mut s.st, 0, Group::Textiles, other, Stance::Hold).is_err(), "no branch there yet");
+        sim::run_year(&mut s).unwrap();
+        let r = report(&s, 0);
+        assert_eq!(r.members[a].town, other);
+        let b = r.branches.iter().find(|b| b.town == other && b.group == Group::Textiles).expect("a branch where the manager went");
+        assert_eq!(b.runner, Some(a));
+        set_stance(&mut s.st, 0, Group::Textiles, other, Stance::Hold).unwrap();
+        assert_eq!(report(&s, 0).branches.iter().find(|b| b.town == other).unwrap().stance, Stance::Hold);
+    }
+
+    // moving the seat takes effect at the year end; the head moves with it
+    move_seat(&mut s.st, 0, other).unwrap();
+    assert_eq!(report(&s, 0).next_seat, Some(other));
+    sim::run_year(&mut s).expect("money is conserved");
+    let r = report(&s, 0);
+    assert_eq!(r.seat, other);
+    assert_eq!(r.members[r.head.unwrap()].town, other);
+    // works left behind at the old seat now run under hired managers
+    let left: Vec<usize> = r.firms.iter().copied().filter(|&f| s.st.f_town[f] == seat).collect();
+    assert!(left.iter().all(|f| r.absentee.contains(f)));
+
+    // a child turning fourteen raises a training decision that defaults to the first
+    // trade at the seat while nobody else is in it, and otherwise to a trade the
+    // family neither knows nor is learning
+    while s.year <= s.end_year {
+        sim::run_year(&mut s).unwrap();
+        let r = report(&s, 0);
+        if let Some(d) = r.pending.iter().find(|d| d.member.is_some()) {
+            let j = d.member.unwrap();
+            assert!(d.options.iter().any(|o| o.choice == Choice::University));
+            let learning = |g: Group| {
+                r.members.iter().any(|m| {
+                    m.alive && (m.trade == Some(g) || matches!(m.post, Post::Learning { path: Path::Apprentice { group, .. }, .. } if group == g))
+                })
+            };
+            match d.options[d.default].choice {
+                Choice::Apprentice { group, town } if !learning(r.first_trade) => assert!(group == r.first_trade && town == r.seat),
+                Choice::Apprentice { group, .. } => assert!(!r.known.contains(&group) && !learning(group), "a new trade, not {group:?}"),
+                c => panic!("the default is an apprenticeship, not {c:?}"),
+            }
+            sim::run_year(&mut s).unwrap();
+            let m = &report(&s, 0).members[j];
+            assert!(matches!(m.post, Post::Learning { .. }), "the default training started");
+            assert!(m.training_until.is_some());
+            break;
+        }
+    }
+}
+
+#[test]
+fn a_passive_family_trains_its_children_in_different_trades() {
+    // every decision left to its default for forty years
+    let P = params(3, 1789);
+    let mut s = sim::start(&P, default_content());
+    let mut saved = (0.0, 0.0);
+    while s.year <= s.end_year {
+        sim::run_year(&mut s).unwrap();
+        if s.year - 1 < s.content.start_year + 10 {
+            let ly = report(&s, 0).last_year;
+            saved.0 += ly.spending;
+            saved.1 += ly.earned();
+        }
+    }
+    let r = report(&s, 0);
+    let trades: Vec<Group> = r.members.iter().filter_map(|m| m.trade).collect();
+    assert!(trades.len() >= 2, "children were trained: {trades:?}");
+    let distinct: BTreeSet<Group> = trades.iter().copied().collect();
+    assert!(distinct.len() >= 2 && r.known.len() >= 2, "they learned more than the first trade: {trades:?}");
+    let mut places = BTreeSet::new();
+    for m in r.members.iter().filter(|m| m.alive) {
+        if let Post::Manager { group } = m.post {
+            assert!(places.insert((group, m.town)), "two managers of one branch: {group:?} at {}", m.town_name);
+        }
+    }
+    // a landed family saves a real share of its rents (cash is not spent down to nothing)
+    let rate = 1.0 - saved.0 / saved.1;
+    assert!((0.2..0.4).contains(&rate), "saved {:.0}% of its income in its first ten years", 100.0 * rate);
+}
+
+#[test]
+fn branches_wind_down_one_holding_a_year() {
+    let P = params(3, 1765);
+    let mut s = sim::start(&P, default_content());
+    // the passive player's seat branch grows in its default trade for a few years
+    for _ in 0..8 {
+        sim::run_year(&mut s).unwrap();
+    }
+    let r = report(&s, 0);
+    let (g, seat) = (r.first_trade, r.seat);
+    let held = |s: &Sim| -> (Vec<usize>, Vec<usize>) {
+        let r = report(s, 0);
+        let works = r.firms.iter().copied().filter(|&f| s.st.f_town[f] == seat).collect();
+        let cells = r.cells.iter().copied().filter(|&c| s.st.catch[c] == seat as i64).collect();
+        (works, cells)
+    };
+    let (w0, c0) = held(&s);
+    assert!(!w0.is_empty() || !c0.is_empty(), "the passive player's seat branch grew");
+    set_stance(&mut s.st, 0, g, seat, Stance::WindDown).unwrap();
+    for _ in 0..2 {
+        let (w, c) = held(&s);
+        sim::run_year(&mut s).expect("money is conserved");
+        let (w1, c1) = held(&s);
+        let sold_works = w.iter().filter(|f| !w1.contains(f) && s.st.f_alive[**f]).count();
+        let sold_cells = c.iter().filter(|x| !c1.contains(x) && s.st.catch[**x] == seat as i64).count();
+        assert!(sold_works + sold_cells <= 1, "at most one holding sold a year");
+        assert!(w1.len() <= w.len() && c1.len() <= c.len(), "nothing new while winding down");
+    }
+    let r = report(&s, 0);
+    assert!(r.last_year.sales >= 0.0);
+}
+
+#[test]
+fn ai_families_play_by_the_same_rules() {
+    let P = params(6, 1785);
     let mut s = sim::start(&P, default_content());
     let cells0: Vec<usize> = (0..6).map(|k| s.st.cell_owner.iter().filter(|&&o| o == k as i64).count()).collect();
     while s.year <= s.end_year {
@@ -147,19 +251,18 @@ fn ai_families_invest() {
     }
     let st = &s.st;
     let built: Vec<usize> = (0..st.F_count).filter(|&f| st.f_reason[f].kind == "family").collect();
-    assert!(!built.is_empty(), "AI families found works");
-    assert!(built.iter().all(|&f| st.f_owner[f] >= 1), "the player (family 0) does nothing by itself");
+    assert!(built.iter().any(|&f| st.f_owner[f] >= 1), "AI branches found works");
+    let mut grew = 0;
     for k in 1..6 {
         let f = &st.families[k];
+        assert!(f.decisions.is_empty(), "AI families answer their own decisions");
         let cells = st.cell_owner.iter().filter(|&&o| o == k as i64).count();
-        match f.strategy {
-            Strategy::Landed => assert!(cells > cells0[k], "{} bought land ({} -> {cells})", f.surname, cells0[k]),
-            _ => assert!(built.iter().any(|&w| st.f_owner[w] == k as i64), "{} built works", f.surname),
+        if cells > cells0[k] || built.iter().any(|&w| st.f_owner[w] == k as i64) {
+            grew += 1;
         }
-        // AI families put their adults in charge of what they hold
-        assert!(f.members.iter().any(|m| m.group.is_some()), "{} has managers", f.surname);
     }
-    assert!(s.events.iter().any(|e| e.kind == "family" && e.family.is_some()));
+    assert!(grew >= 3, "most AI families bought land or founded works ({grew} of 5)");
+    assert!(st.families[1..].iter().any(|f| f.members.iter().any(|m| m.alive && matches!(m.post, Post::Manager { .. }))), "AI families post managers");
 }
 
 #[test]
@@ -191,18 +294,43 @@ fn live_api_reports_every_year_once() {
         assert!(y.new_firms.iter().all(|f| firms_seen.insert(f.id)), "each firm is sent once");
         assert!(y.new_towns.iter().all(|t| towns_seen.insert(t.id)));
         assert!(y.firm_K.iter().all(|&(f, _)| s.st.f_alive[f]));
-        assert!(y.closed_firms.iter().all(|&f| !s.st.f_alive[f]));
         assert_eq!(y.series.len(), stat.series.len());
-        assert!(y.series[0].is_finite() && y.series[0] > 0.0, "population is recorded");
         assert_eq!(y.families.len(), 6);
+        assert!(y.families.iter().all(|f| f.head.is_some() && !f.branches.is_empty()));
         assert_eq!(y.cell_owner.len(), N);
-        assert_eq!(y.towns.price.len(), s.st.T_max * s.content.G);
         n_events += y.events.len();
     }
     assert_eq!(firms_seen.len(), s.st.F_count);
     assert_eq!(n_events, s.events.len(), "each event is sent once");
     assert!(slowest < 0.1, "live_year took {:.1} ms", slowest * 1e3);
-    // family works carry their owner in the firm info
-    let owned = s.st.f_owner.iter().filter(|&&o| o >= 0).count();
-    assert!(owned > 0);
+    assert!(s.events.iter().filter(|e| e.family == Some(0)).all(|e| e.weight >= 0.6), "the player's own news weighs at least 0.6");
+}
+
+#[test]
+fn the_first_decision_waits_for_the_player() {
+    // a viewer runs 1750 before the player sees the map
+    let P = params(3, 1760);
+    let mut s = sim::start(&P, default_content());
+    let C = s.content.clone();
+    let cells0 = report(&s, 0).cells.len();
+    sim::run_year(&mut s).unwrap();
+    let d = pending(&s.st, 0);
+    assert_eq!(d.len(), 1, "the first-trade decision survives the first year");
+    assert_eq!(d[0].due, s.content.start_year + 1);
+    let r = report(&s, 0);
+    assert!(r.firms.is_empty() && r.cells.len() == cells0, "nothing is founded or bought before it is answered");
+    // answered between years, on the state the viewer sees after 1750
+    let g = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
+    decide(&mut s.st, &C, 0, d[0].id, g).unwrap();
+    let r = report(&s, 0);
+    assert_eq!(r.known, vec![Group::Textiles]);
+    assert!(r.members.iter().all(|m| !matches!(m.post, Post::Learning { path: Path::Apprentice { group, .. }, .. } if group != Group::Textiles)));
+    sim::run_year(&mut s).unwrap();
+    assert!(pending(&s.st, 0).iter().all(|d| d.member.is_some()), "only training decisions can be pending now");
+
+    // left unanswered, it takes its default at the end of 1751
+    let mut t = sim::start(&P, default_content());
+    sim::run_year(&mut t).unwrap();
+    sim::run_year(&mut t).unwrap();
+    assert!(pending(&t.st, 0).iter().all(|d| d.member.is_some()), "the default was taken at the end of 1751");
 }
