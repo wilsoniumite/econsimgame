@@ -72,12 +72,14 @@ pub struct UiState {
     pub dirty: u64,
     /// the family member whose posts are shown
     pub expanded: Option<usize>,
+    /// the rival family opened in the list of great families
+    pub rival: Option<usize>,
     built: Option<(Option<Tab>, usize, bool, u64)>,
 }
 
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news_major: true, hover: false, dirty: 0, expanded: None, built: None }
+        UiState { tab: Some(Tab::News), news_major: true, hover: false, dirty: 0, expanded: None, rival: None, built: None }
     }
 }
 
@@ -274,6 +276,17 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                                 .with_children(|bt| {
                                     bt.spawn(text(f, "Next year", 14.0, INK));
                                 });
+                            // decisions waiting: shown only while there are some
+                            row.spawn((
+                                Node { margin: UiRect::left(Val::Px(4.0)), display: Display::None, ..button_node(10.0, 5.0) },
+                                BackgroundColor(crest_col),
+                                Interaction::default(),
+                                FocusPolicy::Block,
+                                crate::game::DecisionBadge,
+                            ))
+                            .with_children(|bt| {
+                                bt.spawn(text(f, "", 14.0, Color::WHITE));
+                            });
                         }
                     });
                 });
@@ -709,7 +722,7 @@ fn panel_rebuild(
     commands.entity(be).with_children(|p| match tab {
         Tab::News => news_panel(p, &f, r, k, ui.news_major),
         Tab::Markets => markets_panel(p, &f, r, k),
-        Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded),
+        Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded, ui.rival),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k),
     });
 }

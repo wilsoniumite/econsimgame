@@ -9,7 +9,7 @@
 
 use bevy::math::Vec3;
 
-mod towns;
+pub mod towns;
 
 use crate::meshkit::{hex, lerp, shade, Builder};
 use crate::replay::{self, Replay};

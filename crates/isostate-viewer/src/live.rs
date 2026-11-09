@@ -10,7 +10,7 @@
 use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
-use isostate_core::families::{self, Group};
+use isostate_core::families::{self, Group, Posting, Stance, N_GROUPS};
 use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveStatic, LiveYear, SiteOption};
 
 use crate::family::FamilyView;
@@ -26,20 +26,31 @@ pub enum Cmd {
     Site(usize),
     Found { method: usize, cell: usize },
     BuyLand(usize),
-    Assign { member: usize, group: Option<Group> },
+    /// answer a decision with one of its options
+    Decide { id: u64, option: usize },
+    /// post an adult to run a trade in a town, or take them off it
+    Post { member: usize, posting: Posting },
+    /// what a branch does each year
+    Stance { group: Group, town: usize, stance: Stance },
+    /// move the seat (and the head) at the year end; the present seat cancels a move
+    MoveSeat(usize),
 }
 
 pub struct SiteInfo {
     pub cell: usize,
-    /// the year the answer holds for (the next one to be simulated)
-    pub year: i64,
+    /// the town whose reach the cell is in
+    pub town: Option<usize>,
     pub land_price: f64,
     pub owner: Option<usize>,
+    pub owner_name: Option<String>,
+    /// whether the player may buy it (cash aside), or why not
+    pub land_allowed: Result<(), String>,
     pub options: Result<Vec<SiteOption>, String>,
 }
 
 pub enum Msg {
-    Year(Box<LiveYear>),
+    /// a year, with what each trade would earn in each town (`families::prospects`)
+    Year(Box<LiveYear>, Vec<[f64; N_GROUPS]>),
     Site(SiteInfo),
     /// an order was carried out (or not), with the player's family as it now stands
     Done { ok: bool, text: String, family: Option<FamilyReport> },
@@ -54,9 +65,6 @@ pub struct Live {
     pub stepping: bool,
     /// the thread has stopped and that has been reported
     gone: std::sync::atomic::AtomicBool,
-    /// the industry group of every method, for the family panel
-    pub method_group: Vec<Option<Group>>,
-    pub group_labels: Vec<String>,
 }
 
 impl Live {
@@ -97,8 +105,8 @@ pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result
     let stat = iso::live_static(&s.st, &s.content);
     let mut cursor = LiveCursor::new(&s.content);
     let mut r = shell(&stat, seed);
-    let mut view = FamilyView::default();
     let method_group: Vec<Option<Group>> = stat.methods.iter().map(|m| m.group).collect();
+    let mut view = FamilyView { method_group, ..default() };
     for i in 0..=advance {
         if s.year > s.end_year {
             break;
@@ -109,8 +117,9 @@ pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result
         }
         let y = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
         apply_year(&mut r, &y);
-        crate::game::year_families(&mut view, &y.families, y.year as i32, &r, &method_group);
+        crate::game::year_families(&mut view, &y.families, y.year as i32);
     }
+    view.prospects = all_prospects(&s);
 
     let (tx_cmd, rx_cmd) = mpsc::channel::<Cmd>();
     let (tx_msg, rx_msg) = mpsc::channel::<Msg>();
@@ -123,8 +132,6 @@ pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result
         rx: Mutex::new(rx_msg),
         stepping: false,
         gone: std::sync::atomic::AtomicBool::new(false),
-        method_group,
-        group_labels: stat.groups.iter().map(|g| g.label.clone()).collect(),
     };
     Ok((r, live, view))
 }
@@ -133,7 +140,7 @@ pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result
 /// the family's cash, and the cheapest few squares around it.
 fn demo_orders(s: &mut iso::Sim) {
     let Ok(rep) = iso::family_report(&s.st, &s.content, &s.params, PLAYER) else { return };
-    let home = s.st.town_node[rep.home];
+    let home = s.st.town_node[rep.seat];
     let (w, h) = (s.st.world.W as i64, s.st.world.H as i64);
     let (hx, hy) = ((home % s.st.world.W) as i64, (home / s.st.world.W) as i64);
     let near: Vec<usize> = (-2..=2)
@@ -145,8 +152,8 @@ fn demo_orders(s: &mut iso::Sim) {
     for &c in &near {
         let Ok(opts) = iso::site_options(&s.st, &s.content, &s.params, PLAYER, c) else { continue };
         for o in opts {
-            if let Ok(sums) = o.sums {
-                if o.name != "services" && sums.capital_cost <= rep.cash * 0.5 && best.is_none_or(|b| sums.expected_return > b.0) {
+            if let (Ok(sums), Ok(())) = (o.sums, o.allowed) {
+                if sums.capital_cost <= rep.cash * 0.5 && best.is_none_or(|b| sums.expected_return > b.0) {
                     best = Some((sums.expected_return, o.method, c));
                 }
             }
@@ -190,6 +197,19 @@ fn demo_orders(s: &mut iso::Sim) {
     }
 }
 
+/// What each trade would earn on new works in every town, as the posting
+/// suggestions and the choice of a first trade show it.
+fn all_prospects(s: &iso::Sim) -> Vec<[f64; N_GROUPS]> {
+    let t0 = std::time::Instant::now();
+    let out: Vec<[f64; N_GROUPS]> = (0..s.st.T_max)
+        .map(|t| if s.st.town_active[t] { families::prospects(&s.st, &s.content, &s.params, t) } else { [f64::NEG_INFINITY; N_GROUPS] })
+        .collect();
+    if std::env::var_os("ISOSTATE_TIMING").is_some() {
+        eprintln!("prospects for {} towns in {:.0} ms", out.len(), t0.elapsed().as_secs_f32() * 1e3);
+    }
+    out
+}
+
 fn run_thread(mut s: iso::Sim, mut cursor: LiveCursor, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
     while let Ok(cmd) = rx.recv() {
         let msg = match cmd {
@@ -198,18 +218,26 @@ fn run_thread(mut s: iso::Sim, mut cursor: LiveCursor, rx: mpsc::Receiver<Cmd>, 
                     Msg::Failed(format!("{} was the last year.", s.end_year))
                 } else {
                     match iso::sim::run_year(&mut s) {
-                        Ok(()) => Msg::Year(Box::new(iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events))),
+                        Ok(()) => {
+                            let y = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
+                            Msg::Year(Box::new(y), all_prospects(&s))
+                        }
                         Err(e) => Msg::Failed(e),
                     }
                 }
             }
-            Cmd::Site(cell) => Msg::Site(SiteInfo {
-                cell,
-                year: s.year,
-                land_price: families::land_price(&s.st, &s.params, cell),
-                owner: families::owner_of_cell(&s.st, cell),
-                options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
-            }),
+            Cmd::Site(cell) => {
+                let owner = families::owner_of_cell(&s.st, cell);
+                Msg::Site(SiteInfo {
+                    cell,
+                    town: s.st.catch.get(cell).and_then(|&t| (t >= 0).then_some(t as usize)),
+                    land_price: families::land_price(&s.st, &s.params, cell),
+                    owner,
+                    owner_name: owner.and_then(|o| s.st.families.get(o)).map(|f| f.surname.clone()),
+                    land_allowed: may_buy(&s, cell),
+                    options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
+                })
+            }
             Cmd::Found { method, cell } => {
                 let year = s.year;
                 let r = iso::found_works(&mut s.st, &s.content, &s.params, PLAYER, method, cell, year, &mut s.events);
@@ -219,15 +247,39 @@ fn run_thread(mut s: iso::Sim, mut cursor: LiveCursor, rx: mpsc::Receiver<Cmd>, 
                 let r = iso::buy_land(&mut s.st, &s.content, &s.params, PLAYER, cell);
                 done(&s, r.map(|price| format!("The land is yours, for {}.", crate::ui::money(price as f32))))
             }
-            Cmd::Assign { member, group } => {
-                let r = iso::assign_member(&mut s.st, PLAYER, member, group);
-                done(&s, r.map(|()| "Done.".to_string()))
+            Cmd::Decide { id, option } => {
+                let r = iso::decide(&mut s.st, &s.content, PLAYER, id, option);
+                done(&s, r.map(|()| String::new()))
+            }
+            Cmd::Post { member, posting } => {
+                let r = iso::post_member(&mut s.st, PLAYER, member, posting);
+                done(&s, r.map(|()| String::new()))
+            }
+            Cmd::Stance { group, town, stance } => {
+                let r = iso::set_stance(&mut s.st, PLAYER, group, town, stance);
+                done(&s, r.map(|()| String::new()))
+            }
+            Cmd::MoveSeat(town) => {
+                let r = iso::move_seat(&mut s.st, PLAYER, town);
+                done(&s, r.map(|()| String::new()))
             }
         };
         if tx.send(msg).is_err() {
             return;
         }
     }
+}
+
+/// The player buys land directly only around the seat; a growing estates branch buys it elsewhere.
+fn may_buy(s: &iso::Sim, cell: usize) -> Result<(), String> {
+    let Some(fam) = s.st.families.get(PLAYER) else { return Err("there is no family to buy it".into()) };
+    if !s.st.world.land.get(cell).copied().unwrap_or(false) {
+        return Err("the square is sea".into());
+    }
+    if s.st.catch.get(cell).copied() != Some(fam.seat as i64) {
+        return Err(format!("land is bought directly only around the seat, {}; an estates branch buys it elsewhere", s.st.town_name[fam.seat]));
+    }
+    Ok(())
 }
 
 fn done(s: &iso::Sim, r: Result<String, String>) -> Msg {

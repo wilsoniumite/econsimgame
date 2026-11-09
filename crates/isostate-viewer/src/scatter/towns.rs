@@ -80,6 +80,11 @@ fn squares(r: &Replay, cen: &[(f32, f32)], k: usize) -> Vec<Square> {
     out
 }
 
+/// Where a town's market square is in a year: its centre, radius and the way it faces.
+pub fn square_of(r: &Replay, cen: &[(f32, f32)], k: usize, t: usize) -> Option<(Vec2, f32, f32)> {
+    squares(r, cen, k).into_iter().find(|s| s.town == t).map(|s| (s.at, s.radius, s.yaw))
+}
+
 /// The church faces the square from its east side, the station is down its own road to the south.
 fn church_at(s: &Square) -> Vec2 {
     let q = bevy::math::Quat::from_rotation_y(s.yaw);

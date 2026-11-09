@@ -350,8 +350,15 @@ fn main() {
     eprintln!("prepared {} in {:.1}s", if args.new { "the new game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
     if let Some(me) = families.as_ref().and_then(|f| f.player()) {
-        eprintln!("you are the {} family, with {} in hand", me.name, ui::money(me.cash));
-        for &f in &me.holdings {
+        let at = r.header.towns.get(me.seat).map(|t| cen[t.node]).unwrap_or((0.0, 0.0));
+        eprintln!("you are the {} family of {} ({:.1},{:.1}), with {} in hand", me.name, me.seat_name, at.0, at.1, ui::money(me.cash));
+        for fr in families.as_ref().map(|f| f.families.as_slice()).unwrap_or(&[]) {
+            if fr.rep.index != me.rep.index {
+                let at = r.header.towns.get(fr.seat).map(|t| cen[t.node]).unwrap_or((0.0, 0.0));
+                eprintln!("  the {} family of {} ({:.1},{:.1})", fr.name, fr.seat_name, at.0, at.1);
+            }
+        }
+        for &f in &me.rep.firms {
             let firm = &r.header.firms[f];
             eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
         }
@@ -382,7 +389,7 @@ fn main() {
         }
     }
     // a game opens over the family's home town; a replay over the whole island
-    let home = families.as_ref().and_then(|f| f.player()).and_then(|p| r.header.towns.get(p.home)).map(|t| cen[t.node]);
+    let home = families.as_ref().and_then(|f| f.player()).and_then(|p| r.header.towns.get(p.seat)).map(|t| cen[t.node]);
     let look = args.look.or(home.map(|(x, z)| (x, z + 1.0))).unwrap_or(((x0 + x1) * 0.5, (z0 + z1) * 0.5 + 4.0));
     let dist = args.dist.unwrap_or(if home.is_some() { 14.0 } else { (x1 - x0).max((z1 - z0) * 1.5) * 1.05 });
     let orbit = Orbit {
