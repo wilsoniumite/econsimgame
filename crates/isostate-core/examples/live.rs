@@ -58,7 +58,7 @@ fn main() {
     for (y, (w, r, m)) in shares {
         println!("  {y}                       {:>6.1}%     {:>6.1}%  {:>6.1}%", 100.0 * w, 100.0 * r, 100.0 * m);
     }
-    println!("\nfamily        strategy    home          cash       works        land   net worth  firms cells members  income/yr");
+    println!("\nfamily        strategy    seat          cash       works        land   net worth  firms cells members  income/yr");
     for k in 0..s.st.families.len() {
         let r = family_report(&s.st, &s.content, &s.params, k).unwrap();
         let strategy = match r.strategy {
@@ -70,7 +70,7 @@ fn main() {
             "{:<13} {:<11} {:<12} {:>10.0} {:>11.0} {:>11.0} {:>11.0} {:>6} {:>5} {:>4}/{:<2} {:>10.0}",
             r.surname,
             strategy,
-            r.home_name,
+            r.seat_name,
             r.cash,
             r.works_value,
             r.land_value,

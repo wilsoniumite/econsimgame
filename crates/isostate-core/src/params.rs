@@ -148,7 +148,7 @@ pub struct Params {
     /// Share of last month's dividends and rents a family spends.
     #[serde(skip_serializing_if = "is_default_cons_income")]
     pub family_cons_income: f64,
-    /// Share of its cash a family spends each month.
+    /// Share of its cash a family spends each month (land and works are not drawn on).
     #[serde(skip_serializing_if = "is_default_cons_wealth")]
     pub family_cons_wealth: f64,
     /// Land sells at this many years of its rent.
@@ -163,7 +163,7 @@ pub struct Params {
     /// Each family starts with this share of the money stock in cash.
     #[serde(skip_serializing_if = "is_default_start_cash")]
     pub family_start_cash: f64,
-    /// AI families keep this many months of spending as a cash reserve.
+    /// Growing branches keep this many months of the family's spending back as a cash reserve.
     #[serde(skip_serializing_if = "is_default_reserve")]
     pub family_reserve_months: f64,
     /// AI families build only where the works' output is at most this share of the town's demand...
@@ -172,21 +172,37 @@ pub struct Params {
     /// ...and the good's price is at most this many times its base price.
     #[serde(skip_serializing_if = "is_default_max_price_ratio")]
     pub family_max_price_ratio: f64,
+    /// The head's bonus at the seat, at skill 1 (a manager's is `family_bonus`).
+    #[serde(skip_serializing_if = "is_default_seat_bonus")]
+    pub family_seat_bonus: f64,
+    /// Yearly chance that an adult of 22 to 42 has a child.
+    #[serde(skip_serializing_if = "is_default_birth_rate")]
+    pub family_birth_rate: f64,
+    /// Share of a family works' profit a hired manager takes when no branch runs it.
+    #[serde(skip_serializing_if = "is_default_absentee_cut")]
+    pub absentee_cut: f64,
+    /// Skill gained at university.
+    #[serde(skip_serializing_if = "is_default_university_gain")]
+    pub university_gain: f64,
     /// Last simulated year; `None` means the content's end year (Python: `P.get("end_year", C["end_year"])`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_year: Option<i64>,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
-const FAMILY_CONS_INCOME: f64 = 0.6;
-const FAMILY_CONS_WEALTH: f64 = 0.02;
+const FAMILY_CONS_INCOME: f64 = 0.7;
+const FAMILY_CONS_WEALTH: f64 = 0.01;
 const YEARS_PURCHASE: f64 = 25.0;
 const LAND_RENT_FLOOR: f64 = 0.5;
 const FAMILY_START_SHARE: f64 = 0.03;
 const FAMILY_START_CASH: f64 = 0.004;
-const FAMILY_RESERVE_MONTHS: f64 = 12.0;
+const FAMILY_RESERVE_MONTHS: f64 = 3.0;
 const FAMILY_MAX_SHARE: f64 = 0.25;
 const FAMILY_MAX_PRICE_RATIO: f64 = 3.0;
+const FAMILY_SEAT_BONUS: f64 = 0.12;
+const FAMILY_BIRTH_RATE: f64 = 0.15;
+const ABSENTEE_CUT: f64 = 0.2;
+const UNIVERSITY_GAIN: f64 = 0.25;
 
 fn is_zero(v: &usize) -> bool {
     *v == 0
@@ -220,6 +236,18 @@ fn is_default_max_share(v: &f64) -> bool {
 }
 fn is_default_max_price_ratio(v: &f64) -> bool {
     *v == FAMILY_MAX_PRICE_RATIO
+}
+fn is_default_seat_bonus(v: &f64) -> bool {
+    *v == FAMILY_SEAT_BONUS
+}
+fn is_default_birth_rate(v: &f64) -> bool {
+    *v == FAMILY_BIRTH_RATE
+}
+fn is_default_absentee_cut(v: &f64) -> bool {
+    *v == ABSENTEE_CUT
+}
+fn is_default_university_gain(v: &f64) -> bool {
+    *v == UNIVERSITY_GAIN
 }
 
 pub fn default_params() -> Params {
@@ -338,6 +366,10 @@ pub fn default_params() -> Params {
         family_reserve_months: FAMILY_RESERVE_MONTHS,
         family_max_share: FAMILY_MAX_SHARE,
         family_max_price_ratio: FAMILY_MAX_PRICE_RATIO,
+        family_seat_bonus: FAMILY_SEAT_BONUS,
+        family_birth_rate: FAMILY_BIRTH_RATE,
+        absentee_cut: ABSENTEE_CUT,
+        university_gain: UNIVERSITY_GAIN,
         end_year: None,
     }
 }
