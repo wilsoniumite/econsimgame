@@ -194,6 +194,18 @@ pub fn suggestions(v: &FamilyView, r: &Replay, fam: &FamilyReport, m: &MemberRep
             *idle.entry((g, firm.town.max(0) as usize)).or_default() += 1;
         }
     }
+    // the family's land, by the town whose reach it is in (as of the latest year)
+    if fam.known.contains(&Group::Estates) && r.filled > 0 {
+        let k = r.filled - 1;
+        for &c in &fam.cells {
+            // the layer holds the town plus one, zero for none
+            if let Some(t) = r.catch.get(k * r.n + c).and_then(|&t| (t as usize).checked_sub(1)) {
+                *idle.entry((Group::Estates, t)).or_default() += 1;
+            }
+        }
+        // land with an estates branch over it is looked after
+        idle.retain(|&(g, t), _| g != Group::Estates || !fam.branches.iter().any(|b| b.group == g && b.town == t && b.runner.is_some()));
+    }
     for &g in &fam.known {
         for t in 0..v.prospects.len().min(r.header.towns.len()) {
             if t == fam.seat {
@@ -208,7 +220,8 @@ pub fn suggestions(v: &FamilyView, r: &Replay, fam: &FamilyReport, m: &MemberRep
             let idle_here = idle.get(&(g, t)).copied().unwrap_or(0);
             let p = v.prospect(t, g);
             let (score, why) = if idle_here > 0 {
-                (10.0 + idle_here as f64, format!("{} of the family's works there have nobody of the family over them", idle_here))
+                let what = if g == Group::Estates { format!("{idle_here} squares of the family's land there have nobody of the family over them") } else { format!("{idle_here} of the family's works there have nobody of the family over them") };
+                (10.0 + idle_here as f64 * if g == Group::Estates { 0.2 } else { 1.0 }, what)
             } else if let Some(p) = p.filter(|&p| p > 0.04) {
                 let what = if g == Group::Estates { format!("land there yields {}", yearly(p)) } else { format!("new works there would earn {}", yearly(p)) };
                 (p.min(0.6), what)
