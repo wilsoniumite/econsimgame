@@ -35,13 +35,26 @@ WGPU_BACKEND=vulkan cargo run -p isostate-viewer -- runs/landlords/run.bin --siz
     --view out/island.png,1900
 ```
 
-Each `--view` is `path,year,x,z,yaw,pitch,distance` in map cells and degrees; missing values fall back to the whole-island view. `--wait 100` sets how many seconds to wait for shaders to compile before the first shot.
+Each `--view` is `path,year,x,z,yaw,pitch,distance,season` in map cells and degrees; missing values fall back to the whole-island view, and `season` (0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn) overrides `--season` for that shot. `--wait 100` sets how many seconds to wait for shaders to compile before the first shot.
+
+### Checking the ground shader against the CPU
+
+The ground shader repeats the patchwork rule of `world.rs` that places the trees and houses, so the two must agree. To check, write the CPU's class under every pixel of some views, shoot the same views with the ground in flat class colours, and compare:
+
+```bash
+V=out/check.png,1870,77.6,47.6,0,80,6
+cargo run -p isostate-viewer -- runs/landlords/run.bin --size 1600x1000 --class-map --view $V
+WGPU_BACKEND=vulkan cargo run -p isostate-viewer -- runs/landlords/run.bin --size 1600x1000 --wait 100 --no-tilt --ground-debug --view $V
+python3 crates/isostate-viewer/tools/compare_classes.py out/check.png
+```
+
+Only pixels on a class edge (and under the rounded corners of the interface) should differ.
 
 ## How the picture is made
 
 The economy only knows shares and densities per 2 km cell, so the viewer invents the detail, deterministically.
 
-- **Ground.** One heightfield mesh (four vertices per cell, relief exaggerated about three times) with a texture painted for each year. Each cell's two largest land classes are drawn as a patchwork using a smooth noise, so a cell that is 60% farm and 40% wood looks like fields with woods in them. Fields come from a warped grid with anti-aliased hedges; heath gets heather and gorse; steep ground turns to rock and high ground to snow. Everything about a texel that does not change (its cell, noise, field, depth, slope) is computed once, so repainting a year is cheap.
+- **Ground.** One heightfield mesh (four vertices per cell, relief exaggerated about three times) whose colour a shader works out for every pixel (`src/terrain.wesl`, an extension of Bevy's standard material, so light, shadows, ambient occlusion and haze work as usual). Each cell's two largest land classes are drawn as a patchwork using a smooth noise, so a cell that is 60% farm and 40% wood looks like fields with woods in them; the shader reads the year's mix from a texture with one texel per cell and uses the same warp, hash, noise and quantile table as `world.rs`, so trees and houses stand on matching ground. Fields come from a warped grid, each with its own crop, calendar and rows, with hedges along their edges; heath gets heather and gorse, towns a street grid between the house plots, works yards of cinder and gravel; steep ground turns to rock and high ground to snow. Edges and fine patterns are filtered to the size of a pixel, so they stay crisp up close and calm far away. The seasons come from the clock: young green crops in spring, gold in high summer, stubble and ploughing in autumn, heather in flower late in summer, and frost and lower snow in winter.
 - **Things on the ground.** Every possible tree, house, farmstead and mine has a fixed slot with a fixed threshold, and it appears once its cell's share or density passes that threshold. Growth is therefore smooth and stable: nothing reshuffles from one year to the next, towns thicken in place and woods thin tree by tree.
 - **Works.** Each firm in the replay has a stable plot in its cell, first come first served, and its building depends on its method (mills, furnaces, kilns, sheds) and grows in tiers as its capacity doubles. Chimneys of working firms smoke.
 - **Towns.** A church on the market square, a station once the railway reaches the town, a lighthouse for harbours.
@@ -50,6 +63,5 @@ The economy only knows shares and densities per 2 km cell, so the viewer invents
 
 ## What is next for the look
 
-- Move field, hedge and crop drawing into a terrain shader so edges stay crisp at any zoom, with seasons from the monthly clock.
-- Houses that line up along streets instead of a jittered grid.
+- Houses that line up along the painted streets instead of a jittered grid.
 - Moving trains and boats, construction that pops up with a puff of dust, and click-to-inspect with each works' "why here" sums.
