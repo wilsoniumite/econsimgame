@@ -118,6 +118,9 @@ pub struct TimelineTrack;
 pub struct TimelineKnob;
 #[derive(Component)]
 pub struct HelpCard;
+/// Clicking this opens a tab (the family card opens the family).
+#[derive(Component)]
+pub struct OpenTab(pub Tab);
 /// A live game: work out one more year and show it.
 #[derive(Component)]
 pub struct NextYearButton;
@@ -182,14 +185,17 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
         ))
         .with_children(|top| {
             top.spawn(Node { width: Val::Px(380.0), ..default() }).with_children(|wrap| {
-                wrap.spawn(card(Node {
-                    height: Val::Px(62.0),
-                    padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(12.0),
-                    border_radius: BorderRadius::all(Val::Px(16.0)),
-                    ..default()
-                }))
+                wrap.spawn((
+                    card(Node {
+                        height: Val::Px(62.0),
+                        padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(12.0),
+                        border_radius: BorderRadius::all(Val::Px(16.0)),
+                        ..default()
+                    }),
+                    OpenTab(Tab::Family),
+                ))
                 .with_children(|left| {
                     // a little shield with the family's initial
                     left.spawn((
@@ -226,7 +232,12 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ..default()
                 }))
                 .with_children(|mid| {
-                    mid.spawn((text(f, "", 25.0, INK), TextLayout::default().with_no_wrap(), DateText, Node { min_width: Val::Px(150.0), ..default() }));
+                    mid.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(150.0), ..default() }).with_children(|col| {
+                        col.spawn((text(f, "", 25.0, INK), TextLayout::default().with_no_wrap(), DateText));
+                        if data.live {
+                            col.spawn((text(f, "", 12.0, MUTED), TextLayout::default().with_no_wrap(), StepNote, Node { margin: UiRect::top(Val::Px(-3.0)), ..default() }));
+                        }
+                    });
                     mid.spawn(Node { column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
                         for (label, b) in [("Pause", SpeedButton::Pause), ("1\u{00d7}", SpeedButton::Speed(0.5)), ("2\u{00d7}", SpeedButton::Speed(1.0)), ("4\u{00d7}", SpeedButton::Speed(2.0)), ("8\u{00d7}", SpeedButton::Speed(4.0))] {
                             row.spawn((button_node(10.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
@@ -241,9 +252,6 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                                 });
                         }
                     });
-                    if data.live {
-                        mid.spawn((text(f, "", 13.0, MUTED), TextLayout::default().with_no_wrap(), StepNote, Node { min_width: Val::Px(110.0), ..default() }));
-                    }
                 });
             });
             top.spawn(Node { width: Val::Px(380.0), justify_content: JustifyContent::End, ..default() }).with_children(|wrap| {
@@ -330,7 +338,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ("Right-drag", "turn and tilt the view"),
                     ("Scroll", "come closer or stand back"),
                     ("W A S D", "walk the view, Q and E to turn"),
-                    ("Click", "ask about a works, a town or a field"),
+                    ("Click", "ask about a works, a town or a square"),
+                    ("Next year", "in a game: play one year, then stop"),
                     ("Space", "start or stop the years"),
                     ("Left, Right", "one year back or on"),
                     ("Up, Down", "faster or slower"),
@@ -474,10 +483,15 @@ fn active_styles(
     }
 }
 
-fn tab_clicks(mut ui: ResMut<UiState>, q: Query<(&Interaction, &TabButton), Changed<Interaction>>) {
+fn tab_clicks(mut ui: ResMut<UiState>, q: Query<(&Interaction, &TabButton), Changed<Interaction>>, open: Query<(&Interaction, &OpenTab), Changed<Interaction>>) {
     for (i, t) in &q {
         if *i == Interaction::Pressed {
             toggle_tab(&mut ui, t.0);
+        }
+    }
+    for (i, t) in &open {
+        if *i == Interaction::Pressed {
+            ui.tab = Some(t.0);
         }
     }
 }

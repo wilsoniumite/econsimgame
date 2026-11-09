@@ -6,6 +6,7 @@
 //! Space plays and pauses, the arrow keys step through years, drag to pan,
 //! right-drag to turn, scroll to zoom.
 
+mod cursor;
 mod family;
 mod game;
 mod live;
@@ -410,6 +411,7 @@ fn main() {
         .init_resource::<Rails>()
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
+        .add_plugins(cursor::plugin)
         .add_systems(Startup, (setup_world, setup_ui).chain())
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
     if let Some(l) = live {
