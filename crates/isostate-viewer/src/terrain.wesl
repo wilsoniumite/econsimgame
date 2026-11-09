@@ -406,7 +406,8 @@ fn town(sp: Spot) -> vec3<f32> {
     let b = hash2(id.x, id.y, 91);
     // some blocks keep their gardens, fewer in crowded towns
     let share = max(0.45 - 0.4 * sp.dense, 0.0);
-    let garden = mix(share, select(0.0, 1.0, b > 0.55 + 0.4 * sp.dense), detail(3.5, sp.foot));
+    // (block by block only up close: far away a checkerboard would look busy)
+    let garden = mix(share, select(0.0, 1.0, b > 0.55 + 0.4 * sp.dense), detail(10.0, sp.foot));
     var c = mix(hex(0xcbb9a1u), hex(0xaab27bu), 0.3 * garden);
     let street = 1.0 - (1.0 - lines(q.x, qf, 0.1)) * (1.0 - lines(q.y, qf, 0.1));
     c = mix(c, hex(0xdccfbbu), street);
@@ -429,7 +430,7 @@ fn works_yard(sp: Spot) -> vec3<f32> {
         yard = gravel;
     }
     let average = base * 0.42 + cinder * 0.3 + gravel * 0.28;
-    var c = mix(average, yard, detail(3.5, sp.foot));
+    var c = mix(average, yard, detail(10.0, sp.foot));
     let lane = 1.0 - (1.0 - lines(q.x, qf, 0.07)) * (1.0 - lines(q.y, qf, 0.07));
     c = mix(c, hex(0xa69e92u), 0.8 * lane);
     return mottled(c, sp, 0.05);
