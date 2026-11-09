@@ -6,6 +6,7 @@
 //! Space plays and pauses, the arrow keys step through years, drag to pan,
 //! right-drag to turn, scroll to zoom.
 
+mod boats;
 mod cursor;
 mod family;
 mod game;
@@ -413,6 +414,7 @@ fn main() {
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
         .add_plugins(cursor::plugin)
+        .add_plugins(boats::plugin)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain())
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
     if let Some(l) = live {
