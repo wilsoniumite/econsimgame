@@ -42,7 +42,7 @@ The simulation runs in Rust (`crates/isostate-core`), checked against the Python
 
 ## Stage 2: the visual tool (sparser)
 
-- Done: replays and live play in Bevy, trains and boats, houses lining streets, scaffolding on new and growing works, click-to-inspect with each works' "why here" sums, a game interface. In progress: a terrain shader for fields, hedges and crops, crisp at any zoom, with the seasons.
+- Done: replays and live play in Bevy, a terrain shader for fields, hedges and crops (crisp at any zoom, with the seasons), trains, carts and boats, houses lining streets, scaffolding on new and growing works, click-to-inspect with each works' "why here" sums, a game interface.
 - Next for the look: construction with a puff of dust, people and carts on the roads, weather, a title screen and saved games (the replay format can carry a game).
 - Interventions: pause, change a parameter or place a thing (a canal, a tariff, a land tax), resume, and compare the branch against the baseline on the same seed.
 - A diff view on the map: where two branches differ, in rent, use and population.

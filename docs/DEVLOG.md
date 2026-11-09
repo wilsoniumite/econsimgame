@@ -21,7 +21,7 @@ Open design points from that pass:
 - Family spending is fixed (60% of income plus 2% of cash a month) and is the biggest drag on the player; it could become a lever.
 - Pace: the player sits low for a long time. Starting the player with a small estate rather than cash would open the game mid-table.
 
-In flight: the terrain shader (helper, branch `terrain-shader`).
+The ground is now painted per pixel by a shader (helper, branch `terrain-shader`, merged). It repeats the CPU's patchwork rule exactly (the hash runs in wrapping u32 maths, and "lower class if `sub_uniform*255 < t`" turns out to be "`sub_raw <= quant[t]`", one table lookup), so trees and houses still stand on matching ground: a check that casts rays against the mesh and compares classes under every pixel agrees on 99.99% of land pixels, the rest on class edges. Fields have their own crop calendars and rows, hedges are filtered to the pixel with a painted shadow, heath gets heather and gorse, the seasons run from young crops to stubble to frost, and GPU memory for the ground fell from about 31 MB to 50 KB. Known limits: class edges between neighbouring warped cells are hard steps smoothed only by SMAA, and the painted hedge shadows assume the sun stays in the south-west. Carts on the main roads went in after the docs above were written.
 
 ## 2026-11-09: the family game, first pass
 
