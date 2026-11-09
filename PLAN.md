@@ -10,7 +10,7 @@ Three stages: a lab you can tinker with, a visual tool you can steer, then a gam
 
 ## Where we are
 
-The simulation runs in Rust (`crates/isostate-core`), checked against the Python step by step, 150 years in about 21 seconds. The Bevy viewer (`crates/isostate-viewer`) plays recorded runs and live games. A live game has six families, the player's first: you buy land and build works on the map, put family members in charge of trades, and watch the century unfold year by year against the AI families (see docs/DEVLOG.md for what exists and what the scripted players taught us). The economic weaknesses listed under stage 1 still stand, and the politics half of the game is not started.
+The simulation runs in Rust (`crates/isostate-core`), checked against the Python step by step, 150 years in about 21 seconds. The Bevy viewer (`crates/isostate-viewer`) plays recorded runs and live games. A live game has six families, the player's first. The player chooses from short lists: the family's first trade, each child's training, where grown members run its trades, what each branch does, where the seat is, and, at the seat only, which works to build and which land to buy (see `crates/isostate-core/FAMILIES.md` for the rules and docs/DEVLOG.md for what exists). The look is planned in docs/ART.md. The economic weaknesses listed under stage 1 still stand, and the politics half of the game is not started.
 
 ## Stage 1: the lab (next, dense)
 
@@ -42,7 +42,8 @@ The simulation runs in Rust (`crates/isostate-core`), checked against the Python
 
 ## Stage 2: the visual tool (sparser)
 
-- Done: replays and live play in Bevy, a terrain shader for fields, hedges and crops (crisp at any zoom, with the seasons), trains, carts and boats, houses lining streets, scaffolding on new and growing works, click-to-inspect with each works' "why here" sums, a game interface.
+- Done: replays and live play in Bevy, a terrain shader for fields, hedges and crops (crisp at any zoom, with the seasons), relief, meandering rivers, coasts and a sea, enclosure and open fields, graded railways with their engineering, towns laid out along their roads, trains, carts and boats, scaffolding on new and growing works, click-to-inspect with each works' "why here" sums, a game interface.
+- Next, from docs/ART.md: visible change (fixed steps per element on a staggered ladder, scheduled inside the year, scaffolding as a state) and building the scenery per chunk in the background. Town ground also needs a kept urban layer that decays slowly, shared by the shader and the slots: about a third of urban cells switch in or out each decade in seed 7, so districts come and go.
 - Next for the look: construction with a puff of dust, people and carts on the roads, weather, a title screen and saved games (the replay format can carry a game).
 - Interventions: pause, change a parameter or place a thing (a canal, a tariff, a land tax), resume, and compare the branch against the baseline on the same seed.
 - A diff view on the map: where two branches differ, in rent, use and population.
@@ -52,5 +53,7 @@ The simulation runs in Rust (`crates/isostate-core`), checked against the Python
 
 - The player's seat, decided: a family running a conglomerate among rival families. Companies mostly run themselves; the player chooses trades, places and people. The government is always run by one family; holding office drains the family's people and attention, so power changes hands without ending anyone's game. Historical politics (a limited franchise, rotten boroughs, reform acts, the Corn Laws) comes next, after the company half is fun on its own.
 - Balance from the scripted players (DEVLOG, 2026-11-09): honest returns in thin markets, consent or a premium for buying a rival's land, a start that puts the player mid-table, and spending as a lever.
+- Open after families v2 (FAMILIES.md): land beats works (decide on land buying: more years' purchase, a cap on direct purchases, or prices that rise as one buyer takes a town's land); families own over half the works' capital by 1900; industrial rivals stay small; AI families never hold, wind down or move their seat.
+- Next for the family game: research and patents (an educated member posted to research a trade; a patent on a method the family brings in, licensed for royalties or kept to the family for its term), and a bonus for running both ends of a supply chain in one town, so vertical integration is a choice. Then politics.
 - Keep the sim honest: the player acts through the same prices and bids as everyone else, never by editing outcomes.
 - Make tangibility the design brief: milestones, inventions with names and places, booms and slumps called live and dated later, and a map that visibly answers "why is that there".

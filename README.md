@@ -38,7 +38,7 @@ cargo run -p isostate-viewer --release -- runs/landlords/run.bin        # watch 
 
 A Bevy diorama: fields, woods, towns and works grow and change as the years go by. In a game the simulation runs live and you play a family among six: choose its trade, train its children (an apprenticeship teaches the family a new trade), post its grown members to run your trades in other towns, build works and buy land yourself around your seat, and see where you stand against the other great families by 1900. Every choice is from a short list; there are no sliders. See `crates/isostate-viewer/README.md` for controls and how the picture is made, and `crates/isostate-core/FAMILIES.md` for how families work.
 
-![A game in 1753: the Fairfax family's land is fenced in red, its forge flies a pennant, and the inspector lists what could be built on the square clicked](docs/shots/game-1753.jpg)
+![A game in 1780: the Fairfax family panel with a decision waiting and two members with nothing to run, and the note on Melbourne, the family's seat, listing its branches there](docs/shots/game-1780.jpg)
 
 ### The simulation in Rust
 
