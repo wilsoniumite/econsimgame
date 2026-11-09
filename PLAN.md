@@ -43,7 +43,7 @@ The simulation runs in Rust (`crates/isostate-core`), checked against the Python
 ## Stage 2: the visual tool (sparser)
 
 - Done: replays and live play in Bevy, a terrain shader for fields, hedges and crops (crisp at any zoom, with the seasons), relief, meandering rivers, coasts and a sea, enclosure and open fields, graded railways with their engineering, towns laid out along their roads, trains, carts and boats, scaffolding on new and growing works, click-to-inspect with each works' "why here" sums, a game interface.
-- Next, from docs/ART.md: visible change (fixed steps per element on a staggered ladder, scheduled inside the year, scaffolding as a state) and building the scenery per chunk in the background. Town ground also needs a kept urban layer that decays slowly, shared by the shader and the slots: about a third of urban cells switch in or out each decade in seed 7, so districts come and go.
+- Next, from docs/ART.md: visible change (fixed steps per element on a staggered ladder, scheduled inside the year, scaffolding as a state) and building the scenery per chunk with a cache (a year is already built off the main thread). Town ground also needs a kept urban layer that decays slowly, shared by the shader and the slots: about a third of urban cells switch in or out each decade in seed 7, so districts come and go.
 - Next for the look: construction with a puff of dust, people and carts on the roads, weather, a title screen and saved games (the replay format can carry a game).
 - Interventions: pause, change a parameter or place a thing (a canal, a tariff, a land tax), resume, and compare the branch against the baseline on the same seed.
 - A diff view on the map: where two branches differ, in rent, use and population.

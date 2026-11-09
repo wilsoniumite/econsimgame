@@ -102,4 +102,4 @@ All of it is Bevy UI in one paper-and-ink style (`src/ui.rs`, `src/family.rs`, `
 
 - Construction with a puff of dust; people on the streets; weather and cloud shadows.
 - A title screen, and saving a game (the replay format can carry one).
-- Building the year's meshes off the main thread, so a new year never stutters.
+- Building the scenery per chunk and caching it, so a new year rebuilds only what changed (it is already built off the main thread, about 0.6 to 0.8 s a year in a debug build).

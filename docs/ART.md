@@ -31,6 +31,8 @@ The sim is continuous: densities, shares and capacities move a little every year
 - Style follows the year on screen (`year < 1815` in `towns::houses`), so every back street flips from separate houses to terraces in 1815. Style should be fixed when a plot is first built.
 - Rows are regrouped every year from whichever plots are standing (runs of up to six, and only above a density of 0.6), so a row can merge, split and change as its neighbours fill in. Row boundaries should be fixed per street, like the plots.
 
+Both done (2026-11-09, evening): plots sit at fixed places along their street, back streets are cut into rows of three to six fixed per street that share one need and go up together, a row's style is settled by the year it was first built, houses step up a storey at a density of their own, and houses outlast a small fall in density. A third problem is upstream of the towns: the simulation churns town ground (about a third of urban cells switch in or out of urban use each decade in seed 7; Kirkford's cell at 75,47 flickers between town and farmland from 1837 to 1870), so districts appear and vanish. That wants a kept urban layer that decays slowly, read by both the ground shader and the slots.
+
 ## What generators react to
 
 The relationships the sim already knows:
@@ -57,7 +59,7 @@ A soundscape from what is in view and what is changing in it. A bed mixed from w
 
 1. **Tooling.** A lab that renders a generator or a street as a contact sheet at the real camera distances in the real light, with each generator's parameters on live sliders for tuning by eye. Named colour and size tokens in place of the inline hex values (about sixty). Generators as pure functions (inputs to geometry, maths only), in their own crate or module so they compile and test quickly.
 2. **Visible change on one street.** Fix style at build time and row boundaries per street, add the step ladder and the scheduling, scaffolding as a state, the settle. Judge it up close and at play distance. Tiny Glade itself began as one wall generator.
-3. **Chunks.** `rebuild_year` (`crates/isostate-viewer/src/main.rs`) rebuilds the whole island's scenery on the main thread at every year change. Generate per cell in the background (rayon is already a dependency), cache, and rebuild a chunk only when its inputs change.
+3. **Chunks.** `rebuild_year` (`crates/isostate-viewer/src/main.rs`) rebuilds the whole island's scenery at every year change; since 2026-11-09 it does so on a background thread (one build at a time, shown when ready). Still to do: generate per cell, cache, and rebuild a chunk only when its inputs change.
 4. **The kit.** Footprints as polygons (L and T), roofs fitted to footprints including joins, wall strips with openings placed by rule, bevels and a little wobble, baked AO.
 5. **Art study.** Three or four directions on the same shots (whole island, a town at play distance, a works close up; 1750 and 1900; summer and winter). To decide: toy or period (Townscaper and Tiny Glade, or Constable, Wright of Derby and *Coalbrookdale by Night*); free colour or regional coherence; how dark industry gets.
 6. **Fan out by generator,** in waves, one element per agent, every change on a contact sheet beside approved examples. Rank by screen time: houses and trees are most of the pixels; the fifteen kinds of works carry the most information.
