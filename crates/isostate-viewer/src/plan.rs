@@ -57,6 +57,10 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
             let paths = crate::trains::rail_paths(r, g, cen, k);
             let t2 = thread_cpu();
             let verts = ym.trees.pos.len() + ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len();
+            if round == 0 {
+                eprintln!("bench {} vertices: trees {}, houses {}, works {}, smoke {}, lanes {}, roads {}, rails {}", r.y0 + k as i32,
+                    ym.trees.pos.len(), ym.houses.pos.len(), ym.works.pos.len(), ym.smoke.pos.len(), ym.lanes.pos.len(), nets.roads.pos.len(), nets.rails.pos.len());
+            }
             let meshes = [ym.trees, ym.houses, ym.works, ym.smoke, ym.lanes, nets.roads, nets.rails].map(|b| b.into_mesh());
             let t3 = thread_cpu();
             drop(meshes);

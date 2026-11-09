@@ -214,7 +214,7 @@ fn shape_coast(hgt: &mut [f32], gw: usize, gh: usize, res: f32) {
     let from_sea = chamfer(gw, gh, &sea);
     let from_land = chamfer(gw, gh, &land);
     let top = max_filter(hgt, gw, gh, (0.6 * res) as usize);
-    // the cliff behind each sea vertex: the highest land near it
+    // how much of a cliff each stretch of shore is, from the highest ground near it
     for k in 0..gw * gh {
         let cliff = fields::smoothstep(0.17, 0.34, top[k]);
         if land[k] {

@@ -6,7 +6,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::math::{Quat, Vec3};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Builder {
     pub pos: Vec<[f32; 3]>,
     pub nrm: Vec<[f32; 3]>,

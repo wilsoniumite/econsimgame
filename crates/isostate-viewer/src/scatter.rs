@@ -11,7 +11,7 @@ use bevy::math::Vec3;
 
 mod towns;
 
-use crate::meshkit::{hex, lerp, shade, Builder};
+use crate::meshkit::{hex, shade, Builder};
 use crate::replay::{self, Replay};
 use crate::world::{self, Ground};
 
@@ -216,7 +216,7 @@ fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
                     }
                     // trees stand thicker in some districts than others
                     let u = world::hash2(id, 3, 17);
-                    if u > 0.07 + 0.15 * (0.5 + 0.5 * world::vnoise(hx * 0.45, hz * 0.45, 181)) {
+                    if u > 0.05 + 0.12 * (0.5 + 0.5 * world::vnoise(hx * 0.45, hz * 0.45, 181)) {
                         continue;
                     }
                     let (wc, sub) = world::class_key(g, x, z);
@@ -532,7 +532,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     }
     // the railway's embankments, viaducts, cuttings, portals and bridges, and a
     // bridge wherever a road crosses a river
-    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g));
+    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k)));
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         for (at, _, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
@@ -860,29 +860,19 @@ fn farmstead(b: &mut Builder, trees: &mut Builder, g: &Ground, s: &Slot, arable:
     b.block(yc - Vec3::Y * 0.004, 0.085, 0.055, 0.0055, s.yaw, hex(0xb59f7a), Some(hex(0xbca783)), 0.01);
     let storeys = 1.0 + (s.v > 0.55) as u8 as f32;
     house(b, at(0.0, 0.0), 0.05, 0.032, storeys, s.yaw, wall, roof);
-    let dark = hex(0x3a3330);
-    b.block(at(0.019, 0.0), 0.006, 0.006, 0.024 * storeys + 0.026, s.yaw, hex(0xa9553f), Some(dark), 0.0);
     // the barn across the yard, long and tall
     house(b, at(-0.005, -0.09), 0.08, 0.036, 1.3, s.yaw, barn_wall, barn_roof);
     // a cart shed or byre closing one side of the bigger yards
     let side = if s.u < 0.16 { 1.0 } else { -1.0 };
-    if s.v > 0.35 {
+    if s.v > 0.55 {
         house(b, at(0.052 * side, -0.046), 0.05, 0.026, 0.85, s.yaw + std::f32::consts::FRAC_PI_2, barn_wall, barn_roof);
     }
     if arable {
-        let hay = hex(0xe0c068);
-        let p = at(-0.06 * side, -0.03);
-        b.frustum(p, 0.012, 0.012, 0.012, 5, hay, None);
-        b.frustum(p + Vec3::Y * 0.012, 0.012, 0.0, 0.012, 5, lerp(hay, hex(0xc9a24e), 0.5), None);
+        // a rick of corn or hay
+        b.frustum(at(-0.06 * side, -0.03), 0.013, 0.0, 0.024, 5, hex(0xd8b55e), None);
     }
     // a tree by the house
     if s.v < 0.6 {
         hedge_tree(trees, at(0.05 * -side, 0.03), 0.7 + 0.2 * s.u, s.v, s.yaw);
     }
-}
-
-fn houses_haystack(b: &mut Builder, p: Vec3) {
-    let hay = hex(0xe0c068);
-    b.frustum(p, 0.012, 0.012, 0.012, 7, hay, None);
-    b.frustum(p + Vec3::Y * 0.012, 0.012, 0.0, 0.012, 7, lerp(hay, hex(0xc9a24e), 0.5), None);
 }

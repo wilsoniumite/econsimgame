@@ -47,6 +47,8 @@ pub struct RailYear {
     pub lines: Vec<Line>,
     /// track being laid: dashed, straight between cell centres
     pub building: Vec<(Vec2, Vec2)>,
+    /// the solid works, made once with the lines
+    works: Builder,
 }
 
 /// The cells whose transport byte has track, linked to their neighbours (a
@@ -228,13 +230,11 @@ fn classify(pts: &[Vec2], lev: &[f32], ground: &[f32]) -> Vec<Kind> {
 
 fn build_year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RailYear {
     let adj = graph(r, k, |v| v & 4 != 0);
-    let towns: Vec<Vec2> = (0..r.n_towns.min(r.header.towns.len()))
-        .filter(|&t| r.town_active[k * r.n_towns + t] > 0)
-        .map(|t| {
-            let c = cen[r.header.towns[t].node];
-            Vec2::new(c.0, c.1)
-        })
-        .collect();
+    // every town, not only this year's, so the lines depend on the network alone
+    let towns: Vec<Vec2> = r.header.towns.iter().map(|t| {
+        let c = cen[t.node.min(r.n - 1)];
+        Vec2::new(c.0, c.1)
+    }).collect();
     let mut lines = Vec::new();
     for cells in chains(&adj) {
         if cells.len() < 2 {
@@ -274,23 +274,27 @@ fn build_year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RailYear 
             }
         }
     }
-    RailYear { lines, building }
+    let mut ry = RailYear { lines, building, works: Builder::default() };
+    ry.works = build_structures(&ry, g);
+    ry
 }
 
-static CACHE: Mutex<Option<(usize, u64, Arc<RailYear>)>> = Mutex::new(None);
+static CACHE: Mutex<Option<(u64, Arc<RailYear>)>> = Mutex::new(None);
 
-/// The railways of year k, worked out once and kept until the year changes.
+/// The railways of year k. They are worked out once and kept for as long as
+/// the network stays the same, which it does for most years, so stepping
+/// through the years does not grade the lines again.
 pub fn year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Arc<RailYear> {
-    // the year's transport layer, so a live game that rewrites a year is noticed
-    let key = r.trans[k * r.n..(k + 1) * r.n].iter().fold(1469598103934665603u64, |h, &b| (h ^ b as u64).wrapping_mul(1099511628211));
+    // the track laid and being laid, cell by cell (a live game's new year is noticed too)
+    let key = r.trans[k * r.n..(k + 1) * r.n].iter().fold(1469598103934665603u64, |h, &b| (h ^ (b & 12) as u64).wrapping_mul(1099511628211));
     let mut c = CACHE.lock().unwrap();
-    if let Some((ck, ckey, ry)) = c.as_ref() {
-        if *ck == k && *ckey == key {
+    if let Some((ckey, ry)) = c.as_ref() {
+        if *ckey == key {
             return ry.clone();
         }
     }
     let ry = Arc::new(world::timed("year rails", || build_year(r, g, cen, k)));
-    *c = Some((k, key, ry.clone()));
+    *c = Some((key, ry.clone()));
     ry
 }
 
@@ -372,7 +376,11 @@ fn side_of(a: Vec3, b: Vec3) -> Vec3 {
 
 /// The solid works: embankments, viaducts and bridges, the banks of the
 /// cuttings, and the portals of the tunnels.
-pub fn structures(ry: &RailYear, g: &Ground) -> Builder {
+pub fn structures(ry: &RailYear) -> Builder {
+    ry.works.clone()
+}
+
+fn build_structures(ry: &RailYear, g: &Ground) -> Builder {
     let mut b = Builder::default();
     let grass = hex(0x7f9a52);
     let grass_dark = hex(0x6c8546);
