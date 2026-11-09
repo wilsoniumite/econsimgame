@@ -277,6 +277,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params, rng: &mut Rng) {
         return;
     }
     st.f_owner = vec![-1; st.f_alive.len()];
+    st.f_paid = vec![0.0; st.f_alive.len()];
     st.cell_owner = vec![-1; st.N];
     // no rent has been booked cell by cell yet: start from a year of the map's rent
     st.cell_rent_paid = vec![0.0; st.N];
@@ -424,6 +425,7 @@ pub fn take_dividends(st: &mut State, C: &Content, fi: &[usize], div: &mut [f64]
         let Some(o) = owner_of_firm(st, f) else { continue };
         let d = div[k];
         let group = Group::of_method(C, st.f_method[f]);
+        st.f_paid[f] += d;
         let fam = &mut st.families[o];
         fam.cash += d;
         fam.month_acc += d;
@@ -558,6 +560,19 @@ pub struct SiteSums {
     pub bonus: f64,
     /// Agglomeration multiplier from works of the same kind nearby.
     pub agglo: f64,
+    /// What the works would make in a month at 85 per cent of capacity.
+    pub output: f64,
+    /// What the town's buyers asked for of that good last month, got or not.
+    pub town_demand: f64,
+    /// What the town made of it last year, per month.
+    pub town_output: f64,
+    /// The new works' output over the town's demand: above a few tenths the
+    /// works would flood its market and the price, and the expected return with
+    /// it, would fall.
+    pub market_share: f64,
+    /// The town's mean price of the good last year over its base price: far above
+    /// 1 the good is scarce, and the price will not last once someone makes it.
+    pub price_ratio: f64,
 }
 
 /// One method on one cell for one family: the sums, or why not.
@@ -622,7 +637,19 @@ fn evaluate(st: &State, C: &Content, P: &Params, family: usize, m: usize, cell: 
     (ev, b)
 }
 
-fn sums_of(C: &Content, ev: &SiteEval, b: f64, K: f64, i: usize, wage: f64) -> SiteSums {
+/// How deep the market for method m's output is in town i, for a works of capacity K:
+/// (output a month, town demand a month, town output a month, market share, price ratio).
+pub fn market_depth(st: &State, C: &Content, i: usize, m: usize, K: f64) -> (f64, f64, f64, f64, f64) {
+    let g = C.method_out[m];
+    let output = 0.85 * K;
+    let demand = if st.requests.rows > 0 { st.requests[(i, g)] } else { 0.0 };
+    let made = if st.town_prod_year.rows > 0 { st.town_prod_year[(i, g)] / 12.0 } else { 0.0 };
+    let share = (output / demand.max(1e-9)).min(1e6);
+    (output, demand, made, share, prices(st)[(i, g)] / C.base_price[g])
+}
+
+fn sums_of(st: &State, C: &Content, m: usize, ev: &SiteEval, b: f64, K: f64, i: usize, wage: f64) -> SiteSums {
+    let (output, town_demand, town_output, market_share, price_ratio) = market_depth(st, C, i, m, K);
     SiteSums {
         town: i,
         K,
@@ -641,6 +668,11 @@ fn sums_of(C: &Content, ev: &SiteEval, b: f64, K: f64, i: usize, wage: f64) -> S
         expected_return: ev.roi[0],
         bonus: b,
         agglo: ev.agglo[0],
+        output,
+        town_demand,
+        town_output,
+        market_share,
+        price_ratio,
     }
 }
 
@@ -655,7 +687,7 @@ pub fn site_options(st: &State, C: &Content, P: &Params, family: usize, cell: us
                 Err(format!("{} is not known in {} yet", C.method_label[m], st.town_name[i]))
             } else {
                 let (ev, b) = evaluate(st, C, P, family, m, cell, i);
-                Ok(sums_of(C, &ev, b, P.entry_K_frac * C.m_K0[m], i, wages(st)[i]))
+                Ok(sums_of(st, C, m, &ev, b, P.entry_K_frac * C.m_K0[m], i, wages(st)[i]))
             };
             SiteOption {
                 method: m,
@@ -702,6 +734,7 @@ pub fn found_works(
         return Err(format!("it costs {cost:.0} and the {} family has {:.0}", fam.surname, fam.cash.max(0.0)));
     }
     let name = family_works_name(st, C, family, method, i);
+    let first_of_kind = !(0..st.F_count).any(|f| st.f_owner[f] == family as i64 && st.f_method[f] == method);
     let reason = firms::reason_record(st, i, method, cell, &ev, 0, K, year, "family");
     // the name is given, so create_firm draws nothing from this stream
     let mut unused = Rng::from_seed([0; 32]);
@@ -712,13 +745,22 @@ pub fn found_works(
         .expect("checked that the firm table has room");
     st.f_owner[fid] = family as i64;
     st.new_firms_year.push(fid);
+    // the player hears of every works of its own, and of a rival's first of each kind
+    if family != 0 && !first_of_kind {
+        return Ok(fid);
+    }
     let fam = &st.families[family];
     let what = C.method_label[method].to_lowercase();
+    let title = if family == 0 {
+        format!("The {} family opens {} {} at {}", fam.surname, article(&what), what, st.town_name[i])
+    } else {
+        format!("The {} family opens its first {} at {}", fam.surname, what, st.town_name[i])
+    };
     let mut e = Event::new(
         year as f64 + 0.95,
         "family",
         if family == 0 { 0.6 } else { 0.35 },
-        format!("The {} family opens {} {} at {}", fam.surname, article(&what), what, st.town_name[i]),
+        title,
         format!(
             "{} is built for {:.0} and expects to return {:.0} per cent a year.",
             st.f_name[fid],
@@ -1022,9 +1064,11 @@ fn reserve(fam: &Family, P: &Params) -> f64 {
 }
 
 /// An AI family's yearly investment. Industrial families build up to three of
-/// the best works they find around home; landed families first buy up to four
-/// cells of land next to their estates, then build up to two works where the
-/// return is half as much again as the hurdle rate.
+/// the best works they find around home and put what is left into up to two
+/// cells of land; landed families first buy up to four cells of land next to
+/// their estates, then build up to two works where the return is half as much
+/// again as the hurdle rate. Works go only where the market is deep enough
+/// (`family_max_share`, `family_max_price_ratio`).
 fn invest(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year: i64, events: &mut Vec<Event>) {
     let fam = &st.families[k];
     let mut spare = fam.cash - reserve(fam, P);
@@ -1037,6 +1081,10 @@ fn invest(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
     }
     let (max_works, hurdle) = if landed { (2, 1.5 * P.hurdle) } else { (3, P.hurdle) };
     build_best(st, C, P, rng, k, &mut spare, max_works, hurdle, year, events);
+    if !landed {
+        // what the works did not take goes into a little land
+        buy_estates(st, C, P, k, &mut spare, 2, year, events);
+    }
 }
 
 /// Up to `max` cells of farmland in the home town's reach, next to the family's
@@ -1064,6 +1112,7 @@ fn buy_estates(st: &mut State, C: &Content, P: &Params, k: usize, spare: &mut f6
         .map(|c| (next_to_own(st, c), st.cell_rent_year[c], c))
         .collect();
     cells.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.total_cmp(&a.1)).then(a.2.cmp(&b.2)));
+    let held_before = st.cell_owner.iter().filter(|&&o| o == k as i64).count();
     let mut bought = 0;
     for (_, _, c) in cells {
         if bought >= max {
@@ -1078,14 +1127,16 @@ fn buy_estates(st: &mut State, C: &Content, P: &Params, k: usize, spare: &mut f6
             bought += 1;
         }
     }
-    if bought > 0 {
+    // news only when the estates pass another hundred holdings
+    let held = held_before + bought;
+    if held / 100 > held_before / 100 {
         let fam = &st.families[k];
         let mut e = Event::new(
             year as f64 + 0.95,
             "family",
             0.15,
-            format!("The {} family buys {} more {} near {}", fam.surname, bought, if bought == 1 { "farm" } else { "farms" }, st.town_name[home]),
-            format!("The {} estates grow to {} holdings.", fam.surname, st.cell_owner.iter().filter(|&&o| o == k as i64).count()),
+            format!("The {} estates near {} pass {} farms", fam.surname, st.town_name[home], held / 100 * 100),
+            format!("The {} family has bought land around {} year after year.", fam.surname, st.town_name[home]),
         );
         e.town = Some(home);
         e.family = Some(k);
@@ -1126,6 +1177,10 @@ fn build_best(
                 continue;
             }
             let K = P.entry_K_frac * C.m_K0[m];
+            let (_, _, _, share, ratio) = market_depth(st, C, i, m, K);
+            if share > P.family_max_share || ratio > P.family_max_price_ratio {
+                continue; // a thin market: the price would not survive the works' own output
+            }
             let ev = firms::evaluate_sites(st, C, P, i, m, &cells, K, prices(st), wages(st));
             let b = bonus(st, P, k, Group::of_method(C, m));
             let e = 1.0 - b;

@@ -321,10 +321,16 @@ pub struct State {
     pub families: Vec<Family>,
     /// Owning family of each firm slot, or -1 for the anonymous small capital.
     pub f_owner: Vec<i64>,
+    /// Money each family works has paid its family so far: dividends, and its
+    /// cash when it closed.
+    pub f_paid: Vec<f64>,
     /// Owning family of each cell, or -1 for the anonymous gentry.
     pub cell_owner: Vec<i64>,
     /// Rent each cell has paid this year so far, whoever received it.
     pub cell_rent_paid: Vec<f64>,
     /// Rent each cell paid over the last complete year (what land is priced on).
     pub cell_rent_year: Vec<f64>,
+    /// (T, G): what each town's buyers asked for last month (households, landlords,
+    /// works, mines, building and railway orders), whether or not they got it.
+    pub requests: Mat,
 }
