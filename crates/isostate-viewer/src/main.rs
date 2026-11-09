@@ -10,12 +10,16 @@ mod boats;
 mod carts;
 mod cursor;
 mod family;
+mod fields;
 mod game;
 mod icons;
 mod live;
 mod meshkit;
 mod network;
+mod plan;
+mod rails;
 mod replay;
+mod rivers;
 mod scatter;
 mod terrain;
 mod trains;
@@ -209,6 +213,7 @@ struct Handles {
     smoke: Handle<Mesh>,
     roads: Handle<Mesh>,
     rails: Handle<Mesh>,
+    lanes: Handle<Mesh>,
 }
 
 #[derive(Resource)]
@@ -513,7 +518,7 @@ fn setup_world(
 
     // ground: one heightfield, its patchwork painted per pixel from the year's land mix
     let year_cells = images.add(terrain::cell_image(r, terrain::year_cells(r, k), TextureFormat::Rgba8Unorm));
-    let fixed_cells = images.add(terrain::cell_image(r, terrain::fixed_cells(r), TextureFormat::R8Unorm));
+    let fixed_cells = images.add(terrain::cell_image(r, terrain::fixed_cells(r, g), TextureFormat::Rgba8Unorm));
     let terrain_mat = ground_mats.add(terrain::GroundMaterial {
         base: StandardMaterial { perceptual_roughness: 0.92, reflectance: 0.18, ..default() },
         extension: terrain::Patchwork {
@@ -522,25 +527,17 @@ fn setup_world(
             fixed: fixed_cells,
         },
     });
-    commands.spawn((Mesh3d(meshes.add(terrain::terrain_mesh(g))), MeshMaterial3d(terrain_mat.clone()), GroundMesh));
+    for chunk in terrain::terrain_chunks(g) {
+        commands.spawn((Mesh3d(meshes.add(chunk)), MeshMaterial3d(terrain_mat.clone()), GroundMesh));
+    }
 
-    // the sea: a clear sheet of water over the painted sea floor, and a deep floor beyond the map
+    // the sea: a deep floor beyond the map, under the sea's surface
     let (w, h) = (r.w as f32, r.h as f32);
     commands.spawn((
         Mesh3d(meshes.add(terrain::plane(-4.0 * w, -4.0 * h, 5.0 * w, 5.0 * h, -1.15))),
         MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::srgb(0.16, 0.36, 0.48), perceptual_roughness: 1.0, ..default() })),
     ));
-    commands.spawn((
-        Mesh3d(meshes.add(terrain::plane(-4.0 * w, -4.0 * h, 5.0 * w, 5.0 * h, 0.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgba(0.28, 0.60, 0.74, 0.58),
-            alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.12,
-            reflectance: 0.45,
-            ..default()
-        })),
-        bevy::light::NotShadowCaster,
-    ));
+    // (the sea's surface is terrain.rs's, with its own shader)
 
     // rivers do not change
     let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.25, reflectance: 0.4, ..default() });
@@ -557,6 +554,7 @@ fn setup_world(
         smoke: meshes.add(placeholder_mesh()),
         roads: meshes.add(placeholder_mesh()),
         rails: meshes.add(placeholder_mesh()),
+        lanes: meshes.add(placeholder_mesh()),
     };
     let tree_mat = vertex_coloured(&mut materials, 0.9);
     commands.spawn((Mesh3d(handles.trees.clone()), MeshMaterial3d(tree_mat.clone())));
@@ -567,7 +565,8 @@ fn setup_world(
     let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: 0.3, ..default() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
     commands.insert_resource(handles);
 
     // a warm low sun from the south-west, and soft sky light
@@ -688,7 +687,7 @@ fn rebuild_year(
             ));
         }
     }
-    for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails)] {
+    for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
         if let Some(mut m) = meshes.get_mut(h) {
             *m = non_empty(b);
         }

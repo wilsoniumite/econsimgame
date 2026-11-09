@@ -25,9 +25,10 @@ impl TrainPath {
     }
 }
 
-/// Railway lines for year k, as chains of cells between junctions and ends.
+/// Railway lines for year k, along the graded track of rails.rs, so the trains
+/// run on the embankments and viaducts and vanish into the tunnels.
 pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
-    world::timed("year trains", || chains(r, g, cen, k, |v| v & 4 != 0, 0.02, 2.0))
+    world::timed("year trains", || crate::rails::train_paths(&crate::rails::year(r, g, cen, k)))
 }
 
 /// Routes along the main roads for year k: carters' rounds of a dozen cells,
@@ -112,49 +113,6 @@ fn along(cells: &[usize], g: &Ground, cen: &[(f32, f32)], lift: f32) -> Option<T
     }
     let len = *cum.last()?;
     Some(TrainPath { pts, cum, len })
-}
-
-/// Lines of cells whose transport byte passes `on`, as chains between junctions
-/// and ends, draped `lift` above the ground; chains shorter than `min_len` are dropped.
-fn chains(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, on: impl Fn(u8) -> bool, lift: f32, min_len: f32) -> Vec<TrainPath> {
-    let n = r.n;
-    let adj = graph(r, k, on);
-    let mut used = std::collections::HashSet::new();
-    let mut paths = Vec::new();
-    for start in 0..n {
-        if adj[start].is_empty() || adj[start].len() == 2 {
-            continue;
-        }
-        for &first in &adj[start] {
-            if used.contains(&(start.min(first), start.max(first))) {
-                continue;
-            }
-            let mut cells = vec![start];
-            let (mut prev, mut cur) = (start, first);
-            loop {
-                used.insert((prev.min(cur), prev.max(cur)));
-                cells.push(cur);
-                if adj[cur].len() != 2 {
-                    break;
-                }
-                let next = if adj[cur][0] == prev { adj[cur][1] } else { adj[cur][0] };
-                if used.contains(&(cur.min(next), cur.max(next))) {
-                    break;
-                }
-                prev = cur;
-                cur = next;
-            }
-            if cells.len() < 3 {
-                continue;
-            }
-            if let Some(p) = along(&cells, g, cen, lift) {
-                if p.len > min_len {
-                    paths.push(p);
-                }
-            }
-        }
-    }
-    paths
 }
 
 /// A locomotive and three wagons, pointing along +x, centred on the engine.

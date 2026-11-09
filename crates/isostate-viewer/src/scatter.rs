@@ -38,6 +38,13 @@ pub struct Slots {
     pub firm_pos: Vec<(f32, f32, f32)>,
     /// how many plots each cell has handed out
     pub taken: std::collections::HashMap<usize, usize>,
+    /// spots on the hedges between fields, for hedgerow trees
+    pub hedge: Vec<Slot>,
+    /// the year the fields of each hedge spot and each farm spot are enclosed
+    /// (0 if they always were), as there are no hedges round open fields and the
+    /// farms stand in the village until enclosure
+    pub hedge_open: Vec<i32>,
+    pub farm_open: Vec<i32>,
 }
 
 fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<Slot> {
@@ -52,16 +59,16 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
                 let id = (c * n * n + j * n + i) as i32;
                 let x = cx + (i as f32 + 0.5 + jitter * (world::hash2(id, 1, seed) - 0.5)) / n as f32;
                 let z = cy + (j as f32 + 0.5 + jitter * (world::hash2(id, 2, seed) - 0.5)) / n as f32;
-                if world::height_at(g, x, z) < 0.05 {
+                // nothing on the beach or in a river
+                if world::height_at(g, x, z) < 0.05 || world::water_dist(g, x, z) < 0.025 {
                     continue;
                 }
-                let (wx, wy) = world::warp(x, z);
-                let wc = (wy.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + wx.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
+                let (wc, sub) = world::class_key(g, x, z);
                 out.push(Slot {
                     x,
                     z,
                     wcell: wc as u32,
-                    sub: world::sub_uniform(g, x, z) * 255.0,
+                    sub,
                     u: world::hash2(id, 3, seed),
                     v: world::hash2(id, 4, seed),
                     yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
@@ -152,14 +159,95 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     let mut slots = Slots {
         trees: grid_slots(r, g, 6, 11, 0.9),
         houses: grid_slots(r, g, 7, 12, 0.7),
-        farms: grid_slots(r, g, 1, 13, 0.6),
+        farms: Vec::new(),
         mines: grid_slots(r, g, 2, 14, 0.7),
         firm_pos: Vec::new(),
         taken: Default::default(),
+        hedge: Vec::new(),
+        hedge_open: Vec::new(),
+        farm_open: Vec::new(),
     };
+    (slots.hedge, slots.hedge_open) = hedge_slots(r, g).into_iter().unzip();
+    slots.farms = grid_slots(r, g, 2, 13, 0.5).into_iter().map(|s| farm_spot(g, s)).collect();
+    slots.farm_open = slots.farms.iter().map(|s| g.open_until[world::own_cell(g, s.x, s.z)]).collect();
     // firms get plots in their cell, first come first served
     place_new_firms(r, g, &mut slots);
+    crate::plan::maybe_write(r, g, &slots);
+    crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
+}
+
+/// Spots on the hedges: a grid of candidates in every land cell, each moved
+/// onto the nearest edge of its field. The spot keeps the class of the field it
+/// started in, so a tree only grows on the hedges of farm and pasture.
+fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
+    use rayon::prelude::*;
+    let n = 7usize;
+    (0..r.n)
+        .into_par_iter()
+        .flat_map_iter(|c| {
+            let mut out = Vec::new();
+            if r.terrain[c] == 0 {
+                return out;
+            }
+            let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
+            for j in 0..n {
+                for i in 0..n {
+                    let id = (c * n * n + j * n + i) as i32;
+                    let x = cx + (i as f32 + 0.5 + 0.9 * (world::hash2(id, 1, 17) - 0.5)) / n as f32;
+                    let z = cy + (j as f32 + 0.5 + 0.9 * (world::hash2(id, 2, 17) - 0.5)) / n as f32;
+                    if world::height_at(g, x, z) < 0.05 {
+                        continue;
+                    }
+                    let f = world::field_at(g, x, z);
+                    if f.edge > 0.08 {
+                        continue;
+                    }
+                    // step onto the edge, twice, as the gentle warp of the fields
+                    // makes the first step fall a little short
+                    let (mut hx, mut hz) = (x + f.toward.x * f.edge, z + f.toward.y * f.edge);
+                    let f2 = world::field_at(g, hx - f.toward.x * 0.004, hz - f.toward.y * 0.004);
+                    if f2.cut.id == f.cut.id && f2.block.i == f.block.i && f2.block.j == f.block.j {
+                        hx += f2.toward.x * (f2.edge - 0.004).max(0.0);
+                        hz += f2.toward.y * (f2.edge - 0.004).max(0.0);
+                    }
+                    if world::height_at(g, hx, hz) < 0.05 || world::water_dist(g, hx, hz) < 0.03 {
+                        continue;
+                    }
+                    // trees stand thicker in some districts than others
+                    let u = world::hash2(id, 3, 17);
+                    if u > 0.07 + 0.15 * (0.5 + 0.5 * world::vnoise(hx * 0.45, hz * 0.45, 181)) {
+                        continue;
+                    }
+                    let (wc, sub) = world::class_key(g, x, z);
+                    let slot = Slot {
+                        x: hx,
+                        z: hz,
+                        wcell: wc as u32,
+                        sub,
+                        u,
+                        v: world::hash2(id, 4, 17),
+                        yaw: world::hash2(id, 5, 17) * std::f32::consts::TAU,
+                    };
+                    out.push((slot, g.open_until[world::own_cell(g, x, z)]));
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// A farmstead stands just inside a hedge of its field, square to it.
+fn farm_spot(g: &Ground, s: Slot) -> Slot {
+    let f = world::field_at(g, s.x, s.z);
+    let mut out = s;
+    if f.edge > 0.045 {
+        out.x += f.toward.x * (f.edge - 0.04);
+        out.z += f.toward.y * (f.edge - 0.04);
+    }
+    // the house's back to the hedge, its front to the yard
+    out.yaw = (-f.toward.y).atan2(f.toward.x) + std::f32::consts::FRAC_PI_2;
+    out
 }
 
 fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
@@ -173,15 +261,23 @@ fn tree(b: &mut Builder, p: Vec3, s: f32, conifer: bool, v: f32, seed: f32) {
     if conifer {
         let greens = [0x2f6a49, 0x3a7a51, 0x2c5f43];
         let g = hex(greens[(v * 3.0) as usize % 3]);
-        b.frustum(p, 0.007 * s, 0.005 * s, 0.025 * s, 4, trunk, None);
+        b.frustum(p, 0.007 * s, 0.005 * s, 0.025 * s, 3, trunk, None);
         b.frustum(p + Vec3::Y * 0.02 * s, 0.048 * s, 0.0, 0.085 * s, 6, g, None);
-        b.frustum(p + Vec3::Y * 0.062 * s, 0.035 * s, 0.0, 0.065 * s, 6, shade(g, 1.08), None);
+        b.frustum(p + Vec3::Y * 0.062 * s, 0.035 * s, 0.0, 0.065 * s, 5, shade(g, 1.08), None);
     } else {
         let greens = [0x5e9a45, 0x6aa84f, 0x4f8a3d, 0x79b25a, 0x8ab85c];
         let g = hex(greens[(v * 5.0) as usize % 5]);
-        b.frustum(p, 0.008 * s, 0.006 * s, 0.032 * s, 4, trunk, None);
-        b.ball(p + Vec3::Y * 0.062 * s, 0.06 * s, 0.05 * s, 6, 3, g, seed);
+        b.frustum(p, 0.008 * s, 0.006 * s, 0.032 * s, 3, trunk, None);
+        b.ball(p + Vec3::Y * 0.062 * s, 0.06 * s, 0.05 * s, 5, 3, g, seed);
     }
+}
+
+/// A hedgerow tree: a smaller, plainer tree, as there are many of them.
+fn hedge_tree(b: &mut Builder, p: Vec3, s: f32, v: f32, seed: f32) {
+    let greens = [0x5e9a45, 0x6aa84f, 0x4f8a3d, 0x79b25a, 0x8ab85c];
+    let g = hex(greens[(v * 5.0) as usize % 5]);
+    b.frustum(p, 0.007 * s, 0.005 * s, 0.03 * s, 3, hex(0x7a5536), None);
+    b.ball(p + Vec3::Y * 0.056 * s, 0.056 * s, 0.042 * s, 5, 3, g, seed);
 }
 
 // ------------------------------------------------------------------ houses
@@ -404,6 +500,8 @@ pub struct YearMeshes {
     pub houses: Builder,
     pub works: Builder,
     pub smoke: Builder,
+    /// farm lanes, flat on the ground
+    pub lanes: Builder,
 }
 
 pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize) -> YearMeshes {
@@ -432,18 +530,31 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             scaffold(&mut works_b, g, p, 0.8 + 0.2 * tier(r, f, k));
         }
     }
+    // the railway's embankments, viaducts, cuttings, portals and bridges, and a
+    // bridge wherever a road crosses a river
+    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g));
+    for (c, m, lv) in crate::network::road_segments(r, k) {
+        let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
+        for (at, _, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
+            road_bridge(&mut works_b, g, at, (b - a).normalize_or(bevy::math::Vec2::X), half, level, lv == 3);
+        }
+        causeway(&mut works_b, g, a, b, lv == 3);
+    }
     towns::landmarks(r, g, cen, k, &mut houses, &mut plots);
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
         plots.get(&c).map(|v| v.iter().any(|&(px, pz)| (px - x).abs() < 0.085 && (pz - z).abs() < 0.085)).unwrap_or(false)
     };
+    // the town houses are placed afresh each year, so they also keep out of the rivers
+    let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
 
     for s in &slots.trees {
         let cls = world::pick_class(r, k, s.wcell as usize, s.sub);
         let terr = r.terrain[s.wcell as usize];
         let (grow, scale) = match cls {
             world::WOOD => (true, 0.85 + 0.4 * s.v),
-            world::FARM | world::PASTURE => (s.u < 0.05, 0.75 + 0.3 * s.v),
+            // the odd tree out in a field; most stand in the hedges
+            world::FARM | world::PASTURE => (s.u < 0.012, 0.75 + 0.3 * s.v),
             world::HEATH => {
                 // gorse and broom: low bushes, and the odd tree
                 if s.u < 0.16 && !near_plot(s.x, s.z) {
@@ -481,30 +592,42 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
     }
 
-    towns::houses(r, g, slots, cen, k, &near_plot, &mut houses, &mut smoke);
+    towns::houses(r, g, slots, cen, k, &near_plot_or_water, &mut houses, &mut smoke);
 
-    for s in &slots.farms {
-        let c = s.wcell as usize;
-        let off = k * r.n + c;
-        let main = r.mix_a[off];
-        if !(main == world::FARM || main == world::PASTURE) || s.u > 0.6 || near_plot(s.x, s.z) {
+    // hedgerow trees, once the fields are enclosed, and never in a road
+    let year = r.y0 + k as i32;
+    let roads = RoadIndex::new(r, cen, k);
+    for (s, &open) in slots.hedge.iter().zip(&slots.hedge_open) {
+        if year < open {
             continue;
         }
-        let cls = world::pick_class(r, k, c, s.sub);
-        if !(cls == world::FARM || cls == world::PASTURE) {
+        let cls = world::pick_class(r, k, s.wcell as usize, s.sub);
+        if !(cls == world::FARM || cls == world::PASTURE) || near_plot(s.x, s.z) || roads.nearest(s.x, s.z, 0.03).is_some() {
             continue;
         }
         let p = ground(g, s.x, s.z);
+        hedge_tree(&mut trees, p, 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw);
+    }
+
+    // farmsteads among the fields, each with a lane to the nearest road
+    let mut lanes = Builder::default();
+    for (s, &open) in slots.farms.iter().zip(&slots.farm_open) {
+        let c = s.wcell as usize;
+        let off = k * r.n + c;
+        let main = r.mix_a[off];
+        if year < open || !(main == world::FARM || main == world::PASTURE) || s.u > 0.32 || near_plot(s.x, s.z) {
+            continue;
+        }
+        let cls = world::pick_class(r, k, c, s.sub);
+        if !(cls == world::FARM || cls == world::PASTURE) || roads.nearest(s.x, s.z, 0.075).is_some() {
+            continue;
+        }
+        let terr = r.terrain[c];
+        farmstead(&mut houses, &mut trees, g, s, main == world::FARM, terr);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
-        let wall = hex(WALLS[(s.v * 5.0) as usize % 5]);
-        house(&mut houses, p, 0.05, 0.036, 1.0 + (s.v > 0.6) as u8 as f32, s.yaw, wall, hex(if s.v < 0.5 { 0xd6b263 } else { 0xc6604a }));
-        let barn = p + q * Vec3::new(0.0, 0.0, 0.06);
-        let bp = ground(g, barn.x, barn.z);
-        house(&mut houses, bp, 0.07, 0.04, 1.2, s.yaw, hex(0xa8553e), hex(0x6b5a4e));
-        if main == world::FARM {
-            let hay = p + q * Vec3::new(0.055, 0.0, -0.02);
-            let hp = ground(g, hay.x, hay.z);
-            houses_haystack(&mut houses, hp);
+        let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
+        if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {
+            lane(&mut lanes, g, (gate.x, gate.z), to, s.v);
         }
     }
 
@@ -536,7 +659,226 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
     }
 
-    YearMeshes { trees, houses, works: works_b, smoke }
+    YearMeshes { trees, houses, works: works_b, smoke, lanes }
+}
+
+/// A stone bridge carrying a road over a river: a hump-backed deck with
+/// parapets, on an arch (two for a wide river) whose dark opening shows on
+/// either face.
+fn road_bridge(b: &mut Builder, g: &Ground, at: bevy::math::Vec2, along: bevy::math::Vec2, half: f32, level: f32, main: bool) {
+    let stone = hex(if main { 0xc4b8a2 } else { 0xb9ab94 });
+    let dark = hex(0x3b3631);
+    let span = 2.0 * half + 0.035;
+    let width = if main { 0.042 } else { 0.03 };
+    let dir = Vec3::new(along.x, 0.0, along.y);
+    let side = Vec3::new(-along.y, 0.0, along.x);
+    let centre = Vec3::new(at.x, 0.0, at.y);
+    // the deck meets the road on each bank and rises over the water
+    let road = |t: f32| {
+        let p = centre + dir * (span * (t - 0.5));
+        world::height_at(g, p.x, p.z).max(level) + 0.012
+    };
+    let ends = road(0.0).max(road(1.0));
+    let hump = 0.012 + 0.08 * half;
+    let segs = 8;
+    let deck = |t: f32| -> Vec3 {
+        let p = centre + dir * (span * (t - 0.5));
+        let y = ends.max(level + 0.02) + hump * (std::f32::consts::PI * t).sin();
+        Vec3::new(p.x, y, p.z)
+    };
+    let arches = if span > 0.11 { 2 } else { 1 };
+    for k in 0..segs {
+        let (t0, t1) = (k as f32 / segs as f32, (k + 1) as f32 / segs as f32);
+        let (p0, p1) = (deck(t0), deck(t1));
+        // the roadway
+        b.quad(p0 + side * (width * 0.5), p1 + side * (width * 0.5), p1 - side * (width * 0.5), p0 - side * (width * 0.5), shade(stone, 1.05));
+        for s in [-1.0f32, 1.0] {
+            let (e0, e1) = (p0 + side * (width * 0.5 * s), p1 + side * (width * 0.5 * s));
+            let base = level - 0.01;
+            let (f0, f1) = (Vec3::new(e0.x, base, e0.z), Vec3::new(e1.x, base, e1.z));
+            let col = if s > 0.0 { stone } else { shade(stone, 0.86) };
+            // the face down to the water, and the parapet above the deck
+            if s > 0.0 {
+                b.quad(f0, f1, e1, e0, col);
+                b.quad(e0, e1, e1 + Vec3::Y * 0.009, e0 + Vec3::Y * 0.009, shade(col, 1.04));
+            } else {
+                b.quad(f1, f0, e0, e1, col);
+                b.quad(e1, e0, e0 + Vec3::Y * 0.009, e1 + Vec3::Y * 0.009, shade(col, 1.04));
+            }
+        }
+    }
+    // the arch openings, painted dark on both faces, just proud of the stone
+    for a in 0..arches {
+        let (a0, a1) = (a as f32 / arches as f32, (a + 1) as f32 / arches as f32);
+        let mid = 0.5 * (a0 + a1);
+        let half_t = 0.42 * (a1 - a0);
+        let rise = (deck(mid).y - level - 0.012).max(0.006);
+        for s in [-1.0f32, 1.0] {
+            let off = side * ((width * 0.5 + 0.0012) * s);
+            let pt = |u: f32| -> Vec3 {
+                let t = mid + half_t * u.cos();
+                let p = centre + dir * (span * (t - 0.5)) + off;
+                Vec3::new(p.x, level - 0.004 + rise * u.sin(), p.z)
+            };
+            let foot = Vec3::new(0.0, level - 0.004, 0.0);
+            for k in 0..6 {
+                let (u0, u1) = (k as f32 / 6.0 * std::f32::consts::PI, (k + 1) as f32 / 6.0 * std::f32::consts::PI);
+                let (q0, q1) = (pt(u0), pt(u1));
+                let c = centre + dir * (span * (mid - 0.5)) + off + foot;
+                if s > 0.0 {
+                    b.tri(c, q0, q1, dark);
+                } else {
+                    b.tri(c, q1, q0, dark);
+                }
+            }
+        }
+    }
+}
+
+/// A low causeway of stone wherever a road runs over water (the drowned mouth
+/// of a river, a creek), so the road does not lie on the sea.
+fn causeway(b: &mut Builder, g: &Ground, a: bevy::math::Vec2, c: bevy::math::Vec2, main: bool) {
+    let len = a.distance(c);
+    let n = ((len / 0.02).ceil() as usize).max(2);
+    let wet = |t: f32| {
+        let p = a + (c - a) * t;
+        world::height_at(g, p.x, p.y) < 0.004
+    };
+    let stone = hex(0xb8ac96);
+    let width = if main { 0.046 } else { 0.034 };
+    let dir = (c - a).normalize_or(bevy::math::Vec2::X);
+    let side = Vec3::new(-dir.y, 0.0, dir.x) * (width * 0.5);
+    let mut i = 0;
+    while i < n {
+        if !wet(i as f32 / n as f32) {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < n && wet(j as f32 / n as f32) {
+            j += 1;
+        }
+        // from one dry end to the other, a little past each
+        let (t0, t1) = (((i as f32 - 1.0) / n as f32).max(0.0), ((j as f32 + 0.5) / n as f32).min(1.0));
+        let (p0, p1) = (a + (c - a) * t0, a + (c - a) * t1);
+        let top = 0.016;
+        let (q0, q1) = (Vec3::new(p0.x, top, p0.y), Vec3::new(p1.x, top, p1.y));
+        let foot = Vec3::Y * (top + 0.03);
+        b.quad(q0 + side, q1 + side, q1 - side, q0 - side, shade(stone, 1.06));
+        b.quad(q0 + side - foot, q1 + side - foot, q1 + side, q0 + side, stone);
+        b.quad(q1 - side - foot, q0 - side - foot, q0 - side, q1 - side, shade(stone, 0.85));
+        i = j;
+    }
+}
+
+/// The year's road segments, bucketed by cell, for finding the nearest road.
+struct RoadIndex {
+    w: usize,
+    h: usize,
+    cells: std::collections::HashMap<usize, Vec<((f32, f32), (f32, f32))>>,
+}
+
+impl RoadIndex {
+    fn new(r: &Replay, cen: &[(f32, f32)], k: usize) -> RoadIndex {
+        let mut cells: std::collections::HashMap<usize, Vec<((f32, f32), (f32, f32))>> = Default::default();
+        for (c, m, _) in crate::network::road_segments(r, k) {
+            let seg = (cen[c], cen[m]);
+            cells.entry(c).or_default().push(seg);
+            cells.entry(m).or_default().push(seg);
+        }
+        RoadIndex { w: r.w, h: r.h, cells }
+    }
+
+    /// The nearest point on a road within `reach`, if any.
+    fn nearest(&self, x: f32, z: f32, reach: f32) -> Option<(f32, f32)> {
+        let (cx, cy) = (x.floor() as isize, z.floor() as isize);
+        let mut best: Option<(f32, (f32, f32))> = None;
+        for dy in -1..=1isize {
+            for dx in -1..=1isize {
+                let (xx, yy) = (cx + dx, cy + dy);
+                if xx < 0 || yy < 0 || xx as usize >= self.w || yy as usize >= self.h {
+                    continue;
+                }
+                let Some(v) = self.cells.get(&(yy as usize * self.w + xx as usize)) else { continue };
+                for &(a, b) in v {
+                    let (abx, abz) = (b.0 - a.0, b.1 - a.1);
+                    let t = (((x - a.0) * abx + (z - a.1) * abz) / (abx * abx + abz * abz).max(1e-9)).clamp(0.0, 1.0);
+                    let (px, pz) = (a.0 + abx * t, a.1 + abz * t);
+                    let d = ((px - x).powi(2) + (pz - z).powi(2)).sqrt();
+                    if d < reach && best.map_or(true, |b| d < b.0) {
+                        best = Some((d, (px, pz)));
+                    }
+                }
+            }
+        }
+        best.map(|b| b.1)
+    }
+}
+
+/// A farm lane: a pale track from the yard gate to the road, bending a little.
+fn lane(b: &mut Builder, g: &Ground, from: (f32, f32), to: (f32, f32), v: f32) {
+    let (dx, dz) = (to.0 - from.0, to.1 - from.1);
+    let len = (dx * dx + dz * dz).sqrt();
+    if len < 0.03 {
+        return;
+    }
+    // a lane does not ford a river
+    if !crate::rivers::crossings(&g.rivers, &g.water, bevy::math::Vec2::new(from.0, from.1), bevy::math::Vec2::new(to.0, to.1)).is_empty() {
+        return;
+    }
+    let bend = (v - 0.5) * 0.3 * len;
+    let (mx, mz) = (from.0 + dx * 0.5 - dz / len * bend, from.1 + dz * 0.5 + dx / len * bend);
+    let n = ((len / 0.03).ceil() as usize).max(2);
+    let pts: Vec<Vec3> = (0..=n)
+        .map(|i| {
+            let t = i as f32 / n as f32;
+            let u = 1.0 - t;
+            let (x, z) = (u * u * from.0 + 2.0 * u * t * mx + t * t * to.0, u * u * from.1 + 2.0 * u * t * mz + t * t * to.1);
+            Vec3::new(x, world::height_at(g, x, z).max(0.0) + 0.006, z)
+        })
+        .collect();
+    b.ribbon(&pts, 0.011, hex(0xcdb98f));
+}
+
+/// A farmstead: the house with its back to the hedge, a yard in front, the
+/// barn across the yard and a cart shed or byre on one side; ricks of hay or
+/// corn by an arable farm, and a tree or two. Stone and slate in the hills,
+/// brick, tile and thatch in the lowland.
+fn farmstead(b: &mut Builder, trees: &mut Builder, g: &Ground, s: &Slot, arable: bool, terr: u8) {
+    let q = bevy::math::Quat::from_rotation_y(s.yaw);
+    let at = |dx: f32, dz: f32| {
+        let o = q * Vec3::new(dx, 0.0, dz);
+        ground(g, s.x + o.x, s.z + o.z)
+    };
+    let upland = terr >= 2;
+    let wall = if upland { hex([0xcfc6b4, 0xbdb4a3, 0xd8cfbd][(s.v * 3.0) as usize % 3]) } else { hex(WALLS[(s.v * 5.0) as usize % 5]) };
+    let roof = if upland { hex(0x5b6577) } else if s.v < 0.45 { hex(0xc9a75c) } else { hex(0xb8573f) };
+    let barn_wall = if upland { hex(0xa9a08f) } else if s.u < 0.2 { hex(0x5b4a3c) } else { hex(0xa8553e) };
+    let barn_roof = if upland { hex(0x56606f) } else { hex(0x6b5a4e) };
+    // the yard: beaten earth between the buildings
+    let yc = at(0.0, -0.045);
+    b.block(yc - Vec3::Y * 0.004, 0.085, 0.055, 0.0055, s.yaw, hex(0xb59f7a), Some(hex(0xbca783)), 0.01);
+    let storeys = 1.0 + (s.v > 0.55) as u8 as f32;
+    house(b, at(0.0, 0.0), 0.05, 0.032, storeys, s.yaw, wall, roof);
+    let dark = hex(0x3a3330);
+    b.block(at(0.019, 0.0), 0.006, 0.006, 0.024 * storeys + 0.026, s.yaw, hex(0xa9553f), Some(dark), 0.0);
+    // the barn across the yard, long and tall
+    house(b, at(-0.005, -0.09), 0.08, 0.036, 1.3, s.yaw, barn_wall, barn_roof);
+    // a cart shed or byre closing one side of the bigger yards
+    let side = if s.u < 0.16 { 1.0 } else { -1.0 };
+    if s.v > 0.35 {
+        house(b, at(0.052 * side, -0.046), 0.05, 0.026, 0.85, s.yaw + std::f32::consts::FRAC_PI_2, barn_wall, barn_roof);
+    }
+    if arable {
+        let hay = hex(0xe0c068);
+        let p = at(-0.06 * side, -0.03);
+        b.frustum(p, 0.012, 0.012, 0.012, 5, hay, None);
+        b.frustum(p + Vec3::Y * 0.012, 0.012, 0.0, 0.012, 5, lerp(hay, hex(0xc9a24e), 0.5), None);
+    }
+    // a tree by the house
+    if s.v < 0.6 {
+        hedge_tree(trees, at(0.05 * -side, 0.03), 0.7 + 0.2 * s.u, s.v, s.yaw);
+    }
 }
 
 fn houses_haystack(b: &mut Builder, p: Vec3) {

@@ -3,11 +3,13 @@
 // for any StandardMaterial.
 //
 // Each 2 km cell has a mix of two land classes for the year: mix_a, mix_b and
-// mix_s, the share of mix_a in 255ths. The patchwork that turns the mix into
-// fields, woods and towns follows world.rs exactly: the same warp, the same
-// integer hash, the same value noise and the same quantile table, and the lower
-// class number always takes the low noise values. The trees and houses that
-// scatter.rs places with that rule therefore stand on matching ground.
+// mix_s, the share of mix_a in 255ths. The land is divided into fields by the
+// field system of fields.rs, and every parcel of fields takes one class by the
+// rule of world.rs: the same integer hash, value noise, warp and quantile table,
+// looked up at the parcel's own point, with the lower class number always taking
+// the low noise values. The trees and houses that scatter.rs places with that
+// rule therefore stand on matching ground, and land classes change only at
+// hedge lines.
 //
 // Colours are mixed in sRGB, as the old CPU painter did, and turned linear at
 // the end.
@@ -27,6 +29,8 @@ struct PatchworkParams {
     height: f32,
     // 1 draws flat, unlit class colours, to check the patchwork against the CPU
     debug: u32,
+    // the calendar year shown, for the open fields
+    year: f32,
     // the 257 quantiles of the patch noise, four to a vector
     quant: array<vec4<f32>, 65>,
 }
@@ -34,7 +38,9 @@ struct PatchworkParams {
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
 // per cell, this year: mix_a, mix_b, mix_s, town density
 @group(constants::MATERIAL_BIND_GROUP) @binding(101) var year_cells: texture_2d<f32>;
-// per cell, fixed: terrain class (0 sea, 1 lowland, 2 hills, 3 mountains)
+// per cell, fixed: terrain class (0 sea, 1 lowland, 2 hills, 3 mountains), how
+// many times its parcels are cut into fields, and the year its open fields are
+// enclosed, less 1750 (0 if they never were open)
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_cells: texture_2d<f32>;
 
 // display classes, as in world.rs
@@ -51,19 +57,35 @@ const WORKS: u32 = 9u;
 const URBAN: u32 = 10u;
 const DERELICT: u32 = 11u;
 
-const FIELDS_PER_CELL: f32 = 3.2;
-// hedge width, in fields
-const HEDGE: f32 = 0.05;
+// fields.rs
+const BLOCK: f32 = 0.9;
+const TURN_C: f32 = 0.9460423;
+const TURN_S: f32 = 0.3240436;
+const PARCEL_LEVEL: u32 = 3u;
+// half the width of a hedge, in cells
+const HEDGE: f32 = 0.0072;
 const TAU: f32 = 6.2831853;
+// towards the sun, on the map: it stands low in the south-west
+const SUN_XZ: vec2<f32> = vec2<f32>(-0.682, 0.731);
 
 // ------------------------------------------------------------------ the CPU rule
-// hash2, vnoise and warp are world.rs line for line; keep them in step. WGSL
-// u32 arithmetic wraps like Rust's wrapping_mul, so the hash matches bit for bit.
+// hash2, hash3, vnoise, warp_raw, sub_raw and the field system are world.rs
+// and fields.rs line for line; keep them in step. WGSL u32 arithmetic wraps like
+// Rust's wrapping_mul, so the hashes match bit for bit.
 
 fn hash2(x: i32, y: i32, s: i32) -> f32 {
     var h = (bitcast<u32>(x) * 374761393u) ^ (bitcast<u32>(y) * 668265263u) ^ (bitcast<u32>(s) * 1442695041u);
     h = (h ^ (h >> 13u)) * 1274126177u;
     h = h ^ (h >> 16u);
+    return f32(h) / 4294967295.0;
+}
+
+fn hash3(a: u32, b: u32, c: u32) -> f32 {
+    var h = (a * 374761393u) ^ (b * 668265263u) ^ (c * 1442695041u);
+    h = (h ^ (h >> 13u)) * 1274126177u;
+    h = h ^ (h >> 16u);
+    h = (h ^ (h >> 15u)) * 2246822519u;
+    h = h ^ (h >> 13u);
     return f32(h) / 4294967295.0;
 }
 
@@ -83,14 +105,172 @@ fn vnoise(x: f32, y: f32, s: i32) -> f32 {
     return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2.0 - 1.0;
 }
 
-fn warp(p: vec2<f32>) -> vec2<f32> {
+fn warp_raw(p: vec2<f32>) -> vec2<f32> {
     let wx = p.x + 0.40 * vnoise(p.x * 0.7, p.y * 0.7, 5) + 0.15 * vnoise(p.x * 2.3, p.y * 2.3, 9);
     let wy = p.y + 0.40 * vnoise(p.x * 0.7 + 31.7, p.y * 0.7 + 17.3, 7) + 0.15 * vnoise(p.x * 2.3 + 5.1, p.y * 2.3 + 9.7, 13);
     return vec2<f32>(wx, wy);
 }
 
+fn sub_raw(p: vec2<f32>) -> f32 {
+    return vnoise(p.x * 1.7, p.y * 1.7, 31) + 0.45 * vnoise(p.x * 3.9, p.y * 3.9, 37);
+}
+
 fn quantile(i: u32) -> f32 {
     return ground.quant[i >> 2u][i & 3u];
+}
+
+// --- the field system (fields.rs)
+
+fn to_block(p: vec2<f32>) -> vec2<f32> {
+    let q = vec2<f32>(TURN_C * p.x + TURN_S * p.y, -TURN_S * p.x + TURN_C * p.y) / BLOCK;
+    let a = 0.13 * smoothstep(-0.3, 0.5, vnoise(q.x * 0.21 + 3.7, q.y * 0.21 + 1.3, 141));
+    let wx = vnoise(q.x * 1.1, q.y * 1.1, 143);
+    let wy = vnoise(q.x * 1.1 + 7.1, q.y * 1.1 + 2.9, 147);
+    return vec2<f32>(q.x + a * wx, q.y + a * wy);
+}
+
+fn from_block(q: vec2<f32>) -> vec2<f32> {
+    let s = q * BLOCK;
+    return vec2<f32>(TURN_C * s.x - TURN_S * s.y, TURN_S * s.x + TURN_C * s.y);
+}
+
+fn corner(i: i32, j: i32) -> vec2<f32> {
+    return vec2<f32>(f32(i) + 0.5 * (hash2(i, j, 151) - 0.5), f32(j) + 0.5 * (hash2(i, j, 153) - 0.5));
+}
+
+fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
+    return a.x * b.y - a.y * b.x;
+}
+
+fn inv_bilinear(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>) -> vec2<f32> {
+    let e = b - a;
+    let f = d - a;
+    let g = a - b + c - d;
+    let h = p - a;
+    let k2 = cross2(g, f);
+    let k1 = cross2(e, f) + cross2(h, g);
+    let k0 = cross2(h, e);
+    if (abs(k2) < 1e-4) {
+        let v = -k0 / k1;
+        let u = (h.x - f.x * v) / (e.x + g.x * v);
+        return vec2<f32>(u, v);
+    }
+    let w = sqrt(max(k1 * k1 - 4.0 * k0 * k2, 0.0));
+    let ik2 = 0.5 / k2;
+    var v = (-k1 - w) * ik2;
+    var u = (h.x - f.x * v) / (e.x + g.x * v);
+    if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) {
+        v = (-k1 + w) * ik2;
+        u = (h.x - f.x * v) / (e.x + g.x * v);
+    }
+    return vec2<f32>(u, v);
+}
+
+fn bilinear(a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>, uv: vec2<f32>) -> vec2<f32> {
+    return a + (b - a) * uv.x + (d - a) * uv.y + (a - b + c - d) * (uv.x * uv.y);
+}
+
+struct Block {
+    i: i32,
+    j: i32,
+    uv: vec2<f32>,
+    a: vec2<f32>,
+    b: vec2<f32>,
+    c: vec2<f32>,
+    d: vec2<f32>,
+}
+
+fn locate(q: vec2<f32>) -> Block {
+    var i = i32(floor(q.x));
+    var j = i32(floor(q.y));
+    var out: Block;
+    for (var it = 0; it < 4; it++) {
+        let a = corner(i, j);
+        let b = corner(i + 1, j);
+        let c = corner(i + 1, j + 1);
+        let d = corner(i, j + 1);
+        let uv = inv_bilinear(q, a, b, c, d);
+        out = Block(i, j, uv, a, b, c, d);
+        var di = 0;
+        var dj = 0;
+        if (uv.x < 0.0) { di = -1; } else if (uv.x >= 1.0) { di = 1; }
+        if (uv.y < 0.0) { dj = -1; } else if (uv.y >= 1.0) { dj = 1; }
+        if (di == 0 && dj == 0) {
+            break;
+        }
+        i += di;
+        j += dj;
+    }
+    out.uv = clamp(out.uv, vec2<f32>(0.0), vec2<f32>(0.99999));
+    return out;
+}
+
+struct Cut {
+    lo: vec2<f32>,
+    hi: vec2<f32>,
+    id: u32,
+}
+
+fn cut(bl: Block, start: Cut, level: u32, depth: u32) -> Cut {
+    let lu = 0.5 * (length(bl.b - bl.a) + length(bl.c - bl.d));
+    let lv = 0.5 * (length(bl.d - bl.a) + length(bl.c - bl.b));
+    let bi = bitcast<u32>(bl.i);
+    let bj = bitcast<u32>(bl.j);
+    let strips = hash3(bi, bj, 157u) < 0.25;
+    let strip_u = hash3(bi, bj, 158u) < 0.5;
+    var c = start;
+    var lvl = level;
+    loop {
+        if (lvl >= depth) {
+            break;
+        }
+        let ex = (c.hi.x - c.lo.x) * lu;
+        let ey = (c.hi.y - c.lo.y) * lv;
+        let k = hash3(bi, bj + c.id * 7919u, 160u + lvl);
+        var along_u = ex >= ey;
+        if (strips && lvl >= PARCEL_LEVEL) {
+            along_u = strip_u;
+        } else if (k < 0.12) {
+            along_u = !along_u;
+        }
+        let t = 0.36 + 0.28 * hash3(bi + c.id * 104729u, bj, 170u + lvl);
+        if (along_u) {
+            let s = c.lo.x + (c.hi.x - c.lo.x) * t;
+            if (bl.uv.x < s) {
+                c.hi.x = s;
+                c.id = c.id * 2u;
+            } else {
+                c.lo.x = s;
+                c.id = c.id * 2u + 1u;
+            }
+        } else {
+            let s = c.lo.y + (c.hi.y - c.lo.y) * t;
+            if (bl.uv.y < s) {
+                c.hi.y = s;
+                c.id = c.id * 2u;
+            } else {
+                c.lo.y = s;
+                c.id = c.id * 2u + 1u;
+            }
+        }
+        lvl += 1u;
+    }
+    return c;
+}
+
+// How far the block's point lies from the nearest side of c, in cells.
+fn cut_edge(bl: Block, c: Cut) -> f32 {
+    let g = bl.a - bl.b + bl.c - bl.d;
+    let ju = (bl.b - bl.a) + g * bl.uv.y;
+    let jv = (bl.d - bl.a) + g * bl.uv.x;
+    let det = max(abs(cross2(ju, jv)), 1e-6);
+    let eu = min(bl.uv.x - c.lo.x, c.hi.x - bl.uv.x) * det / max(length(jv), 1e-6);
+    let ev = min(bl.uv.y - c.lo.y, c.hi.y - bl.uv.y) * det / max(length(ju), 1e-6);
+    return min(eu, ev) * BLOCK;
+}
+
+fn field_key(bl: Block, c: Cut) -> u32 {
+    return (bitcast<u32>(bl.i) * 73856093u) ^ (bitcast<u32>(bl.j) * 19349663u) ^ (c.id * 83492791u);
 }
 
 // ------------------------------------------------------------------ helpers
@@ -127,6 +307,13 @@ fn lines(x: f32, fw: f32, lw: f32) -> f32 {
     return clamp((ia - ib) / w, 0.0, 1.0);
 }
 
+// Cover of a band from distance 0 to w, for a spot at distance d from its edge,
+// seen through a pixel of size fw: crisp up close, its average share far away.
+fn band(d: f32, w: f32, fw: f32) -> f32 {
+    let f = max(fw, 1e-5);
+    return clamp((w - d) / f + 0.5, 0.0, 1.0);
+}
+
 // Cover of the spots where a value noise n is above thr. Edges are softened
 // over nf, the noise's change across a pixel, and when the spots shrink below a
 // pixel (detail falling to 0) the cover settles on its average share `area`.
@@ -156,11 +343,6 @@ fn winter(ph: f32) -> f32 {
 struct Spot {
     // map position in cells
     p: vec2<f32>,
-    // field-grid position (the warped position times FIELDS_PER_CELL) and its
-    // change one pixel right and one pixel down
-    g: vec2<f32>,
-    gdx: vec2<f32>,
-    gdy: vec2<f32>,
     // cells per pixel
     foot: f32,
     // phase of the year
@@ -172,6 +354,19 @@ struct Spot {
     rock: f32,
     snow: f32,
     frost: f32,
+    // on a river's valley floor: 0..1
+    flood: f32,
+    // the field: its number, its block and cut, and the spot's distance to the
+    // field's nearest edge (cells) and which way that edge lies on the map
+    key: u32,
+    bl: Block,
+    leaf: Cut,
+    edge: f32,
+    toward: vec2<f32>,
+    // the field's narrower side, in cells
+    size: f32,
+    // an open field, not yet enclosed: strips and no hedges
+    open: bool,
 }
 
 // ------------------------------------------------------------------ fields
@@ -278,11 +473,11 @@ fn meadow_look(m: u32, ph: f32) -> Look {
     return Look(grass_season(c, ph), 0.0);
 }
 
-// The field with grid id `id`: its crop chosen by hash as the CPU painter did,
-// its own calendar a week or so either way, and its own shade.
-fn field_look(id: vec2<i32>, pasture: bool, ph: f32) -> Look {
-    let f = u32(hash2(id.x, id.y, 41) * 255.0);
-    let k = hash2(id.x, id.y, 53);
+// The look of field number `key`: its crop chosen by hash as the old painter
+// did, its own calendar a week or so either way, and its own shade.
+fn field_look(key: u32, pasture: bool, ph: f32) -> Look {
+    let f = u32(hash3(key, 41u, 0u) * 255.0);
+    let k = hash3(key, 53u, 0u);
     var look: Look;
     if (pasture) {
         look = meadow_look(f % 4u, ph);
@@ -293,65 +488,119 @@ fn field_look(id: vec2<i32>, pasture: bool, ph: f32) -> Look {
     return look;
 }
 
-// Up close: one field, with rows that run along one of its sides, give or take
-// a few degrees, and fade out before they get finer than a pixel.
-fn field_near(sp: Spot, pasture: bool) -> vec3<f32> {
-    let id = vec2<i32>(floor(sp.g));
-    let look = field_look(id, pasture, sp.ph);
-    let r = hash2(id.x, id.y, 47);
-    let ang = select(0.0, 1.5707963, r < 0.5) + (fract(r * 7.0) - 0.5) * 0.3;
-    let dir = vec2<f32>(cos(ang), sin(ang));
-    let n = 11.0 + floor(fract(r * 13.0) * 6.0);
-    let x = dot(sp.g - floor(sp.g), dir) * n;
-    let xf = (abs(dot(sp.gdx, dir)) + abs(dot(sp.gdy, dir))) * n;
-    let wave = cos(TAU * x) * (1.0 - smoothstep(0.2, 0.5, xf));
-    return look.col * (1.0 + look.rows * wave);
-}
-
-fn field_flat(q: vec2<f32>, pasture: bool, ph: f32) -> vec3<f32> {
-    return field_look(vec2<i32>(floor(q)), pasture, ph).col;
-}
-
-fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
-    let gf = max(length(sp.gdx), length(sp.gdy));
-    var c: vec3<f32>;
-    if (gf < 0.25) {
-        c = field_near(sp, pasture);
-    } else {
-        // far away a pixel spans several fields: average four points across it
-        let a = 0.25 * (sp.gdx + sp.gdy);
-        let b = 0.25 * (sp.gdx - sp.gdy);
-        c = 0.25 * (field_flat(sp.g + a, pasture, sp.ph) + field_flat(sp.g - a, pasture, sp.ph)
-            + field_flat(sp.g + b, pasture, sp.ph) + field_flat(sp.g - b, pasture, sp.ph));
+// What a crowd of fields too small to see one by one averages out to.
+fn fields_far(pasture: bool, ph: f32) -> vec3<f32> {
+    if (pasture) {
+        return 0.5 * (meadow_look(0u, ph).col + meadow_look(2u, ph).col);
     }
+    return 0.35 * crop_look(0u, ph, 0.5).col + 0.25 * crop_look(2u, ph, 0.5).col
+        + 0.2 * crop_look(5u, ph, 0.5).col + 0.1 * crop_look(7u, ph, 0.5).col + 0.1 * crop_look(8u, ph, 0.5).col;
+}
+
+// An open field before its parish is enclosed: each furlong ploughed in long
+// strips, every strip its own crop, with ridge and furrow along them and a
+// grass balk between, and a headland of grass at the furlong's edge instead of
+// a hedge. Common pasture and meadow lie open.
+fn open_field(sp: Spot, pasture: bool) -> vec3<f32> {
+    let bl = sp.bl;
+    let g = bl.a - bl.b + bl.c - bl.d;
+    let ju = (bl.b - bl.a) + g * bl.uv.y;
+    let jv = (bl.d - bl.a) + g * bl.uv.x;
+    let det = abs(cross2(ju, jv));
+    let su = det / max(length(jv), 1e-6) * BLOCK;
+    let sv = det / max(length(ju), 1e-6) * BLOCK;
+    var c: vec3<f32>;
+    if (pasture) {
+        c = meadow_look(u32(hash3(sp.key, 5u, 0u) * 4.0) % 4u, sp.ph).col;
+        c *= 1.0 + 0.06 * vnoise(sp.p.x * 11.0, sp.p.y * 11.0, 83) * detail(11.0, sp.foot);
+    } else {
+        // across the strips, which run the long way of the furlong
+        let long_u = (sp.leaf.hi.x - sp.leaf.lo.x) * su > (sp.leaf.hi.y - sp.leaf.lo.y) * sv;
+        var x = (bl.uv.x - sp.leaf.lo.x) * su;
+        if (long_u) {
+            x = (bl.uv.y - sp.leaf.lo.y) * sv;
+        }
+        let strip = 0.026;
+        let si = floor(x / strip);
+        let skey = sp.key * 31u + bitcast<u32>(i32(si)) * 2654435761u;
+        let look = field_look(skey, false, sp.ph);
+        c = look.col;
+        let fx = fract(x / strip);
+        let ridges = cos(TAU * fx * 3.0) * (1.0 - smoothstep(0.25, 0.5, sp.foot * 3.0 / strip));
+        c *= 1.0 + (0.05 + look.rows) * ridges;
+        let balk = band(min(fx, 1.0 - fx) * strip, 0.0018, sp.foot);
+        c = mix(c, hex(0x9fb565u), 0.8 * balk);
+        let lod = smoothstep(1.5, 4.0, strip / max(sp.foot, 1e-5));
+        c = mix(fields_far(false, sp.ph), c, lod);
+    }
+    // the headland round the furlong
+    let headland = band(sp.edge, 0.005, sp.foot);
+    c = mix(c, grass_season(hex(0x9cc463u), sp.ph), 0.85 * headland);
+    c = mix(c, hex(0x9b9588u), sp.rock);
+    c = mix(c, hex(0xf5f5f1u), sp.snow);
+    return c;
+}
+
+// A field of farm or pasture, with rows along one of its sides, and its hedges
+// (stone walls on the hills), each standing a little proud with a painted
+// shadow on the side away from the sun.
+fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
+    if (sp.open) {
+        return open_field(sp, pasture);
+    }
+    let look = field_look(sp.key, pasture, sp.ph);
+    var c = look.col;
+    // rows across the field, along one side, fading before they are finer than a pixel
+    let r = hash3(sp.key, 47u, 0u);
+    let bl = sp.bl;
+    let g = bl.a - bl.b + bl.c - bl.d;
+    let ju = (bl.b - bl.a) + g * bl.uv.y;
+    let jv = (bl.d - bl.a) + g * bl.uv.x;
+    let det = abs(cross2(ju, jv));
+    var x: f32;
+    if (r < 0.5) {
+        x = (bl.uv.x - sp.leaf.lo.x) * det / max(length(jv), 1e-6) * BLOCK;
+    } else {
+        x = (bl.uv.y - sp.leaf.lo.y) * det / max(length(ju), 1e-6) * BLOCK;
+    }
+    let spacing = 0.016 + 0.006 * fract(r * 13.0);
+    let wave = cos(TAU * x / spacing) * (1.0 - smoothstep(0.25, 0.5, sp.foot / spacing));
+    c *= 1.0 + look.rows * wave;
+    // far away the fields blend into their average
+    let lod = smoothstep(1.5, 4.0, sp.size / max(sp.foot, 1e-5));
+    c = mix(fields_far(pasture, sp.ph) * 1.0, c, lod);
     if (pasture) {
         // tussocks and wetter hollows
         c *= 1.0 + 0.06 * vnoise(sp.p.x * 11.0, sp.p.y * 11.0, 83) * detail(11.0, sp.foot);
     }
+    // water meadows on the valley floors: greener, with darker rushes
+    c = mix(c, hex(0x8cbf63u) * (1.0 + 0.08 * vnoise(sp.p.x * 9.0, sp.p.y * 9.0, 87)), 0.5 * sp.flood);
     c = mix(c, hex(0x9b9588u), sp.rock);
     c = mix(c, hex(0xf5f5f1u), sp.snow);
-    // hedges on every field edge, uneven along their length and bushy at the
-    // edges up close
-    let fx = max(abs(sp.gdx.x), abs(sp.gdy.x));
-    let fy = max(abs(sp.gdx.y), abs(sp.gdy.y));
-    let ix = i32(round(sp.g.x));
-    let iy = i32(round(sp.g.y));
-    let bushy = 0.3 * detail(55.0, sp.foot);
-    let wx = HEDGE * (0.8 + 0.4 * noise1(sp.g.y * 4.0, ix, 71) + bushy * (noise1(sp.g.y * 17.0, ix, 75) - 0.5));
-    let wy = HEDGE * (0.8 + 0.4 * noise1(sp.g.x * 4.0, iy, 73) + bushy * (noise1(sp.g.x * 17.0, iy, 79) - 0.5));
-    // like a model's, each hedge stands a little proud and casts a soft shadow
-    // to the north-east, away from the low south-western sun
-    let sw = 0.7 * HEDGE;
-    let shadow = 1.0 - (1.0 - lines(sp.g.x - 0.5 * (wx + sw), fx, sw)) * (1.0 - lines(sp.g.y + 0.5 * (wy + sw), fy, sw));
-    c *= 1.0 - 0.16 * shadow;
-    let cover = 1.0 - (1.0 - lines(sp.g.x, fx, wx)) * (1.0 - lines(sp.g.y, fy, wy));
+    // the hedge or wall: uneven along its length and bushy up close
+    let along = dot(sp.p, vec2<f32>(-sp.toward.y, sp.toward.x));
+    let wall = sp.terr >= 3u || (sp.terr == 2u && hash3(bitcast<u32>(bl.i), bitcast<u32>(bl.j), 181u) < 0.65);
+    let bushy = 0.3 * detail(140.0, sp.foot);
+    var hw = HEDGE * (0.8 + 0.4 * noise1(along * 9.0, i32(sp.key & 1023u), 71) + bushy * (noise1(along * 40.0, i32(sp.key & 1023u), 75) - 0.5));
+    if (wall) {
+        hw = HEDGE * 0.55;
+    }
+    // the shadow falls on the side away from the sun
+    let shade_side = smoothstep(0.0, 0.35, dot(sp.toward, SUN_XZ));
+    let sw = 1.2 * hw;
+    let shadow = band(sp.edge, hw + sw, sp.foot) * shade_side;
+    c *= 1.0 - 0.18 * shadow;
+    let cover = band(sp.edge, hw, sp.foot);
     var hc = hex(0x4a7533u);
     hc = mix(hc, hex(0x6b6837u), 0.6 * bell(sp.ph, 0.84, 0.1));
     hc = mix(hc, hex(0x575443u), 0.6 * winter(sp.ph));
     // darker and lighter bushes along the hedge, which shows through snow
-    hc *= 1.0 + 0.14 * vnoise(sp.g.x * 9.0, sp.g.y * 9.0, 77) * detail(29.0, sp.foot);
+    hc *= 1.0 + 0.14 * vnoise(sp.p.x * 60.0, sp.p.y * 60.0, 77) * detail(60.0, sp.foot);
+    if (wall) {
+        hc = hex(0xa59f92u) * (1.0 + 0.1 * vnoise(along * 80.0, 3.0, 79) * detail(80.0, sp.foot));
+    }
     hc = mix(hc, hex(0xf5f5f1u), 0.35 * sp.snow);
-    return mix(c, hc, 0.9 * cover);
+    return mix(c, hc, 0.92 * cover);
 }
 
 // ------------------------------------------------------------------ other ground
@@ -397,20 +646,29 @@ fn mottled(base: vec3<f32>, sp: Spot, amount: f32) -> vec3<f32> {
     return base * (1.0 + amount * n * detail(9.0, sp.foot));
 }
 
-// Streets run between every second row of the house plots in scatter.rs
-// (seven to a cell), so the blocks are two plots square.
+// Plain town ground, with no streets of its own: the parcel cut a little
+// further into plots of beaten earth, cobbles and gardens, fewer gardens in a
+// crowded town, and a thin line of wall or fence between the plots.
 fn town(sp: Spot) -> vec3<f32> {
-    let q = sp.p * 3.5;
-    let qf = 3.5 * sp.foot;
-    let id = vec2<i32>(floor(q));
-    let b = hash2(id.x, id.y, 91);
-    // some blocks keep their gardens, fewer in crowded towns
-    let share = max(0.45 - 0.4 * sp.dense, 0.0);
-    // (block by block only up close: far away a checkerboard would look busy)
-    let garden = mix(share, select(0.0, 1.0, b > 0.55 + 0.4 * sp.dense), detail(10.0, sp.foot));
-    var c = mix(hex(0xcbb9a1u), hex(0xaab27bu), 0.3 * garden);
-    let street = 1.0 - (1.0 - lines(q.x, qf, 0.1)) * (1.0 - lines(q.y, qf, 0.1));
-    c = mix(c, hex(0xdccfbbu), street);
+    // two more cuts than the fields round the town
+    let plot = cut(sp.bl, sp.leaf, 7u, 9u);
+    let k = hash3(field_key(sp.bl, plot), 91u, 0u);
+    let garden_share = max(0.42 - 0.38 * sp.dense, 0.04);
+    var c = hex(0xc9b79du);
+    if (k < garden_share) {
+        // a garden: beds of green and dug earth
+        let rows = 0.5 + 0.5 * cos(TAU * dot(sp.p, vec2<f32>(0.6, 0.8)) / 0.011);
+        c = mix(hex(0x9fae6eu), hex(0x8d9a5cu), rows * detail(90.0, sp.foot));
+    } else if (k < garden_share + 0.3) {
+        // cobbles
+        c = hex(0xb8ad9cu) * (1.0 + 0.06 * vnoise(sp.p.x * 120.0, sp.p.y * 120.0, 97) * detail(120.0, sp.foot));
+    }
+    // far away the plots blend into the town's average ground
+    let lod = detail(18.0, sp.foot);
+    let avg = mix(hex(0xc4b398u), hex(0x9fae6eu), garden_share * 0.8);
+    c = mix(avg, c, lod);
+    let edge = band(cut_edge(sp.bl, plot), 0.0016, sp.foot);
+    c = mix(c, c * 0.84, edge * lod);
     return mottled(c, sp, 0.03);
 }
 
@@ -456,7 +714,7 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         case WORKS: { c = works_yard(sp); }
         case URBAN: { c = town(sp); }
         case DERELICT: { c = derelict(sp); }
-        // land that warps into a sea cell: rough coastal grass
+        // land that lies in a sea cell: rough coastal grass
         default: { c = hex(0xbcbb7eu); }
     }
     var frost = sp.frost;
@@ -502,20 +760,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // control flow is still uniform.
     let foot = max(length(dpdx(p)), length(dpdy(p)));
     let hf = max(fwidth(h), 1e-5);
-    let w = warp(p);
-    let g = w * FIELDS_PER_CELL;
-    let gdx = dpdx(g);
-    let gdy = dpdy(g);
-    // the patch noise of world.rs, sub_raw; far away the octaves finer than a
-    // pixel fade out so the patch edges do not crawl
-    let n1 = vnoise(p.x * 1.7, p.y * 1.7, 31);
-    let n2 = vnoise(p.x * 3.9, p.y * 3.9, 37);
-    let n3 = vnoise(p.x * 8.3, p.y * 8.3, 43);
-    let v = n1 + 0.55 * n2 * detail(3.9, foot) + 0.25 * n3 * detail(8.3, foot);
-    let vf = max(fwidth(v), 1e-6);
 
-    // the warped cell decides the mix, as in world::class_at
-    let cell = clamp(vec2<i32>(floor(w)), vec2<i32>(0), vec2<i32>(i32(ground.width) - 1, i32(ground.height) - 1));
+    // the parcel here, and the point that stands for it (fields::parcel)
+    let bl = locate(to_block(p));
+    let pc = cut(bl, Cut(vec2<f32>(0.0), vec2<f32>(1.0), 1u), 0u, PARCEL_LEVEL);
+    let centre = from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (pc.lo + pc.hi) * 0.5));
+    // its warped cell decides the mix, as in world::class_at
+    let w = warp_raw(centre);
+    let lim = vec2<i32>(i32(ground.width) - 1, i32(ground.height) - 1);
+    let cell = clamp(vec2<i32>(floor(w)), vec2<i32>(0), lim);
     let yc = textureLoad(year_cells, cell, 0);
     let fc = textureLoad(fixed_cells, cell, 0);
     let ca = u32(round(yc.x * 255.0));
@@ -532,78 +785,109 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // holds where sub_uniform * 255 < t, its share in 255ths. With the
     // quantile table that is the same as sub_raw <= quant[t].
     let t = select(255u - s, s, ca < cb);
-    let single = lo == hi || t >= 255u;
+    var cls = lo;
+    if (lo != hi && t < 255u && (t == 0u || sub_raw(centre) > quantile(t))) {
+        cls = hi;
+    }
 
     if (ground.debug != 0u) {
         // the exact rule, unlit, for checking against world::class_at
-        var cls = lo;
-        if (!single && (t == 0u || n1 + 0.55 * n2 + 0.25 * n3 > quantile(t))) {
-            cls = hi;
-        }
         var dbg: FragmentOutput;
         dbg.color = vec4<f32>(srgb_to_linear(debug_colour(cls)), 1.0);
         return dbg;
     }
 
-    // share of the pixel that is the lower class, anti-aliased along the edge
-    var cover = 1.0;
-    if (!single) {
-        if (t == 0u) {
-            cover = 0.0;
-        } else {
-            cover = clamp((quantile(t) - v) / vf + 0.5, 0.0, 1.0);
-        }
+    // the field: the parcel cut as finely as its cell asks (world::field_at)
+    let own = clamp(vec2<i32>(floor(centre)), vec2<i32>(0), lim);
+    let fown = textureLoad(fixed_cells, own, 0);
+    let depth = max(u32(round(fown.y * 255.0)), PARCEL_LEVEL);
+    let open_code = round(fown.z * 255.0);
+    let open = open_code > 0.0 && ground.year < 1750.0 + open_code;
+    let leaf = cut(bl, pc, PARCEL_LEVEL, depth);
+    // distance to its nearest side, through the Jacobian of the block (fields::field)
+    let g = bl.a - bl.b + bl.c - bl.d;
+    let ju = (bl.b - bl.a) + g * bl.uv.y;
+    let jv = (bl.d - bl.a) + g * bl.uv.x;
+    let jdet = cross2(ju, jv);
+    let det = max(abs(jdet), 1e-6);
+    let du0 = bl.uv.x - leaf.lo.x;
+    let du1 = leaf.hi.x - bl.uv.x;
+    let dv0 = bl.uv.y - leaf.lo.y;
+    let dv1 = leaf.hi.y - bl.uv.y;
+    let su = det / max(length(jv), 1e-6);
+    let sv = det / max(length(ju), 1e-6);
+    let eu = min(du0, du1) * su;
+    let ev = min(dv0, dv1) * sv;
+    let gu = vec2<f32>(jv.y, -jv.x) / jdet;
+    let gv = vec2<f32>(-ju.y, ju.x) / jdet;
+    var edge = ev;
+    var dir = select(gv, -gv, dv0 < dv1);
+    if (eu < ev) {
+        edge = eu;
+        dir = select(gu, -gu, du0 < du1);
     }
+    dir = normalize(dir);
+    let toward = vec2<f32>(TURN_C * dir.x - TURN_S * dir.y, TURN_S * dir.x + TURN_C * dir.y);
+    let size = min((leaf.hi.x - leaf.lo.x) * su, (leaf.hi.y - leaf.lo.y) * sv) * BLOCK;
 
     let ph = fract(ground.season);
     // a slow swell of lighter and darker, warmer and cooler ground, so wide
     // areas do not look flat
     let swell = 0.6 * vnoise(p.x * 0.35 + 11.3, p.y * 0.35 + 5.9, 61) + 0.4 * vnoise(p.x * 1.3, p.y * 1.3, 67);
     let warm = vnoise(p.x * 0.5 + 3.3, p.y * 0.5 + 8.1, 63);
+    let n2 = vnoise(p.x * 3.9, p.y * 3.9, 37);
 
-    // sea floor below -0.004, beach up to 0.03, land above, as before
-    let landk = clamp((h - 0.03) / hf + 0.5, 0.0, 1.0);
+    // sea floor below -0.004, beach up to 0.022, land above; a river's valley
+    // floor is land however low it lies
+    let landk = max(clamp((h - 0.022) / hf + 0.5, 0.0, 1.0), smoothstep(0.35, 0.75, in.uv.x));
     let wetk = clamp((-0.004 - h) / hf + 0.5, 0.0, 1.0);
-    let depth = clamp(-h, 0.0, 1.0);
+    let depth_w = clamp(-h, 0.0, 1.0);
     var col = select(
-        mix(hex(0x6fa8a3u), hex(0x2f5f78u), min((depth - 0.12) / 0.6, 1.0)),
-        mix(hex(0xd2cd9cu), hex(0x6fa8a3u), depth / 0.12),
-        depth < 0.12,
+        mix(hex(0x6fa8a3u), hex(0x2f5f78u), min((depth_w - 0.12) / 0.6, 1.0)),
+        mix(hex(0xd2cd9cu), hex(0x6fa8a3u), depth_w / 0.12),
+        depth_w < 0.12,
     );
+    let nrm = normalize(in.world_normal);
+    let slope = length(nrm.xz) / max(nrm.y, 0.05);
     if (wetk < 1.0) {
-        // dry sand, darker where the sea has just been
-        var top = mix(hex(0xcfbd8bu), hex(0xead9a3u), smoothstep(0.0, 0.014, h));
+        // dry sand, darker where the sea has just been; shingle and rock on a steep shore
+        var top = mix(hex(0xcfbd8bu), hex(0xead9a3u), smoothstep(0.0, 0.012, h));
+        top = mix(top, hex(0xa49c8au), smoothstep(0.5, 1.2, slope));
         if (landk > 0.0) {
-            let nrm = normalize(in.world_normal);
-            let slope = length(nrm.xz) / max(nrm.y, 0.05);
             let winter_k = winter(ph);
             var sp: Spot;
             sp.p = p;
-            sp.g = g;
-            sp.gdx = gdx;
-            sp.gdy = gdy;
             sp.foot = foot;
             sp.ph = ph;
             sp.terr = terr;
             sp.dense = yc.w;
-            sp.rock = clamp((slope - 1.1 + 0.3 * n2) / 1.2, 0.0, 1.0);
+            sp.rock = clamp((slope - 1.15 + 0.3 * n2) / 1.1, 0.0, 1.0);
             // the snow line comes down the hills in winter
-            sp.snow = clamp((h - 1.75 + 0.55 * winter_k + 0.12 * n1) / 0.45, 0.0, 1.0) * (1.0 - 0.5 * sp.rock);
+            sp.snow = clamp((h - 1.75 + 0.55 * winter_k + 0.12 * vnoise(p.x * 1.7, p.y * 1.7, 31)) / 0.45, 0.0, 1.0) * (1.0 - 0.5 * sp.rock);
             sp.frost = winter_k * clamp(0.36 + 0.2 * swell + 0.12 * h, 0.0, 0.62);
-            var lc: vec3<f32>;
-            if (cover >= 0.999) {
-                lc = class_colour(lo, sp);
-            } else if (cover <= 0.001) {
-                lc = class_colour(hi, sp);
-            } else {
-                lc = mix(class_colour(hi, sp), class_colour(lo, sp), cover);
-            }
+            sp.flood = in.uv.x;
+            sp.key = field_key(bl, leaf);
+            sp.bl = bl;
+            sp.leaf = leaf;
+            sp.edge = edge * BLOCK;
+            sp.toward = toward;
+            sp.size = size;
+            sp.open = open;
+            let lc = class_colour(cls, sp);
             top = mix(top, lc, landk);
         }
         col = mix(top, col, wetk);
     }
     col *= 1.0 + 0.05 * swell;
     col *= vec3<f32>(1.0 + 0.015 * warm, 1.0, 1.0 - 0.035 * warm);
+    // faint contour lines on the open hillsides (heath and moor, rock and
+    // snow), as on an engraved map; not across fields, where they would read as
+    // marks on the crops. Gone before they crowd closer than a few pixels.
+    let ci = h / 0.08;
+    let cw = hf / 0.08;
+    let open_ground = select(0.0, 1.0, cls == HEATH || cls == DERELICT || terr >= 3u);
+    let contour = lines(ci, cw, 0.07) * smoothstep(0.45, 0.7, h) * (1.0 - smoothstep(0.12, 0.3, cw));
+    col *= 1.0 - 0.15 * contour * landk * open_ground;
     // fine grain, gone before it gets smaller than a pixel
     col *= 1.0 + 0.025 * vnoise(p.x * 23.0, p.y * 23.0, 77) * detail(23.0, foot);
 
