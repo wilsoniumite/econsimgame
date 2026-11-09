@@ -44,6 +44,9 @@ pub struct MemberRow(pub usize);
 #[derive(Clone, Debug)]
 pub struct FamilyRow {
     pub name: String,
+    /// the family's home town (index) and its name
+    pub home: usize,
+    pub home_name: String,
     pub colour: Color,
     pub cash: f32,
     pub net_worth: f32,

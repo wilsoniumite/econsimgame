@@ -45,6 +45,10 @@ pub struct Game {
 #[derive(Component)]
 struct EndCard;
 
+/// The card that opens a new game.
+#[derive(Component)]
+struct Welcome;
+
 #[derive(Clone, Copy)]
 pub enum Action {
     Buy(usize),
@@ -60,7 +64,11 @@ pub struct ActionButton(pub Action);
 struct Marks(Handle<Mesh>);
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Game>().add_systems(Startup, setup_marks.run_if(resource_exists::<Live>)).add_systems(
+    app.init_resource::<Game>()
+        .add_systems(Startup, setup_marks.run_if(resource_exists::<Live>))
+        .add_systems(PostStartup, welcome.run_if(resource_exists::<Live>))
+        .add_systems(Update, close_welcome)
+        .add_systems(
         Update,
         (pump, drive, ask_site, action_clicks, assign_clicks, member_clicks, goto_clicks, next_year_clicks, step_note, order_panel, owner_marks, end_card).chain().run_if(resource_exists::<Live>),
     );
@@ -77,6 +85,8 @@ fn row_of(rep: &FamilyReport, history: Vec<f32>, r: &Replay, method_group: &[Opt
     }
     FamilyRow {
         name: rep.surname.clone(),
+        home: rep.home,
+        home_name: rep.home_name.clone(),
         colour: family::banner(rep.index),
         cash: rep.cash as f32,
         net_worth: rep.net_worth as f32,
@@ -619,4 +629,67 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
                 c.spawn((text(&f, "The timeline still takes you back through the years. Esc closes this.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(10.0)), ..default() }));
             });
         });
+}
+
+/// A new game opens on a card saying who the player is and how to begin.
+fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: Res<UiFont>, shots: Option<Res<crate::ShotPlanArgs>>) {
+    // screenshots skip it unless asked for
+    if shots.is_some() && std::env::var_os("ISOSTATE_WELCOME").is_none() {
+        return;
+    }
+    let Some(me) = fam.player() else { return };
+    let f = font.0.clone();
+    let year = data.r.y0 + data.latest() as i32;
+    let rivals = fam.families.len().saturating_sub(1);
+    commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+            BackgroundColor(Color::srgba(0.18, 0.14, 0.10, 0.18)),
+            GlobalZIndex(50),
+            Interaction::default(),
+            FocusPolicy::Block,
+            Welcome,
+        ))
+        .with_children(|wrap| {
+            wrap.spawn((
+                Node { flex_direction: FlexDirection::Column, width: Val::Px(470.0), padding: UiRect::axes(Val::Px(30.0), Val::Px(24.0)), row_gap: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(20.0)), ..default() },
+                BackgroundColor(crate::ui::PAPER),
+                BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.28), Val::Px(0.0), Val::Px(6.0), Val::Px(0.0), Val::Px(22.0)),
+            ))
+            .with_children(|c| {
+                c.spawn(text(&f, &format!("{year}"), 15.0, MUTED));
+                c.spawn(text(&f, &format!("The {} family of {}", me.name, me.home_name), 26.0, me.colour));
+                c.spawn(text(
+                    &f,
+                    &format!(
+                        "The family has {} to its name and no works yet. {} other great families already hold land and works across the island. The century is yours to make something of.",
+                        money(me.cash),
+                        rivals
+                    ),
+                    15.0,
+                    INK,
+                ));
+                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
+                for line in [
+                    "Click a square of land to buy it, or to build a works on it.",
+                    "Next year plays one year and stops; Space keeps the years going.",
+                    "In the Family panel, put members in charge of your trades.",
+                    "H shows every key.",
+                ] {
+                    c.spawn(Node { column_gap: Val::Px(10.0), ..default() }).with_children(|row| {
+                        row.spawn((Node { width: Val::Px(7.0), height: Val::Px(7.0), margin: UiRect::top(Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(me.colour)));
+                        row.spawn(text(&f, line, 14.5, INK));
+                    });
+                }
+                c.spawn((text(&f, "Click anywhere to begin.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
+            });
+        });
+}
+
+fn close_welcome(mut commands: Commands, q: Query<(Entity, &Interaction), With<Welcome>>, keys: Res<ButtonInput<KeyCode>>) {
+    for (e, i) in &q {
+        if *i == Interaction::Pressed || keys.get_just_pressed().next().is_some() {
+            commands.entity(e).despawn();
+        }
+    }
 }

@@ -364,8 +364,10 @@ fn main() {
             z1 = z1.max(z + 1.0);
         }
     }
-    let look = args.look.unwrap_or(((x0 + x1) * 0.5, (z0 + z1) * 0.5 + 4.0));
-    let dist = args.dist.unwrap_or((x1 - x0).max((z1 - z0) * 1.5) * 1.05);
+    // a game opens over the family's home town; a replay over the whole island
+    let home = families.as_ref().and_then(|f| f.player()).and_then(|p| r.header.towns.get(p.home)).map(|t| cen[t.node]);
+    let look = args.look.or(home.map(|(x, z)| (x, z + 1.0))).unwrap_or(((x0 + x1) * 0.5, (z0 + z1) * 0.5 + 4.0));
+    let dist = args.dist.unwrap_or(if home.is_some() { 14.0 } else { (x1 - x0).max((z1 - z0) * 1.5) * 1.05 });
     let orbit = Orbit {
         target: Vec3::new(look.0, world::height_at(&g, look.0, look.1).max(0.0), look.1),
         yaw: args.yaw.to_radians(),
