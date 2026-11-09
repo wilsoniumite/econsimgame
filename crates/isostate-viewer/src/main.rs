@@ -37,6 +37,8 @@ use bevy::post_process::dof::{DepthOfField, DepthOfFieldMode};
 use bevy::prelude::*;
 use bevy::render::render_resource::{TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::tasks::{futures::check_ready, AsyncComputeTaskPool, Task};
+use std::sync::Arc;
 use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
@@ -186,12 +188,15 @@ fn parse_args() -> Args {
 
 // ------------------------------------------------------------------ resources and markers
 
+/// The run and what is made from it once. Shared, so a year's scenery can be
+/// built on another thread from the same data; a live game changes the run
+/// and the plots between years, copying them only if a build still holds them.
 #[derive(Resource)]
 struct Data {
-    r: Replay,
-    g: Ground,
-    slots: scatter::Slots,
-    cen: Vec<(f32, f32)>,
+    r: Arc<Replay>,
+    g: Arc<Ground>,
+    slots: Arc<scatter::Slots>,
+    cen: Arc<Vec<(f32, f32)>>,
     /// the years are being simulated as we watch, not read from a file
     live: bool,
 }
@@ -442,7 +447,8 @@ fn main() {
     terrain::register(&mut app);
     app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))
         .insert_resource(GlobalAmbientLight { color: Color::srgb(0.78, 0.86, 1.0), brightness: 650.0, ..default() })
-        .insert_resource(Data { r, g, slots, cen, live: live.is_some() })
+        .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
+        .init_resource::<Builds>()
         .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt))
@@ -653,6 +659,37 @@ fn orbit_transform(o: &Orbit) -> Transform {
 // ------------------------------------------------------------------ the year
 
 #[allow(clippy::too_many_arguments)]
+/// A year's scenery: the ground's land mix, the meshes and the railway paths.
+struct Scenery {
+    k: usize,
+    cells: Vec<u8>,
+    ym: scatter::YearMeshes,
+    nets: network::Nets,
+    rails: Vec<trains::TrainPath>,
+}
+
+/// The year's scenery being built off the main thread, so a new year never
+/// stops the picture. One build at a time; the year on screen keeps its
+/// scenery until the next is ready, and the ground changes with it.
+#[derive(Resource, Default)]
+struct Builds {
+    task: Option<(usize, Task<Scenery>)>,
+}
+
+fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize) -> Scenery {
+    let t0 = std::time::Instant::now();
+    let cells = terrain::year_cells(r, k);
+    let ym = scatter::build_year(r, g, slots, cen, k);
+    let t1 = t0.elapsed().as_secs_f32();
+    let nets = network::year_nets(r, g, cen, k);
+    let rails = trains::rail_paths(r, g, cen, k);
+    if std::env::var_os("ISOSTATE_TIMING").is_some() {
+        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread)", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
+    }
+    Scenery { k, cells, ym, nets, rails }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn rebuild_year(
     mut commands: Commands,
     mut tl: ResMut<Timeline>,
@@ -660,50 +697,57 @@ fn rebuild_year(
     handles: Res<Handles>,
     ta: Res<TrainAssets>,
     mut rails: ResMut<Rails>,
+    mut builds: ResMut<Builds>,
     old_trains: Query<Entity, With<Train>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    // a finished build goes on screen
+    if let Some(sc) = builds.task.as_mut().and_then(|(_, t)| check_ready(t)) {
+        builds.task = None;
+        if let Some(mut img) = images.get_mut(&handles.year_cells) {
+            img.data = Some(sc.cells);
+        }
+        // trains: one for every eight units of line, up to three, spread along it
+        for e in &old_trains {
+            commands.entity(e).despawn();
+        }
+        rails.0 = sc.rails;
+        for (pi, p) in rails.0.iter().enumerate() {
+            let count = (1 + (p.len / 8.0) as usize).min(3);
+            for i in 0..count {
+                let s = p.len * (i as f32 + 0.5) / count as f32;
+                let (pos, yaw) = p.at(s);
+                let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
+                commands.spawn((
+                    Mesh3d(ta.mesh.clone()),
+                    MeshMaterial3d(ta.mat.clone()),
+                    Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
+                    Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
+                ));
+            }
+        }
+        let (ym, nets) = (sc.ym, sc.nets);
+        for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
+            if let Some(mut m) = meshes.get_mut(h) {
+                *m = non_empty(b);
+            }
+        }
+        tl.built = Some(sc.k);
+    }
+    // the year on screen, if it is neither shown nor being built; a build for
+    // another year (the clock moved on) finishes first and is shown on the way
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    if tl.built == Some(k) {
-        return;
+    if tl.built != Some(k) && builds.task.is_none() {
+        let (r, g, slots, cen) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone());
+        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k) });
+        builds.task = Some((k, task));
     }
-    tl.built = Some(k);
-    let (r, g) = (&data.r, &data.g);
-    if let Some(mut img) = images.get_mut(&handles.year_cells) {
-        img.data = Some(terrain::year_cells(r, k));
-    }
-    let t0 = std::time::Instant::now();
-    let ym = scatter::build_year(r, g, &data.slots, &data.cen, k);
-    let t1 = t0.elapsed().as_secs_f32();
-    let nets = network::year_nets(r, g, &data.cen, k);
-    if std::env::var_os("ISOSTATE_TIMING").is_some() {
-        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
-    }
-    // trains: one for every eight units of line, up to three, spread along it
-    for e in &old_trains {
-        commands.entity(e).despawn();
-    }
-    rails.0 = trains::rail_paths(r, g, &data.cen, k);
-    for (pi, p) in rails.0.iter().enumerate() {
-        let count = (1 + (p.len / 8.0) as usize).min(3);
-        for i in 0..count {
-            let s = p.len * (i as f32 + 0.5) / count as f32;
-            let (pos, yaw) = p.at(s);
-            let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
-            commands.spawn((
-                Mesh3d(ta.mesh.clone()),
-                MeshMaterial3d(ta.mat.clone()),
-                Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
-                Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
-            ));
-        }
-    }
-    for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
-        if let Some(mut m) = meshes.get_mut(h) {
-            *m = non_empty(b);
-        }
-    }
+}
+
+/// The scenery shows the year on the clock (screenshots wait for it).
+fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
+    tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
 }
 
 /// Phase of the year: while playing the months roll by; a paused year shows high summer.
@@ -1129,7 +1173,10 @@ fn take_shot(
         }
         return;
     }
-    // the first view waits for shaders to compile on software renderers
+    // the first view waits for shaders to compile on software renderers, and every view for its year's scenery
+    if !scenery_ready(&tl, &data) {
+        return;
+    }
     let ready = plan.index > 0 || plan.start.elapsed().as_secs_f32() >= plan.wait;
     if plan.countdown > 0 {
         if plan.countdown > 1 || ready {

@@ -29,6 +29,7 @@ pub struct Slot {
     pub yaw: f32,
 }
 
+#[derive(Clone)]
 pub struct Slots {
     pub trees: Vec<Slot>,
     pub houses: Vec<Slot>,

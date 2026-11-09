@@ -207,9 +207,11 @@ fn pump(
     while let Some(msg) = live.try_recv() {
         match msg {
             Msg::Year(y, prospects) => {
+                // copy-on-write: a scenery build may still hold the old run
                 let Data { r, g, slots, .. } = &mut *data;
+                let r = std::sync::Arc::make_mut(r);
                 live::apply_year(r, &y);
-                scatter::place_new_firms(r, g, slots);
+                scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
                 year_families(&mut fam, &y.families, y.year as i32);
                 fam.prospects = prospects;
                 live.stepping = false;
@@ -789,7 +791,7 @@ fn decision_badge(fam: Res<FamilyView>, mut q: Query<(&mut Node, &Children), Wit
         if node.display != want {
             node.display = want;
         }
-        let s = if n == 1 { "1 to decide".to_string() } else { format!("{n} to decide") };
+        let s = if n == 1 { "A decision is waiting".to_string() } else { format!("{} decisions are waiting", family::capitalised(&family::number_word(n))) };
         for c in ch.iter() {
             if let Ok(mut t) = texts.get_mut(c) {
                 if t.0 != s {

@@ -198,11 +198,12 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
     // three cards across the top: the family, the date and the clock, the tabs
     commands
         .spawn((
-            Node { position_type: PositionType::Absolute, left: Val::Px(14.0), right: Val::Px(14.0), top: Val::Px(12.0), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Start, ..default() },
+            Node { position_type: PositionType::Absolute, left: Val::Px(14.0), right: Val::Px(14.0), top: Val::Px(12.0), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Start, column_gap: Val::Px(12.0), ..default() },
             GlobalZIndex(10),
         ))
         .with_children(|top| {
-            top.spawn(Node { width: Val::Px(380.0), ..default() }).with_children(|wrap| {
+            // the side cards take what their contents need, the clock the rest, so a narrower window still fits
+            top.spawn(Node { flex_shrink: 0.0, ..default() }).with_children(|wrap| {
                 wrap.spawn((
                     card(Node {
                         height: Val::Px(62.0),
@@ -257,7 +258,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     });
                 });
             });
-            top.spawn(Node { flex_grow: 1.0, justify_content: JustifyContent::Center, ..default() }).with_children(|wrap| {
+            top.spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), ..default() }).with_children(|wrap| {
                 wrap.spawn(card(Node {
                     height: Val::Px(62.0),
                     padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
@@ -276,31 +277,35 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     mid.spawn(Node { column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
                         for (label, b) in [("Pause", SpeedButton::Pause), ("1\u{00d7}", SpeedButton::Speed(0.5)), ("2\u{00d7}", SpeedButton::Speed(1.0)), ("4\u{00d7}", SpeedButton::Speed(2.0)), ("8\u{00d7}", SpeedButton::Speed(4.0))] {
                             row.spawn((button_node(10.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
-                                bt.spawn(text(f, label, 14.0, INK));
+                                bt.spawn((text(f, label, 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
                         }
                         if data.live {
                             // one year on, then stop: the natural rhythm of a turn
                             row.spawn((Node { margin: UiRect::left(Val::Px(6.0)), ..button_node(10.0, 5.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, NextYearButton))
                                 .with_children(|bt| {
-                                    bt.spawn(text(f, "Next year", 14.0, INK));
+                                    bt.spawn((text(f, "Next year", 14.0, INK), TextLayout::default().with_no_wrap()));
                                 });
-                            // decisions waiting: shown only while there are some
-                            row.spawn((
-                                Node { margin: UiRect::left(Val::Px(4.0)), display: Display::None, ..button_node(10.0, 5.0) },
-                                BackgroundColor(crest_col),
-                                Interaction::default(),
-                                FocusPolicy::Block,
-                                crate::game::DecisionBadge,
-                            ))
-                            .with_children(|bt| {
-                                bt.spawn(text(f, "", 14.0, Color::WHITE));
-                            });
                         }
                     });
                 });
+                // decisions waiting: a tab hanging under the clock, shown only while there are some
+                if data.live {
+                    wrap.spawn((
+                        Node { display: Display::None, padding: UiRect::axes(Val::Px(14.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(12.0)), ..default() },
+                        BackgroundColor(crest_col),
+                        card_shadow(),
+                        Interaction::default(),
+                        FocusPolicy::Block,
+                        UiBlock,
+                        crate::game::DecisionBadge,
+                    ))
+                    .with_children(|bt| {
+                        bt.spawn((text(f, "", 14.5, Color::WHITE), TextLayout::default().with_no_wrap()));
+                    });
+                }
             });
-            top.spawn(Node { width: Val::Px(380.0), justify_content: JustifyContent::End, ..default() }).with_children(|wrap| {
+            top.spawn(Node { flex_shrink: 0.0, justify_content: JustifyContent::End, ..default() }).with_children(|wrap| {
                 wrap.spawn(card(Node {
                     height: Val::Px(62.0),
                     padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),

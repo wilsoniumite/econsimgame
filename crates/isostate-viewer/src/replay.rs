@@ -102,6 +102,7 @@ pub struct Header {
 }
 
 /// Everything the viewer needs from one run, copied into plain vectors.
+#[derive(Clone)]
 pub struct Replay {
     pub header: Header,
     pub w: usize,

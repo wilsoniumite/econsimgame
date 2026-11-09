@@ -494,7 +494,7 @@ fn decision_line(p: &mut ChildSpawnerCommands, f: &Handle<Font>, d: &Decision, a
         row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
             col.spawn(text(f, &d.prompt, 14.0, INK));
             let def = d.options.get(d.default).map(|o| o.label.as_str()).unwrap_or("");
-            col.spawn(text(f, &format!("Otherwise, at the end of {}: {}", d.due, def.to_lowercase()), 12.0, MUTED));
+            col.spawn(text(f, &format!("Otherwise, at the end of {}: {}", d.due, def), 12.0, MUTED));
         });
         chip_button(row, f, "Choose", true, accent, OpenDecision(d.id));
     });
