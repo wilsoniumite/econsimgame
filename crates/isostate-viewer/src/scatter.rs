@@ -180,6 +180,19 @@ fn tree(b: &mut Builder, p: Vec3, s: f32, conifer: bool, v: f32, seed: f32) {
 
 // ------------------------------------------------------------------ houses
 
+/// A place a town house could stand this year.
+struct HouseSpot {
+    x: f32,
+    z: f32,
+    yaw: f32,
+    /// lower ranks are built first and keep their ground
+    rank: f32,
+    u: f32,
+    v: f32,
+    w: f32,
+    d: f32,
+}
+
 const WALLS: [u32; 6] = [0xf6deb4, 0xfaf0dc, 0xf4d38f, 0xf0bfa3, 0xdfe2bf, 0xf6deb4];
 const ROOFS: [u32; 5] = [0xc6604a, 0x5b6b86, 0xc6604a, 0x6e8f5c, 0xb5523f];
 
@@ -481,42 +494,104 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: 
         tree(&mut trees, p, scale, conifer, s.u, s.yaw);
     }
 
+    // yards, sheds and warehouses around the works
     for s in &slots.houses {
         let c = s.wcell as usize;
-        let cls = world::pick_class(r, k, c, s.sub);
-        if cls == world::WORKS && s.u < 0.5 && !near_plot(s.x, s.z) {
-            // yards, sheds and warehouses around the works
-            let p = ground(g, s.x, s.z);
-            let yaw = (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2;
-            let wall = hex([0xb5634c, 0x9b5a48, 0xa9a196, 0x8f4b3b][(s.v * 4.0) as usize % 4]);
-            let (w, d, h) = (0.06 + 0.04 * s.v, 0.045 + 0.015 * s.u, 0.026 + 0.018 * s.v);
-            houses.block(p, w, d, h, yaw, wall, None, 0.03);
-            houses.gable(p, w, d, h, d * 0.35, yaw, 0.003, hex(0x4a5468), wall);
-            if s.u < 0.12 {
-                let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.35, 0.0, 0.0);
-                smoking_chimney(&mut houses, &mut smoke, cp, h + 0.07, 0.006, s.yaw);
-            }
-            continue;
-        }
-        if cls != world::URBAN || near_plot(s.x, s.z) {
-            continue;
-        }
-        let off = k * r.n + c;
-        let dense = if r.use_[off] == 10 { r.inten[off] as f32 / 255.0 } else { 0.45 };
-        if s.u > 0.25 + 0.7 * dense {
+        if world::pick_class(r, k, c, s.sub) != world::WORKS || s.u >= 0.5 || near_plot(s.x, s.z) {
             continue;
         }
         let p = ground(g, s.x, s.z);
+        let yaw = (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2;
+        let wall = hex([0xb5634c, 0x9b5a48, 0xa9a196, 0x8f4b3b][(s.v * 4.0) as usize % 4]);
+        let (w, d, h) = (0.06 + 0.04 * s.v, 0.045 + 0.015 * s.u, 0.026 + 0.018 * s.v);
+        houses.block(p, w, d, h, yaw, wall, None, 0.03);
+        houses.gable(p, w, d, h, d * 0.35, yaw, 0.003, hex(0x4a5468), wall);
+        if s.u < 0.12 {
+            let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.35, 0.0, 0.0);
+            smoking_chimney(&mut houses, &mut smoke, cp, h + 0.07, 0.006, s.yaw);
+        }
+    }
+
+    // town houses: rows along the streets first, then the blocks behind fill in
+    let density = |c: usize| -> f32 {
+        let off = k * r.n + c;
+        if r.use_[off] == 10 { r.inten[off] as f32 / 255.0 } else { 0.45 }
+    };
+    let market: Vec<(f32, f32)> = (0..r.n_towns.min(r.header.towns.len()))
+        .filter(|&t| r.town_active[k * r.n_towns + t] > 0)
+        .map(|t| cen[r.header.towns[t].node])
+        .collect();
+    let near_market = |x: f32, z: f32| market.iter().any(|&(mx, mz)| (mx - x).powi(2) + (mz - z).powi(2) < 0.11 * 0.11);
+    let mut spots: Vec<HouseSpot> = Vec::new();
+    for (c, m, lv) in crate::network::road_segments(r, k) {
+        let (a, b) = (cen[c], cen[m]);
+        let (dx, dz) = (b.0 - a.0, b.1 - a.1);
+        let len = (dx * dx + dz * dz).sqrt().max(1e-4);
+        let (ux, uz) = (dx / len, dz / len);
+        let along = (-uz).atan2(ux);
+        let off = if lv == 3 { 0.05 } else { 0.044 };
+        let n = (len / 0.068).floor().max(1.0) as usize;
+        let dir = if m == c + 1 { 0 } else if m == c + r.w { 1 } else if m == c + r.w + 1 { 2 } else { 3 };
+        for i in 0..n {
+            let t = (i as f32 + 0.5) / n as f32;
+            if !(0.1..=0.9).contains(&t) {
+                continue;
+            }
+            for (si, side) in [(0, -1.0f32), (1, 1.0)] {
+                let id = (((c * 4 + dir) * 32 + i.min(31)) * 2 + si) as i32;
+                let jit = (world::hash2(id, 1, 21) - 0.5) * 0.016;
+                let x = a.0 + dx * t + -uz * off * side + ux * jit;
+                let z = a.1 + dz * t + ux * off * side + uz * jit;
+                if world::height_at(g, x, z) < 0.05 || near_market(x, z) || near_plot(x, z) {
+                    continue;
+                }
+                let (wx, wy) = world::warp(x, z);
+                let wc = (wy.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + wx.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
+                if world::pick_class(r, k, wc, world::sub_uniform(g, x, z) * 255.0) != world::URBAN {
+                    continue;
+                }
+                let (u, v) = (world::hash2(id, 3, 21), world::hash2(id, 4, 21));
+                if u > 0.35 + 0.65 * density(wc) {
+                    continue;
+                }
+                // fronts to the street: the ridge runs along it
+                let yaw = along + if side < 0.0 { std::f32::consts::PI } else { 0.0 } + (v - 0.5) * 0.06;
+                spots.push(HouseSpot { x, z, yaw, rank: u * 0.7, u, v, w: 0.048 + 0.016 * v, d: 0.036 + 0.006 * u });
+            }
+        }
+    }
+    for s in &slots.houses {
+        let c = s.wcell as usize;
+        if world::pick_class(r, k, c, s.sub) != world::URBAN || near_plot(s.x, s.z) || near_market(s.x, s.z) {
+            continue;
+        }
+        if s.u > 0.25 + 0.7 * density(c) {
+            continue;
+        }
         let yaw = (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2 + (s.v - 0.5) * 0.12;
+        spots.push(HouseSpot { x: s.x, z: s.z, yaw, rank: 0.25 + 0.75 * s.u, u: s.u, v: s.v, w: 0.045 + 0.02 * s.v, d: 0.035 + 0.008 * s.u });
+    }
+    // the earliest spots to fill take the ground; later ones only fill what is free
+    spots.sort_by(|a, b| a.rank.partial_cmp(&b.rank).unwrap_or(std::cmp::Ordering::Equal));
+    let mut taken: std::collections::HashMap<(i32, i32), Vec<(f32, f32)>> = Default::default();
+    for s in spots {
+        let key = ((s.x / 0.05).floor() as i32, (s.z / 0.05).floor() as i32);
+        let clash = (-1..=1).any(|dy| (-1..=1).any(|dx| taken.get(&(key.0 + dx, key.1 + dy)).is_some_and(|v| v.iter().any(|&(x, z)| (x - s.x).powi(2) + (z - s.z).powi(2) < 0.047 * 0.047))));
+        if clash {
+            continue;
+        }
+        taken.entry(key).or_default().push((s.x, s.z));
+        let c = (s.z.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + s.x.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
+        let dense = density(c);
+        let p = ground(g, s.x, s.z);
         let storeys = 1.0 + ((dense > 0.6 && s.v > 0.4) as u8 as f32) + ((dense > 0.85 && s.v > 0.75) as u8 as f32);
         let wall = hex(WALLS[(s.v * 6.0) as usize % 6]);
         let roof = hex(ROOFS[(s.u * 13.0) as usize % 5]);
-        let (w, d) = (0.045 + 0.02 * s.v, 0.035 + 0.008 * s.u);
-        house(&mut houses, p, w, d, storeys, yaw, wall, roof);
+        house(&mut houses, p, s.w, s.d, storeys, s.yaw, wall, roof);
         if s.u < 0.2 {
-            let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.3, 0.0, 0.0);
+            let cp = p + bevy::math::Quat::from_rotation_y(s.yaw) * Vec3::new(s.w * 0.3, 0.0, 0.0);
             if s.v > 0.8 {
-                smoking_chimney(&mut houses, &mut smoke, cp, 0.024 * storeys + 0.03, 0.004, s.yaw);
+                smoking_chimney(&mut houses, &mut smoke, cp, 0.024 * storeys + 0.03, 0.004, s.u * 7.0);
             } else {
                 chimney(&mut houses, cp, 0.024 * storeys + 0.03, 0.004);
             }

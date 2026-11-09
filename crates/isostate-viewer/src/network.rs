@@ -98,6 +98,36 @@ pub struct Nets {
     pub rails: Builder,
 }
 
+/// The roads drawn in year `k`: (cell, neighbouring cell, level 2 or 3). Each
+/// link appears once; a diagonal is left out where a pair of straight links
+/// already joins the two cells.
+pub fn road_segments(r: &Replay, k: usize) -> Vec<(usize, usize, u8)> {
+    let (w, h, n) = (r.w, r.h, r.n);
+    let tr = &r.trans[k * n..(k + 1) * n];
+    let bit = |x: isize, y: isize| -> bool { x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && tr[y as usize * w + x as usize] & 2 != 0 };
+    let mut out = Vec::new();
+    for c in 0..n {
+        let v = tr[c];
+        if v & 3 < 2 {
+            continue;
+        }
+        let (x, y) = ((c % w) as isize, (c / w) as isize);
+        for (dx, dy) in [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)] {
+            let (nx, ny) = (x + dx, y + dy);
+            if nx < 0 || nx >= w as isize || ny >= h as isize {
+                continue;
+            }
+            let m = ny as usize * w + nx as usize;
+            let lv = (v & 3).min(tr[m] & 3);
+            let diag = dx != 0 && dy != 0;
+            if lv >= 2 && !(diag && (bit(x + dx, y) || bit(x, y + dy))) {
+                out.push((c, m, lv));
+            }
+        }
+    }
+    out
+}
+
 pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
     let (w, h, n) = (r.w, r.h, r.n);
     let tr = &r.trans[k * n..(k + 1) * n];
@@ -127,11 +157,6 @@ pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
             let diag = dx != 0 && dy != 0;
             let skip = |mask: u8| diag && (bit(x + dx, y, mask) || bit(x, y + dy, mask));
             let seg = [cen[c], cen[m]];
-            let lv = (v & 3).min(u & 3);
-            if lv >= 2 && !skip(2) {
-                let pts = drape(g, &seg, 0.01);
-                roads.ribbon(&pts, if lv == 3 { 0.034 } else { 0.022 }, if lv == 3 { main } else { lane });
-            }
             if v & 4 != 0 && u & 4 != 0 && !skip(4) {
                 let pts = drape(g, &seg, 0.016);
                 rails.ribbon(&pts, 0.04, ballast);
@@ -149,6 +174,10 @@ pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
                 }
             }
         }
+    }
+    for (c, m, lv) in road_segments(r, k) {
+        let pts = drape(g, &[cen[c], cen[m]], 0.01);
+        roads.ribbon(&pts, if lv == 3 { 0.034 } else { 0.022 }, if lv == 3 { main } else { lane });
     }
     Nets { roads, rails }
 }
