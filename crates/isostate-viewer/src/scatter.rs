@@ -34,6 +34,8 @@ pub struct Slots {
     pub mines: Vec<Slot>,
     /// stable building plot for every firm
     pub firm_pos: Vec<(f32, f32, f32)>,
+    /// how many plots each cell has handed out
+    pub taken: std::collections::HashMap<usize, usize>,
 }
 
 fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<Slot> {
@@ -68,68 +70,90 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
     out
 }
 
+/// The building plots of a cell, in the order firms take them: a 3 x 3 grid,
+/// less the market square of a town and anything in the sea or on the beach.
+fn cell_plots(r: &Replay, g: &Ground, cell: usize) -> Vec<(f32, f32)> {
+    let is_town = r.header.towns.iter().any(|t| t.node == cell);
+    let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
+    let mut plots: Vec<(f32, f32)> = Vec::new();
+    for j in 0..3 {
+        for i in 0..3 {
+            if is_town && i == 1 && j == 1 {
+                continue; // leave the market square free
+            }
+            let (px, pz) = ((i as f32 + 0.5) / 3.0, (j as f32 + 0.5) / 3.0);
+            if world::height_at(g, cx + px, cy + pz) >= 0.07 {
+                plots.push((px, pz)); // never build in the sea or on the beach
+            }
+        }
+    }
+    if plots.is_empty() {
+        // a coastal sliver: use its highest point
+        let mut best = (0.5, 0.5, f32::MIN);
+        for j in 0..7 {
+            for i in 0..7 {
+                let (px, pz) = ((i as f32 + 0.5) / 7.0, (j as f32 + 0.5) / 7.0);
+                let h = world::height_at(g, cx + px, cy + pz);
+                if h > best.2 {
+                    best = (px, pz, h);
+                }
+            }
+        }
+        plots.push((best.0, best.1));
+    }
+    plots.sort_by(|a, b| {
+        let ka = world::hash2((a.0 * 7.0) as i32, (a.1 * 7.0) as i32, cell as i32);
+        let kb = world::hash2((b.0 * 7.0) as i32, (b.1 * 7.0) as i32, cell as i32);
+        ka.partial_cmp(&kb).unwrap()
+    });
+    plots
+}
+
+/// Where firm `f` stands: the `n`th firm to build in its cell takes the `n`th plot,
+/// and later rounds squeeze in beside the first.
+fn firm_plot(r: &Replay, g: &Ground, plots: &[(f32, f32)], f: usize, n: usize) -> (f32, f32, f32) {
+    let cell = r.header.firms[f].cell;
+    let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
+    let (px, pz) = plots[n % plots.len()];
+    let round = (n / plots.len()) as f32;
+    let mut jx = (world::hash2(f as i32, 7, 3) - 0.5) * 0.12 + round * 0.07;
+    let mut jz = (world::hash2(f as i32, 8, 3) - 0.5) * 0.12;
+    if world::height_at(g, cx + px + jx, cy + pz + jz) < 0.07 {
+        jx = 0.0;
+        jz = 0.0;
+    }
+    let yaw = (world::hash2(f as i32, 9, 3) * 4.0).floor() * std::f32::consts::FRAC_PI_2 + (world::hash2(f as i32, 10, 3) - 0.5) * 0.3;
+    (cx + px + jx, cy + pz + jz, yaw)
+}
+
+/// Plots for firms the slots have not seen yet (a live game adds firms as it goes).
+/// They must arrive in the order they were founded.
+pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
+    let start = slots.firm_pos.len();
+    let mut order: Vec<usize> = (start..r.header.firms.len()).collect();
+    order.sort_by_key(|&f| (r.header.firms[f].born, f));
+    slots.firm_pos.resize(r.header.firms.len(), (0.0, 0.0, 0.0));
+    for f in order {
+        let cell = r.header.firms[f].cell;
+        let n = slots.taken.entry(cell).or_insert(0);
+        let plots = cell_plots(r, g, cell);
+        slots.firm_pos[f] = firm_plot(r, g, &plots, f, *n);
+        *n += 1;
+    }
+}
+
 pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
-    // firms get plots on a 3 x 3 grid in their cell, first come first served
-    let mut by_cell: std::collections::HashMap<usize, Vec<usize>> = Default::default();
-    for (f, firm) in r.header.firms.iter().enumerate() {
-        by_cell.entry(firm.cell).or_default().push(f);
-    }
-    let mut firm_pos = vec![(0.0, 0.0, 0.0); r.header.firms.len()];
-    let town_nodes: std::collections::HashSet<usize> = r.header.towns.iter().map(|t| t.node).collect();
-    for (cell, mut fs) in by_cell {
-        fs.sort_by_key(|&f| (r.header.firms[f].born, f));
-        let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
-        let mut plots: Vec<(f32, f32)> = Vec::new();
-        for j in 0..3 {
-            for i in 0..3 {
-                if town_nodes.contains(&cell) && i == 1 && j == 1 {
-                    continue; // leave the market square free
-                }
-                let (px, pz) = ((i as f32 + 0.5) / 3.0, (j as f32 + 0.5) / 3.0);
-                if world::height_at(g, cx + px, cy + pz) >= 0.07 {
-                    plots.push((px, pz)); // never build in the sea or on the beach
-                }
-            }
-        }
-        if plots.is_empty() {
-            // a coastal sliver: use its highest point
-            let mut best = (0.5, 0.5, f32::MIN);
-            for j in 0..7 {
-                for i in 0..7 {
-                    let (px, pz) = ((i as f32 + 0.5) / 7.0, (j as f32 + 0.5) / 7.0);
-                    let h = world::height_at(g, cx + px, cy + pz);
-                    if h > best.2 {
-                        best = (px, pz, h);
-                    }
-                }
-            }
-            plots.push((best.0, best.1));
-        }
-        plots.sort_by(|a, b| {
-            let ka = world::hash2((a.0 * 7.0) as i32, (a.1 * 7.0) as i32, cell as i32);
-            let kb = world::hash2((b.0 * 7.0) as i32, (b.1 * 7.0) as i32, cell as i32);
-            ka.partial_cmp(&kb).unwrap()
-        });
-        for (n, &f) in fs.iter().enumerate() {
-            let (px, pz) = plots[n % plots.len()];
-            let round = (n / plots.len()) as f32;
-            let mut jx = (world::hash2(f as i32, 7, 3) - 0.5) * 0.12 + round * 0.07;
-            let mut jz = (world::hash2(f as i32, 8, 3) - 0.5) * 0.12;
-            if world::height_at(g, cx + px + jx, cy + pz + jz) < 0.07 {
-                jx = 0.0;
-                jz = 0.0;
-            }
-            let yaw = (world::hash2(f as i32, 9, 3) * 4.0).floor() * std::f32::consts::FRAC_PI_2 + (world::hash2(f as i32, 10, 3) - 0.5) * 0.3;
-            firm_pos[f] = (cx + px + jx, cy + pz + jz, yaw);
-        }
-    }
-    Slots {
+    let mut slots = Slots {
         trees: grid_slots(r, g, 6, 11, 0.9),
         houses: grid_slots(r, g, 7, 12, 0.7),
         farms: grid_slots(r, g, 1, 13, 0.6),
         mines: grid_slots(r, g, 2, 14, 0.7),
-        firm_pos,
-    }
+        firm_pos: Vec::new(),
+        taken: Default::default(),
+    };
+    // firms get plots in their cell, first come first served
+    place_new_firms(r, g, &mut slots);
+    slots
 }
 
 fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {

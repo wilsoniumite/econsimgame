@@ -57,6 +57,9 @@ pub struct Firm {
     /// the sums that made its founders build here (see firms.reason_record)
     #[serde(default)]
     pub reason: Option<serde_json::Value>,
+    /// the family that owns it, in a game with families
+    #[serde(default)]
+    pub owner: Option<usize>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -70,6 +73,9 @@ pub struct Event {
     pub text: String,
     #[serde(default)]
     pub cell: Option<i64>,
+    /// the family the news is about
+    #[serde(default)]
+    pub family: Option<usize>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -125,6 +131,10 @@ pub struct Replay {
     pub series_names: Vec<String>,
     pub series: Vec<f32>,
     pub series_len: usize,
+    /// years with data so far: all of them for a recorded run, a growing number in a live game
+    pub filled: usize,
+    /// owning family of every cell by year, `[year, cell]`, -1 for none (empty without families)
+    pub owner: Vec<i8>,
 }
 
 fn slice<'a>(buf: &'a [u8], base: usize, a: &ArrayInfo) -> &'a [u8] {
@@ -205,6 +215,8 @@ pub fn load(path: &str) -> Result<Replay, String> {
         series_len,
         series_names,
         header,
+        filled: ny,
+        owner: Vec::new(),
     })
 }
 

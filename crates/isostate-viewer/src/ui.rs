@@ -70,12 +70,14 @@ pub struct UiState {
     pub hover: bool,
     /// bumped whenever panel content must be rebuilt for reasons other than the year
     pub dirty: u64,
+    /// the family member whose posts are shown
+    pub expanded: Option<usize>,
     built: Option<(Option<Tab>, usize, bool, u64)>,
 }
 
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news_major: true, hover: false, dirty: 0, built: None }
+        UiState { tab: Some(Tab::News), news_major: true, hover: false, dirty: 0, expanded: None, built: None }
     }
 }
 
@@ -607,7 +609,7 @@ fn panel_rebuild(
     commands.entity(be).with_children(|p| match tab {
         Tab::News => news_panel(p, &f, r, k, ui.news_major),
         Tab::Markets => markets_panel(p, &f, r, k),
-        Tab::Family => family::family_panel(p, &f, fam, r, k),
+        Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k),
     });
 }

@@ -5,6 +5,8 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 
+use isostate_core::families::Group;
+
 use crate::replay::Replay;
 use crate::ui::{money, text, BAD, GOOD, INK, MUTED, RULE};
 
@@ -18,20 +20,26 @@ pub fn banner(i: usize) -> Color {
 
 #[derive(Clone, Debug)]
 pub struct Member {
+    /// index in the family, for orders
+    pub index: usize,
     pub name: String,
-    pub born: i32,
-    /// what they do for the family, in words: "Head of the family", "Runs the collieries"
-    pub role: String,
+    pub age: i32,
+    /// the industry group they manage
+    pub group: Option<Group>,
     /// 0..1
     pub skill: f32,
 }
 
-#[derive(Clone, Debug)]
-pub struct Holding {
-    pub firm: usize,
-    pub capital: f32,
-    pub profit: f32,
+/// A button that puts a member in charge of a group (or of nothing).
+#[derive(Component, Clone, Copy)]
+pub struct AssignButton {
+    pub member: usize,
+    pub group: Option<Group>,
 }
+
+/// A member's row: click to choose what they manage.
+#[derive(Component, Clone, Copy)]
+pub struct MemberRow(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct FamilyRow {
@@ -44,7 +52,12 @@ pub struct FamilyRow {
     /// squares of land held outright
     pub land: usize,
     pub members: Vec<Member>,
-    pub holdings: Vec<Holding>,
+    /// the works it owns (firm ids)
+    pub holdings: Vec<usize>,
+    /// what its managers save on every unit, by group
+    pub bonus: [f32; 6],
+    /// how many of its works are in each group
+    pub works_by_group: [usize; 6],
     /// net worth at the end of each year so far
     pub history: Vec<f32>,
 }
@@ -54,6 +67,8 @@ pub struct FamilyView {
     pub year: i32,
     pub families: Vec<FamilyRow>,
     pub player: Option<usize>,
+    /// the player can give orders (a live game, not a replay)
+    pub live: bool,
 }
 
 impl FamilyView {
@@ -77,19 +92,29 @@ fn no_family(p: &mut ChildSpawnerCommands, f: &Handle<Font>, what: &str) {
     });
 }
 
-/// A small bar chart of one family's worth over the years, in its colour.
-fn sparkline(p: &mut ChildSpawnerCommands, history: &[f32], colour: Color) {
-    let n = history.len().min(60);
+/// A small bar chart of one family's worth over the years, in its colour,
+/// the latest year on the right.
+fn sparkline(p: &mut ChildSpawnerCommands, f: &Handle<Font>, history: &[f32], colour: Color) {
+    let n = history.len().min(50);
     if n < 2 {
         return;
     }
     let tail = &history[history.len() - n..];
     let top = tail.iter().cloned().fold(1.0_f32, f32::max);
-    p.spawn(Node { height: Val::Px(44.0), align_items: AlignItems::End, column_gap: Val::Px(2.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }).with_children(|row| {
-        for &v in tail {
-            let h = (v.max(0.0) / top * 44.0).max(2.0);
-            row.spawn((Node { flex_grow: 1.0, height: Val::Px(h), border_radius: BorderRadius::top(Val::Px(2.0)), ..default() }, BackgroundColor(colour.with_alpha(0.85))));
-        }
+    p.spawn(Node { flex_direction: FlexDirection::Column, margin: UiRect::vertical(Val::Px(6.0)), ..default() }).with_children(|col| {
+        col.spawn(Node { height: Val::Px(40.0), align_items: AlignItems::End, justify_content: JustifyContent::End, column_gap: Val::Px(2.0), border: UiRect::bottom(Val::Px(1.0)), ..default() })
+            .insert(BorderColor::all(RULE))
+            .with_children(|row| {
+                for (i, &v) in tail.iter().enumerate() {
+                    let h = (v.max(0.0) / top * 40.0).max(1.0);
+                    let last = i + 1 == tail.len();
+                    row.spawn((Node { width: Val::Px(4.0), height: Val::Px(h), border_radius: BorderRadius::top(Val::Px(2.0)), ..default() }, BackgroundColor(colour.with_alpha(if last { 1.0 } else { 0.55 }))));
+                }
+            });
+        col.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {
+            row.spawn(text(f, &format!("{} years ago", n - 1), 11.5, MUTED));
+            row.spawn(text(f, "now", 11.5, MUTED));
+        });
     });
 }
 
@@ -103,14 +128,14 @@ fn ordinal(n: usize) -> String {
     format!("{n}{s}")
 }
 
-pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, _r: &Replay, k: usize) {
+pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, _r: &Replay, k: usize, expanded: Option<usize>) {
     let Some(v) = fam else { return no_family(p, f, "family") };
     let Some(me) = v.player() else { return no_family(p, f, "family") };
     let mut rank: Vec<usize> = (0..v.families.len()).collect();
     rank.sort_by(|&a, &b| v.families[b].net_worth.partial_cmp(&v.families[a].net_worth).unwrap());
     let my_rank = rank.iter().position(|&i| Some(i) == v.player).unwrap_or(0) + 1;
     p.spawn(text(f, &format!("Worth {}, the {} fortune on the island of {}.", money(me.net_worth), ordinal(my_rank), v.families.len()), 14.0, MUTED));
-    sparkline(p, &me.history, me.colour);
+    sparkline(p, f, &me.history, me.colour);
     let change = if me.history.len() >= 2 { me.history[me.history.len() - 1] - me.history[me.history.len() - 2] } else { 0.0 };
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {
         row.spawn(text(f, &format!("{} in hand", money(me.cash)), 14.0, INK));
@@ -118,16 +143,32 @@ pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<
     });
 
     heading(p, f, "The family");
-    let year = v.year.max(_r.y0 + k as i32);
+    p.spawn(text(f, "A member who manages an industry makes the family's works in it a little cheaper to run. The abler the manager, the bigger the saving.", 12.5, MUTED));
+    let _ = (_r, k);
     for m in &me.members {
-        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, padding: UiRect::vertical(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() })
-            .insert(BorderColor::all(RULE))
-            .with_children(|row| {
+        let open = expanded == Some(m.index) && m.age >= 18 && v.live;
+        p.spawn((
+            Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)), border: UiRect::bottom(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
+            BorderColor::all(RULE),
+            BackgroundColor(if open { crate::ui::PAPER_2 } else { Color::NONE }),
+        ))
+        .with_children(|block| {
+            let mut head = block.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, ..default() });
+            if m.age >= 18 && v.live {
+                head.insert((Interaction::default(), MemberRow(m.index)));
+            }
+            head.with_children(|row| {
                 row.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
-                    col.spawn(text(f, &format!("{}, {}", m.name, year - m.born), 15.0, INK));
-                    col.spawn(text(f, &m.role, 12.5, MUTED));
+                    col.spawn(text(f, &format!("{} {}, {}", m.name, me.name, m.age), 15.0, INK));
+                    let role = match m.group {
+                        Some(g) => format!("Manages {}, {:.0}% cheaper to run", g.label().to_lowercase(), 100.0 * me.bonus[g.index()]),
+                        None if m.age < 18 => "Too young to manage anything".to_string(),
+                        None if v.live => "Has no post. Click to give one.".to_string(),
+                        None => "Has no post".to_string(),
+                    };
+                    col.spawn(text(f, &role, 12.5, if m.group.is_some() { me.colour } else { MUTED }));
                 });
-                // skill as five dots
+                // ability as five dots
                 row.spawn(Node { column_gap: Val::Px(3.0), ..default() }).with_children(|dots| {
                     let full = (m.skill * 5.0).round() as i32;
                     for i in 0..5 {
@@ -135,6 +176,36 @@ pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<
                     }
                 });
             });
+            if open {
+                block.spawn(text(f, "Put in charge of", 12.0, MUTED));
+                block.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(4.0), row_gap: Val::Px(4.0), ..default() }).with_children(|chips| {
+                    for g in Group::ALL.iter().copied().map(Some).chain([None]) {
+                        let label = match g {
+                            Some(g) => match me.works_by_group[g.index()] {
+                                0 => short_group(g).to_string(),
+                                n => format!("{} \u{00b7} {}", short_group(g), n),
+                            },
+                            None => "Nothing".to_string(),
+                        };
+                        let on = m.group == g;
+                        let mut e = chips.spawn((
+                            Node { padding: UiRect::axes(Val::Px(9.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
+                            BackgroundColor(if on { me.colour } else { crate::ui::BTN }),
+                            Interaction::default(),
+                            bevy::ui::FocusPolicy::Block,
+                            AssignButton { member: m.index, group: g },
+                        ));
+                        if !on {
+                            e.insert(crate::ui::Hoverable);
+                        }
+                        e.with_children(|c| {
+                            c.spawn(text(f, &label, 12.5, if on { Color::WHITE } else { INK }));
+                        });
+                    }
+                });
+                block.spawn(text(f, "The number is how many of the family's works are in that trade.", 11.5, MUTED));
+            }
+        });
     }
 
     heading(p, f, "The great families");
@@ -151,31 +222,54 @@ pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<
     }
 }
 
+fn short_group(g: Group) -> &'static str {
+    match g {
+        Group::Iron => "Iron",
+        Group::Textiles => "Textiles",
+        Group::CoalMining => "Mining",
+        Group::Engineering => "Engineering",
+        Group::Building => "Building",
+        Group::Estates => "Estates",
+    }
+}
+
+/// A works in the holdings list: jump to it on the map.
+#[derive(Component, Clone, Copy)]
+pub struct GotoFirm(pub usize);
+
 pub fn holdings_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize) {
     let Some(me) = fam.and_then(|v| v.player()) else { return no_family(p, f, "property") };
-    p.spawn(text(f, &format!("{} works, {} squares of land, {} a year coming in.", me.works, me.land, money(me.income)), 14.0, MUTED));
+    p.spawn(text(f, &format!("{} works and {} squares of land, bringing in {} last year.", me.works, me.land, money(me.income)), 14.0, MUTED));
     heading(p, f, "Works");
     if me.holdings.is_empty() {
-        p.spawn(text(f, "None yet. Click a square on the map to found one.", 14.0, MUTED));
+        p.spawn(text(f, "None yet. Click a square on the map to see what could be built there.", 14.0, MUTED));
     }
-    let mut hs = me.holdings.clone();
-    hs.sort_by(|a, b| b.capital.partial_cmp(&a.capital).unwrap());
-    for h in hs.iter().take(40) {
-        let Some(firm) = r.header.firms.get(h.firm) else { continue };
+    let mut hs: Vec<(usize, f32)> = me.holdings.iter().map(|&h| (h, crate::replay::firm_k(r, h, k))).collect();
+    hs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then(a.0.cmp(&b.0)));
+    for &(h, kk) in hs.iter().take(60) {
+        let Some(firm) = r.header.firms.get(h) else { continue };
         let m = &r.header.methods[firm.method];
         let town = r.header.towns.get(firm.town.max(0) as usize).map(|t| t.name.as_str()).unwrap_or("the country");
-        let open = crate::replay::firm_k(r, h.firm, k) > 0.0;
-        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, padding: UiRect::vertical(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() })
-            .insert(BorderColor::all(RULE))
-            .with_children(|row| {
-                row.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
-                    col.spawn(text(f, &m.label, 15.0, if open { INK } else { MUTED }));
-                    col.spawn(text(f, &format!("near {}{}", town, if open { "" } else { ", closed" }), 12.5, MUTED));
-                });
-                row.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::End, ..default() }).with_children(|col| {
-                    col.spawn(text(f, &money(h.capital), 14.0, INK));
-                    col.spawn(text(f, &format!("{}{} a year", if h.profit >= 0.0 { "+" } else { "" }, money(h.profit)), 12.5, if h.profit >= 0.0 { GOOD } else { BAD }));
-                });
+        let open = kk > 0.0;
+        p.spawn((
+            Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
+            BorderColor::all(RULE),
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            GotoFirm(h),
+        ))
+        .with_children(|row| {
+            row.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
+                col.spawn(text(f, &firm.name, 15.0, if open { INK } else { MUTED }));
+                let since = if firm.born > r.y0 { format!(", since {}", firm.born) } else { String::new() };
+                col.spawn(text(f, &format!("{} at {}{}", m.label, town, since), 12.5, MUTED));
             });
+            let size = if open { format!("size {:.1}", kk / m.k0.max(1e-6)) } else if firm.born > r.y0 + k as i32 { "building".to_string() } else { "closed".to_string() };
+            row.spawn(text(f, &size, 13.0, if open { INK } else { MUTED }));
+        });
+    }
+    if me.land > 0 {
+        heading(p, f, "Land");
+        p.spawn(text(f, &format!("{} squares, each 2 km across. Their rents come to the family; whatever is built on them pays the family for the ground.", me.land), 13.0, MUTED));
     }
 }

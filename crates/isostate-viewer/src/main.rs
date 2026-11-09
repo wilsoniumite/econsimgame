@@ -7,6 +7,8 @@
 //! right-drag to turn, scroll to zoom.
 
 mod family;
+mod game;
+mod live;
 mod meshkit;
 mod network;
 mod replay;
@@ -51,6 +53,16 @@ struct Args {
     views: Vec<ShotSpec>,
     season: Option<f32>,
     describe: Option<(f32, f32)>,
+    /// a new live game instead of a recorded run
+    new: bool,
+    seed: u64,
+    families: usize,
+    /// years to play before the window opens
+    advance: usize,
+    /// give the player a works and some land at the start (for screenshots)
+    demo: bool,
+    /// start with this spot clicked
+    pick: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -81,6 +93,12 @@ fn parse_args() -> Args {
         views: Vec::new(),
         season: None,
         describe: None,
+        new: false,
+        seed: 7,
+        families: 6,
+        advance: 0,
+        demo: false,
+        pick: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -105,6 +123,16 @@ fn parse_args() -> Args {
             "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
             "--wait" => { a.wait = next(i).parse().unwrap_or(45.0); i += 1; }
             "--no-tilt" => a.tilt = false,
+            "--new" => a.new = true,
+            "--seed" => { a.seed = next(i).parse().unwrap_or(7); i += 1; }
+            "--families" => { a.families = next(i).parse().unwrap_or(6); i += 1; }
+            "--advance" => { a.advance = next(i).parse().unwrap_or(0); i += 1; }
+            "--demo" => a.demo = true,
+            "--pick" => {
+                let s = next(i);
+                if let Some((x, z)) = s.split_once(',') { a.pick = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
+                i += 1;
+            }
             "--season" => { a.season = next(i).parse().ok(); i += 1; }
             "--describe" => {
                 let s = next(i);
@@ -150,7 +178,7 @@ struct Data {
 impl Data {
     /// The last year there is anything to show for.
     fn latest(&self) -> usize {
-        self.r.ny - 1
+        self.r.filled.clamp(1, self.r.ny) - 1
     }
 }
 
@@ -248,6 +276,9 @@ struct Train {
 struct InspectText;
 #[derive(Component)]
 struct InspectTitle;
+/// Where the game puts the orders the player can give about the picked thing.
+#[derive(Component)]
+struct InspectActions;
 
 /// What the player clicked on last.
 #[derive(Resource, Default)]
@@ -269,22 +300,41 @@ static FREDOKA: &[u8] = include_bytes!("../assets/fonts/Fredoka.ttf");
 fn main() {
     let args = parse_args();
     let t0 = std::time::Instant::now();
-    let r = match replay::load(&args.run) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("{e}\nMake a run first, for example:\n  python -m isostate run --seed 7 --regime landlords --out runs/landlords");
-            std::process::exit(1);
+    let (r, live, families) = if args.new {
+        eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
+        match live::start(args.seed, args.families, args.advance, args.demo) {
+            Ok((r, l, f)) => (r, Some(l), Some(f)),
+            Err(e) => {
+                eprintln!("the game could not start: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        match replay::load(&args.run) {
+            Ok(r) => (r, None, None),
+            Err(e) => {
+                eprintln!("{e}\nMake a run first, for example:\n  cargo run --release -p isostate-core -- run --seed 7 --out runs/rust7\nor start a new game with --new");
+                std::process::exit(1);
+            }
         }
     };
     let g = world::build_ground(&r);
     let ts = terrain::tex_static(&r, &g);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
-    eprintln!("prepared {} in {:.1}s", args.run, t0.elapsed().as_secs_f32());
+    eprintln!("prepared {} in {:.1}s", if args.new { "the new game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
+    if let Some(me) = families.as_ref().and_then(|f| f.player()) {
+        eprintln!("you are the {} family, with {} in hand", me.name, ui::money(me.cash));
+        for &f in &me.holdings {
+            let firm = &r.header.firms[f];
+            eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
+        }
+    }
+    let latest = r.filled.clamp(1, r.ny) - 1;
     let k0 = match args.year {
-        Some(y) => (y - r.y0).clamp(0, r.ny as i32 - 1) as usize,
-        None => r.ny - 1,
+        Some(y) => ((y - r.y0).max(0) as usize).min(latest),
+        None => latest,
     };
     if let Some((x, z)) = args.describe {
         // print what a click at this spot would show, then stop
@@ -315,6 +365,11 @@ fn main() {
         dist,
     };
 
+    let picked = Picked {
+        what: args.pick.and_then(|(x, z)| choose(&r, &slots, &cen, Vec3::new(x, world::height_at(&g, x, z), z), k0)),
+        ..default()
+    };
+
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
@@ -340,17 +395,24 @@ fn main() {
     }
     app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))
         .insert_resource(GlobalAmbientLight { color: Color::srgb(0.78, 0.86, 1.0), brightness: 650.0, ..default() })
-        .insert_resource(Data { r, g, ts, slots, cen, live: false })
+        .insert_resource(Data { r, g, ts, slots, cen, live: live.is_some() })
         .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt))
         .insert_resource(ForcedSeason(args.season))
         .init_resource::<Toasts>()
-        .init_resource::<Picked>()
+        .insert_resource(picked)
         .init_resource::<Rails>()
         .add_plugins(ui::plugin)
+        .add_plugins(game::plugin)
         .add_systems(Startup, (setup_world, setup_ui).chain())
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
+    if let Some(l) = live {
+        app.insert_resource(l);
+    }
+    if let Some(f) = families {
+        app.insert_resource(f);
+    }
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
         app.add_systems(Update, take_shot.after(toasts));
@@ -632,9 +694,9 @@ fn seasons(
 }
 
 fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: Res<Data>, mut tilt: ResMut<Tilt>) {
-    let last = (data.r.ny - 1) as f32;
+    let last = data.latest() as f32;
     if keys.just_pressed(KeyCode::Space) {
-        if !tl.playing && tl.t >= last {
+        if !tl.playing && tl.t >= (data.r.ny - 1) as f32 && !data.live {
             tl.t = 0.0;
         }
         tl.playing = !tl.playing;
@@ -668,9 +730,11 @@ fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>) {
     if !tl.playing {
         return;
     }
-    let last = (data.r.ny - 1) as f32;
-    tl.t = (tl.t + time.delta_secs() * tl.speed).min(last);
-    if tl.t >= last {
+    // a live game waits at the end of the last year it has until the next arrives
+    let end = (data.r.ny - 1) as f32;
+    let cap = if data.r.filled < data.r.ny { data.latest() as f32 + 0.999 } else { end };
+    tl.t = (tl.t + time.delta_secs() * tl.speed).min(cap);
+    if tl.t >= end {
         tl.playing = false;
     }
 }
@@ -803,6 +867,7 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
         .with_children(|p| {
             p.spawn((text(f, "", 20.0, INK), InspectTitle));
             p.spawn((text(f, "", 14.0, MUTED), InspectText));
+            p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
         });
     // town labels
     for t in 0..data.r.header.towns.len().min(data.r.n_towns) {

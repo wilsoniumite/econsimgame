@@ -2928,6 +2928,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bytemuck",
+ "isostate-core",
  "rayon",
  "serde",
  "serde_json",
