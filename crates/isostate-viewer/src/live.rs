@@ -234,7 +234,7 @@ fn run_thread(mut s: iso::Sim, mut cursor: LiveCursor, rx: mpsc::Receiver<Cmd>, 
                     land_price: families::land_price(&s.st, &s.params, cell),
                     owner,
                     owner_name: owner.and_then(|o| s.st.families.get(o)).map(|f| f.surname.clone()),
-                    land_allowed: may_buy(&s, cell),
+                    land_allowed: families::may_buy_land(&s.st, PLAYER, cell),
                     options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
                 })
             }
@@ -268,18 +268,6 @@ fn run_thread(mut s: iso::Sim, mut cursor: LiveCursor, rx: mpsc::Receiver<Cmd>, 
             return;
         }
     }
-}
-
-/// The player buys land directly only around the seat; a growing estates branch buys it elsewhere.
-fn may_buy(s: &iso::Sim, cell: usize) -> Result<(), String> {
-    let Some(fam) = s.st.families.get(PLAYER) else { return Err("there is no family to buy it".into()) };
-    if !s.st.world.land.get(cell).copied().unwrap_or(false) {
-        return Err("the square is sea".into());
-    }
-    if s.st.catch.get(cell).copied() != Some(fam.seat as i64) {
-        return Err(format!("land is bought directly only around the seat, {}; an estates branch buys it elsewhere", s.st.town_name[fam.seat]));
-    }
-    Ok(())
 }
 
 fn done(s: &iso::Sim, r: Result<String, String>) -> Msg {

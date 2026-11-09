@@ -397,32 +397,12 @@ pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<
 
     heading(p, f, "The family");
     p.spawn(text(f, "The head runs every trade at the seat. Anyone else of age can be posted to run a trade in another town; whoever runs a branch makes its works cheaper to run, the abler the more.", 12.5, MUTED));
-    // the head first, then managers, the unposted, those training, and the children
-    let order = |m: &MemberReport| match m.post {
-        Post::Head => 0,
-        Post::Manager { .. } => 1,
-        Post::Unposted => 2,
-        Post::Learning { .. } => 3,
-        Post::Child => 4,
-    };
-    let mut people: Vec<&MemberReport> = rep.members.iter().filter(|m| m.alive).collect();
-    people.sort_by_key(|m| (order(m), -m.age));
-    for m in people.iter().filter(|m| m.post != Post::Child) {
-        member_card(p, f, v, r, me, m, v.live && expanded == Some(m.index));
+    // the family tree: the founders, each followed by their children, indented under them
+    let mut roots: Vec<&MemberReport> = rep.members.iter().filter(|m| m.parent.is_none_or(|j| j >= rep.members.len())).collect();
+    roots.sort_by_key(|m| -m.age);
+    for m in roots {
+        tree(p, f, v, r, me, m, expanded, 0);
     }
-    let children: Vec<&&MemberReport> = people.iter().filter(|m| m.post == Post::Child).collect();
-    if !children.is_empty() {
-        let names: Vec<String> = children.iter().map(|m| format!("{} {}", m.first, m.age)).collect();
-        p.spawn(Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)), flex_direction: FlexDirection::Column, ..default() }).with_children(|c| {
-            c.spawn(text(f, &format!("Children: {}", names.join(", ")), 13.5, INK));
-            c.spawn(text(f, "At fourteen each is trained: apprenticed in a trade, which the family then knows, or sent to university.", 12.0, MUTED));
-        });
-    }
-    let dead = rep.members.iter().filter(|m| !m.alive).count();
-    if dead > 0 {
-        p.spawn(text(f, &format!("{dead} of the family have died."), 12.0, MUTED));
-    }
-
     heading(p, f, "The great families");
     p.spawn(text(f, "Click a family to see how it is doing.", 12.0, MUTED));
     for (pos, &i) in rank.iter().enumerate() {
@@ -454,6 +434,34 @@ pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<
     let _ = k;
 }
 
+/// A member and, indented under them, their children (the living as full
+/// cards, the dead as a line).
+#[allow(clippy::too_many_arguments)]
+fn tree(p: &mut ChildSpawnerCommands, f: &Handle<Font>, v: &FamilyView, r: &Replay, me: &FamilyRow, m: &MemberReport, expanded: Option<usize>, depth: usize) {
+    let rep = &me.rep;
+    if m.alive {
+        member_card(p, f, v, r, me, m, v.live && expanded == Some(m.index));
+    } else {
+        p.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)), ..default() },)).with_children(|row| {
+            row.spawn(text(f, &format!("{} {} \u{2020}, died at {}", m.first, rep.surname, m.age), 12.5, MUTED));
+        });
+    }
+    let mut kids: Vec<&MemberReport> = rep.members.iter().filter(|c| c.parent == Some(m.index)).collect();
+    if kids.is_empty() || depth > 8 {
+        return;
+    }
+    kids.sort_by_key(|c| -c.age);
+    p.spawn((
+        Node { flex_direction: FlexDirection::Column, margin: UiRect::left(Val::Px(10.0)), padding: UiRect::left(Val::Px(8.0)), border: UiRect::left(Val::Px(2.0)), ..default() },
+        BorderColor::all(RULE),
+    ))
+    .with_children(|c| {
+        for k in kids {
+            tree(c, f, v, r, me, k, expanded, depth + 1);
+        }
+    });
+}
+
 fn decision_line(p: &mut ChildSpawnerCommands, f: &Handle<Font>, d: &Decision, accent: Color) {
     p.spawn((
         Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(10.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
@@ -474,6 +482,14 @@ fn member_card(p: &mut ChildSpawnerCommands, f: &Handle<Font>, v: &FamilyView, r
     let rep = &me.rep;
     let accent = me.colour;
     let can_post = v.live && postable(m);
+    if m.post == Post::Child {
+        // children are a line: the decision about them comes at fourteen
+        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)), ..default() }).with_children(|row| {
+            row.spawn(text(f, &format!("{} {}, {}", m.first, rep.surname, m.age), 13.5, INK));
+            pips(row, m.skill, accent.with_alpha(0.6));
+        });
+        return;
+    }
     p.spawn((
         Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)), border: UiRect::bottom(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
         BorderColor::all(RULE),
