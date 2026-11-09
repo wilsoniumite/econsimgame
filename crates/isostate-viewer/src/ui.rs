@@ -62,10 +62,19 @@ impl Tab {
     }
 }
 
+/// Which news the News panel lists.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NewsShow {
+    Major,
+    All,
+    /// what the great families did (a live game only)
+    Families,
+}
+
 #[derive(Resource)]
 pub struct UiState {
     pub tab: Option<Tab>,
-    pub news_major: bool,
+    pub news: NewsShow,
     /// the pointer is over a panel, so the camera and map clicks leave it alone
     pub hover: bool,
     /// bumped whenever panel content must be rebuilt for reasons other than the year
@@ -74,12 +83,12 @@ pub struct UiState {
     pub expanded: Option<usize>,
     /// the rival family opened in the list of great families
     pub rival: Option<usize>,
-    built: Option<(Option<Tab>, usize, bool, u64)>,
+    built: Option<(Option<Tab>, usize, NewsShow, u64)>,
 }
 
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news_major: true, hover: false, dirty: 0, expanded: None, rival: None, built: None }
+        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, built: None }
     }
 }
 
@@ -560,10 +569,14 @@ fn speed_clicks(mut tl: ResMut<Timeline>, data: Res<Data>, q: Query<(&Interactio
     }
 }
 
-fn news_filter_click(mut ui: ResMut<UiState>, q: Query<&Interaction, (Changed<Interaction>, With<NewsFilter>)>) {
+fn news_filter_click(mut ui: ResMut<UiState>, data: Res<Data>, q: Query<&Interaction, (Changed<Interaction>, With<NewsFilter>)>) {
     for i in &q {
         if *i == Interaction::Pressed {
-            ui.news_major = !ui.news_major;
+            ui.news = match ui.news {
+                NewsShow::Major => NewsShow::All,
+                NewsShow::All if data.live => NewsShow::Families,
+                _ => NewsShow::Major,
+            };
         }
     }
 }
@@ -701,7 +714,7 @@ fn panel_rebuild(
     mut title: Query<&mut Text, With<PanelTitle>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (ui.tab, k, ui.news_major, ui.dirty);
+    let key = (ui.tab, k, ui.news, ui.dirty);
     if ui.built == Some(key) {
         return;
     }
@@ -720,7 +733,7 @@ fn panel_rebuild(
     let r = &data.r;
     let fam = fam.as_deref();
     commands.entity(be).with_children(|p| match tab {
-        Tab::News => news_panel(p, &f, r, k, ui.news_major),
+        Tab::News => news_panel(p, &f, r, k, ui.news, fam.and_then(|v| v.player)),
         Tab::Markets => markets_panel(p, &f, r, k),
         Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded, ui.rival),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k),
@@ -770,16 +783,26 @@ pub fn small_button<C: Component>(p: &mut ChildSpawnerCommands, f: &Handle<Font>
     });
 }
 
-fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, major: bool) {
+fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, player: Option<usize>) {
     let year = r.y0 + k as i32;
+    let wanted = |e: &replay::Event| match show {
+        NewsShow::Major => e.weight >= 0.6,
+        NewsShow::All => true,
+        NewsShow::Families => e.family.is_some(),
+    };
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::bottom(Val::Px(4.0)), ..default() }).with_children(|row| {
-        let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && (!major || e.weight >= 0.6)).count();
+        let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
         row.spawn(text(f, &format!("{n} items up to {year}"), 13.0, MUTED));
-        small_button(row, f, if major { "Showing major" } else { "Showing all" }, NewsFilter);
+        let label = match show {
+            NewsShow::Major => "Showing major",
+            NewsShow::All => "Showing all",
+            NewsShow::Families => "Showing the families",
+        };
+        small_button(row, f, label, NewsFilter);
     });
     let mut shown = 0;
     for e in r.header.events.iter().rev() {
-        if (e.year.floor() as i32) > year || (major && e.weight < 0.6) {
+        if (e.year.floor() as i32) > year || !wanted(e) {
             continue;
         }
         shown += 1;
@@ -789,9 +812,15 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
         p.spawn(Node { column_gap: Val::Px(9.0), padding: UiRect::vertical(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() })
             .insert(BorderColor::all(RULE))
             .with_children(|row| {
-                chip(row, kind_colour(&e.kind));
+                // family news in the family's colour, the player's own marked as such
+                let (colour, label) = match e.family {
+                    Some(fi) if Some(fi) == player => (family::banner(fi), "Your family"),
+                    Some(fi) => (family::banner(fi), kind_label(&e.kind)),
+                    None => (kind_colour(&e.kind), kind_label(&e.kind)),
+                };
+                chip(row, colour);
                 row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
-                    col.spawn(text(f, &format!("{}  \u{00b7}  {}", kind_label(&e.kind), e.year.floor() as i32), 12.0, kind_colour(&e.kind)));
+                    col.spawn(text(f, &format!("{}  \u{00b7}  {}", label, e.year.floor() as i32), 12.0, colour));
                     col.spawn(text(f, &e.title, 15.5, INK));
                     if !e.text.is_empty() {
                         col.spawn(text(f, &e.text, 12.5, MUTED));

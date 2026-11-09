@@ -946,10 +946,10 @@ fn banner_rgba(i: usize) -> [f32; 4] {
 
 /// A pennant on a pole beside every family works, a low fence round every
 /// family's land, and a tall flag on the market square of every family's seat.
-fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize)], k: usize) -> Builder {
+fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize) -> Builder {
     let mut b = Builder::default();
     let pole = hex(0x6b5a48);
-    for (i, &(fam, town)) in seats.iter().enumerate() {
+    for (i, &(fam, town, moving)) in seats.iter().enumerate() {
         let Some((at, radius, yaw)) = scatter::towns::square_of(r, cen, k, town) else { continue };
         // families sharing a seat stand their flags side by side along the square's west edge
         let along = seats[..i].iter().filter(|s| s.1 == town).count() as f32;
@@ -957,10 +957,11 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         let o = q * Vec3::new(-radius * 0.62, 0.0, -0.035 + 0.045 * along);
         let (x, z) = (at.x + o.x, at.y + o.z);
         let base = Vec3::new(x, world::height_at(g, x, z).max(0.0), z);
-        let top = base + Vec3::Y * 0.21;
+        // a seat the family is moving to has a shorter pole and a paler flag until the year end
+        let top = base + Vec3::Y * if moving { 0.13 } else { 0.21 };
         b.beam(base - Vec3::Y * 0.01, top + Vec3::Y * 0.01, 0.0055, pole);
         b.block(top + Vec3::Y * 0.01, 0.012, 0.012, 0.012, 0.0, hex(0xd9b44a), Some(hex(0xd9b44a)), 0.0);
-        let col = banner_rgba(fam);
+        let col = if moving { lerp(banner_rgba(fam), hex(0xf4ecd8), 0.5) } else { banner_rgba(fam) };
         // the flag flies with the same wind as the pennants
         let fly = Vec3::new(0.068, -0.006, 0.034);
         let (a, d) = (top, top - Vec3::Y * 0.048);
@@ -1055,8 +1056,12 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: 
     let Some(marks) = marks else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there
-    let seats: Vec<(usize, usize)> = if present(&tl, &data) { fam.families.iter().map(|f| (f.rep.index, f.seat)).collect() } else { Vec::new() };
-    let seat_key = seats.iter().fold(0u64, |h, &(a, b)| h.wrapping_mul(31).wrapping_add((a * 1000 + b) as u64 + 1));
+    let seats: Vec<(usize, usize, bool)> = if present(&tl, &data) {
+        fam.families.iter().flat_map(|f| std::iter::once((f.rep.index, f.seat, false)).chain(f.rep.next_seat.map(|t| (f.rep.index, t, true)))).collect()
+    } else {
+        Vec::new()
+    };
+    let seat_key = seats.iter().fold(0u64, |h, &(a, b, m)| h.wrapping_mul(31).wrapping_add((a * 1000 + b * 2 + m as usize) as u64 + 1));
     let key = (k, data.r.filled, game.pending.len(), seat_key);
     if game.marks == Some(key) {
         return;
