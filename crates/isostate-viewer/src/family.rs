@@ -58,6 +58,12 @@ pub struct FamilyRow {
     pub bonus: [f32; 6],
     /// how many of its works are in each group
     pub works_by_group: [usize; 6],
+    /// last year's accounts: dividends, rents, land sold, spent on living, put into works and land
+    pub dividends: f32,
+    pub rents: f32,
+    pub sales: f32,
+    pub spending: f32,
+    pub invested: f32,
     /// net worth at the end of each year so far
     pub history: Vec<f32>,
 }
@@ -141,6 +147,22 @@ pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<
         row.spawn(text(f, &format!("{} in hand", money(me.cash)), 14.0, INK));
         row.spawn(text(f, &format!("{}{} this year", if change >= 0.0 { "+" } else { "" }, money(change)), 14.0, if change >= 0.0 { GOOD } else { BAD }));
     });
+
+    heading(p, f, "Last year's accounts");
+    let line = |p: &mut ChildSpawnerCommands, label: &str, v: f32, sign: f32| {
+        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, padding: UiRect::vertical(Val::Px(1.0)), ..default() }).with_children(|row| {
+            row.spawn(text(f, label, 13.5, INK));
+            let s = if v.abs() < 0.5 { "\u{2013}".to_string() } else if sign > 0.0 { money(v) } else { format!("\u{2212}{}", money(v)) };
+            row.spawn(text(f, &s, 13.5, if sign > 0.0 || v.abs() < 0.5 { INK } else { MUTED }));
+        });
+    };
+    line(p, "Dividends from the works", me.dividends, 1.0);
+    line(p, "Rents from the land", me.rents, 1.0);
+    if me.sales > 0.5 {
+        line(p, "Land sold", me.sales, 1.0);
+    }
+    line(p, "Spent on living", me.spending, -1.0);
+    line(p, "Put into works and land", me.invested, -1.0);
 
     heading(p, f, "The family");
     p.spawn(text(f, "A member who manages an industry makes the family's works in it a little cheaper to run. The abler the manager, the bigger the saving.", 12.5, MUTED));

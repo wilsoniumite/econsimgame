@@ -118,6 +118,12 @@ pub struct TimelineTrack;
 pub struct TimelineKnob;
 #[derive(Component)]
 pub struct HelpCard;
+/// A live game: work out one more year and show it.
+#[derive(Component)]
+pub struct NextYearButton;
+/// A live game: says when the next year is being worked out.
+#[derive(Component)]
+pub struct StepNote;
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
@@ -227,7 +233,17 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                                 bt.spawn(text(f, label, 14.0, INK));
                             });
                         }
+                        if data.live {
+                            // one year on, then stop: the natural rhythm of a turn
+                            row.spawn((Node { margin: UiRect::left(Val::Px(6.0)), ..button_node(10.0, 5.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, NextYearButton))
+                                .with_children(|bt| {
+                                    bt.spawn(text(f, "Next year", 14.0, INK));
+                                });
+                        }
                     });
+                    if data.live {
+                        mid.spawn((text(f, "", 13.0, MUTED), TextLayout::default().with_no_wrap(), StepNote, Node { min_width: Val::Px(110.0), ..default() }));
+                    }
                 });
             });
             top.spawn(Node { width: Val::Px(380.0), justify_content: JustifyContent::End, ..default() }).with_children(|wrap| {

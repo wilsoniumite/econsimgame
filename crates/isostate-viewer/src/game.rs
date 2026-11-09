@@ -31,9 +31,19 @@ pub struct Game {
     pub follow: bool,
     /// bumped whenever the order panel must be redrawn
     pub version: u64,
+    /// the last order sent, until its answer comes
+    last_order: Option<Action>,
+    /// squares where the player's new works will stand next year
+    pending: Vec<usize>,
+    /// the end of the game has been shown
+    ended: bool,
     drawn: Option<(Option<Pick>, usize, u64)>,
-    marks: Option<(usize, usize)>,
+    marks: Option<(usize, usize, usize)>,
 }
+
+/// The card shown when the century is over.
+#[derive(Component)]
+struct EndCard;
 
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -52,7 +62,7 @@ struct Marks(Handle<Mesh>);
 pub fn plugin(app: &mut App) {
     app.init_resource::<Game>().add_systems(Startup, setup_marks.run_if(resource_exists::<Live>)).add_systems(
         Update,
-        (pump, drive, ask_site, action_clicks, assign_clicks, member_clicks, goto_clicks, order_panel, owner_marks).chain().run_if(resource_exists::<Live>),
+        (pump, drive, ask_site, action_clicks, assign_clicks, member_clicks, goto_clicks, next_year_clicks, step_note, order_panel, owner_marks, end_card).chain().run_if(resource_exists::<Live>),
     );
 }
 
@@ -82,6 +92,11 @@ fn row_of(rep: &FamilyReport, history: Vec<f32>, r: &Replay, method_group: &[Opt
         holdings: rep.firms.clone(),
         bonus: rep.bonus.map(|b| b as f32),
         works_by_group,
+        dividends: (rep.last_year.dividends.iter().sum::<f64>() + rep.last_year.other_dividends) as f32,
+        rents: rep.last_year.rents as f32,
+        sales: rep.last_year.land_sales as f32,
+        spending: rep.last_year.spending as f32,
+        invested: rep.last_year.invested as f32,
         history,
     }
 }
@@ -128,6 +143,7 @@ fn pump(mut live: ResMut<Live>, mut data: ResMut<Data>, mut fam: ResMut<FamilyVi
                     game.follow = false;
                     tl.t = y.index as f32;
                 }
+                game.pending.clear();
                 // the world has moved on: ask about the picked square again
                 game.asked = None;
                 game.site = None;
@@ -142,6 +158,10 @@ fn pump(mut live: ResMut<Live>, mut data: ResMut<Data>, mut fam: ResMut<FamilyVi
             }
             Msg::Done { ok, text, family } => {
                 game.busy = false;
+                if let (true, Some(Action::Found { cell, .. })) = (ok, game.last_order) {
+                    game.pending.push(cell);
+                }
+                game.last_order = None;
                 game.note = Some((ok, text));
                 if let Some(rep) = family {
                     player_family(&mut fam, &rep, &data.r, &live.method_group);
@@ -203,6 +223,7 @@ fn action_clicks(q: Query<(&Interaction, &ActionButton), Changed<Interaction>>, 
         if *i != Interaction::Pressed || game.busy {
             continue;
         }
+        game.last_order = Some(a.0);
         match a.0 {
             Action::Buy(c) => {
                 live.send(Cmd::BuyLand(c));
@@ -236,6 +257,37 @@ fn member_clicks(q: Query<(&Interaction, &MemberRow), Changed<Interaction>>, mut
         if *i == Interaction::Pressed {
             ui.expanded = if ui.expanded == Some(m.0) { None } else { Some(m.0) };
             ui.dirty += 1;
+        }
+    }
+}
+
+fn next_year_clicks(q: Query<&Interaction, (Changed<Interaction>, With<crate::ui::NextYearButton>)>, mut live: ResMut<Live>, mut game: ResMut<Game>, mut tl: ResMut<Timeline>, data: Res<Data>) {
+    for i in &q {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        tl.playing = false;
+        if !present(&tl, &data) {
+            tl.t = data.latest() as f32;
+        } else if data.r.filled < data.r.ny && !live.stepping {
+            game.follow = true;
+            live.step();
+        }
+    }
+}
+
+fn step_note(live: Res<Live>, data: Res<Data>, mut q: Query<&mut Text, With<crate::ui::StepNote>>) {
+    let r = &data.r;
+    let s = if live.stepping {
+        format!("working out {}\u{2026}", r.y0 + r.filled as i32)
+    } else if r.filled >= r.ny {
+        "the century is over".to_string()
+    } else {
+        String::new()
+    };
+    for mut t in &mut q {
+        if t.0 != s {
+            t.0 = s.clone();
         }
     }
 }
@@ -483,16 +535,88 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, k: usize) 
     b
 }
 
+/// Surveyors' pegs and a sign where a works was ordered this year.
+fn stakes(b: &mut Builder, g: &world::Ground, r: &Replay, cell: usize, colour: [f32; 4]) {
+    let (cx, cz) = ((cell % r.w) as f32 + 0.5, (cell / r.w) as f32 + 0.5);
+    let at = |x: f32, z: f32| Vec3::new(x, world::height_at(g, x, z).max(0.0), z);
+    let peg = hex(0xe9dcc0);
+    let c = [at(cx - 0.12, cz - 0.09), at(cx + 0.12, cz - 0.09), at(cx + 0.12, cz + 0.09), at(cx - 0.12, cz + 0.09)];
+    for p in c {
+        b.block(p, 0.01, 0.01, 0.03, 0.0, peg, Some(peg), 0.01);
+    }
+    for i in 0..4 {
+        b.beam(c[i] + Vec3::Y * 0.022, c[(i + 1) % 4] + Vec3::Y * 0.022, 0.003, colour);
+    }
+    // a little board on a post, in the family colour
+    let s = at(cx - 0.14, cz + 0.12);
+    b.beam(s, s + Vec3::Y * 0.07, 0.006, hex(0x6b5a48));
+    b.block(s + Vec3::Y * 0.05, 0.05, 0.006, 0.03, 0.3, colour, Some(colour), 0.0);
+}
+
 fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
     let Some(marks) = marks else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (k, data.r.filled);
+    let key = (k, data.r.filled, game.pending.len());
     if game.marks == Some(key) {
         return;
     }
     game.marks = Some(key);
-    let b = build_marks(&data.r, &data.g, &data.slots, k);
+    let mut b = build_marks(&data.r, &data.g, &data.slots, k);
+    if present(&tl, &data) {
+        for &c in &game.pending {
+            stakes(&mut b, &data.g, &data.r, c, banner_rgba(PLAYER));
+        }
+    }
     if let Some(mut m) = meshes.get_mut(&marks.0) {
         *m = if b.is_empty() { crate::placeholder_mesh() } else { b.into_mesh() };
     }
+}
+
+/// When the last year has been played: where the families finished.
+fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: Res<FamilyView>, font: Res<UiFont>, keys: Res<ButtonInput<KeyCode>>, cards: Query<Entity, With<EndCard>>) {
+    if keys.just_pressed(KeyCode::Escape) {
+        for e in &cards {
+            commands.entity(e).despawn();
+        }
+    }
+    let r = &data.r;
+    if game.ended || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
+        return;
+    }
+    game.ended = true;
+    let f = font.0.clone();
+    let mut rank: Vec<&FamilyRow> = fam.families.iter().collect();
+    rank.sort_by(|a, b| b.net_worth.partial_cmp(&a.net_worth).unwrap_or(std::cmp::Ordering::Equal));
+    let me = fam.player();
+    commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+            GlobalZIndex(40),
+            EndCard,
+        ))
+        .with_children(|wrap| {
+            wrap.spawn((
+                Node { flex_direction: FlexDirection::Column, width: Val::Px(440.0), padding: UiRect::axes(Val::Px(28.0), Val::Px(22.0)), row_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() },
+                BackgroundColor(crate::ui::PAPER),
+                BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.25), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0), Val::Px(16.0)),
+                Interaction::default(),
+                FocusPolicy::Block,
+            ))
+            .with_children(|c| {
+                c.spawn(text(&f, &format!("{}", r.y0 + r.ny as i32 - 1), 40.0, INK));
+                c.spawn(text(&f, "The century is over.", 18.0, INK));
+                if let Some(me) = me {
+                    let place = rank.iter().position(|x| x.name == me.name).unwrap_or(0) + 1;
+                    c.spawn(text(&f, &format!("The {} family finished {} of {}, worth {}.", me.name, place, rank.len(), money(me.net_worth)), 15.0, MUTED));
+                }
+                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }, BackgroundColor(RULE)));
+                for (i, row) in rank.iter().enumerate() {
+                    c.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|line| {
+                        line.spawn(text(&f, &format!("{}.  {}", i + 1, row.name), 16.0, row.colour));
+                        line.spawn(text(&f, &money(row.net_worth), 16.0, INK));
+                    });
+                }
+                c.spawn((text(&f, "The timeline still takes you back through the years. Esc closes this.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(10.0)), ..default() }));
+            });
+        });
 }

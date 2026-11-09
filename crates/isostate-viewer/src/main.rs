@@ -53,8 +53,9 @@ struct Args {
     views: Vec<ShotSpec>,
     season: Option<f32>,
     describe: Option<(f32, f32)>,
-    /// a new live game instead of a recorded run
+    /// a new live game instead of a recorded run (the default when no run is named)
     new: bool,
+    named_run: bool,
     seed: u64,
     families: usize,
     /// years to play before the window opens
@@ -94,6 +95,7 @@ fn parse_args() -> Args {
         season: None,
         describe: None,
         new: false,
+        named_run: false,
         seed: 7,
         families: 6,
         advance: 0,
@@ -154,10 +156,13 @@ fn parse_args() -> Args {
                 });
                 i += 1;
             }
-            s if !s.starts_with("--") => a.run = s.to_string(),
+            s if !s.starts_with("--") => { a.run = s.to_string(); a.named_run = true; }
             _ => {}
         }
         i += 1;
+    }
+    if !a.named_run {
+        a.new = true;
     }
     a
 }
@@ -1221,19 +1226,19 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
         Pick::Cell(c) => {
             let off = k * r.n + c;
             let (a, b, sh) = (r.mix_a[off] as usize, r.mix_b[off] as usize, r.mix_s[off] as f32 / 255.0);
-            let title = { let n = DISP_NAMES[a % 12]; let mut t = n.to_string(); if let Some(f) = t.get_mut(0..1) { f.make_ascii_uppercase(); } t };
-            let mut s = format!("{}, {} km east and {} km south of the north-west corner\n", title, (c % r.w) * 2, (c / r.w) * 2);
+            let kind = { let n = DISP_NAMES[a % 12]; let mut t = n.to_string(); if let Some(f) = t.get_mut(0..1) { f.make_ascii_uppercase(); } t };
+            // the town whose market the square trades in
+            let town = (r.catch[off] as usize).checked_sub(1).and_then(|t| r.header.towns.get(t));
+            let mut s = match town {
+                Some(t) => format!("{} near {}\n", kind, t.name),
+                None => format!("{kind}\n"),
+            };
             if a == b {
                 s.push_str(&format!("All {} in {}.", DISP_NAMES[a % 12], year));
             } else {
                 s.push_str(&format!("{:.0}% {} and {:.0}% {} in {}.", sh * 100.0, DISP_NAMES[a % 12], (1.0 - sh) * 100.0, DISP_NAMES[b % 12], year));
             }
-            let t = r.catch[off] as i64 - 1;
-            if t >= 0 {
-                if let Some(town) = r.header.towns.get(t as usize) {
-                    s.push_str(&format!("\nSells its produce in {}.", town.name));
-                }
-            }
+            s.push_str(&format!("\n{} km east and {} km south of the north-west corner.", (c % r.w) * 2, (c / r.w) * 2));
             s
         }
     }
