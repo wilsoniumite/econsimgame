@@ -6,7 +6,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::math::{Quat, Vec3};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Builder {
     pub pos: Vec<[f32; 3]>,
     pub nrm: Vec<[f32; 3]>,
@@ -183,6 +183,39 @@ impl Builder {
             let a = base + i * 2;
             self.idx.extend_from_slice(&[a, a + 2, a + 1, a + 1, a + 2, a + 3]);
         }
+    }
+
+    /// A flat ribbon whose width changes along it.
+    pub fn ribbon_var(&mut self, pts: &[Vec3], widths: &[f32], col: [f32; 4]) {
+        if pts.len() < 2 {
+            return;
+        }
+        let base = self.pos.len() as u32;
+        for (i, p) in pts.iter().enumerate() {
+            let prev = if i > 0 { pts[i - 1] } else { *p };
+            let next = if i + 1 < pts.len() { pts[i + 1] } else { *p };
+            let dir = Vec3::new(next.x - prev.x, 0.0, next.z - prev.z).normalize_or_zero();
+            let side = Vec3::new(-dir.z, 0.0, dir.x) * (widths[i.min(widths.len() - 1)] * 0.5);
+            self.pos.push((*p + side).to_array());
+            self.pos.push((*p - side).to_array());
+            for _ in 0..2 {
+                self.nrm.push([0.0, 1.0, 0.0]);
+                self.col.push(col);
+            }
+        }
+        for i in 0..(pts.len() as u32 - 1) {
+            let a = base + i * 2;
+            self.idx.extend_from_slice(&[a, a + 2, a + 1, a + 1, a + 2, a + 3]);
+        }
+    }
+
+    /// Append another builder's triangles.
+    pub fn append(&mut self, other: Builder) {
+        let base = self.pos.len() as u32;
+        self.pos.extend(other.pos);
+        self.nrm.extend(other.nrm);
+        self.col.extend(other.col);
+        self.idx.extend(other.idx.into_iter().map(|i| i + base));
     }
 
     pub fn into_mesh(self) -> Mesh {
