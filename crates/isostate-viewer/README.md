@@ -26,16 +26,17 @@ The first build compiles Bevy and takes a while. On Linux you need `pkg-config`,
 | Click | ask about a works, a town or a square |
 | 1 2 3 4 | the Family, Holdings, Markets and News panels |
 | H | every key |
-| Esc | close the note about what was clicked |
+| Esc | close the note about what was clicked, or put off a decision |
 | T | tilt-shift (miniature focus) on and off |
 
 ## Playing
 
-You are a family among six, with some money and no works. The others already hold land and works; landed families live off rents, industrial ones build near home. The simulation runs a year at a time: Next year plays one and stops, Space keeps going.
+You are a family among six. You start with some cash, land around your seat town and a handful of relations; the other families already hold land and works across the island. The simulation runs a year at a time: Next year plays one and stops, Space keeps going. Every choice is from a short list, never an amount to set.
 
-- **Click a square** (in the present year) and the note says who holds it. Buy it at 25 years' rent: its rent, and the ground rent of anything built on it, comes to the family. Below that is what could be built there: each works with its cost, its expected return at today's prices, and how deep its market is. "Thin market" means the works would make a large share of what its town buys, or the good sells far above its usual price; the promised return will not last there.
-- **The Family panel** has your worth over the years, last year's accounts, the great families' table, and the family's members. Click a member to put them in charge of a trade: the family's works in it get a little cheaper to run, more so the abler the manager. People age, die, and heirs come of age.
-- **Holdings** lists your works; click one to fly to it. Your works fly a pennant in the family colour and your land is fenced in it.
+- **Decisions** come as cards and stop the clock: the family's first trade, what each child learns at fourteen (an apprenticeship in a trade, which the family then knows, or university), who heads the family when a head dies. Each option says what it would mean, the default is marked, and Decide later leaves it for the badge beside Next year. Unanswered, the default is taken at the end of the next year.
+- **The seat** is where the head lives. Only there do you build works yourself (click a square in the present to see what could be built, with its cost, its expected return at today's prices and how deep its market is) and buy land. The head runs every trade the family knows at the seat. Click another town to move the seat there at the year end; its square flies your flag.
+- **Branches.** Post a grown member to run one of your trades in another town (from their card in the Family panel, which suggests where they would count, or from the town's note). A branch makes its works cheaper to run, the abler the runner the more, and grows on its own: a works a year, or land for estates. In Holdings, set each branch to Grow, Hold or Wind down. Works with nobody of the family over them pay a fifth of their profit to a hired manager.
+- **The Family panel** has your worth over the years, last year's accounts, anything waiting for you (decisions, members with nothing to run), the family tree, and the great families, each of which can be opened to see its head, trades and branches. Holdings lists the branches and works; click a works to fly to it. Your works fly a pennant in the family colour and your land is fenced in it.
 
 How families work inside the economy, and what the scripted test players found, is in `crates/isostate-core/FAMILIES.md`.
 
@@ -81,8 +82,8 @@ The economy only knows shares and densities per 2 km cell, so the viewer invents
 - **Things on the ground.** Every possible tree, house, farmstead and mine has a fixed slot with a fixed threshold, and it appears once its cell's share or density passes that threshold. Growth is therefore smooth and stable: nothing reshuffles from one year to the next, towns thicken in place and woods thin tree by tree. Town houses go up first in rows facing the roads, ridges along the street, then fill the blocks behind; the earliest houses keep their ground as a town grows.
 - **Works.** Each firm has a stable plot in its cell, first come first served (a live game places new firms as they appear), and its building depends on its method (mills, furnaces, kilns, sheds) and grows in tiers as its capacity doubles. A works stands in scaffolding the year it opens and the year it grows a size. Chimneys of working firms smoke.
 - **Life.** Trains run the railway lines, covered carts plod the main roads, and small sailing boats tack off every harbour town.
-- **The game's marks.** Family works fly a pennant and family land is fenced, both in the family colour; an ordered works is staked out until it goes up; the square under the pointer and the one clicked are outlined on the ground.
-- **Towns.** A church on the market square, a station once the railway reaches the town, a lighthouse for harbours.
+- **The game's marks.** Family works fly a pennant and family land is fenced, both in the family colour; every family's seat flies a tall flag on its market square (a shorter, paler one where it is moving at the year end); an ordered works is staked out until it goes up; the square under the pointer and the one clicked are outlined on the ground.
+- **Towns.** Laid out along the roads that run through them (`src/scatter/towns.rs`): each road through town ground is a high street, with back lanes, outer lanes and cross streets behind it that fill in as the town gets denser. Houses stand on plots fronting a street, set back to a line. The high streets and the market place keep rows of separate houses of different heights and colours; from about 1815 the newer streets are built as brick terraces with slate roofs. Every house has windows and a door. Each town has a paved market square with a market hall (or a market cross in a small town), a church facing it, a station road once the railway comes, and a lighthouse for harbours.
 - **Lines.** Rivers, roads and railways are ribbons draped over the terrain through jittered cell centres; lines being built are dashed.
 - **Light.** A low warm sun with shadows, soft sky light, screen-space ambient occlusion, distance haze, and an optional tilt-shift depth of field for the miniature look.
 
