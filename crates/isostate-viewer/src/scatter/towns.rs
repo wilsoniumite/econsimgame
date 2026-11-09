@@ -1,10 +1,16 @@
 //! Towns, laid out the way market towns grew. There is a market place with the
 //! church on one side. High streets run along the roads in, with an unbroken
 //! frontage near the middle. Back lanes run behind the plots, with cross streets
-//! between them, and as a town fills up its streets turn into terraced rows. A
-//! station stands at the end of its own road. Every street and plot is fixed by
-//! where the roads run and appears once its ground is built up enough, so a town
-//! thickens in place from year to year.
+//! between them; their houses go up a row at a time. A station stands at the end
+//! of its own road.
+//!
+//! Every street, plot and row is fixed by where the roads run, and appears once
+//! its ground is built up enough, so a town thickens in place from year to year.
+//! What a building looks like is settled when it goes up and changes only in
+//! steps of its own: a row built after 1815 is a brick terrace and stays one,
+//! and each house adds a storey at its own density, not all of a street at once.
+//! Houses outlast a small fall in their ground's density, so a town that shrinks
+//! a little does not lose them.
 
 use super::*;
 use bevy::math::Vec2;
@@ -20,6 +26,11 @@ const BRICK: [u32; 4] = [0xb5634c, 0xa65a45, 0xc07a5a, 0x96574a];
 const BACK_LANE: f32 = 0.13;
 const OUTER_LANE: f32 = 0.26;
 const CROSS_EVERY: f32 = 0.17;
+
+/// Rows on the back streets built from this year on are terraces.
+const TERRACE_ERA: i32 = 1815;
+/// How far a plot's ground may fall below what it needed before its house goes.
+const KEEP: f32 = 0.12;
 
 /// A street that may be laid this year: a straight run with the density its
 /// ground needs first. Main streets are the roads themselves, already drawn.
@@ -45,8 +56,10 @@ struct Square {
 struct Plot {
     p: Vec2,
     yaw: f32,
-    /// the street and side it fronts and its place along it, for terraces
+    /// the street and side it fronts and its place along it
     run: (i32, u8),
+    /// the row it belongs to on a back street, built all at once (none on a high street)
+    row: Option<i32>,
     /// it fronts a road through town: the old high street rather than a newer lane
     high: bool,
     index: i32,
@@ -55,6 +68,11 @@ struct Plot {
     need: f32,
     u: f32,
     v: f32,
+}
+
+/// The first year a plot's ground was town ground built up to `need`, if it has been by year k.
+fn first_built(r: &Replay, k: usize, wc: usize, sub: f32, need: f32) -> Option<usize> {
+    (0..=k).find(|&y| density(r, y, wc) >= need && matches!(world::pick_class(r, y, wc, sub), world::URBAN | world::WORKS))
 }
 
 fn v2((x, z): (f32, f32)) -> Vec2 {
@@ -295,7 +313,7 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
         (-1..=1).any(|dy| (-1..=1).any(|dx| street_pts.get(&(c.0 + dx, c.1 + dy)).is_some_and(|v| v.iter().any(|&(q, hw)| q.distance(p) < hw + clear))))
     };
 
-    // plots along both sides of every laid street, then round each market place
+    // plots along both sides of every laid street, at fixed places along it, then round each market place
     let mut cands: Vec<Plot> = Vec::new();
     for (s, runs) in &laid {
         let along = s.b - s.a;
@@ -306,29 +324,52 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
         let depth = 0.036;
         let set_back = s.width * 0.5 + depth * 0.5 + 0.005;
         let yaw_along = (-u.y).atan2(u.x);
-        for &(t0, t1) in runs {
-            let count = (((t1 - t0) * len) / spacing).floor() as i32;
-            for i in 0..count {
-                let t = t0 + (i as f32 + 0.5) * spacing / len;
-                for (j, side) in [(0u8, -1.0f32), (1, 1.0)] {
-                    let id = s.id * 4 + j as i32;
-                    let (pu, pv) = (world::hash2(id, i, 24), world::hash2(id, i, 25));
-                    let p = s.a + along * t + n * side * set_back;
-                    // a plot comes in once its ground is built up beyond the street's own need
-                    let need = s.need + (1.0 - s.need) * pu * if s.road { 0.75 } else { 0.95 };
-                    cands.push(Plot {
-                        p,
-                        yaw: yaw_along + if side < 0.0 { std::f32::consts::PI } else { 0.0 },
-                        run: (id, j),
-                        high: s.road,
-                        index: i,
-                        width: spacing,
-                        depth,
-                        need,
-                        u: pu,
-                        v: pv,
-                    });
+        let count = (len / spacing).floor() as i32;
+        // a plot's place is fixed along its street: the i-th from the street's start
+        let t_of = |i: i32| (i as f32 + 0.5) * spacing / len;
+        let laid_at = |t: f32| runs.iter().any(|&(t0, t1)| t >= t0 && t <= t1);
+        for (j, side) in [(0u8, -1.0f32), (1, 1.0)] {
+            let id = s.id * 4 + j as i32;
+            // the back streets are built a row at a time: rows of three to six plots,
+            // fixed per street, each with one need, so a row goes up all together
+            let mut rows: Vec<(i32, i32, i32)> = Vec::new();
+            if !s.road {
+                let mut i = 0;
+                while i < count {
+                    let l = 3 + (world::hash2(id, rows.len() as i32, 28) * 4.0) as i32;
+                    rows.push((rows.len() as i32, i, (i + l).min(count)));
+                    i += l;
                 }
+            }
+            for i in 0..count {
+                let row = rows.iter().find(|&&(_, a, b)| i >= a && i < b).copied();
+                // a row comes in only where its whole length is laid
+                let whole = match row {
+                    Some((_, a, b)) => (a..b).all(|q| laid_at(t_of(q))),
+                    None => laid_at(t_of(i)),
+                };
+                if !whole {
+                    continue;
+                }
+                let (pu, pv) = (world::hash2(id, i, 24), world::hash2(id, i, 25));
+                // a plot (or its row) comes in once its ground is built up beyond the street's own need
+                let need = match row {
+                    Some((ri, _, _)) => s.need + (1.0 - s.need) * world::hash2(id, ri, 29) * 0.95,
+                    None => s.need + (1.0 - s.need) * pu * 0.75,
+                };
+                cands.push(Plot {
+                    p: s.a + along * t_of(i) + n * side * set_back,
+                    yaw: yaw_along + if side < 0.0 { std::f32::consts::PI } else { 0.0 },
+                    run: (id, j),
+                    row: row.map(|r| r.0),
+                    high: s.road,
+                    index: i,
+                    width: spacing,
+                    depth,
+                    need,
+                    u: pu,
+                    v: pv,
+                });
             }
         }
     }
@@ -341,57 +382,62 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
             let p = s.at + dirv * (s.radius + 0.03);
             let id = -1000 - s.town as i32;
             let pu = world::hash2(id, i, 26);
-            cands.push(Plot { p, yaw: (dirv.y).atan2(-dirv.x) + std::f32::consts::FRAC_PI_2, run: (id, 0), high: true, index: i, width: 0.05, depth: 0.036, need: 0.55 * pu, u: pu, v: world::hash2(id, i, 27) });
+            cands.push(Plot { p, yaw: (dirv.y).atan2(-dirv.x) + std::f32::consts::FRAC_PI_2, run: (id, 0), row: None, high: true, index: i, width: 0.05, depth: 0.036, need: 0.55 * pu, u: pu, v: world::hash2(id, i, 27) });
         }
     }
 
-    // the plots built up enough, earliest first: they keep their ground as the town grows
-    cands.sort_by(|a, b| a.need.partial_cmp(&b.need).unwrap_or(std::cmp::Ordering::Equal));
+    // the plots that have been built and still stand, earliest first: they keep their
+    // ground as the town grows. Each knows the year it was built, which settles its style.
+    cands.sort_by(|a, b| a.need.total_cmp(&b.need));
     let mut taken: HashMap<(i32, i32), Vec<Vec2>> = HashMap::new();
-    let mut standing: Vec<(Plot, f32)> = Vec::new();
+    let mut standing: Vec<(Plot, f32, i32)> = Vec::new();
+    let mut row_year: HashMap<(i32, i32), Option<usize>> = HashMap::new();
     for pl in cands {
         let (cls, wc) = class_here(r, g, k, pl.p.x, pl.p.y);
         if cls != world::URBAN || world::height_at(g, pl.p.x, pl.p.y) < 0.05 {
             continue;
         }
         let dens = density(r, k, wc);
-        if dens < pl.need || near_plot(pl.p.x, pl.p.y) || in_square(pl.p) || on_street(pl.p, 0.012) {
+        if dens < pl.need - KEEP || near_plot(pl.p.x, pl.p.y) || in_square(pl.p) || on_street(pl.p, 0.012) {
             continue;
         }
+        let sub = world::sub_uniform(g, pl.p.x, pl.p.y) * 255.0;
+        // a row's year is its first plot's, so the whole row shares one style
+        let built = match pl.row {
+            Some(ri) => *row_year.entry((pl.run.0, ri)).or_insert_with(|| first_built(r, k, wc, sub, pl.need)),
+            None => first_built(r, k, wc, sub, pl.need),
+        };
+        let Some(built) = built else { continue };
         let c = cell(pl.p);
         if (-1..=1).any(|dy| (-1..=1).any(|dx| taken.get(&(c.0 + dx, c.1 + dy)).is_some_and(|v| v.iter().any(|q| q.distance(pl.p) < 0.042)))) {
             continue;
         }
         taken.entry(c).or_default().push(pl.p);
-        standing.push((pl, dens));
+        standing.push((pl, dens, r.y0 + built as i32));
     }
 
-    // neighbouring plots in a built-up street become one terraced row; elsewhere houses stand apart
-    let year = r.y0 + k as i32;
-    standing.sort_by_key(|(p, _)| (p.run, p.index));
+    // rows built in the industrial years are brick terraces; everything else stands as separate houses
+    standing.sort_by_key(|(p, _, _)| (p.run, p.index));
     let mut i = 0;
     while i < standing.len() {
-        let (first, dens) = (&standing[i].0, standing[i].1);
+        let (first, _, year) = (&standing[i].0, standing[i].1, standing[i].2);
         let mut j = i + 1;
-        if dens > 0.6 {
-            while j < standing.len() && j - i < 6 && standing[j].0.run == first.run && standing[j].0.index == standing[j - 1].0.index + 1 {
+        if let (Some(ri), true) = (first.row, year >= TERRACE_ERA) {
+            while j < standing.len() && standing[j].0.run == first.run && standing[j].0.row == Some(ri) && standing[j].0.index == standing[j - 1].0.index + 1 {
                 j += 1;
             }
         }
-        if j - i >= 3 {
-            // the high streets and the market place keep a frontage of separate houses
-            // of all heights and colours; the newer streets of the industrial years are
-            // laid out in uniform brick terraces
-            if first.high || year < 1815 {
-                for (pl, d) in &standing[i..j] {
-                    townhouse(houses, smoke, g, pl, *d);
-                }
-            } else {
-                terrace(houses, smoke, g, &standing[i..j]);
-            }
+        if j - i >= 2 {
+            terrace(houses, smoke, g, &standing[i..j]);
         } else {
-            for (pl, d) in &standing[i..j] {
-                cottage(houses, smoke, g, pl, *d);
+            for (pl, d, _) in &standing[i..j] {
+                // on the high streets and the market place a house is rebuilt as a
+                // townhouse of the full plot once its ground is dense enough, each at its own point
+                if pl.high && *d >= pl.need + 0.12 + 0.25 * pl.v {
+                    townhouse(houses, smoke, g, pl, *d);
+                } else {
+                    cottage(houses, smoke, g, pl, *d);
+                }
             }
         }
         i = j;
@@ -407,7 +453,7 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
         if in_square(p) || on_street(p, 0.2) {
             continue;
         }
-        let pl = Plot { p, yaw: (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2, run: (0, 0), high: false, index: 0, width: 0.05, depth: 0.036, need: 0.0, u: s.u, v: s.v };
+        let pl = Plot { p, yaw: (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2, run: (0, 0), row: None, high: false, index: 0, width: 0.05, depth: 0.036, need: 0.0, u: s.u, v: s.v };
         cottage(houses, smoke, g, &pl, density(r, k, c));
     }
 }
@@ -415,7 +461,8 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
 /// A house standing on its own plot, a little narrower than the plot so the gaps show.
 fn cottage(houses: &mut Builder, smoke: &mut Builder, g: &Ground, pl: &Plot, dens: f32) {
     let p = ground(g, pl.p.x, pl.p.y);
-    let storeys = 1.0 + ((dens > 0.45 && pl.v > 0.5) as u8 as f32) + ((dens > 0.85 && pl.v > 0.85) as u8 as f32);
+    // each house adds a storey at its own density, so a street grows a house at a time
+    let storeys = 1.0 + ((dens >= 0.35 + 0.35 * pl.v) as u8 as f32) + ((dens >= 0.8 + 0.15 * pl.u) as u8 as f32);
     let w = pl.width * (0.68 + 0.22 * pl.v);
     let d = pl.depth * (0.9 + 0.2 * pl.u);
     let yaw = pl.yaw + (pl.v - 0.5) * 0.08;
@@ -435,16 +482,17 @@ fn cottage(houses: &mut Builder, smoke: &mut Builder, g: &Ground, pl: &Plot, den
 
 /// A terraced row: one long block and roof over several plots, in brick, with a
 /// chimney stack on every party wall.
-fn terrace(houses: &mut Builder, smoke: &mut Builder, g: &Ground, row: &[(Plot, f32)]) {
+fn terrace(houses: &mut Builder, smoke: &mut Builder, g: &Ground, row: &[(Plot, f32, i32)]) {
     let (a, b) = (row[0].0.p, row[row.len() - 1].0.p);
     let mid = (a + b) * 0.5;
     let unit = row[0].0.width;
     let len = a.distance(b) + unit * 0.96;
     let first = &row[0].0;
-    let dens = row.iter().map(|(_, d)| *d).sum::<f32>() / row.len() as f32;
-    let storeys = if dens > 0.8 && first.v > 0.4 { 3.0 } else { 2.0 };
+    let dens = row.iter().map(|(_, d, _)| *d).sum::<f32>() / row.len() as f32;
+    // a row is raised a storey when its own ground is dense enough
+    let storeys = if dens >= 0.78 + 0.2 * first.v { 3.0 } else { 2.0 };
     // ground under the row: the lower end, so it never floats
-    let h = row.iter().map(|(pl, _)| world::height_at(g, pl.p.x, pl.p.y)).fold(f32::MAX, f32::min);
+    let h = row.iter().map(|(pl, _, _)| world::height_at(g, pl.p.x, pl.p.y)).fold(f32::MAX, f32::min);
     let p = Vec3::new(mid.x, h, mid.y);
     let yaw = first.yaw;
     let wall = hex(BRICK[(first.v * 4.0) as usize % 4]);
@@ -503,7 +551,7 @@ fn windows(b: &mut Builder, p: Vec3, w: f32, d: f32, storeys: f32, yaw: f32, uni
 /// storeys, its own colour and roof, so a high street reads as a row of separate houses.
 fn townhouse(houses: &mut Builder, smoke: &mut Builder, g: &Ground, pl: &Plot, dens: f32) {
     let p = ground(g, pl.p.x, pl.p.y);
-    let storeys = 2.0 + ((dens > 0.7 && pl.v > 0.55) as u8 as f32);
+    let storeys = 2.0 + ((dens >= 0.62 + 0.35 * pl.u) as u8 as f32);
     let w = pl.width * 0.99;
     let d = pl.depth * (0.95 + 0.15 * pl.u);
     let wall = if pl.v < 0.25 { hex(BRICK[(pl.u * 4.0) as usize % 4]) } else { hex(WALLS[(pl.v * 6.0) as usize % 6]) };
