@@ -6,6 +6,7 @@
 //! through explicit issuance. `money_total` checks that invariant.
 
 use crate::content::Content;
+use crate::families;
 use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
 use crate::state::{MonthStats, State};
@@ -249,14 +250,26 @@ pub fn money_total(st: &State) -> f64 {
     for pr in &st.projects {
         projects += pr.cash;
     }
-    pairwise_sum(&st.hh_cash)
+    let total = pairwise_sum(&st.hh_cash)
         + pairwise_sum(&st.lord_cash)
         + pairwise_sum(&st.merch_cash)
         + pairwise_sum(&firm_cash)
         + st.fund_cash
         + projects
         + pairwise_sum(&st.hh_income)
-        + pairwise_sum(&st.lord_income)
+        + pairwise_sum(&st.lord_income);
+    if families::active(st) { total + families::cash_total(st) } else { total }
+}
+
+/// Rents paid cell by cell (by firms, or by land units): those on family land go
+/// to the family, the rest to each town's landlords as `pay_rent` does.
+fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], rent: &[f64], T: usize) {
+    if families::active(st) {
+        let rest = families::take_rents(st, cell, rent);
+        pay_rent(st, P, &bincount(town, &rest, T));
+    } else {
+        pay_rent(st, P, &bincount(town, rent, T));
+    }
 }
 
 pub fn step_month(st: &mut State, C: &Content, P: &Params) {
@@ -289,10 +302,18 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
 
     let lord_pop: Vec<f64> = st.pop.iter().map(|&p| P.lord_share * p).collect();
+    // families (if any) spend their luxury budgets through their home town's landlords
+    let fam_budget = families::spending_budgets(st, P);
+    let fam_by_town = families::budgets_by_town(st, &fam_budget, T);
+    let mut lord_budget = vec![0.0; T];
     let mut lpc = vec![0.0; T];
     for t in 0..T {
         let lord_cash = st.lord_cash[t].max(0.0);
-        let lbudget = lord_cash.min(P.lord_cons_income * st.lord_income_prev[t].max(0.0) + P.lord_cons_wealth * lord_cash);
+        let mut lbudget = lord_cash.min(P.lord_cons_income * st.lord_income_prev[t].max(0.0) + P.lord_cons_wealth * lord_cash);
+        if !fam_budget.is_empty() {
+            lbudget += fam_by_town[t];
+        }
+        lord_budget[t] = lbudget;
         lpc[t] = if lord_pop[t] > 0.0 { lbudget / lord_pop[t].max(1e-9) } else { 0.0 };
     }
     let (q_l, _) = les(&lpc, &unit, &C.subsistence, &C.lord_shares);
@@ -320,6 +341,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut mach_unit = vec![0.0; NE];
     let mut rail_unit = vec![0.0; NE];
     let mut Cc = vec![0.0; NE];
+    let land_boost = families::land_boost(st, C, P);
     for u in 0..NE {
         let (s, t) = (sec[u], et[u]);
         g_s[u] = C.sector_good[s];
@@ -333,6 +355,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         mach_unit[u] = mu;
         rail_unit[u] = ru;
         A[u] = C.sector_A[s] * mult;
+        if let Some(b) = &land_boost {
+            A[u] *= b[u];
+        }
         let npr = pe[(t, g_s[u])] - st.ex_tau[u] - in_unit;
         Cc[u] = if npr > 0.0 && f[u] > 0.0 { (1.0 - alpha[u]) * A[u] * f[u] * npr } else { 0.0 };
     }
@@ -346,7 +371,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let fc: Vec<usize> = fi.iter().map(|&i| st.f_cell[i]).collect();
     let K: Vec<f64> = fi.iter().map(|&i| st.f_K[i]).collect();
     let fprod: Vec<f64> = fi.iter().map(|&i| st.f_prod[i]).collect();
-    let (a, h, l) = firm_coefficients(C, &fm, &K, &fprod);
+    let (mut a, mut h, mut l) = firm_coefficients(C, &fm, &K, &fprod);
+    if families::active(st) {
+        families::scale_firm_inputs(st, C, P, &fi, &mut a, &mut h, &mut l);
+    }
     let out: Vec<usize> = fm.iter().map(|&m| C.method_out[m]).collect();
     let p = &st.price;
     let mut pin = Mat::zeros(NFI, G);
@@ -643,7 +671,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.m_merch_margin = pairwise_sum(&margin_v);
     add_to(&mut sales_value, &bincount(&ft, &pay_in, T));
     add_to(&mut hh_inc, &bincount(&ft, &hh_f, T));
-    pay_rent(st, P, &bincount(&ft, &rent_f, T));
+    pay_cell_rents(st, P, &ft, &fc, &rent_f, T);
 
     // land-based enterprises
     let p = &st.price;
@@ -657,7 +685,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_to(&mut merch, &bincount(&et, &merch_ex, T));
     add_to(&mut sales_value, &bincount(&et, &in_paid, T));
     add_to(&mut hh_inc, &bincount(&et, &hh_ex, T));
-    pay_rent(st, P, &bincount(&et, &rent_ex, T));
+    pay_cell_rents(st, P, &et, &ex, &rent_ex, T);
 
     // households and landlords buy goods; households pay urban rent
     let p = &st.price;
@@ -669,7 +697,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         merch[t] += hh_spend[t] + lord_spend[t];
         sales_value[t] += hh_spend[t] + lord_spend[t];
     }
-    pay_rent(st, P, &urban_pay);
+    if families::active(st) {
+        families::pay_spending(st, &fam_budget, &lord_budget, &lord_spend);
+        let rest = families::take_urban_rents(st, &urban_pay);
+        pay_rent(st, P, &rest);
+    } else {
+        pay_rent(st, P, &urban_pay);
+    }
 
     // investment deliveries: firms pay for capital goods, capacity arrives pro rata
     if !oi.is_empty() {
@@ -871,6 +905,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             div[k] = P.firm_div_rate * excess.max(0.0);
             st.f_cash[i] -= div[k];
         }
+        if families::active(st) {
+            families::take_dividends(st, C, &fi, &mut div);
+        }
         fdiv = bincount(&ft, &div, T);
     }
     let mut mdiv = vec![0.0; T];
@@ -899,6 +936,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.lord_income_prev = st.lord_income.clone();
     st.hh_income.iter_mut().for_each(|v| *v = 0.0);
     st.lord_income.iter_mut().for_each(|v| *v = 0.0);
+    families::end_month(st);
 
     // ---------------- bookkeeping for the year and for observers
     let S = C.S;

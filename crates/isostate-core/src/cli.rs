@@ -77,7 +77,7 @@ pub fn run_scenario(P: &Params, content: Content, out: &Path, progress: bool, li
 }
 
 const USAGE: &str = "usage: isostate-core run --out DIR [--seed N] [--regime landlords|commons] [--end-year Y] [--lite]
-                         [--params FILE.toml|FILE.json] [--content content.toml] [--quiet]";
+                         [--families N] [--params FILE.toml|FILE.json] [--content content.toml] [--quiet]";
 
 pub fn main_with_args(args: &[String]) -> Result<(), String> {
     let mut it = args.iter();
@@ -93,6 +93,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     let mut regime: Option<RentRegime> = None;
     let mut out: Option<PathBuf> = None;
     let mut end_year: Option<i64> = None;
+    let mut n_families: Option<usize> = None;
     let mut lite = false;
     let mut quiet = false;
     let mut params_file: Option<PathBuf> = None;
@@ -107,6 +108,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
             }
             "--out" => out = Some(PathBuf::from(value("--out")?)),
             "--end-year" => end_year = Some(value("--end-year")?.parse().map_err(|e| format!("--end-year: {e}"))?),
+            "--families" => n_families = Some(value("--families")?.parse().map_err(|e| format!("--families: {e}"))?),
             "--lite" => lite = true,
             "--quiet" => quiet = true,
             "--params" => params_file = Some(PathBuf::from(value("--params")?)),
@@ -125,6 +127,9 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     }
     if end_year.is_some() {
         P.end_year = end_year;
+    }
+    if let Some(n) = n_families {
+        P.n_families = n;
     }
     let content = match &content_file {
         Some(p) => load_content(p)?,

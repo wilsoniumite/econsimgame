@@ -95,3 +95,51 @@ pub fn firm_name(rng: &mut Rng, method_name: &str, town: &str) -> String {
     }
     pat.replace("{S2}", &s2).replace("{S}", &s1).replace("{T}", town)
 }
+
+// ---------------------------------------------------------------- families (not in the Python)
+
+/// Surnames of the families who own works and estates.
+pub const FAMILY_SURNAMES: &[&str] = &[
+    "Ashby", "Blackwood", "Calloway", "Darnell", "Everard", "Fairfax", "Gresley", "Harcourt",
+    "Ingram", "Kingsley", "Lascelles", "Mowbray", "Neville", "Ormsby", "Pemberton", "Quennell",
+    "Ravensworth", "Strickland", "Tollemache", "Vavasour", "Wentworth", "Yelverton", "Arkwright",
+    "Beaumont", "Courtenay", "Dalrymple", "Egerton", "Fitzroy", "Grenville", "Howard",
+];
+
+/// First names of family members.
+pub const MEMBER_NAMES: &[&str] = &[
+    "Arthur", "Anne", "Charles", "Caroline", "Edward", "Eleanor", "Frederick", "Georgiana",
+    "Henry", "Harriet", "James", "Isabella", "John", "Louisa", "Richard", "Margaret",
+    "Robert", "Mary", "Thomas", "Sophia", "William", "Charlotte", "George", "Emily",
+];
+
+/// A family surname not used yet (the list wraps with a numeral if it runs out).
+pub fn family_surname(rng: &mut Rng, used: &mut BTreeSet<String>) -> String {
+    for _ in 0..200 {
+        let name = pick(rng, FAMILY_SURNAMES).to_string();
+        if used.insert(name.clone()) {
+            return name;
+        }
+    }
+    let name = format!("{} {}", pick(rng, FAMILY_SURNAMES), used.len() + 1);
+    used.insert(name.clone());
+    name
+}
+
+/// A first name not already used in the family, when one is left.
+pub fn member_name(rng: &mut Rng, used: &mut BTreeSet<String>) -> String {
+    for _ in 0..50 {
+        let name = pick(rng, MEMBER_NAMES).to_string();
+        if used.insert(name.clone()) {
+            return name;
+        }
+    }
+    pick(rng, MEMBER_NAMES).to_string()
+}
+
+/// A family's works are named after it: the method's first pattern with only the
+/// surname in it, or "{surname} & Co.".
+pub fn family_firm_name(method_name: &str, surname: &str, town: &str) -> String {
+    let pat = firm_patterns(method_name).iter().find(|p| p.contains("{S}") && !p.contains("{S2}")).copied().unwrap_or("{S} & Co.");
+    pat.replace("{S}", surname).replace("{T}", town)
+}

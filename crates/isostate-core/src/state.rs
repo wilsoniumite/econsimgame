@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
+use crate::families::Family;
 use crate::mat::Mat;
 use crate::observer::{ObserverState, Series};
 use crate::transport::Graph;
@@ -93,6 +94,9 @@ pub struct Event {
     pub tech: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub firm: Option<usize>,
+    /// The family the news is about (`families`; never set without families).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<usize>,
 }
 
 impl Event {
@@ -312,4 +316,15 @@ pub struct State {
     // ---------------- the observer's registry and memory (never read by the sim)
     pub series: Series,
     pub obs: ObserverState,
+
+    // ---------------- families (not in the Python; all empty when `n_families` is 0)
+    pub families: Vec<Family>,
+    /// Owning family of each firm slot, or -1 for the anonymous small capital.
+    pub f_owner: Vec<i64>,
+    /// Owning family of each cell, or -1 for the anonymous gentry.
+    pub cell_owner: Vec<i64>,
+    /// Rent each cell has paid this year so far, whoever received it.
+    pub cell_rent_paid: Vec<f64>,
+    /// Rent each cell paid over the last complete year (what land is priced on).
+    pub cell_rent_year: Vec<f64>,
 }

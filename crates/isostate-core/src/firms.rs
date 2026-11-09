@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::content::Content;
 use crate::econ::{firm_coefficients, heat_mix};
+use crate::families;
 use crate::land::{USE_DERELICT, USE_NAMES};
 use crate::mat::Mat;
 use crate::names::firm_name;
@@ -112,8 +113,14 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
     let foot = K / (P.footprint_K_mult * C.m_K0[m]);
     let rent_bid: Vec<f64> = cells.iter().map(|&c| 0.01f64.max(1.25 * st.land_rent_only[c] * foot)).collect();
     let cap_cost = K * pairwise_sum_by(G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
-    let roi: Vec<f64> = (0..n).map(|j| 12.0 * (K * 0.85 * margin[j] - rent_bid[j]) / cap_cost.max(1e-9)).collect();
+    let roi: Vec<f64> = (0..n).map(|j| site_roi(K, margin[j], rent_bid[j], cap_cost)).collect();
     SiteEval { roi, margin, pout, pin, a, h, hunit, l, rent_bid, cap_cost, agglo, in_cost, heat_cost, labor_cost }
+}
+
+/// The yearly return entry expects from a site: twelve months of output at 85 per
+/// cent of capacity times the unit margin, less the rent bid, over the capacity's cost.
+pub fn site_roi(K: f64, margin: f64, rent_bid: f64, cap_cost: f64) -> f64 {
+    12.0 * (K * 0.85 * margin - rent_bid) / cap_cost.max(1e-9)
 }
 
 pub fn candidate_cells(st: &State, C: &Content, P: &Params, i: usize, m: usize, rng: &mut Rng) -> Vec<usize> {
@@ -237,6 +244,15 @@ pub fn town_pool(st: &State, P: &Params, i: usize) -> f64 {
     P.invest_frac_hh * st.hh_cash[i].max(0.0) + P.invest_frac_lord * st.lord_cash[i].max(0.0)
 }
 
+/// Money for an existing firm: from the family that owns it (`families`), or else
+/// from its town's savers (`draw_pool`).
+pub fn back_firm(st: &mut State, P: &Params, fid: usize, amount: f64) -> f64 {
+    match families::owner_of_firm(st, fid) {
+        Some(k) => families::draw_cash(st, k, amount),
+        None => draw_pool(st, P, st.f_town[fid], amount),
+    }
+}
+
 /// Take funding from a town's households and landlords in proportion to what they offered.
 pub fn draw_pool(st: &mut State, P: &Params, i: usize, amount: f64) -> f64 {
     let hh = P.invest_frac_hh * st.hh_cash[i].max(0.0);
@@ -346,7 +362,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
         let building = st.f_order_K[fid] > 0.0;
         if st.f_cash[fid] < 0.0 && year - st.f_born[fid] <= 3 {
             let need = -st.f_cash[fid];
-            st.f_cash[fid] += draw_pool(st, P, i, need);
+            st.f_cash[fid] += back_firm(st, P, fid, need);
         }
         if K > 0.0 {
             st.f_K[fid] = K * (1.0 - P.depreciation);
@@ -374,7 +390,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
                 let cost = dK * unit_cap;
                 let short = cost * 1.1 - st.f_cash[fid];
                 if short > 0.0 {
-                    st.f_cash[fid] += draw_pool(st, P, i, short);
+                    st.f_cash[fid] += back_firm(st, P, fid, short);
                 }
                 if st.f_cash[fid] > 0.5 * cost {
                     for g in 0..C.G {
@@ -423,13 +439,18 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
         return None;
     }
     let cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+    let owner = families::owner_of_firm(st, parent);
     let mut fund = (st.f_cash[parent].max(0.0) * 0.8).min(cost);
     st.f_cash[parent] -= fund;
     if fund < cost {
-        fund += draw_pool(st, P, i, cost - fund);
+        fund += back_firm(st, P, parent, cost - fund);
     }
     if fund < 0.6 * cost || st.F_count >= st.f_alive.len() {
-        st.hh_cash[i] += fund;
+        // Python sends the money to the town's households; a family keeps its own
+        match owner {
+            Some(k) => st.families[k].cash += fund,
+            None => st.hh_cash[i] += fund,
+        }
         return None;
     }
     let rent_bid_one = ev.rent_bid[j];
@@ -441,6 +462,9 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
     let fid = create_firm(st, C, P, rng, i, m, cand[j], K, rent_bid_one, reason, year, fund, Some(name), Some(parent));
     if let Some(f) = fid {
         st.new_firms_year.push(f);
+        if let Some(k) = owner {
+            st.f_owner[f] = k as i64; // a family's works grow into the family's sister works
+        }
     }
     fid
 }
@@ -449,7 +473,10 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
     let i = st.f_town[fid];
     let cash = st.f_cash[fid];
     if cash >= 0.0 {
-        st.hh_cash[i] += cash;
+        match families::owner_of_firm(st, fid) {
+            Some(k) => st.families[k].cash += cash,
+            None => st.hh_cash[i] += cash,
+        }
     } else {
         st.merch_cash[i] += cash; // creditors take the loss
     }

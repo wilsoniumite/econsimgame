@@ -137,9 +137,75 @@ pub struct Params {
     // detectors
     pub crossing_lo: f64,
     pub crossing_hi: f64,
+    // families (not in the Python). Each is written to params.json only when it
+    // differs from its default, so a run without families writes Python's file.
+    /// Number of families, the player's (index 0) included; 0 turns families off.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub n_families: usize,
+    /// Cut in inputs, heat and labor per unit of a family's works in a group managed by a member of skill 1.
+    #[serde(skip_serializing_if = "is_default_bonus")]
+    pub family_bonus: f64,
+    /// Share of last month's dividends and rents a family spends.
+    #[serde(skip_serializing_if = "is_default_cons_income")]
+    pub family_cons_income: f64,
+    /// Share of its cash a family spends each month.
+    #[serde(skip_serializing_if = "is_default_cons_wealth")]
+    pub family_cons_wealth: f64,
+    /// Land sells at this many years of its rent.
+    #[serde(skip_serializing_if = "is_default_years_purchase")]
+    pub years_purchase: f64,
+    /// Rent counted for the price of land is at least this many town wages a month.
+    #[serde(skip_serializing_if = "is_default_rent_floor")]
+    pub land_rent_floor: f64,
+    /// Each AI family starts with this share of all rent (landed) or of all works' capital (industrial).
+    #[serde(skip_serializing_if = "is_default_start_share")]
+    pub family_start_share: f64,
+    /// Each family starts with this share of the money stock in cash.
+    #[serde(skip_serializing_if = "is_default_start_cash")]
+    pub family_start_cash: f64,
+    /// AI families keep this many months of spending as a cash reserve.
+    #[serde(skip_serializing_if = "is_default_reserve")]
+    pub family_reserve_months: f64,
     /// Last simulated year; `None` means the content's end year (Python: `P.get("end_year", C["end_year"])`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_year: Option<i64>,
+}
+
+const FAMILY_BONUS: f64 = 0.08;
+const FAMILY_CONS_INCOME: f64 = 0.6;
+const FAMILY_CONS_WEALTH: f64 = 0.02;
+const YEARS_PURCHASE: f64 = 25.0;
+const LAND_RENT_FLOOR: f64 = 0.5;
+const FAMILY_START_SHARE: f64 = 0.03;
+const FAMILY_START_CASH: f64 = 0.004;
+const FAMILY_RESERVE_MONTHS: f64 = 12.0;
+
+fn is_zero(v: &usize) -> bool {
+    *v == 0
+}
+fn is_default_bonus(v: &f64) -> bool {
+    *v == FAMILY_BONUS
+}
+fn is_default_cons_income(v: &f64) -> bool {
+    *v == FAMILY_CONS_INCOME
+}
+fn is_default_cons_wealth(v: &f64) -> bool {
+    *v == FAMILY_CONS_WEALTH
+}
+fn is_default_years_purchase(v: &f64) -> bool {
+    *v == YEARS_PURCHASE
+}
+fn is_default_rent_floor(v: &f64) -> bool {
+    *v == LAND_RENT_FLOOR
+}
+fn is_default_start_share(v: &f64) -> bool {
+    *v == FAMILY_START_SHARE
+}
+fn is_default_start_cash(v: &f64) -> bool {
+    *v == FAMILY_START_CASH
+}
+fn is_default_reserve(v: &f64) -> bool {
+    *v == FAMILY_RESERVE_MONTHS
 }
 
 pub fn default_params() -> Params {
@@ -246,6 +312,16 @@ pub fn default_params() -> Params {
         // detectors
         crossing_lo: 0.45,
         crossing_hi: 0.55,
+        // families (off)
+        n_families: 0,
+        family_bonus: FAMILY_BONUS,
+        family_cons_income: FAMILY_CONS_INCOME,
+        family_cons_wealth: FAMILY_CONS_WEALTH,
+        years_purchase: YEARS_PURCHASE,
+        land_rent_floor: LAND_RENT_FLOOR,
+        family_start_share: FAMILY_START_SHARE,
+        family_start_cash: FAMILY_START_CASH,
+        family_reserve_months: FAMILY_RESERVE_MONTHS,
         end_year: None,
     }
 }
