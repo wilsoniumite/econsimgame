@@ -243,6 +243,46 @@ fn lighthouse(b: &mut Builder, p: Vec3) {
 
 // ------------------------------------------------------------------ works
 
+/// The size class a works is drawn at: 1 for a small one, up to 4.
+fn tier(r: &Replay, f: usize, k: usize) -> f32 {
+    let m = &r.header.methods[r.header.firms[f].method];
+    let ratio = (replay::firm_k(r, f, k) / m.k0.max(1e-6)).max(0.05);
+    (ratio.log2() + 1.5).floor().clamp(1.0, 4.0)
+}
+
+/// Poles and boards round a works that is going up or being enlarged.
+fn scaffold(b: &mut Builder, g: &Ground, pos: (f32, f32, f32), s: f32) {
+    let q = bevy::math::Quat::from_rotation_y(pos.2);
+    let (hw, hd, h) = (0.075 * s, 0.05 * s, 0.075);
+    let pole = hex(0xa98559);
+    let board = hex(0xc9a877);
+    let at = |x: f32, z: f32| {
+        let o = q * Vec3::new(x, 0.0, z);
+        ground(g, pos.0 + o.x, pos.1 + o.z)
+    };
+    let corners = [at(-hw, -hd), at(hw, -hd), at(hw, hd), at(-hw, hd)];
+    for c in corners {
+        b.beam(c - Vec3::Y * 0.01, c + Vec3::Y * h, 0.004, pole);
+    }
+    // mid poles on the long sides
+    for c in [at(0.0, -hd), at(0.0, hd)] {
+        b.beam(c - Vec3::Y * 0.01, c + Vec3::Y * h, 0.004, pole);
+    }
+    // two lifts of boards all round
+    for lift in [0.4, 0.85] {
+        let y = Vec3::Y * (h * lift);
+        for i in 0..4 {
+            b.beam(corners[i] + y, corners[(i + 1) % 4] + y, 0.005, board);
+        }
+    }
+    // a diagonal brace on one face
+    b.beam(corners[0] + Vec3::Y * 0.004, corners[1] + Vec3::Y * (h * 0.85), 0.003, pole);
+    // a pile of timber and a heap of bricks beside it
+    let yard = at(hw + 0.035, 0.0);
+    b.block(yard, 0.03, 0.014, 0.008, pos.2, board, Some(board), 0.004);
+    b.frustum(at(hw + 0.03, hd * 0.8), 0.012, 0.004, 0.012, 5, hex(0xb5634c), None);
+}
+
 fn works(b: &mut Builder, smoke: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), g: &Ground) {
     let firm = &r.header.firms[f];
     let m = &r.header.methods[firm.method];
@@ -362,6 +402,12 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: 
         let p = slots.firm_pos[f];
         plots.entry(firm.cell).or_default().push((p.0, p.1));
         works(&mut works_b, &mut smoke, r, f, k, p, g);
+        // scaffolding the first year a works stands, and the year it grows a size
+        let opened = k > 0 && replay::firm_k(r, f, k - 1) <= 0.0 && firm.born > r.y0;
+        let grew = k > 0 && replay::firm_k(r, f, k - 1) > 0.0 && tier(r, f, k) > tier(r, f, k - 1);
+        if opened || grew {
+            scaffold(&mut works_b, g, p, 0.8 + 0.2 * tier(r, f, k));
+        }
     }
     // each town: a church on its market square, a station once the railway arrives,
     // and a lighthouse if it is a harbour
