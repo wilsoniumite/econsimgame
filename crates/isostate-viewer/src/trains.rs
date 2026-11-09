@@ -27,7 +27,7 @@ impl TrainPath {
 
 /// Railway lines for year k, as chains of cells between junctions and ends.
 pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
-    chains(r, g, cen, k, |v| v & 4 != 0, 0.02, 2.0)
+    world::timed("year trains", || chains(r, g, cen, k, |v| v & 4 != 0, 0.02, 2.0))
 }
 
 /// Routes along the main roads for year k: carters' rounds of a dozen cells,

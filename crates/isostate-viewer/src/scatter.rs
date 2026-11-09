@@ -145,6 +145,10 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
 }
 
 pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
+    world::timed("slots", || make_slots_inner(r, g))
+}
+
+fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     let mut slots = Slots {
         trees: grid_slots(r, g, 6, 11, 0.9),
         houses: grid_slots(r, g, 7, 12, 0.7),
@@ -403,6 +407,10 @@ pub struct YearMeshes {
 }
 
 pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize) -> YearMeshes {
+    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k))
+}
+
+fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize) -> YearMeshes {
     let mut trees = Builder::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();

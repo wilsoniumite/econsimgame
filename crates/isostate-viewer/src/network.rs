@@ -129,6 +129,10 @@ pub fn road_segments(r: &Replay, k: usize) -> Vec<(usize, usize, u8)> {
 }
 
 pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
+    world::timed("year nets", || year_nets_inner(r, g, cen, k))
+}
+
+fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
     let (w, h, n) = (r.w, r.h, r.n);
     let tr = &r.trans[k * n..(k + 1) * n];
     let bit = |x: isize, y: isize, m: u8| -> bool {

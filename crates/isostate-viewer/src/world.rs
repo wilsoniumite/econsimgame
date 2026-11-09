@@ -25,6 +25,19 @@ pub const URBAN: u8 = 10;
 #[allow(dead_code)] // only the ground shader draws it
 pub const DERELICT: u8 = 11;
 
+/// Run `f`, and when the ISOSTATE_TIMING variable is set, say how long it took,
+/// so the cost of preparing the island and of each year's rebuild can be measured.
+pub fn timed<T>(what: &str, f: impl FnOnce() -> T) -> T {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var_os("ISOSTATE_TIMING").is_some()) {
+        return f();
+    }
+    let t0 = std::time::Instant::now();
+    let out = f();
+    eprintln!("timing {what}: {:.1} ms", t0.elapsed().as_secs_f64() * 1000.0);
+    out
+}
+
 pub fn hash2(x: i32, y: i32, s: i32) -> f32 {
     let mut h = (x as u32).wrapping_mul(374_761_393)
         ^ (y as u32).wrapping_mul(668_265_263)
@@ -144,6 +157,10 @@ fn box_blur(a: &mut [f32], w: usize, h: usize, r: usize) {
 }
 
 pub fn build_ground(r: &Replay) -> Ground {
+    timed("ground", || build_ground_inner(r))
+}
+
+fn build_ground_inner(r: &Replay) -> Ground {
     let (w, h) = (r.w, r.h);
     let land: Vec<bool> = r.terrain.iter().map(|&t| t > 0).collect();
     let sea_dist = chamfer(w, h, &land);
