@@ -424,7 +424,10 @@ fn order_panel(
                     Ok(opts) => {
                         let mut good: Vec<(usize, &isostate_core::SiteSums)> = opts.iter().filter_map(|o| o.sums.as_ref().ok().map(|s| (o.method, s))).collect();
                         good.retain(|(m, _)| r.header.methods[*m].name != "services");
-                        good.sort_by(|a, b| b.1.expected_return.partial_cmp(&a.1.expected_return).unwrap_or(std::cmp::Ordering::Equal));
+                        // deep markets first: a works that would flood its town's market, or sells
+                        // at a scarcity price, earns its promised return only until it does
+                        let thin = |s: &isostate_core::SiteSums| s.market_share > 0.25 || s.price_ratio > 3.0;
+                        good.sort_by(|a, b| thin(a.1).cmp(&thin(b.1)).then(b.1.expected_return.partial_cmp(&a.1.expected_return).unwrap_or(std::cmp::Ordering::Equal)));
                         let unknown = opts.iter().filter(|o| o.sums.is_err()).count();
                         rule(p);
                         p.spawn(text(&f, "Build here", 16.0, INK));
@@ -434,11 +437,23 @@ fn order_panel(
                         for (m, s) in good.iter().take(5) {
                             let afford = cash as f64 >= s.capital_cost && !game.busy;
                             p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|row| {
-                                row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
-                                    col.spawn(text(&f, &r.header.methods[*m].label, 14.5, INK));
-                                    let ret = if s.expected_return > 0.0 { format!("about {:.0}% a year", 100.0 * s.expected_return) } else { "would lose money".to_string() };
+                                row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, row_gap: Val::Px(1.0), ..default() }).with_children(|col| {
+                                    col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).with_children(|head| {
+                                        head.spawn(text(&f, &r.header.methods[*m].label, 14.5, INK));
+                                        if thin(s) {
+                                            head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(Color::srgb(0.97, 0.89, 0.74))))
+                                                .with_children(|tag| {
+                                                    tag.spawn(text(&f, "thin market", 11.5, Color::srgb(0.55, 0.36, 0.12)));
+                                                });
+                                        }
+                                    });
+                                    let ret = if s.expected_return > 0.0 { format!("about {:.0}% a year at today's prices", 100.0 * s.expected_return) } else { "would lose money at today's prices".to_string() };
                                     let bonus = if s.bonus > 0.0 { format!(", {:.0}% cheaper with your manager", 100.0 * s.bonus) } else { String::new() };
                                     col.spawn(text(&f, &format!("{} to build, {}{}", money(s.capital_cost as f32), ret, bonus), 12.5, MUTED));
+                                    let town = r.header.towns.get(s.town).map(|t| t.name.as_str()).unwrap_or("its town");
+                                    let share = if s.market_share >= 0.995 { format!("more than {town} buys") } else { format!("{:.0}% of what {town} buys", 100.0 * s.market_share.max(0.0)) };
+                                    let price = if s.price_ratio > 1.5 { format!(", selling at {:.1} times the usual price", s.price_ratio) } else { String::new() };
+                                    col.spawn(text(&f, &format!("Would make {share}{price}."), 12.5, if thin(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
                                 });
                                 button(row, &f, "Build", afford.then_some(Action::Found { method: *m, cell: c }), accent);
                             });
