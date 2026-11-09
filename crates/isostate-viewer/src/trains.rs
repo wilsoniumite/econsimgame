@@ -27,12 +27,48 @@ impl TrainPath {
 
 /// Railway lines for year k, as chains of cells between junctions and ends.
 pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
+    chains(r, g, cen, k, |v| v & 4 != 0, 0.02, 2.0)
+}
+
+/// Routes along the main roads for year k: carters' rounds of a dozen cells,
+/// starting from a few cells picked by hash and turning by hash at junctions.
+pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
+    let adj = graph(r, k, |v| v & 3 == 3);
+    let mut out = Vec::new();
+    for start in 0..r.n {
+        if adj[start].is_empty() || world::hash2(start as i32, 5, 44) > 0.03 {
+            continue;
+        }
+        let mut cells = vec![start];
+        let (mut prev, mut cur) = (usize::MAX, start);
+        for step in 0..12 {
+            let options: Vec<usize> = adj[cur].iter().copied().filter(|&m| m != prev && !cells.contains(&m)).collect();
+            if options.is_empty() {
+                break;
+            }
+            let pick = (world::hash2(start as i32, step, 45) * options.len() as f32) as usize;
+            prev = cur;
+            cur = options[pick.min(options.len() - 1)];
+            cells.push(cur);
+        }
+        if let Some(p) = along(&cells, g, cen, 0.012) {
+            if p.len > 1.5 {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+/// The cells whose transport byte passes `on`, linked to their neighbours (a
+/// diagonal only where no pair of straight links joins the two).
+fn graph(r: &Replay, k: usize, on: impl Fn(u8) -> bool) -> Vec<Vec<usize>> {
     let (w, h, n) = (r.w, r.h, r.n);
     let tr = &r.trans[k * n..(k + 1) * n];
-    let rail = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && tr[y as usize * w + x as usize] & 4 != 0;
+    let rail = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && on(tr[y as usize * w + x as usize]);
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for c in 0..n {
-        if tr[c] & 4 == 0 {
+        if !on(tr[c]) {
             continue;
         }
         let (x, y) = ((c % w) as isize, (c / w) as isize);
@@ -49,6 +85,40 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
             adj[m].push(c);
         }
     }
+    adj
+}
+
+/// A path through the centres of a list of cells, draped `lift` above the ground.
+fn along(cells: &[usize], g: &Ground, cen: &[(f32, f32)], lift: f32) -> Option<TrainPath> {
+    if cells.len() < 2 {
+        return None;
+    }
+    let mut pts = Vec::new();
+    for wnd in cells.windows(2) {
+        let (a, b) = (cen[wnd[0]], cen[wnd[1]]);
+        let steps = 6;
+        for i in 0..steps {
+            let t = i as f32 / steps as f32;
+            let (x, z) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+            pts.push(Vec3::new(x, world::height_at(g, x, z).max(0.0) + lift, z));
+        }
+    }
+    let last = cen[*cells.last()?];
+    pts.push(Vec3::new(last.0, world::height_at(g, last.0, last.1).max(0.0) + lift, last.1));
+    let mut cum = vec![0.0];
+    for i in 1..pts.len() {
+        let d = pts[i].distance(pts[i - 1]);
+        cum.push(cum[i - 1] + d);
+    }
+    let len = *cum.last()?;
+    Some(TrainPath { pts, cum, len })
+}
+
+/// Lines of cells whose transport byte passes `on`, as chains between junctions
+/// and ends, draped `lift` above the ground; chains shorter than `min_len` are dropped.
+fn chains(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, on: impl Fn(u8) -> bool, lift: f32, min_len: f32) -> Vec<TrainPath> {
+    let n = r.n;
+    let adj = graph(r, k, on);
     let mut used = std::collections::HashSet::new();
     let mut paths = Vec::new();
     for start in 0..n {
@@ -77,26 +147,10 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
             if cells.len() < 3 {
                 continue;
             }
-            let mut pts = Vec::new();
-            for wnd in cells.windows(2) {
-                let (a, b) = (cen[wnd[0]], cen[wnd[1]]);
-                let steps = 6;
-                for i in 0..steps {
-                    let t = i as f32 / steps as f32;
-                    let (x, z) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
-                    pts.push(Vec3::new(x, world::height_at(g, x, z).max(0.0) + 0.02, z));
+            if let Some(p) = along(&cells, g, cen, lift) {
+                if p.len > min_len {
+                    paths.push(p);
                 }
-            }
-            let last = cen[*cells.last().unwrap()];
-            pts.push(Vec3::new(last.0, world::height_at(g, last.0, last.1).max(0.0) + 0.02, last.1));
-            let mut cum = vec![0.0];
-            for i in 1..pts.len() {
-                let d = pts[i].distance(pts[i - 1]);
-                cum.push(cum[i - 1] + d);
-            }
-            let len = *cum.last().unwrap();
-            if len > 2.0 {
-                paths.push(TrainPath { pts, cum, len });
             }
         }
     }
@@ -117,6 +171,28 @@ pub fn train_mesh() -> Builder {
     for (i, c) in wagons.iter().enumerate() {
         let x = -0.05 - 0.036 * i as f32;
         b.block(Vec3::new(x, 0.0, 0.0), 0.03, 0.019, 0.018, 0.0, *c, Some(*c), 0.0);
+    }
+    b
+}
+
+/// A covered cart and its horse, pointing along +x.
+pub fn cart_mesh() -> Builder {
+    let mut b = Builder::default();
+    let wood = hex(0x8a5f3c);
+    let canvas = hex(0xefe6cf);
+    let horse = hex(0x6b4632);
+    let dark = hex(0x3a2c24);
+    // the cart: a bed, a canvas tilt and two wheels' worth of dark below
+    b.block(Vec3::new(-0.012, 0.006, 0.0), 0.03, 0.016, 0.006, 0.0, wood, Some(wood), 0.0);
+    b.ball(Vec3::new(-0.012, 0.014, 0.0), 0.016, 0.009, 6, 3, canvas, 0.2);
+    b.block(Vec3::new(-0.012, 0.0, 0.0), 0.012, 0.019, 0.007, 0.0, dark, None, 0.0);
+    // shafts and the horse
+    b.beam(Vec3::new(0.003, 0.008, 0.005), Vec3::new(0.02, 0.01, 0.004), 0.002, wood);
+    b.beam(Vec3::new(0.003, 0.008, -0.005), Vec3::new(0.02, 0.01, -0.004), 0.002, wood);
+    b.block(Vec3::new(0.022, 0.008, 0.0), 0.018, 0.007, 0.008, 0.0, horse, Some(horse), 0.0);
+    b.block(Vec3::new(0.033, 0.013, 0.0), 0.007, 0.005, 0.008, 0.0, horse, Some(horse), 0.0);
+    for (dx, dz) in [(0.016, 0.0025), (0.016, -0.0025), (0.028, 0.0025), (0.028, -0.0025)] {
+        b.beam(Vec3::new(dx, 0.0, dz), Vec3::new(dx, 0.009, dz), 0.002, dark);
     }
     b
 }

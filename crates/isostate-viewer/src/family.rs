@@ -2,6 +2,9 @@
 //! how they stand against each other. The live game fills a `FamilyView`
 //! each year; a plain replay has none, and the panels say so.
 
+// see the note at the top of ui.rs
+#![allow(deprecated)]
+
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 
