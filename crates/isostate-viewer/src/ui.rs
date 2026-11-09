@@ -90,8 +90,9 @@ pub enum SpeedButton {
 }
 #[derive(Component)]
 pub struct DateText;
+/// One of the numbers under the family name.
 #[derive(Component)]
-pub struct FortuneText;
+pub struct FortuneSlot(pub usize);
 #[derive(Component)]
 pub struct FamilyNameText;
 #[derive(Component)]
@@ -172,7 +173,7 @@ fn card(node: Node) -> impl Bundle {
     (node, BackgroundColor(PAPER), card_shadow(), Interaction::default(), FocusPolicy::Block, UiBlock, GlobalZIndex(10))
 }
 
-pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam: Option<Res<FamilyView>>) {
+pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam: Option<Res<FamilyView>>, icons: Res<crate::icons::Icons>) {
     let f = &font.0;
     let crest_col = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.47, 0.38));
     let family_name = fam.as_ref().and_then(|v| v.player()).map(|p| format!("The {} family", p.name)).unwrap_or_else(|| "A recorded history".into());
@@ -218,7 +219,24 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     });
                     left.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
                         col.spawn((text(f, &family_name, 19.0, INK), FamilyNameText));
-                        col.spawn((text(f, "", 13.5, MUTED), FortuneText));
+                        col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
+                            let slot = |row: &mut ChildSpawnerCommands, i: usize, gap: bool| {
+                                row.spawn((text(f, "", 13.5, MUTED), FortuneSlot(i), Node { margin: UiRect::right(Val::Px(if gap { 8.0 } else { 0.0 })), ..default() }));
+                            };
+                            if fam.is_some() {
+                                slot(row, 0, true);
+                                row.spawn(crate::icons::icon(&icons.coin, 15.0, Color::WHITE));
+                                slot(row, 1, true);
+                                row.spawn(crate::icons::icon(&icons.works, 15.0, MUTED));
+                                slot(row, 2, true);
+                                row.spawn(crate::icons::icon(&icons.land, 15.0, MUTED));
+                                slot(row, 3, false);
+                            } else {
+                                row.spawn(crate::icons::icon(&icons.people, 15.0, MUTED));
+                                slot(row, 0, true);
+                                slot(row, 1, false);
+                            }
+                        });
                     });
                 });
             });
@@ -265,7 +283,14 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 }))
                 .with_children(|right| {
                     for t in [Tab::Family, Tab::Holdings, Tab::Markets, Tab::News] {
-                        right.spawn((button_node(12.0, 7.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, TabButton(t))).with_children(|bt| {
+                        let ic = match t {
+                            Tab::Family => &icons.family,
+                            Tab::Holdings => &icons.holdings,
+                            Tab::Markets => &icons.markets,
+                            Tab::News => &icons.news,
+                        };
+                        right.spawn((Node { column_gap: Val::Px(6.0), ..button_node(11.0, 7.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, TabButton(t))).with_children(|bt| {
+                            bt.spawn(crate::icons::icon(ic, 16.0, INK));
                             bt.spawn(text(f, t.label(), 15.0, INK));
                         });
                     }
@@ -459,6 +484,7 @@ fn active_styles(
     speeds: Query<(&SpeedButton, &Interaction, &Children, Entity), Without<TabButton>>,
     mut bgs: Query<&mut BackgroundColor>,
     mut cols: Query<&mut TextColor>,
+    mut imgs: Query<&mut ImageNode>,
 ) {
     let accent = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
     let mut paint = |e: Entity, children: &Children, on: bool, inter: &Interaction| {
@@ -468,6 +494,9 @@ fn active_styles(
         for c in children.iter() {
             if let Ok(mut tc) = cols.get_mut(c) {
                 tc.0 = if on { Color::WHITE } else { INK };
+            }
+            if let Ok(mut im) = imgs.get_mut(c) {
+                im.color = if on { Color::WHITE } else { INK };
             }
         }
     };
@@ -557,8 +586,8 @@ fn topbar_text(
     data: Res<Data>,
     forced: Res<ForcedSeason>,
     fam: Option<Res<FamilyView>>,
-    mut date: Query<&mut Text, (With<DateText>, Without<FortuneText>)>,
-    mut fortune: Query<&mut Text, (With<FortuneText>, Without<DateText>)>,
+    mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>)>,
+    mut slots: Query<(&mut Text, &FortuneSlot), Without<DateText>>,
 ) {
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
@@ -569,16 +598,18 @@ fn topbar_text(
             t.0 = s.clone();
         }
     }
-    let line = match fam.as_ref().and_then(|v| v.player()) {
-        Some(p) => format!("Worth {}  \u{00b7}  {} works  \u{00b7}  {} to spend", money(p.net_worth), p.works, money(p.cash)),
+    let vals: Vec<String> = match fam.as_ref().and_then(|v| v.player()) {
+        Some(p) => vec![format!("Worth {}", money(p.net_worth)), money(p.cash), format!("{}", p.works), format!("{}", p.land)],
         None => {
             let pop = replay::annual(r, "pop", k).unwrap_or(0.0);
-            format!("{} islanders  \u{00b7}  replay of seed {}", crate::fmt_pop(pop), r.header.meta.seed)
+            vec![crate::fmt_pop(pop), format!("replay of seed {}", r.header.meta.seed)]
         }
     };
-    for mut t in &mut fortune {
-        if t.0 != line {
-            t.0 = line.clone();
+    for (mut t, slot) in &mut slots {
+        if let Some(v) = vals.get(slot.0) {
+            if t.0 != *v {
+                t.0 = v.clone();
+            }
         }
     }
 }
