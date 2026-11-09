@@ -6,12 +6,14 @@
 //! Space plays and pauses, the arrow keys step through years, drag to pan,
 //! right-drag to turn, scroll to zoom.
 
+mod family;
 mod meshkit;
 mod network;
 mod replay;
 mod scatter;
 mod terrain;
 mod trains;
+mod ui;
 mod world;
 
 use bevy::app::ScheduleRunnerPlugin;
@@ -29,6 +31,7 @@ use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
 use replay::Replay;
+use ui::{kind_colour, kind_label, text, UiState, INK, MUTED, PAPER};
 use world::Ground;
 
 // ------------------------------------------------------------------ command line
@@ -58,6 +61,8 @@ struct ShotSpec {
     yaw: f32,
     pitch: f32,
     dist: Option<f32>,
+    /// which side panel to show: Some(None) closes it
+    tab: Option<Option<ui::Tab>>,
 }
 
 fn parse_args() -> Args {
@@ -107,7 +112,7 @@ fn parse_args() -> Args {
                 i += 1;
             }
             "--view" => {
-                // path,year,x,z,yaw,pitch,dist
+                // path,year,x,z,yaw,pitch,dist[,tab]
                 let p: Vec<String> = next(i).split(',').map(String::from).collect();
                 let num = |j: usize| p.get(j).and_then(|s| s.parse::<f32>().ok());
                 a.views.push(ShotSpec {
@@ -117,6 +122,7 @@ fn parse_args() -> Args {
                     yaw: num(4).unwrap_or(0.0),
                     pitch: num(5).unwrap_or(52.0),
                     dist: num(6),
+                    tab: p.get(7).map(|s| ui::Tab::parse(s)),
                 });
                 i += 1;
             }
@@ -137,6 +143,15 @@ struct Data {
     ts: terrain::TexStatic,
     slots: scatter::Slots,
     cen: Vec<(f32, f32)>,
+    /// the years are being simulated as we watch, not read from a file
+    live: bool,
+}
+
+impl Data {
+    /// The last year there is anything to show for.
+    fn latest(&self) -> usize {
+        self.r.ny - 1
+    }
 }
 
 #[derive(Resource)]
@@ -207,10 +222,6 @@ struct Sun;
 #[derive(Component)]
 struct MainCam;
 #[derive(Component)]
-struct YearText;
-#[derive(Component)]
-struct InfoText;
-#[derive(Component)]
 struct ToastBox;
 #[derive(Component)]
 struct TownLabel(usize);
@@ -235,6 +246,8 @@ struct Train {
 }
 #[derive(Component)]
 struct InspectText;
+#[derive(Component)]
+struct InspectTitle;
 
 /// What the player clicked on last.
 #[derive(Resource, Default)]
@@ -305,7 +318,7 @@ fn main() {
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
-        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist });
+        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist, tab: None });
     }
     let headless = !views.is_empty();
     if headless {
@@ -327,16 +340,17 @@ fn main() {
     }
     app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))
         .insert_resource(GlobalAmbientLight { color: Color::srgb(0.78, 0.86, 1.0), brightness: 650.0, ..default() })
-        .insert_resource(Data { r, g, ts, slots, cen })
-        .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.5 })
+        .insert_resource(Data { r, g, ts, slots, cen, live: false })
+        .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt))
         .insert_resource(ForcedSeason(args.season))
         .init_resource::<Toasts>()
         .init_resource::<Picked>()
         .init_resource::<Rails>()
+        .add_plugins(ui::plugin)
         .add_systems(Startup, (setup_world, setup_ui).chain())
-        .add_systems(Update, (time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, info_text, toasts, pick, inspect_panel).chain());
+        .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
         app.add_systems(Update, take_shot.after(toasts));
@@ -671,17 +685,25 @@ fn camera_input(
     time: Res<Time>,
     mut o: ResMut<Orbit>,
     data: Res<Data>,
+    ui: Res<UiState>,
+    mut on_map: Local<[bool; 2]>,
 ) {
     let dt = time.delta_secs();
     let fwd = Vec3::new(-o.yaw.sin(), 0.0, -o.yaw.cos());
     let right = Vec3::new(o.yaw.cos(), 0.0, -o.yaw.sin());
     let pan = o.dist * 0.0016;
-    if buttons.pressed(MouseButton::Left) {
+    // a drag belongs to the map only if it started on the map
+    for (i, b) in [MouseButton::Left, MouseButton::Right].into_iter().enumerate() {
+        if buttons.just_pressed(b) {
+            on_map[i] = !ui.hover;
+        }
+    }
+    if buttons.pressed(MouseButton::Left) && on_map[0] {
         let d = motion.delta;
         o.target -= right * d.x * pan;
         o.target += fwd * d.y * pan;
     }
-    if buttons.pressed(MouseButton::Right) {
+    if buttons.pressed(MouseButton::Right) && on_map[1] {
         let d = motion.delta;
         o.yaw -= d.x * 0.005;
         o.pitch = (o.pitch + d.y * 0.004).clamp(0.22, 1.5);
@@ -690,7 +712,7 @@ fn camera_input(
         MouseScrollUnit::Line => scroll.delta.y,
         MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
     };
-    if lines != 0.0 {
+    if lines != 0.0 && !ui.hover {
         o.dist = (o.dist * (-lines * 0.12).exp()).clamp(1.5, 220.0);
     }
     let kp = o.dist * 0.8 * dt;
@@ -738,82 +760,49 @@ fn apply_camera(
 
 // ------------------------------------------------------------------ interface
 
-const INK: Color = Color::srgb(0.20, 0.18, 0.16);
-const PAPER: Color = Color::srgba(0.99, 0.97, 0.92, 0.88);
-
-fn text(font: &Handle<Font>, s: &str, size: f32, color: Color) -> (Text, TextFont, TextColor) {
-    (Text::new(s), TextFont { font: font.clone().into(), font_size: FontSize::Px(size), ..default() }, TextColor(color))
-}
-
+// Interaction is deprecated in Bevy 0.20; see the note at the top of ui.rs
+#[allow(deprecated)]
 fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     let f = &font.0;
-    // title card, top left
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(18.0),
-                top: Val::Px(16.0),
-                padding: UiRect::axes(Val::Px(16.0), Val::Px(10.0)),
-                flex_direction: FlexDirection::Column,
-                border_radius: BorderRadius::all(Val::Px(14.0)),
-                ..default()
-            },
-            BackgroundColor(PAPER),
-        ))
-        .with_children(|p| {
-            p.spawn(text(f, "Isolated State", 20.0, Color::srgb(0.42, 0.36, 0.30)));
-            p.spawn((text(f, "1900", 54.0, INK), YearText));
-            p.spawn((text(f, "", 16.0, Color::srgb(0.35, 0.32, 0.28)), InfoText));
-        });
-    // help, bottom left
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(18.0),
-                bottom: Val::Px(14.0),
-                padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
-                border_radius: BorderRadius::all(Val::Px(10.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.99, 0.97, 0.92, 0.7)),
-        ))
-        .with_children(|p| {
-            p.spawn(text(f, "Space play   Left/Right year   Up/Down speed   drag pan   right-drag turn   scroll zoom   T tilt-shift", 14.0, Color::srgb(0.35, 0.32, 0.28)));
-        });
-    // news, top right
+    // news as it happens, top right under the tabs
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            right: Val::Px(18.0),
-            top: Val::Px(16.0),
+            right: Val::Px(14.0),
+            top: Val::Px(86.0),
             width: Val::Px(340.0),
             flex_direction: FlexDirection::Column,
             row_gap: Val::Px(8.0),
             ..default()
         },
+        GlobalZIndex(5),
         ToastBox,
     ));
-    // the inspector, bottom right
+    // the inspector, bottom right above the timeline
     commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                right: Val::Px(18.0),
-                bottom: Val::Px(16.0),
+                right: Val::Px(14.0),
+                bottom: Val::Px(70.0),
                 width: Val::Px(380.0),
-                padding: UiRect::axes(Val::Px(16.0), Val::Px(12.0)),
+                padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(12.0), Val::Px(14.0)),
                 flex_direction: FlexDirection::Column,
-                border_radius: BorderRadius::all(Val::Px(14.0)),
+                row_gap: Val::Px(4.0),
+                border_radius: BorderRadius::all(Val::Px(16.0)),
                 ..default()
             },
             BackgroundColor(PAPER),
+            BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.18), Val::Px(0.0), Val::Px(3.0), Val::Px(0.0), Val::Px(10.0)),
+            Interaction::default(),
+            bevy::ui::FocusPolicy::Block,
+            GlobalZIndex(10),
             Visibility::Hidden,
             InspectPanel,
         ))
         .with_children(|p| {
-            p.spawn((text(f, "", 15.0, INK), InspectText));
+            p.spawn((text(f, "", 20.0, INK), InspectTitle));
+            p.spawn((text(f, "", 14.0, MUTED), InspectText));
         });
     // town labels
     for t in 0..data.r.header.towns.len().min(data.r.n_towns) {
@@ -837,27 +826,6 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                     q.spawn(text(f, &data.r.header.towns[t].name, 15.0, INK));
                 });
             });
-    }
-}
-
-fn info_text(tl: Res<Timeline>, data: Res<Data>, mut year: Query<&mut Text, (With<YearText>, Without<InfoText>)>, mut info: Query<&mut Text, (With<InfoText>, Without<YearText>)>) {
-    let r = &data.r;
-    let k = (tl.t.floor() as usize).min(r.ny - 1);
-    for mut t in &mut year {
-        t.0 = format!("{}", r.y0 + k as i32);
-    }
-    let pop = replay::annual(r, "pop", k).unwrap_or(0.0);
-    let rail = replay::annual(r, "rail_km", k).unwrap_or(0.0);
-    let towns = (0..r.n_towns).filter(|&t| r.town_active[k * r.n_towns + t] > 0).count();
-    let mut s = format!("{} people \u{00b7} {} towns", fmt_pop(pop), towns);
-    if rail >= 1.0 {
-        s.push_str(&format!(" \u{00b7} {:.0} km of railway", rail));
-    }
-    if tl.playing {
-        s.push_str(&format!("   \u{25b6} {:.1} years a second", tl.speed));
-    }
-    for mut t in &mut info {
-        t.0 = s.clone();
     }
 }
 
@@ -916,37 +884,6 @@ fn labels(
     }
 }
 
-fn kind_colour(kind: &str) -> Color {
-    match kind {
-        "discovery" | "first" => Color::srgb(0.75, 0.52, 0.12),
-        "railway" | "rail_plan" => Color::srgb(0.25, 0.27, 0.32),
-        "milestone" => Color::srgb(0.28, 0.55, 0.33),
-        "crossing" => Color::srgb(0.16, 0.48, 0.53),
-        "steep" => Color::srgb(0.48, 0.36, 0.62),
-        "alarm" | "famine" => Color::srgb(0.70, 0.25, 0.22),
-        "town" => Color::srgb(0.55, 0.40, 0.23),
-        _ => Color::srgb(0.45, 0.45, 0.45),
-    }
-}
-
-fn kind_label(kind: &str) -> &'static str {
-    match kind {
-        "discovery" => "Invention",
-        "first" => "First output",
-        "railway" => "Railway",
-        "rail_plan" => "Railway scheme",
-        "milestone" => "Milestone",
-        "crossing" => "Turning point",
-        "steep" => "Markets",
-        "alarm" => "Hard times",
-        "verdict" => "In hindsight",
-        "famine" => "Hunger",
-        "town" => "New town",
-        "closure" => "Closure",
-        _ => "News",
-    }
-}
-
 fn toasts(
     mut commands: Commands,
     mut st: ResMut<Toasts>,
@@ -954,8 +891,13 @@ fn toasts(
     time: Res<Time>,
     data: Res<Data>,
     font: Res<UiFont>,
-    boxq: Query<(Entity, Option<&Children>), With<ToastBox>>,
+    ui: Res<UiState>,
+    mut boxq: Query<(Entity, Option<&Children>, &mut Visibility), With<ToastBox>>,
 ) {
+    // with the news open the panel says it all
+    for (_, _, mut v) in &mut boxq {
+        v.set_if_neq(if ui.tab == Some(ui::Tab::News) { Visibility::Hidden } else { Visibility::Inherited });
+    }
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let now = time.elapsed_secs();
@@ -983,7 +925,7 @@ fn toasts(
     if !changed {
         return;
     }
-    let Ok((boxe, children)) = boxq.single() else { return };
+    let Ok((boxe, children, _)) = boxq.single() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
             commands.entity(c).despawn();
@@ -1003,6 +945,7 @@ fn toasts(
                     ..default()
                 },
                 BackgroundColor(PAPER),
+                BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.16), Val::Px(0.0), Val::Px(2.0), Val::Px(0.0), Val::Px(8.0)),
                 BorderColor::all(kind_colour(&e.kind)),
             ))
             .with_children(|q| {
@@ -1021,6 +964,7 @@ fn take_shot(
     mut exit: MessageWriter<AppExit>,
     mut tl: ResMut<Timeline>,
     mut o: ResMut<Orbit>,
+    mut ui: ResMut<UiState>,
     data: Res<Data>,
 ) {
     let Some(mut plan) = plan else { return };
@@ -1029,10 +973,15 @@ fn take_shot(
         return;
     }
     let v = plan.views[plan.index].clone();
-    // point the camera and the clock at this view
+    // point the camera, the clock and the side panel at this view
     let r = &data.r;
     if let Some(y) = v.year {
         tl.t = (y - r.y0).clamp(0, r.ny as i32 - 1) as f32;
+    }
+    if let Some(tab) = v.tab {
+        if ui.tab != tab {
+            ui.tab = tab;
+        }
     }
     let look = v.look.unwrap_or(plan.default_look);
     o.target = Vec3::new(look.0, world::height_at(&data.g, look.0, look.1).max(0.0), look.1);
@@ -1096,6 +1045,7 @@ fn pick(
     cams: Query<(&Camera, &GlobalTransform), With<MainCam>>,
     data: Res<Data>,
     tl: Res<Timeline>,
+    ui: Res<UiState>,
     mut picked: ResMut<Picked>,
 ) {
     if keys.just_pressed(KeyCode::Escape) {
@@ -1104,7 +1054,7 @@ fn pick(
     let Ok(window) = windows.single() else { return };
     let Some(cursor) = window.cursor_position() else { return };
     if buttons.just_pressed(MouseButton::Left) {
-        picked.press = Some(cursor);
+        picked.press = if ui.hover { None } else { Some(cursor) };
         picked.moved = 0.0;
     }
     if buttons.pressed(MouseButton::Left) {
@@ -1229,7 +1179,8 @@ fn inspect_panel(
     tl: Res<Timeline>,
     data: Res<Data>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
-    mut txt: Query<&mut Text, With<InspectText>>,
+    mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
+    mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
     mut last: Local<Option<(Option<Pick>, usize)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
@@ -1238,12 +1189,16 @@ fn inspect_panel(
     }
     *last = Some((picked.what, k));
     for mut v in &mut panel {
-        *v = if picked.what.is_some() { Visibility::Visible } else { Visibility::Hidden };
+        *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
         let s = describe(&data.r, w, k);
+        let (head, body) = s.split_once('\n').unwrap_or((s.as_str(), ""));
+        for mut t in &mut title {
+            t.0 = head.to_string();
+        }
         for mut t in &mut txt {
-            t.0 = s.clone();
+            t.0 = body.to_string();
         }
     }
 }
