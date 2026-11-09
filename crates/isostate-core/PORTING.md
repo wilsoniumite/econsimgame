@@ -32,6 +32,7 @@ are plain structs, and the simulation is free functions taking `&mut State`,
 | (dict keys of `st`) | `src/state.rs` | `State`, `Project`, `Event`, `Reason`, `MonthStats` |
 | (numpy arrays) | `src/mat.rs`, `src/util.rs` | A row-major `Mat`; numpy's summation order, `bincount`, `argsort`, Python number formatting |
 | (`numpy.random`) | `src/rng.rs` | Named streams, numpy's `choice` algorithms, replay of recorded draws |
+| (none) | `src/families.rs`, `src/live.rs` | Additions for the game, off by default: families and the live API (FAMILIES.md) |
 
 The public functions a binding (PyO3 later) needs are re-exported from the
 crate root: `load_content` / `default_content`, `default_params` (and

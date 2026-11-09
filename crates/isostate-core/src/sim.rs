@@ -6,6 +6,7 @@
 
 use crate::content::{Content, default_content, tech_index};
 use crate::econ;
+use crate::families;
 use crate::firms;
 use crate::land;
 use crate::mat::Mat;
@@ -439,6 +440,9 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         rail::plan(st, C, P, &mut rng.rail, year, &pbar, events);
         rail::plan_spurs(st, C, P, &mut rng.rail, year, &pbar, events);
         notable_closures(st, C, P, &closed, year, events);
+        // the families (if any) act last, on the year's prices; they draw from the
+        // misc stream, which the Python never uses
+        families::yearly(st, C, P, &mut rng.misc, year, events);
     }
 }
 
@@ -446,11 +450,16 @@ pub fn notable_closures(st: &State, C: &Content, _P: &Params, closed: &[usize], 
     let big: Vec<usize> = closed.iter().copied().filter(|&f| st.f_K[f] > 1.5 * C.m_K0[st.f_method[f]]).collect();
     for &fid in big.iter().take(2) {
         let i = st.f_town[fid];
+        let owner = families::owner_of_firm(st, fid);
+        let title = match owner {
+            Some(k) => format!("The {} family's {} closes", st.families[k].surname, st.f_name[fid]),
+            None => format!("{} closes", st.f_name[fid]),
+        };
         let mut ev = Event::new(
             year as f64 + 0.9,
             "closure",
             0.4,
-            format!("{} closes", st.f_name[fid]),
+            title,
             format!(
                 "The {} near {}, open since {}, can no longer cover its costs.",
                 C.method_label[st.f_method[fid]].to_lowercase(),
@@ -461,6 +470,7 @@ pub fn notable_closures(st: &State, C: &Content, _P: &Params, closed: &[usize], 
         ev.town = Some(i);
         ev.cell = Some(st.f_cell[fid]);
         ev.firm = Some(fid);
+        ev.family = owner;
         events.push(ev);
     }
 }
@@ -548,6 +558,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     let n_years = (y1 - y0 + 1) as usize;
     observer::init(&mut st, &C, P, n_years * 12);
     let rec = record::init(&st, &C, P, n_years);
+    // families (if any) start here, on the warmed-up economy
+    families::init(&mut st, &C, P, &mut rngs.misc);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }

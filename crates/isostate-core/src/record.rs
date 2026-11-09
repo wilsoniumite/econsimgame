@@ -14,6 +14,7 @@ use crate::land::{USE_INDUSTRY, USE_NAMES, USE_URBAN, USE_WILD};
 use crate::observer::SHARE_GROUPS;
 use crate::params::Params;
 use crate::state::{Event, State};
+use crate::world::World;
 
 pub const LAYERS: [&str; 9] = ["use", "inten", "rent", "trans", "catch", "dist", "mix_a", "mix_b", "mix_s"];
 
@@ -169,8 +170,10 @@ fn to_u8(x: f64) -> u8 {
     x as u8
 }
 
-pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize) {
-    let (N, T, G, NT) = (st.N, st.T_max, C.G, C.NT);
+/// The nine map layers of the current year, one byte per cell each, in `LAYERS`
+/// order (what `snapshot` records for the year).
+pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
+    let N = st.N;
     let mut inten: Vec<f64> = st.cell_labor.iter().map(|&l| (l / 45.0).clamp(0.0, 1.0)).collect();
     for c in 0..N {
         let u = st.land_use[c];
@@ -191,7 +194,7 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
             trans[c] |= 8;
         }
     }
-    let base = k * N;
+    let mut out: Vec<Vec<u8>> = (0..LAYERS.len()).map(|_| vec![0u8; N]).collect();
     for c in 0..N {
         let rent = st.cell_rent[c];
         let lr = rent.max(1e-3).log10();
@@ -208,9 +211,23 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
             mix_b[c],
             mix_s[c],
         ];
-        for (layer, v) in rec.layers.iter_mut().zip(values) {
-            layer[base + c] = v;
+        for (layer, v) in out.iter_mut().zip(values) {
+            layer[c] = v;
         }
+    }
+    out
+}
+
+/// Knowledge as recorded: 0 to 255.
+pub fn know_byte(x: f64) -> u8 {
+    to_u8((x.clamp(0.0, 1.0) * 255.0).round_ties_even())
+}
+
+pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize) {
+    let (N, T, G, NT) = (st.N, st.T_max, C.G, C.NT);
+    let base = k * N;
+    for (dst, src) in rec.layers.iter_mut().zip(layers(st, C)) {
+        dst[base..base + N].copy_from_slice(&src);
     }
     for t in 0..T {
         let act = st.town_active[t];
@@ -223,7 +240,7 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
             rec.town_price[(k * T + t) * G + g] = st.pbar[(t, g)] as f32;
         }
         for j in 0..NT {
-            rec.town_know[(k * T + t) * NT + j] = to_u8((st.know[(t, j)].clamp(0.0, 1.0) * 255.0).round_ties_even());
+            rec.town_know[(k * T + t) * NT + j] = know_byte(st.know[(t, j)]);
         }
     }
     let alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
@@ -314,6 +331,26 @@ fn today() -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// The resource fields stored once per run, 0 to 255 per cell.
+pub const STATIC_FIELDS: [&str; 7] = ["fertility", "ore", "coal", "rock", "clay", "pasture", "forest_pot"];
+
+/// Height, 0 to 255 per cell.
+pub fn elev_bytes(world: &World) -> Vec<u8> {
+    world.h.iter().map(|&h| to_u8((h * 255.0).round_ties_even())).collect()
+}
+
+/// River size per cell: 0 for none, else 1 plus 20 times log2 of the upstream area.
+pub fn river_bytes(world: &World) -> Vec<u8> {
+    (0..world.h.len())
+        .map(|c| if world.river[c] { to_u8(1.0 + (world.acc[c].max(1.0).log2() * 20.0).clamp(0.0, 253.0)) } else { 0 })
+        .collect()
+}
+
+/// A 0 to 1 field as 0 to 255 per cell.
+pub fn field_bytes(field: &[f64]) -> Vec<u8> {
+    field.iter().map(|&v| to_u8((v.clamp(0.0, 1.0) * 255.0).round_ties_even())).collect()
+}
+
 /// Binary container for one run: JSON header + aligned typed arrays.
 ///
 /// lite=true keeps series, events and town data but drops map layers and
@@ -327,20 +364,14 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     let F = if lite { 0 } else { st.F_count };
     let mut arrays: Vec<Array> = Vec::new();
 
-    let bytes = |f: &dyn Fn(usize) -> u8| -> Vec<u8> { (0..N).map(f).collect() };
-    arrays.push(u8_array("elev", vec![H, W], bytes(&|c| to_u8((world.h[c] * 255.0).round_ties_even()))));
+    arrays.push(u8_array("elev", vec![H, W], elev_bytes(world)));
     arrays.push(u8_array("terrain", vec![H, W], world.terrain.clone()));
-    arrays.push(u8_array(
-        "river",
-        vec![H, W],
-        bytes(&|c| if world.river[c] { to_u8(1.0 + (world.acc[c].max(1.0).log2() * 20.0).clamp(0.0, 253.0)) } else { 0 }),
-    ));
-    arrays.push(u8_array("nav", vec![H, W], bytes(&|c| world.navigable[c] as u8)));
+    arrays.push(u8_array("river", vec![H, W], river_bytes(world)));
+    arrays.push(u8_array("nav", vec![H, W], world.navigable.iter().map(|&n| n as u8).collect()));
     let down: Vec<i32> = world.down.iter().map(|&d| d as i32).collect();
     arrays.push(i32_array("down", vec![N], &down));
-    for f in ["fertility", "ore", "coal", "rock", "clay", "pasture", "forest_pot"] {
-        let field = world.field(f);
-        arrays.push(u8_array(f, vec![H, W], bytes(&|c| to_u8((field[c].clamp(0.0, 1.0) * 255.0).round_ties_even()))));
+    for f in STATIC_FIELDS {
+        arrays.push(u8_array(f, vec![H, W], field_bytes(world.field(f))));
     }
     if !lite {
         for (name, layer) in LAYERS.iter().zip(&rec.layers) {
