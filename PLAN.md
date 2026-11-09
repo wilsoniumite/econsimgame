@@ -10,7 +10,7 @@ Three stages: a lab you can tinker with, a visual tool you can steer, then a gam
 
 ## Where we are
 
-A first full demo. The sim runs 1750 to 1900 on one procedural island in about 80 seconds, conserves money exactly, and exports a replay that a single HTML page turns into a scrubbable map, news feed, charts and a per-firm "why here" inspector. Two scenarios (landlords and shared rent) can be compared in the charts. The main weakness is economic, not technical: structural change is too weak (see README, Known problems).
+The simulation runs in Rust (`crates/isostate-core`), checked against the Python step by step, 150 years in about 21 seconds. The Bevy viewer (`crates/isostate-viewer`) plays recorded runs and live games. A live game has six families, the player's first: you buy land and build works on the map, put family members in charge of trades, and watch the century unfold year by year against the AI families (see docs/DEVLOG.md for what exists and what the scripted players taught us). The economic weaknesses listed under stage 1 still stand, and the politics half of the game is not started.
 
 ## Stage 1: the lab (next, dense)
 
@@ -42,14 +42,15 @@ A first full demo. The sim runs 1750 to 1900 on one procedural island in about 8
 
 ## Stage 2: the visual tool (sparser)
 
-- The Bevy viewer already plays replays. Next for the look: a terrain shader for fields, hedges and crops (crisp at any zoom, seasons from the monthly clock), houses that line streets, moving trains and boats, construction that pops up with a puff of dust, click-to-inspect with each works' "why here" sums.
-- Run the sim live inside the Bevy app once the Rust core is ported and checked. The replay format stays as the save-game and sharing format.
+- Done: replays and live play in Bevy, trains and boats, houses lining streets, scaffolding on new and growing works, click-to-inspect with each works' "why here" sums, a game interface. In progress: a terrain shader for fields, hedges and crops, crisp at any zoom, with the seasons.
+- Next for the look: construction with a puff of dust, people and carts on the roads, weather, a title screen and saved games (the replay format can carry a game).
 - Interventions: pause, change a parameter or place a thing (a canal, a tariff, a land tax), resume, and compare the branch against the baseline on the same seed.
 - A diff view on the map: where two branches differ, in rent, use and population.
 - Agent drill-down: follow one firm or town over time, with its decisions and their reasons in a timeline.
 
 ## Stage 3: the game (sparse)
 
-- Decide the player's seat: a government (Democracy 4 style levers on top of the economy), one firm among many, or a town. Prototype each as a thin layer over the stage 2 tool before committing.
+- The player's seat, decided: a family running a conglomerate among rival families. Companies mostly run themselves; the player chooses trades, places and people. The government is always run by one family; holding office drains the family's people and attention, so power changes hands without ending anyone's game. Historical politics (a limited franchise, rotten boroughs, reform acts, the Corn Laws) comes next, after the company half is fun on its own.
+- Balance from the scripted players (DEVLOG, 2026-11-09): honest returns in thin markets, consent or a premium for buying a rival's land, a start that puts the player mid-table, and spending as a lever.
 - Keep the sim honest: the player acts through the same prices and bids as everyone else, never by editing outcomes.
 - Make tangibility the design brief: milestones, inventions with names and places, booms and slumps called live and dated later, and a map that visibly answers "why is that there".

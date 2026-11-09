@@ -28,13 +28,17 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 
 For poking at things interactively, `notebooks/explore.py` is a set of `# %%` cells.
 
-### The 3D viewer (Rust)
+### The game and the 3D viewer (Rust)
 
 ```bash
-cargo run -p isostate-viewer --release -- runs/landlords/run.bin
+cargo run -p isostate-viewer --release                                  # a new game: you are a family among six
+cargo run -p isostate-viewer --release -- --seed 11 --families 4        # another island, fewer rivals
+cargo run -p isostate-viewer --release -- runs/landlords/run.bin        # watch a recorded run instead
 ```
 
-A Bevy diorama of the same replay: fields, woods, towns and works grow and change as you scrub through the years. See `crates/isostate-viewer/README.md` for controls and how the picture is made.
+A Bevy diorama: fields, woods, towns and works grow and change as the years go by. In a game the simulation runs live and you play a family: buy land, build works, put your people in charge of trades, and see where you stand against the other great families by 1900. See `crates/isostate-viewer/README.md` for controls and how the picture is made, and `crates/isostate-core/FAMILIES.md` for how families work.
+
+![A game in 1753: the Fairfax family's land is fenced in red, its forge flies a pennant, and the inspector lists what could be built on the square clicked](docs/shots/game-1753.jpg)
 
 ### The simulation in Rust
 
