@@ -52,6 +52,8 @@ pub struct Live {
     rx: Mutex<mpsc::Receiver<Msg>>,
     /// a year is being worked out
     pub stepping: bool,
+    /// the thread has stopped and that has been reported
+    gone: std::sync::atomic::AtomicBool,
     /// the industry group of every method, for the family panel
     pub method_group: Vec<Option<Group>>,
     pub group_labels: Vec<String>,
@@ -64,7 +66,15 @@ impl Live {
     }
 
     pub fn try_recv(&self) -> Option<Msg> {
-        self.rx.lock().ok()?.try_recv().ok()
+        match self.rx.lock().ok()?.try_recv() {
+            Ok(m) => Some(m),
+            Err(mpsc::TryRecvError::Empty) => None,
+            // the thread is gone (it panicked): say so once, as a failure
+            Err(mpsc::TryRecvError::Disconnected) if !self.gone.swap(true, std::sync::atomic::Ordering::Relaxed) => {
+                Some(Msg::Failed("The simulation stopped unexpectedly; the game cannot go on. The terminal may say why.".into()))
+            }
+            Err(_) => None,
+        }
     }
 
     pub fn step(&mut self) {
@@ -112,6 +122,7 @@ pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result
         tx: tx_cmd,
         rx: Mutex::new(rx_msg),
         stepping: false,
+        gone: std::sync::atomic::AtomicBool::new(false),
         method_group,
         group_labels: stat.groups.iter().map(|g| g.label.clone()).collect(),
     };

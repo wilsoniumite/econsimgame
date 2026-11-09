@@ -119,6 +119,12 @@ pub struct TimelineTrack;
 pub struct TimelineKnob;
 #[derive(Component)]
 pub struct HelpCard;
+/// Holds the timeline's news ticks.
+#[derive(Component)]
+pub struct TickLayer;
+/// The part of the timeline that has happened.
+#[derive(Component)]
+pub struct TimelineFill;
 /// Clicking this opens a tab (the family card opens the family).
 #[derive(Component)]
 pub struct OpenTab(pub Tab);
@@ -132,7 +138,7 @@ pub struct StepNote;
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob).chain(),
+        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
     );
 }
 
@@ -410,16 +416,14 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(17.0), height: Val::Px(3.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() },
                     BackgroundColor(RULE),
                 ));
-                // a tick for each major piece of news
-                let span = (r.ny.max(2) - 1) as f32;
-                for e in r.header.events.iter().filter(|e| e.weight >= 0.6) {
-                    let x = ((e.year - r.y0 as f32) / span * 100.0).clamp(0.0, 100.0);
-                    let h = 6.0 + 10.0 * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
-                    track.spawn((
-                        Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
-                        BackgroundColor(kind_colour(&e.kind).with_alpha(0.8)),
-                    ));
-                }
+                // the years there are so far (all of them in a replay)
+                track.spawn((
+                    Node { position_type: PositionType::Absolute, left: Val::Px(0.0), width: Val::Percent(100.0), top: Val::Px(17.0), height: Val::Px(3.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() },
+                    BackgroundColor(Color::srgb(0.80, 0.74, 0.64)),
+                    TimelineFill,
+                ));
+                // a tick for each major piece of news, filled in by timeline_ticks
+                track.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), ..default() }, TickLayer));
                 // the knob with the year above it
                 track.spawn((
                     Node { position_type: PositionType::Absolute, left: Val::Percent(100.0), top: Val::Px(11.0), width: Val::Px(14.0), height: Val::Px(14.0), margin: UiRect::left(Val::Px(-7.0)), border_radius: BorderRadius::all(Val::Px(7.0)), border: UiRect::all(Val::Px(2.0)), ..default() },
@@ -565,11 +569,44 @@ fn timeline_drag(mut tl: ResMut<Timeline>, data: Res<Data>, q: Query<(&Interacti
     }
 }
 
-fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, With<TimelineKnob>>) {
+fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (With<TimelineKnob>, Without<TimelineFill>)>, mut fill: Query<&mut Node, (With<TimelineFill>, Without<TimelineKnob>)>) {
     let last = (data.r.ny.max(2) - 1) as f32;
     for mut n in &mut q {
         n.left = Val::Percent((tl.t / last * 100.0).clamp(0.0, 100.0));
     }
+    let w = Val::Percent((data.latest() as f32 / last * 100.0).clamp(0.0, 100.0));
+    for mut n in &mut fill {
+        if n.width != w {
+            n.width = w;
+        }
+    }
+}
+
+/// News ticks along the timeline, redrawn as a live game adds news.
+fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<usize>>) {
+    let r = &data.r;
+    let n = r.header.events.len();
+    if *drawn == Some(n) {
+        return;
+    }
+    let Ok((e, children)) = layer.single() else { return };
+    *drawn = Some(n);
+    if let Some(ch) = children {
+        for c in ch.iter() {
+            commands.entity(c).despawn();
+        }
+    }
+    let span = (r.ny.max(2) - 1) as f32;
+    commands.entity(e).with_children(|track| {
+        for e in r.header.events.iter().filter(|e| e.weight >= 0.6) {
+            let x = ((e.year - r.y0 as f32) / span * 100.0).clamp(0.0, 100.0);
+            let h = 6.0 + 10.0 * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
+            track.spawn((
+                Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
+                BackgroundColor(kind_colour(&e.kind).with_alpha(0.8)),
+            ));
+        }
+    });
 }
 
 fn season_name(ph: f32) -> &'static str {

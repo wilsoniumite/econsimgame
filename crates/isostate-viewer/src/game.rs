@@ -182,6 +182,7 @@ fn pump(mut live: ResMut<Live>, mut data: ResMut<Data>, mut fam: ResMut<FamilyVi
             }
             Msg::Failed(e) => {
                 live.stepping = false;
+                game.busy = false;
                 game.note = Some((false, e));
                 game.version += 1;
             }
