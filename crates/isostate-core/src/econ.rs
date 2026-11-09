@@ -572,6 +572,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         proj_req.push(rq);
     }
 
+    if families::active(st) {
+        // what each town's buyers asked for, for the families' site sums
+        st.requests = R.clone();
+    }
     let mut fill = Mat::zeros(T, G);
     for t in 0..T {
         for g in 0..G {

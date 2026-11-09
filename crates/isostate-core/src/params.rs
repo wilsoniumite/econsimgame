@@ -166,6 +166,12 @@ pub struct Params {
     /// AI families keep this many months of spending as a cash reserve.
     #[serde(skip_serializing_if = "is_default_reserve")]
     pub family_reserve_months: f64,
+    /// AI families build only where the works' output is at most this share of the town's demand...
+    #[serde(skip_serializing_if = "is_default_max_share")]
+    pub family_max_share: f64,
+    /// ...and the good's price is at most this many times its base price.
+    #[serde(skip_serializing_if = "is_default_max_price_ratio")]
+    pub family_max_price_ratio: f64,
     /// Last simulated year; `None` means the content's end year (Python: `P.get("end_year", C["end_year"])`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_year: Option<i64>,
@@ -179,6 +185,8 @@ const LAND_RENT_FLOOR: f64 = 0.5;
 const FAMILY_START_SHARE: f64 = 0.03;
 const FAMILY_START_CASH: f64 = 0.004;
 const FAMILY_RESERVE_MONTHS: f64 = 12.0;
+const FAMILY_MAX_SHARE: f64 = 0.25;
+const FAMILY_MAX_PRICE_RATIO: f64 = 3.0;
 
 fn is_zero(v: &usize) -> bool {
     *v == 0
@@ -206,6 +214,12 @@ fn is_default_start_cash(v: &f64) -> bool {
 }
 fn is_default_reserve(v: &f64) -> bool {
     *v == FAMILY_RESERVE_MONTHS
+}
+fn is_default_max_share(v: &f64) -> bool {
+    *v == FAMILY_MAX_SHARE
+}
+fn is_default_max_price_ratio(v: &f64) -> bool {
+    *v == FAMILY_MAX_PRICE_RATIO
 }
 
 pub fn default_params() -> Params {
@@ -322,6 +336,8 @@ pub fn default_params() -> Params {
         family_start_share: FAMILY_START_SHARE,
         family_start_cash: FAMILY_START_CASH,
         family_reserve_months: FAMILY_RESERVE_MONTHS,
+        family_max_share: FAMILY_MAX_SHARE,
+        family_max_price_ratio: FAMILY_MAX_PRICE_RATIO,
         end_year: None,
     }
 }

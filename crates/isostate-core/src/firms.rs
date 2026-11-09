@@ -474,7 +474,10 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
     let cash = st.f_cash[fid];
     if cash >= 0.0 {
         match families::owner_of_firm(st, fid) {
-            Some(k) => st.families[k].cash += cash,
+            Some(k) => {
+                st.families[k].cash += cash;
+                st.f_paid[fid] += cash;
+            }
             None => st.hh_cash[i] += cash,
         }
     } else {
