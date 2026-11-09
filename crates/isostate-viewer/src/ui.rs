@@ -16,7 +16,7 @@ use bevy::ui::{FocusPolicy, RelativeCursorPosition, ScrollPosition};
 
 use crate::family::{self, FamilyView};
 use crate::replay::{self, Replay};
-use crate::{Data, ForcedSeason, Timeline, UiFont};
+use crate::{Data, Timeline, UiFont};
 
 pub const PAPER: Color = Color::srgba(0.99, 0.97, 0.92, 0.95);
 pub const PAPER_2: Color = Color::srgb(0.965, 0.935, 0.87);
@@ -584,7 +584,7 @@ fn season_name(ph: f32) -> &'static str {
 fn topbar_text(
     tl: Res<Timeline>,
     data: Res<Data>,
-    forced: Res<ForcedSeason>,
+    sm: Option<Res<crate::SeasonMats>>,
     fam: Option<Res<FamilyView>>,
     mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>)>,
     mut slots: Query<(&mut Text, &FortuneSlot), Without<DateText>>,
@@ -592,7 +592,8 @@ fn topbar_text(
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let year = r.y0 + k as i32;
-    let s = format!("{} {}", season_name(crate::season_phase(&tl, forced.0)), year);
+    // the same season the ground and trees are showing
+    let s = format!("{} {}", season_name(crate::season_phase(&tl, sm.as_ref().and_then(|m| m.forced))), year);
     for mut t in &mut date {
         if t.0 != s {
             t.0 = s.clone();
@@ -616,7 +617,8 @@ fn topbar_text(
 
 pub fn money(v: f32) -> String {
     let a = v.abs();
-    let s = if a >= 1e6 { format!("\u{00a3}{:.2}m", a / 1e6) } else if a >= 1e4 { format!("\u{00a3}{:.0}k", a / 1e3) } else { format!("\u{00a3}{:.0}", a) };
+    // switch units where rounding would carry: 999,600 is £1.00m, not £1000k
+    let s = if a >= 999_500.0 { format!("\u{00a3}{:.2}m", a / 1e6) } else if a >= 9_999.5 { format!("\u{00a3}{:.0}k", a / 1e3) } else { format!("\u{00a3}{:.0}", a) };
     if v < 0.0 { format!("-{s}") } else { s }
 }
 

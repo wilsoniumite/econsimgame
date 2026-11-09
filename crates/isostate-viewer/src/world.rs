@@ -1,14 +1,14 @@
 //! Shared spatial logic: the terrain heights, distances to the coast, and the
 //! patchwork rule that turns each cell's land mix into fields, woods and towns.
-//! The texture painter, the scattered trees and houses, and the road ribbons
-//! all ask these functions, so they always agree about what is where.
+//! The scattered trees and houses and the road ribbons ask these functions, and
+//! the ground shader (terrain.wesl) repeats `hash2`, `vnoise`, `warp`,
+//! `sub_raw` and `pick_class` exactly on the GPU, so everything agrees about
+//! what is where. Change one side and you must change the other.
 
 use crate::replay::Replay;
 
 /// Terrain vertices per map cell along each axis.
 pub const VRES: usize = 4;
-/// Texture texels per map cell along each axis.
-pub const TS: usize = 24;
 
 // display classes, as in record.DISP
 pub const SEA: u8 = 0;
@@ -22,6 +22,7 @@ pub const IRONMINE: u8 = 7;
 pub const COALMINE: u8 = 8;
 pub const WORKS: u8 = 9;
 pub const URBAN: u8 = 10;
+#[allow(dead_code)] // only the ground shader draws it
 pub const DERELICT: u8 = 11;
 
 pub fn hash2(x: i32, y: i32, s: i32) -> f32 {

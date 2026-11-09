@@ -68,6 +68,8 @@ struct Args {
     demo: bool,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
+    ground_debug: bool,
+    class_map: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +80,8 @@ struct ShotSpec {
     yaw: f32,
     pitch: f32,
     dist: Option<f32>,
+    /// phase of the year for this shot, overriding --season
+    season: Option<f32>,
     /// which side panel to show: Some(None) closes it
     tab: Option<Option<ui::Tab>>,
 }
@@ -105,6 +109,8 @@ fn parse_args() -> Args {
         advance: 0,
         demo: false,
         pick: None,
+        ground_debug: false,
+        class_map: false,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -139,6 +145,8 @@ fn parse_args() -> Args {
                 if let Some((x, z)) = s.split_once(',') { a.pick = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
                 i += 1;
             }
+            "--ground-debug" => a.ground_debug = true,
+            "--class-map" => a.class_map = true,
             "--season" => { a.season = next(i).parse().ok(); i += 1; }
             "--describe" => {
                 let s = next(i);
@@ -146,7 +154,7 @@ fn parse_args() -> Args {
                 i += 1;
             }
             "--view" => {
-                // path,year,x,z,yaw,pitch,dist[,tab]
+                // path,year,x,z,yaw,pitch,dist[,season][,tab]: a number after dist is a season, a word a panel
                 let p: Vec<String> = next(i).split(',').map(String::from).collect();
                 let num = |j: usize| p.get(j).and_then(|s| s.parse::<f32>().ok());
                 a.views.push(ShotSpec {
@@ -156,7 +164,8 @@ fn parse_args() -> Args {
                     yaw: num(4).unwrap_or(0.0),
                     pitch: num(5).unwrap_or(52.0),
                     dist: num(6),
-                    tab: p.get(7).map(|s| ui::Tab::parse(s)),
+                    season: p.iter().skip(7).find_map(|s| s.parse::<f32>().ok()),
+                    tab: p.iter().skip(7).find(|s| !s.is_empty() && s.parse::<f32>().is_err()).map(|s| ui::Tab::parse(s)),
                 });
                 i += 1;
             }
@@ -177,7 +186,6 @@ fn parse_args() -> Args {
 struct Data {
     r: Replay,
     g: Ground,
-    ts: terrain::TexStatic,
     slots: scatter::Slots,
     cen: Vec<(f32, f32)>,
     /// the years are being simulated as we watch, not read from a file
@@ -193,7 +201,8 @@ impl Data {
 
 #[derive(Resource)]
 struct Handles {
-    terrain_img: Handle<Image>,
+    /// the year's land mix per cell, read by the ground shader
+    year_cells: Handle<Image>,
     trees: Handle<Mesh>,
     houses: Handle<Mesh>,
     works: Handle<Mesh>,
@@ -230,6 +239,7 @@ struct ShotPlan {
     wait: f32,
     default_dist: f32,
     default_look: (f32, f32),
+    default_season: Option<f32>,
 }
 
 #[derive(Resource, Default)]
@@ -247,11 +257,18 @@ struct Tilt(bool);
 /// Materials that change with the seasons.
 #[derive(Resource)]
 struct SeasonMats {
-    terrain: Handle<StandardMaterial>,
+    terrain: Handle<terrain::GroundMaterial>,
     trees: Handle<StandardMaterial>,
     /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
     forced: Option<f32>,
 }
+
+/// Draw the ground as flat class colours with nothing on it (`--ground-debug`).
+#[derive(Resource)]
+struct GroundDebug(bool);
+
+#[derive(Component)]
+struct GroundMesh;
 
 #[derive(Component)]
 struct Sun;
@@ -328,7 +345,6 @@ fn main() {
         }
     };
     let g = world::build_ground(&r);
-    let ts = terrain::tex_static(&r, &g);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
     eprintln!("prepared {} in {:.1}s", if args.new { "the new game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
@@ -384,7 +400,14 @@ fn main() {
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
-        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist, tab: None });
+        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
+    }
+    if args.class_map {
+        // the CPU's answer for each view, to compare with a --ground-debug shot
+        for v in &views {
+            write_class_map(&r, &g, v, args.size, look, dist);
+        }
+        return;
     }
     let headless = !views.is_empty();
     if headless {
@@ -404,13 +427,15 @@ fn main() {
             ..default()
         }));
     }
+    terrain::register(&mut app);
     app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))
         .insert_resource(GlobalAmbientLight { color: Color::srgb(0.78, 0.86, 1.0), brightness: 650.0, ..default() })
-        .insert_resource(Data { r, g, ts, slots, cen, live: live.is_some() })
+        .insert_resource(Data { r, g, slots, cen, live: live.is_some() })
         .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt))
         .insert_resource(ForcedSeason(args.season))
+        .insert_resource(GroundDebug(args.ground_debug))
         .init_resource::<Toasts>()
         .insert_resource(picked)
         .init_resource::<Rails>()
@@ -426,6 +451,9 @@ fn main() {
     }
     if let Some(f) = families {
         app.insert_resource(f);
+    }
+    if args.ground_debug {
+        app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
     }
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
@@ -472,8 +500,10 @@ fn setup_world(
     tilt: Res<Tilt>,
     shot: Option<Res<ShotPlanArgs>>,
     forced: Res<ForcedSeason>,
+    debug: Res<GroundDebug>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut fonts: ResMut<Assets<Font>>,
 ) {
@@ -481,17 +511,18 @@ fn setup_world(
     let k = tl.t.floor() as usize;
     commands.insert_resource(UiFont(fonts.add(Font::from_bytes(FREDOKA.to_vec()))));
 
-    // ground: one heightfield with the year's patchwork painted on it
-    let mut rgba = vec![0u8; data.ts.tw * data.ts.th * 4];
-    terrain::paint(r, &data.ts, k, &mut rgba);
-    let terrain_img = images.add(terrain::make_image(data.ts.tw, data.ts.th, rgba));
-    let terrain_mat = materials.add(StandardMaterial {
-        base_color_texture: Some(terrain_img.clone()),
-        perceptual_roughness: 0.92,
-        reflectance: 0.18,
-        ..default()
+    // ground: one heightfield, its patchwork painted per pixel from the year's land mix
+    let year_cells = images.add(terrain::cell_image(r, terrain::year_cells(r, k), TextureFormat::Rgba8Unorm));
+    let fixed_cells = images.add(terrain::cell_image(r, terrain::fixed_cells(r), TextureFormat::R8Unorm));
+    let terrain_mat = ground_mats.add(terrain::GroundMaterial {
+        base: StandardMaterial { perceptual_roughness: 0.92, reflectance: 0.18, ..default() },
+        extension: terrain::Patchwork {
+            params: terrain::patchwork_params(r, g, season_phase(&tl, forced.0), debug.0),
+            year: year_cells.clone(),
+            fixed: fixed_cells,
+        },
     });
-    commands.spawn((Mesh3d(meshes.add(terrain::terrain_mesh(g))), MeshMaterial3d(terrain_mat.clone())));
+    commands.spawn((Mesh3d(meshes.add(terrain::terrain_mesh(g))), MeshMaterial3d(terrain_mat.clone()), GroundMesh));
 
     // the sea: a clear sheet of water over the painted sea floor, and a deep floor beyond the map
     let (w, h) = (r.w as f32, r.h as f32);
@@ -519,7 +550,7 @@ fn setup_world(
     let vc = vertex_coloured(&mut materials, 0.85);
     let flat = vertex_coloured(&mut materials, 0.95);
     let handles = Handles {
-        terrain_img,
+        year_cells,
         trees: meshes.add(placeholder_mesh()),
         houses: meshes.add(placeholder_mesh()),
         works: meshes.add(placeholder_mesh()),
@@ -554,7 +585,7 @@ fn setup_world(
         IsDefaultUiCamera,
         Hdr,
         Msaa::Off,
-        Projection::Perspective(PerspectiveProjection { fov: 30f32.to_radians(), near: 0.05, far: 2000.0, ..default() }),
+        Projection::Perspective(PerspectiveProjection { fov: FOV_DEG.to_radians(), near: 0.05, far: 2000.0, ..default() }),
         Tonemapping::TonyMcMapface,
         Bloom { intensity: 0.06, ..Bloom::NATURAL },
         ScreenSpaceAmbientOcclusion::default(),
@@ -567,6 +598,10 @@ fn setup_world(
         },
         orbit_transform(&orbit),
     ));
+    if debug.0 {
+        // flat class colours must reach the image unchanged
+        cam.insert(Tonemapping::None).remove::<Bloom>();
+    }
     if tilt.0 {
         cam.insert(DepthOfField {
             mode: DepthOfFieldMode::Gaussian,
@@ -591,9 +626,13 @@ fn setup_world(
             wait: shot.wait,
             default_dist: shot.default_dist,
             default_look: shot.default_look,
+            default_season: forced.0,
         });
     }
 }
+
+/// Vertical field of view of the camera, in degrees.
+const FOV_DEG: f32 = 30.0;
 
 /// Miniature look: shallow focus when far away, gentler up close.
 fn tilt_f_stops(dist: f32) -> f32 {
@@ -625,10 +664,8 @@ fn rebuild_year(
     }
     tl.built = Some(k);
     let (r, g) = (&data.r, &data.g);
-    let mut rgba = vec![0u8; data.ts.tw * data.ts.th * 4];
-    terrain::paint(r, &data.ts, k, &mut rgba);
-    if let Some(mut img) = images.get_mut(&handles.terrain_img) {
-        terrain::update_image(&mut img, data.ts.tw, data.ts.th, rgba);
+    if let Some(mut img) = images.get_mut(&handles.year_cells) {
+        img.data = Some(terrain::year_cells(r, k));
     }
     let ym = scatter::build_year(r, g, &data.slots, &data.cen, k);
     let nets = network::year_nets(r, g, &data.cen, k);
@@ -670,33 +707,34 @@ fn seasons(
     tl: Res<Timeline>,
     sm: Res<SeasonMats>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
     mut last: Local<Option<i32>>,
 ) {
     let ph = season_phase(&tl, sm.forced);
-    // only touch the materials when the season visibly moves
-    let step = (ph * 48.0).floor() as i32;
+    // only touch the materials when the season visibly moves, about twice a week
+    let step = (ph * 192.0).floor() as i32;
     if *last == Some(step) {
         return;
     }
     *last = Some(step);
-    // 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
-    let keys: [(f32, [f32; 3], [f32; 3]); 5] = [
-        (0.0, [1.04, 1.06, 1.12], [0.78, 0.74, 0.70]),
-        (0.25, [0.96, 1.04, 0.94], [0.92, 1.12, 0.86]),
-        (0.5, [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]),
-        (0.75, [1.06, 0.97, 0.86], [1.35, 0.88, 0.52]),
-        (1.0, [1.04, 1.06, 1.12], [0.78, 0.74, 0.70]),
+    // the ground shader draws the crops, grass, heather and frost of the season
+    if let Some(mut m) = ground_mats.get_mut(&sm.terrain) {
+        m.extension.params.season = ph;
+    }
+    // trees: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
+    let keys: [(f32, [f32; 3]); 5] = [
+        (0.0, [0.78, 0.74, 0.70]),
+        (0.25, [0.92, 1.12, 0.86]),
+        (0.5, [1.0, 1.0, 1.0]),
+        (0.75, [1.35, 0.88, 0.52]),
+        (1.0, [0.78, 0.74, 0.70]),
     ];
     let i = keys.iter().position(|k| k.0 > ph).unwrap_or(4).max(1);
     let (a, b) = (keys[i - 1], keys[i]);
     let t = ((ph - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
-    let l = |x: [f32; 3], y: [f32; 3]| Color::srgb(x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t);
-    if let Some(mut m) = materials.get_mut(&sm.terrain) {
-        m.base_color = l(a.1, b.1);
-    }
     if let Some(mut m) = materials.get_mut(&sm.trees) {
-        m.base_color = l(a.2, b.2);
+        m.base_color = Color::srgb(a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t, a.1[2] + (b.1[2] - a.1[2]) * t);
     }
     // the sun rides higher and warmer in summer
     let summer = 0.5 - 0.5 * (ph * std::f32::consts::TAU).cos();
@@ -1044,6 +1082,7 @@ fn take_shot(
     mut tl: ResMut<Timeline>,
     mut o: ResMut<Orbit>,
     mut ui: ResMut<UiState>,
+    mut sm: ResMut<SeasonMats>,
     data: Res<Data>,
 ) {
     let Some(mut plan) = plan else { return };
@@ -1052,7 +1091,7 @@ fn take_shot(
         return;
     }
     let v = plan.views[plan.index].clone();
-    // point the camera, the clock and the side panel at this view
+    // point the camera, the clock, the calendar and the side panel at this view
     let r = &data.r;
     if let Some(y) = v.year {
         tl.t = (y - r.y0).clamp(0, r.ny as i32 - 1) as f32;
@@ -1061,6 +1100,10 @@ fn take_shot(
         if ui.tab != tab {
             ui.tab = tab;
         }
+    }
+    let season = v.season.or(plan.default_season);
+    if sm.forced != season {
+        sm.forced = season;
     }
     let look = v.look.unwrap_or(plan.default_look);
     o.target = Vec3::new(look.0, world::height_at(&data.g, look.0, look.1).max(0.0), look.1);
@@ -1085,6 +1128,77 @@ fn take_shot(
     }
     commands.spawn(Screenshot::image(plan.image.clone())).observe(save_to_disk(v.path.clone()));
     plan.capturing = 6;
+}
+
+// ------------------------------------------------------------------ checking the ground shader
+
+/// With `--ground-debug`, show nothing but the ground.
+fn hide_all_but_ground(mut q: Query<&mut Visibility, (With<Mesh3d>, Without<GroundMesh>)>) {
+    for mut v in &mut q {
+        *v = Visibility::Hidden;
+    }
+}
+
+/// Where a ray from `o` along unit `d` first meets the terrain mesh.
+fn mesh_hit(g: &Ground, o: Vec3, d: Vec3) -> Option<Vec3> {
+    // nothing stands above 2.6, so start where the ray comes down to that height
+    let mut t = if d.y < 0.0 { ((o.y - 2.6) / -d.y).max(0.0) } else { 0.0 };
+    let mut prev = o + d * t;
+    for _ in 0..40_000 {
+        t += 0.004 + t * 0.001;
+        let p = o + d * t;
+        if p.y <= terrain::mesh_height(g, p.x, p.z) {
+            let (mut a, mut b) = (prev, p);
+            for _ in 0..24 {
+                let m = (a + b) * 0.5;
+                if m.y <= terrain::mesh_height(g, m.x, m.z) { b = m } else { a = m }
+            }
+            return Some(b);
+        }
+        prev = p;
+        if t > 1000.0 {
+            break;
+        }
+    }
+    None
+}
+
+/// Write the class that `world::class_at` gives for the ground under every
+/// pixel of a view, one byte per pixel (255 for sea, beach and sky), as a PGM
+/// next to the view's path. A `--ground-debug` shot of the same view shows what
+/// the shader draws there; compare the two to check that they agree.
+fn write_class_map(r: &Replay, g: &Ground, v: &ShotSpec, size: (u32, u32), default_look: (f32, f32), default_dist: f32) {
+    use rayon::prelude::*;
+    let k = v.year.map_or(r.ny - 1, |y| (y - r.y0).clamp(0, r.ny as i32 - 1) as usize);
+    let (lx, lz) = v.look.unwrap_or(default_look);
+    let o = Orbit {
+        target: Vec3::new(lx, world::height_at(g, lx, lz).max(0.0), lz),
+        yaw: v.yaw.to_radians(),
+        pitch: v.pitch.to_radians(),
+        dist: v.dist.unwrap_or(default_dist),
+    };
+    let cam = orbit_transform(&o);
+    let (w, h) = (size.0 as usize, size.1 as usize);
+    let tan = (FOV_DEG.to_radians() * 0.5).tan();
+    let aspect = w as f32 / h as f32;
+    let px: Vec<u8> = (0..w * h)
+        .into_par_iter()
+        .map(|i| {
+            let (x, y) = ((i % w) as f32 + 0.5, (i / w) as f32 + 0.5);
+            let d = cam.rotation * Vec3::new((x / w as f32 * 2.0 - 1.0) * tan * aspect, (1.0 - y / h as f32 * 2.0) * tan, -1.0);
+            match mesh_hit(g, cam.translation, d.normalize()) {
+                Some(p) if p.y >= 0.03 && p.x >= 0.0 && p.z >= 0.0 && p.x < r.w as f32 && p.z < r.h as f32 => world::class_at(r, g, k, p.x, p.z).0,
+                _ => 255,
+            }
+        })
+        .collect();
+    let path = format!("{}.classes.pgm", v.path.trim_end_matches(".png"));
+    let mut out = format!("P5\n{w} {h}\n255\n").into_bytes();
+    out.extend_from_slice(&px);
+    match std::fs::write(&path, out) {
+        Ok(()) => eprintln!("wrote {path}"),
+        Err(e) => eprintln!("cannot write {path}: {e}"),
+    }
 }
 
 // ------------------------------------------------------------------ click to inspect
