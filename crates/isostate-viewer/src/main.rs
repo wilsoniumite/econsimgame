@@ -667,8 +667,13 @@ fn rebuild_year(
     if let Some(mut img) = images.get_mut(&handles.year_cells) {
         img.data = Some(terrain::year_cells(r, k));
     }
+    let t0 = std::time::Instant::now();
     let ym = scatter::build_year(r, g, &data.slots, &data.cen, k);
+    let t1 = t0.elapsed().as_secs_f32();
     let nets = network::year_nets(r, g, &data.cen, k);
+    if std::env::var_os("ISOSTATE_TIMING").is_some() {
+        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
+    }
     // trains: one for every eight units of line, up to three, spread along it
     for e in &old_trains {
         commands.entity(e).despawn();

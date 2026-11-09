@@ -182,19 +182,6 @@ fn tree(b: &mut Builder, p: Vec3, s: f32, conifer: bool, v: f32, seed: f32) {
 
 // ------------------------------------------------------------------ houses
 
-/// A place a town house could stand this year.
-struct HouseSpot {
-    x: f32,
-    z: f32,
-    yaw: f32,
-    /// lower ranks are built first and keep their ground
-    rank: f32,
-    u: f32,
-    v: f32,
-    w: f32,
-    d: f32,
-}
-
 const WALLS: [u32; 6] = [0xf6deb4, 0xfaf0dc, 0xf4d38f, 0xf0bfa3, 0xdfe2bf, 0xf6deb4];
 const ROOFS: [u32; 5] = [0xc6604a, 0x5b6b86, 0xc6604a, 0x6e8f5c, 0xb5523f];
 
