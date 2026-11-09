@@ -40,7 +40,7 @@ pub mod world;
 
 pub use content::{Content, default_content, load_content};
 pub use families::{
-    BranchReport, Choice, Decision, DecisionOption, FamilyReport, Group, MemberReport, Path, Post, Posting, SiteOption, SiteSums, Stance, buy_land,
+    BranchReport, Choice, Decision, DecisionOption, FamilyReport, Group, MemberReport, Path, Post, Posting, Prospect, SiteOption, SiteSums, Stance, buy_land,
     decide, family_report, found_works, may_buy_land, move_seat, pending, post_member, set_stance, site_options,
 };
 pub use live::{LiveCursor, LiveStatic, LiveYear, live_static, live_year};

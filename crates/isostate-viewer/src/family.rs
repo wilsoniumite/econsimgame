@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use isostate_core::families::{Group, Path, Post, Posting, Stance, N_GROUPS};
-use isostate_core::{BranchReport, Decision, FamilyReport, MemberReport};
+use isostate_core::{BranchReport, Decision, FamilyReport, MemberReport, Prospect};
 
 use crate::replay::Replay;
 use crate::ui::{money, text, BAD, BTN, GOOD, INK, MUTED, PAPER_2, RULE};
@@ -54,7 +54,7 @@ pub struct FamilyView {
     /// the player can give orders (a live game, not a replay)
     pub live: bool,
     /// what new works of each trade would earn in each town, by town index
-    pub prospects: Vec<[f64; N_GROUPS]>,
+    pub prospects: Vec<[Prospect; N_GROUPS]>,
     /// the trade of every method's works (none for shops and trades)
     pub method_group: Vec<Option<Group>>,
 }
@@ -65,8 +65,8 @@ impl FamilyView {
     }
 
     /// The best prospect of a trade in a town, if any works of it would pay there.
-    pub fn prospect(&self, town: usize, g: Group) -> Option<f64> {
-        self.prospects.get(town).map(|p| p[g.index()]).filter(|v| v.is_finite())
+    pub fn prospect(&self, town: usize, g: Group) -> Option<Prospect> {
+        self.prospects.get(town).map(|p| p[g.index()]).filter(|p| p.roi.is_finite())
     }
 }
 
@@ -145,10 +145,19 @@ pub fn post_words(m: &MemberReport, fam: &FamilyReport) -> String {
     }
 }
 
-/// A yearly return in words: snapshot returns above a half are scarcity
-/// prices that will not last, and are shown as such.
-pub fn yearly(v: f64) -> String {
-    if v > 0.6 { "over 60% a year while prices last".to_string() } else { format!("about {:.0}% a year", 100.0 * v) }
+/// What a trade would bring in a town, in words: the land's yield for estates,
+/// and for works what the best one would cost and earn in a year, because a
+/// return is only as big as the works it is on. Returns above about a half are
+/// scarcity prices that will not last, and are said to be.
+pub fn earnings(p: Prospect, g: Group, at: &str) -> String {
+    if g == Group::Estates {
+        format!("land around {at} yields about {:.0}% a year", 100.0 * p.roi)
+    } else if p.roi <= 0.0 {
+        format!("nothing in it would pay at {at} just now")
+    } else {
+        let tail = if p.roi > 0.6 { " while prices last" } else { "" };
+        format!("a works at {at} would cost about {} and earn about {} a year{tail}", money(p.cost as f32), money((p.cost * p.roi) as f32))
+    }
 }
 
 /// ", 6% cheaper to run" for works, ", 6% better yields" for land.
@@ -222,9 +231,9 @@ pub fn suggestions(v: &FamilyView, r: &Replay, fam: &FamilyReport, m: &MemberRep
             let (score, why) = if idle_here > 0 {
                 let what = if g == Group::Estates { format!("{idle_here} squares of the family's land there have nobody of the family over them") } else { format!("{idle_here} of the family's works there have nobody of the family over them") };
                 (10.0 + idle_here as f64 * if g == Group::Estates { 0.2 } else { 1.0 }, what)
-            } else if let Some(p) = p.filter(|&p| p > 0.04) {
-                let what = if g == Group::Estates { format!("land there yields {}", yearly(p)) } else { format!("new works there would earn {}", yearly(p)) };
-                (p.min(0.6), what)
+            } else if let Some(p) = p.filter(|p| p.roi > 0.04 && g != Group::Estates) {
+                // rank by what a branch would bring in, not by the percentage on a tiny works
+                (0.001 * (p.cost * p.roi.min(0.6)).sqrt(), earnings(p, g, &town_name(t)))
             } else {
                 continue;
             };

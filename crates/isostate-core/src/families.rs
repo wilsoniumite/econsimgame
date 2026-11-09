@@ -909,8 +909,23 @@ pub fn market_depth(st: &State, C: &Content, i: usize, m: usize, K: f64) -> (f64
 /// (`family_max_share`, `family_max_price_ratio`); estates offer the land
 /// yield, one over `years_purchase`.
 pub fn prospects(st: &State, C: &Content, P: &Params, t: usize) -> [f64; N_GROUPS] {
-    let mut best = [f64::NEG_INFINITY; N_GROUPS];
-    best[Group::Estates.index()] = 1.0 / P.years_purchase;
+    prospect_works(st, C, P, t).map(|p| p.roi)
+}
+
+/// What the best works of a trade in a town would be: its expected yearly
+/// return, and what founding it would cost (zero for estates, which have no
+/// works). A return is only as big as the works it is on, so the cost puts it
+/// in proportion.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct Prospect {
+    pub roi: f64,
+    pub cost: f64,
+}
+
+/// `prospects`, with the cost of founding the works each return is for.
+pub fn prospect_works(st: &State, C: &Content, P: &Params, t: usize) -> [Prospect; N_GROUPS] {
+    let mut best = [Prospect { roi: f64::NEG_INFINITY, cost: 0.0 }; N_GROUPS];
+    best[Group::Estates.index()].roi = 1.0 / P.years_purchase;
     let cells: Vec<usize> = (0..st.N)
         .filter(|&c| st.catch[c] == t as i64 && st.cell_K_share[c] < 0.9 && st.land_use[c] != 0 && st.land_use[c] != USE_DERELICT)
         .collect();
@@ -929,7 +944,10 @@ pub fn prospects(st: &State, C: &Content, P: &Params, t: usize) -> [f64; N_GROUP
         }
         let ev = firms::evaluate_sites(st, C, P, t, m, &cells, K, prices(st), wages(st));
         let r = ev.roi.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        best[g.index()] = best[g.index()].max(r);
+        if r > best[g.index()].roi {
+            // what found_works would charge: the capacity at capital-goods prices, plus 15 per cent
+            best[g.index()] = Prospect { roi: r, cost: ev.cap_cost * 1.15 };
+        }
     }
     best
 }

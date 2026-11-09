@@ -645,7 +645,7 @@ fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView,
                 p.spawn(text(f, "Nobody of the family is free: everyone of age is the head, training, or already posted here.", 12.0, MUTED));
             }
             for g in open {
-                let pr = fam.prospect(t, g).map(|v| if g == Group::Estates { format!("land yields {}", family::yearly(v)) } else { format!("new works would earn {}", family::yearly(v)) }).unwrap_or_else(|| "nothing new would pay".into());
+                let pr = fam.prospect(t, g).map(|p| family::earnings(p, g, &name)).unwrap_or_else(|| "nothing new would pay here".into());
                 p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|col| {
                     col.spawn(text(f, &format!("{} \u{00b7} {}", short_group(g), pr), 13.0, INK));
                     if !free.is_empty() {
@@ -806,9 +806,8 @@ fn option_note(d: &Decision, choice: Choice, fam: &FamilyView, me: &FamilyRow, r
     let earn = |t: usize, g: Group| -> String {
         let at = town_name(r, t);
         match fam.prospect(t, g) {
-            Some(v) if g == Group::Estates => format!("land around {at} yields {}", family::yearly(v)),
-            Some(v) if v > 0.0 => format!("new works at {at} would earn {}", family::yearly(v)),
-            _ => format!("nothing in it would pay at {at} just now"),
+            Some(p) => family::earnings(p, g, &at),
+            None => format!("nothing in it would pay at {at} just now"),
         }
     };
     // a training chosen between years runs to the end of the year its decision falls due, plus four

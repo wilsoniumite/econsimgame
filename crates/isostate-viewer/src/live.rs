@@ -11,7 +11,7 @@ use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
 use isostate_core::families::{self, Group, Posting, Stance, N_GROUPS};
-use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveStatic, LiveYear, SiteOption};
+use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveStatic, LiveYear, Prospect, SiteOption};
 
 use crate::family::FamilyView;
 use crate::replay::{self, Firm, Good, Header, Meta, Method, Replay, Town};
@@ -49,8 +49,8 @@ pub struct SiteInfo {
 }
 
 pub enum Msg {
-    /// a year, with what each trade would earn in each town (`families::prospects`)
-    Year(Box<LiveYear>, Vec<[f64; N_GROUPS]>),
+    /// a year, with what each trade would earn in each town (`families::prospect_works`)
+    Year(Box<LiveYear>, Vec<[Prospect; N_GROUPS]>),
     Site(SiteInfo),
     /// an order was carried out (or not), with the player's family as it now stands
     Done { ok: bool, text: String, family: Option<FamilyReport> },
@@ -199,10 +199,11 @@ fn demo_orders(s: &mut iso::Sim) {
 
 /// What each trade would earn on new works in every town, as the posting
 /// suggestions and the choice of a first trade show it.
-fn all_prospects(s: &iso::Sim) -> Vec<[f64; N_GROUPS]> {
+fn all_prospects(s: &iso::Sim) -> Vec<[Prospect; N_GROUPS]> {
     let t0 = std::time::Instant::now();
-    let out: Vec<[f64; N_GROUPS]> = (0..s.st.T_max)
-        .map(|t| if s.st.town_active[t] { families::prospects(&s.st, &s.content, &s.params, t) } else { [f64::NEG_INFINITY; N_GROUPS] })
+    let none = [Prospect { roi: f64::NEG_INFINITY, cost: 0.0 }; N_GROUPS];
+    let out: Vec<[Prospect; N_GROUPS]> = (0..s.st.T_max)
+        .map(|t| if s.st.town_active[t] { families::prospect_works(&s.st, &s.content, &s.params, t) } else { none })
         .collect();
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("prospects for {} towns in {:.0} ms", out.len(), t0.elapsed().as_secs_f32() * 1e3);
