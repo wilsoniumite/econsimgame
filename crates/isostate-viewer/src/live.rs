@@ -96,12 +96,13 @@ impl Live {
 /// Start a new game: the island is made and its first year simulated here
 /// (and `advance` more, to start later), then the simulation moves to its own
 /// thread. With `demo` the player's family builds a works and buys a little
-/// land in the first year, to have something to show in screenshots.
+/// land in the first year, to have something to show in screenshots. A game is
+/// played under the game's rules (`game_params`, `game_content`), not the port's.
 pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result<(Replay, Live, FamilyView), String> {
-    let mut p = iso::default_params();
+    let mut p = iso::game_params();
     p.seed = seed;
     p.n_families = n_families.max(1);
-    let mut s = iso::sim::start(&p, iso::default_content());
+    let mut s = iso::sim::start(&p, iso::game_content());
     let stat = iso::live_static(&s.st, &s.content);
     let mut cursor = LiveCursor::new(&s.content);
     let mut r = shell(&stat, seed);

@@ -193,4 +193,12 @@ fn params_round_trip_and_overrides() {
     let r = P.with_json_overrides(r#"{"seed": 11, "decay": [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]}"#).unwrap();
     assert_eq!(r.seed, 11);
     assert_eq!(r.decay.len(), 16);
+    // the same on top of the game's rules, from TOML
+    let g = isostate_core::game_params();
+    let t = g.with_toml_overrides("seed = 5\nhurdle = 0.2\n").unwrap();
+    assert_eq!((t.seed, t.hurdle, t.land_theta), (5, 0.2, g.land_theta));
+    assert!(g.with_toml_overrides("hurdel = 0.2").is_err());
+    assert_eq!(isostate_core::Rules::parse("port").map(|r| r.params()), Some(P));
+    assert_eq!(isostate_core::Rules::parse("game").map(|r| r.params()), Some(g));
+    assert_eq!(isostate_core::Rules::parse("python"), None);
 }
