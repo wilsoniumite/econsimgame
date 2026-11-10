@@ -197,7 +197,7 @@ impl MaterialExtension for Sea {
 }
 
 /// A sheet of water at sea level over the whole map and well beyond.
-fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, mut meshes: ResMut<Assets<Mesh>>, mut seas: ResMut<Assets<SeaMaterial>>, mut images: ResMut<Assets<Image>>) {
+fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::look::TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut seas: ResMut<Assets<SeaMaterial>>, mut images: ResMut<Assets<Image>>) {
     let g = &data.g;
     let size = Extent3d { width: g.gw as u32, height: g.gh as u32, depth_or_array_layers: 1 };
     let bytes: Vec<u8> = g.hgt.iter().flat_map(|h| h.to_le_bytes()).collect();
@@ -209,8 +209,8 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, mut meshes: ResMut<
         base: StandardMaterial {
             base_color: Color::WHITE,
             alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.14,
-            reflectance: 0.45,
+            perceptual_roughness: look.surfaces.sea,
+            reflectance: look.surfaces.sea_reflectance,
             ..default()
         },
         extension: Sea { params: SeaParams { grid_w: g.gw as f32, grid_h: g.gh as f32, res: VRES as f32, season: 0.5 }, heights },

@@ -46,14 +46,15 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
         return;
     }
     let years: Vec<usize> = [1760, 1800, 1850, 1870, 1900].iter().map(|y| ((y - r.y0).max(0) as usize).min(r.ny - 1)).collect();
+    let lk = crate::look::Look::standard();
     let mut total = 0.0;
     let mut n = 0;
     for round in 0..3 {
         for &k in &years {
             let t0 = thread_cpu();
-            let ym = crate::scatter::build_year(r, g, slots, cen, k);
+            let ym = crate::scatter::build_year(r, g, slots, cen, k, &lk);
             let t1 = thread_cpu();
-            let nets = crate::network::year_nets(r, g, cen, k);
+            let nets = crate::network::year_nets(r, g, cen, k, &lk);
             let paths = crate::trains::rail_paths(r, g, cen, k);
             let t2 = thread_cpu();
             let verts = ym.trees.pos.len() + ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len();

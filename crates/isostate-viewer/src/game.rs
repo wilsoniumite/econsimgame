@@ -18,6 +18,7 @@ use crate::live::{self, Cmd, Live, Msg, SiteInfo, PLAYER};
 use crate::meshkit::{hex, lerp, Builder};
 use crate::replay::{self, Replay};
 use crate::ui::{money, text, UiState, BTN, INK, MUTED, PAPER_2, RULE};
+use crate::look::{Look, TheLook};
 use crate::{scatter, world, Data, InspectActions, Orbit, Pick, Picked, Timeline, UiFont};
 
 #[derive(Resource, Default)]
@@ -934,9 +935,9 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
 
 // ------------------------------------------------------------------ banners and fences
 
-fn setup_marks(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+fn setup_marks(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let h = meshes.add(crate::placeholder_mesh());
-    let mat = crate::vertex_coloured(&mut materials, 0.8);
+    let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
     commands.spawn((Mesh3d(h.clone()), MeshMaterial3d(mat)));
     commands.insert_resource(Marks(h));
 }
@@ -947,9 +948,9 @@ fn banner_rgba(i: usize) -> [f32; 4] {
 
 /// A pennant on a pole beside every family works, a low fence round every
 /// family's land, and a tall flag on the market square of every family's seat.
-fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize) -> Builder {
+fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let pole = hex(0x6b5a48);
+    let pole = *lk.marks.pole;
     for (i, &(fam, town, moving)) in seats.iter().enumerate() {
         let Some((at, radius, yaw)) = scatter::towns::square_of(r, cen, k, town) else { continue };
         // families sharing a seat stand their flags side by side along the square's west edge
@@ -961,8 +962,8 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         // a seat the family is moving to has a shorter pole and a paler flag until the year end
         let top = base + Vec3::Y * if moving { 0.13 } else { 0.21 };
         b.beam(base - Vec3::Y * 0.01, top + Vec3::Y * 0.01, 0.0055, pole);
-        b.block(top + Vec3::Y * 0.01, 0.012, 0.012, 0.012, 0.0, hex(0xd9b44a), Some(hex(0xd9b44a)), 0.0);
-        let col = if moving { lerp(banner_rgba(fam), hex(0xf4ecd8), 0.5) } else { banner_rgba(fam) };
+        b.block(top + Vec3::Y * 0.01, 0.012, 0.012, 0.012, 0.0, *lk.marks.finial, Some(*lk.marks.finial), 0.0);
+        let col = if moving { lerp(banner_rgba(fam), *lk.marks.cloth_pale, 0.5) } else { banner_rgba(fam) };
         // the flag flies with the same wind as the pennants
         let fly = Vec3::new(0.068, -0.006, 0.034);
         let (a, d) = (top, top - Vec3::Y * 0.048);
@@ -997,8 +998,8 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
                 continue;
             }
             let (x, z) = ((c % r.w) as i32, (c / r.w) as i32);
-            let col = lerp(banner_rgba(o as usize), hex(0xf4ecd8), 0.25);
-            let post = lerp(col, hex(0x5a4a3a), 0.35);
+            let col = lerp(banner_rgba(o as usize), *lk.marks.cloth_pale, 0.25);
+            let post = lerp(col, *lk.marks.post_shade, 0.35);
             let inset = 0.03;
             // edges whose far side is not this family's: (dx, dz) to the neighbour, and the edge's two ends
             let x0 = x as f32 + inset;
@@ -1036,10 +1037,10 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
 }
 
 /// Surveyors' pegs and a sign where a works was ordered this year.
-fn stakes(b: &mut Builder, g: &world::Ground, r: &Replay, cell: usize, colour: [f32; 4]) {
+fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize, colour: [f32; 4]) {
     let (cx, cz) = ((cell % r.w) as f32 + 0.5, (cell / r.w) as f32 + 0.5);
     let at = |x: f32, z: f32| Vec3::new(x, world::height_at(g, x, z).max(0.0), z);
-    let peg = hex(0xe9dcc0);
+    let peg = *lk.marks.peg;
     let c = [at(cx - 0.12, cz - 0.09), at(cx + 0.12, cz - 0.09), at(cx + 0.12, cz + 0.09), at(cx - 0.12, cz + 0.09)];
     for p in c {
         b.block(p, 0.01, 0.01, 0.03, 0.0, peg, Some(peg), 0.01);
@@ -1049,11 +1050,11 @@ fn stakes(b: &mut Builder, g: &world::Ground, r: &Replay, cell: usize, colour: [
     }
     // a little board on a post, in the family colour
     let s = at(cx - 0.14, cz + 0.12);
-    b.beam(s, s + Vec3::Y * 0.07, 0.006, hex(0x6b5a48));
+    b.beam(s, s + Vec3::Y * 0.07, 0.006, *lk.marks.pole);
     b.block(s + Vec3::Y * 0.05, 0.05, 0.006, 0.03, 0.3, colour, Some(colour), 0.0);
 }
 
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: Res<FamilyView>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
     let Some(marks) = marks else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there
@@ -1068,10 +1069,10 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: 
         return;
     }
     game.marks = Some(key);
-    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k);
+    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look);
     if present(&tl, &data) {
         for &c in &game.pending {
-            stakes(&mut b, &data.g, &data.r, c, banner_rgba(PLAYER));
+            stakes(&mut b, &look, &data.g, &data.r, c, banner_rgba(PLAYER));
         }
     }
     if let Some(mut m) = meshes.get_mut(&marks.0) {

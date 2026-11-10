@@ -14,6 +14,7 @@ mod fields;
 mod game;
 mod icons;
 mod live;
+mod look;
 mod meshkit;
 mod network;
 mod plan;
@@ -28,11 +29,11 @@ mod ui;
 mod world;
 
 use bevy::app::ScheduleRunnerPlugin;
-use bevy::camera::{Hdr, RenderTarget};
+use bevy::camera::{Exposure, Hdr, RenderTarget};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::light::CascadeShadowConfigBuilder;
-use bevy::pbr::{DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion};
+use bevy::pbr::{DistanceFog, FogFalloff, ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel};
 use bevy::post_process::bloom::Bloom;
 use bevy::post_process::dof::{DepthOfField, DepthOfFieldMode};
 use bevy::prelude::*;
@@ -43,6 +44,7 @@ use std::sync::Arc;
 use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
+use look::{Look, TheLook};
 use replay::Replay;
 use ui::{kind_colour, kind_label, text, UiState, INK, MUTED, PAPER};
 use world::Ground;
@@ -54,7 +56,10 @@ struct Args {
     year: Option<i32>,
     shot: Option<String>,
     size: (u32, u32),
-    look: Option<(f32, f32)>,
+    /// the point the camera looks at, in map cells (`--at x,z`)
+    at: Option<(f32, f32)>,
+    /// a look file laid over the standard look (`--look FILE`, look.rs)
+    look_file: Option<String>,
     yaw: f32,
     pitch: f32,
     dist: Option<f32>,
@@ -107,7 +112,8 @@ fn parse_args() -> Args {
         year: None,
         shot: None,
         size: (1600, 1000),
-        look: None,
+        at: None,
+        look_file: None,
         yaw: 0.0,
         pitch: 52.0,
         dist: None,
@@ -143,9 +149,18 @@ fn parse_args() -> Args {
                 if let Some((w, h)) = s.split_once('x') { a.size = (w.parse().unwrap_or(1600), h.parse().unwrap_or(1000)); }
                 i += 1;
             }
-            "--look" => {
+            "--at" => {
                 let s = next(i);
-                if let Some((x, z)) = s.split_once(',') { a.look = Some((x.parse().unwrap_or(60.0), z.parse().unwrap_or(42.0))); }
+                if let Some((x, z)) = s.split_once(',') { a.at = Some((x.parse().unwrap_or(60.0), z.parse().unwrap_or(42.0))); }
+                i += 1;
+            }
+            "--look" => {
+                // a look file; two numbers are the point to look at, which --look used to mean
+                let s = next(i);
+                match s.split_once(',').map(|(x, z)| (x.parse::<f32>(), z.parse::<f32>())) {
+                    Some((Ok(x), Ok(z))) => a.at = Some((x, z)),
+                    _ => a.look_file = Some(s),
+                }
                 i += 1;
             }
             "--yaw" => { a.yaw = next(i).parse().unwrap_or(0.0); i += 1; }
@@ -361,6 +376,18 @@ fn main() {
         let same = shots::compare_sets(a, b);
         std::process::exit(if same { 0 } else { 1 });
     }
+    // the look first, so a slip in a look file is told at once
+    let look = match &args.look_file {
+        Some(path) => match Look::with_file(path) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        },
+        None => Look::standard(),
+    };
+    let look = Arc::new(look);
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
         eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
@@ -427,10 +454,10 @@ fn main() {
     // a game opens over the family's home town; a replay over the whole island
     let home = families.as_ref().and_then(|f| f.player()).and_then(|p| r.header.towns.get(p.seat)).map(|t| cen[t.node]);
     let island = (((x0 + x1) * 0.5, (z0 + z1) * 0.5 + 4.0), (x1 - x0).max((z1 - z0) * 1.5) * 1.05);
-    let look = args.look.or(home.map(|(x, z)| (x, z + 1.0))).unwrap_or(island.0);
+    let look_at = args.at.or(home.map(|(x, z)| (x, z + 1.0))).unwrap_or(island.0);
     let dist = args.dist.unwrap_or(if home.is_some() { shots::PLAY_DIST } else { island.1 });
     let orbit = Orbit {
-        target: Vec3::new(look.0, world::height_at(&g, look.0, look.1).max(0.0), look.1),
+        target: Vec3::new(look_at.0, world::height_at(&g, look_at.0, look_at.1).max(0.0), look_at.1),
         yaw: args.yaw.to_radians(),
         pitch: args.pitch.to_radians(),
         dist,
@@ -444,12 +471,12 @@ fn main() {
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
-        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
+        views.insert(0, ShotSpec { path, year: args.year, look: args.at, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
     }
     if args.class_map {
         // the CPU's answer for each view, to compare with a --ground-debug shot
         for v in &views {
-            write_class_map(&r, &g, v, args.size, look, dist);
+            write_class_map(&r, &g, v, args.size, look_at, dist);
         }
         return;
     }
@@ -464,11 +491,14 @@ fn main() {
         let standard = shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir);
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
-        let what = if args.new {
+        let mut what = if args.new {
             format!("Island {} with {} families, {} by {} pixels", args.seed, args.families, args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
+        if let Some(path) = &args.look_file {
+            what.push_str(&format!(", in the look of {path}"));
+        }
         sheet = Some(shots::Sheet {
             dir: dir.clone(),
             compare: args.shots_compare.clone(),
@@ -495,13 +525,14 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
-    app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))
-        .insert_resource(GlobalAmbientLight { color: Color::srgb(0.78, 0.86, 1.0), brightness: 650.0, ..default() })
+    app.insert_resource(ClearColor(look.sky.background.color()))
+        .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
         .init_resource::<Builds>()
         .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
         .insert_resource(orbit)
-        .insert_resource(Tilt(args.tilt))
+        .insert_resource(Tilt(args.tilt && look.tilt_shift.on))
+        .insert_resource(TheLook(look))
         .insert_resource(ForcedSeason(args.season))
         .insert_resource(GroundDebug(args.ground_debug))
         .init_resource::<Toasts>()
@@ -524,7 +555,7 @@ fn main() {
         app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
     }
     if headless {
-        app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
+        app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look_at });
         app.add_systems(Update, take_shot.after(toasts));
     }
     if let Some(sheet) = sheet {
@@ -550,8 +581,8 @@ struct ShotPlanArgs {
 
 // ------------------------------------------------------------------ world setup
 
-fn vertex_coloured(materials: &mut Assets<StandardMaterial>, rough: f32) -> Handle<StandardMaterial> {
-    materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: rough, reflectance: 0.25, ..default() })
+fn vertex_coloured(materials: &mut Assets<StandardMaterial>, lk: &Look, rough: f32) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: rough, reflectance: lk.surfaces.painted_reflectance, ..default() })
 }
 
 fn placeholder_mesh() -> Mesh {
@@ -568,6 +599,7 @@ fn non_empty(b: meshkit::Builder) -> Mesh {
 fn setup_world(
     mut commands: Commands,
     data: Res<Data>,
+    look: Res<TheLook>,
     tl: Res<Timeline>,
     orbit: Res<Orbit>,
     tilt: Res<Tilt>,
@@ -581,6 +613,7 @@ fn setup_world(
     mut fonts: ResMut<Assets<Font>>,
 ) {
     let (r, g) = (&data.r, &data.g);
+    let lk: &Look = &look;
     let k = tl.t.floor() as usize;
     commands.insert_resource(UiFont(fonts.add(Font::from_bytes(FREDOKA.to_vec()))));
 
@@ -588,7 +621,7 @@ fn setup_world(
     let year_cells = images.add(terrain::cell_image(r, terrain::year_cells(r, k), TextureFormat::Rgba8Unorm));
     let fixed_cells = images.add(terrain::cell_image(r, terrain::fixed_cells(r, g), TextureFormat::Rgba8Unorm));
     let terrain_mat = ground_mats.add(terrain::GroundMaterial {
-        base: StandardMaterial { perceptual_roughness: 0.92, reflectance: 0.18, ..default() },
+        base: StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() },
         extension: terrain::Patchwork {
             params: terrain::patchwork_params(r, g, season_phase(&tl, forced.0), debug.0),
             year: year_cells.clone(),
@@ -603,17 +636,17 @@ fn setup_world(
     let (w, h) = (r.w as f32, r.h as f32);
     commands.spawn((
         Mesh3d(meshes.add(terrain::plane(-4.0 * w, -4.0 * h, 5.0 * w, 5.0 * h, -1.15))),
-        MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::srgb(0.16, 0.36, 0.48), perceptual_roughness: 1.0, ..default() })),
+        MeshMaterial3d(materials.add(StandardMaterial { base_color: lk.water.sea_floor.color(), perceptual_roughness: 1.0, ..default() })),
     ));
     // (the sea's surface is terrain.rs's, with its own shader)
 
     // rivers do not change
-    let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.25, reflectance: 0.4, ..default() });
-    commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(r, g, &data.cen)))), MeshMaterial3d(river_mat), bevy::light::NotShadowCaster));
+    let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.river, reflectance: lk.surfaces.river_reflectance, ..default() });
+    commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat), bevy::light::NotShadowCaster));
 
     // year meshes start empty; rebuild_year fills them
-    let vc = vertex_coloured(&mut materials, 0.85);
-    let flat = vertex_coloured(&mut materials, 0.95);
+    let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
+    let flat = vertex_coloured(&mut materials, lk, lk.surfaces.paths);
     let handles = Handles {
         year_cells,
         trees: meshes.add(placeholder_mesh()),
@@ -624,25 +657,26 @@ fn setup_world(
         rails: meshes.add(placeholder_mesh()),
         lanes: meshes.add(placeholder_mesh()),
     };
-    let tree_mat = vertex_coloured(&mut materials, 0.9);
+    let tree_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
     commands.spawn((Mesh3d(handles.trees.clone()), MeshMaterial3d(tree_mat.clone())));
     commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
-    commands.insert_resource(TrainAssets { mesh: meshes.add(trains::train_mesh().into_mesh()), mat: vc.clone() });
-    let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: 0.3, ..default() });
+    commands.insert_resource(TrainAssets { mesh: meshes.add(trains::train_mesh(lk).into_mesh()), mat: vc.clone() });
+    let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, ..default() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
     commands.insert_resource(handles);
 
-    // a warm low sun from the south-west, and soft sky light
+    // a warm low sun from the south-west, and soft sky light; the seasons
+    // move it from the first frame on, so this is only where it starts
     commands.spawn((
         Sun,
-        DirectionalLight { color: Color::srgb(1.0, 0.94, 0.84), illuminance: 9000.0, shadow_maps_enabled: true, ..default() },
-        Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.75, -0.72, 0.0)),
-        CascadeShadowConfigBuilder { num_cascades: 3, first_cascade_far_bound: 12.0, maximum_distance: 220.0, ..default() }.build(),
+        DirectionalLight { color: lk.sun.colour(1.0), illuminance: lk.sun.strength(1.0), shadow_maps_enabled: true, ..default() },
+        Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, lk.sun.turn, -lk.sun.height(1.0), 0.0)),
+        CascadeShadowConfigBuilder { num_cascades: lk.shadows.cascades, first_cascade_far_bound: lk.shadows.first_far, maximum_distance: lk.shadows.max_distance, ..default() }.build(),
     ));
 
     // the camera
@@ -653,27 +687,42 @@ fn setup_world(
         Hdr,
         Msaa::Off,
         Projection::Perspective(PerspectiveProjection { fov: FOV_DEG.to_radians(), near: 0.05, far: 2000.0, ..default() }),
-        Tonemapping::TonyMcMapface,
-        Bloom { intensity: 0.06, ..Bloom::NATURAL },
-        ScreenSpaceAmbientOcclusion::default(),
+        tonemapping(lk.post.tonemapping),
+        Exposure { ev100: lk.post.exposure },
         bevy::anti_alias::smaa::Smaa::default(),
         DistanceFog {
-            color: Color::srgba(0.72, 0.84, 0.93, 1.0),
-            directional_light_color: Color::srgba(1.0, 0.93, 0.8, 0.4),
-            directional_light_exponent: 24.0,
-            falloff: FogFalloff::Linear { start: orbit.dist * 1.2, end: orbit.dist * 4.0 },
+            color: lk.haze.colour.color(),
+            directional_light_color: lk.haze.sun_glow.color().with_alpha(lk.haze.sun_glow_strength),
+            directional_light_exponent: lk.haze.sun_glow_tightness,
+            falloff: haze_falloff(lk, orbit.dist),
         },
         orbit_transform(&orbit),
     ));
+    if lk.post.bloom > 0.0 && !debug.0 {
+        cam.insert(Bloom { intensity: lk.post.bloom, ..Bloom::NATURAL });
+    }
+    if lk.ambient_occlusion.on {
+        let ao = &lk.ambient_occlusion;
+        cam.insert(ScreenSpaceAmbientOcclusion {
+            quality_level: match ao.quality {
+                look::Quality::Low => ScreenSpaceAmbientOcclusionQualityLevel::Low,
+                look::Quality::Medium => ScreenSpaceAmbientOcclusionQualityLevel::Medium,
+                look::Quality::High => ScreenSpaceAmbientOcclusionQualityLevel::High,
+                look::Quality::Ultra => ScreenSpaceAmbientOcclusionQualityLevel::Ultra,
+            },
+            radius: ao.radius,
+            constant_object_thickness: ao.thickness,
+        });
+    }
     if debug.0 {
         // flat class colours must reach the image unchanged
-        cam.insert(Tonemapping::None).remove::<Bloom>();
+        cam.insert(Tonemapping::None);
     }
     if tilt.0 {
         cam.insert(DepthOfField {
             mode: DepthOfFieldMode::Gaussian,
             focal_distance: orbit.dist,
-            aperture_f_stops: tilt_f_stops(orbit.dist),
+            aperture_f_stops: lk.tilt_shift.f_stops(orbit.dist),
             ..default()
         });
     }
@@ -701,9 +750,26 @@ fn setup_world(
 /// Vertical field of view of the camera, in degrees.
 const FOV_DEG: f32 = 30.0;
 
-/// Miniature look: shallow focus when far away, gentler up close.
-fn tilt_f_stops(dist: f32) -> f32 {
-    (30.0 / dist).clamp(0.8, 3.5)
+/// The look file's name for a tonemapper, as Bevy's.
+fn tonemapping(t: look::Tonemap) -> Tonemapping {
+    match t {
+        look::Tonemap::None => Tonemapping::None,
+        look::Tonemap::Linear => Tonemapping::Linear,
+        look::Tonemap::Reinhard => Tonemapping::Reinhard,
+        look::Tonemap::ReinhardLuminance => Tonemapping::ReinhardLuminance,
+        look::Tonemap::AcesFitted => Tonemapping::AcesFitted,
+        look::Tonemap::Agx => Tonemapping::AgX,
+        look::Tonemap::SomewhatBoringDisplayTransform => Tonemapping::SomewhatBoringDisplayTransform,
+        look::Tonemap::TonyMcMapface => Tonemapping::TonyMcMapface,
+        look::Tonemap::BlenderFilmic => Tonemapping::BlenderFilmic,
+        look::Tonemap::KhronosPbrNeutral => Tonemapping::KhronosPbrNeutral,
+    }
+}
+
+/// The haze begins and ends at multiples of the camera's distance, so it
+/// frames what is looked at from any height.
+fn haze_falloff(lk: &Look, dist: f32) -> FogFalloff {
+    FogFalloff::Linear { start: dist * lk.haze.start, end: dist * lk.haze.end }
 }
 
 fn orbit_transform(o: &Orbit) -> Transform {
@@ -731,12 +797,12 @@ struct Builds {
     task: Option<(usize, Task<Scenery>)>,
 }
 
-fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize) -> Scenery {
+fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> Scenery {
     let t0 = std::time::Instant::now();
     let cells = terrain::year_cells(r, k);
-    let ym = scatter::build_year(r, g, slots, cen, k);
+    let ym = scatter::build_year(r, g, slots, cen, k, lk);
     let t1 = t0.elapsed().as_secs_f32();
-    let nets = network::year_nets(r, g, cen, k);
+    let nets = network::year_nets(r, g, cen, k, lk);
     let rails = trains::rail_paths(r, g, cen, k);
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread)", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
@@ -749,6 +815,7 @@ fn rebuild_year(
     mut commands: Commands,
     mut tl: ResMut<Timeline>,
     data: Res<Data>,
+    look: Res<TheLook>,
     handles: Res<Handles>,
     ta: Res<TrainAssets>,
     mut rails: ResMut<Rails>,
@@ -794,8 +861,8 @@ fn rebuild_year(
     // another year (the clock moved on) finishes first and is shown on the way
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     if tl.built != Some(k) && builds.task.is_none() {
-        let (r, g, slots, cen) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k) });
+        let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
+        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k, &lk) });
         builds.task = Some((k, task));
     }
 }
@@ -816,6 +883,7 @@ fn season_phase(tl: &Timeline, forced: Option<f32>) -> f32 {
 fn seasons(
     tl: Res<Timeline>,
     sm: Res<SeasonMats>,
+    look: Res<TheLook>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
@@ -833,13 +901,8 @@ fn seasons(
         m.extension.params.season = ph;
     }
     // trees: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
-    let keys: [(f32, [f32; 3]); 5] = [
-        (0.0, [0.78, 0.74, 0.70]),
-        (0.25, [0.92, 1.12, 0.86]),
-        (0.5, [1.0, 1.0, 1.0]),
-        (0.75, [1.35, 0.88, 0.52]),
-        (1.0, [0.78, 0.74, 0.70]),
-    ];
+    let leaf = &look.foliage;
+    let keys: [(f32, [f32; 3]); 5] = [(0.0, leaf.tint_winter), (0.25, leaf.tint_spring), (0.5, leaf.tint_summer), (0.75, leaf.tint_autumn), (1.0, leaf.tint_winter)];
     let i = keys.iter().position(|k| k.0 > ph).unwrap_or(4).max(1);
     let (a, b) = (keys[i - 1], keys[i]);
     let t = ((ph - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
@@ -849,9 +912,9 @@ fn seasons(
     // the sun rides higher and warmer in summer
     let summer = 0.5 - 0.5 * (ph * std::f32::consts::TAU).cos();
     for (mut light, mut tf) in &mut sun {
-        light.illuminance = 7000.0 + 3000.0 * summer;
-        light.color = Color::srgb(1.0, 0.90 + 0.05 * summer, 0.78 + 0.07 * summer);
-        *tf = Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.75, -0.5 - 0.35 * summer, 0.0));
+        light.illuminance = look.sun.strength(summer);
+        light.color = look.sun.colour(summer);
+        *tf = Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, look.sun.turn, -look.sun.height(summer), 0.0));
     }
 }
 
@@ -962,19 +1025,20 @@ fn camera_input(
 fn apply_camera(
     o: Res<Orbit>,
     tilt: Res<Tilt>,
+    look: Res<TheLook>,
     mut commands: Commands,
     mut cams: Query<(Entity, &mut Transform, &mut DistanceFog, Option<&mut DepthOfField>), With<MainCam>>,
 ) {
     for (e, mut t, mut fog, dof) in &mut cams {
         *t = orbit_transform(&o);
-        fog.falloff = FogFalloff::Linear { start: o.dist * 1.2, end: o.dist * 4.0 };
+        fog.falloff = haze_falloff(&look, o.dist);
         match (tilt.0, dof) {
             (true, Some(mut d)) => {
                 d.focal_distance = o.dist;
-                d.aperture_f_stops = tilt_f_stops(o.dist);
+                d.aperture_f_stops = look.tilt_shift.f_stops(o.dist);
             }
             (true, None) => {
-                commands.entity(e).insert(DepthOfField { mode: DepthOfFieldMode::Gaussian, focal_distance: o.dist, aperture_f_stops: tilt_f_stops(o.dist), ..default() });
+                commands.entity(e).insert(DepthOfField { mode: DepthOfFieldMode::Gaussian, focal_distance: o.dist, aperture_f_stops: look.tilt_shift.f_stops(o.dist), ..default() });
             }
             (false, Some(_)) => {
                 commands.entity(e).remove::<DepthOfField>();

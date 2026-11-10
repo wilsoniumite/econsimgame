@@ -3,7 +3,8 @@
 
 use bevy::prelude::*;
 
-use crate::meshkit::{hex, Builder};
+use crate::look::{Look, TheLook};
+use crate::meshkit::Builder;
 use crate::{world, Data, Timeline};
 
 #[derive(Component)]
@@ -25,10 +26,10 @@ pub fn plugin(app: &mut App) {
     app.add_systems(Startup, setup).add_systems(Update, (place, sail).chain());
 }
 
-fn boat_mesh() -> Builder {
+fn boat_mesh(lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let hull = hex(0x6b4a35);
-    let deck = hex(0xb08a5e);
+    let hull = *lk.vehicles.boat_hull;
+    let deck = *lk.vehicles.boat_deck;
     // a hull tapering to a bow along +x
     let (l, w, h) = (0.075, 0.026, 0.012);
     let p = |x: f32, y: f32, z: f32| Vec3::new(x, y, z);
@@ -43,9 +44,9 @@ fn boat_mesh() -> Builder {
     b.tri(top[0], top[4], top[3], deck);
     // mast and two sails, cream and a little weathered
     let mast = p(0.004, h, 0.0);
-    b.beam(mast, mast + Vec3::Y * 0.085, 0.003, hex(0x5a4030));
-    let sail = hex(0xf3ead6);
-    let jib = hex(0xe8dcc0);
+    b.beam(mast, mast + Vec3::Y * 0.085, 0.003, *lk.vehicles.boat_mast);
+    let sail = *lk.vehicles.sail;
+    let jib = *lk.vehicles.jib;
     let (s0, s1, s2) = (mast + Vec3::new(-0.002, 0.008, 0.0), mast + Vec3::new(-0.002, 0.082, 0.0), mast + Vec3::new(-0.034, 0.01, 0.006));
     b.tri(s0, s1, s2, sail);
     b.tri(s0, s2, s1, sail);
@@ -55,9 +56,9 @@ fn boat_mesh() -> Builder {
     b
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mesh = meshes.add(boat_mesh().into_mesh());
-    let mat = crate::vertex_coloured(&mut materials, 0.8);
+fn setup(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+    let mesh = meshes.add(boat_mesh(&look).into_mesh());
+    let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
     commands.insert_resource(BoatAssets { mesh, mat });
 }
 

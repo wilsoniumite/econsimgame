@@ -11,7 +11,8 @@ use bevy::math::Vec3;
 
 pub mod towns;
 
-use crate::meshkit::{hex, shade, Builder};
+use crate::look::{pick, Look};
+use crate::meshkit::{shade, Builder};
 use crate::replay::{self, Replay};
 use crate::world::{self, Ground};
 
@@ -257,34 +258,28 @@ fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
 
 // ------------------------------------------------------------------ trees
 
-fn tree(b: &mut Builder, p: Vec3, s: f32, conifer: bool, v: f32, seed: f32) {
-    let trunk = hex(0x7a5536);
+fn tree(b: &mut Builder, lk: &Look, p: Vec3, s: f32, conifer: bool, v: f32, seed: f32) {
+    let trunk = *lk.foliage.trunk;
     if conifer {
-        let greens = [0x2f6a49, 0x3a7a51, 0x2c5f43];
-        let g = hex(greens[(v * 3.0) as usize % 3]);
+        let g = pick(&lk.foliage.conifer, v);
         b.frustum(p, 0.007 * s, 0.005 * s, 0.025 * s, 3, trunk, None);
         b.frustum(p + Vec3::Y * 0.02 * s, 0.048 * s, 0.0, 0.085 * s, 6, g, None);
         b.frustum(p + Vec3::Y * 0.062 * s, 0.035 * s, 0.0, 0.065 * s, 5, shade(g, 1.08), None);
     } else {
-        let greens = [0x5e9a45, 0x6aa84f, 0x4f8a3d, 0x79b25a, 0x8ab85c];
-        let g = hex(greens[(v * 5.0) as usize % 5]);
+        let g = pick(&lk.foliage.broadleaf, v);
         b.frustum(p, 0.008 * s, 0.006 * s, 0.032 * s, 3, trunk, None);
         b.ball(p + Vec3::Y * 0.062 * s, 0.06 * s, 0.05 * s, 5, 3, g, seed);
     }
 }
 
 /// A hedgerow tree: a smaller, plainer tree, as there are many of them.
-fn hedge_tree(b: &mut Builder, p: Vec3, s: f32, v: f32, seed: f32) {
-    let greens = [0x5e9a45, 0x6aa84f, 0x4f8a3d, 0x79b25a, 0x8ab85c];
-    let g = hex(greens[(v * 5.0) as usize % 5]);
-    b.frustum(p, 0.007 * s, 0.005 * s, 0.03 * s, 3, hex(0x7a5536), None);
+fn hedge_tree(b: &mut Builder, lk: &Look, p: Vec3, s: f32, v: f32, seed: f32) {
+    let g = pick(&lk.foliage.broadleaf, v);
+    b.frustum(p, 0.007 * s, 0.005 * s, 0.03 * s, 3, *lk.foliage.trunk, None);
     b.ball(p + Vec3::Y * 0.056 * s, 0.056 * s, 0.042 * s, 5, 3, g, seed);
 }
 
 // ------------------------------------------------------------------ houses
-
-const WALLS: [u32; 6] = [0xf6deb4, 0xfaf0dc, 0xf4d38f, 0xf0bfa3, 0xdfe2bf, 0xf6deb4];
-const ROOFS: [u32; 5] = [0xc6604a, 0x5b6b86, 0xc6604a, 0x6e8f5c, 0xb5523f];
 
 fn house(b: &mut Builder, p: Vec3, w: f32, d: f32, storeys: f32, yaw: f32, wall: [f32; 4], roof: [f32; 4]) {
     let h = 0.024 * storeys;
@@ -292,14 +287,14 @@ fn house(b: &mut Builder, p: Vec3, w: f32, d: f32, storeys: f32, yaw: f32, wall:
     b.gable(p, w, d, h, d * 0.55, yaw, 0.004, roof, wall);
 }
 
-fn chimney(b: &mut Builder, p: Vec3, h: f32, r: f32) {
-    b.frustum(p, r, r * 0.8, h, 6, hex(0xa9553f), Some(hex(0x3a3330)));
+fn chimney(b: &mut Builder, lk: &Look, p: Vec3, h: f32, r: f32) {
+    b.frustum(p, r, r * 0.8, h, 6, *lk.brick.chimney, Some(*lk.smoke.soot));
 }
 
 /// A chimney with a few puffs of smoke drifting downwind.
-fn smoking_chimney(b: &mut Builder, smoke: &mut Builder, p: Vec3, h: f32, r: f32, seed: f32) {
-    chimney(b, p, h, r);
-    let puff = hex(0xeeece8);
+fn smoking_chimney(b: &mut Builder, smoke: &mut Builder, lk: &Look, p: Vec3, h: f32, r: f32, seed: f32) {
+    chimney(b, lk, p, h, r);
+    let puff = *lk.smoke.puff;
     for i in 0..3 {
         let t = i as f32;
         let c = p + Vec3::new(0.012 + 0.022 * t + 0.004 * seed.sin(), h + 0.018 + 0.016 * t, 0.006 * (seed * 3.0 + t).sin());
@@ -307,9 +302,9 @@ fn smoking_chimney(b: &mut Builder, smoke: &mut Builder, p: Vec3, h: f32, r: f32
     }
 }
 
-fn church(b: &mut Builder, p: Vec3, yaw: f32, big: bool) {
-    let stone = hex(0xddd5c4);
-    let slate = hex(0x55617a);
+fn church(b: &mut Builder, lk: &Look, p: Vec3, yaw: f32, big: bool) {
+    let stone = *lk.stone.church;
+    let slate = *lk.slate.town;
     let k = if big { 1.35 } else { 1.0 };
     let q = bevy::math::Quat::from_rotation_y(yaw);
     b.block(p, 0.085 * k, 0.04 * k, 0.034 * k, yaw, stone, None, 0.03);
@@ -319,28 +314,29 @@ fn church(b: &mut Builder, p: Vec3, yaw: f32, big: bool) {
     b.frustum(tower + Vec3::Y * 0.075 * k, 0.021 * k, 0.0, 0.07 * k, 4, slate, None);
 }
 
-fn station(b: &mut Builder, p: Vec3, yaw: f32) {
+fn station(b: &mut Builder, lk: &Look, p: Vec3, yaw: f32) {
     let q = bevy::math::Quat::from_rotation_y(yaw);
-    b.block(p, 0.09, 0.035, 0.03, yaw, hex(0xf1e3c6), None, 0.03);
-    b.gable(p, 0.09, 0.035, 0.03, 0.018, yaw, 0.004, hex(0xb5523f), hex(0xf1e3c6));
+    let (wall, roof, canopy) = (*lk.walls.station, *lk.roofs.tile_dark, *lk.roofs.station_canopy);
+    b.block(p, 0.09, 0.035, 0.03, yaw, wall, None, 0.03);
+    b.gable(p, 0.09, 0.035, 0.03, 0.018, yaw, 0.004, roof, wall);
     // platform canopy
     let c = p + q * Vec3::new(0.0, 0.0, 0.035);
-    b.block(c, 0.12, 0.03, 0.002, yaw, hex(0x6b5a4e), None, 0.0);
-    b.block(c + Vec3::Y * 0.022, 0.13, 0.034, 0.004, yaw, hex(0x7a8a6a), Some(hex(0x7a8a6a)), 0.0);
+    b.block(c, 0.12, 0.03, 0.002, yaw, *lk.ground.station_platform, None, 0.0);
+    b.block(c + Vec3::Y * 0.022, 0.13, 0.034, 0.004, yaw, canopy, Some(canopy), 0.0);
     // clock turret
-    b.block(p + q * Vec3::new(0.0, 0.0, 0.0), 0.016, 0.016, 0.06, yaw, hex(0xf1e3c6), Some(hex(0xf1e3c6)), 0.0);
-    b.frustum(p + Vec3::Y * 0.06, 0.013, 0.0, 0.022, 4, hex(0xb5523f), None);
+    b.block(p + q * Vec3::new(0.0, 0.0, 0.0), 0.016, 0.016, 0.06, yaw, wall, Some(wall), 0.0);
+    b.frustum(p + Vec3::Y * 0.06, 0.013, 0.0, 0.022, 4, roof, None);
 }
 
-fn lighthouse(b: &mut Builder, p: Vec3) {
-    let white = hex(0xf7f5ef);
-    let red = hex(0xc94b3c);
+fn lighthouse(b: &mut Builder, lk: &Look, p: Vec3) {
+    let white = *lk.walls.lighthouse_white;
+    let red = *lk.walls.lighthouse_red;
     for i in 0..4 {
         let y = i as f32 * 0.024;
         let r0 = 0.016 - 0.0012 * i as f32;
         b.frustum(p + Vec3::Y * y, r0, r0 - 0.0012, 0.024, 8, if i % 2 == 0 { white } else { red }, None);
     }
-    b.frustum(p + Vec3::Y * 0.096, 0.012, 0.012, 0.014, 8, hex(0xffe58a), None);
+    b.frustum(p + Vec3::Y * 0.096, 0.012, 0.012, 0.014, 8, *lk.glass.lighthouse_lamp, None);
     b.frustum(p + Vec3::Y * 0.11, 0.014, 0.0, 0.014, 8, red, None);
 }
 
@@ -354,11 +350,11 @@ fn tier(r: &Replay, f: usize, k: usize) -> f32 {
 }
 
 /// Poles and boards round a works that is going up or being enlarged.
-fn scaffold(b: &mut Builder, g: &Ground, pos: (f32, f32, f32), s: f32) {
+fn scaffold(b: &mut Builder, lk: &Look, g: &Ground, pos: (f32, f32, f32), s: f32) {
     let q = bevy::math::Quat::from_rotation_y(pos.2);
     let (hw, hd, h) = (0.075 * s, 0.05 * s, 0.075);
-    let pole = hex(0xa98559);
-    let board = hex(0xc9a877);
+    let pole = *lk.timber.scaffold_pole;
+    let board = *lk.timber.scaffold_board;
     let at = |x: f32, z: f32| {
         let o = q * Vec3::new(x, 0.0, z);
         ground(g, pos.0 + o.x, pos.1 + o.z)
@@ -383,10 +379,11 @@ fn scaffold(b: &mut Builder, g: &Ground, pos: (f32, f32, f32), s: f32) {
     // a pile of timber and a heap of bricks beside it
     let yard = at(hw + 0.035, 0.0);
     b.block(yard, 0.03, 0.014, 0.008, pos.2, board, Some(board), 0.004);
-    b.frustum(at(hw + 0.03, hd * 0.8), 0.012, 0.004, 0.012, 5, hex(0xb5634c), None);
+    b.frustum(at(hw + 0.03, hd * 0.8), 0.012, 0.004, 0.012, 5, *lk.brick.red, None);
 }
 
-fn works(b: &mut Builder, smoke: &mut Builder, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), g: &Ground) {
+#[allow(clippy::too_many_arguments)]
+fn works(b: &mut Builder, smoke: &mut Builder, lk: &Look, r: &Replay, f: usize, k: usize, pos: (f32, f32, f32), g: &Ground) {
     let firm = &r.header.firms[f];
     let m = &r.header.methods[firm.method];
     let kk = replay::firm_k(r, f, k);
@@ -401,39 +398,40 @@ fn works(b: &mut Builder, smoke: &mut Builder, r: &Replay, f: usize, k: usize, p
         let o = q * Vec3::new(x, 0.0, z);
         ground(g, pos.0 + o.x, pos.1 + o.z)
     };
-    let brick = hex(0xb5634c);
-    let dark = hex(0x8f4b3b);
-    let stone = hex(0xbdb4a5);
-    let slate = hex(0x4a5468);
-    let timber = hex(0x9a6b45);
+    let brick = *lk.brick.red;
+    let dark = *lk.brick.dark;
+    let stone = *lk.stone.works;
+    let slate = *lk.slate.works;
+    let timber = *lk.timber.boards;
+    let soot = *lk.smoke.soot;
     let name = m.name.as_str();
     match name {
         "services" => {}
-        "hand_loom" => house(b, p, 0.06, 0.04, 1.0, yaw, hex(0xf0e2c4), hex(0xd6b263)),
+        "hand_loom" => house(b, p, 0.06, 0.04, 1.0, yaw, *lk.walls.weaver_cottage, *lk.thatch.weaver_cottage),
         "smithy" | "millwright" => {
             b.block(p, 0.06 * s, 0.045 * s, 0.026, yaw, if name == "smithy" { stone } else { timber }, None, 0.03);
             b.gable(p, 0.06 * s, 0.045 * s, 0.026, 0.022, yaw, 0.004, slate, stone);
-            smoking_chimney(b, smoke, at(0.02 * s, 0.0), 0.06, 0.006, seed);
+            smoking_chimney(b, smoke, lk, at(0.02 * s, 0.0), 0.06, 0.006, seed);
         }
         "charcoal_burning" => {
             for i in 0..(tier as usize + 1) {
                 let o = at((i as f32 - tier * 0.5) * 0.035, (i % 2) as f32 * 0.02);
-                b.frustum(o, 0.022, 0.008, 0.02, 7, hex(0x4a3f36), Some(hex(0x3a322b)));
+                b.frustum(o, 0.022, 0.008, 0.02, 7, *lk.ground.charcoal_clamp, Some(*lk.ground.charcoal_clamp_top));
             }
         }
         "bloomery" | "charcoal_furnace" | "coke_furnace" => {
             let n = if name == "coke_furnace" { tier as usize } else { 1 };
             let fh = if name == "bloomery" { 0.04 } else { 0.075 };
             for i in 0..n {
-                b.frustum(at(-0.03 + i as f32 * 0.045, -0.015), 0.022 * s, 0.014 * s, fh, 4, stone, Some(hex(0x3a3330)));
+                b.frustum(at(-0.03 + i as f32 * 0.045, -0.015), 0.022 * s, 0.014 * s, fh, 4, stone, Some(soot));
             }
             b.block(at(0.02, 0.025), 0.07 * s, 0.04, 0.025, yaw, if name == "coke_furnace" { brick } else { timber }, None, 0.03);
             b.gable(at(0.02, 0.025), 0.07 * s, 0.04, 0.025, 0.018, yaw, 0.003, slate, brick);
             if name == "coke_furnace" {
                 for i in 0..tier as usize {
-                    smoking_chimney(b, smoke, at(0.06, -0.03 + i as f32 * 0.02), 0.13 + 0.02 * tier, 0.008, seed + i as f32);
+                    smoking_chimney(b, smoke, lk, at(0.06, -0.03 + i as f32 * 0.02), 0.13 + 0.02 * tier, 0.008, seed + i as f32);
                 }
-                b.block(at(-0.02, 0.06), 0.11 * s, 0.022, 0.014, yaw, dark, Some(hex(0x5a4a42)), 0.02);
+                b.block(at(-0.02, 0.06), 0.11 * s, 0.022, 0.014, yaw, dark, Some(*lk.roofs.coke_ovens), 0.02);
             }
         }
         "textile_mill" => {
@@ -443,36 +441,36 @@ fn works(b: &mut Builder, smoke: &mut Builder, r: &Replay, f: usize, k: usize, p
             for row in 0..3 {
                 let y = 0.016 + row as f32 * 0.022;
                 let wp = p + q * Vec3::new(0.0, y, 0.0201);
-                b.block(wp - Vec3::Y * 0.0, len * 0.9, 0.001, 0.008, yaw, hex(0xf3e2b0), None, 0.0);
+                b.block(wp - Vec3::Y * 0.0, len * 0.9, 0.001, 0.008, yaw, *lk.glass.mill_lit, None, 0.0);
             }
             b.gable(p, len, 0.04, 0.075, 0.016, yaw, 0.003, slate, brick);
-            smoking_chimney(b, smoke, at(len * 0.5 + 0.015, 0.0), 0.16 + 0.02 * tier, 0.009, seed);
+            smoking_chimney(b, smoke, lk, at(len * 0.5 + 0.015, 0.0), 0.16 + 0.02 * tier, 0.009, seed);
         }
         "engine_works" | "forge_rails" | "rolling_mill" | "steel_rolling" | "bessemer" => {
             let len = 0.09 + 0.03 * tier;
             b.block(p, len, 0.06, 0.04, yaw, if name == "engine_works" { brick } else { dark }, None, 0.03);
             b.gable(p, len, 0.06, 0.04, 0.025, yaw, 0.004, slate, brick);
             for i in 0..(tier as usize).max(1) {
-                smoking_chimney(b, smoke, at(-len * 0.4 + i as f32 * 0.03, -0.045), 0.12 + 0.02 * tier, 0.008, seed + i as f32);
+                smoking_chimney(b, smoke, lk, at(-len * 0.4 + i as f32 * 0.03, -0.045), 0.12 + 0.02 * tier, 0.008, seed + i as f32);
             }
             if name == "bessemer" {
                 for i in 0..2 {
-                    b.ball(at(len * 0.5 + 0.02, -0.02 + i as f32 * 0.035) + Vec3::Y * 0.02, 0.014, 0.018, 7, 3, hex(0x5c5a58), i as f32);
+                    b.ball(at(len * 0.5 + 0.02, -0.02 + i as f32 * 0.035) + Vec3::Y * 0.02, 0.014, 0.018, 7, 3, *lk.iron.converter, i as f32);
                 }
             }
         }
         "crucible_steel" => {
             b.block(p, 0.07, 0.045, 0.03, yaw, stone, None, 0.03);
             b.gable(p, 0.07, 0.045, 0.03, 0.02, yaw, 0.003, slate, stone);
-            b.frustum(at(0.05, 0.0), 0.016, 0.006, 0.07, 6, brick, Some(hex(0x3a3330)));
+            b.frustum(at(0.05, 0.0), 0.016, 0.006, 0.07, 6, brick, Some(soot));
         }
         "brickworks" => {
             for i in 0..(tier as usize + 1).min(4) {
                 let o = at(-0.03 + i as f32 * 0.03, -0.02);
                 b.frustum(o, 0.016, 0.019, 0.02, 7, brick, None);
-                b.frustum(o + Vec3::Y * 0.02, 0.019, 0.006, 0.03, 7, brick, Some(hex(0x3a3330)));
+                b.frustum(o + Vec3::Y * 0.02, 0.019, 0.006, 0.03, 7, brick, Some(soot));
             }
-            b.block(at(0.0, 0.03), 0.1, 0.025, 0.012, yaw, timber, Some(hex(0x6e5a48)), 0.02);
+            b.block(at(0.0, 0.03), 0.1, 0.025, 0.012, yaw, timber, Some(*lk.roofs.drying_shed), 0.02);
         }
         _ => {
             b.block(p, 0.06 * s, 0.045, 0.03, yaw, brick, None, 0.03);
@@ -492,11 +490,11 @@ pub struct YearMeshes {
     pub lanes: Builder,
 }
 
-pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize) -> YearMeshes {
-    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k))
+pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
+    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk))
 }
 
-fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize) -> YearMeshes {
+fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
     let mut trees = Builder::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
@@ -510,25 +508,25 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
         let p = slots.firm_pos[f];
         plots.entry(firm.cell).or_default().push((p.0, p.1));
-        works(&mut works_b, &mut smoke, r, f, k, p, g);
+        works(&mut works_b, &mut smoke, lk, r, f, k, p, g);
         // scaffolding the first year a works stands, and the year it grows a size
         let opened = k > 0 && replay::firm_k(r, f, k - 1) <= 0.0 && firm.born > r.y0;
         let grew = k > 0 && replay::firm_k(r, f, k - 1) > 0.0 && tier(r, f, k) > tier(r, f, k - 1);
         if opened || grew {
-            scaffold(&mut works_b, g, p, 0.8 + 0.2 * tier(r, f, k));
+            scaffold(&mut works_b, lk, g, p, 0.8 + 0.2 * tier(r, f, k));
         }
     }
     // the railway's embankments, viaducts, cuttings, portals and bridges, and a
     // bridge wherever a road crosses a river
-    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k)));
+    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk));
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         for (at, _, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
-            road_bridge(&mut works_b, g, at, (b - a).normalize_or(bevy::math::Vec2::X), half, level, lv == 3);
+            road_bridge(&mut works_b, lk, g, at, (b - a).normalize_or(bevy::math::Vec2::X), half, level, lv == 3);
         }
-        causeway(&mut works_b, g, a, b, lv == 3);
+        causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
-    towns::landmarks(r, g, cen, k, &mut houses, &mut plots);
+    towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
         plots.get(&c).map(|v| v.iter().any(|&(px, pz)| (px - x).abs() < 0.085 && (pz - z).abs() < 0.085)).unwrap_or(false)
@@ -547,7 +545,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
                 // gorse and broom: low bushes, and the odd tree
                 if s.u < 0.16 && !near_plot(s.x, s.z) {
                     let p = ground(g, s.x, s.z);
-                    let col = if s.v < 0.5 { hex(0x9aa548) } else { hex(0x6b7f3e) };
+                    let col = if s.v < 0.5 { *lk.foliage.gorse } else { *lk.foliage.broom };
                     trees.ball(p + Vec3::Y * 0.012, 0.022 + 0.01 * s.v, 0.014, 5, 2, col, s.yaw);
                 }
                 (s.u < if terr >= 3 { 0.02 } else { 0.035 }, 0.6 + 0.3 * s.v)
@@ -559,7 +557,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
         let p = ground(g, s.x, s.z);
         let conifer = terr >= 2 && s.v > 0.35 || s.v > 0.88;
-        tree(&mut trees, p, scale, conifer, s.u, s.yaw);
+        tree(&mut trees, lk, p, scale, conifer, s.u, s.yaw);
     }
 
     // yards, sheds and warehouses around the works
@@ -570,17 +568,17 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
         let p = ground(g, s.x, s.z);
         let yaw = (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2;
-        let wall = hex([0xb5634c, 0x9b5a48, 0xa9a196, 0x8f4b3b][(s.v * 4.0) as usize % 4]);
+        let wall = lk.yard_shed_wall(s.v);
         let (w, d, h) = (0.06 + 0.04 * s.v, 0.045 + 0.015 * s.u, 0.026 + 0.018 * s.v);
         houses.block(p, w, d, h, yaw, wall, None, 0.03);
-        houses.gable(p, w, d, h, d * 0.35, yaw, 0.003, hex(0x4a5468), wall);
+        houses.gable(p, w, d, h, d * 0.35, yaw, 0.003, *lk.slate.works, wall);
         if s.u < 0.12 {
             let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.35, 0.0, 0.0);
-            smoking_chimney(&mut houses, &mut smoke, cp, h + 0.07, 0.006, s.yaw);
+            smoking_chimney(&mut houses, &mut smoke, lk, cp, h + 0.07, 0.006, s.yaw);
         }
     }
 
-    towns::houses(r, g, slots, cen, k, &near_plot_or_water, &mut houses, &mut smoke);
+    towns::houses(r, g, slots, cen, k, lk, &near_plot_or_water, &mut houses, &mut smoke);
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
@@ -594,7 +592,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             continue;
         }
         let p = ground(g, s.x, s.z);
-        hedge_tree(&mut trees, p, 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw);
+        hedge_tree(&mut trees, lk, p, 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw);
     }
 
     // farmsteads among the fields, each with a lane to the nearest road
@@ -611,11 +609,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             continue;
         }
         let terr = r.terrain[c];
-        farmstead(&mut houses, &mut trees, g, s, main == world::FARM, terr);
+        farmstead(&mut houses, &mut trees, lk, g, s, main == world::FARM, terr);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {
-            lane(&mut lanes, g, (gate.x, gate.z), to, s.v);
+            lane(&mut lanes, lk, g, (gate.x, gate.z), to, s.v);
         }
     }
 
@@ -623,10 +621,10 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let c = s.wcell as usize;
         let cls = world::pick_class(r, k, c, s.sub);
         let heap = match cls {
-            world::COALMINE => hex(0x3c3936),
-            world::IRONMINE => hex(0x8e5a44),
-            world::QUARRY => hex(0xb9b2a5),
-            world::CLAYPIT => hex(0xb07a55),
+            world::COALMINE => *lk.ground.spoil_coal,
+            world::IRONMINE => *lk.ground.spoil_ironstone,
+            world::QUARRY => *lk.ground.spoil_stone,
+            world::CLAYPIT => *lk.ground.spoil_clay,
             _ => continue,
         };
         if s.u > 0.7 || near_plot(s.x, s.z) {
@@ -637,13 +635,13 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         works_b.frustum(p + q * Vec3::new(0.04, 0.0, 0.0), 0.05 + 0.02 * s.v, 0.006, 0.045 + 0.02 * s.v, 7, heap, None);
         if cls == world::COALMINE || cls == world::IRONMINE {
             // a headframe: two legs, a stay and a wheel housing
-            let wood = hex(0x6b4a32);
+            let wood = *lk.timber.headframe;
             let top = p + Vec3::Y * 0.085;
             works_b.beam(p + q * Vec3::new(-0.015, 0.0, -0.012), top, 0.006, wood);
             works_b.beam(p + q * Vec3::new(-0.015, 0.0, 0.012), top, 0.006, wood);
             works_b.beam(p + q * Vec3::new(0.03, 0.0, 0.0), top, 0.006, wood);
-            works_b.block(top - Vec3::Y * 0.006, 0.012, 0.012, 0.012, s.yaw, hex(0x3d3a38), Some(hex(0x3d3a38)), 0.0);
-            works_b.block(p + q * Vec3::new(-0.04, 0.0, 0.0), 0.03, 0.025, 0.02, s.yaw, hex(0xb5634c), Some(hex(0x4a5468)), 0.02);
+            works_b.block(top - Vec3::Y * 0.006, 0.012, 0.012, 0.012, s.yaw, *lk.iron.winding_gear, Some(*lk.iron.winding_gear), 0.0);
+            works_b.block(p + q * Vec3::new(-0.04, 0.0, 0.0), 0.03, 0.025, 0.02, s.yaw, *lk.brick.red, Some(*lk.slate.works), 0.02);
         }
     }
 
@@ -653,9 +651,10 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
 /// A stone bridge carrying a road over a river: a hump-backed deck with
 /// parapets, on an arch (two for a wide river) whose dark opening shows on
 /// either face.
-fn road_bridge(b: &mut Builder, g: &Ground, at: bevy::math::Vec2, along: bevy::math::Vec2, half: f32, level: f32, main: bool) {
-    let stone = hex(if main { 0xc4b8a2 } else { 0xb9ab94 });
-    let dark = hex(0x3b3631);
+#[allow(clippy::too_many_arguments)]
+fn road_bridge(b: &mut Builder, lk: &Look, g: &Ground, at: bevy::math::Vec2, along: bevy::math::Vec2, half: f32, level: f32, main: bool) {
+    let stone = if main { *lk.bridges.road_stone } else { *lk.bridges.lane_stone };
+    let dark = *lk.bridges.arch_shadow;
     let span = 2.0 * half + 0.035;
     let width = if main { 0.042 } else { 0.03 };
     let dir = Vec3::new(along.x, 0.0, along.y);
@@ -725,14 +724,14 @@ fn road_bridge(b: &mut Builder, g: &Ground, at: bevy::math::Vec2, along: bevy::m
 
 /// A low causeway of stone wherever a road runs over water (the drowned mouth
 /// of a river, a creek), so the road does not lie on the sea.
-fn causeway(b: &mut Builder, g: &Ground, a: bevy::math::Vec2, c: bevy::math::Vec2, main: bool) {
+fn causeway(b: &mut Builder, lk: &Look, g: &Ground, a: bevy::math::Vec2, c: bevy::math::Vec2, main: bool) {
     let len = a.distance(c);
     let n = ((len / 0.02).ceil() as usize).max(2);
     let wet = |t: f32| {
         let p = a + (c - a) * t;
         world::height_at(g, p.x, p.y) < 0.004
     };
-    let stone = hex(0xb8ac96);
+    let stone = *lk.bridges.causeway;
     let width = if main { 0.046 } else { 0.034 };
     let dir = (c - a).normalize_or(bevy::math::Vec2::X);
     let side = Vec3::new(-dir.y, 0.0, dir.x) * (width * 0.5);
@@ -804,7 +803,7 @@ impl RoadIndex {
 }
 
 /// A farm lane: a pale track from the yard gate to the road, bending a little.
-fn lane(b: &mut Builder, g: &Ground, from: (f32, f32), to: (f32, f32), v: f32) {
+fn lane(b: &mut Builder, lk: &Look, g: &Ground, from: (f32, f32), to: (f32, f32), v: f32) {
     let (dx, dz) = (to.0 - from.0, to.1 - from.1);
     let len = (dx * dx + dz * dz).sqrt();
     if len < 0.03 {
@@ -825,27 +824,27 @@ fn lane(b: &mut Builder, g: &Ground, from: (f32, f32), to: (f32, f32), v: f32) {
             Vec3::new(x, world::height_at(g, x, z).max(0.0) + 0.006, z)
         })
         .collect();
-    b.ribbon(&pts, 0.011, hex(0xcdb98f));
+    b.ribbon(&pts, 0.011, *lk.ground.farm_lane);
 }
 
 /// A farmstead: the house with its back to the hedge, a yard in front, the
 /// barn across the yard and a cart shed or byre on one side; ricks of hay or
 /// corn by an arable farm, and a tree or two. Stone and slate in the hills,
 /// brick, tile and thatch in the lowland.
-fn farmstead(b: &mut Builder, trees: &mut Builder, g: &Ground, s: &Slot, arable: bool, terr: u8) {
+fn farmstead(b: &mut Builder, trees: &mut Builder, lk: &Look, g: &Ground, s: &Slot, arable: bool, terr: u8) {
     let q = bevy::math::Quat::from_rotation_y(s.yaw);
     let at = |dx: f32, dz: f32| {
         let o = q * Vec3::new(dx, 0.0, dz);
         ground(g, s.x + o.x, s.z + o.z)
     };
     let upland = terr >= 2;
-    let wall = if upland { hex([0xcfc6b4, 0xbdb4a3, 0xd8cfbd][(s.v * 3.0) as usize % 3]) } else { hex(WALLS[(s.v * 5.0) as usize % 5]) };
-    let roof = if upland { hex(0x5b6577) } else if s.v < 0.45 { hex(0xc9a75c) } else { hex(0xb8573f) };
-    let barn_wall = if upland { hex(0xa9a08f) } else if s.u < 0.2 { hex(0x5b4a3c) } else { hex(0xa8553e) };
-    let barn_roof = if upland { hex(0x56606f) } else { hex(0x6b5a4e) };
+    let wall = if upland { pick(&lk.stone.upland_farm, s.v) } else { lk.walls.farmhouse(s.v) };
+    let roof = if upland { *lk.slate.upland_farm } else if s.v < 0.45 { *lk.thatch.farmhouse } else { *lk.roofs.tile_farm };
+    let barn_wall = if upland { *lk.stone.upland_barn } else if s.u < 0.2 { *lk.timber.barn_tarred } else { *lk.brick.barn };
+    let barn_roof = if upland { *lk.slate.upland_barn } else { *lk.roofs.barn };
     // the yard: beaten earth between the buildings
     let yc = at(0.0, -0.045);
-    b.block(yc - Vec3::Y * 0.004, 0.085, 0.055, 0.0055, s.yaw, hex(0xb59f7a), Some(hex(0xbca783)), 0.01);
+    b.block(yc - Vec3::Y * 0.004, 0.085, 0.055, 0.0055, s.yaw, *lk.ground.farmyard_edge, Some(*lk.ground.farmyard), 0.01);
     let storeys = 1.0 + (s.v > 0.55) as u8 as f32;
     house(b, at(0.0, 0.0), 0.05, 0.032, storeys, s.yaw, wall, roof);
     // the barn across the yard, long and tall
@@ -857,10 +856,10 @@ fn farmstead(b: &mut Builder, trees: &mut Builder, g: &Ground, s: &Slot, arable:
     }
     if arable {
         // a rick of corn or hay
-        b.frustum(at(-0.06 * side, -0.03), 0.013, 0.0, 0.024, 5, hex(0xd8b55e), None);
+        b.frustum(at(-0.06 * side, -0.03), 0.013, 0.0, 0.024, 5, *lk.thatch.rick, None);
     }
     // a tree by the house
     if s.v < 0.6 {
-        hedge_tree(trees, at(0.05 * -side, 0.03), 0.7 + 0.2 * s.u, s.v, s.yaw);
+        hedge_tree(trees, lk, at(0.05 * -side, 0.03), 0.7 + 0.2 * s.u, s.v, s.yaw);
     }
 }
