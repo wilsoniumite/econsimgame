@@ -64,7 +64,8 @@ struct Args {
     pitch: f32,
     dist: Option<f32>,
     frames: u32,
-    wait: f32,
+    /// seconds to wait before the first screenshot (`--wait`)
+    wait: Option<f32>,
     tilt: bool,
     views: Vec<ShotSpec>,
     season: Option<f32>,
@@ -118,7 +119,7 @@ fn parse_args() -> Args {
         pitch: 52.0,
         dist: None,
         frames: 40,
-        wait: 45.0,
+        wait: None,
         tilt: true,
         views: Vec::new(),
         season: None,
@@ -167,7 +168,7 @@ fn parse_args() -> Args {
             "--pitch" => { a.pitch = next(i).parse().unwrap_or(52.0); i += 1; }
             "--dist" => { a.dist = next(i).parse().ok(); i += 1; }
             "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
-            "--wait" => { a.wait = next(i).parse().unwrap_or(45.0); i += 1; }
+            "--wait" => { a.wait = next(i).parse().ok(); i += 1; }
             "--no-tilt" => a.tilt = false,
             "--new" => a.new = true,
             "--seed" => { a.seed = next(i).parse().unwrap_or(7); i += 1; }
@@ -555,8 +556,16 @@ fn main() {
         app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
     }
     if headless {
-        app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look_at });
+        // screenshots wait for the renderer's shaders by themselves (take_shot); the fixed wait
+        // is kept for software renderers, and the standard shots do without it
+        let wait = args.wait.unwrap_or(if args.shots.is_some() { 0.0 } else { 45.0 });
+        app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait, default_dist: dist, default_look: look_at });
         app.add_systems(Update, take_shot.after(toasts));
+        let waiting = PipelinesWaiting::default();
+        app.insert_resource(waiting.clone());
+        if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render.insert_resource(waiting).add_systems(bevy::render::Render, count_waiting_pipelines.in_set(bevy::render::RenderSystems::Cleanup));
+        }
     }
     if let Some(sheet) = sheet {
         // the standard shots must come out the same every run: nothing moves while they are taken
@@ -568,6 +577,19 @@ fn main() {
 
 #[derive(Resource)]
 struct ForcedSeason(Option<f32>);
+
+/// How many shader pipelines the renderer has asked for and not yet got.
+/// While one is still being put together, whatever it draws (the ground, say)
+/// is simply left out of the picture, so screenshots wait for none to be.
+#[derive(Resource, Clone, Default)]
+struct PipelinesWaiting(Arc<std::sync::atomic::AtomicUsize>);
+
+/// Runs in the renderer's own world at the end of every frame it draws.
+fn count_waiting_pipelines(cache: Option<Res<bevy::render::render_resource::PipelineCache>>, waiting: Res<PipelinesWaiting>) {
+    if let Some(cache) = cache {
+        waiting.0.store(cache.waiting_pipelines().count(), std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 #[derive(Resource)]
 struct ShotPlanArgs {
@@ -1260,7 +1282,9 @@ fn take_shot(
     mut sm: ResMut<SeasonMats>,
     data: Res<Data>,
     sheet: Option<Res<shots::Sheet>>,
+    waiting: Res<PipelinesWaiting>,
     mut patience: Local<u32>,
+    mut held: Local<Option<std::time::Instant>>,
 ) {
     let Some(mut plan) = plan else { return };
     if plan.index >= plan.views.len() {
@@ -1312,6 +1336,18 @@ fn take_shot(
         return;
     }
     let ready = plan.index > 0 || plan.start.elapsed().as_secs_f32() >= plan.wait;
+    // a pipeline still being put together means something in view is not drawn yet:
+    // hold the shot until it is there and has been drawn for a few frames (a busy
+    // machine can take many seconds over the ground's shader), but not for ever
+    if ready && waiting.0.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+        let since = *held.get_or_insert_with(std::time::Instant::now);
+        if since.elapsed().as_secs_f32() < 120.0 {
+            plan.countdown = plan.countdown.max(4);
+            return;
+        }
+    } else if let Some(since) = held.take() {
+        eprintln!("waited {:.1} s for the renderer's shaders", since.elapsed().as_secs_f32());
+    }
     if plan.countdown > 0 {
         if plan.countdown > 1 || ready {
             plan.countdown -= 1;
