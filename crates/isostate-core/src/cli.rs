@@ -10,6 +10,9 @@
 //!
 //! `--rules port` (the default) runs the port of the Python; `--rules game` runs
 //! the rules a live game is played under (`params::game_params`).
+//!
+//! `isostate-core sweep` runs many seeds against many settings and tabulates
+//! their stylised facts; see `sweep.rs`.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -96,11 +99,12 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     let mut it = args.iter();
     match it.next().map(String::as_str) {
         Some("run") => {}
+        Some("sweep") => return crate::sweep::main_with_args(&args[1..]),
         Some("-h") | Some("--help") | None => {
-            println!("{USAGE}");
+            println!("{USAGE}\n{}", crate::sweep::USAGE);
             return Ok(());
         }
-        Some(other) => return Err(format!("unknown command {other:?}\n{USAGE}")),
+        Some(other) => return Err(format!("unknown command {other:?}\n{USAGE}\n{}", crate::sweep::USAGE)),
     }
     let mut seed: Option<u64> = None;
     let mut rules = Rules::Port;

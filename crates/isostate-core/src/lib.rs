@@ -17,11 +17,14 @@
 //! - [`run`]: the whole history; [`sim::start`], [`sim::run_year`] and [`sim::finish`] step through it.
 //! - [`families`]: the player's and rival families (off unless `n_families` > 0), and
 //!   [`live`]: a running simulation's data, year by year, for the viewer (see FAMILIES.md).
+//! - [`sweep`]: many seeds against many settings at once, and [`facts`]: the short list of
+//!   stylised facts each run is reduced to (`isostate-core sweep`).
 #![allow(non_snake_case)]
 
 pub mod cli;
 pub mod content;
 pub mod econ;
+pub mod facts;
 pub mod families;
 pub mod firms;
 pub mod land;
@@ -37,6 +40,7 @@ pub mod record;
 pub mod rng;
 pub mod sim;
 pub mod state;
+pub mod sweep;
 pub mod tech;
 pub mod transport;
 pub mod util;
