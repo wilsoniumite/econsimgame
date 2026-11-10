@@ -21,6 +21,7 @@ mod rails;
 mod replay;
 mod rivers;
 mod scatter;
+mod shots;
 mod terrain;
 mod trains;
 mod ui;
@@ -76,6 +77,14 @@ struct Args {
     pick: Option<(f32, f32)>,
     ground_debug: bool,
     class_map: bool,
+    /// render the standard shots into this directory, then stop (shots.rs)
+    shots: Option<String>,
+    /// show each standard shot beside the one of the same name in this directory
+    shots_compare: Option<String>,
+    /// a line for the sheet of standard shots, such as the commit they were made from
+    shots_note: String,
+    /// compare two sets of standard shots already made, then stop
+    compare_shots: Option<(String, String)>,
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +126,10 @@ fn parse_args() -> Args {
         pick: None,
         ground_debug: false,
         class_map: false,
+        shots: None,
+        shots_compare: None,
+        shots_note: String::new(),
+        compare_shots: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -154,6 +167,10 @@ fn parse_args() -> Args {
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
             "--season" => { a.season = next(i).parse().ok(); i += 1; }
+            "--shots" => { a.shots = Some(next(i)); i += 1; }
+            "--shots-compare" => { a.shots_compare = Some(next(i)); i += 1; }
+            "--shots-note" => { a.shots_note = next(i); i += 1; }
+            "--compare-shots" => { a.compare_shots = Some((next(i), next(i + 1))); i += 2; }
             "--describe" => {
                 let s = next(i);
                 if let Some((x, z)) = s.split_once(',') { a.describe = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
@@ -182,6 +199,10 @@ fn parse_args() -> Args {
     }
     if !a.named_run {
         a.new = true;
+    }
+    if a.shots.is_some() {
+        // the standard shots run from the first year to the last, so play the whole game first
+        a.advance = usize::MAX - 1;
     }
     a
 }
@@ -335,6 +356,11 @@ static FREDOKA: &[u8] = include_bytes!("../assets/fonts/Fredoka.ttf");
 
 fn main() {
     let args = parse_args();
+    if let Some((a, b)) = &args.compare_shots {
+        // no island and no window: two sets of pictures, compared
+        let same = shots::compare_sets(a, b);
+        std::process::exit(if same { 0 } else { 1 });
+    }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
         eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
@@ -400,8 +426,9 @@ fn main() {
     }
     // a game opens over the family's home town; a replay over the whole island
     let home = families.as_ref().and_then(|f| f.player()).and_then(|p| r.header.towns.get(p.seat)).map(|t| cen[t.node]);
-    let look = args.look.or(home.map(|(x, z)| (x, z + 1.0))).unwrap_or(((x0 + x1) * 0.5, (z0 + z1) * 0.5 + 4.0));
-    let dist = args.dist.unwrap_or(if home.is_some() { 14.0 } else { (x1 - x0).max((z1 - z0) * 1.5) * 1.05 });
+    let island = (((x0 + x1) * 0.5, (z0 + z1) * 0.5 + 4.0), (x1 - x0).max((z1 - z0) * 1.5) * 1.05);
+    let look = args.look.or(home.map(|(x, z)| (x, z + 1.0))).unwrap_or(island.0);
+    let dist = args.dist.unwrap_or(if home.is_some() { shots::PLAY_DIST } else { island.1 });
     let orbit = Orbit {
         target: Vec3::new(look.0, world::height_at(&g, look.0, look.1).max(0.0), look.1),
         yaw: args.yaw.to_radians(),
@@ -425,6 +452,29 @@ fn main() {
             write_class_map(&r, &g, v, args.size, look, dist);
         }
         return;
+    }
+    // the standard shots: the views in the order of their years, so the years are stepped through once
+    let mut sheet = None;
+    if let Some(dir) = &args.shots {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            eprintln!("cannot make {dir}: {e}");
+            std::process::exit(1);
+        }
+        let seat = families.as_ref().and_then(|f| f.player()).map(|p| p.seat);
+        let standard = shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir);
+        views = standard.iter().map(|s| s.spec.clone()).collect();
+        views.sort_by_key(|v| v.year);
+        let what = if args.new {
+            format!("Island {} with {} families, {} by {} pixels", args.seed, args.families, args.size.0, args.size.1)
+        } else {
+            format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
+        };
+        sheet = Some(shots::Sheet {
+            dir: dir.clone(),
+            compare: args.shots_compare.clone(),
+            shots: standard.into_iter().map(|s| (s.name, s.caption)).collect(),
+            about: shots::About { what, note: args.shots_note.clone() },
+        });
     }
     let headless = !views.is_empty();
     if headless {
@@ -476,6 +526,11 @@ fn main() {
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
         app.add_systems(Update, take_shot.after(toasts));
+    }
+    if let Some(sheet) = sheet {
+        // the standard shots must come out the same every run: nothing moves while they are taken
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::ZERO));
+        app.insert_resource(sheet);
     }
     app.run();
 }
@@ -1064,11 +1119,12 @@ fn toasts(
     data: Res<Data>,
     font: Res<UiFont>,
     ui: Res<UiState>,
+    sheet: Option<Res<shots::Sheet>>,
     mut boxq: Query<(Entity, Option<&Children>, &mut Visibility), With<ToastBox>>,
 ) {
-    // with the news open the panel says it all
+    // with the news open the panel says it all; the standard shots are of the island, not the news
     for (_, _, mut v) in &mut boxq {
-        v.set_if_neq(if ui.tab == Some(ui::Tab::News) { Visibility::Hidden } else { Visibility::Inherited });
+        v.set_if_neq(if ui.tab == Some(ui::Tab::News) || sheet.is_some() { Visibility::Hidden } else { Visibility::Inherited });
     }
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
@@ -1139,9 +1195,23 @@ fn take_shot(
     mut ui: ResMut<UiState>,
     mut sm: ResMut<SeasonMats>,
     data: Res<Data>,
+    sheet: Option<Res<shots::Sheet>>,
+    mut patience: Local<u32>,
 ) {
     let Some(mut plan) = plan else { return };
     if plan.index >= plan.views.len() {
+        if let Some(sheet) = sheet {
+            // the pictures are written a few frames after they are asked for: give the last ones time
+            let missing = plan.views.iter().filter(|v| !std::path::Path::new(&v.path).exists()).count();
+            if missing > 0 && *patience < 300 {
+                *patience += 1;
+                return;
+            }
+            if missing > 0 {
+                eprintln!("{missing} of the standard shots were not written");
+            }
+            shots::print_diffs(&shots::write_sheet(&sheet));
+        }
         exit.write(AppExit::Success);
         return;
     }
