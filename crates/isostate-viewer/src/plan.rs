@@ -210,6 +210,34 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         let all_painted: f64 = counts.iter().sum::<f64>().max(1.0);
         eprintln!("  as painted, spot by spot: {}, of the farmed land the rough ground just outside a wood or a heath {:.1}",
             (0..4).map(|t| format!("{} {:.1}", names[t], 100.0 * counts[t] / all_painted)).collect::<Vec<_>>().join(", "), 100.0 * scrubby / all_painted);
+        // how steady the picture is from one year to the next: the share of the open land that
+        // is painted as another class than the year before, and the share whose parcel changed
+        // class (edges that crept everywhere each year would show here as far more of the first)
+        if k + 1 < r.filled.clamp(1, r.ny) {
+            let next = world::year_land(r, g, k + 1);
+            let step = 5;
+            let (moved, of) = (0..r.h * step)
+                .into_par_iter()
+                .map(|j| {
+                    let (mut moved, mut of) = ([0usize; 2], 0usize);
+                    for i in 0..r.w * step {
+                        let (x, z) = ((i as f32 + 0.5) / step as f32, (j as f32 + 0.5) / step as f32);
+                        if world::height_at(g, x, z) > 0.02 {
+                            let pl = world::place_at(g, x, z);
+                            let (a, b) = (land.at(pl).0, next.at(pl).0);
+                            if (world::FARM..=world::HEATH).contains(&a) || (world::FARM..=world::HEATH).contains(&b) {
+                                of += 1;
+                                moved[0] += (a != b) as usize;
+                                moved[1] += (land.class[pl.parcel as usize] != next.class[pl.parcel as usize]) as usize;
+                            }
+                        }
+                    }
+                    (moved, of)
+                })
+                .reduce(|| ([0; 2], 0), |a, b| ([a.0[0] + b.0[0], a.0[1] + b.0[1]], a.1 + b.1));
+            eprintln!("  from {} to {}: {:.2}% of the open land is painted as another class, and the parcels of {:.2}% of it change class",
+                r.y0 + k as i32, r.y0 + k as i32 + 1, 100.0 * moved[0] as f64 / of.max(1) as f64, 100.0 * moved[1] as f64 / of.max(1) as f64);
+        }
         // the districts that are mostly land: how far each class's share is out, in points of the open land
         let (mut n, mut mean, mut worst) = (0, [0.0f64; 3], [0.0f64; 3]);
         let mut by_class = [[0.0f64; 4]; 3];
