@@ -490,13 +490,33 @@ would be a patch on the wrong side of the trade.
   without the mines to set beside it (the example takes no overrides), so
   whether royalties have made land a better buy than it was is not known.
 
+**Beside kept town ground.** Everything above was measured on the build
+this mechanism was written on, before `towns.md` was merged. The branch has
+since taken it in (one clause was added to `towns::update_urban`: a town on
+kept ground does not take the pit head of an iron mine or colliery at work,
+as the port's did not), every test passes, and the sweep was run again under
+the merged game's rules (`sweep-mines-merged*`, mines on against off, no run
+failed). With six families: baskets a head 1.44 > 1.52 in 1750 and 2.97 >
+3.20 in 1800 (8/0 both), 4.94 > 4.70 in 1850 (5/3, inside the spread) and
+7.82 > 8.84 in 1900 (8/0); goods a head 2.44 > 2.59 (8/0, starred), 4.43 >
+4.67 (8/0), 7.06 > 7.22 (5/3), 10.7 > 11.5 (7/1); people in 1900 690
+thousand > 721 thousand (8/0); the land as before (mines 874 > 0.8 and
+1,373 > 9.2 cells, farm 1,159 > 1,453 in 1900); 3,767 workings > 475 in
+1900; stone, clay and ore cheaper in every year (0/8 in most); coal cheaper
+from 1800 (0/8 in 1800, 1/7 in 1900); track in 1900 2,594 > 2,240 km (0/8,
+starred) and lines to quarries 70 > 10; town cells 305 > 337 (7/1), with
+more people to house. A run takes 17.9 seconds against 15.6 (8/0, starred):
+two seconds, which is the yearly review.
+
 Two tests of other mechanisms had to be told about the new history, and
 neither was changed lightly. `tests/chronicle.rs` held that seed 7 has a
 decade with three new towns for the digest to describe; with the mines as
 workings seed 7 founds two a decade at most, so the test now holds that a
 digest is filed for exactly the decades that have the towns for one, and on
-seed 7 that is none. The digest's wording is therefore not exercised by any
-test at the moment. `tests/machines.rs` checked every active town's machines
+seed 7 that is none (with kept town ground merged as well: 1761, 1769; 1770,
+1777; 1793, 1795). The digest's wording and its place among a decade's four
+are therefore not exercised by any test at the moment; another seed, or a
+scenario that founds three towns, would bring that back. `tests/machines.rs` checked every active town's machines
 at the end of 1790; seed 5 now founds a town in 1790 itself, which has not
 had a month yet, and the test skips it.
 
@@ -537,11 +557,11 @@ had a month yet, and the test skips it.
   were set by judgment and a few runs on two seeds**, not swept. The sweeps
   here are of the mechanism on and off with the numbers in the table, and of
   `reserve`.
-- **Speed.** A run under the game's rules with six families took 21.6
-  seconds against 17.4 in the last sweeps (8/0), 19.7 against 18.3 without
-  families, and 24.0 against 22.7 under the port. The machine was busy with
-  other work and I did not profile it; the yearly review searches each
-  cell's reach several times and could be made cheaper.
+- **Speed.** A run under the game's rules is about two seconds slower: 17.9
+  against 15.6 with six families on the merged build, 17.1 against 14.9
+  without (8/0 both), and 24.0 against 22.7 under the port. I did not
+  profile it; the yearly review reckons every site of every sector and
+  searches each cell's reach several times, and could be made cheaper.
 - **Sweeps on eight seeds**, as everywhere. The areas, the counts and the
   prices of stone and clay are far outside the spread. The standard of
   living is 8/0 in 1750 everywhere and in most later years under the game's
