@@ -175,6 +175,12 @@ clay_bottom = "#a97a54"
 slag = "#8d8a86"
 # the earth bank a charcoal furnace is charged from
 furnace_bank = "#8a9a5e"
+# round a house: the grass of its garden, the dug earth of its beds, the path
+# to its door, and the flagged yard behind a terrace
+garden = "#9cb46b"
+garden_bed = "#8f7452"
+garden_path = "#d3c5a4"
+back_yard = "#a89c89"
 
 [walls]
 # the washes of the separate houses in town and of the lowland farmhouses;
@@ -191,6 +197,10 @@ weaver_cottage = "#f0e2c4"
 shop_front = "#3f5d50"
 lighthouse_white = "#f7f5ef"
 lighthouse_red = "#c94b3c"
+# the painted frames and glazing bars of a house's windows
+window_frame = "#f4f0e6"
+# a front door, painted in one of these
+door_paints = ["#3f5d50", "#3d4f6b", "#7a342c", "#2f2d2c", "#7a5a3c", "#8a8f6a"]
 
 [roofs]
 # clay tile: the common red, a darker one (also the station and the market
@@ -214,6 +224,8 @@ coke_ovens = "#5a4a42"
 stone_slate = "#5f594f"
 # a shop's awning, in one of these
 awnings = ["#c9584a", "#e9dcbc", "#5c8a94", "#dba94a"]
+# the clay pots on a house's chimney stack
+chimney_pot = "#cb7b54"
 
 [thatch]
 farmhouse = "#c9a75c"
@@ -254,6 +266,8 @@ logs = "#84603f"
 waterwheel = "#5f4733"
 # the louvres of a church tower's bell openings, dark with age
 belfry_louvre = "#4d463f"
+# the oak frame of a timber-framed house, dark with age
+house_frame = "#4b3d33"
 
 [stone]
 # the church, and the pillars of the market hall
@@ -275,6 +289,11 @@ limestone = "#d9d3c5"
 # farmhouses in the hills, in three tints
 upland_farm = ["#cfc6b4", "#bdb4a3", "#d8cfbd"]
 upland_barn = "#a9a08f"
+# round a house: its sills, lintels, doorsteps and copings; the plinth a
+# washed wall stands on; and a dry-stone wall round a garden in the hills
+sill = "#d6cec0"
+plinth = "#8c8579"
+garden_wall = "#b0a797"
 
 [brick]
 # the common brick: mills and engine works, terraces, sheds, engine houses
@@ -326,6 +345,9 @@ yew = "#2c5440"
 # low bushes on the heath
 gorse = "#9aa548"
 broom = "#6b7f3e"
+# a clipped hedge round a garden, and the rows of a vegetable plot
+hedge = "#4f7a3c"
+vegetables = "#6c9a4b"
 # what the leaves of the broadleaf trees are multiplied by through the year:
 # [red, green, blue], 1 leaves them as they are (conifers, gorse and broom
 # keep their own green). Summer holds from May to late August; autumn is

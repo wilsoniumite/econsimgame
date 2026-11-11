@@ -39,19 +39,34 @@ fn seconds() -> f64 {
 
 /// With ISOSTATE_BENCH set, time the rebuild of a handful of years (the year's
 /// scattered things, its lines and its trains, and turning them into meshes),
-/// several times over, then stop.
+/// several times over, then stop. The houses are built for a camera over the
+/// first town at the distance the game is played from; ISOSTATE_BENCH names
+/// another: `close` (as near as the camera goes), `far` (half way out to the
+/// whole island), or `near`, `play` or `shells` for every house of the island
+/// at one level.
 pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
     if std::env::var_os("ISOSTATE_BENCH").is_none() {
         return;
     }
     let years: Vec<usize> = [1760, 1800, 1850, 1870, 1900].iter().map(|y| ((y - r.y0).max(0) as usize).min(r.ny - 1)).collect();
     let lk = crate::look::Look::standard();
+    let home = r.header.towns.first().map_or((r.w as f32 * 0.5, r.h as f32 * 0.5), |t| cen[t.node]);
+    let which = std::env::var("ISOSTATE_BENCH").unwrap_or_default();
+    let lod = match which.as_str() {
+        "close" => crate::scatter::Lod::of_camera(home, crate::shots::CLOSE_DIST),
+        "far" => crate::scatter::Lod::of_camera(home, crate::shots::FAR_DIST),
+        "near" => crate::scatter::Lod::all(isostate_gen::houses::Detail::Near),
+        "play" => crate::scatter::Lod::all(isostate_gen::houses::Detail::Play),
+        "shells" => crate::scatter::Lod::all(isostate_gen::houses::Detail::Far),
+        _ => crate::scatter::Lod::of_camera(home, crate::shots::PLAY_DIST),
+    };
+    eprintln!("bench: houses built for {lod:?}");
     let mut total = 0.0;
     let mut n = 0;
     for round in 0..3 {
         for &k in &years {
             let t0 = seconds();
-            let ym = crate::scatter::build_year(r, g, slots, cen, k, &lk);
+            let ym = crate::scatter::build_year(r, g, slots, cen, k, &lk, &lod);
             let t1 = seconds();
             let nets = crate::network::year_nets(r, g, cen, k, &lk);
             let paths = crate::trains::rail_paths(r, g, cen, k);

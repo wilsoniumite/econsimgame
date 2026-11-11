@@ -1131,6 +1131,8 @@ fn orbit_transform(o: &Orbit) -> Transform {
 /// A year's scenery: the ground's land mix, the meshes and the railway paths.
 struct Scenery {
     k: usize,
+    /// the camera its houses were built for
+    lod: scatter::Lod,
     cells: Vec<u8>,
     ym: scatter::YearMeshes,
     nets: network::Nets,
@@ -1145,15 +1147,15 @@ struct Builds {
     task: Option<(usize, Task<Scenery>)>,
 }
 
-fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> Scenery {
+fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
     let t0 = std::time::Instant::now();
     let cells = terrain::year_cells(r, k);
-    let ym = scatter::build_year(r, g, slots, cen, k, lk);
+    let ym = scatter::build_year(r, g, slots, cen, k, lk, &lod);
     let t1 = t0.elapsed().as_secs_f32();
     let nets = network::year_nets(r, g, cen, k, lk);
     let rails = trains::rail_paths(r, g, cen, k);
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
-        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread)", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
+        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread); {} vertices of houses for a camera {:.1} off", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3, ym.houses.pos.len(), lod.dist);
     }
     if std::env::var_os("ISOSTATE_MESH_SUMS").is_some() {
         // a fingerprint of the year's geometry: two builds of the viewer that print the
@@ -1168,7 +1170,7 @@ fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f3
             .collect();
         eprintln!("year {} meshes: {}", r.y0 + k as i32, sums.join(", "));
     }
-    Scenery { k, cells, ym, nets, rails }
+    Scenery { k, lod, cells, ym, nets, rails }
 }
 
 /// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
@@ -1199,13 +1201,22 @@ fn rebuild_year(
     ta: Res<TrainAssets>,
     mut rails: ResMut<Rails>,
     mut builds: ResMut<Builds>,
+    orbit: Res<Orbit>,
+    mut built_for: Local<Option<scatter::Lod>>,
     old_trains: Query<Entity, With<Train>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    // the houses are built with as much as the camera can see of them: when it has moved or
+    // zoomed past what the scenery on screen was built for, the year is built again
+    let lod = scatter::Lod::of_camera((orbit.target.x, orbit.target.z), orbit.dist);
+    if tl.built.is_some() && built_for.is_some_and(|was| was.stale(&lod)) {
+        tl.built = None;
+    }
     // a finished build goes on screen
     if let Some(sc) = builds.task.as_mut().and_then(|(_, t)| check_ready(t)) {
         builds.task = None;
+        *built_for = Some(sc.lod);
         if let Some(mut img) = images.get_mut(&handles.year_cells) {
             img.data = Some(sc.cells);
         }
@@ -1248,7 +1259,7 @@ fn rebuild_year(
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     if tl.built != Some(k) && builds.task.is_none() {
         let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k, &lk) });
+        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k, &lk, lod) });
         builds.task = Some((k, task));
     }
 }

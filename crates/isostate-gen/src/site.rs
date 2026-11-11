@@ -54,6 +54,14 @@ impl<'a> Site<'a> {
         Vec3::new(x, y, z)
     }
 
+    /// The height of the land at a point of the map.
+    pub fn height(&self, x: f32, z: f32) -> f32 {
+        match self.ground {
+            Some(ground) => ground(x, z),
+            None => self.origin.y,
+        }
+    }
+
     /// The ground is level here (the lab's, a test's), so nothing need follow it.
     pub fn is_level(&self) -> bool {
         self.ground.is_none()
@@ -159,10 +167,10 @@ mod tests {
     fn turning_a_model_is_building_it_on_a_turned_site() {
         let pal = crate::Palette::standard();
         let seed = crate::Seed::of(3);
-        let c = crate::houses::Cottage { plot_width: 0.05, plot_depth: 0.036, storeys: 2, roof: crate::houses::Roof::of(1790, 1850, false, false, seed), seed };
+        let c = crate::houses::Cottage::new(0.05, 0.036, 2, crate::houses::Roof::of(1790, 1850, false, false, seed), seed);
         let build = |yaw: f32| {
             let mut m = Model::default();
-            crate::houses::cottage(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, yaw), &c, &pal);
+            crate::houses::cottage(&mut m.solid, &mut m.smoke, &mut m.green, &Site::level(Vec3::ZERO, yaw), &c, &pal);
             m
         };
         let (mut turned, built) = (build(0.0), build(0.6));

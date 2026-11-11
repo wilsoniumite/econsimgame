@@ -41,6 +41,10 @@ pub struct Ground {
     pub clay_bottom: Colour,
     pub slag: Colour,
     pub furnace_bank: Colour,
+    pub garden: Colour,
+    pub garden_bed: Colour,
+    pub garden_path: Colour,
+    pub back_yard: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -57,6 +61,8 @@ pub struct Walls {
     pub shop_front: Colour,
     pub lighthouse_white: Colour,
     pub lighthouse_red: Colour,
+    pub window_frame: Colour,
+    pub door_paints: Vec<Colour>,
 }
 
 impl Walls {
@@ -86,6 +92,7 @@ pub struct Roofs {
     pub coke_ovens: Colour,
     pub stone_slate: Colour,
     pub awnings: Vec<Colour>,
+    pub chimney_pot: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -123,6 +130,7 @@ pub struct Timber {
     pub logs: Colour,
     pub waterwheel: Colour,
     pub belfry_louvre: Colour,
+    pub house_frame: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -139,6 +147,9 @@ pub struct Stone {
     pub limestone: Colour,
     pub upland_farm: Vec<Colour>,
     pub upland_barn: Colour,
+    pub sill: Colour,
+    pub plinth: Colour,
+    pub garden_wall: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -198,6 +209,8 @@ pub struct Foliage {
     pub yew: Colour,
     pub gorse: Colour,
     pub broom: Colour,
+    pub hedge: Colour,
+    pub vegetables: Colour,
     pub tint_winter: [f32; 3],
     pub tint_spring: [f32; 3],
     pub tint_summer: [f32; 3],
@@ -375,6 +388,7 @@ impl Palette {
             ("stone.upland_farm", &self.stone.upland_farm),
             ("vehicles.wagons", &self.vehicles.wagons),
             ("roofs.awnings", &self.roofs.awnings),
+            ("walls.door_paints", &self.walls.door_paints),
         ] {
             if list.is_empty() {
                 return Err(format!("`{name}` needs at least one colour"));

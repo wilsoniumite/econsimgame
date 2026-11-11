@@ -18,6 +18,7 @@ pub mod towns;
 
 use isostate_gen::bridge::{road_bridge, RoadBridge};
 use isostate_gen::farm::{farmstead, Farmstead};
+use isostate_gen::houses::Detail;
 use isostate_gen::trees::{bush, hedge_tree, leaf_group, tree, Greenery, Species, Tree, LEAF_GROUPS};
 use isostate_gen::works::{self, pit, works, Kind, Pit, PitKind, State, Works};
 use isostate_gen::{Seed, Site};
@@ -607,6 +608,103 @@ fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
     Vec3::new(x, world::height_at(g, x, z), z)
 }
 
+// ------------------------------------------------------------------ how much of each house is drawn
+//
+// A big town has ten thousand houses, and a house drawn in full (windows let
+// into the wall, a yard with its wall and its privy) is some hundreds of
+// triangles. So the houses of a year are built at three levels
+// (`houses::Detail`), chosen by where the camera was looking and from how
+// far when the year's scenery was begun: in full within sight of a camera
+// that is close, with openings, stacks and back wings within sight of one
+// at the distance the game is played from, and as shells and roofs
+// elsewhere. When the camera has moved or zoomed so far that what it sees is
+// no longer covered, the year's scenery is built again (`stale`), off the
+// main thread, as it is for a new year.
+
+/// Where the camera was looking and from how far when a year's scenery was
+/// begun, which settles how much of each house is drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lod {
+    /// where the camera looks, on the map
+    pub focus: (f32, f32),
+    /// how far it is from there
+    pub dist: f32,
+    /// every house at this level, wherever the camera is
+    all: Option<Detail>,
+}
+
+impl Lod {
+    /// A camera this close or closer has the houses it sees drawn in full.
+    pub const NEAR: f32 = 5.0;
+    /// One this close or closer has them drawn with their openings and stacks.
+    pub const PLAY: f32 = 40.0;
+
+    pub fn of_camera(focus: (f32, f32), dist: f32) -> Lod {
+        Lod { focus, dist, all: None }
+    }
+
+    /// Every house of the island at one level.
+    pub fn all(detail: Detail) -> Lod {
+        Lod { focus: (0.0, 0.0), dist: 0.0, all: Some(detail) }
+    }
+
+    /// The level the houses in the middle of the view are drawn at from a distance.
+    fn band(dist: f32) -> Detail {
+        if dist <= Lod::NEAR {
+            Detail::Near
+        } else if dist <= Lod::PLAY {
+            Detail::Play
+        } else {
+            Detail::Far
+        }
+    }
+
+    /// How far from the middle of the view the camera sees at a distance (a
+    /// little more than it does: the ground at the top of the picture is
+    /// furthest), and how far out the houses are built for it, which leaves
+    /// room to pan and to draw back before they must be built again.
+    fn sight(dist: f32) -> f32 {
+        0.65 * dist + 0.25
+    }
+
+    fn reach(dist: f32) -> f32 {
+        1.2 * dist + 1.0
+    }
+
+    /// The level a house at a point of the map is drawn at.
+    pub fn at(&self, x: f32, z: f32) -> Detail {
+        if let Some(detail) = self.all {
+            return detail;
+        }
+        let band = Lod::band(self.dist);
+        let away = (x - self.focus.0).hypot(z - self.focus.1);
+        if band == Detail::Far || away <= Lod::reach(self.dist) {
+            band
+        } else if band == Detail::Near && away <= Lod::reach(Lod::NEAR * 2.0) {
+            // beyond what a close camera sees, the middle distance: the haze and the lens soften it
+            Detail::Play
+        } else {
+            Detail::Far
+        }
+    }
+
+    /// Whether scenery built for this camera will not do for the camera as
+    /// it is `now`: some house it sees is drawn with less than it should
+    /// be, or it has drawn far enough back that all are drawn with more.
+    pub fn stale(&self, now: &Lod) -> bool {
+        if self.all.is_some() || now.all.is_some() {
+            return self.all != now.all;
+        }
+        let want = Lod::band(now.dist);
+        let sight = Lod::sight(now.dist);
+        let short = (0..8).any(|i| {
+            let a = i as f32 * std::f32::consts::FRAC_PI_4;
+            self.at(now.focus.0 + a.cos() * sight, now.focus.1 + a.sin() * sight) < want
+        });
+        short || self.at(now.focus.0, now.focus.1) < want || (Lod::band(self.dist) > want && now.dist > self.dist * 1.3)
+    }
+}
+
 // ------------------------------------------------------------------ the year's meshes
 
 pub struct YearMeshes {
@@ -621,11 +719,11 @@ pub struct YearMeshes {
     pub lanes: Builder,
 }
 
-pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
-    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk))
+pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
+    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk, lod))
 }
 
-fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
+fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
     let mut trees: [Greenery; LEAF_GROUPS] = Default::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
@@ -695,7 +793,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
     }
 
-    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut houses, &mut smoke);
+    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
@@ -727,7 +825,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         // stone and slate in the hills
         let upland = r.terrain[c] >= 2;
         let site = Site::on(ground(g, s.x, s.z), s.yaw, &height);
-        farmstead(&mut houses, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
+        farmstead(&mut houses, &mut smoke, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, detail: lod.at(s.x, s.z), seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {
@@ -862,6 +960,49 @@ fn lane(b: &mut Builder, lk: &Look, g: &Ground, from: (f32, f32), to: (f32, f32)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn houses_are_drawn_in_full_near_a_close_camera_and_as_shells_far_off() {
+        let close = Lod::of_camera((10.0, 10.0), 1.5);
+        assert_eq!(close.at(10.0, 10.0), Detail::Near);
+        assert_eq!(close.at(12.5, 10.0), Detail::Near);
+        assert_eq!(close.at(16.0, 10.0), Detail::Play);
+        assert_eq!(close.at(40.0, 10.0), Detail::Far);
+        let play = Lod::of_camera((10.0, 10.0), 14.0);
+        assert_eq!(play.at(10.0, 10.0), Detail::Play);
+        assert_eq!(play.at(10.0, 27.0), Detail::Play);
+        assert_eq!(play.at(10.0, 29.0), Detail::Far);
+        let far = Lod::of_camera((10.0, 10.0), 70.0);
+        assert_eq!(far.at(10.0, 10.0), Detail::Far);
+        assert_eq!(Lod::all(Detail::Near).at(99.0, 0.0), Detail::Near);
+    }
+
+    #[test]
+    fn scenery_is_built_again_when_the_camera_sees_past_what_was_built_for_it() {
+        let built = Lod::of_camera((10.0, 10.0), 1.5);
+        // looking about a little, or drawing back a little, what was built still covers the view
+        assert!(!built.stale(&Lod::of_camera((10.5, 10.3), 1.5)));
+        assert!(!built.stale(&Lod::of_camera((10.0, 10.0), 2.2)));
+        assert!(!built.stale(&built));
+        // panned a few cells off, or drawn back to see more than was built in full
+        assert!(built.stale(&Lod::of_camera((13.0, 10.0), 1.5)));
+        assert!(built.stale(&Lod::of_camera((10.0, 10.0), 4.5)));
+        // drawn right back, the island is built again as shells
+        assert!(built.stale(&Lod::of_camera((10.0, 10.0), 70.0)));
+        // and coming in again from far off, in full
+        let far = Lod::of_camera((10.0, 10.0), 70.0);
+        assert!(!far.stale(&Lod::of_camera((30.0, 10.0), 120.0)));
+        assert!(far.stale(&Lod::of_camera((10.0, 10.0), 14.0)));
+        assert!(Lod::of_camera((10.0, 10.0), 14.0).stale(&built));
+        // the play distance covers a good pan before it must be built again
+        let play = Lod::of_camera((10.0, 10.0), 14.0);
+        assert!(!play.stale(&Lod::of_camera((16.0, 12.0), 14.0)));
+        assert!(play.stale(&Lod::of_camera((22.0, 10.0), 14.0)));
+        // just past the distance at which houses are drawn in full, what was built in full is kept
+        let nearish = Lod::of_camera((10.0, 10.0), 4.8);
+        assert!(!nearish.stale(&Lod::of_camera((10.0, 10.0), 5.5)));
+        assert!(nearish.stale(&Lod::of_camera((10.0, 10.0), 7.0)));
+    }
 
     #[test]
     fn each_try_for_a_yard_asks_for_less_room_than_the_last() {
