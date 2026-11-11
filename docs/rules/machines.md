@@ -343,8 +343,156 @@ many seeds, with the works rules and six families on. Until that is done the
 safe setting is `machines.inherit = 0`: under the works rules it leaves the
 converter unbuilt, and it is the best row of both tables in everything else.
 
+## In company with the merchants' prices and the curve
+
+Everything above was measured on the port with the machines alone. When they
+were merged into the game's rules the merchants' prices (`prices.md`) and the
+Engel curve (`engel.md`) were already there, so the three were run together:
+seeds 1 to 6 and then 7 to 12, six families, to 1900, the game's rules before
+the machines and with them (`core-steps/machines-before`, `machines-after`,
+`machines-s7-12-before` and `machines-s7-12` under `.claude/night/reports/`),
+and this page's own example on sixteen seeds with six families and with none
+(`core-steps/machines-example-f6` and `-f0`). No run failed. Seeds 1 to 6, the
+tally seed for seed, and beside it what the machines did alone:
+
+| six families | prices and curve | with the machines | tally | alone (port, then machines) |
+|---|---|---|---|---|
+| real wage 1800, 1750 basket (1750 = 1) | 1.40 | 1.42 | 4/2 | 1.33, 1.34 |
+| real wage 1850 | 1.49 | 1.95 | 6/0* | 1.34, 1.66 |
+| real wage 1900 | 1.45 | 2.48 | 6/0* | 1.34, 2.16 |
+| real wage 1900, chained | 1.77 | 3.36 | 6/0* | |
+| output per head 1900 (1750 = 1) | 1.50 | 2.60 | 6/0* | 1.46, 2.60 (no families) |
+| the year output per head peaks | 1858 | 1888 | 6/0* | 1867, 1896 (no families) |
+| towns: share of people, 1900 | 0.320 | 0.432 | 6/0* | 0.24, 0.27 (no families) |
+| works: share of labour, 1900 | 0.354 | 0.491 | 6/0* | 0.25, 0.29 (no families) |
+| land: share of labour, 1900 | 0.364 | 0.259 | 0/6* | |
+| grain output 1900 (1750 = 1) | 7.48 | 10.40 | 6/0* | |
+| food, comfort: share of budgets, 1900 | 0.266, 0.145 | 0.150, 0.256 | 0/6*, 6/0* | |
+| works standing, 1900 | 6,366 | 6,805 | 5/1 | |
+| the ninth tenth of works, size | 2.69 | 1.95 | 0/6* | 2.5, 1.6 |
+| median life of a works that closed | 14.8 | 17.5 | 6/0* | 12, 15 (no families) |
+| town cells, 1900 | 94.8 | 123.8 | 6/0* | |
+| industry cells, 1850 and 1900 | 575, 945 | 668, 959 | 6/0, 5/1 | |
+| railway km, 1850 and 1900 | 1,045, 1,077 | 981, 1,003 | 1/5, 2/4 | |
+| converter's share of steel, 1880 | 0 | 0.85 [0.13 .. 1.00] | 6/0* | 0.01, 0.97 |
+| steel rails' share of rails, 1890 | 0 | 0.90 [0.49 .. 1.00] | 6/0* | 0, 0.96 |
+| farm machinery found | 1840 | 1827 | 0/5 | 1843, 1832 (no families) |
+| price swings: grain, iron, rails, cloth | 0.032, 0.128, 0.150, 0.024 | 0.026, 0.121, 0.141, 0.018 | cloth 0/6* | |
+| farm zigzag | 0.84 | 0.56 | 0/6* | |
+| famine notices, alarms a run | 3.3, 2.2 | 1.5, 0.8 | 0/5, 1/3 | |
+| seconds a run, back to back | 17 | 18 to 20 | | |
+
+Seeds 7 to 12 say the same: the wage 1.45, 1.74 and 2.44 for 1.47, 1.42 and
+1.43, output per head in 1900 2.54 for 1.49, towns 0.433 for 0.327, works'
+labour 0.495 for 0.362, 6,892 works for 6,278 with the ninth tenth at 1.86 for
+2.67, town cells 125 for 97, the converter 0.99 of steel in 1880 and steel
+rails 0.99 of rails in 1890, the zigzag 0.64 for 0.92, famine notices 2.2 for
+3.3. The railway of 1900 is the same length there (1,076 km for 1,078) and 7
+per cent shorter on seeds 1 to 6 (two islands up, four down), so I read
+nothing into it; on seeds 7 to 12 the line of 1850 is a third longer (941 km
+for 700, every island), because the first line is laid nine years sooner.
+
+And the example's own numbers on sixteen seeds, beside the columns of "What
+the sweeps showed" (five-year means, the model's index unless said):
+
+| | alone, six families | in company, six families | in company, no families |
+|---|---|---|---|
+| real wage 1800 / 1850 / 1900 | 1.34 / 1.66 / 2.16 | 1.46 / 1.87 / 2.51 | 1.42 / 1.75 / 2.47 |
+| lowest five-year mean, 1855-85 | 1.74 [1.42 .. 2.02] | 2.04 [1.65 .. 2.35] | 1.86 [1.58 .. 2.26] |
+| 1890s over 1850 | 1.31 [1.17 .. 1.45] | 1.35 [1.15 .. 1.53] | 1.41 [1.18 .. 1.60] |
+| the same, chained index | 1.51 [1.38 .. 1.68] | 1.53 [1.33 .. 1.67] | 1.57 [1.38 .. 1.72] |
+| machinery's peak after 1850 over usual | 2.3 [0.8 .. 5.2] | 1.4 [0.8 .. 2.7] | 1.6 [0.7 .. 2.7] |
+| years above three times usual | 2 [0 .. 13] | 0 in every seed | 0 in every seed |
+| farm output per worker-month 1800 / 1850 / 1900 | 13.6 / 19.8 / 40.4 | 14.1 / 23.5 / 51.7 | 13.5 / 19.2 / 50.4 |
+| quarry | 7.7 / 11.2 / 18.7 | 7.9 / 11.9 / 21.5 | 7.7 / 11.2 / 21.4 |
+| colliery | 22.5 / 30.0 / 45.6 | 24.3 / 34.8 / 52.0 | 24.1 / 33.1 / 52.9 |
+| converter first built | 1850 [1839 .. 1867] | 1847 [1826 .. 1876] | 1856 [1839 .. 1871] |
+| converter's share of steel, 1880 | 0.97 [0.55 .. 1.00] | 0.94 [0.12 .. 1.00] | 0.85 [0.32 .. 1.00] |
+| steel rails' share of rails, 1890 | 0.96 [0.69 .. 1.00] | 0.96 [0.49 .. 1.00] | 0.75 [0.48 .. 1.00] |
+| quality of machines 1850, 1900 | 2.0 to 2.1, 3.98 | 2.20, 3.99 | 2.03, 3.95 |
+
+What they say:
+
+- **In company the machines do what they do alone, and a little more.** The
+  wage of 1900 is a whole 1750 wage higher on every island (2.48 for 1.45),
+  where alone it was four fifths higher (2.16 for 1.34). The 1890s stand a
+  third above 1850, as alone. The converter and the steel rail arrive as they
+  did, a little less surely in the slowest seed (the converter is found by a
+  yearly draw, and in one seed of sixteen it comes in 1875).
+- **The machinery famine is gone outright.** Alone, machinery's price still
+  peaked at 2.3 times usual and spent up to thirteen years above three times
+  usual in the worst seed. With the merchants marking prices on their stock it
+  peaks at 1.4 times and spends no year above three times in any of thirty-two
+  runs. The two mend different halves of the same trouble: the machines stop
+  the farms from all buying at once, the merchants stop the price from running
+  on after the shelves have filled.
+- **The curve turns the machines' bread into towns.** Alone the machines
+  raised the towns' share of people by three points; here by eleven (0.43 for
+  0.32), and the works' share of labour by fourteen. A household with more
+  than twice the income (8.3 bundles a head for 3.8) spends 15 per cent of it
+  on food where it spent 27, and what it buys instead is made in works. The land keeps a quarter of all hands in 1900 and
+  grows ten times the grain of 1750. This is the first set of rules under
+  which the island urbanises (a quarter of people in towns in 1750, 0.43 in
+  1900), and it takes the pair: the curve alone gave six points and the
+  machines alone three.
+- **Fewer famines and alarms, a calmer farm.** Famine notices halve on seeds
+  1 to 6 (fewer on five islands, the same on one) and fall a third on seeds 7
+  to 12 (fewer on three, more on two); the farm zigzag falls a third on all
+  twelve. The curve had left households nearer the floor in a bad year, and
+  cheaper grain lifts them off it.
+- **The works at the top are smaller here too**: the ninth tenth is 1.95
+  times its method's usual size for 2.69, as alone. Still not traced, still
+  for the works mechanism's sweep.
+- **One island ends with derelict ground**: 45 cells of it in 1900 on one seed
+  of six (34 on another seed before the mend below), none on the rest and
+  none before the machines. Not opened; probably the old steel and rail works
+  closing together when the converter wins, which the works mechanism's life
+  cycle will change anyway.
+- **With the machines switched off** (`--set machines.enabled=false --content
+  data/content.toml` under the game's rules) the merged code gives every fact
+  of every seed exactly as the code before the merge gave it
+  (`core-steps/machines-off`): they leak nothing into the others.
+
+**One thing broke in company, and it was not the machines' doing.** On seed 6
+a town was founded at the end of 1888. The port never tells a new town what
+to expect: its farms and pits hire on `pexp`, and a slot that has never been
+a town still holds the prices of 1750. In the port that is three or thirty
+years stale and passes unseen. Here grain was three times cheaper than in
+1750, so the new town's farms expected three times the price, asked for
+thirty-five times the hands the town had, and got them: nothing in the port
+rations work to the people there are. The town's wage doubled month after
+month, the landlords' purses paid it (the rent share of 1889 is -1.9),
+and with that money in households' hands the island's prices rose 3.3 times
+in five years and stayed there; the real wage fell from 2.5 to 1.6 on the way
+(`core-steps/machines-after-merge`, and seed 6 month by month in
+`core-steps/machines-seed6-run`). The mend is in the prices mechanism, where
+a new town already took its mother town's anchors: it now also takes what her
+people expect, less the carriage from its site to her, which is what a load
+from there fetched the day before (`prices::found_town`; `prices.md` has the
+account and the count on 48 seeds). The table above is after the mend. Before
+it, on seeds 1 to 6, the wage read 1.43, 1.94 and 2.43 and the rest within a
+hair of the table, seed 6's last decade aside.
+
+Not done here: the scripted players and the prices probe's shock were not run
+on the three together.
+
 ## What worries me
 
+- **A town can still hire more hands than it has.** The mend above stops the
+  founding that set it off, not the thing itself, which is the port's: when a
+  town's demand for hands is above its people even at twice last month's wage,
+  everyone asked for is put to work and paid. Somewhere between one run in
+  four and one in twelve has such a "wild year" under any rules, most of them
+  small (`prices.md`, "In company with the machines" and its first worry).
+  The machines raise the stakes, because the land's output and prices now move
+  far from where they were, and anything that still remembers an old price
+  can ask for a great many hands.
+- **A new town's first year of land use is still read off 1750.** The yearly
+  land step bids for a new town's cells with that town's average prices and
+  wage over the year before it existed (`pbar`, `wbar` in `sim::yearly`): the
+  base prices, and a wage of nothing. Land moves a little each year, so it is
+  one year's nudge and I saw no harm from it; it is the same kind of stale
+  number as the one mended and wants the same look.
 - **The converter in company with the works mechanism**: the section above.
 - **The cap is reached.** With six families quality is at 4 in nearly every
   seed by 1900 (3.98 on average, 3.81 without families), so the last years
@@ -394,4 +542,5 @@ converter unbuilt, and it is the best row of both tables in everything else.
   wage doubles for a single year and falls back (the port: seed 3 in 1753;
   the game: seed 7 in 1755, and not seed 3). It is the port's own oddity,
   moved to another island by the different history, not something the
-  machines do; it is worth its own look.
+  machines do; it is worth its own look. (It got one when the machines were
+  merged: a town hiring more hands than it has. See the first worry.)

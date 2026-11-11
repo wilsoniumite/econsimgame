@@ -58,6 +58,16 @@ a third of orders go unfilled, and the price starts back up.
   read, so the warm-up runs with them. A new town takes its mother town's
   anchors with her prices; without that it would start from a stale idea of
   what things cost.
+- **What a new town expects.** Farms, pits and quarries hire on the price
+  they expect (`pexp`), and the port never sets it for a new town: a slot
+  that has not been a town still expects the prices of 1750. With this
+  mechanism on, the new town's people go on expecting what they have been
+  getting: the mother town's expected price less the carriage from the new
+  town's site to her, never under the price floor. That is what a load from
+  there fetched the day before, so nobody's net price moves on the day of
+  the founding; after it the town's own market finds its own prices and
+  what people expect follows them. Added when the machines were merged; see
+  "In company with the machines" below.
 - **Merchants stop buying into a glut.** In the port they pay the gate price
   for everything a works makes, whether or not anyone will buy it (the open
   point in the DEVLOG about works in thin markets). Here they take all of it
@@ -335,8 +345,85 @@ rebalancing of the whole game, not a repair. I left it alone, as asked. If it
 is taken up, it wants its own switch, a look at where the extra money comes
 to rest, and the bots.
 
+## In company with the machines
+
+When the machines (`machines.md`) were merged into the game's rules, one run
+in six went badly wrong, and the cause was a line the port does not have. It
+is mended here because this mechanism already carried a new town's idea of
+what things are worth.
+
+**What happened.** Seed 6, six families: a market town is founded at the end
+of 1888. Its farms hire on the price of grain they expect, and nothing had
+ever set that for the new town, so it was still 1750's: 0.78, on an island
+where the machines had brought grain down to 0.27. On a farm the hands
+wanted go up with between the cube and the fourth power of the net price.
+The town had 4,300 workers and its farms asked for 150,000. The port's labour market lets the wage rise no more than
+twofold in a month, and when demand is still above the people at that wage it
+puts everyone asked for to work and pays them. So the town's wage doubled
+month after month, its farms raised as much grain as the rest of the island
+together in the first month, the wage bill came out of the landlords' rents
+(the island's rent share for 1889 is -1.9), and households ended up holding
+money the landlords had held. Households spend nine tenths of what they earn
+where landlords spend three quarters, so the same money turns over faster in
+their hands; that is how I read what followed, without having followed each
+purse. The island's money did not change and its prices rose 3.3 times in
+five years and stayed up for the rest of the run; the real wage fell from 2.5
+to 1.6 on the way
+(`core-steps/machines-after-merge` and `machines-seed6-run` under
+`.claude/night/reports/`).
+
+The port has such years in a smaller way: its "one wild year" (seed 3 in
+1753: the wage doubles, the rent share is -0.7) comes with a founding too.
+In the 1750s a stale price is three years stale and does little; what the
+machines changed is how far prices travel from where they started, so that
+a town founded late remembers a different island.
+
+**What was changed.** `prices::found_town` now sets what the new town's people
+expect ("What it does", above). Two rules were tried on 48 seeds with six
+families and the whole game. A wild year here is one in which the island's
+average wage rises by more than a quarter or the rent share is under -0.05:
+
+| what a new town expects | runs of 48 with a wild year | rent share under -0.4 | the worst, and prices five years on |
+|---|---|---|---|
+| 1750's prices (the port) | 3 | 2 | -1.94, prices 3.3 times (seed 6, 1889) |
+| the mother town's, whole | 4 | 2 | -1.80, prices 3.0 times (seed 3, 1756) |
+| the mother town's less the carriage | 4 | 0 | -0.22, prices 1.4 times (seed 28, 1753) |
+
+Her prices whole were worse than they look: towns are founded far from any
+market, where something heavy is dug, and the mother town's price for coal is
+the price in a town far from the pits. Seed 3's new coal town expected 1.74
+for coal, with no carriage to pay any more, and put 12,000 colliers to work
+out of 2,600 people. Taking the carriage off gives each good the price a
+load of it from that spot fetched the day before, so the founding itself
+moves nobody's net price, and the four years left are smaller ones (the wage
+up by a quarter to three quarters for a year, prices a tenth to two fifths
+higher five years on). Two of the four are not foundings at all; see the
+worries.
+
+Without the machines (the game's rules as they stood, sixteen seeds, six
+families) the same change moves no fact clear of the spread between islands
+(none of 166 starred), and the two wild years there were go (seed 11 in 1837,
+rent share -0.44, and a small one on seed 2). Towns founded after 1840, in 48
+runs of the whole game: five with the port's rule, nine with this one.
+
 ## What worries me
 
+- **A town can hire more hands than it has.** This is the port's, and the
+  change above only removes one thing that sets it off. Each month a town's
+  wage may rise or fall twofold at most (`econ::step_month`, the bracket of
+  the bisection). If the hands wanted are still more than the people at the
+  top of the bracket, all of them are put to work and paid, and the wage
+  bill beyond what the land earns comes out of the landlords' rents. A new
+  town, a new railway, anything that lifts the net price at the pithead or
+  the field at a stroke can do it. Under any rules somewhere between one
+  run in four and one in twelve has such a year, most of them small (the
+  port: two of eight, four of eight with families); the two left here that
+  are not foundings fall in 1825 and 1836, the railway years, and I did not
+  open them. The honest cure is to ration:
+  where demand exceeds the people at the highest wage the month allows,
+  scale every employer in the town down to the people there are. That is a
+  rule of its own with its own switch, and belongs to whoever takes up
+  people and towns.
 - **Steel.** Under the port the converter is built in 3 seeds of 8 (2 with
   families), never before 1871 and never to any size. With prices on it is
   built in none. The converter clears its hurdle only in the years when steel
