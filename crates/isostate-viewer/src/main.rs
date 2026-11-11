@@ -130,7 +130,7 @@ fn parse_args() -> Args {
         at: None,
         look_file: None,
         yaw: 0.0,
-        pitch: 52.0,
+        pitch: shots::PLAY_PITCH,
         dist: None,
         frames: 40,
         wait: None,
@@ -184,7 +184,7 @@ fn parse_args() -> Args {
                 i += 1;
             }
             "--yaw" => { a.yaw = next(i).parse().unwrap_or(0.0); i += 1; }
-            "--pitch" => { a.pitch = next(i).parse().unwrap_or(52.0); i += 1; }
+            "--pitch" => { a.pitch = next(i).parse().unwrap_or(shots::PLAY_PITCH); i += 1; }
             "--dist" => { a.dist = next(i).parse().ok(); i += 1; }
             "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
             "--wait" => { a.wait = next(i).parse().ok(); i += 1; }
@@ -225,7 +225,7 @@ fn parse_args() -> Args {
                     year: num(1).map(|y| y as i32),
                     look: match (num(2), num(3)) { (Some(x), Some(z)) => Some((x, z)), _ => None },
                     yaw: num(4).unwrap_or(0.0),
-                    pitch: num(5).unwrap_or(52.0),
+                    pitch: num(5).unwrap_or(shots::PLAY_PITCH),
                     dist: num(6),
                     season: p.iter().skip(7).find_map(|s| s.parse::<f32>().ok()),
                     tab: p.iter().skip(7).find(|s| !s.is_empty() && s.parse::<f32>().is_err()).map(|s| ui::Tab::parse(s)),
@@ -243,6 +243,13 @@ fn parse_args() -> Args {
     if a.shots.is_some() {
         // the standard shots run from the first year to the last, so play the whole game first
         a.advance = usize::MAX - 1;
+    }
+    // options that only mean something beside another say so, rather than being passed over in silence
+    if a.lab.is_none() && (a.out.is_some() || a.lab_tilt || a.loupe != 1 || a.lab_turn.is_some()) {
+        eprintln!("--out, --tilt, --turn and --loupe go with --lab and do nothing without it");
+    }
+    if a.shots.is_none() && (a.shots_compare.is_some() || !a.shots_note.is_empty()) {
+        eprintln!("--shots-compare and --shots-note go with --shots and do nothing without it (two sets already shot are compared with --compare-shots A B)");
     }
     a
 }
@@ -519,6 +526,8 @@ fn main() {
         }
         let seat = families.as_ref().and_then(|f| f.player()).map(|p| p.seat);
         let standard = shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir);
+        // pictures of an earlier set in this directory would be taken for this run's
+        shots::clear_pictures(&standard);
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {

@@ -117,6 +117,15 @@ pub struct Sheet {
     pub about: About,
 }
 
+/// Remove the pictures a set is about to write. A set shot into a directory
+/// that already holds one would otherwise find last time's pictures there,
+/// take them for its own before they were written again, and compare those.
+pub fn clear_pictures(shots: &[Standard]) {
+    for s in shots {
+        let _ = std::fs::remove_file(&s.spec.path);
+    }
+}
+
 /// The standard views, in the order the sheet shows them. `home` is the town
 /// the player's family sits in (the biggest town, in a replay); `island` is the
 /// point and distance the whole island is seen from.
@@ -153,9 +162,9 @@ pub fn standard_views(r: &Replay, cen: &[(f32, f32)], slots: &scatter::Slots, ho
         // as a new game opens: the town a little above the middle of the picture
         let play = (x, z + 1.0);
         for y in [1750, 1800, 1850, 1900] {
-            add(format!("town-{y}"), format!("{name}, the home town, at play distance, summer {}", year_of(y)), y, play, 0.0, 52.0, PLAY_DIST, SUMMER);
+            add(format!("town-{y}"), format!("{name}, the home town, at play distance, summer {}", year_of(y)), y, play, 0.0, PLAY_PITCH, PLAY_DIST, SUMMER);
         }
-        add("town-1850-winter".into(), format!("{name} at play distance, midwinter {}", year_of(1850)), 1850, play, 0.0, 52.0, PLAY_DIST, MIDWINTER);
+        add("town-1850-winter".into(), format!("{name} at play distance, midwinter {}", year_of(1850)), 1850, play, 0.0, PLAY_PITCH, PLAY_DIST, MIDWINTER);
         // a street: a little way out of the market place along the first road
         // through town, seen from the side the sun is on
         let k = k_of(1850);
@@ -191,7 +200,7 @@ pub fn standard_views(r: &Replay, cen: &[(f32, f32)], slots: &scatter::Slots, ho
         let n = count[c] as f32;
         let at = (sum[c].0 / n, sum[c].1 / n);
         let place = format!("the square {} km east, {} km south ({} works)", (c % r.w) * 2, (c / r.w) * 2, count[c]);
-        add("works-1900".into(), format!("The busiest works district at play distance, summer {}: {place}", year_of(1900)), 1900, (at.0, at.1 + 1.0), 0.0, 52.0, PLAY_DIST, SUMMER);
+        add("works-1900".into(), format!("The busiest works district at play distance, summer {}: {place}", year_of(1900)), 1900, (at.0, at.1 + 1.0), 0.0, PLAY_PITCH, PLAY_DIST, SUMMER);
         add("works-1900-close".into(), format!("The busiest works district close up, summer {}: {place}", year_of(1900)), 1900, at, 35.0, 32.0, 3.2, SUMMER);
     }
     out
