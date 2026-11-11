@@ -49,9 +49,9 @@ pub struct MachineParams {
     /// them, per unit of output whatever they cost. Measured both ways; see
     /// docs/rules/machines.md for why they are left as they were.
     pub adopt_pumps: bool,
-    /// Wagonways in the mines likewise. On, the first railway comes a generation
-    /// late: the rails that teach the island to roll rails are the ones the
-    /// collieries lay at a loss.
+    /// Wagonways in the mines likewise. On, the real wage of 1800 is a tenth
+    /// lower and the steel rail mill is never found: the rails that teach the
+    /// island to roll rails are the ones the collieries lay at a loss.
     pub adopt_wagonways: bool,
     /// Months a machine stands. The machines at work move towards what is being
     /// bought by one part in this many each month.
