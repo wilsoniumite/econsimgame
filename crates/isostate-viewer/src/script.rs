@@ -107,6 +107,12 @@ struct Tally {
     season_jump: f32,
     dates: Vec<String>,
     k0: usize,
+    /// how long the main world's work took in each frame, in milliseconds, with
+    /// what came in during it: a year from the simulation, a year's scenery
+    work: Vec<(f32, bool, bool)>,
+    /// the years worked out and the scenery's year when the last frame was counted
+    last_filled: usize,
+    last_built: Option<usize>,
     /// decisions answered for the player
     answered: u32,
     /// start the clock again once the decision's card has gone
@@ -239,7 +245,10 @@ pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> 
             }
         })
         // after the interface has read the (absent) pointer and keyboard, so a press made here lasts the frame
-        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems));
+        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems))
+        .insert_resource(FrameWork { started: std::time::Instant::now(), ms: 0.0 })
+        .add_systems(First, |mut w: ResMut<FrameWork>| w.started = std::time::Instant::now())
+        .add_systems(Last, |mut w: ResMut<FrameWork>| w.ms = w.started.elapsed().as_secs_f32() * 1e3);
     Ok(())
 }
 
@@ -402,9 +411,14 @@ fn find_marked<C: Component>(world: &mut World, what: &str, want: impl Fn(&C) ->
 
 fn sample(world: &mut World, t: &mut Tally) {
     let (k, latest) = clock_year(world);
+    // the frame before this one: how long its work took, and whether a year or its scenery came in during it
+    let (filled, built) = (world.resource::<Data>().r.filled, world.resource::<Timeline>().built);
     if t.frames == 0 {
         t.k0 = k;
+    } else {
+        t.work.push((world.resource::<FrameWork>().ms, filled != t.last_filled, built != t.last_built && built.is_some()));
     }
+    (t.last_filled, t.last_built) = (filled, built);
     t.frames += 1;
     let step = stepping(world);
     if world.resource::<Timeline>().playing {
@@ -477,6 +491,38 @@ fn print_tally(world: &World, t: &Tally, secs: f32) {
         t.dates.len(),
         t.dates.iter().take(6).cloned().collect::<Vec<_>>().join(", ") + if t.dates.len() > 6 { ", \u{2026}" } else { "" }
     );
+    print_work(t);
+}
+
+/// The middle, the 99th in a hundred and the longest of some frame times, in milliseconds.
+fn spread(ms: &mut [f32]) -> Option<(f32, f32, f32)> {
+    if ms.is_empty() {
+        return None;
+    }
+    ms.sort_by(|a, b| a.total_cmp(b));
+    let at = |q: f32| ms[((ms.len() - 1) as f32 * q).round() as usize];
+    Some((at(0.5), at(0.99), ms[ms.len() - 1]))
+}
+
+/// What a `sample` step says of the frames' work: of them all, and of those a
+/// year arrived in or a year's scenery went up in, which are the ones that can hitch.
+fn print_work(t: &Tally) {
+    let line = |what: &str, mut ms: Vec<f32>| match spread(&mut ms) {
+        Some((mid, p99, max)) => println!("script:   frame work, {what}: {} frames, middle {mid:.1} ms, 99th in a hundred {p99:.1} ms, longest {max:.1} ms", ms.len()),
+        None => println!("script:   frame work, {what}: no frames"),
+    };
+    line("all", t.work.iter().map(|w| w.0).collect());
+    line("a year arriving", t.work.iter().filter(|w| w.1).map(|w| w.0).collect());
+    line("a year's scenery going up", t.work.iter().filter(|w| w.2).map(|w| w.0).collect());
+}
+
+/// How long the main world's schedules took in the last frame, from the start
+/// of `First` to the end of `Last`: the work a hitch would show in. (Drawing is
+/// the renderer's, in its own world, and is not counted.)
+#[derive(Resource)]
+struct FrameWork {
+    started: std::time::Instant,
+    ms: f32,
 }
 
 fn fail(why: &str) -> ! {
