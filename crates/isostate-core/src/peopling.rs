@@ -201,16 +201,17 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
             1 => format!("from {} and one other town", st.town_name[from]),
             k => format!("from {} and {k} other towns", st.town_name[from]),
         };
+        let quay = match (others, from == port) {
+            (0, true) => "from its own quay".to_string(),
+            (0, false) => format!("at {}", st.town_name[port]),
+            _ => format!("most of them at {}", st.town_name[port]),
+        };
         let mut ev = Event::new(
             year as f64 + 0.6,
             "famine",
             0.5,
             format!("{} people leave the island", fmt_thousands_f0(gone)),
-            format!(
-                "After a hungry year {} people {whence} take ship, most of them at {}. What they had goes on the passage.",
-                fmt_thousands_f0(gone),
-                st.town_name[port]
-            ),
+            format!("After a hungry year {} people {whence} take ship, {quay}. What they had goes on the passage.", fmt_thousands_f0(gone)),
         );
         ev.town = Some(port);
         ev.cell = Some(st.town_node[port]);

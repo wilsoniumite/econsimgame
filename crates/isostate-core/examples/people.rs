@@ -89,8 +89,10 @@ fn main() {
         let pop: f64 = act.iter().map(|&t| st.pop[t]).sum();
         // the island's growth, and the spread of the towns' own rates of increase
         let was: f64 = before.iter().sum();
-        let g: Vec<f64> = if st.pp_growth.is_empty() { vec![f64::NAN] } else { act.iter().map(|&t| st.pp_growth[t]).collect() };
-        rates.push((g.iter().cloned().fold(f64::INFINITY, f64::min), pop / was - 1.0, g.iter().cloned().fold(f64::NEG_INFINITY, f64::max)));
+        // (the port keeps no rates, and a town founded this year has none yet: NaN where there is nothing)
+        let g = act.iter().filter(|&&t| st.town_founded[t] < year).map(|&t| st.pp_growth.get(t).copied().unwrap_or(f64::NAN));
+        let (least, most) = g.fold((f64::NAN, f64::NAN), |(lo, hi), v| (v.min(lo), v.max(hi)));
+        rates.push((least, pop / was - 1.0, most));
         before = st.pop.clone();
         if every || year % 10 == 0 || year == sim.end_year {
             let k = if every { 1 } else { rates.len().min(10) };
