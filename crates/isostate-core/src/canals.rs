@@ -740,7 +740,6 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     let at = |name: &str, y: i64| annual(series(name), y0, y);
     let mut out: Vec<(String, Kind, f64)> = Vec::new();
     let on = P.canals.enabled;
-    let nan_off = |v: f64| if on { v } else { f64::NAN };
     let book = &st.cn.book;
 
     // ---- any run: the spread of coal's price between towns, and coal's share of
@@ -769,13 +768,13 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     }
 
     // ---- the network
-    let km_at =|y: i64| book.years.iter().find(|n| n.year == y).map_or(f64::NAN, |n| n.km);
+    let km_at = |y: i64| book.years.iter().find(|n| n.year == y).map_or(f64::NAN, |n| n.km);
     let first = book.lines.iter().map(|l| l.opened).fold(f64::NAN, f64::min);
     out.push(("canal_first_year".into(), Kind::Year, first.floor()));
     let begun = book.lines.iter().map(|l| l.start as f64).fold(f64::NAN, f64::min);
     out.push(("canal_first_begun".into(), Kind::Year, begun));
     for y in (1760..=1890).step_by(10).chain([y1]).filter(|&y| y >= y0 && y <= y1) {
-        out.push((format!("canal_km_{y}"), Kind::Count, nan_off(km_at(y))));
+        out.push((format!("canal_km_{y}"), Kind::Count, km_at(y)));
     }
     // the last year a canal was promoted that was dug, and whether the first
     // canal was open before the first railway
@@ -783,7 +782,6 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     out.push(("canal_last_begun".into(), Kind::Year, last));
     let rail_first = series("rail_km").iter().position(|&v| v > 0.0).map(|t| y0 as f64 + (t / 12) as f64);
     let before = match rail_first {
-        _ if !on => f64::NAN,
         Some(rf) => (first < rf) as u8 as f64,
         None => first.is_finite() as u8 as f64,
     };
@@ -906,9 +904,9 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     // (a junction cut between two canals side by side is in the book as a trunk
     // with no new cell: it is counted by itself and not among the canals)
     let junction = |l: &ways::Line| l.serves == SERVES_TRUNK && l.new_cells == 0;
-    let lines_to = |words: &[&str]| nan_off(book.lines.iter().filter(|l| !junction(l) && words.contains(&ways::serves_word(l.serves))).count() as f64);
+    let lines_to = |words: &[&str]| book.lines.iter().filter(|l| !junction(l) && words.contains(&ways::serves_word(l.serves))).count() as f64;
     out.push(("canal_lines_trunk".into(), Kind::Count, lines_to(&[ways::serves_word(SERVES_TRUNK)])));
-    out.push(("canal_junctions_cut".into(), Kind::Count, nan_off(book.lines.iter().filter(|l| junction(l)).count() as f64)));
+    out.push(("canal_junctions_cut".into(), Kind::Count, book.lines.iter().filter(|l| junction(l)).count() as f64));
     out.push(("canal_lines_to_collieries".into(), Kind::Count, lines_to(&["collieries"])));
     out.push(("canal_lines_to_quarries".into(), Kind::Count, lines_to(&["quarries", "clay pits"])));
     out.push(("canal_lines_to_iron_mines".into(), Kind::Count, lines_to(&["iron mines"])));
@@ -923,13 +921,13 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             if gdp > 0.0 { l.spent / gdp } else { 0.0 }
         })
         .sum();
-    out.push(("canal_cost_in_years_of_output".into(), Kind::Real, nan_off(cost_share)));
+    out.push(("canal_cost_in_years_of_output".into(), Kind::Real, cost_share));
     let (spent, expected): (f64, f64) = book.lines.iter().fold((0.0, 0.0), |(s, e), l| (s + l.spent, e + l.cost));
     out.push(("canal_spent_over_expected".into(), Kind::Ratio, if expected > 0.0 { spent / expected } else { f64::NAN }));
     let slowest = book.lines.iter().map(|l| l.opened - l.start as f64).fold(f64::NAN, f64::max);
     out.push(("canal_slowest_years".into(), Kind::Real, slowest));
     let most = book.years.iter().map(|n| n.building).max().unwrap_or(0);
-    out.push(("canal_most_digging".into(), Kind::Count, nan_off(most as f64)));
+    out.push(("canal_most_digging".into(), Kind::Count, most as f64));
     let most_navvies = st.cn.years.iter().map(|c| c.navvies).fold(f64::NAN, f64::max);
     out.push(("canal_most_navvies".into(), Kind::Count, most_navvies));
     // fares over the capital laid out, the capital at that year's prices

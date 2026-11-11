@@ -32,6 +32,16 @@ canal unless somebody cut a junction, which is a project like any other, with
 no new cell and a cell's worth of materials. The links are kept and are what
 the record gives the viewer, so it has no junctions to guess at.
 
+Four or five junctions are cut in a run (two to eleven). The news tells one
+as a junction ("A junction joins the canals between Sandmere and
+Brambridge"), at the weight of a year's branches and with no kilometres, and
+the facts count it under `canal_junctions_cut`, not among the canals. Not
+every such cut is between two canals: where a later canal's route runs along
+an earlier one and takes one of its corners short, the new link closes a
+triangle of three cells. There are 2 to 11 such triangles in the seven runs
+I counted, about one link in a hundred, and the viewer may want to draw one
+as a bend made straighter.
+
 **It keeps to low ground.** The route search finds a river's valley cheap
 (a river cell costs 0.7 of a lowland cell), hills twice the lowland, and
 every unit of height `lock_cells` (80) cells' worth: the map's heights run
@@ -56,7 +66,10 @@ nobody's time, as in the port: that is the railways' to change.
 
 **It takes years.** Thirty-six months if every order is filled, and a canal
 orders no more each month than its cash will pay for, wages included. From
-promotion to opening the slowest of a run takes five to seven years.
+promotion to opening the slowest of a run takes five to eight years. Every
+canal has the same thirty-six months whatever its length, a junction of one
+cell too: that is the planner's rule for every line of every way, and it is
+wrong for the short ones.
 
 **The promoters are the railways'.** `ways::plan` and `ways::progress` run a
 second time each year and month with the canal as the `Way`. Every canal is
@@ -76,7 +89,8 @@ promoters, and each is a field of `Way`:
   town knows how to dig, not the six dearest of the island.
 - They see the railways that are being laid (the lines under way are put on
   their copy of the graph), so no canal is promoted on carting that a line
-  already building will take.
+  already building will take. The railway's promoters see the canals that
+  are being dug in the same way (`Way::rivals`, both ways since the review).
 
 Money is the railways' too: the landlords of the two towns put up to 35 per
 cent of their cash and the households 8 per cent, half the expected cost
@@ -114,6 +128,13 @@ dug: 50 km in the first ten years, then most of the network in the twenty
 after. With plain diffusion (tried on seed 7) sixteen canals were promoted
 all over the island within five years of the first, and 580 km were open
 ten years on.
+
+How much the rule does was measured in the review, on seeds 3 and 7. With
+`hearsay` at 1 (plain diffusion) 548 km are open in 1780; at 0.2, 422; at 0,
+where a town with no canal teaches nobody, 209, and then 692 in 1790. So the
+rule moves the rush five or ten years and does not make it any longer. What
+makes it short is that nearly every canal that will ever pay pays already in
+1750: once a town knows how, there is nothing to wait for but the digging.
 
 The know-how is kept in the canals' own state (`CanalState::know`), not in
 the content's list of inventions, and the survey is drawn from a stream of
@@ -163,12 +184,20 @@ fewer canals.
 
 ## What the sweeps showed
 
-Seeds 1 to 8 to 1900. Mean, and in brackets the least and greatest seed. The
-folders are `sweep-canals*` under `.claude/night/reports/`: `-base` and
-nothing for the port without and with canals, `-c` for carting, `-rc` for
-the game's railways and carting, `-game` for the game's rules (canals off in
-`-game-base`), `-f6` with six families, `-s9` for seeds 9 to 16. No run of
-the 72 with canals failed.
+Seeds 1 to 8 to 1900 unless a line says otherwise. Mean, and in brackets the
+least and greatest seed. Two sets of sweeps stand behind this page, both
+under `.claude/night/reports/`. The first build's are `sweep-canals*`:
+`-base` and nothing for the port without and with canals, `-c` for carting,
+`-rc` for the game's railways and carting, `-game` for the game's rules
+(canals off in `-game-base`), `-f6` with six families, `-s9` for seeds 9 to
+16. The review's are `canals-review/sw-*`, each on seeds 1 to 16 against a
+baseline made by the same build: `sw-port`, `sw-port-f6`, `sw-game` and
+`sw-game-f6`, with `-base` for the same rules without canals. No run with
+canals failed, 72 in the first set and 64 in the second, and the review's
+port rows repeat the first build's to the last digit. The rows for carting
+alone and for railways with carting are the first build's and were not run
+again; since then the railway's promoters see canals being dug, which moves
+the rows with the game's railways by a few kilometres.
 
 **Kilometres of canal, and when the first opens.**
 
@@ -178,25 +207,28 @@ the 72 with canals failed.
 | six families | 1776 (1762 to 1786) | 26 | 185 | 468 | 700 | 801 | 820 | 837 | 849 | 856 (710 to 966) |
 | with railways and carting | 1774 (1765 to 1789) | 24 | 136 | 353 | 604 | 705 | 719 | 743 | 783 | 786 (616 to 928) |
 | the same, six families | 1776 (1765 to 1788) | 15 | 143 | 349 | 624 | 724 | 760 | 800 | 842 | 844 (734 to 988) |
-| the game's rules | 1778 (1765 to 1794) | 20 | 155 | 379 | 505 | 596 | 645 | 671 | 733 | 748 (500 to 894) |
-| the game's rules, six families | 1777 (1767 to 1782) | 16 | 143 | 408 | 553 | 620 | 667 | 703 | 801 | 810 (684 to 962) |
+| the game's rules | 1778 (1765 to 1794) | 20 | 155 | 379 | 505 | 596 | 645 | 673 | 737 | 752 (500 to 894) |
+| the game's rules, six families | 1777 (1767 to 1782) | 16 | 143 | 408 | 553 | 620 | 667 | 703 | 801 | 807 (684 to 962) |
+| seeds 9 to 16: canals alone | 1775 (1761 to 1787) | 16 | 229 | 508 | 687 | 729 | 765 | 783 | 799 | 802 (718 to 972) |
+| seeds 9 to 16: the game's rules | 1778 (1770 to 1795) | 7 | 139 | 437 | 537 | 647 | 694 | 727 | 810 | 881 (650 to 1,000) |
+| seeds 9 to 16: the game's rules, six families | 1780 (1770 to 1795) | 5 | 88 | 440 | 556 | 659 | 721 | 785 | 865 | 876 (716 to 1,228) |
 
 So: a survey in the 1760s, the first canal open in the 1770s, most of the
 network dug between 1780 and 1800 at 20 to 26 km a year, and a tail to the
 1830s. Britain's went on longer, with its mania in the 1790s; here the
-1780s and 1790s are both. On seeds 9 to 16, which nothing was chosen on, the
-first canal opens in 1775 (1761 to 1787) alone and in 1780 (1770 to 1795)
-under the game's rules with six families, with 687 and 556 km in 1800.
+1780s and 1790s are both. Seeds 9 to 16, which nothing was chosen on, give
+the same picture.
 
-A run digs 34 canals alone and 32 in company. Twenty-four to thirty-one are
-trunks between towns. The four or five branches run to works (three),
-quarries, woods, collieries, iron mines and farms (about one of each, or
-none). Many towns of these islands stand on their own coal, so what a canal
-does for a coalfield it mostly does as a trunk from the pit town to its
-customers. The
-network costs 0.16 of a year's output (0.13 to 0.20), each canal counted at
-the output of the year it opened, and the canals come in at 1.06 times what
-their promoters expected.
+A run digs 24 canals between towns alone (21 to 29) and 22 in company with
+six families (16 to 38 over sixteen seeds), cuts four or five junctions, and
+runs four or five branches: to works (two or three), quarries, woods,
+collieries, iron mines and farms (about one of each, or none). Many towns of
+these islands stand on their own coal, so what a canal does for a coalfield
+it mostly does as a trunk from the pit town to its customers. The network
+costs 0.16 of a year's output (0.13 to 0.20), each canal counted at the
+output of the year it opened, and the canals come in at 1.06 times what
+their promoters expected. None was still unfinished at the end of the runs I
+looked at (seeds 1, 4, 12 and 15 in company).
 
 **What they carry.** In the ten years to 1800, of the weight times distance
 the boats can be given a name for:
@@ -214,8 +246,9 @@ in 1800: as with the railways nobody collects them, and a canal would be a
 very good thing to own.
 
 **Before the railways, in every run.** The first canal opens before the
-first railway in all 72 runs, by 60 years alone (44 to 72) and by 57 in
-company with six families (25 to 74).
+first railway in all 72 runs of the first set and all 64 of the review's, by
+60 years alone (39 to 86 over sixteen seeds) and by 57 in company with six
+families (25 to 77).
 
 **And after.** Nothing is closed and nothing needs to be:
 
@@ -246,15 +279,23 @@ without:
 | the game's rules, six families | 0.49 for 0.45 | 0.53 for 0.53 | 0.55 for 0.59 |
 
 Alone, five or six seeds of eight move up; with families and in company as
-many move down as up. Nothing here is established, and certainly no
-narrowing. The reason is not the canals. On seed 7 coal is 0.39 to 0.47 in
+many move down as up. Over sixteen seeds the spread of 1800 is a little
+wider with canals in three of the four comparisons (0.38 for 0.35 alone, on
+eleven seeds of sixteen; 0.42 for 0.39 with six families, ten; 0.47 for 0.42
+under the game's rules, twelve) and not in the fourth (0.47 for 0.45 with
+six families in company, six of sixteen), and by 1850 nothing can be told.
+Nothing here is established, and certainly no narrowing. The reason is not
+the canals. On seed 7 coal is 0.39 to 0.47 in
 the five towns that dig most of it and 1.3 to 1.8 everywhere else in 1800,
 with a canal to every town by 1793 (`examples/canals.rs --coal`). Carrying a
 unit of coal sixty kilometres by canal, wharves and handling included, costs
-about 0.12; the gap is more than 1. The rest is the port's trade rule, which
-caps what a town's merchants send in a month at a share of their stock: with
-a gap that wide coal is at the cap already, and making its carriage cheaper
-moves no more of it. dx-rail found the same of the railways. Coal's share of the
+about 0.12; the gap is more than 1. The rest is the port's trade rule
+(`econ::step_month`, "trade between towns"). The share of its stock a town's
+merchants send to another grows with the price gap over the price there,
+but only up to a gap of half that price, and all a town sends in a month is
+capped at `trade_cap` of its stock. With coal at three times the pit price
+the rule is at both stops already, and making the carriage cheaper moves no
+more of it. dx-rail found the same of the railways. Coal's share of the
 households' warmth and of the works' heat does not move either (0.90 for
 0.90 and 0.99 for 0.99 in 1800).
 
@@ -293,44 +334,55 @@ work. By 1900 nothing can be told in any of them.
 
 Under the game's rules (prices, the Engel curve, machines, harvests, the
 chronicle, works, railways, carting and people), canals on against canals
-off, seeds 1 to 8 and then 9 to 16 with six families:
+off. These are the review's sweeps, on the build that is merged, seeds 1 to
+8 and seeds 9 to 16 side by side:
 
-| | seeds 1 to 8, no families | six families | seeds 9 to 16, six families |
-|---|---|---|---|
-| output per head, 1800 | 1.63 for 1.61 (8/0) | 1.71 for 1.66 (8/0) | 1.73 for 1.69 (7/1) |
-| carters among all hands, 1800 | 0.112 for 0.122 (0/8) | 0.116 for 0.128 (0/8) | 0.118 for 0.132 (0/8) |
-| goods made a head, 1800 | 4.13 for 4.09 (6/2) | 4.47 for 4.38 (7/1) | 4.44 for 4.41 (5/3) |
-| real wage, 1850 | 1.77 for 1.83 (1/7) | 1.96 for 2.05 (4/4) | 2.13 for 2.13 (3/5) |
-| first railway | 1843 for 1839 (5/1) | 1834 for 1832 (5/2) | 1838 for 1836 (3/0) |
-| km of railway, 1850 | 453 for 644 (0/6) | 958 for 997 (4/3) | 762 for 881 (0/8) |
-| km of railway, 1870 | 1,493 for 1,629 (2/6) | 1,895 for 1,896 (6/2) | 1,808 for 1,877 (2/6) |
-| km of railway, 1900 | 2,288 for 2,372 (4/4) | 2,554 for 2,522 (4/4) | 2,512 for 2,496 (4/4) |
-| famine years in a run | 1.0 for 2.1 (1/5) | 0.75 for 1.75 (2/4) | 0.75 for 0.75 (2/2) |
+| | no families, seeds 1 to 8 | seeds 9 to 16 | six families, seeds 1 to 8 | seeds 9 to 16 |
+|---|---|---|---|---|
+| output per head, 1800 | 1.63 for 1.61 (8/0) | 1.68 for 1.65 (7/1) | 1.71 for 1.66 (8/0) | 1.73 for 1.69 (7/1) |
+| carters among all hands, 1800 | 0.112 for 0.122 (0/8) | 0.116 for 0.128 (0/8) | 0.116 for 0.128 (0/8) | 0.118 for 0.132 (0/8) |
+| goods made a head, 1800 | 4.13 for 4.09 (6/2) | 4.17 for 4.13 (6/2) | 4.47 for 4.38 (7/1) | 4.44 for 4.41 (5/3) |
+| real wage, 1800 | 1.61 for 1.63 (3/5) | 1.63 for 1.64 (4/4) | 1.65 for 1.65 (3/5) | 1.67 for 1.69 (2/6) |
+| real wage, 1850 | 1.76 for 1.83 (1/7) | 1.86 for 1.69 (8/0) | 1.96 for 2.05 (4/4) | 2.13 for 2.13 (3/5) |
+| real wage, 1900 | 2.76 for 2.85 (4/4) | 2.79 for 2.80 (4/4) | 2.86 for 2.72 (6/2) | 2.65 for 2.75 (4/4) |
+| first railway | 1843 for 1839 (5/1) | 1844 for 1846 (3/4) | 1834 for 1832 (5/2) | 1838 for 1836 (3/0) |
+| km of railway, 1850 | 427 for 644 (0/6) | 478 for 385 (4/1) | 968 for 997 (4/3) | 780 for 881 (0/8) |
+| km of railway, 1870 | 1,464 for 1,629 (0/8) | 1,522 for 1,381 (5/3) | 1,902 for 1,896 (5/3) | 1,826 for 1,877 (2/6) |
+| km of railway, 1900 | 2,281 for 2,372 (2/6) | 2,328 for 2,302 (4/4) | 2,532 for 2,522 (3/5) | 2,508 for 2,496 (3/5) |
+| famine years in a run | 1.0 for 2.1 (1/5) | 0.6 for 1.1 (2/4) | 0.9 for 1.75 (2/4) | 0.75 for 0.75 (2/2) |
 
-So in company the canals are worth two or three per cent of output a head
-in 1800, on every island, by freeing one hand in a hundred from the road.
-Then they hold the railway back a little: a canal has already taken part of
-what a line would save, so the first line opens two to four years later and
-there is 4 to 30 per cent less railway in 1850. By 1900 the railway is the
-length it would have been. In the years between, the island with canals is
-a little behind the one without (the real wage of 1850 is lower on seven
-seeds of eight without families, and not clearly so with them). That is the
-honest sum and I have left it standing; it is also the one thing here a
-player might feel.
+Two things hold on every set of seeds. The carters are one hand in a hundred
+fewer in 1800, on all thirty-two islands, and output a head is two or three
+per cent higher, on thirty of them. The real wage of 1800 does not show it
+(twelve islands up, twenty down, by a hundredth).
 
-A run in company takes 18.9 seconds where it took 16.8. Alone on the port
-it is 25 for 18, because there the canal promoters are the only ones doing
-the sums.
+The rest does not hold. On seeds 1 to 8 without families the canals seemed
+to hold the railway back and to leave the island behind in the middle of the
+century: a third less railway in 1850, a tenth less in 1870, and a real wage
+of 1850 lower on seven seeds of eight. The first build's page said so. On seeds 9 to
+16 it is the other way about: more railway in 1850 and 1870, and a real wage
+of 1850 higher on all eight. With six families there is a little less
+railway in 1850 (874 km for 939 over the sixteen seeds, four up and eleven
+down) and nothing in the wage. So a canal does take some of what an early
+line would have saved, and the first line is a year or two later on more
+islands than not, but what that does to the island in 1850 is inside the
+difference between one island and the next. By 1900 nothing can be told.
+
+A run in company with six families takes about a seventh longer with canals,
+and a run alone on the port about a third longer, because there the canal
+promoters are the only ones doing the sums (the first build timed 18.9
+seconds for 16.8 and 25 for 18; the sweeps' own seconds were taken under
+other work and say less).
 
 **The scripted players** (`examples/bots.rs`, the game's rules, seeds 1, 2,
-3 and 7) play all sixteen games through with canals on
-(`.claude/night/reports/canals-bots-game.txt`). The landlord and the
-thoughtful player finish richest of the six families on every seed, as they
-did before (`core-steps/people-probe/bots-game.txt`); the passive player and
-the founder finish first to fourth, as they did. Seed by seed the fortunes
-of 1900 differ by up to half in either direction, and that earlier run was
-made with slightly older code, so this says the game still plays and no
-more.
+3 and 7) play all sixteen games through with canals on, on the first build
+(`.claude/night/reports/canals-bots-game.txt`) and again on the merged one
+(`canals-review/bots-game.txt`). The landlord and the thoughtful player
+finish richest of the six families on every seed, as they did before
+(`core-steps/people-probe/bots-game.txt`); the passive player and the
+founder finish first to fourth, as they did. Seed by seed the fortunes of
+1900 differ by up to half in either direction, and that earlier run was made
+with slightly older code, so this says the game still plays and no more.
 
 ## For the viewer
 
@@ -340,8 +392,8 @@ Only when the switch is on:
   is `{"a", "b", "begun", "opened"}`: two neighbouring cells, the year the
   canal it belongs to was promoted, and the moment it opened (a year with a
   fraction), or null if it was still being dug when the run ended. Links are
-  in the order dug, each once. A link whose two ends both carry other canals
-  is a junction that was cut.
+  in the order dug, each once. A link whose two ends both carried a canal
+  before it is a junction that was cut, or a corner taken short (above).
 - **The live API**: `LiveYear::canals` is the same list as it stands at the
   end of each year, every link so far and those being dug.
 - **The `trans` layer** marks a cell with a canal open with 16 and one being
@@ -349,8 +401,11 @@ Only when the switch is on:
   building", and canals are left out of `projects`.
 - **News**: kinds `canal` (openings) and `canal_plan` (schemes). The first
   canal has weight 1, every later opening and scheme 0.3, a year's branches
-  together 0.25. The survey is a `discovery` with no `tech`. The viewer has
-  labels and a colour for the two kinds (`ui.rs`); it draws nothing yet.
+  together and a junction 0.25. That is about sixty items a run, thirty of
+  each kind. The survey is a `discovery` with no `tech`. The viewer has
+  labels and a colour for the two kinds (`ui.rs`); it draws nothing yet. It
+  reads the `trans` layer by its bits (1 and 2 for the road, 4 for track, 8
+  for track building), so the two new bits do not disturb what it draws now.
 
 A canal's level is not recorded. The viewer would have to work out pounds
 and locks from the heights along the links, as map-viewer-ground suggests.
@@ -358,10 +413,12 @@ and locks from the heights along the links, as map-viewer-ground suggests.
 ## What worries me
 
 - **It all happens in thirty years.** Britain's canals took seventy. Here
-  four fifths of the network is open by 1800. The pace is the
-  know-how's, and `hearsay` and `know` are the dials: a lower `hearsay`
-  makes each town wait for a neighbour's canal to open, a higher `know`
-  makes it wait longer. I did not tune them against anything.
+  four fifths of the network is open by 1800. The know-how sets when the
+  rush begins, not how long it lasts: `hearsay` at nought puts it off ten
+  years and no more (above). It is short because the canals pay too well
+  (below), so every town digs all it will ever dig as soon as it knows how.
+  Dearer canals, or promoters who must first be paid a toll, would stretch
+  it; nothing here was tuned against anything.
 - **Canals are nearly all trunks.** The brief had coalfields and quarries
   far from navigable water in mind, and there are four or five such branches
   a run. Trunks are looked at first and the money goes to them; and a
@@ -378,9 +435,11 @@ and locks from the heights along the links, as map-viewer-ground suggests.
   viewer could draw a canal with no boats as disused: `CanalState::traffic`
   has the weight through every cell in the last year, but it is not in the
   record.
-- **The railway's promoters do not see a canal being dug**, though the
-  canal's see a railway being laid. A canal takes four years, so a line can
-  be promoted on carting a canal is about to take.
+- **A junction takes three years**, like every canal, and so does a branch
+  of two cells. The months should go with the work.
+- **Coal's price is no nearer level between towns**, and in 1800 a little
+  further from it. If canals are to make coal cheap inland, the trade rule's
+  two stops are where to look (above), not the canals.
 - **Railway navvies are still free.** A canal's cost the island their work
   elsewhere and a railway's do not, which flatters the railway a little.
 - **What the boats carry is partly an estimate.** The towns' trade is known
@@ -394,7 +453,38 @@ and locks from the heights along the links, as map-viewer-ground suggests.
 - **One river, one canal.** A canal along a navigable river is allowed and
   is cheap to route (it is a river's valley). Nothing says a river made
   navigable is a different thing from a canal beside it.
+- **The know-how is not on the viewer's knowledge map**, since it is not one
+  of the content's inventions.
 - The viewer was built but not run. It does not draw canals.
+
+## What the review checked
+
+A second helper went over the mechanism before it was merged.
+
+- **The port did not move.** Seed 3, and seed 7 with six families, write the
+  same `series_monthly.csv`, `events.json` and `params.json` as the baseline
+  taken at a5ea2ea, and the golden constants are untouched.
+- **Off is off under the game's rules too.** With `canals.enabled=false` a
+  run under the game's rules (seed 3, and seed 7 with six families) writes
+  the same four files, `run.bin` included, byte for byte, as the build this
+  branch was cut from. So the changes to `ways.rs`, `rail.rs`, `econ.rs` and
+  the searches do nothing to a game without canals.
+- **Extreme settings.** Each number in turn was set to nought and to
+  something absurd on seeds 3 and 7 (`canals-review/x-*`): 64 runs, none
+  failed, money conserved every month. A hurdle of 5, a wharf of 5, a cell
+  of water dearer than road, wages of twenty times the materials or locks at
+  2,000 cells a unit of height give no canal at all. A hurdle of nought
+  gives 1,080 km where there were 785. `know` at nought is need alone and
+  the first canal opens in 1754. Fifty years' worth of months
+  (`build_months` 600) makes the slowest canal take 56 years and nothing
+  else go wrong. The cap of a fifth of a town's hands as navvies never bound
+  on these two seeds, and nor did twelve canals at once (on seeds 2, 4 and 5
+  twelve are digging in the busiest year).
+- **Three things were changed.** A junction is told and counted as a
+  junction: before, the news promoted "62 km of canal" for a cut of one
+  cell, and one canal in seven in the facts was such a cut. The railway's
+  promoters see canals being dug. And the page no longer says that canals
+  leave the island behind in 1850, which seeds 9 to 16 do not bear out.
 
 ## Facts added to the sweep
 
@@ -417,7 +507,8 @@ and `_works_goods_`, shares of what the boats carried that can be named;
 `canal_traffic_peak_year` and `canal_traffic_end_vs_peak`;
 `canal_works_near_Y` for 1760, 1800, 1830 and the last year, the share of
 works by size within a cell and a half of where the canals are at the end,
-and `canal_land_near`; `canal_km_beside_track_Y`; `canal_lines_trunk` and
+and `canal_land_near`; `canal_km_beside_track_Y`; `canal_lines_trunk` (the
+canals between towns, junctions left out), `canal_junctions_cut` and
 `canal_lines_to_collieries`, `_quarries`, `_iron_mines`, `_farms`, `_woods`,
 `_works`; `canal_cost_in_years_of_output`, `canal_spent_over_expected`,
 `canal_slowest_years`, `canal_most_digging`, `canal_most_navvies`; and
