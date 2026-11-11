@@ -6,6 +6,7 @@
 //! through explicit issuance. `money_total` checks that invariant.
 
 use crate::content::Content;
+use crate::engel;
 use crate::families;
 use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
@@ -294,7 +295,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let goods_budget = budget - urban_pay[t];
         pc[t] = if st.pop[t] > 0.0 { goods_budget / st.pop[t].max(1.0) } else { 0.0 };
     }
-    let (q_hh, subcost) = les(&pc, &unit, &C.subsistence, &C.shares);
+    // engel: past a reference income the households' marginal shares lean toward
+    // a richer set (docs/rules/engel.md); landlords, below, keep their own
+    let (q_hh, subcost) = if P.engel.enabled {
+        engel::les(&pc, &unit, &C.subsistence, &C.shares, &C.shares_rich, &P.engel)
+    } else {
+        les(&pc, &unit, &C.subsistence, &C.shares)
+    };
     let mut d_hh = goods_from_services(&q_hh, &share, &C.props);
     for t in 0..T {
         for v in d_hh.row_mut(t) {
@@ -715,6 +722,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_to(&mut sales_value, &bincount(&et, &in_paid, T));
     add_to(&mut hh_inc, &bincount(&et, &hh_ex, T));
     pay_cell_rents(st, P, &et, &ex, &rent_ex, T);
+
+    // engel: what households spent on each need, noted for the observer before prices move
+    if P.engel.enabled {
+        engel::note_month(st, C, &pc, &subcost, &q_hh, &share, &fill);
+    }
 
     // households and landlords buy goods; households pay urban rent
     let p = &st.price;

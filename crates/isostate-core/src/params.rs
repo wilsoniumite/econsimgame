@@ -249,6 +249,9 @@ pub struct Params {
     /// Merchants who mark prices with the stock they hold (not in the Python; see docs/rules/prices.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub prices: crate::prices::PriceParams,
+    /// An Engel curve in what households buy (not in the Python; see docs/rules/engel.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub engel: crate::engel::EngelParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -440,6 +443,7 @@ pub fn default_params() -> Params {
         university_gain: UNIVERSITY_GAIN,
         end_year: None,
         prices: crate::prices::PriceParams::default(),
+        engel: crate::engel::EngelParams::default(),
     }
 }
 
@@ -457,6 +461,7 @@ impl Default for Params {
 pub fn game_params() -> Params {
     let mut P = default_params();
     P.prices = crate::prices::PriceParams::game();
+    P.engel = crate::engel::EngelParams::game();
     P
 }
 

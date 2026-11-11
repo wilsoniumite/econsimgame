@@ -47,6 +47,8 @@ fn a_tiny_sweep_writes_finite_facts() {
             "towns_1760",
             "farm_share_1760",
             "industry_share_1760",
+            "mine_share_1760",
+            "grain_output_1760_vs_1750",
             "real_wage_1760_vs_1750",
             "output_per_head_1760_vs_1750",
             "output_per_head_peak_year",

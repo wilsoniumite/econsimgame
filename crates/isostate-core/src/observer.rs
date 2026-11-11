@@ -75,7 +75,7 @@ pub struct Series {
 }
 
 impl Series {
-    fn add(&mut self, name: &str, label: &str, group: &str, unit: &str, n_months: usize) {
+    pub(crate) fn add(&mut self, name: &str, label: &str, group: &str, unit: &str, n_months: usize) {
         self.index.insert(name.to_string(), self.names.len());
         self.names.push(name.to_string());
         self.meta.push(SeriesMeta { label: label.to_string(), group: group.to_string(), unit: unit.to_string() });
@@ -86,7 +86,7 @@ impl Series {
         &self.data[self.index[name]]
     }
 
-    fn set(&mut self, name: &str, t: usize, v: f64) {
+    pub(crate) fn set(&mut self, name: &str, t: usize, v: f64) {
         let k = self.index[name];
         self.data[k][t] = v;
     }
@@ -116,7 +116,7 @@ fn label_of(C: &Content, kind: &str, mem: &str) -> String {
     C.good_label[C.gi(mem)].clone()
 }
 
-pub fn init(st: &mut State, C: &Content, _P: &Params, n_months: usize) {
+pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     let mut reg = Series::default();
     let mut add = |name: &str, label: &str, group: &str, unit: &str| reg.add(name, label, group, unit, n_months);
     add("pop", "Population", "people", "people");
@@ -149,6 +149,11 @@ pub fn init(st: &mut State, C: &Content, _P: &Params, n_months: usize) {
             add(&format!("share_{gname}_{mem}"), &label_of(C, kind, mem), &format!("share_{gname}"), "share");
         }
     }
+    // engel: a chained cost of living, the real wage on it and the households'
+    // budget shares, only when the mechanism is on (a port run's list stays as it is)
+    if P.engel.enabled {
+        crate::engel::add_series(&mut reg, C, n_months);
+    }
     st.series = reg;
     st.obs = ObserverState::default();
 }
@@ -167,7 +172,7 @@ pub fn national_prices(st: &State) -> Vec<f64> {
     out.iter().map(|v| v / wsum).collect()
 }
 
-pub fn record_month(st: &mut State, C: &Content, _P: &Params, t: usize) {
+pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     let T = st.T_max;
     let ms = &st.month_stats;
     let pop: Vec<f64> = (0..T).map(|i| if st.town_active[i] { st.pop[i] } else { 0.0 }).collect();
@@ -244,6 +249,10 @@ pub fn record_month(st: &mut State, C: &Content, _P: &Params, t: usize) {
         for (mem, val) in members.iter().zip(&v) {
             s.set(&format!("share_{gname}_{mem}"), t, if tot > 1e-9 { val / tot } else { f64::NAN });
         }
+    }
+    // engel: the chained index, one Fisher link a year, beside the fixed basket's
+    if P.engel.enabled {
+        crate::engel::record_month(st, C, &mut s, t, wage, &P_nat);
     }
     st.series = s;
 }

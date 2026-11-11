@@ -347,4 +347,8 @@ pub struct State {
     /// A test sets this to find each town's wage by the Python's plain bisection,
     /// every midpoint evaluated, with no Newton steps to say where the root is.
     pub plain_bisection: bool,
+
+    // ---------------- engel (not in the Python; empty while `engel.enabled` is off)
+    /// What the observer keeps for the chained price index and the budget shares.
+    pub engel: crate::engel::EngelState,
 }

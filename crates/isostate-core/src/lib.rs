@@ -24,6 +24,7 @@
 pub mod cli;
 pub mod content;
 pub mod econ;
+pub mod engel;
 pub mod facts;
 pub mod families;
 pub mod firms;
