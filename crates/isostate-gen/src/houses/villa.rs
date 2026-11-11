@@ -178,6 +178,13 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
             k.stack(gable, (zb + zfm) * 0.5, 0.0056, 0.0062, h + main_rise * 0.5, h + main_rise + 0.006, fabric.stack, 2),
         ];
     }
+    // a tree or two in the garden, at every level, so that the island's trees are the same wherever the camera is
+    let rear = -pd * 0.5 - BACK_ROOM + 0.001;
+    let (gx0, gx1, gate) = (-pw * 0.5 + 0.0008, pw * 0.5 - 0.0008, pd * 0.5 + SET_BACK - 0.0012);
+    garden_tree(green, &k, site, gx0 + 0.007, rear + 0.007, 0.3 + 0.08 * r(16), t.seed, pal);
+    if r(15) < 0.5 {
+        garden_tree(green, &k, site, gx1 - 0.007, rear + 0.009, 0.26 + 0.08 * r(19), Seed::new(t.seed.v, t.seed.u), pal);
+    }
     if k.far() {
         return;
     }
@@ -185,14 +192,8 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
         hearth_smoke(smoke, tops[(r(12) * 2.0) as usize % 2], t.seed, pal);
     }
 
-    // the garden: lawn over the whole plot and the ground behind, a tree or two
-    let rear = -pd * 0.5 - BACK_ROOM + 0.001;
-    let (gx0, gx1, gate) = (-pw * 0.5 + 0.0008, pw * 0.5 - 0.0008, pd * 0.5 + SET_BACK - 0.0012);
+    // the garden: lawn over the whole plot and the ground behind
     k.patch(gx0, gx1, rear, gate, 0.0034, *pal.ground.garden);
-    garden_tree(green, &k, site, gx0 + 0.007, rear + 0.007, 0.3 + 0.08 * r(16), t.seed, pal);
-    if r(15) < 0.5 {
-        garden_tree(green, &k, site, gx1 - 0.007, rear + 0.009, 0.26 + 0.08 * r(19), Seed::new(t.seed.v, t.seed.u), pal);
-    }
     if !k.near() {
         return;
     }
@@ -243,8 +244,9 @@ mod tests {
                     assert!(lo.z > -PLOT.1 * 0.5 - BACK_ROOM - 0.002 && hi.z < PLOT.1 * 0.5 + SET_BACK + 0.001, "seed {n} {era:?} {detail:?}: from {} to {}", lo.z, hi.z);
                     assert!(m.solid.triangles() > last, "seed {n} {era:?}: no more at {detail:?}");
                     last = m.solid.triangles();
-                    // it has a garden with a tree in it from the distance the game is played at
-                    assert_eq!(m.green.is_empty(), detail == Detail::Far);
+                    // the tree in its garden stands at every level, and is the same tree
+                    assert!(!m.green.is_empty());
+                    assert!(detail == Detail::Far || m.green == built(&Villa { era, detail: Detail::Far, upland: n % 6 == 0, ..Villa::new(PLOT.0, PLOT.1, Roof::of(1850, 1880, false, true, seed), seed) }).green);
                 }
             }
         }

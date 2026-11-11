@@ -619,7 +619,9 @@ fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
 // at the distance the game is played from, and as shells and roofs
 // elsewhere. When the camera has moved or zoomed so far that what it sees is
 // no longer covered, the year's scenery is built again (`stale`), off the
-// main thread, as it is for a new year.
+// main thread, as it is for a new year; nothing but the houses and their
+// smoke differs by the camera, so nothing else is put on screen again
+// (`rebuild_year`).
 
 /// Where the camera was looking and from how far when a year's scenery was
 /// begun, which settles how much of each house is drawn.

@@ -1233,8 +1233,9 @@ fn rebuild_year(
         builds.task = None;
         shown.lod = Some(sc.lod);
         // a year built again for the camera alone, from the run as it was, differs only in its
-        // houses, their smoke and the trees of their gardens: the rest stays as it is on
-        // screen, and the trains run on from where they are
+        // houses and their smoke (a garden's tree is drawn at every level): the rest stays as
+        // it is on screen, trees and works are not sent to the card again (they are most of
+        // the year's corners), and the trains run on from where they are
         let for_camera = shown.whole == Some((sc.k, run));
         shown.whole = Some((sc.k, run));
         let (ym, nets) = (sc.ym, sc.nets);
@@ -1266,11 +1267,11 @@ fn rebuild_year(
                     *m = non_empty(b);
                 }
             }
-        }
-        for (hs, t) in handles.trees.iter().zip(ym.trees) {
-            for (h, b) in hs.iter().zip([t.evergreen, t.leaves, t.bare]) {
-                if let Some(mut m) = meshes.get_mut(h) {
-                    *m = non_empty(b);
+            for (hs, t) in handles.trees.iter().zip(ym.trees) {
+                for (h, b) in hs.iter().zip([t.evergreen, t.leaves, t.bare]) {
+                    if let Some(mut m) = meshes.get_mut(h) {
+                        *m = non_empty(b);
+                    }
                 }
             }
         }

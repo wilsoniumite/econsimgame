@@ -167,9 +167,17 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         k.lean_to(&rg, low, high, &wall, shade(colour, 0.82), lie.eaves * 0.8, Side::with(&ops), [true, true]);
     }
 
+    // which end the chimney is at, where the garden ends behind, and whether a tree stands in it.
+    // The tree is drawn at every level, so that the island's trees are the same wherever the camera is
+    let side = if u < 0.5 { 1.0 } else { -1.0 };
+    let rear = -pd * 0.5 - BACK_ROOM + 0.001;
+    let tree = r(15) < 0.28;
+    if tree {
+        garden_tree(green, &k, site, -side * (pw * 0.5 - 0.009), rear + 0.007, 0.24 + 0.08 * r(16), c.seed, pal);
+    }
+
     // the chimney at one end: built against the end wall on the older houses where the plot has room
     if !k.far() {
-        let side = if u < 0.5 { 1.0 } else { -1.0 };
         let zm = (zf + zb) * 0.5 + (r(19) - 0.5) * 0.004;
         let top = h + rise + 0.0055;
         let outside = age >= 0.5 && !hipped && hw + 0.0042 <= pw * 0.5 - 0.0003;
@@ -186,13 +194,8 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         }
 
         // the garden: the plot and the ground behind it
-        let rear = -pd * 0.5 - BACK_ROOM + 0.001;
         let (gx0, gx1) = (-pw * 0.5 + 0.0008, pw * 0.5 - 0.0008);
         k.patch(gx0, gx1, rear, zf + 0.001, 0.0034, *pal.ground.garden);
-        let tree = r(15) < 0.28;
-        if tree {
-            garden_tree(green, &k, site, -side * (pw * 0.5 - 0.009), rear + 0.007, 0.24 + 0.08 * r(16), c.seed, pal);
-        }
         if k.near() {
             let door_x = -hw + w * (door_bay as f32 + 0.5) / bays as f32;
             k.patch(door_x - 0.002, door_x + 0.002, zf + 0.002, pd * 0.5 + SET_BACK - 0.0005, 0.0042, *pal.ground.garden_path);
@@ -326,7 +329,9 @@ mod tests {
             let (far, play, near) = (at(Detail::Far), at(Detail::Play), at(Detail::Near));
             // four walls, two slopes and two gables
             assert_eq!(far.solid.triangles(), 4 * 2 + 2 * 2 + 2, "seed {n}");
-            assert!(far.smoke.is_empty() && far.green.is_empty());
+            assert!(far.smoke.is_empty());
+            // the tree in its garden, if it has one, is the same tree at every level
+            assert!(far.green == play.green && play.green == near.green, "seed {n}");
             assert!(!far.solid.col.contains(&*pal.glass.window));
             assert!(play.solid.triangles() > far.solid.triangles() * 2 && play.solid.triangles() < 90, "seed {n}: {} at play", play.solid.triangles());
             assert!(play.solid.col.contains(&*pal.glass.window) && play.solid.col.contains(&*pal.ground.garden));

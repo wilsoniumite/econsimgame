@@ -177,16 +177,21 @@ What a house is handed, besides its plot, storeys, roof and seed:
   enough for one). Before 1720 timber frames, jetties, casements, gables to
   the street; to 1815 wash or stone, sashes, hoods and fanlights, parapets;
   to 1860 brick and slate; after, bay windows and L-shaped villas.
-- **`upland`**: the hills build in their own stone, to the ground.
+- **`upland`**: the hills build in their own stone, to the ground, under
+  stone slates darker than the walls; four in ten of the houses that stand
+  apart are limewashed over the stone, and a row is bare stone throughout.
 - **`neighbours`**: whether a house stands on the next plot to its left and
   right as it faces the street (verges, hips and dim side walls follow).
 - **`shop`** (a townhouse): `houses::shop_at(density, seed)` says where.
 - **`detail`** (`Detail::Far`, `Play`, `Near`): how much of it to draw. Far:
   walls and roof (a cottage is 14 triangles). Play: openings as flat panels,
-  stacks, wings, outshuts, the colour of the garden, a tree (about 70).
-  Near: everything (about 350). The viewer chooses by where the camera is
+  stacks, wings, outshuts, the colour of the garden (about 70). Near:
+  everything (about 350). The viewer chooses by where the camera is
   (`scatter::Lod`); the three must be the same house, and each kind's tests
-  build all three.
+  build all three. Only what goes into `solid` and `smoke` may follow the
+  level: a garden's tree is the same tree at all three, because when the
+  camera alone has moved the viewer puts the houses and their smoke on
+  screen again and leaves the island's trees as they are.
 
 A terrace is handed the ground (`Site::on`) and steps with it: houses whose
 ground is near enough level share a floor and are built as one run; where
