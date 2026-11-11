@@ -252,13 +252,14 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
 
 /// Capacity of firm `f` in year index `k` (0 when it does not exist that year).
 pub fn firm_k(r: &Replay, f: usize, k: usize) -> f32 {
-    let first = r.firm_first[f];
-    let len = r.firm_len[f];
+    // a works founded this year in a live game is in the family's books
+    // before it is in the run: it does not exist yet, rather than stopping the game
+    let (Some(&first), Some(&len), Some(&off)) = (r.firm_first.get(f), r.firm_len.get(f), r.firm_off.get(f)) else { return 0.0 };
     let k = k as i32;
     if k < first || k >= first + len {
         return 0.0;
     }
-    r.firm_k[(r.firm_off[f] + k - first) as usize]
+    r.firm_k.get((off + k - first) as usize).copied().unwrap_or(0.0)
 }
 
 /// Annual mean of a named monthly series, or None if the run does not have it.
@@ -335,6 +336,14 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn a_works_not_yet_in_the_run_has_no_size() {
+        // the family's books name a works the moment it is founded; the run has it from the next year
+        let r = parse("tiny.bin", &tiny_run()).unwrap();
+        assert_eq!(firm_k(&r, 1, 0), 0.0);
+        assert_eq!(firm_k(&r, 0, 7), 0.0);
     }
 
     #[test]
