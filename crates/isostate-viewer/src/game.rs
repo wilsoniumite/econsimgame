@@ -24,6 +24,9 @@ use crate::{scatter, world, Data, InspectActions, Orbit, Pick, Picked, Timeline,
 pub struct Game {
     /// the answer about the picked cell, once it has come
     pub site: Option<SiteInfo>,
+    /// the world has moved on since that answer: it stays on screen, but
+    /// nothing can be ordered from it until the new answer comes
+    site_stale: bool,
     /// the cell a question is out about
     pub asked: Option<usize>,
     /// how the last order went
@@ -42,7 +45,7 @@ pub struct Game {
     ended: bool,
     /// the card that ends the game is up
     end_open: bool,
-    drawn: Option<(Option<Pick>, usize, u64)>,
+    drawn: Option<(Option<Pick>, usize, u64, Now, bool)>,
     marks: Option<(usize, usize, usize, u64)>,
     /// decisions already put in front of the player, so each opens by itself only once
     seen: BTreeSet<u64>,
@@ -143,6 +146,7 @@ pub fn plugin(app: &mut App) {
             Update,
             (
                 pump,
+                settle,
                 drive,
                 ask_site,
                 action_clicks,
@@ -252,7 +256,7 @@ fn pump(
                 scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
                 year_families(&mut fam, &y.families, y.year as i32);
                 fam.prospects = prospects;
-                live.stepping = false;
+                live.stepped(true);
                 if tl.built == Some(y.index) {
                     tl.built = None;
                 }
@@ -263,7 +267,8 @@ fn pump(
                 game.pending.clear();
                 // the world has moved on: ask about the picked square again
                 game.asked = None;
-                game.site = None;
+                game.site_stale = true;
+                game.note = None;
                 game.version += 1;
                 ui.dirty += 1;
                 if shots.is_none() || cards_in_shots() {
@@ -277,6 +282,7 @@ fn pump(
             Msg::Site(s) => {
                 if game.asked == Some(s.cell) {
                     game.site = Some(s);
+                    game.site_stale = false;
                     game.version += 1;
                 }
             }
@@ -294,11 +300,13 @@ fn pump(
                     ui.dirty += 1;
                     queue_new(&mut game, &fam, &mut tl);
                 }
+                // the order changed the square: ask again before offering more
                 game.asked = None;
+                game.site_stale = true;
                 game.version += 1;
             }
             Msg::Failed(e) => {
-                live.stepping = false;
+                live.stepped(false);
                 game.busy = false;
                 game.note = Some((false, e));
                 game.version += 1;
@@ -312,7 +320,66 @@ fn cards_in_shots() -> bool {
     std::env::var_os("ISOSTATE_WELCOME").is_some()
 }
 
-/// Ask for the next year when the clock reaches the last one there is.
+/// Where the year on the clock stands against the years worked out. The next
+/// year is asked for a little before the clock needs it, so that the years
+/// roll without a stop; until the clock gets there, the newest year the
+/// player has been shown is still the present as they see it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Now {
+    /// a year gone by, which the player has gone back to look at
+    Past,
+    /// the newest year shown, with the next worked out and about to show:
+    /// the simulation has moved on, so an order would land a year late
+    Turning,
+    /// the newest year there is: orders land here
+    Present,
+}
+
+/// `k` is the year on the clock, `latest` the newest worked out and `seen`
+/// the newest the clock has shown, all as indices.
+pub fn now_of(k: usize, latest: usize, seen: usize) -> Now {
+    if k >= latest {
+        Now::Present
+    } else if k >= seen {
+        Now::Turning
+    } else {
+        Now::Past
+    }
+}
+
+fn now(tl: &Timeline, data: &Data, live: &Live) -> Now {
+    now_of((tl.t.floor() as usize).min(data.r.ny - 1), data.latest(), live.seen)
+}
+
+/// How long before a year ends to ask for the next, as a part of the year:
+/// as late as will still have it ready in time, so that for most of the year
+/// the newest year worked out is the one on screen and orders can be given
+/// there. `took` is how long the last year took to arrive, in seconds, and
+/// `speed` the clock's, in years a second.
+fn lead_years(took: Option<f32>, speed: f32) -> f32 {
+    match took {
+        // nothing to go by yet: ask at once
+        None => 1.0,
+        // half as long again, and a tenth of a second for the frames either side
+        Some(s) => ((s * 1.5 + 0.1) * speed).clamp(0.0, 1.0),
+    }
+}
+
+/// Stopped on the newest year shown while the next is already worked out,
+/// the clock moves on to it: the simulation cannot go back, so the present is
+/// there, and that is where orders can be given. (The player who steps back a
+/// year on purpose is in the past and stays there.)
+fn settle(mut live: ResMut<Live>, mut tl: ResMut<Timeline>, data: Res<Data>) {
+    if !tl.playing && now(&tl, &data, &live) == Now::Turning {
+        tl.t = data.latest() as f32;
+    }
+    let k = (tl.t.floor() as usize).min(data.latest());
+    if k > live.seen {
+        live.seen = k;
+    }
+}
+
+/// Ask for the next year in time for the clock to roll into it.
 fn drive(mut live: ResMut<Live>, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, keys: Res<ButtonInput<KeyCode>>, cards: Res<CardOpen>) {
     let r = &data.r;
     if r.filled >= r.ny || live.stepping {
@@ -322,10 +389,10 @@ fn drive(mut live: ResMut<Live>, mut game: ResMut<Game>, tl: Res<Timeline>, data
     if cards.0 || game.modal() {
         return;
     }
-    let at_end = tl.t >= data.latest() as f32;
-    if tl.playing && at_end {
+    let latest = data.latest() as f32;
+    if tl.playing && tl.t >= latest + 1.0 - lead_years(live.took, tl.speed) {
         live.step();
-    } else if !tl.playing && at_end && (keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period)) {
+    } else if !tl.playing && tl.t >= latest && (keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period)) {
         // one more year, then stop and show it
         game.follow = true;
         live.step();
@@ -346,8 +413,12 @@ fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<L
     };
     if present(&tl, &data) && !live.stepping && game.asked != Some(c) {
         game.asked = Some(c);
-        game.site = None;
-        game.note = None;
+        // the last answer about this square stays up until the new one comes,
+        // and so does word of how the last order about it went
+        if game.site.as_ref().is_none_or(|s| s.cell != c) {
+            game.site = None;
+            game.note = None;
+        }
         game.version += 1;
         live.send(Cmd::Site(c));
     }
@@ -358,6 +429,10 @@ fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<L
 fn action_clicks(q: Query<(&Interaction, &ActionButton), Changed<Interaction>>, live: Res<Live>, mut game: ResMut<Game>, mut tl: ResMut<Timeline>, data: Res<Data>) {
     for (i, a) in &q {
         if *i != Interaction::Pressed || game.busy {
+            continue;
+        }
+        // an order lands in the newest year worked out, so it is taken only when that is the year on screen
+        if a.0 != Action::Present && !(present(&tl, &data) && !live.stepping) {
             continue;
         }
         game.last_order = Some(a.0);
@@ -551,11 +626,13 @@ fn order_panel(
     tl: Res<Timeline>,
     data: Res<Data>,
     fam: Res<FamilyView>,
+    live: Res<Live>,
     font: Res<UiFont>,
     q: Query<(Entity, Option<&Children>), With<InspectActions>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (picked.what, k, game.version);
+    let when = now(&tl, &data, &live);
+    let key = (picked.what, k, game.version, when, live.stepping);
     if game.drawn == Some(key) && !fam.is_changed() {
         return;
     }
@@ -572,7 +649,8 @@ fn order_panel(
     let Some(me) = fam.player() else { return };
     let accent = me.colour;
     let latest_year = r.y0 + data.latest() as i32;
-    let now = present(&tl, &data);
+    // orders can be given when the year on screen is the newest worked out and the next is not on its way
+    let can = when == Now::Present && !live.stepping && !game.busy;
     commands.entity(e).with_children(|p| {
         let rule = |p: &mut ChildSpawnerCommands| {
             p.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
@@ -593,23 +671,25 @@ fn order_panel(
             }
             Pick::Town(t) => {
                 rule(p);
-                if !now {
+                if when == Now::Past {
                     back_to_present(p, &f, r, k, latest_year, accent);
                     return;
                 }
-                town_orders(p, &f, &fam, me, r, t, &game);
+                town_orders(p, &f, &fam, me, r, t, can);
             }
             Pick::Cell(c) => {
                 rule(p);
-                if !now {
+                if when == Now::Past {
                     back_to_present(p, &f, r, k, latest_year, accent);
                     return;
                 }
                 let Some(site) = game.site.as_ref().filter(|s| s.cell == c) else {
-                    p.spawn(text(&f, "Asking the land agent\u{2026}", 13.5, MUTED));
+                    // while the year turns the land agent is asked once it has
+                    let wait = if when == Now::Present && !live.stepping { "Asking the land agent\u{2026}" } else { "The year is turning\u{2026}" };
+                    p.spawn(text(&f, wait, 13.5, MUTED));
                     return;
                 };
-                cell_orders(p, &f, me, r, site, &game);
+                cell_orders(p, &f, me, r, site, can && !game.site_stale);
             }
         }
         if let Some((ok, note)) = &game.note {
@@ -637,7 +717,7 @@ fn town_name(r: &Replay, t: usize) -> String {
 
 /// A town: the seat, the family's branches and people there, and who could
 /// be posted to run a trade there.
-fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView, me: &FamilyRow, r: &Replay, t: usize, game: &Game) {
+fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView, me: &FamilyRow, r: &Replay, t: usize, can: bool) {
     let rep = &me.rep;
     let accent = me.colour;
     let name = town_name(r, t);
@@ -647,18 +727,18 @@ fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView,
         p.spawn(text(f, "The head lives here and runs every trade the family knows here. Works are chosen and land bought directly only around the seat.", 12.5, MUTED));
         if let Some(next) = rep.next_seat {
             p.spawn(text(f, &format!("Moving to {} at the year end.", town_name(r, next)), 13.0, accent));
-            p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {name}"), (!game.busy).then_some(Action::MoveSeat(t)), accent));
+            p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {name}"), can.then_some(Action::MoveSeat(t)), accent));
         }
     } else if rep.next_seat == Some(t) {
         p.spawn(text(f, &format!("The {} family's seat moves here at the year end.", rep.surname), 14.0, accent));
-        p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {}", rep.seat_name), (!game.busy).then_some(Action::MoveSeat(rep.seat)), accent));
+        p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {}", rep.seat_name), can.then_some(Action::MoveSeat(rep.seat)), accent));
     } else {
         p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(2.0)), ..default() }).with_children(|x| {
             x.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
                 col.spawn(text(f, &format!("Move the seat to {name}?"), 14.0, INK));
                 col.spawn(text(f, &format!("The head moves at the year end, and with the head the bonus and the family's direct choices. Now at {}.", rep.seat_name), 12.0, MUTED));
             });
-            button(x, f, "Move", (!game.busy).then_some(Action::MoveSeat(t)), accent);
+            button(x, f, "Move", can.then_some(Action::MoveSeat(t)), accent);
         });
     }
 
@@ -737,7 +817,7 @@ fn stance_word(s: isostate_core::Stance) -> &'static str {
 }
 
 /// A square of land: who holds it, buying it, and the works that could be built on it.
-fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r: &Replay, site: &SiteInfo, game: &Game) {
+fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r: &Replay, site: &SiteInfo, can: bool) {
     let rep = &me.rep;
     let accent = me.colour;
     let c = site.cell;
@@ -762,7 +842,7 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
             }
         });
         if site.owner != Some(PLAYER) && site.land_allowed.is_ok() {
-            let ok = me.cash as f64 >= site.land_price && !game.busy;
+            let ok = me.cash as f64 >= site.land_price && can;
             button(row, f, "Buy", ok.then_some(Action::Buy(c)), accent);
         }
     });
@@ -789,7 +869,7 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
                 p.spawn(text(f, "Nothing in the family's trades would pay here.", 13.0, MUTED));
             }
             for (m, s) in good.iter().take(5) {
-                let afford = me.cash as f64 >= s.capital_cost && !game.busy;
+                let afford = me.cash as f64 >= s.capital_cost && can;
                 p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|row| {
                     row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, row_gap: Val::Px(1.0), ..default() }).with_children(|col| {
                         col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).with_children(|head| {
@@ -1095,11 +1175,13 @@ fn stakes(b: &mut Builder, g: &world::Ground, r: &Replay, cell: usize, colour: [
     b.block(s + Vec3::Y * 0.05, 0.05, 0.006, 0.03, 0.3, colour, Some(colour), 0.0);
 }
 
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: Res<FamilyView>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
     let Some(marks) = marks else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    // the seats are known for the present only, so they are drawn there
-    let seats: Vec<(usize, usize, bool)> = if present(&tl, &data) {
+    // the seats are known for the present only, so they are drawn there (and
+    // while the year turns, so the flags do not blink once a year)
+    let front = now(&tl, &data, &live) != Now::Past;
+    let seats: Vec<(usize, usize, bool)> = if front {
         fam.families.iter().flat_map(|f| std::iter::once((f.rep.index, f.seat, false)).chain(f.rep.next_seat.map(|t| (f.rep.index, t, true)))).collect()
     } else {
         Vec::new()
@@ -1111,7 +1193,7 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: 
     }
     game.marks = Some(key);
     let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k);
-    if present(&tl, &data) {
+    if front {
         for &c in &game.pending {
             stakes(&mut b, &data.g, &data.r, c, banner_rgba(PLAYER));
         }
@@ -1255,5 +1337,85 @@ fn close_welcome(mut commands: Commands, q: Query<(Entity, &Interaction), With<W
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_present_is_the_newest_year_and_the_past_is_what_was_left_behind() {
+        // the clock on the newest year there is
+        assert_eq!(now_of(36, 36, 36), Now::Present);
+        // the next year has been fetched ahead and the clock has not got there
+        assert_eq!(now_of(36, 37, 36), Now::Turning);
+        // the clock got there
+        assert_eq!(now_of(37, 37, 36), Now::Present);
+        // stepped back a year on purpose, or scrubbed far back and playing up
+        // to the front again: the past until the clock is on the newest year
+        assert_eq!(now_of(36, 37, 37), Now::Past);
+        assert_eq!(now_of(3, 37, 37), Now::Past);
+    }
+
+    #[test]
+    fn the_next_year_is_asked_for_late_but_in_time() {
+        // nothing measured: ask on entering the year, as before
+        assert_eq!(lead_years(None, 0.5), 1.0);
+        // a year that takes 0.3 s to work out, at 1x (a year in two seconds): the last 28% of the year
+        let lead = lead_years(Some(0.3), 0.5);
+        assert!((lead - 0.275).abs() < 1e-4, "{lead}");
+        // never later than the work needs, never more than the whole year
+        for speed in [0.5, 1.0, 2.0, 4.0] {
+            for took in [0.05, 0.14, 0.3, 0.8, 3.0] {
+                let lead = lead_years(Some(took), speed);
+                assert!(lead <= 1.0 && lead >= (took * speed).min(1.0), "took {took} at {speed}: {lead}");
+            }
+        }
+    }
+
+    /// The clock and the simulation thread in miniature: the share of frames
+    /// with the clock running in which an order would land in the year on
+    /// screen, and the number of frames the clock stood waiting for a year.
+    fn play(speed: f32, sim_secs: f32, lead: impl Fn(Option<f32>, f32) -> f32) -> (f32, u32) {
+        let dt = 1.0 / 30.0;
+        let (mut t, mut latest, mut took) = (0.0f32, 0usize, None);
+        let mut due: Option<f32> = None;
+        let (mut can, mut frames, mut waited) = (0u32, 0u32, 0u32);
+        let mut clock = 0.0f32;
+        while latest < 40 {
+            clock += dt;
+            // the year asked for arrives
+            if due.is_some_and(|d| clock >= d) {
+                due = None;
+                latest += 1;
+                took = Some(sim_secs);
+            }
+            // the clock runs, and waits at the end of the newest year
+            let cap = latest as f32 + 0.999;
+            if t + dt * speed > cap {
+                waited += 1;
+            }
+            t = (t + dt * speed).min(cap);
+            if due.is_none() && t >= latest as f32 + 1.0 - lead(took, speed) {
+                due = Some(clock + sim_secs);
+            }
+            frames += 1;
+            can += (t.floor() as usize >= latest && due.is_none()) as u32;
+        }
+        (can as f32 / frames as f32, waited)
+    }
+
+    #[test]
+    fn orders_can_be_given_for_most_of_a_year_at_1x() {
+        // a year takes 0.3 s to work out (a debug build early in the century)
+        let (before, _) = play(0.5, 0.3, |_, _| 1.0);
+        let (after, waited) = play(0.5, 0.3, lead_years);
+        assert!(before < 0.05, "asking on entering the year left {before} of the frames for orders");
+        assert!(after > 0.65, "asking late leaves {after} of the frames for orders");
+        assert!(waited <= 2, "the clock stood waiting for {waited} frames");
+        // at 2x there is still half of each year
+        let (after, _) = play(1.0, 0.3, lead_years);
+        assert!(after > 0.4, "{after}");
     }
 }
