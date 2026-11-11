@@ -7,7 +7,7 @@ use crate::houses::{door_at, garden_tree, hearth_smoke, window_at, Fabric, BACK_
 use crate::colour::pick;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+use crate::houses::kit::STOREY;
 use crate::site::Site;
 use crate::trees::Greenery;
 
@@ -104,14 +104,14 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
         tops = [st(&mut k, 1.0), st(&mut k, -1.0)];
         if !k.far() {
             // the porch: a flat top on two columns
-            let (px, pz, ph) = (0.0046, 0.0042, FOOT + 0.0158);
+            let (px, pz, ph) = (0.0046, 0.0042, FOOT + 0.0138);
             k.boxy(-px, px, zf, zf + pz, ph, ph + 0.0014, wall.sill, Some(shade(wall.sill, 1.05)));
             if k.near() {
                 for side in [-1.0f32, 1.0] {
                     let x = side * (px - 0.0008);
                     k.boxy(x - 0.0006, x + 0.0006, zf + pz - 0.0014, zf + pz - 0.0002, 0.0, ph, wall.sill, None);
                 }
-                k.strip(&body, 0, 0.0, w, STOREY - 0.0005, STOREY + 0.0005, 0.0004, wall.sill);
+                k.strip(&body, 0, 0.0, w, STOREY - 0.0005, STOREY + 0.0005, 0.0007, wall.sill);
             }
         }
     } else {
@@ -159,15 +159,15 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
             let g = *pal.glass.window;
             let mid = ww * 0.5;
             if k.near() {
-                k.strip(&wing, 0, mid - 0.003, mid + 0.003, h + wing_rise * 0.2, h + wing_rise * 0.2 + 0.0062, 0.0004, wall.frame);
-                k.strip(&wing, 0, 0.0, ww, STOREY - 0.0005, STOREY + 0.0005, 0.0004, wall.sill);
+                k.strip(&wing, 0, mid - 0.003, mid + 0.003, h + wing_rise * 0.2, h + wing_rise * 0.2 + 0.0062, 0.0006, wall.frame);
+                k.strip(&wing, 0, 0.0, ww, STOREY - 0.0005, STOREY + 0.0005, 0.0007, wall.sill);
             }
-            k.strip(&wing, 0, mid - 0.0024, mid + 0.0024, h + wing_rise * 0.2 + 0.0006, h + wing_rise * 0.2 + 0.0056, 0.0007, g);
-            k.bay(&wing, 0, mid, ww * 0.56, 0.0028, y0, FOOT + 0.0172, &wall, shade(colour, 0.9));
+            k.strip(&wing, 0, mid - 0.0024, mid + 0.0024, h + wing_rise * 0.2 + 0.0006, h + wing_rise * 0.2 + 0.0056, 0.0012, g);
+            k.bay(&wing, 0, mid, ww * 0.56, 0.0028, y0, FOOT + 0.015, &wall, shade(colour, 0.9));
             let (px0, px1) = if left { (mx0, mx0 + 0.0086) } else { (mx1 - 0.0086, mx1) };
             let porch = Range::rect(px0, px1, zfm, zfm + 0.0046);
             let door = [door_at((px1 - px0) * 0.5, front_door)];
-            k.lean_to(&porch, FOOT + 0.0162, FOOT + 0.0202, &wall, shade(colour, 0.94), 0.0012, Side::with(&door), [left, !left]);
+            k.lean_to(&porch, FOOT + 0.014, FOOT + 0.0178, &wall, shade(colour, 0.94), 0.0012, Side::with(&door), [left, !left]);
         }
         door_x = if left { mx0 + 0.0043 } else { mx1 - 0.0043 };
         // a stack on the wing's outer wall, and one at the range's gable
@@ -189,9 +189,9 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
     let rear = -pd * 0.5 - BACK_ROOM + 0.001;
     let (gx0, gx1, gate) = (-pw * 0.5 + 0.0008, pw * 0.5 - 0.0008, pd * 0.5 + SET_BACK - 0.0012);
     k.patch(gx0, gx1, rear, gate, 0.0034, *pal.ground.garden);
-    garden_tree(green, &k, site, gx0 + 0.007, rear + 0.007, 0.42 + 0.12 * r(16), t.seed, pal);
+    garden_tree(green, &k, site, gx0 + 0.007, rear + 0.007, 0.3 + 0.08 * r(16), t.seed, pal);
     if r(15) < 0.5 {
-        garden_tree(green, &k, site, gx1 - 0.007, rear + 0.009, 0.36 + 0.1 * r(19), Seed::new(t.seed.v, t.seed.u), pal);
+        garden_tree(green, &k, site, gx1 - 0.007, rear + 0.009, 0.26 + 0.08 * r(19), Seed::new(t.seed.v, t.seed.u), pal);
     }
     if !k.near() {
         return;

@@ -6,7 +6,7 @@ use crate::houses::roof::Roof;
 use crate::houses::{door, door_at, hearth_smoke, timber_frame, window, window_at, Fabric, BACK_ROOM};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+use crate::houses::kit::STOREY;
 use crate::site::Site;
 
 /// A house in a continuous frontage.
@@ -116,7 +116,7 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
             let paints = [*pal.walls.shop_front, pick(&pal.roofs.awnings, r(10)), pick(&pal.walls.door_paints, r(10))];
             let paint = paints[(r(20) * 3.0) as usize % 3];
             let awning = (r(11) < 0.4).then(|| pick(&pal.roofs.awnings, r(21)));
-            front.push(Opening { u: w * 0.5, y: FOOT, w: w * 0.8, h: 0.0152, kind: Open::Shop { paint, awning } });
+            front.push(Opening { u: w * 0.5, y: FOOT, w: w * 0.8, h: 0.0136, kind: Open::Shop { paint, awning } });
         }
         for b in 0..bays {
             let at = w * (b as f32 + 0.5) / bays as f32;
@@ -153,7 +153,7 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
         k.walls(&body, STOREY, h, &wall, [Side::with(&upper), sides.0, Side::NONE, sides.1], false, true);
         k.walls(&body, y0, h, &wall, [Side::NONE, Side::NONE, Side::with(&back), Side::NONE], true, true);
         if k.near() {
-            k.strip(&body, 0, 0.0, w, STOREY - 0.0014, STOREY + 0.0008, 0.0004, *pal.timber.house_frame);
+            k.strip(&body, 0, 0.0, w, STOREY - 0.0014, STOREY + 0.0008, 0.0008, *pal.timber.house_frame);
         }
     } else {
         k.walls(&body, y0, h, &wall, [Side::with(&front), sides.0, Side::with(&back), sides.1], true, form != Form::Parapet);
@@ -182,13 +182,13 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
                 // a window to the garret
                 let g = *pal.glass.window;
                 if k.near() {
-                    k.strip(&body, 0, hw - 0.0036, hw + 0.0036, h + rise * 0.14, h + rise * 0.14 + 0.0078, 0.0004, wall.frame);
+                    k.strip(&body, 0, hw - 0.0036, hw + 0.0036, h + rise * 0.14, h + rise * 0.14 + 0.0078, 0.0006, wall.frame);
                 }
-                k.strip(&body, 0, hw - 0.003, hw + 0.003, h + rise * 0.14 + 0.0006, h + rise * 0.14 + 0.0072, 0.0007, g);
+                k.strip(&body, 0, hw - 0.003, hw + 0.003, h + rise * 0.14 + 0.0006, h + rise * 0.14 + 0.0072, 0.0012, g);
                 if fabric.timber {
                     let oak = *pal.timber.house_frame;
                     if k.near() {
-                        k.strip(&body, 0, 0.0012, w - 0.0012, h - 0.0008, h + 0.0008, 0.0004, oak);
+                        k.strip(&body, 0, 0.0012, w - 0.0012, h - 0.0008, h + 0.0008, 0.0007, oak);
                     }
                 }
             }
@@ -200,7 +200,7 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
             if !k.far() {
                 k.boxy(-hw, hw, zf - thick, zf, h, h + up, wall.col, Some(wall.sill));
                 if k.near() {
-                    k.strip(&body, 0, 0.0, w, h - 0.0012, h, 0.0005, wall.sill);
+                    k.strip(&body, 0, 0.0, w, h - 0.0012, h, 0.0007, wall.sill);
                 }
             }
             let rg = Range::rect(-hw, hw, zb, zf - thick);

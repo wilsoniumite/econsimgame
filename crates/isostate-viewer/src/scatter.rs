@@ -635,7 +635,7 @@ pub struct Lod {
 
 impl Lod {
     /// A camera this close or closer has the houses it sees drawn in full.
-    pub const NEAR: f32 = 5.0;
+    pub const NEAR: f32 = 4.0;
     /// One this close or closer has them drawn with their openings and stacks.
     pub const PLAY: f32 = 40.0;
 
@@ -659,16 +659,19 @@ impl Lod {
         }
     }
 
-    /// How far from the middle of the view the camera sees at a distance (a
-    /// little more than it does: the ground at the top of the picture is
-    /// furthest), and how far out the houses are built for it, which leaves
-    /// room to pan and to draw back before they must be built again.
+    /// How far from the middle of the view the houses must be at the level
+    /// its distance asks for, and how far out they are built at it, which
+    /// leaves room to pan and to draw back before they must be built again.
+    /// (At the game's tilt the ground at the top corners of the picture is
+    /// a third as far again from the middle as the camera is. What stands
+    /// out there is further from the camera, so smaller, and the lens
+    /// softens it: the level below serves.)
     fn sight(dist: f32) -> f32 {
-        0.65 * dist + 0.25
+        dist + 0.25
     }
 
     fn reach(dist: f32) -> f32 {
-        1.2 * dist + 1.0
+        1.6 * dist + 1.2
     }
 
     /// The level a house at a point of the map is drawn at.
@@ -971,7 +974,7 @@ mod tests {
         let play = Lod::of_camera((10.0, 10.0), 14.0);
         assert_eq!(play.at(10.0, 10.0), Detail::Play);
         assert_eq!(play.at(10.0, 27.0), Detail::Play);
-        assert_eq!(play.at(10.0, 29.0), Detail::Far);
+        assert_eq!(play.at(10.0, 35.0), Detail::Far);
         let far = Lod::of_camera((10.0, 10.0), 70.0);
         assert_eq!(far.at(10.0, 10.0), Detail::Far);
         assert_eq!(Lod::all(Detail::Near).at(99.0, 0.0), Detail::Near);
@@ -999,9 +1002,9 @@ mod tests {
         assert!(!play.stale(&Lod::of_camera((16.0, 12.0), 14.0)));
         assert!(play.stale(&Lod::of_camera((22.0, 10.0), 14.0)));
         // just past the distance at which houses are drawn in full, what was built in full is kept
-        let nearish = Lod::of_camera((10.0, 10.0), 4.8);
-        assert!(!nearish.stale(&Lod::of_camera((10.0, 10.0), 5.5)));
-        assert!(nearish.stale(&Lod::of_camera((10.0, 10.0), 7.0)));
+        let nearish = Lod::of_camera((10.0, 10.0), 3.8);
+        assert!(!nearish.stale(&Lod::of_camera((10.0, 10.0), 4.4)));
+        assert!(nearish.stale(&Lod::of_camera((10.0, 10.0), 5.5)));
     }
 
     #[test]

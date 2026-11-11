@@ -37,7 +37,7 @@ use crate::colour::{pick, shade, Rgba};
 use crate::hash::Seed;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+use crate::houses::kit::STOREY;
 use crate::site::Site;
 use crate::trees::{hedge_tree, Greenery};
 use kit::{Kit, Open, Opening, Over, Range, Wall, FOOT};
@@ -124,12 +124,13 @@ fn door(pal: &Palette, era: Era, seed: Seed) -> Open {
 
 /// A door standing on the floor at `u` along its wall.
 fn door_at(u: f32, kind: Open) -> Opening {
-    Opening { u, y: FOOT, w: 0.0052, h: 0.0138, kind }
+    Opening { u, y: FOOT, w: 0.0052, h: 0.0126, kind }
 }
 
 /// A window of storey `s` at `u` along its wall, `w` wide and `h` tall, its sill `sill` above the floor.
 fn window_at(u: f32, s: usize, sill: f32, w: f32, h: f32, kind: Open) -> Opening {
-    Opening { u, y: s as f32 * STOREY + sill, w: w * 1.16, h, kind }
+    // (the sills and heights its callers give are for a storey of 0.024)
+    Opening { u, y: s as f32 * STOREY + sill * 0.86, w: w * 1.16, h: h * 0.86, kind }
 }
 
 /// The timbers that show in a framed wall, seen close to: posts at its ends
@@ -141,7 +142,7 @@ fn timber_frame(k: &mut Kit, rg: &Range, side: usize, y0: f32, y1: f32, posts: &
     }
     let oak = *k.pal.timber.house_frame;
     let len = rg.face(side).len;
-    let (t, out) = (0.0012, 0.0003);
+    let (t, out) = (0.0012, 0.0006);
     k.strip(rg, side, 0.0, t, y0, y1, out, oak);
     k.strip(rg, side, len - t, len, y0, y1, out, oak);
     for &u in posts {

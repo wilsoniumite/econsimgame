@@ -59,7 +59,7 @@ pub fn farmstead(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery,
         solid.frustum(site.at(-0.06 * side, -0.03), 0.013, 0.0, 0.024, 5, *pal.thatch.rick, None);
     }
     // a tree by the house
-    if v < 0.6 && f.detail != Detail::Far {
+    if v < 0.6 {
         hedge_tree(green, &site.moved(site.at(0.05 * -side, 0.03), 0.0), 0.7 + 0.2 * u, v, yaw, pal);
     }
 }
@@ -113,7 +113,8 @@ mod tests {
     fn the_bigger_farms_have_a_second_storey_and_a_cart_shed_and_the_smaller_a_tree() {
         let (small, big) = (build(false, false, Seed::new(0.5, 0.3)), build(false, false, Seed::new(0.5, 0.7)));
         assert!(big.solid.triangles() > small.solid.triangles());
-        assert!(big.solid.bounds().unwrap().1.y > small.solid.bounds().unwrap().1.y + 0.015);
+        let house_top = |m: &Model| m.solid.pos.iter().filter(|p| p[2] > -0.02).map(|p| p[1]).fold(f32::MIN, f32::max);
+        assert!(house_top(&big) > house_top(&small) + 0.01);
         assert!(!small.green.leaves.is_empty() && !small.green.bare.is_empty());
         assert!(big.green.is_empty());
     }
@@ -122,7 +123,7 @@ mod tests {
     fn far_off_a_farmstead_is_a_few_plain_buildings() {
         for n in 0..20 {
             let (far, play, near) = (at(true, false, Detail::Far, Seed::of(n)), at(true, false, Detail::Play, Seed::of(n)), at(true, false, Detail::Near, Seed::of(n)));
-            assert!(far.solid.triangles() <= 90 && far.smoke.is_empty() && far.green.is_empty(), "seed {n}: {}", far.solid.triangles());
+            assert!(far.solid.triangles() <= 90 && far.smoke.is_empty(), "seed {n}: {}", far.solid.triangles());
             assert!(far.solid.triangles() < play.solid.triangles() && play.solid.triangles() < near.solid.triangles());
         }
     }

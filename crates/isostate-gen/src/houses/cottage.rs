@@ -5,7 +5,7 @@ use crate::houses::roof::{Cover, Roof};
 use crate::houses::{door, door_at, garden_tree, hearth_smoke, timber_frame, window, window_at, Fabric, BACK_ROOM, SET_BACK};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+use crate::houses::kit::STOREY;
 use crate::site::Site;
 use crate::trees::Greenery;
 
@@ -134,7 +134,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         k.walls(&body, STOREY, h, &wall, [Side::with(&upper), right, Side::NONE, left], false, true);
         k.walls(&body, y0, h, &wall, [Side::NONE, Side::NONE, Side::with(&back), Side::NONE], true, true);
         if k.near() {
-            k.strip(&body, 0, 0.0, w, STOREY - 0.0014, STOREY + 0.0008, 0.0004, *pal.timber.house_frame);
+            k.strip(&body, 0, 0.0, w, STOREY - 0.0014, STOREY + 0.0008, 0.0008, *pal.timber.house_frame);
         }
     } else {
         k.walls(&body, y0, h, &wall, [Side::with(&front), right, Side::with(&back), left], true, true);
@@ -191,7 +191,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         k.patch(gx0, gx1, rear, zf + 0.001, 0.0034, *pal.ground.garden);
         let tree = r(15) < 0.28;
         if tree {
-            garden_tree(green, &k, site, -side * (pw * 0.5 - 0.009), rear + 0.007, 0.3 + 0.1 * r(16), c.seed, pal);
+            garden_tree(green, &k, site, -side * (pw * 0.5 - 0.009), rear + 0.007, 0.24 + 0.08 * r(16), c.seed, pal);
         }
         if k.near() {
             let door_x = -hw + w * (door_bay as f32 + 0.5) / bays as f32;

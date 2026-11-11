@@ -9,7 +9,7 @@ use crate::houses::{door_at, hearth_smoke, window_at, Fabric, BACK_ROOM};
 use crate::colour::pick;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+use crate::houses::kit::STOREY;
 use crate::site::Site;
 
 /// A terraced row. It stands with its middle on the site, along the site's x.
@@ -152,7 +152,7 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
             let over = if t.era >= Era::Brick { Over::Fanlight } else { Over::Nothing };
             let paint = pick(paints, crate::hash::hash2(j as i32, (t.seed.u * 9973.0) as i32, 61));
             if arch_at == Some(j) {
-                front.push(Opening { u: at(0.62), y: FOOT, w: unit * 0.5, h: 0.0155, kind: Open::Arch });
+                front.push(Opening { u: at(0.62), y: FOOT, w: unit * 0.5, h: 0.0138, kind: Open::Arch });
                 front.push(door_at(at(0.17), Open::Door { paint, over }));
             } else {
                 front.push(door_at(at(0.24), Open::Door { paint, over }));
@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(storeys(0.8, s), 2);
         assert_eq!(storeys(0.9, s), 3);
         for detail in Detail::ALL {
-            assert!(build(4, 3, s, detail).solid.bounds().unwrap().1.y > build(4, 2, s, detail).solid.bounds().unwrap().1.y + 0.02);
+            assert!(build(4, 3, s, detail).solid.bounds().unwrap().1.y > build(4, 2, s, detail).solid.bounds().unwrap().1.y + 0.018);
         }
     }
 

@@ -6,7 +6,7 @@ use crate::houses::roof::Cover;
 use crate::houses::{door_at, hearth_smoke, window_at};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+use crate::houses::kit::STOREY;
 use crate::site::Site;
 
 /// The house of a farmstead. The site is the middle of it; its front is +z.
@@ -117,10 +117,10 @@ pub fn farmhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, f: &Farm
     let door_x = -hw + w * (door_bay as f32 + 0.5) / 3.0;
     let (px, pz) = (0.0042, 0.0046);
     let porch = Range::rect(door_x - px, door_x + px, zf, zf + pz);
-    let way_in = [Opening { u: px, y: FOOT, w: 0.005, h: 0.012, kind: Open::Arch }];
-    k.walls(&porch, -k.drop(&porch), FOOT + 0.0142, &wall, [Side::with(&way_in), Side::PLAIN, Side::NONE, Side::PLAIN], true, false);
+    let way_in = [Opening { u: px, y: FOOT, w: 0.005, h: 0.0104, kind: Open::Arch }];
+    k.walls(&porch, -k.drop(&porch), FOOT + 0.0126, &wall, [Side::with(&way_in), Side::PLAIN, Side::NONE, Side::PLAIN], true, false);
     let porch_roof = Range { cx: door_x, cz: zf + pz * 0.5, len: pz, dep: px * 2.0, turn: 3 };
-    k.roof(&porch_roof, &RoofSpec { h: FOOT + 0.0142, rise: px * 0.9, eaves: 0.0012, verge: 0.0014, ends: [End::Gable, End::Party], col: colour, gable: wall.col, thick: lie.thick * 0.6 });
+    k.roof(&porch_roof, &RoofSpec { h: FOOT + 0.0126, rise: px * 0.9, eaves: 0.0012, verge: 0.0014, ends: [End::Gable, End::Party], col: colour, gable: wall.col, thick: lie.thick * 0.6 });
 
     // a stack at each end, astride the ridge, and the kitchen's is alight more often than not
     let stack = if f.upland { shade(wall.col, 0.9) } else { *pal.brick.chimney };

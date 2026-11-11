@@ -16,7 +16,7 @@ use glam::{Quat, Vec3};
 use crate::colour::{shade, Rgba};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::parts::STOREY;
+
 use crate::site::Site;
 
 /// How much of a house is drawn. The viewer chooses by how far off the
@@ -80,12 +80,18 @@ impl Era {
     }
 }
 
+/// The height of one storey of a house. (A works' storey is a little more, and the towns' other
+/// buildings keep `parts::STOREY`: houses are drawn low, so that a street of three storeys is
+/// roofs and not towers.)
+pub(super) const STOREY: f32 = 0.0205;
 /// How high the band at the foot of a wall is: a plinth, and the floor's height above the ground.
 pub(super) const FOOT: f32 = 0.0026;
 /// How deep the band of shadow under the eaves is.
 const EAVE_BAND: f32 = 0.003;
 /// How far a window sits back in its wall, and a doorway.
-const REVEAL: f32 = 0.0012;
+const REVEAL: f32 = 0.0013;
+/// How far one flat thing must stand off another it lies on to be drawn cleanly from the game's distances.
+const LAYER: f32 = 0.0006;
 /// How far a flat window or door stands off the wall, where it is not let into it.
 const PROUD: f32 = 0.0006;
 /// The soft light faked on the four sides of a building, as `MeshBuf::block` has it: front, right, back, left.
@@ -507,20 +513,20 @@ impl<'a, 's> Kit<'a, 's> {
         };
         match o.kind {
             Open::Sash | Open::Casement => {
+                // a window is a few pixels across at the nearest: the glass fills the hole, the
+                // painted lining of the reveal and the sill are its frame, and one bar of paint
+                // across the glass says sash (where the two meet) or casement (the mullion)
                 let frame = shade(w.frame, k);
                 jambs(self, REVEAL, frame);
-                self.quad([self.fp(f, u0, y0, 0.0004), self.fp(f, u1, y0, 0.0004), self.fp(f, u1, y0, -REVEAL), self.fp(f, u0, y0, -REVEAL)], shade(w.sill, 1.04), Vec3::Y);
-                self.panel(f, u0, u1, y0, y1, -REVEAL, frame, frame);
-                let m = (u1 - u0).min(y1 - y0) * 0.13;
-                let d = -REVEAL + 0.0002;
+                self.quad([self.fp(f, u0 - 0.0003, y0, 0.0005), self.fp(f, u1 + 0.0003, y0, 0.0005), self.fp(f, u1 + 0.0003, y0, -REVEAL), self.fp(f, u0 - 0.0003, y0, -REVEAL)], shade(w.sill, 1.04), Vec3::Y);
+                self.panel(f, u0, u1, y0, y1, -REVEAL, glass, shade(glass, 0.86));
+                let (d, t) = (-REVEAL + LAYER, 0.0004);
                 if o.kind == Open::Sash {
                     let mid = (y0 + y1) * 0.5;
-                    self.panel(f, u0 + m, u1 - m, y0 + m, mid - m * 0.4, d, glass, glass);
-                    self.panel(f, u0 + m, u1 - m, mid + m * 0.4, y1 - m, d, shade(glass, 0.9), shade(glass, 0.9));
+                    self.panel(f, u0, u1, mid - t, mid + t, d, frame, frame);
                 } else {
                     let mid = (u0 + u1) * 0.5;
-                    self.panel(f, u0 + m, mid - m * 0.4, y0 + m, y1 - m, d, glass, glass);
-                    self.panel(f, mid + m * 0.4, u1 - m, y0 + m, y1 - m, d, glass, glass);
+                    self.panel(f, mid - t, mid + t, y0, y1, d, frame, frame);
                 }
             }
             Open::Door { paint, over } => {
@@ -530,7 +536,7 @@ impl<'a, 's> Kit<'a, 's> {
                 if over == Over::Fanlight {
                     let frame = shade(w.frame, k);
                     self.panel(f, u0, u1, top, y1, -REVEAL, frame, frame);
-                    self.panel(f, u0 + 0.0005, u1 - 0.0005, top + 0.0004, y1 - 0.0004, -REVEAL + 0.0002, glass, glass);
+                    self.panel(f, u0 + 0.0005, u1 - 0.0005, top + 0.0004, y1 - 0.0004, -REVEAL + LAYER, glass, glass);
                 }
                 // the step up to it
                 let (s0, s1, so) = (u0 - 0.0007, u1 + 0.0007, 0.0024);
@@ -562,7 +568,7 @@ impl<'a, 's> Kit<'a, 's> {
                 let pw = (u1 - door) / panes as f32;
                 for i in 0..panes {
                     let a = door + pw * i as f32;
-                    self.panel(f, a + 0.0005, a + pw - 0.0005, riser + 0.0005, y1 - 0.0005, -depth + 0.0002, glass, shade(glass, 1.15));
+                    self.panel(f, a + 0.0005, a + pw - 0.0005, riser + 0.0005, y1 - 0.0005, -depth + LAYER, glass, shade(glass, 1.15));
                 }
                 // the name board over it, and its cornice
                 let (b0, b1, top) = (u0 - 0.001, u1 + 0.001, y1 + 0.0034);
@@ -586,7 +592,7 @@ impl<'a, 's> Kit<'a, 's> {
                     let p = [self.fp(f, corner, y1, 0.0), self.fp(f, corner + toward * hw, y1, 0.0), self.fp(f, corner, y1 - hw * 0.9, 0.0)];
                     self.solid.tri_toward(p, [col; 3], out);
                 }
-                self.panel(f, u0 - 0.0008, u1 + 0.0008, y1, y1 + 0.0012, 0.0004, shade(w.sill, 0.95), w.sill);
+                self.panel(f, u0 - 0.0008, u1 + 0.0008, y1, y1 + 0.0012, LAYER, shade(w.sill, 0.95), w.sill);
             }
         }
     }
@@ -741,7 +747,7 @@ impl<'a, 's> Kit<'a, 's> {
                 let v = [self.rp(rg, a0 - ww * 0.5 - 0.0004, s.h + gr * 0.1, c), self.rp(rg, a0 + ww * 0.5 + 0.0004, s.h + gr * 0.1, c), self.rp(rg, a0 + ww * 0.5 + 0.0004, s.h + gr * 0.14 + wh, c), self.rp(rg, a0 - ww * 0.5 - 0.0004, s.h + gr * 0.14 + wh, c)];
                 self.quad(v, wall.frame, out);
             }
-            let c = side * (hd + PROUD * 1.5);
+            let c = side * (hd + PROUD + LAYER);
             let v = [self.rp(rg, a0 - ww * 0.5, s.h + gr * 0.12, c), self.rp(rg, a0 + ww * 0.5, s.h + gr * 0.12, c), self.rp(rg, a0 + ww * 0.5, s.h + gr * 0.12 + wh, c), self.rp(rg, a0 - ww * 0.5, s.h + gr * 0.12 + wh, c)];
             self.quad(v, glass, out);
         }
@@ -765,7 +771,7 @@ impl<'a, 's> Kit<'a, 's> {
         let cheek = shade(*self.pal.roofs.church_lead, 0.8);
         self.quad([self.rp(rg, a, y0, front), self.rp(rg, b, y0, front), self.rp(rg, b, top, front), self.rp(rg, a, top, front)], wall.frame, out);
         let m = w * 0.14;
-        let c = front + side * 0.0003;
+        let c = front + side * LAYER;
         self.quad([self.rp(rg, a + m, y0 + m, c), self.rp(rg, b - m, y0 + m, c), self.rp(rg, b - m, top - m, c), self.rp(rg, a + m, top - m, c)], *self.pal.glass.window, out);
         for (at, way) in [(a, -1.0f32), (b, 1.0)] {
             let v = [self.rp(rg, at, y0, front), self.rp(rg, at, top, front), self.rp(rg, at, top, back)];
@@ -842,15 +848,15 @@ impl<'a, 's> Kit<'a, 's> {
             return;
         }
         let frame = shade(wall.frame, k);
-        self.panel(&f, u0 + 0.0005, u1 - 0.0005, sill - 0.0004, head + 0.0004, out + 0.0003, frame, frame);
+        self.panel(&f, u0 + 0.0005, u1 - 0.0005, sill - 0.0004, head + 0.0004, out + LAYER, frame, frame);
         let lights = 3;
         let lw = (w - 0.0016) / lights as f32;
         for i in 0..lights {
             let a = u0 + 0.0008 + lw * i as f32;
-            self.panel(&f, a + 0.0003, a + lw - 0.0003, sill, head, out + 0.0005, glass, shade(glass, 1.12));
+            self.panel(&f, a + 0.0003, a + lw - 0.0003, sill, head, out + 2.0 * LAYER, glass, shade(glass, 1.12));
         }
         for (at, way) in [(u0, -1.0f32), (u1, 1.0)] {
-            let o = way * 0.0003;
+            let o = way * LAYER;
             let p = [self.fp(&f, at + o, sill, out * 0.2), self.fp(&f, at + o, sill, out * 0.85), self.fp(&f, at + o, head, out * 0.85), self.fp(&f, at + o, head, out * 0.2)];
             self.quad(p, shade(glass, 0.9), along * way);
         }
@@ -976,7 +982,7 @@ impl<'a, 's> Kit<'a, 's> {
         let door = *self.pal.timber.door;
         let f = rg.face(if door_front { 0 } else { 2 });
         let m = f.len * 0.5;
-        self.panel(&f, m - 0.0016, m + 0.0016, g, g + h * 0.78, 0.0003, shade(door, 0.85), door);
+        self.panel(&f, m - 0.0016, m + 0.0016, g, g + h * 0.78, LAYER, shade(door, 0.85), door);
     }
 
     /// A water butt standing on the ground: a tub of staves.
