@@ -34,9 +34,15 @@ pub struct PeopleParams {
 
     // ---- natural increase
     /// Births less deaths a year where income is high and nobody is crowded: the
-    /// ceiling the rate approaches and never reaches.
+    /// ceiling the rate approaches and never reaches. 0.016 beside the game's
+    /// other rules, where the island of 1900 is three times as rich as the
+    /// port's; 0.0165 was the number on the port's incomes (docs/rules/people.md,
+    /// "In company").
     pub growth_top: f64,
     /// Income over the cost of subsistence at which births just balance deaths.
+    /// 1.3 beside the game's other rules: with carters real the island of 1750
+    /// has 1.5 baskets a head where the port's has 1.76, and at the 1.5 this was
+    /// first set to its people stood still for twenty years.
     pub y_still: f64,
     /// How quickly the rate nears its ceiling as income rises: the gap to the
     /// ceiling shrinks as `(y_still / y)^ease`.
@@ -82,8 +88,8 @@ impl Default for PeopleParams {
     fn default() -> PeopleParams {
         PeopleParams {
             enabled: false,
-            growth_top: 0.0165,
-            y_still: 1.5,
+            growth_top: 0.016,
+            y_still: 1.3,
             ease: 2.1,
             town_deaths: 0.012,
             town_size: 10_000.0,
@@ -193,7 +199,8 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
     st.pp_growth = g.clone();
     // news when a thousandth of the island takes ship in one year
     let gone = pairwise_sum(&left);
-    if gone > 0.001 * pairwise_sum(&st.pop) {
+    let island = pairwise_sum(&st.pop);
+    if gone > 0.001 * island {
         let (from, port) = (argmax(&left), argmax(&sailed));
         let others = left.iter().filter(|&&v| v > 0.0).count() - 1;
         let whence = match others {
@@ -215,6 +222,22 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         );
         ev.town = Some(port);
         ev.cell = Some(st.town_node[port]);
+        // chronicle (docs/rules/chronicle.md): its own reason, so that the hunger's is
+        // not written over it (that one speaks of the food in the town named, and the
+        // town named here is the port, which may have eaten well)
+        ev.why = crate::chronicle::why(
+            P,
+            "people leave the island after a hungry year",
+            "people who took ship in the year",
+            gone,
+            0.001 * island,
+            Some(island),
+            format!(
+                "{} of {} people left (it needs one in a thousand); they go from towns whose worst month fed less than everyone, where a port can be reached",
+                fmt_thousands_f0(gone),
+                fmt_thousands_f0(island)
+            ),
+        );
         events.push(ev);
     }
     g
@@ -442,7 +465,7 @@ pub fn district_of(st: &State, old: &[i64], n: usize) -> (usize, f64, f64, Vec<u
 /// prices, expected prices, wage and knowledge, and give it a name. No people
 /// yet: they come with their cells in `move_with_cells`, which also sets the
 /// prices of the district's own produce and its wage. Returns the town's index.
-pub fn open_town(st: &mut State, P: &Params, cell: usize, donor: usize, year: i64) -> usize {
+pub fn open_town(st: &mut State, C: &Content, P: &Params, cell: usize, donor: usize, year: i64) -> usize {
     let n = (0..st.T_max).filter(|&t| st.town_active[t]).count();
     let ctx = site_context(&st.world, cell);
     if st.pp_rng.is_none() {
@@ -461,6 +484,11 @@ pub fn open_town(st: &mut State, P: &Params, cell: usize, donor: usize, year: i6
         st.pexp[(n, g)] = st.pexp[(donor, g)];
         st.fill[(n, g)] = st.fill[(donor, g)];
     }
+    // prices (docs/rules/prices.md): and the donor's anchors, as at a founding under
+    // the port's rule. It also takes the carriage to the donor off what is expected
+    // here; `move_with_cells` then sets every price the district has any trade in,
+    // so that stands only for goods nobody here makes or asks for.
+    crate::prices::found_town(st, C, P, n, donor, cell);
     st.wage[n] = st.wage[donor];
     for t in 0..st.know.cols {
         st.know[(n, t)] = st.know[(donor, t)];
@@ -492,7 +520,7 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
     // tests and scenarios: a town ordered at a given cell is founded whatever its district
     if let Some(cell) = st.pp_found_next.take() {
         if st.catch[cell] >= 0 {
-            let t = open_town(st, P, cell, st.catch[cell] as usize, year);
+            let t = open_town(st, C, P, cell, st.catch[cell] as usize, year);
             st.pp_gave[t] = year;
             return vec![t];
         }
@@ -534,7 +562,7 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
                 y >= 0 && y < H && x >= 0 && x < W && st.rail[(y * W + x) as usize] > 0
             }))
         };
-        let t = open_town(st, P, cand.cell, donor, year);
+        let t = open_town(st, C, P, cand.cell, donor, year);
         for &i in &givers {
             st.pp_gave[i] = year;
         }
@@ -588,6 +616,7 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
     let work_town = by_town(&st.prev_catch, &work, T);
     // moved[(i, j)]: labour on cells that left town i for town j
     let mut moved = Mat::zeros(T, T);
+    st.pp_moved = vec![0.0; T];
     let mut any = false;
     for c in 0..N {
         let (i, j) = (st.prev_catch[c], st.catch[c]);
@@ -613,6 +642,8 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
         let (pop, hh, lord, wage) = (st.pop.clone(), st.hh_cash.clone(), st.lord_cash.clone(), st.wage.clone());
         let (merch, inv, outflow) = (st.merch_cash.clone(), st.inv.clone(), st.outflow.clone());
         let (hh_earned, lord_earned) = (st.hh_income_prev.clone(), st.lord_income_prev.clone());
+        // carting (docs/rules/carting.md): carters are people, and the same share of them goes
+        let carters = if st.carters.len() == T { st.carters.clone() } else { Vec::new() };
         // by the town they come to: the newcomers, and the month's wages they were earning
         let (mut came, mut earned) = (vec![0.0; T], vec![0.0; T]);
         for i in 0..T {
@@ -639,6 +670,10 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                     v[i] -= income;
                     v[j] += income;
                 }
+                if !carters.is_empty() {
+                    st.carters[i] -= carters[i] * frac;
+                    st.carters[j] += carters[i] * frac;
+                }
                 if st.town_new[j] {
                     // a new market starts with its share of the old one's trade
                     let cash = merch[i].max(0.0) * frac;
@@ -662,6 +697,12 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                 let own = if st.town_new[j] { 0.0 } else { pop[j] };
                 st.wage[j] = (own * wage[j] + earned[j]) / (own + came[j]);
             }
+        }
+        // chronicle (docs/rules/chronicle.md): how much of each town came or went, against
+        // the people it had (a new town had none: all of it came)
+        for t in 0..T {
+            let left = pop[t] * pairwise_sum(share.row(t));
+            st.pp_moved[t] = if pop[t] > 0.0 { came[t].max(left) / pop[t] } else { bool_f(came[t] > 0.0) };
         }
     }
     st.town_new.iter_mut().for_each(|v| *v = false);
@@ -727,9 +768,12 @@ fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
             if trade[(j, g)] > 0.0 {
                 let own = st.outflow[(j, g)].max(0.0);
                 let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
+                let was = st.price[(j, g)];
                 for (v, sum) in [(&mut st.price, &worth), (&mut st.pexp, &hoped)] {
                     v[(j, g)] = ((own * v[(j, g)] + sum[(j, g)]) / (own + trade[(j, g)])).clamp(lo, hi);
                 }
+                // prices (docs/rules/prices.md): the merchants' anchor goes the same way
+                crate::prices::anchor_follows(st, C, P, j, g, was);
             }
         }
     }

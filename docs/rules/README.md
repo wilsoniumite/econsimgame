@@ -476,6 +476,10 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **towns**: town ground that is kept. A town keeps the cells it builds on and
+  grows outward from them along its roads, taking in the works beside it, so
+  the island's town ground is some five times as wide in 1900 as in 1750 and
+  a cell that joins a town stays. [towns.md](towns.md), `towns.enabled`.
 - **mines**: a quarry, pit or mine is a working: a pit head with the lease
   of the deposit within its reach, sunk at a cost, paying a royalty to the
   cells it works under and taking land by its hands, so the diggings hold a

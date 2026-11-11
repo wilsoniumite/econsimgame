@@ -31,12 +31,20 @@ pub struct CartingParams {
     pub labor: f64,
     /// At most this share of a town's hands can be on the road.
     pub max_share: f64,
+    /// How far a town's carters move in a month toward the number last month's
+    /// bill would pay: carters are taken on and laid off part of the way, as the
+    /// farms' and the works' hands are (`labor_adjust_ex`, `labor_adjust_firm`).
+    /// 1 is all the way at once, which sets a town with a heavy bill swinging:
+    /// many carters, few hands for the rest, the wage doubles, the bill buys half
+    /// the carters, the wage halves, and so on month about (docs/rules/carting.md,
+    /// "The wage that flipped").
+    pub adjust: f64,
 }
 
 impl Default for CartingParams {
     /// Off: what the port runs with.
     fn default() -> CartingParams {
-        CartingParams { enabled: false, labor: 1.0, max_share: 0.5 }
+        CartingParams { enabled: false, labor: 1.0, max_share: 0.5, adjust: 0.25 }
     }
 }
 
@@ -48,9 +56,9 @@ impl CartingParams {
 }
 
 /// The start of a month's labour market: last month's carting bill, at last
-/// month's wage, is this month's carters, and they leave the town's supply of
-/// hands. (A month's lag, because the bill is only known once the month's goods
-/// have moved.)
+/// month's wage, is the carters the town needs; its carters move `adjust` of
+/// the way there, and they leave the town's supply of hands. (A month's lag,
+/// because the bill is only known once the month's goods have moved.)
 pub fn take_carters(st: &mut State, P: &Params, supply: &mut [f64]) {
     if !P.carting.enabled {
         return;
@@ -59,10 +67,14 @@ pub fn take_carters(st: &mut State, P: &Params, supply: &mut [f64]) {
     if st.cart_bill.len() != T {
         st.cart_bill = vec![0.0; T];
     }
+    // the first month of all starts with the carters its bill pays for
+    let k = if st.carters.len() == T { P.carting.adjust.clamp(0.0, 1.0) } else { 1.0 };
     let mut carters = vec![0.0; T];
     for t in 0..T {
         if st.town_active[t] && st.wage[t] > 0.0 {
-            carters[t] = (P.carting.labor * st.cart_bill[t] / st.wage[t]).min(P.carting.max_share * supply[t]);
+            let most = P.carting.max_share * supply[t];
+            let want = (P.carting.labor * st.cart_bill[t] / st.wage[t]).min(most);
+            carters[t] = if k >= 1.0 { want } else { (st.carters[t] + k * (want - st.carters[t])).min(most) };
             supply[t] -= carters[t];
         }
     }

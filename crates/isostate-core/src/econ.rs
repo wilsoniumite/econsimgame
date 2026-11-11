@@ -1078,6 +1078,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     for (k, &i) in fi.iter().enumerate() {
         st.f_labor[i] = labor_f[k];
     }
+    crate::towns::month(st, P); // towns: works' hands this month, for the year's mean
     let mut flow = vec![0.0; st.N];
     for u in 0..NE {
         flow[ex[u]] += Y[u] * C.weight[g_s[u]];

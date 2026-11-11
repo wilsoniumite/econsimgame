@@ -586,20 +586,34 @@ fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
 /// The towns whose districts a founding redrew this year: each new town, and
 /// every town that held some of its ground the year before. Those are the
 /// towns `people::resettle_new_towns` takes its people from.
+///
+/// Under the game's rules for people (docs/rules/people.md) households go with
+/// their cells every year, founding or no founding: a road or a railway can
+/// carry a district from one market to another, and a town's people jump when
+/// it does. A town that gained or lost `REDRAWN_SHARE` of its people that way
+/// in the year is redrawn too.
 fn redrawn_towns(st: &State, year: i64) -> Vec<bool> {
     let T = st.T_max;
     let new: Vec<bool> = (0..T).map(|t| st.town_active[t] && st.town_founded[t] == year).collect();
     let mut cut = new.clone();
-    if !new.contains(&true) {
-        return cut;
-    }
-    for (&now, &was) in st.catch.iter().zip(&st.prev_catch) {
-        if now >= 0 && was >= 0 && (now as usize) < T && (was as usize) < T && new[now as usize] {
-            cut[was as usize] = true;
+    if new.contains(&true) {
+        for (&now, &was) in st.catch.iter().zip(&st.prev_catch) {
+            if now >= 0 && was >= 0 && (now as usize) < T && (was as usize) < T && new[now as usize] {
+                cut[was as usize] = true;
+            }
         }
+    }
+    for t in 0..T.min(st.pp_moved.len()) {
+        cut[t] = cut[t] || (st.town_active[t] && st.pp_moved[t] >= REDRAWN_SHARE);
     }
     cut
 }
+
+/// A town is redrawn when this share of its people came or went with their
+/// cells in a year. It is the least fall the chronicle calls a decline
+/// (`decline_fall`) and the least lead it calls outgrowing the island
+/// (`fastest_margin`): a smaller redrawing cannot make a story by itself.
+pub const REDRAWN_SHARE: f64 = 0.1;
 
 /// The towns `st.migration_flow` is indexed by, if it is this year's.
 fn movers(st: &State, year: i64) -> Option<Vec<usize>> {

@@ -60,14 +60,18 @@ ground, and `depth` runs from 0 when the worst month fed everyone
 There are no separate purses for the born and the dead; the rate is births
 less deaths. What each part stands for:
 
-- **Income.** At `y_still`, one and a half times bare subsistence, a household
-  just replaces itself. Above it more children live and people marry younger,
-  but only so far: the rate climbs toward `growth_top` and never reaches it,
+- **Income.** At `y_still`, 1.3 times bare subsistence, a household just
+  replaces itself. Above it more children live and people marry younger, but
+  only so far: the rate climbs toward `growth_top` and never reaches it,
   because there is a limit to how fast a people without modern medicine can
-  grow however well it eats. At twice subsistence the income part is 0.75 per
-  cent a year, at three times 1.27, at six times 1.56, at a hundred 1.65. So a
-  town's fortunes show in its cradles, and a doubling of late-century incomes
-  adds a third of a point, not a population bomb.
+  grow however well it eats. At one and a half times subsistence, where the
+  game's island stands in 1750, the income part is 0.42 per cent a year; at
+  twice 0.95, at three times 1.32, at six times 1.54, at a hundred 1.60. So a
+  town's fortunes show in its cradles, and a doubling of mid-century incomes
+  adds a fifth of a point, not a population bomb. (These are the game's two
+  numbers. On the port's island, which is richer in 1750 and much poorer in
+  1900, `y_still` was 1.5 and `growth_top` 0.0165, and everything under "What
+  a sweep showed" was measured with those; "In company" says why they moved.)
 - **The town itself.** Crowded streets kill. The cost rises with the share of
   the district's people who live on town ground and with how great the town
   is: nothing in a village, four tenths of a point where half of 40,000
@@ -184,8 +188,8 @@ they go is the market's business.
 | name | value | what it is |
 |---|---|---|
 | `enabled` | off; on in the game | the switch |
-| `growth_top` | 0.0165 | births less deaths a year that income alone can approach |
-| `y_still` | 1.5 | income over subsistence at which births balance deaths |
+| `growth_top` | 0.016 (0.0165 on the port's island) | births less deaths a year that income alone can approach |
+| `y_still` | 1.3 (1.5 on the port's island) | income over subsistence at which births balance deaths |
 | `ease` | 2.1 | how quickly the rate nears its ceiling |
 | `town_deaths` | 0.012 | extra deaths a year per head in a great town where all live on town ground |
 | `town_size` | 10,000 | townsfolk at which a town is half way to being a great one |
@@ -202,8 +206,13 @@ they go is the market's business.
 
 `growth_top` was set so that the island grows about fivefold on the port's
 income path: on seeds 1 to 8 (with `found_saving` at 0.05, before the review's
-repairs), 0.016 gave 636,000 people in 1900, 0.0165 gave 667,000 and 0.017
-gave 703,000. `found_saving` decides how many towns there are, and is the one
+repairs, and `y_still` at 1.5), 0.016 gave 636,000 people in 1900, 0.0165
+gave 667,000 and 0.017 gave 703,000. Both it and `y_still` were set again
+beside the game's other rules, for the same fivefold and the same slow start
+on an island that begins poorer and ends three times as rich ("In company").
+To measure people alone on the port's island as it was tuned there, add
+`--set people.y_still=1.5 --set people.growth_top=0.0165`.
+`found_saving` decides how many towns there are, and is the one
 to turn if you want more or fewer (see the sweep below). The rest are first
 values that gave sensible histories and have not been searched. What goes
 with a district has no numbers of its own: the weights are the trade itself.
@@ -246,8 +255,17 @@ within sight of it.
   `_farm`, `late_towns_port`, `late_towns_rail`, `late_town_people_median`,
   `late_town_people_largest` and `emigrants`. With the switch on,
   `growth_capped_*` count a town as held when income has carried it to within
-  a twentieth of `growth_top`, which takes an income above six times
-  subsistence.
+  a twentieth of `growth_top`, which takes an income above five and a half
+  times subsistence (six on the port's numbers).
+- Beside the game's other rules (see "In company"): a new town takes its
+  donor's price anchors (`prices::found_town`), and every price that
+  `move_with_cells` sets takes its anchor with it (`prices::anchor_follows`);
+  the same share of a town's carters goes with a district as of its other
+  people (`st.carters`); each town's share of people who came or went with
+  their cells is kept in `st.pp_moved`, and the chronicle treats a town that
+  gained or lost a tenth that way as redrawn, as it does at a founding; and
+  the emigration news carries its own reason, so the chronicle does not give
+  it the hunger's.
 - `cargo run --release -p isostate-core --example people -- 7 --families 6`
   prints one run by decade, every founding with its reason, and one town's
   people and cells (`--town`, `--every-year` for a line a year, `--off` for
@@ -401,6 +419,188 @@ port or better. The two who keep the default trade end with half as much and
 save 15 to 17 per cent of their income in the 1750s where they saved 24 to
 30 (see the worries).
 
+## In company
+
+People was merged into the game's rules last of nine, after the merchants'
+prices, the Engel curve, the machines, the harvests, the chronicle, the life
+cycle for works, the game's railways and carting. The integration's sweeps
+are under `.claude/night/reports/core-steps/`, all with six families:
+`people-before` and `people-after` (seeds 1 to 6, the game before the merge
+and after), `people-s7-12-before` and `people-s7-12` (the same on six seeds
+nothing was chosen on), `people-x-raw` (the merge before anything below was
+changed), `people-x-off` and `people-s7-12-x-off` (the carters' change
+alone), `people-x-at-once` (people without it), `people-x-still` and
+`people-x-still-top` (the two numbers), and in `people-probe/` the wages
+month by month, the chronicle's counts and the scripted players. No run
+failed in any of them. With `--set people.enabled=false --set
+carting.adjust=1` every fact of every seed is what it was before the merge
+(`people-x-off-at-once`).
+
+Four things had to be fitted together.
+
+**The carters.** As merged, no wage ran away any more (the game before had
+a town-month at 7 to 70 times the middle town's wage on every one of twelve
+seeds, the port's founding rule at work under the game's rules), but a new
+town's wage still went to between two and four and a half times the middle
+town's in its first spring, on every island. With carting off it was 1.3
+to 1.9, as on this page. The cause was older than people: carters
+were hired all at once on last month's bill, and in a town with a heavy
+bill that set the wage doubling and halving month about, in a fifth of all
+the game's town-months (`carting.md`, "The wage that flipped"). A district
+that gets a market of its own is such a town. Its cells cart a short way
+now, but its merchants pay the cart onward to the towns that buy its stone
+or coal (the worry below about what the founding test counts), and that
+bill falls on a few thousand people where it used to be spread over its
+mother town. So carters are now taken on by degrees (`carting.adjust`
+0.25), and the same share of a town's carters goes with a district as of
+its other people. Then, month by month on seeds 1 to 16
+(`people-probe/wage-watch-game.txt`):
+
+| | the game before | with people, carters hired at once | now |
+|---|---|---|---|
+| a town's greatest wage against the middle town's | 7 to 70 | 2.3 to 3.9 | 1.4 to 2.3 |
+| its least | 0.23 to 0.36 | 0.29 to 0.40 | 0.33 to 0.57 |
+| town-months with the wage moved by half or more | 0.13 to 0.28 | 0.17 to 0.34 | at most 0.002 |
+| hungry town-years in a run, and those in towns under three years old | 7 to 14, 6 to 14 | 0 to 3, none | 0 to 4, none |
+
+(The first two columns are seeds 1 to 12, `wage-watch-before.txt` and
+`wage-watch-carters-at-once.txt`; a hungry town-year has a month with under
+82 per cent of the food it needs.)
+
+**The merchants' anchors.** Under `prices` a town's price stands off a slow
+anchor by its stock, and moves toward that by at most 12 per cent a month.
+The port's founding rule hands a new town its mother's anchors
+(`prices::found_town`); this page's rule did not know of them, so a new
+town began with the anchors its empty slot was given in 1750, and every
+price the district brought with it was walked back toward those. Now
+`open_town` calls `prices::found_town`, and wherever `move_with_cells` sets
+a price the anchor moves in the same proportion (`prices::anchor_follows`),
+so the price stands as far off its anchor as the stock says. Both rules
+also set what a new town's producers expect: the merchants' rule takes the
+carriage to the mother town off her expected prices, and this page's then
+replaces that, good by good, wherever the district makes or buys anything.
+
+**The chronicle.** It never sets a town against what it was before a
+founding redrew its district. Here households go with their cells every
+year, and a road or a railway can carry a district from one market to
+another with no founding at all: on three seeds, 45 to 170 town-years in a
+run saw a town gain or lose more than 3 per cent of its people that way,
+and one town took in three and a half times its own people in a year. So a town that
+gained or lost a tenth of its people with their cells in a year
+(`st.pp_moved`) is redrawn too. And the news of people taking ship has the
+kind `famine`; the chronicle gave it the hunger's reason, which speaks of
+the food in the town named, and the town named is the port they sailed
+from. It now carries its own.
+
+**Two numbers.** With the reviewed numbers the island's people stood still
+for twenty years: 135,000 in 1750, 135,000 in 1760, 140,000 in 1770, and
+634,000 in 1900. Nothing was broken. With carters real the island of 1750
+has 1.5 baskets a head where the port's has 1.76, and 1.5 was `y_still`,
+the income at which births balance deaths. The rule was doing what it
+says on an island that had moved under it. So `y_still` is now 1.3, which
+puts the game's 1750 about as far above the line as the port's was above
+1.5; and `growth_top` is 0.016 for 0.0165, as this page said it would want
+once the island was richer (it ends at 8.5 baskets a head, not 3.4). On
+seeds 1 to 6:
+
+| `y_still`, `growth_top` | people in 1800, 1850, 1900 | growth a year in the 1750s, 1760s, 1770s | baskets a head in 1900 |
+|---|---|---|---|
+| the game before (the capped rule) | 225, 387, 669 thousand | 0.84, 1.01, 1.06 | 8.50 |
+| 1.5, 0.0165 (as reviewed) | 185, 336, 634 | 0.0, 0.4, 0.6 | 8.45 |
+| 1.3, 0.0165 | 206, 384, 726 | | 8.10 |
+| 1.2, 0.0165 | 216, 411, 785 | | 8.02 |
+| 1.35, 0.016 | 198, 360, 667 | 0.30, 0.55, 0.73 | 8.17 |
+| 1.3, 0.0155 | 201, 359, 650 | 0.37, 0.59, 0.80 | 8.45 |
+| **1.3, 0.016** | 203, 372, 686 | 0.38, 0.61, 0.82 | 8.46 |
+
+The tests of `tests/people.rs` that are histories of the port's island
+(Kelrigg, the hemmed-in sites) keep the pair they were built on.
+
+**What it does in company**, against the game before, seed for seed. The
+middle column is the carters' change alone, to show what is not people's.
+
+| | before | carters by degrees | with people | seeds 7 to 12: before | with people |
+|---|---|---|---|---|---|
+| people in 1800 | 224,500 | 222,900 | 203,500 (every seed fewer) | 226,400 | 203,000 (every seed) |
+| in 1850 | 387,200 | 384,300 | 371,900 | 390,200 | 374,600 |
+| in 1900 | 669,100 | 664,100 | 686,000 (4 seeds more, 2 fewer) | 674,000 | 696,700 (5, 1) |
+| a town-year's rate, per cent: tenth, middle, ninetieth | 1.10 all | 1.10 all | 0.84, 1.24, 1.48 | 1.10 all | 0.85, 1.25, 1.50 |
+| towns in 1800, 1850, 1900 | 13.5, 15.3, 15.3 | 13.8, 16.0, 16.0 | 12.7, 16.3, 16.5 | 12.8, 16.0, 16.0 | 14.0, 19.5, 20.2 |
+| last town founded | 1826 | 1818 | 1842 | 1825 | 1846 |
+| towns founded from 1800 | | | 3.8 | | 6.2 |
+| emigrants, whole run | | | 307 | | 219 |
+| baskets a head in 1800 | 2.98 | 2.96 | 2.95 | 3.06 | 3.10 |
+| in 1850 | 4.85 | 5.23 | 5.03 | 4.91 | 4.59 |
+| in 1900 | 8.50 | 8.39 | 8.46 (4 higher, 2 lower) | 8.62 | 8.13 (1, 5) |
+| goods a head in 1900 | 11.4 | 11.3 | 11.1 | 11.3 | 10.9 |
+| chained real wage in 1900, 1750 = 1 | 4.45 | 4.45 | 4.45 | 4.37 | 4.07 (every seed lower) |
+| urban share in 1900 | 0.415 | 0.416 | 0.414 | 0.424 | 0.419 |
+| works standing in 1800, 1850, 1900 | 253, 537, 671 | 260, 516, 668 | 242, 521, 687 | 274, 529, 664 | 283, 530, 752 |
+| town cells, industry cells in 1900 | 117, 219 | 116.5, 218 | 120.5, 225 | 120, 219 | 124.5, 217.5 |
+| railway in 1850, 1870, 1900, km | 1,420, 2,191, 2,643 | 1,650, 2,332, 2,645 | 1,520, 2,192, 2,644 | 1,144, 2,009, 2,616 | 944, 2,007, 2,617 |
+| price swings: grain, iron, rails, cloth | 0.112, 0.172, 0.179, 0.038 | 0.109, 0.171, 0.187, 0.039 | 0.108, 0.171, 0.185, 0.036 | 0.114, 0.176, 0.167, 0.037 | 0.115, 0.166, 0.166, 0.038 |
+| famine years in a run | 2.2 | 1.8 | 1.3 | 1.8 | 1.3 |
+| regional stories told | 44.2 | 41.2 | 37.2 | 49.7 | 44.5 |
+| seconds a run, six at a time | 17.6 | | 17.9 | | |
+
+(The seconds are the old rules and the new run back to back; the sweep
+called `people-before` ran on a quieter machine and shows 13.5.)
+
+What that says, set against what this page says of people alone:
+
+- **The people.** The slow start is here as it is alone: 0.4 per cent a
+  year in the 1750s, 0.6 in the 1760s, 0.8 in the 1770s, 1.0 to 1.1 in the
+  1780s and 1.2 to 1.25 from the 1790s to the end, so 21,000 to 23,000
+  fewer people than the game before in 1800 on every one of twelve seeds,
+  and by 1900 2 to 3 per cent more: 5.1 times the people of 1750 (alone
+  5.0). The fastest
+  town-years are faster than alone (1.48 per cent at the ninetieth for
+  1.32), because the island is richer.
+- **Towns.** The game before founded fewer towns in the first rush than the
+  port does alone (13 by 1800, not 18), so people does not thin them out
+  here; it goes on founding where the game before stopped. The last town is
+  founded in the 1840s, not the 1820s (alone: the 1860s, not about 1800).
+  Seeds 1 to 6 end with one town more and seeds 7 to 12 with four more
+  (every seed of those six). Of the towns founded from 1800, 3.8 and 6.2 a
+  seed (alone 7.0), most stand among quarries and claypits (2.2 and 4.2),
+  then farms (1.0 and 0.7), works (0.5 and 0.8) and coal (0.2 and 0.5); 0.7
+  and 0.5 are on the coast, one in twenty-five beside a railway. The middle one has 14,000
+  people in 1900 (alone 30,000), the largest in a seed 26,000 and 40,000.
+- **Living standards.** Alone, the late wage with families leant 3 per cent
+  lower. In company the baskets of 1900 are 8.46 for 8.50 on seeds 1 to 6
+  and 8.13 for 8.62 on seeds 7 to 12: together 3 per cent lower, five seeds
+  higher and seven lower. On seeds 7 to 12, where there are four more
+  towns, it is 6 per cent and the chained real wage of 1900 is lower on
+  every seed. More towns cost more, as the `found_saving` table says, and
+  so do 3 per cent more people on the same land.
+- **The railway** of 1850 is 7 per cent longer on seeds 1 to 6 and 17 per
+  cent shorter on seeds 7 to 12, and the same from 1870 on. Against the
+  carters' change alone it is 8 and 21 per cent shorter, which is what
+  people does alone (a fifth less line in 1850, caught up by 1870).
+- **Hunger and sailing.** Famine years fall from 2.0 a run to 1.3, since a
+  new town no longer starves in its first year. A few hundred people a run
+  take ship (alone 1,200).
+- **Works.** As many as before to 1850; in 1900 2 per cent more on seeds 1
+  to 6 and 13 per cent more on seeds 7 to 12 (every seed), with the towns.
+- **Prices** swing as they did, and nothing sits at a floor or a ceiling.
+- **The news.** The chronicle's feed is the length it was (58.9 items kept
+  in a run for 58.2, on seeds 1 to 12; `people-probe/chronicle-game.txt`
+  and `chronicle-before.txt`). It tells 41 regional stories a run where it
+  told 47: fewer declines (11.2 for 13.0) and fewer fastest-growing towns
+  (10.2 for 11.6), since a town whose district was redrawn is passed over
+  for some years, and fewer districts of closures (12.2 for 14.2). Eight
+  are kept, as before.
+- **The scripted players** (`people-probe/bots-game.txt`, against
+  `railways-probe/bots-game.txt` from before) finish all sixteen games.
+  The landlord and the thoughtful player are first of six in 1900 on every
+  seed, as they were. The player who takes every default is where this
+  page's first worry said it would be, on two islands of four: first on
+  seeds 1 and 3 (it was second and first), fourth on seeds 2 and 7 (it was
+  first), having saved 16 and 15 per cent of its income in the 1750s where
+  it saved 27 and 23. The founder is second, first, second and fourth (it
+  was third, first, second and fourth). In money the player ends with 14 to
+  86 million where it had 23 to 76. One game each.
+
 ## Tests
 
 `tests/people.rs`: the rate's shape (zero at `y_still`, rising, flattening,
@@ -417,7 +617,15 @@ hand on a handful of cells hard by another and watched to 1840. Two of the
 six stay hamlets of 2 to 22 cells for the rest of the run. Their wage stays
 between a twenty-fifth and four times the island's (in the run, 0.08 to
 1.1), and while a planted town's area is no larger its people grow by no
-more than births and the arrivals limit allow.
+more than births and the arrivals limit allow. Those histories are the
+port's island's at `y_still` 1.5 and `growth_top` 0.0165, and the tests keep
+that pair. One more runs the whole of the game's rules with six families
+on seed 4 to 1800, month by month: every town's wage within 0.2 and 3 times
+the middle town's, the wage moving by half or more in under one town-month
+in two hundred, and every new town opening with each price between half and
+twice its merchants' anchor. `prices.rs` has a test of the anchor that
+follows a price, and `tests/chronicle.rs` now expects a town to be redrawn
+by a tenth of its people changing market as well as by a founding.
 
 ## What worries me
 
@@ -441,7 +649,26 @@ more than births and the arrivals limit allow.
   table), which fits what the founding test leaves out (next item). Other
   mechanisms are meant to lift late-century incomes; this one leans a little
   the other way with families, and it should be measured again in their
-  company.
+  company. It was ("In company"): 3 per cent lower again on twelve seeds,
+  and 6 per cent on the six where four more towns stand.
+- **Two numbers were set again on six seeds.** `y_still` 1.3 and
+  `growth_top` 0.016 were chosen on seeds 1 to 6 and checked on 7 to 12,
+  for a start as slow as this page describes and an island of about five
+  times its people. They answer to where the game's island stands in 1750
+  and in 1900, so anything that moves those (carting's `labor`, the
+  machines) moves them again. If the island should rather stand still for
+  its first twenty years, as it did at the reviewed numbers, 1.5 does it.
+- **A town of exporters carts a great deal.** With carters real, a new
+  quarry or colliery town can have three hands in ten on the road against
+  one in seven on the island, because the cart from its market to its
+  buyers is its merchants' to pay. It is the next worry in the flesh: the
+  founding test credited the district with a saving that the island, and
+  now the town's own labour market, partly pays back.
+- **The chronicle tells a seventh fewer regional stories.** A town that
+  gains or loses a tenth of its people with their cells is passed over for
+  the years its stories look back. The line of a tenth is the chronicle's
+  own least decline; a district that drifts over at 5 per cent a year for
+  three years is not caught and could be told as a decline.
 - **The founding test counts the producers' saving, not the island's.** It
   adds up what the district's cells would save in carting to a nearer market.
   Coal that the district does not burn itself still has to get from the new
@@ -454,7 +681,8 @@ more than births and the arrivals limit allow.
   per cent a year against 1.27 at three. But fifty years at the higher rate
   is 15 per cent more people in 1900, and they press on the same land.
   `growth_top` was tuned on the port's incomes and will want turning down a
-  little if the island gets much richer.
+  little if the island gets much richer. (It did, and was: 0.016 beside the
+  game's other rules. See "In company".)
 - **What the probe's crash was.** It was not reproduced on its own branch.
   What was found instead is the thing it was the far end of: prices and
   expectations that did not go with cells (see Why). With that mended a town
