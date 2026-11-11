@@ -100,6 +100,12 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     st.urban = vec![false; N];
     st.urban_res = vec![0.0; N];
     st.water = (0..N).map(|c| world.coast[c] || world.river[c]).collect();
+    // land: a lake's shore is by the water too
+    if let Some(lf) = &world.landform {
+        for c in 0..N {
+            st.water[c] = st.water[c] || lf.shore[c];
+        }
+    }
     st.world = world;
 
     // firms

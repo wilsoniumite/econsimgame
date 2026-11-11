@@ -18,7 +18,7 @@ use crate::rng::{Rng, integers, uniform};
 const YEAR_S: f64 = 3.156e7;
 
 /// What a river runs into.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub enum RiverEnd {
     #[default]
     Sea,
@@ -30,7 +30,7 @@ pub enum RiverEnd {
 
 /// A river's course: a line of points from the source down, in cell units (cell
 /// (x, y) covers x..x+1 by y..y+1), with what the river is like at each.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct River {
     pub x: Vec<f32>,
     pub y: Vec<f32>,
@@ -46,7 +46,7 @@ pub struct River {
 }
 
 /// A cut-off loop of an old course, left as a crescent of still water.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct Oxbow {
     pub x: Vec<f32>,
     pub y: Vec<f32>,
@@ -54,7 +54,7 @@ pub struct Oxbow {
     pub level: f32,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct Lake {
     /// Height of the water above the sea, metres.
     pub level: f32,
@@ -611,7 +611,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
                     }
                 }
             }
-            if nodes.len() < min_nodes || lakes.len() >= 60000 {
+            if nodes.len() < min_nodes || lakes.len() >= 250 {
                 for &c in &nodes {
                     z[c] = rt.fill[c];
                 }

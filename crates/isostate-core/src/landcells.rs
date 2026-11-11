@@ -22,7 +22,7 @@ use crate::rng::{Rng, land_stream, random_n};
 use crate::world::{HILLS, LOWLAND, MOUNTAINS, NEIGH8, SEA, World};
 
 /// Where a river system meets the sea.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct Outlet {
     /// The cell of its mouth.
     pub cell: usize,
@@ -47,7 +47,7 @@ pub const SITE_NAMES: [&str; 5] = ["", "estuary head", "confluence", "lake outle
 /// Fine arrays are row-major, `fh` rows of `fw` nodes, `fine` nodes to a cell's
 /// side; node (i, j) has its centre at ((i + 0.5) / fine, (j + 0.5) / fine) in
 /// cell units. Cell arrays are row-major like the `World`'s.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct Landform {
     pub fine: usize,
     pub fw: usize,
@@ -623,4 +623,122 @@ fn pick_sites(world: &World, lf: &Landform, rng: &mut Rng, n: usize) -> Vec<usiz
         }
     }
     sites
+}
+
+fn f32_bytes(v: &[f32]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_le_bytes()).collect()
+}
+
+fn i32_bytes(v: &[i32]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_le_bytes()).collect()
+}
+
+/// The land's static arrays for `run.bin`, as (name, dtype, shape, bytes): the
+/// fine grid, the river lines flattened, the oxbows, and the cell fields. Only a
+/// run on an island the mechanism made has them (`record::pack`).
+///
+/// Fine, `[fh, fw]`: `land_height` (float32, metres), `land_rock`, `land_lake`
+/// (0, or the lake's place in the header's list plus 1) and `land_wet` (uint8),
+/// `land_flow` (float32, cubic metres a second).
+///
+/// Rivers: `river_start` (int32, `[rivers + 1]`: river r's points are
+/// `river_start[r] .. river_start[r + 1]`), `river_xy` (float32, `[points, 2]`,
+/// cell units), `river_width`, `river_level`, `river_flow` (float32, `[points]`),
+/// `river_braided` (uint8), `river_end` (int32 by river: -1 the sea, -2 - L for
+/// lake L, else the river it joins). Oxbows likewise: `oxbow_start`, `oxbow_xy`,
+/// and `oxbow_width`, `oxbow_level` by oxbow.
+///
+/// Cells, `[H, W]`: `land_lakecell`, `land_shore`, `land_site_kind` (uint8);
+/// `land_basin`, `land_stream` (int32); `land_lake_share`, `land_rain`,
+/// `land_discharge`, `land_power`, `land_floodplain`, `land_marsh`,
+/// `land_wetness`, `land_slope`, `land_relief`, `land_site` (float32); and
+/// `land_runoff` (float32, `[12, H, W]`).
+pub fn static_arrays(lf: &Landform, W: usize, H: usize) -> Vec<(String, &'static str, Vec<usize>, Vec<u8>)> {
+    let mut out: Vec<(String, &'static str, Vec<usize>, Vec<u8>)> = Vec::new();
+    let fine = vec![lf.fh, lf.fw];
+    let cells = vec![H, W];
+    out.push(("land_height".into(), "float32", fine.clone(), f32_bytes(&lf.height)));
+    out.push(("land_rock".into(), "uint8", fine.clone(), lf.rock.clone()));
+    out.push(("land_lake".into(), "uint8", fine.clone(), lf.lake_id.iter().map(|&l| l.min(255) as u8).collect()));
+    out.push(("land_wet".into(), "uint8", fine.clone(), lf.wet.clone()));
+    out.push(("land_flow".into(), "float32", fine, f32_bytes(&lf.flow)));
+
+    let (mut start, mut xy, mut width, mut level, mut flow, mut braided, mut end) = (vec![0i32], Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for r in &lf.rivers {
+        for i in 0..r.x.len() {
+            xy.push(r.x[i]);
+            xy.push(r.y[i]);
+        }
+        width.extend_from_slice(&r.width);
+        level.extend_from_slice(&r.level);
+        flow.extend_from_slice(&r.flow);
+        braided.extend(r.braided.iter().map(|&b| b as u8));
+        start.push((xy.len() / 2) as i32);
+        end.push(match r.end {
+            crate::landwater::RiverEnd::Sea => -1,
+            crate::landwater::RiverEnd::Lake(l) => -2 - l as i32,
+            crate::landwater::RiverEnd::River(m) => m as i32,
+        });
+    }
+    let points = width.len();
+    out.push(("river_start".into(), "int32", vec![start.len()], i32_bytes(&start)));
+    out.push(("river_xy".into(), "float32", vec![points, 2], f32_bytes(&xy)));
+    out.push(("river_width".into(), "float32", vec![points], f32_bytes(&width)));
+    out.push(("river_level".into(), "float32", vec![points], f32_bytes(&level)));
+    out.push(("river_flow".into(), "float32", vec![points], f32_bytes(&flow)));
+    out.push(("river_braided".into(), "uint8", vec![points], braided));
+    out.push(("river_end".into(), "int32", vec![end.len()], i32_bytes(&end)));
+
+    let (mut start, mut xy, mut width, mut level) = (vec![0i32], Vec::new(), Vec::new(), Vec::new());
+    for o in &lf.oxbows {
+        for i in 0..o.x.len() {
+            xy.push(o.x[i]);
+            xy.push(o.y[i]);
+        }
+        start.push((xy.len() / 2) as i32);
+        width.push(o.width);
+        level.push(o.level);
+    }
+    out.push(("oxbow_start".into(), "int32", vec![start.len()], i32_bytes(&start)));
+    out.push(("oxbow_xy".into(), "float32", vec![xy.len() / 2, 2], f32_bytes(&xy)));
+    out.push(("oxbow_width".into(), "float32", vec![width.len()], f32_bytes(&width)));
+    out.push(("oxbow_level".into(), "float32", vec![level.len()], f32_bytes(&level)));
+
+    let flags = |v: &[bool]| v.iter().map(|&b| b as u8).collect::<Vec<u8>>();
+    out.push(("land_lakecell".into(), "uint8", cells.clone(), flags(&lf.lake)));
+    out.push(("land_shore".into(), "uint8", cells.clone(), flags(&lf.shore)));
+    out.push(("land_site_kind".into(), "uint8", cells.clone(), lf.site_kind.clone()));
+    out.push(("land_basin".into(), "int32", cells.clone(), i32_bytes(&lf.basin)));
+    out.push(("land_stream".into(), "int32", cells.clone(), i32_bytes(&lf.stream)));
+    for (name, v) in [
+        ("land_lake_share", &lf.lake_share),
+        ("land_rain", &lf.rain),
+        ("land_discharge", &lf.discharge),
+        ("land_power", &lf.power),
+        ("land_floodplain", &lf.floodplain),
+        ("land_marsh", &lf.marsh),
+        ("land_wetness", &lf.wetness),
+        ("land_slope", &lf.slope),
+        ("land_relief", &lf.relief),
+        ("land_site", &lf.site),
+    ] {
+        out.push((name.into(), "float32", cells.clone(), f32_bytes(v)));
+    }
+    out.push(("land_runoff".into(), "float32", vec![12, H, W], f32_bytes(&lf.runoff)));
+    out
+}
+
+/// What `run.bin`'s header says of the land, under the key `land`: the fine
+/// grid's size, the height that is 1 in `elev`, the wind, how far the sea rose,
+/// the lakes and the sea outlets, and the names of the codes.
+pub fn static_header(lf: &Landform) -> serde_json::Value {
+    serde_json::json!({
+        "fine": lf.fine, "fw": lf.fw, "fh": lf.fh, "h_ref": lf.h_ref,
+        "wind": [lf.wind.0, lf.wind.1], "drowned": lf.drowned,
+        "lakes": serde_json::to_value(&lf.lakes).unwrap(),
+        "outlets": serde_json::to_value(&lf.outlets).unwrap(),
+        "rock_names": crate::landform::ROCK_NAMES,
+        "wet_names": ["dry", "flood plain", "marsh"],
+        "site_names": SITE_NAMES,
+    })
 }
