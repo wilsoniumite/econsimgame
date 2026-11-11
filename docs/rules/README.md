@@ -124,11 +124,13 @@ is supposed to be off. Or the port itself was changed on purpose. For the
 second case only:
 
 ```bash
-ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden -- --nocapture
+ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden
 ```
 
-prints the new constants to paste over the old ones; say in the commit message
-why the port moved. To see what changed, not only that something did,
+checks nothing: each of the three tests stops with the line to paste over its
+constant (as a failure, so that it shows and so that such a run is never taken
+for a pass). Say in the commit message why the port moved. To see what
+changed, not only that something did,
 
 ```bash
 ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --release --test golden
@@ -150,21 +152,27 @@ cargo run --release -p isostate-core -- sweep --out DIR [--seeds 1-8 | 1,2,5] [-
 
 Every seed is run against every combination of the `--set` values, a few runs
 at a time on their own threads (half the machine's cores unless `--jobs` says
-otherwise). Eight seeds to 1900 take about half a minute on this machine. A
-run that panics or fails the monthly money check is reported as failed and the
-rest carry on; the command then ends with an error so a script notices.
+otherwise). Eight seeds to 1900 take from 16 seconds to half a minute on this
+machine, depending on what else it is doing, and the numbers do not depend on
+how many run at once (`--jobs 1` and `--jobs 8` write the same files, the
+seconds aside). A run that panics or fails the monthly money check is reported
+as failed and the rest carry on; the command then ends with an error so a
+script notices.
 
 `--set` takes any field of `Params` by name, and a dotted path into a
 mechanism's struct. The value goes in through the parameters' JSON form, so
 there is no table of names to keep up to date; a number, `true`, a list in
-brackets or a bare word (`rent_regime=commons`) all work. A name that does not
-exist is refused before anything runs:
+brackets or a bare word (`rent_regime=commons`) all work. Whatever is wrong
+with the command line is refused before anything runs or is written: a name
+that does not exist, a value of the wrong kind or listed twice, an end year
+before the start, more than 10,000 seeds, a `DIR` that cannot be made.
 
 ```text
 --set land_thetta: there is no parameter "land_thetta". Did you mean land_theta?
 ```
 
-It writes into `DIR`:
+It writes into `DIR`, replacing a sweep that is already there (so the same
+command makes a baseline again):
 
 - `annual.csv`: one row per run and year. The run's number, its seed, the
   swept values, the year, then every observer series averaged over the year's
@@ -175,105 +183,154 @@ It writes into `DIR`:
 - `summary.txt`: the table it prints.
 - `README.txt`: the command line, the rules, `git describe`, how long it took.
 
-The table gives every fact's mean and its least and greatest value across the
-seeds, one column per setting. This is the port on seeds 1 to 8, shortened:
+The table gives every fact's mean across the seeds in a column of its own,
+one per setting, with the least and greatest value beside it. The range is
+left out where its two ends print the same (every seed starts with 135,000
+people), and `(3/8)` says only three of eight runs have a value at all. This
+is the port on seeds 1 to 8, shortened:
 
 ```text
-8 runs under the port rules: seeds 1 2 3 4 5 6 7 8, 1 setting; 0 failed; 28 s, 8 at a time
-each fact: mean [least .. greatest] across seeds; (n/N) when only n of N runs have a value
+8 runs under the port rules: seeds 1 2 3 4 5 6 7 8, 1 setting; 0 failed; 16 s, 8 at a time
+each fact: its mean across seeds, then [least .. greatest] unless the two print the same;
+(n/N) when only n of N runs have a value, - when none has
 
-                                                        port rules
+                                      port rules
 People and towns
-  pop_1750                            135,000 [135,000 .. 135,000]
-  pop_1800                            229,223 [227,127 .. 231,075]
-  pop_1850                            395,529 [390,493 .. 398,936]
-  pop_1900                            682,305 [674,793 .. 689,383]
-  growth_capped_years                       0.995 [0.974 .. 1.000]
-  growth_capped_people                      0.976 [0.951 .. 0.991]
-  urban_share_1750                          0.264 [0.255 .. 0.277]
-  urban_share_1800                          0.232 [0.209 .. 0.245]
-  urban_share_1850                          0.231 [0.199 .. 0.262]
-  urban_share_1900                          0.237 [0.224 .. 0.252]
+  pop_1750                               135,000
+  pop_1800                               229,223  [227,127 .. 231,075]
+  pop_1850                               395,529  [390,493 .. 398,936]
+  pop_1900                               682,305  [674,793 .. 689,383]
+  growth_capped_years                      0.995  [0.974 .. 1.000]
+  growth_capped_people                     0.976  [0.951 .. 0.991]
   ...
 Work and wages
   ...
-  real_wage_1800_vs_1750                       1.33 [1.27 .. 1.45]
-  real_wage_1850_vs_1750                       1.34 [1.10 .. 1.58]
-  real_wage_1900_vs_1750                       1.29 [0.93 .. 1.43]
+  real_wage_1800_vs_1750                    1.33  [1.27 .. 1.45]
+  real_wage_1850_vs_1750                    1.34  [1.10 .. 1.58]
+  real_wage_1900_vs_1750                    1.29  [0.93 .. 1.43]
   ...
 Railways
-  rail_first_year                              1828 [1815 .. 1838]
-  rail_km_1850                                990.2 [920 .. 1,124]
-  rail_km_1870                                1,016 [920 .. 1,258]
-  rail_km_1900                                1,024 [920 .. 1,258]
-  rail_last_growth_year                        1866 [1833 .. 1899]
+  rail_first_year                           1828  [1815 .. 1838]
+  rail_km_1850                             990.2  [920 .. 1,124]
+  rail_km_1870                             1,016  [920 .. 1,258]
+  rail_km_1900                             1,024  [920 .. 1,258]
+  rail_last_growth_year                     1866  [1833 .. 1899]
   ...
 Methods and inventions
-  discovered_coke_furnace                      1772 [1764 .. 1780]
-  first_output_coke_furnace                    1773 [1765 .. 1781]
-  half_of_output_coke_furnace                  1780 [1770 .. 1787]
+  discovered_coke_furnace                   1772  [1764 .. 1780]
+  first_output_coke_furnace                 1773  [1765 .. 1781]
+  half_of_output_coke_furnace               1780  [1770 .. 1787]
   ...
-  discovered_bessemer                          1858 [1833 .. 1882]
-  first_output_bessemer                  1888 [1883 .. 1896] (3/8)
-  half_of_output_bessemer                                        -
+  discovered_bessemer                       1858  [1833 .. 1882]
+  first_output_bessemer                     1888  [1883 .. 1896] (3/8)
+  half_of_output_bessemer                      -
   ...
 
 never built, port rules: bessemer (in 5 of 8 runs), steel_rolling (in 7 of 8 runs)
 ```
 
 With `--compare OTHER_DIR` it then reads `OTHER_DIR/facts.json` and sets each
-fact's mean now beside its mean then, with the change. A star marks a fact
-whose ranges across seeds do not overlap: every seed now is above, or below,
-every seed then. Six families against none, the headings and the starred rows
-only:
+fact's mean now beside its mean then, with the change. Like is compared with
+like: where the two sweeps have seeds in common, only those seeds' runs are
+used on either side, so four seeds are never set against eight and the
+difference between islands taken for a difference between rules. (With no seed
+in common every run of each is used, and the table says so.)
+
+- A line at the top counts what moved.
+- `=` is a fact that every seed gives exactly as it gave it before.
+- `up/down` counts, seed by seed, where the fact is greater now and where it
+  is less. `8/0` is every island moving the same way, however little; by
+  chance alone that happens for one fact in 128.
+- A star marks a fact whose ranges across seeds do not overlap: every seed now
+  is above, or below, every seed then. That is a much harder test (a shift
+  larger than the whole spread between islands). It is only given with four
+  runs or more a side; with fewer, two sets of seeds under the very same rules
+  stand clear of each other too often (one time in three with two a side).
+
+Six families against none, the headings and the starred rows only:
 
 ```text
-now: port rules, 6 families (8 runs); then: port rules (8 runs) in ../../night/reports/sweep-port-baseline
-* the ranges across seeds do not overlap
+now: port rules, 6 families (8 runs); then: port rules (8 runs) in .claude/night/reports/sweep-port-baseline
+seed for seed, on seeds 1 2 3 4 5 6 7 8
+of the 128 facts both have, the seconds aside, 114 differ and 11 of those are starred
+= every seed gives the number it gave
+up/down: the seeds in which the fact is greater now, and those in which it is less
+* the ranges across seeds do not overlap: every seed now is above, or below, every seed then
+  (marked only with 4 runs or more a side)
 
-                                          now     then            change
+                                          now     then            change  up/down
 People and towns
 Work and wages
 Railways
 Works
-  works_1800                            2,131    1,536     +594 (+38.7%)  *
-  works_1850                            4,156    2,804   +1,352 (+48.2%)  *
-  works_1900                            6,973    4,512   +2,461 (+54.5%)  *
-  works_ex_services_1800                2,046    1,456     +590 (+40.6%)  *
-  works_ex_services_1850                4,010    2,660   +1,351 (+50.8%)  *
-  works_ex_services_1900                6,700    4,260   +2,440 (+57.3%)  *
-  works_per_1000_people_1900             10.2     6.61     +3.6 (+54.4%)  *
-  works_size_median_1900                 0.46     0.84             -0.38  *
-  works_size_p90_1900                    2.52     2.86             -0.34  *
-  works_closed                          5,472    4,710     +763 (+16.2%)  *
+  works_1800                            2,131    1,536     +594 (+38.7%)      8/0  *
+  works_1850                            4,156    2,804   +1,352 (+48.2%)      8/0  *
+  works_1900                            6,973    4,512   +2,461 (+54.5%)      8/0  *
+  works_ex_services_1800                2,046    1,456     +590 (+40.6%)      8/0  *
+  works_ex_services_1850                4,010    2,660   +1,351 (+50.8%)      8/0  *
+  works_ex_services_1900                6,700    4,260   +2,440 (+57.3%)      8/0  *
+  works_per_1000_people_1900             10.2     6.61     +3.6 (+54.4%)      8/0  *
+  works_size_median_1900                 0.46     0.84             -0.38      0/8  *
+  works_size_p90_1900                    2.52     2.86             -0.34      0/8  *
+  works_closed                          5,472    4,710     +763 (+16.2%)      8/0  *
 Land
 Methods and inventions
 Prices and cycles
 News
-  news_total                            1,485    245.8  +1,240 (+504.4%)  *
+  news_total                            1,485    245.8  +1,240 (+504.4%)      8/0  *
 Speed
 ```
 
 So with families there are half as many works again and the typical one is
-half the size. No other fact moves clear of the spread between seeds, the
-news aside, where the families' own items are counted.
+half the size. Nothing else moves clear of the spread between seeds, the news
+aside, where the families' own items are counted. The tally shows what the
+star cannot: these rows have no star, and every island moves the same way.
+
+```text
+  urban_share_1850                      0.257    0.231            +0.027      8/0
+  urban_share_1900                      0.255    0.237            +0.018      8/0
+  industry_share_1850                   0.274    0.239            +0.035      8/0
+  industry_share_1900                   0.272    0.248            +0.024      8/0
+  works_top_1pct_capacity_share_1900    0.058    0.080            -0.022      0/8
+  cells_industry_1900                   980.8    886.2    +94.5 (+10.7%)      8/0
+```
+
+Six families building works every year raise the share of people in towns and
+of work in industry by two or three points, on every island.
 
 Each setting of the new sweep is set against the old sweep's setting of the
-same name, or its first if none has that name.
+same name, or its first if none has that name. `OTHER_DIR` may be `DIR`
+itself: the sweep that was there is read before the first run and replaced
+after the last, which is the quick way to ask whether a change to the code
+moved anything. A sweep set beside its own earlier self shows `=` in every
+row but the seconds, since a run is the same run every time.
 
 ### The facts
 
 All of them are worked out after the run from what it already keeps (the
 observer's series, the yearly snapshots, the final state); the simulation's
-loop is not touched. The one thing nobody keeps, the towns' growth against the
-cap, is noted between years by the sweep's own loop. They are computed from
-the content, so another content file works: a method or good it lacks is
-skipped.
+loop is not touched. Two things nobody keeps, the towns' growth against the
+cap and the land under each use, are noted between years by the sweep's own
+loop. The facts are computed from the content, so another content file works:
+a method or good it lacks is skipped, and one it adds gets its rows.
 
 A fact taken from a series in a year is the mean of that year's twelve months,
-the number in `annual.csv`. The years are the first, every fiftieth after it,
-and the last: 1750, 1800, 1850 and 1900 for a whole run, and the names change
-with the run (`pop_1760` for a run to 1760).
+the number in `annual.csv`: `towns_1800` is the towns there were during 1800.
+A fact counted from the yearly snapshot (the works and the land) is taken as
+the year ends, after that year's openings and closures: `works_1800` includes
+the works founded at the end of 1800. The years are the first, every fiftieth
+after it, and the last: 1750, 1800, 1850 and 1900 for a whole run, and the
+names change with the run (`pop_1760` for a run to 1760).
+
+The facts can be worked out a second time from the files `isostate-core run`
+writes (the monthly CSV, the events and `run.bin`):
+`crates/isostate-core/parity/check_facts.py` does it for one seed, in plain
+Python written from this page and sharing nothing with `facts.rs`. For seeds
+3 and 7, with and without families, and for a run to 1835, every fact that
+can be had from those files agrees (107 of them for a whole run). The rest
+(`growth_capped_*`, `works_top_1pct_capacity_share`, `works_utilisation` and
+the `area_*`) are worked out a second way in `tests/sweep.rs`, from the yearly
+snapshot and the final state of a run to 1790.
 
 | Heading | Facts |
 |---|---|
@@ -281,7 +338,7 @@ with the run (`pop_1760` for a run to 1760).
 | Work and wages | `farm_share_Y` and `industry_share_Y` of employment; `real_wage_Y_vs_1750` and `output_per_head_Y_vs_1750`; `output_per_head_peak_year` |
 | Railways | `rail_first_year`; `rail_km_Y` for 1850, 1870 and 1900; `rail_last_growth_year`, the last year that ended with more line than the year before |
 | Works | `works_Y` standing at the year's end and `works_ex_services_Y`; `works_per_1000_people`; size as built capacity K over the method's K0, for works with something built: `works_size_median`, `_p90`, `_largest`; `works_top_1pct_capacity_share`, the share of all capacity (built and on order, at the year's capital-goods prices) held by the largest hundredth of works; `works_closed` and their `works_closed_median_life` in years; `works_utilisation`, the mean over works |
-| Land | `cells_USE_Y`: the number of cells whose main use is urban, industry, farm, pasture, forestry, mines (quarries, pits and mines together), wild or derelict; `urban_churn_10y`, of the cells urban in a year the share not urban ten years on, averaged over the run |
+| Land | `cells_urban_Y`, `cells_industry_Y` and `cells_derelict_Y`: the number of whole cells a town, the works or dereliction has taken; `area_USE_Y`: the land under farm, pasture, forestry, mines (quarries, pits and mines together) and left wild, in cells, as every cell's share summed (a cell is 2 km square); `urban_churn_10y`, of the cells urban in a year the share not urban ten years on, averaged over the run |
 | Methods and inventions | for each method or tech not known at the start: `discovered_NAME`, and for methods `first_output_NAME` and `half_of_output_NAME`, the first year it makes half of all that its good's methods make; the plan's five: `share_coke_furnace_1800`, `share_textile_mill_1830`, `share_bessemer_1880`, `share_rolling_mill_1850`, `share_steel_rolling_1890`; and the list of methods never built |
 | Prices and cycles | `price_swing_GOOD` for grain, iron, rails and cloth: the standard deviation of the yearly change in the log of the price, 1760 to the end; `farm_zigzag`, the mean absolute second difference of the yearly farm share of employment, times 100 |
 | News | `news_KIND`, the number of news items of each kind, and `news_total` |
@@ -322,29 +379,60 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   none before 1883, and never makes half the steel; steel rails are made in
   one seed.
 - **Works stay small and die young**: the median works is 0.84 of its method's
-  usual size, the largest 3.7 in every seed (a ceiling, not a distribution),
-  the top hundredth hold 8 per cent of capacity, and the median life of a works
-  that closed is under twelve years.
+  usual size, the largest 3.69 in every seed, the top hundredth hold 8 per
+  cent of capacity, and the median life of a works that closed is under
+  twelve years. The 3.69 is a ceiling, not a distribution: a works that would
+  grow past `footprint_K_mult` (4) times its method's K0 founds a sister works
+  instead (`firms::review`), and the yearly depreciation of 4 per cent keeps
+  the largest a little under that.
 - **Iron and rail prices swing two and a half times as hard as grain and
   cloth** (0.22 and 0.20 against 0.086 and 0.083).
 - **No town is founded after about 1800** (the latest in any seed is 1824).
+- **The woods retreat by a third and the wild land halves** (1,211 cells'
+  worth of forestry in 1750 and 853 in 1900; 565 of wild land and 288), while
+  the farms' and pastures' area falls a little (1,404 to 1,282 and 1,525 to
+  1,301). What grows is the land under quarries, pits and mines (below) and
+  the works' yards, from 204 cells to 886.
 
 ## What worries me
 
 - **Eight seeds is a small sample.** The star in the comparison is a blunt
   test: with eight runs a side, two ranges fail to overlap by chance about
-  once in 6,400 tries for one fact, but there are over a hundred facts, and it
-  says nothing about a shift that is real and smaller than the spread. For
+  once in 6,400 tries for one fact (once in 35 with four a side, the fewest it
+  is given for), and it says nothing about a shift that is real and smaller
+  than the spread. The `up/down` tally sees those, but it is a weak test taken
+  a hundred and thirty times: `8/0` comes up by chance once in 128, so in any
+  comparison one such row may mean nothing, and `7/1` means little. For
   anything close, run more seeds.
+- **The golden hashes are this machine's.** They were taken on Windows with
+  the MSVC toolchain. Logarithms, exponentials and powers come from the
+  platform's maths library, so another system may round a last digit the
+  other way, and over 150 years that grows into a different run. Not tried:
+  if the golden test fails on a fresh machine with no change to the code,
+  suspect this first.
+- **The golden test watches the economy, not the map.** It hashes the monthly
+  series and the news. A change that only moves what `run.bin` records for
+  the viewer (a map layer, the works' table) passes it.
+- **Without the Python dumps the golden test stands alone.** `tests/parity.rs`
+  compares each step with the Python, but only against fixtures made by
+  `parity/dump_state.py`, which are not in the repository; with none there
+  its fifteen tests pass in no time and check nothing.
 - **`growth_capped_*` does not see famines.** It reads the income rule in
   `people::growth` before the clamp; a town at the cap in a famine year grew
   two points slower and is still counted as capped.
-- **Land counts are of a cell's main use.** A cell that is two fifths farm,
-  two fifths pasture and a fifth quarry counts as farm. Forestry and wild land
-  almost never lead a cell, so they read as zero while the map shows woods.
-- **`seconds` is wall time under load**: a run takes about 17 seconds alone
-  and 27 or more with seven others beside it, so it says more about the
-  machine that night than about the code.
+- **Quarries, pits and mines take a fifth of the land.** The land is counted
+  by area (it used to be counted by each cell's main use, by which the woods
+  came to nothing: seven cells in 1750 and none after, against 1,211 cells'
+  worth by area). By area the mines together go from 880 cells' worth in 1750
+  to 1,190 in 1900, nearly as much land as the farms (1,282): about 4,800
+  square kilometres of holes in the ground. I have not traced why. The land rule shares each
+  cell out in proportion to bid^(1/theta), so every use with any bid at all
+  gets a slice, and that may be all it is; it looks like one of the port's
+  oddities and is worth a look of its own.
+- **`seconds` is wall time under load**: with seven others beside it a run
+  took 15 to 17 seconds when the machine was otherwise quiet and 24 to 35 when
+  other work was building on it, so it says more about the machine that night
+  than about the code.
 - **Facts are named by year**, so sweeps to different end years have few
   names in common and compare poorly.
 - **The loss function and the search of PLAN.md 1.3 are not here.** The facts
