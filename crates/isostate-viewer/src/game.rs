@@ -1085,15 +1085,17 @@ fn setup_marks(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<As
     let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
     commands.spawn((Mesh3d(h.clone()), MeshMaterial3d(mat)));
     commands.insert_resource(Marks(h));
+    commands.insert_resource(crate::fences::Lines::default());
 }
 
 fn banner_rgba(i: usize) -> [f32; 4] {
     hex(family::BANNERS[i % family::BANNERS.len()])
 }
 
-/// A pennant on a pole beside every family works, a low fence round every
-/// family's land, and a tall flag on the market square of every family's seat.
-fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look) -> Builder {
+/// A pennant on the highest gable of every family works, a low fence round every
+/// family's open land, and a tall flag on the market square of every family's seat.
+#[allow(clippy::too_many_arguments)]
+fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look, flags: &mut scatter::Flags, lines: &mut crate::fences::Lines) -> Builder {
     let mut b = Builder::default();
     let pole = *lk.marks.pole;
     for (i, &(fam, town, moving)) in seats.iter().enumerate() {
@@ -1122,62 +1124,21 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         if replay::firm_k(r, f, k) <= 0.0 {
             continue;
         }
-        let Some(&(x, z, yaw)) = slots.firm_pos.get(f) else { continue };
-        let q = Quat::from_rotation_y(yaw);
-        let off = q * Vec3::new(-0.055, 0.0, -0.045);
-        let base = Vec3::new(x + off.x, world::height_at(g, x + off.x, z + off.z), z + off.z);
-        let top = base + Vec3::Y * 0.13;
-        b.beam(base - Vec3::Y * 0.01, top, 0.005, pole);
-        // the pennant streams downwind, the same way on every pole
-        let fly = Vec3::new(0.06, -0.012, 0.03);
+        // one flag on the works' highest gable, on a staff half the building's height: big
+        // enough to tell the family by from close up, a fleck of its colour from play distance
+        let Some(peak) = scatter::firm_flag(r, g, slots, f, k, lk, flags) else { continue };
+        let tall = (peak.y - world::height_at(g, peak.x, peak.z)).max(0.0);
+        let staff = (tall * 0.5).clamp(0.022, 0.04);
+        let top = peak + Vec3::Y * staff;
+        b.beam(peak - Vec3::Y * 0.004, top, staff * 0.1, pole);
+        // the pennant streams downwind, the same way on every staff (and with the smoke)
+        let fly = isostate_gen::works::WIND * (staff * 1.1) - Vec3::Y * (staff * 0.2);
         let col = banner_rgba(o);
-        b.tri(top, top - Vec3::Y * 0.032, top + fly, col);
-        b.tri(top, top + fly, top - Vec3::Y * 0.032, col);
+        b.tri(top, top - Vec3::Y * (staff * 0.6), top + fly, col);
+        b.tri(top, top + fly, top - Vec3::Y * (staff * 0.6), col);
     }
-    if !r.owner.is_empty() {
-        let n = r.n;
-        let own = |c: usize| r.owner[k * n + c];
-        for c in 0..n {
-            let o = own(c);
-            if o < 0 {
-                continue;
-            }
-            let (x, z) = ((c % r.w) as i32, (c / r.w) as i32);
-            let col = lerp(banner_rgba(o as usize), *lk.marks.cloth_pale, 0.25);
-            let post = lerp(col, *lk.marks.post_shade, 0.35);
-            let inset = 0.03;
-            // edges whose far side is not this family's: (dx, dz) to the neighbour, and the edge's two ends
-            let x0 = x as f32 + inset;
-            let x1 = x as f32 + 1.0 - inset;
-            let z0 = z as f32 + inset;
-            let z1 = z as f32 + 1.0 - inset;
-            for (dx, dz, a, e) in [(0, -1, (x0, z0), (x1, z0)), (0, 1, (x0, z1), (x1, z1)), (-1, 0, (x0, z0), (x0, z1)), (1, 0, (x1, z0), (x1, z1))] {
-                let (nx, nz) = (x + dx, z + dz);
-                let same = nx >= 0 && nz >= 0 && (nx as usize) < r.w && (nz as usize) < r.h && own(nz as usize * r.w + nx as usize) == o;
-                if same {
-                    continue;
-                }
-                let steps = 8;
-                let mut prev: Option<Vec3> = None;
-                for i in 0..=steps {
-                    let t = i as f32 / steps as f32;
-                    let (px, pz) = (a.0 + (e.0 - a.0) * t, a.1 + (e.1 - a.1) * t);
-                    let h = world::height_at(g, px, pz);
-                    if h < 0.03 {
-                        prev = None;
-                        continue;
-                    }
-                    let p0 = Vec3::new(px, h, pz);
-                    b.block(p0, 0.008, 0.008, 0.024, 0.0, post, Some(post), 0.01);
-                    let rail = p0 + Vec3::Y * 0.017;
-                    if let Some(q0) = prev {
-                        b.beam(q0, rail, 0.005, col);
-                    }
-                    prev = Some(rail);
-                }
-            }
-        }
-    }
+    // fences round the families' open land, along its hedge lines (fences.rs)
+    world::timed("family fences", || crate::fences::family_fences(&mut b, r, g, k, lk, lines, &banner_rgba));
     b
 }
 
@@ -1200,8 +1161,8 @@ fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize
 }
 
 #[allow(clippy::too_many_arguments)]
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
-    let Some(marks) = marks else { return };
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, lines: Option<ResMut<crate::fences::Lines>>, mut meshes: ResMut<Assets<Mesh>>, mut flags: Local<scatter::Flags>) {
+    let (Some(marks), Some(mut lines)) = (marks, lines) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there (and
     // while the year turns, so the flags do not blink once a year)
@@ -1217,7 +1178,7 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
         return;
     }
     game.marks = Some(key);
-    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look);
+    let mut b = world::timed("year marks", || build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look, &mut flags, &mut lines));
     if front {
         for &c in &game.pending {
             stakes(&mut b, &look, &data.g, &data.r, c, banner_rgba(PLAYER));

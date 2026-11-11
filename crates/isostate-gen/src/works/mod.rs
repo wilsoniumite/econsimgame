@@ -1,29 +1,34 @@
 //! The works that firms build: one generator for each kind, by the method
-//! the firm works by, at one of four sizes.
+//! the firm works by, at any size from a workshop to a great works.
 //!
-//! A works is drawn at a tier, 1 for a small one up to 4, which steps up each
-//! time its capacity doubles (`tier`). Each kind is a file of its own here.
-//! Round them stand the scaffolding of a works going up or growing
-//! (`scaffold`), the sheds of a works yard (`yard_shed`) and the heaps and
-//! headframes of the pits (`pit`).
+//! A works is a compound in a yard of its own. Its size is its capacity over
+//! the standard capacity of its method (K over K0), from about 0.4 to 100,
+//! and it grows by adding parts: bays, storeys, furnaces, chimneys, kilns,
+//! and a yard that widens to hold them (`footprint`). The year it was
+//! founded sets its style (stone, timber and water early; brick, then iron
+//! and glass), and its state says whether it is going up, working, standing
+//! idle or derelict. Each kind is a function in a file here that places
+//! parts from `kit` in the yard; `pit` draws the heaps and headframes of
+//! the mines, which are not firms.
 
-mod brickworks;
-mod charcoal;
-mod crucible;
-mod furnace;
-mod heavy;
-mod loom;
+mod brick;
+mod engine;
+mod furnaces;
+mod kit;
+mod mills;
 mod pit;
 mod plain;
-mod scaffold;
-mod textile_mill;
-mod workshop;
-mod yard;
+mod steel;
+mod textile;
+mod trades;
+mod woodland;
 
+pub use kit::{plume, WIND};
 pub use pit::{pit, Pit, PitKind};
-pub use scaffold::scaffold;
-pub use yard::{yard_shed, YardShed};
 
+use glam::Vec3;
+
+use crate::hash::Seed;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::site::Site;
@@ -35,6 +40,8 @@ pub enum Kind {
     HandLoom,
     Smithy,
     Millwright,
+    /// shops and trades: the simulation's "services"
+    Shops,
     CharcoalBurning,
     Bloomery,
     CharcoalFurnace,
@@ -47,16 +54,17 @@ pub enum Kind {
     Bessemer,
     CrucibleSteel,
     Brickworks,
-    /// a method the generators do not know: a plain brick shed
+    /// a method the generators do not know: plain sheds in a yard
     Other,
 }
 
 impl Kind {
-    /// Every kind, in the order the lab shows them: cottage trades, iron, steel, the rest.
-    pub const ALL: [Kind; 16] = [
+    /// Every kind, in the order the lab shows them: the town trades, iron, steel, the rest.
+    pub const ALL: [Kind; 17] = [
         Kind::HandLoom,
         Kind::Smithy,
         Kind::Millwright,
+        Kind::Shops,
         Kind::CharcoalBurning,
         Kind::Bloomery,
         Kind::CharcoalFurnace,
@@ -72,10 +80,10 @@ impl Kind {
         Kind::Other,
     ];
 
-    /// The kind of works a method builds; nothing for services, which have no works.
-    pub fn of_method(name: &str) -> Option<Kind> {
-        Some(match name {
-            "services" => return None,
+    /// The kind of works a method builds.
+    pub fn of_method(name: &str) -> Kind {
+        match name {
+            "services" => Kind::Shops,
             "hand_loom" => Kind::HandLoom,
             "smithy" => Kind::Smithy,
             "millwright" => Kind::Millwright,
@@ -92,7 +100,7 @@ impl Kind {
             "crucible_steel" => Kind::CrucibleSteel,
             "brickworks" => Kind::Brickworks,
             _ => Kind::Other,
-        })
+        }
     }
 
     /// The method's name in the simulation.
@@ -101,6 +109,7 @@ impl Kind {
             Kind::HandLoom => "hand_loom",
             Kind::Smithy => "smithy",
             Kind::Millwright => "millwright",
+            Kind::Shops => "services",
             Kind::CharcoalBurning => "charcoal_burning",
             Kind::Bloomery => "bloomery",
             Kind::CharcoalFurnace => "charcoal_furnace",
@@ -123,6 +132,7 @@ impl Kind {
             Kind::HandLoom => "handloom weaver",
             Kind::Smithy => "smithy",
             Kind::Millwright => "millwright",
+            Kind::Shops => "shops and trades",
             Kind::CharcoalBurning => "charcoal burning",
             Kind::Bloomery => "bloomery",
             Kind::CharcoalFurnace => "charcoal furnace",
@@ -138,126 +148,362 @@ impl Kind {
             Kind::Other => "any other works",
         }
     }
+
+    /// The ground a works of this kind and of the standard size takes: its
+    /// width along the front and its depth, in map units.
+    fn plot(self) -> (f32, f32) {
+        match self {
+            Kind::HandLoom => (0.075, 0.06),
+            Kind::Smithy => (0.08, 0.065),
+            Kind::Millwright => (0.10, 0.08),
+            Kind::Shops => (0.07, 0.055),
+            Kind::CharcoalBurning => (0.11, 0.09),
+            Kind::Bloomery => (0.085, 0.07),
+            Kind::CharcoalFurnace => (0.13, 0.10),
+            Kind::CokeFurnace => (0.15, 0.11),
+            Kind::TextileMill => (0.13, 0.10),
+            Kind::EngineWorks => (0.13, 0.10),
+            Kind::ForgeRails => (0.13, 0.09),
+            Kind::RollingMill => (0.14, 0.10),
+            Kind::SteelRolling => (0.165, 0.10),
+            Kind::Bessemer => (0.14, 0.10),
+            Kind::CrucibleSteel => (0.10, 0.08),
+            Kind::Brickworks => (0.13, 0.10),
+            Kind::Other => (0.10, 0.075),
+        }
+    }
+}
+
+/// What a works is doing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum State {
+    /// newly founded and not yet at work: walls part of the way up under
+    /// scaffolding, no roofs, no smoke
+    GoingUp,
+    /// at work, and being enlarged this year: scaffolding round its newest part
+    Extending,
+    /// at work
+    Working,
+    /// standing whole with its fires out and its gate shut
+    Idle,
+    /// closed for good: roofs falling in, chimneys broken, weeds in the yard
+    Derelict,
+}
+
+impl State {
+    pub const ALL: [State; 5] = [State::GoingUp, State::Extending, State::Working, State::Idle, State::Derelict];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            State::GoingUp => "going up",
+            State::Extending => "being enlarged",
+            State::Working => "working",
+            State::Idle => "standing idle",
+            State::Derelict => "derelict",
+        }
+    }
 }
 
 /// A works to draw.
 #[derive(Clone, Copy, Debug)]
 pub struct Works {
     pub kind: Kind,
-    /// its size class, 1 to 4
-    pub tier: u8,
-    /// a number of the works' own, which sets how its smoke drifts
-    pub seed: f32,
+    /// its size: its capacity over the standard capacity of its method (K
+    /// over K0), from a workshop of 0.4 to a great works of 100. The game
+    /// hands it a size from a ladder (`rung`, `rung_size`) so that a works
+    /// changes in steps that can be seen.
+    pub size: f32,
+    /// the year it was founded, which sets its style
+    pub founded: i32,
+    pub state: State,
+    /// a river runs by the site (an early works then takes its power from a wheel)
+    pub water: bool,
+    /// a railway runs by the site
+    pub rail: bool,
+    /// the works' own two numbers, which settle every choice it makes for itself
+    pub seed: Seed,
 }
 
 impl Works {
-    /// How much bigger than a tier-1 works the main building is drawn.
-    pub fn scale(&self) -> f32 {
-        scale(self.tier)
+    /// A working works of the middle of the period, away from water and rail.
+    pub fn new(kind: Kind, size: f32) -> Works {
+        Works { kind, size, founded: 1820, state: State::Working, water: false, rail: false, seed: Seed::of(0) }
     }
 }
 
-/// The size class a works is drawn at: 1 for a small one, up to 4. `ratio` is
-/// its capacity over the standard capacity of its method, and the class steps
-/// up at each doubling.
-pub fn tier(ratio: f32) -> u8 {
-    (ratio.max(0.05).log2() + 1.5).floor().clamp(1.0, 4.0) as u8
+/// The sizes a works is drawn at lie on a ladder, two rungs to a doubling,
+/// so that it grows in steps that can be seen (and goes into scaffolding
+/// for each). `phase`, from 0 to 1, is the works' own, and sets where its
+/// rungs fall, so that the works of a town do not all step in the same
+/// year. This is the rung a works of `ratio` (K over K0) stands on.
+pub fn rung(ratio: f32, phase: f32) -> i32 {
+    (ratio.max(0.4).log2() * 2.0 + phase).floor() as i32
 }
 
-/// How much bigger than a tier-1 works a works of this tier is drawn.
-pub fn scale(tier: u8) -> f32 {
-    0.8 + 0.2 * tier as f32
+/// The size a works on a rung is drawn at: the middle of the rung.
+pub fn rung_size(rung: i32, phase: f32) -> f32 {
+    2f32.powf((rung as f32 - phase + 0.5) * 0.5)
 }
 
-/// Draw a works on its plot: the site's origin is the middle of the plot.
-pub fn works(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, w: &Works, pal: &Palette) {
+/// The ground a works takes: how wide its yard is along its front and how
+/// deep, in map units. It grows with the size a little faster than the
+/// buildings do, so that a great works is many buildings and not one large one.
+pub fn footprint(kind: Kind, size: f32) -> (f32, f32) {
+    let (w, d) = kind.plot();
+    let k = size.clamp(0.4, 120.0).powf(0.32);
+    (w * k, d * k)
+}
+
+/// How much bigger than at the standard size a works' buildings are drawn.
+fn grain(size: f32) -> f32 {
+    size.clamp(0.4, 120.0).powf(0.10)
+}
+
+/// Draw a works in its yard: the site's origin is the middle of the yard,
+/// the gate is on its +z side. Buildings go to `solid`, smoke to `smoke`,
+/// and the yard's ground (and any water in it) to `flat`.
+pub fn works(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Site, w: &Works, pal: &Palette) {
+    build(solid, smoke, flat, site, w, pal);
+}
+
+/// Where a flag on the works would fly from: the top of its highest gable
+/// (or tower), on the map.
+pub fn flag_point(site: &Site, w: &Works, pal: &Palette) -> Vec3 {
+    let (mut solid, mut smoke, mut flat) = (MeshBuf::default(), MeshBuf::default(), MeshBuf::default());
+    build(&mut solid, &mut smoke, &mut flat, site, w, pal).unwrap_or(site.origin + Vec3::Y * 0.03)
+}
+
+fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Site, w: &Works, pal: &Palette) -> Option<Vec3> {
+    let mut c = kit::Ctx::new(solid, smoke, flat, site, w, pal);
     match w.kind {
-        Kind::HandLoom => loom::hand_loom(solid, site, pal),
-        Kind::Smithy | Kind::Millwright => workshop::workshop(solid, smoke, site, w, pal),
-        Kind::CharcoalBurning => charcoal::charcoal_burning(solid, site, w, pal),
-        Kind::Bloomery | Kind::CharcoalFurnace | Kind::CokeFurnace => furnace::furnace(solid, smoke, site, w, pal),
-        Kind::TextileMill => textile_mill::textile_mill(solid, smoke, site, w, pal),
-        Kind::EngineWorks | Kind::ForgeRails | Kind::RollingMill | Kind::SteelRolling | Kind::Bessemer => heavy::heavy(solid, smoke, site, w, pal),
-        Kind::CrucibleSteel => crucible::crucible_steel(solid, site, pal),
-        Kind::Brickworks => brickworks::brickworks(solid, site, w, pal),
-        Kind::Other => plain::plain(solid, site, w, pal),
+        Kind::HandLoom => trades::hand_loom(&mut c),
+        Kind::Smithy => trades::smithy(&mut c),
+        Kind::Millwright => trades::millwright(&mut c),
+        Kind::Shops => trades::shops(&mut c),
+        Kind::CharcoalBurning => woodland::charcoal_burning(&mut c),
+        Kind::Bloomery => woodland::bloomery(&mut c),
+        Kind::CharcoalFurnace => furnaces::charcoal_furnace(&mut c),
+        Kind::CokeFurnace => furnaces::coke_furnace(&mut c),
+        Kind::ForgeRails => mills::forge(&mut c),
+        Kind::RollingMill => mills::rolling_mill(&mut c),
+        Kind::SteelRolling => mills::steel_rail_mill(&mut c),
+        Kind::CrucibleSteel => steel::crucible(&mut c),
+        Kind::Bessemer => steel::converter(&mut c),
+        Kind::EngineWorks => engine::engine_works(&mut c),
+        Kind::TextileMill => textile::mill(&mut c),
+        Kind::Brickworks => brick::brickworks(&mut c),
+        Kind::Other => plain::plain(&mut c),
     }
+    match w.state {
+        State::GoingUp => {
+            let n = c.sheds.len().min(3);
+            for i in 0..n {
+                let s = c.sheds[i];
+                c.scaffold(&s);
+            }
+            c.builders_yard();
+        }
+        State::Extending => {
+            if let Some(&s) = c.sheds.last() {
+                c.scaffold(&s);
+            }
+            c.builders_yard();
+        }
+        _ => {}
+    }
+    c.peak
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::site::Model;
-    use glam::Vec3;
 
-    fn build(kind: Kind, tier: u8) -> Model {
+    /// The sizes the lab shows, and one beyond each end.
+    const SIZES: [f32; 8] = [0.1, 0.4, 1.0, 3.0, 10.0, 30.0, 100.0, 400.0];
+
+    fn build_at(w: &Works, yaw: f32) -> Model {
         let mut m = Model::default();
-        works(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, 0.0), &Works { kind, tier, seed: 1.0 }, &Palette::standard());
+        works(&mut m.solid, &mut m.smoke, &mut m.flat, &Site::level(Vec3::ZERO, yaw), w, &Palette::standard());
         m
     }
 
-    #[test]
-    fn the_tier_steps_up_at_each_doubling() {
-        assert_eq!(tier(0.0), 1);
-        assert_eq!(tier(1.0), 1);
-        assert_eq!(tier(1.41), 1);
-        assert_eq!(tier(1.42), 2);
-        assert_eq!(tier(2.82), 2);
-        assert_eq!(tier(2.84), 3);
-        assert_eq!(tier(5.67), 4);
-        assert_eq!(tier(1000.0), 4);
-        assert_eq!(scale(1), 1.0);
+    fn all(mut each: impl FnMut(Works)) {
+        for kind in Kind::ALL {
+            for size in SIZES {
+                for founded in [1760, 1820, 1870] {
+                    for water in [false, true] {
+                        each(Works { founded, water, seed: Seed::of(kind as u32 * 7 + founded as u32), ..Works::new(kind, size) });
+                    }
+                }
+            }
+        }
     }
 
     #[test]
     fn every_method_has_a_kind_and_back() {
         for k in Kind::ALL {
             if k != Kind::Other {
-                assert_eq!(Kind::of_method(k.method()), Some(k));
+                assert_eq!(Kind::of_method(k.method()), k);
             }
         }
-        assert_eq!(Kind::of_method("services"), None);
-        assert_eq!(Kind::of_method("something new"), Some(Kind::Other));
+        assert_eq!(Kind::of_method("something new"), Kind::Other);
     }
 
     #[test]
-    fn every_kind_builds_at_every_tier_and_stays_on_its_plot() {
+    fn the_rungs_are_two_to_a_doubling_and_each_works_has_its_own() {
+        assert_eq!(rung(1.0, 0.0), 0);
+        assert_eq!(rung(1.4, 0.0), 0);
+        assert_eq!(rung(1.42, 0.0), 1);
+        assert_eq!(rung(2.0, 0.0), 2);
+        assert_eq!(rung(100.0, 0.0), 13);
+        // the smallest works drawn is two fifths of the standard size
+        assert_eq!(rung(0.0, 0.0), rung(0.4, 0.0));
+        // a works of another phase steps at another size
+        assert_eq!(rung(1.3, 0.5), 1);
+        for (r, phase) in [(0.4, 0.0), (1.0, 0.3), (7.0, 0.9), (60.0, 0.5)] {
+            let size = rung_size(rung(r, phase), phase);
+            assert!(size / r < 1.2 && r / size < 1.2, "{r} is drawn at {size}");
+            assert_eq!(rung(size, phase), rung(r, phase));
+        }
+    }
+
+    #[test]
+    fn every_kind_builds_at_every_size_in_every_state() {
+        all(|w| {
+            for state in State::ALL {
+                let w = Works { state, ..w };
+                let m = build_at(&w, 0.0);
+                assert!(!m.solid.is_empty() && m.is_sound(), "{w:?}");
+                assert_eq!(m, build_at(&w, 0.0), "{w:?} is not the same twice");
+            }
+        });
+    }
+
+    #[test]
+    fn the_footprint_holds_the_works() {
+        all(|w| {
+            for state in State::ALL {
+                let w = Works { state, ..w };
+                let m = build_at(&w, 0.0);
+                let (fw, fd) = footprint(w.kind, w.size);
+                for b in [&m.solid, &m.flat] {
+                    let Some((lo, hi)) = b.bounds() else { continue };
+                    // eaves may overhang by a hair
+                    let e = 0.004;
+                    assert!(lo.x >= -fw * 0.5 - e && hi.x <= fw * 0.5 + e && lo.z >= -fd * 0.5 - e && hi.z <= fd * 0.5 + e, "{w:?}: {lo} to {hi} in a yard {fw} by {fd}");
+                }
+                let top = m.solid.bounds().unwrap().1.y;
+                assert!(top < 0.45, "{w:?} is {top} tall");
+            }
+        });
+    }
+
+    #[test]
+    fn the_footprint_grows_with_the_size_and_stays_within_a_cell() {
         for kind in Kind::ALL {
-            for tier in 1..=4 {
-                let m = build(kind, tier);
-                assert!(!m.solid.is_empty() && m.is_sound(), "{kind:?} at tier {tier}");
-                let (lo, hi) = m.solid.bounds().unwrap();
-                // plots are a third of a cell apart (0.33); the biggest works reach a quarter of a cell across
-                assert!(hi.x - lo.x < 0.26 && hi.z - lo.z < 0.26, "{kind:?} at tier {tier} is {} by {}", hi.x - lo.x, hi.z - lo.z);
-                assert!(hi.y < 0.3, "{kind:?} at tier {tier} is {} tall", hi.y);
+            let mut last = 0.0;
+            for size in SIZES {
+                let (w, d) = footprint(kind, size);
+                assert!(w * d >= last, "{kind:?} at {size}");
+                assert!(w < 0.95 && d < 0.7, "{kind:?} at {size} takes {w} by {d}");
+                last = w * d;
+            }
+            // a works of a hundred times the size takes about twenty times the ground
+            let (a, b) = (footprint(kind, 1.0), footprint(kind, 100.0));
+            assert!((b.0 * b.1) / (a.0 * a.1) > 15.0);
+        }
+    }
+
+    #[test]
+    fn a_works_grows_with_its_size() {
+        // more of it, and more ground under it, at each of the lab's sizes
+        for kind in Kind::ALL {
+            for founded in [1760, 1820, 1870] {
+                let mut last = (0, 0.0);
+                for size in [0.4, 1.0, 3.0, 10.0, 30.0, 100.0] {
+                    let m = build_at(&Works { founded, ..Works::new(kind, size) }, 0.0);
+                    let (lo, hi) = m.solid.bounds().unwrap();
+                    let spread = (hi.x - lo.x) * (hi.z - lo.z);
+                    // (a stack or two of goods may be away, so not to the last triangle)
+                    assert!(m.solid.triangles() * 10 >= last.0 * 9, "{kind:?} founded {founded} has less to it at {size}: {} triangles after {}", m.solid.triangles(), last.0);
+                    assert!(spread > last.1, "{kind:?} founded {founded} does not spread at {size}");
+                    last = (m.solid.triangles(), spread);
+                }
             }
         }
     }
 
     #[test]
-    fn the_kinds_that_burn_coal_smoke() {
-        for kind in [Kind::Smithy, Kind::Millwright, Kind::CokeFurnace, Kind::TextileMill, Kind::EngineWorks, Kind::ForgeRails, Kind::RollingMill, Kind::SteelRolling, Kind::Bessemer] {
-            assert!(!build(kind, 2).smoke.is_empty(), "{kind:?}");
-        }
-        for kind in [Kind::HandLoom, Kind::CharcoalBurning, Kind::Bloomery, Kind::CharcoalFurnace, Kind::CrucibleSteel, Kind::Brickworks, Kind::Other] {
-            assert!(build(kind, 2).smoke.is_empty(), "{kind:?}");
+    fn only_a_working_works_smokes() {
+        all(|w| {
+            for state in [State::GoingUp, State::Idle, State::Derelict] {
+                assert!(build_at(&Works { state, ..w }, 0.0).smoke.is_empty(), "{w:?} smokes while {state:?}");
+            }
+        });
+        // and every kind that has a fire smokes when it works
+        for kind in Kind::ALL {
+            let smokes = !build_at(&Works::new(kind, 3.0), 0.0).smoke.is_empty();
+            assert_eq!(smokes, !matches!(kind, Kind::Other), "{kind:?}");
         }
     }
 
     #[test]
-    fn most_kinds_grow_with_their_tier() {
-        // a handloom weaver's cottage and a crucible shop are the same at any size
-        for kind in Kind::ALL {
-            let (small, big) = (build(kind, 1), build(kind, 4));
-            let size = |m: &Model| {
-                let (lo, hi) = m.solid.bounds().unwrap();
-                (hi - lo).length()
+    fn a_bigger_works_makes_more_smoke() {
+        for kind in [Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Bessemer, Kind::CrucibleSteel, Kind::Brickworks] {
+            // more plumes, or a bigger one
+            let smoke = |size: f32| {
+                let m = build_at(&Works::new(kind, size), 0.0);
+                let (lo, hi) = m.smoke.bounds().unwrap();
+                m.smoke.triangles() as f32 * (hi - lo).length()
             };
-            if matches!(kind, Kind::HandLoom | Kind::CrucibleSteel) {
-                assert_eq!(small, big, "{kind:?}");
-            } else {
-                assert!(size(&big) > size(&small), "{kind:?} does not grow");
+            assert!(smoke(30.0) > smoke(1.0), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn the_state_shows() {
+        // each state is a different picture of the same works
+        for kind in Kind::ALL {
+            let w = Works::new(kind, 3.0);
+            let built: Vec<Model> = State::ALL.iter().map(|&state| build_at(&Works { state, ..w }, 0.0)).collect();
+            for i in 0..built.len() {
+                for j in 0..i {
+                    assert!(built[i] != built[j], "{kind:?}: {:?} looks like {:?}", State::ALL[i], State::ALL[j]);
+                }
             }
         }
+    }
+
+    #[test]
+    fn the_flag_flies_from_the_top_of_the_works() {
+        all(|w| {
+            let site = Site::level(Vec3::ZERO, 0.3);
+            let p = flag_point(&site, &w, &Palette::standard());
+            let (fw, fd) = footprint(w.kind, w.size);
+            assert!(p.y > 0.008 && p.y < 0.45, "{w:?}: the flag is at {p}");
+            assert!(p.x.hypot(p.z) <= fw.hypot(fd) * 0.5 + 0.01, "{w:?}: the flag at {p} is off the yard");
+        });
+    }
+
+    #[test]
+    fn a_mill_that_a_wheel_turns_has_its_pond() {
+        let water = *Palette::standard().water.river;
+        let wet = |w: &Works| build_at(w, 0.0).flat.col.iter().filter(|c| **c == water).count();
+        let mill = Works { founded: 1760, water: true, ..Works::new(Kind::TextileMill, 10.0) };
+        // the smallest has its race and no room for a pond
+        assert!(wet(&mill) > wet(&Works { size: 0.4, ..mill }) && wet(&Works { size: 0.4, ..mill }) > 0);
+        // and there is no water in the yard of a mill away from the river, or of one an engine turns
+        assert_eq!(wet(&Works { water: false, ..mill }), 0);
+        assert_eq!(wet(&Works { founded: 1870, ..mill }), 0);
+    }
+
+    #[test]
+    fn the_site_turns_the_yard() {
+        let w = Works::new(Kind::CokeFurnace, 10.0);
+        let (mut turned, built) = (build_at(&w, 0.0), build_at(&w, 0.7));
+        turned.turn(0.7);
+        let near = |a: &[[f32; 3]], b: &[[f32; 3]]| a.len() == b.len() && a.iter().zip(b).all(|(p, q)| (Vec3::from_array(*p) - Vec3::from_array(*q)).length() < 1e-4);
+        assert!(near(&turned.flat.pos, &built.flat.pos));
     }
 }

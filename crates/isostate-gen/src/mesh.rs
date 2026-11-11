@@ -91,12 +91,20 @@ impl MeshBuf {
     /// With r1 at nothing it is a cone or, with four sides, a spire or a hipped roof.
     #[allow(clippy::too_many_arguments)]
     pub fn frustum(&mut self, base: Vec3, r0: f32, r1: f32, h: f32, seg: usize, col: Rgba, cap: Option<Rgba>) {
+        self.frustum_turned(base, r0, r1, h, seg, 0.0, 0.02, col, cap);
+    }
+
+    /// A tapered column whose first corner is turned `turn` about the upright
+    /// (so that a square stack can stand square to its building: a quarter of
+    /// a turn less the building's yaw), reaching `sink` below its base.
+    #[allow(clippy::too_many_arguments)]
+    pub fn frustum_turned(&mut self, base: Vec3, r0: f32, r1: f32, h: f32, seg: usize, turn: f32, sink: f32, col: Rgba, cap: Option<Rgba>) {
         let ring = |r: f32, y: f32, i: usize| {
-            let a = i as f32 / seg as f32 * std::f32::consts::TAU;
+            let a = i as f32 / seg as f32 * std::f32::consts::TAU + turn;
             base + Vec3::new(a.cos() * r, y, a.sin() * r)
         };
         for i in 0..seg {
-            let (a0, a1) = (ring(r0, -0.02, i), ring(r0, -0.02, i + 1));
+            let (a0, a1) = (ring(r0, -sink, i), ring(r0, -sink, i + 1));
             let (b0, b1) = (ring(r1, h, i), ring(r1, h, i + 1));
             let k = 0.88 + 0.12 * ((i as f32 / seg as f32 * std::f32::consts::TAU + 0.8).cos() * 0.5 + 0.5);
             if r1 > 1e-4 {

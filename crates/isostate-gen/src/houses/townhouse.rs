@@ -1,6 +1,7 @@
 use glam::{Quat, Vec3};
 
 use crate::hash::Seed;
+use crate::houses::roof::Roof;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::parts::{chimney, smoking_chimney, windows, STOREY};
@@ -13,6 +14,9 @@ pub struct Townhouse {
     pub plot_depth: f32,
     /// two or three
     pub storeys: u8,
+    /// what its plot's house was roofed with, and how weathered that is now
+    /// (a townhouse is a rebuilding, so it is never thatched)
+    pub roof: Roof,
     pub seed: Seed,
 }
 
@@ -30,7 +34,7 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
     let w = t.plot_width * 0.99;
     let d = t.plot_depth * (0.95 + 0.15 * u);
     let wall = if v < 0.25 { pal.brick.terrace(u) } else { pal.walls.town_house(v) };
-    let roof = pal.house_roof(u);
+    let roof = t.roof.rebuilt().colour(pal, t.seed);
     let h = STOREY * storeys;
     solid.block(p, w, d, h, site.yaw, wall, None, 0.03);
     solid.gable(p, w, d, h, d * (0.4 + 0.2 * u), site.yaw, 0.004, roof, wall);
@@ -54,8 +58,11 @@ mod tests {
         let pal = Palette::standard();
         for n in 0..40 {
             let mut m = Model::default();
-            townhouse(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, 0.0), &Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: 2, seed: Seed::of(n) }, &pal);
+            let roof = Roof::of(1750, 1850, false, false, Seed::of(n));
+            townhouse(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, 0.0), &Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: 2, roof, seed: Seed::of(n) }, &pal);
             assert!(m.is_sound());
+            // whatever its plot's cottage was roofed with, a townhouse is not thatched
+            assert!(!m.solid.col.contains(&*pal.thatch.cottage) && !m.solid.col.contains(&*pal.thatch.weathered));
             let (lo, hi) = m.solid.bounds().unwrap();
             // wall to wall is the plot, and the eaves reach a little over the neighbours'
             assert!((hi.x - lo.x - (PLOT.0 * 0.99 + 0.008)).abs() < 1e-5, "{}", hi.x - lo.x);

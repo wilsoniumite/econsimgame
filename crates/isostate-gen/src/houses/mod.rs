@@ -8,10 +8,12 @@
 //! density, and the generator is handed the answer.
 
 mod cottage;
+pub mod roof;
 mod terrace;
 mod townhouse;
 
 pub use cottage::{cottage, Cottage};
+pub use roof::Roof;
 pub use terrace::{terrace, Terrace};
 pub use townhouse::{townhouse, Townhouse};
 

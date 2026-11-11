@@ -3,7 +3,7 @@
 
 use glam::{Quat, Vec3};
 
-use crate::colour::{shade, Rgba};
+use crate::colour::Rgba;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 
@@ -24,15 +24,11 @@ pub fn chimney(b: &mut MeshBuf, pal: &Palette, p: Vec3, h: f32, r: f32) {
     b.frustum(p, r, r * 0.8, h, 6, *pal.brick.chimney, Some(*pal.smoke.soot));
 }
 
-/// A chimney with a few puffs of smoke drifting downwind.
+/// A chimney with a thin plume of smoke leaning downwind: a house fire's,
+/// small beside a works'.
 pub fn smoking_chimney(b: &mut MeshBuf, smoke: &mut MeshBuf, pal: &Palette, p: Vec3, h: f32, r: f32, seed: f32) {
     chimney(b, pal, p, h, r);
-    let puff = *pal.smoke.puff;
-    for i in 0..3 {
-        let t = i as f32;
-        let c = p + Vec3::new(0.012 + 0.022 * t + 0.004 * seed.sin(), h + 0.018 + 0.016 * t, 0.006 * (seed * 3.0 + t).sin());
-        smoke.ball(c, 0.011 + 0.006 * t, 0.009 + 0.005 * t, 6, 3, shade(puff, 1.0 - 0.04 * t), seed + t);
-    }
+    crate::works::plume(smoke, p + Vec3::Y * h, 0.34 + r * 12.0, seed * 2.4, *pal.smoke.puff);
 }
 
 /// Windows and doors on both long faces: two windows a storey for each house in
@@ -93,8 +89,8 @@ mod tests {
         let (mut b, mut smoke) = (MeshBuf::default(), MeshBuf::default());
         smoking_chimney(&mut b, &mut smoke, &pal, Vec3::ZERO, 0.1, 0.01, 1.0);
         assert!(!b.is_empty() && !smoke.is_empty());
-        // every puff is above the chimney's top
-        assert!(smoke.bounds().unwrap().0.y > 0.1);
+        // the plume rises from the chimney's top
+        assert!(smoke.bounds().unwrap().0.y >= 0.1 && smoke.bounds().unwrap().1.y > 0.11);
         assert!(b.bounds().unwrap().1.y <= 0.1 + 1e-6);
     }
 }

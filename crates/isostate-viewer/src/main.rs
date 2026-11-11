@@ -14,6 +14,7 @@ mod carts;
 mod chart;
 mod cursor;
 mod family;
+mod fences;
 mod fields;
 mod game;
 mod icons;
@@ -52,6 +53,7 @@ use std::sync::Arc;
 use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
+use isostate_gen::trees::{in_leaf, LEAF_GROUPS};
 use look::{Look, TheLook, ToColor};
 use replay::Replay;
 use ui::{kind_colour, kind_label, text, UiState, INK, MUTED, PAPER};
@@ -431,7 +433,8 @@ impl Data {
 struct Handles {
     /// the year's land mix per cell, read by the ground shader
     year_cells: Handle<Image>,
-    trees: Handle<Mesh>,
+    /// the trees, a group to each: what is green all year, the leaves, and the bare limbs
+    trees: Vec<[Handle<Mesh>; 3]>,
     houses: Handle<Mesh>,
     works: Handle<Mesh>,
     smoke: Handle<Mesh>,
@@ -504,11 +507,20 @@ struct UiFont(Handle<Font>);
 #[derive(Resource)]
 struct Tilt(bool);
 
+/// The leaves of one group of the broadleaf trees, shown while that group is
+/// in leaf, and its bare limbs, shown while it is not.
+#[derive(Component)]
+struct Leaves(usize);
+
+#[derive(Component)]
+struct BareLimbs(usize);
+
 /// Materials that change with the seasons.
 #[derive(Resource)]
 struct SeasonMats {
     terrain: Handle<terrain::GroundMaterial>,
     trees: Handle<StandardMaterial>,
+    rivers: Handle<StandardMaterial>,
     /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
     forced: Option<f32>,
 }
@@ -935,14 +947,14 @@ fn setup_world(
 
     // rivers do not change
     let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.river, reflectance: lk.surfaces.river_reflectance, ..default() });
-    commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat.clone()), bevy::light::NotShadowCaster));
 
     // year meshes start empty; rebuild_year fills them
     let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
     let flat = vertex_coloured(&mut materials, lk, lk.surfaces.paths);
     let handles = Handles {
         year_cells,
-        trees: meshes.add(placeholder_mesh()),
+        trees: (0..LEAF_GROUPS).map(|_| [(); 3].map(|_| meshes.add(placeholder_mesh()))).collect(),
         houses: meshes.add(placeholder_mesh()),
         works: meshes.add(placeholder_mesh()),
         smoke: meshes.add(placeholder_mesh()),
@@ -950,9 +962,18 @@ fn setup_world(
         rails: meshes.add(placeholder_mesh()),
         lanes: meshes.add(placeholder_mesh()),
     };
+    // trees: what is green all year as it is; the leaves of the broadleaves under a material
+    // that turns with the seasons; their bare limbs, flat blades seen from both sides. The
+    // leaves and the limbs of a group are shown turn about (`seasons`), so winter costs no rebuild.
+    let evergreen_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
     let tree_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
-    commands.spawn((Mesh3d(handles.trees.clone()), MeshMaterial3d(tree_mat.clone())));
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, forced: forced.0 });
+    let bare_mat = materials.add(bare_limb_material(lk));
+    for (group, [evergreen, leaves, bare]) in handles.trees.iter().enumerate() {
+        commands.spawn((Mesh3d(evergreen.clone()), MeshMaterial3d(evergreen_mat.clone())));
+        commands.spawn((Mesh3d(leaves.clone()), MeshMaterial3d(tree_mat.clone()), Leaves(group)));
+        commands.spawn((Mesh3d(bare.clone()), MeshMaterial3d(bare_mat.clone()), BareLimbs(group), Visibility::Hidden));
+    }
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
@@ -1008,9 +1029,18 @@ fn sun_at(lk: &Look, phase: f32) -> (f32, Color, Transform) {
     (lk.sun.strength(summer), lk.sun.colour(summer), Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, lk.sun.turn, -lk.sun.height(summer), 0.0)))
 }
 
-/// The material of smoke: white, matt, letting some light through.
+/// The material of the bare limbs of the broadleaf trees: each limb is one
+/// flat blade, so it is drawn from both sides, and lets half the light
+/// through, so that the side turned from the sun is not a black spike.
+fn bare_limb_material(lk: &Look) -> StandardMaterial {
+    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.foliage, reflectance: lk.surfaces.painted_reflectance, diffuse_transmission: lk.surfaces.bare_limb_translucence, double_sided: true, cull_mode: None, ..default() }
+}
+
+/// The material of smoke: white, matt, letting some light through, and thin:
+/// a plume's corners carry how solid it is there (its colour's alpha), so it
+/// fades to nothing downwind.
 fn smoke_material(lk: &Look) -> StandardMaterial {
-    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, ..default() }
+    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, alpha_mode: AlphaMode::Blend, ..default() }
 }
 
 /// The camera the island is seen through, with everything the look gives it:
@@ -1128,7 +1158,11 @@ fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f3
     if std::env::var_os("ISOSTATE_MESH_SUMS").is_some() {
         // a fingerprint of the year's geometry: two builds of the viewer that print the
         // same line for a year build exactly the same scenery for it, to the last bit
-        let sums: Vec<String> = [("trees", &ym.trees), ("houses", &ym.houses), ("works", &ym.works), ("smoke", &ym.smoke), ("lanes", &ym.lanes), ("roads", &nets.roads), ("rails", &nets.rails)]
+        let trees = ym.trees.iter().flat_map(|t| t.parts()).fold(meshkit::Builder::default(), |mut all, b| {
+            all.merge(b);
+            all
+        });
+        let sums: Vec<String> = [("trees", &trees), ("houses", &ym.houses), ("works", &ym.works), ("smoke", &ym.smoke), ("lanes", &ym.lanes), ("roads", &nets.roads), ("rails", &nets.rails)]
             .iter()
             .map(|(name, b)| format!("{name} {:016x}", mesh_sum(b)))
             .collect();
@@ -1195,7 +1229,14 @@ fn rebuild_year(
             }
         }
         let (ym, nets) = (sc.ym, sc.nets);
-        for (h, b) in [(&handles.trees, ym.trees), (&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
+        for (hs, t) in handles.trees.iter().zip(ym.trees) {
+            for (h, b) in hs.iter().zip([t.evergreen, t.leaves, t.bare]) {
+                if let Some(mut m) = meshes.get_mut(h) {
+                    *m = non_empty(b);
+                }
+            }
+        }
+        for (h, b) in [(&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
             if let Some(mut m) = meshes.get_mut(h) {
                 *m = non_empty(b);
             }
@@ -1283,6 +1324,8 @@ fn seasons(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
+    mut leaves: Query<(&Leaves, &mut Visibility), Without<BareLimbs>>,
+    mut bare: Query<(&BareLimbs, &mut Visibility), Without<Leaves>>,
     mut last: Local<Option<i32>>,
 ) {
     let ph = season_phase(&clock, sm.forced);
@@ -1296,9 +1339,24 @@ fn seasons(
     if let Some(mut m) = ground_mats.get_mut(&sm.terrain) {
         m.extension.params.season = ph;
     }
-    // trees: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
+    // the leaves turn: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn; and each group of
+    // broadleaf trees is in leaf from spring to autumn and shows its bare limbs through the
+    // winter. They go by the seasons' clock, as the ground and the sun do, so a wood is gold,
+    // bare and green again once a round at any speed of the years, and holds while paused
     if let Some(mut m) = materials.get_mut(&sm.trees) {
         m.base_color = leaf_tint(&look, ph);
+    }
+    // the rivers go to steel in the depth of winter
+    if let Some(mut m) = materials.get_mut(&sm.rivers) {
+        let t = look.water.river_tint(ph);
+        m.base_color = Color::srgb(t[0], t[1], t[2]);
+    }
+    let shown = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
+    for (group, mut vis) in &mut leaves {
+        vis.set_if_neq(shown(in_leaf(ph, group.0)));
+    }
+    for (group, mut vis) in &mut bare {
+        vis.set_if_neq(shown(!in_leaf(ph, group.0)));
     }
     let (strength, colour, stands) = sun_at(&look, ph);
     for (mut light, mut tf) in &mut sun {
@@ -2105,6 +2163,39 @@ mod tests {
         assert_eq!(went, 0.0);
         let (_, _, jump) = run_seasons(c, true, 0.5, 1.0);
         assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "resuming jumped {jump}");
+    }
+
+    #[test]
+    fn a_wood_sheds_and_buds_once_a_round_at_any_speed_and_holds_when_paused() {
+        // the trees go by the seasons' clock: each group of broadleaves loses its leaves once and
+        // gets them back once in a round, at 1x and at 8x alike, and the leaves are gold before they fall
+        let dt = 1.0 / 30.0;
+        let lk = Look::standard();
+        for speed in [0.5, 4.0] {
+            for group in 0..LEAF_GROUPS {
+                let mut c = SeasonClock::default();
+                let (mut t, mut shed, mut bud, mut gold) = (10.0f32, 0, 0, false);
+                assert!(in_leaf(c.phase, group), "a game opens in summer leaf");
+                for _ in 0..(SEASON_ROUND_SECS / dt).round() as usize {
+                    let before = in_leaf(c.phase, group);
+                    t += speed * dt;
+                    c.advance(true, speed, t, dt);
+                    let now = in_leaf(c.phase, group);
+                    shed += (before && !now) as usize;
+                    bud += (!before && now) as usize;
+                    let tint = lk.foliage.tint(c.phase);
+                    gold |= now && tint[0] > 1.15 * tint[1];
+                }
+                assert_eq!((shed, bud), (1, 1), "group {group} at {speed} years a second");
+                assert!(gold, "group {group} is never gold in leaf at {speed} years a second");
+                // paused in the depth of winter, the trees stay bare
+                let mut c = SeasonClock { phase: 0.02, follows: false };
+                for _ in 0..300 {
+                    c.advance(false, speed, t, dt);
+                }
+                assert!(!in_leaf(c.phase, group));
+            }
+        }
     }
 
     #[test]
