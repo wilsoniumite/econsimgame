@@ -433,6 +433,20 @@ pub struct Flow {
     pub carting: f32,
 }
 
+/// What one method in one town used of one good in a year.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+pub struct Use {
+    pub town: u16,
+    pub method: u16,
+    pub good: u16,
+    /// Used as material.
+    pub used: f32,
+    /// Burnt as fuel.
+    pub burnt: f32,
+    /// What both cost delivered to the works (the town's price and the carting out).
+    pub cost: f32,
+}
+
 /// One complete year's books, as they are kept (single precision).
 #[derive(Clone, Debug, Default)]
 pub struct YearRec {
@@ -448,6 +462,8 @@ pub struct YearRec {
     pub needs: Vec<f32>,
     /// Every flow between towns, by (from, to, good).
     pub trade: Vec<Flow>,
+    /// What each method in each town used of each good, by (town, method, good).
+    pub uses: Vec<Use>,
     /// The works that worked, built or stood this year, by firm id, and their rows `[n][KW]`.
     pub works_id: Vec<u32>,
     pub works: Vec<f32>,
@@ -463,6 +479,8 @@ struct Acc {
     needs: Vec<f64>,
     /// `[(from * T + to) * G + good][3]`: quantity, value, carting.
     trade: Vec<f64>,
+    /// `[(town * M + method) * G + good][3]`: used as material, burnt, cost at the works.
+    uses: Vec<f64>,
     /// `[firm][KW]`
     works: Vec<f64>,
     /// `[firm][G][3]`: materials used, fuel burnt, and what both cost at the works.
@@ -591,6 +609,7 @@ fn new_acc(dims: (usize, usize, usize, usize, usize), F: usize, n_fam: usize, wo
         towns: vec![0.0; T * KT],
         needs: vec![0.0; T * S * 2],
         trade: vec![0.0; T * T * G * 3],
+        uses: vec![0.0; T * M * G * 3],
         works: if works { vec![0.0; F * KW] } else { Vec::new() },
         works_in: if works { vec![0.0; F * G * 3] } else { Vec::new() },
         months: vec![0.0; 12 * T * G * KMO],
@@ -626,7 +645,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
 /// first `F` rows of the works' tables are all that can have been written.
 fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam: usize) {
     let (T, G, ..) = dims;
-    for v in [&mut a.goods, &mut a.land, &mut a.methods, &mut a.towns, &mut a.needs, &mut a.trade, &mut a.months, &mut a.rent_sector] {
+    for v in [&mut a.goods, &mut a.land, &mut a.methods, &mut a.towns, &mut a.needs, &mut a.trade, &mut a.uses, &mut a.months, &mut a.rent_sector] {
         v.fill(0.0);
     }
     for k in 0..T * G {
@@ -804,6 +823,10 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
                 let k = (t * G + g) * KG;
                 a.goods[k + G_INPUTS] += mat;
                 a.goods[k + G_FUEL] += used - mat;
+                let ku = ((t * M + me) * G + g) * 3;
+                a.uses[ku] += mat;
+                a.uses[ku + 1] += used - mat;
+                a.uses[ku + 2] += used * m.pin[(i, g)];
                 if keep_works {
                     let kw = (f * G + g) * 3;
                     a.works_in[kw] += mat;
@@ -1227,6 +1250,16 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             }
         }
     }
+    for t in 0..T {
+        for me in 0..M {
+            for g in 0..G {
+                let k = ((t * M + me) * G + g) * 3;
+                if a.uses[k] > 0.0 || a.uses[k + 1] > 0.0 {
+                    rec.uses.push(Use { town: t as u16, method: me as u16, good: g as u16, used: a.uses[k] as f32, burnt: a.uses[k + 1] as f32, cost: a.uses[k + 2] as f32 });
+                }
+            }
+        }
+    }
     if !a.works.is_empty() {
         for f in 0..st.F_count.min(a.works.len() / KW) {
             let w = &mut a.works[f * KW..(f + 1) * KW];
@@ -1371,6 +1404,19 @@ pub struct LandBooks {
     pub rent: f64,
 }
 
+/// One good a method (or a works) used in a year.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct WorksInput {
+    pub good: usize,
+    pub name: String,
+    /// Used as material.
+    pub used: f64,
+    /// Burnt as fuel.
+    pub burnt: f64,
+    /// What both cost delivered to the works.
+    pub cost: f64,
+}
+
 /// One method in one town's books for a year.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct MethodBooks {
@@ -1392,6 +1438,8 @@ pub struct MethodBooks {
     pub managers: f64,
     pub profit: f64,
     pub dividends: f64,
+    /// What its works used, good by good.
+    pub uses: Vec<WorksInput>,
 }
 
 /// A flow between this town and another.
@@ -1527,6 +1575,12 @@ pub fn town_books(st: &State, C: &Content, town: usize, year: Option<i64>) -> Op
                 managers: f(r[M_MANAGERS]),
                 profit: f(r[M_PROFIT]),
                 dividends: f(r[M_DIV]),
+                uses: rec
+                    .uses
+                    .iter()
+                    .filter(|u| u.town as usize == town && u.method as usize == m)
+                    .map(|u| WorksInput { good: u.good as usize, name: C.good_name[u.good as usize].clone(), used: f(u.used), burnt: f(u.burnt), cost: f(u.cost) })
+                    .collect(),
             })
         })
         .collect();
@@ -1578,19 +1632,6 @@ pub struct WorksYear {
     pub util: f64,
     pub cash: f64,
     pub months: f64,
-}
-
-/// One good a works used in the last complete year.
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-pub struct WorksInput {
-    pub good: usize,
-    pub name: String,
-    /// Used as material.
-    pub used: f64,
-    /// Burnt as fuel.
-    pub burnt: f64,
-    /// What both cost delivered to the works.
-    pub cost: f64,
 }
 
 /// One works' books: every complete year of its life, and what it used in the last.
@@ -1696,6 +1737,18 @@ pub fn tables(st: &State, lite: bool) -> Vec<Table> {
     out.push(Table::I32("acct_trade_off".into(), vec![n + 1], off));
     out.push(Table::I32("acct_trade_key".into(), vec![key.len() / 3, 3], key));
     out.push(Table::F32("acct_trade_val".into(), vec![val.len() / 3, 3], val));
+    let mut off = vec![0i32];
+    let (mut key, mut val) = (Vec::new(), Vec::new());
+    for r in &b.hist {
+        for u in &r.uses {
+            key.extend([u.town as i32, u.method as i32, u.good as i32]);
+            val.extend([u.used, u.burnt, u.cost]);
+        }
+        off.push((key.len() / 3) as i32);
+    }
+    out.push(Table::I32("acct_use_off".into(), vec![n + 1], off));
+    out.push(Table::I32("acct_use_key".into(), vec![key.len() / 3, 3], key));
+    out.push(Table::F32("acct_use_val".into(), vec![val.len() / 3, 3], val));
     if !lite && b.hist.iter().any(|r| !r.works_id.is_empty()) {
         let mut off = vec![0i32];
         let (mut id, mut val) = (Vec::new(), Vec::new());
@@ -1727,6 +1780,8 @@ pub fn header(st: &State) -> Option<Value> {
         "need_fields": ["households", "landlords"],
         "trade_key": ["from", "to", "good"],
         "trade_val": ["qty", "value", "carting"],
+        "use_key": ["town", "method", "good"],
+        "use_val": ["used", "burnt", "cost"],
         "works_fields": WORKS_FIELDS,
         "island": serde_json::to_value(&b.years).expect("the island's account serialises"),
     }))

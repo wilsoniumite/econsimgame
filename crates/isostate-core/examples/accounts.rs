@@ -4,12 +4,13 @@
 //!
 //!     cargo run --release -p isostate-core --example accounts -- [--seeds 1-8] [--rules port|game]
 //!         [--families N] [--end-year Y] [--good iron] [--year 1850] [--town NAME_OR_INDEX]
-//!         [--works] [--island]
+//!         [--works] [--island] [--years]
 //!
 //! The seeds run side by side. The worked example is printed for the first seed:
 //! the town that made the most of `--good` in `--year` unless `--town` says
 //! which. `--works` adds the books of the largest works making that good there,
-//! `--island` the whole income account of that year.
+//! `--island` the whole income account of that year, `--years` a line for every
+//! year of the first seed.
 #![allow(non_snake_case)]
 use isostate_core::accounts::{self, IslandYear};
 use isostate_core::*;
@@ -23,7 +24,7 @@ fn run(P: &Params, rules: Rules) -> (RunResult, f64) {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (mut seeds, mut rules, mut families, mut end_year) = (vec![1u64, 2, 3, 4, 5, 6, 7, 8], Rules::Port, 6usize, None);
-    let (mut good, mut year, mut town, mut show_works, mut show_island) = (String::from("iron"), 1850i64, None::<String>, false, false);
+    let (mut good, mut year, mut town, mut show_works, mut show_island, mut show_years) = (String::from("iron"), 1850i64, None::<String>, false, false, false);
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
@@ -43,9 +44,10 @@ fn main() {
             "--town" => town = Some(next()),
             "--works" => show_works = true,
             "--island" => show_island = true,
+            "--years" => show_years = true,
             other => panic!("unknown option {other}"),
         }
-        i += if matches!(args[i].as_str(), "--works" | "--island") { 1 } else { 2 };
+        i += if matches!(args[i].as_str(), "--works" | "--island" | "--years") { 1 } else { 2 };
     }
     let mut P = rules.params();
     P.n_families = families;
@@ -126,6 +128,32 @@ fn main() {
     // ---- the worked example, on the first seed
     let (r, _) = &runs[0];
     let (st, C) = (&r.state, &r.content);
+    if show_years {
+        println!("
+seed {}, year by year", seeds[0]);
+        println!("year   work  works  merch   land  pay share  works yrs  land yrs     wage bill         rents  landlords' cash  towns");
+        for (k, y) in st.acct.years.iter().enumerate() {
+            let towns = (0..st.T_max).filter(|&t| st.acct.hist[k].towns[t * accounts::KT] > 0.0).count();
+            println!(
+                "{}  {:5.3}  {:5.3}  {:5.3}  {:5.3}      {:5.3}      {:5.2}     {:5.2}  {:12.0}  {:12.0}     {:12.0}  {:5}",
+                y.year, y.share_work, y.share_works, y.share_merchants, y.share_land, y.pay_share, y.works_years, y.land_years, y.wage_bill, y.rent_farm + y.rent_pits + y.rent_sites + y.rent_town, y.money.landlords, towns
+            );
+        }
+        // the year the land's owners did worst, town by town
+        let (k, y) = st.acct.years.iter().enumerate().min_by(|a, b| a.1.share_land.total_cmp(&b.1.share_land)).unwrap();
+        println!("
+{}, the year land's share was lowest ({:.3}), town by town", y.year, y.share_land);
+        println!("{:>14}  founded   people  mean wage  hands on land  wages on land  value of produce  rents of land", "");
+        for t in 0..st.town_name.len() {
+            let Some(tb) = accounts::town_books(st, C, t, Some(y.year)) else { continue };
+            let fig = |name: &str| tb.figures.iter().find(|(n, _)| n == name).map_or(f64::NAN, |(_, v)| *v);
+            if fig("pop") > 0.0 {
+                let value: f64 = tb.land.iter().map(|l| l.value).sum();
+                println!("{:>14}  {:7}  {:7.0}  {:9.2}  {:13.0}  {:13.0}  {:15.0}  {:13.0}", tb.name, st.town_founded[t], fig("pop"), fig("wage"), fig("hands_land"), fig("pay_land"), value, fig("rent_land"));
+            }
+        }
+        let _ = k;
+    }
     let g = C.gi(&good);
     let year = year.clamp(y0, y1);
     let k = (year - y0) as usize;
