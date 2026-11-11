@@ -1079,7 +1079,9 @@ pub fn site_options(st: &State, C: &Content, P: &Params, family: usize, cell: us
 }
 
 /// Build method m on `cell` for `family`, paid from the family's cash, as entry
-/// builds (capacity `entry_K_frac` of the method's full size). The player may
+/// builds (capacity `works::entry_K`: under the port `entry_K_frac` of the
+/// method's full size, with the life cycle for works a share of the town's
+/// trade in the good). The player may
 /// do this only at the seat and only in a known trade; branches growing do it
 /// for themselves anywhere they are. Returns the new firm's id.
 #[allow(clippy::too_many_arguments)]
