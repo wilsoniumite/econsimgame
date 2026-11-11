@@ -399,12 +399,6 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let nonlabor: Vec<f64> =
         (0..NFI).map(|i| pairwise_sum_by(G, |g| a[(i, g)] * pin[(i, g)]) + h[i] * hunit[i]).collect();
     let phi_prev: Vec<f64> = fi.iter().map(|&i| st.f_fill[i]).collect();
-    // works EXPERIMENT: the price a works reckons its utilisation on
-    let pnet: Vec<f64> = if P.works.enabled && P.works.spread_in_use {
-        (0..NFI).map(|i| pout[i] - P.merchant_spread * p[(ft[i], out[i])]).collect()
-    } else {
-        pout.clone()
-    };
 
     // ---------------- labour market: one wage per town clears supply and demand
     let supply: Vec<f64> = st.pop.iter().map(|&p| P.participation * p).collect();
@@ -426,8 +420,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     // Firm demand at its town's wage w: utilisation follows the margin through a sigmoid.
     let firm_demand = |w: f64, i: usize| -> (f64, f64) {
-        let m = pnet[i] - nonlabor[i] - l[i] * w;
-        let u = sigmoid((m / pnet[i].max(1e-9) - P.util_target_margin) / P.util_band) * bool_f(pnet[i] > 0.0);
+        let m = pout[i] - nonlabor[i] - l[i] * w;
+        let u = sigmoid((m / pout[i].max(1e-9) - P.util_target_margin) / P.util_band) * bool_f(pout[i] > 0.0);
         let Lf = Lprev_f[i] + kf * (K[i] * u * l[i] * phi_prev[i] - Lprev_f[i]);
         (Lf.max(0.0), u)
     };
@@ -488,9 +482,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             df += lf;
             if slope && lf > 0.0 && u > 0.0 {
                 // dLf/dx = kf K l phi du/dx, du/dx = u (1 - u) dz/dx, dz/dx = -l w / (pout band)
-                let z = ((pnet[i] - nonlabor[i] - l[i] * wt) / pnet[i].max(1e-9) - P.util_target_margin) / P.util_band;
+                let z = ((pout[i] - nonlabor[i] - l[i] * wt) / pout[i].max(1e-9) - P.util_target_margin) / P.util_band;
                 if z.abs() < 50.0 {
-                    let dz = -l[i] * wt / pnet[i].max(1e-9) / P.util_band;
+                    let dz = -l[i] * wt / pout[i].max(1e-9) / P.util_band;
                     dd += kf * K[i] * l[i] * phi_prev[i] * u * (1.0 - u) * dz;
                 }
             }

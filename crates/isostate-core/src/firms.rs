@@ -513,6 +513,7 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
     } else {
         st.merch_cash[i] += cash; // creditors take the loss
     }
+    let held = works::land_held(st, C, P, fid); // works: the land it gives up
     // unfinished orders: nothing more is bought
     st.f_cash[fid] = 0.0;
     st.f_order.row_mut(fid).iter_mut().for_each(|v| *v = 0.0);
@@ -521,7 +522,7 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
     st.f_died[fid] = year;
     let c = st.f_cell[fid];
     let m = st.f_method[fid];
-    st.cell_K_share[c] = (st.cell_K_share[c] - works::land_take(C, P, m, st.f_K[fid])).max(0.0);
+    st.cell_K_share[c] = (st.cell_K_share[c] - held).max(0.0);
     if works::leaves_derelict(C, P, m, st.f_K[fid]) && st.cell_K_share[c] < 0.05 && !st.urban[c] {
         st.derelict_timer[c] = 6;
     }

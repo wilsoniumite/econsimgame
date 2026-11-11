@@ -73,11 +73,6 @@ pub struct WorksParams {
     /// F. Labour per unit rises by this for each unit of path cost from the works
     /// to its market. 0: hands cost the same anywhere.
     pub walk: f64,
-    /// EXPERIMENT: a works decides how hard to run on what it keeps after the merchant's spread.
-    pub spread_in_use: bool,
-    /// EXPERIMENT: craft methods stop growing at this many usual sizes (0: no limit of their own).
-    pub craft_limit: f64,
-    pub craft: Vec<String>,
 }
 
 impl Default for WorksParams {
@@ -95,9 +90,6 @@ impl Default for WorksParams {
             entry_share: 0.10,
             family_extends: true,
             walk: 0.02,
-            spread_in_use: false,
-            craft_limit: 0.0,
-            craft: ["services", "smithy", "hand_loom", "bloomery", "millwright", "charcoal_burning", "forge_rails"].map(String::from).to_vec(),
         }
     }
 }
@@ -135,14 +127,19 @@ pub fn land_take(C: &Content, P: &Params, m: usize, K: f64) -> f64 {
     }
 }
 
+/// The share of its cell works f holds. Under the port that is its built
+/// capacity alone. Here the ground is taken when the building starts, so
+/// capacity on order counts too: the works pays rent on it from that day, and
+/// nobody else can plan on the same yard meanwhile.
+pub fn land_held(st: &State, C: &Content, P: &Params, f: usize) -> f64 {
+    let K = if P.works.enabled { st.f_K[f] + st.f_order_K[f] } else { st.f_K[f] };
+    land_take(C, P, st.f_method[f], K)
+}
+
 /// The largest a works grows where it stands. Beyond it, more capacity means a
 /// sister works on another cell.
 pub fn max_K(C: &Content, P: &Params, m: usize) -> f64 {
     let w = &P.works;
-    if w.enabled && w.craft_limit > 0.0 && w.craft.contains(&C.method_name[m]) {
-        let cell = if w.hands_per_cell > 0.0 { w.cell_limit / land_take(C, P, m, 1.0).max(1e-12) } else { f64::INFINITY };
-        return cell.min(w.craft_limit * C.m_K0[m]);
-    }
     if w.enabled && w.hands_per_cell > 0.0 {
         let per_unit = land_take(C, P, m, 1.0);
         if per_unit > 0.0 { w.cell_limit / per_unit } else { f64::INFINITY }
@@ -210,20 +207,21 @@ pub fn extend_sister(st: &mut State, C: &Content, P: &Params, parent: usize, dK:
         .max_by(|&a, &b| st.f_K[a].total_cmp(&st.f_K[b]).then(b.cmp(&a)));
     let Some(f) = target else { return false };
     let cost = dK * unit_cap * 1.15;
-    let mut fund = (st.f_cash[parent].max(0.0) * 0.8).min(cost);
-    st.f_cash[parent] -= fund;
-    if fund < cost {
-        fund += firms::back_firm(st, P, parent, cost - fund);
-    }
-    if fund < 0.6 * cost {
-        // not enough found: the money goes where a failed sister works' does
+    let own = (st.f_cash[parent].max(0.0) * 0.8).min(cost);
+    let backed = if own < cost { firms::back_firm(st, P, parent, cost - own) } else { 0.0 };
+    if own + backed < 0.6 * cost {
+        // not enough found: the works keeps its cash, and what its backers put
+        // up goes back to them (a family's to the family, a town's savers' to
+        // its households, as the port returns the money of a sister works that
+        // was not built)
         match families::owner_of_firm(st, parent) {
-            Some(k) => st.families[k].cash += fund,
-            None => st.hh_cash[i] += fund,
+            Some(k) => st.families[k].cash += backed,
+            None => st.hh_cash[i] += backed,
         }
         return true;
     }
-    st.f_cash[f] += fund;
+    st.f_cash[parent] -= own;
+    st.f_cash[f] += own + backed;
     for g in 0..C.G {
         st.f_order[(f, g)] += dK * C.m_cap[(m, g)];
     }
@@ -396,6 +394,8 @@ pub fn ordered(st: &mut State, C: &Content, P: &Params, f: usize, dK: f64) {
     if st.works_added.rows > 0 {
         st.works_added[(i, m)] += dK;
     }
+    // the ground is taken now, so the next works to ask this year finds the cell that much fuller
+    st.cell_K_share[c] += land_take(C, P, m, dK);
     if f < st.works_lease.len() {
         let need = land_take(C, P, m, st.f_K[f] + st.f_order_K[f]);
         let lease = st.works_lease[f];
