@@ -100,7 +100,7 @@ Only when the mechanism is on:
 | `reach` | 30 | cells over which a district's weather is alike |
 | `pasture` | 0.4 | share of the shock pastures feel |
 | `woods` | 0 | share woods feel |
-| `foreseen` | 0.5 | share of the weather known when the hands are hired; 0 is a pure surprise |
+| `foreseen` | 0.5 | share of the weather known when the hands are hired; 0 is a pure surprise; held between 0 and 1 |
 | `news_z` | 1.8 | island deviations that make a poor or a bumper harvest news |
 | `news_local_z` | 2.3 | district deviations that make one town's failure news |
 | `dearth_rise` | 0.12 | how far above its trend the grain price is a dearth |
@@ -199,6 +199,68 @@ tripped fifteen times a run, twelve of them by the false swing, which would
 trip it with no weather at all. Harvests belong with `prices`; alone on the
 port's price rule they mostly feed its fault.
 
+**Checked again, and out of sample.** A review reran the sweeps above on a
+build of its own (`sweep-harvest-review*`, beside the others) and got the
+numbers in these tables again, digit for digit, on seeds 1 to 8, with and
+without families, under both price rules. It then ran seeds 9 to 16, which
+nothing here was tuned on, and a larger shock, 0.12. With prices on, no
+families:
+
+| seeds 9 to 16 | prices alone | 0.03 | 0.05 | 0.08 | 0.12 |
+|---|---|---|---|---|---|
+| grain price swing | 0.027 | 0.055 | 0.083 | 0.124 | 0.175 |
+| grain output swing | 0.022 | 0.060 | 0.093 | 0.145 | 0.226 |
+| price `ac1` | +0.19 | -0.43 | -0.52 | -0.63 | -0.63 |
+| output `ac1` | +0.01 | -0.60 | -0.66 | -0.72 | -0.74 |
+| farm zigzag | 0.79 | 1.35 | 1.83 | 2.85 | 4.70 |
+| years with a town in famine | 2.8 [0..6] | 1.5 [0..5] | 2.4 [0..6] | 2.9 [1..6] | 4.6 [3..7] |
+| dearths told | - | 2.9 | 7.6 [4..10] | 15.1 | 22.4 |
+| harvest items told | - | 17.9 | 17.2 [12..20] | 16.5 | 15.6 |
+| downturns the observer calls (`alarm`) | 2.4 | 2.6 | 5.8 | 16.4 | 22.9 |
+| worst year's fall in the real wage | -0.140 [-0.309..-0.056] | -0.097 | -0.154 [-0.612..-0.056] | -0.098 | -0.137 |
+| people in 1900 | 683,771 | 684,739 | 684,687 [671,453..688,693] | 683,239 | 681,486 |
+| grain output on the harvest | - | 0.89 | 0.88 [0.66..1.09] | 0.89 | 0.92 |
+| grain price on the harvest | - | -0.95 | -0.93 [-1.10..-0.79] | -0.93 | -0.91 |
+| real wage on the harvest | - | 0.23 | 0.21 [0.11..0.31] | 0.22 | 0.23 |
+
+With six families on the same seeds at 0.05: price swing 0.083 (0.029 with
+prices alone), output swing 0.093 (0.023), the two `ac1` -0.60 and -0.69,
+famine years 1.25 [0..3] (1.5), dearths 6.9 [5..9], harvest items 17.1, people
+in 1900 685,074 (686,018), the real wage on the harvest 0.22 [0.17..0.27].
+Under the port's own price rule, seeds 9 to 16 at 0.05: price swing 0.109
+(0.083 without harvests), output swing 0.208 (0.138), zigzag 6.79 (5.01),
+famine years 4.1 [2..7] (1.5 [0..4]), dearths 18.4, the real wage on the
+harvest 0.17 [0.11..0.29].
+
+Everything above holds as it stood. The three slopes on the harvest have the
+same sign in all sixteen seeds at the game's size, with families and without,
+under either price rule. The echo in output is a little stronger on the new
+seeds (`ac1` -0.66, and -0.69 with families). The shock of 0.12 answers the
+question the first tables left: with prices on, famines do not become more
+common until the island's harvest varies by twelve per cent a year, and there
+they about double (5.0 and 4.6 years a run on the two sets of seeds, against
+2.5 and 2.8; with six families 3.9 and 3.1 against 1.75 and 1.5) while the
+people of 1900 are a third of a per cent fewer and dearths are told every
+seven years. None of the 224 runs of the review's four sweeps with harvests
+on (sixteen seeds, three or four sizes, with and without families, under both
+price rules) failed the monthly money check.
+
+**Pushed to its edges** (seeds 3 and 7 to 1900, `sweep-harvest-review-x-*`).
+Both sizes at 0 with the switch on is the port's run byte for byte (seed 3
+with six families: the same monthly series and the same news, with fifteen
+dearths added, since the dearth line reads only the price). Shocks of 0.2 and
+0.4 for the island, or 0.3 for the districts, break nothing: famine comes in
+21 to 71 of the 150 years, the people of 1900 number between 640 and 360
+thousand, and money holds. `reach`
+of 1 and of 200 cells, woods that feel all of the weather and pastures that
+feel one and a half times as much or none of it, with prices and six
+families: nothing breaks, and the facts stay near the game's. `foreseen`
+below 0 or above 1 is now read as 0 or 1. Before that, `foreseen` 2 with
+shocks of 0.3 was the one setting that failed: the farms hired for crops no
+year brings, the landlords paid wages no crop covered, and the island's stock
+of money ran down to nothing by 1830 in both seeds. Run again with the share
+held, it is the same run as `foreseen` 1 and passes.
+
 ## Pure surprise, or half seen
 
 The brief asked for a pure surprise: the hands hired for an average year, the
@@ -269,15 +331,27 @@ Only in runs with harvests on:
   change in grain output and against the change in its price, the record has
   every town's harvest, and the news is at most three items a decade with
   weights between 0.3 and 0.8; with six families money holds, the live view
-  carries the harvests, and land is priced on an average year's rent.
-- `tests/golden.rs` passes with its constants untouched.
+  carries the harvests, and land is priced on an average year's rent. Added
+  by the review: `foreseen` above 1 or below 0 behaves as 1 or 0; and over
+  sixty years of hard weather (shocks of 0.12) the real wage falls in the
+  short years and rises in the full ones, dearths are told in dear years
+  after short crops and never within three years of each other, every poor or
+  bumper harvest told was one, and the worst harvest of the sixty is told.
+- `tests/golden.rs` passes with its constants untouched. The review also ran
+  seed 3 under the port, with and without six families, and found the monthly
+  series, the news and `params.json` the same files, byte for byte, as the
+  ones kept from before any mechanism was written.
 - The sweeps above and the two variants kept beside them: 224 runs with
-  harvests on, none failed the monthly money check.
-- The scripted players (`examples/bots.rs`, seeds 3 and 7) under the game's
-  rules on this branch, which are the port's plus harvests: all four
-  strategies play to 1900 with money conserved, and end where they did under
-  the port (the landlord, who lives on rent, still comes first of six with
-  27.8 and 24.4 million against 23.9 and 24.5).
+  harvests on, none failed the monthly money check. The review's four sweeps
+  on sixteen seeds are another 224, and none of those failed either.
+- The scripted players (`examples/bots.rs`, seeds 1, 2, 3 and 7) under the
+  game's rules on this branch, which are the port's plus harvests: all four
+  strategies play to 1900 with money conserved. On seeds 3 and 7 they end
+  where they did under the port (the landlord, who lives on rent, still comes
+  first of six with 27.8 and 24.4 million against 23.9 and 24.5); the landlord
+  is first on seeds 1 and 2 as well.
+- A run with harvests on takes about a twentieth longer (13.6 and 14.3
+  seconds for seed 5, side by side on a busy machine).
 
 ## What worries me
 
@@ -324,9 +398,31 @@ Only in runs with harvests on:
   knife's edge, so any change to the island moves which seed has it: with
   harvests on the port's price rule it turned up as well in seed 7 (1754),
   seed 6 (1820) and seed 2 (1827), at some sizes of shock and not at others.
-  With prices on, the largest jump of the island's wage in 112 runs with
-  harvests was 43 per cent, the same as without them. A year like that also
-  trips the dearth line and sets the worst-year fact.
-- **Eight seeds.** The slopes on the harvest are clear of zero in every seed;
-  the famine counts and the worst year are not clear of the spread, and I
-  have said so where it matters.
+  With prices on it is rarer and still there, with harvests or without. On
+  sixteen seeds the island's wage rises by 40 per cent or more in a year in 3
+  of the 32 runs with prices alone (seed 11 in 1834 by 66 per cent and, with
+  six families, in 1837 to nearly three times; seed 2 in 1841) and in 4 of
+  the 128 with harvests as well (seed 11 again, to 2.3 times in 1850 at 0.05
+  and in 1837 at 0.08 with families; seeds 14 and 5 by 41 and 42 per cent).
+  So harvests do not make it commoner, but they do not cure it and they move
+  it. A year like that also trips the dearth line and sets the worst-year
+  fact: it is the -0.612 in the table of seeds 9 to 16. Under the port's price
+  rule it is in 2 of 32 runs without harvests and in 13 of 96 with them.
+- **Very large shocks slow the port's issue of money.** With the island's
+  shock at 0.4, or at 0.3 with all of it foreseen, the money stock of 1900 is
+  24 to 34 million where runs at the game's sizes have 35 to 39. The port
+  issues money each month in proportion to what the purses hold at one moment
+  of the monthly step, with that month's wages and dividends still on their
+  way, and in these runs that sum is smaller; I did not trace why. At the
+  game's sizes the money stock does not move (about 37 million in 1900 with
+  and without harvests, seeds 1 to 8). It is the port's rule and far from the
+  game's numbers; it is written down because it is what finally broke at
+  `foreseen` 2.
+- **The landlord bot reads the rent as paid.** `examples/bots.rs` ranks land
+  by last year's rent over its price, and the price is now on an average
+  year's rent, so the bot is drawn to wherever the harvest was best. It gains
+  nothing by it, since next year's rent is an ordinary one. The families' own
+  buying (above) has the same habit.
+- **Sixteen seeds.** The slopes on the harvest are clear of zero in every one;
+  the famine counts and the worst year are not clear of the spread at the
+  game's size, and I have said so where it matters.
