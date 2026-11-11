@@ -20,6 +20,7 @@ mod plan;
 mod rails;
 mod replay;
 mod rivers;
+mod saves;
 mod scatter;
 mod terrain;
 mod trains;
@@ -72,6 +73,12 @@ struct Args {
     advance: usize,
     /// give the player a works and some land at the start (for screenshots)
     demo: bool,
+    /// a new game was asked for (--new or --seed): the island's autosave is not gone on with
+    fresh: bool,
+    /// a saved game to go on with
+    load: Option<String>,
+    /// where to save, instead of the island's autosave
+    save: Option<String>,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -114,6 +121,9 @@ fn parse_args() -> Args {
         families: 6,
         advance: 0,
         demo: false,
+        fresh: false,
+        load: None,
+        save: None,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -141,8 +151,10 @@ fn parse_args() -> Args {
             "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
             "--wait" => { a.wait = next(i).parse().unwrap_or(45.0); i += 1; }
             "--no-tilt" => a.tilt = false,
-            "--new" => a.new = true,
-            "--seed" => { a.seed = next(i).parse().unwrap_or(7); i += 1; }
+            "--new" => { a.new = true; a.fresh = true; }
+            "--seed" => { a.seed = next(i).parse().unwrap_or(7); a.fresh = true; i += 1; }
+            "--load" => { a.load = Some(next(i)); i += 1; }
+            "--save" => { a.save = Some(next(i)); i += 1; }
             "--families" => { a.families = next(i).parse().unwrap_or(6); i += 1; }
             "--advance" => { a.advance = next(i).parse().unwrap_or(0); i += 1; }
             "--demo" => a.demo = true,
@@ -180,7 +192,7 @@ fn parse_args() -> Args {
         }
         i += 1;
     }
-    if !a.named_run {
+    if !a.named_run || a.load.is_some() {
         a.new = true;
     }
     a
@@ -337,8 +349,17 @@ fn main() {
     let args = parse_args();
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
-        eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
-        match live::start(args.seed, args.families, args.advance, args.demo) {
+        let opening = live::Opening {
+            seed: args.seed,
+            families: args.families,
+            advance: args.advance,
+            demo: args.demo,
+            load: args.load.clone(),
+            save: args.save.clone(),
+            fresh: args.fresh,
+            shots: !args.views.is_empty() || args.shot.is_some() || args.describe.is_some() || args.class_map,
+        };
+        match live::start(&opening) {
             Ok((r, l, f)) => (r, Some(l), Some(f)),
             Err(e) => {
                 eprintln!("the game could not start: {e}");
@@ -357,7 +378,7 @@ fn main() {
     let g = world::build_ground(&r);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
-    eprintln!("prepared {} in {:.1}s", if args.new { "the new game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
+    eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
     if let Some(me) = families.as_ref().and_then(|f| f.player()) {
         let at = r.header.towns.get(me.seat).map(|t| cen[t.node]).unwrap_or((0.0, 0.0));
