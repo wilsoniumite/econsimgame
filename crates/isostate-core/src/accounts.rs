@@ -448,23 +448,48 @@ pub struct Use {
 }
 
 /// One complete year's books, as they are kept (single precision).
-#[derive(Clone, Debug, Default)]
-pub struct YearRec {
+#[derive(Clone, Copy, Debug)]
+pub struct YearRec<'a> {
     /// `[T][G][KG]`
-    pub goods: Vec<f32>,
+    pub goods: &'a [f32],
     /// `[T][NS][KL]`
-    pub land: Vec<f32>,
+    pub land: &'a [f32],
     /// `[T][M][KM]`
-    pub methods: Vec<f32>,
+    pub methods: &'a [f32],
     /// `[T][KT]`
-    pub towns: Vec<f32>,
+    pub towns: &'a [f32],
     /// `[T][S][2]`: households', then landlords' and families', spending on each need.
-    pub needs: Vec<f32>,
+    pub needs: &'a [f32],
     /// Every flow between towns, by (from, to, good).
-    pub trade: Vec<Flow>,
+    pub trade: &'a [Flow],
     /// What each method in each town used of each good, by (town, method, good).
-    pub uses: Vec<Use>,
+    pub uses: &'a [Use],
     /// The works that worked, built or stood this year, by firm id, and their rows `[n][KW]`.
+    pub works_id: &'a [u32],
+    pub works: &'a [f32],
+}
+
+/// Every complete year's books, in the layout of the run file: one flat table
+/// of each kind with the years one after another, and for the sparse ones the
+/// row each year starts at. The dense tables are reserved for the whole run
+/// when the books open and the rest grow by doubling, so putting a year away
+/// asks the allocator for nothing. That matters more than it looks: see "What
+/// they cost" in the page.
+#[derive(Clone, Debug, Default)]
+pub struct Hist {
+    /// Complete years kept.
+    pub n: usize,
+    pub goods: Vec<f32>,
+    pub land: Vec<f32>,
+    pub methods: Vec<f32>,
+    pub towns: Vec<f32>,
+    pub needs: Vec<f32>,
+    /// Year k's flows are `trade[trade_off[k]..trade_off[k + 1]]`; the same for `uses` and the works.
+    pub trade_off: Vec<u32>,
+    pub trade: Vec<Flow>,
+    pub use_off: Vec<u32>,
+    pub uses: Vec<Use>,
+    pub works_off: Vec<u32>,
     pub works_id: Vec<u32>,
     pub works: Vec<f32>,
 }
@@ -523,8 +548,8 @@ pub struct Books {
     m_fam_rents: f64,
     /// The island's account of every complete year.
     pub years: Vec<IslandYear>,
-    /// Every complete year's books.
-    pub hist: Vec<YearRec>,
+    /// Every complete year's books (`Books::year` gives one year's).
+    pub hist: Hist,
     /// The last complete year only: its months `[12][T][G][KMO]`, and each
     /// works' materials, fuel and their cost by good `[firm][G][3]`.
     pub last_months: Vec<f32>,
@@ -594,6 +619,29 @@ pub struct Month<'a> {
     pub supply: &'a [f64],
 }
 
+impl Books {
+    /// The books of the k-th year of the run (None until it is complete).
+    pub fn year(&self, k: usize) -> Option<YearRec<'_>> {
+        let h = &self.hist;
+        if k >= h.n {
+            return None;
+        }
+        let (T, G, NS, M, S) = self.dims;
+        let rows = |off: &[u32]| off[k] as usize..off[k + 1] as usize;
+        Some(YearRec {
+            goods: &h.goods[k * T * G * KG..][..T * G * KG],
+            land: &h.land[k * T * NS * KL..][..T * NS * KL],
+            methods: &h.methods[k * T * M * KM..][..T * M * KM],
+            towns: &h.towns[k * T * KT..][..T * KT],
+            needs: &h.needs[k * T * S * 2..][..T * S * 2],
+            trade: &h.trade[rows(&h.trade_off)],
+            uses: &h.uses[rows(&h.use_off)],
+            works_id: &h.works_id[rows(&h.works_off)],
+            works: &h.works[h.works_off[k] as usize * KW..h.works_off[k + 1] as usize * KW],
+        })
+    }
+}
+
 // ---------------------------------------------------------------- the hooks
 
 fn new_acc(dims: (usize, usize, usize, usize, usize), F: usize, n_fam: usize, works: bool) -> Acc {
@@ -630,11 +678,29 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
     let dims = (st.T_max, C.G, C.NS, C.M, C.S);
     let mut cur = new_acc(dims, st.f_alive.len(), st.families.len(), P.accounts.works);
     open_stock(&mut cur, &st.inv);
+    // room for every year of the run (`sim::start_from` has set the content's last year)
+    let (T, G, NS, M, S) = dims;
+    let n = (C.end_year - C.start_year + 1).max(1) as usize;
+    let hist = Hist {
+        n: 0,
+        goods: Vec::with_capacity(n * T * G * KG),
+        land: Vec::with_capacity(n * T * NS * KL),
+        methods: Vec::with_capacity(n * T * M * KM),
+        towns: Vec::with_capacity(n * T * KT),
+        needs: Vec::with_capacity(n * T * S * 2),
+        trade_off: Vec::with_capacity(n + 1),
+        use_off: Vec::with_capacity(n + 1),
+        works_off: Vec::with_capacity(n + 1),
+        ..Hist::default()
+    };
     st.acct = Books {
         on: true,
         start_year: C.start_year,
         dims,
         cur,
+        hist,
+        years: Vec::with_capacity(n),
+        last_months: vec![0.0; 12 * T * G * KMO],
         stock: st.inv.clone(),
         mk: vec![0.0; st.T_max * HH_KINDS.clone().count()],
         ml: vec![0.0; st.T_max * C.NS * 5],
@@ -657,7 +723,8 @@ fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam
     let rows = F.min(a.works.len() / KW);
     a.works[..rows * KW].fill(0.0);
     a.works_in[..rows * G * 3].fill(0.0);
-    a.fam = vec![FamilyIncome::default(); n_fam];
+    a.fam.clear();
+    a.fam.resize(n_fam, FamilyIncome::default());
     a.month = 0;
     (a.fund_in, a.lords_in, a.hh_in, a.fund_div, a.issue, a.income_err) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 }
@@ -1007,7 +1074,9 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
 /// Every works' dividend, before the families take theirs out of the list.
 pub fn note_dividends(b: &mut Books, div: &[f64]) {
     if b.on {
-        b.div = div.to_vec();
+        // (into the same buffer every month: see `Hist`)
+        b.div.clear();
+        b.div.extend_from_slice(div);
     }
 }
 
@@ -1249,20 +1318,21 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     }
 
     // ---- put the year away
-    let mut rec = YearRec {
-        goods: a.goods.iter().map(|&v| v as f32).collect(),
-        land: a.land.iter().map(|&v| v as f32).collect(),
-        methods: a.methods.iter().map(|&v| v as f32).collect(),
-        towns: a.towns.iter().map(|&v| v as f32).collect(),
-        needs: a.needs.iter().map(|&v| v as f32).collect(),
-        ..YearRec::default()
-    };
+    let h = &mut b.hist;
+    h.goods.extend(a.goods.iter().map(|&v| v as f32));
+    h.land.extend(a.land.iter().map(|&v| v as f32));
+    h.methods.extend(a.methods.iter().map(|&v| v as f32));
+    h.towns.extend(a.towns.iter().map(|&v| v as f32));
+    h.needs.extend(a.needs.iter().map(|&v| v as f32));
+    if h.n == 0 {
+        (h.trade_off, h.use_off, h.works_off) = (vec![0], vec![0], vec![0]);
+    }
     for from in 0..T {
         for to in 0..T {
             for g in 0..G {
                 let k = ((from * T + to) * G + g) * 3;
                 if a.trade[k] > 0.0 {
-                    rec.trade.push(Flow { from: from as u16, to: to as u16, good: g as u16, qty: a.trade[k] as f32, value: a.trade[k + 1] as f32, carting: a.trade[k + 2] as f32 });
+                    h.trade.push(Flow { from: from as u16, to: to as u16, good: g as u16, qty: a.trade[k] as f32, value: a.trade[k + 1] as f32, carting: a.trade[k + 2] as f32 });
                 }
             }
         }
@@ -1272,7 +1342,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             for g in 0..G {
                 let k = ((t * M + me) * G + g) * 3;
                 if a.uses[k] > 0.0 || a.uses[k + 1] > 0.0 {
-                    rec.uses.push(Use { town: t as u16, method: me as u16, good: g as u16, used: a.uses[k] as f32, burnt: a.uses[k + 1] as f32, cost: a.uses[k + 2] as f32 });
+                    h.uses.push(Use { town: t as u16, method: me as u16, good: g as u16, used: a.uses[k] as f32, burnt: a.uses[k + 1] as f32, cost: a.uses[k + 2] as f32 });
                 }
             }
         }
@@ -1290,14 +1360,20 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             w[W_HANDS] /= n;
             w[W_UTIL] /= w[W_MONTHS].max(1.0);
             w[W_CASH] = st.f_cash[f];
-            rec.works_id.push(f as u32);
-            rec.works.extend(w.iter().map(|&v| v as f32));
+            h.works_id.push(f as u32);
+            h.works.extend(w.iter().map(|&v| v as f32));
         }
-        b.last_works_in = a.works_in[..st.F_count.min(a.works.len() / KW) * G * 3].iter().map(|&v| v as f32).collect();
+        b.last_works_in.clear();
+        b.last_works_in.extend(a.works_in[..st.F_count.min(a.works.len() / KW) * G * 3].iter().map(|&v| v as f32));
     }
-    b.last_months = a.months.iter().map(|&v| v as f32).collect();
+    h.trade_off.push(h.trade.len() as u32);
+    h.use_off.push(h.uses.len() as u32);
+    h.works_off.push(h.works_id.len() as u32);
+    h.n += 1;
+    for (d, &v) in b.last_months.iter_mut().zip(&a.months) {
+        *d = v as f32;
+    }
     b.years.push(y);
-    b.hist.push(rec);
     // the same tables, wiped, for the year to come
     reset(&mut a, dims, st.F_count, st.families.len());
     open_stock(&mut a, &st.inv);
@@ -1512,9 +1588,9 @@ pub fn town_books(st: &State, C: &Content, town: usize, year: Option<i64>) -> Op
     let (T, G, NS, M, S) = b.dims;
     let k = match year {
         Some(y) => usize::try_from(y - b.start_year).ok()?,
-        None => b.hist.len().checked_sub(1)?,
+        None => b.hist.n.checked_sub(1)?,
     };
-    let rec = b.hist.get(k)?;
+    let rec = b.year(k)?;
     if town >= T || town >= st.town_name.len() {
         return None;
     }
@@ -1602,7 +1678,7 @@ pub fn town_books(st: &State, C: &Content, town: usize, year: Option<i64>) -> Op
         })
         .collect();
     let flow = |fl: &Flow, other: u16| TownFlow { town: other as usize, good: fl.good as usize, qty: f(fl.qty), value: f(fl.value), carting: f(fl.carting) };
-    let months = (k + 1 == b.hist.len() && b.last_months.len() == 12 * T * G * KMO).then(|| {
+    let months = (k + 1 == b.hist.n && b.last_months.len() == 12 * T * G * KMO).then(|| {
         (0..12)
             .map(|mo| (0..G).map(|g| std::array::from_fn(|c| f(b.last_months[((mo * T + town) * G + g) * KMO + c]))).collect())
             .collect()
@@ -1672,7 +1748,8 @@ pub fn works_books(st: &State, C: &Content, firm: usize) -> Option<WorksBooks> {
     let G = b.dims.1;
     let f = |v: f32| v as f64;
     let mut years = Vec::new();
-    for (k, rec) in b.hist.iter().enumerate() {
+    for k in 0..b.hist.n {
+        let rec = b.year(k).expect("a complete year");
         let Ok(j) = rec.works_id.binary_search(&(firm as u32)) else { continue };
         let r = &rec.works[j * KW..(j + 1) * KW];
         years.push(WorksYear {
@@ -1730,53 +1807,29 @@ pub enum Table {
 pub fn tables(st: &State, lite: bool) -> Vec<Table> {
     let b = &st.acct;
     let mut out = Vec::new();
-    if !b.on || b.hist.is_empty() {
+    let h = &b.hist;
+    if !b.on || h.n == 0 {
         return out;
     }
     let (T, G, NS, M, S) = b.dims;
-    let n = b.hist.len();
-    let cat = |f: fn(&YearRec) -> &Vec<f32>| b.hist.iter().flat_map(|r| f(r).iter().copied()).collect::<Vec<f32>>();
-    out.push(Table::F32("acct_goods".into(), vec![n, T, G, KG], cat(|r| &r.goods)));
-    out.push(Table::F32("acct_land".into(), vec![n, T, NS, KL], cat(|r| &r.land)));
-    out.push(Table::F32("acct_methods".into(), vec![n, T, M, KM], cat(|r| &r.methods)));
-    out.push(Table::F32("acct_towns".into(), vec![n, T, KT], cat(|r| &r.towns)));
-    out.push(Table::F32("acct_needs".into(), vec![n, T, S, 2], cat(|r| &r.needs)));
+    let n = h.n;
+    let ints = |v: &[u32]| v.iter().map(|&x| x as i32).collect::<Vec<i32>>();
+    out.push(Table::F32("acct_goods".into(), vec![n, T, G, KG], h.goods.clone()));
+    out.push(Table::F32("acct_land".into(), vec![n, T, NS, KL], h.land.clone()));
+    out.push(Table::F32("acct_methods".into(), vec![n, T, M, KM], h.methods.clone()));
+    out.push(Table::F32("acct_towns".into(), vec![n, T, KT], h.towns.clone()));
+    out.push(Table::F32("acct_needs".into(), vec![n, T, S, 2], h.needs.clone()));
     // the flows of each year are rows off[year]..off[year + 1]
-    let mut off = vec![0i32];
-    let (mut key, mut val) = (Vec::new(), Vec::new());
-    for r in &b.hist {
-        for fl in &r.trade {
-            key.extend([fl.from as i32, fl.to as i32, fl.good as i32]);
-            val.extend([fl.qty, fl.value, fl.carting]);
-        }
-        off.push((key.len() / 3) as i32);
-    }
-    out.push(Table::I32("acct_trade_off".into(), vec![n + 1], off));
-    out.push(Table::I32("acct_trade_key".into(), vec![key.len() / 3, 3], key));
-    out.push(Table::F32("acct_trade_val".into(), vec![val.len() / 3, 3], val));
-    let mut off = vec![0i32];
-    let (mut key, mut val) = (Vec::new(), Vec::new());
-    for r in &b.hist {
-        for u in &r.uses {
-            key.extend([u.town as i32, u.method as i32, u.good as i32]);
-            val.extend([u.used, u.burnt, u.cost]);
-        }
-        off.push((key.len() / 3) as i32);
-    }
-    out.push(Table::I32("acct_use_off".into(), vec![n + 1], off));
-    out.push(Table::I32("acct_use_key".into(), vec![key.len() / 3, 3], key));
-    out.push(Table::F32("acct_use_val".into(), vec![val.len() / 3, 3], val));
-    if !lite && b.hist.iter().any(|r| !r.works_id.is_empty()) {
-        let mut off = vec![0i32];
-        let (mut id, mut val) = (Vec::new(), Vec::new());
-        for r in &b.hist {
-            id.extend(r.works_id.iter().map(|&f| f as i32));
-            val.extend_from_slice(&r.works);
-            off.push(id.len() as i32);
-        }
-        out.push(Table::I32("acct_works_off".into(), vec![n + 1], off));
-        out.push(Table::I32("acct_works_id".into(), vec![id.len()], id.clone()));
-        out.push(Table::F32("acct_works".into(), vec![id.len(), KW], val));
+    out.push(Table::I32("acct_trade_off".into(), vec![n + 1], ints(&h.trade_off)));
+    out.push(Table::I32("acct_trade_key".into(), vec![h.trade.len(), 3], h.trade.iter().flat_map(|f| [f.from as i32, f.to as i32, f.good as i32]).collect()));
+    out.push(Table::F32("acct_trade_val".into(), vec![h.trade.len(), 3], h.trade.iter().flat_map(|f| [f.qty, f.value, f.carting]).collect()));
+    out.push(Table::I32("acct_use_off".into(), vec![n + 1], ints(&h.use_off)));
+    out.push(Table::I32("acct_use_key".into(), vec![h.uses.len(), 3], h.uses.iter().flat_map(|u| [u.town as i32, u.method as i32, u.good as i32]).collect()));
+    out.push(Table::F32("acct_use_val".into(), vec![h.uses.len(), 3], h.uses.iter().flat_map(|u| [u.used, u.burnt, u.cost]).collect()));
+    if !lite && !h.works_id.is_empty() {
+        out.push(Table::I32("acct_works_off".into(), vec![n + 1], ints(&h.works_off)));
+        out.push(Table::I32("acct_works_id".into(), vec![h.works_id.len()], ints(&h.works_id)));
+        out.push(Table::F32("acct_works".into(), vec![h.works_id.len(), KW], h.works.clone()));
     }
     out
 }
@@ -1785,7 +1838,7 @@ pub fn tables(st: &State, lite: bool) -> Vec<Table> {
 /// the island's account of every year. None unless the run kept books.
 pub fn header(st: &State) -> Option<Value> {
     let b = &st.acct;
-    if !b.on || b.hist.is_empty() {
+    if !b.on || b.hist.n == 0 {
         return None;
     }
     Some(json!({

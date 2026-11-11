@@ -47,7 +47,7 @@ fn off_under_the_port_and_on_in_the_game() {
     let P = params(Rules::Port, 7, 0, 1752, false);
     let r = run(Rules::Port, &P);
     let b = &r.state.acct;
-    assert!(!b.on && b.years.is_empty() && b.hist.is_empty() && b.last_months.is_empty() && b.seconds == 0.0);
+    assert!(!b.on && b.years.is_empty() && b.hist.n == 0 && b.hist.goods.capacity() == 0 && b.last_months.is_empty() && b.seconds == 0.0);
     assert!(r.state.series.names.iter().all(|n| !n.starts_with("acct_")));
     assert!(accounts::town_books(&r.state, &r.content, 0, None).is_none());
     assert!(accounts::works_books(&r.state, &r.content, 0).is_none());
@@ -124,7 +124,7 @@ fn balances(rules: Rules, seed: u64, families: usize, end: i64) {
         assert!(y.works_years > 0.0 && y.ownership_years.is_finite());
         assert!(y.oversold_share >= 0.0 && y.oversold_share < 1e-3, "{}: {} of all that was bought was not in store", y.year, y.oversold_share);
         // the same balance from the tables as they are kept (single precision)
-        let rec = &st.acct.hist[k];
+        let rec = st.acct.year(k).unwrap();
         for t in 0..T {
             for g in 0..G {
                 let v = |name: &str| rec.goods[(t * G + g) * KG + col(name)] as f64;
@@ -177,7 +177,7 @@ fn the_books_agree_with_the_observer_and_the_families() {
     let y0 = C.start_year;
     let (T, G, M) = (st.T_max, C.G, C.M);
     for (k, y) in st.acct.years.iter().enumerate() {
-        let rec = &st.acct.hist[k];
+        let rec = st.acct.year(k).unwrap();
         // what the towns made is what the observer's output series say, the
         // timber of cleared woodland aside (the observer does not see it)
         for g in 0..G {
@@ -258,7 +258,7 @@ fn a_town_and_a_works_can_be_asked_for() {
     assert!(last.needs.iter().map(|n| n.households).sum::<f64>() > 0.99 * fig("spend_households"));
 
     // a works: every year it stood, and its sums add up
-    let rec = st.acct.hist.last().unwrap();
+    let rec = st.acct.year(st.acct.hist.n - 1).unwrap();
     let busiest = (0..rec.works_id.len()).max_by(|&a, &b| rec.works[a * KW + wcol("inputs")].total_cmp(&rec.works[b * KW + wcol("inputs")])).unwrap();
     let f = rec.works_id[busiest] as usize;
     let wb = accounts::works_books(st, C, f).expect("the works' books");
@@ -276,7 +276,7 @@ fn a_town_and_a_works_can_be_asked_for() {
     let mut P = params(Rules::Port, 7, 0, 1752, true);
     P.accounts.works = false;
     let r = run(Rules::Port, &P);
-    assert!(r.state.acct.hist.iter().all(|h| h.works_id.is_empty() && !h.goods.is_empty()));
+    assert!(r.state.acct.hist.works_id.is_empty() && r.state.acct.hist.n == 3 && !r.state.acct.year(2).unwrap().goods.is_empty());
     assert!(accounts::works_books(&r.state, &r.content, 0).is_some_and(|w| w.years.is_empty()));
 }
 
@@ -286,11 +286,13 @@ fn the_books_repeat_and_go_into_the_run_file_and_the_live_view() {
     let (a, b) = (run(Rules::Game, &P), run(Rules::Game, &P));
     assert_eq!(a.state.acct.years, b.state.acct.years);
     let f32bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
-    for (x, y) in a.state.acct.hist.iter().zip(&b.state.acct.hist) {
-        assert_eq!(f32bits(&x.goods), f32bits(&y.goods));
-        assert_eq!(f32bits(&x.works), f32bits(&y.works));
-        assert_eq!((&x.works_id, &x.trade), (&y.works_id, &y.trade));
-    }
+    let (x, y) = (&a.state.acct.hist, &b.state.acct.hist);
+    assert_eq!(f32bits(&x.goods), f32bits(&y.goods));
+    assert_eq!(f32bits(&x.methods), f32bits(&y.methods));
+    assert_eq!(f32bits(&x.towns), f32bits(&y.towns));
+    assert_eq!(f32bits(&x.works), f32bits(&y.works));
+    assert_eq!((&x.works_id, &x.trade, &x.uses, &x.works_off), (&y.works_id, &y.trade, &y.uses, &y.works_off));
+    assert_eq!(x.n, 13);
     let blob = record::pack(&a.state, &a.content, &a.params, &a.events, &a.rec, "a", false);
     assert!(blob == record::pack(&b.state, &b.content, &b.params, &b.events, &b.rec, "a", false), "identical runs pack to different bytes");
 
@@ -318,7 +320,7 @@ fn the_books_repeat_and_go_into_the_run_file_and_the_live_view() {
     assert_eq!(books["island"].as_array().unwrap().len(), n as usize);
     assert!(books["island"][0]["share_work"].as_f64().unwrap() > 0.0);
     // under the game's rules the merchants have an anchor, and the books keep it
-    let anchor = a.state.acct.hist[5].goods[col("anchor")];
+    let anchor = a.state.acct.year(5).unwrap().goods[col("anchor")];
     assert!(anchor > 0.0);
     // a lite pack keeps the towns' tables and drops the works'
     let lite = header(&record::pack(&a.state, &a.content, &a.params, &a.events, &a.rec, "a", true));

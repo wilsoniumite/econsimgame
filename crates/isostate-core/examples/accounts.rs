@@ -107,7 +107,8 @@ fn main() {
         let worst = b.years.iter().max_by(|a, c| a.balance_goods.total_cmp(&c.balance_goods)).unwrap();
         let inc = b.years.iter().map(|y| y.balance_income).fold(0.0, f64::max);
         let spend = b.years.iter().map(|y| y.balance_spending).fold(0.0, f64::max);
-        let kept: usize = b.hist.iter().map(|h| 4 * (h.goods.len() + h.land.len() + h.methods.len() + h.towns.len() + h.needs.len() + h.works.len()) + 4 * h.works_id.len() + 16 * h.trade.len()).sum();
+        let h = &b.hist;
+        let kept = 4 * (h.goods.len() + h.land.len() + h.methods.len() + h.towns.len() + h.needs.len() + h.works.len() + h.works_id.len()) + 20 * (h.trade.len() + h.uses.len());
         println!(
             "{seed:4}   {:.2e}       {:+.3e} {:>10} {:>9} {}   {:.2e}    {:.2e}        {:.2e}  {:6.2}  {:6.1}  {:.4}  {:6.1}",
             worst.balance_goods,
@@ -136,7 +137,7 @@ fn main() {
 seed {}, year by year", seeds[0]);
         println!("year   work  works  merch   land  pay share  works yrs  land yrs     wage bill         rents  landlords' cash  towns");
         for (k, y) in st.acct.years.iter().enumerate() {
-            let towns = (0..st.T_max).filter(|&t| st.acct.hist[k].towns[t * accounts::KT] > 0.0).count();
+            let towns = (0..st.T_max).filter(|&t| st.acct.year(k).unwrap().towns[t * accounts::KT] > 0.0).count();
             println!(
                 "{}  {:5.3}  {:5.3}  {:5.3}  {:5.3}      {:5.3}      {:5.2}     {:5.2}  {:12.0}  {:12.0}     {:12.0}  {:5}",
                 y.year, y.share_work, y.share_works, y.share_merchants, y.share_land, y.pay_share, y.works_years, y.land_years, y.wage_bill, y.rent_farm + y.rent_pits + y.rent_sites + y.rent_town, y.money.landlords, towns
@@ -163,7 +164,10 @@ seed {}, year by year", seeds[0]);
     let (T, G) = (st.T_max, C.G);
     let t = match &town {
         Some(name) => name.parse().unwrap_or_else(|_| st.town_name.iter().position(|n| n == name).expect("no town of that name")),
-        None => (0..st.town_name.len()).max_by(|&a, &b| st.acct.hist[k].goods[(a * G + g) * accounts::KG].total_cmp(&st.acct.hist[k].goods[(b * G + g) * accounts::KG])).unwrap(),
+        None => {
+            let goods = st.acct.year(k).expect("the year's books").goods;
+            (0..st.town_name.len()).max_by(|&a, &b| goods[(a * G + g) * accounts::KG].total_cmp(&goods[(b * G + g) * accounts::KG])).unwrap()
+        }
     };
     let _ = T;
     let tb = accounts::town_books(st, C, t, Some(year)).expect("the town's books");
@@ -203,7 +207,7 @@ seed {}, year by year", seeds[0]);
 
     if show_works {
         // the largest works making the good in that town that year
-        let rec = &st.acct.hist[k];
+        let rec = st.acct.year(k).unwrap();
         let best = (0..rec.works_id.len())
             .filter(|&j| {
                 let w = &rec.works[j * accounts::KW..(j + 1) * accounts::KW];
