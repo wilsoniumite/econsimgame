@@ -33,6 +33,11 @@
 //!   the merchants' stock over a month's sales; `utilisation_GOOD_PERIOD`: output
 //!   over capacity; `glut_made_GOOD`: the share of output made in towns holding
 //!   over six months of sales and shipments of it.
+//! - `turned_away_GOOD`: the share of its works' capacity the merchants would not
+//!   take (`prices::merchants_take`; 0 while prices is off); `capacity_shipping_GOOD`:
+//!   the share of that capacity standing in towns that ship out more of the good
+//!   than they sell at home; `turned_away_shipping_GOOD`: the first number for
+//!   those towns alone.
 //! - `wage_baskets_DECADE`: the average wage in subsistence baskets (the town's
 //!   wage over the cost of its subsistence bundle, weighted by people). Unlike the
 //!   observer's real wage it is not scaled to the run's own 1750, so it compares
@@ -128,6 +133,14 @@ struct YearSample {
     made: Vec<f64>,
     cap: Vec<f64>,
     glut_made: Vec<f64>,
+    /// Per watched good: the capacity of its works and the part of it the
+    /// merchants turn away (`prices::merchants_take`), summed over the months; and
+    /// the same two for works in towns that ship out more of the good than they
+    /// sell at home.
+    works_K: Vec<f64>,
+    turned_away: Vec<f64>,
+    shipping_K: Vec<f64>,
+    shipping_turned_away: Vec<f64>,
     /// The wage in subsistence baskets, summed over the months.
     baskets: f64,
     /// Capacity of all iron works at the year's end.
@@ -157,7 +170,19 @@ fn one_run(P: &Params, content: Content, shock: bool) -> Result<OneRun, String> 
     let mut gathered = Gathered::default();
     let mut years = Vec::new();
     while s.year <= s.end_year {
-        let mut ys = YearSample { req: vec![0.0; n], sold: vec![0.0; n], stock: vec![0.0; n], made: vec![0.0; n], cap: vec![0.0; n], glut_made: vec![0.0; n], ..Default::default() };
+        let mut ys = YearSample {
+            req: vec![0.0; n],
+            sold: vec![0.0; n],
+            stock: vec![0.0; n],
+            made: vec![0.0; n],
+            cap: vec![0.0; n],
+            glut_made: vec![0.0; n],
+            works_K: vec![0.0; n],
+            turned_away: vec![0.0; n],
+            shipping_K: vec![0.0; n],
+            shipping_turned_away: vec![0.0; n],
+            ..Default::default()
+        };
         let mut prod_before = mat::Mat::zeros(s.st.T_max, C.G);
         for month in 0..12 {
             sim::run_month(&mut s, month)?;
@@ -176,6 +201,23 @@ fn one_run(P: &Params, content: Content, shock: bool) -> Result<OneRun, String> 
                 ys.cap[k] += capacity_of(st, &C, g);
             }
             prod_before = st.town_prod.clone();
+            // what the merchants will turn away next month, as econ::step_month will ask
+            // (nothing while prices is off)
+            let works: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_K[f] > 1e-9).collect();
+            let ft: Vec<usize> = works.iter().map(|&f| st.f_town[f]).collect();
+            let out: Vec<usize> = works.iter().map(|&f| C.method_out[st.f_method[f]]).collect();
+            let take = prices::merchants_take(st, &s.params, &ft, &out);
+            for (i, &f) in works.iter().enumerate() {
+                let Some(k) = goods.iter().position(|&g| g == out[i]) else { continue };
+                let (K, away) = (st.f_K[f], st.f_K[f] * (1.0 - take[i]));
+                ys.works_K[k] += K;
+                ys.turned_away[k] += away;
+                // more than half of what leaves the town's stock goes to other towns
+                if st.outflow[(ft[i], out[i])] > 2.0 * st.month_sold[(ft[i], out[i])] {
+                    ys.shipping_K[k] += K;
+                    ys.shipping_turned_away[k] += away;
+                }
+            }
             let (mut w, mut p) = (0.0, 0.0);
             for t in 0..st.T_max {
                 if st.town_active[t] && st.subcost[t] > 0.0 {
@@ -301,6 +343,12 @@ fn metrics(run: &OneRun) -> Vec<(String, f64)> {
         m.push((format!("worst_fill_{good}"), fills.iter().copied().fold(f64::NAN, f64::min)));
         let made: f64 = ys.iter().map(|y| y.made[k]).sum();
         m.push((format!("glut_made_{good}"), if made > 0.0 { ys.iter().map(|y| y.glut_made[k]).sum::<f64>() / made } else { f64::NAN }));
+        let total = |f: &dyn Fn(&YearSample) -> f64| ys.iter().map(f).sum::<f64>();
+        let share = |a: f64, b: f64| if b > 0.0 { a / b } else { f64::NAN };
+        let (all_K, ship_K) = (total(&|y| y.works_K[k]), total(&|y| y.shipping_K[k]));
+        m.push((format!("turned_away_{good}"), share(total(&|y| y.turned_away[k]), all_K)));
+        m.push((format!("capacity_shipping_{good}"), share(ship_K, all_K)));
+        m.push((format!("turned_away_shipping_{good}"), share(total(&|y| y.shipping_turned_away[k]), ship_K)));
     }
 
     // levels
