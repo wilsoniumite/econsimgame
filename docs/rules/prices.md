@@ -4,8 +4,8 @@ Under the port the island's prices swing on a clock of their own. Iron, rails
 and machinery go from trough to peak and back every eight to ten years, about
 three times from bottom to top, and the share of people working the farms
 zigzags every three years. Neither is the economy answering anything: both are
-one fault in the rule that sets prices (`.claude/night/reports/dx-cycles.md`
-traced it). With `prices.enabled` the merchants set prices the way a
+one fault in the rule that sets prices (`docs/probes/dx-cycles.md` traced
+it). With `prices.enabled` the merchants set prices the way a
 shopkeeper does, by looking at the shelves, and stop buying what they cannot
 sell. None of it is in the Python.
 
@@ -267,10 +267,10 @@ to rest, and the bots.
 - **Steel.** Under the port the converter is built in 3 seeds of 8 (2 with
   families), never before 1871 and never to any size. With prices on it is
   built in none. The converter clears its hurdle only in the years when steel
-  spikes (the growth probe has it clearing in 4 per cent of years), and the
-  spikes were the false cycle. Nothing real is lost, but "steel never
-  arrives" is now flat, and whatever makes the converter pay has to do it on
-  steady prices.
+  spikes (`docs/probes/dx-growth.md` has it clearing in 4 per cent of years),
+  and the spikes were the false cycle. Nothing real is lost, but "steel
+  never arrives" is now flat, and whatever makes the converter pay has to do
+  it on steady prices.
 - **Grain is too quiet.** A price swing of 0.027 a year is flatter than any
   farm economy; the port's 0.086 was the wrong noise, and this is none. The
   harvest mechanism is meant to put the right noise back, and the probe found
