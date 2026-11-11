@@ -18,7 +18,7 @@ pub mod towns;
 
 use isostate_gen::bridge::{road_bridge, RoadBridge};
 use isostate_gen::farm::{farmstead, Farmstead};
-use isostate_gen::trees::{bush, hedge_tree, tree, Species, Tree};
+use isostate_gen::trees::{bush, hedge_tree, leaf_group, tree, Greenery, Species, Tree, LEAF_GROUPS};
 use isostate_gen::works::{pit, scaffold, works, yard_shed, Kind, Pit, PitKind, Works, YardShed};
 use isostate_gen::{Seed, Site};
 
@@ -278,7 +278,10 @@ fn tier(r: &Replay, f: usize, k: usize) -> u8 {
 // ------------------------------------------------------------------ the year's meshes
 
 pub struct YearMeshes {
-    pub trees: Builder,
+    /// the trees and bushes, the broadleaves in the groups that come into
+    /// leaf and shed together (each group is three meshes: what is green all
+    /// year, the leaves, and the bare limbs shown when the leaves are down)
+    pub trees: [Greenery; LEAF_GROUPS],
     pub houses: Builder,
     pub works: Builder,
     pub smoke: Builder,
@@ -291,7 +294,7 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: 
 }
 
 fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
-    let mut trees = Builder::default();
+    let mut trees: [Greenery; LEAF_GROUPS] = Default::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
     let mut smoke = Builder::default();
@@ -347,7 +350,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             world::HEATH => {
                 // gorse and broom: low bushes, and the odd tree
                 if s.u < 0.16 && !near_plot(s.x, s.z) {
-                    bush(&mut trees, &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
+                    bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
                 }
                 (s.u < if terr >= 3 { 0.02 } else { 0.035 }, 0.6 + 0.3 * s.v)
             }
@@ -359,7 +362,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let p = ground(g, s.x, s.z);
         let conifer = terr >= 2 && s.v > 0.35 || s.v > 0.88;
         let species = if conifer { Species::Conifer } else { Species::Broadleaf };
-        tree(&mut trees, &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
+        tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
     }
 
     // yards, sheds and warehouses around the works
@@ -387,7 +390,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             continue;
         }
         let p = ground(g, s.x, s.z);
-        hedge_tree(&mut trees, &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
+        hedge_tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
     }
 
     // farmsteads among the fields, each with a lane to the nearest road
@@ -406,7 +409,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         // stone and slate in the hills
         let upland = r.terrain[c] >= 2;
         let site = Site::on(ground(g, s.x, s.z), s.yaw, &height);
-        farmstead(&mut houses, &mut trees, &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
+        farmstead(&mut houses, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {

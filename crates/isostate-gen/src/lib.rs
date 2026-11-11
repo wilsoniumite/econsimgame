@@ -33,3 +33,4 @@ pub use hash::{hash2, Seed};
 pub use mesh::MeshBuf;
 pub use palette::Palette;
 pub use site::{Model, Site};
+pub use trees::Greenery;

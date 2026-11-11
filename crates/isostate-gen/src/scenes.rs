@@ -387,7 +387,10 @@ mod tests {
             let mut m = Model::default();
             cover(&mut m, &level(), what, 0, &pal);
             assert!(m.is_sound() && m.solid.is_empty());
-            m.green
+            // as it stands in summer: trunks, conifers and bushes, and the crowns in leaf
+            let mut summer = m.green.evergreen;
+            summer.merge(&m.green.leaves);
+            summer
         };
         let (low, high, heath) = (build(Cover::LowlandWood), build(Cover::UplandWood), build(Cover::Heath));
         let top = |b: &crate::mesh::MeshBuf| b.bounds().unwrap().1.y;

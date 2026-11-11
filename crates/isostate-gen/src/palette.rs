@@ -161,6 +161,7 @@ pub struct Iron {
 #[serde(deny_unknown_fields)]
 pub struct Foliage {
     pub trunk: Colour,
+    pub bare_limb: Colour,
     pub broadleaf: Vec<Colour>,
     pub conifer: Vec<Colour>,
     pub yew: Colour,
@@ -174,10 +175,13 @@ pub struct Foliage {
 
 impl Foliage {
     /// What the leaves are multiplied by at a phase of the year: 0 midwinter,
-    /// 0.25 spring, 0.5 summer, 0.75 autumn, and round to winter again.
+    /// 0.25 spring, summer from 0.4 to 0.66, autumn at 0.78, and round to
+    /// winter again. The leaves hold their summer green until late August
+    /// and turn in a few weeks.
     pub fn tint(&self, phase: f32) -> [f32; 3] {
-        let keys: [(f32, [f32; 3]); 5] = [(0.0, self.tint_winter), (0.25, self.tint_spring), (0.5, self.tint_summer), (0.75, self.tint_autumn), (1.0, self.tint_winter)];
-        let i = keys.iter().position(|k| k.0 > phase).unwrap_or(4).max(1);
+        let keys: [(f32, [f32; 3]); 6] =
+            [(0.0, self.tint_winter), (0.25, self.tint_spring), (0.4, self.tint_summer), (0.66, self.tint_summer), (0.78, self.tint_autumn), (1.0, self.tint_winter)];
+        let i = keys.iter().position(|k| k.0 > phase).unwrap_or(5).max(1);
         let (a, b) = (keys[i - 1], keys[i]);
         let t = ((phase - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
         [a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t, a.1[2] + (b.1[2] - a.1[2]) * t]
@@ -382,5 +386,9 @@ mod tests {
         assert_eq!(f.tint(0.25), f.tint_spring);
         let between = f.tint(0.125);
         assert!((between[1] - (f.tint_winter[1] + f.tint_spring[1]) * 0.5).abs() < 1e-6);
+        // green through the summer, gold in October
+        assert_eq!(f.tint(0.64), f.tint_summer);
+        assert_eq!(f.tint(0.78), f.tint_autumn);
+        assert!(f.tint(0.72)[0] > 1.2 && f.tint(0.78)[0] > f.tint(0.78)[1] * 1.5);
     }
 }

@@ -3,6 +3,7 @@
 use glam::{Quat, Vec3};
 
 use crate::mesh::MeshBuf;
+use crate::trees::Greenery;
 
 /// Where a thing stands on the map: the point on the ground its middle is
 /// at, the way it faces, and the ground round it.
@@ -62,8 +63,10 @@ impl<'a> Site<'a> {
 /// What a generator builds into, kept apart because the viewer draws each
 /// with a material of its own: `solid` for walls, roofs and everything
 /// built; `smoke`, which lets light through and casts no shadow; `green`
-/// for leaves, which turn with the seasons; `flat` for what lies on the
-/// ground (roads, lanes, paving, water), which is matt and casts no shadow.
+/// for trees and bushes (itself three buffers: what is green all year, the
+/// leaves that turn with the seasons, and the bare limbs that show when
+/// they are down); `flat` for what lies on the ground (roads, lanes,
+/// paving, water), which is matt and casts no shadow.
 ///
 /// A generator takes the buffers it writes as arguments and appends to them
 /// (the game hands it the one buffer all the island's houses share, so that
@@ -72,13 +75,18 @@ impl<'a> Site<'a> {
 pub struct Model {
     pub solid: MeshBuf,
     pub smoke: MeshBuf,
-    pub green: MeshBuf,
+    pub green: Greenery,
     pub flat: MeshBuf,
 }
 
 impl Model {
-    fn parts(&self) -> [&MeshBuf; 4] {
-        [&self.solid, &self.smoke, &self.green, &self.flat]
+    fn parts(&self) -> [&MeshBuf; 6] {
+        [&self.solid, &self.smoke, &self.green.evergreen, &self.green.leaves, &self.green.bare, &self.flat]
+    }
+
+    fn pairs<'a>(&'a mut self, other: &'a Model) -> [(&'a mut MeshBuf, &'a MeshBuf); 6] {
+        let [e, l, b] = self.green.parts_mut();
+        [(&mut self.solid, &other.solid), (&mut self.smoke, &other.smoke), (e, &other.green.evergreen), (l, &other.green.leaves), (b, &other.green.bare), (&mut self.flat, &other.flat)]
     }
 
     pub fn is_empty(&self) -> bool {
@@ -87,7 +95,7 @@ impl Model {
 
     /// Append a copy of another model's triangles, moved by `by`.
     pub fn merge_at(&mut self, other: &Model, by: Vec3) {
-        for (mine, theirs) in [(&mut self.solid, &other.solid), (&mut self.smoke, &other.smoke), (&mut self.green, &other.green), (&mut self.flat, &other.flat)] {
+        for (mine, theirs) in self.pairs(other) {
             let from = mine.pos.len();
             mine.merge(theirs);
             for p in &mut mine.pos[from..] {
@@ -102,7 +110,8 @@ impl Model {
     /// facing in the site.)
     pub fn turn(&mut self, yaw: f32) {
         let t = glam::Affine3A::from_rotation_y(yaw);
-        for b in [&mut self.solid, &mut self.smoke, &mut self.green, &mut self.flat] {
+        let [e, l, bare] = self.green.parts_mut();
+        for b in [&mut self.solid, &mut self.smoke, e, l, bare, &mut self.flat] {
             b.transform(t);
         }
     }
@@ -134,7 +143,7 @@ mod tests {
         let mut sheet = Model::default();
         sheet.merge_at(&a, Vec3::new(1.0, 0.0, 0.0));
         sheet.merge_at(&a, Vec3::new(3.0, 0.0, 0.0));
-        assert_eq!((sheet.solid.triangles(), sheet.flat.triangles(), sheet.green.triangles()), (2, 2, 0));
+        assert_eq!((sheet.solid.triangles(), sheet.flat.triangles(), sheet.green.leaves.triangles()), (2, 2, 0));
         assert_eq!(sheet.bounds().unwrap(), (Vec3::new(1.0, 0.0, 0.0), Vec3::new(4.0, 0.0, 1.0)));
         assert!(sheet.is_sound() && !sheet.is_empty() && Model::default().is_empty());
         // the first copy was not moved again by the second
