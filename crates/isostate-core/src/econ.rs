@@ -952,8 +952,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     if st.acct.on {
         #[rustfmt::skip]
         crate::accounts::note_month(st, C, P, &crate::accounts::Month {
-            ex: &ex, et: &et, sec: &sec, Y: &Y, Lex: &Lex, value: &value, wage_ex: &wage_ex, cart_ex: &cart_ex,
-            in_paid: &in_paid, rent_ex: &rent_ex, mach_got: &mach_got, rail_got: &rail_got,
+            ex: &ex, et: &et, sec: &sec, Y: &Y, Lex: &Lex, cart_ex: &cart_ex, rent_ex: &rent_ex,
+            mach_got: &mach_got, rail_got: &rail_got,
             fi: &fi, ft: &ft, fm: &fm, fc: &fc, out: &out, K: &K, q: &q, labor_f: &labor_f, wages_f: &wages_f,
             rent_f: &rent_f, pay_in: &pay_in, cart_in: &cart_in, cart_out: &cart_out, rev: &rev, cut: hired.as_deref(),
             a: &a, use_f: &use_f, pin: &pin,

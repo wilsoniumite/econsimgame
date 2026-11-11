@@ -512,7 +512,7 @@ pub struct Books {
     /// The month's scratch: households' income by kind `[T][11]`, the works'
     /// dividends before the families took theirs, the fund as the month began.
     mk: Vec<f64>,
-    /// The month's land table `[T][NS][KL + 2]`.
+    /// The month's land table `[T][NS][5]`: out, hands, carting, machinery and rails got.
     ml: Vec<f64>,
     /// The goods each method can use: its materials, and every fuel if it needs heat.
     mgoods: Vec<Vec<usize>>,
@@ -543,10 +543,7 @@ pub struct Month<'a> {
     pub sec: &'a [usize],
     pub Y: &'a [f64],
     pub Lex: &'a [f64],
-    pub value: &'a [f64],
-    pub wage_ex: &'a [f64],
     pub cart_ex: &'a [f64],
-    pub in_paid: &'a [f64],
     pub rent_ex: &'a [f64],
     pub mach_got: &'a [f64],
     pub rail_got: &'a [f64],
@@ -640,7 +637,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         cur,
         stock: st.inv.clone(),
         mk: vec![0.0; st.T_max * HH_KINDS.clone().count()],
-        ml: vec![0.0; st.T_max * C.NS * (KL + 2)],
+        ml: vec![0.0; st.T_max * C.NS * 5],
         mgoods: (0..C.M).map(|m| (0..C.G).filter(|&g| C.m_in[(m, g)] > 0.0 || (C.m_heat[m] > 0.0 && C.fuel_goods.contains(&g))).collect()).collect(),
         ..Books::default()
     };
@@ -761,46 +758,51 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     let mk = &mut b.mk;
     let (mut rents, mut fam_rents) = (0.0, 0.0);
 
-    // ---- the land: there are tens of thousands of units, so the month is added
-    // up by town and sector first and folded into the year's tables afterwards
-    const ML: usize = KL + 2; // and the machinery and rails bought
+    // ---- the land. There are tens of thousands of units and each of the month's
+    // arrays over them is a quarter of a megabyte, so as few as will do are read:
+    // what each unit made, its hands, its carting and the machines it got, added
+    // up by town and sector. A sector's produce sells at one price in a town and
+    // its hands are paid one wage, so the rest follows from the sums exactly as
+    // econ::step_month works it out unit by unit: value = price * out, wages =
+    // wage * hands, inputs at the town's prices, and rent is what is left of
+    // value * (1 - spread). (The month's income check holds this to what the
+    // landlords were in fact paid.)
+    const ML: usize = 5;
     let ml = &mut b.ml;
     ml.fill(0.0);
     for u in 0..m.et.len() {
         let r = &mut ml[(m.et[u] * NS + m.sec[u]) * ML..][..ML];
-        r[L_OUT] += m.Y[u];
-        r[L_VALUE] += m.value[u];
-        r[L_HANDS] += m.Lex[u];
-        r[L_WAGES] += m.wage_ex[u];
-        r[L_CART] += m.cart_ex[u];
-        r[L_INPUTS] += m.in_paid[u];
-        r[L_RENT] += m.rent_ex[u];
-        r[KL] += m.mach_got[u];
-        r[KL + 1] += m.rail_got[u];
+        r[0] += m.Y[u];
+        r[1] += m.Lex[u];
+        r[2] += m.cart_ex[u];
+        r[3] += m.mach_got[u];
+        r[4] += m.rail_got[u];
     }
-    for t in 0..T {
+    let spread = P.merchant_spread;
+    for t in (0..T).filter(|&t| st.town_active[t]) {
         for s in 0..NS {
             let r = &ml[(t * NS + s) * ML..][..ML];
-            for c in 0..KL {
-                a.land[(t * NS + s) * KL + c] += r[c];
-            }
-            a.rent_sector[s] += r[L_RENT];
-            a.goods[(t * G + gm) * KG + G_LAND] += r[KL];
-            a.goods[(t * G + gr) * KG + G_LAND] += r[KL + 1];
-            a.towns[t * KT + T_HANDS_LAND] += r[L_HANDS];
-            a.towns[t * KT + T_RENT_LAND] += r[L_RENT];
-            rents += r[L_RENT];
-            mk[t * kinds + hk(T_PAY_LAND)] += r[L_WAGES];
-            mk[t * kinds + hk(T_CART_LAND)] += r[L_CART];
-        }
-    }
-    if fam_on {
-        for u in 0..m.et.len() {
-            if let Some(o) = families::owner_of_cell(st, m.ex[u]) {
-                a.fam[o].rents += m.rent_ex[u];
-                a.towns[m.et[u] * KT + T_RENT_FAM] += m.rent_ex[u];
-                fam_rents += m.rent_ex[u];
-            }
+            let (out, hands, cart) = (r[0], r[1], r[2]);
+            let value = p[(t, C.sector_good[s])] * out;
+            let wages = m.w[t] * hands;
+            let inputs = r[3] * p[(t, gm)] + r[4] * p[(t, gr)];
+            let rent = value * (1.0 - spread) - cart - wages - inputs;
+            let l = &mut a.land[(t * NS + s) * KL..][..KL];
+            l[L_OUT] += out;
+            l[L_VALUE] += value;
+            l[L_HANDS] += hands;
+            l[L_WAGES] += wages;
+            l[L_CART] += cart;
+            l[L_INPUTS] += inputs;
+            l[L_RENT] += rent;
+            a.rent_sector[s] += rent;
+            a.goods[(t * G + gm) * KG + G_LAND] += r[3];
+            a.goods[(t * G + gr) * KG + G_LAND] += r[4];
+            a.towns[t * KT + T_HANDS_LAND] += hands;
+            a.towns[t * KT + T_RENT_LAND] += rent;
+            rents += rent;
+            mk[t * kinds + hk(T_PAY_LAND)] += wages;
+            mk[t * kinds + hk(T_CART_LAND)] += cart;
         }
     }
 
@@ -920,7 +922,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     }
 
     // ---- households, landlords and families; the markets
-    for t in 0..T {
+    for t in (0..T).filter(|&t| st.town_active[t]) {
         // families spend through their seat's landlords: their part of what the
         // landlords bought is their part of the budget (`families::pay_spending`)
         let fam_share = if m.lord_budget[t] > 0.0 { (m.fam_by_town[t] / m.lord_budget[t]).clamp(0.0, 1.0) } else { 0.0 };
@@ -973,14 +975,21 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             a.needs[(t * S + s) * 2 + 1] += m.q_l[(t, s)] * m.lord_pop[t] * paid;
         }
     }
-    // town houses on family land (`families::take_urban_rents`)
+    // the families' land: the rents of its farms and pits (the units are in
+    // order of cell, so a cell's are found by halving) and of its town houses
+    // (`families::take_rents`, `families::take_urban_rents`)
     if fam_on {
         for c in 0..st.N {
-            let t = st.catch[c];
-            if !st.urban[c] || t < 0 || st.urban_rent[t as usize] <= 0.0 {
-                continue;
+            let Some(o) = families::owner_of_cell(st, c) else { continue };
+            let mut u = m.ex.partition_point(|&x| x < c);
+            while u < m.ex.len() && m.ex[u] == c {
+                a.fam[o].rents += m.rent_ex[u];
+                a.towns[m.et[u] * KT + T_RENT_FAM] += m.rent_ex[u];
+                fam_rents += m.rent_ex[u];
+                u += 1;
             }
-            if let Some(o) = families::owner_of_cell(st, c) {
+            let t = st.catch[c];
+            if st.urban[c] && t >= 0 && st.urban_rent[t as usize] > 0.0 {
                 let t = t as usize;
                 let r = m.urban_pay[t] * st.cell_urban_rent[c] / st.urban_rent[t];
                 a.fam[o].rents += r;
@@ -1052,6 +1061,9 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
         err = err.max((sum - hh_inc[t]).abs() / hh_inc[t].abs().max(1.0));
         a.hh_in += hh_inc[t];
         a.towns[t * KT + T_MERCH_NET] += merch[t];
+        if !st.town_active[t] {
+            continue;
+        }
         for g in 0..G {
             let k = (t * G + g) * KG;
             let pr = st.price[(t, g)];
@@ -1111,7 +1123,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             r[G_PRICE] /= n;
             r[G_ANCHOR] /= n;
             if !r[G_LOW].is_finite() {
-                (r[G_LOW], r[G_HIGH]) = (st.price[(t, g)], st.price[(t, g)]);
+                // a town not yet founded has no months: its price is the one it stands at
+                (r[G_PRICE], r[G_LOW], r[G_HIGH]) = (st.price[(t, g)], st.price[(t, g)], st.price[(t, g)]);
             }
             let bought = r[G_HH] + r[G_LORDS] + r[G_FAM] + r[G_INPUTS] + r[G_FUEL] + r[G_LAND] + r[G_BUILD] + r[G_PROJ];
             let left = r[G_MADE] + r[G_RECV] + r[G_MOVED] + r[G_OVERSOLD] - bought - r[G_SENT] - r[G_SPOILED] - (r[G_STOCK] - r[G_OPEN]);

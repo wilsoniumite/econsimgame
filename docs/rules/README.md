@@ -476,3 +476,8 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **accounts**: books that say who makes, moves, buys and earns what: a
+  year's books for every town and every works, and the island's income
+  account (work's share, the owners' shares, ownership in years of wages).
+  They watch and never touch the economy. [accounts.md](accounts.md),
+  `accounts.enabled`.
