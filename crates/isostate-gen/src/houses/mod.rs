@@ -135,7 +135,9 @@ fn window_at(u: f32, s: usize, sill: f32, w: f32, h: f32, kind: Open) -> Opening
 
 /// The timbers that show in a framed wall, seen close to: posts at its ends
 /// and at `posts` along it, a sill beam, a rail at each floor and the plate
-/// under the eaves, on side `side` of a range from `y0` to `y1`.
+/// under the eaves, on side `side` of a range from `y0` to `y1`. The timbers
+/// stand a little off the wall, so they stop short of its top: the roof
+/// comes down over the wall there, and they would show through it.
 fn timber_frame(k: &mut Kit, rg: &Range, side: usize, y0: f32, y1: f32, posts: &[f32]) {
     if !k.near() {
         return;
@@ -143,6 +145,7 @@ fn timber_frame(k: &mut Kit, rg: &Range, side: usize, y0: f32, y1: f32, posts: &
     let oak = *k.pal.timber.house_frame;
     let len = rg.face(side).len;
     let (t, out) = (0.0012, 0.0006);
+    let y1 = y1 - 0.0012;
     k.strip(rg, side, 0.0, t, y0, y1, out, oak);
     k.strip(rg, side, len - t, len, y0, y1, out, oak);
     for &u in posts {

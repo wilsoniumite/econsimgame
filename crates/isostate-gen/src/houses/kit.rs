@@ -585,6 +585,8 @@ impl<'a, 's> Kit<'a, 's> {
                 let dark = *self.pal.smoke.soot;
                 jambs(self, depth, shade(w.col, k * 0.6));
                 self.panel(f, u0, u1, y0, y1, -depth, shade(dark, 1.5), dark);
+                // the way under it lies in shadow: seen from above, it is most of what shows of the arch
+                self.quad([self.fp(f, u0, y0, 0.0), self.fp(f, u1, y0, 0.0), self.fp(f, u1, y0, -depth), self.fp(f, u0, y0, -depth)], shade(dark, 1.7), Vec3::Y);
                 // the haunches of the arch
                 let hw = (u1 - u0) * 0.22;
                 let col = shade(w.col, k);
@@ -625,8 +627,13 @@ impl<'a, 's> Kit<'a, 's> {
         /// how far the roof lies above the line of the wall's top, so that the two never share a place
         const LIFT: f32 = 0.0005;
         let pitch = s.rise / hd;
-        let (ce, ye, yr) = (hd + s.eaves, s.h - s.eaves * pitch + LIFT, s.h + s.rise + LIFT);
-        let (cf, yf) = (hd * (1.0 - HALF), s.h + s.rise * HALF + LIFT);
+        let ce = hd + s.eaves;
+        let sagging = self.sag.0 > 0.0 && !self.far() && rg.turn % 2 == 0 && rg.cx.abs() < 1e-4;
+        // a ridge that dips flattens the slope under it, which would let the top of the
+        // wall through the roof at the eaves: the roof of a crooked house is lifted by as much
+        let lift = LIFT + self.sag.0 * s.eaves / ce;
+        let (ye, yr) = (s.h - s.eaves * pitch + lift, s.h + s.rise + lift);
+        let (cf, yf) = (hd * (1.0 - HALF), s.h + s.rise * HALF + lift);
         let near = self.near();
         // where the eaves and the ridge stop, toward +a and toward -a
         let stop = |e: End, sign: f32| match e {
@@ -639,7 +646,6 @@ impl<'a, 's> Kit<'a, 's> {
         let (da, dc) = rg.axes();
         let (along, across) = (self.dir(da.0, 0.0, da.1), self.dir(dc.0, 0.0, dc.1));
         let edge = shade(s.col, 0.66);
-        let sagging = self.sag.0 > 0.0 && !self.far() && rg.turn % 2 == 0 && rg.cx.abs() < 1e-4;
         for (side, col) in [(1.0f32, s.col), (-1.0, shade(s.col, 0.82))] {
             // a slope is one flat shape, or two where the ridge sags between its ends
             let halves: &[(bool, bool)] = if sagging { &[(false, true), (true, false)] } else { &[(true, true)] };
@@ -664,7 +670,7 @@ impl<'a, 's> Kit<'a, 's> {
             }
             for (e, sign) in [(s.ends[0], 1.0f32), (s.ends[1], -1.0)] {
                 if let End::Valley(run) = e {
-                    let v = [self.rp(rg, sign * hl, s.h + LIFT, side * hd), self.rp(rg, sign * hl, yr, 0.0), self.rp(rg, sign * (hl + run), yr, 0.0)];
+                    let v = [self.rp(rg, sign * hl, s.h + lift, side * hd), self.rp(rg, sign * hl, yr, 0.0), self.rp(rg, sign * (hl + run), yr, 0.0)];
                     self.solid.tri_toward(v, [col; 3], Vec3::Y);
                 }
             }
@@ -1144,6 +1150,57 @@ mod tests {
         assert!((top.x - 0.0112).abs() < 1e-6 && (top.z - 0.01952).abs() < 1e-6 && top.y == 0.024);
         assert!((k.pt(0.0, 0.04, 0.0).y - 0.037).abs() < 1e-6);
         assert!((k.pt(0.02, 0.04, 0.0).y - 0.04).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_sagging_roof_still_clears_the_top_of_its_walls() {
+        // the roof over the line of each long wall, wherever along it, is above the wall's top
+        let pal = Palette::standard();
+        let site = Site::level(Vec3::ZERO, 0.0);
+        let rg = Range::rect(-0.02, 0.02, -0.013, 0.013);
+        let (h, rise) = (0.0205, 0.016);
+        let spec = RoofSpec { h, rise, eaves: 0.003, verge: 0.002, ends: [End::Gable, End::Gable], col: [0.6, 0.3, 0.2, 1.0], gable: WALL.col, thick: 0.0 };
+        let mut b = MeshBuf::default();
+        let mut k = kit_on(&mut b, &site, &pal, Detail::Near);
+        k.crooked((0.0, 0.0), 0.0036, 0.022, h, h + rise);
+        k.roof(&rg, &spec);
+        let over = |x: f32, z: f32| {
+            b.idx.chunks(3).filter(|t| b.nrm[t[0] as usize][1] > 0.3).find_map(|t| {
+                let p = [0, 1, 2].map(|i| Vec3::from_array(b.pos[t[i] as usize]));
+                let (e1, e2) = (p[1] - p[0], p[2] - p[0]);
+                let det = e1.x * e2.z - e2.x * e1.z;
+                let (dx, dz) = (x - p[0].x, z - p[0].z);
+                let (s, t) = ((dx * e2.z - e2.x * dz) / det, (e1.x * dz - dx * e1.z) / det);
+                (s >= 0.0 && t >= 0.0 && s + t <= 1.0).then(|| p[0].y + s * e1.y + t * e2.y)
+            })
+        };
+        for i in 0..=40 {
+            let x = -0.02 + 0.001 * i as f32;
+            for z in [-0.013, 0.013] {
+                let roof = over(x, z).unwrap_or_else(|| panic!("no roof over {x}, {z}"));
+                assert!(roof > h + 0.0003, "the roof is {} above the wall's top at {x}, {z}", roof - h);
+            }
+        }
+    }
+
+    #[test]
+    fn the_way_under_an_arch_has_a_floor_in_shadow() {
+        let pal = Palette::standard();
+        let site = Site::level(Vec3::ZERO, 0.0);
+        let rg = Range::rect(-0.02, 0.02, -0.01, 0.01);
+        let ops = [Opening { u: 0.02, y: FOOT, w: 0.02, h: 0.0138, kind: Open::Arch }];
+        let mut b = MeshBuf::default();
+        let mut k = kit_on(&mut b, &site, &pal, Detail::Near);
+        k.walls(&rg, -0.003, 2.0 * STOREY, &WALL, [Side::with(&ops), Side::NONE, Side::NONE, Side::NONE], true, true);
+        assert!(b.is_sound());
+        // a face that looks up, at the foot of the opening, behind the wall's face, and dark
+        let floor = b.idx.chunks(3).any(|t| {
+            let up = b.nrm[t[0] as usize][1] > 0.99;
+            let within = t.iter().all(|&i| (b.pos[i as usize][1] - FOOT).abs() < 1e-6 && b.pos[i as usize][2] <= 0.01 + 1e-6);
+            let dark = t.iter().all(|&i| b.col[i as usize][..3].iter().all(|c| *c < 0.2));
+            up && within && dark
+        });
+        assert!(floor);
     }
 
     #[test]
