@@ -308,6 +308,8 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let mut life: Vec<f64> =
         (0..st.F_count).filter(|&f| !st.f_alive[f] && st.f_died[f] >= y0).map(|f| (st.f_died[f] - st.f_born[f]) as f64).collect();
     life.sort_by(f64::total_cmp);
+    // works: every works opened from the first recorded year on, sister works included
+    b.num("works_founded".into(), Kind::Count, (0..st.F_count).filter(|&f| st.f_born[f] >= y0).count() as f64);
     b.num("works_closed".into(), Kind::Count, life.len() as f64);
     b.num("works_closed_median_life".into(), Kind::Real, quantile(&life, 0.5));
     let util: Vec<f64> = alive.iter().filter(|&&f| st.f_K[f] > 0.0).map(|&f| st.f_u[f]).collect();

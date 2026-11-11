@@ -44,6 +44,7 @@ pub mod sweep;
 pub mod tech;
 pub mod transport;
 pub mod util;
+pub mod works;
 pub mod world;
 
 pub use content::{Content, default_content, game_content, load_content};

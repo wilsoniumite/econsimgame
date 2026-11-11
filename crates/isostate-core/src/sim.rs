@@ -22,6 +22,7 @@ use crate::state::{Event, State};
 use crate::tech;
 use crate::transport as tr;
 use crate::util::{argsort, bincount, pairwise_sum};
+use crate::works;
 use crate::world::{World, generate_world, site_context};
 
 /// The initial state: world, towns, the first land allocation and the first firms.
@@ -121,6 +122,7 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
         *v = vec![0.0; Fm];
     }
     st.f_order = Mat::zeros(Fm, G);
+    works::init(&mut st, C, P); // works: its two tables (empty while it is off)
 
     // money and markets
     let pop = st.pop.clone();
@@ -241,7 +243,7 @@ pub fn after_transport(st: &mut State, C: &Content, P: &Params) {
         cnt[st.f_cell[f]] += 1.0;
     }
     st.any_counts = ndimage::uniform_filter(&cnt, H, W, 5, Mode::Constant).iter().map(|v| v * 25.0).collect();
-    let foot: Vec<f64> = alive.iter().map(|&f| st.f_K[f] / (P.footprint_K_mult * C.m_K0[st.f_method[f]])).collect();
+    let foot: Vec<f64> = alive.iter().map(|&f| works::land_take(C, P, st.f_method[f], st.f_K[f])).collect();
     let mut ks = vec![0.0; N];
     for (k, &f) in alive.iter().enumerate() {
         ks[st.f_cell[f]] += foot[k];
@@ -517,11 +519,20 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     let y1 = P.end_year.unwrap_or(C.end_year);
     C.end_year = y1;
     // warm-up: the 1740s settle into an equilibrium nobody records
+    // TEMP EXPERIMENT: the warm-up under the port's rules
+    let warm_port = std::env::var("ISOSTATE_WARM_PORT").is_ok();
+    let mut Pw = P.clone();
+    if warm_port {
+        Pw.works.enabled = false;
+    }
     for wy in 0..P.warmup_years {
         for _ in 0..12 {
-            econ::step_month(&mut st, &C, P);
+            econ::step_month(&mut st, &C, &Pw);
         }
-        yearly(&mut st, &C, P, &mut rngs, y0 - P.warmup_years + wy, &mut Vec::new(), true);
+        yearly(&mut st, &C, &Pw, &mut rngs, y0 - P.warmup_years + wy, &mut Vec::new(), true);
+    }
+    if warm_port {
+        after_transport(&mut st, &C, P);
     }
     st.cumprod_1750 = st.cumprod.clone();
     let rate: Vec<f64> = st.cumprod.iter().map(|v| v / P.warmup_years.max(1) as f64).collect();

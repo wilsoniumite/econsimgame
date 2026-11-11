@@ -19,6 +19,7 @@ use crate::params::Params;
 use crate::rng::{Rng, choice_without_replacement};
 use crate::state::{Reason, State};
 use crate::util::{argmax, argsort, pairwise_sum, pairwise_sum_by, round_dp};
+use crate::works;
 
 pub fn learning(C: &Content, P: &Params, Q: &[f64]) -> Vec<f64> {
     (0..C.M).map(|m| P.learn_cap.min(C.m_A0[m] * (1.0 + Q[m] / C.m_Q0[m]).powf(C.m_b[m]))).collect()
@@ -88,7 +89,8 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
     let n = cells.len();
     let agglo: Vec<f64> = cells.iter().map(|&c| 1.0 + P.agglo_same * st.same_counts[(m, c)].ln_1p()).collect();
     let prod: Vec<f64> = agglo.iter().map(|&g| A * (0.5 + 0.5 * k) * g).collect();
-    let (a, h, l) = firm_coefficients(C, &vec![m; n], &vec![K; n], &prod);
+    let (a, h, mut l) = firm_coefficients(C, &vec![m; n], &vec![K; n], &prod);
+    works::walk_to_work(st, P, cells, &mut l); // works: hands walk out from the town
     let mut pin = Mat::zeros(n, G);
     for (j, &c) in cells.iter().enumerate() {
         for g in 0..G {
@@ -105,12 +107,17 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
         })
         .collect();
     let out = C.method_out[m];
-    let pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - P.freight * C.weight[out] * st.dcatch[c]).collect();
+    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - P.freight * C.weight[out] * st.dcatch[c]).collect();
+    // works: the merchant's spread comes off the price, as it will off the works' revenue
+    let spread = works::entry_spread(P, pbar[(i, out)]);
+    if spread != 0.0 {
+        pout.iter_mut().for_each(|p| *p -= spread);
+    }
     let in_cost: Vec<f64> = (0..n).map(|j| pairwise_sum_by(G, |g| a[(j, g)] * pin[(j, g)])).collect();
     let heat_cost: Vec<f64> = (0..n).map(|j| h[j] * hunit[j]).collect();
     let labor_cost: Vec<f64> = (0..n).map(|j| l[j] * wbar[i]).collect();
     let margin: Vec<f64> = (0..n).map(|j| pout[j] - in_cost[j] - heat_cost[j] - labor_cost[j]).collect();
-    let foot = K / (P.footprint_K_mult * C.m_K0[m]);
+    let foot = works::land_take(C, P, m, K);
     let rent_bid: Vec<f64> = cells.iter().map(|&c| 0.01f64.max(1.25 * st.land_rent_only[c] * foot)).collect();
     let cap_cost = K * pairwise_sum_by(G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
     let roi: Vec<f64> = (0..n).map(|j| site_roi(K, margin[j], rent_bid[j], cap_cost)).collect();
@@ -207,7 +214,8 @@ pub fn create_firm(
     if st.firm_at[cell] < 0 {
         st.firm_at[cell] = fid as i64;
     }
-    st.cell_K_share[cell] += K / (P.footprint_K_mult * C.m_K0[m]);
+    st.cell_K_share[cell] += works::land_take(C, P, m, K);
+    works::opened(st, C, P, fid, K); // works: the year's room and the lease
     Some(fid)
 }
 
@@ -300,7 +308,12 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
             if cells.is_empty() {
                 continue;
             }
-            let K = P.entry_K_frac * C.m_K0[m];
+            let K = works::entry_K(st, C, P, i, m);
+            // works: only where the year's room is not taken and the cell can hold it
+            let cells = works::sites_with_room(st, C, P, i, m, K, cells);
+            if cells.is_empty() {
+                continue;
+            }
             let ev = evaluate_sites(st, C, P, i, m, &cells, K, pbar, wbar);
             let j = argmax(&ev.roi);
             let need = P.hurdle * if n_tm[(i, m)] < cap_n { 1.0 } else { 3.0 };
@@ -316,15 +329,17 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
     let mut used_cells: BTreeSet<(usize, usize)> = BTreeSet::new();
     for pr in proposals {
         let Proposal { roi, i, m, cells, ev, j, mut K } = pr;
-        let limit = 1 + (roi > 0.8) as usize;
+        // works: a works sized to its market comes one at a time and is not doubled
+        let sized = works::sized_entry(P);
+        let limit = if sized { 1 } else { 1 + (roi > 0.8) as usize };
         if per_tm.get(&(i, m)).copied().unwrap_or(0) >= limit {
             continue;
         }
         let cell = cells[j];
-        if used_cells.contains(&(cell, m)) || st.cell_K_share[cell] >= 0.9 {
+        if used_cells.contains(&(cell, m)) || st.cell_K_share[cell] >= 0.9 || !works::cell_fits(st, C, P, cell, m, K) {
             continue;
         }
-        if roi > 0.6 {
+        if roi > 0.6 && !sized {
             K *= 2.0;
         }
         let cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
@@ -350,8 +365,9 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
 
 /// Grow profitable firms, shrink idle ones, close the hopeless.
 pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, pbar: &Mat, wbar: &[f64]) -> Vec<usize> {
-    let alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
+    let mut alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
     let mut closed = Vec::new();
+    works::new_year(st, C, P, pbar, &mut alive); // works: the year's room, the best earners served first
     for &fid in &alive {
         let (i, m) = (st.f_town[fid], st.f_method[fid]);
         let K = st.f_K[fid];
@@ -359,7 +375,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
         let capval = K.max(1e-9) * unit_cap;
         let roi = st.f_profit_acc[fid] / capval.max(1e-9);
         let u = st.f_u[fid];
-        let building = st.f_order_K[fid] > 0.0;
+        let building = works::building(P, K, st.f_order_K[fid]);
         if st.f_cash[fid] < 0.0 && year - st.f_born[fid] <= 3 {
             let need = -st.f_cash[fid];
             st.f_cash[fid] += back_firm(st, P, fid, need);
@@ -383,9 +399,15 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
             st.f_K[fid] *= 0.85;
         }
         if roi > P.hurdle && u > 0.65 && !building && K > 0.0 {
-            let dK = K * 0.5f64.min(0.2 * roi / P.hurdle);
-            if K + dK > P.footprint_K_mult * C.m_K0[m] {
-                spawn_sister(st, C, P, rng, fid, year, pbar, wbar);
+            // works: no more than the year's room in this town and trade allows
+            let dK = works::growth_allowed(st, C, P, fid, K * 0.5f64.min(0.2 * roi / P.hurdle));
+            if dK <= 0.0 {
+                // works: the room is taken; wait for next year
+            } else if K + dK > works::max_K(C, P, m) || !works::cell_fits(st, C, P, st.f_cell[fid], m, dK) {
+                // works: a sister works it already has takes the growth, if one has room
+                if !works::extend_sister(st, C, P, fid, dK, unit_cap) {
+                    spawn_sister(st, C, P, rng, fid, year, pbar, wbar, dK);
+                }
             } else {
                 let cost = dK * unit_cap;
                 let short = cost * 1.1 - st.f_cash[fid];
@@ -397,6 +419,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
                         st.f_order[(fid, g)] += dK * C.m_cap[(m, g)];
                     }
                     st.f_order_K[fid] += dK;
+                    works::ordered(st, C, P, fid, dK); // works: the year's room and the lease
                 }
             }
         }
@@ -411,9 +434,11 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
     closed
 }
 
-/// A works at full size grows by opening a new site next door.
+/// A works at full size grows by opening a new site next door. `dK` is the
+/// growth it would have ordered (under the port a sister works is always of the
+/// usual size).
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, parent: usize, year: i64, pbar: &Mat, wbar: &[f64]) -> Option<usize> {
+pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, parent: usize, year: i64, pbar: &Mat, wbar: &[f64], dK: f64) -> Option<usize> {
     if !families::may_spawn(st, C, parent) {
         return None; // a family works opens sister works only under a growing branch
     }
@@ -432,10 +457,12 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
             }
         }
     }
+    // works: a sister works the size of the growth step, on a cell with room for it
+    let K = works::sister_K(C, P, m, dK);
+    cand.retain(|&c| works::cell_fits(st, C, P, c, m, K));
     if cand.is_empty() {
         return None;
     }
-    let K = C.m_K0[m];
     let ev = evaluate_sites(st, C, P, i, m, &cand, K, pbar, wbar);
     let j = argmax(&ev.roi);
     if ev.roi[j] < P.hurdle {
@@ -494,8 +521,8 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
     st.f_died[fid] = year;
     let c = st.f_cell[fid];
     let m = st.f_method[fid];
-    st.cell_K_share[c] = (st.cell_K_share[c] - st.f_K[fid] / (P.footprint_K_mult * C.m_K0[m])).max(0.0);
-    if st.f_K[fid] >= C.m_K0[m] && st.cell_K_share[c] < 0.05 && !st.urban[c] {
+    st.cell_K_share[c] = (st.cell_K_share[c] - works::land_take(C, P, m, st.f_K[fid])).max(0.0);
+    if works::leaves_derelict(C, P, m, st.f_K[fid]) && st.cell_K_share[c] < 0.05 && !st.urban[c] {
         st.derelict_timer[c] = 6;
     }
     st.closed_year.push(fid);
