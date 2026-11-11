@@ -83,12 +83,17 @@ pub struct UiState {
     pub expanded: Option<usize>,
     /// the rival family opened in the list of great families
     pub rival: Option<usize>,
+    /// how many items the News panel lists, newest first; Show more adds to it
+    pub news_rows: usize,
     built: Option<(Option<Tab>, usize, NewsShow, u64)>,
 }
 
+/// The News panel lists this many items, and as many again for each Show more.
+const NEWS_ROWS: usize = 120;
+
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, built: None }
+        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, news_rows: NEWS_ROWS, built: None }
     }
 }
 
@@ -124,6 +129,9 @@ pub struct UiBlock;
 pub struct Hoverable;
 #[derive(Component)]
 pub struct NewsFilter;
+/// Lists more of the news.
+#[derive(Component)]
+pub struct NewsMore;
 #[derive(Component)]
 pub struct TimelineTrack;
 #[derive(Component)]
@@ -149,7 +157,7 @@ pub struct StepNote;
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
     );
 }
 
@@ -587,6 +595,16 @@ fn news_filter_click(mut ui: ResMut<UiState>, data: Res<Data>, q: Query<&Interac
                 NewsShow::All if data.live => NewsShow::Families,
                 _ => NewsShow::Major,
             };
+            ui.news_rows = NEWS_ROWS;
+        }
+    }
+}
+
+fn news_more_click(mut ui: ResMut<UiState>, q: Query<&Interaction, (Changed<Interaction>, With<NewsMore>)>) {
+    for i in &q {
+        if *i == Interaction::Pressed {
+            ui.news_rows += NEWS_ROWS;
+            ui.dirty += 1;
         }
     }
 }
@@ -754,7 +772,7 @@ fn panel_rebuild(
     let r = &data.r;
     let fam = fam.as_deref();
     commands.entity(be).with_children(|p| match tab {
-        Tab::News => news_panel(p, &f, r, k, ui.news, fam.and_then(|v| v.player)),
+        Tab::News => news_panel(p, &f, r, k, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
         Tab::Markets => markets_panel(p, &f, r, k),
         Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded, ui.rival),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k),
@@ -804,15 +822,20 @@ pub fn small_button<C: Component>(p: &mut ChildSpawnerCommands, f: &Handle<Font>
     });
 }
 
-fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, player: Option<usize>) {
+/// What the foot of the news list says when there is more than it lists.
+fn news_foot(listed: usize, n: usize) -> Option<String> {
+    (n > listed).then(|| format!("The newest {listed} of {n} are listed."))
+}
+
+fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, rows: usize, player: Option<usize>) {
     let year = r.y0 + k as i32;
     let wanted = |e: &replay::Event| match show {
         NewsShow::Major => e.weight >= 0.6,
         NewsShow::All => true,
         NewsShow::Families => e.family.is_some(),
     };
+    let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::bottom(Val::Px(4.0)), ..default() }).with_children(|row| {
-        let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
         row.spawn(text(f, &format!("{n} items up to {year}"), 13.0, MUTED));
         let label = match show {
             NewsShow::Major => "Showing major",
@@ -826,10 +849,10 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
         if (e.year.floor() as i32) > year || !wanted(e) {
             continue;
         }
-        shown += 1;
-        if shown > 120 {
+        if shown >= rows {
             break;
         }
+        shown += 1;
         p.spawn(Node { column_gap: Val::Px(9.0), padding: UiRect::vertical(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() })
             .insert(BorderColor::all(RULE))
             .with_children(|row| {
@@ -851,6 +874,13 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
     }
     if shown == 0 {
         p.spawn(text(f, "Nothing yet. Press play.", 14.0, MUTED));
+    }
+    // the list stops somewhere: say where, and offer the rest
+    if let Some(foot) = news_foot(shown, n) {
+        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::vertical(Val::Px(6.0)), ..default() }).with_children(|row| {
+            row.spawn(text(f, &foot, 13.0, MUTED));
+            small_button(row, f, "Show more", NewsMore);
+        });
     }
 }
 
@@ -914,6 +944,15 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_news_says_how_much_it_lists() {
+        assert_eq!(news_foot(120, 973).as_deref(), Some("The newest 120 of 973 are listed."));
+        assert_eq!(news_foot(240, 973).as_deref(), Some("The newest 240 of 973 are listed."));
+        // everything listed: nothing to say, and no button
+        assert_eq!(news_foot(88, 88), None);
+        assert_eq!(news_foot(0, 0), None);
+    }
 
     #[test]
     fn sorting_the_biggest_first_survives_a_number_that_is_not_one() {
