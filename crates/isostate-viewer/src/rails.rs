@@ -333,8 +333,10 @@ impl Net {
         let longest_tunnel = (SUBS + 1) * if year < 1840 { 1 } else if year < 1870 { 2 } else { 3 };
         let mut settled;
         let mut round = 0;
+        // the lengths that winding did not bring down to the ground, which are inclines instead
+        let mut steep = vec![false; drafts.len()];
         loop {
-            let last = round >= 5;
+            let last = round >= 6;
             let mut nodes: Vec<profile::Node> = region
                 .iter()
                 .map(|&c| {
@@ -368,7 +370,7 @@ impl Net {
                 let whole = self.cells[&d.a].at.distance(self.cells[&d.b].at) * 1.02;
                 let len = whole / (SUBS + 1) as f32;
                 // an incline only where the ground between the two cells is steeper than winding climbs
-                let top = if (first_level(d.a) - first_level(d.b)).abs() > RULES.cap(whole, RULES.wind_steps) { RULES.incline() } else { RULES.wind_steps };
+                let top = if steep[di] || (first_level(d.a) - first_level(d.b)).abs() > RULES.cap(whole, RULES.wind_steps) { RULES.incline() } else { RULES.wind_steps };
                 for k in 0..=SUBS {
                     let a = if k == 0 { index[&d.a] } else { first + k - 1 };
                     let b = if k == SUBS { index[&d.b] } else { first + k };
@@ -379,10 +381,18 @@ impl Net {
             // the lengths that were made to give are laid again as they now are
             let mut changed = false;
             let mut e = edges.iter().filter(|e| e.new);
-            for d in drafts.iter_mut() {
-                let stage = e.next().map_or(d.stage, |e| e.stage);
+            for (di, d) in drafts.iter_mut().enumerate() {
+                let mut stage = e.next().map_or(d.stage, |e| e.stage);
                 for _ in 0..SUBS {
                     e.next();
+                }
+                // a wound length that still stands in the air for most of its way is no winding
+                // line on a viaduct: it goes straight up the hill, as an incline
+                let first = region.len() + di * SUBS;
+                let over = (0..SUBS).filter(|&k| settled.level[first + k] - d.sub_ground[k] > VIADUCT).count();
+                if !last && stage > 0 && stage < RULES.incline() && over * 2 > SUBS {
+                    steep[di] = true;
+                    stage = RULES.incline();
                 }
                 if stage != d.stage {
                     changed = true;
@@ -565,7 +575,8 @@ fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, la: f32, 
     // more than a fill: the ground cannot be dug), a river under it, a market place in its way
     let cost = |p: Vec2, t: f32| -> f32 {
         let dev = world::height_at(g, p.x, p.y).max(0.0) - (la + (lb - la) * t);
-        let mut c = if dev > 0.0 { 3.0 * dev.min(0.3) } else { (-dev).min(0.3) };
+        // (and once the line is up on a viaduct, a little less height is not worth a bend)
+        let mut c = if dev > 0.0 { 3.0 * dev.min(0.3) } else { (-dev).min(0.05) + 0.2 * (-dev - 0.05).clamp(0.0, 0.25) };
         if world::water_dist(g, p.x, p.y) < 0.02 {
             c += 0.06;
         }
@@ -1457,4 +1468,53 @@ pub fn maybe_check(r: &Replay, g: &Ground) {
         }
     }
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A straight line of points 0.02 apart at these heights over ground at nought.
+    fn kinds(over: &[f32], wet: &[usize], under: &[usize]) -> Vec<Kind> {
+        let pts: Vec<Vec3> = over.iter().enumerate().map(|(i, &h)| Vec3::new(i as f32 * 0.02, h, 0.0)).collect();
+        let flag = |at: &[usize]| (0..over.len()).map(|i| at.contains(&i)).collect::<Vec<bool>>();
+        classify(&pts, &vec![0.0; over.len()], &flag(wet), &flag(under))
+    }
+
+    #[test]
+    fn what_a_line_stands_on_follows_its_height_over_the_ground() {
+        // on the ground, then a bank, then high enough for arches for long enough
+        let mut over = vec![0.0; 4];
+        over.extend([0.03; 4]);
+        over.extend([0.1; 12]);
+        let k = kinds(&over, &[], &[]);
+        assert!(k[..4].iter().all(|&x| x == Kind::Grade) && k[4..8].iter().all(|&x| x == Kind::Embankment) && k[8..].iter().all(|&x| x == Kind::Viaduct));
+        // a few points of height are a bank, not a stub of a viaduct
+        let mut over = vec![0.03; 6];
+        over.extend([0.1; 3]);
+        over.extend([0.03; 6]);
+        assert!(kinds(&over, &[], &[]).iter().all(|&x| x == Kind::Embankment));
+    }
+
+    #[test]
+    fn a_river_is_bridged_and_a_viaduct_carries_on_over_one() {
+        let k = kinds(&[0.05; 12], &[5, 6], &[]);
+        assert_eq!(&k[4..8], &[Kind::Embankment, Kind::Bridge, Kind::Bridge, Kind::Embankment]);
+        let k = kinds(&[0.1; 20], &[9, 10], &[]);
+        assert!(k.iter().all(|&x| x == Kind::Viaduct));
+        // and what is under the ground is a tunnel, whatever else
+        let k = kinds(&[-0.1; 6], &[2], &[1, 2, 3]);
+        assert_eq!(&k[1..4], &[Kind::Tunnel; 3]);
+    }
+
+    #[test]
+    fn the_rules_allow_what_the_track_is_drawn_to() {
+        // two neighbouring points of a length may differ by no more than the ruling gradient
+        // allows over a quarter of a straight cell, so the straight line between them holds it
+        let part = 1.02 / (SUBS + 1) as f32;
+        assert!(RULES.cap(part, 0) / part <= RULING);
+        assert!(RULES.cap(part, RULES.wind_steps) / (part * RULES.wind) <= RULING);
+        assert!(RULES.cap(part, RULES.incline()) / part > 4.0 * RULING);
+        assert_eq!(runs_of(6, |i| i == 1 || i == 2 || i == 5), vec![(1, 2), (5, 5)]);
+    }
 }

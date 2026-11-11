@@ -184,7 +184,7 @@ pub fn seek(ends: &Ends, swing: Swing, stations: usize, reach: f32, cost: &dyn F
     let between: Vec<[f32; 2 * N - 1]> = (0..=stations).map(|i| std::array::from_fn(|h| at((t_of(i) + t_of(i + 1)) * 0.5, -reach + 0.5 * step * h as f32))).collect();
     let bend = |j0: usize, j1: usize| -> f32 {
         let d = (j0 as f32 - j1 as f32).abs();
-        if d > 2.0 { f32::INFINITY } else { 0.5 * (d * step) * (d * step) }
+        if d > 2.0 { f32::INFINITY } else { 2.0 * (d * step) * (d * step) }
     };
     // best[i][j]: the least cost of reaching station i + 1 at offset j
     let mut best: Vec<[f32; N]> = Vec::with_capacity(stations);
@@ -287,6 +287,6 @@ mod tests {
         let adj = vec![vec![1], vec![0, 2, 3], vec![1], vec![1]];
         let mut c = chains(&adj);
         c.sort();
-        assert_eq!(c, vec![vec![0, 1], vec![2, 1], vec![3, 1]]);
+        assert_eq!(c, vec![vec![0, 1], vec![1, 2], vec![1, 3]]);
     }
 }
