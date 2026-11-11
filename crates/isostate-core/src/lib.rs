@@ -31,6 +31,7 @@ pub mod people;
 pub mod rail;
 pub mod record;
 pub mod rng;
+pub mod save;
 pub mod sim;
 pub mod state;
 pub mod tech;
