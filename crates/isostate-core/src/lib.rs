@@ -53,6 +53,7 @@ pub mod sim;
 pub mod state;
 pub mod sweep;
 pub mod tech;
+pub mod towns;
 pub mod transport;
 pub mod util;
 pub mod ways;
