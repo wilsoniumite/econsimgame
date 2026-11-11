@@ -328,7 +328,12 @@ fn parse(v: &[String]) -> Result<Args, String> {
                 a.overlay = Some(w);
                 i += 1;
             }
-            "--script" => { a.script = Some(next(i)?); i += 1; }
+            "--script" => {
+                let s = next(i)?;
+                script::check(&s).map_err(|e| format!("{opt}: {e}"))?;
+                a.script = Some(s);
+                i += 1;
+            }
             "--season" => { a.season = Some(number(opt, &next(i)?)?); i += 1; }
             "--shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); i += 1; }
             "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
@@ -2247,6 +2252,9 @@ mod tests {
         // map views (a good the run does not have is refused once the run is read)
         assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain");
         assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
+        // a script's steps are read with the options
+        assert_eq!(args("--script bogus").err().unwrap(), "--script: bogus: not a step (see the top of script.rs)");
+        assert_eq!(args("--script key:Nope").err().unwrap(), "--script: key:Nope: no key called Nope");
         // saved games
         assert_eq!(args("--load").err().unwrap(), "--load needs a value after it");
         assert_eq!(args("--new --save").err().unwrap(), "--save needs a value after it");

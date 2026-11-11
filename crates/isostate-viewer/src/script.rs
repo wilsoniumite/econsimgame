@@ -218,6 +218,11 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
     Ok(steps)
 }
 
+/// What is wrong with a script, if anything: said with the options, before an island is made.
+pub fn check(script: &str) -> Result<(), String> {
+    parse(script).map(|_| ())
+}
+
 /// Add the scripted run to the app, or say what is wrong with the script.
 pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> {
     let steps = parse(script)?;

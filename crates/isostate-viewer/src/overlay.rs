@@ -523,13 +523,15 @@ fn input(
     mut ov: ResMut<MapOverlay>,
     chips: Query<(&Interaction, &OverlayChip), Changed<Interaction>>,
     steps: Query<(&Interaction, &GoodStep), Changed<Interaction>>,
+    cards: Res<crate::game::CardOpen>,
 ) {
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    if keys.just_pressed(KeyCode::KeyM) {
+    // while a card wants an answer the keys are the card's, as with the panels' keys
+    if keys.just_pressed(KeyCode::KeyM) && !cards.0 {
         ov.step(shift);
     }
     let mut turn = 0;
-    if keys.just_pressed(KeyCode::KeyG) && ov.kind == Some(Overlay::Price) {
+    if keys.just_pressed(KeyCode::KeyG) && ov.kind == Some(Overlay::Price) && !cards.0 {
         turn = if shift { -1 } else { 1 };
     }
     for (i, chip) in &chips {
