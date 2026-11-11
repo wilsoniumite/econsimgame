@@ -30,7 +30,9 @@
 //!   prospects first, and only so many in a year as the town's market has
 //!   room for. Once sunk it costs nothing to keep, so a slump lays its hands
 //!   off and leaves it standing; it is abandoned when it has stood idle for
-//!   `idle_years`, and its neighbours take over what they can reach.
+//!   `idle_years`, and its neighbours take over what they can reach. A town
+//!   goes round a pit head at work, and works may fill the cell beside it
+//!   without ending it; an idle one is lost to a town that wants its cell.
 //! - E. it goes deeper. Each unit raised from a cell lowers the richness the
 //!   hands meet there, `f / (1 + dug / (reserve * f))`, so the near deposits
 //!   are worked first and the workings move on as they tire.

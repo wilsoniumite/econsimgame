@@ -2,9 +2,9 @@
 
 Mines and pits that take little of the surface. Not in the Python. The switch
 is `mines.enabled`; the code is `mines.rs`, hooked in by marked lines (each
-says "mines") in `land::update_land_use`, `land::update_urban` and
-`econ::step_month`, and a few in `record.rs`, `live.rs`, `sim.rs` and
-`facts.rs`.
+says "mines") in `land::update_land_use`, `land::update_urban`,
+`towns::update_urban` and `econ::step_month`, and a few in `record.rs`,
+`live.rs`, `sim.rs` and `facts.rs`.
 
 Stella looked at the map and said: "mines still look like big blobs. perhaps
 the deposit is big but the surface mine area might just be at the base of the
@@ -90,8 +90,24 @@ may always open. That is the same thought as the year's room in `works.md`.
 Once sunk, a working costs nothing to keep. A slump lays its hands off month
 by month, as the port's labour rule does, and leaves it standing. It is
 abandoned when it has stood idle (under one hand on a year's average) for
-`idle_years` (10), or when a town grows over its pit head; its cells are then
-free, and a neighbour that can reach them takes them over.
+`idle_years` (10); its cells are then free, and a neighbour that can reach
+them takes them over.
+
+Nothing else ends a working that has hands. **A town goes round a pit head
+at work**: under the port a town kept off a cell that was mostly iron mine
+or colliery and built freely over quarries and clay pits, which were a slice
+of every cell and lost a slice; a working is one place with the lease of a
+dozen cells behind it, so the port's rule for mines is kept for all four
+(`mines::blocks_town`). An idle working is no obstacle: the town takes the
+cell and the working is given up, as is one on the cell a new town is
+founded on. **Works may fill the cell beside it**: the pit head was there
+first, the works came for the coal, and its surface is what room they leave
+it. (The first build gave a working up when works filled six tenths of its
+cell or a closed works left it derelict. See "What the review found".)
+
+A working raises from its first month. The sinkers are the price of opening
+it, not a wait: the year of sinking and the first year of raising are the
+same year.
 
 **E. Depth.** Everything raised from a cell is counted against it, and the
 richness the hands meet falls as they go deeper: `f / (1 + dug / (reserve *
@@ -163,7 +179,9 @@ would pay (three rounds, each taking the best sites left that stand two
 reaches apart). The first prices are guesses, and the workings nobody then
 needs stand idle at no cost until the ten warm-up years have found the
 market's level; those still idle in 1749 are abandoned, and the record opens
-on the rest.
+on the rest. What the warm-up gives up leaves no row in the table of
+workings below (some five hundred a run would otherwise be listed in 1750 as
+abandoned pits, more than there are at work).
 
 ## What the viewer is given
 
@@ -195,7 +213,8 @@ as flat arrays, year k's rows being `mine_first[k] .. mine_first[k + 1]`:
 | `cells` | `mine_cells` (int32) | the cells of its lease, its own among them |
 
 Abandoned workings stay in the list (with `opened` 0) so that an old heap can
-be drawn. A working with `hands` under one is standing idle. Which cells a
+be drawn: a hundred or so by 1900, each left in a recorded year with
+something on its heap. A working with `hands` under one is standing idle. Which cells a
 lease covers is in the state (`State::mine_head`) but not in the record; say
 if the picture wants it.
 
@@ -206,9 +225,153 @@ spot of each working's cell, for workings with a hand or more. Without them
 (a port run, an old recording) pits are read off the mix as before. Size,
 pit heads, spoil heaps and idle or abandoned workings are not drawn.
 
-## What the sweeps showed
+## What the review found
 
-Seeds 1 to 8 to 1900. Every figure is the mean over the eight; "8/0" is how
+The mechanism was reviewed before it was merged, by another hand (branch
+`night/mines-review`). What was checked, in short: with the switch off a
+run writes the files it wrote before any of this (seed 3, and seed 7 with
+six families, byte for byte, `params.json` too); no hook does anything or
+draws a random number while it is off, and the mechanism draws none when it
+is on; all 64 runs of seeds 1 to 16, under the port and under the game's
+rules, with and without six families, pass the monthly money check; the
+first build's tables below were made again from a baseline of the
+reviewer's own and came out as printed. Three things were mended.
+
+- **The largest collieries were being given up at their height.** A working
+  was abandoned whenever its cell was one "no land use may have": town
+  ground, but also a cell the works had filled to six tenths, or one a
+  closed works had left derelict. Works come to stand beside a colliery for
+  its coal, so it was the best pits that went: on seed 3 under the game's
+  rules 87 workings with 19,700 hands between them were lost to works
+  filling their cells (one colliery of 2,175 men in 1895), and 50 quarries
+  and clay pits with 5,600 hands to towns growing over them. Each loss freed
+  the lease, somebody sank again beside it, and the town's wage jumped: 29
+  town-months in that run with the wage moving by half or more in a month,
+  against 7 with the mines off. Now only idleness ends a working that has
+  hands, a town goes round every pit head at work, and works may fill the
+  cell beside one (D, above). The same run loses one working of half a hand
+  to a town and has 11 such months. This is most of the "bad years" worry
+  of the first build.
+- **Five hundred abandoned pits in 1750.** The surplus workings a run starts
+  with were given up during the warm-up and then listed for the viewer as
+  abandoned, with whatever little they raised in 1740 as their heap: 507
+  rows on seed 3 beside 344 workings at work. What the warm-up gives up is
+  no longer listed (21 rows in 1750 on that seed, each given up in 1750
+  itself).
+- **Two notes in the code that did not match it** (what a working's
+  believed promise is, and when a town is kept off).
+
+Extreme settings, two seeds each to 1900 under the game's rules with six
+families (`mines-review/x-*`): `sink` 0 and 400, `reach` 0, 2 and 4,
+`payback` 0, 0.5 and 20, `memory` 0 and 1, `idle_years` 0, 1 and 300,
+`year_room` 0 and 5, `reserve` 0 and 100,000, `haul` 0 and 1,
+`hands_per_cell` 0 and 200, `cell_limit` 0 and 1, in the combinations that
+made 68 runs. None failed the money check and none ran away. `sink` 0 with
+`reach` 0 is the port's pattern again (4,000 workings in 1900), as "what I
+tried first" says it should be. A `reserve` two hundred times smaller makes
+coal ten times as dear in 1900 and halves the baskets a head, so depth can
+be made to bite; nothing breaks. The one setting to keep away from
+is `idle_years` 1 with no `year_room`: one seed of two then has a year in
+which the real wage falls by more than half, the hasty closing and the
+unlimited opening chasing each other.
+
+**The final build on sixteen seeds**, mines on against off, every figure
+`before > after` with the seeds up and down (a star: every seed now clear of
+every seed then). Seeds 9 to 16 were not looked at while anything was being
+decided, and say the same as 1 to 8 unless noted.
+
+Land in cells' worth, the game's rules with six families:
+
+| | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|
+| farm | 1,368 > 1,562 | 1,308 > 1,551 | 1,325 > 1,633 | 1,159 > 1,453 |
+| pasture | 1,547 > 1,856 | 1,546 > 2,003 | 1,519 > 1,994 | 1,667 > 2,237 |
+| forestry | 1,355 > 1,578 | 1,197 > 1,438 | 1,004 > 1,283 | 813 > 1,065 |
+| quarries, pits and mines | 890 > 0.75 | 1,142 > 2.0 | 1,295 > 4.7 | 1,372 > 9.1 |
+| wild | 621 > 782 | 545 > 735 | 486 > 686 | 393 > 589 |
+
+All 16/0 or 0/16, and all starred but the farms of 1850. Under the port
+alone: farm 1,410 > 1,626 and 1,288 > 1,607 (1750, 1900), pasture 1,515 >
+1,824 and 1,303 > 1,649, forestry 1,210 > 1,420 and 853 > 1,109, mines 897
+> 0.84 and 1,197 > 9.4, wild 558 > 711 and 288 > 407.
+
+The workings (cells with a hand or more), the game's rules, six families:
+
+| | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|
+| quarries | 946 > 132 | 1,372 > 170 | 1,731 > 236 | 2,140 > 294 |
+| clay pits | 123 > 86 | 692 > 88 | 1,040 > 108 | 1,116 > 117 |
+| iron mines | 12 > 8 | 43 > 9 | 93 > 11 | 173 > 19 |
+| collieries | 130 > 35 | 254 > 45 | 292 > 54 | 313 > 62 |
+| mean share of its cell | 0.744 > 0.003 | 0.486 > 0.007 | 0.413 > 0.012 | 0.368 > 0.018 |
+| the largest share | 0.48 > 0.04 | 0.53 > 0.11 | 0.57 > 0.18 | 0.60 > 0.22 |
+
+Hands as a share of everyone at work, output a head a month, price over the
+wage, and the royalty over everything made; the game's rules, six families:
+
+| | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|
+| quarrymen | 0.062 > 0.073 (16/0) | 0.079 > 0.077 (7/9) | 0.113 > 0.116 (9/7) | 0.133 > 0.138 (9/7) |
+| clay diggers | 0.008 > 0.007 | 0.034 > 0.029 | 0.039 > 0.035 | 0.024 > 0.020 |
+| iron miners | 0.001 > 0.001 | 0.002 > 0.001 | 0.003 > 0.001 | 0.004 > 0.003 |
+| colliers | 0.009 > 0.009 | 0.047 > 0.043 | 0.049 > 0.047 | 0.050 > 0.048 |
+| stone raised | 0.236 > 0.280 (16/0) | 0.347 > 0.377 (14/2) | 0.780 > 0.916 (11/5) | 1.55 > 1.77 (14/2) |
+| stone's price | 0.264 > 0.229 (0/16) | 0.220 > 0.187 (0/16) | 0.144 > 0.122 (5/11) | 0.080 > 0.070 (1/15) |
+| clay's price | 0.151 > 0.098 (0/16*) | 0.156 > 0.117 (0/16*) | 0.105 > 0.081 (2/14) | 0.059 > 0.043 (1/15) |
+| ore's price | 0.644 > 0.511 (2/14) | 0.132 > 0.089 (1/15) | 0.082 > 0.047 (1/15) | 0.056 > 0.037 (1/15) |
+| coal raised | 0.093 > 0.095 (8/8) | 0.566 > 0.690 (16/0) | 0.887 > 1.15 (14/2) | 1.21 > 1.35 (13/3) |
+| coal's price | 0.834 > 0.762 (2/14) | 0.188 > 0.141 (1/15) | 0.129 > 0.100 (4/12) | 0.071 > 0.060 (4/12) |
+| royalties | 0.013 > 0.024 (16/0) | 0.023 > 0.025 (8/8) | 0.024 > 0.034 (14/2) | 0.032 > 0.040 (15/1) |
+
+Under the port alone the quarrymen are 0.063 > 0.083 of all hands in 1750
+(15/1) and 0.160 > 0.174 in 1900 (9/7), the colliers 0.030 > 0.018 and 0.095
+> 0.090; stone is 12 to 18 per cent cheaper in every year (0/16 in all
+four), coal 19 to 31 per cent (1/15, 0/16, 2/14, 4/12), and the royalties
+are 0.030 > 0.030, 0.034 > 0.035 and 0.044 > 0.044 of output from 1800.
+
+Farm output and the standard of living:
+
+| | | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|---|
+| baskets a head | port | 1.74 > 1.88 (16/0) | 3.04 > 3.38 (15/1) | 3.33 > 3.96 (14/2) | 3.64 > 4.23 (14/2) |
+| | port, six families | 1.75 > 1.89 (16/0) | 2.98 > 3.31 (14/2) | 3.45 > 4.13 (14/2) | 3.66 > 4.07 (12/4) |
+| | game | 1.42 > 1.51 (15/1) | 2.89 > 3.00 (13/3) | 4.09 > 4.24 (11/5) | 8.33 > 9.11 (15/1) |
+| | game, six families | 1.43 > 1.52 (16/0) | 3.01 > 3.14 (14/2) | 4.78 > 5.32 (12/4) | 8.03 > 8.86 (15/1) |
+| goods a head | game, six families | 2.43 > 2.58 (16/0) | 4.44 > 4.61 (13/3) | 7.04 > 7.76 (13/3) | 10.9 > 11.7 (15/1) |
+| real wage against 1750 | port | | 1.34 > 1.38 (13/3) | 1.30 > 1.40 (12/4) | 1.31 > 1.38 (12/4) |
+| | game, six families | | 1.62 > 1.61 (10/6) | 2.00 > 2.03 (9/7) | 2.59 > 2.65 (11/5) |
+| grain against 1750 | port | | 2.40 > 2.34 (7/9) | 4.29 > 4.70 (11/5) | 9.11 > 8.91 (7/9) |
+| | game, six families | | 2.13 > 2.15 (11/5) | 4.40 > 4.47 (10/6) | 11.4 > 11.6 (11/5) |
+
+So the gain is the first build's: five to ten per cent more baskets and
+goods a head under the game's rules, clear in 1750 and 1900 and less so
+between. The middle of the century is where the two halves of the seeds
+part: with six families the baskets of 1800 are up 8 per cent on seeds 1 to
+8 (8/0) and 1 per cent on 9 to 16 (6/2), and those of 1850 up 2 per cent
+(5/3) and 22 (7/1). Take the sixteen together and do not read much into one
+mark year. Grain and the real wage against a run's own 1750 are inside the
+spread everywhere.
+
+In company, the game's rules with six families: people in 1900 688 thousand
+> 719 thousand (16/0); track in 1900 2,614 > 2,260 km (0/16, starred), lines
+to quarries 72 > 13 (0/16, starred), and what the lines earn on their
+capital 0.22 > 0.29 in 1900 (14/2); town cells 303 > 320 (13/3); the worst
+year for the real wage -0.160 > -0.147 (10/6), and under the port alone
+-0.174 > -0.161 (8/8), its worst seed -0.29 where the first build's was
+-0.38 and the port's own -0.23.
+
+A run alone on a quiet machine takes what it took: 17.7 seconds with the
+mines off and 17.1 with them on, under the game's rules with six families,
+and 16.4 and 16.9 under the port, where there are a sixth more works to run
+(seeds 3 and 7, one run at a time). The "two seconds" of the first build's
+sweeps was other work on the machine.
+
+## What the first build's sweeps showed
+
+These are the tables of the build before the review, on seeds 1 to 8, kept
+because the page's argument was made on them; the review's baseline gives
+the same "before" figures to the last digit, and the "after" of the final
+build is in the section above. Every figure is the mean over the eight; "8/0" is how
 many seeds moved up and how many down, and a star means every seed now is
 clear of every seed then. Sweep folders `sweep-mines*` under
 `.claude/night/reports/`. No run failed in any of them.
@@ -417,10 +580,22 @@ So the pattern is the one asked for, in part.
   edge, and on the map of seed 7 many of the large ones are on a railway or
   beside a town.
 
-What I did not do is look at it in the viewer's top-down plan
-(`ISOSTATE_PLAN`): the text map and the heights are what this rests on. The
-maps I read were from a build with a smaller `reserve`; the heights above are
-from the final one.
+The review looked at it from above as well. The viewer's top-down plan
+(`ISOSTATE_PLAN`, seed 7 with six families in 1900, from a `run.bin` of the
+final build) shows towns, fields and woods and not one patch of diggings:
+the blobs are gone, and since the plan draws only the ground, so are the
+workings until somebody draws them. A picture of the workings themselves
+(a square for each by its hands, on the relief, the coal measures, the
+towns and the railways; a scratch program, not kept) for 1750, 1800, 1850
+and 1900 on the same seed says what the heights say. In 1750 the quarries
+are small and stand in loose groups on the flanks of the uplands, on the
+sides nearest the six towns, and the few collieries on the corner of each
+coalfield nearest a town. By 1850 the quarries make a ring round the foot and shoulders of the
+central upland, nearly all of them on a railway, and the collieries have
+spread along the edges of their fields beside the towns that have grown
+there. By 1900 the railways cross the upland and the largest quarries are
+on it, summit and all. So: at the foot of the hill until the railway climbs
+it, and on the near edge of the ore field throughout.
 
 ## Why quarrying takes so many hands
 
@@ -460,9 +635,17 @@ would be a patch on the wrong side of the trade.
 ## What it does in company
 
 - **`works`**: a works and a working can share a cell; the workings' surface
-  is capped at what the works have left. The land rule runs before the
-  year's works are founded, so for the rest of that year a cell can be a
-  little over-full, as it could before.
+  is capped at what the works have left, and a pit head stays when works
+  fill the cell round it (four workings on seed 3 in 1900 have less land
+  than their hands would take). Nobody sinks a new pit head on a cell the
+  works have filled. The land rule runs before the year's works are founded,
+  so for the rest of that year a cell can be a little over-full, as it could
+  before. A works does not look at the workings' surface when it chooses a
+  site, nor pay for it.
+- **`towns`**: a town on kept ground does not take a cell with a pit head at
+  work (`towns::update_urban` asks `mines::blocks_town`), and the port's
+  yearly re-pick of town cells asks the same. Town cells in 1900 are 303 >
+  320 with six families (13/3): more people, not less room.
 - **`people`**: the game's population answers to income, so the better
   standard of living becomes 8 or 9 per cent more people by 1900 (641
   thousand > 696 thousand with six families, 8/0; starred without them).
@@ -483,18 +666,19 @@ would be a patch on the wrong side of the trade.
   now a pit head. Openings and abandonments are not news; they could be.
 - **families**: a family that owns a cell is paid its share of the royalty of
   whatever working has the lease of it, and the price of land counts it
-  (`cell_rent_year`). The families' own decisions are untouched. The scripted
-  players (`examples/bots.rs`, seeds 1, 2, 3 and 7) play all sixteen games
-  through; the landlord is the richest family in 1900 on all four seeds, as
-  it was in the tables of `works.md`. I have no table of the same build
-  without the mines to set beside it (the example takes no overrides), so
-  whether royalties have made land a better buy than it was is not known.
+  (`cell_rent_year`). A family with a branch of the mining or building trade
+  in a town still gets its bonus on the units that stand on its land
+  (`families::land_boost`); that is now the whole working if the family owns
+  the pit head's cell, and nothing if it owns only cells of the lease. The
+  families' own decisions are untouched. The scripted players
+  (`examples/bots.rs`, seeds 1, 2, 3 and 7) play all sixteen games through.
 
-**Beside kept town ground.** Everything above was measured on the build
-this mechanism was written on, before `towns.md` was merged. The branch has
-since taken it in (one clause was added to `towns::update_urban`: a town on
-kept ground does not take the pit head of an iron mine or colliery at work,
-as the port's did not), every test passes, and the sweep was run again under
+**Beside kept town ground.** The first build's tables were measured on the
+build this mechanism was written on, before `towns.md` was merged. The
+branch has since taken it in (one clause was added to
+`towns::update_urban`: a town on kept ground does not take the pit head of
+an iron mine or colliery at work, as the port's did not; the review made
+that any pit head at work), every test passes, and the sweep was run again under
 the merged game's rules (`sweep-mines-merged*`, mines on against off, no run
 failed). With six families: baskets a head 1.44 > 1.52 in 1750 and 2.97 >
 3.20 in 1800 (8/0 both), 4.94 > 4.70 in 1850 (5/3, inside the spread) and
@@ -526,12 +710,26 @@ had a month yet, and the test skips it.
   town's wage ran away: the port lets a town's labour demand exceed its
   supply for a month and doubles the wage, and a large working whose price
   has just jumped can ask for that, where the port's thousands of small ones
-  could not all at once. The final build's sweeps show no freak in the mark
-  years, but the worst year for the real wage is worse in one seed under the
-  port (-0.38 against a worst of -0.23) and a little worse in seven seeds of
-  eight under the game's rules without families (-0.153 against -0.134 in the
-  mean). With families it is better in the mean and 4/4. I did not look year
-  by year.
+  could not all at once. The review found most of it in large workings
+  being given up (above) and mended that. What is left: under the game's
+  rules with six families a run still has a few more months in which some
+  town's wage moves by half than it has with the mines off (11 against 7 on
+  seed 3, 8 against 7 on seed 7), and the worst year for the real wage is a
+  little better in the mean (-0.147 against -0.160, 10/6); without families
+  it is level (-0.159 against -0.155, 8/8); under the port alone the worst
+  seed of sixteen is -0.29 against the port's -0.23. A working is a big
+  thing in a small town, and its hands still come and go with its price.
+- **A town can be boxed in.** A town goes round a pit head at work, so
+  workings on every side of a small town would stop it growing. Town cells
+  are up with the mines on, not down, and I saw no town held; but nothing
+  prevents it, and nothing lets a town buy a quarry out for building ground.
+  A new town is still founded where the carting says, pit head or no, and
+  the working on that cell is lost (two on seed 7, of 36 and 54 hands).
+- **A working raises while it is being sunk.** The sinkers are a cost and
+  not a delay: there is no year between the decision and the first ton, as
+  there was for a real shaft. A year's wait would be more honest and would
+  give a slow market for new pits a hog cycle to contend with; I did not
+  try it.
 - **Depth is a guess**, set to be felt and small (above). Nothing calibrates
   it.
 - **The lease is first come, first served, for ever.** A working keeps its
@@ -557,11 +755,8 @@ had a month yet, and the test skips it.
   were set by judgment and a few runs on two seeds**, not swept. The sweeps
   here are of the mechanism on and off with the numbers in the table, and of
   `reserve`.
-- **Speed.** A run under the game's rules is about two seconds slower: 17.9
-  against 15.6 with six families on the merged build, 17.1 against 14.9
-  without (8/0 both), and 24.0 against 22.7 under the port. I did not
-  profile it; the yearly review reckons every site of every sector and
-  searches each cell's reach several times, and could be made cheaper.
+- **Speed** is not a worry after all: timed one run at a time, the mines
+  cost nothing that shows (the review, above).
 - **Sweeps on eight seeds**, as everywhere. The areas, the counts and the
   prices of stone and clay are far outside the spread. The standard of
   living is 8/0 in 1750 everywhere and in most later years under the game's
@@ -579,8 +774,11 @@ one unit for every working; every lease is whole, within reach, and nobody
 has sunk inside one; the royalty is split to the last penny among the cells
 of the lease; what is raised adds up cell by cell to what stands on the
 heaps, and a deposit with a small reserve is dearer; a working left idle is
-abandoned and one at work is not; and the viewer's table is recorded,
-packed, and absent from a port run.
+abandoned and one at work is not; works that fill a pit head's cell, or
+leave it derelict, do not end the working, its surface is what they leave,
+the cell is not over-full, and a town is kept off a pit head at work and
+off no empty cell; and the viewer's table is recorded, packed, absent from
+a port run, and lists nothing the warm-up gave up.
 
 `cargo run -p isostate-core --release --example mines_census -- --rules game
 --families 6 [--map coalmine] [--trace] 3 7` prints the tables above for any

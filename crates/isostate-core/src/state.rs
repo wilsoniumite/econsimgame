@@ -471,7 +471,8 @@ pub struct State {
     /// is sector `mine_sectors[r]`.
     pub mine_sectors: Vec<usize>,
     /// `[r * N + cell]`: the year the working there was opened (0: none is open),
-    /// and the year the last one there was abandoned (0: never).
+    /// and the year the last one there was abandoned (0: never, or during the
+    /// warm-up, which the map is not told of).
     pub mine_opened: Vec<i32>,
     pub mine_left: Vec<i32>,
     /// `[r * N + cell]`: the years running the working there has stood idle.
@@ -488,8 +489,9 @@ pub struct State {
     pub mine_dug: Mat,
     pub mine_share: Mat,
     /// (rows, N): the royalty a pit head on each cell is believed to pay before
-    /// its crew, in its town's wages a month (the last few years' promise,
-    /// smoothed; for a working at work, this year's).
+    /// its crew, in its town's wages a month: the last few years' promise,
+    /// smoothed (for a site, from the deposit nobody has within its reach; for a
+    /// working, from its lease).
     pub mine_promise: Mat,
     /// (rows, N): the F of each working (`mines.rs`, A): the deposit within its
     /// reach as one richness. 0 where no pit head stands.
