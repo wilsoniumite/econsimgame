@@ -322,13 +322,15 @@ the works founded at the end of 1800. The years are the first, every fiftieth
 after it, and the last: 1750, 1800, 1850 and 1900 for a whole run, and the
 names change with the run (`pop_1760` for a run to 1760).
 
-Seed 7's facts were worked out a second time from the files `isostate-core
-run` writes (the monthly CSV, the events and `run.bin`), by a separate script
-written from this page, with and without families: all 107 that can be had
-from those files agree. The rest (`growth_capped_*`,
-`works_top_1pct_capacity_share`, `works_utilisation` and the `area_*`) are
-worked out a second way in `tests/sweep.rs`, from the yearly snapshot and the
-final state of a run to 1790.
+The facts can be worked out a second time from the files `isostate-core run`
+writes (the monthly CSV, the events and `run.bin`):
+`crates/isostate-core/parity/check_facts.py` does it for one seed, in plain
+Python written from this page and sharing nothing with `facts.rs`. For seeds
+3 and 7, with and without families, and for a run to 1835, every fact that
+can be had from those files agrees (107 of them for a whole run). The rest
+(`growth_capped_*`, `works_top_1pct_capacity_share`, `works_utilisation` and
+the `area_*`) are worked out a second way in `tests/sweep.rs`, from the yearly
+snapshot and the final state of a run to 1790.
 
 | Heading | Facts |
 |---|---|
