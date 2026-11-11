@@ -9,7 +9,7 @@
 //! each of them:
 //!
 //! 1. *A machinery famine.* When farm machinery is found every farm buys it at
-//!    once and at any price. Here a machine is taken on the share of output
+//!    once and at any price. Here a machine is taken by the share of farms
 //!    where it earns more than it costs at today's prices ([`uses`]), so
 //!    adoption follows the price of machinery instead of driving it. And a
 //!    machine stands for years ([`end_month`]): what it adds follows what was
@@ -142,9 +142,12 @@ pub struct Use {
     pub good: usize,
     /// What the machine adds to the output of those who have it, as a share.
     pub boost: f64,
-    /// Units of the good bought per unit of output by those who keep it up.
+    /// Units of the good bought per unit of their own output by those who keep
+    /// it up.
     pub input: f64,
-    /// Share of the sector's output worked by people who know how.
+    /// Share of the sector worked by people who know how. Shares of a sector
+    /// are shares of its farms or pits, each counted by what it makes with no
+    /// machine at all.
     pub know: f64,
     /// A unit of output's gain from the machine and the cost of the input for
     /// it, in money; zero for a use that is not bought by this rule.
@@ -161,15 +164,9 @@ pub struct Use {
 pub const SLOTS: usize = 2;
 
 impl Use {
-    /// Share of the sector's output that keeps the machine up.
+    /// Share of the sector that keeps the machine up.
     pub fn kept(&self) -> f64 {
         self.know * self.share
-    }
-
-    /// Units of the good asked for per unit of the sector's output. The port
-    /// charges a use it does not price in full, whatever the know-how.
-    pub fn asked(&self) -> f64 {
-        if self.priced { self.input * self.kept() } else { self.input }
     }
 }
 
@@ -195,14 +192,13 @@ pub fn uses(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price:
             out.push(Use { kind, slot, good, boost, input, know, gain: 0.0, cost: 0.0, share: 1.0, priced });
         }
     };
+    // one kind of sector or another, so that no two uses share a slot
     if C.sector_mine[sec] {
         add("pump", 0, gm, P.pump_boost * q, P.pump_input, kp, M.adopt_pumps);
         add("wagonway", 1, gr, P.wagon_boost * q, P.wagon_input, kw, M.adopt_wagonways);
-    }
-    if name == "farm" {
+    } else if name == "farm" {
         add("farm machinery", 0, gm, P.farm_mach_boost * q, P.farm_mach_input, kf, true);
-    }
-    if name == "quarry" || name == "claypit" {
+    } else if name == "quarry" || name == "claypit" {
         // the steam engine is what a quarry's cranes and a pit's pug mills run on
         add("quarry machinery", 0, gm, M.quarry_reach * (q - 1.0), M.quarry_input, kp, true);
     }
@@ -223,20 +219,32 @@ pub fn uses(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price:
 /// What the machines add comes from the machines standing (`State::machine_stock`);
 /// what is bought comes from who keeps theirs up at these prices.
 ///
-/// Returns what `sector_tfp` returns: (mult, machinery per unit, rails per unit, input cost per unit).
+/// Returns what `sector_tfp` returns: (mult, machinery per unit, rails per unit,
+/// input cost per unit), each "per unit" being a unit of the whole sector's output.
 pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price: &Mat, mult: f64) -> (f64, f64, f64, f64) {
     let (gm, gr) = (C.gi("machinery"), C.gi("rails"));
-    let (mut boost, mut mach, mut rails) = (0.0, 0.0, 0.0);
-    for u in uses(st, C, P, sec, town, price) {
+    let us = uses(st, C, P, sec, town, price);
+    let mut boost = 0.0;
+    for u in &us {
         // before the first month has been counted, and in a town not yet
         // founded (marked below zero): the machines they would keep
         let stock = if st.machine_stock.rows > 0 { st.machine_stock[(town, sec * SLOTS + u.slot)] } else { -1.0 };
-        let standing = if stock >= 0.0 { stock } else { u.know * u.share };
+        let standing = if stock >= 0.0 { stock } else { u.kept() };
         boost += u.boost * standing;
+    }
+    // A farm that keeps its machines up buys for its own output, which is that
+    // of a farm with every machine it knows (the `all` its gain was reckoned
+    // on in `uses`), not that of the town's average farm (1 + boost): for each
+    // unit the sector makes, a farm that buys makes `own`. A use the port
+    // charges in full is charged on every unit, whatever the know-how.
+    let own = (1.0 + us.iter().map(|u| u.boost).sum::<f64>()) / (1.0 + boost);
+    let (mut mach, mut rails) = (0.0, 0.0);
+    for u in &us {
+        let asked = if u.priced { u.input * u.kept() * own } else { u.input };
         if u.good == gm {
-            mach += u.asked();
+            mach += asked;
         } else {
-            rails += u.asked();
+            rails += asked;
         }
     }
     let unit_cost = mach * price[(town, gm)] + rails * price[(town, gr)];
@@ -244,9 +252,9 @@ pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, 
 }
 
 /// The machines standing, moved a month on: in every town and land sector the
-/// share of output worked by machine goes one part in `life_months` of the way
-/// to the share that kept its machines up this month and was supplied
-/// (`st.fill`). A month the engine works cannot deliver does not flood the pits;
+/// share worked by machine goes one part in `life_months` of the way to the
+/// share that keeps its machines up at the prices now expected and was
+/// supplied this month (`st.fill`). A month the engine works cannot deliver does not flood the pits;
 /// years of it do. A town not yet founded has none and is marked -1, so that
 /// its first month starts from what its settlers keep up: they bring their
 /// engines with them. Called at the end of `econ::step_month`.
@@ -271,7 +279,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             }
             let now = uses(st, C, P, sec, town, &st.pexp);
             for slot in 0..SLOTS {
-                let target = now.iter().find(|u| u.slot == slot).map_or(0.0, |u| u.know * u.share * st.fill[(town, u.good)]);
+                let target = now.iter().find(|u| u.slot == slot).map_or(0.0, |u| u.kept() * st.fill[(town, u.good)]);
                 let s = &mut st.machine_stock[(town, sec * SLOTS + slot)];
                 *s = if first || *s < 0.0 { target } else { *s + step * (target - *s) };
             }
@@ -284,7 +292,8 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
 /// who have poured crucible steel for two generations. `A` is each method's own
 /// learning, as `firms::learning` gives it, and is raised in place.
 pub fn inherit_skill(st: &State, C: &Content, P: &Params, A: &mut [f64]) {
-    let share = P.machines.inherit;
+    // at most all of it: the heir never starts above the method it learned from
+    let share = P.machines.inherit.min(1.0);
     if !P.machines.enabled || share <= 0.0 {
         return;
     }

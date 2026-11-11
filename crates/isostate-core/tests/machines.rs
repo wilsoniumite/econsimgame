@@ -56,6 +56,7 @@ fn a_farm_buys_machinery_only_where_it_pays() {
     let gm = C.gi("machinery");
     s.st.know[(town, s.st.t_fmach)] = 1.0;
     s.st.method_Q.iter_mut().for_each(|q| *q = 0.0); // the machines of 1750
+    s.st.machine_stock = Mat::default(); // no month counted yet: the machines standing are those kept up
     let grain = s.st.price[(town, C.sector_good[farm])];
     // the machine's gain on a unit of grain, with no other machine on the farm
     let gain = grain * P.farm_mach_boost / (1.0 + P.farm_mach_boost);
@@ -74,10 +75,16 @@ fn a_farm_buys_machinery_only_where_it_pays() {
     let (u, (_, mach, _, _)) = at(1.0 / (1.0 + span));
     assert!((u.share - 1.0).abs() < 1e-9, "share {}", u.share);
     assert!((mach - P.farm_mach_input).abs() < 1e-12);
-    // half way between: half of them, and half the machinery
-    let (u, (_, mach, _, _)) = at(1.0 / (1.0 + 0.5 * span));
+    // half way between: half of the farms. Each buys for its own output, which
+    // is 1 + boost times an unmechanised farm's, while the town's average farm
+    // makes 1 + boost / 2: so much machinery for each unit the town grows
+    let (u, (mult, mach, _, _)) = at(1.0 / (1.0 + 0.5 * span));
     assert!((u.share - 0.5).abs() < 1e-9, "share {}", u.share);
-    assert!((mach - 0.5 * P.farm_mach_input).abs() < 1e-12);
+    let (equipped, average) = (1.0 + P.farm_mach_boost, 1.0 + 0.5 * P.farm_mach_boost);
+    assert!((mach - 0.5 * P.farm_mach_input * equipped / average).abs() < 1e-12);
+    // which is the same machinery whether it is counted on the half that buys or on the whole town
+    let (_, (mult_all, mach_all, _, _)) = at(1.0 / (1.0 + span));
+    assert!((mach * mult - 0.5 * mach_all * mult_all).abs() < 1e-12);
     assert_eq!(u.good, gm);
     // the port buys it in full whatever it costs
     let mut port = P.clone();
@@ -85,11 +92,64 @@ fn a_farm_buys_machinery_only_where_it_pays() {
     let dear = prices_with_machinery(&s, town, 1.5 * gain / P.farm_mach_input);
     let (_, mach, _, _) = econ::sector_tfp(&s.st, &C, &port, farm, town, &dear, &s.st.fill);
     assert_eq!(mach, P.farm_mach_input);
-    // and with half the know-how, half the machinery at most
+    // and with half the know-how, however cheap the machine, half the farms at most
     s.st.know[(town, s.st.t_fmach)] = 0.5;
     let cheap = prices_with_machinery(&s, town, 1e-6);
     let (_, mach, _, _) = econ::sector_tfp(&s.st, &C, &P, farm, town, &cheap, &s.st.fill);
-    assert!((mach - 0.5 * P.farm_mach_input).abs() < 1e-12);
+    assert!((mach - 0.5 * P.farm_mach_input * equipped / average).abs() < 1e-12);
+}
+
+#[test]
+fn machines_stand_for_years() {
+    let (mut s, town) = at_start();
+    let (C, P) = (s.content.clone(), s.params.clone());
+    let farm = sector(&C, "farm");
+    let gm = C.gi("machinery");
+    let column = farm * machines::SLOTS;
+    s.st.method_Q.iter_mut().for_each(|q| *q = 0.0); // the machines of 1750
+    s.st.know[(town, s.st.t_fmach)] = 1.0;
+    s.st.pexp[(town, gm)] = 1e-6; // so cheap that every farm keeps one up
+    s.st.machine_stock = Mat::default();
+    // the first month counted starts from what is kept up and was supplied
+    s.st.fill[(town, gm)] = 0.5;
+    machines::end_month(&mut s.st, &C, &P);
+    assert_eq!(s.st.machine_stock[(town, column)], 0.5);
+    // after that a month moves the machines standing one part in life_months
+    s.st.fill[(town, gm)] = 1.0;
+    machines::end_month(&mut s.st, &C, &P);
+    let standing = 0.5 + 0.5 / P.machines.life_months;
+    assert!((s.st.machine_stock[(town, column)] - standing).abs() < 1e-12);
+    // what the machines add is what stands, not what is being bought
+    let price = s.st.pexp.clone();
+    let (with, mach, _, _) = econ::sector_tfp(&s.st, &C, &P, farm, town, &price, &s.st.fill);
+    s.st.machine_stock[(town, column)] = 0.0;
+    let (without, ..) = econ::sector_tfp(&s.st, &C, &P, farm, town, &price, &s.st.fill);
+    assert!((with / without - (1.0 + P.farm_mach_boost * standing)).abs() < 1e-12);
+    // while every farm buys for a farm fully equipped
+    assert!((mach - P.farm_mach_input * (1.0 + P.farm_mach_boost) / (1.0 + P.farm_mach_boost * standing)).abs() < 1e-12);
+    // a month with nothing delivered lets them run down as slowly
+    s.st.machine_stock[(town, column)] = standing;
+    s.st.fill[(town, gm)] = 0.0;
+    machines::end_month(&mut s.st, &C, &P);
+    assert!((s.st.machine_stock[(town, column)] - standing * (1.0 - 1.0 / P.machines.life_months)).abs() < 1e-12);
+    // a town not yet founded has none, and starts from what its settlers keep up
+    if let Some(new) = (0..s.st.T_max).find(|&t| !s.st.town_active[t]) {
+        assert_eq!(s.st.machine_stock[(new, column)], -1.0);
+        s.st.town_active[new] = true;
+        s.st.know[(new, s.st.t_fmach)] = 0.5;
+        for g in 0..C.G {
+            s.st.pexp[(new, g)] = s.st.pexp[(town, g)];
+        }
+        s.st.fill[(new, gm)] = 1.0;
+        machines::end_month(&mut s.st, &C, &P);
+        assert_eq!(s.st.machine_stock[(new, column)], 0.5);
+    }
+    // switched off, nothing is kept
+    let mut port = P.clone();
+    port.machines = MachineParams::default();
+    let before = s.st.machine_stock.clone();
+    machines::end_month(&mut s.st, &C, &port);
+    assert_eq!(s.st.machine_stock, before);
 }
 
 #[test]
