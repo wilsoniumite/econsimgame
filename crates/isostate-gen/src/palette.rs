@@ -65,6 +65,7 @@ impl Walls {
 pub struct Roofs {
     pub tile_red: Colour,
     pub tile_dark: Colour,
+    pub tile_orange: Colour,
     pub tile_farm: Colour,
     pub moss: Colour,
     pub church_lead: Colour,
@@ -79,6 +80,8 @@ pub struct Roofs {
 pub struct Thatch {
     pub farmhouse: Colour,
     pub weaver_cottage: Colour,
+    pub cottage: Colour,
+    pub weathered: Colour,
     pub rick: Colour,
 }
 
@@ -87,6 +90,7 @@ pub struct Thatch {
 pub struct Slate {
     pub house: Colour,
     pub town: Colour,
+    pub stone: Colour,
     pub works: Colour,
     pub upland_farm: Colour,
     pub upland_barn: Colour,
@@ -289,12 +293,6 @@ impl Palette {
     pub const TABLES: &'static [&'static str] =
         &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks"];
 
-    /// The roof of a separate house in town, by a number of its own: mostly
-    /// red tile, some slate, the odd one gone green.
-    pub fn house_roof(&self, u: f32) -> Rgba {
-        *[self.roofs.tile_red, self.slate.house, self.roofs.tile_red, self.roofs.moss, self.roofs.tile_dark][(u * 13.0) as usize % 5]
-    }
-
     /// The walls of a shed in a works yard: brick of one sort or another, or stone.
     pub fn yard_shed_wall(&self, v: f32) -> Rgba {
         *[self.brick.red, self.brick.shed, self.stone.shed, self.brick.dark][(v * 4.0) as usize % 4]
@@ -349,7 +347,6 @@ mod tests {
         assert_eq!(pal.foliage.broadleaf.len(), 5);
         assert_eq!(pal.walls.town_house(0.0), *pal.walls.cream);
         assert_eq!(pal.walls.town_house(0.99), *pal.walls.cream);
-        assert_eq!(pal.house_roof(0.1), *pal.slate.house);
     }
 
     #[test]

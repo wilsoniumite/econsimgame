@@ -144,7 +144,8 @@ mod tests {
     #[test]
     fn turning_a_model_is_building_it_on_a_turned_site() {
         let pal = crate::Palette::standard();
-        let c = crate::houses::Cottage { plot_width: 0.05, plot_depth: 0.036, storeys: 2, seed: crate::Seed::of(3) };
+        let seed = crate::Seed::of(3);
+        let c = crate::houses::Cottage { plot_width: 0.05, plot_depth: 0.036, storeys: 2, roof: crate::houses::Roof::of(1790, 1850, false, false, seed), seed };
         let build = |yaw: f32| {
             let mut m = Model::default();
             crate::houses::cottage(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, yaw), &c, &pal);

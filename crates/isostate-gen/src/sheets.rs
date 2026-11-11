@@ -23,6 +23,7 @@ use glam::{Vec2, Vec3};
 use crate::bridge::{road_bridge, RoadBridge};
 use crate::farm::{farmstead, Farmstead};
 use crate::hash::Seed;
+use crate::houses::roof::{self, Roof};
 use crate::houses::{cottage, terrace, townhouse, Cottage, Terrace, Townhouse, BACK_PLOT_WIDTH, PLOT};
 use crate::palette::Palette;
 use crate::scenes::{self, Cover, Market, Street, WorksYard};
@@ -84,8 +85,9 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "cottages", about: "A house on its own plot: one to three storeys down the rows, ten seeds across.", land: Land::Town, build: cottages },
     Sheet { name: "townhouses", about: "A house in a high street's frontage: two and three storeys down the rows, ten seeds across.", land: Land::Town, build: townhouses },
     Sheet { name: "terraces", about: "A terraced row: two and three storeys down the rows; three to six houses across, each a seed of its own.", land: Land::Town, build: terraces },
-    Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: with back lanes built before 1815, and after.", land: Land::Town, build: street },
-    Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up, and a big town fully.", land: Land::Town, build: market },
+    Sheet { name: "roofs", about: "What a cottage is roofed with by when and where it was built (thatch, tile, stone slate, blue slate), and how it has weathered by the year it is seen: twelve seeds across.", land: Land::Town, build: roofs },
+    Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: as it stands in 1800, and in 1880.", land: Land::Town, build: street },
+    Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up in 1780, and a big town fully in 1880.", land: Land::Town, build: market },
     Sheet { name: "landmarks", about: "What marks a town out: its church in its churchyard (a small town's, with a spire, and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
     Sheet { name: "works-trades", about: "The cottage trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_trades },
     Sheet { name: "works-iron", about: "Ironmaking: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_iron },
@@ -116,14 +118,18 @@ fn storeys(n: usize) -> String {
 
 fn cottages(pal: &Palette) -> Vec<Vec<Cell>> {
     grid(3, 10, |row, col| {
-        let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: row as u8 + 1, seed: Seed::of(col as u32) };
+        // standing since before 1750 and seen in 1800: thatch and tile, part weathered
+        let seed = Seed::of(col as u32);
+        let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: row as u8 + 1, roof: Roof::of(roof::built_before(1750, seed), 1800, false, false, seed), seed };
         Cell::new(format!("{}\nseed {col}", storeys(row + 1)), |m, site| cottage(&mut m.solid, &mut m.smoke, site, &c, pal))
     })
 }
 
 fn townhouses(pal: &Palette) -> Vec<Vec<Cell>> {
     grid(2, 10, |row, col| {
-        let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: row as u8 + 2, seed: Seed::of(col as u32) };
+        // built in 1820 and seen in 1860
+        let seed = Seed::of(col as u32);
+        let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: row as u8 + 2, roof: Roof::of(1820, 1860, false, false, seed), seed };
         Cell::new(format!("{}\nseed {col}", storeys(row + 2)), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
@@ -131,26 +137,52 @@ fn townhouses(pal: &Palette) -> Vec<Vec<Cell>> {
 fn terraces(pal: &Palette) -> Vec<Vec<Cell>> {
     grid(2, 4, |row, col| {
         let houses = col + 3;
-        // a seed for each cell, so the sheet shows every brick and both roofs
-        let t = Terrace { houses, length: Terrace::length_of(houses, BACK_PLOT_WIDTH), depth: PLOT.1, storeys: row as u8 + 2, seed: Seed::of((row * 4 + col) as u32) };
+        // a seed for each cell, so the sheet shows every brick and both roofs; built in 1840 and seen in 1870
+        let seed = Seed::of((row * 4 + col) as u32);
+        let t = Terrace { houses, length: Terrace::length_of(houses, BACK_PLOT_WIDTH), depth: PLOT.1, storeys: row as u8 + 2, roof: Roof::of(1840, 1870, false, false, seed), seed };
         Cell::new(format!("{houses} houses, {}\nseed {}", storeys(row + 2), row * 4 + col), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 
+/// What a house is roofed with by when and where it was built, and how the roof weathers.
+fn roofs(pal: &Palette) -> Vec<Vec<Cell>> {
+    // (built, seen, in the hills, the railway had come)
+    let rows = [
+        (1740, 1750, false, false, "lowland, built 1740\nseen 1750"),
+        (1740, 1850, false, false, "lowland, built 1740\nseen 1850"),
+        (1800, 1850, false, false, "lowland, built 1800\nseen 1850"),
+        (1840, 1850, false, false, "lowland, built 1840\nseen 1850"),
+        (1870, 1900, false, true, "lowland, built 1870 by rail\nseen 1900"),
+        (1740, 1850, true, false, "upland, built 1740\nseen 1850"),
+        (1870, 1900, true, true, "upland, built 1870 by rail\nseen 1900"),
+    ];
+    rows.into_iter()
+        .map(|(built, year, upland, by_rail, label)| {
+            (0..12)
+                .map(|col| {
+                    // seeds of their own, so no column is all one covering; one storey, as a raised cottage loses its thatch
+                    let seed = Seed::of(40 + col);
+                    let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: 1, roof: Roof::of(built, year, upland, by_rail, seed), seed };
+                    Cell::new(if col == 0 { label.to_string() } else { format!("seed {}", 40 + col) }, |m, site| cottage(&mut m.solid, &mut m.smoke, site, &c, pal))
+                })
+                .collect()
+        })
+        .collect()
+}
+
 fn street(pal: &Palette) -> Vec<Vec<Cell>> {
-    [false, true]
+    [(1800, "in 1800: separate houses on the back lanes"), (1880, "in 1880: terraces on the back lanes, and slate")]
         .into_iter()
-        .map(|terraces| {
-            let s = Street { length: 1.0, middle: 0.95, ends: 0.3, terraces, id: 3 };
-            let label = if terraces { "back lanes built from 1815: terraces" } else { "back lanes built before 1815: separate houses" };
+        .map(|(year, label)| {
+            let s = Street { length: 1.0, middle: 0.95, ends: 0.3, year, id: 3 };
             vec![Cell::new(label, |m, site| scenes::street(m, site, &s, pal))]
         })
         .collect()
 }
 
 fn market(pal: &Palette) -> Vec<Vec<Cell>> {
-    let cell = |big: bool, density: f32, label: &str| Cell::new(label, |m, site| scenes::market(m, site, &Market { big, density, id: 2 }, pal));
-    vec![vec![cell(false, 0.5, "a small town, built up to 0.5"), cell(true, 1.0, "a big town, fully built up")]]
+    let cell = |big: bool, density: f32, year: i32, label: &str| Cell::new(label, |m, site| scenes::market(m, site, &Market { big, density, year, id: 2 }, pal));
+    vec![vec![cell(false, 0.5, 1780, "a small town in 1780, built up to 0.5"), cell(true, 1.0, 1880, "a big town in 1880, fully built up")]]
 }
 
 fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {

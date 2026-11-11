@@ -12,6 +12,7 @@
 use glam::{Vec2, Vec3};
 
 use crate::hash::{hash2, Seed};
+use crate::houses::roof::{self, Roof};
 use crate::houses::{self, storeys, Cottage, Terrace, Townhouse, BACK_PLOT_WIDTH, PLOT};
 use crate::palette::Palette;
 use crate::site::{Model, Site};
@@ -59,14 +60,30 @@ pub struct Street {
     /// how built up the ground is in the middle of the street and at its ends, 0 to 1
     pub middle: f32,
     pub ends: f32,
-    /// the back lanes were built from 1815 on, so their rows are brick terraces
-    pub terraces: bool,
+    /// the year it is seen in. The street began before 1750 and has grown
+    /// steadily since, so a plot that needs little was built early; a back
+    /// lane's row built from 1815 on is a brick terrace
+    pub year: i32,
     /// a number of the street's own, which fixes every plot along it
     pub id: i32,
 }
 
 /// The back lane runs this far behind the high street.
 const BACK_LANE: f32 = 0.13;
+/// The year the lab's towns are reckoned from, as the island's are.
+const START: i32 = 1750;
+/// Rows on the back streets built from this year on are terraces.
+const TERRACE_ERA: i32 = 1815;
+
+/// The year a plot was built, and its roof, in a town that has grown
+/// steadily from 1750 to `year`: a plot that `need`s little of the density
+/// its ground has now was built early, and the first quarter stood before
+/// the start. The railway is taken to have come in 1845.
+fn roof_of(need: f32, density: f32, year: i32, seed: Seed) -> (i32, Roof) {
+    let t = (need / density.max(0.01)).min(1.0);
+    let built = if t < 0.25 { roof::built_before(START, seed) } else { START + ((year - START) as f32 * (t - 0.25) / 0.75) as i32 };
+    (built, Roof::of(built, year, false, Roof::laid(built, year, seed) >= 1845, seed))
+}
 
 /// A high street along the site's x: a main road, a frontage of cottages and
 /// townhouses on both sides that fills from the middle, and a back lane
@@ -93,12 +110,13 @@ pub fn street(m: &mut Model, site: &Site, s: &Street, pal: &Palette) {
                 continue;
             }
             let plot = site.moved(site.at(x, side * set_back), facing(side));
+            let (_, roof) = roof_of(need, d, s.year, seed);
             // a house is rebuilt as a townhouse of the full plot once its ground is dense enough
             if d >= need + 0.12 + 0.25 * seed.v {
-                let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::townhouse(d, seed), seed };
+                let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::townhouse(d, seed), roof, seed };
                 houses::townhouse(&mut m.solid, &mut m.smoke, &plot, &t, pal);
             } else {
-                let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::cottage(d, seed), seed };
+                let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::cottage(d, seed), roof, seed };
                 houses::cottage(&mut m.solid, &mut m.smoke, &plot, &c, pal);
             }
         }
@@ -134,14 +152,17 @@ pub fn street(m: &mut Model, site: &Site, s: &Street, pal: &Palette) {
                 if stands {
                     let first = Seed::new(hash2(id, i, 24), hash2(id, i, 25));
                     let mean = (i..i + len).map(|q| density(x_of(q))).sum::<f32>() / len as f32;
-                    if s.terraces && len >= 2 {
+                    // the row went up together, and its year settles its style
+                    let (built, roof) = roof_of(need, mean, s.year, first);
+                    if built >= TERRACE_ERA && len >= 2 {
                         let mid = 0.5 * (x_of(i) + x_of(i + len - 1));
-                        let t = Terrace { houses: len as usize, length: Terrace::length_of(len as usize, BACK_PLOT_WIDTH), depth: PLOT.1, storeys: storeys::terrace(mean, first), seed: first };
+                        let t = Terrace { houses: len as usize, length: Terrace::length_of(len as usize, BACK_PLOT_WIDTH), depth: PLOT.1, storeys: storeys::terrace(mean, first), roof, seed: first };
                         houses::terrace(&mut m.solid, &mut m.smoke, &site.moved(site.at(mid, z + side * lane_back), facing(side)), &t, pal);
                     } else {
                         for q in i..i + len {
                             let seed = Seed::new(hash2(id, q, 24), hash2(id, q, 25));
-                            let c = Cottage { plot_width: BACK_PLOT_WIDTH, plot_depth: PLOT.1, storeys: storeys::cottage(density(x_of(q)), seed), seed };
+                            let roof = Roof::of(built, s.year, false, Roof::laid(built, s.year, seed) >= 1845, seed);
+                            let c = Cottage { plot_width: BACK_PLOT_WIDTH, plot_depth: PLOT.1, storeys: storeys::cottage(density(x_of(q)), seed), roof, seed };
                             houses::cottage(&mut m.solid, &mut m.smoke, &site.moved(site.at(x_of(q), z + side * lane_back), facing(side)), &c, pal);
                         }
                     }
@@ -162,6 +183,8 @@ pub struct Market {
     pub big: bool,
     /// how built up the ground is, 0 to 1
     pub density: f32,
+    /// the year it is seen in, which with each plot's need settles how old its house is
+    pub year: i32,
     pub id: i32,
 }
 
@@ -208,11 +231,12 @@ pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
             continue;
         }
         let plot = site.moved(site.at(p.x, p.y), site.yaw + dir.y.atan2(-dir.x) + std::f32::consts::FRAC_PI_2);
+        let (_, roof) = roof_of(need, mk.density, mk.year, seed);
         if mk.density >= need + 0.12 + 0.25 * seed.v {
-            let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::townhouse(mk.density, seed), seed };
+            let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::townhouse(mk.density, seed), roof, seed };
             houses::townhouse(&mut m.solid, &mut m.smoke, &plot, &t, pal);
         } else {
-            let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::cottage(mk.density, seed), seed };
+            let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::cottage(mk.density, seed), roof, seed };
             houses::cottage(&mut m.solid, &mut m.smoke, &plot, &c, pal);
         }
     }
@@ -302,13 +326,13 @@ mod tests {
     #[test]
     fn a_street_fills_from_the_middle() {
         let pal = Palette::standard();
-        let build = |middle: f32, ends: f32, terraces: bool| {
+        let build = |middle: f32, ends: f32, year: i32| {
             let mut m = Model::default();
-            street(&mut m, &level(), &Street { length: 1.0, middle, ends, terraces, id: 3 }, &pal);
+            street(&mut m, &level(), &Street { length: 1.0, middle, ends, year, id: 3 }, &pal);
             assert!(m.is_sound());
             m
         };
-        let (thin, thick) = (build(0.3, 0.05, false), build(0.95, 0.3, false));
+        let (thin, thick) = (build(0.3, 0.05, 1800), build(0.95, 0.3, 1800));
         assert!(thick.solid.triangles() > thin.solid.triangles() * 2);
         // a thinly built street has no back lanes: only the road lies flat
         assert_eq!(thin.flat.triangles(), 2);
@@ -317,7 +341,11 @@ mod tests {
         let (lo, hi) = thick.solid.bounds().unwrap();
         assert!(lo.x >= -0.53 && hi.x <= 0.56 && lo.z > -0.2 && hi.z < 0.2, "{lo} {hi}");
         // terraces put fewer, longer roofs on the back lanes than separate cottages do
-        assert_ne!(build(0.95, 0.3, true).solid.triangles(), thick.solid.triangles());
+        let later = build(0.95, 0.3, 1880);
+        assert_ne!(later.solid.triangles(), thick.solid.triangles());
+        // and by then some roofs are blue slate, which none was in 1800
+        let slate = |m: &Model| m.solid.col.iter().filter(|c| **c == *pal.slate.house || **c == *pal.slate.town).count();
+        assert!(slate(&thick) == 0 && slate(&later) > 0);
     }
 
     #[test]
@@ -325,7 +353,7 @@ mod tests {
         let pal = Palette::standard();
         let build = |big: bool, density: f32| {
             let mut m = Model::default();
-            market(&mut m, &level(), &Market { big, density, id: 2 }, &pal);
+            market(&mut m, &level(), &Market { big, density, year: 1850, id: 2 }, &pal);
             assert!(m.is_sound());
             m
         };

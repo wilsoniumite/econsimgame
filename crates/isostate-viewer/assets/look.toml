@@ -174,12 +174,14 @@ lighthouse_red = "#c94b3c"
 
 [roofs]
 # clay tile: the common red, a darker one (also the station and the market
-# hall), and the lowland farmhouse's
+# hall), a pantile nearer orange, and the lowland farmhouse's
 tile_red = "#c6604a"
 tile_dark = "#b5523f"
+tile_orange = "#cd7350"
 tile_farm = "#b8573f"
-# an old roof gone green
-moss = "#6e8f5c"
+# what a roof of tile or slate weathers toward as moss and lichen take it: an
+# old roof is tinted a little this way, never painted in it
+moss = "#7c8663"
 # the lead of a church roof, weathered pale
 church_lead = "#9aa0a3"
 # a lowland barn
@@ -192,14 +194,19 @@ coke_ovens = "#5a4a42"
 [thatch]
 farmhouse = "#c9a75c"
 weaver_cottage = "#d6b263"
+# a town cottage's thatch when it is new straw, and gone grey-brown with years
+cottage = "#c6a560"
+weathered = "#9b8b69"
 # a rick of corn or hay
 rick = "#d8b55e"
 
 [slate]
-# on the separate houses in town
-house = "#5b6b86"
-# on the church and the terraces
+# blue slate from the quarries, on the houses of a town: two tints, the
+# second also on the terraces
+house = "#626e86"
 town = "#55617a"
+# the thick sandstone slates of the hills
+stone = "#a59c8a"
 # on works, sheds and engine houses
 works = "#4a5468"
 upland_farm = "#5b6577"
