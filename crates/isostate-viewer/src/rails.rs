@@ -342,10 +342,11 @@ impl Net {
                     let old = !fresh_set.contains(&c);
                     // the line must clear the ground along the first of each new length too
                     let ground = drafts.iter().fold(cell.ground, |g, d| if d.a == c { g.max(d.end_ground[0]) } else if d.b == c { g.max(d.end_ground[1]) } else { g });
+                    // a station stands on the ground, and a line ends on it
+                    let grounded = cell.town || adj[c].len() < 2;
                     profile::Node {
-                        ground: if old || cell.town { cell.ground } else { ground },
-                        // a station stands on the ground
-                        fixed: if old { Some(cell.level) } else if cell.town { Some(cell.ground) } else { None },
+                        ground: if old || grounded { cell.ground } else { ground },
+                        fixed: if old { Some(cell.level) } else if grounded { Some(cell.ground) } else { None },
                         tunnel_ok: !cell.town && adj[c].len() == 2,
                     }
                 })
@@ -521,7 +522,10 @@ impl Net {
             }
         }
         let at = best.map_or(mid, |b| b.1);
-        Cell { at, dir, ground: bed_ground(g, at, perp).max(0.03), level: 0.0, slope: 0.0, town }
+        // the line clears the highest ground close about the spot, so that whichever way a
+        // length leaves it, now or in years to come, it does not start under the ground
+        let about = (0..8).map(|i| Vec2::from_angle(i as f32 * std::f32::consts::FRAC_PI_4) * 0.07).map(|o| world::height_at(g, at.x + o.x, at.y + o.y)).fold(0.0, f32::max);
+        Cell { at, dir, ground: bed_ground(g, at, perp).max(about).max(0.03), level: 0.0, slope: 0.0, town }
     }
 }
 
@@ -676,6 +680,18 @@ fn finish(d: Draft, a: &Cell, b: &Cell, subs: [f32; SUBS], holes: [bool; SUBS + 
     }
     least[0] = a.level;
     least[n] = b.level;
+    // a point or two just under the grass is not worth an arch
+    let mut i = 0;
+    while i <= n {
+        let mut j = i;
+        while j < n && under[j + 1] == under[i] {
+            j += 1;
+        }
+        if under[i] && j - i < 2 && (i..=j).all(|q| floor[q] - least[q] < LIFT) {
+            under[i..=j].fill(false);
+        }
+        i = j + 1;
+    }
     let level = profile::raise(&s, &least, grad);
     let wet = water.iter().map(|&w| w < 0.012).collect();
     Length { a: d.a, stage: d.stage, opened, len, subs, pts, level, ground, wet, under }
@@ -1094,15 +1110,18 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) 
             girder_bridge(&mut b, lk, a, c, g);
         }
         // tunnels: a portal where the line goes into the hill, and a roof over the line from
-        // there until the hill is high enough to hide a train
+        // there until the hill is high enough to hide a train. A rise the line only just goes
+        // under is a short stone arch over it, with no more of a portal than its two faces.
         for (i, j) in runs_of(n, |q| line.kind[q] == Kind::Tunnel) {
+            let short = (i..j).map(|q| line.pts[q].distance(line.pts[q + 1])).sum::<f32>() < 0.15;
+            let (i, j) = if short { (i.saturating_sub(1), (j + 1).min(n - 1)) } else { (i, j) };
             for (inside, outside) in [(i, i.checked_sub(1)), (j, (j + 1 < n).then_some(j + 1))] {
                 let Some(outside) = outside else { continue };
                 let (p, q) = (line.pts[outside], line.pts[inside]);
                 let out_dir = Vec3::new(p.x - q.x, 0.0, p.z - q.z).normalize_or(Vec3::X);
-                portal(&mut b, q, out_dir, stone, *lk.rail.tunnel_mouth);
+                portal(&mut b, q, out_dir, stone, *lk.rail.tunnel_mouth, !short);
             }
-            let shallow = |q: usize| line.ground[q] - line.pts[q].y < HIDDEN + 0.01;
+            let shallow = |q: usize| short || line.ground[q] - line.pts[q].y < HIDDEN + 0.01;
             for q in i..j {
                 if !(shallow(q) || shallow(q + 1)) {
                     continue;
@@ -1114,7 +1133,7 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) 
                     let (f0, f1) = (p0 + s0 * (hw * side) - Vec3::Y * 0.02, p1 + s1 * (hw * side) - Vec3::Y * 0.02);
                     let (e0, e1) = (p0 + s0 * (hw * side) + Vec3::Y * wall, p1 + s1 * (hw * side) + Vec3::Y * wall);
                     let (r0, r1) = (p0 + Vec3::Y * top, p1 + Vec3::Y * top);
-                    let turf = if (side > 0.0) == ((s0.x - s0.z) > 0.0) { grass } else { grass_dark };
+                    let turf = if short { shade(stone, 1.05) } else if (side > 0.0) == ((s0.x - s0.z) > 0.0) { grass } else { grass_dark };
                     if side > 0.0 {
                         b.quad(f0, f1, e1, e0, stone);
                         b.quad(e0, e1, r1, r0, turf);
@@ -1228,9 +1247,9 @@ fn viaduct(b: &mut Builder, line: &Line, i: usize, j: usize, g: &Ground, col: [f
     }
 }
 
-/// A tunnel portal: a stone face across the line with a dark arch, and wing
-/// walls stepping back into the hillside.
-fn portal(b: &mut Builder, p: Vec3, out: Vec3, stone: [f32; 4], dark: [f32; 4]) {
+/// A tunnel portal: a stone face across the line with a dark arch, and (with
+/// `wings`) wing walls stepping back into the hillside.
+fn portal(b: &mut Builder, p: Vec3, out: Vec3, stone: [f32; 4], dark: [f32; 4], wings: bool) {
     let yaw = (-out.z).atan2(out.x);
     let q = Quat::from_rotation_y(yaw);
     let at = |x: f32, y: f32, z: f32| p + q * Vec3::new(x, y, z);
@@ -1248,7 +1267,7 @@ fn portal(b: &mut Builder, p: Vec3, out: Vec3, stone: [f32; 4], dark: [f32; 4]) 
     b.quad(at(face, 0.0, w), at(face, 0.0, -w), at(face, h - w, -w), at(face, h - w, w), dark);
     // a coping along the top and wing walls either side
     b.block(at(0.0, 0.075, 0.0), 0.024, 0.095, 0.008, yaw, shade(stone, 0.9), Some(shade(stone, 1.1)), 0.0);
-    for side in [-1.0f32, 1.0] {
+    for side in [-1.0f32, 1.0].into_iter().filter(|_| wings) {
         b.block(at(0.012, -0.02, 0.05 * side), 0.03, 0.012, 0.062, yaw + 0.5 * side, stone, Some(stone), 0.0);
     }
 }
