@@ -13,6 +13,7 @@ mod boats;
 mod carts;
 mod cursor;
 mod family;
+mod fences;
 mod fields;
 mod game;
 mod icons;

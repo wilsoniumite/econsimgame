@@ -253,6 +253,7 @@ pub struct Marks {
     pub pole: Colour,
     pub finial: Colour,
     pub cloth_pale: Colour,
+    pub fence_timber: Colour,
     pub post_shade: Colour,
     pub peg: Colour,
     pub hover: Colour,

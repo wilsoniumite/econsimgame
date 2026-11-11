@@ -22,6 +22,7 @@ use glam::{Vec2, Vec3};
 
 use crate::bridge::{road_bridge, RoadBridge};
 use crate::farm::{farmstead, Farmstead};
+use crate::fence::fence;
 use crate::hash::Seed;
 use crate::houses::roof::{self, Roof};
 use crate::houses::{cottage, terrace, townhouse, Cottage, Terrace, Townhouse, BACK_PLOT_WIDTH, PLOT};
@@ -102,6 +103,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "trees", about: "Trees and bushes: broadleaf, conifer, hedgerow tree and heath bush down the rows; sizes across (a tree has no age yet).", land: Land::Pasture, build: trees },
     Sheet { name: "woods", about: "A patch of lowland wood and of upland wood, with a tree at every slot as the island has them.", land: Land::Wood, build: woods },
     Sheet { name: "heath", about: "Two patches of heath, fifteen slots each: gorse and broom at about one slot in six (and a tree at one in thirty: none here).", land: Land::Heath, build: heath },
+    Sheet { name: "fences", about: "A family's fence round a field, in four colours a family might have (the banners themselves are the interface's): timber rails stained toward the colour, and post caps painted in it.", land: Land::Pasture, build: fences },
     Sheet { name: "bridges", about: "A road bridge: a lane's and a main road's down the rows; wider rivers across (water drawn flat and matt here).", land: Land::Pasture, build: bridges },
 ];
 
@@ -326,6 +328,29 @@ fn woods(pal: &Palette) -> Vec<Vec<Cell>> {
 fn heath(pal: &Palette) -> Vec<Vec<Cell>> {
     // fifteen slots to a patch: two or three bushes, and a tree on one patch in two (neither of these)
     vec![[2, 7].into_iter().map(|id| Cell::new(format!("heath, patch {id}"), |m, site| scenes::cover(m, site, Cover::Heath, id, pal))).collect()]
+}
+
+fn fences(pal: &Palette) -> Vec<Vec<Cell>> {
+    // stand-ins for the families' banners, which are the interface's colours and not in the palette
+    let families = [(*pal.walls.lighthouse_red, "a red family's"), (*pal.vehicles.engine, "a green family's"), (*pal.slate.house, "a blue family's"), (*pal.marks.finial, "a gold family's")];
+    vec![families
+        .into_iter()
+        .map(|(colour, name)| {
+            Cell::new(format!("{name} fence\nround a field"), |m, site| {
+                // a field a quarter of a square by a sixth, a post every 0.09 or so
+                let (w, d) = (0.27, 0.18);
+                let mut line = Vec::new();
+                for (from, to, posts) in [((-w, -d), (w, -d), 6), ((w, -d), (w, d), 4), ((w, d), (-w, d), 6), ((-w, d), (-w, -d), 4)] {
+                    for i in 0..posts {
+                        let t = i as f32 / posts as f32;
+                        line.push(site.at(0.5 * (from.0 + (to.0 - from.0) * t), 0.5 * (from.1 + (to.1 - from.1) * t)));
+                    }
+                }
+                line.push(line[0]);
+                fence(&mut m.solid, &line, colour, pal);
+            })
+        })
+        .collect()]
 }
 
 fn bridges(pal: &Palette) -> Vec<Vec<Cell>> {

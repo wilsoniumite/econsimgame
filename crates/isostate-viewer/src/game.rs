@@ -940,6 +940,7 @@ fn setup_marks(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<As
     let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
     commands.spawn((Mesh3d(h.clone()), MeshMaterial3d(mat)));
     commands.insert_resource(Marks(h));
+    commands.insert_resource(crate::fences::Lines::default());
 }
 
 fn banner_rgba(i: usize) -> [f32; 4] {
@@ -947,8 +948,9 @@ fn banner_rgba(i: usize) -> [f32; 4] {
 }
 
 /// A pennant on a pole beside every family works, a low fence round every
-/// family's land, and a tall flag on the market square of every family's seat.
-fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look) -> Builder {
+/// family's open land, and a tall flag on the market square of every family's seat.
+#[allow(clippy::too_many_arguments)]
+fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look, lines: &mut crate::fences::Lines) -> Builder {
     let mut b = Builder::default();
     let pole = *lk.marks.pole;
     for (i, &(fam, town, moving)) in seats.iter().enumerate() {
@@ -989,50 +991,8 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         b.tri(top, top - Vec3::Y * 0.032, top + fly, col);
         b.tri(top, top + fly, top - Vec3::Y * 0.032, col);
     }
-    if !r.owner.is_empty() {
-        let n = r.n;
-        let own = |c: usize| r.owner[k * n + c];
-        for c in 0..n {
-            let o = own(c);
-            if o < 0 {
-                continue;
-            }
-            let (x, z) = ((c % r.w) as i32, (c / r.w) as i32);
-            let col = lerp(banner_rgba(o as usize), *lk.marks.cloth_pale, 0.25);
-            let post = lerp(col, *lk.marks.post_shade, 0.35);
-            let inset = 0.03;
-            // edges whose far side is not this family's: (dx, dz) to the neighbour, and the edge's two ends
-            let x0 = x as f32 + inset;
-            let x1 = x as f32 + 1.0 - inset;
-            let z0 = z as f32 + inset;
-            let z1 = z as f32 + 1.0 - inset;
-            for (dx, dz, a, e) in [(0, -1, (x0, z0), (x1, z0)), (0, 1, (x0, z1), (x1, z1)), (-1, 0, (x0, z0), (x0, z1)), (1, 0, (x1, z0), (x1, z1))] {
-                let (nx, nz) = (x + dx, z + dz);
-                let same = nx >= 0 && nz >= 0 && (nx as usize) < r.w && (nz as usize) < r.h && own(nz as usize * r.w + nx as usize) == o;
-                if same {
-                    continue;
-                }
-                let steps = 8;
-                let mut prev: Option<Vec3> = None;
-                for i in 0..=steps {
-                    let t = i as f32 / steps as f32;
-                    let (px, pz) = (a.0 + (e.0 - a.0) * t, a.1 + (e.1 - a.1) * t);
-                    let h = world::height_at(g, px, pz);
-                    if h < 0.03 {
-                        prev = None;
-                        continue;
-                    }
-                    let p0 = Vec3::new(px, h, pz);
-                    b.block(p0, 0.008, 0.008, 0.024, 0.0, post, Some(post), 0.01);
-                    let rail = p0 + Vec3::Y * 0.017;
-                    if let Some(q0) = prev {
-                        b.beam(q0, rail, 0.005, col);
-                    }
-                    prev = Some(rail);
-                }
-            }
-        }
-    }
+    // fences round the families' open land, along its hedge lines (fences.rs)
+    world::timed("family fences", || crate::fences::family_fences(&mut b, r, g, k, lk, lines, &banner_rgba));
     b
 }
 
@@ -1054,8 +1014,9 @@ fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize
     b.block(s + Vec3::Y * 0.05, 0.05, 0.006, 0.03, 0.3, colour, Some(colour), 0.0);
 }
 
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
-    let Some(marks) = marks else { return };
+#[allow(clippy::too_many_arguments)]
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, marks: Option<Res<Marks>>, lines: Option<ResMut<crate::fences::Lines>>, mut meshes: ResMut<Assets<Mesh>>) {
+    let (Some(marks), Some(mut lines)) = (marks, lines) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there
     let seats: Vec<(usize, usize, bool)> = if present(&tl, &data) {
@@ -1069,7 +1030,7 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
         return;
     }
     game.marks = Some(key);
-    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look);
+    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look, &mut lines);
     if present(&tl, &data) {
         for &c in &game.pending {
             stakes(&mut b, &look, &data.g, &data.r, c, banner_rgba(PLAYER));

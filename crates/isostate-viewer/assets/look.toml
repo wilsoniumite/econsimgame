@@ -355,10 +355,13 @@ jib = "#e8dcc0"
 pole = "#6b5a48"
 # the gilt ball on a seat's flagpole
 finial = "#d9b44a"
-# plain cloth: fences, and the flag of a seat still to be moved to, are the
-# family's colour mixed toward it
+# plain cloth: the flag of a seat still to be moved to is the family's colour
+# mixed toward it
 cloth_pale = "#f4ecd8"
-# fence posts are the fence's colour mixed toward this
+# the weathered timber of a family's fence: its rails are this stained toward
+# the family's colour, its posts this mixed toward the shade below, and only
+# the caps of the posts are painted in the family's colour itself
+fence_timber = "#8b7556"
 post_shade = "#5a4a3a"
 # surveyors' pegs where a works is ordered
 peg = "#e9dcc0"
