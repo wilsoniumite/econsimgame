@@ -558,9 +558,11 @@ impl Params {
     /// (the game's rules, say).
     pub fn load_over(&self, path: &std::path::Path) -> Result<Params, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        match path.extension().and_then(|e| e.to_str()) {
+        let read = match path.extension().and_then(|e| e.to_str()) {
             Some("json") => self.with_json_overrides(&text),
             _ => self.with_toml_overrides(&text),
-        }
+        };
+        // name the file: a wrong field is found after the merge, where its line is no longer known
+        read.map_err(|e| format!("{}: {e}", path.display()))
     }
 }

@@ -95,6 +95,16 @@ pub fn parse_rules(v: &str) -> Result<Rules, String> {
     Rules::parse(v).ok_or_else(|| format!("--rules: {v:?} is not port or game"))
 }
 
+/// A run that ends before it starts has no years in it: `sim::start` would ask
+/// for series of a negative length. Refused here, in words.
+pub fn check_end_year(P: &Params, content: &Content) -> Result<(), String> {
+    let end = P.end_year.unwrap_or(content.end_year);
+    if end < content.start_year {
+        return Err(format!("the end year, {end}, is before the start year, {}", content.start_year));
+    }
+    Ok(())
+}
+
 pub fn main_with_args(args: &[String]) -> Result<(), String> {
     let mut it = args.iter();
     match it.next().map(String::as_str) {
@@ -155,6 +165,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         Some(p) => load_content(p)?,
         None => rules.content(),
     };
+    check_end_year(&P, &content)?;
     let t0 = std::time::Instant::now();
     run_scenario(&P, content, &out, !quiet, lite)?;
     if !quiet {
