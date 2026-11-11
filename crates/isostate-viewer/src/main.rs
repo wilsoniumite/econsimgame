@@ -11,6 +11,7 @@
 
 mod boats;
 mod carts;
+mod chart;
 mod cursor;
 mod family;
 mod fields;
@@ -21,11 +22,14 @@ mod live;
 mod look;
 mod meshkit;
 mod network;
+mod overlay;
 mod plan;
 mod rails;
 mod replay;
 mod rivers;
+mod saves;
 mod scatter;
+mod script;
 mod shots;
 mod terrain;
 mod trains;
@@ -83,6 +87,12 @@ struct Args {
     advance: usize,
     /// give the player a works and some land at the start (for screenshots)
     demo: bool,
+    /// a new game was asked for (--new or --seed): the island's autosave is not gone on with
+    fresh: bool,
+    /// a saved game to go on with
+    load: Option<String>,
+    /// where to save, instead of the island's autosave
+    save: Option<String>,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -105,6 +115,10 @@ struct Args {
     loupe: u32,
     /// how far the lab turns each thing about its own middle, in degrees
     lab_turn: Option<f32>,
+    /// the map overlay to start with: rent, areas, reach, price (or price:coal), wages
+    overlay: Option<String>,
+    /// steps to play as a player would, printing what happens (see script.rs)
+    script: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -119,9 +133,112 @@ struct ShotSpec {
     season: Option<f32>,
     /// which side panel to show: Some(None) closes it
     tab: Option<Option<ui::Tab>>,
+    /// the map overlay for this shot, as `overlay::parse` reads it
+    overlay: Option<String>,
+    /// what the Markets panel shows, as `ui::markets_word` knows it: "island" or "open:GOOD"
+    markets: Option<String>,
 }
 
+const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
+
+  isostate-viewer [RUN.bin] [options]
+
+With no run named, a new game starts.
+
+  --new                a new game, whatever is saved (with no run named and nothing else
+                       asked for, the island's saved game is gone on with)
+  --seed N             which island (7); a new game
+  --load FILE          go on with this saved game
+  --save FILE          keep the game in FILE instead of the island's autosave
+  --families N         how many great families (6)
+  --advance N          play N years before the game opens
+  --demo               the family builds a works and buys land in its first year
+  --year Y             open on this year
+  --size WxH           the size of the window or the pictures (1600x1000)
+  --at X,Z             where the camera looks, in map cells
+  --look FILE          a look file laid over the standard look (two numbers are taken as --at)
+  --yaw D              the camera's turn, in degrees
+  --pitch D            the camera's tilt, in degrees (52)
+  --dist N             the camera's distance
+  --no-tilt            no miniature focus
+  --season F           hold the season: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
+  --pick X,Z           start with this spot clicked
+  --overlay NAME       start with a map view: rent, areas, reach, price, price:GOOD, wages
+                       or plain
+  --describe X,Z       print what a click there would show, and stop
+
+Pictures and checks with no window:
+
+  --view PATH,YEAR,X,Z,YAW,PITCH,DIST[,SEASON][,WORDS]
+                       a picture; give it once for each. Empty values fall back to
+                       the opening view. WORDS, in any order: a panel (family, holdings,
+                       markets, news or none), a map view as for --overlay, and island
+                       or open:GOOD for what the Markets panel shows
+  --shot PATH          a picture of the opening view
+  --wait S             seconds before the first picture, for shaders to compile (45)
+  --frames N           frames to let a picture settle (40)
+  --ground-debug       draw the ground as flat class colours and nothing else
+  --class-map          write the CPU's land class under every pixel of each view, and stop
+  --script STEPS       play keys and clicks and print what happens (see src/script.rs)
+
+The standard shots (src/shots.rs) and the lab (src/lab.rs):
+
+  --shots DIR          play the whole game, take the standard shots into DIR, and stop
+  --shots-compare DIR  with --shots: set each beside the shot of the same name in DIR
+  --shots-note TEXT    with --shots: a line for the sheet, such as the commit
+  --compare-shots A B  compare two sets of standard shots already taken, and stop
+  --lab SHEET          contact sheets of the scenery's generators (a sheet, all, or list), and stop
+  --out DIR            with --lab: where its pictures go
+  --tilt               with --lab: through the miniature focus
+  --loupe N            with --lab: enlarge the close picture N times (1 to 8)
+  --turn D             with --lab: turn each thing D degrees about its middle
+
+  --help               this";
+
 fn parse_args() -> Args {
+    let v: Vec<String> = std::env::args().skip(1).collect();
+    match parse(&v) {
+        Ok(a) => a,
+        // asked for
+        Err(e) if e.is_empty() => {
+            println!("{USAGE}");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("{e}\n\n{USAGE}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// A value on the command line as a number. One that cannot be read is
+/// refused, like an option that is not one, rather than replaced by the
+/// default without a word: --advance 3O would otherwise open on 1750.
+fn number<T: std::str::FromStr>(opt: &str, s: &str) -> Result<T, String> {
+    let s = s.trim();
+    // "nan" and "inf" read as numbers, and would hang a wait or blank a season
+    let endless = s.parse::<f32>().is_ok_and(|x| !x.is_finite());
+    s.parse().ok().filter(|_| !endless).ok_or_else(|| format!("{opt}: {s} is not a number it can take"))
+}
+
+/// Two numbers with `sep` between them, as in --look 31.5,29.5 and --size 1600x1000.
+fn pair<T: std::str::FromStr>(opt: &str, s: &str, sep: char) -> Result<(T, T), String> {
+    match s.split_once(sep) {
+        Some((a, b)) => Ok((number(opt, a)?, number(opt, b)?)),
+        None => Err(format!("{opt}: {s} should be two numbers with {} between them", if sep == 'x' { "an x" } else { "a comma" })),
+    }
+}
+
+/// A value that names something (a directory, a sheet): it must be there.
+fn named(opt: &str, s: String, what: &str) -> Result<String, String> {
+    if s.trim().is_empty() { Err(format!("{opt} needs {what} after it")) } else { Ok(s) }
+}
+
+/// Read the command line. An option that is not one is refused, with the
+/// list of those there are, rather than dropped: a mistyped --sesaon would
+/// otherwise run as if it had not been given. An empty error asks for the list.
+/// A value that cannot be read is refused in the same way.
+fn parse(v: &[String]) -> Result<Args, String> {
     let mut a = Args {
         run: "runs/landlords/run.bin".into(),
         year: None,
@@ -144,6 +261,9 @@ fn parse_args() -> Args {
         families: 6,
         advance: 0,
         demo: false,
+        fresh: false,
+        load: None,
+        save: None,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -156,102 +276,133 @@ fn parse_args() -> Args {
         lab_tilt: false,
         loupe: 1,
         lab_turn: None,
+        overlay: None,
+        script: None,
     };
-    let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < v.len() {
-        let next = |i: usize| v.get(i + 1).cloned().unwrap_or_default();
-        match v[i].as_str() {
-            "--year" => { a.year = next(i).parse().ok(); i += 1; }
-            "--shot" => { a.shot = Some(next(i)); i += 1; }
+        let next = |i: usize| v.get(i + 1).cloned().ok_or_else(|| format!("{} needs a value after it", v[i]));
+        let opt = v[i].as_str();
+        match opt {
+            "--year" => { a.year = Some(number(opt, &next(i)?)?); i += 1; }
+            "--shot" => { a.shot = Some(next(i)?); i += 1; }
             "--size" => {
-                let s = next(i);
-                if let Some((w, h)) = s.split_once('x') { a.size = (w.parse().unwrap_or(1600), h.parse().unwrap_or(1000)); }
+                a.size = pair(opt, &next(i)?, 'x')?;
+                if a.size.0 == 0 || a.size.1 == 0 {
+                    return Err(format!("{opt}: a picture needs a width and a height"));
+                }
                 i += 1;
             }
-            "--at" => {
-                let s = next(i);
-                if let Some((x, z)) = s.split_once(',') { a.at = Some((x.parse().unwrap_or(60.0), z.parse().unwrap_or(42.0))); }
-                i += 1;
-            }
+            "--at" => { a.at = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--look" => {
                 // a look file; two numbers are the point to look at, which --look used to mean
-                let s = next(i);
-                match s.split_once(',').map(|(x, z)| (x.parse::<f32>(), z.parse::<f32>())) {
-                    Some((Ok(x), Ok(z))) => a.at = Some((x, z)),
+                let s = next(i)?;
+                match s.split_once(',') {
+                    Some((x, z)) if x.trim().parse::<f32>().is_ok() || z.trim().parse::<f32>().is_ok() => a.at = Some(pair(opt, &s, ',')?),
+                    _ if s.is_empty() => return Err(format!("{opt} needs the name of a look file")),
                     _ => a.look_file = Some(s),
                 }
                 i += 1;
             }
-            "--yaw" => { a.yaw = next(i).parse().unwrap_or(0.0); i += 1; }
-            "--pitch" => { a.pitch = next(i).parse().unwrap_or(shots::PLAY_PITCH); i += 1; }
-            "--dist" => { a.dist = next(i).parse().ok(); i += 1; }
-            "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
-            "--wait" => { a.wait = next(i).parse().ok(); i += 1; }
+            "--yaw" => { a.yaw = number(opt, &next(i)?)?; i += 1; }
+            "--pitch" => { a.pitch = number(opt, &next(i)?)?; i += 1; }
+            "--dist" => { a.dist = Some(number(opt, &next(i)?)?); i += 1; }
+            "--frames" => { a.frames = number(opt, &next(i)?)?; i += 1; }
+            "--wait" => { a.wait = Some(number(opt, &next(i)?)?); i += 1; }
             "--no-tilt" => a.tilt = false,
-            "--new" => a.new = true,
-            "--seed" => { a.seed = next(i).parse().unwrap_or(7); i += 1; }
-            "--families" => { a.families = next(i).parse().unwrap_or(6); i += 1; }
-            "--advance" => { a.advance = next(i).parse().unwrap_or(0); i += 1; }
+            "--new" => { a.new = true; a.fresh = true; }
+            "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
+            "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
+            "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
+            "--families" => { a.families = number(opt, &next(i)?)?; i += 1; }
+            "--advance" => { a.advance = number(opt, &next(i)?)?; i += 1; }
             "--demo" => a.demo = true,
-            "--pick" => {
-                let s = next(i);
-                if let Some((x, z)) = s.split_once(',') { a.pick = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
-                i += 1;
-            }
+            "--pick" => { a.pick = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
-            "--season" => { a.season = next(i).parse().ok(); i += 1; }
-            "--shots" => { a.shots = Some(next(i)); i += 1; }
-            "--shots-compare" => { a.shots_compare = Some(next(i)); i += 1; }
-            "--shots-note" => { a.shots_note = next(i); i += 1; }
-            "--compare-shots" => { a.compare_shots = Some((next(i), next(i + 1))); i += 2; }
-            "--lab" => { a.lab = Some(next(i)); i += 1; }
-            "--out" => { a.out = Some(next(i)); i += 1; }
-            "--tilt" => a.lab_tilt = true,
-            "--loupe" => { a.loupe = next(i).parse().unwrap_or(1).clamp(1, 8); i += 1; }
-            "--turn" => { a.lab_turn = next(i).parse().ok(); i += 1; }
-            "--describe" => {
-                let s = next(i);
-                if let Some((x, z)) = s.split_once(',') { a.describe = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
+            "--overlay" => {
+                let w = next(i)?;
+                if !overlay::is_word(&w) {
+                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain"));
+                }
+                a.overlay = Some(w);
                 i += 1;
             }
+            "--script" => {
+                let s = next(i)?;
+                script::check(&s).map_err(|e| format!("{opt}: {e}"))?;
+                a.script = Some(s);
+                i += 1;
+            }
+            "--season" => { a.season = Some(number(opt, &next(i)?)?); i += 1; }
+            "--shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); i += 1; }
+            "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
+            "--shots-note" => { a.shots_note = next(i)?; i += 1; }
+            "--compare-shots" => {
+                match (v.get(i + 1), v.get(i + 2)) {
+                    (Some(x), Some(y)) => a.compare_shots = Some((named(opt, x.clone(), "two directories")?, named(opt, y.clone(), "two directories")?)),
+                    _ => return Err(format!("{opt} needs two directories after it")),
+                }
+                i += 2;
+            }
+            "--lab" => { a.lab = Some(named(opt, next(i)?, "a sheet (or all, or list)")?); i += 1; }
+            "--out" => { a.out = Some(named(opt, next(i)?, "a directory")?); i += 1; }
+            "--tilt" => a.lab_tilt = true,
+            "--loupe" => { a.loupe = number::<u32>(opt, &next(i)?)?.clamp(1, 8); i += 1; }
+            "--turn" => { a.lab_turn = Some(number(opt, &next(i)?)?); i += 1; }
+            "--describe" => { a.describe = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--view" => {
-                // path,year,x,z,yaw,pitch,dist[,season][,tab]: a number after dist is a season, a word a panel
-                let p: Vec<String> = next(i).split(',').map(String::from).collect();
-                let num = |j: usize| p.get(j).and_then(|s| s.parse::<f32>().ok());
+                // path,year,x,z,yaw,pitch,dist[,season][,words]: a number after dist is a season; a word
+                // is a panel, a map overlay, or what the Markets panel shows
+                let p: Vec<String> = next(i)?.split(',').map(String::from).collect();
+                // an empty value falls back; one that is not a number is refused
+                let num = |j: usize| -> Result<Option<f32>, String> {
+                    match p.get(j).map(|s| s.trim()) {
+                        None | Some("") => Ok(None),
+                        Some(s) => number(opt, s).map(Some),
+                    }
+                };
+                let words: Vec<&String> = p.iter().skip(7).filter(|s| !s.is_empty() && s.parse::<f32>().is_err()).collect();
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
-                    year: num(1).map(|y| y as i32),
-                    look: match (num(2), num(3)) { (Some(x), Some(z)) => Some((x, z)), _ => None },
-                    yaw: num(4).unwrap_or(0.0),
-                    pitch: num(5).unwrap_or(shots::PLAY_PITCH),
-                    dist: num(6),
+                    year: num(1)?.map(|y| y as i32),
+                    look: match (num(2)?, num(3)?) { (Some(x), Some(z)) => Some((x, z)), _ => None },
+                    yaw: num(4)?.unwrap_or(0.0),
+                    pitch: num(5)?.unwrap_or(shots::PLAY_PITCH),
+                    dist: num(6)?,
                     season: p.iter().skip(7).find_map(|s| s.parse::<f32>().ok()),
-                    tab: p.iter().skip(7).find(|s| !s.is_empty() && s.parse::<f32>().is_err()).map(|s| ui::Tab::parse(s)),
+                    tab: words.iter().find(|s| !overlay::is_word(s) && !ui::markets_word(s)).map(|s| ui::Tab::parse(s)),
+                    overlay: words.iter().find(|s| overlay::is_word(s)).map(|s| s.to_string()),
+                    markets: words.iter().find(|s| ui::markets_word(s)).map(|s| s.to_string()),
                 });
                 i += 1;
             }
-            s if !s.starts_with("--") => { a.run = s.to_string(); a.named_run = true; }
-            _ => {}
+            "--help" | "-h" => return Err(String::new()),
+            s if !s.starts_with('-') => { a.run = s.to_string(); a.named_run = true; }
+            s => return Err(format!("{s} is not an option")),
         }
         i += 1;
     }
-    if !a.named_run {
+    if !a.named_run || a.load.is_some() {
         a.new = true;
-    }
-    if a.shots.is_some() {
-        // the standard shots run from the first year to the last, so play the whole game first
-        a.advance = usize::MAX - 1;
     }
     // options that only mean something beside another say so, rather than being passed over in silence
     if a.lab.is_none() && (a.out.is_some() || a.lab_tilt || a.loupe != 1 || a.lab_turn.is_some()) {
         eprintln!("--out, --tilt, --turn and --loupe go with --lab and do nothing without it");
     }
+    if a.script.is_some() && (a.shots.is_some() || a.shot.is_some() || !a.views.is_empty()) {
+        // a scripted run takes its own pictures, where its steps say
+        eprintln!("--script takes pictures with its shot:PATH step: --view, --shot and --shots are passed over beside it");
+        a.shots = None;
+    }
     if a.shots.is_none() && (a.shots_compare.is_some() || !a.shots_note.is_empty()) {
         eprintln!("--shots-compare and --shots-note go with --shots and do nothing without it (two sets already shot are compared with --compare-shots A B)");
     }
-    a
+    if a.shots.is_some() {
+        // the standard shots run from the first year to the last, so play the whole game first
+        a.advance = usize::MAX - 1;
+    }
+    Ok(a)
 }
 
 // ------------------------------------------------------------------ resources and markers
@@ -320,10 +471,31 @@ struct ShotPlan {
     default_season: Option<f32>,
 }
 
+/// A piece of news shown as it happens. It carries its own words: the list
+/// of news is sorted again whenever a live game adds to it, so a place in
+/// that list does not stay the same item.
+#[derive(Clone, Debug, PartialEq)]
+struct Toast {
+    kind: String,
+    title: String,
+    year: i32,
+    /// when it went up, in seconds since the app started
+    since: f32,
+}
+
 #[derive(Resource, Default)]
 struct Toasts {
-    shown: Vec<(usize, f32)>,
+    shown: Vec<Toast>,
     last_k: Option<usize>,
+}
+
+/// The major news of a year, to go up as toasts.
+fn year_toasts(events: &[replay::Event], year: i32, now: f32) -> Vec<Toast> {
+    events
+        .iter()
+        .filter(|e| e.year.floor() as i32 == year && e.weight >= 0.6)
+        .map(|e| Toast { kind: e.kind.clone(), title: e.title.clone(), year, since: now })
+        .collect()
 }
 
 #[derive(Resource)]
@@ -427,8 +599,24 @@ fn main() {
     }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
-        eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
-        match live::start(args.seed, args.families, args.advance, args.demo) {
+        let opening = live::Opening {
+            seed: args.seed,
+            families: args.families,
+            advance: args.advance,
+            demo: args.demo,
+            load: args.load.clone(),
+            save: args.save.clone(),
+            fresh: args.fresh,
+            // the standard shots are pictures too; and a scripted run is a check, not the player's
+            // game, so it leaves the autosave alone unless ISOSTATE_SAVES names a folder to keep one in
+            shots: !args.views.is_empty()
+                || args.shot.is_some()
+                || args.describe.is_some()
+                || args.class_map
+                || args.shots.is_some()
+                || (args.script.is_some() && std::env::var_os("ISOSTATE_SAVES").is_none_or(|v| v.is_empty())),
+        };
+        match live::start(&opening) {
             Ok((r, l, f)) => (r, Some(l), Some(f)),
             Err(e) => {
                 eprintln!("the game could not start: {e}");
@@ -436,10 +624,17 @@ fn main() {
             }
         }
     } else {
+        if args.save.is_some() {
+            eprintln!("--save is for a game: {} is a recorded run, and nothing is saved", args.run);
+        }
         match replay::load(&args.run) {
             Ok(r) => (r, None, None),
             Err(e) => {
-                eprintln!("{e}\nMake a run first, for example:\n  cargo run --release -p isostate-core -- run --seed 7 --out runs/rust7\nor start a new game with --new");
+                eprintln!("{e}");
+                // how to make a run is the answer to a file that is not there, not to one that is damaged
+                if !std::path::Path::new(&args.run).exists() {
+                    eprintln!("Make a run first, for example:\n  cargo run --release -p isostate-core -- run --seed 7 --out runs/rust7\nor start a new game with --new");
+                }
                 std::process::exit(1);
             }
         }
@@ -447,7 +642,7 @@ fn main() {
     let g = world::build_ground(&r);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
-    eprintln!("prepared {} in {:.1}s", if args.new { "the new game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
+    eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
     if let Some(me) = families.as_ref().and_then(|f| f.player()) {
         let at = r.header.towns.get(me.seat).map(|t| cen[t.node]).unwrap_or((0.0, 0.0));
@@ -463,6 +658,14 @@ fn main() {
             eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
         }
     }
+    // an overlay word that cannot be shown is refused, so a mistyped shot is not taken for the plain map
+    // (a word that is no map view was refused with the options; a good is known only with the run)
+    for w in args.overlay.iter().chain(args.views.iter().filter_map(|v| v.overlay.as_ref())) {
+        if let Some(why) = overlay::complaint(w, &r) {
+            eprintln!("--overlay: {why}");
+            std::process::exit(2);
+        }
+    }
     let latest = r.filled.clamp(1, r.ny) - 1;
     let k0 = match args.year {
         Some(y) => ((y - r.y0).max(0) as usize).min(latest),
@@ -472,7 +675,15 @@ fn main() {
         // print what a click at this spot would show, then stop
         let hit = Vec3::new(x, world::height_at(&g, x, z), z);
         match choose(&r, &slots, &cen, hit, k0) {
-            Some(p) => println!("{}", describe(&r, p, k0)),
+            Some(p) => {
+                println!("{}", describe(&r, p, k0));
+                // with --overlay, what that overlay says of the spot, as the inspector would
+                if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
+                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0)) {
+                        println!("\n{line}");
+                    }
+                }
+            }
             None => println!("nothing there"),
         }
         return;
@@ -508,7 +719,7 @@ fn main() {
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
-        views.insert(0, ShotSpec { path, year: args.year, look: args.at, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
+        views.insert(0, ShotSpec { path, year: args.year, look: args.at, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None, overlay: None, markets: None });
     }
     // a picture (or a class map) whose directory is not there would be made and then not written
     for v in &views {
@@ -554,7 +765,7 @@ fn main() {
             about: shots::About { what, note: args.shots_note.clone() },
         });
     }
-    let headless = !views.is_empty();
+    let headless = !views.is_empty() || args.script.is_some();
     if headless {
         app.add_plugins(
             DefaultPlugins
@@ -573,6 +784,8 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
+    let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
+    app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
@@ -582,17 +795,21 @@ fn main() {
         .insert_resource(Tilt(args.tilt && look.tilt_shift.on))
         .insert_resource(TheLook(look))
         .insert_resource(ForcedSeason(args.season))
+        .init_resource::<SeasonClock>()
         .insert_resource(GroundDebug(args.ground_debug))
         .init_resource::<Toasts>()
         .insert_resource(picked)
         .init_resource::<Rails>()
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
+        .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain())
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
+    // the seasons' clock is read by the ground, the trees, the sun and the date alike
+    app.add_systems(Update, season_clock.after(advance_time).before(seasons));
     if let Some(l) = live {
         app.insert_resource(l);
     }
@@ -602,7 +819,12 @@ fn main() {
     if args.ground_debug {
         app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
     }
-    if headless {
+    if let Some(s) = &args.script {
+        if let Err(e) = script::add(&mut app, s, args.size) {
+            eprintln!("--script: {e}");
+            std::process::exit(2);
+        }
+    } else if headless {
         // screenshots wait for the renderer's shaders by themselves (take_shot); the fixed wait
         // is kept for software renderers, and the standard shots do without it
         let wait = args.wait.unwrap_or(if args.shots.is_some() { 0.0 } else { 45.0 });
@@ -692,10 +914,11 @@ fn setup_world(
     let terrain_mat = ground_mats.add(terrain::GroundMaterial {
         base: StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() },
         extension: terrain::Patchwork {
-            params: terrain::patchwork_params(r, g, season_phase(&tl, forced.0), debug.0),
+            params: terrain::patchwork_params(r, g, season_phase(&SeasonClock::default(), forced.0), debug.0),
             year: year_cells.clone(),
             fixed: fixed_cells,
             paint: lk.land.uniform(),
+            overlay: images.add(overlay::blank(r)),
         },
     });
     for chunk in terrain::terrain_chunks(g) {
@@ -994,16 +1217,67 @@ fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
     tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
 }
 
-/// Phase of the year: while playing the months roll by; a paused year shows high summer.
-fn season_phase(tl: &Timeline, forced: Option<f32>) -> f32 {
-    if let Some(f) = forced {
-        return f.rem_euclid(1.0);
+/// One round of the seasons never takes less than this many seconds, however
+/// fast the years go by.
+const SEASON_ROUND_SECS: f32 = 24.0;
+
+/// The seasons' own clock. A year lasts two seconds at 1x and a quarter of a
+/// second at 8x, and a season tied to it strobes the fields and the sun. So
+/// the seasons turn in real time while the game plays: with the year when the
+/// years go slowly enough, and at one round in `SEASON_ROUND_SECS` when they
+/// go faster. Paused, the season holds where it is; it never jumps.
+#[derive(Resource, Clone, Copy, Debug)]
+struct SeasonClock {
+    /// phase of the year: 0 midwinter, 0.25 spring, 0.5 midsummer, 0.75 autumn
+    phase: f32,
+    /// the season on screen is the date's, so the top bar may name it
+    follows: bool,
+}
+
+impl Default for SeasonClock {
+    /// A game opens in high summer.
+    fn default() -> Self {
+        SeasonClock { phase: 0.55, follows: false }
     }
-    if tl.playing { tl.t.fract() } else { 0.55 }
+}
+
+impl SeasonClock {
+    /// Move on by `dt` seconds of real time, with the year's clock at `t`
+    /// years and running at `speed` years a second (or stopped).
+    fn advance(&mut self, playing: bool, speed: f32, t: f32, dt: f32) {
+        // a long frame must not show as a jump of the season
+        let dt = dt.clamp(0.0, 0.1);
+        let cap = 1.0 / SEASON_ROUND_SECS;
+        self.follows = playing && speed <= cap;
+        if !playing {
+            return;
+        }
+        if self.follows {
+            // ease onto the date the short way round, then stay on it
+            let d = (t.fract() - self.phase + 0.5).rem_euclid(1.0) - 0.5;
+            self.phase += d * (1.0 - (-4.0 * dt).exp());
+        } else {
+            self.phase += cap * dt;
+        }
+        self.phase = self.phase.rem_euclid(1.0);
+    }
+}
+
+fn season_clock(time: Res<Time>, tl: Res<Timeline>, mut clock: ResMut<SeasonClock>) {
+    clock.advance(tl.playing, tl.speed, tl.t, time.delta_secs());
+}
+
+/// Phase of the year for the ground, the trees, the sun and the date: the
+/// seasons' clock, or the season a screenshot asked for.
+fn season_phase(clock: &SeasonClock, forced: Option<f32>) -> f32 {
+    match forced {
+        Some(f) => f.rem_euclid(1.0),
+        None => clock.phase,
+    }
 }
 
 fn seasons(
-    tl: Res<Timeline>,
+    clock: Res<SeasonClock>,
     sm: Res<SeasonMats>,
     look: Res<TheLook>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1011,7 +1285,7 @@ fn seasons(
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
     mut last: Local<Option<i32>>,
 ) {
-    let ph = season_phase(&tl, sm.forced);
+    let ph = season_phase(&clock, sm.forced);
     // only touch the materials when the season visibly moves, about twice a week
     let step = (ph * 192.0).floor() as i32;
     if *last == Some(step) {
@@ -1040,7 +1314,11 @@ fn leaf_tint(lk: &Look, phase: f32) -> Color {
     Color::srgb(t[0], t[1], t[2])
 }
 
-fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: Res<Data>, mut tilt: ResMut<Tilt>) {
+fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: Res<Data>, mut tilt: ResMut<Tilt>, cards: Res<game::CardOpen>) {
+    // with a decision, the welcome or the end card up, the keys are the card's
+    if cards.0 {
+        return;
+    }
     let last = data.latest() as f32;
     if keys.just_pressed(KeyCode::Space) {
         if !tl.playing && tl.t >= (data.r.ny - 1) as f32 && !data.live {
@@ -1062,18 +1340,23 @@ fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: R
     if keys.just_pressed(KeyCode::PageDown) {
         tl.t = (tl.t.floor() - 10.0).max(0.0);
     }
+    // faster and slower go from one speed button to the next
     if keys.just_pressed(KeyCode::ArrowUp) {
-        tl.speed = (tl.speed * 1.5).min(20.0);
+        tl.speed = ui::step_speed(tl.speed, true);
     }
     if keys.just_pressed(KeyCode::ArrowDown) {
-        tl.speed = (tl.speed / 1.5).max(0.3);
+        tl.speed = ui::step_speed(tl.speed, false);
     }
     if keys.just_pressed(KeyCode::KeyT) {
         tilt.0 = !tilt.0;
     }
 }
 
-fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>) {
+fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>, game: Res<game::Game>) {
+    // a card that waits for the player stops the clock, however it came to be open
+    if game.modal() && tl.playing {
+        tl.playing = false;
+    }
     if !tl.playing {
         return;
     }
@@ -1242,14 +1525,24 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     }
 }
 
+/// A number of people: whole, with a comma for the thousands, in millions from a million up.
 fn fmt_pop(p: f32) -> String {
-    if p >= 1e6 { format!("{:.2} million", p / 1e6) } else { format!("{:.0},{:03.0}", (p / 1000.0).floor(), p % 1000.0) }
+    // round first, so that 12,999.6 is 13,000 and not 12,1000
+    let n = if p.is_finite() { p.round().max(0.0) as u64 } else { 0 };
+    if n >= 1_000_000 {
+        format!("{:.2} million", n as f64 / 1e6)
+    } else if n >= 1000 {
+        format!("{},{:03}", n / 1000, n % 1000)
+    } else {
+        format!("{n}")
+    }
 }
 
 fn labels(
     data: Res<Data>,
     tl: Res<Timeline>,
     o: Res<Orbit>,
+    ov: Res<overlay::MapOverlay>,
     cams: Query<(&Camera, &GlobalTransform), With<MainCam>>,
     mut q: Query<(&TownLabel, &mut Node, &mut Visibility, &Children)>,
     mut boxes: Query<&Children, Without<TownLabel>>,
@@ -1260,8 +1553,9 @@ fn labels(
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     // rank towns by size so only the bigger ones are named when zoomed out
     let mut order: Vec<(usize, f32)> = (0..r.n_towns).filter(|&t| r.town_active[k * r.n_towns + t] > 0).map(|t| (t, r.town_urban[k * r.n_towns + t])).collect();
-    order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    let max_shown = if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
+    order.sort_by(|a, b| ui::biggest_first(a.1, b.1));
+    // a map view that goes by market towns names every one of them
+    let max_shown = if ov.names_towns() { 99 } else if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
     let biggest = order.first().map(|x| x.1).unwrap_or(1.0).max(1.0);
     for (lab, mut node, mut vis, children) in &mut q {
         let t = lab.0;
@@ -1281,7 +1575,7 @@ fn labels(
                 node.left = Val::Px(v.x - 110.0);
                 node.top = Val::Px(v.y - 34.0);
                 *vis = Visibility::Visible;
-                let size = 13.0 + 7.0 * (order[rank].1 / biggest).sqrt();
+                let size = 13.0 + 7.0 * (order[rank].1 / biggest).max(0.0).sqrt();
                 for c in children.iter() {
                     if let Ok(inner) = boxes.get_mut(c) {
                         for tc in inner.iter() {
@@ -1322,11 +1616,7 @@ fn toasts(
         if jump {
             st.shown.clear();
         }
-        for (i, e) in r.header.events.iter().enumerate() {
-            if e.year.floor() as i32 == year && e.weight >= 0.6 {
-                st.shown.push((i, now));
-            }
-        }
+        st.shown.extend(year_toasts(&r.header.events, year, now));
         while st.shown.len() > 3 {
             st.shown.remove(0);
         }
@@ -1334,7 +1624,7 @@ fn toasts(
         changed = true;
     }
     let before = st.shown.len();
-    st.shown.retain(|&(_, t0)| now - t0 < 7.0);
+    st.shown.retain(|t| now - t.since < 7.0);
     changed |= st.shown.len() != before;
     if !changed {
         return;
@@ -1348,8 +1638,7 @@ fn toasts(
     let f = &font.0;
     let shown = st.shown.clone();
     commands.entity(boxe).with_children(|p| {
-        for (i, _) in shown.iter().rev() {
-            let e = &r.header.events[*i];
+        for e in shown.iter().rev() {
             p.spawn((
                 Node {
                     flex_direction: FlexDirection::Column,
@@ -1363,7 +1652,7 @@ fn toasts(
                 BorderColor::all(kind_colour(&e.kind)),
             ))
             .with_children(|q| {
-                q.spawn(text(f, &format!("{} \u{00b7} {}", kind_label(&e.kind), e.year.floor() as i32), 13.0, kind_colour(&e.kind)));
+                q.spawn(text(f, &format!("{} \u{00b7} {}", kind_label(&e.kind), e.year), 13.0, kind_colour(&e.kind)));
                 q.spawn(text(f, &e.title, 18.0, INK));
             });
         }
@@ -1380,6 +1669,7 @@ fn take_shot(
     mut o: ResMut<Orbit>,
     mut ui: ResMut<UiState>,
     mut sm: ResMut<SeasonMats>,
+    mut ov: ResMut<overlay::MapOverlay>,
     data: Res<Data>,
     sheet: Option<Res<shots::Sheet>>,
     waiting: Res<PipelinesWaiting>,
@@ -1407,12 +1697,23 @@ fn take_shot(
     // point the camera, the clock, the calendar and the side panel at this view
     let r = &data.r;
     if let Some(y) = v.year {
-        tl.t = (y - r.y0).clamp(0, r.ny as i32 - 1) as f32;
+        // a game has only the years played so far: a later one would draw an empty island
+        tl.t = (y - r.y0).clamp(0, data.latest() as i32) as f32;
     }
     if let Some(tab) = v.tab {
         if ui.tab != tab {
             ui.tab = tab;
         }
+    }
+    if let Some((kind, good)) = v.overlay.as_deref().and_then(|w| overlay::parse(w, r)) {
+        let good = good.unwrap_or(ov.good);
+        if ov.kind != kind || ov.good != good {
+            ov.set(kind);
+            ov.good = good;
+        }
+    }
+    if let Some(w) = v.markets.as_deref() {
+        ui.show_markets(w, r);
     }
     let season = v.season.or(plan.default_season);
     if sm.forced != season {
@@ -1568,8 +1869,10 @@ fn pick(
     tl: Res<Timeline>,
     ui: Res<UiState>,
     mut picked: ResMut<Picked>,
+    cards: Res<game::CardOpen>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
+    // Esc on an open card puts that off and leaves the note alone
+    if keys.just_pressed(KeyCode::Escape) && !cards.0 {
         picked.what = None;
     }
     let Ok(window) = windows.single() else { return };
@@ -1622,6 +1925,15 @@ fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: 
         }
     }
     None
+}
+
+/// The square a picked thing stands on.
+fn pick_cell(r: &Replay, what: Pick) -> usize {
+    match what {
+        Pick::Firm(f) => r.header.firms[f].cell,
+        Pick::Town(t) => r.header.towns[t].node,
+        Pick::Cell(c) => c,
+    }
 }
 
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
@@ -1699,21 +2011,28 @@ fn inspect_panel(
     picked: Res<Picked>,
     tl: Res<Timeline>,
     data: Res<Data>,
+    ov: Res<overlay::MapOverlay>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
-    mut last: Local<Option<(Option<Pick>, usize)>>,
+    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    if *last == Some((picked.what, k)) {
+    let key = (picked.what, k, ov.kind, ov.good);
+    if *last == Some(key) {
         return;
     }
-    *last = Some((picked.what, k));
+    *last = Some(key);
     for mut v in &mut panel {
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
-        let s = describe(&data.r, w, k);
+        let mut s = describe(&data.r, w, k);
+        // with a map overlay on, what it says of this square
+        if let Some(line) = ov.said(&data.r, k, pick_cell(&data.r, w)) {
+            s.push_str("\n\n");
+            s.push_str(&line);
+        }
         let (head, body) = s.split_once('\n').unwrap_or((s.as_str(), ""));
         for mut t in &mut title {
             t.0 = head.to_string();
@@ -1739,5 +2058,226 @@ fn move_trains(time: Res<Time>, rails: Res<Rails>, mut q: Query<(&mut Train, &mu
         let (pos, yaw) = p.at(t.s);
         tf.translation = pos;
         tf.rotation = Quat::from_rotation_y(yaw + if t.dir < 0.0 { std::f32::consts::PI } else { 0.0 });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run a season clock for some seconds at 30 frames a second; the year's
+    /// clock runs beside it at `speed`. Returns the clock, how far the season
+    /// went in all, and the biggest move between two frames.
+    fn run_seasons(mut c: SeasonClock, playing: bool, speed: f32, secs: f32) -> (SeasonClock, f32, f32) {
+        let dt = 1.0 / 30.0;
+        let (mut t, mut went, mut jump) = (10.0f32, 0.0f32, 0.0f32);
+        for _ in 0..(secs / dt).round() as usize {
+            let before = c.phase;
+            if playing {
+                t += speed * dt;
+            }
+            c.advance(playing, speed, t, dt);
+            let d = ((c.phase - before + 0.5).rem_euclid(1.0) - 0.5).abs();
+            went += d;
+            jump = jump.max(d);
+        }
+        (c, went, jump)
+    }
+
+    #[test]
+    fn seasons_take_their_time_at_any_speed() {
+        // at 8x (four years a second) and at 1x, one round in SEASON_ROUND_SECS and no faster
+        for speed in [0.5, 1.0, 2.0, 4.0, 20.0] {
+            let (c, went, jump) = run_seasons(SeasonClock::default(), true, speed, SEASON_ROUND_SECS);
+            assert!((went - 1.0).abs() < 0.01, "at {speed} years a second the season went {went} rounds in {SEASON_ROUND_SECS} s");
+            assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "a jump of {jump} at {speed}");
+            assert!(!c.follows);
+            assert!((c.phase - 0.55).abs() < 0.01, "a whole round comes back to where it began, not {}", c.phase);
+        }
+    }
+
+    #[test]
+    fn seasons_hold_when_paused_and_do_not_jump_on_resuming() {
+        let (c, _, _) = run_seasons(SeasonClock::default(), true, 4.0, 5.0);
+        let held = c.phase;
+        let (c, went, _) = run_seasons(c, false, 4.0, 60.0);
+        assert_eq!(c.phase, held);
+        assert_eq!(went, 0.0);
+        let (_, _, jump) = run_seasons(c, true, 0.5, 1.0);
+        assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "resuming jumped {jump}");
+    }
+
+    #[test]
+    fn seasons_follow_the_year_when_the_years_go_slowly() {
+        // a year in 60 seconds: the season is the date's
+        let speed = 1.0 / 60.0;
+        let (c, _, jump) = run_seasons(SeasonClock::default(), true, speed, 30.0);
+        assert!(c.follows);
+        // the year's clock began at 10.0 and has run half a year, to midsummer
+        assert!((c.phase - 0.5).abs() < 0.01, "the season is {} at midsummer", c.phase);
+        // easing from high summer round to midwinter took no visible jump
+        assert!(jump < 0.08, "eased with a jump of {jump}");
+        // paused, the name goes from the top bar and the season stays
+        let (p, went, _) = run_seasons(c, false, speed, 5.0);
+        assert!(!p.follows);
+        assert_eq!(went, 0.0);
+    }
+
+    #[test]
+    fn people_are_counted_with_a_comma_for_thousands() {
+        assert_eq!(fmt_pop(0.0), "0");
+        assert_eq!(fmt_pop(950.0), "950");
+        assert_eq!(fmt_pop(999.6), "1,000");
+        assert_eq!(fmt_pop(1_004.0), "1,004");
+        assert_eq!(fmt_pop(12_999.6), "13,000");
+        assert_eq!(fmt_pop(254_038.2), "254,038");
+        assert_eq!(fmt_pop(999_999.7), "1.00 million");
+        assert_eq!(fmt_pop(1_251_000.0), "1.25 million");
+        assert_eq!(fmt_pop(f32::NAN), "0");
+    }
+
+    fn news(year: f32, weight: f32, title: &str) -> replay::Event {
+        replay::Event { year, kind: "family".into(), weight, title: title.into(), text: String::new(), cell: None, family: None }
+    }
+
+    #[test]
+    fn toasts_keep_their_words_when_the_news_is_sorted_again() {
+        let mut events = vec![news(1759.9, 0.9, "An old thing"), news(1760.7, 0.7, "Coke smelting"), news(1760.8, 0.3, "A small thing"), news(1760.95, 0.6, "A works opens")];
+        // the year's major news, and nothing minor or from another year
+        let shown = year_toasts(&events, 1760, 5.0);
+        let titles: Vec<&str> = shown.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(titles, ["Coke smelting", "A works opens"]);
+        assert!(shown.iter().all(|t| t.year == 1760 && t.since == 5.0));
+        // a live game adds news dated before what is there and sorts the list, as live::apply_year does
+        events.push(news(1760.1, 0.9, "News that came late"));
+        events.sort_by(|a, b| a.year.total_cmp(&b.year));
+        // the place a toast came from now holds something else; the toast still says what it said
+        assert_eq!(events[1].title, "News that came late");
+        assert_eq!(shown[0].title, "Coke smelting");
+        assert_eq!(shown[1].title, "A works opens");
+    }
+
+    fn args(line: &str) -> Result<Args, String> {
+        let v: Vec<String> = line.split_whitespace().map(String::from).collect();
+        parse(&v)
+    }
+
+    #[test]
+    fn every_option_is_still_read() {
+        let a = args(
+            "runs/x/run.bin --year 1846 --shot out.png --size 800x600 --at 31.5,29.5 --look looks/dusk.toml --yaw 25 --pitch 38 --dist 10 --frames 12 --wait 3 \
+             --no-tilt --seed 11 --families 4 --advance 20 --demo --pick 3,4.5 --ground-debug --class-map --season 0.25 --describe 7,8 \
+             --view a.png,1900,77.5,47.5,25,38,10,0.75,markets --view b.png,,,,,,,none --view c.png --script print              --lab works-kinds --out out/lab --tilt --loupe 3 --turn 45",
+        )
+        .unwrap();
+        assert_eq!((a.run.as_str(), a.named_run, a.new), ("runs/x/run.bin", true, false));
+        assert_eq!((a.year, a.shot.as_deref(), a.size), (Some(1846), Some("out.png"), (800, 600)));
+        assert_eq!((a.at, a.look_file.as_deref(), a.yaw, a.pitch, a.dist), (Some((31.5, 29.5)), Some("looks/dusk.toml"), 25.0, 38.0, Some(10.0)));
+        assert_eq!((a.frames, a.wait, a.tilt), (12, Some(3.0), false));
+        assert_eq!((a.lab.as_deref(), a.out.as_deref(), a.lab_tilt, a.loupe, a.lab_turn), (Some("works-kinds"), Some("out/lab"), true, 3, Some(45.0)));
+        assert_eq!((a.seed, a.families, a.advance, a.demo), (11, 4, 20, true));
+        assert_eq!((a.pick, a.describe), (Some((3.0, 4.5)), Some((7.0, 8.0))));
+        assert_eq!((a.ground_debug, a.class_map, a.season, a.script.as_deref()), (true, true, Some(0.25), Some("print")));
+        assert_eq!(a.views.len(), 3);
+        let v = &a.views[0];
+        assert_eq!((v.path.as_str(), v.year, v.look, v.yaw, v.pitch, v.dist), ("a.png", Some(1900), Some((77.5, 47.5)), 25.0, 38.0, Some(10.0)));
+        assert_eq!((v.season, v.tab), (Some(0.75), Some(Some(ui::Tab::Markets))));
+        // empty values fall back; "none" closes the panel
+        let v = &a.views[1];
+        assert_eq!((v.year, v.look, v.dist, v.season, v.tab), (None, None, None, None, Some(None)));
+        assert_eq!((a.views[2].path.as_str(), a.views[2].tab), ("c.png", None));
+        // a view's words: a panel, a map view and what the Markets panel shows, in any order
+        let a = args("--overlay price:coal --view a.png,1850,,,,,,markets,price:coal,open:coal --view b.png,1850,,,,,,wages,0.0,island").unwrap();
+        assert_eq!(a.overlay.as_deref(), Some("price:coal"));
+        let v = &a.views[0];
+        assert_eq!((v.tab, v.overlay.as_deref(), v.markets.as_deref()), (Some(Some(ui::Tab::Markets)), Some("price:coal"), Some("open:coal")));
+        let v = &a.views[1];
+        assert_eq!((v.tab, v.overlay.as_deref(), v.markets.as_deref(), v.season), (None, Some("wages"), Some("island"), Some(0.0)));
+        // the standard shots play the whole game first
+        let a = args("--advance 20 --shots out/shots --shots-compare out/before --shots-note abc123").unwrap();
+        assert_eq!((a.shots.as_deref(), a.shots_compare.as_deref(), a.shots_note.as_str(), a.advance), (Some("out/shots"), Some("out/before"), "abc123", usize::MAX - 1));
+        // a scripted run takes its own pictures
+        let a = args("--advance 20 --shots out/shots --script print").unwrap();
+        assert_eq!((a.shots, a.advance), (None, 20));
+        // two numbers after --look are the point to look at, which --look used to mean
+        let a = args("--compare-shots out/a out/b --look 31.5,29.5").unwrap();
+        assert_eq!((a.compare_shots, a.at, a.look_file), (Some(("out/a".to_string(), "out/b".to_string())), Some((31.5, 29.5)), None));
+    }
+
+    #[test]
+    fn no_run_named_means_a_new_game() {
+        let a = args("").unwrap();
+        assert!(a.new && !a.named_run);
+        assert_eq!((a.seed, a.families, a.advance, a.size, a.pitch, a.frames, a.wait, a.tilt), (7, 6, 0, (1600, 1000), shots::PLAY_PITCH, 40, None, true));
+        assert!(args("--new --seed 3").unwrap().new);
+        // a run and --new together: a new game, as before
+        assert!(args("runs/x/run.bin --new").unwrap().new);
+        // nothing asked for but the game: the island's saved game may be gone on with
+        assert!(!a.fresh && a.load.is_none() && a.save.is_none());
+        // --new and --seed ask for a new game whatever is saved
+        assert!(args("--new").unwrap().fresh && args("--seed 3").unwrap().fresh);
+        // a saved game is a game, even beside a recorded run
+        let a = args("runs/x/run.bin --load mine.json --save other.json").unwrap();
+        assert_eq!((a.new, a.fresh, a.load.as_deref(), a.save.as_deref()), (true, false, Some("mine.json"), Some("other.json")));
+    }
+
+    #[test]
+    fn an_option_that_is_not_one_is_refused() {
+        assert_eq!(args("--sesaon 0.5").err().unwrap(), "--sesaon is not an option");
+        assert_eq!(args("--advance 30 --veiw x.png").err().unwrap(), "--veiw is not an option");
+        assert_eq!(args("-x").err().unwrap(), "-x is not an option");
+        // an option with nothing after it
+        assert_eq!(args("--advance").err().unwrap(), "--advance needs a value after it");
+        // a negative number after an option is its value, not an option
+        assert_eq!(args("--yaw -30").unwrap().yaw, -30.0);
+        // a value that cannot be read is refused, not replaced by the default
+        assert_eq!(args("--advance 3O").err().unwrap(), "--advance: 3O is not a number it can take");
+        assert_eq!(args("--advance -5").err().unwrap(), "--advance: -5 is not a number it can take");
+        assert_eq!(args("--season summer").err().unwrap(), "--season: summer is not a number it can take");
+        assert_eq!(args("--wait nan").err().unwrap(), "--wait: nan is not a number it can take");
+        assert_eq!(args("--year 1846.5").err().unwrap(), "--year: 1846.5 is not a number it can take");
+        assert_eq!(args("--describe 12").err().unwrap(), "--describe: 12 should be two numbers with a comma between them");
+        assert_eq!(args("--at 31.5,here").err().unwrap(), "--at: here is not a number it can take");
+        assert_eq!(args("--at 31.5").err().unwrap(), "--at: 31.5 should be two numbers with a comma between them");
+        // --look takes a look file, or two numbers as --at does; half a point is refused
+        assert_eq!(args("--look 31.5,here").err().unwrap(), "--look: here is not a number it can take");
+        assert_eq!(args("--look").err().unwrap(), "--look needs a value after it");
+        // the options of the standard shots and the lab
+        assert_eq!(args("--loupe big").err().unwrap(), "--loupe: big is not a number it can take");
+        assert_eq!(args("--loupe 20").unwrap().loupe, 8);
+        assert_eq!(args("--turn left").err().unwrap(), "--turn: left is not a number it can take");
+        assert_eq!(args("--shots").err().unwrap(), "--shots needs a value after it");
+        assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
+        assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
+        // map views (a good the run does not have is refused once the run is read)
+        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain");
+        assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
+        // a script's steps are read with the options
+        assert_eq!(args("--script bogus").err().unwrap(), "--script: bogus: not a step (see the top of script.rs)");
+        assert_eq!(args("--script key:Nope").err().unwrap(), "--script: key:Nope: no key called Nope");
+        // saved games
+        assert_eq!(args("--load").err().unwrap(), "--load needs a value after it");
+        assert_eq!(args("--new --save").err().unwrap(), "--save needs a value after it");
+        assert_eq!(args("--seed seven").err().unwrap(), "--seed: seven is not a number it can take");
+        assert_eq!(args("--size 800").err().unwrap(), "--size: 800 should be two numbers with an x between them");
+        assert_eq!(args("--size 0x600").err().unwrap(), "--size: a picture needs a width and a height");
+        // in a view an empty value falls back, and one that is not a number is refused
+        assert_eq!(args("--view a.png,l850").err().unwrap(), "--view: l850 is not a number it can take");
+        assert_eq!(args("--view a.png,1850,markets").err().unwrap(), "--view: markets is not a number it can take");
+        assert!(args("--view a.png,,,,,,").is_ok());
+        // asking for the list
+        assert_eq!(args("--help").err().unwrap(), "");
+        // the list names every option the reader knows
+        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+            assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
+        }
+    }
+
+    #[test]
+    fn a_forced_season_wins() {
+        let c = SeasonClock { phase: 0.3, follows: false };
+        assert_eq!(season_phase(&c, None), 0.3);
+        assert_eq!(season_phase(&c, Some(0.0)), 0.0);
+        assert_eq!(season_phase(&c, Some(1.25)), 0.25);
     }
 }

@@ -123,6 +123,9 @@ pub struct Patchwork {
     /// the land's colours, from the look
     #[uniform(103)]
     pub paint: crate::look::LandUniform,
+    /// per cell, the map overlay: a tint and the region it belongs to (`overlay.rs`)
+    #[texture(104)]
+    pub overlay: Handle<Image>,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -136,6 +139,13 @@ pub struct PatchworkParams {
     pub debug: u32,
     /// the calendar year shown, for the open fields
     pub year: f32,
+    /// how strongly the map overlay is washed over the land; 0 for none, and
+    /// then the ground is drawn exactly as without one
+    pub overlay: f32,
+    /// how far the overlay's tints blend across the edge of a square, in squares
+    pub overlay_soft: f32,
+    /// 1 draws an ink line where the overlay's regions meet
+    pub overlay_lines: f32,
     /// `Ground::quant`, the 257 quantiles of the patch noise, four to a vector
     pub quant: [Vec4; 65],
 }
@@ -229,7 +239,7 @@ pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> Pat
     for (i, &q) in g.quant.iter().enumerate() {
         quant[i / 4][i % 4] = q;
     }
-    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, quant }
+    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, quant }
 }
 
 /// The year's land mix for every cell, as the shader reads it: mix_a, mix_b,

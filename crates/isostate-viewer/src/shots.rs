@@ -137,7 +137,7 @@ pub fn standard_views(r: &Replay, cen: &[(f32, f32)], slots: &scatter::Slots, ho
     let mut out: Vec<Standard> = Vec::new();
     let mut add = |name: String, caption: String, year: i32, look: (f32, f32), yaw: f32, pitch: f32, dist: f32, season: f32| {
         out.push(Standard {
-            spec: ShotSpec { path: path(&name), year: Some(year_of(year)), look: Some(look), yaw, pitch, dist: Some(dist), season: Some(season), tab: Some(None) },
+            spec: ShotSpec { path: path(&name), year: Some(year_of(year)), look: Some(look), yaw, pitch, dist: Some(dist), season: Some(season), tab: Some(None), overlay: None, markets: None },
             name,
             caption,
         });
