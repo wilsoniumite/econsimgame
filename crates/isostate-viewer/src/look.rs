@@ -7,8 +7,10 @@
 //! its own, so trying a direction is a change of data. The look is shared in
 //! an `Arc`, as a year's scenery is built off the main thread.
 //!
-//! Not here: the interface's colours (ui.rs, family.rs, game.rs, icons.rs) and
-//! the colours inside the ground and sea shaders.
+//! The ground and the sea are painted by shaders; their colours are tables of
+//! the look like any other, handed to the shaders as uniforms (`Land`, `Sea`).
+//!
+//! Not here: the interface's colours (ui.rs, family.rs, game.rs, icons.rs).
 
 use std::sync::Arc;
 
@@ -54,6 +56,12 @@ impl Colour {
     pub fn color(self) -> Color {
         Color::srgb(self.srgb[0], self.srgb[1], self.srgb[2])
     }
+
+    /// The colour as a shader wants it in a uniform: sRGB, as the ground and
+    /// sea shaders mix their colours, with a 1 to fill the vector.
+    pub fn srgb4(self) -> bevy::math::Vec4 {
+        bevy::math::Vec4::new(self.srgb[0], self.srgb[1], self.srgb[2], 1.0)
+    }
 }
 
 impl std::ops::Deref for Colour {
@@ -93,6 +101,122 @@ impl<'de> Deserialize<'de> for Colour {
 /// spreads over the list, and larger numbers go round it again.
 pub fn pick(list: &[Colour], v: f32) -> [f32; 4] {
     *list[(v * list.len() as f32) as usize % list.len()]
+}
+
+// ------------------------------------------------------------------ what the shaders paint
+
+/// A table of colours for a shader: the table as the look file has it, and the
+/// same colours laid out as the shader's uniform, field for field. The shader
+/// declares a struct with the same fields in the same order (a test checks it).
+macro_rules! shader_paint {
+    ($(#[$doc:meta])* $table:ident as $uniform:ident { $($name:ident),* $(,)? }) => {
+        $(#[$doc])*
+        #[derive(Deserialize, Clone, Debug)]
+        #[serde(deny_unknown_fields)]
+        pub struct $table {
+            $(pub $name: Colour,)*
+        }
+
+        #[derive(Clone, Copy, Debug, bevy::reflect::Reflect, bevy::render::render_resource::ShaderType)]
+        pub struct $uniform {
+            $(pub $name: bevy::math::Vec4,)*
+        }
+
+        impl $table {
+            /// The fields, in the order the shader must declare them.
+            #[allow(dead_code)]
+            pub const NAMES: &'static [&'static str] = &[$(stringify!($name)),*];
+
+            pub fn uniform(&self) -> $uniform {
+                $uniform { $($name: self.$name.srgb4(),)* }
+            }
+        }
+    };
+}
+
+shader_paint! {
+    /// The land itself, as terrain.wesl paints it.
+    Land as LandUniform {
+        soil,
+        soil_winter,
+        stubble,
+        corn_green,
+        wheat_ripe,
+        barley_ripe,
+        oats_ripe,
+        roots,
+        roots_winter,
+        hay,
+        hay_spring,
+        hay_tall,
+        hay_drying,
+        hay_winter,
+        fallow_weeds,
+        pasture,
+        pasture_light,
+        pasture_deep,
+        pasture_pale,
+        grass_dry,
+        grass_autumn,
+        grass_winter,
+        balk,
+        headland,
+        water_meadow,
+        rock,
+        snow,
+        frost,
+        hedge,
+        hedge_autumn,
+        hedge_winter,
+        field_wall,
+        wood,
+        wood_shade,
+        wood_spring,
+        wood_autumn,
+        wood_winter,
+        heath,
+        heath_hill,
+        heath_mountain,
+        heath_brown,
+        heather_drift,
+        heather_drift_bloom,
+        heather,
+        heather_bloom,
+        gorse,
+        gorse_flower,
+        town_earth,
+        garden,
+        garden_dug,
+        cobbles,
+        town_far,
+        yard,
+        yard_cinder,
+        yard_gravel,
+        yard_lane,
+        derelict,
+        derelict_weeds,
+        quarry,
+        clay_pit,
+        iron_mine,
+        colliery,
+        seabed_sand,
+        seabed_shelf,
+        seabed_deep,
+        beach_wet,
+        beach,
+        shingle,
+    }
+}
+
+shader_paint! {
+    /// The sea's surface, as sea.wesl paints it.
+    Sea as SeaUniform {
+        shallows,
+        shelf,
+        deep,
+        open,
+        foam,
+    }
 }
 
 // ------------------------------------------------------------------ the scenery
@@ -458,6 +582,8 @@ pub struct Surfaces {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Look {
+    pub land: Land,
+    pub sea: Sea,
     pub ground: Ground,
     pub walls: Walls,
     pub roofs: Roofs,
@@ -623,6 +749,20 @@ mod tests {
         for bad in ["[brick]\nred = \"red\"\n", "[brick]\nred = [1.0, 0.5]\n", "[brick]\nred = 3\n", "[post]\ntonemapping = \"film\"\n", "[foliage]\nconifer = []\n", "[brick.red]\nx = 1\n", "brick = 1\n"] {
             assert!(Look::from_layers(&[("standard", STANDARD), ("mine", bad)]).is_err(), "{bad}");
         }
+    }
+
+    /// The names of a struct's fields in a shader's source, in order.
+    fn shader_fields(source: &str, name: &str) -> Vec<String> {
+        let start = source.find(&format!("struct {name} {{")).unwrap_or_else(|| panic!("no struct {name}"));
+        let body = &source[start..];
+        let body = &body[body.find('{').unwrap() + 1..body.find('}').unwrap()];
+        body.lines().filter_map(|l| l.trim().split_once(':')).map(|(n, _)| n.trim().to_string()).collect()
+    }
+
+    #[test]
+    fn the_shaders_declare_the_same_colours_in_the_same_order() {
+        assert_eq!(shader_fields(include_str!("terrain.wesl"), "LandPaint"), Land::NAMES);
+        assert_eq!(shader_fields(include_str!("sea.wesl"), "SeaPaint"), Sea::NAMES);
     }
 
     #[test]

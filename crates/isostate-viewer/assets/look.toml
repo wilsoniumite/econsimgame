@@ -17,13 +17,121 @@
 # wagons) the token is a list, and each one takes a tint by a number of its own.
 #
 # Not here: the interface's colours (ui.rs, family.rs; the families' banner
-# colours are among them), and the colours of the ground and the sea, which
-# are painted by their shaders (src/terrain.wesl, src/sea.wesl).
+# colours are among them).
 
 # ---------------------------------------------------------------- the scenery
 
+[land]
+# The land itself, which the ground's shader paints from these (src/terrain.wesl).
+# The shader mixes them as they stand here and adds its own small variety field
+# by field, so a change here moves every field of that kind together.
+# ploughed soil, and the same in winter; stubble after the harvest
+soil = "#b08455"
+soil_winter = "#9a7651"
+stubble = "#dccb98"
+# corn: green in the blade, then wheat, barley and oats as they ripen
+corn_green = "#a4c660"
+wheat_ripe = "#e3c25e"
+barley_ripe = "#ebd891"
+oats_ripe = "#d8c779"
+# turnips and clover, and the same grazed down in winter
+roots = "#9cc05a"
+roots_winter = "#7f9d5b"
+# a hay meadow: its grass, fresher in spring, tall before the cut, drying in
+# windrows, dull in winter
+hay = "#9bc35e"
+hay_spring = "#a8cc66"
+hay_tall = "#b8c46a"
+hay_drying = "#cdbb69"
+hay_winter = "#8d9a6a"
+# the weeds on a fallow
+fallow_weeds = "#9aae5c"
+# pasture, in four greens, a field taking one
+pasture = "#8fc15a"
+pasture_light = "#9bcb63"
+pasture_deep = "#86b851"
+pasture_pale = "#a6cf71"
+# what grass turns toward late in summer, in autumn and in winter
+grass_dry = "#bdbb72"
+grass_autumn = "#8f9f5a"
+grass_winter = "#8a9470"
+# open fields: the grass balks between strips and the headland round a furlong
+balk = "#9fb565"
+headland = "#9cc463"
+# water meadows on a valley floor
+water_meadow = "#8cbf63"
+# steep ground, high ground, and a hard morning
+rock = "#9b9588"
+snow = "#f5f5f1"
+frost = "#dfe5e8"
+# a hedge through the year, and the dry-stone wall that stands for it in the hills
+hedge = "#4a7533"
+hedge_autumn = "#6b6837"
+hedge_winter = "#575443"
+field_wall = "#a59f92"
+# the floor of a wood under the trees: in light and shade, and through the year
+wood = "#4b7738"
+wood_shade = "#3f6a30"
+wood_spring = "#5a8a3e"
+wood_autumn = "#7a6a3a"
+wood_winter = "#5b5945"
+# heath in the lowland (and rough grass by the sea), in the hills and on the
+# mountains; brown in autumn and winter
+heath = "#bcbb7e"
+heath_hill = "#aead73"
+heath_mountain = "#a39d8f"
+heath_brown = "#9c8a68"
+# heather: in wide drifts and in clumps, each out of flower and in
+heather_drift = "#a08f88"
+heather_drift_bloom = "#a27ca2"
+heather = "#a58fa6"
+heather_bloom = "#9a62a6"
+# gorse, and in flower
+gorse = "#7d8a45"
+gorse_flower = "#d9b93c"
+# the ground of a town: beaten earth, gardens with their dug beds, cobbles,
+# and the whole from far off
+town_earth = "#c9b79d"
+garden = "#9fae6e"
+garden_dug = "#8d9a5c"
+cobbles = "#b8ad9c"
+town_far = "#c4b398"
+# a works yard: its ground, cinder, gravel, and the lanes across it
+yard = "#8f857a"
+yard_cinder = "#786f67"
+yard_gravel = "#a1998c"
+yard_lane = "#a69e92"
+# ground left derelict, and the weeds on it
+derelict = "#968f81"
+derelict_weeds = "#8f9a62"
+# the ground of quarries, clay pits, iron mines and collieries
+quarry = "#c9c3b7"
+clay_pit = "#c69466"
+iron_mine = "#a76c4c"
+colliery = "#4a4643"
+# the bed of the sea, seen through the water: sand, the shelf, the deep
+seabed_sand = "#d2cd9c"
+seabed_shelf = "#6fa8a3"
+seabed_deep = "#2f5f78"
+# the beach where the sea has just been and where it is dry, and shingle on a
+# steep shore
+beach_wet = "#cfbd8b"
+beach = "#ead9a3"
+shingle = "#a49c8a"
+
+[sea]
+# The sea's surface, painted by its own shader (src/sea.wesl).
+# the water by its depth: clear over the sand, green-blue over the shelf,
+# darker beyond, dark blue far out
+shallows = "#9ad6cb"
+shelf = "#5aa8b8"
+deep = "#3b7fa3"
+open = "#2c5f86"
+# the foam at the water's edge and on the surf
+foam = "#f4f6f2"
+
 [ground]
-# roads between the towns: gravel on the main roads, dust on the lesser ones
+# what lies on the land: roads between the towns: gravel on the main roads, dust on the lesser ones
 road_gravel = "#d9c596"
 lane_dust = "#cdb88d"
 # a farm's own lane from its yard gate to the road
@@ -157,7 +265,7 @@ tint_autumn = [1.35, 0.88, 0.52]
 river = "#5d9fc4"
 # the wet bank either side of a river
 river_bank = "#7d8a55"
-# the deep floor under the sea, beyond the map
+# the deep floor under the sea, beyond the map (the sea's own colours are in [sea])
 sea_floor = [0.16, 0.36, 0.48]
 
 [smoke]

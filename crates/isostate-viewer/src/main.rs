@@ -648,6 +648,7 @@ fn setup_world(
             params: terrain::patchwork_params(r, g, season_phase(&tl, forced.0), debug.0),
             year: year_cells.clone(),
             fixed: fixed_cells,
+            paint: lk.land.uniform(),
         },
     });
     for chunk in terrain::terrain_chunks(g) {

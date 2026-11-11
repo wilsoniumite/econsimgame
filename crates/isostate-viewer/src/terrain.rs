@@ -120,6 +120,9 @@ pub struct Patchwork {
     /// per cell, fixed: the terrain class and the field depth (`fixed_cells`)
     #[texture(102)]
     pub fixed: Handle<Image>,
+    /// the land's colours, from the look
+    #[uniform(103)]
+    pub paint: crate::look::LandUniform,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -180,6 +183,9 @@ pub struct Sea {
     /// the ground's height at every vertex, one float each
     #[texture(101, sample_type = "float", filterable = false)]
     pub heights: Handle<Image>,
+    /// the water's colours, from the look
+    #[uniform(102)]
+    pub paint: crate::look::SeaUniform,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -213,7 +219,7 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::lo
             reflectance: look.surfaces.sea_reflectance,
             ..default()
         },
-        extension: Sea { params: SeaParams { grid_w: g.gw as f32, grid_h: g.gh as f32, res: VRES as f32, season: 0.5 }, heights },
+        extension: Sea { params: SeaParams { grid_w: g.gw as f32, grid_h: g.gh as f32, res: VRES as f32, season: 0.5 }, heights, paint: look.sea.uniform() },
     });
     commands.spawn((Mesh3d(meshes.add(plane(-4.0 * w, -4.0 * h, 5.0 * w, 5.0 * h, 0.0))), MeshMaterial3d(mat), bevy::light::NotShadowCaster));
 }
