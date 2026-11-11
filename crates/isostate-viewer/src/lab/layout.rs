@@ -397,7 +397,8 @@ mod tests {
                         }
                     }
                 }
-                if shot != Shot::Close {
+                // (the scale sheet has a row for every generator there is, and runs to several pages)
+                if shot != Shot::Close && sheet.name != "scale" {
                     assert_eq!(pages.len(), 1, "{} {} does not fit one page", sheet.name, shot.name());
                 }
             }

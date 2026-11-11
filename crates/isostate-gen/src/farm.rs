@@ -89,7 +89,8 @@ pub fn farmstead(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery,
 /// The posts of a boarded frame on a side of a range, a bay apart, and close
 /// to the joints of its boards, clear of the openings in that side.
 fn boarding(k: &mut Kit, rg: &Range, side: usize, y0: f32, y1: f32, ops: &[Opening], col: Rgba) {
-    if k.far() {
+    // (posts and joints are a hair wide: they are drawn close to and not from the play distance)
+    if !k.near() {
         return;
     }
     let len = rg.face(side).len;
@@ -130,7 +131,8 @@ fn barn(solid: &mut MeshBuf, site: &Site, fab: &Fabric, doors: Rgba, detail: Det
     let great = Open::Leaves { paint: doors, round: false };
     let cell = len / 5.0;
     let (mut front, mut back) = (Vec::new(), Vec::new());
-    if !fab.boarded {
+    // (the slits are a hair wide: they are drawn close to and not from the play distance)
+    if !fab.boarded && k.near() {
         for c in [0usize, 1, 3] {
             front.push(slit(cell * (c as f32 + 0.5)));
         }
@@ -156,8 +158,10 @@ fn barn(solid: &mut MeshBuf, site: &Site, fab: &Fabric, doors: Rgba, detail: Det
         return;
     }
     // the pitching hole high in each gable, shut
-    for i in [1usize, 3] {
-        k.strip(&rg, i, hd - 0.0024, hd + 0.0024, h - 0.0052, h + 0.0004, 0.0007, shade(doors, 0.85));
+    if k.near() {
+        for i in [1usize, 3] {
+            k.strip(&rg, i, hd - 0.0024, hd + 0.0024, h - 0.0052, h + 0.0004, 0.0007, shade(doors, 0.85));
+        }
     }
     // the porch of the threshing floor: a gabled range before the middle of the front, the
     // great doors in its face, its roof running back into the barn's
@@ -210,8 +214,8 @@ fn granary(solid: &mut MeshBuf, site: &Site, fab: &Fabric, detail: Detail, pal: 
     let lie = fab.cover.lie();
     let door = [Opening { u: hd, y: floor + 0.0006, w: 0.0046, h: 0.0092, kind: Open::Door { paint: fab.wall.frame, over: Over::Nothing } }];
     let stone = *pal.stone.sill;
-    if k.far() {
-        // from far off a box and its roof
+    if !k.near() {
+        // from the play distance and beyond a box and its roof
         k.walls(&rg, -k.drop(&rg), h, &wall, [Side::PLAIN; 4], true, true);
     } else {
         // the store on its stones, the dark under it
@@ -229,8 +233,6 @@ fn granary(solid: &mut MeshBuf, site: &Site, fab: &Fabric, detail: Detail, pal: 
             // the steps up to the door
             k.boxy_on(hl + 0.0002, hl + 0.0026, -0.0026, 0.0026, floor * 0.5, shade(stone, 0.9), Some(stone));
             k.boxy_on(hl + 0.0026, hl + 0.005, -0.0026, 0.0026, floor * 0.25, shade(stone, 0.9), Some(stone));
-        } else {
-            k.boxy(-hl + 0.0014, hl - 0.0014, -hd + 0.0014, hd - 0.0014, -0.003, floor, shade(stone, 0.7), None);
         }
     }
     k.roof(&rg, &RoofSpec { h, rise: dep * lie.rise * 0.8, eaves: lie.eaves * 0.8, verge: lie.verge, ends: [End::Gable, End::Gable], col: fab.roof, gable: boards, thick: lie.thick });
@@ -241,8 +243,9 @@ fn rick(solid: &mut MeshBuf, at: Vec3, detail: Detail, pal: &Palette) {
     let straw = *pal.thatch.rick;
     match detail {
         Detail::Far => solid.frustum(at, 0.013, 0.0, 0.024, 5, straw, None),
-        _ => {
-            let sides = if detail == Detail::Near { 8 } else { 6 };
+        Detail::Play => solid.frustum(at, 0.013, 0.0, 0.024, 6, straw, None),
+        Detail::Near => {
+            let sides = 8;
             solid.frustum_turned(at, 0.0115, 0.0128, 0.011, sides, 0.2, 0.02, shade(straw, 0.92), None);
             solid.frustum_turned(at + Vec3::Y * 0.0105, 0.0142, 0.0, 0.0135, sides, 0.2, 0.0, straw, None);
         }
