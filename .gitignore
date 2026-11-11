@@ -8,3 +8,6 @@ dist/*.html
 
 # Rust
 target/
+
+# Saved games, where there is no per-user folder to keep them in
+saves/
