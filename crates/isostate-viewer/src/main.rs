@@ -95,7 +95,61 @@ struct ShotSpec {
     tab: Option<Option<ui::Tab>>,
 }
 
+const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
+
+  isostate-viewer [RUN.bin] [options]
+
+With no run named, a new game starts.
+
+  --new                a new game (the default when no run is named)
+  --seed N             which island (7)
+  --families N         how many great families (6)
+  --advance N          play N years before the game opens
+  --demo               the family builds a works and buys land in its first year
+  --year Y             open on this year
+  --size WxH           the size of the window or the pictures (1600x1000)
+  --look X,Z           where the camera looks, in map cells
+  --yaw D              the camera's turn, in degrees
+  --pitch D            the camera's tilt, in degrees (52)
+  --dist N             the camera's distance
+  --no-tilt            no miniature focus
+  --season F           hold the season: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
+  --pick X,Z           start with this spot clicked
+  --describe X,Z       print what a click there would show, and stop
+
+Pictures and checks with no window:
+
+  --view PATH,YEAR,X,Z,YAW,PITCH,DIST[,SEASON][,PANEL]
+                       a picture; give it once for each. Empty values fall back to
+                       the opening view; PANEL is family, holdings, markets, news or none
+  --shot PATH          a picture of the opening view
+  --wait S             seconds before the first picture, for shaders to compile (45)
+  --frames N           frames to let a picture settle (40)
+  --ground-debug       draw the ground as flat class colours and nothing else
+  --class-map          write the CPU's land class under every pixel of each view, and stop
+  --script STEPS       play keys and clicks and print what happens (see src/script.rs)
+  --help               this";
+
 fn parse_args() -> Args {
+    let v: Vec<String> = std::env::args().skip(1).collect();
+    match parse(&v) {
+        Ok(a) => a,
+        // asked for
+        Err(e) if e.is_empty() => {
+            println!("{USAGE}");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("{e}\n\n{USAGE}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Read the command line. An option that is not one is refused, with the
+/// list of those there are, rather than dropped: a mistyped --sesaon would
+/// otherwise run as if it had not been given. An empty error asks for the list.
+fn parse(v: &[String]) -> Result<Args, String> {
     let mut a = Args {
         run: "runs/landlords/run.bin".into(),
         year: None,
@@ -122,51 +176,50 @@ fn parse_args() -> Args {
         class_map: false,
         script: None,
     };
-    let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
     while i < v.len() {
-        let next = |i: usize| v.get(i + 1).cloned().unwrap_or_default();
+        let next = |i: usize| v.get(i + 1).cloned().ok_or_else(|| format!("{} needs a value after it", v[i]));
         match v[i].as_str() {
-            "--year" => { a.year = next(i).parse().ok(); i += 1; }
-            "--shot" => { a.shot = Some(next(i)); i += 1; }
+            "--year" => { a.year = next(i)?.parse().ok(); i += 1; }
+            "--shot" => { a.shot = Some(next(i)?); i += 1; }
             "--size" => {
-                let s = next(i);
+                let s = next(i)?;
                 if let Some((w, h)) = s.split_once('x') { a.size = (w.parse().unwrap_or(1600), h.parse().unwrap_or(1000)); }
                 i += 1;
             }
             "--look" => {
-                let s = next(i);
+                let s = next(i)?;
                 if let Some((x, z)) = s.split_once(',') { a.look = Some((x.parse().unwrap_or(60.0), z.parse().unwrap_or(42.0))); }
                 i += 1;
             }
-            "--yaw" => { a.yaw = next(i).parse().unwrap_or(0.0); i += 1; }
-            "--pitch" => { a.pitch = next(i).parse().unwrap_or(52.0); i += 1; }
-            "--dist" => { a.dist = next(i).parse().ok(); i += 1; }
-            "--frames" => { a.frames = next(i).parse().unwrap_or(40); i += 1; }
-            "--wait" => { a.wait = next(i).parse().unwrap_or(45.0); i += 1; }
+            "--yaw" => { a.yaw = next(i)?.parse().unwrap_or(0.0); i += 1; }
+            "--pitch" => { a.pitch = next(i)?.parse().unwrap_or(52.0); i += 1; }
+            "--dist" => { a.dist = next(i)?.parse().ok(); i += 1; }
+            "--frames" => { a.frames = next(i)?.parse().unwrap_or(40); i += 1; }
+            "--wait" => { a.wait = next(i)?.parse().unwrap_or(45.0); i += 1; }
             "--no-tilt" => a.tilt = false,
             "--new" => a.new = true,
-            "--seed" => { a.seed = next(i).parse().unwrap_or(7); i += 1; }
-            "--families" => { a.families = next(i).parse().unwrap_or(6); i += 1; }
-            "--advance" => { a.advance = next(i).parse().unwrap_or(0); i += 1; }
+            "--seed" => { a.seed = next(i)?.parse().unwrap_or(7); i += 1; }
+            "--families" => { a.families = next(i)?.parse().unwrap_or(6); i += 1; }
+            "--advance" => { a.advance = next(i)?.parse().unwrap_or(0); i += 1; }
             "--demo" => a.demo = true,
             "--pick" => {
-                let s = next(i);
+                let s = next(i)?;
                 if let Some((x, z)) = s.split_once(',') { a.pick = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
                 i += 1;
             }
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
-            "--script" => { a.script = Some(next(i)); i += 1; }
-            "--season" => { a.season = next(i).parse().ok(); i += 1; }
+            "--script" => { a.script = Some(next(i)?); i += 1; }
+            "--season" => { a.season = next(i)?.parse().ok(); i += 1; }
             "--describe" => {
-                let s = next(i);
+                let s = next(i)?;
                 if let Some((x, z)) = s.split_once(',') { a.describe = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
                 i += 1;
             }
             "--view" => {
                 // path,year,x,z,yaw,pitch,dist[,season][,tab]: a number after dist is a season, a word a panel
-                let p: Vec<String> = next(i).split(',').map(String::from).collect();
+                let p: Vec<String> = next(i)?.split(',').map(String::from).collect();
                 let num = |j: usize| p.get(j).and_then(|s| s.parse::<f32>().ok());
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
@@ -180,15 +233,16 @@ fn parse_args() -> Args {
                 });
                 i += 1;
             }
-            s if !s.starts_with("--") => { a.run = s.to_string(); a.named_run = true; }
-            _ => {}
+            "--help" | "-h" => return Err(String::new()),
+            s if !s.starts_with('-') => { a.run = s.to_string(); a.named_run = true; }
+            s => return Err(format!("{s} is not an option")),
         }
         i += 1;
     }
     if !a.named_run {
         a.new = true;
     }
-    a
+    Ok(a)
 }
 
 // ------------------------------------------------------------------ resources and markers
@@ -1666,6 +1720,63 @@ mod tests {
         assert_eq!(events[1].title, "News that came late");
         assert_eq!(shown[0].title, "Coke smelting");
         assert_eq!(shown[1].title, "A works opens");
+    }
+
+    fn args(line: &str) -> Result<Args, String> {
+        let v: Vec<String> = line.split_whitespace().map(String::from).collect();
+        parse(&v)
+    }
+
+    #[test]
+    fn every_option_is_still_read() {
+        let a = args(
+            "runs/x/run.bin --year 1846 --shot out.png --size 800x600 --look 31.5,29.5 --yaw 25 --pitch 38 --dist 10 --frames 12 --wait 3 \
+             --no-tilt --seed 11 --families 4 --advance 20 --demo --pick 3,4.5 --ground-debug --class-map --season 0.25 --describe 7,8 \
+             --view a.png,1900,77.5,47.5,25,38,10,0.75,markets --view b.png,,,,,,,none --view c.png --script print",
+        )
+        .unwrap();
+        assert_eq!((a.run.as_str(), a.named_run, a.new), ("runs/x/run.bin", true, false));
+        assert_eq!((a.year, a.shot.as_deref(), a.size), (Some(1846), Some("out.png"), (800, 600)));
+        assert_eq!((a.look, a.yaw, a.pitch, a.dist), (Some((31.5, 29.5)), 25.0, 38.0, Some(10.0)));
+        assert_eq!((a.frames, a.wait, a.tilt), (12, 3.0, false));
+        assert_eq!((a.seed, a.families, a.advance, a.demo), (11, 4, 20, true));
+        assert_eq!((a.pick, a.describe), (Some((3.0, 4.5)), Some((7.0, 8.0))));
+        assert_eq!((a.ground_debug, a.class_map, a.season, a.script.as_deref()), (true, true, Some(0.25), Some("print")));
+        assert_eq!(a.views.len(), 3);
+        let v = &a.views[0];
+        assert_eq!((v.path.as_str(), v.year, v.look, v.yaw, v.pitch, v.dist), ("a.png", Some(1900), Some((77.5, 47.5)), 25.0, 38.0, Some(10.0)));
+        assert_eq!((v.season, v.tab), (Some(0.75), Some(Some(ui::Tab::Markets))));
+        // empty values fall back; "none" closes the panel
+        let v = &a.views[1];
+        assert_eq!((v.year, v.look, v.dist, v.season, v.tab), (None, None, None, None, Some(None)));
+        assert_eq!((a.views[2].path.as_str(), a.views[2].tab), ("c.png", None));
+    }
+
+    #[test]
+    fn no_run_named_means_a_new_game() {
+        let a = args("").unwrap();
+        assert!(a.new && !a.named_run);
+        assert_eq!((a.seed, a.families, a.advance, a.size, a.pitch, a.frames, a.wait, a.tilt), (7, 6, 0, (1600, 1000), 52.0, 40, 45.0, true));
+        assert!(args("--new --seed 3").unwrap().new);
+        // a run and --new together: a new game, as before
+        assert!(args("runs/x/run.bin --new").unwrap().new);
+    }
+
+    #[test]
+    fn an_option_that_is_not_one_is_refused() {
+        assert_eq!(args("--sesaon 0.5").err().unwrap(), "--sesaon is not an option");
+        assert_eq!(args("--advance 30 --veiw x.png").err().unwrap(), "--veiw is not an option");
+        assert_eq!(args("-x").err().unwrap(), "-x is not an option");
+        // an option with nothing after it
+        assert_eq!(args("--advance").err().unwrap(), "--advance needs a value after it");
+        // a negative number after an option is its value, not an option
+        assert_eq!(args("--yaw -30").unwrap().yaw, -30.0);
+        // asking for the list
+        assert_eq!(args("--help").err().unwrap(), "");
+        // the list names every option the reader knows
+        for opt in ["--new", "--seed", "--families", "--advance", "--demo", "--year", "--size", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--help"] {
+            assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
+        }
     }
 
     #[test]
