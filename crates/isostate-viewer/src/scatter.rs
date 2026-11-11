@@ -427,6 +427,8 @@ pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Works
         state,
         water: slots.firm_water.get(f).copied().unwrap_or(false),
         rail: r.trans[k * r.n + firm.cell] & 4 != 0,
+        // the level is the camera's to choose: `build_year` sets it for each works
+        detail: Detail::Near,
         seed: firm_seed(f),
     })
 }
@@ -764,6 +766,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
         plots.entry(firm.cell).or_default().push((p.0, p.1, hx, hz));
         let site = Site::on(ground(g, p.0, p.1), p.2, &height);
+        // as much of it as the camera can see, as for a house
+        let w = Works { detail: lod.at(p.0, p.1), ..w };
         works(&mut works_b, &mut smoke, &mut lanes, &site, &w, lk);
     }
     // the railway's embankments, viaducts, cuttings, portals and bridges, and a
@@ -916,7 +920,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if s.u > 0.7 || near_plot(s.x, s.z) {
             continue;
         }
-        pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v, detail: lod.at(s.x, s.z) }, lk);
     }
 
     YearMeshes { trees, houses, works: works_b, smoke, lanes }

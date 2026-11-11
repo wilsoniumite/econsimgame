@@ -44,7 +44,7 @@ pub fn forge(c: &mut Ctx) {
                     if a % 3 == 1 {
                         c.glow(&s, Face::Front, cx - w, cx + w, 0.0, h * 0.5, true);
                     } else {
-                        c.panel(&s, Face::Front, cx - w, cx + w, 0.0, h * 0.5, true, *pal.smoke.soot);
+                        c.mouth(&s, Face::Front, cx - w, cx + w, 0.0, h * 0.5, true);
                     }
                 }
             }
@@ -107,7 +107,7 @@ pub fn rolling_mill(c: &mut Ctx) {
                 c.stack(sx, z - dep * 0.5 - 0.004 * g, h + s.rise + 0.018 * g, 0.008 * g, brick, if (k + j) % 2 == 0 { 0.45 } else { 0.0 });
             }
             if !c.going_up() {
-                c.panel(&s, Face::Front, -len * 0.42, -len * 0.42 + 0.014 * g, 0.0, h * 0.7, true, *pal.smoke.soot);
+                c.mouth(&s, Face::Front, -len * 0.42, -len * 0.42 + 0.014 * g, 0.0, h * 0.7, true);
             }
         }
     }
@@ -119,7 +119,7 @@ pub fn rolling_mill(c: &mut Ctx) {
     let e = c.shed(ex, front_z, el, eh, 0.046 * g, true, c.masonry(false), roof);
     if !c.going_up() {
         for u in [-eh * 0.22, eh * 0.22] {
-            c.panel(&e, Face::EndB, u - 0.0035 * g, u + 0.0035 * g, 0.012 * g, 0.03 * g, true, *pal.glass.window);
+            c.light(&e, Face::EndB, u - 0.0035 * g, u + 0.0035 * g, 0.012 * g, 0.03 * g, true);
         }
     }
     let r = (0.02 * g).min(len * 0.3);
@@ -167,7 +167,7 @@ pub fn steel_rail_mill(c: &mut Ctx) {
                     let doors = c.fit(len, 0.05 * g, 12);
                     for k in 0..doors {
                         let cx = -len * 0.5 + len * (k as f32 + 0.5) / doors as f32;
-                        c.panel(&s, Face::Front, cx - 0.006 * g, cx + 0.006 * g, 0.0, h * 0.66, true, *pal.smoke.soot);
+                        c.mouth(&s, Face::Front, cx - 0.006 * g, cx + 0.006 * g, 0.0, h * 0.66, true);
                     }
                 }
             }
@@ -183,7 +183,7 @@ pub fn steel_rail_mill(c: &mut Ctx) {
     let front = z0(rows - 1);
     let e = c.shed(right + 0.004 + 0.013 * g, front + dep, (0.05 * g).min(2.0 * dep), 0.026 * g, 0.04 * g, true, c.masonry(false), roof);
     if !c.going_up() {
-        c.panel(&e, Face::EndB, -0.004 * g, 0.004 * g, 0.01 * g, 0.028 * g, true, *pal.glass.window);
+        c.light(&e, Face::EndB, -0.004 * g, 0.004 * g, 0.01 * g, 0.028 * g, true);
     }
     // the rail bank and its gantry
     let zb = front + 2.0 * dep + 0.006;

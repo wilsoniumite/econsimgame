@@ -36,14 +36,14 @@ pub fn engine_works(c: &mut Ctx) {
             if !c.going_up() {
                 for i in (0..n).step_by(2) {
                     let cx = -(n as f32) * bay * 0.5 + bay * (i as f32 + 0.5);
-                    c.panel(&s, Face::Front, cx - bay * 0.3, cx + bay * 0.3, 0.0, h * 0.62, true, *pal.timber.door);
+                    c.doors(&s, Face::Front, cx - bay * 0.3, cx + bay * 0.3, 0.0, h * 0.62, true, *pal.timber.door);
                 }
             }
         } else {
             for i in 0..n {
                 let s = c.shed(x0 + bay * (i as f32 + 0.5), z, dep, bay, h, true, wall, roof);
                 if !c.going_up() {
-                    c.panel(&s, Face::EndB, -bay * 0.28, bay * 0.28, 0.0, h * 0.7, true, *pal.timber.door);
+                    c.doors(&s, Face::EndB, -bay * 0.28, bay * 0.28, 0.0, h * 0.7, true, *pal.timber.door);
                 }
             }
         }
@@ -76,7 +76,7 @@ pub fn engine_works(c: &mut Ctx) {
         }
         if size >= 10.0 && d > 0.03 * g {
             let s = c.shed(hw * 0.55, hd - 0.012 - 0.011 * g, 0.04 * g, 0.022 * g, 2.0 * STOREY, false, wall, roof);
-            c.windows(&s, 2, 0, 2, 0.01 * g, true, *pal.glass.window);
+            c.windows(&s, 0, 2, true);
         }
     }
 }

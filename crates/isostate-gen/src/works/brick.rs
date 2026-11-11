@@ -45,7 +45,7 @@ pub fn brickworks(c: &mut Ctx) {
             for face in [Face::Front, Face::Back] {
                 for i in 0..wickets {
                     let cx = -len * 0.5 + len * (i as f32 + 0.5) / wickets as f32;
-                    c.panel(&s, face, cx - 0.003 * g, cx + 0.003 * g, 0.0, h * 0.55, true, *pal.smoke.soot);
+                    c.mouth(&s, face, cx - 0.003 * g, cx + 0.003 * g, 0.0, h * 0.55, true);
                 }
             }
         }

@@ -2,7 +2,7 @@
 
 use glam::Vec3;
 
-use super::kit::{Ctx, Face};
+use super::kit::{Ctx, Face, Fill};
 use super::State;
 
 /// How tall a furnace stands in the works' present state.
@@ -19,14 +19,32 @@ fn stands(c: &Ctx, h: f32) -> f32 {
 fn bank(c: &mut Ctx, x0: f32, x1: f32, z0: f32, z1: f32, h0: f32, h1: f32) {
     let grass = c.tone(*c.pal.ground.furnace_bank);
     let stone = c.tone(*c.pal.stone.yard_wall);
-    let p = |x: f32, z: f32, h: f32| c.at(x, z) + Vec3::Y * h;
-    let t = [p(x0, z0, h0), p(x1, z0, h0), p(x1, z1, h1), p(x0, z1, h1)];
+    let site = c.site;
+    let p = move |x: f32, z: f32, h: f32| site.at(x, z) + Vec3::Y * h;
+    // earth lies back at its natural slope on three sides; the face to the yard is walled
+    let (b0, b1) = (((h0 + 0.01) * 0.5).min((z1 - z0) * 0.4), ((h1 + 0.01) * 0.5).min((x1 - x0) * 0.2));
+    let t = [p(x0 + b0, z0 + b0, h0), p(x1 - b0, z0 + b0, h0), p(x1 - b1, z1, h1), p(x0 + b1, z1, h1)];
     let f = [p(x0, z0, -0.01), p(x1, z0, -0.01), p(x1, z1, -0.01), p(x0, z1, -0.01)];
     c.solid.quad(t[3], t[2], t[1], t[0], grass);
     c.solid.quad(f[3], f[2], t[2], t[3], stone);
     c.solid.quad(f[2], f[1], t[1], t[2], crate::colour::shade(grass, 0.9));
     c.solid.quad(f[1], f[0], t[0], t[1], crate::colour::shade(grass, 0.8));
     c.solid.quad(f[0], f[3], t[3], t[0], crate::colour::shade(grass, 0.92));
+    if c.far() {
+        return;
+    }
+    // buttresses against the weight of the bank, two bays apart
+    let n = (((x1 - x0) / (2.0 * super::kit::BAY)).round() as usize).max(1);
+    for i in 0..=n {
+        let x = x0 + (x1 - x0) * i as f32 / n as f32;
+        let (w, out) = (0.0034, 0.0028);
+        let (a, b, top) = (p(x - w * 0.5, z1 + out, -0.01), p(x + w * 0.5, z1 + out, -0.01), h1 * 0.9);
+        let (ta, tb) = (p(x - w * 0.5, z1, top), p(x + w * 0.5, z1, top));
+        let pier = crate::colour::shade(stone, 0.94);
+        c.solid.quad(a, b, tb, ta, pier);
+        c.solid.quad(p(x - w * 0.5, z1, -0.01), a, ta, ta, crate::colour::shade(pier, 0.9));
+        c.solid.quad(b, p(x + w * 0.5, z1, -0.01), tb, tb, crate::colour::shade(pier, 0.84));
+    }
 }
 
 /// A charcoal blast furnace: a square tapered stone stack against a bank,
@@ -107,8 +125,9 @@ pub fn charcoal_furnace(c: &mut Ctx) {
         for i in 0..cols {
             for j in 0..barns {
                 let barn = c.shed(xr + dep * 0.5 + i as f32 * (dep + lane), -hd + 0.008 + len * 0.5 + j as f32 * (len + lane), len, dep, 0.024 * g, true, c.tone(*pal.timber.boards), roof);
+                c.fill(&barn, Fill::Posts);
                 if !c.going_up() {
-                    c.panel(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.017 * g, false, *pal.timber.door);
+                    c.doors(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.017 * g, false, *pal.timber.door);
                 }
             }
         }
@@ -229,7 +248,7 @@ pub fn coke_furnace(c: &mut Ctx) {
     if eng > 0.0 {
         let s = c.tower(xr + eng * 0.5, zf, eng, 0.05 * g, c.masonry(false), roof);
         if !c.going_up() {
-            c.panel(&s, Face::Front, -eng * 0.16, eng * 0.16, 0.012 * g, 0.034 * g, true, *pal.glass.window);
+            c.light(&s, Face::Front, -eng * 0.16, eng * 0.16, 0.012 * g, 0.034 * g, true);
         }
     }
     let tall = fh * 1.3 * size.max(1.0).powf(0.04);

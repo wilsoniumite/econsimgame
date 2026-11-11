@@ -54,9 +54,9 @@ pub struct Level {
 /// sills and glazing bars, eaves with an edge, stacks with their heads,
 /// copings, piers, and what stands in the yard in full.
 pub const LEVELS: [Level; 3] = [
-    Level { finest: 0.0012, coarsest: f32::INFINITY, wall: (0.05, 1.5), roof: (0.03, 1.5) },
-    Level { finest: 0.0012, coarsest: 0.006, wall: (0.6, 4.5), roof: (0.25, 2.5) },
-    Level { finest: 0.00035, coarsest: 0.001, wall: (4.0, 26.0), roof: (0.7, 10.0) },
+    Level { finest: 0.0012, coarsest: f32::INFINITY, wall: (0.02, 1.5), roof: (0.03, 2.8) },
+    Level { finest: 0.0012, coarsest: 0.006, wall: (0.6, 4.0), roof: (0.04, 3.2) },
+    Level { finest: 0.00035, coarsest: 0.001, wall: (4.0, 24.0), roof: (0.1, 8.0) },
 ];
 
 impl Level {
@@ -80,6 +80,9 @@ pub struct Measure {
     pub roof_area: f32,
     /// the longest run of wall with nothing on it or before it, in modules
     pub blank: f32,
+    /// where the smallest feature and the barest wall are, for finding them
+    pub smallest_at: [f32; 3],
+    pub blank_at: [f32; 3],
     /// how far apart windows of one size stand one above another, where any do
     pub storey: Option<f32>,
 }
@@ -107,39 +110,93 @@ fn tris(b: &MeshBuf) -> Vec<Tri> {
         .collect()
 }
 
-/// Measure a mesh built on level ground at the origin against the scale.
-pub fn measure(b: &MeshBuf, pal: &Palette) -> Measure {
+/// What the kit has built: the walls and roofs every building is put
+/// together from tell this tally of their area and their triangles as they
+/// are built, so that a building's walls and roofs can be measured apart
+/// from what stands about it (its chimneys, its heaps, its yard). It is
+/// kept for each thread, changes nothing that is drawn, and is read by
+/// `take_tally`: take it before building a thing and again after.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Tally {
+    pub wall_tris: usize,
+    /// in map units squared
+    pub wall_area: f32,
+    pub roof_tris: usize,
+    pub roof_area: f32,
+}
+
+thread_local! {
+    static TALLY: std::cell::Cell<Tally> = const { std::cell::Cell::new(Tally { wall_tris: 0, wall_area: 0.0, roof_tris: 0, roof_area: 0.0 }) };
+}
+
+/// Walls of an area were built in so many triangles.
+pub(crate) fn tally_wall(area: f32, tris: usize) {
+    TALLY.with(|t| {
+        let mut v = t.get();
+        v.wall_tris += tris;
+        v.wall_area += area;
+        t.set(v);
+    });
+}
+
+/// Roof of an area was built in so many triangles.
+pub(crate) fn tally_roof(area: f32, tris: usize) {
+    TALLY.with(|t| {
+        let mut v = t.get();
+        v.roof_tris += tris;
+        v.roof_area += area;
+        t.set(v);
+    });
+}
+
+/// The tally as it stands.
+pub(crate) fn peek_tally() -> Tally {
+    TALLY.with(|t| t.get())
+}
+
+/// What the kit has built on this thread since the tally was last taken.
+pub fn take_tally() -> Tally {
+    TALLY.with(|t| t.replace(Tally::default()))
+}
+
+/// Measure a thing built on level ground at the origin against the scale:
+/// its mesh, and what the kit's tally says of its walls and roofs.
+pub fn measure(b: &MeshBuf, tally: &Tally, pal: &Palette) -> Measure {
     let ts = tris(b);
-    let ground = b.pos.iter().map(|p| p[1]).fold(f32::MAX, f32::min).max(-0.004);
+    // (the thing stands on level ground at the origin)
+    let ground = 0.0;
     let mut m = Measure { triangles: ts.len(), smallest: f32::MAX, ..Default::default() };
-    let (mut wall_n, mut wall_a, mut roof_n, mut roof_a) = (0usize, 0.0f32, 0usize, 0.0f32);
     for t in &ts {
         let longest = (0..3).map(|i| (t.p[(i + 1) % 3] - t.p[i]).length()).fold(0.0f32, f32::max);
-        m.smallest = m.smallest.min(2.0 * t.area / longest);
-        let top = t.p.iter().map(|p| p.y).fold(f32::MIN, f32::max) - ground;
-        if t.n.y.abs() < UPRIGHT && top > LOW {
-            wall_n += 1;
-            wall_a += t.area;
-        } else if t.n.y >= UPRIGHT && top > LOW {
-            roof_n += 1;
-            roof_a += t.area;
+        if 2.0 * t.area / longest < m.smallest {
+            (m.smallest, m.smallest_at) = (2.0 * t.area / longest, ((t.p[0] + t.p[1] + t.p[2]) / 3.0).to_array());
         }
     }
-    m.wall_area = wall_a / (BAY * STOREY);
-    m.roof_area = roof_a / (BAY * BAY);
-    m.wall = if m.wall_area > 0.0 { wall_n as f32 / m.wall_area } else { 0.0 };
-    m.roof = if m.roof_area > 0.0 { roof_n as f32 / m.roof_area } else { 0.0 };
-    m.blank = blank(&ts, ground) / BAY;
+    m.wall_area = tally.wall_area / (BAY * STOREY);
+    m.roof_area = tally.roof_area / (BAY * BAY);
+    m.wall = if m.wall_area > 0.0 { tally.wall_tris as f32 / m.wall_area } else { 0.0 };
+    m.roof = if m.roof_area > 0.0 { tally.roof_tris as f32 / m.roof_area } else { 0.0 };
+    let (bare, bare_at) = blank(&ts, ground);
+    (m.blank, m.blank_at) = (bare / BAY, bare_at.to_array());
     m.storey = stacked(b, pal);
     m
 }
 
+/// How much upright face a mesh has above the height of a yard wall, in
+/// bays of a storey: what a building's walls come to, however they were built.
+pub fn upright(b: &MeshBuf) -> f32 {
+    // (the thing stands on level ground at the origin)
+    let ground = 0.0;
+    tris(b).iter().filter(|t| t.n.y.abs() < UPRIGHT && t.p.iter().map(|p| p.y).fold(f32::MIN, f32::max) - ground > LOW).map(|t| t.area).sum::<f32>() / (BAY * STOREY)
+}
+
 /// The longest run of bare wall: over every big upright face, the longest
 /// stretch along it that no other face stands on or before.
-fn blank(ts: &[Tri], ground: f32) -> f32 {
+fn blank(ts: &[Tri], ground: f32) -> (f32, Vec3) {
     /// what stands this near before a wall is on it or against it
     const BEFORE: f32 = 0.012;
     let mut worst = 0.0f32;
+    let mut at_worst = Vec3::ZERO;
     for (i, t) in ts.iter().enumerate() {
         if t.n.y.abs() >= UPRIGHT {
             continue;
@@ -148,8 +205,9 @@ fn blank(ts: &[Tri], ground: f32) -> f32 {
         let u = t.p.map(|p| p.dot(along));
         let (u0, u1) = (u.iter().copied().fold(f32::MAX, f32::min), u.iter().copied().fold(f32::MIN, f32::max));
         let (y0, y1) = (t.p.iter().map(|p| p.y).fold(f32::MAX, f32::min), t.p.iter().map(|p| p.y).fold(f32::MIN, f32::max));
-        // a wall of a building: long, and standing well above the ground for much of a storey
-        if u1 - u0 <= worst.max(2.0 * BAY) || y1 - ground < LOW * 2.0 || y1 - y0 < 0.6 * STOREY {
+        // a wall of a building: long, and standing most of a storey high above the ground (a
+        // strip between two rows of openings is no blank wall, nor is a yard wall or a low bank)
+        if u1 - u0 <= worst.max(2.0 * BAY) || y1 - y0.max(ground) < 0.9 * STOREY {
             continue;
         }
         // the height the wall has along its length: a triangle is half of a face, so
@@ -187,20 +245,22 @@ fn blank(ts: &[Tri], ground: f32) -> f32 {
             }
         }
         gap = gap.max(u1 - at);
-        worst = worst.max(gap);
+        if gap > worst {
+            (worst, at_worst) = (gap, (t.p[0] + t.p[1] + t.p[2]) / 3.0);
+        }
     }
-    worst
+    (worst, at_worst)
 }
 
 /// How far apart windows of one size stand one above another: the middle
 /// such distance, from the flat panes of glass on upright faces (which is
 /// how the play level draws a window), or nothing if no two are stacked.
 fn stacked(b: &MeshBuf, pal: &Palette) -> Option<f32> {
-    let glass = *pal.glass.window;
+    let (glass, lit) = (*pal.glass.window, *pal.glass.mill_lit);
     // every upright quad of glass: its plane's facing, its middle along the wall, its foot, width and height
     let mut panes: Vec<(Vec3, f32, f32, f32, f32, f32)> = Vec::new();
     for q in b.idx.chunks(6) {
-        if q.len() < 6 || q.iter().any(|&i| b.col[i as usize] != glass) {
+        if q.len() < 6 || q.iter().any(|&i| b.col[i as usize] != glass && b.col[i as usize] != lit) {
             continue;
         }
         let mut c: Vec<u32> = q.to_vec();
@@ -245,7 +305,7 @@ pub fn faults(m: &Measure, detail: Detail) -> Vec<String> {
     let lv = Level::of(detail);
     let mut out = Vec::new();
     if m.smallest < lv.finest {
-        out.push(format!("its smallest feature is {:.5}, finer than the {} level's {:.5}", m.smallest, detail.label(), lv.finest));
+        out.push(format!("its smallest feature is {:.5} (at {:.3?}), finer than the {} level's {:.5}", m.smallest, m.smallest_at, detail.label(), lv.finest));
     }
     if m.smallest > lv.coarsest {
         out.push(format!("its smallest feature is {:.5}, coarser than the {} level asks ({:.5})", m.smallest, detail.label(), lv.coarsest));
@@ -257,7 +317,7 @@ pub fn faults(m: &Measure, detail: Detail) -> Vec<String> {
         out.push(format!("{:.2} triangles to a bay by a bay of roof, outside {} to {}", m.roof, lv.roof.0, lv.roof.1));
     }
     if detail != Detail::Far && m.blank > BLANK {
-        out.push(format!("a wall is bare for {:.1} modules (no more than {BLANK} may be)", m.blank));
+        out.push(format!("a wall is bare for {:.1} modules at {:.3?} (no more than {BLANK} may be)", m.blank, m.blank_at));
     }
     if let Some(s) = m.storey {
         let n = (s / STOREY).round().max(1.0);

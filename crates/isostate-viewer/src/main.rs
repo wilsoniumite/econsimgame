@@ -1280,7 +1280,7 @@ fn rebuild_year(
                     ));
                 }
             }
-            for (h, b) in [(&handles.works, ym.works), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
+            for (h, b) in [(&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
                 if let Some(mut m) = meshes.get_mut(h) {
                     *m = non_empty(b);
                 }
@@ -1293,7 +1293,10 @@ fn rebuild_year(
                 }
             }
         }
-        for (h, b) in [(&handles.houses, ym.houses), (&handles.smoke, ym.smoke)] {
+        // (task B, one scale of detail: the works, the pits and the bridges take their level
+        // from the camera as the houses do, so their mesh goes on screen again with the houses';
+        // their yards' ground, in `lanes`, is the same at every level and stays)
+        for (h, b) in [(&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke)] {
             if let Some(mut m) = meshes.get_mut(h) {
                 *m = non_empty(b);
             }

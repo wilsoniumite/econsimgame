@@ -15,7 +15,9 @@ use glam::Vec3;
 use crate::hash::Seed;
 use crate::houses::roof::Roof;
 use crate::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
+use crate::works::{pit, works, Kind, Pit, PitKind, Works};
 use crate::palette::Palette;
+use crate::scale::{take_tally, Tally};
 use crate::site::{Model, Site};
 
 /// What kind of thing a generator makes, which settles what of the scale it answers to.
@@ -34,6 +36,8 @@ pub enum Class {
 pub struct Specimen {
     pub label: String,
     pub model: Model,
+    /// what the kit built of it: its walls and its roofs
+    pub tally: Tally,
 }
 
 /// A generator, or a family of them that share a struct of parameters.
@@ -51,8 +55,9 @@ pub struct Entry {
 
 fn specimen(label: impl Into<String>, build: impl FnOnce(&mut Model, &Site)) -> Specimen {
     let mut model = Model::default();
+    take_tally();
     build(&mut model, &Site::level(Vec3::ZERO, 0.0));
-    Specimen { label: label.into(), model }
+    Specimen { label: label.into(), model, tally: take_tally() }
 }
 
 /// The years a house of each era is taken to have been built in, for its roof.
@@ -124,6 +129,54 @@ fn farmhouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     out
 }
 
+/// Where a kind of works stands in `Kind::ALL`. (Every kind is named here, so
+/// that a new kind does not compile until it is given a place, and the tests
+/// then ask for its entry.)
+const fn slot(kind: Kind) -> usize {
+    match kind {
+        Kind::HandLoom => 0,
+        Kind::Smithy => 1,
+        Kind::Millwright => 2,
+        Kind::Shops => 3,
+        Kind::CharcoalBurning => 4,
+        Kind::Bloomery => 5,
+        Kind::CharcoalFurnace => 6,
+        Kind::CokeFurnace => 7,
+        Kind::ForgeRails => 8,
+        Kind::RollingMill => 9,
+        Kind::CrucibleSteel => 10,
+        Kind::Bessemer => 11,
+        Kind::SteelRolling => 12,
+        Kind::EngineWorks => 13,
+        Kind::TextileMill => 14,
+        Kind::Brickworks => 15,
+        Kind::Other => 16,
+    }
+}
+
+/// A kind of works at three times the standard size built about 1820 (what
+/// the `works-kinds` sheet shows), then small and great, early and late.
+fn works_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let kind = Kind::ALL[K];
+    [(3.0, 1820, false), (0.4, 1760, true), (1.0, 1870, false), (10.0, 1760, false), (30.0, 1850, false), (100.0, 1870, false)]
+        .into_iter()
+        .map(|(size, founded, water)| {
+            let w = Works { founded, water, detail, seed: Seed::of(K as u32 * 16 + founded as u32), ..Works::new(kind, size) };
+            specimen(format!("{}, size {size}, {founded}", kind.label()), |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
+        })
+        .collect()
+}
+
+fn pits(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (kind, name) in [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")] {
+        for v in [0.5, 0.0, 1.0] {
+            out.push(specimen(format!("{name}, heap {v}"), |m, site| pit(&mut m.solid, site, &Pit { kind, v, detail }, pal)));
+        }
+    }
+    out
+}
+
 /// Every generator. To add one: write its specimens and add a line here.
 pub static REGISTRY: &[Entry] = &[
     Entry { name: "cottage", class: Class::Building, covers: &["houses/cottage::cottage"], build: cottages, levels: true },
@@ -131,6 +184,24 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "terrace", class: Class::Building, covers: &["houses/terrace::terrace"], build: terraces, levels: true },
     Entry { name: "villa", class: Class::Building, covers: &["houses/villa::villa"], build: villas, levels: true },
     Entry { name: "farmhouse", class: Class::Building, covers: &["houses/farmhouse::farmhouse"], build: farmhouses, levels: true },
+    Entry { name: "works: handloom weaver", class: Class::Building, covers: &["works/mod::works"], build: works_of::<0>, levels: true },
+    Entry { name: "works: smithy", class: Class::Building, covers: &["works/mod::works"], build: works_of::<1>, levels: true },
+    Entry { name: "works: millwright", class: Class::Building, covers: &["works/mod::works"], build: works_of::<2>, levels: true },
+    Entry { name: "works: shops and trades", class: Class::Building, covers: &["works/mod::works"], build: works_of::<3>, levels: true },
+    Entry { name: "works: charcoal burning", class: Class::Structure, covers: &["works/mod::works"], build: works_of::<4>, levels: true },
+    Entry { name: "works: bloomery", class: Class::Building, covers: &["works/mod::works"], build: works_of::<5>, levels: true },
+    Entry { name: "works: charcoal furnace", class: Class::Building, covers: &["works/mod::works"], build: works_of::<6>, levels: true },
+    Entry { name: "works: coke furnace", class: Class::Building, covers: &["works/mod::works"], build: works_of::<7>, levels: true },
+    Entry { name: "works: forged rails", class: Class::Building, covers: &["works/mod::works"], build: works_of::<8>, levels: true },
+    Entry { name: "works: rolling mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<9>, levels: true },
+    Entry { name: "works: crucible steel", class: Class::Building, covers: &["works/mod::works"], build: works_of::<10>, levels: true },
+    Entry { name: "works: converter", class: Class::Building, covers: &["works/mod::works"], build: works_of::<11>, levels: true },
+    Entry { name: "works: steel rail mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<12>, levels: true },
+    Entry { name: "works: engine works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<13>, levels: true },
+    Entry { name: "works: powered mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<14>, levels: true },
+    Entry { name: "works: brickworks", class: Class::Building, covers: &["works/mod::works"], build: works_of::<15>, levels: true },
+    Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<16>, levels: true },
+    Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
 ];
 
 /// The houses: the entries the scale was read off, which the others are held to.
@@ -150,18 +221,26 @@ mod tests {
             for detail in Detail::ALL {
                 let specimens = (e.build)(detail, &pal);
                 assert!(!specimens.is_empty(), "{} has no specimens", e.name);
+                let mut walled = false;
                 for s in &specimens {
                     assert!(s.model.is_sound() && !s.model.is_empty(), "{}: {} at the {} level", e.name, s.label, detail.label());
-                    let m = measure(&s.model.solid, &pal);
+                    let m = measure(&s.model.solid, &s.tally, &pal);
                     let faults = match e.class {
-                        Class::Building => scale::faults(&m, detail),
-                        // what is not a building answers for its grain alone
-                        _ => scale::faults(&scale::Measure { wall_area: 0.0, roof_area: 0.0, blank: 0.0, storey: None, ..m }, detail),
+                        Class::Building => {
+                            walled |= m.wall_area > 0.0;
+                            scale::faults(&m, detail)
+                        }
+                        // what is not a building answers for its grain alone: nothing finer than its level allows
+                        _ => scale::faults(&scale::Measure { wall_area: 0.0, roof_area: 0.0, blank: 0.0, storey: None, smallest: m.smallest.min(scale::Level::of(detail).coarsest), ..m }, detail),
                     };
                     for f in faults {
                         wrong.push(format!("{}: {} at the {} level: {f}", e.name, s.label, detail.label()));
                     }
                 }
+                // a building's walls are the kit's: a chimney or a furnace may be most of what stands
+                // upright in a works, and a small brickworks is kilns alone, but among a kind's
+                // specimens there are walls, and the kit built them
+                assert!(walled || e.class != Class::Building, "{} is a building and the kit built none of its walls at the {} level: build walls with kit::Kit", e.name, detail.label());
                 // each level draws no less than the one before it, and the same things
                 let now: Vec<usize> = specimens.iter().map(|s| s.model.solid.triangles()).collect();
                 if let Some(was) = &last {
@@ -240,7 +319,7 @@ mod tests {
     /// Work in progress: the generators not yet brought to the scale. To be emptied and removed.
     const NOT_YET: &[&str] = &[
         "bridge::road_bridge", "farm::farmstead", "fence::fence", "parts::gabled", "town/church::church", "town/lighthouse::lighthouse", "town/market::market_cross", "town/market::market_hall",
-        "town/station::station", "trees::bush", "trees::hedge_tree", "trees::tree", "works/mod::works", "works/pit::pit",
+        "town/station::station", "trees::bush", "trees::hedge_tree", "trees::tree",
     ];
 
     #[test]
@@ -271,7 +350,7 @@ mod tests {
             for detail in Detail::ALL {
                 let (mut lo, mut hi) = (scale::Measure { smallest: f32::MAX, wall: f32::MAX, roof: f32::MAX, ..Default::default() }, scale::Measure::default());
                 for s in (e.build)(detail, &pal) {
-                    let m = measure(&s.model.solid, &pal);
+                    let m = measure(&s.model.solid, &s.tally, &pal);
                     if std::env::var_os("EACH").is_some() {
                         println!("    {:<40} {:>5} tris, finest {:.5}, wall {:>5.1} over {:>5.1}, roof {:>5.2} over {:>5.1}, bare {:.1}, storey {:?}", s.label, m.triangles, m.smallest, m.wall, m.wall_area, m.roof, m.roof_area, m.blank, m.storey);
                     }

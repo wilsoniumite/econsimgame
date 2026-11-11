@@ -371,7 +371,7 @@ mod tests {
     fn every_sheet_fits_its_pictures() {
         let pal = Palette::standard();
         for sheet in SHEETS {
-            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN);
+            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN, isostate_gen::houses::Detail::Near);
             let count: usize = cells.iter().map(|r| r.len()).sum();
             for shot in Shot::ALL {
                 let pages = pages(&cells, shot, SIZE, 1);
@@ -409,7 +409,7 @@ mod tests {
         // ten labels side by side are wider than a picture of 800, whatever the distance
         let pal = Palette::standard();
         for sheet in SHEETS {
-            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN);
+            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN, isostate_gen::houses::Detail::Near);
             let count: usize = cells.iter().map(|r| r.len()).sum();
             for shot in Shot::ALL {
                 let pages = pages(&cells, shot, (800, 600), 1);
@@ -425,7 +425,7 @@ mod tests {
     fn labels_in_a_row_do_not_overlap() {
         let pal = Palette::standard();
         for sheet in SHEETS {
-            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN);
+            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN, isostate_gen::houses::Detail::Near);
             for shot in Shot::ALL {
                 for page in pages(&cells, shot, SIZE, 1) {
                     for pair in page.placed.windows(2) {
@@ -445,7 +445,7 @@ mod tests {
     #[test]
     fn from_further_off_the_picture_is_enlarged_a_whole_number_of_times() {
         let pal = Palette::standard();
-        let cells = crate::lab::cells_of(isostate_gen::sheets::find("cottages").unwrap(), &pal, crate::lab::TURN);
+        let cells = crate::lab::cells_of(isostate_gen::sheets::find("cottages").unwrap(), &pal, crate::lab::TURN, isostate_gen::houses::Detail::Near);
         let k = |shot| pages(&cells, shot, SIZE, 1)[0].view.k;
         assert_eq!(k(Shot::Close), 1.0);
         assert!(k(Shot::Play) >= 2.0 && k(Shot::Play).fract() == 0.0);

@@ -202,6 +202,14 @@ pub(crate) enum Open {
     Shop { paint: Rgba, awning: Option<Rgba> },
     /// a way through for a cart
     Arch,
+    /// a works' window: small panes in an iron frame, `cols` across and `rows` up; with `round`, under a round head
+    Paned { cols: u8, rows: u8, round: bool, lit: bool },
+    /// a pair of boarded doors wide enough for a cart or a wagon, under a lintel or (`round`) an arch
+    Leaves { paint: Rgba, round: bool },
+    /// an opening with nothing in it, dark within or lit by a fire: a furnace's mouth, an open bay, a broken window
+    Mouth { within: Rgba, round: bool },
+    /// slats that let the heat out and keep the rain off
+    Louvre,
 }
 
 /// An opening in a wall: its middle along the wall, its foot, how wide and how tall.
@@ -223,16 +231,26 @@ pub(crate) struct Side<'o> {
     pub ops: &'o [Opening],
     /// the wall runs into a corner at its beginning or its end, and is darker there
     pub dark: (bool, bool),
+    /// its openings stand wherever they are, of any height (a hall's tall
+    /// doors, a window that runs through two storeys), and close to the
+    /// wall is cut round them in level bands; otherwise it is built a
+    /// storey at a time, as a house's is, and an opening keeps to its storey
+    pub free: bool,
 }
 
 impl<'o> Side<'o> {
     /// A side not drawn: a party wall, or one another range stands against.
-    pub const NONE: Side<'static> = Side { show: false, k: 1.0, ops: &[], dark: (false, false) };
+    pub const NONE: Side<'static> = Side { show: false, k: 1.0, ops: &[], dark: (false, false), free: false };
     /// A blank wall.
-    pub const PLAIN: Side<'static> = Side { show: true, k: 1.0, ops: &[], dark: (false, false) };
+    pub const PLAIN: Side<'static> = Side { show: true, k: 1.0, ops: &[], dark: (false, false), free: false };
 
     pub fn with(ops: &'o [Opening]) -> Side<'o> {
-        Side { show: true, k: 1.0, ops, dark: (false, false) }
+        Side { show: true, k: 1.0, ops, dark: (false, false), free: false }
+    }
+
+    /// A wall whose openings stand wherever they are, of any height.
+    pub fn free(ops: &'o [Opening]) -> Side<'o> {
+        Side { show: true, k: 1.0, ops, dark: (false, false), free: true }
     }
 
     pub fn dim(self, k: f32) -> Side<'o> {
@@ -399,15 +417,53 @@ impl<'a, 's> Kit<'a, 's> {
         let f = rg.face(side);
         let col = shade(col, SIDE_SHADE[(side + rg.turn as usize) % 4]);
         self.panel(&f, u0, u1, y0, y1, out, col, col);
+        crate::scale::tally_wall(0.0, 2);
     }
 
     // -------------------------------------------------------------- walls
 
     /// The walls of a range from `y0` up to `y1`. With `foot` they stand on
     /// the ground: darker there, and close to with a plinth; with `eaves`
-    /// they end under a roof that shades their top.
+    /// they end under a roof that shades their top. (What is built is told
+    /// to the scale's tally, for measuring: `scale::take_tally`.)
     #[allow(clippy::too_many_arguments)]
     pub fn walls(&mut self, rg: &Range, y0: f32, y1: f32, w: &Wall, sides: [Side; 4], foot: bool, eaves: bool) {
+        let before = self.solid.triangles();
+        let tall = (y1 - y0.max(0.0)).max(0.0);
+        let area: f32 = sides.iter().enumerate().filter(|(_, s)| s.show).map(|(i, _)| rg.face(i).len * tall).sum();
+        self.build_walls(rg, y0, y1, w, sides, foot, eaves);
+        crate::scale::tally_wall(area, self.solid.triangles() - before);
+    }
+
+    /// A pitched roof on a range, its ridge along the range's `a`: gabled,
+    /// hipped or half-hipped at each end, stopped against a neighbour, or
+    /// run on into another roof with valleys.
+    pub fn roof(&mut self, rg: &Range, s: &RoofSpec) {
+        let before = self.solid.triangles();
+        self.build_roof(rg, s);
+        crate::scale::tally_roof(2.0 * rg.len * (rg.dep * 0.5).hypot(s.rise), self.solid.triangles() - before);
+    }
+
+    /// A lean-to: a range whose roof is one slope, from `high` on its -c
+    /// side (where it stands against something taller) down to `low` on its
+    /// +c side. `outer` is how the low wall is drawn, and `ends` which of
+    /// its end walls (toward +a and -a) are.
+    #[allow(clippy::too_many_arguments)]
+    pub fn lean_to(&mut self, rg: &Range, low: f32, high: f32, w: &Wall, roof: Rgba, over: f32, outer: Side, ends: [bool; 2]) {
+        let (before, walls) = (self.solid.triangles(), crate::scale::peek_tally().wall_tris);
+        self.build_lean_to(rg, low, high, w, roof, over, outer, ends);
+        // its low wall has told the tally of itself: the rest is its end walls and its slope
+        let rest = self.solid.triangles() - before - (crate::scale::peek_tally().wall_tris - walls);
+        let shown = ends.iter().filter(|e| **e).count();
+        crate::scale::tally_wall(shown as f32 * rg.dep * (low + high) * 0.5, (2 * shown).min(rest));
+        crate::scale::tally_roof(rg.len * rg.dep.hypot(high - low), rest - (2 * shown).min(rest));
+    }
+
+    /// The walls of a range from `y0` up to `y1`. With `foot` they stand on
+    /// the ground: darker there, and close to with a plinth; with `eaves`
+    /// they end under a roof that shades their top.
+    #[allow(clippy::too_many_arguments)]
+    fn build_walls(&mut self, rg: &Range, y0: f32, y1: f32, w: &Wall, sides: [Side; 4], foot: bool, eaves: bool) {
         for (i, s) in sides.iter().enumerate() {
             if !s.show {
                 continue;
@@ -448,6 +504,59 @@ impl<'a, 's> Kit<'a, 's> {
             }
             if s.ops.is_empty() {
                 band(self, 0.0, f.len, lo, hi, 0.0, col, 1.0, 1.0);
+                continue;
+            }
+            if s.free {
+                // the wall round openings that stand wherever they are: in level bands
+                // between the heights at which an opening begins or ends
+                let mut ops: Vec<(f32, f32, f32, f32, &Opening)> = s
+                    .ops
+                    .iter()
+                    .map(|o| ((o.u - o.w * 0.5).max(0.0), (o.u + o.w * 0.5).min(f.len), o.y.max(lo), (o.y + o.h).min(hi), o))
+                    .filter(|r| r.1 - r.0 > 1e-4 && r.3 - r.2 > 1e-4)
+                    .collect();
+                ops.sort_by(|p, q| p.0.total_cmp(&q.0));
+                let mut ys: Vec<f32> = vec![lo, hi];
+                for r in &ops {
+                    ys.push(r.2);
+                    ys.push(r.3);
+                }
+                ys.sort_by(f32::total_cmp);
+                // heads and sills that are within a hair of one another are level with one
+                // another: no band of wall is thinner than the finest thing there is
+                ys.dedup_by(|a, b| (*a - *b).abs() < 0.0008);
+                if let Some(last) = ys.last_mut() {
+                    *last = hi;
+                }
+                let level =|y: f32| ys.iter().copied().min_by(|a, b| (a - y).abs().total_cmp(&(b - y).abs())).unwrap_or(y);
+                for r in ops.iter_mut() {
+                    (r.2, r.3) = (level(r.2), level(r.3));
+                }
+                ops.retain(|r| r.3 - r.2 > 1e-4);
+                let across = |ya: f32, yb: f32| -> Vec<usize> { ops.iter().enumerate().filter(|(_, r)| r.2 <= ya + 1e-5 && r.3 >= yb - 1e-5).map(|(n, _)| n).collect() };
+                let mut i = 0;
+                while i + 1 < ys.len() {
+                    // bands that the same openings cross are one band
+                    let here = across(ys[i], ys[i + 1]);
+                    let mut j = i + 1;
+                    while j + 1 < ys.len() && across(ys[j], ys[j + 1]) == here {
+                        j += 1;
+                    }
+                    let mut at = 0.0f32;
+                    for &n in &here {
+                        if ops[n].0 - at > 1e-5 {
+                            band(self, at, ops[n].0, ys[i], ys[j], 0.0, col, 1.0, 1.0);
+                        }
+                        at = at.max(ops[n].1);
+                    }
+                    if f.len - at > 1e-5 {
+                        band(self, at, f.len, ys[i], ys[j], 0.0, col, 1.0, 1.0);
+                    }
+                    i = j;
+                }
+                for r in &ops {
+                    self.opening(&f, r.0, r.1, r.2, r.3, r.4, w, k);
+                }
                 continue;
             }
             // the wall between its openings, a storey at a time
@@ -498,6 +607,26 @@ impl<'a, 's> Kit<'a, 's> {
                 let dark = *self.pal.smoke.soot;
                 self.panel(f, u0, u1, y0, y1, PROUD, dark, dark);
             }
+            Open::Paned { lit, .. } => {
+                let glass = if lit { *self.pal.glass.mill_lit } else { glass };
+                self.panel(f, u0, u1, y0, y1, PROUD, glass, glass)
+            }
+            Open::Leaves { paint, .. } => self.panel(f, u0, u1, y0, y1, PROUD, shade(paint, 0.9), shade(paint, 0.9)),
+            Open::Mouth { within, .. } => self.panel(f, u0, u1, y0, y1, PROUD, within, within),
+            Open::Louvre => {
+                let dark = shade(*self.pal.smoke.soot, 1.5);
+                self.panel(f, u0, u1, y0, y1, PROUD, dark, dark);
+            }
+        }
+    }
+
+    /// The wall left in the top corners of a round-headed opening, close to: the springing of its arch.
+    fn haunches(&mut self, f: &Face, u0: f32, u1: f32, y1: f32, col: Rgba) {
+        let out = self.face_out(f);
+        let hw = (u1 - u0) * 0.24;
+        for (corner, toward) in [(u0, 1.0f32), (u1, -1.0)] {
+            let p = [self.fp(f, corner, y1, 0.0), self.fp(f, corner + toward * hw, y1, 0.0), self.fp(f, corner, y1 - hw * 0.9, 0.0)];
+            self.solid.tri_toward(p, [col; 3], out);
         }
     }
 
@@ -596,6 +725,69 @@ impl<'a, 's> Kit<'a, 's> {
                 }
                 self.panel(f, u0 - 0.0008, u1 + 0.0008, y1, y1 + 0.0012, LAYER, shade(w.sill, 0.95), w.sill);
             }
+            Open::Paned { cols, rows, round, lit } => {
+                let glass = if lit { *self.pal.glass.mill_lit } else { glass };
+                // the glass back in its reveal, as a house's is, and the bars of its panes
+                let frame = shade(w.frame, k);
+                jambs(self, REVEAL, frame);
+                self.quad([self.fp(f, u0 - 0.0003, y0, 0.0005), self.fp(f, u1 + 0.0003, y0, 0.0005), self.fp(f, u1 + 0.0003, y0, -REVEAL), self.fp(f, u0 - 0.0003, y0, -REVEAL)], shade(w.sill, 1.04), Vec3::Y);
+                self.panel(f, u0, u1, y0, y1, -REVEAL, glass, shade(glass, 0.86));
+                let (d, t) = (-REVEAL + LAYER, 0.00035);
+                for i in 1..cols.max(1) {
+                    let u = u0 + (u1 - u0) * i as f32 / cols as f32;
+                    self.panel(f, u - t, u + t, y0, y1, d, frame, frame);
+                }
+                for i in 1..rows.max(1) {
+                    let y = y0 + (y1 - y0) * i as f32 / rows as f32;
+                    self.panel(f, u0, u1, y - t, y + t, d + 0.0001, frame, frame);
+                }
+                if round {
+                    self.haunches(f, u0, u1, y1, shade(w.col, k));
+                }
+            }
+            Open::Leaves { paint, round } => {
+                let depth = REVEAL * 1.4;
+                jambs(self, depth, shade(w.col, k * 0.8));
+                self.panel(f, u0, u1, y0, y1, -depth, shade(paint, 0.78), paint);
+                // where the two leaves meet, and the rail across them
+                let (d, t) = (-depth + LAYER, 0.0004);
+                let (mid, dark) = ((u0 + u1) * 0.5, shade(paint, 0.6));
+                self.panel(f, mid - t, mid + t, y0, y1, d, dark, dark);
+                let rail = y0 + (y1 - y0) * 0.62;
+                self.panel(f, u0, u1, rail - t, rail + t, d + 0.0001, dark, dark);
+                self.quad([self.fp(f, u0, y0, 0.0), self.fp(f, u1, y0, 0.0), self.fp(f, u1, y0, -depth), self.fp(f, u0, y0, -depth)], shade(w.sill, 0.9), Vec3::Y);
+                if round {
+                    self.haunches(f, u0, u1, y1, shade(w.col, k));
+                } else {
+                    self.panel(f, u0 - 0.0008, u1 + 0.0008, y1, y1 + 0.0012, LAYER, shade(w.sill, 0.95), w.sill);
+                }
+            }
+            Open::Mouth { within, round } => {
+                let depth = 0.004;
+                let dark = *self.pal.smoke.soot;
+                jambs(self, depth, shade(w.col, k * 0.6));
+                // a fire is brightest low down; an empty opening is dark all the way
+                self.panel(f, u0, u1, y0, y1, -depth, within, shade(within, 0.7));
+                self.quad([self.fp(f, u0, y0, 0.0), self.fp(f, u1, y0, 0.0), self.fp(f, u1, y0, -depth), self.fp(f, u0, y0, -depth)], shade(dark, 1.7), Vec3::Y);
+                if round {
+                    self.haunches(f, u0, u1, y1, shade(w.col, k));
+                } else {
+                    self.panel(f, u0 - 0.0008, u1 + 0.0008, y1, y1 + 0.0012, LAYER, shade(w.sill, 0.95), w.sill);
+                }
+            }
+            Open::Louvre => {
+                let frame = shade(w.frame, k * 0.7);
+                let dark = *self.pal.smoke.soot;
+                jambs(self, REVEAL, frame);
+                self.panel(f, u0, u1, y0, y1, -REVEAL, dark, dark);
+                // slats that slope outward and down
+                let n = (((y1 - y0) / 0.0024).round() as usize).clamp(2, 8);
+                let step = (y1 - y0) / n as f32;
+                for i in 0..n {
+                    let y = y0 + step * (i as f32 + 1.0);
+                    self.quad([self.fp(f, u0, y - step * 0.75, 0.0), self.fp(f, u1, y - step * 0.75, 0.0), self.fp(f, u1, y, -REVEAL), self.fp(f, u0, y, -REVEAL)], frame, Vec3::Y + out);
+                }
+            }
         }
     }
 
@@ -620,7 +812,7 @@ impl<'a, 's> Kit<'a, 's> {
     /// A pitched roof on a range, its ridge along the range's `a`: gabled,
     /// hipped or half-hipped at each end, stopped against a neighbour, or
     /// run on into another roof with valleys.
-    pub fn roof(&mut self, rg: &Range, s: &RoofSpec) {
+    fn build_roof(&mut self, rg: &Range, s: &RoofSpec) {
         /// how far up a half-hipped gable its hip begins
         const HALF: f32 = 0.56;
         let (hl, hd) = (rg.len * 0.5, rg.dep * 0.5);
@@ -793,7 +985,7 @@ impl<'a, 's> Kit<'a, 's> {
     /// +c side. `outer` is how the low wall is drawn, and `ends` which of
     /// its end walls (toward +a and -a) are.
     #[allow(clippy::too_many_arguments)]
-    pub fn lean_to(&mut self, rg: &Range, low: f32, high: f32, w: &Wall, roof: Rgba, over: f32, outer: Side, ends: [bool; 2]) {
+    fn build_lean_to(&mut self, rg: &Range, low: f32, high: f32, w: &Wall, roof: Rgba, over: f32, outer: Side, ends: [bool; 2]) {
         let (hl, hd) = (rg.len * 0.5, rg.dep * 0.5);
         let y0 = -self.drop(rg);
         self.walls(rg, y0, low, w, [outer, Side::NONE, Side::NONE, Side::NONE], true, true);

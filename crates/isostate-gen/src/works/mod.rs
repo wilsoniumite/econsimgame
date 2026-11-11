@@ -29,6 +29,7 @@ pub use pit::{pit, Pit, PitKind};
 use glam::Vec3;
 
 use crate::hash::Seed;
+use crate::kit::Detail;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::site::Site;
@@ -220,14 +221,20 @@ pub struct Works {
     pub water: bool,
     /// a railway runs by the site
     pub rail: bool,
+    /// how much of it to draw (`Detail`): the viewer chooses by where the
+    /// camera is, as it does for a house. Far: walls, roofs and the tall
+    /// chimneys. Play: openings as flat panels, stacks, the yard's wall and
+    /// what stands in it. Near: everything. The yard's ground and water
+    /// (what goes into `flat`) and where the flag flies are the same at all three.
+    pub detail: Detail,
     /// the works' own two numbers, which settle every choice it makes for itself
     pub seed: Seed,
 }
 
 impl Works {
-    /// A working works of the middle of the period, away from water and rail.
+    /// A working works of the middle of the period, away from water and rail, drawn in full.
     pub fn new(kind: Kind, size: f32) -> Works {
-        Works { kind, size, founded: 1820, state: State::Working, water: false, rail: false, seed: Seed::of(0) }
+        Works { kind, size, founded: 1820, state: State::Working, water: false, rail: false, detail: Detail::Near, seed: Seed::of(0) }
     }
 }
 
@@ -267,13 +274,17 @@ pub fn works(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site:
 }
 
 /// Where a flag on the works would fly from: the top of its highest gable
-/// (or tower), on the map.
+/// (or tower), on the map. It is the same point at every level of detail,
+/// so it is found on the works as it is drawn from far off, which is the
+/// least to build.
 pub fn flag_point(site: &Site, w: &Works, pal: &Palette) -> Vec3 {
     let (mut solid, mut smoke, mut flat) = (MeshBuf::default(), MeshBuf::default(), MeshBuf::default());
-    build(&mut solid, &mut smoke, &mut flat, site, w, pal).unwrap_or(site.origin + Vec3::Y * 0.03)
+    build(&mut solid, &mut smoke, &mut flat, site, &Works { detail: Detail::Far, ..*w }, pal).0.unwrap_or(site.origin + Vec3::Y * 0.03)
 }
 
-fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Site, w: &Works, pal: &Palette) -> Option<Vec3> {
+/// Build a works. It gives back the top of its highest gable and how many
+/// of its own numbers it took (the same at every level of detail).
+fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Site, w: &Works, pal: &Palette) -> (Option<Vec3>, i32) {
     let mut c = kit::Ctx::new(solid, smoke, flat, site, w, pal);
     match w.kind {
         Kind::HandLoom => trades::hand_loom(&mut c),
@@ -311,7 +322,8 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
         }
         _ => {}
     }
-    c.peak
+    c.finish();
+    (c.peak, c.taken())
 }
 
 #[cfg(test)]
@@ -484,6 +496,38 @@ mod tests {
             assert!(p.y > 0.008 && p.y < 0.45, "{w:?}: the flag is at {p}");
             assert!(p.x.hypot(p.z) <= fw.hypot(fd) * 0.5 + 0.01, "{w:?}: the flag at {p} is off the yard");
         });
+    }
+
+    #[test]
+    fn it_is_the_same_works_at_every_level_of_detail() {
+        // the camera's distance changes how much is drawn, never what stands where: the
+        // yard's ground and water, the flag's place, the plumes and the works' own numbers
+        // are the same at all three levels, and each level draws more than the one before
+        let pal = Palette::standard();
+        let site = Site::level(Vec3::ZERO, 0.3);
+        all(|w| {
+            for state in [State::Working, State::GoingUp, State::Derelict] {
+                let built: Vec<(Model, Option<Vec3>, i32)> = Detail::ALL
+                    .iter()
+                    .map(|&detail| {
+                        let mut m = Model::default();
+                        let (peak, taken) = build(&mut m.solid, &mut m.smoke, &mut m.flat, &site, &Works { state, detail, ..w }, &pal);
+                        (m, peak, taken)
+                    })
+                    .collect();
+                let (far, play, near) = (&built[0], &built[1], &built[2]);
+                for other in [play, near] {
+                    assert!(far.0.flat == other.0.flat, "{w:?} {state:?}: the yard's ground differs by level");
+                    assert!(far.0.smoke == other.0.smoke, "{w:?} {state:?}: the smoke differs by level");
+                    assert_eq!(far.1, other.1, "{w:?} {state:?}: the flag's place differs by level");
+                    assert_eq!(far.2, other.2, "{w:?} {state:?}: the works took other numbers of its own at another level");
+                }
+                assert!(far.0.solid.triangles() <= play.0.solid.triangles() && play.0.solid.triangles() <= near.0.solid.triangles(), "{w:?} {state:?}");
+            }
+        });
+        // from far off a great mill is a few hundred triangles, close to some thousands
+        let tris = |detail| build_at(&Works { detail, ..Works::new(Kind::TextileMill, 30.0) }, 0.0).solid.triangles();
+        assert!(tris(Detail::Far) * 5 < tris(Detail::Play) && tris(Detail::Play) * 3 < tris(Detail::Near), "{} {} {}", tris(Detail::Far), tris(Detail::Play), tris(Detail::Near));
     }
 
     #[test]
