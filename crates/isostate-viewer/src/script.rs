@@ -258,9 +258,15 @@ pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> 
         })
         // after the interface has read the (absent) pointer and keyboard, so a press made here lasts the frame
         .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems))
-        .insert_resource(FrameWork { started: std::time::Instant::now(), ms: 0.0 })
+        .insert_resource(FrameWork { started: std::time::Instant::now(), ms: 0.0, marks: [0.0; 2], parts: [0.0; 3] })
         .add_systems(First, |mut w: ResMut<FrameWork>| w.started = std::time::Instant::now())
-        .add_systems(Last, |mut w: ResMut<FrameWork>| w.ms = w.started.elapsed().as_secs_f32() * 1e3);
+        // between the schedules, to say which of them a long frame was long in
+        .add_systems(StateTransition, |mut w: ResMut<FrameWork>| w.marks[0] = w.started.elapsed().as_secs_f32() * 1e3)
+        .add_systems(SpawnScene, |mut w: ResMut<FrameWork>| w.marks[1] = w.started.elapsed().as_secs_f32() * 1e3)
+        .add_systems(Last, |mut w: ResMut<FrameWork>| {
+            w.ms = w.started.elapsed().as_secs_f32() * 1e3;
+            w.parts = [w.marks[0], w.marks[1] - w.marks[0], w.ms - w.marks[1]];
+        });
     Ok(())
 }
 
@@ -461,7 +467,20 @@ fn sample(world: &mut World, t: &mut Tally) {
         t.k0 = k;
         t.t0 = now_t;
     } else {
-        t.work.push((world.resource::<FrameWork>().ms, filled != t.last_filled, built != t.last_built && built.is_some(), months != t.last_months, season_step != t.last_season));
+        let (ms, parts) = (world.resource::<FrameWork>().ms, world.resource::<FrameWork>().parts);
+        t.work.push((ms, filled != t.last_filled, built != t.last_built && built.is_some(), months != t.last_months, season_step != t.last_season));
+        // a frame long enough to see is told as it happens: where the clock stood, what came in, and where the time went
+        if ms > 100.0 {
+            println!(
+                "script:   a frame's work took {ms:.0} ms with the clock at {now_t:.3}: {:.0} ms before the game's systems, {:.0} ms in them, {:.0} ms after (laying out the interface, transforms, what is in view); a year came: {}, scenery went up: {}, a month came: {}",
+                parts[0],
+                parts[1],
+                parts[2],
+                filled != t.last_filled,
+                built != t.last_built && built.is_some(),
+                months != t.last_months
+            );
+        }
     }
     (t.last_filled, t.last_built, t.last_months, t.last_season) = (filled, built, months, season_step);
     t.frames += 1;
@@ -576,6 +595,12 @@ fn print_work(t: &Tally) {
 struct FrameWork {
     started: std::time::Instant,
     ms: f32,
+    /// when the schedules before `Update`, and `Update` itself, were done
+    marks: [f32; 2],
+    /// how long went before `Update` (input, the interface's pointer), in
+    /// `Update` (the game's own systems), and after it (laying out the
+    /// interface and its text, transforms, what is in view)
+    parts: [f32; 3],
 }
 
 fn fail(why: &str) -> ! {

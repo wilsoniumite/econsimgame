@@ -45,6 +45,8 @@ pub struct Game {
     /// squares where the player's new works are to stand: ordered and
     /// waiting for the year's turn, or begun at the last one
     pending: Vec<usize>,
+    /// months that have come and are not yet in the run's tables (`months_into_run`)
+    held: Vec<Box<isostate_core::LiveMonth>>,
     /// the end of the game has been shown
     ended: bool,
     /// the card that ends the game is up
@@ -260,6 +262,21 @@ fn queue_new(game: &mut Game, fam: &FamilyView, tl: &mut Timeline) {
     }
 }
 
+/// Write the months that have come into the run's tables: their series and their news.
+fn months_into_run(game: &mut Game, data: &mut Data, ui: &mut UiState) {
+    if game.held.is_empty() {
+        return;
+    }
+    let r = std::sync::Arc::make_mut(&mut data.r);
+    for m in game.held.drain(..) {
+        live::apply_month(r, &m);
+    }
+    // a Markets panel that goes by the month has new figures to show
+    if ui.tab == Some(crate::ui::Tab::Markets) && ui.by_month {
+        ui.dirty += 1;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn pump(
     mut live: ResMut<Live>,
@@ -273,13 +290,21 @@ fn pump(
     time: Res<Time>,
     shots: Option<Res<crate::ShotPlanArgs>>,
 ) {
+    // months that waited for a scenery build to let go of the run
+    if !game.held.is_empty() && std::sync::Arc::strong_count(&data.r) == 1 {
+        months_into_run(&mut game, &mut data, &mut ui);
+    }
     while let Some(msg) = live.try_recv() {
         match msg {
             Msg::Month(m) => {
-                // copy-on-write: a scenery build may still hold the old run
-                live::apply_month(std::sync::Arc::make_mut(&mut data.r), &m);
                 months.add(&m);
                 month_cash(&mut fam, &m.cash);
+                // the month's series and news go into the run, which a scenery build may still
+                // hold: the whole run would be copied for it, so the month waits until it has let go
+                game.held.push(m);
+                if std::sync::Arc::strong_count(&data.r) == 1 {
+                    months_into_run(&mut game, &mut data, &mut ui);
+                }
                 live.month_came();
                 // the player stepped a month on: the clock goes to where it was sent
                 // (a step to the year's turn waits for the year)
@@ -291,6 +316,8 @@ fn pump(
             }
             Msg::Year(end) => {
                 let y = &end.year;
+                // the year's months first, whoever holds the run
+                months_into_run(&mut game, &mut data, &mut ui);
                 // copy-on-write: a scenery build may still hold the old run
                 let Data { r, g, slots, .. } = &mut *data;
                 let r = std::sync::Arc::make_mut(r);
@@ -510,7 +537,8 @@ fn action_clicks(q: Query<(&Interaction, &ActionButton), Changed<Interaction>>, 
             }
             Action::Present => {
                 tl.playing = false;
-                tl.t = data.latest() as f32;
+                // the month the simulation has reached
+                tl.t = clock::at(data.latest(), live.months.min(11));
             }
         }
         game.note = None;
@@ -762,7 +790,8 @@ fn order_panel(
     let r = &data.r;
     let Some(me) = fam.player() else { return };
     let accent = me.colour;
-    let latest_year = r.y0 + data.latest() as i32;
+    // where the game stands: the month the simulation has reached, or the last year once all are played
+    let present = if r.filled < r.ny { clock::month_year(clock::date(r.y0, clock::at(data.latest(), live.months.min(11)))) } else { format!("{}", r.y0 + data.latest() as i32) };
     // orders can be given in the present, but for the moment a year is turning
     let can = when == Now::Present && !live.turning() && !game.busy;
     // in the middle of a year an order waits for the year's end: say when that is
@@ -789,7 +818,7 @@ fn order_panel(
             Pick::Town(t) => {
                 rule(p);
                 if when == Now::Past {
-                    back_to_present(p, &f, r, k, latest_year, accent);
+                    back_to_present(p, &f, r, k, &present, accent);
                     return;
                 }
                 town_orders(p, &f, &fam, me, r, t, can, waits.as_ref());
@@ -797,7 +826,7 @@ fn order_panel(
             Pick::Cell(c) => {
                 rule(p);
                 if when == Now::Past {
-                    back_to_present(p, &f, r, k, latest_year, accent);
+                    back_to_present(p, &f, r, k, &present, accent);
                     return;
                 }
                 let Some(site) = game.site.as_ref().filter(|s| s.cell == c) else {
@@ -823,9 +852,9 @@ fn order_panel(
     });
 }
 
-fn back_to_present(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, latest_year: i32, accent: Color) {
-    p.spawn(text(f, &format!("This is how it stood in {}. Orders are given in the present, {}.", r.y0 + k as i32, latest_year), 13.5, MUTED));
-    p.spawn(Node { margin: UiRect::top(Val::Px(6.0)), ..default() }).with_children(|row| button(row, f, &format!("Back to {latest_year}"), Some(Action::Present), accent));
+fn back_to_present(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, present: &str, accent: Color) {
+    p.spawn(text(f, &format!("This is how it stood in {}. Orders are given in the present, {}.", r.y0 + k as i32, present), 13.5, MUTED));
+    p.spawn(Node { margin: UiRect::top(Val::Px(6.0)), ..default() }).with_children(|row| button(row, f, &format!("Back to {present}"), Some(Action::Present), accent));
 }
 
 fn town_name(r: &Replay, t: usize) -> String {

@@ -493,7 +493,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             if loaded.drifted {
                 eprintln!("  the island does not stand quite as it was saved: the simulation has changed since");
             }
-            eprintln!("  back in {} after {:.1}s", loaded.game.last_year(), t0.elapsed().as_secs_f32());
+            let reached = match loaded.game.month { 0 => format!("at the end of {}", loaded.game.last_year()), m => format!("{m} months into {}", loaded.game.last_year() + 1) };
+            eprintln!("  back {reached} after {:.1}s", t0.elapsed().as_secs_f32());
             resumed = Some(Resumed {
                 year: loaded.game.last_year() as i32,
                 month: loaded.game.month,

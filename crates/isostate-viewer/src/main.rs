@@ -756,6 +756,8 @@ fn main() {
     // a game left in the middle of a year is gone on with there, unless a year was asked for
     let months = live.as_ref().map_or(0, |l| l.months);
     let t0 = if args.year.is_none() && k0 == latest { clock::at(k0, months.min(11)) } else { k0 as f32 };
+    // a game starts at a month a second; a recorded history, which is watched and not played, at a year a second
+    let speed0 = if live.is_some() { clock::START_SPEED } else { clock::SPEEDS[3].rate };
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
@@ -832,7 +834,7 @@ fn main() {
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
         .init_resource::<Builds>()
-        .insert_resource(Timeline { t: t0, built: None, playing: false, speed: clock::START_SPEED })
+        .insert_resource(Timeline { t: t0, built: None, playing: false, speed: speed0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt && look.tilt_shift.on))
         .insert_resource(TheLook(look))
