@@ -83,12 +83,17 @@ pub struct UiState {
     pub expanded: Option<usize>,
     /// the rival family opened in the list of great families
     pub rival: Option<usize>,
+    /// how many items the News panel lists, newest first; Show more adds to it
+    pub news_rows: usize,
     built: Option<(Option<Tab>, usize, NewsShow, u64)>,
 }
 
+/// The News panel lists this many items, and as many again for each Show more.
+const NEWS_ROWS: usize = 120;
+
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, built: None }
+        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, news_rows: NEWS_ROWS, built: None }
     }
 }
 
@@ -99,6 +104,23 @@ pub enum SpeedButton {
     Pause,
     Speed(f32),
 }
+/// The clock's speeds, in years a second, under the labels on their buttons.
+/// The labels count against the slowest: 1x is a year every two seconds and
+/// 8x is eight times that, four years a second. (They do not count years a
+/// second; a test holds each label to its multiple.)
+pub const SPEEDS: [(&str, f32); 4] = [("1\u{00d7}", 0.5), ("2\u{00d7}", 1.0), ("4\u{00d7}", 2.0), ("8\u{00d7}", 4.0)];
+
+/// The next of the buttons' speeds above or below `speed`, for the Up and Down
+/// keys: the keys land on a button, so one of them is always lit.
+pub fn step_speed(speed: f32, faster: bool) -> f32 {
+    let (first, last) = (SPEEDS[0].1, SPEEDS[SPEEDS.len() - 1].1);
+    if faster {
+        SPEEDS.iter().map(|s| s.1).find(|&v| v > speed + 1e-3).unwrap_or(last)
+    } else {
+        SPEEDS.iter().rev().map(|s| s.1).find(|&v| v < speed - 1e-3).unwrap_or(first)
+    }
+}
+
 #[derive(Component)]
 pub struct DateText;
 /// One of the numbers under the family name.
@@ -124,6 +146,9 @@ pub struct UiBlock;
 pub struct Hoverable;
 #[derive(Component)]
 pub struct NewsFilter;
+/// Lists more of the news.
+#[derive(Component)]
+pub struct NewsMore;
 #[derive(Component)]
 pub struct TimelineTrack;
 #[derive(Component)]
@@ -149,7 +174,7 @@ pub struct StepNote;
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
     );
 }
 
@@ -268,14 +293,15 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ..default()
                 }))
                 .with_children(|mid| {
-                    mid.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(150.0), ..default() }).with_children(|col| {
+                    // wide enough for the note under the year, so the buttons do not shift when it comes and goes
+                    mid.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(118.0), ..default() }).with_children(|col| {
                         col.spawn((text(f, "", 25.0, INK), TextLayout::default().with_no_wrap(), DateText));
                         if data.live {
                             col.spawn((text(f, "", 12.0, MUTED), TextLayout::default().with_no_wrap(), StepNote, Node { margin: UiRect::top(Val::Px(-3.0)), ..default() }));
                         }
                     });
                     mid.spawn(Node { column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
-                        for (label, b) in [("Pause", SpeedButton::Pause), ("1\u{00d7}", SpeedButton::Speed(0.5)), ("2\u{00d7}", SpeedButton::Speed(1.0)), ("4\u{00d7}", SpeedButton::Speed(2.0)), ("8\u{00d7}", SpeedButton::Speed(4.0))] {
+                        for (label, b) in std::iter::once(("Pause", SpeedButton::Pause)).chain(SPEEDS.iter().map(|&(label, v)| (label, SpeedButton::Speed(v)))) {
                             row.spawn((button_node(10.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
                                 bt.spawn((text(f, label, 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
@@ -475,7 +501,11 @@ fn toggle_tab(ui: &mut UiState, t: Tab) {
     ui.tab = if ui.tab == Some(t) { None } else { Some(t) };
 }
 
-fn hotkeys(keys: Res<ButtonInput<KeyCode>>, mut ui: ResMut<UiState>, mut help: Query<&mut Visibility, With<HelpCard>>) {
+fn hotkeys(keys: Res<ButtonInput<KeyCode>>, mut ui: ResMut<UiState>, mut help: Query<&mut Visibility, With<HelpCard>>, cards: Res<crate::game::CardOpen>) {
+    // the panels and the help wait while a card wants an answer
+    if cards.0 {
+        return;
+    }
     for (k, t) in [(KeyCode::Digit1, Tab::Family), (KeyCode::Digit2, Tab::Holdings), (KeyCode::Digit3, Tab::Markets), (KeyCode::Digit4, Tab::News)] {
         if keys.just_pressed(k) {
             toggle_tab(&mut ui, t);
@@ -582,6 +612,16 @@ fn news_filter_click(mut ui: ResMut<UiState>, data: Res<Data>, q: Query<&Interac
                 NewsShow::All if data.live => NewsShow::Families,
                 _ => NewsShow::Major,
             };
+            ui.news_rows = NEWS_ROWS;
+        }
+    }
+}
+
+fn news_more_click(mut ui: ResMut<UiState>, q: Query<&Interaction, (Changed<Interaction>, With<NewsMore>)>) {
+    for i in &q {
+        if *i == Interaction::Pressed {
+            ui.news_rows += NEWS_ROWS;
+            ui.dirty += 1;
         }
     }
 }
@@ -653,22 +693,40 @@ fn topbar_text(
     tl: Res<Timeline>,
     data: Res<Data>,
     sm: Option<Res<crate::SeasonMats>>,
+    clock: Res<crate::SeasonClock>,
     fam: Option<Res<FamilyView>>,
-    mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>)>,
-    mut slots: Query<(&mut Text, &FortuneSlot), Without<DateText>>,
+    live: Option<Res<crate::live::Live>>,
+    mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>, Without<FamilyNameText>)>,
+    mut slots: Query<(&mut Text, &FortuneSlot), (Without<DateText>, Without<FamilyNameText>)>,
+    mut name: Query<&mut Text, (With<FamilyNameText>, Without<DateText>, Without<FortuneSlot>)>,
 ) {
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let year = r.y0 + k as i32;
-    // the same season the ground and trees are showing
-    let s = format!("{} {}", season_name(crate::season_phase(&tl, sm.as_ref().and_then(|m| m.forced))), year);
+    // the season is named only when it is the date's: the years going slowly
+    // enough for the seasons to keep up, or a still of a chosen season. The
+    // name is of the same phase the ground, the trees and the sun are showing.
+    let forced = sm.as_ref().and_then(|m| m.forced);
+    let s = if forced.is_some() || clock.follows { format!("{} {}", season_name(crate::season_phase(&clock, forced)), year) } else { format!("{year}") };
     for mut t in &mut date {
         if t.0 != s {
             t.0 = s.clone();
         }
     }
     let vals: Vec<String> = match fam.as_ref().and_then(|v| v.player()) {
-        Some(p) => vec![format!("Worth {}", money(p.net_worth)), money(p.cash), format!("{}", p.works), format!("{}", p.land)],
+        Some(p) => {
+            // the family is known as it stands today: beside an earlier date
+            // its card says which year its figures are of (in the name, the
+            // shorter line, so the cards beside it stay where they are)
+            let past = live.as_ref().is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
+            let who = if past { format!("The {} family in {}", p.name, r.y0 + data.latest() as i32) } else { format!("The {} family", p.name) };
+            for mut t in &mut name {
+                if t.0 != who {
+                    t.0 = who.clone();
+                }
+            }
+            vec![format!("Worth {}", money(p.net_worth)), money(p.cash), format!("{}", p.works), format!("{}", p.land)]
+        }
         None => {
             let pop = replay::annual(r, "pop", k).unwrap_or(0.0);
             vec![crate::fmt_pop(pop), format!("replay of seed {}", r.header.meta.seed)]
@@ -683,6 +741,13 @@ fn topbar_text(
     }
 }
 
+/// For sorting the biggest first. A number that is not a number goes last
+/// rather than stopping the game.
+pub fn biggest_first(a: f32, b: f32) -> std::cmp::Ordering {
+    let key = |v: f32| if v.is_nan() { f32::NEG_INFINITY } else { v };
+    key(b).total_cmp(&key(a))
+}
+
 pub fn money(v: f32) -> String {
     let a = v.abs();
     // switch units where rounding would carry: 999,600 is £1.00m, not £1000k
@@ -690,7 +755,21 @@ pub fn money(v: f32) -> String {
     if v < 0.0 { format!("-{s}") } else { s }
 }
 
-fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Query<&RelativeCursorPosition, With<SidePanel>>, mut body: Query<&mut ScrollPosition, With<PanelBody>>) {
+/// Where a list is scrolled to after the wheel turns `dy` pixels (up is
+/// positive). `asked` is where it was last asked to be and `shown` where the
+/// layout could put it, which is never past the end: starting from the lesser,
+/// wheeling down at the foot of the list does not pile up a distance that
+/// would have to be wheeled back before the list moved again.
+fn scroll_to(asked: f32, shown: f32, dy: f32) -> f32 {
+    (asked.min(shown) - dy).max(0.0)
+}
+
+/// Turn the wheel over the side panel.
+pub fn scroll_panel(s: &mut ScrollPosition, c: &ComputedNode, dy: f32) {
+    s.0.y = scroll_to(s.0.y, c.scroll_position.y * c.inverse_scale_factor, dy);
+}
+
+fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Query<&RelativeCursorPosition, With<SidePanel>>, mut body: Query<(&mut ScrollPosition, &ComputedNode), With<PanelBody>>) {
     if ui.tab.is_none() || !panel.iter().any(|p| p.cursor_over()) {
         return;
     }
@@ -699,8 +778,8 @@ fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Qu
         MouseScrollUnit::Pixel => scroll.delta.y,
     };
     if dy != 0.0 {
-        for mut s in &mut body {
-            s.0.y = (s.0.y - dy).max(0.0);
+        for (mut s, c) in &mut body {
+            scroll_panel(&mut s, c, dy);
         }
     }
 }
@@ -715,8 +794,10 @@ fn panel_rebuild(
     data: Res<Data>,
     font: Res<UiFont>,
     fam: Option<Res<FamilyView>>,
-    body: Query<(Entity, Option<&Children>), With<PanelBody>>,
+    live: Option<Res<crate::live::Live>>,
+    mut body: Query<(Entity, Option<&Children>, &mut ScrollPosition), With<PanelBody>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
+    mut last_list: Local<Option<(Tab, NewsShow)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let key = (ui.tab, k, ui.news, ui.dirty);
@@ -728,20 +809,27 @@ fn panel_rebuild(
     for mut t in &mut title {
         t.0 = tab.label().to_string();
     }
-    let Ok((be, children)) = body.single() else { return };
+    let Ok((be, children, mut scroll)) = body.single_mut() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
             commands.entity(c).despawn();
         }
     }
+    // another panel, or another choice of news, opens at its top
+    if *last_list != Some((tab, ui.news)) {
+        *last_list = Some((tab, ui.news));
+        scroll.0.y = 0.0;
+    }
     let f = font.0.clone();
     let r = &data.r;
     let fam = fam.as_deref();
+    // the family is known as it stands today: its panels say so when the clock has been taken back
+    let past = live.is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
     commands.entity(be).with_children(|p| match tab {
-        Tab::News => news_panel(p, &f, r, k, ui.news, fam.and_then(|v| v.player)),
+        Tab::News => news_panel(p, &f, r, k, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
         Tab::Markets => markets_panel(p, &f, r, k),
-        Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded, ui.rival),
-        Tab::Holdings => family::holdings_panel(p, &f, fam, r, k),
+        Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival),
+        Tab::Holdings => family::holdings_panel(p, &f, fam, r, k, past),
     });
 }
 
@@ -788,15 +876,20 @@ pub fn small_button<C: Component>(p: &mut ChildSpawnerCommands, f: &Handle<Font>
     });
 }
 
-fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, player: Option<usize>) {
+/// What the foot of the news list says when there is more than it lists.
+fn news_foot(listed: usize, n: usize) -> Option<String> {
+    (n > listed).then(|| format!("The newest {listed} of {n} are listed."))
+}
+
+fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, rows: usize, player: Option<usize>) {
     let year = r.y0 + k as i32;
     let wanted = |e: &replay::Event| match show {
         NewsShow::Major => e.weight >= 0.6,
         NewsShow::All => true,
         NewsShow::Families => e.family.is_some(),
     };
+    let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::bottom(Val::Px(4.0)), ..default() }).with_children(|row| {
-        let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
         row.spawn(text(f, &format!("{n} items up to {year}"), 13.0, MUTED));
         let label = match show {
             NewsShow::Major => "Showing major",
@@ -810,10 +903,10 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
         if (e.year.floor() as i32) > year || !wanted(e) {
             continue;
         }
-        shown += 1;
-        if shown > 120 {
+        if shown >= rows {
             break;
         }
+        shown += 1;
         p.spawn(Node { column_gap: Val::Px(9.0), padding: UiRect::vertical(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() })
             .insert(BorderColor::all(RULE))
             .with_children(|row| {
@@ -835,6 +928,13 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
     }
     if shown == 0 {
         p.spawn(text(f, "Nothing yet. Press play.", 14.0, MUTED));
+    }
+    // the list stops somewhere: say where, and offer the rest
+    if let Some(foot) = news_foot(shown, n) {
+        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::vertical(Val::Px(6.0)), ..default() }).with_children(|row| {
+            row.spawn(text(f, &foot, 13.0, MUTED));
+            small_button(row, f, "Show more", NewsMore);
+        });
     }
 }
 
@@ -880,7 +980,7 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
         }
     }
     let mut rows: Vec<(usize, usize, f32)> = by_method.into_iter().map(|(m, (n, s))| (m, n, s / n.max(1) as f32)).collect();
-    rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+    rows.sort_by(|a, b| biggest_first(a.2, b.2));
     p.spawn((text(f, "What investors are building", 17.0, INK), Node { margin: UiRect::top(Val::Px(14.0)), ..default() }));
     p.spawn(text(f, &format!("New works since {}, with the return their backers expected.", year - 4), 13.0, MUTED));
     if rows.is_empty() {
@@ -892,5 +992,73 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
             row.spawn(text(f, &format!("{ml}  \u{00d7}{n}"), 14.0, INK));
             row.spawn(text(f, &format!("{:.0}% a year", roi * 100.0), 14.0, INK));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_news_says_how_much_it_lists() {
+        assert_eq!(news_foot(120, 973).as_deref(), Some("The newest 120 of 973 are listed."));
+        assert_eq!(news_foot(240, 973).as_deref(), Some("The newest 240 of 973 are listed."));
+        // everything listed: nothing to say, and no button
+        assert_eq!(news_foot(88, 88), None);
+        assert_eq!(news_foot(0, 0), None);
+    }
+
+    #[test]
+    fn the_speed_keys_land_on_the_buttons() {
+        // up and down through the buttons, stopping at the ends
+        assert_eq!(step_speed(0.5, true), 1.0);
+        assert_eq!(step_speed(1.0, true), 2.0);
+        assert_eq!(step_speed(2.0, true), 4.0);
+        assert_eq!(step_speed(4.0, true), 4.0);
+        assert_eq!(step_speed(4.0, false), 2.0);
+        assert_eq!(step_speed(1.0, false), 0.5);
+        assert_eq!(step_speed(0.5, false), 0.5);
+        // from a speed between two buttons (as the keys used to leave it), onto the next one
+        assert_eq!(step_speed(0.75, true), 1.0);
+        assert_eq!(step_speed(3.0, false), 2.0);
+        assert_eq!(step_speed(20.0, false), 4.0);
+        // whatever the keys do, a button has that speed
+        let mut v = 2.0;
+        for faster in [true, true, true, false, false, false, false, false, true] {
+            v = step_speed(v, faster);
+            assert!(SPEEDS.iter().any(|s| s.1 == v), "{v} is no button's speed");
+        }
+    }
+
+    #[test]
+    fn the_speed_labels_are_multiples_of_the_slowest() {
+        for (label, v) in SPEEDS {
+            let times: f32 = label.trim_end_matches('\u{00d7}').parse().unwrap();
+            assert_eq!(v / SPEEDS[0].1, times, "{label} is {} times 1x", v / SPEEDS[0].1);
+        }
+    }
+
+    #[test]
+    fn the_wheel_moves_the_list_at_once_from_its_foot() {
+        // a list 10,860 pixels long, wheeled far past its foot
+        let mut asked = 0.0;
+        for _ in 0..400 {
+            asked = scroll_to(asked, asked.min(10_860.0), -36.0);
+        }
+        // one step past the end at most, however long the wheel turned
+        assert_eq!(asked, 10_896.0);
+        // one step up shows on screen at once
+        let up = scroll_to(asked, 10_860.0, 36.0);
+        assert_eq!(up, 10_824.0);
+        // and it stops at the top
+        assert_eq!(scroll_to(20.0, 20.0, 36.0), 0.0);
+    }
+
+    #[test]
+    fn sorting_the_biggest_first_survives_a_number_that_is_not_one() {
+        let mut v = vec![(0, 3.0), (1, f32::NAN), (2, 12.5), (3, 0.0), (4, f32::INFINITY), (5, -1.0)];
+        v.sort_by(|a, b| biggest_first(a.1, b.1));
+        let order: Vec<usize> = v.iter().map(|x| x.0).collect();
+        assert_eq!(order, [4, 2, 0, 3, 5, 1]);
     }
 }

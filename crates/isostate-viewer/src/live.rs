@@ -63,6 +63,14 @@ pub struct Live {
     rx: Mutex<mpsc::Receiver<Msg>>,
     /// a year is being worked out
     pub stepping: bool,
+    /// the newest year (as an index) the clock has shown. The next is asked
+    /// for a little before it is due, so for a moment there is a year worked
+    /// out that the player has not seen; see `game::Now`.
+    pub seen: usize,
+    /// when the year being worked out was asked for
+    sent: Option<std::time::Instant>,
+    /// how long the last year took to arrive, in seconds
+    pub took: Option<f32>,
     /// the thread has stopped and that has been reported
     gone: std::sync::atomic::AtomicBool,
 }
@@ -88,7 +96,16 @@ impl Live {
     pub fn step(&mut self) {
         if !self.stepping {
             self.stepping = true;
+            self.sent = Some(std::time::Instant::now());
             self.send(Cmd::Step);
+        }
+    }
+
+    /// The year asked for has come (or failed to).
+    pub fn stepped(&mut self, arrived: bool) {
+        self.stepping = false;
+        if let (true, Some(t0)) = (arrived, self.sent.take()) {
+            self.took = Some(t0.elapsed().as_secs_f32());
         }
     }
 }
@@ -132,6 +149,10 @@ pub fn start(seed: u64, n_families: usize, advance: usize, demo: bool) -> Result
         tx: tx_cmd,
         rx: Mutex::new(rx_msg),
         stepping: false,
+        // a game opens on the newest year there is
+        seen: r.filled.max(1) - 1,
+        sent: None,
+        took: None,
         gone: std::sync::atomic::AtomicBool::new(false),
     };
     Ok((r, live, view))
@@ -295,6 +316,7 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         disp: stat.disp.clone(),
         uses: stat.uses.clone(),
         arrays: Vec::new(),
+        series: Default::default(),
     };
     let series_len = ny * 12;
     Replay {
@@ -380,7 +402,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             cell: f.cell,
             town: f.town as i32,
             born: f.born as i32,
-            died: 0,
+            // still at work, as a recorded run writes it
+            died: -1,
             reason: serde_json::to_value(&f.reason).ok(),
             owner: f.owner,
         });
@@ -411,7 +434,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             family: e.family,
         });
     }
-    r.header.events.sort_by(|a, b| a.year.partial_cmp(&b.year).unwrap_or(std::cmp::Ordering::Equal));
+    // in order of date; nothing may keep a place in this list across years (the toasts keep copies)
+    r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
 
     // the monthly series arrive as yearly means: every month of the year gets the mean
     for (i, v) in y.series.iter().enumerate() {
