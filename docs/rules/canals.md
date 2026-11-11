@@ -368,11 +368,13 @@ line would have saved, and the first line is a year or two later on more
 islands than not, but what that does to the island in 1850 is inside the
 difference between one island and the next. By 1900 nothing can be told.
 
-A run in company with six families takes about a seventh longer with canals,
-and a run alone on the port about a third longer, because there the canal
-promoters are the only ones doing the sums (the first build timed 18.9
-seconds for 16.8 and 25 for 18; the sweeps' own seconds were taken under
-other work and say less).
+A run in company with six families takes about a tenth longer with canals,
+and a run alone on the port a fifth to a third longer, because there the
+canal promoters are the only ones doing the sums. The first build timed 18.9
+seconds for 16.8 and 25 for 18; the review, one run after another on seed 3
+with other work on the machine, 17.2 and 15.8 for 14.6 and 16.8 in company
+and 15.4 and 20.5 for 12.4 and 17.9 alone. The sweeps' own seconds were
+taken under heavier work still and say less.
 
 **The scripted players** (`examples/bots.rs`, the game's rules, seeds 1, 2,
 3 and 7) play all sixteen games through with canals on, on the first build
