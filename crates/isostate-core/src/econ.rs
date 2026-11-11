@@ -25,6 +25,12 @@ pub fn sigmoid(x: f64) -> f64 {
 /// Returns share (T, G * S), the fraction of a service bought from each good
 /// (`share[(t, g * S + s)]`), and unit (T, S), the average price of one unit of service.
 pub fn service_mix(price: &Mat, props: &Mat, theta: f64) -> (Mat, Mat) {
+    service_mix_widths(price, props, &vec![theta; props.cols])
+}
+
+/// `service_mix` with a width of the logit for each need (tree: household goods
+/// are less alike than fuels are). With one width for all it is `service_mix`.
+pub fn service_mix_widths(price: &Mat, props: &Mat, widths: &[f64]) -> (Mat, Mat) {
     let (T, G, S) = (price.rows, price.cols, props.cols);
     let mut share = Mat::zeros(T, G * S);
     let mut unit = Mat::zeros(T, S);
@@ -32,6 +38,7 @@ pub fn service_mix(price: &Mat, props: &Mat, theta: f64) -> (Mat, Mat) {
     let mut z = vec![0.0; G];
     for t in 0..T {
         for s in 0..S {
+            let theta = widths[s];
             // price per unit of service; goods without the property cannot supply it
             let mut smin = f64::INFINITY;
             for g in 0..G {
@@ -291,7 +298,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.m_rent = 0.0;
 
     // ---------------- households: what they want to buy
-    let (share, unit) = service_mix(&st.price, &C.props, P.logit_theta);
+    // tree: a width for each need where the content gives one, else the port's one
+    let (share, unit) = service_mix_widths(&st.price, &C.props, &crate::tree::widths(C, P));
     let mut urban_pay = vec![0.0; T];
     let mut pc = vec![0.0; T];
     for t in 0..T {
@@ -830,11 +838,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     for (x, y) in prod_TG.data.iter_mut().zip(&prod_firms.data) {
         *x += y;
     }
+    let decay = crate::tree::decay(C, P); // tree: the content's rate for a good the port's table does not have
     for t in 0..T {
         for g in 0..G {
             let v = &mut st.inv[(t, g)];
             *v -= sold[(t, g)];
-            *v *= 1.0 - P.decay[g];
+            *v *= 1.0 - decay[g];
             *v += prod_TG[(t, g)];
             *v = v.max(0.0);
         }
@@ -866,7 +875,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                     let k = (i * na + j) * G + g;
                     tau[k] = P.freight * C.weight[g] * c + P.handling * p[(ti, g)];
                     let gap = p[(tj, g)] - p[(ti, g)] - tau[k];
-                    let frac = if i == j { 0.0 } else { (gap / p[(tj, g)].max(1e-9)).clamp(0.0, 0.5) * P.trade_k };
+                    // tree: a good made where it is used (building work, town gas) is not carried
+                    let frac = if i == j || !C.traded[g] { 0.0 } else { (gap / p[(tj, g)].max(1e-9)).clamp(0.0, 0.5) * P.trade_k };
                     want[k] = frac * st.inv[(ti, g)];
                 }
             }

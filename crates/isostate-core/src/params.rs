@@ -282,6 +282,10 @@ pub struct Params {
     /// Town ground that is kept (not in the Python; see docs/rules/towns.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub towns: TownsParams,
+    /// A deeper production tree laid over the content (not in the Python; see
+    /// docs/rules/tree.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub tree: crate::tree::TreeParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -482,6 +486,7 @@ pub fn default_params() -> Params {
         carting: crate::carting::CartingParams::default(),
         people: crate::peopling::PeopleParams::default(),
         towns: TownsParams::default(),
+        tree: crate::tree::TreeParams::default(),
     }
 }
 
@@ -508,6 +513,7 @@ pub fn game_params() -> Params {
     P.carting = crate::carting::CartingParams::game();
     P.people = crate::peopling::PeopleParams::game();
     P.towns = TownsParams::game();
+    P.tree = crate::tree::TreeParams::game();
     P
 }
 

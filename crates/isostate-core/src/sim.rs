@@ -146,6 +146,8 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     let guess = [1.3, 0.06, 0.45, 0.06, 0.03, 0.02, 0.03, 0.04, 0.01, 0.0, 0.006, 0.02, 0.02, 0.0, 0.0, 0.05];
     st.inv = Mat::zeros(T, G);
     st.outflow = Mat::zeros(T, G);
+    // tree: a good the port does not have opens with what its content says
+    let guess: Vec<f64> = (0..G).map(|g| crate::tree::stock0(C, g, &guess)).collect();
     for t in 0..T {
         for g in 0..G {
             st.inv[(t, g)] = 2.0 * pop[t] * guess[g];
@@ -263,7 +265,7 @@ pub fn after_transport(st: &mut State, C: &Content, P: &Params) {
 /// The artisans of 1750: enough smiths, weavers, colliers and furnaces for local demand.
 pub fn seed_firms(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, pbar: &Mat, wbar: &[f64]) {
     let T = st.T_max;
-    let (share, unit) = econ::service_mix(pbar, &C.props, P.logit_theta);
+    let (share, unit) = econ::service_mix_widths(pbar, &C.props, &crate::tree::widths(C, P)); // tree: a width for each need
     let (q, _) = econ::les(&vec![2.1; T], &unit, &C.subsistence, &C.shares);
     let d = econ::goods_from_services(&q, &share, &C.props);
     let mut need = Mat::zeros(T, C.G);
@@ -278,13 +280,14 @@ pub fn seed_firms(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, pbar:
         need[(t, charcoal)] += 2.3 * need[(t, iron)];
         need[(t, bricks)] += 0.03 * st.pop[t];
     }
-    let plan = ["tools", "cloth", "iron", "charcoal", "bricks", "services"];
+    let mut plan: Vec<usize> = ["tools", "cloth", "iron", "charcoal", "bricks", "services"].iter().map(|n| C.gi(n)).collect();
+    // tree: the 1750 trades of the goods the port does not have (none under the port)
+    plan.extend(crate::tree::seed_plan(C, P, &mut need));
     for i in 0..T {
         if !st.town_active[i] {
             continue;
         }
-        for gname in plan {
-            let g = C.gi(gname);
+        for &g in &plan {
             let target = need[(i, g)] * 1.25;
             let meths: Vec<usize> = (0..C.M).filter(|&m| C.method_out[m] == g && C.tech_known[m]).collect();
             let mut best: Option<(f64, usize)> = None;
@@ -530,6 +533,9 @@ pub struct Sim {
 
 /// World, warm-up and the 1750 baselines: everything before the first recorded month.
 pub fn start(P: &Params, content: Content) -> Sim {
+    // tree: the content a run is played on is the one given with the game's
+    // overlay laid over it as far as P.tree.stage says (not at all under the port)
+    let content = crate::tree::content(P, content).unwrap_or_else(|e| panic!("{e}"));
     let (st, rngs) = init_state(P, &content);
     start_from(P, content, st, rngs)
 }
