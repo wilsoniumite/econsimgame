@@ -25,7 +25,8 @@ impl Colour {
     /// "#rrggbb", or nothing if it is not written so.
     pub fn from_hex(s: &str) -> Option<Colour> {
         let h = s.strip_prefix('#')?;
-        if h.len() != 6 || !h.is_ascii() {
+        // six hex digits and nothing else: from_str_radix alone would take a sign ("+f")
+        if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
             return None;
         }
         let v = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok().map(|b| b as f32 / 255.0);
@@ -69,6 +70,10 @@ impl<'de> Deserialize<'de> for Colour {
                 }
                 if seq.next_element::<f32>()?.is_some() {
                     return Err(de::Error::invalid_length(4, &"three numbers: red, green, blue"));
+                }
+                // a number out of range (or not a number at all) would go into every mesh corner as it stands
+                if !c.iter().all(|v| (0.0..=1.0).contains(v)) {
+                    return Err(de::Error::custom(format!("[{}, {}, {}] is not a colour: red, green and blue each run from 0 to 1", c[0], c[1], c[2])));
                 }
                 Ok(Colour::from_srgb(c))
             }
@@ -114,6 +119,20 @@ mod tests {
         assert!(Colour::from_hex("b5634c").is_none());
         assert!(Colour::from_hex("#b5634").is_none());
         assert!(Colour::from_hex("#b5634g").is_none());
+        // a sign is not a hex digit, though the number parser would take one
+        assert!(Colour::from_hex("#+f+f+f").is_none());
+        assert!(Colour::from_hex("#b56é4").is_none());
+    }
+
+    #[test]
+    fn a_colour_in_numbers_runs_from_nought_to_one() {
+        let read = |s: &str| toml::from_str::<toml::Table>(s).unwrap()["c"].clone().try_into::<Colour>();
+        assert_eq!(read("c = [1.0, 0.5, 0.0]").unwrap().srgb(), [1.0, 0.5, 0.0]);
+        // whole numbers will do for 0 and 1
+        assert_eq!(read("c = [1, 0, 0]").unwrap().srgb(), [1.0, 0.0, 0.0]);
+        for bad in ["c = [1.5, 0.5, 0.0]", "c = [0.5, -0.1, 0.0]", "c = [nan, 0.5, 0.0]", "c = [inf, 0.5, 0.0]", "c = [1.0, 0.5]", "c = [1.0, 0.5, 0.0, 1.0]"] {
+            assert!(read(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
