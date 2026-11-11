@@ -525,6 +525,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     slots.farm_open = slots.farms.iter().map(|s| g.open_until[world::own_cell(g, s.x, s.z)]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
+    crate::rails::maybe_check(r, g);
     crate::plan::maybe_write(r, g, &slots);
     crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots

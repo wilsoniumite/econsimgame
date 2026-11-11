@@ -661,3 +661,87 @@ fn girder_bridge(b: &mut Builder, lk: &Look, centre: Vec3, along: Vec3, span: f3
         b.block(Vec3::new(e.x, ground, e.z), 0.02, 0.06, h, yaw, stone, Some(stone), 0.0);
     }
 }
+
+/// With ISOSTATE_RAIL_CHECK set, walk every line of every tenth year (and the
+/// last) and say how well the railway holds together: the largest step in the
+/// drawn level (along a line, and between the lines that meet at a junction),
+/// the steepest gradient, the tallest viaduct, how far the drawn track lies
+/// from its graded level, and how far above or below the ground a line ends.
+/// Then stop.
+pub fn maybe_check(r: &Replay, g: &Ground) {
+    if std::env::var_os("ISOSTATE_RAIL_CHECK").is_none() {
+        return;
+    }
+    let cen = crate::network::centres(r);
+    let last = r.filled.clamp(1, r.ny) - 1;
+    let mut years: Vec<usize> = (0..=last).filter(|k| (r.y0 + *k as i32) % 10 == 0).collect();
+    if years.last() != Some(&last) {
+        years.push(last);
+    }
+    for k in years {
+        let ry = year(r, g, &cen, k);
+        if ry.lines.is_empty() {
+            continue;
+        }
+        // (value, x, z) of the worst of each
+        let mut step = (0f32, 0f32, 0f32);
+        let mut grad = (0f32, 0f32, 0f32);
+        let mut drawn_grad = (0f32, 0f32, 0f32);
+        let mut tall = (0f32, 0f32, 0f32);
+        let mut off = (0f32, 0f32, 0f32);
+        let mut air = (0f32, 0f32, 0f32);
+        let worst = |slot: &mut (f32, f32, f32), v: f32, p: Vec3| {
+            if v > slot.0 {
+                *slot = (v, p.x, p.z);
+            }
+        };
+        let (mut km, mut viaducts, mut tunnels, mut via_len, mut tun_len) = (0f32, 0, 0, 0f32, 0f32);
+        let mut ends: std::collections::HashMap<(i32, i32), Vec<(f32, Vec3)>> = Default::default();
+        for line in &ry.lines {
+            let n = line.pts.len();
+            let drawn: Vec<f32> = (0..n).map(|i| bed_level(line, i)).collect();
+            for i in 0..n {
+                let p = line.pts[i];
+                worst(&mut off, (drawn[i] - p.y).abs(), p);
+                if line.kind[i] == Kind::Viaduct {
+                    worst(&mut tall, p.y - line.ground[i], p);
+                }
+                if i > 0 {
+                    let q = line.pts[i - 1];
+                    let ds = Vec2::new(p.x - q.x, p.z - q.z).length().max(1e-6);
+                    km += ds * 2.0;
+                    worst(&mut grad, (p.y - q.y).abs() / ds, p);
+                    // inside a tunnel nothing is drawn, but the trains run there
+                    worst(&mut drawn_grad, (drawn[i] - drawn[i - 1]).abs() / ds, p);
+                    worst(&mut step, (drawn[i] - drawn[i - 1]).abs() - RULING * ds, p);
+                    if line.kind[i] == Kind::Viaduct {
+                        via_len += ds;
+                    }
+                    if line.kind[i] == Kind::Tunnel {
+                        tun_len += ds;
+                    }
+                    if line.kind[i] != line.kind[i - 1] {
+                        viaducts += (line.kind[i] == Kind::Viaduct) as usize;
+                        tunnels += (line.kind[i] == Kind::Tunnel) as usize;
+                    }
+                }
+            }
+            for i in [0, n - 1] {
+                let p = line.pts[i];
+                ends.entry(((p.x * 1000.0).round() as i32, (p.z * 1000.0).round() as i32)).or_default().push((drawn[i], p));
+                worst(&mut air, (drawn[i] - line.ground[i]).abs(), p);
+            }
+        }
+        let mut junction = (0f32, 0f32, 0f32);
+        for v in ends.values() {
+            let (lo, hi) = v.iter().fold((f32::MAX, f32::MIN), |(lo, hi), e| (lo.min(e.0), hi.max(e.0)));
+            worst(&mut junction, hi - lo, v[0].1);
+        }
+        let at = |s: (f32, f32, f32)| format!("{:.3} at {:.1},{:.1}", s.0, s.1, s.2);
+        eprintln!(
+            "rail check {}: {} lines, {:.0} km; step along a line {}; step where lines meet {}; steepest graded {}; steepest drawn {}; tallest viaduct {}; drawn off its level {}; a line's end off the ground {}; {} viaducts ({:.1} cells), {} tunnels ({:.1} cells)",
+            r.y0 + k as i32, ry.lines.len(), km, at(step), at(junction), at(grad), at(drawn_grad), at(tall), at(off), at(air), viaducts, via_len, tunnels, tun_len
+        );
+    }
+    std::process::exit(0);
+}
