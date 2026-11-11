@@ -25,6 +25,7 @@ mod plan;
 mod rails;
 mod replay;
 mod rivers;
+mod saves;
 mod scatter;
 mod script;
 mod shots;
@@ -84,6 +85,12 @@ struct Args {
     advance: usize,
     /// give the player a works and some land at the start (for screenshots)
     demo: bool,
+    /// a new game was asked for (--new or --seed): the island's autosave is not gone on with
+    fresh: bool,
+    /// a saved game to go on with
+    load: Option<String>,
+    /// where to save, instead of the island's autosave
+    save: Option<String>,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -130,8 +137,11 @@ const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
 
 With no run named, a new game starts.
 
-  --new                a new game (the default when no run is named)
-  --seed N             which island (7)
+  --new                a new game, whatever is saved (with no run named and nothing else
+                       asked for, the island's saved game is gone on with)
+  --seed N             which island (7); a new game
+  --load FILE          go on with this saved game
+  --save FILE          keep the game in FILE instead of the island's autosave
   --families N         how many great families (6)
   --advance N          play N years before the game opens
   --demo               the family builds a works and buys land in its first year
@@ -239,6 +249,9 @@ fn parse(v: &[String]) -> Result<Args, String> {
         families: 6,
         advance: 0,
         demo: false,
+        fresh: false,
+        load: None,
+        save: None,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -284,8 +297,10 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--frames" => { a.frames = number(opt, &next(i)?)?; i += 1; }
             "--wait" => { a.wait = Some(number(opt, &next(i)?)?); i += 1; }
             "--no-tilt" => a.tilt = false,
-            "--new" => a.new = true,
-            "--seed" => { a.seed = number(opt, &next(i)?)?; i += 1; }
+            "--new" => { a.new = true; a.fresh = true; }
+            "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
+            "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
+            "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
             "--families" => { a.families = number(opt, &next(i)?)?; i += 1; }
             "--advance" => { a.advance = number(opt, &next(i)?)?; i += 1; }
             "--demo" => a.demo = true,
@@ -338,7 +353,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         }
         i += 1;
     }
-    if !a.named_run {
+    if !a.named_run || a.load.is_some() {
         a.new = true;
     }
     // options that only mean something beside another say so, rather than being passed over in silence
@@ -554,8 +569,24 @@ fn main() {
     }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
-        eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
-        match live::start(args.seed, args.families, args.advance, args.demo) {
+        let opening = live::Opening {
+            seed: args.seed,
+            families: args.families,
+            advance: args.advance,
+            demo: args.demo,
+            load: args.load.clone(),
+            save: args.save.clone(),
+            fresh: args.fresh,
+            // the standard shots are pictures too; and a scripted run is a check, not the player's
+            // game, so it leaves the autosave alone unless ISOSTATE_SAVES names a folder to keep one in
+            shots: !args.views.is_empty()
+                || args.shot.is_some()
+                || args.describe.is_some()
+                || args.class_map
+                || args.shots.is_some()
+                || (args.script.is_some() && std::env::var_os("ISOSTATE_SAVES").is_none_or(|v| v.is_empty())),
+        };
+        match live::start(&opening) {
             Ok((r, l, f)) => (r, Some(l), Some(f)),
             Err(e) => {
                 eprintln!("the game could not start: {e}");
@@ -563,6 +594,9 @@ fn main() {
             }
         }
     } else {
+        if args.save.is_some() {
+            eprintln!("--save is for a game: {} is a recorded run, and nothing is saved", args.run);
+        }
         match replay::load(&args.run) {
             Ok(r) => (r, None, None),
             Err(e) => {
@@ -578,7 +612,7 @@ fn main() {
     let g = world::build_ground(&r);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
-    eprintln!("prepared {} in {:.1}s", if args.new { "the new game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
+    eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
     if let Some(me) = families.as_ref().and_then(|f| f.player()) {
         let at = r.header.towns.get(me.seat).map(|t| cen[t.node]).unwrap_or((0.0, 0.0));
@@ -2092,6 +2126,13 @@ mod tests {
         assert!(args("--new --seed 3").unwrap().new);
         // a run and --new together: a new game, as before
         assert!(args("runs/x/run.bin --new").unwrap().new);
+        // nothing asked for but the game: the island's saved game may be gone on with
+        assert!(!a.fresh && a.load.is_none() && a.save.is_none());
+        // --new and --seed ask for a new game whatever is saved
+        assert!(args("--new").unwrap().fresh && args("--seed 3").unwrap().fresh);
+        // a saved game is a game, even beside a recorded run
+        let a = args("runs/x/run.bin --load mine.json --save other.json").unwrap();
+        assert_eq!((a.new, a.fresh, a.load.as_deref(), a.save.as_deref()), (true, false, Some("mine.json"), Some("other.json")));
     }
 
     #[test]
@@ -2122,6 +2163,10 @@ mod tests {
         assert_eq!(args("--shots").err().unwrap(), "--shots needs a value after it");
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
+        // saved games
+        assert_eq!(args("--load").err().unwrap(), "--load needs a value after it");
+        assert_eq!(args("--new --save").err().unwrap(), "--save needs a value after it");
+        assert_eq!(args("--seed seven").err().unwrap(), "--seed: seven is not a number it can take");
         assert_eq!(args("--size 800").err().unwrap(), "--size: 800 should be two numbers with an x between them");
         assert_eq!(args("--size 0x600").err().unwrap(), "--size: a picture needs a width and a height");
         // in a view an empty value falls back, and one that is not a number is refused
@@ -2131,7 +2176,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

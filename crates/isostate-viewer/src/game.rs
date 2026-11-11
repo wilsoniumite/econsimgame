@@ -101,6 +101,15 @@ struct EndCard;
 #[derive(Component)]
 struct Welcome;
 
+/// On the opening card of a game gone on with: carry on, or start again.
+#[derive(Component)]
+struct ContinueButton;
+#[derive(Component)]
+struct NewGameButton;
+/// The small print under them, which also says if a new game could not be started.
+#[derive(Component)]
+struct WelcomeHint;
+
 /// The card for a decision.
 #[derive(Component)]
 struct DecisionCard;
@@ -142,7 +151,7 @@ pub fn plugin(app: &mut App) {
         .add_systems(First, note_cards)
         .add_systems(Startup, setup_marks.run_if(resource_exists::<Live>))
         .add_systems(PostStartup, welcome.run_if(resource_exists::<Live>))
-        .add_systems(Update, close_welcome)
+        .add_systems(Update, (press_unattended, new_game_clicks, close_welcome).chain())
         .add_systems(
             Update,
             (
@@ -204,7 +213,7 @@ pub fn year_families(view: &mut FamilyView, reports: &[FamilyReport], year: i32)
 }
 
 /// The player's family after an order, between years.
-fn player_family(view: &mut FamilyView, rep: &FamilyReport) {
+pub fn player_family(view: &mut FamilyView, rep: &FamilyReport) {
     if let Some(row) = view.families.get_mut(rep.index) {
         let h = std::mem::take(&mut row.history);
         *row = row_of(rep, h);
@@ -312,6 +321,7 @@ fn pump(
                 game.note = Some((false, e));
                 game.version += 1;
             }
+            Msg::Unsaved(why) => live.unsaved = why,
         }
     }
 }
@@ -575,6 +585,9 @@ fn step_note(live: Res<Live>, data: Res<Data>, mut q: Query<&mut Text, With<crat
     let r = &data.r;
     let s = if live.stepping {
         format!("working out {}\u{2026}", r.y0 + r.filled as i32)
+    } else if live.unsaved.is_some() {
+        // the terminal has the reason; here it must not pass unseen
+        "the game could not be saved".to_string()
     } else if r.filled >= r.ny {
         "the century is over".to_string()
     } else {
@@ -1225,7 +1238,8 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
         game.end_open = false;
     }
     let r = &data.r;
-    if game.ended || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
+    // a finished game gone on with: the opening card first, then this one
+    if game.ended || game.welcoming || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
         return;
     }
     // screenshots skip it, as they do the welcome, unless asked for
@@ -1272,8 +1286,11 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
 }
 
 /// A new game opens on a card saying who the player is and how to begin; the
-/// first decision waits behind it.
-fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>) {
+/// first decision waits behind it. A game gone on with from a save opens on
+/// the same card saying how the family stands, with Continue and New game.
+fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>) {
+    // works ordered since the last year (in a game gone on with) keep their pegs
+    game.pending = live.ordered.clone();
     // screenshots skip it unless asked for
     if shots.is_some() && !cards_in_shots() {
         return;
@@ -1313,6 +1330,10 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: 
                 c.spawn(text(&f, &format!("{year}"), 15.0, MUTED));
                 c.spawn(text(&f, &format!("The {} family of {}", me.name, me.seat_name), 26.0, me.colour));
                 let living = me.rep.members.iter().filter(|m| m.alive).count();
+                if let Some(back) = &live.resumed {
+                    welcome_back(c, &f, me, living, back, data.r.y0);
+                    return;
+                }
                 c.spawn(text(
                     &f,
                     &format!(
@@ -1337,7 +1358,9 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: 
                         row.spawn(text(&f, line, 14.5, INK));
                     });
                 }
-                c.spawn((text(&f, "Click anywhere to begin.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
+                // only said of a game that is being saved
+                let begin = if live.kept { "Click anywhere to begin. The game saves itself as you play." } else { "Click anywhere to begin." };
+                c.spawn((text(&f, begin, 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
             });
         });
 }
@@ -1350,9 +1373,156 @@ fn goes_with_others(k: &KeyCode) -> bool {
     matches!(k, AltLeft | AltRight | ControlLeft | ControlRight | ShiftLeft | ShiftRight | SuperLeft | SuperRight | PrintScreen | CapsLock | NumLock | ScrollLock)
 }
 
-fn close_welcome(mut commands: Commands, q: Query<(Entity, &Interaction), With<Welcome>>, keys: Res<ButtonInput<KeyCode>>, game: Option<ResMut<Game>>) {
+/// What a save that could not be played again as it was is owed in words:
+/// that it is an earlier one than the last, how many orders were refused,
+/// and that the island stands differently.
+pub fn resumed_note(back: &live::Resumed) -> Option<String> {
+    let all = back.orders + back.refused;
+    let earlier = (back.passed_over > 0).then(|| format!("The last save could not be read, so this is an earlier one, from {}.", back.year));
+    let rules = match (back.refused, back.drifted) {
+        (0, false) => None,
+        (0, true) => Some("The island's rules have changed since this game was saved, so the years have played out a little differently.".to_string()),
+        (n, _) => {
+            let which = match (n, all) {
+                (_, 1) => "Your one order".to_string(),
+                (n, all) if n == all => format!("All {} of your orders", family::number_word(all)),
+                (n, all) => format!("{} of your {} orders", family::capitalised(&family::number_word(n)), family::number_word(all)),
+            };
+            Some(format!("The island's rules have changed since this game was saved. {which} could not be given again, so some things stand differently."))
+        }
+    };
+    match (earlier, rules) {
+        (Some(a), Some(b)) => Some(format!("{a} {b}")),
+        (a, b) => a.or(b),
+    }
+}
+
+/// The rest of the opening card for a game gone on with: how the family
+/// stands, what could not be brought back, and the two ways on.
+fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, living: usize, back: &live::Resumed, first_year: i32) {
+    c.spawn(text(
+        f,
+        &format!("Welcome back. {} of the family, with {} in hand and worth {} in all.", family::capitalised(&family::number_word(living)), money(me.cash), money(me.net_worth)),
+        15.0,
+        INK,
+    ));
+    if let Some(note) = resumed_note(back) {
+        c.spawn((
+            Node { margin: UiRect::top(Val::Px(4.0)), padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
+            BackgroundColor(Color::srgb(0.97, 0.89, 0.74)),
+        ))
+        .with_children(|n| {
+            n.spawn(text(f, &note, 13.5, Color::srgb(0.45, 0.29, 0.10)));
+        });
+    }
+    c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
+    c.spawn(Node { column_gap: Val::Px(10.0), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+        row.spawn((
+            Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            BackgroundColor(me.colour),
+            Interaction::default(),
+            FocusPolicy::Block,
+            ContinueButton,
+        ))
+        .with_children(|b| {
+            b.spawn(text(f, &format!("Continue from {}", back.year), 15.5, Color::WHITE));
+        });
+        row.spawn((
+            Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            BackgroundColor(BTN),
+            Interaction::default(),
+            FocusPolicy::Block,
+            crate::ui::Hoverable,
+            NewGameButton,
+        ))
+        .with_children(|b| {
+            b.spawn(text(f, "New game", 15.5, INK));
+        });
+    });
+    c.spawn((
+        text(f, &format!("A new game begins again in {first_year} and leaves this one saved beside it."), 13.0, MUTED),
+        Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
+        WelcomeHint,
+    ));
+}
+
+/// Nobody at the pointer: ISOSTATE_WELCOME=continue or =new presses that
+/// button of the opening card, once, so that what the buttons do can be
+/// checked from the terminal (in a screenshot run, or with a window).
+fn press_unattended(
+    mut pressed: Local<bool>,
+    mut go_on: Query<&mut Interaction, (With<ContinueButton>, Without<NewGameButton>)>,
+    mut new_game: Query<&mut Interaction, (With<NewGameButton>, Without<ContinueButton>)>,
+) {
+    if *pressed {
+        return;
+    }
+    let button = match std::env::var("ISOSTATE_WELCOME").as_deref() {
+        Ok("continue") => go_on.single_mut(),
+        Ok("new") => new_game.single_mut(),
+        _ => return,
+    };
+    if let Ok(mut i) = button {
+        *i = Interaction::Pressed;
+        *pressed = true;
+        eprintln!("pressing the card's button, as ISOSTATE_WELCOME asks");
+    }
+}
+
+/// Start the program again on a new game, and leave this one. The game being
+/// left is already saved; the new one sets it aside when it is first saved.
+fn new_game_clicks(
+    q: Query<&Interaction, (Changed<Interaction>, With<NewGameButton>)>,
+    data: Res<Data>,
+    // there is none in a replay, which has no such button either
+    fam: Option<Res<FamilyView>>,
+    mut hint: Query<&mut Text, With<WelcomeHint>>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    let Some(fam) = fam else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    // on the island on the table, with as many families: a save that was loaded may be of another than the arguments name
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let scripted = args.iter().any(|a| a == "--script");
+    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len());
+    if scripted {
+        // a scripted run is one program from start to end: say what would be started, and stop
+        println!("script: New game would start the program again with: {}", args.join(" "));
+        exit.write(AppExit::Success);
+        return;
+    }
+    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(args).spawn());
+    match started {
+        Ok(_) => {
+            eprintln!("starting again on a new game");
+            exit.write(AppExit::Success);
+        }
+        Err(e) => {
+            eprintln!("a new game could not be started: {e}");
+            for mut t in &mut hint {
+                t.0 = "A new game could not be started from here. Close the game and start it again with --new.".to_string();
+            }
+        }
+    }
+}
+
+fn close_welcome(
+    mut commands: Commands,
+    q: Query<(Entity, &Interaction), With<Welcome>>,
+    go_on: Query<&Interaction, With<ContinueButton>>,
+    new_game: Query<&Interaction, With<NewGameButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    game: Option<ResMut<Game>>,
+) {
+    // New game leaves the card up until the program starts again
+    if new_game.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let go_on = go_on.iter().any(|i| *i == Interaction::Pressed);
     for (e, i) in &q {
-        if *i == Interaction::Pressed || keys.get_just_pressed().any(|k| !goes_with_others(k)) {
+        if *i == Interaction::Pressed || go_on || keys.get_just_pressed().any(|k| !goes_with_others(k)) {
             commands.entity(e).despawn();
             if let Some(mut game) = game {
                 game.welcoming = false;
