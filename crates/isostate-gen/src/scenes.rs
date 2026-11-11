@@ -17,7 +17,6 @@ use crate::palette::Palette;
 use crate::site::{Model, Site};
 use crate::town;
 use crate::trees::{bush, tree, Species, Tree};
-use crate::works::{works, yard_shed, Kind, Works, YardShed};
 
 /// A spot scattered as the island's slots are: its place, its two fixed
 /// numbers and a turn.
@@ -215,31 +214,6 @@ pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
     }
 }
 
-// ------------------------------------------------------------------ a works in its yard
-
-/// A works with the sheds of its yard about it.
-#[derive(Clone, Copy, Debug)]
-pub struct WorksYard {
-    pub kind: Kind,
-    pub tier: u8,
-    pub id: i32,
-}
-
-/// A works on its plot, and round it the sheds and warehouses that stand on
-/// works ground: half the house slots of the yard (seven by seven to a
-/// cell; the yard here is five slots by three, 0.71 by 0.43 of a cell),
-/// square to the map, keeping clear of the works' plot.
-pub fn works_yard(m: &mut Model, site: &Site, y: &WorksYard, pal: &Palette) {
-    works(&mut m.solid, &mut m.smoke, site, &Works { kind: y.kind, tier: y.tier, seed: y.id as f32 * 0.37 }, pal);
-    for s in spots(5, 3, 7, 12 + y.id, 0.7) {
-        if s.seed.u >= 0.5 || (s.x.abs() < 0.085 && s.z.abs() < 0.085) {
-            continue;
-        }
-        let yaw = (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2;
-        yard_shed(&mut m.solid, &mut m.smoke, &site.moved(site.at(s.x, s.z), site.yaw + yaw), &YardShed { seed: s.seed, smoke_seed: s.yaw }, pal);
-    }
-}
-
 // ------------------------------------------------------------------ woods and heath
 
 /// What grows on a patch of ground.
@@ -334,17 +308,6 @@ mod tests {
         // a big town's place is wider
         let width = |m: &Model| m.flat.bounds().map(|(lo, hi)| hi.x - lo.x).unwrap();
         assert!(width(&build(true, 1.0)) > width(&full));
-    }
-
-    #[test]
-    fn a_works_stands_in_its_yard_with_sheds_clear_of_it() {
-        let pal = Palette::standard();
-        let mut alone = Model::default();
-        works(&mut alone.solid, &mut alone.smoke, &level(), &Works { kind: Kind::TextileMill, tier: 3, seed: 0.37 }, &pal);
-        let mut m = Model::default();
-        works_yard(&mut m, &level(), &WorksYard { kind: Kind::TextileMill, tier: 3, id: 1 }, &pal);
-        assert!(m.is_sound());
-        assert!(m.solid.triangles() >= alone.solid.triangles() + 3 * 14, "fewer than three sheds");
     }
 
     #[test]

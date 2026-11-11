@@ -946,7 +946,7 @@ fn banner_rgba(i: usize) -> [f32; 4] {
     hex(family::BANNERS[i % family::BANNERS.len()])
 }
 
-/// A pennant on a pole beside every family works, a low fence round every
+/// A pennant on the highest gable of every family works, a low fence round every
 /// family's land, and a tall flag on the market square of every family's seat.
 fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look) -> Builder {
     let mut b = Builder::default();
@@ -977,17 +977,17 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         if replay::firm_k(r, f, k) <= 0.0 {
             continue;
         }
-        let Some(&(x, z, yaw)) = slots.firm_pos.get(f) else { continue };
-        let q = Quat::from_rotation_y(yaw);
-        let off = q * Vec3::new(-0.055, 0.0, -0.045);
-        let base = Vec3::new(x + off.x, world::height_at(g, x + off.x, z + off.z), z + off.z);
-        let top = base + Vec3::Y * 0.13;
-        b.beam(base - Vec3::Y * 0.01, top, 0.005, pole);
-        // the pennant streams downwind, the same way on every pole
-        let fly = Vec3::new(0.06, -0.012, 0.03);
+        // one flag on the works' highest gable, on a staff a third of the building's height
+        let Some(peak) = scatter::firm_flag(r, g, slots, f, k, lk) else { continue };
+        let tall = (peak.y - world::height_at(g, peak.x, peak.z)).max(0.0);
+        let staff = (tall * 0.3).clamp(0.014, 0.034);
+        let top = peak + Vec3::Y * staff;
+        b.beam(peak - Vec3::Y * 0.004, top, staff * 0.12, pole);
+        // the pennant streams downwind, the same way on every staff (and with the smoke)
+        let fly = isostate_gen::works::WIND * (staff * 1.5) - Vec3::Y * (staff * 0.22);
         let col = banner_rgba(o);
-        b.tri(top, top - Vec3::Y * 0.032, top + fly, col);
-        b.tri(top, top + fly, top - Vec3::Y * 0.032, col);
+        b.tri(top, top - Vec3::Y * (staff * 0.55), top + fly, col);
+        b.tri(top, top + fly, top - Vec3::Y * (staff * 0.55), col);
     }
     if !r.owner.is_empty() {
         let n = r.n;

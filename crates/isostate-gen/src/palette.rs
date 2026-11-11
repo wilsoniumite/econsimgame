@@ -30,6 +30,16 @@ pub struct Ground {
     pub spoil_clay: Colour,
     pub charcoal_clamp: Colour,
     pub charcoal_clamp_top: Colour,
+    pub yard_cinders: Colour,
+    pub yard_setts: Colour,
+    pub yard_earth: Colour,
+    pub shop_pavement: Colour,
+    pub charcoal_hearth: Colour,
+    pub yard_weeds: Colour,
+    pub clay_face: Colour,
+    pub clay_bottom: Colour,
+    pub slag: Colour,
+    pub furnace_bank: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -43,6 +53,7 @@ pub struct Walls {
     pub station: Colour,
     pub market_hall: Colour,
     pub weaver_cottage: Colour,
+    pub shop_front: Colour,
     pub lighthouse_white: Colour,
     pub lighthouse_red: Colour,
 }
@@ -70,6 +81,8 @@ pub struct Roofs {
     pub station_canopy: Colour,
     pub drying_shed: Colour,
     pub coke_ovens: Colour,
+    pub stone_slate: Colour,
+    pub awnings: Vec<Colour>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -99,6 +112,10 @@ pub struct Timber {
     pub headframe: Colour,
     pub barn_tarred: Colour,
     pub door: Colour,
+    pub fence: Colour,
+    pub planks: Colour,
+    pub logs: Colour,
+    pub waterwheel: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -108,6 +125,8 @@ pub struct Stone {
     pub market_cross: Colour,
     pub works: Colour,
     pub shed: Colour,
+    pub yard_wall: Colour,
+    pub limestone: Colour,
     pub upland_farm: Vec<Colour>,
     pub upland_barn: Colour,
 }
@@ -137,6 +156,7 @@ impl Brick {
 pub struct Glass {
     pub window: Colour,
     pub mill_lit: Colour,
+    pub roof_light: Colour,
     pub lighthouse_lamp: Colour,
 }
 
@@ -145,6 +165,17 @@ pub struct Glass {
 pub struct Iron {
     pub winding_gear: Colour,
     pub converter: Colour,
+    pub plate: Colour,
+    pub glow: Colour,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Goods {
+    pub coal: Colour,
+    pub bales: Colour,
+    pub cloth: Colour,
+    pub bricks: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -264,6 +295,7 @@ pub struct Palette {
     pub brick: Brick,
     pub glass: Glass,
     pub iron: Iron,
+    pub goods: Goods,
     pub foliage: Foliage,
     pub water: Water,
     pub smoke: Smoke,
@@ -280,7 +312,7 @@ const LOOK_FILE: &str = include_str!("../../isostate-viewer/assets/look.toml");
 impl Palette {
     /// The tables of the look file that are the palette's.
     pub const TABLES: &'static [&'static str] =
-        &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks"];
+        &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "goods", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks"];
 
     /// The roof of a separate house in town, by a number of its own: mostly
     /// red tile, some slate, the odd one gone green.
@@ -321,6 +353,7 @@ impl Palette {
             ("foliage.conifer", &self.foliage.conifer),
             ("stone.upland_farm", &self.stone.upland_farm),
             ("vehicles.wagons", &self.vehicles.wagons),
+            ("roofs.awnings", &self.roofs.awnings),
         ] {
             if list.is_empty() {
                 return Err(format!("`{name}` needs at least one colour"));

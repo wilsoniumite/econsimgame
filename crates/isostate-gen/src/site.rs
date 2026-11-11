@@ -53,6 +53,11 @@ impl<'a> Site<'a> {
         Vec3::new(x, y, z)
     }
 
+    /// The ground is level here (the lab's, a test's), so nothing need follow it.
+    pub fn is_level(&self) -> bool {
+        self.ground.is_none()
+    }
+
     /// The same ground, standing somewhere else on it.
     pub fn moved(&self, origin: Vec3, yaw: f32) -> Site<'a> {
         Site { origin, yaw, ground: self.ground }

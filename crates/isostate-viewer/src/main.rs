@@ -785,9 +785,11 @@ fn sun_at(lk: &Look, phase: f32) -> (f32, Color, Transform) {
     (lk.sun.strength(summer), lk.sun.colour(summer), Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, lk.sun.turn, -lk.sun.height(summer), 0.0)))
 }
 
-/// The material of smoke: white, matt, letting some light through.
+/// The material of smoke: white, matt, letting some light through, and thin:
+/// a plume's corners carry how solid it is there (its colour's alpha), so it
+/// fades to nothing downwind.
 fn smoke_material(lk: &Look) -> StandardMaterial {
-    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, ..default() }
+    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, alpha_mode: AlphaMode::Blend, ..default() }
 }
 
 /// The camera the island is seen through, with everything the look gives it:

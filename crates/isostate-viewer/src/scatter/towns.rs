@@ -112,7 +112,7 @@ fn station_at(s: &Square) -> Vec2 {
     s.at + Vec2::new(o.x, o.z)
 }
 
-pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32)>>) {
+pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32, f32, f32)>>) {
     for s in squares(r, cen, k) {
         let node = r.header.towns[s.town].node;
         // the market place, paved, with a cross or a hall in the middle
@@ -137,12 +137,12 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         }
         let c = church_at(&s);
         town::church(houses, &Site::level(ground(g, c.x, c.y), s.yaw + std::f32::consts::FRAC_PI_2), s.big, lk);
-        plots.entry(node).or_default().push((c.x, c.y));
-        plots.entry(node).or_default().push((s.at.x, s.at.y));
+        plots.entry(node).or_default().push((c.x, c.y, 0.085, 0.085));
+        plots.entry(node).or_default().push((s.at.x, s.at.y, 0.085, 0.085));
         if r.trans[k * r.n + node] & 4 != 0 {
             let st = station_at(&s);
             town::station(houses, &Site::level(ground(g, st.x, st.y), s.yaw), lk);
-            plots.entry(node).or_default().push((st.x, st.y));
+            plots.entry(node).or_default().push((st.x, st.y, 0.085, 0.085));
         }
         // a lighthouse if the town is a harbour: walk toward the sea to the waterline
         let (cx, cy) = ((node % r.w) as isize, (node / r.w) as isize);
