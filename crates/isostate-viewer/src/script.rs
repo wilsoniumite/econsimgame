@@ -117,12 +117,14 @@ struct Tally {
     k0: usize,
     /// how long the main world's work took in each frame, in milliseconds, with
     /// what came in during it: a year from the simulation, a year's scenery, a month
-    work: Vec<(f32, bool, bool, bool)>,
+    work: Vec<(f32, bool, bool, bool, bool)>,
     /// the years worked out, the scenery's year and the months that had come
     /// when the last frame was counted
     last_filled: usize,
     last_built: Option<usize>,
     last_months: u64,
+    /// the step of the season the last frame drew (the ground, the trees and the sun are touched when it changes)
+    last_season: i32,
     /// decisions answered for the player
     answered: u32,
     /// start the clock again once the decision's card has gone
@@ -454,13 +456,14 @@ fn sample(world: &mut World, t: &mut Tally) {
     // the frame before this one: how long its work took, and whether a year or its scenery came in during it
     let (filled, built, months) = (world.resource::<Data>().r.filled, world.resource::<Timeline>().built, world.resource::<UiState>().months);
     let now_t = world.resource::<Timeline>().t;
+    let season_step = (season(world) * 192.0).floor() as i32;
     if t.frames == 0 {
         t.k0 = k;
         t.t0 = now_t;
     } else {
-        t.work.push((world.resource::<FrameWork>().ms, filled != t.last_filled, built != t.last_built && built.is_some(), months != t.last_months));
+        t.work.push((world.resource::<FrameWork>().ms, filled != t.last_filled, built != t.last_built && built.is_some(), months != t.last_months, season_step != t.last_season));
     }
-    (t.last_filled, t.last_built, t.last_months) = (filled, built, months);
+    (t.last_filled, t.last_built, t.last_months, t.last_season) = (filled, built, months, season_step);
     t.frames += 1;
     let step = stepping(world);
     if world.resource::<Timeline>().playing {
@@ -559,7 +562,8 @@ fn print_work(t: &Tally) {
         None => println!("script:   frame work, {what}: no frames"),
     };
     line("all", t.work.iter().map(|w| w.0).collect());
-    line("neither a month nor a year coming in", t.work.iter().filter(|w| !w.1 && !w.2 && !w.3).map(|w| w.0).collect());
+    line("nothing coming in and the season as it was", t.work.iter().filter(|w| !w.1 && !w.2 && !w.3 && !w.4).map(|w| w.0).collect());
+    line("a step of the season and nothing else", t.work.iter().filter(|w| !w.1 && !w.2 && !w.3 && w.4).map(|w| w.0).collect());
     line("a month arriving", t.work.iter().filter(|w| w.3 && !w.1).map(|w| w.0).collect());
     line("a year arriving", t.work.iter().filter(|w| w.1).map(|w| w.0).collect());
     line("a year's scenery going up", t.work.iter().filter(|w| w.2).map(|w| w.0).collect());

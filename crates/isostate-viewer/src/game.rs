@@ -169,7 +169,8 @@ pub fn plugin(app: &mut App) {
                 cancel_clicks,
                 panel_clicks,
                 goto_clicks,
-                next_clicks,
+                // (before the keys step the clock, so a key that brings the clock to the present does not also play on from it)
+                next_clicks.before(crate::time_input),
                 step_note,
                 decision_badge,
                 decision_card,

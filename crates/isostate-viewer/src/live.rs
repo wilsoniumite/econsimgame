@@ -188,7 +188,7 @@ impl Live {
 
     /// A month, or the year's end, is being worked out.
     pub fn stepping(&self) -> bool {
-        self.asked > self.months
+        self.asked > self.months || self.months >= 12
     }
 
     /// The simulation stands at a year's turn and nothing has been asked of
@@ -373,7 +373,7 @@ pub fn order_words(order: &Order, r: &Replay, rep: Option<&FamilyReport>) -> Str
     match order {
         Order::Found { method, cell } => {
             let label = r.header.methods.iter().find(|m| &m.name == method).map_or(method.as_str(), |m| m.label.as_str());
-            format!("Build a {} by {}", label.to_lowercase(), near(*cell))
+            format!("Build by {}: {}", near(*cell), label.to_lowercase())
         }
         Order::BuyLand { cell } => format!("Buy a square of land by {}", near(*cell)),
         Order::Decide { choice, .. } => match choice {
@@ -821,7 +821,7 @@ fn order_line(game: &Game, order: &Order) -> String {
     match order {
         Order::Found { method, cell } => {
             let label = s.content.method_name.iter().position(|n| n == method).map_or(method.clone(), |m| s.content.method_label[m].to_lowercase());
-            format!("The {label} by {}", near(*cell))
+            format!("The works by {} ({label})", near(*cell))
         }
         Order::BuyLand { cell } => format!("The land by {}", near(*cell)),
         Order::Decide { choice, .. } => match choice {

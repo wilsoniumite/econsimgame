@@ -716,7 +716,7 @@ fn main() {
                 println!("{}", describe(&r, p, k0));
                 // with --overlay, what that overlay says of the spot, as the inspector would
                 if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
-                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0)) {
+                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0), None) {
                         println!("\n{line}");
                     }
                 }
@@ -807,7 +807,7 @@ fn main() {
     }
     let headless = !views.is_empty() || args.script.is_some();
     // a game opens in the season of its date; pictures, and a recorded run, in high summer
-    let season0 = if live.is_some() && views.is_empty() { SeasonClock { phase: t0.fract(), follows: true } } else { SeasonClock::default() };
+    let season0 = if live.is_some() && views.is_empty() { SeasonClock { phase: t0.fract(), follows: true, coarse: false } } else { SeasonClock::default() };
     if headless {
         app.add_plugins(
             DefaultPlugins
@@ -1293,6 +1293,9 @@ fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
 /// the years go by.
 const SEASON_ROUND_SECS: f32 = 24.0;
 
+/// The fastest the season moves to catch up with the date, in years a second.
+const SEASON_GLIDE: f32 = 0.35;
+
 /// The seasons' clock. Where the clock shows a month, and a year takes long
 /// enough to follow (`clock::FOLLOW_YEAR_SECS`: the two slowest speeds, and a
 /// clock that is stopped), the season is the date's: the ground, the trees,
@@ -1307,12 +1310,16 @@ struct SeasonClock {
     phase: f32,
     /// the season on screen is the date's
     follows: bool,
+    /// the date's year goes by in less than a round of the seasons' own
+    /// clock: the season is then shown in steps twice as long, so that the
+    /// ground, the trees and the sun are touched no oftener than on that round
+    coarse: bool,
 }
 
 impl Default for SeasonClock {
     /// High summer: where a picture or a recorded run opens.
     fn default() -> Self {
-        SeasonClock { phase: 0.55, follows: false }
+        SeasonClock { phase: 0.55, follows: false, coarse: false }
     }
 }
 
@@ -1324,10 +1331,13 @@ impl SeasonClock {
         // a long frame must not show as a jump of the season
         let dt = dt.clamp(0.0, 0.1);
         self.follows = dated && (!playing || speed <= 1.0 / clock::FOLLOW_YEAR_SECS + 1e-4);
+        self.coarse = self.follows && playing && speed > 1.0 / SEASON_ROUND_SECS + 1e-4;
         if self.follows {
-            // ease onto the date the short way round, then stay on it
+            // ease onto the date the short way round, then stay on it; from far off
+            // (a clock stopped after running fast) at a glide, half a year in a second and a half
             let d = (t.fract() - self.phase + 0.5).rem_euclid(1.0) - 0.5;
-            self.phase += d * (1.0 - (-4.0 * dt).exp());
+            let most = SEASON_GLIDE * dt;
+            self.phase += (d * (1.0 - (-4.0 * dt).exp())).clamp(-most, most);
         } else if playing {
             self.phase += dt / SEASON_ROUND_SECS;
         }
@@ -1358,6 +1368,9 @@ fn shown_date(tl: &Timeline, data: &Data, live: Option<&live::Live>, stills: boo
 fn season_phase(clock: &SeasonClock, forced: Option<f32>) -> f32 {
     match forced {
         Some(f) => f.rem_euclid(1.0),
+        // 96 steps to the year, each given from a little inside it so that
+        // `seasons`, which counts 192, sees every other one of its own
+        None if clock.coarse => ((clock.phase * 96.0).floor() + 0.25) / 96.0,
         None => clock.phase,
     }
 }
@@ -1439,7 +1452,7 @@ fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: R
     if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::Comma) {
         // back to the turn the year began at, and from a turn to the one before
         tl.playing = false;
-        tl.t = if clock::on_turn(tl.t) { (tl.t.round() - 1.0).max(0.0) } else { tl.t.floor() };
+        tl.t = if clock::on_turn(tl.t) { (tl.t.floor() - 1.0).max(0.0) } else { tl.t.floor() };
     }
     if keys.just_pressed(KeyCode::PageUp) && !in_progress {
         tl.t = (tl.t.floor() + 10.0).min(last);
@@ -2127,13 +2140,14 @@ fn inspect_panel(
     tl: Res<Timeline>,
     data: Res<Data>,
     ov: Res<overlay::MapOverlay>,
+    months: Res<live::Months>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
-    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize)>>,
+    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (picked.what, k, ov.kind, ov.good);
+    let key = (picked.what, k, ov.kind, ov.good, ov.month());
     if *last == Some(key) {
         return;
     }
@@ -2144,7 +2158,7 @@ fn inspect_panel(
     if let Some(w) = picked.what {
         let mut s = describe(&data.r, w, k);
         // with a map overlay on, what it says of this square
-        if let Some(line) = ov.said(&data.r, k, pick_cell(&data.r, w)) {
+        if let Some(line) = ov.said(&data.r, &months, k, pick_cell(&data.r, w)) {
             s.push_str("\n\n");
             s.push_str(&line);
         }
@@ -2239,19 +2253,30 @@ mod tests {
         assert!(c.follows);
         let off = ((c.phase + 0.5).rem_euclid(1.0) - 0.5).abs();
         assert!(off < 0.005, "the season is {} off the date three seconds after stopping", off);
-        assert!(jump < 0.08, "eased with a jump of {jump}");
+        assert!(jump < 0.013, "eased with a jump of {jump}");
     }
 
     #[test]
     fn the_two_slowest_speeds_keep_the_seasons_on_the_date() {
         for s in clock::SPEEDS {
-            let (c, _, _) = run_seasons(SeasonClock { phase: 0.0, follows: true }, true, s.rate, 6.0);
+            let (c, _, _) = run_seasons(SeasonClock { phase: 0.0, follows: true, coarse: false }, true, s.rate, 6.0);
             // the year's clock began at 10.0 and has run for six seconds
             let date = (s.rate * 6.0).fract();
             let off = ((c.phase - date + 0.5).rem_euclid(1.0) - 0.5).abs();
             if 1.0 / s.rate >= clock::FOLLOW_YEAR_SECS - 1e-3 {
                 assert!(c.follows, "{}", s.name);
                 assert!(off < 0.03, "{}: the season is {off} of a year off the date", s.name);
+                // what is drawn is within a step of it, and at a month a second the steps are the longer ones
+                let drawn = season_phase(&c, None);
+                assert!((drawn - c.phase).abs() <= 1.0 / 96.0, "{}", s.name);
+                assert_eq!(c.coarse, 1.0 / s.rate < SEASON_ROUND_SECS - 1e-3, "{}", s.name);
+                if c.coarse {
+                    // every such step is a whole number of the 192 the ground and the sun count
+                    for i in 0..96 {
+                        let ph = season_phase(&SeasonClock { phase: (i as f32 + 0.6) / 96.0, follows: true, coarse: true }, None);
+                        assert_eq!((ph * 192.0).floor() as i32, 2 * i);
+                    }
+                }
             } else {
                 assert!(!c.follows, "{}", s.name);
                 assert!((c.phase - 6.0 / SEASON_ROUND_SECS).abs() < 0.01, "{}: the seasons' own round", s.name);
@@ -2283,7 +2308,7 @@ mod tests {
                 assert_eq!((shed, bud), (1, 1), "group {group} at {speed} years a second");
                 assert!(gold, "group {group} is never gold in leaf at {speed} years a second");
                 // paused in the depth of winter, the trees stay bare
-                let mut c = SeasonClock { phase: 0.02, follows: false };
+                let mut c = SeasonClock { phase: 0.02, follows: false, coarse: false };
                 // (on a year gone by, where the bar shows no month)
                 for _ in 0..300 {
                     c.advance(false, speed, t, dt, false);
@@ -2302,7 +2327,7 @@ mod tests {
         // the year's clock began at 10.0 and has run half a year, to midsummer
         assert!((c.phase - 0.5).abs() < 0.01, "the season is {} at midsummer", c.phase);
         // easing from high summer round to midwinter took no visible jump
-        assert!(jump < 0.08, "eased with a jump of {jump}");
+        assert!(jump < 0.013, "eased with a jump of {jump}");
         // stopped there (the year's clock at 10.5), the season stays on the date
         let mut p = c;
         for _ in 0..150 {
@@ -2490,7 +2515,7 @@ mod tests {
 
     #[test]
     fn a_forced_season_wins() {
-        let c = SeasonClock { phase: 0.3, follows: false };
+        let c = SeasonClock { phase: 0.3, follows: false, coarse: false };
         assert_eq!(season_phase(&c, None), 0.3);
         assert_eq!(season_phase(&c, Some(0.0)), 0.0);
         assert_eq!(season_phase(&c, Some(1.25)), 0.25);

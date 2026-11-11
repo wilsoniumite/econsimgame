@@ -406,7 +406,17 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     drop(b);
 
     // left with the clock in the middle of a year and nothing ordered since the turn: the months are kept all the same
-    assert!(!a.month() && !a.month() && !a.month());
+    assert!(!a.month() && !a.month());
+    assert_eq!(saves::read(&file).unwrap().month, 0, "a month is not saved as it is played");
+    // the clock stops: the interface asks for the months to be kept, and they are
+    a.live.send(Cmd::Keep);
+    let kept = (0..500).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        saves::read(&file).is_ok_and(|s| (s.year, s.month) == (1754, 2))
+    });
+    assert!(kept, "the months were not saved when the clock stopped");
+    // and one more month, saved by the thread on its way out
+    assert!(!a.month());
     drop(a);
     let left = saves::read(&file).unwrap();
     assert_eq!((left.year, left.month, left.waiting.len()), (1754, 3, 0));

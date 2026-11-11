@@ -93,9 +93,10 @@ pub fn at(k: usize, month: usize) -> f32 {
     k as f32 + month as f32 / 12.0
 }
 
-/// Whether the clock stands exactly on a year's turn.
+/// Whether the clock stands on a year's turn: at it, not a moment before it
+/// (a clock waiting for a year stands at the very end of its December).
 pub fn on_turn(t: f32) -> bool {
-    (t - t.round()).abs() * 12.0 < SLACK
+    (t - t.floor()) * 12.0 < SLACK
 }
 
 /// The start of the month after the one the clock stands in.
@@ -215,6 +216,9 @@ mod tests {
             assert!((t - (33.0 + m as f32 / 12.0)).abs() < 1e-4, "step {m}: {t}");
         }
         assert!(on_turn(t) && t.round() == 34.0);
+        // the clock waiting at the end of December for its year is not on the turn yet
+        assert!(!on_turn(frontier(33, 11)) && !on_turn(frontier(299, 11)));
+        assert_eq!(date(1750, frontier(33, 11)).year, 1784);
         // from the middle of a month, the start of the next
         assert!((next_month(33.21) - (33.0 + 3.0 / 12.0)).abs() < 1e-4);
         assert!(on_turn(12.0) && on_turn(at(12, 12)) && !on_turn(12.05) && !on_turn(at(12, 11)));
