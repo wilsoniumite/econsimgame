@@ -190,6 +190,14 @@ pub fn coke_furnace(c: &mut Ctx) {
             c.solid.frustum_turned(p, 0.0255 * g, 0.0185 * g, h, 4, std::f32::consts::FRAC_PI_4 - c.site.yaw, 0.02, shell, Some(*pal.smoke.soot));
         } else {
             c.solid.frustum_turned(p, r, r * 0.72, h, 8, 0.0, 0.02, shell, Some(*pal.smoke.soot));
+            if c.near() && !c.going_up() {
+                // the hoops that bind its casing, and the tuyere arches round its foot
+                let hoop = crate::colour::shade(shell, 0.8);
+                for t in [0.16, 0.34, 0.52, 0.7] {
+                    let rr = r * (1.0 - 0.28 * t) + 0.0005;
+                    c.solid.frustum_turned(p + Vec3::Y * (h * t), rr, rr - 0.0003, 0.0012, 8, 0.0, 0.0, hoop, None);
+                }
+            }
         }
         if !c.going_up() && !c.derelict() {
             if !square {

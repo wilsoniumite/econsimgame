@@ -25,6 +25,17 @@ pub fn brickworks(c: &mut Ctx) {
         let p = c.at(x, z);
         let whole = !c.going_up() && !c.derelict();
         c.solid.frustum_turned(p, r, r * 1.15, 0.018 * g, 7, 0.0, 0.02, brick, None);
+        if c.near() && !c.going_up() {
+            // the iron band round the kiln's shoulder, and its firing holes round the foot
+            let band = crate::colour::shade(brick, 0.78);
+            c.solid.frustum_turned(p + Vec3::Y * 0.0172 * g, r * 1.15 + 0.0005, r * 1.15 + 0.0005, 0.0012, 7, 0.0, 0.0, band, None);
+            for i in 0..7 {
+                let a = (i as f32 + 0.5) / 7.0 * std::f32::consts::TAU;
+                let (o, s) = (Vec3::new(a.cos(), 0.0, a.sin()), Vec3::new(-a.sin(), 0.0, a.cos()));
+                let at = |w: f32, y: f32| p + o * (r * 1.04 * (std::f32::consts::PI / 7.0).cos() + 0.0006) + s * w + Vec3::Y * y;
+                c.solid.quad_toward([at(-0.0016, 0.0), at(0.0016, 0.0), at(0.0016, 0.0042), at(-0.0016, 0.0042)], [*pal.smoke.soot; 4], o);
+            }
+        }
         if !c.going_up() {
             let (top, neck) = (if whole { 0.034 * g } else { 0.02 * g }, if whole { r * 0.38 } else { r * 0.7 });
             c.solid.frustum_turned(p + Vec3::Y * 0.018 * g, r * 1.15, neck, top, 7, 0.0, 0.0, brick, Some(*pal.smoke.soot));
