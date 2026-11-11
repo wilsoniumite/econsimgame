@@ -28,19 +28,18 @@ fn class_rgb(c: u8) -> [f32; 3] {
     [((h >> 16) & 255) as f32 / 255.0, ((h >> 8) & 255) as f32 / 255.0, (h & 255) as f32 / 255.0]
 }
 
-/// CPU time used by this thread so far, in seconds (Linux), for timings that
-/// other jobs on the machine do not disturb.
-fn thread_cpu() -> f64 {
-    let s = std::fs::read_to_string("/proc/thread-self/stat").unwrap_or_default();
-    let after = s.rsplit(')').next().unwrap_or("");
-    let f: Vec<&str> = after.split_whitespace().collect();
-    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
-    (tick(11) + tick(12)) / 100.0
+/// Seconds since the first call, on the clock on the wall. This used to be
+/// the thread's CPU time read from /proc, which exists on Linux only: on
+/// Windows and macOS every timing came out as 0 ms. Time on the wall counts
+/// whatever else the machine is doing, so bench on a quiet one.
+fn seconds() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64()
 }
 
 /// With ISOSTATE_BENCH set, time the rebuild of a handful of years (the year's
 /// scattered things, its lines and its trains, and turning them into meshes),
-/// several times over, in CPU time, then stop.
+/// several times over, then stop.
 pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
     if std::env::var_os("ISOSTATE_BENCH").is_none() {
         return;
@@ -50,19 +49,19 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
     let mut n = 0;
     for round in 0..3 {
         for &k in &years {
-            let t0 = thread_cpu();
+            let t0 = seconds();
             let ym = crate::scatter::build_year(r, g, slots, cen, k);
-            let t1 = thread_cpu();
+            let t1 = seconds();
             let nets = crate::network::year_nets(r, g, cen, k);
             let paths = crate::trains::rail_paths(r, g, cen, k);
-            let t2 = thread_cpu();
+            let t2 = seconds();
             let verts = ym.trees.pos.len() + ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len();
             if round == 0 {
                 eprintln!("bench {} vertices: trees {}, houses {}, works {}, smoke {}, lanes {}, roads {}, rails {}", r.y0 + k as i32,
                     ym.trees.pos.len(), ym.houses.pos.len(), ym.works.pos.len(), ym.smoke.pos.len(), ym.lanes.pos.len(), nets.roads.pos.len(), nets.rails.pos.len());
             }
             let meshes = [ym.trees, ym.houses, ym.works, ym.smoke, ym.lanes, nets.roads, nets.rails].map(|b| b.into_mesh());
-            let t3 = thread_cpu();
+            let t3 = seconds();
             drop(meshes);
             if round > 0 {
                 total += t3 - t0;
@@ -72,7 +71,7 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
                 r.y0 + k as i32, (t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0, verts, paths.len());
         }
     }
-    eprintln!("bench: {:.0} ms of CPU per year on average", total / n as f64 * 1000.0);
+    eprintln!("bench: {:.0} ms per year on average, by the clock on the wall", total / n as f64 * 1000.0);
     std::process::exit(0);
 }
 
