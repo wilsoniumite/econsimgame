@@ -514,6 +514,8 @@ pub struct Books {
     mk: Vec<f64>,
     /// The month's land table `[T][NS][KL + 2]`.
     ml: Vec<f64>,
+    /// The goods each method can use: its materials, and every fuel if it needs heat.
+    mgoods: Vec<Vec<usize>>,
     div: Vec<f64>,
     fund_open: f64,
     /// The month's rents, and of them what went to families.
@@ -563,6 +565,8 @@ pub struct Month<'a> {
     pub cart_in: &'a [f64],
     pub cart_out: &'a [f64],
     pub rev: &'a [f64],
+    /// The hired managers' share of each works' profit (None without families).
+    pub cut: Option<&'a [f64]>,
     pub a: &'a Mat,
     pub use_f: &'a Mat,
     pub pin: &'a Mat,
@@ -637,6 +641,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         stock: st.inv.clone(),
         mk: vec![0.0; st.T_max * HH_KINDS.clone().count()],
         ml: vec![0.0; st.T_max * C.NS * (KL + 2)],
+        mgoods: (0..C.M).map(|m| (0..C.G).filter(|&g| C.m_in[(m, g)] > 0.0 || (C.m_heat[m] > 0.0 && C.fuel_goods.contains(&g))).collect()).collect(),
         ..Books::default()
     };
 }
@@ -800,20 +805,19 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     }
 
     // ---- the works
-    // a family works with no branch over it pays a hired manager out of its profit
-    let cut = families::hired_cut(st, C, P, m.fi);
     let keep_works = !a.works.is_empty();
     for i in 0..m.fi.len() {
         let (f, t, me, g_out) = (m.fi[i], m.ft[i], m.fm[i], m.out[i]);
         let gross = m.rev[i] - m.pay_in[i] - m.wages_f[i] - m.rent_f[i];
-        let manager = match &cut {
+        // a family works with no branch over it pays a hired manager out of its profit
+        let manager = match m.cut {
             Some(c) if c[i] > 0.0 && gross > 0.0 => c[i] * gross,
             _ => 0.0,
         };
         // materials and fuel at what the merchants were paid for them; the rest of
         // what the works paid is the carting out to it
         let (mut mat_cost, mut all_cost) = (0.0, 0.0);
-        for g in 0..G {
+        for &g in &b.mgoods[me] {
             let used = m.use_f[(i, g)];
             if used > 0.0 {
                 let mat = m.q[i] * m.a[(i, g)];

@@ -4,13 +4,14 @@
 //!
 //!     cargo run --release -p isostate-core --example accounts -- [--seeds 1-8] [--rules port|game]
 //!         [--families N] [--end-year Y] [--good iron] [--year 1850] [--town NAME_OR_INDEX]
-//!         [--works] [--island] [--years]
+//!         [--works] [--island] [--years] [--no-works-books]
 //!
 //! The seeds run side by side. The worked example is printed for the first seed:
 //! the town that made the most of `--good` in `--year` unless `--town` says
 //! which. `--works` adds the books of the largest works making that good there,
 //! `--island` the whole income account of that year, `--years` a line for every
-//! year of the first seed.
+//! year of the first seed. `--no-works-books` keeps the towns' books only
+//! (`accounts.works = false`), to see what the works' part costs.
 #![allow(non_snake_case)]
 use isostate_core::accounts::{self, IslandYear};
 use isostate_core::*;
@@ -45,14 +46,16 @@ fn main() {
             "--works" => show_works = true,
             "--island" => show_island = true,
             "--years" => show_years = true,
+            "--no-works-books" => {}
             other => panic!("unknown option {other}"),
         }
-        i += if matches!(args[i].as_str(), "--works" | "--island" | "--years") { 1 } else { 2 };
+        i += if matches!(args[i].as_str(), "--works" | "--island" | "--years" | "--no-works-books") { 1 } else { 2 };
     }
     let mut P = rules.params();
     P.n_families = families;
     P.end_year = end_year;
     P.accounts.enabled = true;
+    P.accounts.works = !args.iter().any(|a| a == "--no-works-books");
 
     let runs: Vec<(RunResult, f64)> = std::thread::scope(|s| {
         let hs: Vec<_> = seeds

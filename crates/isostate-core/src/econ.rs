@@ -718,7 +718,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.f_cost_m[i] = pay_in[k] + wages_f[k] + rent_f[k];
     }
     // family works with no branch over them pay a hired manager out of their profit
-    if let Some(cut) = families::hired_cut(st, C, P, &fi) {
+    // (accounts: the cuts are kept until the books have read them)
+    let hired = families::hired_cut(st, C, P, &fi);
+    if let Some(cut) = &hired {
         for (k, &i) in fi.iter().enumerate() {
             let profit = rev[k] - pay_in[k] - wages_f[k] - rent_f[k];
             if cut[k] > 0.0 && profit > 0.0 {
@@ -953,7 +955,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             ex: &ex, et: &et, sec: &sec, Y: &Y, Lex: &Lex, value: &value, wage_ex: &wage_ex, cart_ex: &cart_ex,
             in_paid: &in_paid, rent_ex: &rent_ex, mach_got: &mach_got, rail_got: &rail_got,
             fi: &fi, ft: &ft, fm: &fm, fc: &fc, out: &out, K: &K, q: &q, labor_f: &labor_f, wages_f: &wages_f,
-            rent_f: &rent_f, pay_in: &pay_in, cart_in: &cart_in, cart_out: &cart_out, rev: &rev,
+            rent_f: &rent_f, pay_in: &pay_in, cart_in: &cart_in, cart_out: &cart_out, rev: &rev, cut: hired.as_deref(),
             a: &a, use_f: &use_f, pin: &pin,
             hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
