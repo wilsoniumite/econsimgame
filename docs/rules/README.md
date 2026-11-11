@@ -124,11 +124,12 @@ is supposed to be off. Or the port itself was changed on purpose. For the
 second case only:
 
 ```bash
-ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden -- --nocapture
+ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden
 ```
 
-prints the new constants to paste over the old ones; say in the commit message
-why the port moved. To see what changed, not only that something did,
+checks nothing: each of the three tests stops with the line to paste over its
+constant (as a failure, so that it shows and so that such a run is never taken
+for a pass). Say in the commit message why the port moved. To see what changed, not only that something did,
 
 ```bash
 ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --release --test golden
