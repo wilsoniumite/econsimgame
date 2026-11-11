@@ -23,6 +23,7 @@
 //!   stylised facts each run is reduced to (`isostate-core sweep`).
 #![allow(non_snake_case)]
 
+pub mod carting;
 pub mod chronicle;
 pub mod cli;
 pub mod content;
@@ -43,6 +44,7 @@ pub mod params;
 pub mod people;
 pub mod prices;
 pub mod rail;
+pub mod railways;
 pub mod record;
 pub mod rng;
 pub mod sim;
@@ -51,6 +53,7 @@ pub mod sweep;
 pub mod tech;
 pub mod transport;
 pub mod util;
+pub mod ways;
 pub mod works;
 pub mod world;
 

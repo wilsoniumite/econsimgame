@@ -465,3 +465,9 @@ One line each as they arrive: the name, its page, its switch.
   by their hands and stand by their town, so the island has hundreds of works
   of every size instead of thousands of small ones. [works.md](works.md),
   `works.enabled`.
+- **railways**: branch lines to towns and districts, every line priced on the
+  carting it saves, at five times the port's cost. [railways.md](railways.md),
+  `railways.enabled`.
+- **carting**: the carting bill takes hands out of each town's labour supply,
+  so cheaper carriage frees people for other work. [carting.md](carting.md),
+  `carting.enabled`.

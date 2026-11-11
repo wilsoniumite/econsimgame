@@ -59,6 +59,19 @@ pub struct Project {
     pub roi: f64,
     pub cost: f64,
     pub length_km: f64,
+    // ---- ways (docs/rules/railways.md): the port's own projects leave these at their defaults
+    /// Whose project this is: `ways::PORT` (0) for the port's promoters, `ways::RAILWAY`
+    /// for the game's.
+    pub way: u8,
+    /// Months the line takes if the market fills every order; 0 means the port's ten.
+    pub months: f64,
+    /// What the line is for: `ways::SERVES_TRUNK`, `ways::SERVES_TOWN`, or the
+    /// land-use code of the district a branch runs to.
+    pub serves: u8,
+    /// All the money subscribers have put in so far.
+    pub paid_in: f64,
+    /// Who put it in: (landlords or households, town, amount).
+    pub subs: Vec<(bool, usize, f64)>,
 }
 
 /// One opened line: (year, a, b, km) in Python; b is -1 for a spur.
@@ -395,4 +408,21 @@ pub struct State {
     pub works_added: Mat,
     /// The share of its cell each works pays rent on: the most land it has taken so far.
     pub works_lease: Vec<f64>,
+
+    // ---------------- railways (docs/rules/railways.md; empty while `railways` is off)
+    /// What the game's railway promoters remember: pairs joined, places refused,
+    /// every line opened and each year's figures.
+    pub rw: crate::ways::WayBook,
+
+    // ---------------- carting (docs/rules/carting.md; empty while `carting` is off)
+    /// The carting bill of the month so far, by town: cells to market, works'
+    /// inputs and output, and the trade each town sent out.
+    pub cart_bill: Vec<f64>,
+    /// Hands at work carting this month, by town.
+    pub carters: Vec<f64>,
+    /// Months counted into the year being added up at the end of `cart_years`.
+    pub cart_months: usize,
+    /// One entry per twelve months since the warm-up began: the year's carting
+    /// bill and its carters (each summed over the months), whole country.
+    pub cart_years: Vec<(f64, f64)>,
 }

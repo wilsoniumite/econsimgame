@@ -373,6 +373,7 @@ fn load_projects(d: &Dump) -> Vec<Project> {
             roi: num(&m["roi"]),
             cost: num(&m["cost"]),
             length_km: num(&m["length_km"]),
+            ..Project::default()
         });
     }
     out

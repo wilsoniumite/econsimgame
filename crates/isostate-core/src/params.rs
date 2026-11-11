@@ -267,6 +267,13 @@ pub struct Params {
     /// A life cycle for works (not in the Python; see docs/rules/works.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub works: WorksParams,
+    /// Branch lines priced on what they save, at a believable cost (not in the
+    /// Python; see docs/rules/railways.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub railways: crate::railways::RailwayParams,
+    /// Carting takes labour (not in the Python; see docs/rules/carting.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub carting: crate::carting::CartingParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -463,6 +470,8 @@ pub fn default_params() -> Params {
         harvest: crate::harvest::HarvestParams::default(),
         chronicle: crate::chronicle::ChronicleParams::default(),
         works: WorksParams::default(),
+        railways: crate::railways::RailwayParams::default(),
+        carting: crate::carting::CartingParams::default(),
     }
 }
 
@@ -485,6 +494,8 @@ pub fn game_params() -> Params {
     P.harvest = crate::harvest::HarvestParams::game();
     P.chronicle = crate::chronicle::ChronicleParams::game();
     P.works = WorksParams::game();
+    P.railways = crate::railways::RailwayParams::game();
+    P.carting = crate::carting::CartingParams::game();
     P
 }
 
