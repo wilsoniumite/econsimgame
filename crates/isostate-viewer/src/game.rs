@@ -1219,7 +1219,7 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
     game.end_open = true;
     let f = font.0.clone();
     let mut rank: Vec<&FamilyRow> = fam.families.iter().collect();
-    rank.sort_by(|a, b| b.net_worth.partial_cmp(&a.net_worth).unwrap_or(std::cmp::Ordering::Equal));
+    rank.sort_by(|a, b| crate::ui::biggest_first(a.net_worth, b.net_worth));
     let me = fam.player();
     commands
         .spawn((

@@ -1100,7 +1100,7 @@ fn labels(
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     // rank towns by size so only the bigger ones are named when zoomed out
     let mut order: Vec<(usize, f32)> = (0..r.n_towns).filter(|&t| r.town_active[k * r.n_towns + t] > 0).map(|t| (t, r.town_urban[k * r.n_towns + t])).collect();
-    order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    order.sort_by(|a, b| ui::biggest_first(a.1, b.1));
     let max_shown = if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
     let biggest = order.first().map(|x| x.1).unwrap_or(1.0).max(1.0);
     for (lab, mut node, mut vis, children) in &mut q {
@@ -1121,7 +1121,7 @@ fn labels(
                 node.left = Val::Px(v.x - 110.0);
                 node.top = Val::Px(v.y - 34.0);
                 *vis = Visibility::Visible;
-                let size = 13.0 + 7.0 * (order[rank].1 / biggest).sqrt();
+                let size = 13.0 + 7.0 * (order[rank].1 / biggest).max(0.0).sqrt();
                 for c in children.iter() {
                     if let Ok(inner) = boxes.get_mut(c) {
                         for tc in inner.iter() {

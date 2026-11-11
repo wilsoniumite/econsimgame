@@ -692,6 +692,13 @@ fn topbar_text(
     }
 }
 
+/// For sorting the biggest first. A number that is not a number goes last
+/// rather than stopping the game.
+pub fn biggest_first(a: f32, b: f32) -> std::cmp::Ordering {
+    let key = |v: f32| if v.is_nan() { f32::NEG_INFINITY } else { v };
+    key(b).total_cmp(&key(a))
+}
+
 pub fn money(v: f32) -> String {
     let a = v.abs();
     // switch units where rounding would carry: 999,600 is £1.00m, not £1000k
@@ -889,7 +896,7 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
         }
     }
     let mut rows: Vec<(usize, usize, f32)> = by_method.into_iter().map(|(m, (n, s))| (m, n, s / n.max(1) as f32)).collect();
-    rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+    rows.sort_by(|a, b| biggest_first(a.2, b.2));
     p.spawn((text(f, "What investors are building", 17.0, INK), Node { margin: UiRect::top(Val::Px(14.0)), ..default() }));
     p.spawn(text(f, &format!("New works since {}, with the return their backers expected.", year - 4), 13.0, MUTED));
     if rows.is_empty() {
@@ -901,5 +908,18 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
             row.spawn(text(f, &format!("{ml}  \u{00d7}{n}"), 14.0, INK));
             row.spawn(text(f, &format!("{:.0}% a year", roi * 100.0), 14.0, INK));
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sorting_the_biggest_first_survives_a_number_that_is_not_one() {
+        let mut v = vec![(0, 3.0), (1, f32::NAN), (2, 12.5), (3, 0.0), (4, f32::INFINITY), (5, -1.0)];
+        v.sort_by(|a, b| biggest_first(a.1, b.1));
+        let order: Vec<usize> = v.iter().map(|x| x.0).collect();
+        assert_eq!(order, [4, 2, 0, 3, 5, 1]);
     }
 }
