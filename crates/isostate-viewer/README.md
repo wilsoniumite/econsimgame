@@ -2,7 +2,7 @@
 
 The game, and a 3D viewer for Isolated State runs, in Bevy 0.20. It draws the island as a small diorama that changes year by year from 1750 to 1900. It either runs the simulation live, with you playing one of the island's great families, or plays back a `run.bin` written by the Python package or by the Rust core.
 
-![Kirkford, 1900](../../docs/shots/kirkford-1900.jpg)
+![Melbourne, the home town of a game on island 7, in the summer of 1860](../../docs/shots/melbourne-1860.jpg)
 
 ## Running
 
@@ -14,7 +14,7 @@ cargo run -p isostate-core --release -- run --seed 7 --out runs/rust7     # reco
 cargo run -p isostate-viewer --release -- runs/rust7/run.bin              # and watch it
 ```
 
-The first build compiles Bevy and takes a while. On Linux you need `pkg-config`, `libwayland-dev` and `libxkbcommon-dev` to build; Windows and macOS need nothing extra. Other options: `--year 1846` opens a replay on a year, `--advance 20` starts a game twenty years in, `--size 1600x1000` sets the window, `--at 31.5,29.5` points the camera at a spot in map cells, `--overlay rent` opens on a map view, and `--load FILE` and `--save FILE` name a saved game (see Saved games). `--help` lists every option, those of the standard shots (`--shots`) and of the generators' lab (`--lab`) among them. An option that is not one, an option with no value after it, or a value that cannot be read (`--advance 3O`, `--season summer`, `--overlay rents`) stops the viewer with the reason and the list (exit code 2), rather than running as if it had not been given. A `run.bin` that is cut short or damaged is refused with a message naming the file and the array; the "make a run first" hint follows only a file that is not there.
+The first build compiles Bevy and takes a while. On Linux you need `pkg-config`, `libwayland-dev` and `libxkbcommon-dev` to build; Windows and macOS need nothing extra. Other options: `--year 1846` opens a replay on a year, `--advance 20` starts a game twenty years in, `--size 1600x1000` sets the window, `--at 31.5,29.5` points the camera at a spot in map cells, `--yaw 25`, `--pitch 38` and `--dist 10` turn it, tilt it and set it back (degrees, degrees above the horizon, and map cells; a game opens looking north at a tilt of 52 from a distance of 14 over the home town, a replay over the whole island), `--overlay rent` opens on a map view, and `--load FILE` and `--save FILE` name a saved game (see Saved games). `--help` lists every option, those of the standard shots (`--shots`) and of the generators' lab (`--lab`) among them. An option that is not one, an option with no value after it, or a value that cannot be read (`--advance 3O`, `--season summer`, `--overlay rents`) stops the viewer with the reason and the list (exit code 2), rather than running as if it had not been given. A `run.bin` that is cut short or damaged is refused with a message naming the file and the array; the "make a run first" hint follows only a file that is not there.
 
 | Key or mouse | Does |
 |---|---|
@@ -104,7 +104,7 @@ WGPU_BACKEND=vulkan cargo run -p isostate-viewer -- runs/landlords/run.bin --siz
     --view out/island.png,1900
 ```
 
-Each `--view` is `path,year,x,z,yaw,pitch,distance[,season][,words]` in map cells and degrees; missing values fall back to the whole-island view (or the home town in a game), and a value that is not a number is refused. A number after the distance is the season (0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn), overriding `--season` for that shot. Words after the distance may come in any order: the side panel to show (`family`, `holdings`, `markets`, `news`, or `none`), a map view (`rent`, `areas`, `reach`, `price`, `price:coal` or any other good's name, `wages`, `plain`; `--overlay NAME` sets it for the whole run), and `island` or `open:GOOD` for what the Markets panel shows. `--wait 100` sets how many seconds to wait for shaders to compile before the first shot. A `--view` of a year a game has not reached shows the newest year.
+Each `--view` is `path,year,x,z,yaw,pitch,distance[,season][,words]` in map cells and degrees; missing values fall back to the whole-island view (or the home town in a game), and a value that is not a number is refused. A number after the distance is the season (0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn), overriding `--season` for that shot. Words after the distance may come in any order: the side panel to show (`family`, `holdings`, `markets`, `news`, or `none`), a map view (`rent`, `areas`, `reach`, `price`, `price:coal` or any other good's name, `wages`, `plain`; `--overlay NAME` sets it for the whole run), and `island` or `open:GOOD` for what the Markets panel shows. `--wait 100` sets how many seconds to wait for shaders to compile before the first shot, and `--frames 12` how many frames each picture is given to settle before it is taken (40 unless said). A `--view` of a year a game has not reached shows the newest year. `--shot PATH` is one picture of the view the viewer would open on, which `--year`, `--at`, `--yaw`, `--pitch` and `--dist` set.
 
 ```bash
 cargo run -p isostate-viewer -- --advance 100 --view out/coal.png,1850,60,46,0,52,130,markets,price:coal,open:coal
@@ -120,6 +120,21 @@ WGPU_BACKEND=vulkan cargo run -p isostate-viewer -- --demo --advance 3 --pick 31
 ```
 
 The opening card of a game and the card at the century's end are left out of screenshots unless `ISOSTATE_WELCOME=1` is set; `ISOSTATE_WELCOME=continue` or `=new` presses that button of the opening card once, to see what it does with nobody at the pointer. `ISOSTATE_HELP=1` opens the help card from the start.
+
+### The standard shots
+
+A fixed, named set of views of one game, for looking at a change to the picture before and after it (`src/shots.rs`).
+
+```bash
+cargo run -p isostate-viewer -- --shots out/before                                             # before the change
+cargo run -p isostate-viewer -- --shots out/after --shots-compare out/before --shots-note abc123   # after it
+cargo run -p isostate-viewer -- --compare-shots out/before out/after                           # two sets already taken
+```
+
+- `--shots DIR` plays the whole game with no window and writes twelve pictures into DIR: the whole island and the home town in 1750, 1800, 1850 and 1900, the town in midwinter 1850, a street close up, and the cell with the most works from play distance and close up. The views are chosen from the simulation, so they follow the game on any `--seed`. With them go `index.html`, a contact sheet with each shot's name and caption, and `shots.txt`, the list. With a graphics card it takes about a minute and a half. The carts, trains, boats and the sea stand still while it shoots, so two runs of the same code agree to the pixel.
+- `--shots-compare OTHER`, with `--shots`, sets each shot on the sheet beside the one of the same name in OTHER, says how far the two differ, and prints the table described under `--compare-shots`.
+- `--shots-note TEXT`, with `--shots`, puts a line on the sheet, such as the commit.
+- `--compare-shots A B` starts no game. It compares two sets already taken, writes B's sheet again with A beside it, and prints a line a shot: the largest difference in any channel of any pixel (of 255), the mean difference, how many pixels differ and their share, and the share that differ by more than 8, which is enough to see. It exits 0 when every shot is the same and 1 when any differs.
 
 ### Checking keys and clicks without a window
 
