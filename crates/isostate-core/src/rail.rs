@@ -38,6 +38,10 @@ fn materials(C: &Content, P: &Params, n_new: usize) -> Vec<f64> {
 }
 
 pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, pbar: &Mat, events: &mut Vec<Event>) {
+    // railways (docs/rules/railways.md): under the game's rules its promoters take over
+    if P.railways.enabled {
+        return crate::railways::plan(st, C, P, year, pbar, events);
+    }
     let tr_idx = st.t_rail;
     let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
     let k: Vec<f64> = (0..st.T_max).map(|t| st.know[(t, tr_idx)]).collect();
@@ -138,6 +142,7 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
             roi,
             cost,
             length_km: 2.0 * length,
+            ..Project::default()
         });
         let mut ev = Event::new(
             year as f64 + 0.95,
@@ -158,6 +163,10 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
 
 /// Mineral and factory lines: from a town out to a busy cluster of pits or works.
 pub fn plan_spurs(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, pbar: &Mat, _events: &mut Vec<Event>) {
+    // railways (docs/rules/railways.md): its branches replace the spurs
+    if P.railways.enabled {
+        return;
+    }
     let tr_idx = st.t_rail;
     if st.projects.len() >= P.rail_max_projects {
         return;
@@ -243,14 +252,18 @@ pub fn plan_spurs(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year:
             roi,
             cost,
             length_km: 2.0 * length,
+            ..Project::default()
         });
     }
 }
 
 /// Open finished lines; promoters top up projects that run short of money.
-pub fn progress(st: &mut State, _C: &Content, _P: &Params, year_float: f64, events: &mut Vec<Event>) {
-    let projects = std::mem::take(&mut st.projects);
-    let mut keep = Vec::with_capacity(projects.len());
+pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events: &mut Vec<Event>) {
+    // railways (docs/rules/railways.md): lines of the game's promoters open in their
+    // own module; only the port's own projects (way 0) go through the loop below
+    crate::railways::progress(st, C, P, year_float, events);
+    let (projects, mut keep): (Vec<Project>, Vec<Project>) =
+        std::mem::take(&mut st.projects).into_iter().partition(|pr| pr.way == crate::ways::PORT);
     for mut pr in projects {
         if pr.cash < 0.0 {
             for t in [pr.a, pr.b] {

@@ -254,6 +254,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let pc = series("gdp_pc");
     let peak = (0..pc.len()).filter(|&k| pc[k].is_finite()).max_by(|&i, &j| pc[i].total_cmp(&pc[j]));
     b.year("output_per_head_peak_year".into(), peak.map(|k| years[k]));
+    // carting (docs/rules/carting.md): living standards in units that compare across
+    // runs, and the carting bill
+    for (name, kind, v) in crate::carting::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- railways
     b.group = GROUPS[2];
@@ -272,6 +277,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let december = |k: usize| km.get(k * 12 + 11).copied().unwrap_or(0.0);
     let grew = (0..n).rev().find(|&k| december(k) > if k == 0 { 0.0 } else { december(k - 1) });
     b.year("rail_last_growth_year".into(), grew.map(|k| years[k]));
+    // railways (docs/rules/railways.md): the network by decade, what it serves and what it cost
+    for (name, kind, v) in crate::railways::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- works
     b.group = GROUPS[3];
