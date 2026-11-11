@@ -42,8 +42,8 @@ Each town has a list of its cells in the order they joined, the centre first
 **Room.** A cell has room for 300 people the year it joins (`d_new`) and
 fills in with age toward a ceiling: 600 in 1750 (`d_old`), 3 more each year
 after (`d_old_growth`), reached as 1 - exp(-age / 30) (`tau`). So ground of
-1700 holds about 580 people in 1750 and a thousand in 1900, ground of 1880
-holds 650 in 1900, and the centre is the oldest ground and the fullest.
+1700 holds about 540 people in 1750 and 1,050 in 1900, ground of 1880 holds
+about 660 in 1900, and the centre is the oldest ground and the fullest.
 `towns::room` is that sum.
 
 **Growth.** When the town's people outgrow the room of its cells it takes the
@@ -311,16 +311,25 @@ the same table in [works.md](works.md) (works alone):
 | 7 | founder | 20.7m | 4/4/4/1 | 16.2m | 4/4/3/4 | 23.5m |
 | 7 | thoughtful | 33.2m | 4/4/1/1 | 22.2m | 4/4/3/1 | 21.9m |
 
-The works column is copied from that page, not run again here (the bots take
-no `--set`), so the two differ by whatever else moved between the builds as
-well as by the towns. Read with that in mind: the mean over the sixteen games
-is 26.0 million against 27.4, the landlord is still first in every seed and
-buying land is still the best the player can do, and nothing is out of range.
-On seed 7, the island a new game opens on, the player ends poorer in three
-strategies of four (the passive player 15 million against 25, third and not
-first). One island and four games is not evidence that the towns did it, but
-it is the island that matters most, and it wants a second look with a like
-for like baseline.
+The works column is that page's. It is like for like: this build with the
+towns switched off gives the same eight numbers for seeds 1 and 7, to the
+last digit printed. The mean over the sixteen games is 26.0 million against
+27.4, the landlord is still first in every seed and buying land is still the
+best the player can do, and nothing is out of range. On seeds 2 and 3 the
+player ends a little richer in all eight games. On seed 1 it is poorer in two
+and richer in one by a third or more each way.
+
+On seed 7, the island a new game opens on, the player ends poorer in all four
+(the passive player 15 million against 25, third and not first). The reason
+on that island is its neighbours, not its ground. The player's family lives
+on its rents until 1770, and to 1775 it is the richer with kept ground (1.77
+million against 1.43). But by 1795 the island has sixteen towns where it had
+thirteen, Melbourne has 25,000 people in 1800 where it had 31,000, and the
+family's rents and works are worth less in the smaller market (66 thousand a
+year in rents against 95, works worth 250 thousand against 490). Across eight
+seeds the kept ground founds half a town more by 1800, inside the spread, so
+this is one island's path and not a rule. It is still the island that matters
+most: see the worries.
 
 ## What worries me
 
@@ -338,14 +347,24 @@ for like baseline.
   but a player watches that town more than any other. A slower ceiling
   (`d_old_growth` 1) starts it growing fifty years sooner at the cost of a
   larger total.
+- **The home island founds three more towns, and the player is poorer for
+  it** (the scripted players, above). Where a town is founded depends on
+  where work stands far from a market, and anything that moves the works
+  moves that. Sixteen seeds say the count of towns is not changed beyond the
+  spread; seed 7 says a new game's first fifty years are. If the opening
+  wants protecting, the place is `people::found_towns` (seven towns in the
+  1750s was already the probe's complaint), not here.
 - **Works take the middle of the town.** Rent on town ground is small beside
   the wage bill, as it is everywhere (3 to 5 per cent), and the walk to work
   is cheapest at the centre, so the cells round the centre fill with works:
-  in 1750 a third to a half of several towns' central cells is under works.
-  A cell wholly under works still houses half its people (`works_room`),
-  which is a number I chose with the probe and did not sweep. If the picture
-  wants the works at the edge of the old town and not in its market place,
-  the lever is the price of central ground, not a rule.
+  in 1750 several towns already have a cell a third to a half under works
+  within a step of the market. A cell wholly under works still houses half
+  its people (`works_room`), the probe's number. Swept on eight seeds
+  (`sweep-towns-works-room`): with no room beside works the towns stand on
+  256 cells in 1900, with half 231, with all of it 209; wages and output do
+  not tell them apart. If the picture wants the works at the edge of the old
+  town and not in its market place, the lever is the price of central ground,
+  not a rule.
 - **Under the port's works, and in 1750, the floor tells the first works
   where to stand.** On the first day prices are the list and wages a guess,
   open land bids more than houses, and the floor makes every town cell cost a
@@ -354,9 +373,8 @@ for like baseline.
   hands on town ground in 1750 against 52 with it, and under the port's
   quarter-cell works 227 industry cells against 204. By 1800 it has washed
   out. It is an accident of the first day's prices either way.
-- **Nothing was swept one at a time**: `works_room`, `smooth`, `empty`,
-  `decline_years`, `back_years` and `back_span` are the probe's values or
-  mine, checked only as a set.
+- **Numbers not swept**: `smooth`, `empty`, `decline_years`, `back_years` and
+  `back_span` are the probe's values or mine, checked only as a set.
 - **Residents are recorded to the nearest eight**, and the byte stops at
   2,040. The fullest cell on eight seeds held 889 in the mean; a town hemmed
   in by sea and pits with nowhere to grow could pass it, and its people then
