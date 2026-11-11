@@ -84,6 +84,17 @@ pub fn make_rngs(seed: u64) -> Rngs {
     }
 }
 
+/// Stream 8, for `peopling` (not in the Python): made from the seed and its own
+/// number exactly as the seven above are, so it disturbs none of them.
+pub fn people_stream(seed: u64) -> Rng {
+    let mut x = seed ^ 9u64.wrapping_mul(0xD1B5_4A32_D192_ED03);
+    let mut bytes = [0u8; 32];
+    for chunk in bytes.chunks_exact_mut(8) {
+        chunk.copy_from_slice(&splitmix64(&mut x).to_le_bytes());
+    }
+    Rng::from_seed(bytes)
+}
+
 /// `rng.random()`: uniform on [0, 1) with 53 random bits, as numpy.
 pub fn random(rng: &mut Rng) -> f64 {
     match rng.next_replayed() {

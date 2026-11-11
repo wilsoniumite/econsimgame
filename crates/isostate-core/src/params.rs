@@ -246,6 +246,10 @@ pub struct Params {
     /// Last simulated year; `None` means the content's end year (Python: `P.get("end_year", C["end_year"])`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_year: Option<i64>,
+    /// People (not in the Python; see docs/rules/people.md): a population that
+    /// answers to how people live, and towns founded all century.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub people: crate::peopling::PeopleParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -437,6 +441,7 @@ pub fn default_params() -> Params {
         absentee_cut: ABSENTEE_CUT,
         university_gain: UNIVERSITY_GAIN,
         end_year: None,
+        people: crate::peopling::PeopleParams::default(),
     }
 }
 
@@ -454,6 +459,7 @@ impl Default for Params {
 pub fn game_params() -> Params {
     #[allow(unused_mut)] // until the first mechanism sets its field
     let mut P = default_params();
+    P.people = crate::peopling::PeopleParams::game();
     P
 }
 

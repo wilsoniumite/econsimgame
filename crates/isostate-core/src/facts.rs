@@ -123,6 +123,8 @@ impl Facts {
 pub struct Gathered {
     /// Per year: the share of people living in towns whose growth was held at `growth_cap`.
     pub capped: Vec<f64>,
+    /// Every town's rate of natural increase in every year (people: docs/rules/people.md).
+    pub rates: Vec<f64>,
 }
 
 /// Call after each `sim::run_year`.
@@ -136,9 +138,13 @@ pub fn gather_year(g: &mut Gathered, sim: &Sim) {
         // the rule in people::growth before its clamp (a famine's two points off are not seen here)
         let rate = P.growth_slope * st.y_ratio[t].max(1e-3).ln() + P.growth_base;
         all += st.pop[t];
-        if rate >= P.growth_cap {
+        // people: under the game's rule nothing is clamped; a town counts as held when
+        // income has carried its rate to within a twentieth of the rule's ceiling
+        let held = if P.people.enabled { st.pp_income_term[t] >= 0.95 * P.people.growth_top } else { rate >= P.growth_cap };
+        if held {
             capped += st.pop[t];
         }
+        g.rates.push(if P.people.enabled { st.pp_growth[t] } else { rate.clamp(-0.04, P.growth_cap) });
     }
     g.capped.push(if all > 0.0 { capped / all } else { f64::NAN });
 }
@@ -229,6 +235,12 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     // a year sat at the cap if most people lived in towns growing at it
     b.num("growth_capped_years".into(), Kind::Share, mean(&capped.iter().map(|&v| if v >= 0.5 { 1.0 } else { 0.0 }).collect::<Vec<_>>()));
     b.num("growth_capped_people".into(), Kind::Share, mean(&capped));
+    // people: how the towns' rates of natural increase are spread, in per cent a year
+    let mut rates = g.rates.clone();
+    rates.sort_by(f64::total_cmp);
+    for (name, q) in [("p10", 0.1), ("p50", 0.5), ("p90", 0.9)] {
+        b.num(format!("town_growth_pct_{name}"), Kind::Ratio, 100.0 * quantile(&rates, q));
+    }
     for &y in &marks {
         b.num(format!("urban_share_{y}"), Kind::Share, at("urban_share", y));
     }

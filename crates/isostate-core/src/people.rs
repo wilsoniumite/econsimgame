@@ -23,6 +23,10 @@ pub fn growth(st: &mut State, _C: &Content, P: &Params, year: i64, events: &mut 
             g[t] -= 0.02;
         }
     }
+    // people (docs/rules/people.md): the game's rule sets the rates in place of the capped one
+    if P.people.enabled {
+        g = crate::peopling::growth(st, P, &y);
+    }
     let hit: Vec<usize> = (0..T).filter(|&t| famine[t] && st.town_founded[t] < year - 2).collect();
     if hit.len() >= 3 {
         let mins: Vec<f64> = hit.iter().map(|&t| st.food_min_acc[t]).collect();
@@ -94,6 +98,10 @@ pub fn migration(st: &mut State, _C: &Content, P: &Params) {
             flow[(i, j)] = movers[i] * share;
         }
     }
+    // people (docs/rules/people.md): a town takes in only as many as it can house
+    if P.people.enabled {
+        crate::peopling::limit_arrivals(st, P, &act, &mut flow);
+    }
     let cash_pc: Vec<f64> = act.iter().map(|&t| st.hh_cash[t].max(0.0) / st.pop[t].max(1.0)).collect();
     // flow.sum(axis=0) runs down the columns one by one; flow.sum(axis=1) is pairwise
     let mut inflow = vec![0.0; n];
@@ -113,6 +121,7 @@ pub fn migration(st: &mut State, _C: &Content, P: &Params) {
     st.migration_flow = flow;
 }
 
+pub static TEMP_FORCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(usize::MAX);
 /// Mining and industrial settlements far from existing markets become towns.
 pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year: i64, events: &mut Vec<Event>) -> Vec<usize> {
     let (H, W, N) = (st.world.H, st.world.W, st.N);
@@ -141,7 +150,14 @@ pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year
     }
     let score: Vec<f64> = (0..N).map(|c| if land[c] && far[c] && st.dcatch[c].is_finite() { near[c] } else { 0.0 }).collect();
     let mut founded = Vec::new();
-    let c = argmax(&score);
+    let mut c = argmax(&score);
+    // TEMP experiment
+    let forced = TEMP_FORCE.swap(usize::MAX, std::sync::atomic::Ordering::SeqCst);
+    let mut score = score;
+    if forced != usize::MAX {
+        c = forced;
+        score[c] = 1e9;
+    }
     if score[c] > P.found_activity {
         // settle on the best nearby site: flat ground, water, close to the work
         let (cy, cx) = ((c / W) as isize, (c % W) as isize);

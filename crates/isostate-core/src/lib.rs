@@ -35,6 +35,7 @@ pub mod ndimage;
 pub mod observer;
 pub mod params;
 pub mod people;
+pub mod peopling;
 pub mod rail;
 pub mod record;
 pub mod rng;
