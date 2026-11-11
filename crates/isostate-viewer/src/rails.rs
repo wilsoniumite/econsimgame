@@ -67,6 +67,8 @@ const TIGHT: f32 = 0.05;
 const CURVE_OVER: f32 = 0.08;
 /// The lie of the land bends a line no tighter than this radius.
 const EASY: f32 = 0.07;
+/// Sidings lie beside a line that curves no tighter than this.
+const SIDING_CURVE: f32 = 0.3;
 /// How far the ground under an engine house or a shed may rise over the
 /// rails beside it (its walls stand that deep in the hillside), and how far
 /// it may fall below them (it stands on a stone footing that high).
@@ -1070,11 +1072,16 @@ pub fn track(ry: &RailYear, g: &Ground, lk: &Look, sidings: &[Sidings]) -> Build
         // the line through the cell, and a length of it either side of where it passes
         let Some((line, i)) = ry.lines.iter().find_map(|l| l.pts.iter().position(|p| Vec2::new(p.x, p.z).distance(stop.at) < 1e-3).map(|i| (l, i))) else { continue };
         let n = line.pts.len();
-        let (lo, hi) = (i.saturating_sub(9), (i + 9).min(n - 1));
-        // only where the line is on the ground the whole way
-        if hi - lo < 9 || (lo..=hi).any(|q| !matches!(line.kind[q], Kind::Grade | Kind::Embankment) || line.pts[q].y - line.ground[q] > 0.012) {
-            continue;
-        }
+        // only where the line is on the ground the whole way and runs straight enough for a
+        // loop beside it: there, or a little way along from there
+        let stretch = [0isize, -5, 5, -10, 10].into_iter().find_map(|shift| {
+            let at = (i as isize + shift).clamp(0, n as isize - 1) as usize;
+            let (lo, hi) = (at.saturating_sub(9), (at + 9).min(n - 1));
+            let on_the_ground = (lo..=hi).all(|q| matches!(line.kind[q], Kind::Grade | Kind::Embankment) && line.pts[q].y - line.ground[q] <= 0.012);
+            let flat: Vec<Vec2> = line.pts[lo..=hi].iter().map(|p| Vec2::new(p.x, p.z)).collect();
+            (hi - lo >= 9 && on_the_ground && course::tightest(&flat, 2.0 * CURVE_OVER) >= SIDING_CURVE).then_some((lo, hi))
+        });
+        let Some((lo, hi)) = stretch else { continue };
         let across = |q: usize| side_of(line.pts[q.saturating_sub(1)], line.pts[(q + 1).min(n - 1)]);
         let a = across(i);
         let side = if Vec2::new(a.x, a.z).dot(middle - stop.at) > 0.0 { -1.0 } else { 1.0 };
@@ -1641,6 +1648,9 @@ pub fn maybe_check(r: &Replay, g: &Ground) {
     }
     if how == "list" {
         let ry = year(r, g, &cen, last);
+        for st in ry.stands.iter().filter(|st| st.what != Standing::BufferStop) {
+            eprintln!("{:?} at {:.2},{:.2}, the ground {:.3} to {:.3} under its floor", st.what, st.at.x, st.at.z, st.at.y - stand_ground(g, st).1, st.at.y - stand_ground(g, st).0);
+        }
         for (li, line) in ry.lines.iter().enumerate() {
             let n = line.pts.len();
             for (what, runs) in [

@@ -160,12 +160,16 @@ fn firm_life(r: &Replay, f: usize) -> (usize, usize, f32) {
     }
 }
 
+/// A point of a road or a railway that works keep clear of: where it is, the
+/// room to leave either side of it, and the room to leave even where ground
+/// is short (none for a road; a railway's own bed, which no yard can stand on).
+type Way = (f32, f32, f32, f32);
+
 /// The roads and railways of year `k` as points along them, by the cell each
-/// point lies in, with the room to leave either side: works keep clear of them.
-/// The railway is taken where it runs (`rails.rs`), not as straight lines
-/// between the middles of its cells.
-fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<(f32, f32, f32)>> {
-    let mut out: std::collections::HashMap<usize, Vec<(f32, f32, f32)>> = Default::default();
+/// point lies in: works keep clear of them. The railway is taken where it
+/// runs (`rails.rs`), not as straight lines between the middles of its cells.
+fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<Way>> {
+    let mut out: std::collections::HashMap<usize, Vec<Way>> = Default::default();
     let mut lay = |a: (f32, f32), b: (f32, f32), clear: f32| {
         let len = (b.0 - a.0).hypot(b.1 - a.1);
         let n = ((len / 0.03).ceil() as usize).max(1);
@@ -173,7 +177,7 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
             let t = i as f32 / n as f32;
             let (x, z) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
             let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-            out.entry(c).or_default().push((x, z, clear));
+            out.entry(c).or_default().push((x, z, clear, 0.0));
         }
     };
     for (c, m, lv) in crate::network::road_segments(r, k) {
@@ -182,27 +186,27 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
     // the railway where it really runs, with room for its banks: every point of every line that
     // is not under the ground, told to the cell it lies in and to a neighbour it lies close by
     let rails = crate::rails::year(r, g, cen, k);
-    let mut tell = |x: f32, z: f32, clear: f32| {
+    let mut tell = |x: f32, z: f32, clear: f32, at_least: f32| {
         let cell = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
         let mut told: Vec<usize> = Vec::with_capacity(3);
         for (dx, dz) in [(0.0f32, 0.0f32), (0.12, 0.0), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
             let c = cell(x + dx, z + dz);
             if !told.contains(&c) {
                 told.push(c);
-                out.entry(c).or_default().push((x, z, clear));
+                out.entry(c).or_default().push((x, z, clear, at_least));
             }
         }
     };
     for line in &rails.lines {
         for (i, p) in line.pts.iter().enumerate() {
             if line.kind[i] != crate::rails::Kind::Tunnel {
-                tell(p.x, p.z, 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12));
+                tell(p.x, p.z, 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12), 0.03);
             }
         }
     }
     // and the ground of its stations, engine houses and sheds
     for (at, clear) in rails.grounds() {
-        tell(at.x, at.y, clear);
+        tell(at.x, at.y, clear, 0.0);
     }
     out
 }
@@ -212,9 +216,9 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
 enum Room {
     /// well back from the shore, the rivers, the roads, the railway and the cell's edge
     Proper,
-    /// nearer the water, and with no care for the roads
+    /// nearer the water, and with no care for the roads (but off the railway's bed)
     Tight,
-    /// anywhere above the tide that no other yard has taken, close up to its neighbours
+    /// anywhere above the tide that no other yard has taken and no line runs over, close up to its neighbours
     Any,
 }
 
@@ -251,7 +255,7 @@ struct Lot {
 /// Lay out the works of one cell: `firms` in the order they were founded.
 /// It gives back how many found no room at their own size, and how many none at all.
 #[allow(clippy::too_many_arguments)]
-fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
+fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
     let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
     // the churchyards that reach into this cell, or near it
     let yards: Vec<&towns::Churchyard> = yards.iter().filter(|y| y.meets_box(cx + 0.5, cy + 0.5, 0.55, 0.55)).collect();
@@ -315,7 +319,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             if yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(x, z, hx + wall, hz + wall)) {
                 return false;
             }
-            if strict && ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
+            // the roads and the railway; where room is short, only the railway's own bed
+            if ways.iter().any(|&(wx, wz, clear, at_least)| {
+                let clear = if strict { clear } else { at_least };
+                clear > 0.0 && (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear
+            }) {
                 return false;
             }
             let (dry, shore) = (room.dry(), room.shore());
@@ -382,9 +390,10 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             // furthest from the yards already there; the higher, of two as far
             let (hx, hz) = if quarter % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
             let ashore = |s: &&(f32, f32, f32)| [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)].iter().all(|&(dx, dz)| world::height_at(g, s.0 + dx, s.1 + dz) >= 0.004) && !yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(s.0, s.1, hx, hz));
+            let off_the_line = |s: &&(f32, f32, f32)| !ways.iter().any(|&(wx, wz, _, at_least)| at_least > 0.0 && (wx - s.0).abs() < hx + at_least && (wz - s.1).abs() < hz + at_least);
             let apart = |s: &(f32, f32, f32)| lots.iter().filter(|l| from < l.to && l.from < to).map(|l| (l.x - s.0).hypot(l.z - s.1)).fold(f32::MAX, f32::min);
             let furthest = |spots: Vec<&(f32, f32, f32)>| spots.into_iter().rev().max_by(|a, b| apart(a).total_cmp(&apart(b))).map(|s| (s.0, s.1));
-            let at = furthest(tight.iter().filter(ashore).collect()).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
+            let at = furthest(tight.iter().filter(ashore).filter(off_the_line).collect()).or_else(|| furthest(tight.iter().filter(ashore).collect())).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
             (at.0, at.1, quarter)
         });
         let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
