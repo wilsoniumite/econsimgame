@@ -74,10 +74,18 @@ pub fn mill(c: &mut Ctx) {
         c.sawtooth(0.0, z0 + wd * 0.5, wl, wd, 0.016 * g, teeth, false, wall, roof);
         z0 += wd + 0.004;
     }
-    // bales by the gate
     let d = hd - 0.012 - z0;
+    // a water mill's pond, in the corner of the yard where the races begin, and the leat from it
+    let (rx, rz) = ((hw * 0.42).min(0.12 * g), (d * 0.42).min(0.08 * g));
+    if wheel && rz > 0.006 {
+        let (px, pz) = (hw - 0.008 - rx, z0 + d * 0.5);
+        c.patch(px, pz, rx, rz, 10, 0, *pal.water.river);
+        c.race((hw - 0.0075, pz), (hw - 0.0075, zrow(0) + dep * 0.5 + 0.004 * g), 0.005);
+    }
+    // bales by the gate
     if d > 0.006 {
         let w = hw * 0.8;
-        c.stacks(hw * 0.45, z0 + d * 0.5, w, d.min(0.03 * g), c.fit(w, 0.011 * g, 16), c.fit(d.min(0.03 * g), 0.011 * g, 3), 0.01 * g, *pal.goods.bales);
+        let x = if wheel { -hw * 0.45 } else { hw * 0.45 };
+        c.stacks(x, z0 + d * 0.5, w, d.min(0.03 * g), c.fit(w, 0.011 * g, 16), c.fit(d.min(0.03 * g), 0.011 * g, 3), 0.01 * g, *pal.goods.bales);
     }
 }

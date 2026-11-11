@@ -94,18 +94,25 @@ pub fn charcoal_furnace(c: &mut Ctx) {
     let room = hw - 0.008 - xr;
     if room >= 0.024 * g {
         let dep = (0.03 * g).min(room);
-        let len = (0.045 * g).min(zf + side * 0.5 + hd - 0.008);
-        let cols = c.fit(room + 0.008, dep + 0.008, 4);
-        let barns = c.fit(2.0 * hd - 0.02 - 0.03 * g + 0.008, len + 0.008, 4).min(if size < 3.0 { 1 } else { 4 });
+        // one barn to a small furnace; a great one has long barns in ranks, never more than
+        // three ranks of two, with a cart's width between them
+        let lane = if size < 3.0 { 0.008 } else { 0.014 * g };
+        let deep = 2.0 * hd - 0.02 - 0.03 * g;
+        let (cols, barns, len) = if size < 3.0 {
+            (c.fit(room + lane, dep + lane, 4), 1, (0.045 * g).min(zf + side * 0.5 + hd - 0.008))
+        } else {
+            let barns = c.fit(deep + lane, 0.045 * g + lane, 2);
+            (c.fit(room + lane, dep + lane, 3), barns, ((deep - lane * (barns as f32 - 1.0)) / barns as f32).min(0.07 * g))
+        };
         for i in 0..cols {
             for j in 0..barns {
-                let barn = c.shed(xr + dep * 0.5 + i as f32 * (dep + 0.008), -hd + 0.008 + len * 0.5 + j as f32 * (len + 0.008), len, dep, 0.024 * g, true, c.tone(*pal.timber.boards), roof);
+                let barn = c.shed(xr + dep * 0.5 + i as f32 * (dep + lane), -hd + 0.008 + len * 0.5 + j as f32 * (len + lane), len, dep, 0.024 * g, true, c.tone(*pal.timber.boards), roof);
                 if !c.going_up() {
                     c.panel(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.017 * g, false, *pal.timber.door);
                 }
             }
         }
-        let front = -hd + 0.008 + barns as f32 * (len + 0.008);
+        let front = -hd + 0.008 + barns as f32 * (len + lane);
         let depth = hd - 0.012 - front;
         if c.stocked() && depth > 0.012 {
             let r = (room * 0.24).min(depth * 0.3).min(0.03 * g);

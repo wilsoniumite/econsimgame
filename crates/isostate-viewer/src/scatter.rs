@@ -114,10 +114,11 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
 // tried at half the size, and half again, down to the smallest; it is then
 // drawn no bigger than fits (`Slots::firm_cap`). If the smallest finds no
 // spot either (a cell that is nearly all shore, river or road), it is tried
-// on a finer grid with less room to the water and none to the roads; and if
-// that fails too it stands on the cell's highest land and overlaps its
-// neighbours. ISOSTATE_TIMING says how many of each there were, and
-// ISOSTATE_PLOTS names the cells.
+// on a finer grid with less room to the water and none to the roads; then
+// anywhere above the tide that no other yard has taken, wall to wall with
+// its neighbours; and only if that fails too does it stand on the cell's
+// highest land and overlap them. ISOSTATE_TIMING says how many of each
+// there were, and ISOSTATE_PLOTS names the cells.
 
 /// The two fixed numbers of a firm's works, and the phase of its size ladder.
 fn firm_seed(f: usize) -> Seed {
@@ -190,6 +191,37 @@ fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<u
     out
 }
 
+/// How much room a yard is given when a spot is tried for it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Room {
+    /// well back from the shore, the rivers, the roads, the railway and the cell's edge
+    Proper,
+    /// nearer the water, and with no care for the roads
+    Tight,
+    /// anywhere above the tide that no other yard has taken, close up to its neighbours
+    Any,
+}
+
+impl Room {
+    /// The lowest land a yard may stand on.
+    fn dry(self) -> f32 {
+        match self {
+            Room::Proper => 0.07,
+            Room::Tight => 0.045,
+            Room::Any => 0.015,
+        }
+    }
+
+    /// How far a yard keeps from a river.
+    fn shore(self) -> f32 {
+        match self {
+            Room::Proper => 0.045,
+            Room::Tight => 0.02,
+            Room::Any => 0.008,
+        }
+    }
+}
+
 /// Ground set aside for a works: the box round its yard, and the years it stands.
 struct Lot {
     x: f32,
@@ -221,13 +253,14 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
     spots.sort_by(|a, b| a.4.total_cmp(&b.4));
     // where the land is nearly all shore, river or road, the smallest works make do with less:
     // a finer grid of spots, highest first, nearer the water and with no care for the roads
+    // (`Room::Tight`), and at the last anywhere above the tide (`Room::Any`)
     const FINE: usize = 18;
     let mut tight: Vec<(f32, f32, f32)> = Vec::new();
     for j in 0..FINE {
         for i in 0..FINE {
             let (x, z) = (cx + (i as f32 + 0.5) / FINE as f32, cy + (j as f32 + 0.5) / FINE as f32);
             let h = world::height_at(g, x, z);
-            if h >= 0.045 {
+            if h >= Room::Any.dry() {
                 tight.push((x, z, h));
             }
         }
@@ -241,12 +274,14 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
         let quarter = (world::hash2(f as i32, 9, 3) * 4.0).floor() as i32;
         let own = works::rung_size(rungs[f], firm_phase(f));
         // does a yard with these half sizes fit at this spot?
-        let fits = |x: f32, z: f32, hx: f32, hz: f32, lots: &[Lot], strict: bool| -> bool {
+        let fits = |x: f32, z: f32, hx: f32, hz: f32, lots: &[Lot], room: Room| -> bool {
+            let strict = room == Room::Proper;
             let edge = if strict { 0.04 } else { 0.01 };
             if x - hx < cx + edge || x + hx > cx + 1.0 - edge || z - hz < cy + edge || z + hz > cy + 1.0 - edge {
                 return false;
             }
-            if lots.iter().any(|l| (l.x - x).abs() < l.hx + hx + 0.012 && (l.z - z).abs() < l.hz + hz + 0.012 && from < l.to && l.from < to) {
+            let apart = if room == Room::Any { 0.004 } else { 0.012 };
+            if lots.iter().any(|l| (l.x - x).abs() < l.hx + hx + apart && (l.z - z).abs() < l.hz + hz + apart && from < l.to && l.from < to) {
                 return false;
             }
             if let Some((tx, tz)) = town {
@@ -259,7 +294,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             if strict && ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
                 return false;
             }
-            let (dry, shore) = if strict { (0.07, 0.045) } else { (0.045, 0.02) };
+            let (dry, shore) = (room.dry(), room.shore());
             // dry land under all of it, and no river through it
             let (nx, nz) = (((2.0 * hx / 0.05).ceil() as usize).max(1), ((2.0 * hz / 0.05).ceil() as usize).max(1));
             for jz in 0..=nz {
@@ -286,7 +321,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
                         if pass < liked.len() && world::pick_class(r, year, wc, sub) != liked[pass] {
                             continue;
                         }
-                        if fits(x, z, hx, hz, &lots, true) {
+                        if fits(x, z, hx, hz, &lots, Room::Proper) {
                             found = Some((x, z, q));
                             break 'search;
                         }
@@ -300,12 +335,14 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
         }
         if found.is_none() {
             let (w, d) = works::footprint(kind, size);
-            'tight: for q in [quarter, quarter + 1] {
-                let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
-                for &(x, z, _) in &tight {
-                    if fits(x, z, hx, hz, &lots, false) {
-                        found = Some((x, z, q));
-                        break 'tight;
+            'tight: for room in [Room::Tight, Room::Any] {
+                for q in [quarter, quarter + 1] {
+                    let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
+                    for &(x, z, _) in &tight {
+                        if fits(x, z, hx, hz, &lots, room) {
+                            found = Some((x, z, q));
+                            break 'tight;
+                        }
                     }
                 }
             }
@@ -313,13 +350,19 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
         if found.is_some() && size < own {
             squeezed += 1;
         }
+        let (w, d) = works::footprint(kind, size);
         let (x, z, q) = found.unwrap_or_else(|| {
             homeless += 1;
-            // no ground at all: the highest land the cell has, a little apart from the last such
-            let at = tight.get((homeless - 1) % tight.len().max(1)).map(|s| (s.0, s.1)).unwrap_or((cx + 0.5, cy + 0.5));
+            // no ground at all: it overlaps its neighbours, as little as may be. Of the spots
+            // where its yard would stand on land (or of them all, if there is none), the one
+            // furthest from the yards already there; the higher, of two as far
+            let (hx, hz) = if quarter % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
+            let ashore = |s: &&(f32, f32, f32)| [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)].iter().all(|&(dx, dz)| world::height_at(g, s.0 + dx, s.1 + dz) >= 0.004);
+            let apart = |s: &(f32, f32, f32)| lots.iter().filter(|l| from < l.to && l.from < to).map(|l| (l.x - s.0).hypot(l.z - s.1)).fold(f32::MAX, f32::min);
+            let furthest = |spots: Vec<&(f32, f32, f32)>| spots.into_iter().rev().max_by(|a, b| apart(a).total_cmp(&apart(b))).map(|s| (s.0, s.1));
+            let at = furthest(tight.iter().filter(ashore).collect()).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
             (at.0, at.1, quarter)
         });
-        let (w, d) = works::footprint(kind, size);
         let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
         // a little out of square, less for a big yard so that it keeps to its ground
         let askew = (world::hash2(f as i32, 10, 3) - 0.5) * 0.12 * (0.08 / hx.max(hz)).min(1.0);
@@ -365,13 +408,25 @@ pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Works
     })
 }
 
+/// The flag points already found, by firm, each with the size, the state and
+/// the place it was found for. Finding one builds the whole works, so a year
+/// asks only for those that changed.
+#[derive(Default)]
+pub struct Flags(std::collections::HashMap<usize, ((u32, State, [u32; 3]), Vec3)>);
+
 /// Where the family's flag flies on the works of firm `f` in year `k`: the
 /// top of its highest gable.
-pub fn firm_flag(r: &Replay, g: &Ground, slots: &Slots, f: usize, k: usize, lk: &Look) -> Option<Vec3> {
+pub fn firm_flag(r: &Replay, g: &Ground, slots: &Slots, f: usize, k: usize, lk: &Look, known: &mut Flags) -> Option<Vec3> {
     let w = firm_works(r, slots, f, k)?;
     let &(x, z, yaw) = slots.firm_pos.get(f)?;
+    let key = (w.size.to_bits(), w.state, [x.to_bits(), z.to_bits(), yaw.to_bits()]);
+    if let Some(&(_, at)) = known.0.get(&f).filter(|(was, _)| *was == key) {
+        return Some(at);
+    }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    Some(works::flag_point(&Site::on(ground(g, x, z), yaw, &height), &w, lk))
+    let at = works::flag_point(&Site::on(ground(g, x, z), yaw, &height), &w, lk);
+    known.0.insert(f, (key, at));
+    Some(at)
 }
 
 /// Give every works its ground. A live game calls this each year as firms are
@@ -521,7 +576,7 @@ pub struct YearMeshes {
     pub houses: Builder,
     pub works: Builder,
     pub smoke: Builder,
-    /// farm lanes, flat on the ground
+    /// what lies flat on the ground: farm lanes, and the yards of the works
     pub lanes: Builder,
 }
 

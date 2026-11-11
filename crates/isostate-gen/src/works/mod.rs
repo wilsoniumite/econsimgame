@@ -210,8 +210,8 @@ pub struct Works {
     pub kind: Kind,
     /// its size: its capacity over the standard capacity of its method (K
     /// over K0), from a workshop of 0.4 to a great works of 100. The game
-    /// hands it a size from a ladder (`stepped`) so that a works changes in
-    /// steps that can be seen.
+    /// hands it a size from a ladder (`rung`, `rung_size`) so that a works
+    /// changes in steps that can be seen.
     pub size: f32,
     /// the year it was founded, which sets its style
     pub founded: i32,
