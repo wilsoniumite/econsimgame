@@ -120,7 +120,8 @@ camera, with no game:
 It writes `NAME-close.png` (as near as the game's camera goes), `NAME-play.png`
 (the distance a new game opens at) and `NAME-far.png` (about half way out to
 the whole island), and an `index.html` of everything in the directory. A sheet
-too long for one close picture goes over several (`NAME-close-2.png`). From
+too long for one close picture goes over several (`NAME-close-2.png`), and so
+does a play or far one where the picture asked for is small (`--size 800x600`). From
 play distance a house is seven pixels wide, so the play and far pictures show
 the middle of the true picture enlarged a whole number of times, each pixel a
 square: what you see is exactly what the game draws, only bigger.

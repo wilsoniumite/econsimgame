@@ -12,8 +12,10 @@
 //! picture from each of the camera's standard distances: `NAME-close.png` as
 //! near as the game goes, `NAME-play.png` as a new game opens, `NAME-far.png`
 //! about half way out to the whole island. A sheet too long for one close
-//! picture goes over several (`NAME-close-2.png`). An `index.html` beside
-//! them shows every picture in the directory.
+//! picture goes over several (`NAME-close-2.png`), and so does a play or far
+//! one where the picture asked for is small. An `index.html` beside them
+//! shows every picture in the directory. The lab ends with an error if a
+//! picture was asked for and not written.
 //!
 //! From play distance a house is seven pixels wide, so the play and far
 //! pictures show the middle of the true picture enlarged a whole number of

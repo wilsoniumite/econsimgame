@@ -153,7 +153,8 @@ struct Bx {
 /// times, if more than 1) and the rows go over as many pages as they need; a
 /// row too wide for the picture is broken into lines that fit. From further
 /// off the picture is enlarged as far as still shows the whole sheet on one
-/// page.
+/// page, or, where it does not fit one even at its true size, laid over
+/// pages as it is close up.
 pub fn pages(cells: &[Vec<Cell>], shot: Shot, size: (u32, u32), loupe: u32) -> Vec<Page> {
     let boxes: Vec<Vec<Bx>> = cells
         .iter()
