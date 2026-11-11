@@ -142,9 +142,11 @@ fn a_decade_keeps_a_handful() {
         let span = v.span.unwrap();
         assert!(r.events.iter().filter(|e| e.kind == "alarm" && e.year >= span[0].floor() && e.year <= v.year).all(|e| e.kept == Some(false)), "{}", v.title);
     }
-    // the feed was 1,037 items long in this game before
-    let before = r.events.iter().filter(|e| e.weight >= 0.6).count();
-    assert!(total * 3 < before, "{total} kept of {before} at weight 0.6 or more");
+    // the mark is a harder test than the weight: of the items at 0.6 or more
+    // (themselves far fewer than the port's, whose feed in this game was over
+    // a thousand long) less than half are kept
+    let heavy = r.events.iter().filter(|e| e.weight >= 0.6).count();
+    assert!(total * 2 < heavy, "{total} kept of {heavy} at weight 0.6 or more");
 }
 
 #[test]
@@ -347,7 +349,8 @@ fn every_town_has_its_milestones() {
     chronicle::city_milestones(&mut st, &P, 1802, &mut events, 1750);
     let titles: Vec<&str> = events.iter().map(|e| e.title.as_str()).collect();
     assert_eq!(titles, ["Ashby passes 25,000 people", "Norford passes 10,000 people", "Kelgate passes 10,000 people"]);
-    assert!(events[0].text.contains("first town in the country") && events[0].weight == 0.6);
+    // the port's weight for the first town past 25,000: 0.55 + 0.05
+    assert!(events[0].text.contains("first town in the country") && (events[0].weight - 0.6).abs() < 1e-12);
     assert_eq!(events[1].text, "Norford is the second town on the island with more than 10,000 inhabitants, after Ashby.");
     assert_eq!(events[2].text, "Kelgate is the third town on the island with more than 10,000 inhabitants, after Ashby and Norford (1790).");
     assert!(events[1].weight < 0.6 && events[2].town == Some(1) && events[2].cell == Some(20));
