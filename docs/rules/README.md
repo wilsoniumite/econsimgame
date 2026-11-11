@@ -129,7 +129,8 @@ ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden
 
 checks nothing: each of the three tests stops with the line to paste over its
 constant (as a failure, so that it shows and so that such a run is never taken
-for a pass). Say in the commit message why the port moved. To see what changed, not only that something did,
+for a pass). Say in the commit message why the port moved. To see what
+changed, not only that something did,
 
 ```bash
 ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --release --test golden
@@ -154,9 +155,9 @@ at a time on their own threads (half the machine's cores unless `--jobs` says
 otherwise). Eight seeds to 1900 take from 16 seconds to half a minute on this
 machine, depending on what else it is doing, and the numbers do not depend on
 how many run at once (`--jobs 1` and `--jobs 8` write the same files, the
-seconds aside). A run that panics or fails
-the monthly money check is reported as failed and the rest carry on; the
-command then ends with an error so a script notices.
+seconds aside). A run that panics or fails the monthly money check is reported
+as failed and the rest carry on; the command then ends with an error so a
+script notices.
 
 `--set` takes any field of `Params` by name, and a dotted path into a
 mechanism's struct. The value goes in through the parameters' JSON form, so
@@ -310,9 +311,8 @@ All of them are worked out after the run from what it already keeps (the
 observer's series, the yearly snapshots, the final state); the simulation's
 loop is not touched. Two things nobody keeps, the towns' growth against the
 cap and the land under each use, are noted between years by the sweep's own
-loop. They are computed from
-the content, so another content file works: a method or good it lacks is
-skipped.
+loop. The facts are computed from the content, so another content file works:
+a method or good it lacks is skipped, and one it adds gets its rows.
 
 A fact taken from a series in a year is the mean of that year's twelve months,
 the number in `annual.csv`: `towns_1800` is the towns there were during 1800.
@@ -422,14 +422,15 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   by area (it used to be counted by each cell's main use, by which the woods
   came to nothing: seven cells in 1750 and none after, against 1,211 cells'
   worth by area). By area the mines together go from 880 cells' worth in 1750
-  to 1,190 in 1900, as much land as the farms: about 4,800 square kilometres
-  of holes in the ground. I have not traced why. The land rule shares each
+  to 1,190 in 1900, nearly as much land as the farms (1,282): about 4,800
+  square kilometres of holes in the ground. I have not traced why. The land rule shares each
   cell out in proportion to bid^(1/theta), so every use with any bid at all
   gets a slice, and that may be all it is; it looks like one of the port's
   oddities and is worth a look of its own.
-- **`seconds` is wall time under load**: a run takes about 17 seconds alone
-  and 27 or more with seven others beside it, so it says more about the
-  machine that night than about the code.
+- **`seconds` is wall time under load**: with seven others beside it a run
+  took 15 to 17 seconds when the machine was otherwise quiet and 24 to 35 when
+  other work was building on it, so it says more about the machine that night
+  than about the code.
 - **Facts are named by year**, so sweeps to different end years have few
   names in common and compare poorly.
 - **The loss function and the search of PLAN.md 1.3 are not here.** The facts
