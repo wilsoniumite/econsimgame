@@ -289,12 +289,15 @@ fn main() {
 
     // for whoever fits thresholds: what the island had made of each threshold's
     // good four years before the year aimed at, and when the threshold was met
-    println!("\nTHRESHOLDS of the inventions that carry an aim: the threshold; what the island had made four years before the aim; the year the threshold was met");
+    println!("\nTHRESHOLDS: each invention's thresholds; what the island had made four years before the year aimed at (or, with no aim, in the year it was found); the year each threshold was met");
     let y0 = C.start_year;
-    for t in (0..C.NT).filter(|&t| C.tech_target[t] > 0) {
-        let k = (C.tech_target[t] - 4 - y0).max(0) as usize;
+    for t in (0..C.NT).filter(|&t| !C.tech_known[t]) {
+        // an invention with no aim is read at the year it was found
         let (found, nf) = mean(all.iter().map(|r| if t < C.M && r.found[t] >= 0 { r.found[t] as f64 } else { f64::NAN }));
-        let mut line = format!("{:<20}aim {}  found {}", C.tech_name[t], C.tech_target[t], if nf == 0 { "never".to_string() } else { format!("{found:.0}") });
+        let at = if C.tech_target[t] > 0 { C.tech_target[t] - 4 } else if nf > 0 { found as i64 } else { y0 };
+        let k = (at - y0).max(0) as usize;
+        let aim = if C.tech_target[t] > 0 { format!("aim {}", C.tech_target[t]) } else { format!("at {at} ") };
+        let mut line = format!("{:<20}{aim}  found {}", C.tech_name[t], if nf == 0 { "never".to_string() } else { format!("{found:.0}") });
         for g in (0..C.G).filter(|&g| all[0].thresholds[(t, g)] > 0.0) {
             let x = over(&|r| r.thresholds[(t, g)]);
             let had = over(&|r| r.made.get(k).map_or(f64::NAN, |v| v[g]));

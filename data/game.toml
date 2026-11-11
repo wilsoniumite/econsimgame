@@ -128,7 +128,7 @@ stage = 1
 [[method]]
 name = "bessemer"
 capital = { bricks = 45, machinery = 0.6 }
-discover = { steel = 2800000.0, machinery = 250000.0, iron = "x220" }
+discover = { steel = 2300000.0, machinery = 200000.0, iron = "x220" }   # RUN: were 2,800,000 and 250,000. With builders in, the quarries buy less machinery and households pour a little less steel by 1850, and in one seed of eight the converter waited until 1899
 target = 1856
 stage = 1
 
@@ -315,7 +315,7 @@ known = false
 A0 = 0.6
 Q0 = 1000000.0
 b = 0.2
-discover = { lime = 2800000.0, machinery = 200000.0 }
+discover = { lime = 2800000.0, machinery = 185000.0 }   # RUN: machinery was 200,000, met in 1851 and found in 1856; at 160,000 it was found in 1842
 target = 1850
 group = "building"
 stage = 1
@@ -545,7 +545,7 @@ known = false
 A0 = 1.0
 Q0 = 20000.0
 b = 0.2
-discover = { machinery = 110000.0, steel = 1300000.0 }
+discover = { machinery = 80000.0, steel = 1300000.0 }   # RUN: machinery was 110,000, met in 1838 and found in 1842 to 1846 in three sweeps
 target = 1838
 group = "engineering"
 stage = 1
@@ -573,7 +573,7 @@ known = false
 A0 = 1.0
 Q0 = 200000.0
 b = 0.15
-discover = { steel = 7500000.0, machinery = 1000000.0 }
+discover = { steel = 6000000.0, machinery = 750000.0 }   # RUN: were 7,500,000 and 1,000,000: found in 1886 and never built in four seeds of eight, for want of years
 target = 1876
 group = "engineering"
 stage = 1
