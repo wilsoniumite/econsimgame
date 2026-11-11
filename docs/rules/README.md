@@ -476,3 +476,7 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **land** (off: the viewer cannot draw it yet): an island made by uplift
+  and erosion in place of the port's noise, with rain, lakes, the flow of
+  every reach, river courses that meander and cut off, and resource fields
+  that come from the land. [land.md](land.md), `land.enabled`.

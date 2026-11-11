@@ -458,7 +458,7 @@ pub fn draw_design(rng: &mut Rng, W: usize, H: usize, P: &LandParams) -> Design 
         d.tables.push(Table {
             blob: Blob { x, y, sx: uniform(rng, 7.0, 12.0), sy: uniform(rng, 5.0, 9.0), ang: uniform(rng, 0.0, PI), k: 1.0 },
             height: uniform(rng, 180.0, 320.0),
-            dip: uniform(rng, 0.0, 0.4),
+            dip: uniform(rng, 0.2, 0.75),
             dip_ang: uniform(rng, 0.0, 2.0 * PI),
             cap: uniform(rng, 90.0, 150.0),
         });
@@ -628,10 +628,12 @@ impl Design {
                 let b = &tb.blob;
                 let (ca, sa) = (b.ang.cos(), b.ang.sin());
                 let (u, v) = (((x - b.x) * ca + (y - b.y) * sa) / b.sx, (-(x - b.x) * sa + (y - b.y) * ca) / b.sy);
-                let rr = u.hypot(v) + 0.3 * (fbm01(x / 6.0, y / 6.0, self.seeds[8], 3, 0.5) - 0.5);
+                // an outline of bays and spurs, not an oval
+                let rr = u.hypot(v) + 0.9 * (fbm01(x / 9.0, y / 9.0, self.seeds[8], 4, 0.55) - 0.5);
                 let m = 1.0 - smoothstep(0.9, 1.06, rr);
                 if m > tm {
                     tm = m;
+                    // the beds dip: a high scarp on one side, a long back slope on the other
                     let tilt = 1.0 + tb.dip * (u * tb.dip_ang.cos() + v * tb.dip_ang.sin()).clamp(-1.0, 1.0);
                     // the top rolls a little
                     th = tb.height * tilt * (0.94 + 0.12 * fbm01(x / 3.0, y / 3.0, self.seeds[8] ^ 0x7AB, 3, 0.5));

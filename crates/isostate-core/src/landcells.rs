@@ -274,8 +274,8 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         let bare = smoothstep(0.04, 0.25, s);
         let rock = if relief.sed[c] > 1.0 { ROCK_ALLUVIUM } else { relief.rock[c] };
         let (st, cl, so) = match rock {
-            ROCK_BASEMENT => (0.3, 0.05, 0.45),
-            ROCK_CAP => (0.3, 0.05, 0.4),
+            ROCK_BASEMENT => (0.3, 0.05, 0.6),
+            ROCK_CAP => (0.3, 0.05, 0.55),
             ROCK_BAND => (0.2, 0.12, 0.65),
             ROCK_COAL => (0.1, 0.35, 0.6),
             ROCK_SOFT => (0.02, 0.5, 0.8),
@@ -486,7 +486,7 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         let (x, y) = ((c % W) as f64 + 0.5, (c / W) as f64 + 0.5);
         // corn land: low, level, neither sodden nor parched, on a kindly soil;
         // best of all on the flood plain's silt, where it is not marsh
-        let low = 1.0 - smoothstep(110.0, 480.0, zc);
+        let low = 1.0 - smoothstep(150.0, 560.0, zc);
         let level = 1.0 - smoothstep(0.025, 0.2, sl);
         let weather = 1.0 - 0.5 * smoothstep(1000.0, 2200.0, rain) - 0.2 * (1.0 - smoothstep(420.0, 600.0, rain));
         let silt = (0.5 * (sed[c] / nd / 3.0).min(1.0) + 0.5 * fp) * (1.0 - ma);
