@@ -20,8 +20,16 @@ With the switch on, the month's carting bill of each town is the wages of
 carters at that town's wage, and those hands are not there to be hired by
 farms and works the month after:
 
-    carters[t] = labor * bill[t] / wage[t]      (at most max_share of the town's hands)
+    needed[t]  = labor * bill[t] / wage[t]      (at most max_share of the town's hands)
+    carters[t] = carters[t] + adjust * (needed[t] - carters[t])
     supply[t]  = participation * pop[t] - carters[t]
+
+Carters are taken on and laid off by degrees, a quarter of the way each
+month to the number last month's bill would pay, as the farms' and the
+works' hands are hired part of the way to what their employers want
+(`labor_adjust_ex` 0.15, `labor_adjust_firm` 0.35). The first version hired
+them all at once, and that set towns with a heavy bill swinging ("The wage
+that flipped", below).
 
 The bill is added up where the carting money is already paid out, to the
 same town it is paid to, so the carters live where they are paid: a cell's
@@ -52,6 +60,7 @@ with these.
 | `enabled` | false | carters come out of each town's labour supply |
 | `labor` | 1.0 | the share of the bill that is carters' wages; 0 measures the bill and changes nothing |
 | `max_share` | 0.5 | at most this share of a town's hands can be on the road |
+| `adjust` | 0.25 | how far a town's carters move in a month toward the number last month's bill would pay; 1 is all the way at once, as the first version did |
 
 `--set carting.enabled=true --set carting.labor=0` is a run of the port, bit
 for bit, that also keeps the bill (a test holds it to that), so the
@@ -263,6 +272,64 @@ money everyone ends richer, the player more than the rivals: 23 to 76
 million for 19 to 48, the richest rival 20 to 71 for 17 to 47. One game
 each, so this says the family game still plays, not which way it leans.
 
+## The wage that flipped
+
+Found when the game's rules for people were merged (`people.md`, "In
+company"), and mended there. It was in carting from the start; the yearly
+facts cannot show it.
+
+As first written, a month's carters were last month's whole bill at last
+month's wage, hired at once. The farms and the works hire by degrees
+(`labor_adjust_ex`, `labor_adjust_firm`), so in the short run what they want
+hardly bends. In a town with a heavy bill that sets up a swing: many carters
+this month leave few hands for the rest, the wage is bid up to double (the
+most it may move in a month), so the same bill buys half the carters next
+month, hands are plentiful, the wage halves, and so on month about. One
+town caught in it (Redgate, seed 4, founded 1758) had a wage of 4.4 and 8.7
+in alternate months through its first year and 3.7 and 7.4 through its
+second, with a half and a fifth of its hands on the road by turns.
+
+How much of it there was, as the share of town-months (February to
+December) in which a town's wage moved by half or more from the month
+before, six families, seeds 1 to 12:
+
+| | carters hired at once | by degrees (`adjust` 0.25) | no carting |
+|---|---|---|---|
+| the port with carting alone | 0.064 (0.017 to 0.118) | 0.002 | 0.001 to 0.002 |
+| the game before people | 0.197 (0.132 to 0.284) | 0.003 (0.002 to 0.005) | |
+| the game with people | 0.235 (0.166 to 0.336) | 0.000 (at most 0.002 on sixteen seeds) | |
+
+So in the game as it stood a fifth of all town-months had the wage double
+or halve. People made it plain because a district that gets a market of its
+own is an exporter whose merchants pay the cart onward, which puts a third
+to a half of its wage bill on the road; a new town's wage went to between
+two and four and a half times the middle town's in its first spring, on
+every one of twelve islands.
+
+With `adjust` at 0.25 a town's carters go a quarter of the way each month
+to the number last month's bill would pay, the swing dies in a month or two
+where it starts at all, and what is left is the port's own (a new town's
+first months under the port's founding rule). Tried on seeds 2 and 4 with
+everything on: at 0.5 the wage still moves by half or more in 0.002 and
+0.008 of town-months, at 0.35 in under 0.001, at 0.25 in four or five
+town-months of a whole run, at 0.15 in one. 0.25 stands between the farms'
+0.15 and the works' 0.35. `--set carting.adjust=1` is the first version, bit
+for bit.
+
+It hardly moves the yearly facts, which is why nobody saw it. The port with
+carting alone, seeds 1 to 8 without families, at once and by degrees: 664
+and 665 thousand people in 1900, 3.41 and 3.47 baskets a head, 4.99 and 5.00
+of goods, 6.9 and 7.1 per cent of hands carting, 4.5 and 4.0 famine years
+(`core-steps/people-x-carting-alone`); the tables above were made with
+carters hired at once and still stand. In the game without people
+(`people-x-off`, `people-s7-12-x-off`, seed for seed against the game
+before) the baskets of 1900 go from 8.50 to 8.39 on seeds 1 to 6 and from
+8.62 to 8.69 on seeds 7 to 12, the goods from 11.4 to 11.3 and from 11.3 to
+11.6, and the railway of 1850 is 16 and 5 per cent longer (ten seeds of
+twelve); nothing is starred but a little less wild land in 1800.
+`tests/carting.rs` holds the flipping down (over 3 per cent of town-months
+at once on seed 4, under half a per cent by degrees).
+
 ## What worries me
 
 - **All of the bill is counted as men's time.** Horses, fodder, wagons and
@@ -296,9 +363,20 @@ each, so this says the family game still plays, not which way it leans.
   is paid the carting, wherever along the way the cart is. Trade between two
   towns takes its carters from the town that sends.
 - **A month's lag.** In a month when the bill jumps, the hands are missed a
-  month late. I saw no oscillation in the wage series, and the money check
-  holds every month, but I did not look for one at monthly resolution beyond
-  the tests.
+  month late. The first version said here that no oscillation had been seen
+  in the wage series, without looking month by month; there was one, in a
+  fifth of the game's town-months ("The wage that flipped"). Carters taken on
+  by degrees end it, but the lag is still there, and `adjust` is a damper
+  set by trying four values on two islands and checking the choice on
+  sixteen. The cleaner cure would hire carters in the month's own labour
+  market, as one more demand that falls as the wage rises; that goes into
+  the wage's root-finder and was more than an integration should change.
+- **A town of exporters carts a great deal.** A new quarry or colliery town
+  can have three hands in ten on the road, twice the island's share,
+  because the cart from its market to the towns that buy its stone is on
+  its own bill (see the worry before the last). That is what the model's
+  trade says, not a fault of the damper, but it is where carting bites
+  hardest.
 - **The family game shifts on one seed of four.** The scripted players
   (`examples/bots.rs`) finish all sixteen runs under the game's rules, which
   now means railways and carting together. Against the port's rules their
