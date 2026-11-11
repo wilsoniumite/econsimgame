@@ -1,9 +1,16 @@
 //! A top-down plan of the ground, drawn on the CPU from the same rules the
 //! shader and the scattered things follow: land classes, hedges, rivers and
 //! relief. For checking the map's geometry in seconds rather than waiting for a
-//! render. Set ISOSTATE_PLAN to a path ending in .ppm and the viewer writes the
-//! plan there and stops; ISOSTATE_PLAN_VIEW=x0,z0,x1,z1,pixels-per-cell picks the
-//! area (the whole map at 10 by default) and ISOSTATE_PLAN_YEAR the year.
+//! render. Set ISOSTATE_PLAN to a path ending in .png or .ppm and the viewer
+//! writes the plan there and stops; ISOSTATE_PLAN_VIEW=x0,z0,x1,z1,pixels-per-cell
+//! picks the area (the whole map at 10 by default) and ISOSTATE_PLAN_YEAR the
+//! year. ISOSTATE_PLAN_FIELD=NAME paints, in place of the land's classes, one
+//! of the fields they are decided by as a ramp from dark blue (0) to pale
+//! yellow (1): the ranks `wild`, `moor` and `lea` of `world::Land`, `wood` (how
+//! wooded each parcel is this year), `ley`, `soil`, `depth` (how finely a
+//! parcel is cut into fields) or `open` (the open fields). ISOSTATE_AREAS=1
+//! measures how well the drawn land keeps the areas the record gives, and stops
+//! (`maybe_areas`).
 
 use rayon::prelude::*;
 

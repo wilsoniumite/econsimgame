@@ -130,7 +130,13 @@ what one thing looks like.
 The scenes follow the viewer's layout rules by hand (plot spacing, set-backs,
 the densities at which a plot is built). They are not what the game runs: a
 change to the layout in `scatter/towns.rs` is not seen in the lab until
-`scenes.rs` is changed to match.
+`scenes.rs` is changed to match. The same goes for the patch of wood: it is
+an even stand of trees, while a wood in the game is filled in by `scatter.rs`
+from the year's land (`isostate-viewer/src/world.rs`, "the lie of the land"),
+thick and tall in its depths, thinner toward its edge, with glades and rides,
+stands of taller and lower trees, conifers gathered on high and poor ground,
+and clumps and lone trees in the fields beside it. The `woods` sheet shows the
+trees; the game's standard shots show the woods.
 
 ## Works
 
