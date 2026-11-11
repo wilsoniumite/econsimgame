@@ -26,8 +26,17 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crate::replay::{self, Replay};
 use crate::{network, scatter, ShotSpec};
 
+/// The closest the camera comes to what it looks at.
+pub const CLOSE_DIST: f32 = 1.5;
 /// The distance a new game opens at, over the home town.
 pub const PLAY_DIST: f32 = 14.0;
+/// The furthest the camera goes.
+pub const FURTHEST_DIST: f32 = 220.0;
+/// About half way out from play distance to the whole island, which fills a
+/// picture of 1600 by 1000 from about 134 on island 7 (`island_view`).
+pub const FAR_DIST: f32 = 70.0;
+/// The tilt a game opens at, in degrees above the horizon.
+pub const PLAY_PITCH: f32 = 52.0;
 /// The angle the whole island is seen from, as a replay opens.
 pub const ISLAND_PITCH: f32 = 52.0;
 

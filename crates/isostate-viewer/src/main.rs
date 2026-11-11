@@ -5,6 +5,9 @@
 //!
 //! Space plays and pauses, the arrow keys step through years, drag to pan,
 //! right-drag to turn, scroll to zoom.
+//!
+//! With `--lab SHEET --out DIR` there is no game: the viewer writes contact
+//! sheets of the scenery's generators and stops (lab.rs).
 
 mod boats;
 mod carts;
@@ -13,6 +16,7 @@ mod family;
 mod fields;
 mod game;
 mod icons;
+mod lab;
 mod live;
 mod look;
 mod meshkit;
@@ -91,6 +95,16 @@ struct Args {
     shots_note: String,
     /// compare two sets of standard shots already made, then stop
     compare_shots: Option<(String, String)>,
+    /// write a contact sheet of generators (or "all", or "list" to name them), then stop (lab.rs)
+    lab: Option<String>,
+    /// the directory the lab's pictures go in
+    out: Option<String>,
+    /// the lab's pictures through the tilt-shift lens, which is otherwise off there
+    lab_tilt: bool,
+    /// how many times to enlarge the lab's close picture
+    loupe: u32,
+    /// how far the lab turns each thing about its own middle, in degrees
+    lab_turn: Option<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -137,6 +151,11 @@ fn parse_args() -> Args {
         shots_compare: None,
         shots_note: String::new(),
         compare_shots: None,
+        lab: None,
+        out: None,
+        lab_tilt: false,
+        loupe: 1,
+        lab_turn: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -187,6 +206,11 @@ fn parse_args() -> Args {
             "--shots-compare" => { a.shots_compare = Some(next(i)); i += 1; }
             "--shots-note" => { a.shots_note = next(i); i += 1; }
             "--compare-shots" => { a.compare_shots = Some((next(i), next(i + 1))); i += 2; }
+            "--lab" => { a.lab = Some(next(i)); i += 1; }
+            "--out" => { a.out = Some(next(i)); i += 1; }
+            "--tilt" => a.lab_tilt = true,
+            "--loupe" => { a.loupe = next(i).parse().unwrap_or(1).clamp(1, 8); i += 1; }
+            "--turn" => { a.lab_turn = next(i).parse().ok(); i += 1; }
             "--describe" => {
                 let s = next(i);
                 if let Some((x, z)) = s.split_once(',') { a.describe = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
@@ -389,6 +413,11 @@ fn main() {
         None => Look::standard(),
     };
     let look = Arc::new(look);
+    if let Some(sheet) = args.lab.clone() {
+        // no island and no game: contact sheets of the generators
+        let code = lab::run(lab::LabArgs { sheet, out: args.out.clone(), size: args.size, season: args.season, tilt: args.lab_tilt, loupe: args.loupe, turn: args.lab_turn }, look);
+        std::process::exit(code);
+    }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
         eprintln!("making island {} with {} families\u{2026}", args.seed, args.families);
@@ -686,7 +715,7 @@ fn setup_world(
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
-    let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, ..default() });
+    let smoke_mat = materials.add(smoke_material(lk));
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
@@ -695,60 +724,11 @@ fn setup_world(
 
     // a warm low sun from the south-west, and soft sky light; the seasons
     // move it from the first frame on, so this is only where it starts
-    commands.spawn((
-        Sun,
-        DirectionalLight { color: lk.sun.colour(1.0), illuminance: lk.sun.strength(1.0), shadow_maps_enabled: true, ..default() },
-        Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, lk.sun.turn, -lk.sun.height(1.0), 0.0)),
-        CascadeShadowConfigBuilder { num_cascades: lk.shadows.cascades, first_cascade_far_bound: lk.shadows.first_far, maximum_distance: lk.shadows.max_distance, ..default() }.build(),
-    ));
+    spawn_sun(&mut commands, lk);
 
     // the camera
-    let mut cam = commands.spawn((
-        Camera3d::default(),
-        MainCam,
-        IsDefaultUiCamera,
-        Hdr,
-        Msaa::Off,
-        Projection::Perspective(PerspectiveProjection { fov: FOV_DEG.to_radians(), near: 0.05, far: 2000.0, ..default() }),
-        tonemapping(lk.post.tonemapping),
-        Exposure { ev100: lk.post.exposure },
-        bevy::anti_alias::smaa::Smaa::default(),
-        DistanceFog {
-            color: lk.haze.colour.color(),
-            directional_light_color: lk.haze.sun_glow.color().with_alpha(lk.haze.sun_glow_strength),
-            directional_light_exponent: lk.haze.sun_glow_tightness,
-            falloff: haze_falloff(lk, orbit.dist),
-        },
-        orbit_transform(&orbit),
-    ));
-    if lk.post.bloom > 0.0 && !debug.0 {
-        cam.insert(Bloom { intensity: lk.post.bloom, ..Bloom::NATURAL });
-    }
-    if lk.ambient_occlusion.on {
-        let ao = &lk.ambient_occlusion;
-        cam.insert(ScreenSpaceAmbientOcclusion {
-            quality_level: match ao.quality {
-                look::Quality::Low => ScreenSpaceAmbientOcclusionQualityLevel::Low,
-                look::Quality::Medium => ScreenSpaceAmbientOcclusionQualityLevel::Medium,
-                look::Quality::High => ScreenSpaceAmbientOcclusionQualityLevel::High,
-                look::Quality::Ultra => ScreenSpaceAmbientOcclusionQualityLevel::Ultra,
-            },
-            radius: ao.radius,
-            constant_object_thickness: ao.thickness,
-        });
-    }
-    if debug.0 {
-        // flat class colours must reach the image unchanged
-        cam.insert(Tonemapping::None);
-    }
-    if tilt.0 {
-        cam.insert(DepthOfField {
-            mode: DepthOfFieldMode::Gaussian,
-            focal_distance: orbit.dist,
-            aperture_f_stops: lk.tilt_shift.f_stops(orbit.dist),
-            ..default()
-        });
-    }
+    let mut cam = spawn_view_camera(&mut commands, lk, &orbit, tilt.0, debug.0);
+    cam.insert((MainCam, IsDefaultUiCamera));
     if let Some(shot) = shot {
         let mut img = Image::new_target_texture(shot.size.0, shot.size.1, TextureFormat::Rgba8UnormSrgb, None);
         img.texture_descriptor.usage |= TextureUsages::COPY_SRC;
@@ -768,6 +748,80 @@ fn setup_world(
             default_season: forced.0,
         });
     }
+}
+
+/// The sun, as the look has it at midsummer; `seasons` (or the lab) moves it from there.
+fn spawn_sun(commands: &mut Commands, lk: &Look) {
+    commands.spawn((
+        Sun,
+        DirectionalLight { color: lk.sun.colour(1.0), illuminance: lk.sun.strength(1.0), shadow_maps_enabled: true, ..default() },
+        Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, lk.sun.turn, -lk.sun.height(1.0), 0.0)),
+        CascadeShadowConfigBuilder { num_cascades: lk.shadows.cascades, first_cascade_far_bound: lk.shadows.first_far, maximum_distance: lk.shadows.max_distance, ..default() }.build(),
+    ));
+}
+
+/// The sun at a phase of the year (0 midwinter, 0.5 midsummer): its strength, its colour and where it stands.
+fn sun_at(lk: &Look, phase: f32) -> (f32, Color, Transform) {
+    // the sun rides higher and warmer in summer
+    let summer = 0.5 - 0.5 * (phase * std::f32::consts::TAU).cos();
+    (lk.sun.strength(summer), lk.sun.colour(summer), Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, lk.sun.turn, -lk.sun.height(summer), 0.0)))
+}
+
+/// The material of smoke: white, matt, letting some light through.
+fn smoke_material(lk: &Look) -> StandardMaterial {
+    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, ..default() }
+}
+
+/// The camera the island is seen through, with everything the look gives it:
+/// the lens, the tonemapping and exposure, the haze, bloom, ambient occlusion
+/// and (if asked for) the tilt-shift. The game and the lab both spawn theirs
+/// here, so the lab's picture is taken through the game's own camera.
+fn spawn_view_camera<'a>(commands: &'a mut Commands, lk: &Look, orbit: &Orbit, tilt: bool, ground_debug: bool) -> EntityCommands<'a> {
+    let mut cam = commands.spawn((
+        Camera3d::default(),
+        Hdr,
+        Msaa::Off,
+        Projection::Perspective(PerspectiveProjection { fov: FOV_DEG.to_radians(), near: 0.05, far: 2000.0, ..default() }),
+        tonemapping(lk.post.tonemapping),
+        Exposure { ev100: lk.post.exposure },
+        bevy::anti_alias::smaa::Smaa::default(),
+        DistanceFog {
+            color: lk.haze.colour.color(),
+            directional_light_color: lk.haze.sun_glow.color().with_alpha(lk.haze.sun_glow_strength),
+            directional_light_exponent: lk.haze.sun_glow_tightness,
+            falloff: haze_falloff(lk, orbit.dist),
+        },
+        orbit_transform(orbit),
+    ));
+    if lk.post.bloom > 0.0 && !ground_debug {
+        cam.insert(Bloom { intensity: lk.post.bloom, ..Bloom::NATURAL });
+    }
+    if lk.ambient_occlusion.on {
+        let ao = &lk.ambient_occlusion;
+        cam.insert(ScreenSpaceAmbientOcclusion {
+            quality_level: match ao.quality {
+                look::Quality::Low => ScreenSpaceAmbientOcclusionQualityLevel::Low,
+                look::Quality::Medium => ScreenSpaceAmbientOcclusionQualityLevel::Medium,
+                look::Quality::High => ScreenSpaceAmbientOcclusionQualityLevel::High,
+                look::Quality::Ultra => ScreenSpaceAmbientOcclusionQualityLevel::Ultra,
+            },
+            radius: ao.radius,
+            constant_object_thickness: ao.thickness,
+        });
+    }
+    if ground_debug {
+        // flat class colours must reach the image unchanged
+        cam.insert(Tonemapping::None);
+    }
+    if tilt {
+        cam.insert(tilt_shift(lk, orbit.dist));
+    }
+    cam
+}
+
+/// The miniature look at a camera distance: only what the camera looks at is sharp.
+fn tilt_shift(lk: &Look, dist: f32) -> DepthOfField {
+    DepthOfField { mode: DepthOfFieldMode::Gaussian, focal_distance: dist, aperture_f_stops: lk.tilt_shift.f_stops(dist), ..default() }
 }
 
 /// Vertical field of view of the camera, in degrees.
@@ -951,21 +1005,21 @@ fn seasons(
         m.extension.params.season = ph;
     }
     // trees: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
-    let leaf = &look.foliage;
-    let keys: [(f32, [f32; 3]); 5] = [(0.0, leaf.tint_winter), (0.25, leaf.tint_spring), (0.5, leaf.tint_summer), (0.75, leaf.tint_autumn), (1.0, leaf.tint_winter)];
-    let i = keys.iter().position(|k| k.0 > ph).unwrap_or(4).max(1);
-    let (a, b) = (keys[i - 1], keys[i]);
-    let t = ((ph - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
     if let Some(mut m) = materials.get_mut(&sm.trees) {
-        m.base_color = Color::srgb(a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t, a.1[2] + (b.1[2] - a.1[2]) * t);
+        m.base_color = leaf_tint(&look, ph);
     }
-    // the sun rides higher and warmer in summer
-    let summer = 0.5 - 0.5 * (ph * std::f32::consts::TAU).cos();
+    let (strength, colour, stands) = sun_at(&look, ph);
     for (mut light, mut tf) in &mut sun {
-        light.illuminance = look.sun.strength(summer);
-        light.color = look.sun.colour(summer);
-        *tf = Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, look.sun.turn, -look.sun.height(summer), 0.0));
+        light.illuminance = strength;
+        light.color = colour;
+        *tf = stands;
     }
+}
+
+/// What the leaves are multiplied by at a phase of the year.
+fn leaf_tint(lk: &Look, phase: f32) -> Color {
+    let t = lk.foliage.tint(phase);
+    Color::srgb(t[0], t[1], t[2])
 }
 
 fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: Res<Data>, mut tilt: ResMut<Tilt>) {
@@ -1052,7 +1106,7 @@ fn camera_input(
         MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
     };
     if lines != 0.0 && !ui.hover {
-        o.dist = (o.dist * (-lines * 0.12).exp()).clamp(1.5, 220.0);
+        o.dist = (o.dist * (-lines * 0.12).exp()).clamp(shots::CLOSE_DIST, shots::FURTHEST_DIST);
     }
     let kp = o.dist * 0.8 * dt;
     let mut mv = Vec3::ZERO;
@@ -1063,8 +1117,8 @@ fn camera_input(
     o.target += mv * kp;
     if keys.pressed(KeyCode::KeyQ) { o.yaw += 1.2 * dt; }
     if keys.pressed(KeyCode::KeyE) { o.yaw -= 1.2 * dt; }
-    if keys.pressed(KeyCode::KeyR) { o.dist = (o.dist * (1.0 - 1.5 * dt)).max(1.5); }
-    if keys.pressed(KeyCode::KeyF) { o.dist = (o.dist * (1.0 + 1.5 * dt)).min(220.0); }
+    if keys.pressed(KeyCode::KeyR) { o.dist = (o.dist * (1.0 - 1.5 * dt)).max(shots::CLOSE_DIST); }
+    if keys.pressed(KeyCode::KeyF) { o.dist = (o.dist * (1.0 + 1.5 * dt)).min(shots::FURTHEST_DIST); }
     let (w, h) = (data.r.w as f32, data.r.h as f32);
     o.target.x = o.target.x.clamp(-10.0, w + 10.0);
     o.target.z = o.target.z.clamp(-10.0, h + 10.0);
@@ -1088,7 +1142,7 @@ fn apply_camera(
                 d.aperture_f_stops = look.tilt_shift.f_stops(o.dist);
             }
             (true, None) => {
-                commands.entity(e).insert(DepthOfField { mode: DepthOfFieldMode::Gaussian, focal_distance: o.dist, aperture_f_stops: look.tilt_shift.f_stops(o.dist), ..default() });
+                commands.entity(e).insert(tilt_shift(&look, o.dist));
             }
             (false, Some(_)) => {
                 commands.entity(e).remove::<DepthOfField>();
