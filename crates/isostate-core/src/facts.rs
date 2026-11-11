@@ -246,6 +246,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, q) in [("p10", 0.1), ("p50", 0.5), ("p90", 0.9)] {
         b.num(format!("town_growth_pct_{name}"), Kind::Ratio, 100.0 * quantile(&rates, q));
     }
+    // and the share of town-years within a tenth of a point of the port's cap
+    let r_cap = r.params.growth_cap;
+    let near = rates.iter().filter(|&&r| (r - r_cap).abs() <= 0.001).count();
+    b.num("town_growth_near_old_cap".into(), Kind::Share, if rates.is_empty() { f64::NAN } else { near as f64 / rates.len() as f64 });
     for &y in &marks {
         b.num(format!("urban_share_{y}"), Kind::Share, at("urban_share", y));
     }

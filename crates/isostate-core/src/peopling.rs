@@ -21,7 +21,7 @@ use crate::params::Params;
 use crate::rng;
 use crate::state::{Event, State};
 use crate::transport as tr;
-use crate::util::{argsort, bool_f, fmt_thousands_f0, pairwise_sum};
+use crate::util::{argmax, argsort, bool_f, fmt_thousands_f0, pairwise_sum};
 use crate::world::site_context;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -52,7 +52,7 @@ pub struct PeopleParams {
     /// Share of a town's people who leave the island in a complete dearth, if a
     /// port can be reached. Their cash is spent at that port on the passage.
     pub emigration: f64,
-    /// The rate never falls below this.
+    /// Births less deaths never fall below this (those who sail are counted besides).
     pub growth_floor: f64,
 
     // ---- migration
@@ -80,7 +80,7 @@ impl Default for PeopleParams {
     fn default() -> PeopleParams {
         PeopleParams {
             enabled: false,
-            growth_top: 0.018,
+            growth_top: 0.0165,
             y_still: 1.5,
             ease: 2.1,
             town_deaths: 0.012,
@@ -149,20 +149,22 @@ pub fn dearth_depth(pp: &PeopleParams, food_min: f64) -> f64 {
 
 /// The year's rate of increase for every town, in place of the port's capped rule.
 /// Emigrants' cash is moved here; the caller applies the rate to `st.pop`.
-pub fn growth(st: &mut State, P: &Params, y: &[f64]) -> Vec<f64> {
+pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec<Event>) -> Vec<f64> {
     let pp = &P.people;
     let T = st.T_max;
     let mut g = vec![0.0; T];
     // the port a town's emigrants sail from: the nearest town on the coast
     let ports: Vec<usize> = (0..T).filter(|&t| st.town_active[t] && st.world.coast[st.town_node[t]]).collect();
     st.pp_income_term = vec![0.0; T];
+    // who sailed this year: from each town, and through each port
+    let (mut left, mut sailed) = (vec![0.0; T], vec![0.0; T]);
     for t in 0..T {
         if !st.town_active[t] {
             continue;
         }
         let inc = income_term(pp, y[t]);
         let depth = dearth_depth(pp, st.food_min_acc[t]);
-        let mut rate = inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth;
+        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(pp.growth_floor);
         if depth > 0.0 && pp.emigration > 0.0 {
             let port = ports.iter().copied().filter(|&j| st.town_cost[(t, j)].is_finite()).min_by(|&a, &b| st.town_cost[(t, a)].total_cmp(&st.town_cost[(t, b)]));
             if let Some(j) = port {
@@ -172,13 +174,40 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64]) -> Vec<f64> {
                 st.hh_cash[t] -= fare;
                 st.merch_cash[j] += fare;
                 st.pp_emigrants += st.pop[t] * share;
+                left[t] = st.pop[t] * share;
+                sailed[j] += st.pop[t] * share;
                 rate -= share;
             }
         }
-        g[t] = rate.max(pp.growth_floor);
+        g[t] = rate;
         st.pp_income_term[t] = inc;
     }
     st.pp_growth = g.clone();
+    // news when a thousandth of the island takes ship in one year
+    let gone = pairwise_sum(&left);
+    if gone > 0.001 * pairwise_sum(&st.pop) {
+        let (from, port) = (argmax(&left), argmax(&sailed));
+        let others = left.iter().filter(|&&v| v > 0.0).count() - 1;
+        let whence = match others {
+            0 => format!("from {}", st.town_name[from]),
+            1 => format!("from {} and one other town", st.town_name[from]),
+            k => format!("from {} and {k} other towns", st.town_name[from]),
+        };
+        let mut ev = Event::new(
+            year as f64 + 0.6,
+            "famine",
+            0.5,
+            format!("{} people leave the island", fmt_thousands_f0(gone)),
+            format!(
+                "After a hungry year {} people {whence} take ship, most of them at {}. What they had goes on the passage.",
+                fmt_thousands_f0(gone),
+                st.town_name[port]
+            ),
+        );
+        ev.town = Some(port);
+        ev.cell = Some(st.town_node[port]);
+        events.push(ev);
+    }
     g
 }
 

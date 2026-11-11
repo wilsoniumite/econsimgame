@@ -25,7 +25,7 @@ pub fn growth(st: &mut State, _C: &Content, P: &Params, year: i64, events: &mut 
     }
     // people (docs/rules/people.md): the game's rule sets the rates in place of the capped one
     if P.people.enabled {
-        g = crate::peopling::growth(st, P, &y);
+        g = crate::peopling::growth(st, P, &y, year, events);
     }
     let hit: Vec<usize> = (0..T).filter(|&t| famine[t] && st.town_founded[t] < year - 2).collect();
     if hit.len() >= 3 {
