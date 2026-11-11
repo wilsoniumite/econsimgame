@@ -476,3 +476,8 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **mines**: a quarry, pit or mine is a working: a pit head with the lease
+  of the deposit within its reach, sunk at a cost, paying a royalty to the
+  cells it works under and taking land by its hands, so the diggings hold a
+  few cells of the island instead of a fifth of it. [mines.md](mines.md),
+  `mines.enabled`.

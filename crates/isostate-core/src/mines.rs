@@ -100,8 +100,8 @@ impl Default for MineParams {
             idle_years: 10,
             memory: 0.3,
             year_room: 0.15,
-            reserve: 6.0e6,
-            hands_per_cell: 5000.0,
+            reserve: 2.0e7,
+            hands_per_cell: 8000.0,
             cell_limit: 0.5,
         }
     }
@@ -791,7 +791,7 @@ pub fn snapshot(rec: &mut Record, st: &State, P: &Params, k: usize) {
 /// What sector s's workings paid in royalty a month over the last complete
 /// year. With the mechanism off nobody keeps it, and this is what the units
 /// would pay at December's hands and this month's prices: the sale, less the
-/// merchant, the carting and the wages (the machines' cost is left out).
+/// merchant, the carting, the machines and the wages.
 pub fn royalty_month(st: &State, C: &Content, P: &Params, s: usize) -> f64 {
     if let Some(r) = row(st, s) {
         return st.mine_royalty.row(r).iter().sum::<f64>() / 12.0;
@@ -801,9 +801,9 @@ pub fn royalty_month(st: &State, C: &Content, P: &Params, s: usize) -> f64 {
     for u in (0..st.ex_cell.len()).filter(|&u| st.ex_sector[u] == s) {
         let (t, L, lam) = (st.ex_town[u], st.ex_Lprev[u], st.ex_lam[u]);
         if L > 0.0 && lam > 0.0 {
-            let (mult, _, _, _) = sector_tfp(st, C, P, s, t, &st.price, &st.fill);
+            let (mult, _, _, in_unit) = sector_tfp(st, C, P, s, t, &st.price, &st.fill);
             let Y = C.sector_A[s] * mult * st.ex_field[u] * lam * (L / lam).powf(1.0 - a);
-            total += Y * (st.price[(t, g)] * (1.0 - P.merchant_spread) - st.ex_tau[u]) - st.wage[t] * L;
+            total += Y * (st.price[(t, g)] * (1.0 - P.merchant_spread) - st.ex_tau[u] - in_unit) - st.wage[t] * L;
         }
     }
     total
