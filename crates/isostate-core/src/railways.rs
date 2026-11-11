@@ -47,8 +47,8 @@ pub struct RailwayParams {
     /// lines have on order over a year's make of rails.
     pub order_book: bool,
     /// Lines that may be building at once. A backstop, not the pace: at the
-    /// height of the rush 21 to 35 lines are building, held there by the money
-    /// their towns can raise and the price of rails.
+    /// height of the rush 19 to 37 lines are building, held there by the money
+    /// their towns can raise and the price of rails (one run of 56 reached 40).
     pub max_projects: usize,
     /// Districts looked at each year: those with the largest carting bill.
     pub districts: usize,
