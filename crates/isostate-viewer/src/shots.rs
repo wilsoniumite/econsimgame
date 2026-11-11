@@ -196,7 +196,8 @@ pub struct Diff {
     pub max: u8,
     /// the mean difference over every channel of every pixel, of 255
     pub mean: f64,
-    /// the share of pixels that differ at all
+    /// how many pixels differ at all, and their share of the picture
+    pub pixels: usize,
     pub changed: f64,
     /// the share of pixels that differ by more than 8 of 255 in some channel, enough to see
     pub visible: f64,
@@ -255,7 +256,7 @@ pub fn compare(a: &Path, b: &Path, diff_path: &Path) -> Result<Diff, String> {
         // a picture of an older difference would mislead
         let _ = std::fs::remove_file(diff_path);
     }
-    Ok(Diff { max, mean: sum as f64 / (n as f64 * 3.0), changed: changed as f64 / n as f64, visible: visible as f64 / n as f64 })
+    Ok(Diff { max, mean: sum as f64 / (n as f64 * 3.0), pixels: changed, changed: changed as f64 / n as f64, visible: visible as f64 / n as f64 })
 }
 
 // ------------------------------------------------------------------ the contact sheet
@@ -393,23 +394,24 @@ pub fn write_sheet(sheet: &Sheet) -> Vec<(String, Result<Diff, String>)> {
     if let Some(o) = &other {
         let rel = relative(dir, o);
         let _ = writeln!(h, "<p class=\"about\">Each shot stands beside the one of the same name in <a href=\"{}/index.html\">{}</a>, which is on the left. Hold the pointer over the right-hand picture to see the left one in its place. Differences are out of 255 for each colour channel.</p>", esc(&rel), esc(&dir_label(o)));
-        let _ = writeln!(h, "<table>\n<tr><th>Shot</th><th>Largest difference</th><th>Mean difference</th><th>Pixels that differ</th><th>By more than 8</th></tr>");
+        let _ = writeln!(h, "<table>\n<tr><th>Shot</th><th>Largest difference</th><th>Mean difference</th><th>Pixels that differ</th><th>Their share</th><th>By more than 8</th></tr>");
         for (name, d) in &diffs {
             match d {
                 Ok(d) => {
                     let _ = writeln!(
                         h,
-                        "<tr{}><td><a href=\"#{n}\">{n}</a></td><td>{}</td><td>{:.4}</td><td>{:.3}%</td><td>{:.3}%</td></tr>",
+                        "<tr{}><td><a href=\"#{n}\">{n}</a></td><td>{}</td><td>{:.6}</td><td>{}</td><td>{:.4}%</td><td>{:.4}%</td></tr>",
                         if d.max > 0 { " class=\"differs\"" } else { "" },
                         d.max,
                         d.mean,
+                        d.pixels,
                         d.changed * 100.0,
                         d.visible * 100.0,
                         n = esc(name)
                     );
                 }
                 Err(e) => {
-                    let _ = writeln!(h, "<tr class=\"differs\"><td><a href=\"#{n}\">{n}</a></td><td colspan=\"4\">{}</td></tr>", esc(e), n = esc(name));
+                    let _ = writeln!(h, "<tr class=\"differs\"><td><a href=\"#{n}\">{n}</a></td><td colspan=\"5\">{}</td></tr>", esc(e), n = esc(name));
                 }
             }
         }
@@ -421,9 +423,10 @@ pub fn write_sheet(sheet: &Sheet) -> Vec<(String, Result<Diff, String>)> {
             let num = match d {
                 Ok(d) if d.max == 0 => "<span class=\"num\">the same, pixel for pixel</span>".to_string(),
                 Ok(d) => format!(
-                    "<span class=\"num differs\">largest difference {}, mean {:.4}, {:.3}% of pixels differ &middot; <a class=\"diff\" href=\"diff/{file}\">the difference, 16 times over</a></span>",
+                    "<span class=\"num differs\">largest difference {}, mean {:.6}, {} pixels differ ({:.4}%) &middot; <a class=\"diff\" href=\"diff/{file}\">the difference, 16 times over</a></span>",
                     d.max,
                     d.mean,
+                    d.pixels,
                     d.changed * 100.0
                 ),
                 Err(e) => format!("<span class=\"num differs\">{}</span>", esc(e)),
@@ -473,10 +476,10 @@ pub fn print_diffs(diffs: &[(String, Result<Diff, String>)]) {
     if diffs.is_empty() {
         return;
     }
-    println!("{:<22} {:>8} {:>10} {:>10} {:>10}", "shot", "largest", "mean", "differ", "over 8");
+    println!("{:<22} {:>8} {:>10} {:>10} {:>10} {:>10}", "shot", "largest", "mean", "pixels", "share", "over 8");
     for (name, d) in diffs {
         match d {
-            Ok(d) => println!("{:<22} {:>8} {:>10.4} {:>9.3}% {:>9.3}%", name, d.max, d.mean, d.changed * 100.0, d.visible * 100.0),
+            Ok(d) => println!("{:<22} {:>8} {:>10.6} {:>10} {:>9.4}% {:>9.4}%", name, d.max, d.mean, d.pixels, d.changed * 100.0, d.visible * 100.0),
             Err(e) => println!("{name:<22} {e}"),
         }
     }
