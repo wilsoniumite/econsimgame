@@ -51,7 +51,7 @@ pub struct Game {
     ended: bool,
     /// the card that ends the game is up
     end_open: bool,
-    drawn: Option<(Option<Pick>, usize, u64, Now, bool)>,
+    drawn: Option<(Option<Pick>, usize, u64, Now, (bool, bool))>,
     marks: Option<(usize, usize, u64, u64)>,
     /// decisions already put in front of the player, so each opens by itself only once
     seen: BTreeSet<u64>,
@@ -338,9 +338,11 @@ fn pump(
                 }
                 game.pending = end.standing.pegs.clone();
                 live.standing = end.standing.clone();
-                // what became of the orders that waited for this year's end
+                // what became of the orders that waited for this year's end: word to the family was
+                // carried out as the year ended and works and land as the next began, so the line
+                // over each says the turn, which is both
                 for (ok, line) in &end.carried {
-                    toasts.say(if *ok { "family" } else { "refused" }, line, &format!("Your orders \u{00b7} the end of {}", y.year), time.elapsed_secs());
+                    toasts.say(if *ok { "orders" } else { "orders_refused" }, line, "the year's turn", time.elapsed_secs());
                 }
                 // the world has moved on: ask about the picked square again
                 game.asked = None;
@@ -692,15 +694,17 @@ fn next_clicks(
 fn step_note(live: Res<Live>, data: Res<Data>, tl: Res<Timeline>, mut q: Query<&mut Text, With<crate::ui::StepNote>>) {
     let r = &data.r;
     let when = now(&tl, &data, &live);
-    let s = if live.turning() {
-        "the year is turning\u{2026}".to_string()
-    } else if live.unsaved.is_some() {
+    let s = if live.unsaved.is_some() {
         // the terminal has the reason; here it must not pass unseen
         "the game could not be saved".to_string()
     } else if r.filled >= r.ny && when != Now::Past {
         "the last year is over".to_string()
     } else if tl.playing {
+        // (the pace and nothing else while the clock runs: at a year a second the year is
+        // turning for half of every second, and a line that said so would flicker)
         clock::speed_at(tl.speed).map_or(String::new(), |s| s.pace.to_string())
+    } else if live.turning() {
+        "the year is turning\u{2026}".to_string()
     } else if when == Now::Past {
         "looking back".to_string()
     } else if live.at_turn() {
@@ -773,7 +777,8 @@ fn order_panel(
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let when = now(&tl, &data, &live);
-    let key = (picked.what, k, game.version, when, live.at_turn());
+    // (while the year turns the buttons go unlit, since a press would not be taken: the panel is drawn again for that)
+    let key = (picked.what, k, game.version, when, (live.at_turn(), live.turning()));
     // (a family's cash comes every month; the panel is drawn again for it only when the year's report does)
     if game.drawn == Some(key) {
         return;

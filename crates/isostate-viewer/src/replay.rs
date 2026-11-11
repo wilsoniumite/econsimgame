@@ -331,6 +331,21 @@ pub fn month(r: &Replay, name: &str, t: usize) -> Option<f32> {
     r.series.get(i * r.series_len + t).copied().filter(|v| t < r.series_len && v.is_finite())
 }
 
+/// The newest month no later than `t`, and no more than a year before it,
+/// that the run has figures for; `t` itself if there is none. A live game's
+/// months go into the run a moment after they come when a scenery build holds
+/// it, so the month the clock has just passed may not be there yet, and a
+/// panel that marked it would have nothing to show.
+pub fn month_reached(r: &Replay, t: usize) -> usize {
+    newest_filled(&r.series, r.series_len, t)
+}
+
+/// `month_reached` on the table itself: one row of `len` months to a series.
+fn newest_filled(series: &[f32], len: usize, t: usize) -> usize {
+    let has = |m: usize| m < len && series.chunks(len.max(1)).any(|row| row.get(m).is_some_and(|v| v.is_finite()));
+    (t.saturating_sub(12)..=t).rev().find(|&m| has(m)).unwrap_or(t)
+}
+
 /// Annual mean of a named monthly series, or None if the run does not have it.
 pub fn annual(r: &Replay, name: &str, k: usize) -> Option<f32> {
     let i = r.series_names.iter().position(|s| s == name)?;
@@ -405,6 +420,23 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn the_month_marked_is_one_the_run_has() {
+        // two series of 36 months; the game has played 26 of them, and one series has no figures at all
+        let n = f32::NAN;
+        let mut table = vec![n; 72];
+        table[..26].fill(1.0);
+        // the clock says month 25 is over and it is there
+        assert_eq!(newest_filled(&table, 36, 25), 25);
+        // months 26 and 27 have come from the simulation but wait to go into the run: the newest that is in
+        assert_eq!(newest_filled(&table, 36, 26), 25);
+        assert_eq!(newest_filled(&table, 36, 27), 25);
+        // past the end of the run, and in a run with no figures, the month asked for
+        assert_eq!(newest_filled(&table, 36, 40), 40);
+        assert_eq!(newest_filled(&[n; 36], 36, 5), 5);
+        assert_eq!(newest_filled(&[], 0, 5), 5);
     }
 
     #[test]

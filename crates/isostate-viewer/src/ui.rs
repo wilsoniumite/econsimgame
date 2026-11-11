@@ -147,6 +147,21 @@ impl UiState {
 
 #[derive(Component)]
 pub struct TabButton(pub Tab);
+/// The word on a tab's button, beside its icon: dropped in a window too narrow for it (`tabs_fit`).
+#[derive(Component)]
+pub struct TabLabel;
+/// The parts of the bar across the top, for `tabs_fit` to measure.
+#[derive(Component, Clone, Copy, PartialEq)]
+pub enum TopPart {
+    /// the whole bar, from edge to edge
+    Bar,
+    /// the family's card
+    Family,
+    /// the card with the date, the speeds and the steps
+    Clock,
+    /// the tabs' card
+    Tabs,
+}
 #[derive(Component, Clone, Copy, PartialEq)]
 pub enum SpeedButton {
     Pause,
@@ -229,7 +244,7 @@ pub struct RowHover {
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, tabs_fit, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
     );
 }
 
@@ -273,6 +288,47 @@ pub fn card(node: Node) -> impl Bundle {
 /// Room for the date: "September 1784", the longest it gets.
 const DATE_WIDTH: f32 = 166.0;
 
+/// The gap between the cards across the top.
+const TOP_GAP: f32 = 12.0;
+
+/// The padding either side of the word on one of the clock's buttons: there
+/// are eight of them in a game, so every pixel here is sixteen across the bar.
+const CLOCK_BUTTON_PAD: f32 = 7.0;
+
+/// Whether the tabs must drop their words for the three cards across the top
+/// to fit: `bar` is the room from edge to edge, `family` and `clock` the
+/// widths of those cards and `tabs` the tabs' card with its words, all in the
+/// same pixels.
+pub fn tabs_must_shrink(bar: f32, family: f32, clock: f32, tabs: f32) -> bool {
+    family + clock + tabs + 2.0 * TOP_GAP > bar + 0.5
+}
+
+/// In a window too narrow for the three cards across the top, the tabs keep
+/// their icons and drop their words, so that none of them is pushed off the
+/// edge. The clock's card is the widest of the three (a month and a year, five
+/// speeds and the two steps) and cannot give way: with the words kept, a
+/// window 1280 wide would lose the Markets and News tabs. The words come back
+/// when there is room for them again.
+fn tabs_fit(parts: Query<(&ComputedNode, &TopPart)>, mut labels: Query<&mut Node, With<TabLabel>>, mut short: Local<bool>, mut with_words: Local<f32>) {
+    let width = |part: TopPart| parts.iter().find(|(_, p)| **p == part).map_or(0.0, |(c, _)| c.size().x * c.inverse_scale_factor);
+    // the tabs' width with their words is measured while they have them
+    if !*short {
+        *with_words = width(TopPart::Tabs);
+    }
+    let (bar, family, clock) = (width(TopPart::Bar), width(TopPart::Family), width(TopPart::Clock));
+    // (before the first layout nothing has a width)
+    if bar <= 0.0 || clock <= 0.0 || *with_words <= 0.0 {
+        return;
+    }
+    let shrink = tabs_must_shrink(bar, family, clock, *with_words);
+    if shrink != *short {
+        *short = shrink;
+        for mut n in &mut labels {
+            n.display = if shrink { Display::None } else { Display::Flex };
+        }
+    }
+}
+
 pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam: Option<Res<FamilyView>>, icons: Res<crate::icons::Icons>) {
     let f = &font.0;
     let crest_col = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.47, 0.38));
@@ -281,12 +337,13 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
     // three cards across the top: the family, the date and the clock, the tabs
     commands
         .spawn((
-            Node { position_type: PositionType::Absolute, left: Val::Px(14.0), right: Val::Px(14.0), top: Val::Px(12.0), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Start, column_gap: Val::Px(12.0), ..default() },
+            Node { position_type: PositionType::Absolute, left: Val::Px(14.0), right: Val::Px(14.0), top: Val::Px(12.0), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Start, column_gap: Val::Px(TOP_GAP), ..default() },
             GlobalZIndex(10),
+            TopPart::Bar,
         ))
         .with_children(|top| {
             // the side cards take what their contents need, the clock the rest, so a narrower window still fits
-            top.spawn(Node { flex_shrink: 0.0, ..default() }).with_children(|wrap| {
+            top.spawn((Node { flex_shrink: 0.0, ..default() }, TopPart::Family)).with_children(|wrap| {
                 wrap.spawn((
                     card(Node {
                         height: Val::Px(62.0),
@@ -342,14 +399,17 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 });
             });
             top.spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), ..default() }).with_children(|wrap| {
-                wrap.spawn(card(Node {
-                    height: Val::Px(62.0),
-                    padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(14.0),
-                    border_radius: BorderRadius::all(Val::Px(16.0)),
-                    ..default()
-                }))
+                wrap.spawn((
+                    card(Node {
+                        height: Val::Px(62.0),
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(14.0),
+                        border_radius: BorderRadius::all(Val::Px(16.0)),
+                        ..default()
+                    }),
+                    TopPart::Clock,
+                ))
                 .with_children(|mid| {
                     // as wide as the longest month and the note under it, so the buttons do not shift as the months go by
                     mid.spawn(Node { flex_direction: FlexDirection::Column, width: Val::Px(DATE_WIDTH), ..default() }).with_children(|col| {
@@ -363,16 +423,16 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     });
                     mid.spawn(Node { column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
                         for (label, b) in std::iter::once(("Pause", SpeedButton::Pause)).chain(clock::SPEEDS.iter().map(|s| (s.name, SpeedButton::Speed(s.rate)))) {
-                            row.spawn((button_node(9.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
+                            row.spawn((button_node(CLOCK_BUTTON_PAD, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
                                 bt.spawn((text(f, label, 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
                         }
                         if data.live {
                             // a month on, or on to the year's turn, then stop: the two rhythms of a turn
-                            row.spawn((Node { margin: UiRect::left(Val::Px(6.0)), ..button_node(9.0, 5.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, NextMonthButton)).with_children(|bt| {
+                            row.spawn((Node { margin: UiRect::left(Val::Px(6.0)), ..button_node(CLOCK_BUTTON_PAD, 5.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, NextMonthButton)).with_children(|bt| {
                                 bt.spawn((text(f, "Next month", 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
-                            row.spawn((button_node(9.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, YearEndButton)).with_children(|bt| {
+                            row.spawn((button_node(CLOCK_BUTTON_PAD, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, YearEndButton)).with_children(|bt| {
                                 bt.spawn((text(f, "To January", 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
                         }
@@ -394,7 +454,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     });
                 }
             });
-            top.spawn(Node { flex_shrink: 0.0, justify_content: JustifyContent::End, ..default() }).with_children(|wrap| {
+            top.spawn((Node { flex_shrink: 0.0, justify_content: JustifyContent::End, ..default() }, TopPart::Tabs)).with_children(|wrap| {
                 wrap.spawn(card(Node {
                     height: Val::Px(62.0),
                     padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
@@ -413,7 +473,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         };
                         right.spawn((Node { column_gap: Val::Px(6.0), ..button_node(11.0, 7.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, TabButton(t))).with_children(|bt| {
                             bt.spawn(crate::icons::icon(ic, 16.0, INK));
-                            bt.spawn(text(f, t.label(), 15.0, INK));
+                            bt.spawn((text(f, t.label(), 15.0, INK), TabLabel));
                         });
                     }
                 });
@@ -985,7 +1045,9 @@ fn panel_rebuild(
     // the news of the year in progress is listed as it comes
     let in_progress = live.is_some() && k >= data.latest() && r.filled < r.ny;
     let news_to = r.y0 + k as i32 + in_progress as i32;
-    let by_month = ui.by_month.then(|| clock::series_month(tl.t).saturating_sub(1));
+    // the last month that is over, or the newest before it that the run has (a month that has
+    // come may wait a moment to go into the run, and the goods would have no price to show)
+    let by_month = ui.by_month.then(|| replay::month_reached(r, clock::series_month(tl.t).saturating_sub(1)));
     let stands = live.as_ref().map(|l| &l.standing).filter(|_| !past);
     commands.entity(be).with_children(|p| match tab {
         Tab::News => news_panel(p, &f, r, news_to, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
@@ -1006,6 +1068,9 @@ pub fn kind_colour(kind: &str) -> Color {
         "harvest" => Color::srgb(0.62, 0.56, 0.24),
         "town" | "region" => Color::srgb(0.55, 0.40, 0.23),
         "family" => Color::srgb(0.62, 0.30, 0.45),
+        // what became of the player's own orders at a year's turn (`Toasts::say`): done, or not
+        "orders" => Color::srgb(0.62, 0.30, 0.45),
+        "orders_refused" => Color::srgb(0.70, 0.25, 0.22),
         _ => Color::srgb(0.45, 0.45, 0.45),
     }
 }
@@ -1028,6 +1093,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "region" => "Town and country",
         "closure" => "Closure",
         "family" => "Families",
+        "orders" | "orders_refused" => "Your orders",
         _ => "News",
     }
 }
@@ -1334,6 +1400,18 @@ mod tests {
         // everything listed: nothing to say, and no button
         assert_eq!(news_foot(88, 88), None);
         assert_eq!(news_foot(0, 0), None);
+    }
+
+    #[test]
+    fn the_tabs_drop_their_words_only_when_the_bar_is_too_narrow() {
+        // the cards about as they measure in a game: the family's 300, the clock's 720, the tabs' 400 with their words
+        let (family, clock, tabs) = (300.0, 720.0, 400.0);
+        // a window 1600 wide leaves 1572 between the margins, and one 1280 wide 1252
+        assert!(!tabs_must_shrink(1572.0, family, clock, tabs));
+        assert!(tabs_must_shrink(1252.0, family, clock, tabs));
+        // room for the three and the two gaps between them is room enough
+        assert!(!tabs_must_shrink(family + clock + tabs + 2.0 * TOP_GAP, family, clock, tabs));
+        assert!(tabs_must_shrink(family + clock + tabs + 2.0 * TOP_GAP - 1.0, family, clock, tabs));
     }
 
     #[test]
