@@ -1,0 +1,1365 @@
+# Isolated State: the game's content, as an overlay on data/content.toml. DRAFT, revised after its critique.
+#
+# The reference file stays as it is for the port. The game loads it and then this file:
+#   - an entry ([[method]], [[sector]], [[tech]], a good, a row of [services.props]) whose name the
+#     base file already has overrides it key by key: only the keys written here change, and a table
+#     written here (inputs, capital, discover) replaces the base table whole;
+#   - a new name is appended after the base entries, so the indices of the reference content do not move;
+#   - the lists of [services] replace the base lists; a row of [services.props] adds to or changes the
+#     needs it names and leaves the good's other needs alone.
+#
+# Every entry carries `stage`, and the stages are numbered in the order they are to be built, so a
+# ceiling is enough: to build stage N, keep the entries with stage <= N. A good of a later stage does
+# not exist, and any input, capital line, threshold or need that names it is dropped. Keys of a later
+# stage on an earlier entry (a `site`) are ignored until their stage is built. So this one file is the
+# content of every stage.
+#
+# Keys the present loader does not read, and the stage each belongs to:
+#   goods:    decay (monthly loss of stock), stock0 (opening stock a head; also the opening guess of
+#             monthly trade)                                                        stage 1
+#   services: theta (the logit's width within each need; 0.25 for all today)          stage 1
+#   method:   group (the family trade: without it no family can own the new works)    stage 1
+#   method:   site = { field, kw } for water power: the works may stand only on a cell with that
+#             field, and the works on a cell may draw no more power than the cell has (kw is what one
+#             usual size draws); site = { field, weight } for wind and harbours: weight 0 means only
+#             "must stand there"                                                      stage 2
+#   sector:   ag (takes the tools and husbandry boosts, as farm and pasture do by name) stage 2
+#   [world]                                                                           stage 3
+#   tech:     sectors, inputs, boost (an improvement a land sector buys where it pays) stage 4
+#   method:   seed (built in 1750 where its good is needed). Optional at any stage: without it the
+#             1750 trades are founded in the warm-up decade, a works a year in each town.
+#   target:   the year an invention is aimed at. Not read by the engine: it is for the threshold
+#             fitter, which resets `discover` to what the island had made five years before.
+#
+# Numbers. Three kinds, kept apart:
+#   - run: the methods on the sixteen base goods (edge-tool works, tool factory, hot blast, machine-tool
+#     works, engineering works, continuous kiln, shops) and the changes to base methods were run under
+#     the game's rules on sixteen seeds with a build of night/core: all are found within a few years of
+#     the year aimed at and built, and the 1900 real wage is 3.4 times 1750's against 2.7 with the game's
+#     own content. Hot blast's coal and iron thresholds were written in plain units after the critique,
+#     at the median seed's value, which does not move the median and narrows the spread;
+#   - reckoned at the game's prices: everything on a new good, from the engine's formulas with the wage
+#     and the base goods' prices of those runs (wage 4.0 rising to 14.7; coal, stone and bricks falling
+#     to about 0.9, 0.9 and 1.5). Not run: that binary cannot load a seventeenth good. Thresholds on new
+#     goods are the reckoning's output about five years before the year aimed at, and want refitting
+#     when this loads: see content-design.md, "For whoever builds this";
+#   - asserted: engine changes, specified against the code.
+#
+# Steel stays at 3.0 as an implement: at 1.6 no steel is ever sold under the game's rules, the converter
+# is never found and the land's machines never improve. Raw shelter IS re-rated here, for the game only
+# (stone 0.3, bricks 0.6, timber 0.4): without it builders lose shelter back to heaped stone and kiln
+# brick as wages rise, and quarrying is cut by three tenths where it should be halved.
+#
+# `group` is the family trade, in the six names the families have today: iron, textiles, coal,
+# engineering, building, estates.
+#
+# The comment above each method gives its unit sums at base prices: what a unit sells for, what its
+# inputs, heat (0.376 a unit at base prices, nearly all coal) and labour (at a wage of 2.5) cost on the
+# recipe as written, the margin, and the plant. For an invention it then gives the entry test at the
+# game's prices in the year it is found, with the engine's penalties for a small new works.
+
+[meta]
+goods = [
+  # stage 1
+  { name = "building", label = "Building work", weight = 12.0, price = 2.2, color = "#b08d6a", decay = 0.1, stock0 = 0.09, stage = 1 },
+  { name = "lumber", label = "Sawn timber", weight = 1.2, price = 2.2, color = "#b98d54", decay = 0.004, stock0 = 0.02, stage = 1 },
+  { name = "lime", label = "Lime and cement", weight = 1.5, price = 2.0, color = "#e2ddd0", decay = 0.01, stock0 = 0.03, stage = 1 },
+  { name = "beer", label = "Beer", weight = 2.0, price = 2.0, color = "#b8742a", decay = 0.06, stock0 = 0.07, stage = 1 },
+  { name = "pottery", label = "Pottery", weight = 1.0, price = 3.4, color = "#c9b08a", decay = 0.003, stock0 = 0.01, stage = 1 },
+  { name = "gas", label = "Town gas", weight = 20.0, price = 2.4, color = "#e6c94f", decay = 0.15, stock0 = 0.0, stage = 1 },
+  { name = "chemicals", label = "Soap and chemicals", weight = 0.9, price = 4.5, color = "#c9c23a", decay = 0.003, stock0 = 0.006, stage = 1 },
+  { name = "glass", label = "Glass", weight = 1.0, price = 9.0, color = "#9fd0c8", decay = 0.003, stock0 = 0.003, stage = 1 },
+  { name = "paper", label = "Paper", weight = 0.5, price = 4.6, color = "#f2ecd9", decay = 0.004, stock0 = 0.004, stage = 1 },
+  # stage 2
+  { name = "flour", label = "Flour", weight = 0.9, price = 1.4, color = "#efe6cf", decay = 0.02, stock0 = 0.5, stage = 2 },
+  { name = "fish", label = "Fish", weight = 1.5, price = 1.3, color = "#7fa6b8", decay = 0.12, stock0 = 0.05, stage = 2 },
+  { name = "produce", label = "Dairy, meat and garden produce", weight = 4.0, price = 1.6, color = "#9fbf5f", decay = 0.15, stock0 = 0.06, stage = 2 },
+  # stage 3
+  { name = "cotton", label = "Raw cotton", weight = 0.5, price = 2.2, color = "#f4f1e6", decay = 0.003, stock0 = 0.0, stage = 3 },
+  { name = "cottons", label = "Cotton cloth", weight = 0.25, price = 6.0, color = "#5f8fc4", decay = 0.004, stock0 = 0.0, stage = 3 },
+  # stage 5
+  { name = "ships", label = "Ships", weight = 2.0, price = 160.0, color = "#39607a", decay = 0.002, stock0 = 0.00003, stage = 5 },
+]
+# The sixteen base goods take decay and stock0 from the tables they are in today, unchanged
+# (P.decay in params.rs, `guess` in sim.rs); the loader should move those into the goods table.
+
+[services]
+# Two needs are added. "warmth" keeps its name and is shown as "Fuel and light": gas sells into it, and
+# after 1900 so will whatever a household burns or switches on.
+names = ["food", "warmth", "shelter", "clothing", "implements", "comfort", "table", "wares"]
+labels = ["Food", "Fuel and light", "Shelter", "Clothing", "Implements", "Comfort", "Drink and groceries", "Household goods"]
+subsistence = [1.0, 0.25, 0.06, 0.03, 0.002, 0.0, 0.0, 0.0]   # per head per month; unchanged, none for the new needs
+shares = [0.25, 0.13, 0.2, 0.17, 0.07, 0.09, 0.06, 0.03]        # at subsistence and a bit (base: 0.28, 0.14, 0.22, 0.19, 0.07, 0.10)
+shares_rich = [0.05, 0.06, 0.2, 0.17, 0.07, 0.28, 0.07, 0.1]   # far above it, for the Engel rule (its own six: 0.05, 0.06, 0.24, 0.22, 0.07, 0.36)
+lord_shares = [0.03, 0.07, 0.28, 0.19, 0.07, 0.24, 0.04, 0.08]   # (base: 0.04, 0.08, 0.30, 0.22, 0.08, 0.28)
+theta = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 2.0]   # household goods are unlike each other: at 2.0 each keeps its share of the money
+
+# From the trade stage clothing widens to 1.0: wool, woollen cloth and cotton cloth are then unlike
+# enough that cotton takes the century to win and woollen cloth keeps a quarter of the need. Before
+# cotton the base's 0.25 stands, as tuned. The loader applies each [[services.change]] whose stage it
+# has reached, in order; the keys it names replace the lists.
+[[services.change]]
+stage = 3
+theta = [0.25, 0.25, 0.25, 1.0, 0.25, 0.25, 0.25, 2.0]
+
+[services.props]
+# stage 1
+building = { shelter = 3.0 }   # stone, brick and timber put up by men who know how
+stone = { shelter = 0.3 }   # re-rated for the game (the port has 0.5): a household that heaps up its own wall gets a hovel
+bricks = { shelter = 0.6 }   # re-rated (the port has 1.0)
+timber = { shelter = 0.4, wares = 0.1 }   # shelter: re-rated (the port has 0.6); wares: treen: bowls and spoons whittled at home
+lumber = { shelter = 0.6, wares = 0.35 }   # shelter: boards for a man who builds for himself; wares: plain furniture
+lime = { shelter = 0.5 }   # limewash and plaster
+grain = { table = 0.15 }   # home brewing
+beer = { table = 1.0 }
+pottery = { wares = 1.0 }
+gas = { warmth = 4.5 }   # light is worth more than heat: the number gas's whole trade hangs on
+chemicals = { wares = 1.3 }   # soap, candles and washing soda
+glass = { wares = 2.5 }   # bottles, tableware and the window pane
+paper = { wares = 1.3 }
+# stage 2
+flour = { food = 1.5 }   # grain made to go further
+fish = { food = 1.1 }
+produce = { food = 1.4 }
+# stage 3
+cottons = { clothing = 0.75 }
+
+[heat]
+# Unchanged: none of the new goods is burnt for heat in a works. Gas warms and lights houses only.
+
+# ====================================================================================================
+# STAGE 1. Needs the loader (this file over the base, with decay and stock0 on goods), a theta for each
+# need, and `group` on a method.
+# ====================================================================================================
+
+# Overrides the base entry: only these fields change.
+# A larger usual size (the port's is 5). A new works is 0.4 K0, and under the life cycle a trade too small
+# for its market grows by one such works a year; the three larger sizes here were in every run of this
+# content under the game's rules.
+# At base prices, with the change: sells 8.00; inputs 3.30, heat 0.23, labour 2.50; cost 6.03; margin +1.97
+# (25%); plant 24.0, 3.0 months of output.
+[[method]]
+name = "smithy"
+K0 = 10.0
+stage = 1
+
+# Overrides the base entry: only these fields change.
+# A larger usual size (the port's is 4), for the same reason as the smithy's.
+# At base prices, with the change: sells 30.00; inputs 7.92, heat 1.13, labour 10.00; cost 19.05; margin
+# +10.95 (37%); plant 60.0, 2.0 months of output.
+[[method]]
+name = "crucible_steel"
+K0 = 10.0
+stage = 1
+
+# Overrides the base entry: only these fields change.
+# A larger usual size (the port's is 3), for the same reason as the smithy's: machinery is the thinnest
+# market on the island and the one every later works waits on.
+# At base prices, with the change: sells 70.00; inputs 21.20, heat 0.75, labour 15.00; cost 36.95; margin
+# +33.05 (47%); plant 466.0, 6.7 months of output.
+[[method]]
+name = "engine_works"
+K0 = 8.0
+stage = 1
+
+# Overrides the base entry: only these fields change.
+# The plant and the steel threshold are what the game's machines rule already gives it; they are written out
+# here so that the overlay is the one place the game's content is said. The machinery threshold is new (the
+# machines rule has 90,000): the machine-tool works triples the machinery made, and with 90,000 the
+# converter was found fifteen years early.
+# At base prices, with the change: sells 30.00; inputs 6.90, heat 0.23, labour 1.25; cost 8.38; margin
+# +21.62 (72%); plant 123.0, 4.1 months of output.
+[[method]]
+name = "bessemer"
+capital = { bricks = 45, machinery = 0.6 }
+discover = { steel = 2800000.0, machinery = 250000.0, iron = "x220" }
+target = 1856
+stage = 1
+
+# Overrides the base entry: only these fields change.
+# Steel per rail and plant as the game's machines rule has them (a steel rail stands in for three iron
+# ones); thresholds moved with the steel and machinery this content makes. It is found on time and hardly
+# built: rails rolled from hot-blast iron are too cheap. It waits for railways that wear out (stage 6).
+# At base prices, with the change: sells 18.00; inputs 10.50, heat 0.23, labour 1.75; cost 12.48; margin
+# +5.52 (31%); plant 96.3, 5.3 months of output.
+[[method]]
+name = "steel_rolling"
+inputs = { steel = 0.35 }
+capital = { bricks = 36, machinery = 0.45 }
+discover = { steel = 5000000.0, rails = 560000.0, machinery = 450000.0 }
+target = 1866
+stage = 1
+
+# At base prices: sells 2.20; inputs 1.14, heat 0.00, labour 0.62 (0.25 at a wage of 2.5); cost 1.77; margin
+# +0.44 (20%).
+# Plant 2.8 a unit of monthly capacity, 1.3 months of output; about 135 hands at K0.
+# The lime is a tenth of a unit: one kiln serves a town, and the opening stock covers the months before the
+# first kiln burns.
+[[method]]
+name = "masons"
+label = "Masons and carpenters"
+output = "building"
+inputs = { stone = 1.1, timber = 0.35, lime = 0.1 }
+heat = 0.0
+labor = 0.25
+capital = { timber = 3, tools = 0.05 }
+K0 = 300.0
+known = true
+seed = true
+group = "building"
+stage = 1
+
+# At base prices: sells 2.20; inputs 1.46, heat 0.00, labour 0.55 (0.22 at a wage of 2.5); cost 2.01; margin
+# +0.19 (9%).
+# Plant 2.8 a unit of monthly capacity, 1.3 months of output; about 79 hands at K0.
+# Thin at base prices on purpose: it pays where timber is cheap and stone is far, and gives sawn timber its
+# first market.
+[[method]]
+name = "carpenters"
+label = "Timber-frame builders"
+output = "building"
+inputs = { lumber = 0.5, timber = 0.3, clay = 0.3 }
+heat = 0.0
+labor = 0.22
+capital = { timber = 3, tools = 0.05 }
+K0 = 200.0
+known = true
+group = "building"
+stage = 1
+
+# At base prices: sells 2.20; inputs 1.76, heat 0.00, labour 0.60 (0.24 at a wage of 2.5); cost 2.36; margin
+# -0.16 (-7%).
+# Plant 2.8 a unit of monthly capacity, 1.3 months of output; about 130 hands at K0.
+# Loses to the masons at base prices on purpose: brick is for towns on the clay with no quarry near, until
+# the kiln makes it cheap. Bricks cut from 0.7 to 0.6 after the critique: with builders in, households stop
+# buying raw brick, and the bricklayers are the brick trade until 1850.
+[[method]]
+name = "bricklayers"
+label = "Bricklayers"
+output = "building"
+inputs = { bricks = 0.6, lime = 0.12, lumber = 0.2 }
+heat = 0.0
+labor = 0.24
+capital = { timber = 3, tools = 0.05 }
+K0 = 300.0
+known = true
+group = "building"
+stage = 1
+
+# At base prices: sells 2.20; inputs 1.95, heat 0.00, labour 0.25 (0.1 at a wage of 2.5); cost 2.20; margin
+# +0.00 (0%).
+# Plant 8.8 a unit of monthly capacity, 4.0 months of output; about 144 hands at K0.
+# At the game's prices of 1861 (the year the reckoning finds it; its good then sells at 7.81): a new works
+# at 0.4 K0 needs 9.17 when found, 7.87 once know-how is 0.6, 6.89 at 1 (1.17, 1.01, 0.88 of the going
+# price). Its smallest works is 0% of the island's trade that year.
+# Breaks even at base prices because bricks are dear there (1.8); it is carried by the continuous kiln's bricks.
+[[method]]
+name = "contract_builders"
+label = "Contract builders"
+output = "building"
+inputs = { bricks = 0.65, lime = 0.1, lumber = 0.18, glass = 0.02 }
+heat = 0.0
+labor = 0.1
+capital = { bricks = 2, lumber = 2, tools = 0.1 }
+K0 = 800.0
+known = false
+A0 = 1.0
+Q0 = 2000000.0
+b = 0.2
+discover = { building = 41000000.0, machinery = 410000.0 }
+target = 1862
+group = "building"
+stage = 1
+headline = "Houses by the street at {town}"
+story = "{who} takes a field on a building lease at {town} and runs up forty brick houses to one plan, with bought-in joinery and gangs paid by the rod. The old masons call it jerry-building; the houses let before the roofs are on."
+
+# At base prices: sells 2.20; inputs 1.12, heat 0.00, labour 0.70 (0.28 at a wage of 2.5); cost 1.82; margin
+# +0.38 (17%).
+# Plant 2.0 a unit of monthly capacity, 0.9 months of output; about 30 hands at K0.
+[[method]]
+name = "saw_pit"
+label = "Saw pit"
+output = "lumber"
+inputs = { timber = 1.4 }
+heat = 0.0
+labor = 0.28
+capital = { timber = 2, tools = 0.05 }
+K0 = 60.0
+known = true
+seed = true
+group = "building"
+stage = 1
+
+# At base prices: sells 2.20; inputs 1.00, heat 0.11, labour 0.12 (0.05 at a wage of 2.5); cost 1.24; margin
+# +0.96 (44%).
+# Plant 11.7 a unit of monthly capacity, 5.3 months of output; about 54 hands at K0.
+# At the game's prices of 1824 (the year the reckoning finds it; its good then sells at 6.84): a new works
+# at 0.4 K0 needs 7.51 when found, 6.66 once know-how is 0.6, 5.99 at 1 (1.10, 0.97, 0.88 of the going
+# price). Its smallest works is 3% of the island's trade that year.
+# A0 raised from 0.7 to 0.85 after the critique, so that it is built against the water sawmill.
+[[method]]
+name = "steam_sawmill"
+label = "Steam sawmill"
+output = "lumber"
+inputs = { timber = 1.25 }
+heat = 0.3
+labor = 0.05
+capital = { bricks = 4, timber = 3, machinery = 0.03 }
+K0 = 600.0
+known = false
+A0 = 0.85
+Q0 = 300000.0
+b = 0.2
+discover = { lumber = 5000000.0, machinery = 55000.0 }
+target = 1825
+group = "building"
+stage = 1
+headline = "Steam saws at {town}"
+story = "{who} drives a rack of circular saws from one engine at {town} and cuts in a day what a pair of sawyers cut in a month. Deals, sleepers and pit props leave by the wagonload."
+
+# At base prices: sells 2.00; inputs 0.96, heat 0.49, labour 0.20 (0.08 at a wage of 2.5); cost 1.65; margin
+# +0.35 (18%).
+# Plant 5.1 a unit of monthly capacity, 2.5 months of output; about 14 hands at K0.
+[[method]]
+name = "lime_kiln"
+label = "Lime kiln"
+output = "lime"
+inputs = { stone = 1.6 }
+heat = 1.3
+labor = 0.08
+capital = { stone = 4, bricks = 1.5 }
+K0 = 100.0
+known = true
+seed = true
+group = "building"
+stage = 1
+
+# At base prices: sells 2.00; inputs 0.56, heat 0.34, labour 0.05 (0.02 at a wage of 2.5); cost 0.95; margin
+# +1.05 (53%).
+# Plant 19.5 a unit of monthly capacity, 9.8 months of output; about 14 hands at K0.
+# At the game's prices of 1849 (the year the reckoning finds it; its good then sells at 4.75): a new works
+# at 0.4 K0 needs 4.92 when found, 4.34 once know-how is 0.6, 3.89 at 1 (1.04, 0.91, 0.82 of the going
+# price). Its smallest works is 3% of the island's trade that year.
+# Usual size cut from 1000 to 400 after the critique.
+[[method]]
+name = "cement_works"
+label = "Cement works"
+output = "lime"
+inputs = { stone = 0.8, clay = 0.2 }
+heat = 0.9
+labor = 0.02
+capital = { bricks = 8, iron = 0.5, machinery = 0.03 }
+K0 = 400.0
+known = false
+A0 = 0.6
+Q0 = 1000000.0
+b = 0.2
+discover = { lime = 2800000.0, machinery = 200000.0 }
+target = 1850
+group = "building"
+stage = 1
+headline = "Cement burned at {town}"
+story = "{who} burns chalk and clay together at {town} and grinds the clinker to a grey powder that sets under water. Harbour walls and mill floors are made of it within the year."
+
+# At base prices: sells 2.00; inputs 1.20, heat 0.15, labour 0.25 (0.1 at a wage of 2.5); cost 1.60; margin
+# +0.40 (20%).
+# Plant 6.6 a unit of monthly capacity, 3.3 months of output; about 54 hands at K0.
+[[method]]
+name = "brewhouse"
+label = "Brewhouse"
+output = "beer"
+inputs = { grain = 1.2 }
+heat = 0.4
+labor = 0.1
+capital = { timber = 3, bricks = 2, stone = 1 }
+K0 = 300.0
+known = true
+seed = true
+group = "estates"
+stage = 1
+
+# At base prices: sells 2.00; inputs 0.92, heat 0.09, labour 0.05 (0.02 at a wage of 2.5); cost 1.06; margin
+# +0.94 (47%).
+# Plant 14.8 a unit of monthly capacity, 7.4 months of output; about 54 hands at K0.
+# At the game's prices of 1784 (the year the reckoning finds it; its good then sells at 2.86): a new works
+# at 0.4 K0 needs 3.16 when found, 2.81 once know-how is 0.6, 2.54 at 1 (1.10, 0.98, 0.89 of the going
+# price). Its smallest works is 7% of the island's trade that year.
+[[method]]
+name = "steam_brewery"
+label = "Common brewery"
+output = "beer"
+inputs = { grain = 0.92 }
+heat = 0.25
+labor = 0.02
+capital = { bricks = 4, lumber = 2, iron = 0.3, machinery = 0.02 }
+K0 = 1500.0
+known = false
+A0 = 0.6
+Q0 = 300000.0
+b = 0.2
+discover = { beer = 2100000.0, coal = 13000000.0 }
+target = 1785
+group = "estates"
+stage = 1
+headline = "A great brewery at {town}"
+story = "{who} brews porter by the thousand barrels at {town} and stores it in vats the size of houses, with an engine to pump and mash. Every alehouse within a day's cart buys it."
+
+# At base prices: sells 3.40; inputs 0.52, heat 0.94, labour 1.25 (0.5 at a wage of 2.5); cost 2.71; margin
+# +0.69 (20%).
+# Plant 14.0 a unit of monthly capacity, 4.1 months of output; about 36 hands at K0.
+[[method]]
+name = "potbank"
+label = "Country pottery"
+output = "pottery"
+inputs = { clay = 1.3 }
+heat = 2.5
+labor = 0.5
+capital = { bricks = 6, clay = 2, timber = 3 }
+K0 = 40.0
+known = true
+seed = true
+group = "building"
+stage = 1
+
+# At base prices: sells 3.40; inputs 0.48, heat 0.60, labour 0.35 (0.14 at a wage of 2.5); cost 1.43; margin
+# +1.97 (58%).
+# Plant 22.0 a unit of monthly capacity, 6.5 months of output; about 25 hands at K0.
+# At the game's prices of 1771 (the year the reckoning finds it; its good then sells at 7.85): a new works
+# at 0.4 K0 needs 8.76 when found, 7.40 once know-how is 0.6, 6.39 at 1 (1.12, 0.94, 0.81 of the going
+# price). Its smallest works is 15% of the island's trade that year.
+# Usual size cut from 400 to 100 after the critique: at 400 its smallest works was half the island's pottery
+# trade.
+[[method]]
+name = "pottery_works"
+label = "Pottery manufactory"
+output = "pottery"
+inputs = { clay = 1.2 }
+heat = 1.6
+labor = 0.14
+capital = { bricks = 12, tools = 0.05 }
+K0 = 100.0
+known = false
+A0 = 0.65
+Q0 = 80000.0
+b = 0.25
+discover = { pottery = 39000.0, coal = "x35" }
+target = 1770
+group = "building"
+stage = 1
+headline = "A manufactory of earthenware at {town}"
+story = "{who} divides the potter's work into twenty trades at {town} and fires cream-coloured ware in rows of bottle ovens. A dinner service now costs what a single dish did."
+
+# At base prices: sells 2.40; inputs 1.16, heat 0.00, labour 0.15 (0.06 at a wage of 2.5); cost 1.31; margin
+# +1.09 (45%).
+# Plant 32.2 a unit of monthly capacity, 13.4 months of output; about 16 hands at K0.
+# No older method. At the game's prices of 1813 (the year the reckoning finds it) a new works at 0.4 K0
+# needs 5.66 when found, 4.98 once know-how is 0.6, 4.47 at 1. Its smallest works is 4% of the island's
+# trade that year.
+# The coal is net of the coke sold back, which is how the design does without by-products. Usual size cut
+# from 500 to 150 after the critique: the first works was three quarters of the island's gas trade, and gas
+# cannot be carted.
+[[method]]
+name = "gasworks"
+label = "Gasworks"
+output = "gas"
+inputs = { coal = 1.2, lime = 0.04 }
+heat = 0.0
+labor = 0.06
+capital = { bricks = 10, iron = 2, lumber = 1 }
+K0 = 150.0
+known = false
+A0 = 0.85
+Q0 = 150000.0
+b = 0.15
+discover = { iron = 1200000.0, coal = 47000000.0 }
+target = 1815
+group = "coal"
+stage = 1
+headline = "Streets lit by gas at {town}"
+story = "{who} bakes coal in iron retorts at the edge of {town} and pipes the gas under the streets. Shops stay open after dark, and the coke goes back on the fire."
+
+# At base prices: sells 8.00; inputs 3.90, heat 0.23, labour 1.12 (0.45 at a wage of 2.5); cost 5.25; margin
+# +2.75 (34%).
+# Plant 31.4 a unit of monthly capacity, 3.9 months of output; about 49 hands at K0.
+# At the game's prices of 1783 (the year the sixteen-seed runs found it; its good then sells at 18.99): a
+# new works at 0.4 K0 needs 31.41 when found, 27.22 once know-how is 0.6, 24.05 at 1 (1.65, 1.43, 1.27 of
+# the going price). Its smallest works is 2% of the island's trade that year.
+# Run under the game's rules on sixteen seeds: found 1783 (1765 to 1826), half of all tools by 1814.
+[[method]]
+name = "edge_tool_works"
+label = "Edge-tool works"
+output = "tools"
+inputs = { steel = 0.08, iron = 0.25 }
+heat = 0.6
+labor = 0.45
+capital = { stone = 15, timber = 8, tools = 2 }
+K0 = 60.0
+known = false
+A0 = 0.9
+Q0 = 30000.0
+b = 0.15
+discover = { steel = 400.0, tools = "x20" }
+target = 1778
+site = { field = "power", kw = 6.0 }        # read from stage 2
+group = "engineering"
+stage = 1
+headline = "Steel-edged tools from {town}"
+story = "{who} welds a strip of cast steel to an iron back and grinds it on a wheel turned by the stream at {town}. A scythe keeps its edge all harvest."
+
+# At base prices: sells 8.00; inputs 6.60, heat 0.19, labour 0.15 (0.06 at a wage of 2.5); cost 6.94; margin
+# +1.06 (13%).
+# Plant 64.0 a unit of monthly capacity, 8.0 months of output; about 65 hands at K0.
+# At the game's prices of 1857 (the year the sixteen-seed runs found it; its good then sells at 9.92): a new
+# works at 0.4 K0 needs 9.48 when found, 8.43 once know-how is 0.6, 7.63 at 1 (0.96, 0.85, 0.77 of the going
+# price). Its smallest works is 6% of the island's trade that year.
+# Run under the game's rules on sixteen seeds: found 1857 (1836 to 1879), half of all tools by 1864; tools
+# end the century at 2.7 where the game's own content has 31.
+[[method]]
+name = "tool_factory"
+label = "Tool factory"
+output = "tools"
+inputs = { steel = 0.22 }
+heat = 0.5
+labor = 0.06
+capital = { bricks = 20, machinery = 0.4 }
+K0 = 600.0
+known = false
+A0 = 1.0
+Q0 = 300000.0
+b = 0.15
+discover = { steel = 4000000.0, machinery = 350000.0 }
+target = 1864
+group = "engineering"
+stage = 1
+headline = "Tools stamped out at {town}"
+story = "{who} drops a steam hammer on steel bar between dies at {town}. Every spade is the same spade, and there is one for every labourer."
+
+# At base prices: sells 6.00; inputs 1.60, heat 0.00, labour 0.12 (0.05 at a wage of 2.5); cost 1.73; margin
+# +4.28 (71%).
+# Plant 116.5 a unit of monthly capacity, 19.4 months of output; about 14 hands at K0.
+# At the game's prices of 1831 (the year the sixteen-seed runs found it; its good then sells at 7.63): a new
+# works at 0.4 K0 needs 8.15 when found, 7.51 once know-how is 0.6, 7.01 at 1 (1.07, 0.98, 0.92 of the going
+# price). Its smallest works is 1% of the island's trade that year.
+# Run under the game's rules on sixteen seeds: found 1831 (1821 to 1856), half of all iron by 1849; iron
+# ends the century at 2.2 against 7.9. Those runs had coal x500 and iron x270; they are written here as the
+# median seed's plain units, coal eased a tenth so that iron, the tighter clock, binds.
+[[method]]
+name = "hot_blast"
+label = "Hot-blast furnace"
+output = "iron"
+inputs = { iron_ore = 1.1, coal = 0.8 }
+heat = 0.0
+labor = 0.05
+capital = { stone = 30, bricks = 45, machinery = 0.25 }
+K0 = 150.0
+known = false
+A0 = 1.0
+Q0 = 400000.0
+b = 0.3
+discover = { iron = 1720000.0, coal = 65000000.0, machinery = 70000.0 }
+target = 1830
+group = "iron"
+stage = 1
+headline = "The blast is heated at {town}"
+story = "{who} warms the air before it enters the furnace at {town}. The same coal makes half as much iron again, and raw coal will do where coke was needed."
+
+# At base prices: sells 70.00; inputs 17.10, heat 0.38, labour 1.50 (0.6 at a wage of 2.5); cost 18.98;
+# margin +51.02 (73%).
+# Plant 230.0 a unit of monthly capacity, 3.3 months of output; about 43 hands at K0.
+# At the game's prices of 1839 (the year the sixteen-seed runs found it; its good then sells at 63.68): a
+# new works at 0.4 K0 needs 51.87 when found, 45.03 once know-how is 0.6, 39.88 at 1 (0.81, 0.71, 0.63 of
+# the going price). Its smallest works is 3% of the island's trade that year.
+# Run under the game's rules on sixteen seeds: found 1839 (1825 to 1872), half of all machinery by 1850;
+# machinery ends the century at 9 against 72.
+[[method]]
+name = "machine_shop"
+label = "Machine-tool works"
+output = "machinery"
+inputs = { iron = 1.4, steel = 0.25, tools = 0.15 }
+heat = 1.0
+labor = 0.6
+capital = { bricks = 60, machinery = 0.6, tools = 10 }
+K0 = 40.0
+known = false
+A0 = 1.0
+Q0 = 20000.0
+b = 0.2
+discover = { machinery = 110000.0, steel = 1300000.0 }
+target = 1838
+group = "engineering"
+stage = 1
+headline = "Machines that make machines at {town}"
+story = "{who} fits out a shop at {town} with slide lathes and planing machines true to a thousandth of an inch. A fitter no longer files a part to suit; it is cut to gauge and fits the first time."
+
+# At base prices: sells 70.00; inputs 18.64, heat 0.30, labour 0.25 (0.1 at a wage of 2.5); cost 19.19;
+# margin +50.81 (73%).
+# Plant 293.0 a unit of monthly capacity, 4.2 months of output; about 27 hands at K0.
+# At the game's prices of 1880 (the year the sixteen-seed runs found it; its good then sells at 13.11): a
+# new works at 0.4 K0 needs 17.12 when found, 15.21 once know-how is 0.6, 13.75 at 1 (1.31, 1.16, 1.05 of
+# the going price). Its smallest works is 1% of the island's trade that year.
+# Run under the game's rules on sixteen seeds: found 1880 (1860 to 1895), built in fourteen, two thirds of
+# machinery by 1899. A first recipe (steel 0.8, labour 0.2) was never built in half the seeds.
+[[method]]
+name = "engineering_works"
+label = "Engineering works"
+output = "machinery"
+inputs = { steel = 0.6, tools = 0.08 }
+heat = 0.8
+labor = 0.1
+capital = { bricks = 60, machinery = 1.5, tools = 10 }
+K0 = 150.0
+known = false
+A0 = 1.0
+Q0 = 200000.0
+b = 0.15
+discover = { steel = 7500000.0, machinery = 1000000.0 }
+target = 1876
+group = "engineering"
+stage = 1
+headline = "Engines built to gauge at {town}"
+story = "{who} builds engines at {town} from steel castings and parts made to gauge, a hundred of a pattern. A broken part is ordered by number and arrives by train."
+
+# At base prices: sells 1.80; inputs 0.48, heat 0.08, labour 0.07 (0.03 at a wage of 2.5); cost 0.63; margin
+# +1.17 (65%).
+# Plant 17.6 a unit of monthly capacity, 9.8 months of output; about 108 hands at K0.
+# At the game's prices of 1856 (the year the sixteen-seed runs found it; its good then sells at 3.25): a new
+# works at 0.4 K0 needs 3.32 when found, 2.91 once know-how is 0.6, 2.60 at 1 (1.02, 0.90, 0.80 of the going
+# price). Its smallest works is 1% of the island's trade that year.
+# Run under the game's rules on sixteen seeds: found 1856 (1836 to 1874), half of all bricks by 1869; bricks
+# end the century at 1.4 against 3.7. In those runs machinery was the threshold that held it back; keep it
+# so.
+[[method]]
+name = "continuous_kiln"
+label = "Continuous kiln"
+output = "bricks"
+inputs = { clay = 1.2 }
+heat = 0.2
+labor = 0.03
+capital = { bricks = 8, stone = 3, machinery = 0.02 }
+K0 = 2000.0
+known = false
+A0 = 1.0
+Q0 = 2000000.0
+b = 0.15
+discover = { bricks = "x300", machinery = 300000.0 }
+target = 1856
+group = "building"
+stage = 1
+headline = "A kiln that never cools at {town}"
+story = "{who} builds a ring of chambers round one tall chimney at {town}. The fire travels from chamber to chamber and is never let out; bricks come by the million, and a terrace costs less than a cottage did."
+
+# At base prices: sells 3.00; inputs 0.19, heat 0.00, labour 1.25 (0.5 at a wage of 2.5); cost 1.44; margin
+# +1.56 (52%).
+# Plant 15.6 a unit of monthly capacity, 5.2 months of output; about 900 hands at K0.
+# At the game's prices of 1861 (the year the sixteen-seed runs found it; its good then sells at 13.09): a
+# new works at 0.4 K0 needs 21.11 when found, 16.60 once know-how is 0.6, 13.38 at 1 (1.61, 1.27, 1.02 of
+# the going price). Its smallest works is 1% of the island's trade that year.
+# Run under the game's rules on sixteen seeds without its gas and paper, found on services alone: 1861 (1825
+# to 1898), half of all services by 1877 in fourteen seeds.
+[[method]]
+name = "emporium"
+label = "Shops, offices and warehouses"
+output = "services"
+inputs = { gas = 0.04, paper = 0.02 }
+heat = 0.0
+labor = 0.5
+capital = { bricks = 8, iron = 0.2 }
+K0 = 1000.0
+known = false
+A0 = 1.0
+Q0 = 5000000.0
+b = 0.1
+discover = { gas = 1000000.0, services = 32000000.0 }
+target = 1860
+stage = 1
+headline = "Plate-glass shopfronts at {town}"
+story = "{who} opens a warehouse of fixed prices at {town}, lit by gas behind plate glass, with clerks and ledgers upstairs. One assistant serves where three haggled, and the customers come in by train."
+
+# At base prices: sells 4.50; inputs 2.00, heat 0.38, labour 1.12 (0.45 at a wage of 2.5); cost 3.50; margin
+# +1.00 (22%).
+# Plant 6.8 a unit of monthly capacity, 1.5 months of output; about 32 hands at K0.
+[[method]]
+name = "soap_boilers"
+label = "Soap boilers and ash burners"
+output = "chemicals"
+inputs = { timber = 2.5 }
+heat = 1.0
+labor = 0.45
+capital = { timber = 4, bricks = 2 }
+K0 = 40.0
+known = true
+seed = true
+group = "coal"
+stage = 1
+
+# At base prices: sells 4.50; inputs 0.48, heat 1.13, labour 0.38 (0.15 at a wage of 2.5); cost 1.98; margin
+# +2.52 (56%).
+# Plant 58.8 a unit of monthly capacity, 13.1 months of output; about 40 hands at K0.
+# At the game's prices of 1814 (the year the reckoning finds it; its good then sells at 13.65): a new works
+# at 0.4 K0 needs 14.22 when found, 12.19 once know-how is 0.6, 10.67 at 1 (1.04, 0.89, 0.78 of the going
+# price). Its smallest works is 7% of the island's trade that year.
+# Usual size cut from 300 to 150 after the critique; the salt site is gone, since the generator has no salt.
+[[method]]
+name = "alkali_works"
+label = "Alkali works"
+output = "chemicals"
+inputs = { stone = 0.8 }
+heat = 3.0
+labor = 0.15
+capital = { bricks = 25, stone = 8, iron = 1.5 }
+K0 = 150.0
+known = false
+A0 = 0.7
+Q0 = 60000.0
+b = 0.25
+discover = { chemicals = 340000.0, iron = 1000000.0 }
+target = 1815
+group = "coal"
+stage = 1
+headline = "Soda from salt at {town}"
+story = "{who} roasts salt with vitriol, chalk and coal at {town} and gets soda by the ton for the soap boilers and glassmakers. Nothing grows downwind of the works."
+
+# At base prices: sells 4.50; inputs 0.50, heat 0.38, labour 0.10 (0.04 at a wage of 2.5); cost 0.98; margin
+# +3.52 (78%).
+# Plant 82.5 a unit of monthly capacity, 18.3 months of output; about 144 hands at K0.
+# At the game's prices of 1872 (the year the reckoning finds it; its good then sells at 4.51): a new works
+# at 0.4 K0 needs 4.87 when found, 4.29 once know-how is 0.6, 3.86 at 1 (1.08, 0.95, 0.86 of the going
+# price). Its smallest works is 5% of the island's trade that year.
+# Lime cut from 0.4 to 0.25 after the critique (it was a third of the cost, and the works was found and not
+# built); gas is out of its thresholds; aimed three years earlier, since a works that enters above the going
+# price takes five years to be built.
+[[method]]
+name = "ammonia_soda"
+label = "Ammonia-soda works"
+output = "chemicals"
+inputs = { lime = 0.25 }
+heat = 1.0
+labor = 0.04
+capital = { bricks = 30, iron = 3, machinery = 0.15 }
+K0 = 2000.0
+known = false
+A0 = 1.0
+Q0 = 800000.0
+b = 0.25
+discover = { chemicals = 4200000.0, steel = 4400000.0 }
+target = 1872
+group = "coal"
+stage = 1
+headline = "Soda from brine and ammonia at {town}"
+story = "{who} pumps brine through towers of ammonia at {town} and makes soda at half the cost, with no black waste heaps. The old alkali makers cut wages and then close."
+
+# At base prices: sells 9.00; inputs 1.95, heat 2.26, labour 3.00 (1.2 at a wage of 2.5); cost 7.21; margin
+# +1.79 (20%).
+# Plant 39.6 a unit of monthly capacity, 4.4 months of output; about 65 hands at K0.
+[[method]]
+name = "glasshouse"
+label = "Glass cone"
+output = "glass"
+inputs = { stone = 1.0, chemicals = 0.3 }
+heat = 6.0
+labor = 1.2
+capital = { bricks = 20, stone = 6 }
+K0 = 30.0
+known = true
+seed = true
+group = "building"
+stage = 1
+
+# At base prices: sells 9.00; inputs 1.93, heat 1.51, labour 0.88 (0.35 at a wage of 2.5); cost 4.31; margin
+# +4.69 (52%).
+# Plant 63.5 a unit of monthly capacity, 7.1 months of output; about 94 hands at K0.
+# At the game's prices of 1832 (the year the reckoning finds it; its good then sells at 26.93): a new works
+# at 0.4 K0 needs 33.25 when found, 27.81 once know-how is 0.6, 23.80 at 1 (1.23, 1.03, 0.88 of the going
+# price). Its smallest works is 10% of the island's trade that year.
+# Usual size cut from 300 to 150 after the critique.
+[[method]]
+name = "sheet_glass"
+label = "Sheet glass works"
+output = "glass"
+inputs = { stone = 1.0, chemicals = 0.25, lime = 0.1 }
+heat = 4.0
+labor = 0.35
+capital = { bricks = 30, iron = 1, machinery = 0.05 }
+K0 = 150.0
+known = false
+A0 = 0.6
+Q0 = 40000.0
+b = 0.3
+discover = { glass = 250000.0, chemicals = 630000.0, iron = 2000000.0 }
+target = 1835
+group = "building"
+stage = 1
+headline = "Window glass by the acre at {town}"
+story = "{who} blows cylinders six feet long at {town}, splits them and flattens them into sheets, with soda from the alkali works in place of kelp. Windows stop being a rich man's wall."
+
+# At base prices: sells 9.00; inputs 1.68, heat 0.56, labour 0.22 (0.09 at a wage of 2.5); cost 2.47; margin
+# +6.53 (73%).
+# Plant 73.5 a unit of monthly capacity, 8.2 months of output; about 243 hands at K0.
+# At the game's prices of 1873 (the year the reckoning finds it; its good then sells at 9.39): a new works
+# at 0.4 K0 needs 9.88 when found, 8.52 once know-how is 0.6, 7.51 at 1 (1.05, 0.91, 0.80 of the going
+# price). Its smallest works is 7% of the island's trade that year.
+# Gas is out of its thresholds after the critique; aimed four years earlier, for the same reason as the
+# ammonia-soda works.
+[[method]]
+name = "tank_furnace"
+label = "Tank glass furnace"
+output = "glass"
+inputs = { stone = 0.9, chemicals = 0.2, lime = 0.12 }
+heat = 1.5
+labor = 0.09
+capital = { bricks = 30, steel = 0.3, machinery = 0.15 }
+K0 = 1500.0
+known = false
+A0 = 1.0
+Q0 = 800000.0
+b = 0.2
+discover = { glass = 1400000.0, steel = 4400000.0 }
+target = 1874
+group = "building"
+stage = 1
+headline = "Glass melted without a pause at {town}"
+story = "{who} keeps a lake of glass molten day and night at {town}, fired by gas, drawing from one end while feeding the other. The pots, and the men who knew them, are not needed."
+
+# At base prices: sells 4.60; inputs 1.00, heat 0.19, labour 2.50 (1 at a wage of 2.5); cost 3.69; margin
+# +0.91 (20%).
+# Plant 12.8 a unit of monthly capacity, 2.8 months of output; about 54 hands at K0.
+[[method]]
+name = "paper_mill"
+label = "Paper mill"
+output = "paper"
+inputs = { cloth = 0.2 }
+heat = 0.5
+labor = 1.0
+capital = { timber = 10, stone = 8 }
+K0 = 30.0
+known = true
+site = { field = "power", kw = 8.0 }        # read from stage 2
+seed = true
+group = "building"
+stage = 1
+
+# At base prices: sells 4.60; inputs 1.23, heat 0.38, labour 0.50 (0.2 at a wage of 2.5); cost 2.10; margin
+# +2.50 (54%).
+# Plant 41.0 a unit of monthly capacity, 8.9 months of output; about 54 hands at K0.
+# At the game's prices of 1814 (the year the reckoning finds it; its good then sells at 15.67): a new works
+# at 0.4 K0 needs 16.72 when found, 14.05 once know-how is 0.6, 12.08 at 1 (1.07, 0.90, 0.77 of the going
+# price). Its smallest works is 10% of the island's trade that year.
+# Usual size cut from 400 to 150 after the critique; the cloth threshold is gone (it spread 33 years across
+# seeds).
+[[method]]
+name = "machine_paper"
+label = "Machine paper mill"
+output = "paper"
+inputs = { cloth = 0.2, chemicals = 0.05 }
+heat = 1.0
+labor = 0.2
+capital = { bricks = 15, machinery = 0.2 }
+K0 = 150.0
+known = false
+A0 = 0.6
+Q0 = 30000.0
+b = 0.3
+discover = { paper = 230000.0, machinery = 30000.0 }
+target = 1815
+group = "building"
+stage = 1
+headline = "Paper in an endless web at {town}"
+story = "{who} pours pulp onto a moving wire at {town} and reels off paper by the mile, bleached with chlorine. The vatmen who dipped each sheet by hand are out of work, and a newspaper becomes a thing a clerk can buy."
+
+# ====================================================================================================
+# STAGE 2. Needs sites on methods (water power with a capacity in kW, wind, a harbour), the generator's
+# fields, land-use codes for more than seven sectors, and log driving.
+# ====================================================================================================
+
+# The field is derived, since the generator has none: coast and lake-shore cells, weighted by the discharge
+# of the nearest river mouth. A is a first guess: tune it so that fish is about an eighth of food by service
+# (it then sells near 1.3 times grain).
+[[sector]]
+name = "fishery"
+label = "Fishing grounds"
+good = "fish"
+alpha = 0.35
+A = 20.0
+field = "fish"
+stage = 2
+
+# Weight 4 keeps it within a few cells of its market: the first ring round a town. ag = true: it takes the
+# tools and husbandry boosts as farms do. A is a first guess: tune it so that produce is about an eighth of
+# food by service (it then sells near 1.6 times grain).
+[[sector]]
+name = "garden"
+label = "Dairy and gardens"
+good = "produce"
+alpha = 0.3
+A = 17.0
+field = "fertility"
+ag = true
+stage = 2
+
+# Overrides the base entry: only these fields change.
+# Once the water-powered mill exists, the engine-driven mill should come a generation after it, as it did;
+# under the game's rules it is found about 1780, before the valleys have filled.
+# At base prices, with the change: sells 5.00; inputs 1.65, heat 0.13, labour 0.38; cost 2.16; margin +2.84
+# (57%); plant 74.0, 14.8 months of output.
+[[method]]
+name = "textile_mill"
+label = "Steam-powered mill"
+discover = { machinery = 12000.0, cloth = "x50" }
+target = 1798
+stage = 2
+
+# At base prices: sells 4.60; inputs 0.76, heat 0.23, labour 0.10 (0.04 at a wage of 2.5); cost 1.09; margin
+# +3.51 (76%).
+# Plant 39.0 a unit of monthly capacity, 8.5 months of output; about 144 hands at K0.
+# At the game's prices of 1884 (the year the reckoning finds it; its good then sells at 3.50): a new works
+# at 0.4 K0 needs 5.05 when found, 4.36 once know-how is 0.6, 3.85 at 1 (1.44, 1.25, 1.10 of the going
+# price). Its smallest works is 3% of the island's trade that year.
+# Fails the entry test at the island's average timber price and passes where logs arrive at three quarters
+# of it or less: it is built only at the end of a log drive or on a timber quay. Timber cut from 0.6 to 0.5
+# after the critique, which found it never built.
+[[method]]
+name = "pulp_mill"
+label = "Wood-pulp mill"
+output = "paper"
+inputs = { timber = 0.5, chemicals = 0.08 }
+heat = 0.6
+labor = 0.04
+capital = { bricks = 15, machinery = 0.15, steel = 0.05 }
+K0 = 2000.0
+known = false
+A0 = 1.0
+Q0 = 800000.0
+b = 0.25
+discover = { paper = 6100000.0, chemicals = 5800000.0, machinery = 1700000.0 }
+target = 1885
+group = "building"
+stage = 2
+headline = "Paper from spruce at {town}"
+story = "{who} boils wood chips in soda at {town} and makes paper without a single rag. The mill stands where the logs come down."
+
+# At base prices: sells 1.40; inputs 1.12, heat 0.00, labour 0.03 (0.01 at a wage of 2.5); cost 1.15; margin
+# +0.25 (18%).
+# Plant 2.5 a unit of monthly capacity, 1.8 months of output; about 14 hands at K0.
+# Labour doubled and plant quadrupled after the critique: a mill whose costs are 97 per cent grain and whose
+# plant is two weeks of flour stops in every dear year. More labour than this prices flour out by 1850, when
+# a month's wage buys twelve units of grain.
+[[method]]
+name = "windmill"
+label = "Windmill"
+output = "flour"
+inputs = { grain = 1.12 }
+heat = 0.0
+labor = 0.01
+capital = { lumber = 1.0, stone = 0.4, tools = 0.01 }
+K0 = 800.0
+known = true
+site = { field = "wind", weight = 1.0 }
+seed = true
+group = "estates"
+stage = 2
+
+# At base prices: sells 1.40; inputs 1.10, heat 0.00, labour 0.02 (0.008 at a wage of 2.5); cost 1.12;
+# margin +0.28 (20%).
+# Plant 2.8 a unit of monthly capacity, 2.0 months of output; about 17 hands at K0.
+# Labour and plant raised with the windmill's, for the same reason.
+[[method]]
+name = "watermill"
+label = "Water corn mill"
+output = "flour"
+inputs = { grain = 1.1 }
+heat = 0.0
+labor = 0.008
+capital = { lumber = 1.0, stone = 0.9, tools = 0.01 }
+K0 = 1200.0
+known = true
+site = { field = "power", kw = 6.0 }
+seed = true
+group = "estates"
+stage = 2
+
+# At base prices: sells 1.40; inputs 0.96, heat 0.03, labour 0.01 (0.002 at a wage of 2.5); cost 1.00;
+# margin +0.40 (29%).
+# Plant 2.9 a unit of monthly capacity, 2.1 months of output; about 11 hands at K0.
+# At the game's prices of 1877 (the year the reckoning finds it; its good then sells at 0.74): a new works
+# at 0.4 K0 needs 0.80 when found, 0.72 once know-how is 0.6, 0.65 at 1 (1.09, 0.98, 0.89 of the going
+# price). Its smallest works is 1% of the island's trade that year.
+# Starts clumsy and learns. At the game's wages of the 1870s the old mills' hands and upkeep are a fifth of
+# the price of flour, so it no longer waits for full mill sites; grain landed at a quay still draws it to
+# the ports.
+[[method]]
+name = "roller_mill"
+label = "Steam roller mill"
+output = "flour"
+inputs = { grain = 0.96 }
+heat = 0.08
+labor = 0.002
+capital = { bricks = 1.0, machinery = 0.012, steel = 0.01 }
+K0 = 3000.0
+known = false
+A0 = 0.8
+Q0 = 3000000.0
+b = 0.2
+discover = { flour = 150000000.0, steel = 5500000.0, machinery = 1200000.0 }
+target = 1878
+group = "estates"
+stage = 2
+headline = "Steel rollers grind the wheat at {town}"
+story = "{who} sets steel rollers turning by steam in a mill six floors high at {town}. The flour is white, and the grain can come from anywhere."
+
+# At base prices: sells 5.00; inputs 1.50, heat 0.00, labour 0.70 (0.28 at a wage of 2.5); cost 2.20; margin
+# +2.80 (56%).
+# Plant 52.4 a unit of monthly capacity, 10.5 months of output; about 50 hands at K0.
+# At the game's prices of 1775 (the year the reckoning finds it; its good then sells at 13.94): a new works
+# at 0.4 K0 needs 14.60 when found, 12.59 once know-how is 0.6, 11.09 at 1 (1.05, 0.90, 0.80 of the going
+# price). Its smallest works is 1% of the island's trade that year.
+[[method]]
+name = "water_wool_mill"
+label = "Water-powered woollen mill"
+output = "cloth"
+inputs = { wool = 1.0 }
+heat = 0.0
+labor = 0.28
+capital = { stone = 20, lumber = 12, machinery = 0.2 }
+K0 = 100.0
+known = false
+A0 = 0.9
+Q0 = 30000.0
+b = 0.15
+discover = { cloth = "x22", machinery = 3000.0 }
+target = 1775
+site = { field = "power", kw = 25.0 }
+group = "textiles"
+stage = 2
+headline = "A mill on the stream at {town}"
+story = "{who} sets carding engines and jennies to a waterwheel above {town}. The valley was chosen for its fall of water, not for its roads, and the hands walk to it."
+
+# At base prices: sells 2.20; inputs 1.08, heat 0.00, labour 0.40 (0.16 at a wage of 2.5); cost 1.48; margin
+# +0.72 (33%).
+# Plant 9.4 a unit of monthly capacity, 4.3 months of output; about 58 hands at K0.
+# Timber 1.35 and labour 0.16 after the critique (1.3 and 0.08 gave a margin of 44 per cent, the best
+# business of 1750, and a steam sawmill that was never built). What keeps the saw pit alive beside it is the
+# stream's capacity.
+[[method]]
+name = "water_sawmill"
+label = "Water sawmill"
+output = "lumber"
+inputs = { timber = 1.35 }
+heat = 0.0
+labor = 0.16
+capital = { timber = 8, stone = 3, iron = 0.2 }
+K0 = 200.0
+known = true
+site = { field = "power", kw = 8.0 }
+seed = true
+group = "building"
+stage = 2
+
+# ====================================================================================================
+# STAGE 3. Needs foreign trade at the ports.
+# ====================================================================================================
+
+# At base prices: sells 6.00; inputs 2.42, heat 0.00, labour 2.50 (1 at a wage of 2.5); cost 4.92; margin
+# +1.08 (18%).
+# Plant 10.0 a unit of monthly capacity, 1.7 months of output; about 108 hands at K0.
+[[method]]
+name = "fustian_weaving"
+label = "Fustian weaving"
+output = "cottons"
+inputs = { cotton = 1.1 }
+heat = 0.0
+labor = 1.0
+capital = { timber = 12.5 }
+K0 = 60.0
+known = true
+seed = true
+group = "textiles"
+stage = 3
+
+# At base prices: sells 6.00; inputs 2.20, heat 0.00, labour 0.70 (0.28 at a wage of 2.5); cost 2.90; margin
+# +3.10 (52%).
+# Plant 52.4 a unit of monthly capacity, 8.7 months of output; about 60 hands at K0.
+# At the game's prices of 1771 (the year the reckoning finds it; its good then sells at 14.40): a new works
+# at 0.4 K0 needs 14.19 when found, 12.26 once know-how is 0.6, 10.83 at 1 (0.99, 0.85, 0.75 of the going
+# price). Its smallest works is 2% of the island's trade that year.
+[[method]]
+name = "water_frame_mill"
+label = "Water-frame cotton mill"
+output = "cottons"
+inputs = { cotton = 1.0 }
+heat = 0.0
+labor = 0.28
+capital = { stone = 20, lumber = 12, machinery = 0.2 }
+K0 = 120.0
+known = false
+A0 = 0.9
+Q0 = 30000.0
+b = 0.15
+discover = { cottons = 380000.0, machinery = 2200.0 }
+target = 1771
+site = { field = "power", kw = 25.0 }
+group = "textiles"
+stage = 3
+headline = "Cotton spun by water at {town}"
+story = "{who} spins cotton on frames driven by a wheel, day and night, in a mill five storeys high above {town}. The hands are mostly children."
+
+# At base prices: sells 6.00; inputs 1.96, heat 0.15, labour 0.15 (0.06 at a wage of 2.5); cost 2.26; margin
+# +3.74 (62%).
+# Plant 46.5 a unit of monthly capacity, 7.8 months of output; about 108 hands at K0.
+# At the game's prices of 1804 (the year the reckoning finds it; its good then sells at 7.21): a new works
+# at 0.4 K0 needs 8.40 when found, 7.57 once know-how is 0.6, 6.93 at 1 (1.17, 1.05, 0.96 of the going
+# price). Its smallest works is 4% of the island's trade that year.
+[[method]]
+name = "steam_cotton_mill"
+label = "Steam cotton mill"
+output = "cottons"
+inputs = { cotton = 0.85, chemicals = 0.02 }
+heat = 0.4
+labor = 0.06
+capital = { bricks = 12, iron = 0.5, glass = 0.1, machinery = 0.3 }
+K0 = 1000.0
+known = false
+A0 = 1.0
+Q0 = 300000.0
+b = 0.2
+discover = { cottons = 2900000.0, machinery = 17000.0, iron = 700000.0 }
+target = 1805
+group = "textiles"
+stage = 3
+headline = "Mules by steam at {town}"
+story = "{who} drives spinning mules and power looms from one engine at {town}. The mill stands where coal is cheap, and the chimney is taller than the church."
+
+# Needs foreign trade, whose ocean freight it cuts from 0.25 to 0.10.
+[[tech]]
+name = "ocean_steamers"
+label = "Ocean steamers"
+discover = { machinery = 550000.0, steel = 3100000.0, coal = 170000000.0 }
+target = 1866
+stage = 3
+headline = "A steamer on the ocean run from {town}"
+story = "{who} sends an iron screw steamer from {town} across the ocean and back on its own coal. Freight from the far side of the world falls year by year, and the grain and the cotton come cheaper."
+
+# World prices, in world money. The island's exchange factor floats to balance trade, so only the
+# ratios matter. Guesses: fit them to the island's running prices of 1750 so that trade opens near
+# balance, with cloth going out and cotton coming in. The cotton row has the famine of 1862 to 1865.
+[world]
+grain = [[1750, 0.55], [1840, 0.5], [1875, 0.3], [1900, 0.2]]
+timber = [[1750, 0.9], [1900, 0.75]]
+wool = [[1750, 2.1], [1850, 1.9], [1900, 1.3]]
+cotton = [[1750, 2.2], [1800, 1.9], [1860, 1.5], [1862, 3.6], [1866, 1.7], [1900, 1.3]]
+cloth = [[1750, 6.5], [1830, 5.0], [1900, 3.6]]
+cottons = [[1750, 6.0], [1800, 4.2], [1850, 2.8], [1900, 2.2]]
+iron = [[1750, 11.0], [1800, 8.0], [1850, 5.0], [1900, 3.5]]
+rails = [[1830, 22.0], [1870, 14.0], [1900, 9.0]]
+machinery = [[1800, 110.0], [1850, 70.0], [1900, 38.0]]
+coal = [[1750, 0.8], [1900, 0.8]]
+pottery = [[1750, 3.0], [1850, 2.2], [1900, 2.0]]
+ocean_freight = 0.25        # per unit of weight, in world money, each way
+steam_freight = 0.1        # once ocean steamers are known
+
+# How deep the world's market is for what the island sells: [units a month in 1750, yearly growth].
+# The world pays world / (1 + exports / depth).
+[world.depth]
+cloth = [4000.0, 0.008]
+cottons = [8000.0, 0.02]
+iron = [1500.0, 0.02]
+rails = [300.0, 0.02]
+machinery = [40.0, 0.025]
+coal = [30000.0, 0.015]
+grain = [30000.0, 0.0]
+wool = [5000.0, 0.0]
+pottery = [1500.0, 0.01]
+
+# ====================================================================================================
+# STAGE 4. Needs improvements as data: an invention with sectors, inputs and boost, bought where it pays
+# (the machines rule made general).
+# ====================================================================================================
+
+[[tech]]
+name = "liming"
+label = "Liming"
+known = true
+sectors = ["farm", "pasture", "garden"]
+inputs = { lime = 0.012 }
+boost = 0.1
+stage = 4
+headline = "Lime on the fields at {town}"
+story = "Farmers around {town} cart burnt lime onto sour land. Clover takes where it never would."
+
+[[tech]]
+name = "deep_mining"
+label = "Deep mining"
+sectors = ["ironmine", "coalmine"]
+inputs = { machinery = 0.0003, lumber = 0.015 }
+boost = 0.5
+discover = { coal = 50000000.0, machinery = 30000.0 }
+target = 1815
+stage = 4
+headline = "A winding engine at {town}"
+story = "{who} sinks a shaft three hundred yards at {town}, with an engine to wind the cage, props of sawn larch under the roof and a lamp that does not fire the gas. The seams the old pits could not reach are opened."
+
+[[tech]]
+name = "tile_drainage"
+label = "Tile drainage"
+sectors = ["farm", "garden"]
+inputs = { bricks = 0.012 }
+boost = 0.15
+discover = { grain = "x175", machinery = 130000.0 }
+target = 1843
+stage = 4
+headline = "Clay pipes under the fields at {town}"
+story = "Heavy land around {town} is drained with miles of fired clay pipe. Fields that stood wet till May are sown in March."
+
+[[tech]]
+name = "artificial_manures"
+label = "Artificial manures"
+sectors = ["farm", "pasture", "garden"]
+inputs = { chemicals = 0.004 }
+boost = 0.25
+discover = { chemicals = 1500000.0, grain = "x200" }
+target = 1850
+stage = 4
+headline = "Manure from a factory at {town}"
+story = "{who} dissolves bones in acid and sells the result by the sack. Farmers around {town} buy fertility instead of making it."
+
+[[tech]]
+name = "mine_haulage"
+label = "Mechanical haulage"
+sectors = ["ironmine", "coalmine"]
+inputs = { machinery = 0.0003, steel = 0.002 }
+boost = 0.5
+discover = { steel = 4600000.0, coal = 190000000.0 }
+target = 1868
+stage = 4
+headline = "Wire ropes underground at {town}"
+story = "Steel ropes and fans driven from the surface haul the tubs and the air through the pits around {town}. A hewer cuts coal all shift instead of pushing it."
+
+# With the ships good (stage 5) the inputs become { ships = 0.0006 }.
+[[tech]]
+name = "fishing_smacks"
+label = "Fishing smacks"
+known = true
+sectors = ["fishery"]
+inputs = { lumber = 0.02, cloth = 0.002 }
+boost = 0.5
+stage = 4
+headline = "A fishing fleet at {town}"
+story = "Decked smacks from {town} stay out for days and bring the catch home in wells of sea water."
+
+# With the ships good (stage 5) the inputs become { ships = 0.0012, coal = 0.08 }.
+[[tech]]
+name = "steam_trawling"
+label = "Steam trawling"
+sectors = ["fishery"]
+inputs = { coal = 0.08, machinery = 0.0002, steel = 0.002 }
+boost = 1.0
+discover = { fish = 120000000.0, steel = 7300000.0, coal = 270000000.0 }
+target = 1882
+stage = 4
+headline = "Steam trawlers out of {town}"
+story = "{who} fits a trawler with an engine and ice. The boats work grounds three days out, and the fish goes inland by the night train."
+
+# ====================================================================================================
+# STAGE 5. Needs fleets: sea carriage that buys ships. The thirty-first good; leave it out if fleets are not
+# built.
+# ====================================================================================================
+
+# At base prices: sells 160.00; inputs 89.00, heat 0.00, labour 40.00 (16 at a wage of 2.5); cost 129.00;
+# margin +31.00 (19%).
+# Plant 142.0 a unit of monthly capacity, 0.9 months of output; about 14 hands at K0.
+[[method]]
+name = "shipyard"
+label = "Shipwright's yard"
+output = "ships"
+inputs = { lumber = 30.0, iron = 1.5, cloth = 2.0, tools = 0.5 }
+heat = 0.0
+labor = 16.0
+capital = { lumber = 40, stone = 10, tools = 6 }
+K0 = 0.5
+known = true
+site = { field = "harbour", weight = 0.0 }
+seed = true
+group = "engineering"
+stage = 5
+
+# At base prices: sells 160.00; inputs 77.60, heat 1.13, labour 15.00 (6 at a wage of 2.5); cost 93.73;
+# margin +66.27 (41%).
+# Plant 456.0 a unit of monthly capacity, 2.9 months of output; about 108 hands at K0.
+# At the game's prices of 1845, against the older yard at twice its usual size (454 a ship): a new yard at
+# 0.4 K0 needs 486 when found, 400 once know-how is 0.6, 337 at 1 (1.07, 0.88, 0.74 of it).
+# Iron 7 and labour 6 a ship (they were 5 and 4) and a clumsier start, after the critique: as drafted it
+# halved the price of ships in the year it was found.
+[[method]]
+name = "iron_shipyard"
+label = "Iron shipyard"
+output = "ships"
+inputs = { iron = 7.0, steel = 0.5, lumber = 3.0, machinery = 0.2 }
+heat = 3.0
+labor = 6.0
+capital = { bricks = 60, stone = 30, tools = 15, machinery = 3 }
+K0 = 10.0
+known = false
+A0 = 0.65
+Q0 = 5000.0
+b = 0.2
+discover = { ships = 15000.0, iron = 2700000.0, machinery = 120000.0 }
+target = 1845
+site = { field = "harbour", weight = 0.0 }
+group = "engineering"
+stage = 5
+headline = "An iron ship launched at {town}"
+story = "{who} rivets a hull of iron plate on the slip at {town} and puts an engine in it. Old captains come to watch it sink. It does not."
+
+# At base prices: sells 160.00; inputs 110.80, heat 0.75, labour 3.00 (1.2 at a wage of 2.5); cost 114.55;
+# margin +45.45 (28%).
+# Plant 488.0 a unit of monthly capacity, 3.0 months of output; about 65 hands at K0.
+# At the game's prices of 1882, against the older yard at twice its usual size (114 a ship): a new yard at
+# 0.4 K0 needs 115 when found, 97 once know-how is 0.6, 84 at 1 (1.01, 0.85, 0.74 of it).
+[[method]]
+name = "steel_shipyard"
+label = "Steel shipyard"
+output = "ships"
+inputs = { steel = 3.0, lumber = 1.5, machinery = 0.25 }
+heat = 2.0
+labor = 1.2
+capital = { bricks = 60, steel = 3, machinery = 3, tools = 10 }
+K0 = 30.0
+known = false
+A0 = 1.0
+Q0 = 20000.0
+b = 0.2
+discover = { ships = 40000.0, steel = 6900000.0 }
+target = 1882
+site = { field = "harbour", weight = 0.0 }
+group = "engineering"
+stage = 5
+headline = "A steel ship on the slip at {town}"
+story = "{who} builds in mild steel under a forest of cranes at {town}. The hull is a fifth lighter and the triple-expansion engine burns half the coal."
+
+# ====================================================================================================
+# WATER. Inventions that belong to mechanisms of their own (floods and banks, reservoirs); each says what it
+# needs. Canals are not here: the canals mechanism has its own clock.
+# ====================================================================================================
+
+# Needs the generator's `floodplain`: it lifts only cells that flood, and takes their flood years away.
+[[tech]]
+name = "embanking"
+label = "Embanking and draining"
+sectors = ["farm", "garden"]
+inputs = { lumber = 0.004, bricks = 0.004 }
+boost = 0.2
+discover = { grain = "x47" }
+target = 1790
+stage = 6
+headline = "The river banked at {town}"
+story = "{who} raises a bank along the river below {town} and cuts drains to a sluice. The water meadows that flooded two years in five go under the plough."
+
+# Needs reservoirs, and a hook in the people rule's town deaths.
+[[tech]]
+name = "waterworks"
+label = "Town waterworks"
+discover = { iron = 3000000.0, machinery = 140000.0 }
+target = 1848
+stage = 6
+headline = "Water from the hills for {town}"
+story = "{who} dams a valley in the hills and brings its water to {town} in an iron main. The pumps in the churchyards are chained up, and the fever years stop."
+
