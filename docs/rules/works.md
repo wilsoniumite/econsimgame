@@ -72,6 +72,9 @@ at what it bid when it was a tenth of the size.
 return more than a works there would get. `works::entry_spread` takes it off
 the price entry reckons with. The families' site sums come from the same
 function, so the player's "expected return" is now the return a works gets.
+With this part alone switched off (eight seeds) 35 per cent more works are
+founded and 41 per cent more close, a year and a half younger, for the same
+output: the works the false promise called up.
 
 **D. A year's room for new capacity** (`year_room` 0.15, `room_share` 0.34,
 `entry_share` 0.10). Each trade in each town may order in a year at most 15 per
@@ -90,7 +93,11 @@ This is the part that decides how hard the island invests. Without it (four
 seeds, no families) output per head reads a third higher but the real wage is
 no higher, a quarter of all capacity stands idle and twice as many works close.
 Most of the extra looks like capital goods for capacity that then stands idle
-(I did not take the accounts apart).
+(I did not take the accounts apart). A room of 0.3 instead of 0.15 (eight
+seeds, `sweep-works-room30`) gives output per head 3 to 6 per cent higher in
+1800 and 1850 and the same in 1900, no gain in the real wage, a quarter more
+closures, a fifth more industry cells, and prices that swing 8 to 17 per cent
+harder (grain and cloth in every seed). 0.15 is the steadier place to stand.
 
 **E. A growing family branch extends a works it has** (`family_extends`). In
 `families::grow`, where the branch would have founded another works of a
@@ -278,10 +285,10 @@ ways (seed 1: 31 to 38m in the port, 24 to 49m here).
   year's room holds it there; the price rule is the cure.
 - **The converter is never built** (0 seeds of 8, with or without families;
   the port builds it in 3 of 8 and 2 of 8, after 1883, and it never makes half
-  the steel). My guess is that with the spread counted a site for it does not
-  clear the hurdle; I did not check. Steel rails are made in 3 seeds of 8 with
-  families and none without (the port: none and 1). Steel needs its own fix,
-  not a flattering sum.
+  the steel). It is not the spread: with the spread left out of entry's sums
+  it is built in one seed of eight, and with a year's room of 0.3 in one. I
+  did not find the cause. Steel rails are made in 3 seeds of 8 with families
+  and none without (the port: none and 1). Steel needs its own fix.
 - **Coke iron and engine works come 6 to 12 years later, mills 6 to 9 years
   earlier.** Discovery follows cumulative output, and under these rules the
   1750s make a third more cloth, a tenth less iron, two fifths less coal and
