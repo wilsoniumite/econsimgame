@@ -154,6 +154,115 @@ Two things do not follow, and I report them as they are:
   most of what there is to save; what the branches save is about the size of
   what they cost.
 
+## In company
+
+Carting was merged into the game's rules with the game's railways
+(`railways.md`), after the merchants' prices, the Engel curve, the machines,
+the harvests, the chronicle and the life cycle for works. The integration's
+sweeps are under `.claude/night/reports/core-steps/`: `railways-before` and
+`railways-after` (the game's rules with six families on seeds 1 to 6, before
+the merge and after), `railways-x-2x2` and `railways-x-2x2-s7-12` (seeds 1
+to 6 and 7 to 12 with `carting.enabled` and `railways.enabled` each off and
+on), `railways-x-less-NAME` (carting off and on with one other mechanism
+switched off) and `railways-x-labor05`. No run failed; with both switches
+off every fact of every seed is what it was before the merge.
+
+**How many carters.** Twelve seeds, six families:
+
+| | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|
+| carters over all hands, the port's railways | 0.140 | 0.142 | 0.098 | 0.082 |
+| the same with the game's railways | 0.140 | 0.142 | 0.086 | 0.066 (0.049 to 0.082) |
+| carting bill over output, the game's railways | 0.100 | 0.096 | 0.054 | 0.045 |
+
+A seventh of all hands before the railway (an eighth alone), and by 1900
+the game's branches leave a fifth fewer on the road than the port's trunks.
+
+**The level, and a slower middle of the century.** Carting on against
+carting off, the port's railways in both, seed for seed on twelve seeds;
+then the game as it now stands (carting and the game's railways) against
+the game before the merge:
+
+| | carting off | carting on | higher/lower | the game now |
+|---|---|---|---|---|
+| baskets per head 1750 | 1.66 | 1.50 (minus 10%) | 0/12 | 1.50 |
+| 1800 | 3.26 | 3.03 (minus 7%) | 1/11 | 3.02 |
+| 1850 | 6.54 | 4.87 (minus 26%) | 0/12 | 4.88 |
+| 1900 | 8.86 | 8.27 (minus 7%) | 2/10 | 8.56 (minus 3%) |
+| goods per head 1750 | 2.78 | 2.47 (minus 11%) | 0/12 | 2.47 |
+| 1800 | 4.81 | 4.45 (minus 7%) | 1/11 | 4.45 |
+| 1850 | 8.81 | 7.22 (minus 18%) | 0/12 | 7.18 |
+| 1900 | 11.78 | 10.94 (minus 7%) | 0/12 | 11.34 (minus 4%) |
+| urban share 1750, 1900 | 0.249, 0.450 | 0.210, 0.412 | 0/12 | 0.210, 0.420 |
+| people in 1900 | 682,000 | 671,000 | 0/12 | 672,000 |
+| years in which most people's towns grew at the cap | 0.997 | 0.962 | 0/11 | 0.962 |
+| towns in 1900 | 16.8 | 15.7 | 1/6 | 15.7 |
+| works standing in 1900 | 718 | 676 | 1/11 | 667 |
+| famine years in a run | 1.7 | 3.3 | 10/0 | 2.0 |
+
+At both ends of the run this is what carting does alone: an island a tenth
+poorer at the start and a fifteenth at the end, four points less urban, a
+little short of the cap, and the port's railways bringing famines that the
+game's do not. With the game's railways the end is 3 or 4 per cent under
+the game before, not 7: the branches give back half of what the carters
+cost (`railways.md`, "In company").
+
+The middle is not what it does alone. The game before the merge has a steep
+rise from the 1830s to the 1860s, when farm machinery arrives; with carters
+real that rise comes about ten years later and is still going in the 1890s.
+The households' budget over the cost of subsistence, by decade, twelve seeds
+(the game before, then the game now):
+
+| | 1800s | 1810s | 1820s | 1830s | 1840s | 1850s | 1860s | 1870s | 1880s | 1890s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| before | 3.42 | 3.63 | 3.91 | 4.36 | 5.57 | 7.29 | 8.53 | 8.96 | 9.05 | 8.82 |
+| now | 3.16 | 3.33 | 3.49 | 3.60 | 4.12 | 5.51 | 7.06 | 8.10 | 8.39 | 8.46 |
+| now over before | 0.92 | 0.92 | 0.89 | 0.83 | 0.74 | 0.76 | 0.83 | 0.90 | 0.93 | 0.96 |
+
+Machinery tells it: 341 units a month in the 1820s for 569 and 483 in the
+1830s for 789, two fifths less, then 1,311 for 1,634 in the 1850s and 2,732
+for 2,775 in the 1890s. The reading of 1850 falls in the steepest part of
+the rise, which is why it looks so much worse than a tenth.
+
+Taking the other mechanisms away one at a time (seeds 1 to 6, the baskets of
+1850 with carting over without) says where it comes from: minus 34 per cent
+with everything on; minus 9 without the life cycle for works, which is the
+level shift again; minus 14 without the merchants' prices; minus 2 without
+the machines, where there is no rise to delay (3.6 baskets either way);
+minus 38 and minus 29 without the Engel curve and without the harvests,
+which have no part in it. So it is the machines' rise, delayed where works
+grow at the pace of the year's room (`works.md`, D): a tenth less trade is a
+tenth less room every year, the engine works come later and the thresholds
+that farm machinery waits on are reached later. On seeds 1 to 6 the first
+engine works make machinery twelve years later with carting (five seeds of
+six) and farm machinery is found fifteen years later (five of six); without
+the life cycle neither date moves. It is not the same on every island: on
+seeds 7 to 12 neither date moves with everything on, and the baskets of
+1850 are 16 per cent down, not 34. Nothing is broken in it (no failed run,
+no price at a floor or a ceiling, the money check holds), and each
+mechanism is doing what its page says, but together they move the island's
+steepest decades by about ten years. Whether the game wants that is a
+question of pacing for Stella, so `labor` stays at 1 as it was reviewed.
+It is the dial: at 0.5 (`railways-x-labor05`, seeds 1 to 6) carters are 7.6 per
+cent of hands in 1800 and 3.3 in 1900, and the baskets of 1750, 1850 and
+1900 are 1.54, 6.08 and 8.61, where 1 gives 1.48, 4.86 and 8.50 and no
+carting 1.65, 7.30 and 8.94: half the gap of 1850 closes.
+
+Because a run with carting starts lower, the ratios to a run's own 1750 hide
+all of this (the real wage of 1900 is 2.77 times 1750's now and was 2.86).
+Baskets and goods per head are the facts to read.
+
+**The scripted players** (`examples/bots.rs` on seeds 1, 2, 3 and 7, the
+whole game; `core-steps/railways-probe/bots-game.txt`, against
+`works-probe/bots-game.txt` from before the merge) finish all sixteen games.
+The player's rank in 1900 is what it was or a place better in fourteen of
+them (the landlord is first on every seed, as before); on seed 7 the passive
+player rises from fourth to first and the founder falls from third to
+fourth. In
+money everyone ends richer, the player more than the rivals: 23 to 76
+million for 19 to 48, the richest rival 20 to 71 for 17 to 47. One game
+each, so this says the family game still plays, not which way it leans.
+
 ## What worries me
 
 - **All of the bill is counted as men's time.** Horses, fodder, wagons and
