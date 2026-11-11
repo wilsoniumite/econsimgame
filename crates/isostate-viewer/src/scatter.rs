@@ -99,7 +99,7 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
                         z,
                         wcell: wc as u32,
                         sub,
-                        place: if placed { world::place_at(g, x, z) } else { world::Place { parcel: 0, beyond: 0, lean: 0 } },
+                        place: if placed { world::place_at(g, x, z) } else { world::Place::default() },
                         u: world::hash2(id, 3, seed),
                         v: world::hash2(id, 4, seed),
                         yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
@@ -740,10 +740,19 @@ pub struct YearMeshes {
 }
 
 pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
-    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk, lod))
+    build_year_on(r, g, slots, cen, k, lk, lod, &world::year_land(r, g, k))
 }
 
-fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
+/// (task C, the land) The year's scenery on a year's land already worked out
+/// (`world::year_land`), so that one reckoning of it serves the ground's
+/// textures and the scenery.
+#[allow(clippy::too_many_arguments)]
+pub fn build_year_on(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, land: &world::YearLand) -> YearMeshes {
+    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk, lod, land))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, land: &world::YearLand) -> YearMeshes {
     let mut trees: [Greenery; LEAF_GROUPS] = Default::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
@@ -795,7 +804,6 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // out away from it; and the margin a wood leaves to the fields is scrub.
     // Trees stand in stands, taller in one and lower in the next, and the
     // conifers gather on high and poor ground, the broadleaves on the low.
-    let land = world::year_land(r, g, k);
     for s in &slots.trees {
         let (cls, margin) = land.at(s.place);
         if !(world::FARM..=world::HEATH).contains(&cls) {
@@ -815,8 +823,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let clump = fields_smooth(0.6, 0.78, 0.5 + 0.5 * world::vnoise(s.x * 5.1, s.z * 5.1, 451));
         let stand = 0.5 + 0.5 * world::vnoise(s.x * 2.9 + 3.1, s.z * 2.9 + 8.7, 457);
         let (grow, scale) = match cls {
-            world::WOOD | world::HEATH if margin => {
-                // scrub on the margin: bushes, and a low tree here and there
+            _ if margin => {
+                // scrub just outside a wood or a heath: bushes, and a low tree here and there
                 if u2 < 0.3 && !near_plot(s.x, s.z) {
                     bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
                 }

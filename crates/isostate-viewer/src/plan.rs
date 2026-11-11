@@ -135,8 +135,8 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
     for year in [1750, 1800, 1850, 1900] {
         let k = ((year - r.y0).max(0) as usize).min(r.filled.clamp(1, r.ny) - 1);
         let land = world::year_land(r, g, k);
-        // per district: the record's areas, the drawn, and the cell rule's
-        let mut sums = vec![[[0.0f64; 4]; 3]; dw * dh];
+        // per district: the record's areas, the drawn (by parcels), the cell rule's, and the painted
+        let mut sums = vec![[[0.0f64; 4]; 4]; dw * dh];
         let mut cells = vec![0usize; dw * dh];
         for c in 0..r.n {
             if r.terrain[c] == 0 {
@@ -164,9 +164,9 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
             let t: f64 = v.iter().sum::<f64>().max(1e-9);
             v.map(|x| 100.0 * x / t)
         };
-        let mut all = [[0.0f64; 4]; 3];
+        let mut all = [[0.0f64; 4]; 4];
         for d in &sums {
-            for w in 0..3 {
+            for w in 0..4 {
                 for t in 0..4 {
                     all[w][t] += d[w][t];
                 }
@@ -177,38 +177,49 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         for t in 0..4 {
             eprintln!("  {:8} {:5.1} / {:5.1} / {:5.1}", names[t], rec[t], drawn[t], old[t]);
         }
-        // the same as it is painted, with the edges of the woods and heaths leaning across
-        // the parcels' sides: the class under ten points each way to a cell
+        // the same as it is painted, spot by spot (`YearLand::at`): wood and heath where their
+        // fields stand, whatever the parcel; the class under ten points each way to a cell.
+        // The scrubby ground just outside a wood or a heath is farmed land, and is also counted apart.
         let grid = 10;
-        let counts = (0..r.h * grid)
+        let rows: Vec<Vec<(usize, usize)>> = (0..r.h * grid)
             .into_par_iter()
             .map(|j| {
-                let mut n = [0.0f64; 5];
+                let mut out = Vec::new();
                 for i in 0..r.w * grid {
                     let (x, z) = ((i as f32 + 0.5) / grid as f32, (j as f32 + 0.5) / grid as f32);
                     if world::height_at(g, x, z) > 0.02 {
-                        let (cls, margin) = land.at(world::place_at(g, x, z));
+                        // under the snow that lies all summer the land is painted as moor, whatever
+                        // its parcel is: that is the snow's doing, not the edges', so there the
+                        // parcel's own class is counted
+                        let pl = world::place_at(g, x, z);
+                        let (cls, scrub) = if pl.snow { (land.class[pl.parcel as usize], false) } else { land.at(pl) };
                         if (world::FARM..=world::HEATH).contains(&cls) {
-                            n[if margin { 4 } else { (cls - world::FARM) as usize }] += 1.0;
+                            out.push((district(x, z), (cls - world::FARM) as usize + if scrub { 4 } else { 0 }));
                         }
                     }
                 }
-                n
+                out
             })
-            .reduce(|| [0.0; 5], |a, b| std::array::from_fn(|t| a[t] + b[t]));
+            .collect();
+        let (mut counts, mut scrubby) = ([0.0f64; 4], 0.0f64);
+        for &(d, t) in rows.iter().flatten() {
+            counts[t % 4] += 1.0;
+            scrubby += (t / 4) as f64;
+            sums[d][3][t % 4] += 1.0;
+        }
         let all_painted: f64 = counts.iter().sum::<f64>().max(1.0);
-        eprintln!("  as painted, with the edges of wood and heath leaning: {}, and their margins of rough grass {:.1}",
-            (0..4).map(|t| format!("{} {:.1}", names[t], 100.0 * counts[t] / all_painted)).collect::<Vec<_>>().join(", "), 100.0 * counts[4] / all_painted);
+        eprintln!("  as painted, spot by spot: {}, of the farmed land the rough ground just outside a wood or a heath {:.1}",
+            (0..4).map(|t| format!("{} {:.1}", names[t], 100.0 * counts[t] / all_painted)).collect::<Vec<_>>().join(", "), 100.0 * scrubby / all_painted);
         // the districts that are mostly land: how far each class's share is out, in points of the open land
-        let (mut n, mut mean, mut worst) = (0, [0.0f64; 2], [0.0f64; 2]);
-        let mut by_class = [[0.0f64; 4]; 2];
+        let (mut n, mut mean, mut worst) = (0, [0.0f64; 3], [0.0f64; 3]);
+        let mut by_class = [[0.0f64; 4]; 3];
         for (d, s) in sums.iter().enumerate() {
             if cells[d] < D * D * 3 / 4 || s[0].iter().sum::<f64>() < 4.0 {
                 continue;
             }
             n += 1;
             let rec = share(&s[0]);
-            for (w, which) in [1, 2].into_iter().enumerate() {
+            for (w, which) in [1, 2, 3].into_iter().enumerate() {
                 let got = share(&s[which]);
                 for t in 0..4 {
                     let e = (got[t] - rec[t]).abs();
@@ -223,6 +234,8 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         eprintln!("  by class, on average: {} (the cell rule: {})",
             (0..4).map(|t| format!("{} {:.1}", names[t], by_class[0][t] / nn)).collect::<Vec<_>>().join(", "),
             (0..4).map(|t| format!("{} {:.1}", names[t], by_class[1][t] / nn)).collect::<Vec<_>>().join(", "));
+        eprintln!("  as painted, over the same districts: out by {:.1} points on average and {:.1} at worst; by class {}", mean[2] / nn, worst[2],
+            (0..4).map(|t| format!("{} {:.1}", names[t], by_class[2][t] / nn)).collect::<Vec<_>>().join(", "));
     }
     std::process::exit(0);
 }
@@ -270,6 +283,8 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) {
                     "moor" => g.land.moor[i],
                     "lea" => g.land.lea[i],
                     "wood" => land.wood[i] as f32 / 255.0,
+                    "woods" => land.fields(world::place_at(g, x, z)).0.clamp(0.0, 1.0),
+                    "heaths" => land.fields(world::place_at(g, x, z)).1.clamp(0.0, 1.0),
                     "ley" => g.land.ley[i] as f32 / 255.0,
                     "soil" => g.land.soil[i] as f32 / 255.0,
                     "depth" => (g.land.depth[i] as f32 - 3.0) / 3.0,

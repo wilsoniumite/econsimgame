@@ -135,6 +135,16 @@ shore_far = "#f0e2b4"
 # the canopy of a broadleaf wood in October, from as far off: the gold of its
 # trees (tint_autumn over the broadleaf greens, in [foliage]), a little shaded
 wood_canopy_autumn = "#a8883e"
+# the rough grass of the hill margins: what a pasture's grass goes toward as it
+# nears the moor and as the ground rises, and what the moor's own edge goes
+# toward, so that the two meet without a line
+moor_grass = "#a3b36b"
+# bracken, which breaks the line between the intakes and the moor: green in
+# summer, rust from October to spring
+bracken = "#7c9a4c"
+bracken_autumn = "#a9794a"
+# rushes in the wet of a rough pasture
+rushes = "#6d8a50"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).
