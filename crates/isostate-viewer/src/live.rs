@@ -328,6 +328,7 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         series_len,
         filled: 0,
         owner: Vec::new(),
+        workings: Vec::new(),
     }
 }
 
@@ -431,6 +432,25 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         }
     }
 
+    // the year's quarries, pits and mines, where the rules keep them as workings
+    if !y.workings.is_empty() {
+        if r.workings.len() < ny {
+            r.workings.resize(ny, Vec::new());
+        }
+        r.workings[k] = y
+            .workings
+            .iter()
+            .map(|w| replay::Working {
+                cell: w.cell as u32,
+                class: replay::sector_class(w.sector),
+                opened: w.opened,
+                hands: w.hands,
+                out: w.out,
+                heap: w.heap,
+                surface: w.surface,
+            })
+            .collect();
+    }
     if !y.cell_owner.is_empty() {
         if r.owner.is_empty() {
             r.owner = vec![-1; ny * n];

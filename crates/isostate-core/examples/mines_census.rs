@@ -20,15 +20,18 @@
 //! - output a month, the price (the country's mean), and what the workings
 //!   paid their landowners a month (the royalty: what is left of the sale
 //!   after the merchant, the carting and the wages);
-//! - where: the hands' mean path cost to their market, their mean height, and
-//!   beside it the mean height of the whole deposit (weighted by richness), so
-//!   that "at the foot of the hill" can be read off: hands below the deposit's
-//!   mean stand on its lower edge.
+//! - where: the hands' mean path cost to their market and their mean height
+//!   (0 the shore, 1 the highest summit); the mean height of the deposit they
+//!   work (the cells of each working's lease, by what each gives); and the
+//!   mean height of the whole deposit, by richness. A pit head below the
+//!   deposit it works stands at the foot of its hill.
 //!
 //! Under it, the land in each use, the share of all hands in each sector, farm
 //! output and the real wage. `--map SECTOR` prints the last seed's island in
 //! 1900 with that sector's workings on it (digits: tenths of the largest
-//! working's hands; `.` deposit not worked; `^` high ground; `T` a town).
+//! working's hands; `.` deposit not worked; `^` high ground; `T` a town;
+//! `=` a railway), and with `--trace` the first seed's sector year by year on
+//! stderr: workings open, opened and abandoned, hands, output and price.
 #![allow(non_snake_case)]
 
 use std::collections::BTreeMap;
@@ -50,6 +53,7 @@ struct Row {
     royalty: f64,
     dist: f64,
     height: f64,
+    worked_height: f64,
     deposit_height: f64,
 }
 
@@ -62,6 +66,8 @@ struct Mark {
     hands_share: Vec<f64>,
     grain: f64,
     real_wage: f64,
+    cpi: f64,
+    gdp_pc: f64,
     map: Vec<String>,
 }
 
@@ -87,7 +93,7 @@ fn mark(st: &State, C: &Content, P: &Params, k: usize, map_sector: Option<usize>
         hands_at[st.ex_sector[u] * N + st.ex_cell[u]] = st.ex_Lprev[u];
     }
     let employed: f64 = st.month_stats.employment.iter().sum::<f64>().max(1e-9);
-    let mut out = Mark { real_wage: series("real_wage"), grain: series("out_grain"), ..Mark::default() };
+    let mut out = Mark { real_wage: series("real_wage"), grain: series("out_grain"), cpi: series("cpi"), gdp_pc: series("gdp_pc"), ..Mark::default() };
     for s in 0..NS {
         let name = C.sector_name[s].as_str();
         let extractive = mines::is_extractive(name);
@@ -120,6 +126,11 @@ fn mark(st: &State, C: &Content, P: &Params, k: usize, map_sector: Option<usize>
             royalty: mines::royalty_month(st, C, P, s),
             dist: weighted(&|c| st.dcatch[c]),
             height: weighted(&|c| st.world.h[c]),
+            // the deposit a pit head works lies in the cells of its lease (its own cell, under the port)
+            worked_height: weighted(&|c| match mines::row(st, s).and_then(|r| st.mine_districts.get(&(r * N + c))) {
+                Some(cells) => cells.iter().map(|&(d, share)| share * st.world.h[d]).sum(),
+                None => st.world.h[c],
+            }),
             deposit_height: (0..N).filter(|&c| st.world.land[c]).map(|c| field[c] * st.world.h[c]).sum::<f64>() / fsum.max(1e-9),
         });
     }
@@ -157,6 +168,9 @@ fn mark(st: &State, C: &Content, P: &Params, k: usize, map_sector: Option<usize>
     out
 }
 
+/// The seed `--trace` follows year by year (none: u64::MAX).
+static TRACE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+
 fn census(P: &Params, C: Content, map_sector: Option<usize>) -> BTreeMap<i64, Mark> {
     let mut s = sim::start(P, C);
     let C = s.content.clone();
@@ -165,6 +179,32 @@ fn census(P: &Params, C: Content, map_sector: Option<usize>) -> BTreeMap<i64, Ma
     while s.year <= s.end_year {
         sim::run_year(&mut s).expect("money is conserved");
         let y = s.year - 1;
+        if let (Some(sec), true) = (map_sector, P.seed == TRACE.load(std::sync::atomic::Ordering::Relaxed)) {
+            // --trace: the sector year by year, for the first seed
+            let st = &s.st;
+            let k = (y - y0) as usize;
+            let series = |name: &str| -> f64 {
+                let v = &st.series.data[st.series.index[name]];
+                v[k * 12..k * 12 + 12].iter().sum::<f64>() / 12.0
+            };
+            let g = &C.good_name[C.sector_good[sec]];
+            let (mut open, mut new, mut left) = (0, 0, 0);
+            if let Some(r) = mines::row(st, sec) {
+                for c in 0..st.N {
+                    open += (st.mine_opened[r * st.N + c] != 0) as usize;
+                    new += (st.mine_opened[r * st.N + c] as i64 == y) as usize;
+                    left += (st.mine_left[r * st.N + c] as i64 == y) as usize;
+                }
+            }
+            let hands = st.month_stats.ex_labor_by_sector[sec];
+            eprintln!(
+                "{y} open {open:>4} new {new:>3} left {left:>3} hands {hands:>7.0} out {:>8.0} price {:>6.2} wage {:>6.2} cpi {:>5.2}",
+                series(&format!("out_{g}")),
+                series(&format!("price_{g}")),
+                series("wage"),
+                series("cpi")
+            );
+        }
         if (y - y0) % 50 == 0 || y == s.end_year {
             out.insert(y, mark(&s.st, &C, P, (y - y0) as usize, map_sector.filter(|_| y == s.end_year)));
         }
@@ -177,6 +217,7 @@ fn main() {
     let mut families = 0usize;
     let mut set: Option<String> = None;
     let mut map: Option<String> = None;
+    let mut trace = false;
     let mut seeds: Vec<u64> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -185,6 +226,7 @@ fn main() {
             "--families" => families = args.next().and_then(|v| v.parse().ok()).expect("--families N"),
             "--set" => set = Some(args.next().expect("--set JSON")),
             "--map" => map = Some(args.next().expect("--map SECTOR")),
+            "--trace" => trace = true,
             _ => seeds.push(a.parse().unwrap_or_else(|_| panic!("{a} is not a seed"))),
         }
     }
@@ -197,6 +239,9 @@ fn main() {
     }
     P.n_families = families;
     let C = rules.content();
+    if trace {
+        TRACE.store(seeds[0], std::sync::atomic::Ordering::Relaxed);
+    }
     let map_sector = map.as_ref().map(|m| C.sector_name.iter().position(|n| n == m).unwrap_or_else(|| panic!("{m} is not a sector")));
     let all: Vec<BTreeMap<i64, Mark>> = std::thread::scope(|sc| {
         let handles: Vec<_> = seeds
@@ -216,13 +261,13 @@ fn main() {
         let marks: Vec<&Mark> = all.iter().filter_map(|c| c.get(&y)).collect();
         println!("\n{y}");
         println!(
-            "{:<10}{:>9}{:>6}{:>9}{:>7}{:>9}{:>8}{:>8}{:>10}{:>7}{:>10}{:>6}{:>8}{:>9}",
-            "sector", "workings", "core", "surface", "most", "hands", "median", "largest", "output", "price", "royalty", "dist", "height", "deposit"
+            "{:<10}{:>9}{:>6}{:>9}{:>7}{:>9}{:>8}{:>8}{:>10}{:>7}{:>10}{:>6}{:>8}{:>8}{:>9}",
+            "sector", "workings", "core", "surface", "most", "hands", "median", "largest", "output", "price", "royalty", "dist", "height", "worked", "deposit"
         );
         for (j, &s) in ex.iter().enumerate() {
             let m = |f: &dyn Fn(&Row) -> f64| marks.iter().map(|k| f(&k.rows[j])).sum::<f64>() / n;
             println!(
-                "{:<10}{:>9.0}{:>6.0}{:>9.1}{:>7.2}{:>9.0}{:>8.0}{:>8.0}{:>10.0}{:>7.2}{:>10.0}{:>6.1}{:>8.2}{:>9.2}",
+                "{:<10}{:>9.0}{:>6.0}{:>9.1}{:>7.2}{:>9.0}{:>8.0}{:>8.0}{:>10.0}{:>7.2}{:>10.0}{:>6.1}{:>8.2}{:>8.2}{:>9.2}",
                 C.sector_name[s],
                 m(&|r| r.workings),
                 m(&|r| r.core),
@@ -236,6 +281,7 @@ fn main() {
                 m(&|r| r.royalty),
                 m(&|r| r.dist),
                 m(&|r| r.height),
+                m(&|r| r.worked_height),
                 m(&|r| r.deposit_height),
             );
         }
@@ -245,7 +291,13 @@ fn main() {
         println!("land, in cells: {}", area.join(", "));
         let hands: Vec<String> = (0..C.NS).map(|r| format!("{} {:.3}", names[r], mean(&|k| k.hands_share[r]))).collect();
         println!("share of all hands: {}", hands.join(", "));
-        println!("grain a month {:.0}, real wage {:.2}", mean(&|k| k.grain), mean(&|k| k.real_wage));
+        println!(
+            "grain a month {:.0}, real wage {:.2}, output per head {:.2}, cost of living {:.2}",
+            mean(&|k| k.grain),
+            mean(&|k| k.real_wage),
+            mean(&|k| k.gdp_pc),
+            mean(&|k| k.cpi)
+        );
     }
     if let Some(last) = all.last().and_then(|c| c.values().last()) {
         for line in &last.map {

@@ -598,8 +598,16 @@ fn towns_and_districts_have_stories() {
     // With carting and the game's railways merged (docs/rules/carting.md) the
     // digest is of the 1770s, three towns again, where two inventions, coke
     // iron's crossing and the family's new trade outweigh it.
+    // With the mines as workings (docs/rules/mines.md) seed 7's towns are spread
+    // thinner still, two to a decade at most (1761 and 1769; 1802 and 1807), so
+    // this game has no digest and the checks below have none to look at: what
+    // is held here is that a digest is filed for exactly the decades that have
+    // the towns for one.
     let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
-    assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
+    let min = r.params.chronicle.new_towns_min.max(1);
+    let founded_in = |d: i64| (0..r.state.T_max).filter(|&t| r.state.town_active[t] && (1750 + 10 * d..1760 + 10 * d).contains(&r.state.town_founded[t])).count();
+    let due: std::collections::BTreeSet<i64> = (0..5).filter(|&d| founded_in(d) >= min).collect();
+    assert_eq!(digests.iter().map(|e| decade(e)).collect::<std::collections::BTreeSet<i64>>(), due, "a digest for each decade of new towns, and no other");
     let mut decades = std::collections::BTreeSet::new();
     for digest in &digests {
         assert!(decades.insert(decade(digest)), "one digest a decade: {}", digest.title);

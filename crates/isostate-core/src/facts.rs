@@ -415,6 +415,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             b.num(format!("area_{name}_{y}"), Kind::Real, area);
         }
     }
+    // mines (docs/rules/mines.md): the workings, their hands, what they raise and what they pay
+    for (name, kind, v) in crate::mines::facts(r, g) {
+        b.num(name, kind, v);
+    }
     // of the cells urban in a year, the share not urban ten years on
     let mut churn = Vec::new();
     for k in 0..n.saturating_sub(10) {

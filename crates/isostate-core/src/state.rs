@@ -452,15 +452,30 @@ pub struct State {
     /// and the year the last one there was abandoned (0: never).
     pub mine_opened: Vec<i32>,
     pub mine_left: Vec<i32>,
-    /// (rows, N): everything raised from each cell's deposit so far.
+    /// `[r * N + cell]`: the years running the working there has stood idle.
+    pub mine_idle: Vec<u8>,
+    /// `[r * N + cell]`: the cell of the pit head that works this cell's deposit, or -1.
+    pub mine_head: Vec<i32>,
+    /// `[r * N + cell]`: everything raised at the pit head on this cell so far (its spoil heap).
+    pub mine_heap: Vec<f64>,
+    /// By `r * N + pit head's cell`: the cells whose deposit the working has,
+    /// each with its share of what is raised and of the royalty.
+    pub mine_districts: BTreeMap<usize, Vec<(usize, f64)>>,
+    /// (rows, N): everything raised from each cell's deposit so far, and the
+    /// cell's share of what its working raises.
     pub mine_dug: Mat,
-    /// (rows, N): the royalty each deposit is believed to pay before its crew,
-    /// in its town's wages a month (the last few years' promise, smoothed).
+    pub mine_share: Mat,
+    /// (rows, N): the royalty a pit head on each cell is believed to pay before
+    /// its crew, in its town's wages a month (the last few years' promise,
+    /// smoothed; for a working at work, this year's).
     pub mine_promise: Mat,
+    /// (rows, N): the F of each working (`mines.rs`, A): the deposit within its
+    /// reach as one richness. 0 where no pit head stands.
+    pub mine_rich: Mat,
     /// (rows, N): the share of its cell each working's surface takes this year.
     pub mine_surface: Mat,
-    /// (rows, N) each, over the last complete year: mean hands (the crew among
-    /// them), output and royalty paid.
+    /// (rows, N) each, over the last complete year: mean hands (the sinkers
+    /// among them), output and royalty paid.
     pub mine_hands: Mat,
     pub mine_out: Mat,
     pub mine_royalty: Mat,
@@ -468,6 +483,8 @@ pub struct State {
     /// month, and the months counted.
     pub mine_acc: Mat,
     pub mine_months: usize,
-    /// The standing crew of each working in each town this month.
+    /// The sinkers each new working in each town has this month, and the year
+    /// of the last review (a working it opened is being sunk).
     pub mine_crew_each: Vec<f64>,
+    pub mine_year: i64,
 }

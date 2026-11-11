@@ -420,7 +420,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut supply: Vec<f64> = st.pop.iter().map(|&p| P.participation * p).collect();
     // carting (docs/rules/carting.md): the hands that carted last month's goods are not for hire
     crate::carting::take_carters(st, P, &mut supply);
-    // mines (docs/rules/mines.md): nor are the workings' standing crews
+    // mines (docs/rules/mines.md): nor are the hands sinking new workings
     crate::mines::take_crews(st, P, &mut supply);
     let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
@@ -741,7 +741,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let value: Vec<f64> = (0..NE).map(|u| p[(et[u], g_s[u])] * Y[u]).collect();
     let in_paid: Vec<f64> = (0..NE).map(|u| mach_got[u] * p[(et[u], gm)] + rail_got[u] * p[(et[u], gr)]).collect();
     let mut wage_ex: Vec<f64> = (0..NE).map(|u| w[et[u]] * Lex[u]).collect();
-    crate::mines::pay_crews(st, P, &w, &mut wage_ex); // mines: the standing crews are paid before the royalty
+    crate::mines::pay_crews(st, P, &w, &mut wage_ex); // mines: the sinkers are paid before the royalty
     let cart_ex: Vec<f64> = (0..NE).map(|u| st.ex_tau[u] * Y[u]).collect();
     let rent_ex: Vec<f64> = (0..NE).map(|u| value[u] * (1.0 - spread) - cart_ex[u] - wage_ex[u] - in_paid[u]).collect();
     let merch_ex: Vec<f64> = (0..NE).map(|u| in_paid[u] - value[u] * (1.0 - spread)).collect();
@@ -751,7 +751,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_to(&mut hh_inc, &bincount(&et, &hh_ex, T));
     // carting: so does the land's produce on its way to market
     crate::carting::add_bill(st, P, &et, cart_ex.iter().copied());
-    pay_cell_rents(st, P, &et, &ex, &rent_ex, T);
+    // mines: a working's royalty goes to the cells whose deposit it works
+    match crate::mines::royalty_cells(st, P, &et, &ex, &rent_ex) {
+        Some((towns, cells, parts)) => pay_cell_rents(st, P, &towns, &cells, &parts, T),
+        None => pay_cell_rents(st, P, &et, &ex, &rent_ex, T),
+    }
     crate::mines::note_month(st, P, &Y, &Lex, &rent_ex); // mines: each working's books for the year
 
     // engel: what households spent on each need, noted for the observer before prices move
@@ -1068,7 +1072,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.method_Q[m] += mo[m];
     }
     st.ex_labor = Lex.clone();
-    crate::mines::add_crews(st, P); // mines: the standing crews are hands at their workings
+    crate::mines::add_crews(st, P); // mines: the sinkers are hands at their workings
     st.ex_out = Y.clone();
     st.f_labor.iter_mut().for_each(|v| *v = 0.0);
     for (k, &i) in fi.iter().enumerate() {

@@ -458,7 +458,8 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         arrays.push(i32_array("mine_left", vec![n], &ints(&|w| w.left)));
         arrays.push(f32_array("mine_hands", vec![n], &reals(&|w| w.hands)));
         arrays.push(f32_array("mine_out", vec![n], &reals(&|w| w.out)));
-        arrays.push(f32_array("mine_dug", vec![n], &reals(&|w| w.dug)));
+        arrays.push(f32_array("mine_heap", vec![n], &reals(&|w| w.heap)));
+        arrays.push(i32_array("mine_cells", vec![n], &ints(&|w| w.cells as i32)));
         arrays.push(f32_array("mine_surface", vec![n], &reals(&|w| w.surface)));
         arrays.push(f32_array("mine_royalty", vec![n], &reals(&|w| w.royalty)));
     }

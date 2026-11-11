@@ -152,6 +152,34 @@ pub struct Replay {
     pub filled: usize,
     /// owning family of every cell by year, `[year, cell]`, -1 for none (empty without families)
     pub owner: Vec<i8>,
+    /// the quarries, pits and mines of each year, where the run keeps them as
+    /// workings (the core's docs/rules/mines.md); empty for a run that does not,
+    /// whose pits are read off the land mix as before
+    pub workings: Vec<Vec<Working>>,
+}
+
+/// One working in one year: a pit head on a cell, with what the core says of it.
+#[derive(Clone, Debug)]
+pub struct Working {
+    pub cell: u32,
+    /// its display class (`world::QUARRY` .. `world::COALMINE`)
+    pub class: u8,
+    /// the year it was opened; 0 for one that lies abandoned
+    pub opened: i32,
+    /// mean hands over the year
+    pub hands: f32,
+    /// what it raised over the year, and everything raised there so far (its spoil heap)
+    pub out: f32,
+    pub heap: f32,
+    /// the share of its cell its pit head, yards and spoil take
+    pub surface: f32,
+}
+
+/// The display class of one of the core's sectors: the sectors come in the
+/// order of the display classes, after sea and before heath (farm, pasture and
+/// wood are 1 to 3, the four kinds of diggings 5 to 8).
+pub fn sector_class(sector: usize) -> u8 {
+    if sector < 3 { sector as u8 + 1 } else { sector as u8 + 2 }
 }
 
 fn slice<'a>(buf: &'a [u8], base: usize, a: &ArrayInfo) -> &'a [u8] {
@@ -203,6 +231,37 @@ pub fn load(path: &str) -> Result<Replay, String> {
         let a: Vec<u8> = use_.iter().map(|&u| map(u)).collect();
         (a.clone(), a, vec![255; use_.len()])
     };
+    let workings = {
+        // year k's workings are rows mine_first[k] .. mine_first[k + 1] of the other arrays
+        let mut years: Vec<Vec<Working>> = Vec::new();
+        if let (Ok(first), Ok(cell), Ok(sector), Ok(opened), Ok(hands), Ok(out), Ok(heap), Ok(surface)) = (
+            i32s("mine_first"),
+            i32s("mine_cell"),
+            u8s("mine_sector"),
+            i32s("mine_opened"),
+            f32s("mine_hands"),
+            f32s("mine_out"),
+            f32s("mine_heap"),
+            f32s("mine_surface"),
+        ) {
+            for k in 0..first.len().saturating_sub(1) {
+                let rows = first[k].max(0) as usize..(first[k + 1].max(0) as usize).min(cell.len());
+                years.push(
+                    rows.map(|i| Working {
+                        cell: cell[i] as u32,
+                        class: sector_class(sector[i] as usize),
+                        opened: opened[i],
+                        hands: hands[i],
+                        out: out[i],
+                        heap: heap[i],
+                        surface: surface[i],
+                    })
+                    .collect(),
+                );
+            }
+        }
+        years
+    };
     Ok(Replay {
         w,
         h,
@@ -234,6 +293,7 @@ pub fn load(path: &str) -> Result<Replay, String> {
         header,
         filled: ny,
         owner: Vec::new(),
+        workings,
     })
 }
 
