@@ -781,12 +781,14 @@ impl<'a, 's> Kit<'a, 's> {
                 let dark = *self.pal.smoke.soot;
                 jambs(self, REVEAL, frame);
                 self.panel(f, u0, u1, y0, y1, -REVEAL, dark, dark);
-                // slats that slope outward and down
+                // slats that slope outward and down: weathered boards or slate, dark as the
+                // opening is from further off, so that a belfry keeps its eyes close to
+                let slat = shade(dark, 2.0);
                 let n = (((y1 - y0) / 0.0024).round() as usize).clamp(2, 8);
                 let step = (y1 - y0) / n as f32;
                 for i in 0..n {
                     let y = y0 + step * (i as f32 + 1.0);
-                    self.quad([self.fp(f, u0, y - step * 0.75, 0.0), self.fp(f, u1, y - step * 0.75, 0.0), self.fp(f, u1, y, -REVEAL), self.fp(f, u0, y, -REVEAL)], frame, Vec3::Y + out);
+                    self.quad([self.fp(f, u0, y - step * 0.75, 0.0), self.fp(f, u1, y - step * 0.75, 0.0), self.fp(f, u1, y, -REVEAL), self.fp(f, u0, y, -REVEAL)], slat, Vec3::Y + out);
                 }
             }
         }
