@@ -1452,6 +1452,42 @@ mod tests {
     }
 
     #[test]
+    fn each_district_keeps_its_wood_and_heath() {
+        // the year's two fields, before their edges are warped and frayed: in every district
+        // of KEEP cells as many texels stand above the wood's line as lie in its parcels of
+        // wood, and of the rest as many above the heath's as lie in its parcels of heath
+        let r = island();
+        let g = build_ground(&r);
+        let land = year_land(&r, &g, 0);
+        let l = &g.land;
+        let side = KEEP * FIELD_RES;
+        let (mut districts, mut worst, mut sum) = (0, 0.0f32, 0.0f32);
+        for d in 0..l.tw.div_ceil(side) * l.th.div_ceil(side) {
+            let (x0, y0) = ((d % l.tw.div_ceil(side)) * side, (d / l.tw.div_ceil(side)) * side);
+            let mut own = Vec::new();
+            for y in y0..(y0 + side).min(l.th) {
+                own.extend((x0..(x0 + side).min(l.tw)).map(|x| y * l.tw + x).filter(|&t| l.tex[t] != u32::MAX && (FARM..=HEATH).contains(&land.class[l.tex[t] as usize])));
+            }
+            if own.len() < 200 {
+                continue;
+            }
+            districts += 1;
+            let parcels = |c: u8| own.iter().filter(|&&t| land.class[l.tex[t] as usize] == c).count() as f32;
+            let wood = own.iter().filter(|&&t| land.field[2 * t] >= 128).count() as f32;
+            let heath = own.iter().filter(|&&t| land.field[2 * t] < 128 && land.field[2 * t + 1] >= 128).count() as f32;
+            for (name, got, want) in [("wood", wood, parcels(WOOD)), ("heath", heath, parcels(HEATH))] {
+                let out = (got - want).abs() / own.len() as f32;
+                (worst, sum) = (worst.max(out), sum + out);
+                assert!(out < 0.04, "district {d}: {name} stands on {got} texels of {}, and its parcels on {want}", own.len());
+            }
+        }
+        // a district at the island's edge, most of it sea, is the last to settle
+        assert!(districts >= 6, "only {districts} districts with land enough to judge");
+        let mean = sum / (2 * districts) as f32;
+        assert!(mean < 0.01, "the districts are out by {:.2}% of their open land on average, {:.2}% at worst", 100.0 * mean, 100.0 * worst);
+    }
+
+    #[test]
     fn the_outline_of_wood_and_heath_is_free_of_the_parcels() {
         let r = island();
         let g = build_ground(&r);
@@ -1558,12 +1594,29 @@ mod tests {
     #[test]
     fn nothing_is_enclosed_above_the_summer_snow() {
         let r = island();
-        let g = build_ground(&r);
-        // the made-up island's ridges stand far below the snow: no place on it is above the line
+        let mut g = build_ground(&r);
+        // the line wanders within 0.12 of 1.75, and the made-up island's ridges stand far
+        // below it: no place on it is above the line
         for i in 0..500 {
             let (x, z) = (1.0 + 12.0 * hash2(i, 3, 9), 1.0 + 10.0 * hash2(i, 4, 9));
             assert!(!place_at(&g, x, z).snow);
             assert!(summer_snow_line(x, z) >= 1.63 && summer_snow_line(x, z) <= 1.87);
         }
+        // raise the ground above the line and every place is under the snow, where all open
+        // land is moor whatever its parcel and the year's fields say
+        let land = year_land(&r, &g, 0);
+        g.hgt.iter_mut().for_each(|h| *h += 2.0);
+        let mut farmed = 0;
+        for i in 0..500 {
+            let (x, z) = (1.0 + 12.0 * hash2(i, 3, 9), 1.0 + 10.0 * hash2(i, 4, 9));
+            let pl = place_at(&g, x, z);
+            assert!(pl.snow);
+            let own = land.class[pl.parcel as usize];
+            if (FARM..=HEATH).contains(&own) {
+                farmed += (own < WOOD) as usize;
+                assert_eq!(land.at(pl), (HEATH, false));
+            }
+        }
+        assert!(farmed > 50, "only {farmed} spots of farmed parcels to judge by");
     }
 }

@@ -159,7 +159,11 @@ up, a hill margin, the country round the home town, the snow line), each in
 the summers of 1800 and 1900, in October 1800 and in midwinter 1900: twenty
 pictures in about 40 seconds, on the standard shots' machinery, so
 `--shots-compare` and `--compare-shots` work on them. It prints where each
-camera looks, for pointing a `--view` at the same country.
+camera looks, for pointing a `--view` at the same country. The pictures say
+whether the land looks right; `ISOSTATE_AREAS=1` says whether it is still the
+simulation's (each use as painted against the record, over the island and
+over districts of 12 km, and how much of it changes from one year to the
+next).
 
 ## Houses
 

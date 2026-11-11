@@ -498,12 +498,16 @@ struct Spot {
     // how much heath, likewise
     wood: f32,
     heath: f32,
-    // the spot's own parcel is farmed where no wood or heath stands on it:
-    // its walls stand though heath has grown over its grass; and how far below the
-    // summer snow the spot is, 1 well below it to 0 at the line, where the
-    // walls stop
+    // the spot's parcel has walls or hedges: it is farmed, or it is an intake
+    // the record has as pasture though heath has grown over its grass; and
+    // how far below the summer snow the spot is, 1 well below it to 0 at the
+    // line, where the walls stop
     walled: bool,
     enclosed: f32,
+    // how far up the last climb to the summer snow the spot is, 0 below the
+    // climb to 1 at the snow: the trees dwindle over it (world::above_tree_line)
+    // and wood and grass alike go to the moor's rough grass
+    climb: f32,
     // 0 near, rising to 1 as the view draws so far off that trees and fields
     // are too small to see one by one
     far: f32,
@@ -858,7 +862,13 @@ fn wood_floor(sp: Spot) -> vec3<f32> {
     c = mix(c, canopy, sp.far);
     // glades and rides, which the trees keep out of
     let open = glade(sp.p, deep) * (1.0 - smoothstep(0.03, 0.08, sp.foot));
-    return mix(c, rough(sp), open);
+    c = mix(c, rough(sp), open);
+    // under the summer snow the trees dwindle to nothing, and the floor with
+    // them: a wood does not end in a green stain against the moor
+    if (sp.climb > 0.0) {
+        c = mix(c, moor_margin(sp, 1.0), sp.climb);
+    }
+    return c;
 }
 
 fn heath(sp: Spot) -> vec3<f32> {
@@ -1134,7 +1144,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         if (above > 0.0) {
             cls = HEATH;
             wooded = 0.0;
-            heathy = 1.0;
+            // the moor's own colours come in over the first of the ground above
+            // the line, as the grass below it has gone rough toward it
+            heathy = 0.5 + 0.5 * smoothstep(0.0, 0.12, above);
         } else {
             let f = textureSampleLevel(land_field, land_field_sampler, edge_warp(p) / vec2<f32>(ground.width, ground.height), 0.0).rg + vec2<f32>(edge_fray(p));
             // a wood deepens inward faster than its field (world::WOOD_DEPTH)
@@ -1153,6 +1165,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
                 walled = own_cls == PASTURE;
             } else {
                 cls = under;
+                // toward the summer snow the grass goes rough as it does toward a
+                // moor, so the line where all is moor is not a cut one
+                heathy = max(heathy, 0.5 * smoothstep(-0.14, 0.0, above));
             }
         }
     }
@@ -1241,6 +1256,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             sp.heath = heathy;
             sp.walled = walled;
             sp.enclosed = 1.0 - smoothstep(-0.1, -0.01, above);
+            sp.climb = smoothstep(-0.3, 0.0, above);
             sp.far = far;
             let lc = class_colour(cls, sp);
             top = mix(top, lc, landk);
