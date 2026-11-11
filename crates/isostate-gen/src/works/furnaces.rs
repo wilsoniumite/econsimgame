@@ -75,18 +75,15 @@ pub fn charcoal_furnace(c: &mut Ctx) {
     }
     for i in 0..n {
         let x = x0 + side * 0.5 + i as f32 * pitch;
-        let p = c.at(x, zf);
         let h = stands(c, fh);
-        c.solid.frustum_turned(p, side * 0.707, side * 0.5, h, 4, std::f32::consts::FRAC_PI_4 - c.site.yaw, 0.02, stone, Some(*pal.smoke.soot));
+        let top = c.furnace_stack(x, zf, side, side * std::f32::consts::FRAC_1_SQRT_2, h, stone);
         if !c.going_up() {
             // the tunnel head, where the flame stands
-            c.solid.frustum_turned(p + Vec3::Y * h, 0.0085 * g, 0.0065 * g, 0.012 * g, 6, 0.0, 0.0, c.tone(*pal.brick.dark), Some(c.throat()));
-            c.plume(p + Vec3::Y * (h + 0.012 * g), 0.8);
+            c.solid.frustum_turned(top, 0.0085 * g, 0.0065 * g, 0.012 * g, 6, 0.0, 0.0, c.tone(*pal.brick.dark), Some(c.throat()));
+            c.plume(top + Vec3::Y * 0.012 * g, 0.8);
             if banked && !c.derelict() {
                 // the charging bridge
-                let from = c.at(x, b1) + Vec3::Y * (bank_h - 0.003 * g);
-                let to = c.at(x, zf - side * 0.3) + Vec3::Y * (h * 0.86);
-                c.solid.beam(from, to, 0.009 * g, *pal.timber.headframe);
+                c.barrow_way((x, b1, bank_h - 0.003 * g), (x, zf - side * 0.3, h * 0.86), 0.009 * g, *pal.timber.headframe);
             }
         }
         // the casting house, its arch open on the fire
@@ -187,23 +184,12 @@ pub fn coke_furnace(c: &mut Ctx) {
         let x = fx(i);
         let p = c.at(x, zf);
         if square {
-            c.solid.frustum_turned(p, 0.0255 * g, 0.0185 * g, h, 4, std::f32::consts::FRAC_PI_4 - c.site.yaw, 0.02, shell, Some(*pal.smoke.soot));
+            c.furnace_stack(x, zf, 0.0255 * g * std::f32::consts::SQRT_2, 0.0185 * g * std::f32::consts::SQRT_2, h, shell);
         } else {
-            c.solid.frustum_turned(p, r, r * 0.72, h, 8, 0.0, 0.02, shell, Some(*pal.smoke.soot));
-            if c.near() && !c.going_up() {
-                // the hoops that bind its casing, and the tuyere arches round its foot
-                let hoop = crate::colour::shade(shell, 0.8);
-                for t in [0.16, 0.34, 0.52, 0.7] {
-                    let rr = r * (1.0 - 0.28 * t) + 0.0005;
-                    c.solid.frustum_turned(p + Vec3::Y * (h * t), rr, rr - 0.0003, 0.0012, 8, 0.0, 0.0, hoop, None);
-                }
-            }
+            c.furnace_shell(x, zf, r, h, shell);
+            c.charging_gallery(x, zf, r * 0.98, h * 0.9);
         }
         if !c.going_up() && !c.derelict() {
-            if !square {
-                // the charging gallery round the throat
-                c.solid.frustum_turned(p + Vec3::Y * (h * 0.9), r * 0.98, r * 0.98, 0.006 * g, 8, 0.0, 0.0, plate, Some(plate));
-            }
             if closed {
                 // a closed top: the bell, and the downcomer that takes the gas to the stoves
                 c.solid.frustum_turned(p + Vec3::Y * h, r * 0.5, 0.0, 0.01 * g, 6, 0.0, 0.0, plate, None);
@@ -219,13 +205,15 @@ pub fn coke_furnace(c: &mut Ctx) {
             if c.w.founded >= 1860 {
                 for dx in [-0.0095 * g, 0.0095 * g] {
                     let top = c.flue(x + dx, zs, 0.068 * g, 0.008 * g, 0.008 * g, plate, plate, 0.0);
+                    c.hoops(x + dx, zs, top.y - c.at(x + dx, zs).y, 0.008 * g, 0.008 * g, &[0.2, 0.45, 0.7], crate::colour::shade(plate, 1.45));
                     if !c.going_up() && !c.derelict() {
                         c.solid.frustum_turned(top, 0.008 * g, 0.0, 0.007 * g, 6, 0.0, 0.0, plate, None);
                     }
                 }
                 c.plume(c.at(x, zs) + Vec3::Y * 0.075 * g, 0.6);
             } else {
-                c.flue(x, zs, 0.045 * g, 0.0095 * g, 0.0085 * g, c.tone(*pal.brick.dark), *pal.smoke.soot, if closed { 0.6 } else { 0.0 });
+                let top = c.flue(x, zs, 0.045 * g, 0.0095 * g, 0.0085 * g, c.tone(*pal.brick.dark), *pal.smoke.soot, if closed { 0.6 } else { 0.0 });
+                c.hoops(x, zs, top.y - c.at(x, zs).y, 0.0095 * g, 0.0085 * g, &[0.3, 0.6], crate::colour::shade(plate, 0.9));
             }
         }
         // the casting house
@@ -240,15 +228,10 @@ pub fn coke_furnace(c: &mut Ctx) {
     if !c.going_up() && !c.derelict() {
         let lx = xl + lift * 0.5;
         if square {
-            c.solid.beam(c.at(xl, zf + r * 0.4), c.at(fx(0) - r * 0.5, zf + r * 0.4) + Vec3::Y * h * 0.96, 0.008 * g, c.tone(*pal.timber.headframe));
+            c.barrow_way((xl, zf + r * 0.4, 0.0), (fx(0) - r * 0.5, zf + r * 0.4, h * 0.96), 0.008 * g, c.tone(*pal.timber.headframe));
         } else {
-            let top = h + 0.008 * g;
-            for (dx, dz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-                let foot = c.at(lx + dx * lift * 0.42, zf + dz * lift * 0.42);
-                c.solid.beam(foot, foot + Vec3::Y * top, 0.003 * g, plate);
-            }
-            c.solid.block(c.at(lx, zf) + Vec3::Y * top, lift, lift, 0.004 * g, c.site.yaw, plate, Some(plate), 0.0);
-            c.solid.beam(c.at(lx, zf) + Vec3::Y * (h + 0.003 * g), c.at(fx(n - 1), zf) + Vec3::Y * (h + 0.003 * g), 0.006 * g, plate);
+            c.lift(lx, zf, lift, h + 0.008 * g);
+            c.barrow_way((lx, zf, h + 0.003 * g), (fx(n - 1), zf, h + 0.003 * g), 0.006 * g, plate);
         }
     }
     // the blowing engine's house and its chimney

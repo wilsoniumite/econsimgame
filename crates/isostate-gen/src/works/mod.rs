@@ -18,6 +18,7 @@ mod kit;
 mod mills;
 mod pit;
 mod plain;
+mod plant;
 mod steel;
 mod textile;
 mod trades;
