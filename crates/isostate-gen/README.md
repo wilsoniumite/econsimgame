@@ -135,8 +135,9 @@ an even stand of trees, while a wood in the game is filled in by `scatter.rs`
 from the year's land (`isostate-viewer/src/world.rs`, "the lie of the land"),
 thick and tall in its depths, thinner toward its edge, with glades and rides,
 stands of taller and lower trees, conifers gathered on high and poor ground,
-and clumps and lone trees in the fields beside it. The `woods` sheet shows the
-trees; the game's standard shots show the woods.
+clumps and lone trees in the fields beside it, and a tree line below the
+mountain's summer snow. The `woods` sheet shows the trees; the game's standard
+shots show the woods.
 
 ## Works
 

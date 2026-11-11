@@ -830,6 +830,10 @@ pub fn glade(x: f32, z: f32, deep: f32) -> f32 {
 /// the summer snow line of terrain.wesl (`sp.snow`), with the same noise, so
 /// the trees stop where the white begins.
 pub fn above_tree_line(x: f32, z: f32, h: f32) -> f32 {
+    // nearly all the island lies below the lowest the line can come, and needs no noise
+    if h < 1.75 - 0.12 - 0.3 {
+        return 0.0;
+    }
     fields::smoothstep(-0.3, 0.08, h - (1.75 - 0.12 * vnoise(x * 1.7, z * 1.7, 31)))
 }
 
