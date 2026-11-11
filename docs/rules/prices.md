@@ -146,7 +146,8 @@ Seeds 1 to 8 to 1900, the port against the port with `prices.enabled=true`,
 without families and with six. The first table is the sweep's scorecard
 (`sweep-prices-base`, `sweep-prices`, and the same ending `-f6`, under
 `.claude/night/reports/`); the rest is `examples/prices_probe.rs`, which
-samples every month (`prices-probe/` in the same place). A swing is the
+samples every month (`prices-probe/` in the same place; a review's second
+copies of both are `sweep-prices-review*` and `prices-probe-review/`). A swing is the
 standard deviation of the yearly change in the log of the annual mean. A star
 means every seed with the mechanism is below (or above) every seed without.
 
@@ -185,8 +186,8 @@ then ran seeds 9 to 16, which nothing here was tuned on
 
 The cure holds as it stood: the same sizes, the same stars. The higher wage
 of 1900 does not: on these seeds without families it is higher in three and
-lower in five. None of the 64 runs with the mechanism on failed the monthly
-money check.
+lower in five. None of the 32 runs with the mechanism on (sixteen seeds, with
+and without families, each to 1900) failed the monthly money check.
 
 By half-century (1750-99 / 1800-49 / 1850-1900):
 
