@@ -367,9 +367,13 @@ impl Look {
             }
         }
         let name = layers.last().map_or("the look", |l| l.0);
+        // TOML has nan and inf for numbers; a light or a lens set to one draws nothing, or stops the viewer
+        if let Some(path) = not_a_number(&whole, "") {
+            return Err(format!("{name}: `{path}` must be a number, not nan or inf"));
+        }
         // the palette's tables first, then what is left, which is the viewer's
-        let palette = Palette::take_from(&mut whole).map_err(|e| format!("{name}: {e}"))?;
-        let v: ViewerHalf = whole.try_into().map_err(|e| format!("{name}: {e}"))?;
+        let palette = Palette::take_from(&mut whole).map_err(|e| format!("{name}: {}", e.trim_end()))?;
+        let v: ViewerHalf = whole.try_into().map_err(|e: toml::de::Error| format!("{name}: {}", e.to_string().trim_end()))?;
         let look = Look {
             palette,
             land: v.land,
@@ -388,12 +392,53 @@ impl Look {
     }
 
     /// What the types cannot say (the palette checks its own lists of tints).
+    /// These are the settings that would otherwise stop the viewer part way
+    /// in, where Bevy or the lens arithmetic refuses them.
     fn check(&self) -> Result<(), String> {
-        if self.shadows.cascades == 0 || self.shadows.cascades > 4 {
+        let s = &self.shadows;
+        if s.cascades == 0 || s.cascades > 4 {
             return Err("`shadows.cascades` must be from 1 to 4".into());
+        }
+        // Bevy's shadows begin 0.1 from the camera
+        if s.first_far <= 0.1 || s.max_distance < s.first_far {
+            return Err("`shadows.first_far` must be more than 0.1, and `shadows.max_distance` no less than it".into());
+        }
+        let t = &self.tilt_shift;
+        if t.widest <= 0.0 || t.narrowest < t.widest {
+            return Err("`tilt_shift.widest` must be more than 0, and `tilt_shift.narrowest` no less than it".into());
+        }
+        if self.haze.end <= self.haze.start {
+            return Err("`haze.end` must be more than `haze.start`".into());
+        }
+        if self.ambient_occlusion.radius <= 0.0 {
+            return Err("`ambient_occlusion.radius` must be more than 0".into());
         }
         Ok(())
     }
+}
+
+/// The first number in a table that is nan or inf, by its path ("sun.turn").
+fn not_a_number(table: &toml::Table, at: &str) -> Option<String> {
+    fn bad(v: &toml::Value) -> bool {
+        match v {
+            toml::Value::Float(f) => !f.is_finite(),
+            toml::Value::Array(a) => a.iter().any(bad),
+            _ => false,
+        }
+    }
+    for (key, value) in table {
+        let path = if at.is_empty() { key.clone() } else { format!("{at}.{key}") };
+        match value {
+            toml::Value::Table(t) => {
+                if let Some(p) = not_a_number(t, &path) {
+                    return Some(p);
+                }
+            }
+            v if bad(v) => return Some(path),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Lay `over` on `base`, key by key. Every key laid over must be there already
@@ -469,9 +514,36 @@ mod tests {
 
     #[test]
     fn a_bad_value_is_an_error() {
-        for bad in ["[brick]\nred = \"red\"\n", "[brick]\nred = [1.0, 0.5]\n", "[brick]\nred = 3\n", "[post]\ntonemapping = \"film\"\n", "[foliage]\nconifer = []\n", "[brick.red]\nx = 1\n", "brick = 1\n"] {
+        for bad in [
+            "[brick]\nred = \"red\"\n",
+            "[brick]\nred = \"#+f+f+f\"\n",
+            "[brick]\nred = [1.0, 0.5]\n",
+            "[brick]\nred = [1.5, 0.5, 0.0]\n",
+            "[brick]\nred = 3\n",
+            "[post]\ntonemapping = \"film\"\n",
+            "[foliage]\nconifer = []\n",
+            "[brick.red]\nx = 1\n",
+            "brick = 1\n",
+        ] {
             assert!(Look::from_layers(&[("standard", STANDARD), ("mine", bad)]).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_setting_that_would_stop_the_viewer_is_an_error() {
+        let read = |over: &str| Look::from_layers(&[("standard", STANDARD), ("mine", over)]);
+        // the lens opening is kept between widest and narrowest, which must be that way round
+        assert!(read("[tilt_shift]\nwidest = 5.0\nnarrowest = 1.0\n").unwrap_err().contains("tilt_shift.widest"));
+        assert!(read("[haze]\nstart = 4.0\nend = 1.0\n").unwrap_err().contains("haze.end"));
+        assert!(read("[shadows]\ncascades = 9\n").unwrap_err().contains("shadows.cascades"));
+        assert!(read("[shadows]\nmax_distance = 0.0\n").unwrap_err().contains("shadows.first_far"));
+        assert!(read("[ambient_occlusion]\nradius = 0.0\n").unwrap_err().contains("ambient_occlusion.radius"));
+        // nan and inf are numbers to TOML
+        assert!(read("[sun]\nstrength_winter = nan\n").unwrap_err().contains("`sun.strength_winter`"));
+        assert!(read("[foliage]\ntint_winter = [1.0, inf, 1.0]\n").unwrap_err().contains("`foliage.tint_winter`"));
+        // and an error says where, without a tail of blank lines
+        let e = read("[sun]\nturn = \"west\"\n").unwrap_err();
+        assert!(e.contains("sun.turn") && !e.ends_with('\n'), "{e:?}");
     }
 
     /// The names of a struct's fields in a shader's source, in order.
