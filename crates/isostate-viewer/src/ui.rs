@@ -104,6 +104,23 @@ pub enum SpeedButton {
     Pause,
     Speed(f32),
 }
+/// The clock's speeds, in years a second, under the labels on their buttons.
+/// The labels count against the slowest: 1x is a year every two seconds and
+/// 8x is eight times that, four years a second. (They do not count years a
+/// second; a test holds each label to its multiple.)
+pub const SPEEDS: [(&str, f32); 4] = [("1\u{00d7}", 0.5), ("2\u{00d7}", 1.0), ("4\u{00d7}", 2.0), ("8\u{00d7}", 4.0)];
+
+/// The next of the buttons' speeds above or below `speed`, for the Up and Down
+/// keys: the keys land on a button, so one of them is always lit.
+pub fn step_speed(speed: f32, faster: bool) -> f32 {
+    let (first, last) = (SPEEDS[0].1, SPEEDS[SPEEDS.len() - 1].1);
+    if faster {
+        SPEEDS.iter().map(|s| s.1).find(|&v| v > speed + 1e-3).unwrap_or(last)
+    } else {
+        SPEEDS.iter().rev().map(|s| s.1).find(|&v| v < speed - 1e-3).unwrap_or(first)
+    }
+}
+
 #[derive(Component)]
 pub struct DateText;
 /// One of the numbers under the family name.
@@ -284,7 +301,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         }
                     });
                     mid.spawn(Node { column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
-                        for (label, b) in [("Pause", SpeedButton::Pause), ("1\u{00d7}", SpeedButton::Speed(0.5)), ("2\u{00d7}", SpeedButton::Speed(1.0)), ("4\u{00d7}", SpeedButton::Speed(2.0)), ("8\u{00d7}", SpeedButton::Speed(4.0))] {
+                        for (label, b) in std::iter::once(("Pause", SpeedButton::Pause)).chain(SPEEDS.iter().map(|&(label, v)| (label, SpeedButton::Speed(v)))) {
                             row.spawn((button_node(10.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
                                 bt.spawn((text(f, label, 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
@@ -952,6 +969,36 @@ mod tests {
         // everything listed: nothing to say, and no button
         assert_eq!(news_foot(88, 88), None);
         assert_eq!(news_foot(0, 0), None);
+    }
+
+    #[test]
+    fn the_speed_keys_land_on_the_buttons() {
+        // up and down through the buttons, stopping at the ends
+        assert_eq!(step_speed(0.5, true), 1.0);
+        assert_eq!(step_speed(1.0, true), 2.0);
+        assert_eq!(step_speed(2.0, true), 4.0);
+        assert_eq!(step_speed(4.0, true), 4.0);
+        assert_eq!(step_speed(4.0, false), 2.0);
+        assert_eq!(step_speed(1.0, false), 0.5);
+        assert_eq!(step_speed(0.5, false), 0.5);
+        // from a speed between two buttons (as the keys used to leave it), onto the next one
+        assert_eq!(step_speed(0.75, true), 1.0);
+        assert_eq!(step_speed(3.0, false), 2.0);
+        assert_eq!(step_speed(20.0, false), 4.0);
+        // whatever the keys do, a button has that speed
+        let mut v = 2.0;
+        for faster in [true, true, true, false, false, false, false, false, true] {
+            v = step_speed(v, faster);
+            assert!(SPEEDS.iter().any(|s| s.1 == v), "{v} is no button's speed");
+        }
+    }
+
+    #[test]
+    fn the_speed_labels_are_multiples_of_the_slowest() {
+        for (label, v) in SPEEDS {
+            let times: f32 = label.trim_end_matches('\u{00d7}').parse().unwrap();
+            assert_eq!(v / SPEEDS[0].1, times, "{label} is {} times 1x", v / SPEEDS[0].1);
+        }
     }
 
     #[test]

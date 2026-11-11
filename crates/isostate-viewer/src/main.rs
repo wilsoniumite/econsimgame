@@ -890,11 +890,12 @@ fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: R
     if keys.just_pressed(KeyCode::PageDown) {
         tl.t = (tl.t.floor() - 10.0).max(0.0);
     }
+    // faster and slower go from one speed button to the next
     if keys.just_pressed(KeyCode::ArrowUp) {
-        tl.speed = (tl.speed * 1.5).min(20.0);
+        tl.speed = ui::step_speed(tl.speed, true);
     }
     if keys.just_pressed(KeyCode::ArrowDown) {
-        tl.speed = (tl.speed / 1.5).max(0.3);
+        tl.speed = ui::step_speed(tl.speed, false);
     }
     if keys.just_pressed(KeyCode::KeyT) {
         tilt.0 = !tilt.0;
