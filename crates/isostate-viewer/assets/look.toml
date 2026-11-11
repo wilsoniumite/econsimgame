@@ -146,7 +146,7 @@ moor_grass = "#a3b36b"
 # bracken, which breaks the line between the intakes and the moor: green in
 # summer, rust from October to spring
 bracken = "#6f9044"
-bracken_autumn = "#a9794a"
+bracken_autumn = "#a3804f"
 # rushes in the wet of a rough pasture
 rushes = "#6d8a50"
 

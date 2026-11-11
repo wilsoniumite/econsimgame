@@ -840,6 +840,10 @@ fn wood_floor(sp: Spot) -> vec3<f32> {
     c = mix(c, paint.wood_autumn.rgb, 0.45 * bell(sp.ph, 0.83, 0.12));
     c = mix(c, paint.wood_winter.rgb, 0.5 * winter(sp.ph));
     let deep = clamp(sp.wood * 2.0 - 1.0, 0.0, 1.0);
+    // under the thin trees of a wood's edge, and all through a small copse,
+    // the floor is half grass: it darkens inward, so the floor has no hard
+    // rim and a copse of a dozen trees is not a dark stain on its field
+    c = mix(grass_season(paint.rough_grass.rgb, sp.ph), c, 0.5 + 0.5 * smoothstep(0.0, 0.4, deep));
     // from far off the trees are too small to tell apart and the wood reads
     // by its canopy: darker in its depths, with a slow swell of taller and
     // lower stands (the stands scatter.rs grows the trees in)
