@@ -24,6 +24,10 @@
 //! names to keep up to date here. `--compare OTHER_DIR` sets the new means beside
 //! those of an earlier sweep and marks the facts whose seed ranges do not overlap.
 //!
+//! Whatever is wrong with the command line is refused before the first run and
+//! before anything is written. A sweep already in `DIR` is replaced; `--compare`
+//! may name `DIR` itself, since the earlier sweep is read before the first run.
+//!
 //! A run that panics or fails the monthly money check is reported as failed and
 //! the others carry on.
 

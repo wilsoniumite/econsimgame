@@ -150,21 +150,27 @@ cargo run --release -p isostate-core -- sweep --out DIR [--seeds 1-8 | 1,2,5] [-
 
 Every seed is run against every combination of the `--set` values, a few runs
 at a time on their own threads (half the machine's cores unless `--jobs` says
-otherwise). Eight seeds to 1900 take about half a minute on this machine. A
-run that panics or fails the monthly money check is reported as failed and the
-rest carry on; the command then ends with an error so a script notices.
+otherwise). Eight seeds to 1900 take from 16 seconds to half a minute on this
+machine, depending on what else it is doing, and the numbers do not depend on
+how many run at once (`--jobs 1` and `--jobs 8` write the same files, the
+seconds aside). A run that panics or fails
+the monthly money check is reported as failed and the rest carry on; the
+command then ends with an error so a script notices.
 
 `--set` takes any field of `Params` by name, and a dotted path into a
 mechanism's struct. The value goes in through the parameters' JSON form, so
 there is no table of names to keep up to date; a number, `true`, a list in
-brackets or a bare word (`rent_regime=commons`) all work. A name that does not
-exist is refused before anything runs:
+brackets or a bare word (`rent_regime=commons`) all work. Whatever is wrong
+with the command line is refused before anything runs or is written: a name
+that does not exist, a value of the wrong kind or listed twice, an end year
+before the start, more than 10,000 seeds, a `DIR` that cannot be made.
 
 ```text
 --set land_thetta: there is no parameter "land_thetta". Did you mean land_theta?
 ```
 
-It writes into `DIR`:
+It writes into `DIR`, replacing a sweep that is already there (so the same
+command makes a baseline again):
 
 - `annual.csv`: one row per run and year. The run's number, its seed, the
   swept values, the year, then every observer series averaged over the year's
@@ -175,61 +181,68 @@ It writes into `DIR`:
 - `summary.txt`: the table it prints.
 - `README.txt`: the command line, the rules, `git describe`, how long it took.
 
-The table gives every fact's mean and its least and greatest value across the
-seeds, one column per setting. This is the port on seeds 1 to 8, shortened:
+The table gives every fact's mean across the seeds in a column of its own,
+one per setting, with the least and greatest value beside it. The range is
+left out where its two ends print the same (every seed starts with 135,000
+people), and `(3/8)` says only three of eight runs have a value at all. This
+is the port on seeds 1 to 8, shortened:
 
 ```text
-8 runs under the port rules: seeds 1 2 3 4 5 6 7 8, 1 setting; 0 failed; 28 s, 8 at a time
-each fact: mean [least .. greatest] across seeds; (n/N) when only n of N runs have a value
+8 runs under the port rules: seeds 1 2 3 4 5 6 7 8, 1 setting; 0 failed; 16 s, 8 at a time
+each fact: its mean across seeds, then [least .. greatest] unless the two print the same;
+(n/N) when only n of N runs have a value, - when none has
 
-                                                        port rules
+                                      port rules
 People and towns
-  pop_1750                            135,000 [135,000 .. 135,000]
-  pop_1800                            229,223 [227,127 .. 231,075]
-  pop_1850                            395,529 [390,493 .. 398,936]
-  pop_1900                            682,305 [674,793 .. 689,383]
-  growth_capped_years                       0.995 [0.974 .. 1.000]
-  growth_capped_people                      0.976 [0.951 .. 0.991]
-  urban_share_1750                          0.264 [0.255 .. 0.277]
-  urban_share_1800                          0.232 [0.209 .. 0.245]
-  urban_share_1850                          0.231 [0.199 .. 0.262]
-  urban_share_1900                          0.237 [0.224 .. 0.252]
+  pop_1750                               135,000
+  pop_1800                               229,223  [227,127 .. 231,075]
+  pop_1850                               395,529  [390,493 .. 398,936]
+  pop_1900                               682,305  [674,793 .. 689,383]
+  growth_capped_years                      0.995  [0.974 .. 1.000]
+  growth_capped_people                     0.976  [0.951 .. 0.991]
   ...
 Work and wages
   ...
-  real_wage_1800_vs_1750                       1.33 [1.27 .. 1.45]
-  real_wage_1850_vs_1750                       1.34 [1.10 .. 1.58]
-  real_wage_1900_vs_1750                       1.29 [0.93 .. 1.43]
+  real_wage_1800_vs_1750                    1.33  [1.27 .. 1.45]
+  real_wage_1850_vs_1750                    1.34  [1.10 .. 1.58]
+  real_wage_1900_vs_1750                    1.29  [0.93 .. 1.43]
   ...
 Railways
-  rail_first_year                              1828 [1815 .. 1838]
-  rail_km_1850                                990.2 [920 .. 1,124]
-  rail_km_1870                                1,016 [920 .. 1,258]
-  rail_km_1900                                1,024 [920 .. 1,258]
-  rail_last_growth_year                        1866 [1833 .. 1899]
+  rail_first_year                           1828  [1815 .. 1838]
+  rail_km_1850                             990.2  [920 .. 1,124]
+  rail_km_1870                             1,016  [920 .. 1,258]
+  rail_km_1900                             1,024  [920 .. 1,258]
+  rail_last_growth_year                     1866  [1833 .. 1899]
   ...
 Methods and inventions
-  discovered_coke_furnace                      1772 [1764 .. 1780]
-  first_output_coke_furnace                    1773 [1765 .. 1781]
-  half_of_output_coke_furnace                  1780 [1770 .. 1787]
+  discovered_coke_furnace                   1772  [1764 .. 1780]
+  first_output_coke_furnace                 1773  [1765 .. 1781]
+  half_of_output_coke_furnace               1780  [1770 .. 1787]
   ...
-  discovered_bessemer                          1858 [1833 .. 1882]
-  first_output_bessemer                  1888 [1883 .. 1896] (3/8)
-  half_of_output_bessemer                                        -
+  discovered_bessemer                       1858  [1833 .. 1882]
+  first_output_bessemer                     1888  [1883 .. 1896] (3/8)
+  half_of_output_bessemer                      -
   ...
 
 never built, port rules: bessemer (in 5 of 8 runs), steel_rolling (in 7 of 8 runs)
 ```
 
 With `--compare OTHER_DIR` it then reads `OTHER_DIR/facts.json` and sets each
-fact's mean now beside its mean then, with the change. A star marks a fact
-whose ranges across seeds do not overlap: every seed now is above, or below,
-every seed then. Six families against none, the headings and the starred rows
-only:
+fact's mean now beside its mean then, with the change. A line at the top
+counts what moved. `=` is a fact that came out the same: as many runs with a
+value, the same mean, least and greatest. A star marks a fact whose ranges
+across seeds do not overlap: every seed now is above, or below, every seed
+then. It is only given with four runs or more a side; with fewer, two sets of
+seeds under the very same rules stand clear of each other too often (one time
+in three with two a side). Six families against none, the headings and the
+starred rows only:
 
 ```text
-now: port rules, 6 families (8 runs); then: port rules (8 runs) in ../../night/reports/sweep-port-baseline
-* the ranges across seeds do not overlap
+now: port rules, 6 families (8 runs); then: port rules (8 runs) in .claude/night/reports/sweep-port-baseline
+of the 128 facts both have, the seconds aside, 113 differ and 11 of those are starred
+= the same number of runs with the same mean, least and greatest
+* the ranges across seeds do not overlap: every seed now is above, or below, every seed then
+  (marked only with 4 runs or more a side)
 
                                           now     then            change
 People and towns
@@ -259,7 +272,11 @@ half the size. No other fact moves clear of the spread between seeds, the
 news aside, where the families' own items are counted.
 
 Each setting of the new sweep is set against the old sweep's setting of the
-same name, or its first if none has that name.
+same name, or its first if none has that name. `OTHER_DIR` may be `DIR`
+itself: the sweep that was there is read before the first run and replaced
+after the last, which is the quick way to ask whether a change to the code
+moved anything. A sweep set beside its own earlier self shows `=` in every
+row but the seconds, since a run is the same run every time.
 
 ### The facts
 
@@ -271,9 +288,19 @@ the content, so another content file works: a method or good it lacks is
 skipped.
 
 A fact taken from a series in a year is the mean of that year's twelve months,
-the number in `annual.csv`. The years are the first, every fiftieth after it,
-and the last: 1750, 1800, 1850 and 1900 for a whole run, and the names change
-with the run (`pop_1760` for a run to 1760).
+the number in `annual.csv`: `towns_1800` is the towns there were during 1800.
+A fact counted from the yearly snapshot (the works and the land) is taken as
+the year ends, after that year's openings and closures: `works_1800` includes
+the works founded at the end of 1800. The years are the first, every fiftieth
+after it, and the last: 1750, 1800, 1850 and 1900 for a whole run, and the
+names change with the run (`pop_1760` for a run to 1760).
+
+Seed 7's facts were worked out a second time from the files `isostate-core
+run` writes (the monthly CSV, the events and `run.bin`), by a separate script
+written from this page, with and without families: all 127 that can be had
+from those files agree. The four that cannot (`growth_capped_*`,
+`works_top_1pct_capacity_share`, `works_utilisation`) were checked by reading
+the code.
 
 | Heading | Facts |
 |---|---|
@@ -322,9 +349,12 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   none before 1883, and never makes half the steel; steel rails are made in
   one seed.
 - **Works stay small and die young**: the median works is 0.84 of its method's
-  usual size, the largest 3.7 in every seed (a ceiling, not a distribution),
-  the top hundredth hold 8 per cent of capacity, and the median life of a works
-  that closed is under twelve years.
+  usual size, the largest 3.69 in every seed, the top hundredth hold 8 per
+  cent of capacity, and the median life of a works that closed is under
+  twelve years. The 3.69 is a ceiling, not a distribution: a works that would
+  grow past `footprint_K_mult` (4) times its method's K0 founds a sister works
+  instead (`firms::review`), and the yearly depreciation of 4 per cent keeps
+  the largest a little under that.
 - **Iron and rail prices swing two and a half times as hard as grain and
   cloth** (0.22 and 0.20 against 0.086 and 0.083).
 - **No town is founded after about 1800** (the latest in any seed is 1824).
@@ -333,9 +363,10 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 - **Eight seeds is a small sample.** The star in the comparison is a blunt
   test: with eight runs a side, two ranges fail to overlap by chance about
-  once in 6,400 tries for one fact, but there are over a hundred facts, and it
-  says nothing about a shift that is real and smaller than the spread. For
-  anything close, run more seeds.
+  once in 6,400 tries for one fact (once in 35 with four a side, the fewest it
+  is given for), but there are over a hundred facts, and it says nothing about
+  a shift that is real and smaller than the spread. For anything close, run
+  more seeds.
 - **`growth_capped_*` does not see famines.** It reads the income rule in
   `people::growth` before the clamp; a town at the cap in a famine year grew
   two points slower and is still counted as capped.
