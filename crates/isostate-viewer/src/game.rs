@@ -1100,7 +1100,8 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
         }
     }
     let r = &data.r;
-    if game.ended || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
+    // a finished game gone on with: the opening card first, then this one
+    if game.ended || game.welcoming || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
         return;
     }
     game.ended = true;

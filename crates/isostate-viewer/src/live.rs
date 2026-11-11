@@ -241,7 +241,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             if !save.same_rules() {
                 eprintln!("  it was saved under other rules (version {}), so the years may play out differently", save.version);
             }
-            eprintln!("  playing {} years again, with {} orders\u{2026}", years, save.orders.len());
+            let s = |n: usize| if n == 1 { "" } else { "s" };
+            eprintln!("  playing {} year{} again, with {} order{}\u{2026}", years, s(years as usize), save.orders.len(), s(save.orders.len()));
             let loaded = iso::save::load(save, |sim| {
                 board.get_or_insert_with(|| Board::new(sim)).year(sim);
                 if (sim.year - 1) % 10 == 0 {
