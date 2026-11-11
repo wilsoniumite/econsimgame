@@ -712,11 +712,84 @@ decade with three new towns for the digest to describe; with the mines as
 workings seed 7 founds two a decade at most, so the test now holds that a
 digest is filed for exactly the decades that have the towns for one, and on
 seed 7 that is none (with kept town ground merged as well: 1761, 1769; 1770,
-1777; 1793, 1795). The digest's wording and its place among a decade's four
-are therefore not exercised by any test at the moment; another seed, or a
-scenario that founds three towns, would bring that back. `tests/machines.rs` checked every active town's machines
-at the end of 1790; seed 5 now founds a town in 1790 itself, which has not
-had a month yet, and the test skips it.
+1777; 1793, 1795). That left the digest's wording and its place among a
+decade's four read by no test, so when the mines were merged into the
+integration branch the test was given a second island: the first fifty years
+of seed 8, which founds three towns in the 1750s and three in the 1790s, and
+whose two digests are held to the same rules. `tests/machines.rs` checked
+every active town's machines at the end of 1790; seed 5 now founds a town in
+1790 itself, which has not had a month yet, and the test skips it.
+
+**On the integration branch** (`night/core`, the merge of 11 November; seeds
+1 to 6 with six families, the mines against the branch as it stood:
+`.claude/night/reports/core-steps/mines-before` and `mines-after`). The
+branch had gone on since the review, but not in the economy (saved games as
+a log of orders, and the viewer). So the merged build is the reviewed one:
+its six runs give every one of the 325 facts the review's sweep gave for
+those seeds, to the last digit, and the branch without the mines gives the
+review's "off". The sixteen-seed tables under "What the review found" are
+therefore this build's, and are the ones to read. No run failed.
+
+On six seeds alone the picture is the same at the ends and noisier in the
+middle. People in 1900 694 thousand > 714 thousand (6/0); baskets a head
+1.43 > 1.50, 2.94 > 3.17 and 7.83 > 8.52 in 1750, 1800 and 1900 (6/0, 6/0,
+5/1); land under the diggings 1,372 cells' worth > 9.1; 491 workings in 1900;
+track 2,615 > 2,230 km (0/6, starred), lines to quarries 70 > 12; town cells
+303 > 323 (6/0) and works' cells 164 > 204 (6/0); works 699 > 746; the worst
+year for the real wage -0.153 > -0.135 (5/1); the price swings of grain,
+iron, rails and cloth unchanged (0.109 > 0.108, 0.172 > 0.166, 0.172 >
+0.170, 0.037 > 0.037). The mark year 1850 goes the other way on these six
+(baskets 5.06 > 4.47, the real wage against 1750 1.98 > 1.83, both 3/3):
+seeds 1, 4 and 5 had their fastest years just before 1850 without the mines
+and have them just after with, and seed 6 the reverse. On sixteen seeds
+1850 is up (baskets 4.78 > 5.32, 12/4), as the page says above: do not read
+one mark year on six islands.
+
+Two things the sixteen seeds show that the page had not said, both
+`machines.md`'s to look at:
+
+- **Steel rails lose more of their share.** They were 0.19 of the rails
+  made in 1890 without the mines and are 0.05 with them (2/13), and no seed
+  of sixteen now has a year in which steel rails are half of all rails
+  (three had). More rails are made, not fewer (1,627 > 1,872 a month in
+  1890, 11/5), and more steel (15/1); what has moved is the iron rail,
+  whose iron is a sixth cheaper against the wage in 1890 (0.47 > 0.39 wages
+  a unit, 5/11) now that ore is a third cheaper. This is the weakness
+  `machines.md` already owns up to ("steel rails are a quarter of rails in
+  1890 where they were all of them, iron being half the price it was"), made
+  worse by cheaper ore. The converter is untouched (0.92 of steel in 1880
+  either way). The tuning that page asks for, of
+  `MACHINES_STEEL_RAIL_WORTH` and its two companions with everything on, is
+  now wanted a little more.
+- **The powered mill is found later**: 1781 > 1790 in the mean, later on
+  eight islands of sixteen and the same on the other eight; its first cloth
+  1787 > 1794 (9/4). The engine works makes its first machinery four years
+  later too (1810 > 1815, 10/5). I did not trace it. The mill's discovery
+  waits on machinery made and cloth woven, so the guess is that an island
+  with a fifth more pasture and farmland in 1750 keeps its hands on the land
+  a few years longer. The worst is seed 13, which finds the mill in 1826
+  where it found it in 1784 and still weaves four fifths of its cloth by
+  hand in 1830; on the other fifteen the mill makes all the cloth by 1830,
+  as it did on all sixteen.
+
+A run took 20.6 seconds against 17.6 in these sweeps (6/0, six at a time on
+a machine busy with other builds), and 28.7 against 24.5 one at a time on
+seeds 3 and 7 the same evening: a sixth more, both times. The review timed
+none on a quiet machine. It is nowhere near a worry, but "costs nothing"
+may be too kind.
+
+The viewer needed two things. Its loader had learnt to refuse a `run.bin`
+that is cut short, so the table of workings is now read by the same rule (a
+column that is missing its end, or of another length than the rest, is an
+error and not an island without pits). And the demo that takes the
+screenshots (`demo_orders`) was passing its test by accident: on the branch
+as it stood the squares round its works cost 28 to 47 thousand each and the
+family had 18, so it bought none, and the save held two orders only because
+seed 7's best works was a millwright's, in a trade the family had first to
+take up. With the mines the best works there is a brickworks, in the trade
+the family starts with, and the save held one.
+The demo now buys the nearest squares it can afford, up to four and with at
+most half its cash, which is what its note always said it did.
 
 ## What worries me
 
