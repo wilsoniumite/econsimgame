@@ -1,0 +1,332 @@
+# Harvest: good years and bad
+
+Under the port every year on the land is an average year. The grain price
+moves all the same, but only because the price rule has a swing of its own
+(`docs/probes/dx-cycles.md`), and once that is cured (`prices.md`) grain goes
+flat: its price changes by under three per cent a year and a downturn comes
+twice in a century and a half. With `harvest.enabled` the land gives a little
+more or less each year than anyone planned for, the way it does. None of it is
+in the Python.
+
+Everything is off by default. With `harvest.enabled = false` nothing is drawn,
+kept, told or written, and a run is byte for byte the port's
+(`tests/golden.rs`). It is on under the game's rules; `--set
+harvest.enabled=true` measures it alone. The code is `harvest.rs`, with two
+one-line hooks in `econ::step_month`, one in `sim::yearly`, one in
+`sim::run_year` and one in `families::land_price`, each marked `harvest:`.
+
+## What it does
+
+- **The draw.** At the end of each year the coming year's weather is drawn:
+  one number for the whole island and a smooth field for its districts, alike
+  over about `reach` cells (30 cells is 60 km, a quarter of the island's
+  width), so that one valley can fail while the next does well. Together they
+  make a multiplier on each cell's yield, log-normal with mean one:
+  `exp(island_sd x z + district_sd x field - half the variance)`. The mean is
+  one so that an average year stays what the land bids expect. The draws come
+  from a stream of their own (`Rngs::harvest`, stream 7) and do not depend on
+  the sizes, so a sweep over `island_sd` compares the same weather at
+  different strengths. The warm-up years have no weather: 1750 starts from the
+  same settled island with the mechanism on or off.
+- **Who feels it.** Farms feel all of it. Pastures feel two fifths
+  (`pasture`): grass fails in a drought too, but flocks carry over and are
+  driven to better ground. Woods feel none of it (`woods`), since a tree does
+  not notice one summer, and nor do quarries, pits or mines.
+- **When.** The multiplier is applied in the monthly step to what each farm
+  and pasture brings in, after its hands are hired and its machines asked for.
+  The crop is not what the wage bill was laid out for, and the landlord, who
+  takes what is left after wages and cartage, carries the difference: in a bad
+  year the rent of poor land can go below nothing, and he pays the hands out
+  of his own purse. No money is made or lost; the same sales, wages and rents
+  move between the same purses, in other amounts.
+- **Half of it is seen.** About half a farm's year is ploughing and sowing,
+  done before anyone knows what the summer will bring, and half is reaping,
+  threshing and carting, done when the crop can be seen standing. So half the
+  weather (`foreseen`) is known when the hands are hired: a thin crop wants
+  fewer of them, and the wage feels a bad year as well as the rent. This is
+  the one place I left the brief, which asked for a pure surprise; the reason
+  is measured below.
+- **Nobody plans for it.** Land bids, works and investors go on expecting an
+  average year: they read the year's prices, as they always did, and the
+  weather reaches them only through those. With families, a cell's price is
+  twenty-five years of the rent it *would* have paid in an average year
+  (`harvest::average_rent`), so a failed crop does not put a district's land
+  on sale at half price.
+- **The rest is the markets that were already there.** Less grain comes to
+  market, the merchants' stocks run down, the price rises, the real wage
+  falls, and where the shelves empty `people::growth` finds a town short of
+  food, as it did before.
+
+## The news
+
+Told at the year's end, in the observer's manner (what was seen, with its
+numbers), kind `harvest` unless said:
+
+| item | when | weight |
+|---|---|---|
+| A poor harvest | the country's crop is `news_z` (1.8) island deviations short: 9 per cent at the game's size | 0.4 to 0.75, by the shortfall; 0.6 from ten per cent |
+| A bumper harvest | the same above | 0.3 to 0.5 |
+| Three lean years | the third year running at least half a deviation short; it takes the place of that year's poor harvest | 0.45 to 0.75, by what the three years lost together |
+| The harvest fails around TOWN | one town's farms are `news_local_z` (2.3) district deviations below the country's and below an ordinary year, in a year when the country's harvest is not itself news | 0.35 to 0.55 |
+| A dearth of grain (kind `dearth`) | the year's grain price stands `dearth_rise` (12 per cent) above its trend: the mean of the five years before, carried forward at the drift of the last twenty. At most once in three years | 0.55 to 0.8 |
+
+The viewer's "major" feed shows weights from 0.6, so it gets the dearths, the
+worst harvests and the worst runs of lean years; bumper years and one
+district's failure stay in the full feed. With prices on that is 17 harvest
+items and 6 dearths in 150 years, three every two decades; under the port's
+own price rule, whose false swing keeps tripping the dearth line, 16 and 15.
+
+## What the viewer is given
+
+Only when the mechanism is on:
+
+- `LiveYear::harvest_town`, each town slot's harvest in the year just
+  finished against an average year (1.0 is average; the mean over the town's
+  farmland, weighted by what the land would bear), and `LiveYear::harvest`,
+  the country's.
+- In the run file, two more arrays: `town_harvest`, `[years, T]`, and
+  `harvest`, `[years]`. A port run's file has neither.
+- In the state, for anyone drawing the year as it happens:
+  `harvest_town_now` and `harvest_now` are the running year's, and
+  `harvest_mult`, `(NS, N)`, is every cell's multiplier for each land use.
+
+## Its numbers
+
+| `harvest.` | game | |
+|---|---|---|
+| `enabled` | true | off under the port |
+| `island_sd` | 0.05 | standard deviation of the island-wide part of a year's yield (in logs) |
+| `district_sd` | 0.05 | of the district part, across the island's land in one year |
+| `reach` | 30 | cells over which a district's weather is alike |
+| `pasture` | 0.4 | share of the shock pastures feel |
+| `woods` | 0 | share woods feel |
+| `foreseen` | 0.5 | share of the weather known when the hands are hired; 0 is a pure surprise |
+| `news_z` | 1.8 | island deviations that make a poor or a bumper harvest news |
+| `news_local_z` | 2.3 | district deviations that make one town's failure news |
+| `dearth_rise` | 0.12 | how far above its trend the grain price is a dearth |
+
+With both parts at 0.05 the country's harvest has a standard deviation of
+0.051 (the district part nearly averages out over the island), and a town's is
+about 0.07. The cycles probe asked for about five per cent, and I kept it.
+
+## What the sweeps showed
+
+Seeds 1 to 8 to 1900, three sizes of the island's shock, each set against a
+baseline of its own made with the same build. The swing of a thing is the
+standard deviation of the yearly change in its log; `ac1` is the correlation
+of one year's change with the next, which is -0.5 for independent shocks to a
+level, near zero for a level that wanders and well below -0.5 for one that
+rings. Every number is the mean over the eight seeds, with the least and the
+greatest where that matters.
+
+**With prices on** (the two merged on a scratch branch; this is the island the
+game will be played on), no families:
+
+| | prices alone | 0.03 | 0.05 | 0.08 |
+|---|---|---|---|---|
+| grain price swing | 0.027 | 0.053 | 0.078 | 0.117 |
+| grain output swing | 0.023 | 0.059 | 0.090 | 0.141 |
+| price `ac1` | +0.20 | -0.36 | -0.52 | -0.55 |
+| output `ac1` | -0.01 | -0.56 | -0.65 | -0.67 |
+| farm zigzag | 0.80 | 1.37 | 1.95 | 2.92 |
+| years with a town in famine | 2.5 [0..4] | 2.1 [0..5] | 3.0 [1..6] | 2.8 [2..4] |
+| dearths told | - | 1.9 | 5.9 [3..9] | 13.0 |
+| harvest items told | - | 17.2 | 17.2 [9..20] | 15.8 |
+| downturns the observer calls (`alarm`) | 2.4 | 3.2 | 6.5 | 15.4 |
+| worst year's fall in the real wage | -0.131 [-0.311..-0.070] | -0.107 | -0.104 [-0.171..-0.079] | -0.161 [-0.251..-0.079] |
+| people in 1900 | 682,066 | 682,884 | 682,321 [673,970..689,077] | 681,966 |
+| grain output on the harvest | - | 0.81 | 0.79 [0.62..0.92] | 0.78 |
+| grain price on the harvest | - | -0.88 | -0.86 [-0.97..-0.75] | -0.84 |
+| real wage on the harvest | - | 0.23 | 0.21 [0.16..0.29] | 0.19 |
+
+With six families the same table reads the same: at 0.05 the price swing is
+0.079 (0.026 with prices alone), the output swing 0.090 (0.023), the two
+`ac1` -0.52 and -0.64, famine years 1.6 [0..3] (1.8), dearths 6.2 [4..9],
+harvest items 16.4, the worst year's fall -0.102 [-0.168..-0.063] (-0.078),
+people in 1900 684,484 (684,341), the real wage on the harvest 0.19
+[0.14..0.29].
+
+Read: grain moves again, three times as much as with prices alone, and it
+moves as independent years should. A harvest ten per cent short brings in
+eight per cent less grain that year (the dearer price calls a few more hands
+to the land), sells it nine per cent dearer, and takes two per cent off what a
+wage buys, in every seed. The price does not ring: the year after, it is back
+within a point or two of where it was. Output has a one-year echo (`ac1`
+-0.65, not -0.5): the hands the dear year called in are still there for the
+next crop, so a short year is followed by a rather full one. Downturns the
+observer notices go from one in sixty years to one in twenty-three. The long
+run does not move: people, towns, works, railways and the real wage of 1900
+are all inside the spread between seeds.
+
+What does **not** happen: famines are no more common (3.0 years a run against
+2.5 is noise), the worst single year for wage earners is no worse, and nobody
+dies of it, since the population grows at its cap whatever the harvest
+(the rules' `README.md`, "What the port's baseline says"). With merchants who mark up
+thin shelves, a harvest ten or fifteen per cent short is rationed by price
+before a town runs out. A bad year is dear bread and a lean rent, not a
+catastrophe. Whether that is too mild is for whoever tunes the people's side;
+at 0.08 dearths come once in twelve years and the observer calls a downturn
+every ten.
+
+**Under the port's own price rule**, no families:
+
+| | port | 0.03 | 0.05 | 0.08 |
+|---|---|---|---|---|
+| grain price swing | 0.086 | 0.091 | 0.104 | 0.126 |
+| grain output swing | 0.136 | 0.161 | 0.207 | 0.268 |
+| price `ac1` | -0.19 | -0.20 | -0.24 | -0.21 |
+| output `ac1` | -0.45 | -0.48 | -0.52 | -0.51 |
+| farm zigzag | 4.82 | 5.58 | 6.75 | 8.21 |
+| years with a town in famine | 2.0 [0..7] | 3.5 [0..8] | 5.0 [1..8] | 7.0 [1..11] |
+| dearths told | - | 12.9 | 15.4 [12..21] | 22.5 |
+| harvest items told | - | 17.9 | 16.1 [9..20] | 16.0 |
+| worst year's fall in the real wage | -0.180 [-0.229..-0.125] | -0.167 | -0.207 [-0.280..-0.143] | -0.230 [-0.612..-0.117] |
+| people in 1900 | 682,305 | 678,157 | 679,719 [671,133..686,813] | 674,099 |
+| grain output on the harvest | - | 0.84 | 1.04 [0.55..1.38] | 1.05 |
+| grain price on the harvest | - | -0.50 | -0.49 [-0.68..-0.36] | -0.51 |
+| real wage on the harvest | - | 0.12 | 0.18 [0.09..0.26] | 0.17 |
+
+With six families at 0.05: price swing 0.107 (0.090 without harvests), output
+swing 0.200 (0.132), famine years 3.8 [1..9] (2.1), dearths 17.9, harvest
+items 16.1, people in 1900 682,027 (682,983), the real wage on the harvest
+0.19 [0.08..0.27].
+
+Read: here the probe's warning holds. The weather itself would add about a
+seventh to the swing of grain output; it adds a half, because each shock sets
+the old spring going again (the zigzag goes from 4.8 to 6.7). Famine years
+double, though one seed in eight still has only one. The dearth line is
+tripped fifteen times a run, twelve of them by the false swing, which would
+trip it with no weather at all. Harvests belong with `prices`; alone on the
+port's price rule they mostly feed its fault.
+
+## Pure surprise, or half seen
+
+The brief asked for a pure surprise: the hands hired for an average year, the
+crop coming in as it may. I built that first and measured it, and one thing it
+was meant to do did not happen. At the game's size, eight seeds:
+
+| `foreseen` | 0 | 0.5 | 1 |
+|---|---|---|---|
+| with prices: real wage on the harvest | 0.00 [-0.07..0.10] | 0.21 [0.16..0.29] | 0.37 [0.26..0.48] |
+| with prices: grain price on the harvest | -0.65 | -0.86 | -1.03 |
+| with prices: grain output on the harvest | 0.50 | 0.79 | 1.01 |
+| with prices: grain price swing | 0.063 | 0.078 | 0.091 |
+| with prices: famine years | 1.9 | 3.0 | 2.0 |
+| port's price rule: real wage on the harvest | 0.00 [-0.08..0.10] | 0.18 [0.09..0.26] | 0.36 [0.20..0.44] |
+| port's price rule: famine years | 3.6 | 5.0 | 7.0 |
+
+As a pure surprise the real wage does not move with the harvest at all, that
+year or the next. The reason is in how the island hires. A farm takes hands
+until the last one is worth his wage at the price of grain, and most of the
+island works the land, so the wage follows the grain price. In a bad year the
+price rises, farms that do not know their crop is thin bid for hands as if it
+were full, and the wage rises with the bread. All of the loss falls on the
+rent. That is not how a bad year went: a thin crop wanted fewer reapers and
+threshers, and the labourer met dear bread with less work.
+
+With `foreseen` the farm's worth of a hand is scaled by what it can see of
+its own crop. At 1 the whole year is known in January, which is too much and
+is not a surprise to anyone but the land market. Half has a reason one can
+say in a sentence (sowing is done blind, reaping is not) and gives a real
+wage that falls two per cent for a harvest ten per cent short, in every seed,
+while the rent still takes the larger part. `--set harvest.foreseen=0` is the
+brief's version, and the sweeps of it are kept beside the others
+(`sweep-harvest-surprise*`, `sweep-harvest-x-prices-surprise*`).
+
+## The facts added to the sweep
+
+Under "Prices and cycles", in every run:
+
+- `output_swing_grain`: as `price_swing_grain`, for the grain brought in.
+- `price_ac1_grain`, `output_ac1_grain`: the correlation of one year's change
+  in the log with the next year's, 1760 to the end.
+- `real_wage_worst_year`: the real wage's largest fall on the year before.
+- `real_wage_swing`: the standard deviation of its yearly change.
+- `famine_years`: years in which `people::growth` found at least one town
+  short of food and said so.
+
+Only in runs with harvests on:
+
+- `harvest_sd`: the standard deviation of the log of the country's harvest.
+- `grain_output_on_harvest`, `grain_price_on_harvest`,
+  `real_wage_on_harvest`: the slope of the year's change in the log of each on
+  the log of that year's harvest. 0.2 for the real wage says a harvest ten per
+  cent short takes two per cent off it that year.
+- `grain_price_year_after_harvest`, `real_wage_year_after_harvest`: the same
+  slope taken over two years, from the year before the harvest to the year
+  after it: what is left of it by then.
+
+## How it was checked
+
+- `tests/harvest.rs`: off under the port (nothing drawn, kept, told or
+  written, and `params.json` does not mention it) and on in the game; the
+  multiplier reaches farms and pastures only, unseen it leaves the hands and
+  the wage bit for bit as they were and scales each unit's crop, and seen it
+  lowers the wage where the harvest is worst; no money is made or lost in a
+  month of weather; a sweep over sizes compares the same draws; a run of 22
+  years with it on conserves money every month and repeats byte for byte,
+  packed run file included; over 60 years the harvest goes with the year's
+  change in grain output and against the change in its price, the record has
+  every town's harvest, and the news is at most three items a decade with
+  weights between 0.3 and 0.8; with six families money holds, the live view
+  carries the harvests, and land is priced on an average year's rent.
+- `tests/golden.rs` passes with its constants untouched.
+- The sweeps above and the two variants kept beside them: 224 runs with
+  harvests on, none failed the monthly money check.
+- The scripted players (`examples/bots.rs`, seeds 3 and 7) under the game's
+  rules on this branch, which are the port's plus harvests: all four
+  strategies play to 1900 with money conserved, and end where they did under
+  the port (the landlord, who lives on rent, still comes first of six with
+  27.8 and 24.4 million against 23.9 and 24.5).
+
+## What worries me
+
+- **Harvests alone are not ready to play.** They were built for an island
+  whose prices have been steadied. Under the port's price rule they work and
+  conserve money, but they feed the false swing. If `prices` were ever
+  switched off, switch this off with it.
+- **A bad year is mild.** No more famines, no worse a worst year, no one
+  fewer in 1900. The first two are the merchants doing their job and the size
+  of the shock; the third is the port's population rule, which does not look
+  at living standards. When the people's side learns to (another helper's
+  mechanism), harvests will start to matter for numbers, and the size of the
+  shock should be looked at again with it on.
+- **A short year is followed by a full one.** Output's `ac1` is -0.65 where
+  -0.5 would be clean. It is one year of echo, not a ring, and it comes from
+  farm hands answering a price half a year late, which is the port's
+  `labor_adjust_ex` and not this mechanism's. It grows a little with the size
+  of the shock.
+- **The same weather all twelve months.** The island has no seasons: a bad
+  year is twelve short months, known (by the game's half) from the first of
+  them. A year with a harvest month would make stocks, and a price that peaks
+  before the next crop, mean something; that is a larger change than this one.
+- **The price answers weakly.** Ten per cent less grain is nine per cent
+  dearer. In the eighteenth century it was more like thirty. Households here
+  spend a share of their purse on bread whatever it costs, so the price need
+  not rise far to clear; a mechanism that makes food the last thing given up
+  would sharpen every bad year without touching this one.
+- **`foreseen` and the price of land.** `average_rent` puts back the crop the
+  weather took from the hands that were hired; with `foreseen` above 0 the
+  hands hired were themselves fewer, which it does not undo. It is exact at 0
+  and near enough at a half for pricing land. The families' own choice of
+  which land to buy still reads the year's rent as paid, so after a failed
+  harvest the poorest cells of a district are passed over for a year.
+- **Landlords can go below nothing.** In a bad year the rent of marginal land
+  is negative and the gentry of a poor district pay the wage bill from their
+  purse, which can itself go negative (it could before: the port has it
+  wherever rent falls short of wages). With families the same falls on the
+  family that owns the land, which is the point, but I did not look for a
+  family ruined by one harvest.
+- **A new town's runaway wage is not mine, but harvests move it about.** In
+  the port a small new town whose land wants far more hands than it has
+  people can see its wage double every month to the ceiling of 500 for most
+  of a year (seed 3 in 1753: the island's average wage doubles). It sits on a
+  knife's edge, so any change to the island moves which seed has it: with
+  harvests on the port's price rule it turned up as well in seed 7 (1754),
+  seed 6 (1820) and seed 2 (1827), at some sizes of shock and not at others.
+  With prices on, the largest jump of the island's wage in 112 runs with
+  harvests was 43 per cent, the same as without them. A year like that also
+  trips the dearth line and sets the worst-year fact.
+- **Eight seeds.** The slopes on the harvest are clear of zero in every seed;
+  the famine counts and the worst year are not clear of the spread, and I
+  have said so where it matters.

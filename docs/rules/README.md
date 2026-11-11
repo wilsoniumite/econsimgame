@@ -441,4 +441,9 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 ## Mechanisms under the game's rules
 
-None yet. One line each as they arrive: the name, its page, its switch.
+One line each as they arrive: the name, its page, its switch.
+
+- **harvest**: good years and bad on the farms and pastures, island-wide and
+  by district, half of each seen when the hands are hired; with the news of
+  poor and bumper harvests, lean years and dearths. It belongs with `prices`.
+  [harvest.md](harvest.md), `harvest.enabled`.
