@@ -56,6 +56,8 @@ pub struct Slots {
     pub firm_water: Vec<bool>,
     /// the rung of the size each works' ground was set aside for
     firm_rung: Vec<i32>,
+    /// the churchyards the works' ground was taken clear of (`towns::Churchyard::mark`, together)
+    churchyards: u64,
     /// spots on the hedges between fields, for hedgerow trees
     pub hedge: Vec<Slot>,
     /// the year the fields of each hedge spot and each farm spot are enclosed
@@ -101,7 +103,8 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
 //
 // Every works has a yard of its own, as wide and as deep as its kind needs at
 // its size (`works::footprint`), and the yards of a cell must not overlap one
-// another, the market place, the roads, the railway or the river. So the
+// another, the market place, a churchyard (in any year the church stands
+// there: `towns::churchyards`), the roads, the railway or the river. So the
 // ground of a cell is handed out: each works, in the order they were founded,
 // is given the first free spot (of a fixed, shuffled list) that holds the
 // yard it will need at the largest size it reaches in the record. A works
@@ -235,8 +238,10 @@ struct Lot {
 /// Lay out the works of one cell: `firms` in the order they were founded.
 /// It gives back how many found no room at their own size, and how many none at all.
 #[allow(clippy::too_many_arguments)]
-fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
+fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
     let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
+    // the churchyards that reach into this cell, or near it
+    let yards: Vec<&towns::Churchyard> = yards.iter().filter(|y| y.meets_box(cx + 0.5, cy + 0.5, 0.55, 0.55)).collect();
     let town = r.header.towns.iter().any(|t| t.node == cell).then(|| cen[cell]);
     // the spots a yard may be centred on: a 9 x 9 grid on dry land, shuffled
     const N: usize = 9;
@@ -290,6 +295,12 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
                 if dx.hypot(dz) < 0.17 {
                     return false;
                 }
+            }
+            // a churchyard and the way to its gate, in any year the two both stand: a works
+            // keeps as far from the wall as a tree does, or a wall's width where room is short
+            let wall = if strict { 0.03 } else { 0.008 };
+            if yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(x, z, hx + wall, hz + wall)) {
+                return false;
             }
             if strict && ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
                 return false;
@@ -357,7 +368,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             // where its yard would stand on land (or of them all, if there is none), the one
             // furthest from the yards already there; the higher, of two as far
             let (hx, hz) = if quarter % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
-            let ashore = |s: &&(f32, f32, f32)| [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)].iter().all(|&(dx, dz)| world::height_at(g, s.0 + dx, s.1 + dz) >= 0.004);
+            let ashore = |s: &&(f32, f32, f32)| [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)].iter().all(|&(dx, dz)| world::height_at(g, s.0 + dx, s.1 + dz) >= 0.004) && !yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(s.0, s.1, hx, hz));
             let apart = |s: &(f32, f32, f32)| lots.iter().filter(|l| from < l.to && l.from < to).map(|l| (l.x - s.0).hypot(l.z - s.1)).fold(f32::MAX, f32::min);
             let furthest = |spots: Vec<&(f32, f32, f32)>| spots.into_iter().rev().max_by(|a, b| apart(a).total_cmp(&apart(b))).map(|s| (s.0, s.1));
             let at = furthest(tight.iter().filter(ashore).collect()).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
@@ -436,14 +447,26 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     let n = r.header.firms.len();
     let lives: Vec<(usize, usize, f32)> = (0..n).map(|f| firm_life(r, f)).collect();
     let rungs: Vec<i32> = (0..n).map(|f| works::rung(firm_ratio(r, f, lives[f].2), firm_phase(f))).collect();
-    let dirty: std::collections::HashSet<usize> = (0..n).filter(|&f| slots.firm_rung.get(f).map_or(true, |&set| rungs[f] > set)).map(|f| r.header.firms[f].cell).collect();
+    let mut dirty: std::collections::HashSet<usize> = (0..n).filter(|&f| slots.firm_rung.get(f).map_or(true, |&set| rungs[f] > set)).map(|f| r.header.firms[f].cell).collect();
     slots.firm_pos.resize(n, (0.0, 0.0, 0.0));
     slots.firm_cap.resize(n, f32::MAX);
     slots.firm_water.resize(n, false);
+    let cen = crate::network::centres(r);
+    // the churchyards of every year so far. When one is new (a town founded, a church rebuilt
+    // bigger, or moved by a road or the railway), the cells it reaches are laid out again,
+    // so that a works standing where the church has come to gives way to it
+    let yards = towns::churchyards(r, g, &cen);
+    let marks = yards.iter().fold(0u64, |all, y| all ^ y.mark());
+    if marks != slots.churchyards {
+        slots.churchyards = marks;
+        for y in &yards {
+            let reach = |c: usize| y.meets_box((c % r.w) as f32 + 0.5, (c / r.w) as f32 + 0.5, 0.5, 0.5);
+            dirty.extend(r.header.firms.iter().map(|f| f.cell).filter(|&c| reach(c)));
+        }
+    }
     if dirty.is_empty() {
         return;
     }
-    let cen = crate::network::centres(r);
     let ways = ways(r, &cen, r.filled.clamp(1, r.ny) - 1);
     let mut by_cell: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
     for f in 0..n {
@@ -454,14 +477,28 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     let (mut squeezed, mut homeless) = (0, 0);
     for (cell, mut firms) in by_cell {
         firms.sort_by_key(|&f| (r.header.firms[f].born, f));
-        let (a, b) = lay_out(r, g, &cen, ways.get(&cell).map_or(&[][..], |v| v), cell, &firms, &lives, &rungs, slots);
+        let (a, b) = lay_out(r, g, &cen, ways.get(&cell).map_or(&[][..], |v| v), &yards, cell, &firms, &lives, &rungs, slots);
         squeezed += a;
         homeless += b;
     }
-    slots.firm_rung = rungs;
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
-        eprintln!("works laid out in {} cells: {} of {} drawn smaller than they are for want of room, {} with no ground of their own", dirty.len(), squeezed, n, homeless);
+        // the works whose ground, as it was set aside, meets a churchyard or the way to its gate in a year both stand
+        let in_churchyard = (0..n)
+            .filter(|&f| {
+                let ((x, z, yaw), (from, to, _)) = (slots.firm_pos[f], lives[f]);
+                let (w, d) = works::footprint(firm_kind(r, f), works::rung_size(rungs[f], firm_phase(f)).min(slots.firm_cap[f]));
+                let (hx, hz) = if (yaw / std::f32::consts::FRAC_PI_2).round() as i32 % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
+                yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(x, z, hx, hz))
+            })
+            .count();
+        if std::env::var_os("ISOSTATE_PLOTS").is_some() {
+            for y in &yards {
+                eprintln!("the church of town {} stands at {:.2}, {:.2} from {}{}", y.town, y.at.x, y.at.y, r.y0 + y.from as i32, if y.to == usize::MAX { String::new() } else { format!(" to {}", r.y0 + y.to as i32) });
+            }
+        }
+        eprintln!("works laid out in {} cells: {} of {} drawn smaller than they are for want of room, {} with no ground of their own, {} on the ground of a church ({} churchyards over the years)", dirty.len(), squeezed, n, homeless, in_churchyard, yards.len());
     }
+    slots.firm_rung = rungs;
 }
 
 pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
@@ -478,6 +515,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
         firm_cap: Vec::new(),
         firm_water: Vec::new(),
         firm_rung: Vec::new(),
+        churchyards: 0,
         hedge: Vec::new(),
         hedge_open: Vec::new(),
         farm_open: Vec::new(),
