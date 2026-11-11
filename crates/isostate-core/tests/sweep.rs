@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use isostate_core::cli::main_with_args;
+use isostate_core::{default_content, default_params, facts, sim};
 use serde_json::Value;
 
 fn scratch(name: &str) -> PathBuf {
@@ -124,6 +125,66 @@ fn a_tiny_sweep_writes_finite_facts() {
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&dir2);
+}
+
+/// Four facts cannot be worked out from the files a run writes. Here they are
+/// worked out a second way from what the run keeps in memory.
+#[test]
+#[allow(non_snake_case)]
+fn the_facts_no_file_holds_agree_with_the_record() {
+    let mut P = default_params();
+    P.seed = 3;
+    P.end_year = Some(1790);
+    let mut s = sim::start(&P, default_content());
+    let mut gathered = facts::Gathered::default();
+    while s.year <= s.end_year {
+        sim::run_year(&mut s).expect("money is conserved");
+        facts::gather_year(&mut gathered, &s);
+    }
+    let r = sim::finish(s);
+    let f = facts::stylised_facts(&r, &gathered, 0.0);
+    let (st, C, rec) = (&r.state, &r.content, &r.rec);
+
+    // growth against the cap: the sweep notes it between years from the live state. The yearly
+    // snapshot keeps each town's income ratio and people (as f32), which is another road to it.
+    let T = rec.T;
+    let mut share = Vec::new();
+    for k in 0..rec.n_years {
+        let (mut capped, mut all) = (0.0, 0.0);
+        for t in (0..T).filter(|&t| rec.town_active[k * T + t] == 1 && rec.town_y[k * T + t] > 0.0) {
+            let (y, pop) = (rec.town_y[k * T + t] as f64, rec.town_pop[k * T + t] as f64);
+            all += pop;
+            if P.growth_slope * y.ln() + P.growth_base >= P.growth_cap {
+                capped += pop;
+            }
+        }
+        share.push(capped / all);
+    }
+    let people = share.iter().sum::<f64>() / share.len() as f64;
+    let years = share.iter().filter(|&&v| v >= 0.5).count() as f64 / share.len() as f64;
+    // not every year of this run sits at the cap, or the check would show nothing
+    assert!(people > 0.5 && people < 0.999, "{people}");
+    assert!((f.get("growth_capped_people").unwrap() - people).abs() < 1e-4, "{:?} against {people}", f.get("growth_capped_people"));
+    assert_eq!(f.get("growth_capped_years"), Some(years));
+
+    // utilisation and the top hundredth's share of capacity, from the final state
+    let alive: Vec<usize> = (0..st.F_count).filter(|&w| st.f_alive[w]).collect();
+    let built: Vec<f64> = alive.iter().filter(|&&w| st.f_K[w] > 0.0).map(|&w| st.f_u[w]).collect();
+    let util = built.iter().sum::<f64>() / built.len() as f64;
+    assert!((f.get("works_utilisation_1790").unwrap() - util).abs() < 1e-12);
+    let mut value: Vec<f64> = Vec::new();
+    for &w in &alive {
+        let mut unit = 0.0;
+        for g in 0..C.G {
+            unit += C.m_cap[(st.f_method[w], g)] * st.pbar[(st.f_town[w], g)];
+        }
+        value.push((st.f_K[w] + st.f_order_K[w]) * unit);
+    }
+    value.sort_by(f64::total_cmp);
+    let top = value.len().div_ceil(100);
+    let share = value[value.len() - top..].iter().sum::<f64>() / value.iter().sum::<f64>();
+    assert!(top >= 5 && share > 0.01 && share < 0.5, "{top} works hold {share}");
+    assert!((f.get("works_top_1pct_capacity_share_1790").unwrap() - share).abs() < 1e-12);
 }
 
 #[test]

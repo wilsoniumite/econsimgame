@@ -299,8 +299,9 @@ Seed 7's facts were worked out a second time from the files `isostate-core
 run` writes (the monthly CSV, the events and `run.bin`), by a separate script
 written from this page, with and without families: all 127 that can be had
 from those files agree. The four that cannot (`growth_capped_*`,
-`works_top_1pct_capacity_share`, `works_utilisation`) were checked by reading
-the code.
+`works_top_1pct_capacity_share`, `works_utilisation`) are worked out a second
+way in `tests/sweep.rs`, from the yearly snapshot and the final state of a
+run to 1790.
 
 | Heading | Facts |
 |---|---|
