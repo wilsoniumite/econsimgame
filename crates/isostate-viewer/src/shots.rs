@@ -206,6 +206,80 @@ pub fn standard_views(r: &Replay, cen: &[(f32, f32)], slots: &scatter::Slots, ho
     out
 }
 
+/// The far views of the land (`--land-shots DIR`): five cameras, each in 1800
+/// and 1900 in summer, in 1800 in October and in 1900 in midwinter, for
+/// judging a change to the rules the land is laid out and painted by
+/// (`world::year_land`, the land blocks of terrain.wesl). Like the standard
+/// views they are chosen from the run, so they follow the game on any island:
+/// the whole island; from 8 km up, the lowland where wood and field are most
+/// mixed in 1800; the hill country where pasture and heath are most mixed in
+/// 1900; the country round the home town; and the highest ground, for the
+/// snow line.
+pub fn land_views(r: &Replay, g: &crate::world::Ground, cen: &[(f32, f32)], home: Option<usize>, island: ((f32, f32), f32), dir: &str) -> Vec<Standard> {
+    use crate::world;
+    let last = r.filled.clamp(1, r.ny) - 1;
+    let year_of = |y: i32| y.clamp(r.y0, r.y0 + last as i32);
+    let k_of = |y: i32| (year_of(y) - r.y0) as usize;
+    let path = |name: &str| Path::new(dir).join(format!("{name}.png")).to_string_lossy().replace('\\', "/");
+    // the middle of the window of `half` cells each way that scores highest, a cell's score
+    // being None where the window may not reach (the sea, the wrong kind of country)
+    let best = |half: isize, score: &dyn Fn(usize) -> Option<f32>| -> Option<(f32, f32)> {
+        let cell: Vec<Option<f32>> = (0..r.n).map(|c| if r.terrain[c] == 0 { None } else { score(c) }).collect();
+        let mut top: Option<(f32, usize)> = None;
+        for c in 0..r.n {
+            let (x, z) = ((c % r.w) as isize, (c / r.w) as isize);
+            let mut sum = 0.0;
+            for dz in -half..=half {
+                for dx in -half..=half {
+                    let (xx, zz) = (x + dx, z + dz);
+                    if xx >= 0 && zz >= 0 && (xx as usize) < r.w && (zz as usize) < r.h {
+                        sum += cell[zz as usize * r.w + xx as usize].unwrap_or(0.0);
+                    }
+                }
+            }
+            if top.is_none_or(|t| sum > t.0) {
+                top = Some((sum, c));
+            }
+        }
+        top.filter(|t| t.0 > 0.0).map(|(_, c)| ((c % r.w) as f32 + 0.5, (c / r.w) as f32 + 0.5))
+    };
+    let mut cams: Vec<(&str, String, (f32, f32), f32, f32)> = vec![("island", "The whole island".into(), island.0, ISLAND_PITCH, island.1)];
+    let k = k_of(1800);
+    if let Some(at) = best(5, &|c| (r.terrain[c] == 1).then(|| { let s = world::open_shares(r, k, c); s[2].min(s[0] + s[1] + s[3]) })) {
+        cams.push(("lowland", "Wooded lowland from 8 km up".into(), at, PLAY_PITCH, 40.0));
+    }
+    let k = k_of(1900);
+    if let Some(at) = best(3, &|c| (r.terrain[c] == 2).then(|| { let s = world::open_shares(r, k, c); s[1].min(s[3]) })) {
+        cams.push(("hills", "A hill margin, pasture against the moor".into(), at, PLAY_PITCH, 25.0));
+    }
+    let town = home.or_else(|| {
+        (0..r.n_towns.min(r.header.towns.len()))
+            .filter(|&t| r.town_active[last * r.n_towns + t] > 0)
+            .max_by(|&a, &b| r.town_urban[last * r.n_towns + a].total_cmp(&r.town_urban[last * r.n_towns + b]))
+    });
+    if let Some(t) = town {
+        let (x, z) = cen[r.header.towns[t].node];
+        cams.push(("town", format!("The country round {}", r.header.towns[t].name), (x, z + 1.0), PLAY_PITCH, 24.0));
+    }
+    // the highest ground, if any of it keeps its snow through the summer
+    let top = (0..g.gw * g.gh).max_by(|&a, &b| g.hgt[a].total_cmp(&g.hgt[b])).unwrap_or(0);
+    if g.hgt[top] > 1.75 {
+        cams.push(("snowline", "The snow line".into(), ((top % g.gw) as f32 / world::VRES as f32, (top / g.gw) as f32 / world::VRES as f32 + 1.0), PLAY_PITCH, 18.0));
+    }
+    let mut out = Vec::new();
+    for (year, season, when) in [(1800, 0.5, "summer"), (1900, 0.5, "summer"), (1800, 0.8, "october"), (1900, 0.0, "midwinter")] {
+        for (name, caption, look, pitch, dist) in &cams {
+            let name = if when == "summer" { format!("{name}-{year}") } else { format!("{name}-{year}-{when}") };
+            out.push(Standard {
+                spec: ShotSpec { path: path(&name), year: Some(year_of(year)), look: Some(*look), yaw: 0.0, pitch: *pitch, dist: Some(*dist), season: Some(season), tab: Some(None), overlay: None, markets: None },
+                name,
+                caption: format!("{caption}, {when} {}", year_of(year)),
+            });
+        }
+    }
+    out
+}
+
 // ------------------------------------------------------------------ comparing two sets
 
 /// How far two shots of the same name differ.

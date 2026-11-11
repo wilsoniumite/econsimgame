@@ -101,6 +101,8 @@ struct Args {
     class_map: bool,
     /// render the standard shots into this directory, then stop (shots.rs)
     shots: Option<String>,
+    /// (task C, the land) the shots are the far views of the land (`shots::land_views`), not the standard twelve
+    land_shots: bool,
     /// show each standard shot beside the one of the same name in this directory
     shots_compare: Option<String>,
     /// a line for the sheet of standard shots, such as the commit they were made from
@@ -186,6 +188,9 @@ Pictures and checks with no window:
 The standard shots (src/shots.rs) and the lab (src/lab.rs):
 
   --shots DIR          play the whole game, take the standard shots into DIR, and stop
+  --land-shots DIR     the same for the far views of the land: five cameras (the whole island,
+                       mid distance over lowland wood, a hill margin, a town's surroundings,
+                       the snow line) in 1800 and 1900, in summer, in October and in midwinter
   --shots-compare DIR  with --shots: set each beside the shot of the same name in DIR
   --shots-note TEXT    with --shots: a line for the sheet, such as the commit
   --compare-shots A B  compare two sets of standard shots already taken, and stop
@@ -270,6 +275,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         ground_debug: false,
         class_map: false,
         shots: None,
+        land_shots: false,
         shots_compare: None,
         shots_note: String::new(),
         compare_shots: None,
@@ -338,6 +344,8 @@ fn parse(v: &[String]) -> Result<Args, String> {
             }
             "--season" => { a.season = Some(number(opt, &next(i)?)?); i += 1; }
             "--shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); i += 1; }
+            // (task C, the land) the same machinery as --shots, with the far views of the land
+            "--land-shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); a.land_shots = true; i += 1; }
             "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
             "--shots-note" => { a.shots_note = next(i)?; i += 1; }
             "--compare-shots" => {
@@ -774,7 +782,11 @@ fn main() {
             std::process::exit(1);
         }
         let seat = families.as_ref().and_then(|f| f.player()).map(|p| p.seat);
-        let standard = shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir);
+        let standard = if args.land_shots {
+            shots::land_views(&r, &g, &cen, seat, shots::island_view(&r, args.size), dir)
+        } else {
+            shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir)
+        };
         // pictures of an earlier set in this directory would be taken for this run's
         shots::clear_pictures(&standard);
         views = standard.iter().map(|s| s.spec.clone()).collect();
@@ -2417,7 +2429,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }
