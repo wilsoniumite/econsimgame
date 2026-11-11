@@ -38,19 +38,22 @@ lie of the land), so they do not all cross from "does not pay" to "pays" at
 once: none take the machine where it only earns its cost, all of those who
 know how take it where it earns its cost `1 + adopt_span` times over, and a
 share in proportion between. A farm that takes the machine buys for its own
-output, which is `1 + boost` times that of a farm without one; so the
-machinery a town's farms ask for is the input for the output of fully
-equipped farms, times the share of farms that buy, which is that share and the
-know-how multiplied. So when machinery is dear fewer farms buy, and the price
-stops where the market clears instead of running to the ceiling.
+output, which is `1 + boost` times that of a farm without one. So a town's
+farms ask for the machinery that fully equipped farms need, for the share of
+farms that buy: those who know how, times the share of them it pays. When
+machinery is dear fewer farms buy, and the price stops where the market
+clears instead of running to the ceiling.
 
 **2. A machine stands for years.** Each town keeps, for each use, the share of
 its farms (or pits, each counted by what it makes with no machine) whose
 machines are standing. Every month it moves one part in `life_months` towards
 the share that keeps its machines up and was supplied that month. What a
 machine adds comes from the machines standing; what is bought comes from who
-keeps theirs up. A month the engine works cannot deliver does not flood the
-pits; years of it do. Settlers bring their engines with them: a new town
+keeps theirs up. Counted in machines the two are one account: if an equipped
+farm's machines are `input * life_months` for each unit it grows a month,
+then replacing what wears out and adding what is new comes to `input` a unit
+for every farm that keeps them up, which is what point 1 buys. A month the
+engine works cannot deliver does not flood the pits; years of it do. Settlers bring their engines with them: a new town
 starts from what its people keep up. This reaches the mines too: their pumps
 and wagonways are bought as the port buys them, but what they add now follows
 eight years of deliveries, not last month's.
@@ -351,13 +354,18 @@ as good as it gets in that table.
   `adopt_span` 6 the last farms wait until the machine earns seven times its
   cost. That is the price of a calm machinery market while the engine works
   answer slowly; with a faster works sector the span could come down.
-- **Purchases and machines standing meet only in the long run.** A farm that
-  takes up the machine pays for it at the full monthly rate from the first
-  month, while what stands on its land builds up over `life_months`; one that
-  gives it up stops paying at once and keeps the benefit while its machines
-  wear out. Over a machine's life the two cancel. A machine bought outright
-  and then kept up would be nearer the truth and would make demand for
-  machinery lumpier, which is the thing this mechanism set out to calm.
+- **A farm equips itself only as fast as it will later replace.** A farm that
+  takes up the machine buys at the steady monthly rate from the first month,
+  and what stands on its land builds up over `life_months`; one that gives it
+  up stops buying and its machines wear out as slowly. The account is exact,
+  but nobody buys a machine outright. That would be nearer the truth and
+  would make demand for machinery lumpier, which is the thing this mechanism
+  set out to calm. While a town's machines are still building, its farms pay
+  for more than is standing: at the worst (none standing yet) machinery can
+  take `boost / (1 + adopt_span)` of the price of what they grow, a quarter
+  to a half at the game's numbers. With `adopt_pumps` on and quality near the cap
+  a pump's boost is 8 and that share could pass the whole price; the switch
+  is off, and wants this looked at before it is turned on.
 - **One wild year in the 1750s, somewhere.** In one seed of sixteen the real
   wage doubles for a single year and falls back (the port: seed 3 in 1753;
   the game: seed 7 in 1755, and not seed 3). It is the port's own oddity,
