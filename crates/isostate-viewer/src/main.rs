@@ -807,9 +807,10 @@ fn sun_at(lk: &Look, phase: f32) -> (f32, Color, Transform) {
 }
 
 /// The material of the bare limbs of the broadleaf trees: each limb is one
-/// flat blade, so it is drawn and lit from both sides.
+/// flat blade, so it is drawn from both sides, and lets half the light
+/// through, so that the side turned from the sun is not a black spike.
 fn bare_limb_material(lk: &Look) -> StandardMaterial {
-    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.foliage, reflectance: lk.surfaces.painted_reflectance, double_sided: true, cull_mode: None, ..default() }
+    StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.foliage, reflectance: lk.surfaces.painted_reflectance, diffuse_transmission: lk.surfaces.bare_limb_translucence, double_sided: true, cull_mode: None, ..default() }
 }
 
 /// The material of smoke: white, matt, letting some light through.

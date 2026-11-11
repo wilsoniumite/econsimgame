@@ -122,18 +122,22 @@ pub fn bush(green: &mut Greenery, site: &Site, v: f32, turn: f32, pal: &Palette)
     green.evergreen.ball(site.origin + Vec3::Y * 0.012, 0.022 + 0.01 * v, 0.014, 5, 2, col, turn);
 }
 
-/// How many limbs a bare tree shows.
+/// How many limbs a bare tree shows: four boughs off the trunk, and a lesser
+/// limb forking from each of the lower three.
 const LIMBS: usize = 7;
+const BOUGHS: usize = 4;
 
-/// The limbs of a bare broadleaf tree of size `s` standing at `p`: flat
-/// tapered blades that leave the trunk at different heights and turns, the
-/// lower ones longer and nearer level, so that they cross as they are seen.
-/// A blade is one triangle, drawn from both sides.
+/// The limbs of a bare broadleaf tree of size `s` standing at `p`: slim
+/// tapered blades. The boughs leave the trunk at different heights and
+/// turns, the lower ones longer and nearer level, and reach as far as the
+/// crown does in leaf; a lesser limb forks upward from each of the lower
+/// ones, so that they cross as they are seen and the tree keeps the outline
+/// of its crown. A blade is one triangle, drawn from both sides.
 fn limbs(bare: &mut MeshBuf, p: Vec3, s: f32, turn: f32, col: Rgba) {
     // there are tens of thousands of trees, so the limbs of a tree of size 1 are worked out
     // once, in a few shapes, and each tree turns and scales one of them
     static SHAPES: std::sync::OnceLock<[[Limb; LIMBS]; LIMB_SHAPES]> = std::sync::OnceLock::new();
-    let shapes = SHAPES.get_or_init(|| std::array::from_fn(|shape| std::array::from_fn(|i| limb(shape, i))));
+    let shapes = SHAPES.get_or_init(|| std::array::from_fn(bare_tree));
     let (sin, cos) = turn.sin_cos();
     // the same turn about the upright as a site's yaw
     let place = |v: Vec3| p + Vec3::new(v.x * cos + v.z * sin, v.y, -v.x * sin + v.z * cos) * s;
@@ -146,26 +150,41 @@ fn limbs(bare: &mut MeshBuf, p: Vec3, s: f32, turn: f32, col: Rgba) {
 const LIMB_SHAPES: usize = 4;
 
 /// One limb of a bare tree of size 1 standing at the origin: the two corners
-/// of the blade at the trunk and its tip, and how light it is.
+/// of the blade at its root and its tip, and how light it is.
 #[derive(Clone, Copy)]
 struct Limb {
     corners: [Vec3; 3],
     shade: f32,
 }
 
-/// The `i`th limb up the trunk of a bare tree of the given shape.
-fn limb(shape: usize, i: usize) -> Limb {
-    let f = i as f32 / (LIMBS - 1) as f32;
-    // round the trunk by the golden angle, so no two limbs lie over one another
-    let a = i as f32 * 2.399 + shape as f32 * 0.9;
-    let rise = 0.55 + 0.5 * f + 0.12 * (shape as f32 * 2.3 + i as f32).sin();
-    let from = Vec3::Y * (0.042 + 0.043 * f);
-    let dir = Vec3::new(rise.cos() * a.cos(), rise.sin(), rise.cos() * a.sin());
-    let len = 0.052 - 0.02 * f;
-    // the blade's width lies half across and half up, so it is seen from above and from the side
-    let across = Vec3::new(-a.sin(), 0.0, a.cos());
-    let width = (across + dir.cross(across) * 0.7).normalize_or_zero() * (0.0085 - 0.003 * f);
-    Limb { corners: [from - width, from + width, from + dir * len], shade: 0.9 + 0.2 * f }
+/// The limbs of a bare tree of size 1 standing at the origin, in one of its shapes.
+fn bare_tree(shape: usize) -> [Limb; LIMBS] {
+    // the way a limb points: round the trunk by `a`, and `rise` above the level
+    let toward = |a: f32, rise: f32| Vec3::new(rise.cos() * a.cos(), rise.sin(), rise.cos() * a.sin());
+    // a blade from `from` along `dir`: its width lies half across and half up, so that it
+    // is seen from above and from the side
+    let blade = |from: Vec3, dir: Vec3, len: f32, a: f32, half_width: f32, shade: f32| {
+        let across = Vec3::new(-a.sin(), 0.0, a.cos());
+        let width = (across + dir.cross(across) * 0.7).normalize_or_zero() * half_width;
+        Limb { corners: [from - width, from + width, from + dir * len], shade }
+    };
+    let mut limbs = [Limb { corners: [Vec3::ZERO; 3], shade: 1.0 }; LIMBS];
+    for i in 0..BOUGHS {
+        let f = i as f32 / (BOUGHS - 1) as f32;
+        // round the trunk by the golden angle, so no two boughs lie over one another
+        let a = i as f32 * 2.399 + shape as f32 * 0.9;
+        let rise = 0.6 + 0.3 * f + 0.1 * (shape as f32 * 2.3 + i as f32).sin();
+        let from = Vec3::Y * (0.03 + 0.036 * f);
+        let len = 0.064 - 0.018 * f;
+        let dir = toward(a, rise);
+        limbs[i] = blade(from, dir, len, a, 0.0055 - 0.002 * f, 0.92 + 0.12 * f);
+        if BOUGHS + i < LIMBS {
+            // the lesser limb leaves the bough part of the way along it, turned aside and more upright
+            let aside = a + if (shape + i) % 2 == 0 { 0.95 } else { -0.95 };
+            limbs[BOUGHS + i] = blade(from + dir * (len * 0.42), toward(aside, rise + 0.4), len * 0.6, aside, 0.0032, 1.0 + 0.08 * f);
+        }
+    }
+    limbs
 }
 
 #[cfg(test)]

@@ -476,3 +476,6 @@ sea = 0.14
 sea_reflectance = 0.45
 # how much light passes through a puff of smoke
 smoke_translucence = 0.3
+# how much light passes through the flat blade of a bare limb: at a half its
+# two sides are lit alike, whichever is turned to the sun
+bare_limb_translucence = 0.5
