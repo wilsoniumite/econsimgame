@@ -43,14 +43,9 @@ pub fn timed<T>(what: &str, f: impl FnOnce() -> T) -> T {
     out
 }
 
-pub fn hash2(x: i32, y: i32, s: i32) -> f32 {
-    let mut h = (x as u32).wrapping_mul(374_761_393)
-        ^ (y as u32).wrapping_mul(668_265_263)
-        ^ (s as u32).wrapping_mul(1_442_695_041);
-    h = (h ^ (h >> 13)).wrapping_mul(1_274_126_177);
-    h ^= h >> 16;
-    h as f32 / 4_294_967_295.0
-}
+/// The hash every fixed choice hangs on. It lives with the generators, which
+/// have no Bevy in them; the ground shader repeats it.
+pub use isostate_gen::hash2;
 
 pub fn vnoise(x: f32, y: f32, s: i32) -> f32 {
     let (ix, iy) = (x.floor(), y.floor());

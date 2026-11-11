@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use crate::look::TheLook;
+use crate::look::{TheLook, ToColor};
 use crate::meshkit::Builder;
 use crate::ui::UiState;
 use crate::{ground_hit, world, Data, MainCam, Pick, Picked};
@@ -104,6 +104,6 @@ fn draw(mut o: ResMut<Outline>, picked: Res<Picked>, data: Res<Data>, look: Res<
         square(&mut b, &data, c, 0.02, 0.04, [s.red, s.green, s.blue, look.marks.outline_alpha]);
     }
     if let Some(mut m) = meshes.get_mut(&o.mesh) {
-        *m = if b.is_empty() { crate::placeholder_mesh() } else { b.into_mesh() };
+        *m = if b.is_empty() { crate::placeholder_mesh() } else { crate::meshkit::into_mesh(b) };
     }
 }

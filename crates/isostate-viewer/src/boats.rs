@@ -57,7 +57,7 @@ fn boat_mesh(lk: &Look) -> Builder {
 }
 
 fn setup(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mesh = meshes.add(boat_mesh(&look).into_mesh());
+    let mesh = meshes.add(crate::meshkit::into_mesh(boat_mesh(&look)));
     let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
     commands.insert_resource(BoatAssets { mesh, mat });
 }

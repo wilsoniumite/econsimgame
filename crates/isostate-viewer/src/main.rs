@@ -44,7 +44,7 @@ use std::sync::Arc;
 use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
-use look::{Look, TheLook};
+use look::{Look, TheLook, ToColor};
 use replay::Replay;
 use ui::{kind_colour, kind_label, text, UiState, INK, MUTED, PAPER};
 use world::Ground;
@@ -610,11 +610,11 @@ fn vertex_coloured(materials: &mut Assets<StandardMaterial>, lk: &Look, rough: f
 fn placeholder_mesh() -> Mesh {
     let mut b = meshkit::Builder::default();
     b.tri(Vec3::new(0.0, -50.0, 0.0), Vec3::new(0.0, -50.0, 0.01), Vec3::new(0.01, -50.0, 0.0), [0.0, 0.0, 0.0, 1.0]);
-    b.into_mesh()
+    meshkit::into_mesh(b)
 }
 
 fn non_empty(b: meshkit::Builder) -> Mesh {
-    if b.is_empty() { placeholder_mesh() } else { b.into_mesh() }
+    if b.is_empty() { placeholder_mesh() } else { meshkit::into_mesh(b) }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -685,7 +685,7 @@ fn setup_world(
     commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
-    commands.insert_resource(TrainAssets { mesh: meshes.add(trains::train_mesh(lk).into_mesh()), mat: vc.clone() });
+    commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
     let smoke_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 1.0, reflectance: 0.0, diffuse_transmission: lk.surfaces.smoke_translucence, ..default() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
@@ -830,7 +830,34 @@ fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f3
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread)", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
     }
+    if std::env::var_os("ISOSTATE_MESH_SUMS").is_some() {
+        // a fingerprint of the year's geometry: two builds of the viewer that print the
+        // same line for a year build exactly the same scenery for it, to the last bit
+        let sums: Vec<String> = [("trees", &ym.trees), ("houses", &ym.houses), ("works", &ym.works), ("smoke", &ym.smoke), ("lanes", &ym.lanes), ("roads", &nets.roads), ("rails", &nets.rails)]
+            .iter()
+            .map(|(name, b)| format!("{name} {:016x}", mesh_sum(b)))
+            .collect();
+        eprintln!("year {} meshes: {}", r.y0 + k as i32, sums.join(", "));
+    }
     Scenery { k, cells, ym, nets, rails }
+}
+
+/// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
+fn mesh_sum(b: &meshkit::Builder) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    let mut eat = |v: u32| {
+        for byte in v.to_le_bytes() {
+            h = (h ^ byte as u64).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for p in b.pos.iter().chain(&b.nrm) {
+        p.iter().for_each(|v| eat(v.to_bits()));
+    }
+    for c in &b.col {
+        c.iter().for_each(|v| eat(v.to_bits()));
+    }
+    b.idx.iter().for_each(|&i| eat(i));
+    h
 }
 
 #[allow(clippy::too_many_arguments)]

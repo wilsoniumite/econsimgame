@@ -1076,7 +1076,7 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
         }
     }
     if let Some(mut m) = meshes.get_mut(&marks.0) {
-        *m = if b.is_empty() { crate::placeholder_mesh() } else { b.into_mesh() };
+        *m = if b.is_empty() { crate::placeholder_mesh() } else { crate::meshkit::into_mesh(b) };
     }
 }
 

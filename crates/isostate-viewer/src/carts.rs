@@ -28,7 +28,7 @@ pub fn plugin(app: &mut App) {
 }
 
 fn setup(mut commands: Commands, look: Res<crate::look::TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mesh = meshes.add(trains::cart_mesh(&look).into_mesh());
+    let mesh = meshes.add(crate::meshkit::into_mesh(trains::cart_mesh(&look)));
     let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.buildings);
     commands.insert_resource(CartAssets { mesh, mat });
 }

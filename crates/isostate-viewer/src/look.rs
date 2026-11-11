@@ -7,6 +7,11 @@
 //! its own, so trying a direction is a change of data. The look is shared in
 //! an `Arc`, as a year's scenery is built off the main thread.
 //!
+//! The look has two halves. The named colours of the scenery are the palette,
+//! which belongs to the generators (the isostate-gen crate, which has no Bevy
+//! in it) and is read out of the same file. The land's and the sea's paints,
+//! the light and the lens are the viewer's, and are here.
+//!
 //! The ground and the sea are painted by shaders; their colours are tables of
 //! the look like any other, handed to the shaders as uniforms (`Land`, `Sea`).
 //!
@@ -15,7 +20,6 @@
 use std::sync::Arc;
 
 use bevy::prelude::{Color, Deref, Resource};
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::Deserialize;
 
 /// The standard look, as the file in the source tree has it.
@@ -27,80 +31,22 @@ pub struct TheLook(pub Arc<Look>);
 
 // ------------------------------------------------------------------ a colour
 
-/// A colour from the look file: "#rrggbb", or [red, green, blue] from 0 to 1,
-/// both in sRGB as a painter would pick them. It stands for its linear RGBA,
-/// which is what vertex colours want (`*look.brick.red`), and gives a Bevy
-/// colour for lights and materials (`look.sky.light.color()`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Colour {
-    linear: [f32; 4],
-    srgb: [f32; 3],
+/// A colour token and the palette of the scenery are the generators', which
+/// have no Bevy in them (isostate-gen); the look is that palette and, beside
+/// it, what the viewer alone needs.
+pub use isostate_gen::{Colour, Palette};
+
+/// A look token as a Bevy colour, for a light or a material
+/// (`look.sky.light.color()`).
+pub trait ToColor {
+    fn color(self) -> Color;
 }
 
-impl Colour {
-    pub fn from_srgb(srgb: [f32; 3]) -> Colour {
-        let f = |s: f32| if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) };
-        Colour { linear: [f(srgb[0]), f(srgb[1]), f(srgb[2]), 1.0], srgb }
+impl ToColor for Colour {
+    fn color(self) -> Color {
+        let s = self.srgb();
+        Color::srgb(s[0], s[1], s[2])
     }
-
-    fn from_hex(s: &str) -> Option<Colour> {
-        let h = s.strip_prefix('#')?;
-        if h.len() != 6 || !h.is_ascii() {
-            return None;
-        }
-        let v = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok().map(|b| b as f32 / 255.0);
-        Some(Colour::from_srgb([v(0)?, v(2)?, v(4)?]))
-    }
-
-    /// The colour for a light or a material.
-    pub fn color(self) -> Color {
-        Color::srgb(self.srgb[0], self.srgb[1], self.srgb[2])
-    }
-
-    /// The colour as a shader wants it in a uniform: sRGB, as the ground and
-    /// sea shaders mix their colours, with a 1 to fill the vector.
-    pub fn srgb4(self) -> bevy::math::Vec4 {
-        bevy::math::Vec4::new(self.srgb[0], self.srgb[1], self.srgb[2], 1.0)
-    }
-}
-
-impl std::ops::Deref for Colour {
-    type Target = [f32; 4];
-    fn deref(&self) -> &[f32; 4] {
-        &self.linear
-    }
-}
-
-impl<'de> Deserialize<'de> for Colour {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Colour, D::Error> {
-        struct V;
-        impl<'de> Visitor<'de> for V {
-            type Value = Colour;
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("a colour: \"#rrggbb\" or [red, green, blue] from 0 to 1")
-            }
-            fn visit_str<E: de::Error>(self, s: &str) -> Result<Colour, E> {
-                Colour::from_hex(s).ok_or_else(|| E::custom(format!("\"{s}\" is not a colour: write \"#rrggbb\" or [red, green, blue] from 0 to 1")))
-            }
-            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Colour, A::Error> {
-                let mut c = [0f32; 3];
-                for (i, v) in c.iter_mut().enumerate() {
-                    *v = seq.next_element::<f32>()?.ok_or_else(|| de::Error::invalid_length(i, &"three numbers: red, green, blue"))?;
-                }
-                if seq.next_element::<f32>()?.is_some() {
-                    return Err(de::Error::invalid_length(4, &"three numbers: red, green, blue"));
-                }
-                Ok(Colour::from_srgb(c))
-            }
-        }
-        d.deserialize_any(V)
-    }
-}
-
-/// One of a list of tints, by a number of the thing's own: `v` from 0 to 1
-/// spreads over the list, and larger numbers go round it again.
-pub fn pick(list: &[Colour], v: f32) -> [f32; 4] {
-    *list[(v * list.len() as f32) as usize % list.len()]
 }
 
 // ------------------------------------------------------------------ what the shaders paint
@@ -217,233 +163,6 @@ shader_paint! {
         open,
         foam,
     }
-}
-
-// ------------------------------------------------------------------ the scenery
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Ground {
-    pub road_gravel: Colour,
-    pub lane_dust: Colour,
-    pub farm_lane: Colour,
-    pub street_earth: Colour,
-    pub market_paving: Colour,
-    pub farmyard: Colour,
-    pub farmyard_edge: Colour,
-    pub station_platform: Colour,
-    pub spoil_coal: Colour,
-    pub spoil_ironstone: Colour,
-    pub spoil_stone: Colour,
-    pub spoil_clay: Colour,
-    pub charcoal_clamp: Colour,
-    pub charcoal_clamp_top: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Walls {
-    pub cream: Colour,
-    pub limewash: Colour,
-    pub ochre: Colour,
-    pub rose: Colour,
-    pub sage: Colour,
-    pub station: Colour,
-    pub market_hall: Colour,
-    pub weaver_cottage: Colour,
-    pub lighthouse_white: Colour,
-    pub lighthouse_red: Colour,
-}
-
-impl Walls {
-    /// The wash of a separate house in town, by a number of its own; cream comes round twice.
-    pub fn town_house(&self, v: f32) -> [f32; 4] {
-        *[self.cream, self.limewash, self.ochre, self.rose, self.sage, self.cream][(v * 6.0) as usize % 6]
-    }
-
-    /// The wash of a lowland farmhouse.
-    pub fn farmhouse(&self, v: f32) -> [f32; 4] {
-        *[self.cream, self.limewash, self.ochre, self.rose, self.sage][(v * 5.0) as usize % 5]
-    }
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Roofs {
-    pub tile_red: Colour,
-    pub tile_dark: Colour,
-    pub tile_farm: Colour,
-    pub moss: Colour,
-    pub barn: Colour,
-    pub station_canopy: Colour,
-    pub drying_shed: Colour,
-    pub coke_ovens: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Thatch {
-    pub farmhouse: Colour,
-    pub weaver_cottage: Colour,
-    pub rick: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Slate {
-    pub house: Colour,
-    pub town: Colour,
-    pub works: Colour,
-    pub upland_farm: Colour,
-    pub upland_barn: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Timber {
-    pub boards: Colour,
-    pub scaffold_pole: Colour,
-    pub scaffold_board: Colour,
-    pub headframe: Colour,
-    pub barn_tarred: Colour,
-    pub door: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Stone {
-    pub church: Colour,
-    pub market_cross: Colour,
-    pub works: Colour,
-    pub shed: Colour,
-    pub upland_farm: Vec<Colour>,
-    pub upland_barn: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Brick {
-    pub red: Colour,
-    pub dark: Colour,
-    pub shed: Colour,
-    pub terrace_brown: Colour,
-    pub terrace_orange: Colour,
-    pub terrace_sooty: Colour,
-    pub chimney: Colour,
-    pub barn: Colour,
-}
-
-impl Brick {
-    /// The brick of a terrace (or of a brick house on a high street), from fresh red to sooty brown.
-    pub fn terrace(&self, v: f32) -> [f32; 4] {
-        *[self.red, self.terrace_brown, self.terrace_orange, self.terrace_sooty][(v * 4.0) as usize % 4]
-    }
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Glass {
-    pub window: Colour,
-    pub mill_lit: Colour,
-    pub lighthouse_lamp: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Iron {
-    pub winding_gear: Colour,
-    pub converter: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Foliage {
-    pub trunk: Colour,
-    pub broadleaf: Vec<Colour>,
-    pub conifer: Vec<Colour>,
-    pub gorse: Colour,
-    pub broom: Colour,
-    pub tint_winter: [f32; 3],
-    pub tint_spring: [f32; 3],
-    pub tint_summer: [f32; 3],
-    pub tint_autumn: [f32; 3],
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Water {
-    pub river: Colour,
-    pub river_bank: Colour,
-    pub sea_floor: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Smoke {
-    pub puff: Colour,
-    pub steam: Colour,
-    pub soot: Colour,
-    pub stack_top: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Rail {
-    pub ballast: Colour,
-    pub rails: Colour,
-    pub earthworks: Colour,
-    pub bank_top: Colour,
-    pub bank_grass: Colour,
-    pub bank_grass_shade: Colour,
-    pub stone: Colour,
-    pub viaduct_brick: Colour,
-    pub cutting_grass_lit: Colour,
-    pub cutting_grass_shade: Colour,
-    pub cutting_rock_lit: Colour,
-    pub cutting_rock_shade: Colour,
-    pub cutting_back: Colour,
-    pub tunnel_mouth: Colour,
-    pub girder: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Bridges {
-    pub road_stone: Colour,
-    pub lane_stone: Colour,
-    pub arch_shadow: Colour,
-    pub causeway: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Vehicles {
-    pub engine: Colour,
-    pub engine_black: Colour,
-    pub wagons: Vec<Colour>,
-    pub cart_wood: Colour,
-    pub cart_canvas: Colour,
-    pub cart_wheels: Colour,
-    pub horse: Colour,
-    pub boat_hull: Colour,
-    pub boat_deck: Colour,
-    pub boat_mast: Colour,
-    pub sail: Colour,
-    pub jib: Colour,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct Marks {
-    pub pole: Colour,
-    pub finial: Colour,
-    pub cloth_pale: Colour,
-    pub post_shade: Colour,
-    pub peg: Colour,
-    pub hover: Colour,
-    pub hover_alpha: f32,
-    pub outline_plain: Colour,
-    pub outline_alpha: f32,
 }
 
 // ------------------------------------------------------------------ the light and the lens
@@ -579,28 +298,14 @@ pub struct Surfaces {
 
 // ------------------------------------------------------------------ the whole look
 
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
+/// The whole look. The scenery's named colours are the palette, which the
+/// generators take; the look stands for it (`look.brick.red` is the
+/// palette's brick), so the scenery code reads its colours as it always has.
+#[derive(Clone, Debug)]
 pub struct Look {
+    pub palette: Palette,
     pub land: Land,
     pub sea: Sea,
-    pub ground: Ground,
-    pub walls: Walls,
-    pub roofs: Roofs,
-    pub thatch: Thatch,
-    pub slate: Slate,
-    pub timber: Timber,
-    pub stone: Stone,
-    pub brick: Brick,
-    pub glass: Glass,
-    pub iron: Iron,
-    pub foliage: Foliage,
-    pub water: Water,
-    pub smoke: Smoke,
-    pub rail: Rail,
-    pub bridges: Bridges,
-    pub vehicles: Vehicles,
-    pub marks: Marks,
     pub sun: Sun,
     pub shadows: Shadows,
     pub sky: Sky,
@@ -611,18 +316,31 @@ pub struct Look {
     pub surfaces: Surfaces,
 }
 
+impl std::ops::Deref for Look {
+    type Target = Palette;
+    fn deref(&self) -> &Palette {
+        &self.palette
+    }
+}
+
+/// The viewer's half of the look file: what is left once the palette's
+/// tables are taken out.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ViewerHalf {
+    land: Land,
+    sea: Sea,
+    sun: Sun,
+    shadows: Shadows,
+    sky: Sky,
+    haze: Haze,
+    post: Post,
+    ambient_occlusion: AmbientOcclusion,
+    tilt_shift: TiltShift,
+    surfaces: Surfaces,
+}
+
 impl Look {
-    /// The roof of a separate house in town, by a number of its own: mostly
-    /// red tile, some slate, the odd one gone green.
-    pub fn house_roof(&self, u: f32) -> [f32; 4] {
-        *[self.roofs.tile_red, self.slate.house, self.roofs.tile_red, self.roofs.moss, self.roofs.tile_dark][(u * 13.0) as usize % 5]
-    }
-
-    /// The walls of a shed in a works yard: brick of one sort or another, or stone.
-    pub fn yard_shed_wall(&self, v: f32) -> [f32; 4] {
-        *[self.brick.red, self.brick.shed, self.stone.shed, self.brick.dark][(v * 4.0) as usize % 4]
-    }
-
     /// The look built into the viewer.
     pub fn standard() -> Look {
         // the file is part of the program: if it is wrong the program is, and the tests say so
@@ -649,23 +367,28 @@ impl Look {
             }
         }
         let name = layers.last().map_or("the look", |l| l.0);
-        let look: Look = whole.try_into().map_err(|e| format!("{name}: {e}"))?;
+        // the palette's tables first, then what is left, which is the viewer's
+        let palette = Palette::take_from(&mut whole).map_err(|e| format!("{name}: {e}"))?;
+        let v: ViewerHalf = whole.try_into().map_err(|e| format!("{name}: {e}"))?;
+        let look = Look {
+            palette,
+            land: v.land,
+            sea: v.sea,
+            sun: v.sun,
+            shadows: v.shadows,
+            sky: v.sky,
+            haze: v.haze,
+            post: v.post,
+            ambient_occlusion: v.ambient_occlusion,
+            tilt_shift: v.tilt_shift,
+            surfaces: v.surfaces,
+        };
         look.check().map_err(|e| format!("{name}: {e}"))?;
         Ok(look)
     }
 
-    /// What the types cannot say: a list of tints needs a tint in it.
+    /// What the types cannot say (the palette checks its own lists of tints).
     fn check(&self) -> Result<(), String> {
-        for (name, list) in [
-            ("foliage.broadleaf", &self.foliage.broadleaf),
-            ("foliage.conifer", &self.foliage.conifer),
-            ("stone.upland_farm", &self.stone.upland_farm),
-            ("vehicles.wagons", &self.vehicles.wagons),
-        ] {
-            if list.is_empty() {
-                return Err(format!("`{name}` needs at least one colour"));
-            }
-        }
         if self.shadows.cascades == 0 || self.shadows.cascades > 4 {
             return Err("`shadows.cascades` must be from 1 to 4".into());
         }
