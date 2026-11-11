@@ -54,7 +54,7 @@ pub struct HarvestParams {
     /// average year, either way.
     pub news_z: f64,
     /// A district's failure is news when its harvest is this many `district_sd`
-    /// below the country's.
+    /// below the country's, and as far below an average year.
     pub news_local_z: f64,
     /// Grain is in dearth when its yearly price stands this far above its trend.
     pub dearth_rise: f64,
@@ -71,9 +71,9 @@ impl Default for HarvestParams {
             reach: 30.0,
             pasture: 0.4,
             woods: 0.0,
-            news_z: 1.6,
-            news_local_z: 2.0,
-            dearth_rise: 0.15,
+            news_z: 1.8,
+            news_local_z: 2.3,
+            dearth_rise: 0.2,
         }
     }
 }
@@ -279,7 +279,8 @@ pub fn snapshot(rec: &mut Record, st: &State, P: &Params, k: usize) {
 /// - lean years, when the third short harvest running comes in (it takes the
 ///   place of that year's "poor harvest");
 /// - a district's failure, when one town's farms do `news_local_z` district
-///   deviations worse than the country and the country's own harvest is not news;
+///   deviations worse than the country and than an ordinary year, and the
+///   country's own harvest is not news;
 /// - a dearth, when the year's price of grain stands `dearth_rise` above its
 ///   trend (the mean of the five years before, carried forward at the drift of
 ///   the last twenty), at most once in `DEARTH_QUIET` years.
@@ -315,10 +316,12 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
     if lean_run {
         national = true;
         let short: Vec<String> = past[n - LEAN_YEARS..].iter().map(|&v| fmt_pct(1.0 - v, 0)).collect();
+        // three years a little short are a remark, three bad ones a calamity
+        let lost: f64 = past[n - LEAN_YEARS..].iter().map(|&v| 1.0 - v).sum();
         let mut ev = Event::new(
             when,
             "harvest",
-            0.65,
+            (0.3 + 2.0 * lost).clamp(0.45, 0.75),
             "Three lean years".to_string(),
             format!(
                 "For the third year running the harvest falls short of an ordinary one: by {}, by {} and now by {}.",
@@ -367,7 +370,10 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
     if !national && H.district_sd > 0.0 {
         if let Some(w) = by(false) {
             let f = st.harvest_town[w];
-            if (f / nation).ln() < -H.news_local_z * H.district_sd {
+            // short of the country's harvest and of an ordinary year alike: a
+            // district that merely misses a good year the rest enjoy is no failure
+            let short = -H.news_local_z * H.district_sd;
+            if (f / nation).ln() < short && f.ln() < short {
                 let country = if nation < 0.98 {
                     format!("is {} short", fmt_pct(1.0 - nation, 0))
                 } else if nation > 1.02 {

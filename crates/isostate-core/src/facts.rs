@@ -437,6 +437,27 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let dw = changes("real_wage");
         b.num("real_wage_worst_year".into(), Kind::Real, dw.iter().copied().fold(f64::NAN, f64::min).exp_m1());
         b.num("real_wage_swing".into(), Kind::Real, sd(&dw));
+        // With harvests on: how large they were, and what a year's harvest does that
+        // same year. Each `_on_harvest` is the slope of the yearly change in a log on
+        // the log of the country's harvest (1 is an average year), over every year
+        // after the first: -1.5 for the price says a harvest ten per cent short
+        // comes with grain fifteen per cent dearer than the year before.
+        let h: Vec<f64> = r.rec.harvest.iter().map(|&v| (v as f64).ln()).collect();
+        if h.len() >= 10 && h.len() == series("out_grain").len() {
+            let slope = |name: &str| -> f64 {
+                let v = series(name);
+                let (x, d): (Vec<f64>, Vec<f64>) =
+                    (1..h.len()).map(|k| (h[k], (v[k] / v[k - 1]).ln())).filter(|(_, d)| d.is_finite()).unzip();
+                let (mx, md) = (mean(&x), mean(&d));
+                let sxx: f64 = x.iter().map(|a| (a - mx) * (a - mx)).sum();
+                let sxd: f64 = x.iter().zip(&d).map(|(a, c)| (a - mx) * (c - md)).sum();
+                if sxx > 0.0 { sxd / sxx } else { f64::NAN }
+            };
+            b.num("harvest_sd".into(), Kind::Real, sd(&h));
+            b.num("grain_output_on_harvest".into(), Kind::Real, slope("out_grain"));
+            b.num("grain_price_on_harvest".into(), Kind::Real, slope("price_grain"));
+            b.num("real_wage_on_harvest".into(), Kind::Real, slope("real_wage"));
+        }
     }
     // years in which people::growth found at least one town short of food
     let mut hungry: Vec<i64> = r.events.iter().filter(|e| e.kind == "famine").map(|e| e.year.floor() as i64).collect();
