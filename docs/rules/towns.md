@@ -11,8 +11,11 @@ people. So the towns of 1900 stand on as many cells as those of 1750, a cell
 at the edge is town one year and farm the next, and the player's own town
 goes from sixteen cells to eight while its people double. With kept ground a
 town keeps what it builds and grows outward from it: 69 cells of town in
-1750 and 194 in 1900 with the life cycle for works alone, 61 and 303 beside
+1750 and 185 in 1900 with the life cycle for works alone, 62 and 303 beside
 the rest of the game's rules, and a cell that joins a town stays.
+
+It is merged into the game's rules; what it does there, and the one number
+that moved at the merge, are under "In company, after the merge".
 
 ## Why the port's towns do not grow
 
@@ -41,10 +44,11 @@ Each town has a list of its cells in the order they joined, the centre first
 (`towns::update_urban`):
 
 **Room.** A cell has room for 300 people the year it joins (`d_new`) and
-fills in with age toward a ceiling: 530 in 1750 (`d_old`), 5 more each year
-after (`d_old_growth`), reached as 1 - exp(-age / 30) (`tau`). So ground of
-1700 holds about 490 people in 1750 and 1,280 in 1900, ground of 1880 holds
-about 780 in 1900, and the centre is the oldest ground and the fullest.
+fills in with age toward a ceiling: 530 in 1750 (`d_old`), 6 more each year
+after (`d_old_growth`; 5 until the merge), reached as 1 - exp(-age / 30)
+(`tau`). So ground of 1700 holds about 490 people in 1750 and 1,430 in 1900,
+ground of 1880 holds about 850 in 1900, and the centre is the oldest ground
+and the fullest.
 `towns::room` is that sum.
 
 **Growth.** When the town's people outgrow the room of its cells it takes the
@@ -156,6 +160,13 @@ The mix layers still show a town cell as town alone, so the works on it are
 only in `works`. The viewer was not changed and does not read them yet.
 
 ## Before and after
+
+Everything in this section and the next two was measured before the merge,
+with the ceiling rising 5 a year. At the 6 it rises now the same sweep gives
+69 / 123 / 139 / 185 town cells where the first table has 69 / 125 / 143 /
+194 (2.7 times for 2.8), and 69 / 121 / 143 / 179 with six families; the
+churn is 0.005 as before and the rest was not measured again
+(`core-steps/towns-alone-at-6`, `-f6`).
 
 The port with `works.enabled=true`, against the same with
 `towns.enabled=true`. Means over seeds 1 to 8, the least and greatest seed in
@@ -317,7 +328,7 @@ ground off and then on at eight settings (`sweep-towns-review-core-base-f6`,
 | 300, 600, 5 | 54 / 87 / 161 / 304 | 5.6 | 1,165 | 2.61 |
 | 300, 600, 7 | 54 / 85 / 139 / 254 | 4.7 | 1,170 | 2.69 |
 | 300, 530, 5.5 | 61 / 94 / 167 / 305 | 5.0 | 1,169 | 2.72 |
-| 300, 530, 5 (now) | 61 / 96 / 175 / 303 | 5.0 (4.5 to 5.5) | 1,163 | 2.61 |
+| 300, 530, 5 (the review's choice) | 61 / 96 / 175 / 303 | 5.0 (4.5 to 5.5) | 1,163 | 2.61 |
 
 Farm land is less with town ground on nearly every seed in every row; in the
 two starred rows every seed is below every seed without. The real wage
@@ -334,6 +345,9 @@ half to four and a half times).
 
 No run failed in company (72 runs). One test of another mechanism does, and
 wants a line from whoever merges: see the next section.
+
+(At the merge the company had moved again, and 5 a year gave five and a half
+times. It is 6 now, for the same five times: "In company, after the merge".)
 
 ## Beside the other mechanisms
 
@@ -472,8 +486,163 @@ checked, and what changed.
   every cell that joins without touching its town to the reason, a pit on
   last year's map.
 
+## In company, after the merge
+
+Kept ground was merged into the game's rules tenth, after the people rules.
+The integration's sweeps are under `.claude/night/reports/core-steps/`, all
+under the game's rules with six families unless said: `towns-before` and
+`towns-after` (seeds 1 to 6, the game before the merge and after),
+`towns-s7-18-before` and `towns-s7-18` (twelve seeds nothing was chosen on),
+`towns-off` (the merged code with `towns.enabled=false`: every fact of every
+seed is what it was before), `towns-after-at-5` and `towns-s7-18-at-5` (the
+merge before the one number below was changed), `towns-x-ceiling` (that
+number at 5, 6, 7 and 8 on eight seeds), `towns-x-no-donor_wage`,
+`-no-rent_floor` and `-no-mean_hands` (each small switch off, at 5),
+`towns-alone-at-6` and `-f6` (the port with the works, as this page measures
+it alone), and in `towns-probe/` the census, the edges and the scripted
+players in company. 126 runs in the sweeps, none failed.
+
+**The merge.** The four lists wanted both sides and nothing more, as "Merging
+it" says. In `sim::yearly` the order is: the year's roads, then the people
+rules' founding (which wants the roads), then `towns::new_town_year`, then
+the market areas. The new town's year has to be mended after the founding,
+since there is no town before it, and before the market areas are worked out
+again, since the donor is read from last year's. Nothing else touches.
+
+**What it does in company**, against the game before, seed for seed:
+
+| | before, seeds 1 to 6 | after | before, seeds 7 to 18 | after |
+|---|---|---|---|---|
+| town cells 1750 / 1800 / 1850 / 1900 | 62 / 50 / 78 / 121 | 62 / 96 / 182 / 303 | 62 / 50 / 77 / 122 | 62 / 97 / 168 / 299 |
+| of the cells that are town, not town ten years on | 0.083 | 0.004 | 0.087 | 0.003 |
+| industry cells 1800 / 1850 / 1900 | 16 / 81 / 225 | 12 / 50 / 164 | 17 / 77 / 220 | 14 / 56 / 169 |
+| people, thousands, 1800 / 1850 / 1900 | 203 / 372 / 686 | 203 / 373 / 694 | 201 / 370 / 685 | 201 / 371 / 689 |
+| share of people living in towns, 1750 / 1850 / 1900 | 0.216 / 0.352 / 0.414 | 0.211 / 0.335 / 0.408 | 0.216 / 0.340 / 0.422 | 0.212 / 0.325 / 0.407 |
+| towns 1800 / 1850 / 1900 | 12.7 / 16.3 / 16.5 | 13.3 / 18.3 / 18.7 | 12.8 / 17.2 / 17.6 | 12.6 / 16.0 / 16.7 |
+| real wage over 1750, in 1800 / 1850 / 1900 | 1.60 / 2.04 / 2.77 | 1.61 / 1.98 / 2.54 | 1.63 / 1.98 / 2.67 | 1.63 / 1.99 / 2.58 |
+| output per head over 1750, same years | 1.68 / 2.22 / 2.79 | 1.67 / 2.20 / 2.59 | 1.70 / 2.18 / 2.75 | 1.70 / 2.14 / 2.65 |
+| works 1800 / 1850 / 1900 | 242 / 521 / 687 | 236 / 522 / 699 | 257 / 514 / 711 | 246 / 454 / 652 |
+| median works' size, 1900 | 5.62 | 5.71 | 5.49 | 5.89 |
+| first engine works / first rolling mill | 1802 / 1799 | 1811 / 1811 | 1803 / 1812 | 1810 / 1818 |
+| railway km 1850 / 1870 / 1900 | 1,520 / 2,192 / 2,644 | 1,444 / 2,160 / 2,615 | 1,119 / 2,038 / 2,613 | 1,175 / 2,029 / 2,606 |
+| farm land in 1900, cells | 1,182 | 1,159 | 1,199 | 1,163 |
+| price swings: grain / iron / rails / cloth | 0.108 / 0.171 / 0.185 / 0.036 | 0.109 / 0.172 / 0.172 / 0.037 | 0.114 / 0.172 / 0.171 / 0.038 | 0.115 / 0.177 / 0.175 / 0.039 |
+| famine years a run | 1.3 | 1.5 | 1.2 | 1.6 |
+| seconds a run (the machine was busy) | 18.6 | 19.6 | 27.1 | 18.2 |
+
+The town ground does what this page says it does: five times the cells by
+1900 (4.0 to 5.5 by seed on the eighteen), the churn gone, a quarter fewer
+industry cells because the towns grow over the works beside them. The census in
+company (`towns-probe/census-game.txt`, eight seeds): 62 / 97 / 177 / 305
+cells, 4.96 times (4.5 to 5.2 by seed), two cells a run with a second spell,
+0.46 / 0.55 / 0.50 / 0.28 of the works' hands on town ground where the game
+before had 0.75 / 0.48 / 0.17 / 0.05, and the rent bill at 0.09 of the town
+people's wages in every half-century. Melbourne, the player's town on seed 7,
+goes from 13 cells to 10 in 1800, 21 in 1850 and 29 in 1900; before the merge
+it went 13, 4, 7, 9.
+
+Wages and output, read the way this page asks, as twenty-year means over the
+eighteen seeds (real wage over 1750, after against before, and the seeds in
+which after is the higher):
+
+| | 1790-1810 | 1840-60 | 1860-80 | 1880-1900 |
+|---|---|---|---|---|
+| real wage | 1.62 / 1.62 (9) | 2.03 / 2.05 (8) | 2.51 / 2.59 (6) | 2.63 / 2.69 (5) |
+| output per head | 1.67 / 1.68 (9) | 2.17 / 2.20 (7) | 2.62 / 2.69 (6) | 2.69 / 2.75 (5) |
+
+So 1 per cent or less to 1860 and 2 to 3 per cent after, which is what kept
+ground cost with the works alone. The single years of the scorecard say more
+than that on seeds 1 to 6 (2.54 for 2.77 in 1900) and less on the other
+twelve; the means are the ones to believe. Population, railways, prices and
+the number of famine years are inside the spread between islands. The count
+of towns goes up on seeds 1 to 6 (one island that had ten towns now has
+twenty-one, like most) and down on seeds 7 to 18; it is not a drift. On
+seeds 7 to 18 there are a twelfth fewer works in 1900, on eleven islands of
+twelve, and the median works is larger on all twelve: the one works in
+twenty of "What worries me", a little more of it.
+
+**The ceiling rises 6 a year, not 5.** The review set 5 so that the island's
+town ground grew five times in company, the top of what was asked for. The
+people rules' numbers were set for the game after that (their page, "In
+company"), and at the merge 5 gave 342 cells in 1900 for 62, five and a half
+times, and up to six on one island. `towns-x-ceiling`, eight seeds:
+
+| `d_old_growth` | town cells 1800 / 1850 / 1900 | 1900 over 1750 | farm land 1900 | real wage 1900 |
+|---|---|---|---|---|
+| 5 | 102 / 189 / 342 | 5.5 | 1,163 | 2.67 |
+| 6 (now) | 97 / 177 / 305 | 5.0 | 1,159 | 2.59 |
+| 7 | 96 / 172 / 282 | 4.6 | 1,175 | 2.50 |
+| 8 | 92 / 153 / 260 | 4.2 | 1,173 | 2.64 |
+
+Wages and farm land do not choose, as before; the ground does, and 6 is the
+review's five times again. With the works alone it is 2.7 times where 5 gave
+2.8.
+
+**The first engine works waited for a new town.** This is what the merge
+found, and it is the reason the works' new trades come later in the table.
+Before kept ground, a town founded under the people rules had a year with a
+mean wage of nothing, as under the port, and `firms::entry` reckoned works
+there with unpaid hands. On seeds 7 to 12 the island's first engine works was
+founded in a town's founding year on five islands of six (Saldale 1784,
+Goldstrand 1791, Cragwater 1797, Ryefield 1808, Westfell 1802), and its
+first rolling mill on five; a hundred and more works a run were founded in a
+town's first two years. With the donor's wage (`donor_wage`) the first engine
+works stands where it pays, in a town that already stood, in 1788, 1789,
+1817, 1826, 1823 and 1840 (these six runs were made with the ceiling at 5 a
+year), and twenty to sixty works a run are founded
+in a town's first two years. On eighteen seeds the first engine works makes
+machinery seven to nine years later and the first rolling mill five to
+twelve, and with `donor_wage` switched off they come as early as they did
+(`towns-x-no-donor_wage`). The discoveries are no later. So the game's
+industry was being started by an accident, and now it is not; that an engine
+works does not pay for thirty years after it is known is a question for the
+machines and the works, not for the towns.
+
+**The chronicle's test** of a decade of new towns (`tests/chronicle.rs`) held
+that the digest is kept unless the decade's four are all heavier. On seed 7
+the digest of the 1750s is now outweighed by three items, and the fourth
+place is the player's, which `chronicle::rank` keeps for the family's own
+heaviest item whatever else happened; here that item is the lighter. The
+test now leaves the player's place out of "all heavier", which is the rule
+as the chronicle's page gives it. No other test moved, and the machines test
+that "Merging it" warns of passes: seed 5 founds no town in 1790 any more.
+It will fail again on a history that does.
+
+**The edges in company** (`towns-probe/edges-game.txt`, eighteen seeds; the
+example takes `--rules game` now): no town above its room, the fullest cell
+1,426 people, the floor binding on 1 per cent of cell-years or fewer. The
+dearest town-year is 0.12 to 0.29 of the town people's wages on seventeen
+islands and 0.98 on one: Fenmere on seed 4, in 1838, the year it was
+founded. See the first worry below.
+
+**The scripted players** (`towns-probe/bots-game.txt`, against
+`people-probe/bots-game.txt`, the game before the merge; seeds 1, 2, 3 and 7,
+four strategies each). The mean net worth in 1900 over the sixteen games is
+45.8 million for 46.7. The landlord and the thoughtful player end first of
+the six families on all four islands, as they did. The two who do little
+fare worse: the passive player ends fourth on three islands of four where it
+was two, and the founder fourth on three where it was one (9.0 million for
+28.3 on seed 2, 19.7 for 25.2 on seed 3, 14.7 for 25.2 on seed 7). That is
+the direction the first sixteen games pointed, on other neighbours; it is
+still sixteen games, and still not shown to be the towns' doing.
+
 ## What worries me
 
+- **A new town's first year is reckoned at its donor's prices whole.** The
+  donor's wage is right for it; the donor's prices are what things fetch at
+  the donor's market, and the new town was founded because the carts there
+  cost its district a good part of what it earns. So for one year the land
+  round a new town is priced as if it lay beside the old market. Fenmere
+  (seed 4, 1838) shows it: the plough's rent on its two cells is 2,200 a
+  month in its founding year and 360 the year after, and through the floor
+  its 445 town people are billed 0.98 of their wages for that year (they pay
+  no more than half their purse). The merchants' prices already mend the same
+  thing for what a new town expects, by taking the carriage from the site to
+  the donor off (`prices::found_town`); `towns::new_town_year` should
+  probably do the same with the year's mean prices. It was left because two
+  town-years in 38,000 cost over a quarter of the wages and this is the only
+  one over three tenths, and because for a works' inputs the truer price is
+  the donor's plus the carriage, not less: it wants a sweep of its own.
 - **Town ground is taken whole from the plough.** A cell at the edge with 300
   people on its four square kilometres grows nothing (`land::update_land_use`
   treats every town cell as taken, as the port does for its few). That is 1
@@ -490,7 +659,10 @@ checked, and what changed.
   grows to 33; with the works alone it stands on fifteen until 1850. A player
   watches that town more than any other.
 - **The scripted players who do little end poorer on two islands of four**
-  (above). Not shown to be the towns' doing. Run them again after the merge.
+  (above). Not shown to be the towns' doing. Run again after the merge, they
+  end fourth of six on three islands of four ("In company, after the
+  merge"). Town ground cannot be bought and there is five times as much of
+  it round a seat; whether that is what does it has not been traced.
 - **A single year's real wage misleads.** `real_wage_1900_vs_1750` read 0.2
   lower on every island of eight with six families and 0.05 higher on the
   next eight. Read twenty-year means from `annual.csv` before believing a
@@ -531,7 +703,7 @@ checked, and what changed.
   room, so it has not happened yet.
 - **The viewer has not been looked at with these rules.** It builds. Towns
   are three to five times the size on the map, `inten` on town ground is now
-  against a ceiling of 530 to 1,280 where it was 500 to 2,600, and the three
+  against a ceiling of 530 to 1,430 where it was 500 to 2,600, and the three
   new layers are not read yet.
 
 ## Measuring it
@@ -547,14 +719,15 @@ The census prints, for 1750, 1800, 1850 and 1900, the town and industry
 cells, where the works' hands are, what the ground pays and who lives on it;
 then the churn by decade, the cells with more than one spell as town ground,
 and one town by half-century (the player's seat, or `--town NAME`). With the
-works alone expect 67 to 72 town cells in 1750 and 175 to 210 in 1900, a
+works alone expect 67 to 72 town cells in 1750 and 170 to 200 in 1900, a
 ten-year churn under 0.01, fewer than four cells with a second spell, and
-two fifths of the works' hands on town ground. Under `--rules game` once the
-mechanisms are together, about 61 and 300.
+two fifths of the works' hands on town ground. Under `--rules game`, about
+62 and 300.
 
 `towns_edges` prints one line a seed of what the means hide: the dearest
 town-year (the rent bill over the town people's wages; expect 0.12 to 0.25
 and no more than a handful of town-years over a quarter), how often the floor
 binds, the most crowded town against its room (1.00: no town has yet run out
 of ground), the fullest cell, and the ground given up. Run it with `--set`
-after changing any of the numbers.
+after changing any of the numbers, and with `--rules game --families 6` for
+the game as it is played.

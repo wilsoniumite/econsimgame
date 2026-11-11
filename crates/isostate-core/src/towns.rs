@@ -94,10 +94,14 @@ impl Default for TownsParams {
             enabled: false,
             d_new: 300.0,
             // 530 puts the first towns on as many cells as the port gives them
-            // in 1750; 5 a year is for the game as it is played, where the
-            // town people grow ninefold by 1900 and not fivefold (towns.md)
+            // in 1750; 6 a year is for the game as it is played, where the
+            // town people grow ninefold by 1900 and not fivefold: it keeps the
+            // island's town ground to five times what it was. (5 did that
+            // before the people rules' numbers were set for the game; beside
+            // them as merged it gave five and a half times. towns.md, "After
+            // the merge")
             d_old: 530.0,
-            d_old_growth: 5.0,
+            d_old_growth: 6.0,
             tau: 30.0,
             works_room: 0.5,
             smooth: 0.5,

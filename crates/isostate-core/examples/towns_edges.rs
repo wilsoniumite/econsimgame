@@ -12,24 +12,29 @@
 //!   cells that touch no other cell of their town, the towns on one cell, and
 //!   the town cells a quarter and nine tenths under works.
 //!
-//!     cargo run -p isostate-core --release --example towns_edges -- [--families N] [--set JSON] [SEED ...]
+//!     cargo run -p isostate-core --release --example towns_edges -- [--rules port|game]
+//!         [--families N] [--set JSON] [SEED ...]
 //!
 //! The rules are the port's with the life cycle for works and kept town ground
-//! switched on; `--set` lays a JSON object of overrides over them, as the
-//! census does: `--set '{"towns":{"works_room":0,"decline_years":0}}'`. A run
-//! that fails the monthly money check says so and reports what it had.
+//! switched on, or with `--rules game` the game's as they stand (kept ground
+//! beside everything else, as it is played); `--set` lays a JSON object of
+//! overrides over them, as the census does:
+//! `--set '{"towns":{"works_room":0,"decline_years":0}}'`. A run that fails the
+//! monthly money check says so and reports what it had.
 #![allow(non_snake_case)]
 
 use isostate_core::params::Rules;
 use isostate_core::*;
 
 fn main() {
+    let mut rules = Rules::Port;
     let mut families = 0usize;
     let mut set: Option<String> = None;
     let mut seeds: Vec<u64> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
+            "--rules" => rules = Rules::parse(&args.next().expect("--rules port|game")).expect("--rules port|game"),
             "--families" => families = args.next().and_then(|v| v.parse().ok()).expect("--families N"),
             "--set" => set = Some(args.next().expect("--set JSON")),
             _ => seeds.push(a.parse().unwrap_or_else(|_| panic!("{a} is not a seed"))),
@@ -38,14 +43,16 @@ fn main() {
     if seeds.is_empty() {
         seeds = vec![3, 7];
     }
-    let mut P = Rules::Port.params();
-    P.works = works::WorksParams::game();
-    P.towns = towns::TownsParams::game();
+    let mut P = rules.params();
+    if rules == Rules::Port {
+        P.works = works::WorksParams::game();
+        P.towns = towns::TownsParams::game();
+    }
     if let Some(text) = &set {
         P = P.with_json_overrides(text).unwrap_or_else(|e| panic!("{e}"));
     }
     P.n_families = families;
-    let C = Rules::Port.content();
+    let C = rules.content();
     let lines: Vec<String> = std::thread::scope(|sc| {
         let handles: Vec<_> = seeds
             .iter()
