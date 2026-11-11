@@ -294,6 +294,10 @@ to rest, and the bots.
   town whose only buyer of a good goes away keeps its last stock and makes no
   more until someone asks, where the port went on making it for the
   merchants' account.
+- **The brake is on works only.** Farms, pits, quarries and woods still sell
+  the merchants everything they raise, whatever stands in the warehouse. The
+  markup steadies grain well enough that I saw no need, and I did not count
+  how much coal or timber is raised into a long stock.
 - **The warm-up runs with the mechanism**, so 1750 is not the port's 1750:
   the farm share is 0.636 against 0.650 and the urban share 0.252 against
   0.264 in every seed, and the 1750s wage in baskets is 4 per cent lower.

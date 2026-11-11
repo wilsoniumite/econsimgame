@@ -21,7 +21,8 @@
 //!   all of it while their stock of the good is under `glut_months` of sales,
 //!   less and less beyond that, and nothing more at `glut_stop_months`
 //!   ([`merchants_take`]). The works sees it as short time: it hires less, so
-//!   the town's wage sees it too.
+//!   the town's wage sees it too. Works only: farms, pits and quarries still
+//!   sell all they raise.
 //!
 //! Nothing here draws a random number, and no money changes hands that did not
 //! before: a works on short time simply makes, buys and pays less.
