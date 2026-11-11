@@ -25,6 +25,7 @@
 # The land itself, which the ground's shader paints from these (src/terrain.wesl).
 # The shader mixes them as they stand here and adds its own small variety field
 # by field, so a change here moves every field of that kind together.
+
 # ploughed soil, and the same in winter; stubble after the harvest
 soil = "#b08455"
 soil_winter = "#9a7651"
@@ -121,6 +122,7 @@ shingle = "#a49c8a"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).
+
 # the water by its depth: clear over the sand, green-blue over the shelf,
 # darker beyond, dark blue far out
 shallows = "#9ad6cb"
