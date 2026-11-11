@@ -135,6 +135,12 @@ shore_far = "#f0e2b4"
 # the canopy of a broadleaf wood in October, from as far off: the gold of its
 # trees (tint_autumn over the broadleaf greens, in [foliage]), a little shaded
 wood_canopy_autumn = "#a8883e"
+# the open ground of a town's edge: the grass of its paddocks and small
+# closes, grazed short and deeper than the pasture beyond; the crowns of an
+# orchard's trees seen from above, and those trees in blossom
+close_grass = "#7fb257"
+orchard = "#55893c"
+orchard_blossom = "#ecdcd6"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).

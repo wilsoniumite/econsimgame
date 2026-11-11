@@ -760,6 +760,9 @@ mod tests {
             series_len: 12,
             filled: 1,
             owner: Vec::new(),
+            built: Vec::new(),
+            res: Vec::new(),
+            works: Vec::new(),
         }
     }
 

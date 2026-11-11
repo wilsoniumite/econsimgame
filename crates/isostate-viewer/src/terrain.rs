@@ -252,8 +252,12 @@ pub fn year_parcels(r: &Replay, g: &Ground, k: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(land.class.len() * 4);
     for (i, (&class, &wood)) in land.class.iter().zip(&land.wood).enumerate() {
         let off = k * r.n + g.land.wcell[i] as usize;
-        let dense = if r.use_[off] == 10 { r.inten[off] } else { 115 };
-        out.extend_from_slice(&[class, wood, dense, 0]);
+        // (task A) on kept town ground, how many houses stand on the cell against the most a cell
+        // comes to hold: its closes are gardens between the houses while it is young
+        let kept = land.town.cells.get(&g.land.wcell[i]).filter(|_| class == crate::world::URBAN).map(|c| (c.houses as f32 / 180.0 * 255.0).min(255.0) as u8);
+        let dense = kept.unwrap_or(if r.use_[off] == 10 { r.inten[off] } else { 115 });
+        // (task A) which of the eight closes of a parcel of town ground are built up
+        out.extend_from_slice(&[class, wood, dense, land.town.built[i]]);
     }
     out
 }

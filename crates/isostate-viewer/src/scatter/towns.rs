@@ -18,6 +18,9 @@ use isostate_gen::houses::{self, roof, storeys, Cottage, Era, Roof, Terrace, Tow
 use isostate_gen::town;
 use std::collections::HashMap;
 
+mod kept;
+pub use kept::Census;
+
 /// Where a road enters town and what lies along it, in world units.
 const BACK_LANE: f32 = 0.13;
 const OUTER_LANE: f32 = 0.26;
@@ -623,8 +626,21 @@ pub(super) struct Into<'a> {
     pub lod: &'a Lod,
 }
 
+/// The houses of the towns for year `k`. In a run whose towns keep their
+/// ground they are laid out from the record of that ground (`kept.rs`, task
+/// A), and what that came to is handed back; a run under the port's rules is
+/// laid out by the density of its town cells, as before.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, into: &mut Into) {
+pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, land: &world::YearLand, into: &mut Into) -> Option<Census> {
+    if r.kept() {
+        return Some(kept::houses_kept(r, g, cen, k, lk, parishes, near_plot, land, into));
+    }
+    houses_port(r, g, slots, cen, k, lk, parishes, near_plot, into);
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+fn houses_port(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, into: &mut Into) {
     let houses = &mut *into.houses;
     let sq = squares(r, cen, k);
     // a house keeps its whole plot out of a churchyard

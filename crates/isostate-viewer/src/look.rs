@@ -158,6 +158,9 @@ shader_paint! {
         river_thread,
         shore_far,
         wood_canopy_autumn,
+        close_grass,
+        orchard,
+        orchard_blossom,
     }
 }
 

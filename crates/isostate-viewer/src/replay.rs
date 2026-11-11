@@ -169,6 +169,43 @@ pub struct Replay {
     pub filled: usize,
     /// owning family of every cell by year, `[year, cell]`, -1 for none (empty without families)
     pub owner: Vec<i8>,
+    /// Town ground that is kept (docs/rules/towns.md), `[year, cell]`; all three
+    /// are empty in a run whose towns do not keep their ground (the port's rules).
+    /// The year the cell joined its town less `BUILT_YEAR0`, 1 to 255; 0 where
+    /// the cell is not town ground.
+    pub built: Vec<u8>,
+    /// the cell's residents, in units of `RES_UNIT` people
+    pub res: Vec<u8>,
+    /// the share of the cell under works, 0 to 255, on every cell
+    pub works: Vec<u8>,
+}
+
+/// `Replay::built` counts years from here (`isostate_core::record::BUILT_YEAR0`).
+pub const BUILT_YEAR0: i32 = 1645;
+/// People to one step of `Replay::res` (`isostate_core::record::RES_UNIT`).
+pub const RES_UNIT: f32 = 8.0;
+
+impl Replay {
+    /// Whether the run's towns keep their ground, and the record says when
+    /// each cell joined its town, who lives on it and how much of it is works.
+    pub fn kept(&self) -> bool {
+        !self.built.is_empty() && !self.res.is_empty()
+    }
+
+    /// The year cell `c` joined its town, if it is town ground in year `k` of a run that keeps it.
+    pub fn joined(&self, k: usize, c: usize) -> Option<i32> {
+        self.built.get(k * self.n + c).filter(|&&b| b > 0).map(|&b| BUILT_YEAR0 + b as i32)
+    }
+
+    /// The residents of cell `c` in year `k` (nothing in a run that does not record them).
+    pub fn residents(&self, k: usize, c: usize) -> f32 {
+        self.res.get(k * self.n + c).map_or(0.0, |&b| b as f32 * RES_UNIT)
+    }
+
+    /// The share of cell `c` under works in year `k`, 0 to 1.
+    pub fn works_share(&self, k: usize, c: usize) -> f32 {
+        self.works.get(k * self.n + c).map_or(0.0, |&b| b as f32 / 255.0)
+    }
 }
 
 /// The bytes of one array, or an error if the file ends before the array does.
@@ -233,6 +270,8 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     let dist = if has("dist") { u8s("dist")? } else { Vec::new() };
     let town_wage = if has("town_wage") { f32s("town_wage")? } else { Vec::new() };
     let town_price = if has("town_price") { f32s("town_price")? } else { Vec::new() };
+    // the three layers of town ground that is kept: all of them or none
+    let (built, res, works) = if has("built") && has("res") && has("works") { (u8s("built")?, u8s("res")?, u8s("works")?) } else { (Vec::new(), Vec::new(), Vec::new()) };
     let use_ = u8s("use")?;
     let (mix_a, mix_b, mix_s) = if has_mix {
         (u8s("mix_a")?, u8s("mix_b")?, u8s("mix_s")?)
@@ -281,6 +320,9 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         header,
         filled: ny,
         owner: Vec::new(),
+        built,
+        res,
+        works,
     })
 }
 
@@ -390,6 +432,37 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn the_layers_of_kept_town_ground_are_read_where_the_run_has_them() {
+        // a run under the port's rules has none of them
+        let port = parse("tiny.bin", &tiny_run()).unwrap();
+        assert!(!port.kept() && port.built.is_empty() && port.joined(0, 0).is_none());
+        assert_eq!((port.residents(0, 0), port.works_share(0, 1)), (0.0, 0.0));
+        // the same run with the three layers after its last array
+        let whole = tiny_run();
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
+        let mut body = whole[4 + hlen..].to_vec();
+        for (name, bytes) in [("built", [55u8, 0]), ("res", [61, 0]), ("works", [0, 51])] {
+            v["arrays"].as_array_mut().unwrap().push(serde_json::json!({"name": name, "dtype": "u1", "shape": [1, 2], "offset": body.len(), "nbytes": 2}));
+            body.extend_from_slice(&bytes);
+            body.resize(body.len() + 6, 0);
+        }
+        let mut h = serde_json::to_vec(&v).unwrap();
+        while (4 + h.len()) % 8 != 0 {
+            h.push(b' ');
+        }
+        let mut file = (h.len() as u32).to_le_bytes().to_vec();
+        file.extend_from_slice(&h);
+        file.extend_from_slice(&body);
+        let r = parse("kept.bin", &file).unwrap();
+        assert!(r.kept());
+        // the first cell joined its town in 1700 and has 488 residents; the second is open land a fifth under works
+        assert_eq!((r.joined(0, 0), r.joined(0, 1)), (Some(1700), None));
+        assert_eq!((r.residents(0, 0), r.residents(0, 1)), (488.0, 0.0));
+        assert!((r.works_share(0, 1) - 0.2).abs() < 1e-6);
     }
 
     #[test]

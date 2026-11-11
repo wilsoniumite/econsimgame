@@ -12,7 +12,7 @@
 use bevy::math::Vec2;
 
 use crate::fields;
-use crate::replay::Replay;
+use crate::replay::{self, Replay};
 use crate::rivers::{self, HeightGrid, River, WaterIndex};
 
 /// Terrain vertices per map cell along each axis.
@@ -414,6 +414,9 @@ pub struct Land {
     /// its soil, both in 0..255
     pub ley: Vec<u8>,
     pub soil: Vec<u8>,
+    /// what has been worked out about the closes of town ground, which does
+    /// not change and is asked for again every year (`town_ground`)
+    pub closes: TownClosesKnown,
 }
 
 impl Land {
@@ -654,6 +657,7 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
         open_until: ones.iter().map(|o| o.open_until).collect(),
         ley: ones.iter().map(|o| o.ley).collect(),
         soil: ones.iter().map(|o| o.soil).collect(),
+        closes: Default::default(),
     }
 }
 
@@ -665,6 +669,8 @@ pub struct YearLand {
     /// 0 to 127 as it comes nearer to being wood (the country a wood's edge
     /// frays into)
     pub wood: Vec<u8>,
+    /// which of the town's ground is built up this year (`town_ground`)
+    pub town: TownGround,
 }
 
 /// The shares of arable, pasture, wood and heath in a cell's mix for year k.
@@ -737,7 +743,367 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
             }
         }
     }
-    YearLand { class, wood }
+    let town = timed("town ground", || town_ground(r, g, k, &class));
+    YearLand { class, wood, town }
+}
+
+// ------------------------------------------------------------------ town ground (task A: towns from kept ground)
+//
+// Under the game's rules a town keeps the ground it builds on, and the record
+// says of every cell of it the year it joined, its residents and how much of
+// it is under works (docs/rules/towns.md). A cell is 2 km across and holds
+// 300 people the year it joins and some 1,400 at its fullest: most of a town
+// cell is not houses. So the parcels of town ground are cut three times more,
+// into eight closes each (some eighty to a cell), and a close is either built
+// up (streets, houses, yards, paving) or open (the gardens, orchards, paddocks
+// and small closes of a town's edge, which the ground shader draws).
+//
+// Which closes are built up follows an order that is fixed for the cell, so
+// that built-up ground never moves and only grows: along the roads that ran
+// by the cell in the year it joined its town, nearest the town's market
+// place first, and then outward from those roads (`town_order`). So a town
+// is built up along its roads out, the newer ground carrying on where the
+// older left off, and what lies between the roads stays open longest. A
+// cell no road ran near fills from its side nearest the market place. As
+// many closes are built up as the cell's houses and its works need ground
+// for.
+//
+// A run under the port's rules has none of this: all its town ground is
+// built up, and is drawn as it always was.
+
+/// People to one drawn house. A plot of the towns is 100 m wide (everything
+/// that stands on the map is drawn about five times life size), and at eight
+/// people to a house the fullest ground of 1900 (1,430 people) is 179 houses,
+/// which with their yards and streets fill four fifths of the cell: as
+/// close-built as the layout goes. The newest ground (300 people) is 37
+/// houses along the way out of town. It is also the unit the record keeps
+/// residents in, so a step of the record is a house.
+pub const PEOPLE_TO_A_HOUSE: f32 = 8.0;
+/// The ground a drawn house takes with its yard, the streets and the room
+/// left about it, in square cells: what the built-up closes are counted out by.
+pub const HOUSE_GROUND: f32 = 0.0052;
+/// Houses outlast a fall in their cell's residents of this share: a town that
+/// has lost a quarter of its people still stands whole.
+pub const HOUSES_KEEP: f32 = 0.25;
+/// The cuts that make a close of town ground: three more than a parcel.
+pub const CLOSE_LEVEL: u32 = fields::PARCEL_LEVEL + 3;
+
+/// One of the eight closes a parcel is cut into: its middle on the map, and
+/// its area in square cells (nothing for one that lies in the water).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Close {
+    pub at: Vec2,
+    pub area: f32,
+}
+
+/// The closes of a cell's town ground in the order they are built up: the
+/// parcel and the close's number in it, and its area.
+type Order = std::sync::Arc<Vec<(u32, u8, f32)>>;
+
+/// How finely the closes are kept for looking up (`CloseLookup`): this many
+/// spots along each side of a cell, 42 m apart.
+const CLOSE_GRID: usize = 48;
+
+#[derive(Default)]
+pub struct TownClosesKnown {
+    /// the eight closes of a parcel
+    closes: std::sync::Mutex<std::collections::HashMap<u32, [Close; 8]>>,
+    /// the order of a cell's closes, by the cell, the year it joined and how many parcels it has
+    orders: std::sync::Mutex<std::collections::HashMap<(u32, u32, u32), Order>>,
+    /// the parcel and the close at each of `CLOSE_GRID` by `CLOSE_GRID` spots of a cell of the map, by the cell
+    grids: std::sync::Mutex<std::collections::HashMap<u32, std::sync::Arc<Vec<(u32, u8)>>>>,
+}
+
+/// The closes of the map's cells for looking up, as far as they have been
+/// asked for: taken out once for a year's work, so that a look-up is a step
+/// into a table (`close_at` works it out from the field system each time).
+pub struct CloseLookup<'a> {
+    g: &'a Ground,
+    cells: std::collections::HashMap<u32, std::sync::Arc<Vec<(u32, u8)>>>,
+}
+
+impl<'a> CloseLookup<'a> {
+    pub fn new(g: &'a Ground) -> CloseLookup<'a> {
+        CloseLookup { g, cells: Default::default() }
+    }
+
+    /// The parcel at a spot and which of its eight closes the spot lies in, to the nearest 42 m.
+    pub fn at(&mut self, x: f32, z: f32) -> (u32, u8) {
+        let g = self.g;
+        let (cx, cy) = ((x.max(0.0) as usize).min(g.w - 1), (z.max(0.0) as usize).min(g.h - 1));
+        let c = (cy * g.w + cx) as u32;
+        let grid = self.cells.entry(c).or_insert_with(|| close_grid(g, c));
+        let n = CLOSE_GRID as f32;
+        let (i, j) = ((((x - cx as f32) * n).max(0.0) as usize).min(CLOSE_GRID - 1), (((z - cy as f32) * n).max(0.0) as usize).min(CLOSE_GRID - 1));
+        grid[j * CLOSE_GRID + i]
+    }
+}
+
+/// The closes at the spots of one cell of the map.
+fn close_grid(g: &Ground, c: u32) -> std::sync::Arc<Vec<(u32, u8)>> {
+    if let Some(known) = g.land.closes.grids.lock().unwrap().get(&c) {
+        return known.clone();
+    }
+    let (cx, cy) = ((c as usize % g.w) as f32, (c as usize / g.w) as f32);
+    let n = CLOSE_GRID as f32;
+    let grid: Vec<(u32, u8)> = (0..CLOSE_GRID * CLOSE_GRID).map(|i| close_at(g, cx + ((i % CLOSE_GRID) as f32 + 0.5) / n, cy + ((i / CLOSE_GRID) as f32 + 0.5) / n)).collect();
+    let grid = std::sync::Arc::new(grid);
+    g.land.closes.grids.lock().unwrap().insert(c, grid.clone());
+    grid
+}
+
+/// A cell of town ground this year, in a run that keeps it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TownCell {
+    /// how many closes it has dry ground for, and how many of them (the first of its order) are built up
+    pub closes: u16,
+    pub built: u16,
+    /// the houses that stand on it (`town_houses`)
+    pub houses: u16,
+    /// the cell its ground is built up from, if it is not a town's first
+    pub parent: Option<u32>,
+}
+
+/// The town ground of a year.
+#[derive(Default)]
+pub struct TownGround {
+    /// per parcel: which of its eight closes are built up, a bit for each;
+    /// every bit on town ground in a run that does not keep it
+    pub built: Vec<u8>,
+    /// per close (eight to a parcel): its place in its cell's order, on kept town ground
+    pub rank: Vec<u16>,
+    /// the cells of kept town ground
+    pub cells: std::collections::HashMap<u32, TownCell>,
+}
+
+impl TownGround {
+    /// Whether close `sub` of a parcel is built up.
+    pub fn built_up(&self, parcel: u32, sub: u8) -> bool {
+        self.built.get(parcel as usize).is_some_and(|m| m >> sub & 1 != 0)
+    }
+
+    /// The place of a close in its cell's order, if it is kept town ground.
+    pub fn rank_of(&self, parcel: u32, sub: u8) -> Option<u16> {
+        self.rank.get(parcel as usize * 8 + sub as usize).copied().filter(|&r| r != u16::MAX)
+    }
+}
+
+/// The houses that stand on a cell of kept town ground in year `k`: one to
+/// every `PEOPLE_TO_A_HOUSE` residents, and those the cell had at its fullest
+/// since it joined the town for as long as it has not lost more than
+/// `HOUSES_KEEP` of the people they were built for.
+pub fn town_houses(r: &Replay, k: usize, c: usize) -> usize {
+    if r.joined(k, c).is_none() {
+        return 0;
+    }
+    let of = |y: usize| r.residents(y, c) / PEOPLE_TO_A_HOUSE;
+    let now = of(k);
+    let mut peak = now;
+    for y in (0..k).rev() {
+        if r.built[y * r.n + c] == 0 {
+            break;
+        }
+        peak = peak.max(of(y));
+    }
+    now.max(peak.min(now / (1.0 - HOUSES_KEEP))).round() as usize
+}
+
+/// Whether a road ran between two neighbouring cells in year `k` (`network::road_segments`).
+pub fn road_between(r: &Replay, k: usize, a: usize, b: usize) -> bool {
+    let tr = &r.trans[k * r.n..(k + 1) * r.n];
+    if (tr[a] & 3).min(tr[b] & 3) < 2 {
+        return false;
+    }
+    let (ax, ay, bx, by) = (a % r.w, a / r.w, b % r.w, b / r.w);
+    // a diagonal is left out where a pair of straight links already joins the two
+    ax == bx || ay == by || !(tr[ay * r.w + bx] & 2 != 0 || tr[by * r.w + ax] & 2 != 0)
+}
+
+/// The cell a cell of kept town ground is built up from: of its neighbours
+/// that were town ground before it, one a road ran to in the year it joined,
+/// or else the oldest, a neighbour across a side before one across a corner.
+/// A town's first cell has none; nor has one with no older neighbour, unless
+/// one joined in the same year.
+pub fn town_parent(r: &Replay, k: usize, c: usize) -> Option<usize> {
+    let own = r.built[k * r.n + c];
+    if own == 0 || r.header.towns.iter().any(|t| t.node == c) {
+        return None;
+    }
+    let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
+    let joined = ((replay::BUILT_YEAR0 + own as i32 - r.y0).max(0) as usize).min(k);
+    let mut best: Option<((bool, bool, u8, bool, usize), usize)> = None;
+    for (dx, dy) in [(1isize, 0isize), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
+        let (nx, ny) = (x + dx, y + dy);
+        if nx < 0 || ny < 0 || nx as usize >= r.w || ny as usize >= r.h {
+            continue;
+        }
+        let m = ny as usize * r.w + nx as usize;
+        let theirs = r.built[k * r.n + m];
+        // of two that joined in the same year, the one with the lower number came first
+        if theirs == 0 || theirs > own || (theirs == own && m > c) {
+            continue;
+        }
+        let key = (theirs == own, !road_between(r, joined, c, m), theirs, dx != 0 && dy != 0, m);
+        if best.map_or(true, |(b, _)| key < b) {
+            best = Some((key, m));
+        }
+    }
+    best.map(|(_, m)| m)
+}
+
+/// The piece of a block reached by taking, cut after cut, the half that
+/// `path` names (its highest bit first; `fields::parcels_of` does the same for a parcel).
+fn piece(bl: &fields::Block, path: u32, levels: u32) -> fields::Cut {
+    let mut b = *bl;
+    let mut c = fields::Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 };
+    for lvl in 0..levels {
+        let upper = (path >> (levels - 1 - lvl)) & 1 == 1;
+        b.uv = if upper { c.hi - Vec2::splat(1e-5) } else { c.lo };
+        c = fields::cut(&b, c, lvl, lvl + 1);
+    }
+    c
+}
+
+/// The eight closes of a parcel.
+pub fn closes_of(g: &Ground, parcel: u32) -> [Close; 8] {
+    if let Some(&known) = g.land.closes.closes.lock().unwrap().get(&parcel) {
+        return known;
+    }
+    let l = &g.land;
+    let b = parcel as usize / 8;
+    let bl = fields::block(l.bi0 + (b % l.bw) as i32, l.bj0 + (b / l.bw) as i32);
+    let out: [Close; 8] = std::array::from_fn(|sub| {
+        let c = piece(&bl, ((parcel % 8) << 3) | sub as u32, CLOSE_LEVEL);
+        let corner = |u: f32, v: f32| fields::bilinear(bl.a, bl.b, bl.c, bl.d, Vec2::new(u, v));
+        let q = [corner(c.lo.x, c.lo.y), corner(c.hi.x, c.lo.y), corner(c.hi.x, c.hi.y), corner(c.lo.x, c.hi.y)];
+        let area = 0.5 * (0..4).map(|i| q[i].x * q[(i + 1) % 4].y - q[i].y * q[(i + 1) % 4].x).sum::<f32>().abs() * fields::BLOCK * fields::BLOCK;
+        let at = fields::from_block(fields::bilinear(bl.a, bl.b, bl.c, bl.d, (c.lo + c.hi) * 0.5));
+        let dry = height_at(g, at.x, at.y) >= 0.05 && water_dist(g, at.x, at.y) >= 0.03;
+        Close { at, area: if dry { area } else { 0.0 } }
+    });
+    g.land.closes.closes.lock().unwrap().insert(parcel, out);
+    out
+}
+
+/// The parcel at a spot and which of its eight closes the spot lies in.
+pub fn close_at(g: &Ground, x: f32, z: f32) -> (u32, u8) {
+    let (bl, pc, _) = fields::parcel(Vec2::new(x, z));
+    let close = fields::cut(&bl, pc, fields::PARCEL_LEVEL, CLOSE_LEVEL);
+    (g.land.index(bl.i, bl.j, pc.id) as u32, (close.id & 7) as u8)
+}
+
+/// How much further a spot counts from the market place for each cell it lies off the road.
+const OFF_THE_ROAD: f32 = 3.0;
+
+/// The order in which the closes of cell `c`'s town ground (its `parcels`)
+/// are built up. Each close has a way to the market place of the town the
+/// cell joined: across the ground to the nearest road that ran by in the
+/// year the cell joined, and along it; ground off the road counts
+/// `OFF_THE_ROAD` times. The closes with the shortest way come first: those
+/// along the roads, from the town's end of them outward. With no road by,
+/// it is the distance to the market place alone.
+fn town_order(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize, parcels: &[u32]) -> Order {
+    let joined = ((replay::BUILT_YEAR0 + r.built[k * r.n + c] as i32 - r.y0).max(0) as usize).min(k);
+    let key = (c as u32, joined as u32, parcels.len() as u32);
+    if let Some(known) = g.land.closes.orders.lock().unwrap().get(&key) {
+        return known.clone();
+    }
+    let own = Vec2::new(cen[c].0, cen[c].1);
+    // the market place the cell's town grew from: the nearest that stood when the cell joined
+    let stood = |t: usize| r.town_active.get(joined * r.n_towns + t).is_some_and(|&a| a > 0);
+    let nearest = |all: bool| {
+        r.header.towns.iter().enumerate().filter(|&(t, _)| all || stood(t)).map(|(_, t)| Vec2::new(cen[t.node].0, cen[t.node].1)).min_by(|a, b| a.distance_squared(own).total_cmp(&b.distance_squared(own)))
+    };
+    let market = nearest(false).or_else(|| nearest(true)).unwrap_or(own);
+    // the roads of that year within two cells
+    let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
+    let mut roads: Vec<(Vec2, Vec2)> = Vec::new();
+    for cy in (y - 2).max(0)..=(y + 2).min(r.h as isize - 1) {
+        for cx in (x - 2).max(0)..=(x + 2).min(r.w as isize - 1) {
+            let a = cy as usize * r.w + cx as usize;
+            for (dx, dy) in [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)] {
+                let (nx, ny) = (cx + dx, cy + dy);
+                if nx < 0 || nx >= r.w as isize || ny >= r.h as isize {
+                    continue;
+                }
+                let b = ny as usize * r.w + nx as usize;
+                if road_between(r, joined, a, b) {
+                    roads.push((Vec2::new(cen[a].0, cen[a].1), Vec2::new(cen[b].0, cen[b].1)));
+                }
+            }
+        }
+    }
+    let score = |q: Vec2| {
+        let by_road = roads.iter().map(|&(a, b)| {
+            let t = ((q - a).dot(b - a) / a.distance_squared(b).max(1e-9)).clamp(0.0, 1.0);
+            let foot = a + (b - a) * t;
+            OFF_THE_ROAD * q.distance(foot) + foot.distance(market)
+        });
+        by_road.fold(OFF_THE_ROAD * q.distance(market), f32::min)
+    };
+    let mut all: Vec<(f32, u32, u8, f32)> = Vec::with_capacity(parcels.len() * 8);
+    for &i in parcels {
+        for (sub, close) in closes_of(g, i).iter().enumerate() {
+            // a close in the water is never built up: it comes last
+            all.push((if close.area > 0.0 { score(close.at) } else { f32::MAX }, i, sub as u8, close.area));
+        }
+    }
+    all.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+    let order: Order = std::sync::Arc::new(all.into_iter().map(|(_, i, sub, area)| (i, sub, area)).collect());
+    g.land.closes.orders.lock().unwrap().insert(key, order.clone());
+    order
+}
+
+/// Which of the year's town ground is built up. `class` is the year's class of every parcel.
+pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround {
+    let l = &g.land;
+    let mut town = TownGround { built: vec![0; class.len()], ..Default::default() };
+    if !r.kept() {
+        for (i, &cls) in class.iter().enumerate() {
+            if cls == URBAN {
+                town.built[i] = 255;
+            }
+        }
+        return town;
+    }
+    // the parcels of each cell of town ground
+    let mut by_cell: std::collections::BTreeMap<u32, Vec<u32>> = Default::default();
+    for (i, &cls) in class.iter().enumerate() {
+        if cls == URBAN {
+            if r.built[k * r.n + l.wcell[i] as usize] > 0 {
+                by_cell.entry(l.wcell[i]).or_default().push(i as u32);
+            } else {
+                // a patch of town in a cell the record does not call town ground: as before
+                town.built[i] = 255;
+            }
+        }
+    }
+    let cen = crate::network::centres(r);
+    town.rank = vec![u16::MAX; class.len() * 8];
+    for (&c, parcels) in &by_cell {
+        let c = c as usize;
+        let parent = town_parent(r, k, c);
+        let order = town_order(r, g, &cen, k, c, parcels);
+        let dry: f32 = order.iter().map(|o| o.2).sum();
+        let houses = town_houses(r, k, c);
+        // ground for the houses and for the works' yards; the works stand where they stand
+        // (`scatter.rs`), and the houses keep out of their yards
+        let want = houses as f32 * HOUSE_GROUND + r.works_share(k, c) * dry;
+        let (mut have, mut built) = (0.0, 0usize);
+        while built < order.len() && order[built].2 > 0.0 && (have < want || (built == 0 && houses > 0)) {
+            have += order[built].2;
+            built += 1;
+        }
+        for (n, &(i, sub, _)) in order.iter().enumerate() {
+            town.rank[i as usize * 8 + sub as usize] = n as u16;
+            if n < built {
+                town.built[i as usize] |= 1 << sub;
+            }
+        }
+        let closes = order.iter().filter(|o| o.2 > 0.0).count();
+        town.cells.insert(c as u32, TownCell { closes: closes as u16, built: built as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32) });
+    }
+    town
 }
 
 /// The number of the parcel at a map position (`Land::index`).
@@ -991,6 +1357,9 @@ mod tests {
             series_len: 0,
             filled: 1,
             owner: Vec::new(),
+            built: Vec::new(),
+            res: Vec::new(),
+            works: Vec::new(),
         };
         for c in (0..n).filter(|&c| land(c)) {
             (r.mix_a[c], r.mix_b[c], r.mix_s[c]) = if c % w < 7 { (FARM, WOOD, 153) } else { (PASTURE, HEATH, 102) };
@@ -1106,7 +1475,7 @@ mod tests {
     #[test]
     fn a_leaning_edge_gives_as_it_takes() {
         // parcels: 0 a wood, 1 arable, 2 heath, 3 pasture
-        let land = YearLand { class: vec![WOOD, FARM, HEATH, PASTURE], wood: vec![200, 60, 0, 0] };
+        let land = YearLand { class: vec![WOOD, FARM, HEATH, PASTURE], wood: vec![200, 60, 0, 0], town: Default::default() };
         let at = |parcel: u32, beyond: u32, lean: i8| land.at(Place { parcel, beyond, lean });
         // a wood takes the field's edge where the lean is its way, and leaves a margin of its own where it is not
         assert_eq!(at(1, 0, 1), (WOOD, false));
