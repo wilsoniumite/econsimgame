@@ -368,6 +368,59 @@ fn a_curve_of_no_strength_is_the_port_with_more_series() {
 }
 
 #[test]
+fn the_chained_index_is_one_fisher_link_a_year_on_what_was_bought() {
+    // the chain worked out again here, month by month, from the state the observer reads
+    let mut P = engel_params(3, EngelParams::game().strength);
+    let years = 6;
+    P.end_year = Some(1750 + years as i64 - 1);
+    let mut sim = sim::start(&P, default_content());
+    let G = sim.content.G;
+    let (mut base_p, mut base_q) = (sim.st.cpi_base_prices.clone(), sim.st.cpi_basket.clone());
+    let wage_base = sim.st.wage_base;
+    let mut chain = 1.0;
+    let mut want = Vec::new();
+    let mut links = Vec::new();
+    for _ in 0..years {
+        let (mut sum_p, mut sum_q) = (vec![0.0; G], vec![0.0; G]);
+        for month in 0..12 {
+            sim::run_month(&mut sim, month).expect("money is conserved");
+            let st = &sim.st;
+            let p = isostate_core::observer::national_prices(st);
+            let q: Vec<f64> = (0..G).map(|g| (0..st.T_max).map(|t| st.month_stats.hh_got[(t, g)] + st.month_stats.lord_got[(t, g)]).sum()).collect();
+            // a month is read against the last complete year
+            want.push(chain * engel::fisher(&base_p, &base_q, &p, &q));
+            for g in 0..G {
+                sum_p[g] += p[g] / 12.0;
+                sum_q[g] += q[g] / 12.0;
+            }
+        }
+        // and the year's own means close the link
+        chain *= engel::fisher(&base_p, &base_q, &sum_p, &sum_q);
+        links.push(chain);
+        (base_p, base_q) = (sum_p, sum_q);
+        let year = sim.year;
+        let sim::Sim { st, content, params, rngs, events, rec, .. } = &mut sim;
+        sim::yearly(st, content, params, rngs, year, events, false);
+        isostate_core::observer::yearly(st, content, params, year, events);
+        isostate_core::record::snapshot(rec, st, content, params, (year - content.start_year) as usize);
+        sim.year += 1;
+    }
+    let st = &sim.st;
+    let (got, wage, real) = (st.series.get("cpi_chained"), st.series.get("wage"), st.series.get("real_wage_chained"));
+    assert_eq!(got.len(), want.len());
+    for t in 0..want.len() {
+        assert!((got[t] / want[t] - 1.0).abs() < 1e-12, "month {t}: {} against {}", got[t], want[t]);
+        assert!((real[t] / (wage[t] / got[t] / wage_base) - 1.0).abs() < 1e-12, "month {t}: the real wage is not the wage over the index");
+    }
+    // a year's twelve readings average to the link the year closes on, nearly
+    // (they differ because a month's purchases are not the year's)
+    for (k, link) in links.iter().enumerate() {
+        let mean = got[k * 12..k * 12 + 12].iter().sum::<f64>() / 12.0;
+        assert!((mean / link - 1.0).abs() < 0.005, "year {k}: the months average {mean}, the link closes on {link}");
+    }
+}
+
+#[test]
 fn richer_households_buy_less_bread_and_more_comfort() {
     // sixty years on one island, with the curve and with a flat one
     let on = run_to(&engel_params(3, EngelParams::game().strength), 1809);
