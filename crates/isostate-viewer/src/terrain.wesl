@@ -53,14 +53,14 @@ struct PatchworkParams {
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
 // per parcel (eight texels in a row for each block of the field system), this
-// year: its class, how wooded it is (128 and up inside a wood, deeper as it
-// rises; below that, other open land as it comes near to being wood), the
-// town density of its cell, and what its ground is farmed as where neither
-// wood nor heath stands on it (world::YearLand::under)
+// year: its class, how many times it is cut into fields (more round a town
+// from the year it is founded: world::YearLand::depth), the town density of
+// its cell, and what its ground is farmed as where neither wood nor heath
+// stands on it (world::YearLand::under)
 @group(constants::MATERIAL_BIND_GROUP) @binding(101) var year_parcels: texture_2d<f32>;
-// per parcel, fixed: how many times it is cut into fields (the low four bits)
-// and its terrain class (0 sea, 1 lowland, 2 hills, 3 mountains; the high
-// four); the year its open fields are enclosed, less 1750 (0 if they never
+// per parcel, fixed: how many times it is cut into fields when the record
+// begins (the low four bits; the year's own count is in year_parcels) and its
+// terrain class (0 sea, 1 lowland, 2 hills, 3 mountains; the high four); the year its open fields are enclosed, less 1750 (0 if they never
 // were open); how much of its arable is under grass; the tone of its soil
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_parcels: texture_2d<f32>;
 // per cell, the map overlay (overlay.rs): a tint, and in alpha the region the
@@ -754,7 +754,9 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
         let high = smoothstep(0.3, 0.8, sp.h + 0.08 * vnoise(sp.p.x * 1.9, sp.p.y * 1.9, 445));
         let near = smoothstep(0.3, 0.5, sp.heath);
         let roughness = clamp(0.4 * high + near * (0.45 + 0.3 * high), 0.0, 0.85);
-        c = mix(c, moor_margin(sp, near), roughness);
+        if (roughness > 0.0) {
+            c = mix(c, moor_margin(sp, near), roughness);
+        }
     }
     // water meadows on the valley floors: greener, with darker rushes
     c = mix(c, paint.water_meadow.rgb * (1.0 + 0.08 * vnoise(sp.p.x * 9.0, sp.p.y * 9.0, 87)), 0.5 * sp.flood);
@@ -821,9 +823,13 @@ fn rough(sp: Spot) -> vec3<f32> {
     c = mix(c, paint.wood_shade.rgb, 0.45 * scrub);
     // beside a heath and on high ground it is the rough grass of the hill
     // margins, with its bracken
-    let near = smoothstep(0.24, 0.5, sp.heath);
+    let near = smoothstep(0.3, 0.5, sp.heath);
     let high = smoothstep(0.3, 0.8, sp.h + 0.08 * vnoise(sp.p.x * 1.9, sp.p.y * 1.9, 445));
-    return mix(c, moor_margin(sp, near), clamp(0.6 * high + near, 0.0, 1.0));
+    let moorish = clamp(0.6 * high + near, 0.0, 1.0);
+    if (moorish > 0.0) {
+        c = mix(c, moor_margin(sp, near), moorish);
+    }
+    return c;
 }
 
 fn wood_floor(sp: Spot) -> vec3<f32> {
@@ -867,7 +873,9 @@ fn heath(sp: Spot) -> vec3<f32> {
     // toward its edge the moor goes to rough grass and bracken, as the
     // pasture beside it does, so the two meet without a line
     let inside = smoothstep(0.5, 0.66, sp.heath);
-    base = mix(moor_margin(sp, 1.0), base, 0.45 + 0.55 * inside);
+    if (inside < 1.0) {
+        base = mix(moor_margin(sp, 1.0), base, 0.45 + 0.55 * inside);
+    }
     // and small clumps of heather and gorse
     let n = vnoise(sp.p.x * 34.0, sp.p.y * 34.0, 17);
     let nf = 34.0 * sp.foot;
@@ -948,8 +956,21 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
     let by_wood = smoothstep(0.42, 0.5, sp.wood) * seen;
     let by_heath = smoothstep(0.42, 0.5, sp.heath) * seen;
     switch cls {
-        case FARM: { c = hedged(mix(fields(sp, false), rough(sp), 0.85 * max(by_wood, by_heath)), sp); }
-        case PASTURE: { c = hedged(mix(fields(sp, true), rough(sp), 0.85 * by_wood), sp); }
+        case FARM: {
+            c = fields(sp, false);
+            let scrub = 0.85 * max(by_wood, by_heath);
+            if (scrub > 0.0) {
+                c = mix(c, rough(sp), scrub);
+            }
+            c = hedged(c, sp);
+        }
+        case PASTURE: {
+            c = fields(sp, true);
+            if (by_wood > 0.0) {
+                c = mix(c, rough(sp), 0.85 * by_wood);
+            }
+            c = hedged(c, sp);
+        }
         case WOOD: { c = wood_floor(sp); }
         case HEATH: { c = heath(sp); }
         case QUARRY: { c = mottled(paint.quarry.rgb, sp, 0.06); }
@@ -1099,7 +1120,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // too, and rough with scrub just outside a wood. Above the snow that
     // lies all summer nothing is enclosed: it is all moor.
     var cls = own_cls;
-    var wooded = yp.y;
+    var wooded = 0.0;
     var heathy = 0.0;
     var walled = false;
     let snow_n = vnoise(p.x * 1.7, p.y * 1.7, 31);
@@ -1138,7 +1159,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     }
 
     // the field: the parcel cut as finely as it asks (world::field_at)
-    let depth = max(fixed_bits & 15u, PARCEL_LEVEL);
+    let depth = max(u32(round(yp.y * 255.0)), PARCEL_LEVEL);
     let open_code = round(fp.y * 255.0);
     let open = open_code > 0.0 && ground.year < 1750.0 + open_code;
     let leaf = cut(bl, pc, PARCEL_LEVEL, depth);

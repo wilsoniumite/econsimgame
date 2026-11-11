@@ -410,8 +410,13 @@ pub struct Land {
     pub wild: Vec<f32>,
     pub moor: Vec<f32>,
     pub lea: Vec<f32>,
-    /// how many times it is cut into fields
+    /// how many times it is cut into fields, with the towns that stand when
+    /// the record begins; a town founded later cuts the fields round it
+    /// further from its year on (`YearLand::depth`)
     pub depth: Vec<u8>,
+    /// what `depth` is the whole number of, before the small closes round a
+    /// town are counted in (`town_closes`)
+    pub size: Vec<f32>,
     /// the year its open fields are enclosed (0 where they never were open)
     pub open_until: Vec<i32>,
     /// how much of its arable is under grass and green crops, and the tone of
@@ -472,7 +477,10 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
     // heights smoothed over a square and a half each way, to tell tops from hollows
     let mut smooth = f.hgt.to_vec();
     box_blur(&mut smooth, f.gw, f.gh, VRES * 3 / 2);
-    let towns: Vec<(Vec2, i32)> = r.header.towns.iter().enumerate().map(|(ti, t)| {
+    // the towns that stand when the record begins: the open fields are theirs, and the small
+    // closes round them are there from the first year. A town founded later was never the
+    // middle of an open-field parish; it gets its closes in its year (`year_land`).
+    let towns: Vec<(Vec2, i32)> = r.header.towns.iter().enumerate().filter(|(_, t)| t.founded <= r.y0).map(|(ti, t)| {
         let (tx, ty) = cen[t.node.min(r.n - 1)];
         (Vec2::new(tx, ty), 1755 + (hash2(ti as i32, 7, 301) * 80.0) as i32)
     }).collect();
@@ -486,6 +494,7 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
         blend: [(u32, f32); 4],
         raw: [f32; 3],
         depth: u8,
+        size: f32,
         open_until: i32,
         ley: u8,
         soil: u8,
@@ -506,7 +515,7 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
                     (cell_of(bx, by + 1.0) as u32, (1.0 - tx) * ty),
                     (cell_of(bx + 1.0, by + 1.0) as u32, tx * ty),
                 ];
-                let mut one = One { at, area: 0.0, wcell: wcell as u32, sub: uniform(quant, sub_raw(x, y)) * 255.0, blend, raw: [0.0; 3], depth: 3, open_until: 0, ley: 77, soil: 128 };
+                let mut one = One { at, area: 0.0, wcell: wcell as u32, sub: uniform(quant, sub_raw(x, y)) * 255.0, blend, raw: [0.0; 3], depth: 3, size: 3.0, open_until: 0, ley: 77, soil: 128 };
                 if x < -0.5 || y < -0.5 || x > w as f32 + 0.5 || y > h as f32 + 0.5 {
                     return one;
                 }
@@ -533,8 +542,8 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
                 let hill = fields::smoothstep(0.30, 0.55, hm);
                 let margin = fields::smoothstep(0.22, 0.34, hm) * (1.0 - fields::smoothstep(0.42, 0.6, hm));
                 let (near, enclosed) = towns.iter().map(|&(t, y)| (t.distance(at), y)).fold((f32::MAX, 0), |a, b| if b.0 < a.0 { b } else { a });
-                let size = 4.0 + 2.2 * (old - 0.45) * (1.0 - hill) + margin - 1.3 * hill + 1.3 * (1.0 - fields::smoothstep(0.8, 2.6, near));
-                one.depth = (size + fields::hash3(id, 7, 311)).floor().clamp(fields::PARCEL_LEVEL as f32, fields::MAX_DEPTH as f32) as u8;
+                one.size = 4.0 + 2.2 * (old - 0.45) * (1.0 - hill) + margin - 1.3 * hill + fields::hash3(id, 7, 311);
+                one.depth = field_depth(one.size, near);
                 // round each town the lowland lies in open fields, in strips, until the
                 // parish is enclosed in a year of its own between 1755 and 1835
                 if r.terrain[cell_of(x, y)] == 1 && near + 0.3 * vnoise(x * 1.3, y * 1.3, 317) < 1.7 {
@@ -696,10 +705,20 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
         moor: within.iter().map(|v| v.0).collect(),
         lea: within.iter().map(|v| v.1).collect(),
         depth: ones.iter().map(|o| o.depth).collect(),
+        size: ones.iter().map(|o| o.size).collect(),
         open_until: ones.iter().map(|o| o.open_until).collect(),
         ley: ones.iter().map(|o| o.ley).collect(),
         soil: ones.iter().map(|o| o.soil).collect(),
     }
+}
+
+/// How far from a town its small closes reach, in cells.
+const CLOSES_REACH: f32 = 2.6;
+
+/// How many times a parcel of `size` (`Land::size`) is cut into fields when
+/// the nearest town is `near` cells off: fields are small round a town.
+fn field_depth(size: f32, near: f32) -> u8 {
+    (size + 1.3 * (1.0 - fields::smoothstep(0.8, CLOSES_REACH, near))).floor().clamp(fields::PARCEL_LEVEL as f32, fields::MAX_DEPTH as f32) as u8
 }
 
 /// The year's land: the class of every parcel, how wooded each is, and where
@@ -719,6 +738,11 @@ pub struct YearLand {
     pub field: Vec<u8>,
     /// the width of `field` in texels
     pub tw: usize,
+    /// How many times each parcel is cut into fields this year: `Land::depth`,
+    /// and more round a town founded since the record began. A cut only ever
+    /// divides a field that is there, so the hedges that stand keep their
+    /// places and new ones are planted between them.
+    pub depth: Vec<u8>,
     /// what each parcel of open land is where neither wood nor heath stands
     /// on it: arable or pasture, with its own fields and hedges. For a parcel
     /// of arable or pasture that is its class; for one of wood or heath it is
@@ -813,7 +837,28 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
         }
     }
     let field = timed("year's wood and heath", || land_field(l, &class, &lean));
-    YearLand { class, wood, field, tw: l.tw, under }
+    // the small closes round the towns founded since the record began
+    let mut depth = l.depth.clone();
+    let year = r.y0 + k as i32;
+    let late: Vec<usize> = r.header.towns.iter().filter(|t| t.founded > r.y0 && t.founded <= year && t.node < r.n).map(|t| t.node).collect();
+    if !late.is_empty() {
+        let cen = crate::network::centres(r);
+        let blocks = (CLOSES_REACH / fields::BLOCK).ceil() as i32 + 2;
+        for node in late {
+            let town = Vec2::new(cen[node].0, cen[node].1);
+            let q = fields::to_block(town);
+            let (bi, bj) = (q.x.floor() as i32, q.y.floor() as i32);
+            for j in (bj - blocks).max(l.bj0)..=(bj + blocks).min(l.bj0 + l.bh as i32 - 1) {
+                for i in (bi - blocks).max(l.bi0)..=(bi + blocks).min(l.bi0 + l.bw as i32 - 1) {
+                    for id in 8..16 {
+                        let p = l.index(i, j, id);
+                        depth[p] = depth[p].max(field_depth(l.size[p], l.at[p].distance(town)));
+                    }
+                }
+            }
+        }
+    }
+    YearLand { class, wood, field, tw: l.tw, under, depth }
 }
 
 // Where the woods and the heaths lie. Built ground is what it is, to its
@@ -1407,6 +1452,7 @@ mod tests {
             field: vec![0, 0, 85, 0, 170, 0, 255, 0, 0, 255, 85, 255, 170, 255, 255, 255],
             tw: 4,
             under: vec![PASTURE, FARM, PASTURE, FARM, URBAN],
+            depth: vec![3; 5],
         };
         let at = |parcel: u32, tex: u32, tx: f32, ty: f32| land.at(Place { parcel, tex, tx, ty, fray: 0.0, snow: false });
         let (w, h) = land.fields(Place { parcel: 0, tex: 1, tx: 0.5, ty: 0.25, fray: 0.0, snow: false });
@@ -1445,6 +1491,42 @@ mod tests {
             assert_eq!(above_tree_line(x, z, snow + 0.08), 1.0, "nothing grows on the snow");
             let (low, high) = (above_tree_line(x, z, snow - 0.2), above_tree_line(x, z, snow - 0.05));
             assert!(0.0 < low && low < high && high < 1.0, "the woods thin out on the way up: {low} then {high}");
+        }
+    }
+
+    #[test]
+    fn a_town_founded_later_gets_its_closes_in_its_year() {
+        // two years of the made-up island, with a town from before the record and one founded in 1751
+        let mut r = island();
+        (r.ny, r.filled) = (2, 2);
+        for a in [&mut r.mix_a, &mut r.mix_b, &mut r.mix_s] {
+            let year = a.clone();
+            a.extend(year);
+        }
+        let (old, new) = (4 * r.w + 3, 7 * r.w + 9);
+        r.header.towns = serde_json::from_str(&format!(r#"[{{"name":"Oldham","node":{old},"founded":1700}},{{"name":"Newton","node":{new},"founded":1751}}]"#)).unwrap();
+        let g = build_ground(&r);
+        let cen = crate::network::centres(&r);
+        let at = |node: usize| Vec2::new(cen[node].0, cen[node].1);
+        let (before, after) = (year_land(&r, &g, 0), year_land(&r, &g, 1));
+        // the first year is the land as built: closes round the old town, none yet round the new
+        assert_eq!(before.depth, g.land.depth);
+        let mean = |depth: &[u8], town: Vec2, within: f32| {
+            let near: Vec<f32> = (0..depth.len()).filter(|&i| g.land.area[i] > 0.0 && g.land.at[i].distance(town) < within).map(|i| depth[i] as f32).collect();
+            near.iter().sum::<f32>() / near.len() as f32
+        };
+        assert!(mean(&before.depth, at(old), 0.9) > mean(&before.depth, at(new), 0.9) + 0.5, "the old town has no closes of its own");
+        // in its year the new town's fields are cut further, and no field anywhere is cut less
+        assert!(mean(&after.depth, at(new), 0.9) > mean(&before.depth, at(new), 0.9) + 0.8, "the new town got no closes");
+        for i in 0..after.depth.len() {
+            assert!(after.depth[i] >= before.depth[i], "parcel {i} lost a hedge");
+            if g.land.at[i].distance(at(new)) > CLOSES_REACH {
+                assert_eq!(after.depth[i], before.depth[i], "parcel {i}, far from the new town, was cut again");
+            }
+        }
+        // a town founded later was never the middle of an open-field parish
+        for i in 0..g.land.at.len() {
+            assert!(g.land.open_until[i] == 0 || g.land.at[i].distance(at(old)) < g.land.at[i].distance(at(new)) + 2.0);
         }
     }
 

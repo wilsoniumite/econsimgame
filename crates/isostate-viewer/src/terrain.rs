@@ -250,15 +250,16 @@ pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> Pat
 }
 
 /// The year's land for every parcel, as the shader reads it: its class
-/// (`world::year_land`), how wooded it is, the town density of its cell
-/// that scatter.rs builds houses by, and what it is farmed as where neither
-/// wood nor heath stands on it (`YearLand::under`).
+/// (`world::year_land`), how many times it is cut into fields this year
+/// (`YearLand::depth`), the town density of its cell that scatter.rs builds
+/// houses by, and what it is farmed as where neither wood nor heath stands
+/// on it (`YearLand::under`).
 pub fn year_parcels(r: &Replay, g: &Ground, k: usize, land: &crate::world::YearLand) -> Vec<u8> {
     let mut out = Vec::with_capacity(land.class.len() * 4);
-    for (i, (&class, &wood)) in land.class.iter().zip(&land.wood).enumerate() {
+    for (i, &class) in land.class.iter().enumerate() {
         let off = k * r.n + g.land.wcell[i] as usize;
         let dense = if r.use_[off] == 10 { r.inten[off] } else { 115 };
-        out.extend_from_slice(&[class, wood, dense, land.under[i]]);
+        out.extend_from_slice(&[class, land.depth[i], dense, land.under[i]]);
     }
     out
 }
