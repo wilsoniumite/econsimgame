@@ -84,6 +84,13 @@ fn main() {
             println!("{}  {:6.1}  {:3.0}  {:<26} {:>9.0} {:>8.0}  {:5.2}", l.start, l.opened, l.km, what, l.cost, l.spent, l.roi);
         }
     }
+    // how much of the stone went into locks: the height along every link, at `lock_cells` cells' worth a unit
+    let climb: f64 = st.cn.links.iter().map(|l| (st.world.h[l.a] - st.world.h[l.b]).abs()).sum();
+    let cells = st.canal.iter().filter(|&&c| c > 0).count() as f64;
+    if cells > 0.0 {
+        let locks = P.canals.lock_cells * climb;
+        println!("\n{cells:.0} cells of canal climb {climb:.2} of the map's height between them: locks are {:.2} of the stone, bricks and timber", locks / (cells + locks));
+    }
     println!("\n      canal  cells   rail  digging  navvies  boat Mt-km  haul km  fares/capital  | of what the boats carry: coal  stone+clay  grain  timber  ore+iron  works'");
     let good = |name: &str| C.good_index.get(name).copied();
     let sector = |name: &str| C.sector_name.iter().position(|n| n == name);

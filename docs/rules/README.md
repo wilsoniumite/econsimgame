@@ -476,3 +476,8 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **canals**: a canal age before the railways. Somebody surveys a canal once
+  enough coal and stone are dug, towns learn from the canals that work, and
+  promoters dig where the carting saved pays: a layer of water over the map
+  with wharves, locks that cost stone and navvies who are hands, until the
+  railway takes the traffic. [canals.md](canals.md), `canals.enabled`.
