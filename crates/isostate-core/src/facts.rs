@@ -9,9 +9,10 @@
 //!
 //! Nothing here is read by the simulation, and nothing is added to its loop. The
 //! facts come from what a run already keeps: the observer's series, the yearly
-//! snapshots (`record.rs`) and the final state. The one thing nobody keeps, how
-//! many people lived in towns growing at the cap, is noted between years by
-//! `gather_year`, which the sweep calls from its own loop.
+//! snapshots (`record.rs`) and the final state. Two things nobody keeps, how
+//! many people lived in towns growing at the cap and how much land lay under
+//! each use, are noted between years by `gather_year`, which the sweep calls
+//! from its own loop.
 //!
 //! Everything is worked out from the content, so another content file works: a
 //! method or good named below that the content does not have is skipped.
@@ -23,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::land::{USE_DERELICT, USE_INDUSTRY, USE_SECTOR0, USE_URBAN, USE_WILD};
+use crate::land::{USE_DERELICT, USE_INDUSTRY, USE_URBAN};
 use crate::observer::annual;
 use crate::sim::{RunResult, Sim};
 
@@ -123,6 +124,9 @@ impl Facts {
 pub struct Gathered {
     /// Per year: the share of people living in towns whose growth was held at `growth_cap`.
     pub capped: Vec<f64>,
+    /// Per year: the land under each sector and, last, the land left wild, in cells
+    /// (every cell's share summed). The yearly snapshot keeps only each cell's main use.
+    pub area: Vec<Vec<f64>>,
 }
 
 /// Call after each `sim::run_year`.
@@ -141,6 +145,7 @@ pub fn gather_year(g: &mut Gathered, sim: &Sim) {
         }
     }
     g.capped.push(if all > 0.0 { capped / all } else { f64::NAN });
+    g.area.push((0..st.lam.rows).map(|r| (0..st.N).map(|c| st.lam[(r, c)]).sum()).collect());
 }
 
 /// The years facts are taken in: the first, every fiftieth year after it, and the
@@ -324,22 +329,28 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
 
     // ---- land
     b.group = GROUPS[4];
-    // farms, pastures and woods under their own names; quarries, pits and mines together
-    let surface = |s: usize| matches!(C.sector_field[s].as_str(), "fertility" | "pasture" | "forest");
-    let mut uses: Vec<(String, Vec<u8>)> = vec![("urban".into(), vec![USE_URBAN]), ("industry".into(), vec![USE_INDUSTRY])];
-    for s in (0..C.NS).filter(|&s| surface(s)) {
-        uses.push((C.sector_name[s].clone(), vec![USE_SECTOR0 + s as u8]));
-    }
-    uses.push(("mines".into(), (0..C.NS).filter(|&s| !surface(s)).map(|s| USE_SECTOR0 + s as u8).collect()));
-    uses.push(("wild".into(), vec![USE_WILD]));
-    uses.push(("derelict".into(), vec![USE_DERELICT]));
+    // a town, a works' yard or dereliction takes a cell or leaves it: counted in whole cells
     let N = rec.N;
     let layer = rec.layer("use");
     let year_use = |k: usize| &layer[k * N..(k + 1) * N];
-    for (name, codes) in &uses {
+    for (name, code) in [("urban", USE_URBAN), ("industry", USE_INDUSTRY), ("derelict", USE_DERELICT)] {
         for &y in &marks {
-            let cells = year_use((y - y0) as usize).iter().filter(|u| codes.contains(u)).count();
+            let cells = year_use((y - y0) as usize).iter().filter(|&&u| u == code).count();
             b.num(format!("cells_{name}_{y}"), Kind::Count, cells as f64);
+        }
+    }
+    // the rest of the land is shared out within each cell, so it is counted by area: every
+    // cell's share summed, in cells. (By main use a wood that is a third of every cell around
+    // it would count for nothing.) Farms, pastures and woods under their own names; quarries,
+    // pits and mines together; then what is left wild.
+    let surface = |s: usize| matches!(C.sector_field[s].as_str(), "fertility" | "pasture" | "forest");
+    let mut areas: Vec<(String, Vec<usize>)> = (0..C.NS).filter(|&s| surface(s)).map(|s| (C.sector_name[s].clone(), vec![s])).collect();
+    areas.push(("mines".into(), (0..C.NS).filter(|&s| !surface(s)).collect()));
+    areas.push(("wild".into(), vec![C.NS]));
+    for (name, rows) in &areas {
+        for &y in &marks {
+            let area = g.area.get((y - y0) as usize).map_or(f64::NAN, |a| rows.iter().map(|&r| a[r]).sum());
+            b.num(format!("area_{name}_{y}"), Kind::Real, area);
         }
     }
     // of the cells urban in a year, the share not urban ten years on

@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use isostate_core::cli::main_with_args;
+use isostate_core::{default_content, default_params, facts, sim};
 use serde_json::Value;
 
 fn scratch(name: &str) -> PathBuf {
@@ -13,9 +14,10 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// `isostate-core sweep ARGS`, without the table on stdout (the harness would not hide it).
 fn sweep(args: &[&str]) -> Result<(), String> {
-    let args: Vec<String> = std::iter::once("sweep").chain(args.iter().copied()).map(String::from).collect();
-    main_with_args(&args)
+    let args: Vec<String> = args.iter().copied().map(String::from).collect();
+    isostate_core::sweep::command(&args, false)
 }
 
 #[test]
@@ -59,8 +61,10 @@ fn a_tiny_sweep_writes_finite_facts() {
             "works_closed_median_life",
             "works_utilisation_1760",
             "cells_urban_1760",
-            "cells_farm_1760",
-            "cells_mines_1760",
+            "area_farm_1760",
+            "area_forestry_1760",
+            "area_mines_1760",
+            "area_wild_1760",
             "urban_churn_10y",
             "price_swing_grain",
             "price_swing_iron",
@@ -126,12 +130,89 @@ fn a_tiny_sweep_writes_finite_facts() {
     let _ = std::fs::remove_dir_all(&dir2);
 }
 
+/// Four facts cannot be worked out from the files a run writes. Here they are
+/// worked out a second way from what the run keeps in memory.
+#[test]
+#[allow(non_snake_case)]
+fn the_facts_no_file_holds_agree_with_the_record() {
+    let mut P = default_params();
+    P.seed = 3;
+    P.end_year = Some(1790);
+    let mut s = sim::start(&P, default_content());
+    let mut gathered = facts::Gathered::default();
+    while s.year <= s.end_year {
+        sim::run_year(&mut s).expect("money is conserved");
+        facts::gather_year(&mut gathered, &s);
+    }
+    let r = sim::finish(s);
+    let f = facts::stylised_facts(&r, &gathered, 0.0);
+    let (st, C, rec) = (&r.state, &r.content, &r.rec);
+
+    // growth against the cap: the sweep notes it between years from the live state. The yearly
+    // snapshot keeps each town's income ratio and people (as f32), which is another road to it.
+    let T = rec.T;
+    let mut share = Vec::new();
+    for k in 0..rec.n_years {
+        let (mut capped, mut all) = (0.0, 0.0);
+        for t in (0..T).filter(|&t| rec.town_active[k * T + t] == 1 && rec.town_y[k * T + t] > 0.0) {
+            let (y, pop) = (rec.town_y[k * T + t] as f64, rec.town_pop[k * T + t] as f64);
+            all += pop;
+            if P.growth_slope * y.ln() + P.growth_base >= P.growth_cap {
+                capped += pop;
+            }
+        }
+        share.push(capped / all);
+    }
+    let people = share.iter().sum::<f64>() / share.len() as f64;
+    let years = share.iter().filter(|&&v| v >= 0.5).count() as f64 / share.len() as f64;
+    // not every year of this run sits at the cap, or the check would show nothing
+    assert!(people > 0.5 && people < 0.999, "{people}");
+    assert!((f.get("growth_capped_people").unwrap() - people).abs() < 1e-4, "{:?} against {people}", f.get("growth_capped_people"));
+    assert_eq!(f.get("growth_capped_years"), Some(years));
+
+    // utilisation and the top hundredth's share of capacity, from the final state
+    let alive: Vec<usize> = (0..st.F_count).filter(|&w| st.f_alive[w]).collect();
+    let built: Vec<f64> = alive.iter().filter(|&&w| st.f_K[w] > 0.0).map(|&w| st.f_u[w]).collect();
+    let util = built.iter().sum::<f64>() / built.len() as f64;
+    assert!((f.get("works_utilisation_1790").unwrap() - util).abs() < 1e-12);
+    let mut value: Vec<f64> = Vec::new();
+    for &w in &alive {
+        let mut unit = 0.0;
+        for g in 0..C.G {
+            unit += C.m_cap[(st.f_method[w], g)] * st.pbar[(st.f_town[w], g)];
+        }
+        value.push((st.f_K[w] + st.f_order_K[w]) * unit);
+    }
+    value.sort_by(f64::total_cmp);
+    let top = value.len().div_ceil(100);
+    let share = value[value.len() - top..].iter().sum::<f64>() / value.iter().sum::<f64>();
+    assert!(top >= 5 && share > 0.01 && share < 0.5, "{top} works hold {share}");
+    assert!((f.get("works_top_1pct_capacity_share_1790").unwrap() - share).abs() < 1e-12);
+
+    // the land by area: the last year's is the final state's shares summed, there are woods
+    // though hardly a cell has them as its main use, and the whole is no more than the island
+    let area = |name: &str| f.get(&format!("area_{name}_1790")).unwrap();
+    let row = |r: usize| (0..st.N).map(|c| st.lam[(r, c)]).sum::<f64>();
+    let sector = |name: &str| C.sector_name.iter().position(|s| s == name).unwrap();
+    assert!((area("farm") - row(sector("farm"))).abs() < 1e-9);
+    assert!((area("forestry") - row(sector("forestry"))).abs() < 1e-9);
+    assert!((area("wild") - row(C.NS)).abs() < 1e-9);
+    let woods_lead = (0..st.N).filter(|&c| st.land_use[c] == isostate_core::land::USE_SECTOR0 + sector("forestry") as u8).count();
+    assert!(area("forestry") > 500.0 && woods_lead < 50, "{} cells' worth of woods, the main use of {woods_lead}", area("forestry"));
+    let shared: f64 = ["farm", "pasture", "forestry", "mines", "wild"].iter().map(|n| area(n)).sum();
+    let land = st.world.land.iter().filter(|&&l| l).count() as f64;
+    assert!(shared > 0.5 * land && shared <= land + 1e-6, "{shared} cells' worth shared out on an island of {land}");
+}
+
 #[test]
 fn a_bad_setting_is_refused_before_anything_runs() {
     let dir = scratch("bad");
     let out = dir.to_str().unwrap();
     let e = sweep(&["--seeds", "1", "--set", "land_thetta=2,3", "--out", out, "--quiet"]).unwrap_err();
     assert!(e.contains("Did you mean land_theta?"), "{e}");
+    // the same through the command line's front door
+    let front: Vec<String> = ["sweep", "--seeds", "1", "--set", "land_thetta=2,3", "--out", out].iter().map(|s| s.to_string()).collect();
+    assert_eq!(main_with_args(&front).unwrap_err(), e);
     let e = sweep(&["--seeds", "1", "--set", "land_theta=wide", "--out", out, "--quiet"]).unwrap_err();
     assert!(e.contains("land_theta") && e.contains("invalid type"), "{e}");
     let e = sweep(&["--seeds", "1", "--compare", out, "--out", out, "--quiet"]).unwrap_err();
