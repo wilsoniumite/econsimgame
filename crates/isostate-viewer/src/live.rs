@@ -366,8 +366,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
 
 /// For screenshots: the best-paying works near home that costs at most half
 /// the family's cash (taking up its trade first, if the first trade is still
-/// to choose), and the cheapest few squares around it. They are given as a
-/// player's orders are, after the first year, so a save holds them.
+/// to choose), and the nearest few squares round it that it can afford. They
+/// are given as a player's orders are, after the first year, so a save holds
+/// them.
 fn demo_orders(game: &mut Game) {
     let s = &game.sim;
     let Ok(rep) = iso::family_report(&s.st, &s.content, &s.params, PLAYER) else { return };
@@ -425,18 +426,32 @@ fn demo_orders(game: &mut Game) {
         if let Err(e) = Order::found(&game.sim, m, c).and_then(|o| game.give(o)) {
             eprintln!("demo: could not build: {e}");
         }
+        // Land: up to four squares, the nearest to the works first and the
+        // cheaper of two as near, that are not the family's already and that
+        // half its cash will buy between them (the works has to be paid for).
+        // Ground beside a town costs ten times what open country does, so the
+        // squares next to the works are often out of reach; the search goes
+        // out as far as four squares.
         let s = &game.sim;
         let (cx, cy) = ((c % s.st.world.W) as i64, (c / s.st.world.W) as i64);
-        let mut around: Vec<(f64, usize)> = (-1..=1)
-            .flat_map(|dy| (-1..=1).map(move |dx| (cx + dx, cy + dy)))
-            .filter(|&(x, y)| x >= 0 && y >= 0 && x < w && y < h)
-            .map(|(x, y)| (y * w + x) as usize)
-            .filter(|&c| s.st.world.land[c])
-            .map(|c| (families::land_price(&s.st, &s.params, c), c))
+        let mut around: Vec<(i64, f64, usize)> = (-4..=4)
+            .flat_map(|dy| (-4..=4).map(move |dx| (dx, dy)))
+            .filter(|&(dx, dy)| cx + dx >= 0 && cy + dy >= 0 && cx + dx < w && cy + dy < h)
+            .map(|(dx, dy)| (dx.abs().max(dy.abs()), ((cy + dy) * w + cx + dx) as usize))
+            .filter(|&(_, c)| s.st.world.land[c] && s.st.cell_owner[c] != PLAYER as i64)
+            .map(|(d, c)| (d, families::land_price(&s.st, &s.params, c), c))
             .collect();
-        around.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        for (_, c) in around.into_iter().take(4) {
-            let _ = game.give(Order::BuyLand { cell: c });
+        around.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)));
+        let mut purse = s.st.families[PLAYER].cash * 0.5;
+        let mut bought = 0;
+        for (_, price, c) in around {
+            if bought == 4 {
+                break;
+            }
+            if price <= purse && game.give(Order::BuyLand { cell: c }).is_ok() {
+                purse -= price;
+                bought += 1;
+            }
         }
     }
 }
