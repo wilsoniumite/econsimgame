@@ -617,6 +617,7 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
     crate::chronicle::yearly(st, C, P, year, events);
     record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
     harvest::snapshot(rec, st, P, (year - C.start_year) as usize);
+    crate::mines::snapshot(rec, st, P, (year - C.start_year) as usize); // mines: the year's workings
     sim.year += 1;
     Ok(())
 }

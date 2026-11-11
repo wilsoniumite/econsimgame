@@ -129,6 +129,8 @@ pub struct Gathered {
     pub area: Vec<Vec<f64>>,
     /// Every town's rate of natural increase in every year (people: docs/rules/people.md).
     pub rates: Vec<f64>,
+    /// Per year: the workings of each extractive sector (mines: docs/rules/mines.md).
+    pub mines: Vec<crate::mines::YearNote>,
 }
 
 /// Call after each `sim::run_year`.
@@ -152,6 +154,7 @@ pub fn gather_year(g: &mut Gathered, sim: &Sim) {
     }
     g.capped.push(if all > 0.0 { capped / all } else { f64::NAN });
     g.area.push((0..st.lam.rows).map(|r| (0..st.N).map(|c| st.lam[(r, c)]).sum()).collect());
+    g.mines.push(crate::mines::gather(st, &sim.content, P));
 }
 
 /// The years facts are taken in: the first, every fiftieth year after it, and the

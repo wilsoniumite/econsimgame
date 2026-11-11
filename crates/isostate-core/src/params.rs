@@ -278,6 +278,10 @@ pub struct Params {
     /// answers to how people live, and towns founded all century.
     #[serde(default, skip_serializing_if = "is_default")]
     pub people: crate::peopling::PeopleParams,
+    /// Mines and pits that take little of the surface (not in the Python; see
+    /// docs/rules/mines.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mines: crate::mines::MineParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -477,6 +481,7 @@ pub fn default_params() -> Params {
         railways: crate::railways::RailwayParams::default(),
         carting: crate::carting::CartingParams::default(),
         people: crate::peopling::PeopleParams::default(),
+        mines: crate::mines::MineParams::default(),
     }
 }
 
@@ -502,6 +507,7 @@ pub fn game_params() -> Params {
     P.railways = crate::railways::RailwayParams::game();
     P.carting = crate::carting::CartingParams::game();
     P.people = crate::peopling::PeopleParams::game();
+    P.mines = crate::mines::MineParams::game();
     P
 }
 

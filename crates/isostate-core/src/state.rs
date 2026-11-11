@@ -443,4 +443,31 @@ pub struct State {
     /// For tests and scenarios: a cell where a town is to be founded this year,
     /// whatever the founding rule would say of its district.
     pub pp_found_next: Option<usize>,
+
+    // ---------------- mines (docs/rules/mines.md; all empty while `mines.enabled` is off)
+    /// The extractive sectors in the content's order: row r of the tables below
+    /// is sector `mine_sectors[r]`.
+    pub mine_sectors: Vec<usize>,
+    /// `[r * N + cell]`: the year the working there was opened (0: none is open),
+    /// and the year the last one there was abandoned (0: never).
+    pub mine_opened: Vec<i32>,
+    pub mine_left: Vec<i32>,
+    /// (rows, N): everything raised from each cell's deposit so far.
+    pub mine_dug: Mat,
+    /// (rows, N): the royalty each deposit is believed to pay before its crew,
+    /// in its town's wages a month (the last few years' promise, smoothed).
+    pub mine_promise: Mat,
+    /// (rows, N): the share of its cell each working's surface takes this year.
+    pub mine_surface: Mat,
+    /// (rows, N) each, over the last complete year: mean hands (the crew among
+    /// them), output and royalty paid.
+    pub mine_hands: Mat,
+    pub mine_out: Mat,
+    pub mine_royalty: Mat,
+    /// (3 * rows, N): the same three for the year now running, summed month by
+    /// month, and the months counted.
+    pub mine_acc: Mat,
+    pub mine_months: usize,
+    /// The standing crew of each working in each town this month.
+    pub mine_crew_each: Vec<f64>,
 }

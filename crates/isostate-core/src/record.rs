@@ -52,6 +52,8 @@ pub fn display_mix(st: &State, C: &Content) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let mut b_out = vec![0u8; N];
     let mut s_out = vec![0u8; N];
     let mut D = vec![0.0f64; nd];
+    // mines: under the mechanism a working's share is all pit head and spoil
+    let (dig, rough) = crate::mines::display_split(st);
     for c in 0..N {
         D.iter_mut().for_each(|v| *v = 0.0);
         let ks = st.cell_K_share[c].clamp(0.0, 1.0);
@@ -63,8 +65,8 @@ pub fn display_mix(st: &State, C: &Content) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         for (s, name) in C.sector_name.iter().enumerate() {
             let share = st.lam[(s, c)] * scale;
             if extractive(name) {
-                D[sector_disp(name)] += 0.45 * share;
-                D[4] += 0.55 * share;
+                D[sector_disp(name)] += dig * share;
+                D[4] += rough * share;
             } else {
                 D[sector_disp(name)] += share;
             }
@@ -143,6 +145,9 @@ pub struct Record {
     /// and the country's, `[year]`. Empty unless the mechanism is on.
     pub town_harvest: Vec<f32>,
     pub harvest: Vec<f32>,
+    /// mines: every working there is or has been, year by year. Empty unless the
+    /// mechanism is on.
+    pub workings: Vec<Vec<crate::mines::Working>>,
 }
 
 impl Record {
@@ -169,6 +174,7 @@ pub fn init(st: &State, C: &Content, _P: &Params, n_years: usize) -> Record {
         projects: Vec::new(),
         town_harvest: Vec::new(),
         harvest: Vec::new(),
+        workings: Vec::new(),
     }
 }
 
@@ -433,6 +439,28 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     if !rec.town_harvest.is_empty() {
         arrays.push(f32_array("town_harvest", vec![n_years, T], &rec.town_harvest));
         arrays.push(f32_array("harvest", vec![n_years], &rec.harvest));
+    }
+    // mines: only a run with the mechanism on has these (docs/rules/mines.md).
+    // Year k's workings are rows mine_first[k] .. mine_first[k + 1] of the rest.
+    if !lite && !rec.workings.is_empty() {
+        let mut first = vec![0i32; n_years + 1];
+        for k in 0..n_years {
+            first[k + 1] = first[k] + rec.workings.get(k).map_or(0, |w| w.len()) as i32;
+        }
+        let all: Vec<&crate::mines::Working> = rec.workings.iter().flatten().collect();
+        let n = all.len();
+        let ints = |f: &dyn Fn(&crate::mines::Working) -> i32| all.iter().map(|w| f(w)).collect::<Vec<i32>>();
+        let reals = |f: &dyn Fn(&crate::mines::Working) -> f32| all.iter().map(|w| f(w)).collect::<Vec<f32>>();
+        arrays.push(i32_array("mine_first", vec![n_years + 1], &first));
+        arrays.push(i32_array("mine_cell", vec![n], &ints(&|w| w.cell as i32)));
+        arrays.push(u8_array("mine_sector", vec![n], all.iter().map(|w| w.sector as u8).collect()));
+        arrays.push(i32_array("mine_opened", vec![n], &ints(&|w| w.opened)));
+        arrays.push(i32_array("mine_left", vec![n], &ints(&|w| w.left)));
+        arrays.push(f32_array("mine_hands", vec![n], &reals(&|w| w.hands)));
+        arrays.push(f32_array("mine_out", vec![n], &reals(&|w| w.out)));
+        arrays.push(f32_array("mine_dug", vec![n], &reals(&|w| w.dug)));
+        arrays.push(f32_array("mine_surface", vec![n], &reals(&|w| w.surface)));
+        arrays.push(f32_array("mine_royalty", vec![n], &reals(&|w| w.royalty)));
     }
 
     let towns: Vec<Value> = (0..st.town_name.len())

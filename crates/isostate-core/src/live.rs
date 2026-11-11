@@ -257,6 +257,9 @@ pub struct LiveYear {
     /// slot (1.0 is average; empty unless the mechanism is on), and the country's.
     pub harvest_town: Vec<f32>,
     pub harvest: Option<f32>,
+    /// mines: every working there is or has been, as the year ends (empty
+    /// unless the mechanism is on; docs/rules/mines.md).
+    pub workings: Vec<crate::mines::Working>,
 }
 
 /// What the viewer has been sent so far.
@@ -370,5 +373,6 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         cell_owner: st.cell_owner.iter().map(|&o| o as i16).collect(),
         harvest_town: st.harvest_town.iter().map(|&v| v as f32).collect(),
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
+        workings: crate::mines::workings(st),
     }
 }

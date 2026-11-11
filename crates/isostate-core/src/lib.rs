@@ -37,6 +37,7 @@ pub mod land;
 pub mod live;
 pub mod machines;
 pub mod mat;
+pub mod mines;
 pub mod names;
 pub mod ndimage;
 pub mod observer;

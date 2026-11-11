@@ -163,6 +163,9 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         .land_use
         .iter()
         .map(|&u| u == USE_INDUSTRY || u == USE_SEA || (u >= USE_SECTOR0 + 5 && u <= USE_SECTOR0 + 6))
+        .enumerate()
+        // mines: nor over an iron mine or a colliery at work, which no longer shows as the cell's main use
+        .map(|(c, b)| b || crate::mines::blocks_town(st, C, P, c))
         .collect();
     for i in 0..T {
         if !st.town_active[i] {
@@ -215,7 +218,8 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
 /// share is "wild": land not worth the fixed cost of working it.
 pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wbar: &[f64], initial: bool) {
     let (N, NS) = (st.N, C.NS);
-    let bids = sector_bids(st, C, P, pbar, wbar);
+    // mines (docs/rules/mines.md): a working bids for no surface
+    let bids = crate::mines::surface_bids(C, P, sector_bids(st, C, P, pbar, wbar));
     let ct: Vec<usize> = st.catch.iter().map(|&c| if c >= 0 { c as usize } else { 0 }).collect();
     let wild_bid: Vec<f64> = ct.iter().map(|&t| P.land_fixed_cost * wbar[t].max(1e-6)).collect();
 
@@ -229,6 +233,9 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
     let taken: Vec<bool> = (0..N)
         .map(|c| st.urban[c] || ks[c] >= 0.6 || st.derelict_timer[c] > 0 || !land[c] || st.catch[c] < 0)
         .collect();
+    // mines: the year's review of the workings, and the surface they take of each
+    // cell (zeros while the mechanism is off), left out of what the rest share
+    let ms = crate::mines::review(st, C, P, year, pbar, wbar, &taken, initial);
 
     let mut target = Mat::zeros(NS + 1, N);
     let mut logb = vec![0.0; NS + 1];
@@ -248,7 +255,7 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
             zsum += z;
         }
         for r in 0..=NS {
-            target[(r, c)] = target[(r, c)] / zsum.max(1e-12) * (1.0 - ks[c]);
+            target[(r, c)] = target[(r, c)] / zsum.max(1e-12) * (1.0 - ks[c] - ms[c]);
         }
         if taken[c] {
             for r in 0..=NS {
@@ -271,11 +278,13 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         for r in 0..=NS {
             tot += lam_new[(r, c)];
         }
-        let room = if taken[c] { 1.0 } else { 1.0 - ks[c] };
+        let room = if taken[c] { 1.0 } else { 1.0 - ks[c] - ms[c] };
         for r in 0..=NS {
             lam_new[(r, c)] = if tot > 0.0 { lam_new[(r, c)] / tot.max(1e-12) * room } else { 0.0 };
         }
     }
+    // mines: the workings' surface goes into the shares, which sum as before
+    crate::mines::write_surface(st, P, &mut lam_new);
 
     // forest: cover lives on the woodland and wild share; clearing yields timber
     let fi = st.forestry_sector;
@@ -345,13 +354,14 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for c in 0..N {
         for s in 0..NS {
-            let l = st.lam[(s, c)];
+            // mines: a working's fixed factor is its cell's deposit, less what it has gone through
+            let l = crate::mines::unit_share(st, P, s, c, st.lam[(s, c)]);
             if l > 0.0 {
                 ex_cell.push(c);
                 ex_sector.push(s);
                 ex_lam.push(l);
                 ex_town.push(st.catch[c] as usize);
-                ex_field.push(fields[s][c]);
+                ex_field.push(crate::mines::unit_field(st, P, s, c, fields[s][c]));
                 ex_tau.push(P.freight * C.weight[C.sector_good[s]] * st.dcatch[c]);
                 let prev = old_lprev[s * N + c];
                 carried.push(if prev.is_nan() { 0.0 } else { prev });
@@ -376,6 +386,7 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         rent[c] = if st.urban[c] { st.cell_urban_rent[c] } else { r };
     }
     st.land_rent_only = rent.clone();
+    crate::mines::add_royalties(st, P, &mut rent); // mines: the map's rent counts the royalties
     for f in 0..st.f_alive.len() {
         if st.f_alive[f] {
             rent[st.f_cell[f]] += st.f_rent[f];
