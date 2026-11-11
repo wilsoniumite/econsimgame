@@ -471,3 +471,8 @@ One line each as they arrive: the name, its page, its switch.
 - **carting**: the carting bill takes hands out of each town's labour supply,
   so cheaper carriage frees people for other work. [carting.md](carting.md),
   `carting.enabled`.
+- **people**: births and deaths that answer to income, crowding and dearth;
+  towns founded all century where a market would save the most carting; and
+  households that go with their cells when a market's area changes, taking
+  their wage and their prices with them. [people.md](people.md),
+  `people.enabled`.

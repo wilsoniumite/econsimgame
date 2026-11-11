@@ -23,6 +23,10 @@ pub fn growth(st: &mut State, _C: &Content, P: &Params, year: i64, events: &mut 
             g[t] -= 0.02;
         }
     }
+    // people (docs/rules/people.md): the game's rule sets the rates in place of the capped one
+    if P.people.enabled {
+        g = crate::peopling::growth(st, P, &y, year, events);
+    }
     let hit: Vec<usize> = (0..T).filter(|&t| famine[t] && st.town_founded[t] < year - 2).collect();
     if hit.len() >= 3 {
         let mins: Vec<f64> = hit.iter().map(|&t| st.food_min_acc[t]).collect();
@@ -95,6 +99,10 @@ pub fn migration(st: &mut State, _C: &Content, P: &Params) {
             let share = if tot[i] > 0.0 { wgt[(i, j)] / tot[i].max(1e-12) } else { 0.0 };
             flow[(i, j)] = movers[i] * share;
         }
+    }
+    // people (docs/rules/people.md): a town takes in only as many as it can house
+    if P.people.enabled {
+        crate::peopling::limit_arrivals(st, P, &act, &mut flow);
     }
     let cash_pc: Vec<f64> = act.iter().map(|&t| st.hh_cash[t].max(0.0) / st.pop[t].max(1.0)).collect();
     // flow.sum(axis=0) runs down the columns one by one; flow.sum(axis=1) is pairwise

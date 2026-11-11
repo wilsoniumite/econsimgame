@@ -274,6 +274,10 @@ pub struct Params {
     /// Carting takes labour (not in the Python; see docs/rules/carting.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub carting: crate::carting::CartingParams,
+    /// People (not in the Python; see docs/rules/people.md): a population that
+    /// answers to how people live, and towns founded all century.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub people: crate::peopling::PeopleParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -472,6 +476,7 @@ pub fn default_params() -> Params {
         works: WorksParams::default(),
         railways: crate::railways::RailwayParams::default(),
         carting: crate::carting::CartingParams::default(),
+        people: crate::peopling::PeopleParams::default(),
     }
 }
 
@@ -496,6 +501,7 @@ pub fn game_params() -> Params {
     P.works = WorksParams::game();
     P.railways = crate::railways::RailwayParams::game();
     P.carting = crate::carting::CartingParams::game();
+    P.people = crate::peopling::PeopleParams::game();
     P
 }
 

@@ -416,7 +416,10 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         people::growth(st, C, P, year, events);
         people::migration(st, C, P);
         tech::discovery(st, C, P, &mut rng.tech, year, events);
-        founded = people::found_towns(st, C, P, &mut rng.people, year, events);
+        // people (docs/rules/people.md): its own founding rule runs below, once the year's roads are known
+        if !P.people.enabled {
+            founded = people::found_towns(st, C, P, &mut rng.people, year, events);
+        }
     } else {
         st.y_ratio = st.y_acc.iter().map(|v| v / 12.0).collect();
         st.y_acc.iter_mut().for_each(|v| *v = 0.0);
@@ -425,9 +428,19 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     tech::diffusion(st, C, P);
     st.cell_flow_year = st.cell_flow.clone();
     update_roads(st, C, P);
+    if !warm && P.people.enabled {
+        founded = crate::peopling::found_towns(st, C, P, year, events);
+        // people: what each cell paid to reach its market, before the paths are worked out again
+        st.pp_dcatch_was = st.dcatch.clone();
+    }
     st.prev_catch = st.catch.clone();
     land::update_transport(st, C, P);
-    if !founded.is_empty() {
+    if P.people.enabled {
+        // people: households go with their cells every year, not only at a founding
+        if !warm {
+            crate::peopling::move_with_cells(st, C, P);
+        }
+    } else if !founded.is_empty() {
         people::resettle_new_towns(st, C, P);
     }
     after_transport(st, C, P);

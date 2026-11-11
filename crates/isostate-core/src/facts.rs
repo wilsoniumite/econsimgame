@@ -127,6 +127,8 @@ pub struct Gathered {
     /// Per year: the land under each sector and, last, the land left wild, in cells
     /// (every cell's share summed). The yearly snapshot keeps only each cell's main use.
     pub area: Vec<Vec<f64>>,
+    /// Every town's rate of natural increase in every year (people: docs/rules/people.md).
+    pub rates: Vec<f64>,
 }
 
 /// Call after each `sim::run_year`.
@@ -140,9 +142,13 @@ pub fn gather_year(g: &mut Gathered, sim: &Sim) {
         // the rule in people::growth before its clamp (a famine's two points off are not seen here)
         let rate = P.growth_slope * st.y_ratio[t].max(1e-3).ln() + P.growth_base;
         all += st.pop[t];
-        if rate >= P.growth_cap {
+        // people: under the game's rule nothing is clamped; a town counts as held when
+        // income has carried its rate to within a twentieth of the rule's ceiling
+        let held = if P.people.enabled { st.pp_income_term[t] >= 0.95 * P.people.growth_top } else { rate >= P.growth_cap };
+        if held {
             capped += st.pop[t];
         }
+        g.rates.push(if P.people.enabled { st.pp_growth[t] } else { rate.clamp(-0.04, P.growth_cap) });
     }
     g.capped.push(if all > 0.0 { capped / all } else { f64::NAN });
     g.area.push((0..st.lam.rows).map(|r| (0..st.N).map(|c| st.lam[(r, c)]).sum()).collect());
@@ -234,6 +240,16 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     // a year sat at the cap if most people lived in towns growing at it
     b.num("growth_capped_years".into(), Kind::Share, mean(&capped.iter().map(|&v| if v >= 0.5 { 1.0 } else { 0.0 }).collect::<Vec<_>>()));
     b.num("growth_capped_people".into(), Kind::Share, mean(&capped));
+    // people: how the towns' rates of natural increase are spread, in per cent a year
+    let mut rates = g.rates.clone();
+    rates.sort_by(f64::total_cmp);
+    for (name, q) in [("p10", 0.1), ("p50", 0.5), ("p90", 0.9)] {
+        b.num(format!("town_growth_pct_{name}"), Kind::Ratio, 100.0 * quantile(&rates, q));
+    }
+    // and the share of town-years within a tenth of a point of the port's cap
+    let r_cap = r.params.growth_cap;
+    let near = rates.iter().filter(|&&r| (r - r_cap).abs() <= 0.001).count();
+    b.num("town_growth_near_old_cap".into(), Kind::Share, if rates.is_empty() { f64::NAN } else { near as f64 / rates.len() as f64 });
     for &y in &marks {
         b.num(format!("urban_share_{y}"), Kind::Share, at("urban_share", y));
     }
@@ -242,6 +258,23 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     }
     let last_town = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] >= y0).map(|t| st.town_founded[t]).max();
     b.year("last_town_founded".into(), last_town);
+    // people: the towns founded from 1800 on, by what their districts were known for
+    // (a town can also be a port or on a railway), and how big they are at the end
+    if r.params.people.enabled {
+        let late: Vec<&crate::peopling::Founding> = st.pp_foundings.iter().filter(|f| f.year >= 1800).collect();
+        let count = |f: &dyn Fn(&crate::peopling::Founding) -> bool| late.iter().filter(|x| f(x)).count() as f64;
+        b.num("late_towns".into(), Kind::Count, late.len() as f64);
+        for kind in ["coal", "iron", "stone", "works", "farm"] {
+            b.num(format!("late_towns_{kind}"), Kind::Count, count(&|f| f.kind == kind));
+        }
+        b.num("late_towns_port".into(), Kind::Count, count(&|f| f.port));
+        b.num("late_towns_rail".into(), Kind::Count, count(&|f| f.rail));
+        let mut size: Vec<f64> = late.iter().map(|f| st.pop[f.town]).collect();
+        size.sort_by(f64::total_cmp);
+        b.num("late_town_people_median".into(), Kind::Count, quantile(&size, 0.5));
+        b.num("late_town_people_largest".into(), Kind::Count, size.last().copied().unwrap_or(f64::NAN));
+        b.num("emigrants".into(), Kind::Count, st.pp_emigrants);
+    }
 
     // ---- work and wages
     b.group = GROUPS[1];

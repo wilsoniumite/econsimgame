@@ -425,4 +425,22 @@ pub struct State {
     /// One entry per twelve months since the warm-up began: the year's carting
     /// bill and its carters (each summed over the months), whole country.
     pub cart_years: Vec<(f64, f64)>,
+    // ---------------- people (docs/rules/people.md; all empty while `P.people` is off)
+    /// The rate of increase each town had last year.
+    pub pp_growth: Vec<f64>,
+    /// Its part from income alone (the sweep reads how near its ceiling a town is).
+    pub pp_income_term: Vec<f64>,
+    /// People who have left the island so far.
+    pub pp_emigrants: f64,
+    /// Towns founded under these rules, and why.
+    pub pp_foundings: Vec<crate::peopling::Founding>,
+    /// The year each town last gave people to a founding, or was founded itself.
+    pub pp_gave: Vec<i64>,
+    /// Each cell's path cost to its market before this year's catchments were worked out.
+    pub pp_dcatch_was: Vec<f64>,
+    /// Stream 8: the names of towns founded under these rules.
+    pub pp_rng: Option<crate::rng::Rng>,
+    /// For tests and scenarios: a cell where a town is to be founded this year,
+    /// whatever the founding rule would say of its district.
+    pub pp_found_next: Option<usize>,
 }
