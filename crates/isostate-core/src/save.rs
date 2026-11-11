@@ -2,9 +2,20 @@
 //!
 //! The state of a run cannot be written out as it stands (`State`, the random
 //! streams and the observer have no serialised form), but a run is decided by
-//! its seed, its rules and the orders the player gave between years. So a save
-//! holds those and nothing else, and loading plays the years again, giving each
-//! order at the point it was first given.
+//! its seed, its rules and the orders the player gave. So a save holds those
+//! and nothing else, and loading plays the months again, carrying each order
+//! out at the point it was first carried out.
+//!
+//! A game is played a month at a time (`Game::month`), and the player may give
+//! an order in any month, but nothing the player orders touches the island
+//! between a year's first month and its last. An order given at the year's
+//! turn, before the first month is played, is carried out at once, as it
+//! always was. One given later waits (`Game::waiting`): what the family is told
+//! about its decisions, its people's posts, its branches and its seat is
+//! carried out when December has been played, just before the year's books are
+//! closed, which is when the core gives such things their effect; works to
+//! build and land to buy are carried out at the turn, after the books are
+//! closed, exactly where they were when a game was played a year at a time.
 //!
 //! ```no_run
 //! use isostate_core::save::{self, Game, Order};
@@ -23,12 +34,17 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::Content;
 use crate::families::{self, Choice, Group, Posting, Stance};
 use crate::params::{Params, Rules};
 use crate::sim::{self, Sim};
+use crate::state::{Event, State};
 
-/// The layout of the file. A reader refuses a later one.
-pub const FORMAT: u32 = 1;
+/// The layout of the file. A reader refuses a later one. Layout 2 added the
+/// months played of the year in progress, the orders waiting for the year's
+/// end, and the month an order was carried out in; a file in layout 1 has none
+/// of them and reads as a game saved at a year's turn.
+pub const FORMAT: u32 = 2;
 
 /// The player's family is always the first.
 pub const PLAYER: usize = 0;
@@ -71,6 +87,16 @@ impl Order {
             None => Err(format!("there is no method {method}")),
         }
     }
+
+    /// Whether the order is word to the family about its own affairs (a
+    /// decision answered, a posting, what a branch does, where the seat is),
+    /// which the core gives its effect at the year's end. Given in the middle
+    /// of a year, such an order is carried out when December has been played,
+    /// before the books are closed. The others (a works to build, land to buy)
+    /// change the island at once, and wait for the turn itself.
+    pub fn for_year_end(&self) -> bool {
+        !matches!(self, Order::Found { .. } | Order::BuyLand { .. })
+    }
 }
 
 /// What an order that was carried out did.
@@ -81,11 +107,21 @@ pub enum Done {
     /// The price paid for the land.
     Bought(f64),
     Done,
+    /// Given in the middle of a year: it waits for the year's end, and could
+    /// be carried out as things stand today.
+    Waits,
 }
 
 /// Carry out an order for the player's family. A refused order changes nothing.
 pub fn carry_out(sim: &mut Sim, order: &Order) -> Result<Done, String> {
     let Sim { st, content: C, params: P, events, year, .. } = sim;
+    carry_out_on(st, C, P, *year, events, order)
+}
+
+/// `carry_out` on a state that need not be the run's own: an order that waits
+/// is first tried on a copy. `year` is the next year to be played.
+fn carry_out_on(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Event>, order: &Order) -> Result<Done, String> {
+    let year = &year;
     match order {
         Order::Found { method, cell } => {
             let Some(m) = C.method_name.iter().position(|n| n == method) else {
@@ -110,13 +146,30 @@ pub fn carry_out(sim: &mut Sim, order: &Order) -> Result<Done, String> {
     }
 }
 
-/// An order and the year it was given in: the last year played at the time,
-/// so it took effect before the next one was worked out.
+/// An order and when it was carried out: the last year played at the time,
+/// and how many months of the year after it had been played. That is none for
+/// an order carried out at a year's turn, before the next year was worked out
+/// (every order of a game played a year at a time), and twelve for word to the
+/// family that was given in the middle of a year and carried out at its end,
+/// before its books were closed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Given {
     pub year: i64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub month: usize,
     #[serde(flatten)]
     pub order: Order,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+/// What became of an order that waited for the year's end.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Outcome {
+    pub order: Order,
+    pub result: Result<Done, String>,
 }
 
 /// Which rules a game is played under, as a save names them.
@@ -160,6 +213,15 @@ pub struct Game {
     /// When the game began, in seconds since 1970. It tells one game on an
     /// island from another, so a new game does not write over an old one unseen.
     pub started: u64,
+    /// Months of the year in progress (`sim.year`) that have been played, 0 to
+    /// 11: none at a year's turn.
+    pub month: usize,
+    /// Orders given since the year's first month was played, in the order
+    /// they were given. They wait for the year's end (see the top of this file).
+    pub waiting: Vec<Order>,
+    /// What became of the orders carried out at the last year's end, until
+    /// `turn` hands it over.
+    outcomes: Vec<Outcome>,
 }
 
 impl Game {
@@ -170,7 +232,7 @@ impl Game {
 
     /// A new game under these rules.
     pub fn under(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
-        Game { sim: sim::start(&params(rules, seed, families), rules.content()), rules, orders: Vec::new(), started }
+        Game { sim: sim::start(&params(rules, seed, families), rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
     }
 
     /// The last year played (the year before the first, if none has been).
@@ -183,16 +245,124 @@ impl Game {
         self.sim.year > self.sim.end_year
     }
 
-    /// Play the next year.
-    pub fn year(&mut self) -> Result<(), String> {
-        sim::run_year(&mut self.sim)
+    /// Whether the game stands at a year's turn: no month of the next year
+    /// has been played, so an order given now is carried out at once.
+    pub fn at_turn(&self) -> bool {
+        self.month == 0
     }
 
-    /// Carry out an order and write it in the log. A refused order is not kept.
+    /// Play the next month. After December the year ends: word to the family
+    /// that waited is carried out, the books are closed, and this says true.
+    /// The works and land that waited are carried out by `turn`, which a
+    /// caller that wants to see the year as it ended calls afterwards (the
+    /// next `month` or `give` does it otherwise).
+    pub fn month(&mut self) -> Result<bool, String> {
+        self.settle();
+        self.play_month()?;
+        if self.month < 12 {
+            return Ok(false);
+        }
+        let (now, later): (Vec<Order>, Vec<Order>) = std::mem::take(&mut self.waiting).into_iter().partition(|o| o.for_year_end());
+        for order in now {
+            self.carry(order);
+        }
+        self.waiting = later;
+        self.close_year();
+        Ok(true)
+    }
+
+    /// One month of the simulation and nothing else.
+    fn play_month(&mut self) -> Result<(), String> {
+        sim::run_month(&mut self.sim, self.month)?;
+        self.month += 1;
+        Ok(())
+    }
+
+    /// The year's end, when its twelve months have been played.
+    fn close_year(&mut self) {
+        sim::end_year(&mut self.sim);
+        self.month = 0;
+    }
+
+    /// Carry out an order that waited, and write it in the log if it was.
+    fn carry(&mut self, order: Order) {
+        let result = carry_out(&mut self.sim, &order);
+        if result.is_ok() {
+            self.orders.push(Given { year: self.last_year(), month: self.month, order: order.clone() });
+        }
+        self.outcomes.push(Outcome { order, result });
+    }
+
+    /// At a year's turn, whatever still waits is carried out.
+    fn settle(&mut self) {
+        if self.month == 0 {
+            for order in std::mem::take(&mut self.waiting) {
+                self.carry(order);
+            }
+        }
+    }
+
+    /// At a year's turn: carry out the works and land that waited for it, and
+    /// say what became of every order that waited for this year's end, in the
+    /// order they were carried out.
+    pub fn turn(&mut self) -> Vec<Outcome> {
+        self.settle();
+        std::mem::take(&mut self.outcomes)
+    }
+
+    /// Play on to the next year's turn (the whole year, from a turn). As
+    /// `month` does, it leaves the works and land that waited to `turn`.
+    pub fn year(&mut self) -> Result<(), String> {
+        while !self.month()? {}
+        Ok(())
+    }
+
+    /// The island as it would stand if the waiting orders were carried out
+    /// today, one after another; those that could not be are passed over.
+    fn with_waiting(&self) -> State {
+        let Sim { content: C, params: P, year, .. } = &self.sim;
+        let mut st = self.sim.st.clone();
+        for order in &self.waiting {
+            let _ = carry_out_on(&mut st, C, P, year + 1, &mut Vec::new(), order);
+        }
+        st
+    }
+
+    /// The player's family as it would stand if the waiting orders were
+    /// carried out today (None when nothing waits): what the family has been
+    /// told, for an interface to show before it has happened. It copies the
+    /// island to find out, so it is for asking after an order, not every month.
+    pub fn foreseen(&self) -> Option<families::FamilyReport> {
+        if self.waiting.is_empty() {
+            return None;
+        }
+        families::family_report(&self.with_waiting(), &self.sim.content, &self.sim.params, PLAYER).ok()
+    }
+
+    /// Give an order. At a year's turn it is carried out at once and written
+    /// in the log. In the middle of a year it is tried on a copy of the island
+    /// with the orders already waiting, and if it could be carried out today
+    /// it waits with them for the year's end (`Done::Waits`). A refused order
+    /// is not kept, and changes nothing.
     pub fn give(&mut self, order: Order) -> Result<Done, String> {
-        let done = carry_out(&mut self.sim, &order)?;
-        self.orders.push(Given { year: self.last_year(), order });
-        Ok(done)
+        if self.month == 0 {
+            self.settle();
+            let done = carry_out(&mut self.sim, &order)?;
+            self.orders.push(Given { year: self.last_year(), month: 0, order });
+            return Ok(done);
+        }
+        let mut st = self.with_waiting();
+        carry_out_on(&mut st, &self.sim.content, &self.sim.params, self.sim.year + 1, &mut Vec::new(), &order)?;
+        self.waiting.push(order);
+        Ok(Done::Waits)
+    }
+
+    /// Take back the `i`-th of the orders that wait.
+    pub fn cancel(&mut self, i: usize) -> Result<Order, String> {
+        if i >= self.waiting.len() {
+            return Err(format!("there is no waiting order {i}"));
+        }
+        Ok(self.waiting.remove(i))
     }
 
     /// The game as a save, written at `now` (seconds since 1970).
@@ -207,11 +377,13 @@ impl Game {
             started: self.started,
             saved: utc(now),
             year: self.last_year(),
+            month: self.month,
             family: me.as_ref().map(|r| r.surname.clone()).unwrap_or_default(),
             seat: me.as_ref().map(|r| r.seat_name.clone()).unwrap_or_default(),
             worth: me.as_ref().map(|r| r.net_worth.round() as i64).unwrap_or(0),
             check: check(&self.sim),
             orders: self.orders.clone(),
+            waiting: self.waiting.clone(),
         }
     }
 }
@@ -231,6 +403,9 @@ pub struct Save {
     pub saved: String,
     /// The last year played.
     pub year: i64,
+    /// Months of the year after it that had been played, 0 to 11 (layout 2).
+    #[serde(default)]
+    pub month: usize,
     /// The player's family, its seat and its net worth then. Only for people
     /// (a card that offers to go on, someone reading the file): loading works
     /// them out again.
@@ -244,6 +419,9 @@ pub struct Save {
     #[serde(default)]
     pub check: String,
     pub orders: Vec<Given>,
+    /// Orders given since the year's turn, waiting for the year's end (layout 2).
+    #[serde(default)]
+    pub waiting: Vec<Order>,
 }
 
 impl Save {
@@ -310,10 +488,11 @@ pub struct Loaded {
     pub drifted: bool,
 }
 
-/// Play a saved game again: the years up to the one it was saved in, with
-/// every order given where it was first given. `each_year` is called after
-/// each year, before the orders given in it (as a viewer gets a year before
-/// the player answers it).
+/// Play a saved game again: the months up to the one it was saved in, with
+/// every order carried out where it was first carried out, and the orders
+/// that were waiting put back to wait. `each_year` is called after each year,
+/// before the orders given at its turn (as a viewer gets a year before the
+/// player answers it).
 pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, String> {
     if save.format > FORMAT {
         return Err(format!("saved by a later version of the game (layout {}; this one reads up to {FORMAT})", save.format));
@@ -321,28 +500,43 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     let mut game = Game::under(save.played_under(), save.seed, save.families, save.started);
     let mut refused = Vec::new();
     let mut next = 0;
-    let until = save.year.min(game.sim.end_year);
+    // where the save had got to: a year's turn, or some months into the year after it
+    let until = match save.year {
+        y if y >= game.sim.end_year => (game.sim.end_year, 0),
+        y => (y, save.month.min(11)),
+    };
     loop {
-        // the orders given while the last year played was on the table
-        while next < save.orders.len() && save.orders[next].year < game.sim.year {
+        // the orders carried out at this point of the calendar
+        while next < save.orders.len() && (save.orders[next].year, save.orders[next].month) <= (game.last_year(), game.month) {
             let given = &save.orders[next];
             next += 1;
             match carry_out(&mut game.sim, &given.order) {
-                Ok(_) => game.orders.push(Given { year: game.last_year(), order: given.order.clone() }),
+                Ok(_) => game.orders.push(Given { year: game.last_year(), month: game.month, order: given.order.clone() }),
                 Err(why) => refused.push((given.clone(), why)),
             }
         }
-        if game.sim.year > until {
+        if game.month == 12 {
+            game.close_year();
+            each_year(&game.sim);
+        } else if (game.last_year(), game.month) >= until {
             break;
+        } else {
+            game.play_month()?;
         }
-        game.year()?;
-        each_year(&game.sim);
     }
-    // orders dated after the year the save reached cannot have been given
+    // orders dated after the point the save reached cannot have been given
     for given in &save.orders[next..] {
         refused.push((given.clone(), format!("it is dated {}, after the save's last year", given.year)));
     }
     let drifted = !save.check.is_empty() && check(&game.sim) != save.check;
+    // what was waiting for the year's end waits again
+    if game.month > 0 {
+        game.waiting = save.waiting.clone();
+    } else {
+        for order in &save.waiting {
+            refused.push((Given { year: save.year, month: save.month, order: order.clone() }, "it was waiting for a year's end the save never reached".to_string()));
+        }
+    }
     Ok(Loaded { game, refused, drifted })
 }
 

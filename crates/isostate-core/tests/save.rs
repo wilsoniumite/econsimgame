@@ -143,12 +143,25 @@ fn thirty_years_saved_and_loaded_are_the_same_to_the_last_digit() {
     // the file: readable, a line an order, and it reads back to the same save
     let saved = a.save(1_794_366_765);
     let text = saved.to_text();
-    assert_eq!(text.lines().count(), 13 + 2 + saved.orders.len() + 1, "{text}");
-    assert!(text.contains("\"format\": 1,") && text.contains("\"seed\": 7,") && text.contains("\"year\": 1779,"));
+    assert_eq!(text.lines().count(), 15 + 2 + saved.orders.len() + 1, "{text}");
+    assert!(text.contains("\"format\": 2,") && text.contains("\"seed\": 7,") && text.contains("\"year\": 1779,"));
+    assert!(text.contains("\"month\": 0,") && text.contains("\"waiting\": []"), "{text}");
     assert!(text.contains("\"saved\": \"2026-11-11 03:12 UTC\""), "{text}");
     let read = Save::from_text(&text).unwrap();
     assert_eq!(read, saved);
     assert!(read.same_rules());
+
+    // a file in the first layout, which had no months and nothing waiting, reads as the same game
+    let first_layout: String = text.replace("\"format\": 2,", "\"format\": 1,").lines().filter(|l| !l.contains("\"month\": 0,") && !l.contains("\"waiting\": []")).collect::<Vec<_>>().join("\n");
+    // (the orders were not the last field then, and now end the file)
+    let first_layout = first_layout.replace("],\n}", "]\n}");
+    assert!(!first_layout.contains("month") && !first_layout.contains("waiting"), "{first_layout}");
+    let old = Save::from_text(&first_layout).unwrap();
+    assert_eq!((old.format, old.month, old.waiting.len()), (1, 0, 0));
+    assert_eq!(old.orders, saved.orders);
+    let again = save::load(&old, |_| {}).unwrap();
+    assert!(again.refused.is_empty() && !again.drifted, "a save in the first layout plays again as it was");
+    assert_eq!(save::check(&again.game.sim), save::check(&a.sim));
 
     // loading plays it again
     let mut years = Vec::new();
@@ -185,9 +198,9 @@ fn a_save_the_rules_no_longer_agree_with_says_so() {
 
     // orders the simulation refuses now are skipped and counted, and the rest is played
     let mut odd = saved.clone();
-    odd.orders.insert(0, save::Given { year: 1750, order: Order::Found { method: "steam_loom_of_the_future".into(), cell: 10 } });
-    odd.orders.insert(1, save::Given { year: 1750, order: Order::Decide { id: 999, choice: Choice::University } });
-    odd.orders.push(save::Given { year: 1900, order: Order::MoveSeat { town: 0 } });
+    odd.orders.insert(0, save::Given { year: 1750, month: 0, order: Order::Found { method: "steam_loom_of_the_future".into(), cell: 10 } });
+    odd.orders.insert(1, save::Given { year: 1750, month: 0, order: Order::Decide { id: 999, choice: Choice::University } });
+    odd.orders.push(save::Given { year: 1900, month: 0, order: Order::MoveSeat { town: 0 } });
     let b = save::load(&odd, |_| {}).unwrap();
     assert_eq!(b.refused.len(), 3, "{:?}", b.refused);
     assert!(b.refused[0].1.contains("no method called"), "{}", b.refused[0].1);
@@ -229,10 +242,184 @@ fn a_save_the_rules_no_longer_agree_with_says_so() {
     assert!(!odd_rules.same_rules());
 
     // a later layout is refused by name; rubbish is not a save
-    let later = saved.to_text().replace("\"format\": 1,", "\"format\": 2,");
+    let later = saved.to_text().replace("\"format\": 2,", "\"format\": 3,");
     assert!(Save::from_text(&later).unwrap_err().contains("later version"));
     assert!(Save::from_text("{\"seed\": 7}").unwrap_err().contains("not a saved game"));
     assert!(Save::from_text("").unwrap_err().contains("not a saved game"));
+}
+
+fn months(g: &mut Game, n: usize) {
+    for _ in 0..n {
+        assert!(!g.month().unwrap(), "the year turned sooner than the test meant");
+    }
+}
+
+/// Play on to the year's turn, and hand over what became of the orders that waited.
+fn to_turn(g: &mut Game) -> Vec<save::Outcome> {
+    while !g.month().unwrap() {}
+    g.turn()
+}
+
+/// The cheapest square by the seat that the player's family does not hold.
+fn cheapest_square(g: &Game) -> usize {
+    let seat = report(g, 0).seat;
+    (0..g.sim.st.N)
+        .filter(|&c| g.sim.st.catch[c] == seat as i64 && g.sim.st.world.land[c] && g.sim.st.cell_owner[c] != 0)
+        .map(|c| (families::land_price(&g.sim.st, &g.sim.params, c), c))
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .unwrap()
+        .1
+}
+
+#[test]
+fn a_month_at_a_time_is_the_same_game_as_a_year_at_a_time() {
+    let mut a = Game::new(7, 6, 0);
+    let mut b = Game::new(7, 6, 0);
+    for _ in 0..4 {
+        a.year().unwrap();
+        orders_for(&mut a);
+        for m in 0..12 {
+            assert_eq!(b.month, m);
+            assert_eq!(b.month().unwrap(), m == 11, "the year turns after December and not before");
+        }
+        assert!(b.turn().is_empty(), "nothing waited");
+        assert!(b.at_turn());
+        orders_for(&mut b);
+    }
+    assert_eq!(b.orders, a.orders);
+    assert_eq!(save::check(&b.sim), save::check(&a.sim));
+    assert_eq!(series_bits(&b), series_bits(&a));
+}
+
+#[test]
+fn orders_given_in_the_middle_of_a_year_wait_for_its_end() {
+    let mut a = Game::new(7, 6, 77);
+    play(&mut a, 3);
+    let at_turn = a.clone();
+    months(&mut a, 4);
+    assert!(!a.at_turn());
+    let untouched = save::check(&a.sim);
+    let me = report(&a, 0);
+    let square = cheapest_square(&a);
+    let other = (0..a.sim.st.T_max).find(|&t| a.sim.st.town_active[t] && t != me.seat).unwrap();
+    let log = a.orders.len();
+
+    // given in May: nothing happens yet, and the family is shown as it will stand
+    assert_eq!(a.give(Order::BuyLand { cell: square }), Ok(save::Done::Waits));
+    assert_eq!(a.give(Order::MoveSeat { town: other }), Ok(save::Done::Waits));
+    let sea = (0..a.sim.st.N).find(|&c| !a.sim.st.world.land[c]).unwrap();
+    assert!(a.give(Order::BuyLand { cell: sea }).is_err(), "an order that could not be carried out today is refused today");
+    assert!(a.give(Order::BuyLand { cell: square }).is_err(), "and so is one that what already waits has made impossible");
+    assert_eq!(a.waiting, [Order::BuyLand { cell: square }, Order::MoveSeat { town: other }]);
+    assert_eq!((a.orders.len(), save::check(&a.sim)), (log, untouched.clone()), "an order that waits changes nothing and is not in the log");
+    let seen = a.foreseen().expect("the family as it will stand");
+    assert_eq!(seen.next_seat, Some(other));
+    assert!(seen.cells.contains(&square) && !report(&a, 0).cells.contains(&square));
+    assert!(seen.cash < report(&a, 0).cash, "the land's price is counted as spent");
+
+    // an order taken back is gone
+    assert_eq!(a.give(Order::MoveSeat { town: me.seat }), Ok(save::Done::Waits));
+    assert_eq!(a.cancel(2), Ok(Order::MoveSeat { town: me.seat }));
+    assert!(a.cancel(2).is_err());
+    assert_eq!(a.foreseen().unwrap().next_seat, Some(other));
+
+    // saved in May and loaded: the same month, the same orders waiting, the same island
+    months(&mut a, 2);
+    let saved = a.save(0);
+    assert_eq!((saved.year, saved.month, saved.waiting.len()), (1752, 6, 2));
+    let text = saved.to_text();
+    assert!(text.contains("\"month\": 6,") && text.contains("\"waiting\": [{"), "{text}");
+    let read = Save::from_text(&text).unwrap();
+    assert_eq!(read, saved);
+    let mut years = Vec::new();
+    let b = save::load(&read, |sim| years.push(sim.year - 1)).unwrap();
+    assert_eq!(years, [1750, 1751, 1752], "the year in progress is not handed over as a year");
+    assert!(b.refused.is_empty() && !b.drifted, "{:?}", b.refused);
+    let mut b = b.game;
+    assert_eq!((b.month, &b.waiting, b.last_year()), (6, &a.waiting, 1752));
+    assert_eq!(save::check(&b.sim), save::check(&a.sim));
+    assert_eq!(serde_json::to_string(&b.foreseen()).unwrap(), serde_json::to_string(&a.foreseen()).unwrap());
+    assert_eq!(b.save(0), saved, "saving the loaded game writes the same file");
+
+    // the year's end: the move is carried out before the books are closed and
+    // happens with them. The land comes up at the turn, after, and by then the
+    // seat has gone from beside it: an order that could be carried out when it
+    // was given can still be refused when its time comes, and the family is
+    // told why
+    for g in [&mut a, &mut b] {
+        while !g.month().unwrap() {}
+        assert_eq!(report(g, 0).seat, other, "the seat moved with the year's end");
+        let done = g.turn();
+        assert_eq!(done.len(), 2);
+        assert_eq!((&done[0].order, &done[0].result), (&Order::MoveSeat { town: other }, &Ok(save::Done::Done)));
+        assert_eq!(done[1].order, Order::BuyLand { cell: square });
+        assert!(done[1].result.as_ref().is_err_and(|why| why.contains("only around the seat")), "{done:?}");
+        assert!(!report(g, 0).cells.contains(&square));
+        assert!(g.waiting.is_empty() && g.foreseen().is_none() && g.turn().is_empty());
+        assert_eq!(g.orders.len(), log + 1, "the order that was refused is not in the log");
+        assert_eq!(g.orders[log], save::Given { year: 1752, month: 12, order: Order::MoveSeat { town: other } });
+    }
+    assert_eq!(save::check(&b.sim), save::check(&a.sim));
+
+    // the log plays again to the same island, the order of December in its place
+    let text = a.save(0).to_text();
+    assert!(text.contains("{\"year\":1752,\"month\":12,\"kind\":\"move_seat\""), "{text}");
+    let c = save::load(&Save::from_text(&text).unwrap(), |_| {}).unwrap();
+    assert!(c.refused.is_empty() && !c.drifted);
+    assert_eq!(c.game.orders, a.orders);
+    play(&mut a, 2);
+    play(&mut b, 2);
+    let mut c = c.game;
+    play(&mut c, 2);
+    assert_eq!(save::check(&b.sim), save::check(&a.sim));
+    assert_eq!(save::check(&c.sim), save::check(&a.sim));
+
+    // land ordered in May is bought exactly where land ordered at the following turn is:
+    // the two games are the same game
+    let mut waited = at_turn.clone();
+    months(&mut waited, 4);
+    let square = cheapest_square(&waited);
+    assert_eq!(waited.give(Order::BuyLand { cell: square }), Ok(save::Done::Waits));
+    assert!(matches!(to_turn(&mut waited)[0].result, Ok(save::Done::Bought(_))));
+    assert_eq!(waited.orders.last(), Some(&save::Given { year: 1753, month: 0, order: Order::BuyLand { cell: square } }));
+    let mut prompt = at_turn.clone();
+    prompt.year().unwrap();
+    assert!(matches!(prompt.give(Order::BuyLand { cell: square }), Ok(save::Done::Bought(_))));
+    assert_eq!(waited.orders, prompt.orders, "both are in the log as carried out at the turn");
+    waited.year().unwrap();
+    prompt.year().unwrap();
+    assert_eq!(save::check(&waited.sim), save::check(&prompt.sim));
+
+    // and a seat moved in May moves when a seat moved at the turn before would have
+    let mut late = at_turn.clone();
+    months(&mut late, 4);
+    late.give(Order::MoveSeat { town: other }).unwrap();
+    to_turn(&mut late);
+    let mut early = at_turn.clone();
+    early.give(Order::MoveSeat { town: other }).unwrap();
+    early.year().unwrap();
+    assert_eq!(reports(&late), reports(&early));
+    assert_eq!(save::check(&late.sim), save::check(&early.sim));
+}
+
+#[test]
+fn a_decision_answered_late_in_the_year_takes_the_place_of_its_default() {
+    // the family's first trade waits from the start; it is left unanswered into the spring
+    let mut g = Game::new(7, 6, 0);
+    g.year().unwrap();
+    let d = pending(&g.sim.st, 0).into_iter().next().expect("the first trade is still to choose");
+    let other = (0..d.options.len()).find(|&i| i != d.default).unwrap();
+    let Choice::Trade { group } = d.options[other].choice else { panic!("the first decision is the family's trade") };
+    assert!(!report(&g, 0).known.contains(&group));
+    months(&mut g, 3);
+    let o = Order::decide(&g.sim, d.id, other).unwrap();
+    assert_eq!(g.give(o.clone()), Ok(save::Done::Waits));
+    assert!(g.foreseen().unwrap().pending.iter().all(|p| p.id != d.id), "the family is shown as having decided");
+    assert!(pending(&g.sim.st, 0).iter().any(|p| p.id == d.id), "though nothing has changed yet");
+    let done = to_turn(&mut g);
+    assert_eq!(done, [save::Outcome { order: o, result: Ok(save::Done::Done) }]);
+    assert!(report(&g, 0).known.contains(&group), "the choice was made at the year's end, where the default would have been");
+    assert_eq!(g.orders.last().unwrap().month, 12);
 }
 
 #[test]
