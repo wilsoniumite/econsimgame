@@ -4,7 +4,8 @@
 
 use bevy::prelude::*;
 
-use crate::meshkit::{hex, Builder};
+use crate::look::{TheLook, ToColor};
+use crate::meshkit::Builder;
 use crate::ui::UiState;
 use crate::{ground_hit, world, Data, MainCam, Pick, Picked};
 
@@ -81,12 +82,12 @@ fn square(b: &mut Builder, data: &Data, c: usize, inset: f32, width: f32, col: [
     b.ribbon(&pts, width, col);
 }
 
-fn draw(mut o: ResMut<Outline>, picked: Res<Picked>, data: Res<Data>, fam: Option<Res<crate::family::FamilyView>>, mut meshes: ResMut<Assets<Mesh>>) {
+fn draw(mut o: ResMut<Outline>, picked: Res<Picked>, data: Res<Data>, look: Res<TheLook>, fam: Option<Res<crate::family::FamilyView>>, mut meshes: ResMut<Assets<Mesh>>) {
     let sel = match picked.what {
         Some(Pick::Cell(c)) => Some(c),
         _ => None,
     };
-    let accent = fam.as_ref().and_then(|f| f.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.30, 0.25, 0.20));
+    let accent = fam.as_ref().and_then(|f| f.player()).map(|p| p.colour).unwrap_or(look.marks.outline_plain.color());
     let key = (o.hover, sel, accent.to_srgba().to_u8_array());
     if o.drawn == Some(key) {
         return;
@@ -94,15 +95,15 @@ fn draw(mut o: ResMut<Outline>, picked: Res<Picked>, data: Res<Data>, fam: Optio
     o.drawn = Some(key);
     let mut b = Builder::default();
     if let Some(c) = o.hover.filter(|&h| Some(h) != sel) {
-        let mut col = hex(0xfffbf0);
-        col[3] = 0.75;
+        let mut col = *look.marks.hover;
+        col[3] = look.marks.hover_alpha;
         square(&mut b, &data, c, 0.02, 0.022, col);
     }
     if let Some(c) = sel {
         let s = accent.to_linear();
-        square(&mut b, &data, c, 0.02, 0.04, [s.red, s.green, s.blue, 0.95]);
+        square(&mut b, &data, c, 0.02, 0.04, [s.red, s.green, s.blue, look.marks.outline_alpha]);
     }
     if let Some(mut m) = meshes.get_mut(&o.mesh) {
-        *m = if b.is_empty() { crate::placeholder_mesh() } else { b.into_mesh() };
+        *m = if b.is_empty() { crate::placeholder_mesh() } else { crate::meshkit::into_mesh(b) };
     }
 }

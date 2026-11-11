@@ -26,9 +26,16 @@ struct SeaParams {
 // the ground's height at every vertex
 @group(constants::MATERIAL_BIND_GROUP) @binding(101) var heights: texture_2d<f32>;
 
-fn hex(c: u32) -> vec3<f32> {
-    return vec3<f32>(f32((c >> 16u) & 255u), f32((c >> 8u) & 255u), f32(c & 255u)) / 255.0;
+// The water's colours, from the look file (look.rs Sea, in the same order), in sRGB.
+struct SeaPaint {
+    shallows: vec4<f32>,
+    shelf: vec4<f32>,
+    deep: vec4<f32>,
+    open: vec4<f32>,
+    foam: vec4<f32>,
 }
+
+@group(constants::MATERIAL_BIND_GROUP) @binding(102) var<uniform> paint: SeaPaint;
 
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let lo = c / 12.92;
@@ -86,9 +93,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let k1 = smoothstep(0.0, 0.07, depth);
     let k2 = smoothstep(0.05, 0.5, depth);
     let k3 = smoothstep(0.4, 1.1, depth);
-    var col = mix(hex(0x9ad6cbu), hex(0x5aa8b8u), k1);
-    col = mix(col, hex(0x3b7fa3u), k2);
-    col = mix(col, hex(0x2c5f86u), k3);
+    var col = mix(paint.shallows.rgb, paint.shelf.rgb, k1);
+    col = mix(col, paint.deep.rgb, k2);
+    col = mix(col, paint.open.rgb, k3);
     var alpha = mix(0.28, 0.9, smoothstep(0.0, 0.3, depth));
 
     // surf: a line of foam at the edge, and bands rolling in over the
@@ -100,7 +107,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let bands = smoothstep(0.82, 0.97, roll) * (1.0 - smoothstep(0.004, 0.05, depth)) * smoothstep(0.25, 0.75, breakup);
     let fine = 1.0 - smoothstep(0.004, 0.02, foot);
     let foam = clamp(edge * (0.55 + 0.45 * breakup) + 0.7 * bands * fine, 0.0, 1.0);
-    col = mix(col, hex(0xf4f6f2u), foam);
+    col = mix(col, paint.foam.rgb, foam);
     alpha = max(alpha, foam * 0.95);
 
     // ripples: the surface's normal wobbles a little, so the sun glints
