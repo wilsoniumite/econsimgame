@@ -324,8 +324,11 @@ impl Year {
 /// zeros while the mechanism is off.
 ///
 /// `taken` are the cells no land use may have (town ground, a cell the works
-/// have filled, dereliction, land with no market): no pit head stands there,
-/// though the deposit under them may be worked from beside them.
+/// have filled, dereliction, land with no market): no pit head is sunk there,
+/// though the deposit under them may be worked from beside them. A pit head
+/// that stands where the works have since filled the cell, or left it
+/// derelict, stays: it was there first, the works came to be beside it, and
+/// its surface is what room they leave it.
 #[allow(clippy::too_many_arguments)]
 pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wbar: &[f64], taken: &[bool], initial: bool) -> Vec<f64> {
     let N = st.N;
@@ -375,7 +378,8 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
         };
         let mut per_town: Vec<Option<(f64, f64, f64, f64)>> = vec![None; T];
         for h in 0..N {
-            if st.catch[h] < 0 || taken[h] || !st.world.land[h] {
+            // nobody sinks on a taken cell; a pit head that stands on one is reckoned as any other
+            if st.catch[h] < 0 || !st.world.land[h] || st.urban[h] || (taken[h] && st.mine_opened[r * N + h] == 0) {
                 continue;
             }
             let t = st.catch[h] as usize;
@@ -399,16 +403,18 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
             }
         }
 
-        // the workings there are: one whose site is lost (the town has grown over
-        // it, or it has no market) is given up, and so is one that has stood
-        // idle too long; the deposit they had is free again
+        // the workings there are: one whose site is lost (a town has taken its
+        // cell, or it has no market) is given up, and so is one that has stood
+        // idle too long; the deposit they had is free again. Works that fill the
+        // cell do not end it: by 1900 the largest collieries are the ones with
+        // works beside them, and they were being given up at their height.
         let mut open: Vec<bool> = (0..N).map(|h| st.mine_opened[r * N + h] != 0).collect();
         let mut shut = vec![false; N];
         for h in 0..N {
             if open[h] {
                 let k = r * N + h;
                 st.mine_idle[k] = if st.mine_hands[(r, h)] < 1.0 { st.mine_idle[k].saturating_add(1) } else { 0 };
-                if st.catch[h] < 0 || taken[h] || st.mine_idle[k] as u32 >= m.idle_years.max(1) {
+                if st.catch[h] < 0 || st.urban[h] || st.mine_idle[k] as u32 >= m.idle_years.max(1) {
                     (open[h], shut[h]) = (false, true);
                 }
             }
@@ -483,7 +489,10 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
             let k = r * N + h;
             if shut[h] {
                 st.mine_opened[k] = 0;
-                st.mine_left[k] = year as i32;
+                // what is given up during the warm-up (the surplus a run starts
+                // with, mostly) leaves no abandoned working for the map, whose
+                // record opens with the start year
+                st.mine_left[k] = if year < C.start_year { 0 } else { year as i32 };
                 st.mine_idle[k] = 0;
             } else if open[h] && st.mine_opened[k] == 0 {
                 // the workings a run starts with are old ones
@@ -590,10 +599,27 @@ pub fn add_royalties(st: &State, P: &Params, rent: &mut [f64]) {
     }
 }
 
-/// A town does not build over the pit head of an iron mine or a colliery at
-/// work (under the port, over a cell that is mostly one).
-pub fn blocks_town(st: &State, C: &Content, P: &Params, c: usize) -> bool {
-    P.mines.enabled && st.mine_sectors.iter().enumerate().any(|(r, &s)| C.sector_mine[s] && st.mine_opened[r * st.N + c] != 0)
+/// A town does not build over a pit head at work. Under the port it kept off a
+/// cell that was mostly iron mine or colliery and built over quarries and clay
+/// pits, which were a slice of every cell and lost a slice. A working is one
+/// place with the lease of a dozen cells behind it, and a town that took the
+/// pit head's cell would end all of it; so the town goes round, as it went
+/// round the mines. A working that stands idle is no obstacle: the town takes
+/// the cell and the working is given up (`review`).
+pub fn blocks_town(st: &State, P: &Params, c: usize) -> bool {
+    P.mines.enabled && (0..st.mine_sectors.len()).any(|r| at_work(st, r, c))
+}
+
+/// Whether the working of row r on cell c has a hand or more: on the books of
+/// the year now running if it has any months, or else on last year's; and a
+/// working being sunk is at work.
+fn at_work(st: &State, r: usize, c: usize) -> bool {
+    let opened = st.mine_opened[r * st.N + c];
+    if opened == 0 {
+        return false;
+    }
+    let hands = if st.mine_months > 0 { st.mine_acc[(r, c)] / st.mine_months as f64 } else { st.mine_hands[(r, c)] };
+    hands >= 1.0 || opened as i64 == st.mine_year
 }
 
 // ---------------------------------------------------------------- the month (econ::step_month)

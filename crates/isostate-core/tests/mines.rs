@@ -240,8 +240,12 @@ fn a_working_left_idle_is_abandoned_and_one_at_work_is_not() {
     let mut P = params(5, 0, 1775);
     P.mines.idle_years = 1;
     let hasty = run(&P);
-    let left = |r: &RunResult| r.state.mine_left.iter().filter(|&&y| y != 0).count();
-    assert!(left(&hasty) > left(&patient), "{} against {}", left(&hasty), left(&patient));
+    // (what is given up during the warm-up is not kept in `mine_left`, and with
+    // one idle year most of a run's surplus goes then; so count what stands)
+    let open = |r: &RunResult| r.state.mine_opened.iter().filter(|&&y| y != 0).count();
+    let idle = |r: &RunResult| (0..r.state.mine_opened.len()).filter(|&k| r.state.mine_opened[k] != 0 && r.state.mine_idle[k] > 0).count();
+    assert!(open(&hasty) < open(&patient), "{} workings against {}", open(&hasty), open(&patient));
+    assert!(idle(&patient) > 0 && idle(&hasty) == 0, "{} standing idle against {}", idle(&patient), idle(&hasty));
     // nothing with hands was given up: every working that left has an empty year behind it
     let st = &patient.state;
     for k in 0..st.mine_opened.len() {
@@ -249,6 +253,57 @@ fn a_working_left_idle_is_abandoned_and_one_at_work_is_not() {
             assert!((st.mine_idle[k] as u32) < P.mines.idle_years.max(10));
         }
     }
+}
+
+#[test]
+fn works_beside_a_pit_head_do_not_end_it_and_a_town_goes_round() {
+    let P = params(3, 0, 1752);
+    let mut s = sim::start(&P, default_content());
+    while s.year < s.end_year {
+        sim::run_year(&mut s).unwrap();
+    }
+    // the next year's months, and then the land rule with works filling the
+    // cell of the largest working and the next largest's cell left derelict
+    for month in 0..12 {
+        sim::run_month(&mut s, month).unwrap();
+    }
+    let (N, C) = (s.st.N, s.content.clone());
+    let R = s.st.mine_sectors.len();
+    let mut large: Vec<(f64, usize, usize)> = Vec::new();
+    for r in 0..R {
+        for c in 0..N {
+            if s.st.mine_opened[r * N + c] != 0 && s.st.cell_K_share[c] < 0.05 && s.st.derelict_timer[c] == 0 {
+                large.push((s.st.mine_hands[(r, c)], r, c));
+            }
+        }
+    }
+    large.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let (h1, r1, c1) = large[0];
+    let (h2, r2, c2) = *large.iter().find(|w| w.2 != c1).unwrap();
+    assert!(h1 > 50.0 && h2 > 50.0, "two workings of some size: {h1} and {h2} hands");
+    // a town keeps off both while they are at work, and off no empty cell for their sake
+    assert!(mines::blocks_town(&s.st, &P, c1) && mines::blocks_town(&s.st, &P, c2));
+    let empty = (0..N).find(|&c| s.st.world.land[c] && (0..R).all(|r| s.st.mine_opened[r * N + c] == 0)).unwrap();
+    assert!(!mines::blocks_town(&s.st, &P, empty));
+    s.st.cell_K_share[c1] = 0.8;
+    s.st.derelict_timer[c2] = 3;
+    let (pbar, wbar) = (s.st.pbar.clone(), s.st.wbar.clone());
+    land::update_land_use(&mut s.st, &C, &P, 1752, &pbar, &wbar, false);
+    let st = &s.st;
+    let shares = |c: usize| (0..=C.NS).map(|r| st.lam[(r, c)]).sum::<f64>();
+    let surface = |c: usize| (0..R).map(|r| st.mine_surface[(r, c)]).sum::<f64>();
+    for (r, c) in [(r1, c1), (r2, c2)] {
+        // it stands, it is at work, and the monthly loop still has its unit
+        assert!(st.mine_opened[r * N + c] != 0 && st.mine_left[r * N + c] == 0 && st.mine_hands[(r, c)] > 50.0);
+        assert!((0..st.ex_cell.len()).any(|u| st.ex_cell[u] == c && st.ex_sector[u] == st.mine_sectors[r]));
+        assert!(surface(c) > 0.0 && mines::blocks_town(st, &P, c));
+    }
+    // beside the works its surface is what they leave, and nothing else is on the cell
+    assert!(surface(c1) <= 0.2 + 1e-12 && (shares(c1) - surface(c1)).abs() < 1e-12, "{} of {}", surface(c1), shares(c1));
+    // on the derelict cell the rest is waste, and the cell is not over-full
+    assert!((shares(c2) - 1.0).abs() < 1e-9 && (st.lam[(C.NS, c2)] - (1.0 - surface(c2))).abs() < 1e-9);
+    // nobody sinks a new pit head on either kind of cell: the workings there are the old ones
+    assert!((0..R).all(|r| st.mine_opened[r * N + c1] != 1752 && st.mine_opened[r * N + c2] != 1752));
 }
 
 #[test]
@@ -265,6 +320,12 @@ fn the_viewer_is_given_the_workings() {
         assert!(w.hands >= 0.0 && w.surface >= 0.0 && w.surface <= 0.5 && w.heap >= w.out && w.opened <= 1760);
     }
     assert!(at_work.iter().any(|w| w.hands > 20.0 && w.out > 0.0 && w.cells > 1 && w.surface > 0.0));
+    // the surplus a run starts with was given up in the warm-up and is not in the
+    // table: every abandoned working it lists was left in a recorded year
+    assert!(st.mine_idle.iter().all(|&y| y < 10), "the warm-up's idle workings are gone");
+    for year in &rec.workings {
+        assert!(year.iter().filter(|w| w.opened == 0).all(|w| w.left >= 1750 && w.heap > 0.0));
+    }
     // the largest working takes a small part of its cell, where the port's mines took half of theirs
     let most = at_work.iter().map(|w| w.surface).fold(0.0, f32::max);
     assert!(most < 0.3, "the largest working takes {most} of its cell");

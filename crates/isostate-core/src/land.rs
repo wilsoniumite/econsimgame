@@ -164,8 +164,8 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         .iter()
         .map(|&u| u == USE_INDUSTRY || u == USE_SEA || (u >= USE_SECTOR0 + 5 && u <= USE_SECTOR0 + 6))
         .enumerate()
-        // mines: nor over an iron mine or a colliery at work, which no longer shows as the cell's main use
-        .map(|(c, b)| b || crate::mines::blocks_town(st, C, P, c))
+        // mines: nor over a pit head at work, which no longer shows as the cell's main use
+        .map(|(c, b)| b || crate::mines::blocks_town(st, P, c))
         .collect();
     for i in 0..T {
         if !st.town_active[i] {
@@ -283,7 +283,8 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         for r in 0..=NS {
             tot += lam_new[(r, c)];
         }
-        let room = if taken[c] { 1.0 } else { 1.0 - ks[c] - ms[c] };
+        // (mines: a pit head may stand on a cell left derelict, whose waste is then the rest)
+        let room = if taken[c] { 1.0 - ms[c] } else { 1.0 - ks[c] - ms[c] };
         for r in 0..=NS {
             lam_new[(r, c)] = if tot > 0.0 { lam_new[(r, c)] / tot.max(1e-12) * room } else { 0.0 };
         }
