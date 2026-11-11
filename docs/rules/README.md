@@ -443,4 +443,4 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 One line each as they arrive: the name, its page, its switch.
 
-- **people** ([people.md](people.md), `people.enabled`): births and deaths that answer to income, crowding and dearth; towns founded all century where a market would save the most carting; households that go with their cells when a market's area changes.
+- **people** ([people.md](people.md), `people.enabled`): births and deaths that answer to income, crowding and dearth; towns founded all century where a market would save the most carting; households that go with their cells when a market's area changes, and take their wage and their prices with them.
