@@ -1033,6 +1033,11 @@ fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
     tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
 }
 
+/// The fastest the game is played, in years a second, with the leaves still turning and
+/// falling: at 4x and 8x a year is over in half a second or less, and every wood on the
+/// island going bare and green again that often would be a flicker, not a season.
+const LEAVES_TURN_UP_TO: f32 = 1.0;
+
 /// Phase of the year: while playing the months roll by; a paused year shows high summer.
 fn season_phase(tl: &Timeline, forced: Option<f32>) -> f32 {
     if let Some(f) = forced {
@@ -1064,9 +1069,11 @@ fn seasons(
         m.extension.params.season = ph;
     }
     // the leaves turn: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn; and each group of
-    // broadleaf trees is in leaf from spring to autumn and shows its bare limbs through the winter
+    // broadleaf trees is in leaf from spring to autumn and shows its bare limbs through the winter.
+    // Played faster than the leaves can be seen to turn, the trees keep their summer leaves
+    let leaf_ph = if sm.forced.is_none() && tl.playing && tl.speed > LEAVES_TURN_UP_TO { 0.5 } else { ph };
     if let Some(mut m) = materials.get_mut(&sm.trees) {
-        m.base_color = leaf_tint(&look, ph);
+        m.base_color = leaf_tint(&look, leaf_ph);
     }
     // the rivers go to steel in the depth of winter
     if let Some(mut m) = materials.get_mut(&sm.rivers) {
@@ -1075,10 +1082,10 @@ fn seasons(
     }
     let shown = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
     for (group, mut vis) in &mut leaves {
-        vis.set_if_neq(shown(in_leaf(ph, group.0)));
+        vis.set_if_neq(shown(in_leaf(leaf_ph, group.0)));
     }
     for (group, mut vis) in &mut bare {
-        vis.set_if_neq(shown(!in_leaf(ph, group.0)));
+        vis.set_if_neq(shown(!in_leaf(leaf_ph, group.0)));
     }
     let (strength, colour, stands) = sun_at(&look, ph);
     for (mut light, mut tf) in &mut sun {

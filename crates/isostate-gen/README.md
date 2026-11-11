@@ -74,6 +74,12 @@ what one thing looks like.
   afterwards. `site.at(dx, dz)` gives the point at an offset in the thing's
   own frame, on the ground there: use it for parts that stand apart (a barn
   across the yard, a chimney beside a mill).
+- **Begin a quad at a corner where no two of its points meet.** `quad` takes
+  the face's facing from its first corner and the corners either side of it.
+  A face that tapers to nothing at one end (a parapet at the foot of a ramp)
+  has two points in one place there; begun at that end it has no facing and
+  is drawn unlit, a dark wedge on a pale thing. Begin it at the other end.
+  The sheets' tests look for such faces in every cell of every sheet.
 - **Four kinds of buffer**, because the viewer draws each with its own
   material: `solid` (walls, roofs, everything built), `smoke` (lets light
   through, casts no shadow), `green` (trees and bushes) and `flat` (what lies
@@ -83,7 +89,8 @@ what one thing looks like.
   holds trunks, conifers and bushes, which stay as they are. `leaves` holds
   the crowns of the broadleaf trees, which the viewer tints through the year
   (gold in October) and does not draw while they are down. `bare` holds
-  their winter limbs, flat blades seen from both sides, drawn only then. A
+  their winter limbs (boughs and the lesser limbs that fork from them, each
+  one flat blade seen from both sides), drawn only then. A
   broadleaf tree writes all three every time, so that the viewer changes the
   season by showing and hiding and never builds scenery again for it:
   `trees::in_leaf(phase, group)` says which is to be seen, and the island's
@@ -112,7 +119,7 @@ what one thing looks like.
 | `farm.rs` | `farmstead` |
 | `town/` | `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
-| `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters |
+| `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
 | `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
 | `scenes.rs` | small scenes for the lab: a street, a market place, a works in its yard, a patch of wood |
 | `sheets.rs` | the lab's contact sheets |
