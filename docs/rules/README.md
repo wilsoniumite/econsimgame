@@ -441,4 +441,8 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 ## Mechanisms under the game's rules
 
-None yet. One line each as they arrive: the name, its page, its switch.
+One line each as they arrive: the name, its page, its switch.
+
+- **prices**: merchants mark prices with the stock they hold and stop buying
+  into a glut, which ends the false cycles in iron and on the farms.
+  [prices.md](prices.md), `prices.enabled`.

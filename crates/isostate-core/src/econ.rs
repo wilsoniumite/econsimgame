@@ -9,6 +9,7 @@ use crate::content::Content;
 use crate::families;
 use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
+use crate::prices;
 use crate::state::{MonthStats, State};
 use crate::util::{bincount, bool_f, pairwise_sum, pairwise_sum_by};
 
@@ -416,10 +417,16 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let Lprev_ex = st.ex_Lprev.clone();
     let Lprev_f: Vec<f64> = fi.iter().map(|&i| st.f_labor[i]).collect();
 
+    // prices: the share of each works' capacity the merchants will take this month,
+    // less than 1 only where their stock of its good is long (all ones while the
+    // mechanism is off). It is fixed before the wage is sought and does not depend
+    // on it, so demand still falls as the wage rises.
+    let take = prices::merchants_take(st, P, &ft, &out);
+
     // Firm demand at its town's wage w: utilisation follows the margin through a sigmoid.
     let firm_demand = |w: f64, i: usize| -> (f64, f64) {
         let m = pout[i] - nonlabor[i] - l[i] * w;
-        let u = sigmoid((m / pout[i].max(1e-9) - P.util_target_margin) / P.util_band) * bool_f(pout[i] > 0.0);
+        let u = sigmoid((m / pout[i].max(1e-9) - P.util_target_margin) / P.util_band) * bool_f(pout[i] > 0.0) * take[i];
         let Lf = Lprev_f[i] + kf * (K[i] * u * l[i] * phi_prev[i] - Lprev_f[i]);
         (Lf.max(0.0), u)
     };
@@ -483,7 +490,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                 let z = ((pout[i] - nonlabor[i] - l[i] * wt) / pout[i].max(1e-9) - P.util_target_margin) / P.util_band;
                 if z.abs() < 50.0 {
                     let dz = -l[i] * wt / pout[i].max(1e-9) / P.util_band;
-                    dd += kf * K[i] * l[i] * phi_prev[i] * u * (1.0 - u) * dz;
+                    // prices: u is the merchants' take times the sigmoid s, so du/dz is
+                    // take s (1 - s) = u (1 - u / take); with a take of 1, the port's line
+                    dd += kf * K[i] * l[i] * phi_prev[i] * u * (1.0 - u / take[i]) * dz;
                 }
             }
         }
@@ -492,10 +501,15 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut w = vec![0.0; T];
     for t in 0..T {
         let too_much = |x: f64| town_demand(t, x, false).0 > supply[t];
-        let root = excess_demand_root(lo[t], hi[t], &too_much, |x| {
-            let (d, dd) = town_demand(t, x, true);
-            (d - supply[t], dd)
-        });
+        // prices: a test may ask for the plain bisection, to check the shortcut against it
+        let root = if st.plain_bisection {
+            None
+        } else {
+            excess_demand_root(lo[t], hi[t], &too_much, |x| {
+                let (d, dd) = town_demand(t, x, true);
+                (d - supply[t], dd)
+            })
+        };
         w[t] = bisect_log_wage(lo[t], hi[t], &too_much, root).exp();
         if !st.town_active[t] {
             w[t] = 0.0;
@@ -900,14 +914,26 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             let r = R[(t, g)];
             let imbalance = if r + arriving > 1e-9 { (r - arriving) / (r + arriving).max(1e-9) } else { 0.0 };
             if st.town_active[t] {
-                let p0 = st.price[(t, g)];
-                let newp = p0 * (P.price_speed * gap + P.price_flow * imbalance).clamp(-0.12, 0.12).exp();
                 let lo_p = P.price_floor * C.base_price[g];
                 let hi_p = P.price_ceiling * C.base_price[g];
-                st.price[(t, g)] = newp.clamp(lo_p, hi_p);
+                if P.prices.enabled {
+                    // prices: the rule below moves a slow anchor, and the price
+                    // stands above or below it with the merchants' stock
+                    prices::mark(st, P, t, g, gap, imbalance, lo_p, hi_p);
+                } else {
+                    let p0 = st.price[(t, g)];
+                    let newp = p0 * (P.price_speed * gap + P.price_flow * imbalance).clamp(-0.12, 0.12).exp();
+                    st.price[(t, g)] = newp.clamp(lo_p, hi_p);
+                }
             }
             st.pexp[(t, g)] = (1.0 - P.expect_rate) * st.pexp[(t, g)] + P.expect_rate * st.price[(t, g)];
         }
+    }
+
+    // prices: a probe may ask for the month's requests and sales to be kept
+    if st.watch_markets {
+        st.month_requests = R;
+        st.month_sold = sold;
     }
 
     // ---------------- dividends, common fund, issuance

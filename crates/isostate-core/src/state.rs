@@ -333,4 +333,18 @@ pub struct State {
     /// (T, G): what each town's buyers asked for last month (households, landlords,
     /// works, mines, building and railway orders), whether or not they got it.
     pub requests: Mat,
+
+    // ---------------- prices (not in the Python; see prices.rs). The anchors are
+    // empty while `prices.enabled` is off; the rest is for probes and tests.
+    /// (T, G): the slow anchor of each town's price of each good, moved by the
+    /// port's price rule; the price stands above or below it with the stock.
+    pub price_anchor: Mat,
+    /// A probe sets this to have `month_requests` and `month_sold` kept.
+    pub watch_markets: bool,
+    /// (T, G): what each town's buyers asked for last month, and what they got.
+    pub month_requests: Mat,
+    pub month_sold: Mat,
+    /// A test sets this to find each town's wage by the Python's plain bisection,
+    /// every midpoint evaluated, with no Newton steps to say where the root is.
+    pub plain_bisection: bool,
 }

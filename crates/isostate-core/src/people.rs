@@ -176,6 +176,8 @@ pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year
                 st.price[(n, g)] = st.price[(donor, g)];
                 st.fill[(n, g)] = st.fill[(donor, g)];
             }
+            // prices: and her merchants' anchors (nothing happens while the mechanism is off)
+            crate::prices::found_town(st, P, n, donor);
             st.wage[n] = st.wage[donor];
             for t in 0..st.know.cols {
                 st.know[(n, t)] = st.know[(donor, t)];
