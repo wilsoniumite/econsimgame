@@ -230,7 +230,10 @@ fn carve_lakes(d: &Design, g: Grid, z: &mut [f64], rt: &Routing, sea: &[bool], r
                 }
                 let (x, y) = g.xy(c);
                 let (u, v) = (((x - cx) * ca + (y - cy) * sa) / (0.5 * b.sx), (-(x - cx) * sa + (y - cy) * ca) / (0.5 * b.sy));
-                let rr = u.hypot(v) + 0.7 * (fbm01(x / 5.0, y / 5.0, d.seeds[8] ^ 0x1A4E, 3, 0.55) - 0.5);
+                // a shore of lobes and bays, not an oval
+                let rr = u.hypot(v)
+                    + 1.5 * (fbm01(x / 9.0, y / 9.0, d.seeds[8] ^ 0x1A4E, 2, 0.5) - 0.5)
+                    + 0.8 * (fbm01(x / 3.0, y / 3.0, d.seeds[8] ^ 0x2B5F, 3, 0.55) - 0.5);
                 if rr < 1.0 {
                     z[c] = z[c].min(zc - deep * (1.0 - rr * rr));
                 }

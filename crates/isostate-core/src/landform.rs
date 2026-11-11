@@ -895,7 +895,8 @@ impl Eroder {
             if drop > 0.0 && zn < carry {
                 zn = (zn + drop / (1.0 + fcut)).min(carry);
             }
-            let steepest = base + P.max_slope * dist;
+            // (never quite level, or a slip of the hand with the number sinks the island)
+            let steepest = base + P.max_slope.max(0.01) * dist;
             if zn > steepest {
                 zn = steepest;
             }
