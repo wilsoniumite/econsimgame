@@ -66,6 +66,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::works::WorksParams;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RentRegime {
@@ -262,6 +264,9 @@ pub struct Params {
     /// The chronicle: news that reads like a history (not in the Python; see docs/rules/chronicle.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub chronicle: crate::chronicle::ChronicleParams,
+    /// A life cycle for works (not in the Python; see docs/rules/works.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub works: WorksParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -457,6 +462,7 @@ pub fn default_params() -> Params {
         machines: crate::machines::MachineParams::default(),
         harvest: crate::harvest::HarvestParams::default(),
         chronicle: crate::chronicle::ChronicleParams::default(),
+        works: WorksParams::default(),
     }
 }
 
@@ -478,6 +484,7 @@ pub fn game_params() -> Params {
     P.machines = crate::machines::MachineParams::game();
     P.harvest = crate::harvest::HarvestParams::game();
     P.chronicle = crate::chronicle::ChronicleParams::game();
+    P.works = WorksParams::game();
     P
 }
 

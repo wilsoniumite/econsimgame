@@ -388,4 +388,11 @@ pub struct State {
     // ---------------- chronicle (not in the Python; empty unless `chronicle.enabled`)
     /// What the chronicle remembers of towns and families between years.
     pub chron: crate::chronicle::ChronicleState,
+
+    // ---------------- works: the life cycle (not in the Python; both empty while `works.enabled` is off)
+    /// (T, M): capacity each method in each town has ordered so far this year
+    /// (growth, sister works, new works), against the year's room.
+    pub works_added: Mat,
+    /// The share of its cell each works pays rent on: the most land it has taken so far.
+    pub works_lease: Vec<f64>,
 }

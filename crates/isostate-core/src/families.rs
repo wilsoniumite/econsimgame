@@ -28,6 +28,7 @@ use crate::params::{Params, RentRegime};
 use crate::rng::{Rng, integers, random};
 use crate::state::{Event, State};
 use crate::util::{pairwise_sum, pairwise_sum_by};
+use crate::works;
 
 // ---------------------------------------------------------------- types
 
@@ -940,7 +941,7 @@ pub fn prospect_works(st: &State, C: &Content, P: &Params, t: usize) -> [Prospec
         if !(st.know[(t, m)] > 0.02) {
             continue;
         }
-        let K = P.entry_K_frac * C.m_K0[m];
+        let K = works::entry_K(st, C, P, t, m);
         let (_, _, _, share, ratio) = market_depth(st, C, t, m, K);
         if share > P.family_max_share || ratio > P.family_max_price_ratio {
             continue;
@@ -986,9 +987,18 @@ fn buildable(st: &State, cell: usize) -> Result<usize, String> {
     Ok(t as usize)
 }
 
+/// The capacity `family` would found a works of method m with in town i:
+/// `works::entry_K`, and with the life cycle for works no larger than the
+/// family's cash pays for, so that a family too poor for a works sized to a big
+/// town's trade can still found a small one, as it always could.
+fn founding_K(st: &State, C: &Content, P: &Params, family: usize, m: usize, i: usize) -> f64 {
+    let K = works::entry_K(st, C, P, i, m);
+    works::within_purse(C, P, m, K, st.families[family].cash, unit_capital_cost(st, C, m, i))
+}
+
 /// The evaluation of method m on one cell with the family's bonus applied.
 fn evaluate(st: &State, C: &Content, P: &Params, family: usize, m: usize, cell: usize, i: usize) -> (SiteEval, f64) {
-    let K = P.entry_K_frac * C.m_K0[m];
+    let K = founding_K(st, C, P, family, m, i);
     let mut ev = firms::evaluate_sites(st, C, P, i, m, &[cell], K, prices(st), wages(st));
     let b = match Group::of_method(C, m) {
         Some(g) => branch_bonus(&st.families[family], P, g, i),
@@ -1068,11 +1078,12 @@ pub fn site_options(st: &State, C: &Content, P: &Params, family: usize, cell: us
                 Err(format!("{} is not known in {} yet", C.method_label[m], st.town_name[i]))
             } else {
                 let (ev, b) = evaluate(st, C, P, family, m, cell, i);
-                Ok(sums_of(st, C, m, &ev, b, P.entry_K_frac * C.m_K0[m], i, wages(st)[i]))
+                Ok(sums_of(st, C, m, &ev, b, founding_K(st, C, P, family, m, i), i, wages(st)[i]))
             };
             let allowed = match &sums {
                 Err(e) => Err(e.clone()),
-                Ok(_) => may_found(st, C, family, m, i),
+                // works: and only where the cell has room for a works of that size
+                Ok(s) => may_found(st, C, family, m, i).and_then(|_| works::room_on_cell(st, C, P, cell, m, s.K)),
             };
             SiteOption { method: m, name: C.method_name[m].clone(), label: C.method_label[m].clone(), group: Group::of_method(C, m), sums, allowed }
         })
@@ -1080,7 +1091,10 @@ pub fn site_options(st: &State, C: &Content, P: &Params, family: usize, cell: us
 }
 
 /// Build method m on `cell` for `family`, paid from the family's cash, as entry
-/// builds (capacity `entry_K_frac` of the method's full size). The player may
+/// builds (capacity `founding_K`: under the port `entry_K_frac` of the
+/// method's full size, with the life cycle for works a share of the town's
+/// trade in the good, or as much of that as the family's cash pays for). The
+/// player may
 /// do this only at the seat and only in a known trade; branches growing do it
 /// for themselves anywhere they are. Returns the new firm's id.
 #[allow(clippy::too_many_arguments)]
@@ -1114,7 +1128,8 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
     if st.F_count >= st.f_alive.len() {
         return Err("the firm table is full".to_string());
     }
-    let K = P.entry_K_frac * C.m_K0[method];
+    let K = founding_K(st, C, P, family, method, i);
+    works::room_on_cell(st, C, P, cell, method, K)?; // works: the cell must have room for it
     let (ev, _) = evaluate(st, C, P, family, method, cell, i);
     let cost = ev.cap_cost * 1.15;
     let fam = &st.families[family];
@@ -1998,12 +2013,13 @@ fn grow(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, g: Gro
     let b = branch_bonus(&st.families[k], P, g, t);
     let mut options: Vec<(f64, usize, usize, f64)> = Vec::new();
     for m in (0..C.M).filter(|&m| Group::of_method(C, m) == Some(g) && st.know[(t, m)] > 0.02) {
-        let K = P.entry_K_frac * C.m_K0[m];
+        let K = works::entry_K(st, C, P, t, m);
         let (_, _, _, share, ratio) = market_depth(st, C, t, m, K);
         if share > P.family_max_share || ratio > P.family_max_price_ratio {
             continue;
         }
-        let cells = firms::candidate_cells(st, C, P, t, m, rng);
+        let mut cells = firms::candidate_cells(st, C, P, t, m, rng);
+        cells.retain(|&c| works::cell_fits(st, C, P, c, m, K)); // works: only cells with room for it
         if cells.is_empty() {
             continue;
         }
@@ -2027,6 +2043,16 @@ fn grow(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, g: Gro
     for (roi, m, c, cost) in options {
         if built >= n || roi <= P.hurdle {
             break;
+        }
+        // works: a growing branch extends a works it has of this method here before it founds another
+        if cost <= *spare {
+            let K = works::entry_K(st, C, P, t, m);
+            if let Some(f) = works::family_extension(st, C, P, k, t, m, K) {
+                works::extend_for_family(st, C, P, k, f, K, cost, year, events);
+                *spare -= cost;
+                built += 1;
+                continue;
+            }
         }
         if cost > *spare || !used.insert(c) {
             continue;
