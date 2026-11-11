@@ -278,6 +278,10 @@ pub struct Params {
     /// answers to how people live, and towns founded all century.
     #[serde(default, skip_serializing_if = "is_default")]
     pub people: crate::peopling::PeopleParams,
+    /// Land (not in the Python; see docs/rules/land.md): an island made by
+    /// uplift and erosion, with its water, in place of the port's.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub land: crate::landform::LandParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -477,6 +481,7 @@ pub fn default_params() -> Params {
         railways: crate::railways::RailwayParams::default(),
         carting: crate::carting::CartingParams::default(),
         people: crate::peopling::PeopleParams::default(),
+        land: crate::landform::LandParams::default(),
     }
 }
 
