@@ -556,11 +556,20 @@ fn row_colours(mut q: Query<(&Interaction, &RowHover, &mut BackgroundColor), Cha
     }
 }
 
-fn markets_clicks(mut ui: ResMut<UiState>, rows: Query<(&Interaction, &GoodRow), Changed<Interaction>>, chips: Query<(&Interaction, &MarketsChip), Changed<Interaction>>) {
+fn markets_clicks(
+    mut ui: ResMut<UiState>,
+    mut ov: ResMut<crate::overlay::MapOverlay>,
+    rows: Query<(&Interaction, &GoodRow), Changed<Interaction>>,
+    chips: Query<(&Interaction, &MarketsChip), Changed<Interaction>>,
+) {
     for (i, g) in &rows {
         if *i == Interaction::Pressed {
             ui.good = if ui.good == Some(g.0) { None } else { Some(g.0) };
             ui.dirty += 1;
+            // the price map follows: the good whose history is open is the good it shows
+            if ui.good.is_some() && ov.good != g.0 {
+                ov.good = g.0;
+            }
         }
     }
     for (i, c) in &chips {
@@ -950,7 +959,7 @@ fn key_dot(p: &mut ChildSpawnerCommands, c: Color) {
 /// live in towns, the railway and the works.
 fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, accent: Color) {
     let year = r.y0 + k as i32;
-    p.spawn(text(f, &format!("The island over the years it has had so far. The marker and the figures are {year}."), 13.0, MUTED));
+    p.spawn(text(f, &format!("The island as a whole, year by year. The marker and the figures are {year}."), 13.0, MUTED));
     let acc = accent.to_srgba().to_u8_array();
     let pct = |v: f32| format!("{:.0}%", v * 100.0);
     let plain = |v: f32| format!("{v:.2}");

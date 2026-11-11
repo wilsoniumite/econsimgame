@@ -321,8 +321,9 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
                 return Wash { cells, legend: none(title, "This record does not hold the rent of the land.".into()), soft: 0.5, lines: false };
             }
             // rents run over several powers of ten, so the scale goes by ratio;
-            // its ends leave out the poorest tenth and the few squares of town centre
-            let sc = Scale { lo: round_sig(quantile(&vals, 0.10)), hi: round_sig(quantile(&vals, 0.98)), log: true };
+            // its ends leave out the poorest tenth and the dearest twentieth (the town
+            // centres, which would otherwise squeeze the farmland into two tints)
+            let sc = Scale { lo: round_sig(quantile(&vals, 0.10)), hi: round_sig(quantile(&vals, 0.95)), log: true };
             for c in lands {
                 let v = rent_year(r, k, c).unwrap_or(0.0);
                 put(c, ramp(&SEPIA, sc.at(v)));
@@ -384,7 +385,13 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
                 for c in lands {
                     put(c, rgb(BLANK));
                 }
-                let note = if is_price { format!("No {label} was sold in any market in {year}.") } else { "This record does not hold the towns' wages.".to_string() };
+                let note = if !is_price {
+                    "This record does not hold the towns' wages.".to_string()
+                } else if r.town_price.is_empty() {
+                    "This record does not hold the towns' prices.".to_string()
+                } else {
+                    format!("No {label} was sold in any market in {year}.")
+                };
                 return Wash { cells, legend: none(title, note), soft: 0.06, lines: true };
             };
             let sc = Scale { lo: lo.1, hi: hi.1, log: false };
@@ -454,11 +461,11 @@ struct LegendCard;
 
 /// Choose an overlay (or none).
 #[derive(Component, Clone, Copy)]
-struct OverlayChip(Option<Overlay>);
+pub struct OverlayChip(pub Option<Overlay>);
 
 /// The good before or after the one whose price is mapped.
 #[derive(Component, Clone, Copy)]
-struct GoodStep(i32);
+pub struct GoodStep(pub i32);
 
 pub fn plugin(app: &mut App) {
     app.add_systems(PostStartup, setup).add_systems(Update, (input, paint, legend_card).chain());

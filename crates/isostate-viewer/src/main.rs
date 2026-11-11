@@ -23,6 +23,7 @@ mod rails;
 mod replay;
 mod rivers;
 mod scatter;
+mod script;
 mod terrain;
 mod trains;
 mod ui;
@@ -80,6 +81,8 @@ struct Args {
     class_map: bool,
     /// the map overlay to start with: rent, areas, reach, price (or price:coal), wages
     overlay: Option<String>,
+    /// keys and clicks to play back, printing what each led to (see script.rs)
+    script: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +129,7 @@ fn parse_args() -> Args {
         ground_debug: false,
         class_map: false,
         overlay: None,
+        script: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -163,6 +167,7 @@ fn parse_args() -> Args {
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
             "--overlay" => { a.overlay = Some(next(i)); i += 1; }
+            "--script" => { a.script = Some(next(i)); i += 1; }
             "--season" => { a.season = next(i).parse().ok(); i += 1; }
             "--describe" => {
                 let s = next(i);
@@ -497,6 +502,9 @@ fn main() {
     }
     if args.ground_debug {
         app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
+    }
+    if let Some(steps) = &args.script {
+        app.insert_resource(script::Script::new(steps)).add_plugins(script::plugin);
     }
     if headless {
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait: args.wait, default_dist: dist, default_look: look });
@@ -1167,9 +1175,14 @@ fn take_shot(
     mut ui: ResMut<UiState>,
     mut sm: ResMut<SeasonMats>,
     mut ov: ResMut<overlay::MapOverlay>,
+    script: Option<Res<script::Script>>,
     data: Res<Data>,
 ) {
     let Some(mut plan) = plan else { return };
+    // a script of keys and clicks plays out first, and the shots show where it led
+    if script.is_some_and(|s| !s.done()) {
+        return;
+    }
     if plan.index >= plan.views.len() {
         exit.write(AppExit::Success);
         return;
