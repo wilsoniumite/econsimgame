@@ -343,12 +343,16 @@ impl Net {
                     }
                 }
             }
-            // a line apart from the rest begins anywhere but at one of its ends, which come
-            // straight in from the cell before
-            match fresh.iter().find(|&c| !placed.contains(c) && adj[*c].len() > 1).or_else(|| fresh.iter().find(|c| !placed.contains(c))) {
+            match fresh.iter().find(|c| !placed.contains(c)) {
                 Some(&c) => queue.push_back(c),
                 None => break,
             }
+        }
+        // a line that ends at a new cell comes straight in from where it passes the cell before
+        for &c in fresh.iter().filter(|&&c| adj[c].len() == 1) {
+            let from = self.cells[&adj[c][0]].at;
+            let cell = self.cells.get_mut(&c).unwrap();
+            cell.dir = through(&[(from - cell.at).normalize_or(-cell.dir)]);
         }
         // 2. a first course for each new length, by the lie of the land between its two cells
         // as they stand: straight where its length is enough for the climb, wound where it is
@@ -570,23 +574,7 @@ impl Net {
     fn place(&self, g: &Ground, cen: &[(f32, f32)], adj: &[Vec<usize>], c: usize, town: bool) -> Cell {
         let mid = v2(cen[c]);
         let dirs: Vec<Vec2> = adj[c].iter().map(|&m| (v2(cen[m]) - mid).normalize_or(Vec2::X)).collect();
-        let dir = match dirs.len() {
-            0 => Vec2::X,
-            1 => -dirs[0],
-            _ => {
-                // the straightest way through
-                let mut best = (f32::MAX, dirs[0]);
-                for i in 0..dirs.len() {
-                    for j in i + 1..dirs.len() {
-                        let d = dirs[i].dot(dirs[j]);
-                        if d < best.0 {
-                            best = (d, (dirs[i] - dirs[j]).normalize_or(dirs[i]));
-                        }
-                    }
-                }
-                best.1
-            }
-        };
+        let dir = through(&dirs);
         let perp = Vec2::new(-dir.y, dir.x);
         let wet = |p: Vec2| world::height_at(g, p.x, p.y) < 0.04 || world::water_dist(g, p.x, p.y) < 0.05;
         // to one side of the middle: the side its neighbours took, on dry ground
@@ -609,21 +597,32 @@ impl Net {
             }
         }
         let at = best.map_or(mid, |b| b.1);
-        // a line that ends here comes straight in from where it passes the cell before
-        let (dir, perp) = match adj[c].as_slice() {
-            [m] => match self.cells.get(m) {
-                Some(o) => {
-                    let dir = (at - o.at).normalize_or(dir);
-                    (dir, Vec2::new(-dir.y, dir.x))
-                }
-                None => (dir, perp),
-            },
-            _ => (dir, perp),
-        };
         // the line clears the highest ground close about the spot, so that whichever way a
         // length leaves it, now or in years to come, it does not start under the ground
         let about = (0..8).map(|i| Vec2::from_angle(i as f32 * std::f32::consts::FRAC_PI_4) * 0.07).map(|o| world::height_at(g, at.x + o.x, at.y + o.y)).fold(0.0, f32::max);
         Cell { at, dir, ground: bed_ground(g, at, perp).max(about).max(0.03), level: 0.0, slope: 0.0, town }
+    }
+}
+
+/// The way a line runs through a cell, from the ways to the cells it is
+/// linked to: on from the one before where it ends, and elsewhere the
+/// straightest way through that any two of them make.
+fn through(dirs: &[Vec2]) -> Vec2 {
+    match dirs {
+        [] => Vec2::X,
+        [only] => -*only,
+        _ => {
+            let mut best = (f32::MAX, dirs[0]);
+            for i in 0..dirs.len() {
+                for j in i + 1..dirs.len() {
+                    let d = dirs[i].dot(dirs[j]);
+                    if d < best.0 {
+                        best = (d, (dirs[i] - dirs[j]).normalize_or(dirs[i]));
+                    }
+                }
+            }
+            best.1
+        }
     }
 }
 
@@ -1178,7 +1177,7 @@ fn side_of(a: Vec3, b: Vec3) -> Vec3 {
 /// are kept with the lines, in the look they were first asked for in: the
 /// look does not change in a run.
 pub fn structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) {
-    ry.works.get_or_init(|| build_structures(ry, g, lk)).clone()
+    ry.works.get_or_init(|| world::timed("year rail works", || build_structures(ry, g, lk))).clone()
 }
 
 /// The runs of points along a line that `pick` holds for.
