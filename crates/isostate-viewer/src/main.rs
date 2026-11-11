@@ -1323,7 +1323,7 @@ fn toasts(
             st.shown.clear();
         }
         for (i, e) in r.header.events.iter().enumerate() {
-            if e.year.floor() as i32 == year && e.weight >= 0.6 {
+            if e.year.floor() as i32 == year && e.major() {
                 st.shown.push((i, now));
             }
         }

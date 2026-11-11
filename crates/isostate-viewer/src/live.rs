@@ -400,7 +400,15 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         }
     }
 
-    for e in &y.events {
+    // chronicle: the list is sorted below, so each item remembers its place in
+    // the simulation's list, by which marks that have changed since are found
+    for &(seq, kept) in &y.rekept {
+        if let Some(e) = r.header.events.iter_mut().find(|e| e.seq == seq) {
+            e.kept = Some(kept);
+        }
+    }
+    let sent = r.header.events.len();
+    for (j, e) in y.events.iter().enumerate() {
         r.header.events.push(replay::Event {
             year: e.year as f32,
             kind: e.kind.clone(),
@@ -409,6 +417,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             text: e.text.clone(),
             cell: e.cell.map(|c| c as i64),
             family: e.family,
+            kept: e.kept,
+            seq: sent + j,
         });
     }
     r.header.events.sort_by(|a, b| a.year.partial_cmp(&b.year).unwrap_or(std::cmp::Ordering::Equal));

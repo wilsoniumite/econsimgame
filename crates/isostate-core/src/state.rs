@@ -97,6 +97,13 @@ pub struct Event {
     /// The family the news is about (`families`; never set without families).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub family: Option<usize>,
+    // chronicle (not in the Python): both absent unless `chronicle.enabled`
+    /// Why this is news: the test, the number and what it was held against.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<crate::chronicle::Why>,
+    /// Whether a history of the decade would keep this item (`chronicle::rank`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kept: Option<bool>,
 }
 
 impl Event {
@@ -377,4 +384,8 @@ pub struct State {
     /// far (negative where it gave), and over the last complete year.
     pub harvest_rent_gap: Vec<f64>,
     pub harvest_rent_gap_year: Vec<f64>,
+
+    // ---------------- chronicle (not in the Python; empty unless `chronicle.enabled`)
+    /// What the chronicle remembers of towns and families between years.
+    pub chron: crate::chronicle::ChronicleState,
 }
