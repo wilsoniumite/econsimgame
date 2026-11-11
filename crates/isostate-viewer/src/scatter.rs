@@ -798,10 +798,10 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
 
     // Woods with a shape of their own. A wood is thick and tall in its depths
-    // and thinner and lower toward its edge (`YearLand::wood`), with glades
+    // and thinner and lower toward its edge (`YearLand::wooded`), with glades
     // and rides the trees keep out of (`world::glade`, which the ground paints
     // too); the country next to a wood carries clumps and lone trees that thin
-    // out away from it; and the margin a wood leaves to the fields is scrub.
+    // out away from it; and the ground just outside a wood or a heath is scrub.
     // Trees stand in stands, taller in one and lower in the next, and the
     // conifers gather on high and poor ground, the broadleaves on the low.
     for s in &slots.trees {

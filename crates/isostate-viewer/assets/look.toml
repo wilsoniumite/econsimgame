@@ -123,8 +123,8 @@ shingle = "#a49c8a"
 # plain soil above is the loam between them
 soil_light = "#b39c74"
 soil_red = "#8f5f45"
-# rough grass and scrub: a glade or a ride in a wood, and the margin a wood or
-# a heath leaves along the fields
+# rough grass and scrub: a glade or a ride in a wood, the grassy floor under the
+# thin trees of its rim, and the rough ground just outside a wood or a heath
 rough_grass = "#86a856"
 # a wood's canopy seen from so far off that the trees cannot be told apart:
 # between the sunlit crowns and the shade among them, so that the trees do not
