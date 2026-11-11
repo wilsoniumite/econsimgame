@@ -1,7 +1,9 @@
 //! A scripted run, for checking what a still cannot show: keys, clicks and
 //! timing. `--script "key:Space;wait:2;print"` runs the game with no window,
 //! plays the steps in order as a player's presses and clicks, prints what the
-//! clock, the cards and the order panel did, and stops.
+//! clock, the cards and the order panel did, and stops. It takes its own
+//! pictures (`shot:PATH`), and leaves the saved game alone unless
+//! `ISOSTATE_SAVES` or `--save` gives it a place of its own.
 //!
 //! Steps, separated by semicolons:
 //!
@@ -663,6 +665,12 @@ fn step(world: &mut World, sc: &mut Script) {
                 if !sc.begun {
                     sc.begun = true;
                     sc.frames = 8;
+                    // a picture whose directory is not there would be made and then not written
+                    if let Some(parent) = std::path::Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty()) {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            fail(&format!("cannot make {}: {e}", parent.display()));
+                        }
+                    }
                     world.spawn(Screenshot::image(sc.image.clone())).observe(save_to_disk(path));
                 }
                 done = sc.frames == 0;
