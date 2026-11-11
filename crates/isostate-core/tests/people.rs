@@ -165,8 +165,8 @@ fn with_the_rules_on_the_run_differs_and_with_them_off_it_does_not() {
 /// to Sandmere. Before prices and the wage went with a district, those pits were
 /// offered Kelrigg's price for coal (a buyer's price: Kelrigg had no pits) at the
 /// pit mouth, wanted three times the hands the town had, and the wage doubled
-/// every month of 1752 to a hundred times the island's. With
-/// `peopling::price_with_produce` taken out this test fails in 1752, Kelrigg's
+/// every month of 1752 to a hundred times the island's. With the body of
+/// `peopling::prices_go_with_trade` taken out this test fails in 1752, Kelrigg's
 /// wage for the year averaging 15.6 times the middle town's.
 #[test]
 fn a_district_that_changes_market_does_not_set_off_the_wage() {
@@ -206,15 +206,19 @@ fn a_district_that_changes_market_does_not_set_off_the_wage() {
 /// to a rival got a market area of four cells and 363 people, migrants poured
 /// in, its wage went from 0.02 to 500 and the money check failed. The founding
 /// rule now refuses such a site (`the_probes_district_is_refused`). This test
-/// plants one all the same, twice, hard by an existing town where it draws a
-/// handful of cells, and watches both for the rest of the run. The second is
-/// planted beside the first, which is then the one left hemmed in for twenty
-/// years. People go with their cells and arrivals are limited to what a town
-/// can house, so the wage stays in step with the island's, nobody pours in,
-/// and the money check goes on passing.
+/// plants one all the same, six times, each hard by an existing town where it
+/// draws a handful of cells, and watches them to 1840. Some take a district
+/// from their neighbour the year after. Two stay hamlets for the rest of the
+/// run: Strathope on 4 to 22 cells with 55 to 450 people, and Elmmoor on 2 cells
+/// with 56 to 150. People go with their cells and arrivals are limited to what
+/// a town can house, so nobody pours in. A hamlet with more hands than its two
+/// cells can use is poor (Elmmoor's wage sinks to a twelfth of the island's
+/// while half its people leave, and comes back to a third), but its wage never
+/// runs up, never sits on the floor, and the money check goes on passing.
 #[test]
 fn a_town_with_a_tiny_market_area_does_not_run_away() {
-    let P = params(1806);
+    const PLANTED: [i64; 6] = [1770, 1775, 1780, 1785, 1790, 1795];
+    let P = params(1840);
     let mut sim = sim::start(&P, default_content());
     sim.check_money = true;
     // (town, year planted, cells and people a year ago)
@@ -222,7 +226,7 @@ fn a_town_with_a_tiny_market_area_does_not_run_away() {
     let (mut least_cells, mut small_years) = (usize::MAX, 0);
     while sim.year <= sim.end_year {
         let year = sim.year;
-        if year == 1770 || year == 1786 {
+        if PLANTED.contains(&year) {
             // the inland cell near a town that would draw the fewest cells to a market of its own
             let st = &sim.st;
             let nodes: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).map(|t| st.town_node[t]).collect();
@@ -244,7 +248,7 @@ fn a_town_with_a_tiny_market_area_does_not_run_away() {
         }
         sim::run_year(&mut sim).unwrap_or_else(|e| panic!("{year}: {e}"));
         let st = &sim.st;
-        if year == 1770 || year == 1786 {
+        if PLANTED.contains(&year) {
             let t = (0..st.T_max).filter(|&t| st.town_active[t]).max_by_key(|&t| st.town_founded[t]).unwrap();
             assert_eq!(st.town_founded[t], year, "the town was planted");
             planted.push((t, year, 0, 0.0));
@@ -261,7 +265,8 @@ fn a_town_with_a_tiny_market_area_does_not_run_away() {
             assert!(st.pop[t].is_finite() && st.pop[t] >= 0.0, "{year}: {} people", st.pop[t]);
             // in its first year a town has its donor's wage and nobody yet at work
             if year > *since {
-                assert!((0.25..=4.0).contains(&rel), "{year}: the wage in {} is {rel:.2} of the island's", st.town_name[t]);
+                // (the wage's floor of 0.02 is under a hundredth of the island's)
+                assert!((0.04..=4.0).contains(&rel), "{year}: the wage in {} is {rel:.2} of the island's", st.town_name[t]);
                 // nobody pours in: while the market area is no larger, a year adds at most
                 // the births and the arrivals a town can house
                 if cells <= *cells_before {
@@ -273,5 +278,5 @@ fn a_town_with_a_tiny_market_area_does_not_run_away() {
         }
     }
     assert!(least_cells <= 8, "the planted towns were meant to be tiny; the smallest area was {least_cells} cells");
-    assert!(small_years >= 15, "a town was meant to stay hemmed in; it was for {small_years} town-years");
+    assert!(small_years >= 60, "a town was meant to stay hemmed in; it was for {small_years} town-years");
 }

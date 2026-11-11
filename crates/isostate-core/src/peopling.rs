@@ -579,11 +579,10 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
 /// The share of a town's people on a group of cells is the share of its labour at
 /// work there, so a town keeps the people whose cells it keeps.
 ///
-/// What the district was used to goes with it: the prices of its produce
-/// (`price_with_produce`) and the wage its people were paid.
+/// What the district was used to goes with it: its prices (`prices_go_with_trade`),
+/// the wage its people were paid and what they earned last month.
 pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
     let (N, T) = (st.N, st.T_max);
-    price_with_produce(st, C, P);
     let work = work_by_cell(st);
     let work_town = by_town(&st.prev_catch, &work, T);
     // moved[(i, j)]: labour on cells that left town i for town j
@@ -597,22 +596,30 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
         }
     }
     if any {
+        // share[(i, j)]: the part of town i's people who go to town j
+        let mut share = Mat::zeros(T, T);
+        for i in 0..T {
+            if work_town[i] > 0.0 {
+                // a town always keeps its own cell, and with it some of its people
+                let leaving = pairwise_sum(moved.row(i)) / work_town[i];
+                let keep = if leaving > 0.95 { 0.95 / leaving } else { 1.0 };
+                for j in 0..T {
+                    share[(i, j)] = keep * moved[(i, j)] / work_town[i];
+                }
+            }
+        }
+        prices_go_with_trade(st, C, P, &share);
         let (pop, hh, lord, wage) = (st.pop.clone(), st.hh_cash.clone(), st.lord_cash.clone(), st.wage.clone());
         let (merch, inv, outflow) = (st.merch_cash.clone(), st.inv.clone(), st.outflow.clone());
+        let (hh_earned, lord_earned) = (st.hh_income_prev.clone(), st.lord_income_prev.clone());
         // by the town they come to: the newcomers, and the month's wages they were earning
         let (mut came, mut earned) = (vec![0.0; T], vec![0.0; T]);
         for i in 0..T {
-            if work_town[i] <= 0.0 {
-                continue;
-            }
-            // a town always keeps its own cell, and with it some of its people
-            let leaving = pairwise_sum(moved.row(i)) / work_town[i];
-            let keep = if leaving > 0.95 { 0.95 / leaving } else { 1.0 };
             for j in 0..T {
-                if moved[(i, j)] <= 0.0 {
+                let frac = share[(i, j)];
+                if frac <= 0.0 {
                     continue;
                 }
-                let frac = keep * moved[(i, j)] / work_town[i];
                 let people = pop[i] * frac;
                 st.pop[i] -= people;
                 st.pop[j] += people;
@@ -622,6 +629,14 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                     let cash = was[i].max(0.0) * frac;
                     v[i] -= cash;
                     v[j] += cash;
+                }
+                // and what they earned last month, which is what they spend out of this
+                // month (not a purse: without it a new town buys next to no bread in its
+                // first month, and the year goes down as a famine)
+                for (v, was) in [(&mut st.hh_income_prev, &hh_earned), (&mut st.lord_income_prev, &lord_earned)] {
+                    let income = was[i] * frac;
+                    v[i] -= income;
+                    v[j] += income;
                 }
                 if st.town_new[j] {
                     // a new market starts with its share of the old one's trade
@@ -651,27 +666,34 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
     st.town_new.iter_mut().for_each(|v| *v = false);
 }
 
-/// The going price goes with the produce. A market's price for coal was made by
+/// The going price goes with the trade. A market's price for coal was made by
 /// the coal it handled. When a coalfield comes over to it from another market
 /// (a road was made, a town was founded) the price has to answer to the
 /// newcomers too, or pits that hardly paid yesterday are offered a buyer's price
 /// at the pit mouth today and want more hands than the town has: the wage in
 /// Kelrigg on seed 7 went to a hundred times the island's that way in 1752.
 ///
-/// So for everything the land yields, the market's price, and the price its
-/// producers expect, move toward the price at which the arriving producers are no
-/// better or worse off than they were (their old market's price, less what they
-/// now save in carting), in proportion to the produce they bring against the
-/// market's own turnover. A new market has no turnover, so it opens at that
-/// price. From there the market's own rule takes over.
-fn price_with_produce(st: &mut State, C: &Content, P: &Params) {
+/// So each market's price for each good, and the price expected there, becomes
+/// the average of three, weighted by a month's trade:
+///
+/// - its own price, by its own turnover (a new market has none);
+/// - for what the arriving land yields, the price at which its producers are no
+///   better or worse off than they were (their old market's price, less what they
+///   now save in carting), by the produce they bring;
+/// - for what the arriving people buy, the price at which their old market can
+///   still supply them (its price, plus the cart from there and the merchant's
+///   handling), by what they used to ask for.
+///
+/// From there the market's own rule takes over. `share[(i, j)]` is the part of
+/// town i's people who go to town j.
+fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
     let (T, G) = (st.T_max, C.G);
     if st.pp_dcatch_was.len() != st.N {
         return;
     }
-    // per market and good: the month's produce arriving, and its worth at the price
-    // it is used to and at the price its makers have come to expect
-    let (mut brought, mut worth, mut hoped) = (Mat::zeros(T, G), Mat::zeros(T, G), Mat::zeros(T, G));
+    // per market and good: the month's trade arriving, and its worth at the price
+    // it is used to and at the price expected
+    let (mut trade, mut worth, mut hoped) = (Mat::zeros(T, G), Mat::zeros(T, G), Mat::zeros(T, G));
     for u in 0..st.ex_cell.len().min(st.ex_out.len()) {
         let c = st.ex_cell[u];
         let (i, j) = (st.prev_catch[c], st.catch[c]);
@@ -680,17 +702,32 @@ fn price_with_produce(st: &mut State, C: &Content, P: &Params) {
         }
         let (i, j, g) = (i as usize, j as usize, C.sector_good[st.ex_sector[u]]);
         let saved = P.freight * C.weight[g] * (st.pp_dcatch_was[c] - st.dcatch[c]);
-        brought[(j, g)] += st.ex_out[u];
+        trade[(j, g)] += st.ex_out[u];
         worth[(j, g)] += st.ex_out[u] * (st.price[(i, g)] - saved);
         hoped[(j, g)] += st.ex_out[u] * (st.pexp[(i, g)] - saved);
     }
+    for i in 0..T {
+        for j in 0..T {
+            if share[(i, j)] <= 0.0 || !st.town_cost[(i, j)].is_finite() {
+                continue;
+            }
+            for g in 0..G {
+                let asked = share[(i, j)] * st.requests[(i, g)];
+                // what `econ::step_month` charges a merchant to bring a unit from i to j
+                let fetch = P.freight * C.weight[g] * st.town_cost[(i, j)] + P.handling * st.price[(i, g)];
+                trade[(j, g)] += asked;
+                worth[(j, g)] += asked * (st.price[(i, g)] + fetch);
+                hoped[(j, g)] += asked * (st.pexp[(i, g)] + fetch);
+            }
+        }
+    }
     for j in 0..T {
         for g in 0..G {
-            if brought[(j, g)] > 0.0 {
+            if trade[(j, g)] > 0.0 {
                 let own = st.outflow[(j, g)].max(0.0);
                 let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
                 for (v, sum) in [(&mut st.price, &worth), (&mut st.pexp, &hoped)] {
-                    v[(j, g)] = ((own * v[(j, g)] + sum[(j, g)]) / (own + brought[(j, g)])).clamp(lo, hi);
+                    v[(j, g)] = ((own * v[(j, g)] + sum[(j, g)]) / (own + trade[(j, g)])).clamp(lo, hi);
                 }
             }
         }

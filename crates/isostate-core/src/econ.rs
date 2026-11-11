@@ -572,7 +572,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         proj_req.push(rq);
     }
 
-    if families::active(st) {
+    // people (docs/rules/people.md) keeps it too: what a district's buyers asked for
+    // goes with them when the district changes market
+    if families::active(st) || P.people.enabled {
         // what each town's buyers asked for, for the families' site sums
         st.requests = R.clone();
     }
