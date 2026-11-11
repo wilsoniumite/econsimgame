@@ -9,12 +9,14 @@
 //! - `limit_arrivals` keeps a town from taking in more migrants than it can house;
 //! - `found_towns` replaces the port's founding rule, and is called once the year's
 //!   roads are known, so that the new town's area can be counted exactly;
-//! - `move_with_cells` replaces `people::resettle_new_towns`, every year.
+//! - `move_with_cells` replaces `people::resettle_new_towns`, every year, and what
+//!   the district was used to (its wage, the prices of its produce) goes with it.
 
 use serde::{Deserialize, Serialize};
 
 use crate::content::Content;
 use crate::land;
+use crate::mat::Mat;
 use crate::names::town_name;
 use crate::ndimage::{self, Mode};
 use crate::params::Params;
@@ -215,7 +217,7 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
 
 /// Scale the flows into each town so that the year's arrivals are at most
 /// `arrivals_max` of its people. `flow[(i, j)]` is from `act[i]` to `act[j]`.
-pub fn limit_arrivals(st: &State, P: &Params, act: &[usize], flow: &mut crate::mat::Mat) {
+pub fn limit_arrivals(st: &State, P: &Params, act: &[usize], flow: &mut Mat) {
     let n = act.len();
     for j in 0..n {
         let mut arrivals = 0.0;
@@ -408,9 +410,9 @@ pub fn district_ok(pp: &PeopleParams, cells: usize, people: f64, donor_share: f6
 }
 
 /// What the cells trading through town `n` under `st.catch` hold, counted against
-/// the areas the towns had before (`old`): cells, people, and the largest share of
-/// its people any one town gives up.
-pub fn district_of(st: &State, old: &[i64], n: usize) -> (usize, f64, f64) {
+/// the areas the towns had before (`old`): cells, people, the largest share of
+/// its people any one town gives up, and the towns that give people.
+pub fn district_of(st: &State, old: &[i64], n: usize) -> (usize, f64, f64, Vec<usize>) {
     let T = st.T_max;
     let work = work_by_cell(st);
     let work_town = by_town(old, &work, T);
@@ -426,12 +428,13 @@ pub fn district_of(st: &State, old: &[i64], n: usize) -> (usize, f64, f64) {
     }
     let share: Vec<f64> = (0..T).map(|i| if i != n && work_town[i] > 0.0 { gone[i] / work_town[i] } else { 0.0 }).collect();
     let people = pairwise_sum(&(0..T).map(|i| share[i] * st.pop[i]).collect::<Vec<_>>());
-    (cells, people, share.iter().cloned().fold(0.0, f64::max))
+    (cells, people, share.iter().cloned().fold(0.0, f64::max), (0..T).filter(|&i| share[i] > 0.0).collect())
 }
 
 /// Make `cell` the node of a new town in the next free slot, with its donor's
-/// prices, wage and knowledge, and give it a name. No people yet: they come with
-/// their cells in `move_with_cells`. Returns the town's index.
+/// prices, expected prices, wage and knowledge, and give it a name. No people
+/// yet: they come with their cells in `move_with_cells`, which also sets the
+/// prices of the district's own produce and its wage. Returns the town's index.
 pub fn open_town(st: &mut State, P: &Params, cell: usize, donor: usize, year: i64) -> usize {
     let n = (0..st.T_max).filter(|&t| st.town_active[t]).count();
     let ctx = site_context(&st.world, cell);
@@ -446,6 +449,9 @@ pub fn open_town(st: &mut State, P: &Params, cell: usize, donor: usize, year: i6
     st.town_new[n] = true;
     for g in 0..st.price.cols {
         st.price[(n, g)] = st.price[(donor, g)];
+        // the port leaves the slot's expected prices as they were set in 1750, and for
+        // some months a new town's land is worked for prices nobody is paying
+        st.pexp[(n, g)] = st.pexp[(donor, g)];
         st.fill[(n, g)] = st.fill[(donor, g)];
     }
     st.wage[n] = st.wage[donor];
@@ -497,24 +503,20 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
         if tried > 2 {
             break;
         }
-        let old = st.catch.clone();
+        let (old, old_d) = (st.catch.clone(), st.dcatch.clone());
         let donor = old[cand.cell] as usize;
         let node_before = st.town_node[n];
         st.town_active[n] = true;
         st.town_node[n] = cand.cell;
         land::update_transport(st, C, P);
-        let (cells, people, donor_share) = district_of(st, &old, n);
-        let givers: Vec<usize> = {
-            let mut v: Vec<usize> = (0..st.N).filter(|&c| st.catch[c] == n as i64 && old[c] >= 0).map(|c| old[c] as usize).collect();
-            v.sort();
-            v.dedup();
-            v
-        };
-        // the caller keeps last year's areas to compare against, and works the paths out again
+        let (cells, people, donor_share, givers) = district_of(st, &old, n);
+        // the caller keeps last year's areas and carting to compare against, and works the paths out again
         st.catch = old;
+        st.dcatch = old_d;
         st.town_active[n] = false;
         st.town_node[n] = node_before;
-        if !district_ok(pp, cells, people, donor_share) {
+        // the real area may draw on a town the estimate did not: it is owed its rest too
+        if !district_ok(pp, cells, people, donor_share) || !givers.iter().all(|&i| year - st.pp_gave[i] >= pp.donor_rest) {
             continue;
         }
         let rail = {
@@ -570,12 +572,16 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
 ///
 /// The share of a town's people on a group of cells is the share of its labour at
 /// work there, so a town keeps the people whose cells it keeps.
-pub fn move_with_cells(st: &mut State, _C: &Content, _P: &Params) {
+///
+/// What the district was used to goes with it: the prices of its produce
+/// (`price_with_produce`) and the wage its people were paid.
+pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
     let (N, T) = (st.N, st.T_max);
+    price_with_produce(st, C, P);
     let work = work_by_cell(st);
     let work_town = by_town(&st.prev_catch, &work, T);
     // moved[(i, j)]: labour on cells that left town i for town j
-    let mut moved = crate::mat::Mat::zeros(T, T);
+    let mut moved = Mat::zeros(T, T);
     let mut any = false;
     for c in 0..N {
         let (i, j) = (st.prev_catch[c], st.catch[c]);
@@ -585,8 +591,10 @@ pub fn move_with_cells(st: &mut State, _C: &Content, _P: &Params) {
         }
     }
     if any {
-        let (pop, hh, lord) = (st.pop.clone(), st.hh_cash.clone(), st.lord_cash.clone());
+        let (pop, hh, lord, wage) = (st.pop.clone(), st.hh_cash.clone(), st.lord_cash.clone(), st.wage.clone());
         let (merch, inv, outflow) = (st.merch_cash.clone(), st.inv.clone(), st.outflow.clone());
+        // by the town they come to: the newcomers, and the month's wages they were earning
+        let (mut came, mut earned) = (vec![0.0; T], vec![0.0; T]);
         for i in 0..T {
             if work_town[i] <= 0.0 {
                 continue;
@@ -602,6 +610,8 @@ pub fn move_with_cells(st: &mut State, _C: &Content, _P: &Params) {
                 let people = pop[i] * frac;
                 st.pop[i] -= people;
                 st.pop[j] += people;
+                came[j] += people;
+                earned[j] += people * wage[i];
                 for (v, was) in [(&mut st.hh_cash, &hh), (&mut st.lord_cash, &lord)] {
                     let cash = was[i].max(0.0) * frac;
                     v[i] -= cash;
@@ -623,6 +633,60 @@ pub fn move_with_cells(st: &mut State, _C: &Content, _P: &Params) {
                 }
             }
         }
+        // the town's wage starts the year as the average of what its old hands and its
+        // new were paid (a new town has no old hands: it starts at the newcomers' wage)
+        for j in 0..T {
+            if came[j] > 0.0 {
+                let own = if st.town_new[j] { 0.0 } else { pop[j] };
+                st.wage[j] = (own * wage[j] + earned[j]) / (own + came[j]);
+            }
+        }
     }
     st.town_new.iter_mut().for_each(|v| *v = false);
+}
+
+/// The going price goes with the produce. A market's price for coal was made by
+/// the coal it handled. When a coalfield comes over to it from another market
+/// (a road was made, a town was founded) the price has to answer to the
+/// newcomers too, or pits that hardly paid yesterday are offered a buyer's price
+/// at the pit mouth today and want more hands than the town has: the wage in
+/// Kelrigg on seed 7 went to a hundred times the island's that way in 1752.
+///
+/// So for everything the land yields, the market's price, and the price its
+/// producers expect, move toward the price at which the arriving producers are no
+/// better or worse off than they were (their old market's price, less what they
+/// now save in carting), in proportion to the produce they bring against the
+/// market's own turnover. A new market has no turnover, so it opens at that
+/// price. From there the market's own rule takes over.
+fn price_with_produce(st: &mut State, C: &Content, P: &Params) {
+    let (T, G) = (st.T_max, C.G);
+    if st.pp_dcatch_was.len() != st.N {
+        return;
+    }
+    // per market and good: the month's produce arriving, and its worth at the price
+    // it is used to and at the price its makers have come to expect
+    let (mut brought, mut worth, mut hoped) = (Mat::zeros(T, G), Mat::zeros(T, G), Mat::zeros(T, G));
+    for u in 0..st.ex_cell.len().min(st.ex_out.len()) {
+        let c = st.ex_cell[u];
+        let (i, j) = (st.prev_catch[c], st.catch[c]);
+        if i < 0 || j < 0 || i == j || !(st.ex_out[u] > 0.0) || !st.pp_dcatch_was[c].is_finite() {
+            continue;
+        }
+        let (i, j, g) = (i as usize, j as usize, C.sector_good[st.ex_sector[u]]);
+        let saved = P.freight * C.weight[g] * (st.pp_dcatch_was[c] - st.dcatch[c]);
+        brought[(j, g)] += st.ex_out[u];
+        worth[(j, g)] += st.ex_out[u] * (st.price[(i, g)] - saved);
+        hoped[(j, g)] += st.ex_out[u] * (st.pexp[(i, g)] - saved);
+    }
+    for j in 0..T {
+        for g in 0..G {
+            if brought[(j, g)] > 0.0 {
+                let own = st.outflow[(j, g)].max(0.0);
+                let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
+                for (v, sum) in [(&mut st.price, &worth), (&mut st.pexp, &hoped)] {
+                    v[(j, g)] = ((own * v[(j, g)] + sum[(j, g)]) / (own + brought[(j, g)])).clamp(lo, hi);
+                }
+            }
+        }
+    }
 }

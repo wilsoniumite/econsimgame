@@ -427,6 +427,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     update_roads(st, C, P);
     if !warm && P.people.enabled {
         founded = crate::peopling::found_towns(st, C, P, year, events);
+        // people: what each cell paid to reach its market, before the paths are worked out again
+        st.pp_dcatch_was = st.dcatch.clone();
     }
     st.prev_catch = st.catch.clone();
     land::update_transport(st, C, P);

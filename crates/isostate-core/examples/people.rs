@@ -3,11 +3,14 @@
 //! founded after 1800 are at the end.
 //!
 //!     cargo run --release -p isostate-core --example people -- [SEED] [--families N] [--off]
-//!         [--end-year Y] [--town NAME_OR_INDEX] [--candidates] [--set people.NAME=VALUE]...
+//!         [--end-year Y] [--town NAME_OR_INDEX] [--every-year] [--candidates]
+//!         [--set people.NAME=VALUE]...
 //!
 //! `--off` runs the port's rules for comparison. `--town` follows one town's
-//! people year by year (the default is town 0). `--candidates` prints, every ten
-//! years, the sites the founding rule looked at and why each was or was not taken.
+//! people (the default is town 0), with the cells of its market area. A line is
+//! printed every ten years, or every year with `--every-year`. `--candidates`
+//! prints, every ten years, the sites the founding rule looked at, with what the
+//! rule weighs for each.
 #![allow(non_snake_case)]
 use isostate_core::*;
 
@@ -15,7 +18,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut P = game_params();
     let mut sets: Vec<String> = Vec::new();
-    let (mut follow, mut show_cands) = (String::from("0"), false);
+    let (mut follow, mut show_cands, mut every) = (String::from("0"), false, false);
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -29,6 +32,7 @@ fn main() {
             }
             "--off" => P.people.enabled = false,
             "--candidates" => show_cands = true,
+            "--every-year" => every = true,
             "--town" => {
                 follow = args[i + 1].clone();
                 i += 1;
@@ -50,7 +54,7 @@ fn main() {
     let followed = |st: &State| -> usize { follow.parse().unwrap_or_else(|_| st.town_name.iter().position(|n| *n == follow).expect("no town of that name")) };
     let home = followed(&sim.st);
     println!("seed {}, {} families, people {}", P.seed, P.n_families, if P.people.enabled { "on" } else { "off" });
-    println!("year  towns   people  | growth a year: least  mean  most | {:>12} | real wage  emigrants", sim.st.town_name[home]);
+    println!("year  towns   people  | growth a year: least  mean  most | {:>12}  cells | real wage  emigrants", sim.st.town_name[home]);
     let mut before: Vec<f64> = sim.st.pop.clone();
     let mut rates: Vec<(f64, f64, f64)> = Vec::new();
     while sim.year <= sim.end_year {
@@ -88,20 +92,21 @@ fn main() {
         let g: Vec<f64> = if st.pp_growth.is_empty() { vec![f64::NAN] } else { act.iter().map(|&t| st.pp_growth[t]).collect() };
         rates.push((g.iter().cloned().fold(f64::INFINITY, f64::min), pop / was - 1.0, g.iter().cloned().fold(f64::NEG_INFINITY, f64::max)));
         before = st.pop.clone();
-        if year % 10 == 0 || year == sim.end_year {
-            let k = rates.len().min(10);
+        if every || year % 10 == 0 || year == sim.end_year {
+            let k = if every { 1 } else { rates.len().min(10) };
             let last = &rates[rates.len() - k..];
             let mean = |f: &dyn Fn(&(f64, f64, f64)) -> f64| last.iter().map(f).sum::<f64>() / k as f64;
             let wage = st.series.get("real_wage");
             let w = observer::annual(wage, sim.content.start_year, year);
             println!(
-                "{year} {:6} {:8.0}  |               {:7.4} {:6.4} {:6.4} | {:12.0} | {:9.2} {:10.0}",
+                "{year} {:6} {:8.0}  |               {:7.4} {:6.4} {:6.4} | {:12.0} {:6} | {:9.2} {:10.0}",
                 act.len(),
                 pop,
                 mean(&|r| r.0),
                 mean(&|r| r.1),
                 mean(&|r| r.2),
                 st.pop[home],
+                st.town_cells[home].len(),
                 w,
                 st.pp_emigrants
             );
