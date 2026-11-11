@@ -65,6 +65,13 @@ const BANKING_FROM: i32 = 1850;
 const TIGHT: f32 = 0.05;
 /// The length of line a curve's radius is measured over.
 const CURVE_OVER: f32 = 0.08;
+/// The lie of the land bends a line no tighter than this radius.
+const EASY: f32 = 0.07;
+/// How far the ground under an engine house or a shed may rise over the
+/// rails beside it (its walls stand that deep in the hillside), and how far
+/// it may fall below them (it stands on a stone footing that high).
+const STAND_SUNK: f32 = 0.012;
+const STAND_FOOTING: f32 = 0.045;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -93,18 +100,16 @@ pub struct Line {
     pub ground: Vec<f32>,
     pub kind: Vec<Kind>,
     pub worked: Vec<Worked>,
-    /// the cells it runs through, end to end
-    pub cells: Vec<usize>,
+    /// whether each point lies in the hills, where they build in stone
+    pub upland: Vec<bool>,
 }
 
-/// The line at a cell: where it passes, the way it runs there, its level,
-/// and the ground.
+/// The line at a cell: where it passes, the way it runs there, and its level.
 #[derive(Clone, Copy, Debug)]
 pub struct Stop {
     pub at: Vec2,
     pub dir: Vec2,
     pub level: f32,
-    pub ground: f32,
     /// how many lengths of line meet here
     pub ways: usize,
     /// a town's cell (whether or not the town is there yet)
@@ -137,36 +142,57 @@ pub struct RailYear {
     pub stands: Vec<Stand>,
     /// the solid works and their smoke, made once, the first time they are asked for
     works: OnceLock<(Builder, Builder)>,
-    /// the points of the lines above ground with the room each takes, in squares a tenth of a cell across
-    room: OnceLock<HashMap<(i32, i32), Vec<(f32, f32, f32)>>>,
+    /// the ground the railway takes
+    room: OnceLock<Room>,
 }
+
+/// The ground the railway takes: the points of the lines above ground, the
+/// stations and what stands by the line, each with the room it takes, in
+/// squares a tenth of a cell across; and the cells of the map that hold any
+/// of it, so that most of the island is answered at once.
+struct Room {
+    cells: HashSet<(i32, i32)>,
+    spots: HashMap<(i32, i32), Vec<(f32, f32, f32)>>,
+}
+
+/// The furthest a spot of the railway's ground reaches.
+const ROOM_REACH: f32 = 0.2;
 
 impl RailYear {
     /// Whether a spot is on the railway or its banks, or within `extra` of them.
     pub fn near(&self, x: f32, z: f32, extra: f32) -> bool {
         let room = self.room.get_or_init(|| {
-            let mut room: HashMap<(i32, i32), Vec<(f32, f32, f32)>> = HashMap::new();
+            let mut room = Room { cells: HashSet::new(), spots: HashMap::new() };
+            let mut take = |x: f32, z: f32, reach: f32| {
+                for (dx, dz) in [(-ROOM_REACH, -ROOM_REACH), (ROOM_REACH, -ROOM_REACH), (-ROOM_REACH, ROOM_REACH), (ROOM_REACH, ROOM_REACH)] {
+                    room.cells.insert(((x + dx).floor() as i32, (z + dz).floor() as i32));
+                }
+                room.spots.entry(((x * 10.0).floor() as i32, (z * 10.0).floor() as i32)).or_default().push((x, z, reach));
+            };
             for line in &self.lines {
                 for (i, p) in line.pts.iter().enumerate() {
                     if line.kind[i] != Kind::Tunnel {
-                        let reach = HALF + 0.01 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12);
-                        room.entry(((p.x * 10.0).floor() as i32, (p.z * 10.0).floor() as i32)).or_default().push((p.x, p.z, reach));
+                        take(p.x, p.z, HALF + 0.01 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12));
                     }
                 }
             }
             // a station and its sidings
             for stop in self.stops.values().filter(|stop| stop.town) {
-                room.entry(((stop.at.x * 10.0).floor() as i32, (stop.at.y * 10.0).floor() as i32)).or_default().push((stop.at.x, stop.at.y, 0.1));
+                take(stop.at.x, stop.at.y, 0.1);
             }
             for st in self.stands.iter().filter(|st| st.what != Standing::BufferStop) {
-                room.entry(((st.at.x * 10.0).floor() as i32, (st.at.z * 10.0).floor() as i32)).or_default().push((st.at.x, st.at.z, 0.075));
+                take(st.at.x, st.at.z, 0.075);
             }
             room
         });
+        debug_assert!(extra < ROOM_REACH - 0.16);
+        if !room.cells.contains(&(x.floor() as i32, z.floor() as i32)) {
+            return false;
+        }
         let (bx, bz) = ((x * 10.0).floor() as i32, (z * 10.0).floor() as i32);
         for dz in -2..=2 {
             for dx in -2..=2 {
-                if let Some(v) = room.get(&(bx + dx, bz + dz)) {
+                if let Some(v) = room.spots.get(&(bx + dx, bz + dz)) {
                     if v.iter().any(|&(px, pz, reach)| (px - x).hypot(pz - z) < reach + extra) {
                         return true;
                     }
@@ -174,6 +200,15 @@ impl RailYear {
             }
         }
         false
+    }
+
+    /// What a works' yard must keep clear of besides the track itself: the
+    /// middle of each town's station ground and of each engine house and shed,
+    /// and how far to keep from it.
+    pub fn grounds(&self) -> Vec<(Vec2, f32)> {
+        let stations = self.stops.values().filter(|stop| stop.town).map(|stop| (stop.at, 0.14));
+        let stands = self.stands.iter().filter(|st| st.what != Standing::BufferStop).map(|st| (Vec2::new(st.at.x, st.at.z), 0.085));
+        stations.chain(stands).collect()
     }
 }
 
@@ -195,6 +230,8 @@ struct Cell {
 struct Length {
     a: usize,
     stage: u8,
+    /// which way along each cell's line it leaves that cell (1 or -1)
+    signs: (f32, f32),
     /// the year (from the start) it was laid
     opened: usize,
     len: f32,
@@ -304,7 +341,9 @@ impl Net {
                     }
                 }
             }
-            match fresh.iter().find(|c| !placed.contains(c)) {
+            // a line apart from the rest begins anywhere but at one of its ends, which come
+            // straight in from the cell before
+            match fresh.iter().find(|&c| !placed.contains(c) && adj[*c].len() > 1).or_else(|| fresh.iter().find(|c| !placed.contains(c))) {
                 Some(&c) => queue.push_back(c),
                 None => break,
             }
@@ -314,11 +353,39 @@ impl Net {
         // not, an incline where winding is not enough
         let squares: Vec<Vec2> = towns.iter().map(|&c| v2(cen[c])).collect();
         let first_level = |c: usize| if fresh_set.contains(&c) { self.cells[&c].ground } else { self.cells[&c].level };
+        // each end of a new length leaves its cell along that cell's line, toward the other
+        // cell. But a line runs through a cell and does not double back on itself there: where
+        // a length would leave the way another length already does and nothing leaves the
+        // other way, it takes the free way and comes round, if the cell has only the two (a
+        // line that ended here and is carried on, or one laid again by another way) or if it
+        // is going off to the side (a branch from the end of a line).
+        let mut out: HashMap<usize, [bool; 2]> = HashMap::new();
+        let mut leave = |c: usize, toward: usize| -> f32 {
+            let cell = &self.cells[&c];
+            let along = cell.dir.dot((self.cells[&toward].at - cell.at).normalize_or_zero());
+            let taken = out.entry(c).or_insert_with(|| {
+                let mut taken = [false; 2];
+                for &m in &adj[c] {
+                    if let Some(l) = self.lengths.get(&(c.min(m), c.max(m))) {
+                        taken[((if l.a == c { l.signs.0 } else { l.signs.1 }) < 0.0) as usize] = true;
+                    }
+                }
+                taken
+            });
+            let mut sign = if along >= 0.0 { 1.0 } else { -1.0 };
+            if taken[(sign < 0.0) as usize] && !taken[(sign > 0.0) as usize] && (adj[c].len() == 2 || along.abs() < 0.5) {
+                sign = -sign;
+            }
+            taken[(sign < 0.0) as usize] = true;
+            sign
+        };
+        let signs: Vec<(f32, f32)> = new_links.iter().map(|&(a, b)| (leave(a, b), leave(b, a))).collect();
         let mut drafts: Vec<Draft> = new_links
             .iter()
-            .map(|&(a, b)| {
+            .zip(&signs)
+            .map(|(&(a, b), &signs)| {
                 let (ca, cb) = (self.cells[&a], self.cells[&b]);
-                draft(g, a, b, &ca, &cb, first_level(a), first_level(b), 0, &squares)
+                draft(g, a, b, &ca, &cb, signs, first_level(a), first_level(b), 0, &squares)
             })
             .collect();
         // 3. the levels of the new cells and of the points along the new lengths, among the
@@ -393,9 +460,11 @@ impl Net {
                 }
                 // a wound length that still stands in the air for most of its way is no winding
                 // line on a viaduct: it goes straight up the hill, as an incline
+                // and so does one that could not find the length it was to wind to
                 let first = region.len() + di * SUBS;
                 let over = (0..SUBS).filter(|&k| settled.level[first + k] - d.sub_ground[k] > VIADUCT).count();
-                if !last && stage > 0 && stage < RULES.incline() && over * 2 > SUBS {
+                let short = stage == d.stage && d.len < 0.92 * self.cells[&d.a].at.distance(self.cells[&d.b].at) * 1.02 * RULES.wound(stage);
+                if !last && stage > 0 && stage < RULES.incline() && (over * 2 > SUBS || short) {
                     steep[di] = true;
                     stage = RULES.incline();
                 }
@@ -403,7 +472,7 @@ impl Net {
                     changed = true;
                     let (ca, cb) = (self.cells[&d.a], self.cells[&d.b]);
                     let level = |c: usize| settled.level[index[&c]];
-                    *d = draft(g, d.a, d.b, &ca, &cb, level(d.a), level(d.b), stage, &squares);
+                    *d = draft(g, d.a, d.b, &ca, &cb, d.signs, level(d.a), level(d.b), stage, &squares);
                 }
             }
             if !changed || last {
@@ -427,7 +496,7 @@ impl Net {
             let stage = (0..d.stage).find(|&s| RULES.cap(part, s) >= climb - 1e-5).unwrap_or(d.stage);
             if stage != d.stage {
                 let (ca, cb) = (self.cells[&d.a], self.cells[&d.b]);
-                *d = draft(g, d.a, d.b, &ca, &cb, levels[0], levels[SUBS + 1], stage, &squares);
+                *d = draft(g, d.a, d.b, &ca, &cb, d.signs, levels[0], levels[SUBS + 1], stage, &squares);
             }
         }
         let mut under: HashSet<usize> = HashSet::new();
@@ -450,19 +519,20 @@ impl Net {
                 let other = self.cells[&m];
                 let align = cell.dir.dot((other.at - cell.at).normalize_or_zero());
                 // the nearest point along the length to that cell: its level, and how far off it is
-                let (level, dist, stage) = match drafts.iter().position(|d| (d.a, d.b) == (c.min(m), c.max(m))) {
+                // and which way along the cell's line the length leaves
+                let (level, dist, stage, sign) = match drafts.iter().position(|d| (d.a, d.b) == (c.min(m), c.max(m))) {
                     Some(di) => {
                         let d = &drafts[di];
                         let k = if d.a == c { 0 } else { SUBS - 1 };
-                        (settled.level[region.len() + di * SUBS + k], d.len / (SUBS + 1) as f32, d.stage)
+                        (settled.level[region.len() + di * SUBS + k], d.len / (SUBS + 1) as f32, d.stage, if d.a == c { d.signs.0 } else { d.signs.1 })
                     }
                     None => match self.lengths.get(&(c.min(m), c.max(m))) {
-                        Some(l) => (l.subs[if l.a == c { 0 } else { SUBS - 1 }], l.len / (SUBS + 1) as f32, l.stage),
+                        Some(l) => (l.subs[if l.a == c { 0 } else { SUBS - 1 }], l.len / (SUBS + 1) as f32, l.stage, if l.a == c { l.signs.0 } else { l.signs.1 }),
                         None => continue,
                     },
                 };
                 flat |= stage >= RULES.incline();
-                let side = &mut sides[(align < 0.0) as usize];
+                let side = &mut sides[(sign < 0.0) as usize];
                 if side.map_or(true, |s| align.abs() > s.0) {
                     *side = Some((align.abs(), level - cell.level, dist));
                 }
@@ -537,6 +607,17 @@ impl Net {
             }
         }
         let at = best.map_or(mid, |b| b.1);
+        // a line that ends here comes straight in from where it passes the cell before
+        let (dir, perp) = match adj[c].as_slice() {
+            [m] => match self.cells.get(m) {
+                Some(o) => {
+                    let dir = (at - o.at).normalize_or(dir);
+                    (dir, Vec2::new(-dir.y, dir.x))
+                }
+                None => (dir, perp),
+            },
+            _ => (dir, perp),
+        };
         // the line clears the highest ground close about the spot, so that whichever way a
         // length leaves it, now or in years to come, it does not start under the ground
         let about = (0..8).map(|i| Vec2::from_angle(i as f32 * std::f32::consts::FRAC_PI_4) * 0.07).map(|o| world::height_at(g, at.x + o.x, at.y + o.y)).fold(0.0, f32::max);
@@ -569,13 +650,12 @@ struct Draft {
 }
 
 /// Choose the course of a length of line from cell `a` to cell `b`, whose
-/// levels are `la` and `lb` for now.
+/// levels are `la` and `lb` for now. `signs` is which way along each cell's
+/// line the length leaves it.
 #[allow(clippy::too_many_arguments)]
-fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, la: f32, lb: f32, stage: u8, squares: &[Vec2]) -> Draft {
+fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, signs: (f32, f32), la: f32, lb: f32, stage: u8, squares: &[Vec2]) -> Draft {
     let chord = a.at.distance(b.at).max(1e-3);
-    // each end leaves its cell along that cell's line, toward the other
-    let sa = if a.dir.dot(b.at - a.at) >= 0.0 { 1.0 } else { -1.0 };
-    let sb = if b.dir.dot(a.at - b.at) >= 0.0 { 1.0 } else { -1.0 };
+    let (sa, sb) = signs;
     let ends = course::Ends { a: a.at, da: a.dir * sa, b: b.at, db: -b.dir * sb };
     let incline = stage >= RULES.incline();
     let near: Vec<Vec2> = squares.iter().copied().filter(|s| s.distance(a.at) < 2.0).collect();
@@ -599,13 +679,15 @@ fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, la: f32, 
     let mut swing = Swing::default();
     if stage > 0 && !incline {
         let mut best = f32::MAX;
-        for ess in [-0.3f32, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3] {
+        for ess in [-0.4f32, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4] {
             for wave in [-0.2f32, -0.1, 0.0, 0.1, 0.2] {
                 let sw = Swing { bow: 0.0, ess: ess * scale, wave: wave * scale };
-                let pts = course::curve(&ends, sw, &[], 24);
+                let pts = course::curve(&ends, sw, &[], 48);
                 let len = course::length(&pts);
-                let fit: f32 = pts.iter().enumerate().map(|(i, p)| cost(*p, i as f32 / 24.0)).sum::<f32>() / 25.0;
-                let c = fit + 2.0 * (want - len).max(0.0) / chord + 0.15 * (len - want).max(0.0) / chord + 0.02 * (ess.abs() + wave.abs());
+                let fit: f32 = pts.iter().enumerate().map(|(i, p)| cost(*p, i as f32 / 48.0)).sum::<f32>() / 49.0;
+                // a winding tighter than a train can take is no way to find length
+                let hooked = 4.0 * (1.0 - course::tightest(&pts, CURVE_OVER) / TIGHT).max(0.0);
+                let c = fit + hooked + 2.0 * (want - len).max(0.0) / chord + 0.15 * (len - want).max(0.0) / chord + 0.02 * (ess.abs() + wave.abs());
                 if c < best {
                     best = c;
                     swing = sw;
@@ -614,8 +696,15 @@ fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, la: f32, 
         }
     }
     // and every length lies to one side or the other of that as the land lies
-    let reach = if swing == Swing::default() { 0.3 * scale } else { 0.12 * scale };
-    let lie = course::seek(&ends, swing, 5, reach, &cost);
+    let mut reach = if swing == Swing::default() { 0.3 * scale } else { 0.12 * scale };
+    let mut lie = course::seek(&ends, swing, 5, reach, &cost);
+    // but not so as to bend it tighter than a train takes easily (or than its winding does):
+    // a shift to the inside of a curve tightens it, and far enough makes a hook of it
+    let easy = EASY.min(course::tightest(&course::curve(&ends, swing, &[], 48), CURVE_OVER));
+    while course::tightest(&course::curve(&ends, swing, &lie, 48), CURVE_OVER) < easy - 1e-4 {
+        reach *= 0.5;
+        lie = course::seek(&ends, swing, 5, if reach < 0.03 { 0.0 } else { reach }, &cost);
+    }
     let rough = course::length(&course::curve(&ends, swing, &lie, 24));
     let n = ((rough / STEP).ceil() as usize).max(2 * (SUBS + 1));
     let pts = course::curve(&ends, swing, &lie, n);
@@ -716,7 +805,7 @@ fn finish(d: Draft, a: &Cell, b: &Cell, subs: [f32; SUBS], holes: [bool; SUBS + 
     }
     let level = profile::raise(&s, &least, grad);
     let wet = water.iter().map(|&w| w < 0.012).collect();
-    Length { a: d.a, stage: d.stage, opened, len, subs, pts, level, ground, wet, under }
+    Length { a: d.a, stage: d.stage, signs: d.signs, opened, len, subs, pts, level, ground, wet, under }
 }
 
 /// What the line stands on at each point, with short runs merged into their
@@ -809,11 +898,12 @@ fn build_year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RailYear 
             continue;
         }
         let kind = classify(&pts, &ground, &wet, &under);
-        lines.push(Line { pts, ground, kind, worked, cells });
+        let upland = pts.iter().map(|p| r.terrain[(p.z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (p.x.floor().max(0.0) as usize).min(r.w - 1)] >= 2).collect();
+        lines.push(Line { pts, ground, kind, worked, upland });
     }
     let stops = (0..r.n)
         .filter(|&c| r.trans[k * r.n + c] & 4 != 0)
-        .filter_map(|c| net.cells.get(&c).map(|cell| (c, Stop { at: cell.at, dir: cell.dir, level: cell.level, ground: cell.ground, ways: adj[c].len(), town: cell.town })))
+        .filter_map(|c| net.cells.get(&c).map(|cell| (c, Stop { at: cell.at, dir: cell.dir, level: cell.level, ways: adj[c].len(), town: cell.town })))
         .collect();
     drop(guard);
     // track being laid
@@ -846,12 +936,31 @@ fn build_year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RailYear 
     RailYear { lines, building, stops, stands, works: OnceLock::new(), room: OnceLock::new() }
 }
 
-/// What stands by the lines: a winding engine house near the head of each
-/// inclined plane, a banking engine's shed near the foot of each steep bank,
-/// each on the side where the ground is nearer the level of the rails, and
-/// a buffer stop at each dead end.
+/// What stands by the lines: a winding engine house by the head of each
+/// inclined plane, a banking engine's shed by the foot of each steep bank,
+/// and a buffer stop at each dead end. A house or a shed stands on ground of
+/// its own beside the line: clear of every line, dry, where the line runs on
+/// the ground or a low bank and the ground lies near the level of the rails
+/// (a little under it is made up with a stone footing). It goes to the
+/// first such place, working along the incline from that end, on whichever
+/// side the ground lies nearer; an incline with no such place has none.
 fn stands(lines: &[Line], stops: &HashMap<usize, Stop>, g: &Ground) -> Vec<Stand> {
     use isostate_gen::rail;
+    // the track above ground, in squares a tenth of a cell across
+    let square = |p: Vec2| ((p.x * 10.0).floor() as i32, (p.y * 10.0).floor() as i32);
+    let mut track: HashMap<(i32, i32), Vec<Vec2>> = HashMap::new();
+    for line in lines {
+        for (p, _) in line.pts.iter().zip(&line.kind).filter(|(_, k)| **k != Kind::Tunnel) {
+            let p = Vec2::new(p.x, p.z);
+            track.entry(square(p)).or_default().push(p);
+        }
+    }
+    let fits = |st: &Stand| -> bool {
+        let (bx, bz) = square(Vec2::new(st.at.x, st.at.z));
+        let on_track = (-1..=1).any(|dz| (-1..=1).any(|dx| track.get(&(bx + dx, bz + dz)).is_some_and(|v| v.iter().any(|&p| stand_holds(st, p, 0.8 * HALF)))));
+        let (lo, hi) = stand_ground(g, st);
+        !on_track && lo > 0.03 && hi - st.at.y <= STAND_SUNK && st.at.y - lo <= STAND_FOOTING && world::water_dist(g, st.at.x, st.at.z) > 0.06
+    };
     let mut out = Vec::new();
     for line in lines {
         let n = line.pts.len();
@@ -860,18 +969,25 @@ fn stands(lines: &[Line], stops: &HashMap<usize, Stop>, g: &Ground) -> Vec<Stand
                 continue;
             }
             let rope = line.worked[i] == Worked::Rope;
-            // a little way in from the head of an incline, or from the foot of a bank
+            let what = if rope { Standing::WindingHouse } else { Standing::BankerShed };
+            let back = stand_size(what).1 * 0.5 + rail::TRACK_CLEAR;
+            // from a little way in from the head of an incline, or from the foot of a bank
             let up = line.pts[j].y > line.pts[i].y;
-            let q = if rope == up { j - 6 } else { i + 6 };
-            let p = line.pts[q];
-            let across = side_of(line.pts[q - 1], line.pts[q + 1]);
-            let back = if rope { rail::WINDING_HOUSE.1 } else { rail::BANKER_SHED.1 } * 0.5 + rail::TRACK_CLEAR;
-            let off = |side: f32| p + across * (back * side);
-            let lie = |side: f32| (world::height_at(g, off(side).x, off(side).z) - p.y).abs();
-            let side = if lie(1.0) <= lie(-1.0) { 1.0 } else { -1.0 };
-            let c = off(side);
-            // its front to the track
-            out.push(Stand { what: if rope { Standing::WindingHouse } else { Standing::BankerShed }, at: Vec3::new(c.x, p.y, c.z), yaw: (-across.x * side).atan2(-across.z * side) });
+            let from_end = rope == up;
+            let found = (6..(j - i) / 2 + 6).map(|d| if from_end { j - d } else { i + d }).filter(|&q| q > i && q < j).find_map(|q| {
+                if !matches!(line.kind[q], Kind::Grade | Kind::Embankment) {
+                    return None;
+                }
+                let p = line.pts[q];
+                let across = side_of(line.pts[q - 1], line.pts[q + 1]);
+                // its front to the track
+                let stand = |side: f32| Stand { what, at: p + across * (back * side), yaw: (-across.x * side).atan2(-across.z * side) };
+                let lie = |st: &Stand| (world::height_at(g, st.at.x, st.at.z) - p.y).abs();
+                let (a, b) = (stand(1.0), stand(-1.0));
+                let (first, second) = if lie(&a) <= lie(&b) { (a, b) } else { (b, a) };
+                [first, second].into_iter().find(|st| fits(st))
+            });
+            out.extend(found);
         }
         for end in [0, n - 1] {
             let p = line.pts[end];
@@ -1085,7 +1201,7 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) 
     let stone = *lk.rail.stone;
     let brick = *lk.rail.viaduct_brick;
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    for (li, line) in ry.lines.iter().enumerate() {
+    for line in &ry.lines {
         let n = line.pts.len();
         if n < 2 {
             continue;
@@ -1150,9 +1266,10 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) 
                 b.quad(a0, a1, c1, c0, *lk.rail.bank_top);
             }
         }
-        // viaducts: piers and arches of stone or brick, a parapet along the top, an abutment at each end
+        // viaducts: piers and arches, a parapet along the top, an abutment at each end; of stone
+        // in the hills and of brick in the low country, as the houses there are
         for (i, j) in runs_of(n, |q| line.kind[q] == Kind::Viaduct) {
-            viaduct(&mut b, line, i, j, g, if li % 3 == 0 { brick } else { stone });
+            viaduct(&mut b, line, i, j, g, if line.upland[(i + j) / 2] { stone } else { brick });
         }
         // an iron girder bridge over each river, from bank to bank
         for (i, j) in runs_of(n, |q| line.kind[q] == Kind::Bridge) {
@@ -1198,6 +1315,14 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) 
     // what stands by the line
     for st in &ry.stands {
         use isostate_gen::{rail, Site};
+        // an engine house or a shed on ground that falls away stands on a stone footing
+        if st.what != Standing::BufferStop {
+            let (w, d) = stand_size(st.what);
+            let low = stand_ground(g, st).0;
+            if st.at.y - low > 0.004 {
+                b.block(Vec3::new(st.at.x, low - 0.01, st.at.z), w + 0.006, d + 0.006, st.at.y - low + 0.01, st.yaw, shade(stone, 0.92), Some(*lk.rail.bank_top), 0.0);
+            }
+        }
         match st.what {
             Standing::WindingHouse => rail::winding_house(&mut b, &mut smoke, &Site::level(st.at, st.yaw), lk),
             Standing::BankerShed => rail::banker_shed(&mut b, &Site::level(st.at, st.yaw), lk),

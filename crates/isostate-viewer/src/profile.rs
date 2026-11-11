@@ -274,6 +274,7 @@ pub fn hermite(h0: f32, h1: f32, m0: f32, m1: f32, u: f32) -> f32 {
 }
 
 /// The slope of that curve at `u`, in height over the whole length.
+#[cfg(test)]
 pub fn hermite_slope(h0: f32, h1: f32, m0: f32, m1: f32, u: f32) -> f32 {
     let u2 = u * u;
     (h1 - h0) * (6.0 * u - 6.0 * u2) + m0 * (3.0 * u2 - 4.0 * u + 1.0) + m1 * (3.0 * u2 - 2.0 * u)

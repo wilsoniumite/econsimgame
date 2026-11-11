@@ -181,22 +181,28 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
     }
     // the railway where it really runs, with room for its banks: every point of every line that
     // is not under the ground, told to the cell it lies in and to a neighbour it lies close by
-    for line in &crate::rails::year(r, g, cen, k).lines {
-        for (i, p) in line.pts.iter().enumerate() {
-            if line.kind[i] == crate::rails::Kind::Tunnel {
-                continue;
-            }
-            let clear = 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12);
-            let cell = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
-            let mut told: Vec<usize> = Vec::with_capacity(3);
-            for (dx, dz) in [(0.0f32, 0.0f32), (0.12, 0.0), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
-                let c = cell(p.x + dx, p.z + dz);
-                if !told.contains(&c) {
-                    told.push(c);
-                    out.entry(c).or_default().push((p.x, p.z, clear));
-                }
+    let rails = crate::rails::year(r, g, cen, k);
+    let mut tell = |x: f32, z: f32, clear: f32| {
+        let cell = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
+        let mut told: Vec<usize> = Vec::with_capacity(3);
+        for (dx, dz) in [(0.0f32, 0.0f32), (0.12, 0.0), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
+            let c = cell(x + dx, z + dz);
+            if !told.contains(&c) {
+                told.push(c);
+                out.entry(c).or_default().push((x, z, clear));
             }
         }
+    };
+    for line in &rails.lines {
+        for (i, p) in line.pts.iter().enumerate() {
+            if line.kind[i] != crate::rails::Kind::Tunnel {
+                tell(p.x, p.z, 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12));
+            }
+        }
+    }
+    // and the ground of its stations, engine houses and sheds
+    for (at, clear) in rails.grounds() {
+        tell(at.x, at.y, clear);
     }
     out
 }
