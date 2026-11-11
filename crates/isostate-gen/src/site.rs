@@ -62,7 +62,8 @@ impl<'a> Site<'a> {
 /// What a generator builds into, kept apart because the viewer draws each
 /// with a material of its own: `solid` for walls, roofs and everything
 /// built; `smoke`, which lets light through and casts no shadow; `green`
-/// for leaves, which turn with the seasons.
+/// for leaves, which turn with the seasons; `flat` for what lies on the
+/// ground (roads, lanes, paving, water), which is matt and casts no shadow.
 ///
 /// A generator takes the buffers it writes as arguments and appends to them
 /// (the game hands it the one buffer all the island's houses share, so that
@@ -72,11 +73,16 @@ pub struct Model {
     pub solid: MeshBuf,
     pub smoke: MeshBuf,
     pub green: MeshBuf,
+    pub flat: MeshBuf,
 }
 
 impl Model {
+    fn parts(&self) -> [&MeshBuf; 4] {
+        [&self.solid, &self.smoke, &self.green, &self.flat]
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.solid.is_empty() && self.smoke.is_empty() && self.green.is_empty()
+        self.parts().into_iter().all(|b| b.is_empty())
     }
 
     /// Append another model's triangles, each kind to its own.
@@ -84,37 +90,82 @@ impl Model {
         self.solid.append(other.solid);
         self.smoke.append(other.smoke);
         self.green.append(other.green);
+        self.flat.append(other.flat);
     }
 
-    /// Move everything in the model.
-    pub fn translate(&mut self, by: Vec3) {
-        self.solid.translate(by);
-        self.smoke.translate(by);
-        self.green.translate(by);
+    /// Append a copy of another model's triangles, moved by `by`.
+    pub fn merge_at(&mut self, other: &Model, by: Vec3) {
+        for (mine, theirs) in [(&mut self.solid, &other.solid), (&mut self.smoke, &other.smoke), (&mut self.green, &other.green), (&mut self.flat, &other.flat)] {
+            let from = mine.pos.len();
+            mine.merge(theirs);
+            for p in &mut mine.pos[from..] {
+                *p = (Vec3::from_array(*p) + by).to_array();
+            }
+        }
+    }
+
+    /// Turn everything about the upright through the origin, the way a
+    /// site's `yaw` turns what is built on it. (For the lab, which shows a
+    /// sheet's things from another side; the game hands a generator its
+    /// facing in the site.)
+    pub fn turn(&mut self, yaw: f32) {
+        let t = glam::Affine3A::from_rotation_y(yaw);
+        for b in [&mut self.solid, &mut self.smoke, &mut self.green, &mut self.flat] {
+            b.transform(t);
+        }
     }
 
     /// The box round everything in the model, if there is anything.
     pub fn bounds(&self) -> Option<(Vec3, Vec3)> {
-        [&self.solid, &self.smoke, &self.green].into_iter().filter_map(|b| b.bounds()).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
-    }
-
-    /// The box round what is built, leaving the smoke out.
-    pub fn bounds_without_smoke(&self) -> Option<(Vec3, Vec3)> {
-        [&self.solid, &self.green].into_iter().filter_map(|b| b.bounds()).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+        self.parts().into_iter().filter_map(|b| b.bounds()).reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
     }
 
     pub fn is_sound(&self) -> bool {
-        self.solid.is_sound() && self.smoke.is_sound() && self.green.is_sound()
+        self.parts().into_iter().all(|b| b.is_sound())
     }
 
     pub fn triangles(&self) -> usize {
-        self.solid.triangles() + self.smoke.triangles() + self.green.triangles()
+        self.parts().into_iter().map(|b| b.triangles()).sum()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_merges_each_kind_to_its_own_and_moves_it() {
+        let red = [1.0, 0.0, 0.0, 1.0];
+        let mut a = Model::default();
+        a.solid.tri(Vec3::ZERO, Vec3::X, Vec3::Z, red);
+        a.flat.tri(Vec3::ZERO, Vec3::X, Vec3::Z, red);
+        let mut sheet = Model::default();
+        sheet.merge_at(&a, Vec3::new(1.0, 0.0, 0.0));
+        sheet.merge_at(&a, Vec3::new(3.0, 0.0, 0.0));
+        assert_eq!((sheet.solid.triangles(), sheet.flat.triangles(), sheet.green.triangles()), (2, 2, 0));
+        assert_eq!(sheet.bounds().unwrap(), (Vec3::new(1.0, 0.0, 0.0), Vec3::new(4.0, 0.0, 1.0)));
+        assert!(sheet.is_sound() && !sheet.is_empty() && Model::default().is_empty());
+        // the first copy was not moved again by the second
+        assert_eq!(sheet.solid.pos[0], [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn turning_a_model_is_building_it_on_a_turned_site() {
+        let pal = crate::Palette::standard();
+        let c = crate::houses::Cottage { plot_width: 0.05, plot_depth: 0.036, storeys: 2, seed: crate::Seed::of(3) };
+        let build = |yaw: f32| {
+            let mut m = Model::default();
+            crate::houses::cottage(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, yaw), &c, &pal);
+            m
+        };
+        let (mut turned, built) = (build(0.0), build(0.6));
+        turned.turn(0.6);
+        assert_eq!(turned.solid.idx, built.solid.idx);
+        assert_eq!(turned.solid.col, built.solid.col);
+        let near = |a: &[[f32; 3]], b: &[[f32; 3]]| a.iter().zip(b).all(|(p, q)| (Vec3::from_array(*p) - Vec3::from_array(*q)).length() < 1e-5);
+        assert!(near(&turned.solid.pos, &built.solid.pos) && near(&turned.solid.nrm, &built.solid.nrm));
+        assert!(near(&turned.smoke.pos, &built.smoke.pos));
+    }
 
     #[test]
     fn a_level_site_keeps_its_height() {

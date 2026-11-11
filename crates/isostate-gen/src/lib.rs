@@ -20,6 +20,8 @@ pub mod houses;
 pub mod mesh;
 pub mod palette;
 pub mod parts;
+pub mod scenes;
+pub mod sheets;
 pub mod site;
 pub mod town;
 pub mod trees;
