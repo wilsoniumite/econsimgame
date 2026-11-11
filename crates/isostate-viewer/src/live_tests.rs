@@ -221,7 +221,8 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
 
     // loaded as --load loads it; nothing is written, so the first game's file stays as it is
     let mut b = Table::open(&Opening { load: Some(name), shots: true, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, orders: saved.orders.len(), refused: 0, drifted: false }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
+    assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
     let on_order: Vec<usize> = saved.orders.iter().filter(|g| g.year == 1779).filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None }).collect();
     assert_eq!(b.live.ordered, on_order, "works ordered in the last year keep their pegs");
@@ -266,7 +267,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
 
 #[test]
 fn the_card_says_what_could_not_be_brought_back() {
-    let back = |refused, drifted| Resumed { year: 1779, orders: 41 - refused, refused, drifted };
+    let back = |refused, drifted| Resumed { year: 1779, orders: 41 - refused, refused, drifted, passed_over: 0 };
     assert_eq!(crate::game::resumed_note(&back(0, false)), None);
     assert_eq!(
         crate::game::resumed_note(&back(0, true)).unwrap(),
@@ -276,8 +277,15 @@ fn the_card_says_what_could_not_be_brought_back() {
         crate::game::resumed_note(&back(3, true)).unwrap(),
         "The island's rules have changed since this game was saved. Three of your 41 orders could not be given again, so some things stand differently."
     );
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, orders: 0, refused: 1, drifted: false }).unwrap().contains(" Your one order could not"));
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, orders: 0, refused: 4, drifted: true }).unwrap().contains(" All four of your orders could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, orders: 0, refused: 1, drifted: false, passed_over: 0 }).unwrap().contains(" Your one order could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, orders: 0, refused: 4, drifted: true, passed_over: 0 }).unwrap().contains(" All four of your orders could not"));
+    // an earlier save than the last, with or without the rules having changed
+    assert_eq!(
+        crate::game::resumed_note(&Resumed { passed_over: 1, ..back(0, false) }).unwrap(),
+        "The last save could not be read, so this is an earlier one, from 1779."
+    );
+    let both = crate::game::resumed_note(&Resumed { passed_over: 2, ..back(0, true) }).unwrap();
+    assert!(both.starts_with("The last save could not be read, so this is an earlier one, from 1779. The island's rules have changed"), "{both}");
 }
 
 #[test]
@@ -302,7 +310,8 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
 
     // a plain start goes on with it
     let b = Table::open(&Opening { seed: 7, families: 3, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, orders, refused: 0, drifted: false }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, orders, refused: 0, drifted: false, passed_over: 0 }));
+    assert!(b.live.kept);
     assert_eq!(b.year(), 1752);
     drop(b);
 
@@ -319,7 +328,7 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     }
     // and a run that only takes pictures leaves the autosave alone
     let mut t = Table::open(&Opening { seed: 7, families: 3, shots: true, ..default() });
-    assert!(t.live.resumed.is_none());
+    assert!(t.live.resumed.is_none() && !t.live.kept);
     t.play_year();
     t.step();
     drop(t);
@@ -339,6 +348,21 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     assert_eq!(saves::read(&file).unwrap().year, 1751);
     assert_eq!(saves::read(&saves::previous(&file)).unwrap().year, 1752);
     assert_eq!(saves::read(&saves::previous(&file)).unwrap().orders.len(), orders);
+
+    // a latest save cut short: the one before it is gone on with, and the card is owed a word about it
+    let mut e = Table::open(&Opening { seed: 7, families: 3, ..default() });
+    assert_eq!(e.year(), 1751);
+    e.step();
+    drop(e);
+    assert_eq!(saves::read(&file).unwrap().year, 1752);
+    let whole = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, &whole[..whole.len() / 2]).unwrap();
+    let f = Table::open(&Opening { seed: 7, families: 3, ..default() });
+    let back = f.live.resumed.clone().unwrap();
+    assert_eq!((back.year, back.passed_over, back.refused, back.drifted), (1751, 1, 0, false));
+    assert_eq!(f.year(), 1751);
+    assert!(crate::game::resumed_note(&back).unwrap().contains("could not be read"));
+    drop(f);
 
     unsafe { std::env::remove_var("ISOSTATE_SAVES") };
     let _ = std::fs::remove_dir_all(&dir);

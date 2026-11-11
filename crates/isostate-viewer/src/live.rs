@@ -82,6 +82,8 @@ pub struct Live {
     pub ordered: Vec<usize>,
     /// why the last save could not be written, if it could not
     pub unsaved: Option<String>,
+    /// the game is being saved as it is played (a run that only takes pictures is not)
+    pub kept: bool,
 }
 
 /// How going on with a saved game went.
@@ -95,6 +97,8 @@ pub struct Resumed {
     pub refused: usize,
     /// the island does not stand as the save says it stood
     pub drifted: bool,
+    /// newer saves that could not be read, so that this is an earlier one
+    pub passed_over: usize,
 }
 
 impl Live {
@@ -195,14 +199,16 @@ impl Board {
 /// `game_content`), not the port's; a saved one under the rules it names.
 pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let t0 = std::time::Instant::now();
+    let mut passed_over = 0;
     let from = match &o.load {
         Some(file) => Some((saves::read(std::path::Path::new(file))?, std::path::PathBuf::from(file))),
         None if o.plain() => {
             // a game has at least one family, and its autosave is named for the families it has
             saves::read_latest(&saves::autosave(o.seed, o.families.max(1))).map(|(save, file, passed)| {
-                for e in passed {
+                for e in &passed {
                     eprintln!("the latest save could not be read ({e}); going back to the one before it");
                 }
+                passed_over = passed.len();
                 (save, file)
             })
         }
@@ -245,6 +251,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
                 orders: loaded.game.orders.len(),
                 refused: loaded.refused.len(),
                 drifted: loaded.drifted,
+                passed_over,
             });
             loaded.game
         }
@@ -297,6 +304,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         (None, _) => {}
     }
 
+    let kept = saver.is_some();
+
     let (tx_cmd, rx_cmd) = mpsc::channel::<Cmd>();
     let (tx_msg, rx_msg) = mpsc::channel::<Msg>();
     let thread = std::thread::Builder::new()
@@ -312,6 +321,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         resumed,
         ordered,
         unsaved: None,
+        kept,
     };
     Ok((r, live, view))
 }

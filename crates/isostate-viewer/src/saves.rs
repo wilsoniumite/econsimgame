@@ -163,20 +163,23 @@ pub fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-/// The arguments to start this program again on a new game: the ones it was
-/// started with, less the save it was told to load.
-pub fn new_game_args(args: &[String]) -> Vec<String> {
+/// The arguments to start this program again on a new game on the island
+/// being played: the ones it was started with, less the save it was told to
+/// load and the years it was told to play first, and with the island and the
+/// number of families of the game on the table (a save that was loaded may
+/// be of another island than the one the arguments name).
+pub fn new_game_args(args: &[String], seed: u64, families: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--load" => i += 1,
+            "--load" | "--seed" | "--families" | "--advance" => i += 1,
             "--new" => {}
             a => out.push(a.to_string()),
         }
         i += 1;
     }
-    out.push("--new".to_string());
+    out.extend(["--seed".to_string(), seed.to_string(), "--families".to_string(), families.to_string(), "--new".to_string()]);
     out
 }
 
@@ -322,8 +325,12 @@ mod tests {
 
     #[test]
     fn a_new_game_starts_the_program_again_without_the_save() {
-        let args: Vec<String> = ["--families", "4", "--load", "a b.json", "--size", "1280x800"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(new_game_args(&args), ["--families", "4", "--size", "1280x800", "--new"]);
-        assert_eq!(new_game_args(&["--new".to_string()]), ["--new"]);
+        // the save that was loaded is of island 11 with three families, whatever the arguments said
+        let args: Vec<String> = ["--families", "4", "--load", "a b.json", "--size", "1280x800", "--advance", "5"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(new_game_args(&args, 11, 3), ["--size", "1280x800", "--seed", "11", "--families", "3", "--new"]);
+        assert_eq!(new_game_args(&["--new".to_string()], 7, 6), ["--seed", "7", "--families", "6", "--new"]);
+        // a place that was named goes on being the place
+        let args: Vec<String> = ["--save", "mine.json", "--seed", "9"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(new_game_args(&args, 9, 6), ["--save", "mine.json", "--seed", "9", "--families", "6", "--new"]);
     }
 }

@@ -1214,16 +1214,20 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: 
                         row.spawn(text(&f, line, 14.5, INK));
                     });
                 }
-                c.spawn((text(&f, "Click anywhere to begin.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
+                // only said of a game that is being saved
+                let begin = if live.kept { "Click anywhere to begin. The game saves itself as you play." } else { "Click anywhere to begin." };
+                c.spawn((text(&f, begin, 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
             });
         });
 }
 
 /// What a save that could not be played again as it was is owed in words:
-/// how many orders were refused, and that the island stands differently.
+/// that it is an earlier one than the last, how many orders were refused,
+/// and that the island stands differently.
 pub fn resumed_note(back: &live::Resumed) -> Option<String> {
     let all = back.orders + back.refused;
-    match (back.refused, back.drifted) {
+    let earlier = (back.passed_over > 0).then(|| format!("The last save could not be read, so this is an earlier one, from {}.", back.year));
+    let rules = match (back.refused, back.drifted) {
         (0, false) => None,
         (0, true) => Some("The island's rules have changed since this game was saved, so the years have played out a little differently.".to_string()),
         (n, _) => {
@@ -1234,6 +1238,10 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
             };
             Some(format!("The island's rules have changed since this game was saved. {which} could not be given again, so some things stand differently."))
         }
+    };
+    match (earlier, rules) {
+        (Some(a), Some(b)) => Some(format!("{a} {b}")),
+        (a, b) => a.or(b),
     }
 }
 
@@ -1311,12 +1319,22 @@ fn press_unattended(
 
 /// Start the program again on a new game, and leave this one. The game being
 /// left is already saved; the new one sets it aside when it is first saved.
-fn new_game_clicks(q: Query<&Interaction, (Changed<Interaction>, With<NewGameButton>)>, mut hint: Query<&mut Text, With<WelcomeHint>>, mut exit: MessageWriter<AppExit>) {
+fn new_game_clicks(
+    q: Query<&Interaction, (Changed<Interaction>, With<NewGameButton>)>,
+    data: Res<Data>,
+    // there is none in a replay, which has no such button either
+    fam: Option<Res<FamilyView>>,
+    mut hint: Query<&mut Text, With<WelcomeHint>>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    let Some(fam) = fam else { return };
     if !q.iter().any(|i| *i == Interaction::Pressed) {
         return;
     }
+    // on the island on the table, with as many families: a save that was loaded may be of another than the arguments name
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(crate::saves::new_game_args(&args)).spawn());
+    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len());
+    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(args).spawn());
     match started {
         Ok(_) => {
             eprintln!("starting again on a new game");
