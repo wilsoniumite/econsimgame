@@ -87,6 +87,36 @@ A markup of 0.3 is weaker on the zigzag (1.17 against 0.80) and no better
 elsewhere; 0.8 measures like 0.5. A floor of 0.2 measures like 0. I kept the
 probe's 0.5 and the plain floor.
 
+**How far the numbers can be pushed** (a review's sweeps, seeds 1 to 4 to
+1900, no families). The markup has a top as well as a bottom.
+The hands that follow a price arrive half a year late, and a merchant who
+marks hard on his shelves is answering stock that is already on its way, so a
+strong markup makes a swing of its own:
+
+| `markup` | 0 (brake alone) | 0.5 | 0.8 | 1 | 1.5 | 2 | 5 |
+|---|---|---|---|---|---|---|---|
+| farm zigzag | 5.2 | 0.76 | 0.95 | 1.8 | 2.8 | 4.0 | 10.3 |
+| `price_swing_iron` | 0.147 | 0.125 | 0.124 | 0.150 | 0.223 | 0.269 | 0.566 |
+| `price_swing_grain` | 0.084 | 0.026 | 0.034 | 0.040 | 0.077 | 0.126 | 0.284 |
+| alarms a run | 13.8 | 2.8 | 1.2 | 3.5 | 8.2 | 15 | 28 |
+| famines a run | 4 | 2.5 | 3.2 | 2.5 | 13.5 | 42 | 109 |
+
+So 0.5 sits in the middle of a window that runs from about 0.3 to 0.8, with a
+factor of two to spare before it turns on itself. A negative markup (dearer
+as the shelves fill) is nonsense and wrecks the island: industry goes within
+fifty years. (Two of its four runs then stop at the money check in the 1880s.
+Nothing leaks: `econ::step_month` issues new money as a share of the money it
+counts while the month's wages are between purses, on that island the count
+is below zero, so the stock shrinks until it is negative, and `sim::run_month`
+allows a drift of a millionth of the stock or of 1, whichever is larger,
+which for a negative stock is a millionth of a coin in forty million. That is
+the port's, not this mechanism's.) The brake has to stand well above `price_target_months` (2), the
+stock merchants mean to hold: with `glut_months` 0.5 and `glut_stop_months`
+0.6 every works is on short time for ever (utilisation 0.11, no railway, 439
+thousand people in 1900), and with 0.5 and 2 the wage of 1900 is 1.08 times
+1750's. A brake that starts at 0.5 and stops at 40, or one that drops from all
+to nothing at 4 months, measures like the game's.
+
 ## The wage still finds its root
 
 `econ::step_month` finds each town's wage with Newton steps kept inside a
@@ -101,6 +131,14 @@ that is the port's line to the bit. `tests/prices.rs` holds the shortcut to
 the plain bisection, every midpoint evaluated, wage for wage and bit for bit
 over three years, with a brake set harsh enough to bite on over a hundred
 works-months, with the game's brake, and with six families.
+
+That test proves the root, not the slope: a wrong slope would only cost
+steps. So a review checked the slope itself once, with a line of scaffolding
+that is not in the code: at three wages across each town's bracket, every
+month of the same three years, the slope the Newton step is given against a
+central difference of the demand it belongs to. Over 4,000 evaluations in
+towns with works on short time they agree to 3 parts in 100 million at worst
+(in towns with none, to 4 in a billion), and the slope is never positive.
 
 ## What the sweeps showed
 
@@ -125,6 +163,30 @@ means every seed with the mechanism is below (or above) every seed without.
 | `real_wage_1900_vs_1750` | 1.29 | 1.42 | 1.35 | 1.42 |
 | `works_1900` | 4,512 | 3,821 * | 6,973 | 6,310 |
 | `works_utilisation_1900` | 0.81 | 0.92 | 0.84 | 0.92 |
+
+**Checked again, and out of sample.** A review reran the four sweeps and the
+probe on a build of its own and got these numbers again, digit for digit. It
+then ran seeds 9 to 16, which nothing here was tuned on
+(`sweep-prices-review-*-s9` in the same place):
+
+| seeds 9 to 16 | no families | | six families | |
+|---|---|---|---|---|
+| | port | prices | port | prices |
+| `price_swing_iron` | 0.211 | 0.121 * | 0.206 | 0.122 * |
+| `price_swing_rails` | 0.189 | 0.152 | 0.178 | 0.141 |
+| `price_swing_grain` | 0.083 | 0.027 * | 0.085 | 0.029 * |
+| `price_swing_cloth` | 0.085 | 0.028 * | 0.084 | 0.028 * |
+| `farm_zigzag` | 5.00 | 0.79 * | 4.69 | 0.80 * |
+| `news_alarm` | 15.5 | 2.4 * | 16.0 | 1.8 * |
+| `news_steep` | 43.2 | 24.0 | 44.2 | 24.1 * |
+| `real_wage_1900_vs_1750` | 1.32 | 1.31 | 1.38 | 1.41 |
+| `works_1900` | 4,423 | 4,016 | 6,832 | 6,174 * |
+| `works_utilisation_1900` | 0.86 | 0.91 | 0.87 | 0.93 |
+
+The cure holds as it stood: the same sizes, the same stars. The higher wage
+of 1900 does not: on these seeds without families it is higher in three and
+lower in five. None of the 64 runs with the mechanism on failed the monthly
+money check.
 
 By half-century (1750-99 / 1800-49 / 1850-1900):
 
@@ -208,6 +270,16 @@ fall from 4.6 and 3.3 per cent of output to 0.6 and 0.5, and after the shock
 the price undershoots by .38 where the markup alone gives .61. It is in
 because it closes the hole the DEVLOG names, not because the scorecard needs
 it.
+
+**How often the brake bites.** Seldom. Over a run the merchants turn away 0.3
+per cent of the iron works' capacity, 3.1 of the rail mills' and 1.9 of the
+machine shops' (with six families 0.2, 1.2 and 1.2). The worry was the towns
+that make for others: a town can ship at most `trade_cap` (0.3) of its stock
+a month, so one that only ships a good never holds less than 3.3 months of
+it, and the brake starts at 4. Towns that ship out more of a good than they
+sell at home hold 2, 9 and 7 per cent of those three trades' capacity, and
+there the merchants turn away 0.7, 3.9 and 0.6 per cent: about what they do
+everywhere. The brake is not falling on the exporters.
 
 **The scripted players** (`examples/bots.rs`, seeds 1, 2, 3 and 7, run before
 any other mechanism joined the game's rules). Worth in 1900, mean of the four
@@ -303,9 +375,29 @@ to rest, and the bots.
   0.264 in every seed, and the 1750s wage in baskets is 4 per cent lower.
   Ratios to 1750 flatter the mechanism a little for that reason; the wage in
   baskets does not.
-- **Eight seeds.** The shock paths are means of eight pairs of runs that draw
-  different random numbers after the shock, so a single year's figure is
-  rough; the shape is what to read.
+- **Money buys more in 1750.** The port comes out of its warm-up on a price
+  spike of its own making; with the markup it does not. In 1750 grain is 0.64
+  against 0.96, iron 18 against 30, machinery 535 against 983 and the wage
+  3.5 against 5.0, while the island holds the same money. What a wage buys is
+  about the same, but anything fixed in money at the start is worth half as
+  much again: the families' first purses, most of all. And `gdp_real` is in
+  each run's own prices of 1750, so its level cannot be set beside the port's
+  (it reads a quarter lower all century); its changes can.
+- **The brake leans on two numbers it does not own.** It starts at 4 months
+  because merchants aim at 2 (`price_target_months`) and a town that only
+  ships holds 3.3 (`1 / trade_cap`). Whoever moves either of those has to
+  move `glut_months` with it.
+- **Famines.** Without families there are more: 2.0 a run under the port and
+  3.2 with prices over sixteen seeds, up in eleven and down in three. With six
+  families there are not (1.6 and 1.7). In the one run opened (seed 13) they
+  fall in the same years under both rules, 1853 to 1858, when farm machinery
+  has just been found and its price takes the wage with it (the machinery
+  famine of `docs/probes/dx-cycles.md`), so I read this as the same trouble
+  landing on a few more towns, not a new one. It is inside the spread (the
+  port has eight in seed 3) and I did not look further.
+- **Sixteen seeds for the scorecard, eight for the rest.** The shock paths are
+  means of eight pairs of runs that draw different random numbers after the
+  shock, so a single year's figure is rough; the shape is what to read.
 - **Not looked at**: the commons rent regime, years after 1900, the viewer's
   Markets panel (it draws prices, and would have room for the anchor beside
   them), the Python.

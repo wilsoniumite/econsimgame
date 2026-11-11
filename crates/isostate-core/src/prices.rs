@@ -42,10 +42,14 @@ pub struct PriceParams {
     pub enabled: bool,
     /// How far the price stands off its anchor: `anchor * exp(markup * gap)`,
     /// where the gap runs from 1 (no stock) through 0 (the target stock) to -1.
-    /// 0 leaves the port's rule.
+    /// 0 leaves the port's rule. It steadies prices between about 0.3 and 0.8;
+    /// from 1 up the markup itself over-corrects (the hands that follow a price
+    /// arrive half a year late), and at 2 the island swings harder than the port's.
     pub markup: f64,
     /// Merchants take all a works makes while the town's stock of its good is
     /// under this many months of sales and shipments. 0: they always take all.
+    /// It has to stand well above `price_target_months`, the stock merchants
+    /// mean to hold: a brake that bites at the target chokes every trade.
     pub glut_months: f64,
     /// At this many months they take only `glut_floor` of the works' capacity.
     pub glut_stop_months: f64,
