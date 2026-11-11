@@ -109,7 +109,7 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Game>()
         .add_systems(Startup, setup_marks.run_if(resource_exists::<Live>))
         .add_systems(PostStartup, welcome.run_if(resource_exists::<Live>))
-        .add_systems(Update, (press_for_shots, new_game_clicks, close_welcome).chain())
+        .add_systems(Update, (press_unattended, new_game_clicks, close_welcome).chain())
         .add_systems(
             Update,
             (
@@ -1286,16 +1286,15 @@ fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, 
     ));
 }
 
-/// A screenshot run has no pointer: ISOSTATE_WELCOME=continue or =new presses
-/// that button of the opening card for it, once, so that what the buttons do
-/// can be checked from the terminal.
-fn press_for_shots(
+/// Nobody at the pointer: ISOSTATE_WELCOME=continue or =new presses that
+/// button of the opening card, once, so that what the buttons do can be
+/// checked from the terminal (in a screenshot run, or with a window).
+fn press_unattended(
     mut pressed: Local<bool>,
-    shots: Option<Res<crate::ShotPlanArgs>>,
     mut go_on: Query<&mut Interaction, (With<ContinueButton>, Without<NewGameButton>)>,
     mut new_game: Query<&mut Interaction, (With<NewGameButton>, Without<ContinueButton>)>,
 ) {
-    if *pressed || shots.is_none() {
+    if *pressed {
         return;
     }
     let button = match std::env::var("ISOSTATE_WELCOME").as_deref() {
