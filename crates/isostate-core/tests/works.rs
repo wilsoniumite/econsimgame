@@ -64,6 +64,10 @@ fn the_sums_of_the_life_cycle() {
     assert!(!works::building(&on, 10.0, 0.5), "0.5 on order beside 10 built is under 5 per cent");
     assert!(works::building(&on, 10.0, 0.6));
     assert!(works::building(&on, 0.0, 1.0), "a works with nothing built yet is building");
+    let mut all = on.clone();
+    all.works.built_share = 1.0;
+    assert!(works::building(&all, 0.0, 1.0), "whatever the share");
+    assert!(!works::building(&all, 1.0, 0.0), "and one with nothing on order never is");
 
     // B. land by size under the port (a quarter of a cell at the usual size, four sizes the limit) ...
     assert!((works::land_take(&C, &off, m, K0) - 0.25).abs() < 1e-12);
@@ -118,6 +122,197 @@ fn a_site_promises_what_a_works_gets() {
         assert!(b.rent_bid[j] <= a.rent_bid[j]);
     }
     assert!(b.l[1] > b.l[0], "the far site needs more hands for the same cloth");
+}
+
+/// A 1750 with the life cycle on, its first town, and that town's prices and wages.
+fn a_town(P: &Params, C: &Content) -> (State, usize, Mat, Vec<f64>) {
+    let (mut st, _) = init_state(P, C);
+    let i = (0..st.T_max).find(|&i| st.town_active[i]).expect("a town");
+    st.pbar = st.price.clone();
+    st.wbar = st.wage.clone();
+    let (pbar, wbar) = (st.price.clone(), st.wage.clone());
+    (st, i, pbar, wbar)
+}
+
+#[test]
+fn the_years_room_at_its_edges() {
+    let C = default_content();
+    let (off, on) = (port(7, 0, 1750), params(7, 0, 1750));
+    let (mut st, i, _, _) = a_town(&on, &C);
+    let m = method(&C, "smithy");
+    let g = C.method_out[m];
+    let base = on.entry_K_frac * C.m_K0[m];
+    let mut ids = alive(&st);
+    let pbar = st.price.clone();
+    works::new_year(&mut st, &C, &on, &pbar, &mut ids);
+    assert_eq!(st.works_added[(i, m)], 0.0, "the year's room is whole when the review starts");
+
+    // a town that buys a hundred usual smithies' worth of tools a month
+    st.outflow[(i, g)] = 100.0 * C.m_K0[m];
+    let sold = st.outflow[(i, g)];
+    assert!((works::year_budget(&st, &C, &on, i, m) - on.works.year_room * sold).abs() < 1e-9);
+    assert!((works::entry_K(&st, &C, &on, i, m) - on.works.entry_share * sold).abs() < 1e-9);
+    let cells = st.town_cells[i].clone();
+    assert!(!works::sites_with_room(&st, &C, &on, i, m, base, cells.clone()).is_empty());
+    // the works already there took all but a sliver of it: a newcomer is the smallest works, and has nowhere to go
+    st.works_added[(i, m)] = on.works.year_room * sold - 0.5 * base;
+    assert!((works::room_left(&st, &C, &on, i, m) - 0.5 * base).abs() < 1e-9);
+    assert_eq!(works::entry_K(&st, &C, &on, i, m), base);
+    assert!(works::sites_with_room(&st, &C, &on, i, m, base, cells.clone()).is_empty());
+    // more than the room was ordered (a family's works does not ask): nothing is left, not less than nothing
+    st.works_added[(i, m)] = sold;
+    assert_eq!(works::room_left(&st, &C, &on, i, m), 0.0);
+
+    // a trade the town has none of can always start, with the smallest works
+    st.works_added[(i, m)] = 0.0;
+    st.outflow[(i, g)] = 0.0;
+    assert_eq!(works::year_budget(&st, &C, &on, i, m), base);
+    assert_eq!(works::entry_K(&st, &C, &on, i, m), base);
+    assert!(!works::sites_with_room(&st, &C, &on, i, m, base, cells.clone()).is_empty());
+    // and a huge trade is no reason for a works larger than a cell holds
+    st.outflow[(i, g)] = 1e9;
+    assert_eq!(works::entry_K(&st, &C, &on, i, m), works::max_K(&C, &on, m));
+
+    // the port has no room to run out of, and one size of new works
+    assert_eq!(works::room_left(&st, &C, &off, i, m), f64::INFINITY);
+    assert_eq!(works::entry_K(&st, &C, &off, i, m), base);
+    assert_eq!(works::sites_with_room(&st, &C, &off, i, m, base, cells.clone()), cells);
+}
+
+#[test]
+fn a_family_founds_the_works_it_can_pay_for() {
+    let P = params(7, 6, 1750);
+    let mut s = sim::start(&P, default_content());
+    let C = s.content.clone();
+    // the player's first decision, its trade (any will do)
+    let first = families::pending(&s.st, 0);
+    families::decide(&mut s.st, &C, 0, first[0].id, 0).expect("the first trade");
+    let seat = s.st.families[0].seat;
+    let option = |st: &State, cell: usize, m: usize| families::site_options(st, &C, &P, 0, cell).unwrap().swap_remove(m);
+    // an empty cell at the seat and a trade the family may found there
+    let (cell, m) = (0..s.st.N)
+        .filter(|&c| s.st.catch[c] == seat as i64 && s.st.cell_K_share[c] == 0.0)
+        .find_map(|c| families::site_options(&s.st, &C, &P, 0, c).ok()?.iter().find(|o| o.allowed.is_ok()).map(|o| (c, o.method)))
+        .expect("somewhere to build at the seat");
+    let base = P.entry_K_frac * C.m_K0[m];
+
+    // a large trade and a full purse: the works is sized to the trade
+    s.st.outflow[(seat, C.method_out[m])] = 1000.0 * C.m_K0[m];
+    s.st.families[0].cash = 1e12;
+    let big = option(&s.st, cell, m).sums.unwrap();
+    assert!(big.K > 10.0 * base, "sized to the market: {} against the smallest, {base}", big.K);
+    // a purse for three of the smallest works: that is the works the sums are for, and the works that is built
+    let unit = big.capital_cost / big.K;
+    s.st.families[0].cash = 3.0 * base * unit;
+    let small = option(&s.st, cell, m);
+    assert!(small.allowed.is_ok());
+    let small = small.sums.unwrap();
+    assert!(small.K < 3.0 * base && small.K > 2.9 * base, "{} against three of {base}", small.K);
+    assert!(small.capital_cost <= s.st.families[0].cash);
+    let fid = families::found_works(&mut s.st, &C, &P, 0, m, cell, s.year, &mut s.events).expect("the family can pay for it");
+    assert!((s.st.f_order_K[fid] - small.K).abs() < 1e-9);
+    assert!(s.st.families[0].cash >= 0.0);
+    // and a purse too small for the smallest works founds nothing
+    s.st.families[0].cash = 0.5 * base * unit;
+    assert!(families::found_works(&mut s.st, &C, &P, 0, m, cell, s.year, &mut s.events).unwrap_err().contains("costs"));
+}
+
+#[test]
+fn more_ground_is_never_free() {
+    let C = default_content();
+    let on = params(7, 0, 1750);
+    let (mut st, _, _, _) = a_town(&on, &C);
+    let f = alive(&st).into_iter().find(|&f| st.f_K[f] > 0.0 && st.f_rent[f] > 0.0).expect("a works of 1750");
+    let (i, m, c) = (st.f_town[f], st.f_method[f], st.f_cell[f]);
+    let lease = st.works_lease[f];
+    assert!((lease - works::land_held(&st, &C, &on, f)).abs() < 1e-12, "a works of 1750 has a lease on the land it stands on");
+    let (rent, share, added) = (st.f_rent[f], st.cell_K_share[c], st.works_added[(i, m)]);
+
+    // the works have taken the cell and no other use is left to price its land:
+    // the works doubles, and pays for the new ground at the rate it pays already
+    st.land_rent_only[c] = 0.0;
+    let dK = st.f_K[f];
+    st.f_order_K[f] += dK;
+    works::ordered(&mut st, &C, &on, f, dK);
+    assert!((st.works_lease[f] - 2.0 * lease).abs() < 1e-12);
+    assert!((st.f_rent[f] - 2.0 * rent).abs() < 1e-9 * rent, "{} against {rent}", st.f_rent[f]);
+    assert!((st.cell_K_share[c] - share - lease).abs() < 1e-12, "the ground is taken the day it is ordered");
+    assert!((st.works_added[(i, m)] - added - dK).abs() < 1e-12, "and the order counts against the year's room");
+
+    // where the cell's land earns more than that, the new ground costs what a newcomer would bid for it
+    let rate = 10.0 * st.f_rent[f] / st.works_lease[f];
+    st.land_rent_only[c] = rate / 1.25;
+    st.f_order_K[f] += dK;
+    works::ordered(&mut st, &C, &on, f, dK);
+    assert!((st.f_rent[f] - (2.0 * rent + rate * lease)).abs() < 1e-9 * rate * lease);
+
+    // an order within the land it already leases costs nothing more
+    let before = st.f_rent[f];
+    st.f_K[f] -= dK;
+    works::ordered(&mut st, &C, &on, f, 0.5 * dK);
+    assert_eq!(st.f_rent[f], before);
+}
+
+#[test]
+fn a_run_that_takes_the_life_cycle_up_finds_its_works_on_their_land() {
+    let C = default_content();
+    let (off, on) = (port(7, 0, 1750), params(7, 0, 1750));
+    let (mut st, _) = init_state(&off, &C);
+    assert!(st.works_lease.is_empty() && st.works_added.rows == 0);
+    let pbar = st.price.clone();
+    let mut ids = alive(&st);
+    works::new_year(&mut st, &C, &on, &pbar, &mut ids);
+    assert_eq!((st.works_added.rows, st.works_added.cols), (st.T_max, C.M));
+    for &f in &ids {
+        assert!(st.works_lease[f] > 0.0);
+        assert_eq!(st.works_lease[f], works::land_held(&st, &C, &on, f), "{} leases the land it holds", st.f_name[f]);
+    }
+}
+
+#[test]
+fn a_concern_that_cannot_pay_keeps_everyones_money() {
+    let C = default_content();
+    let on = params(7, 0, 1750);
+    let (mut st, _, pbar, wbar) = a_town(&on, &C);
+    let parent = alive(&st).into_iter().find(|&f| st.f_K[f] > 0.0 && C.method_name[st.f_method[f]] == "smithy").expect("a smithy of 1750");
+    let (i, m) = (st.f_town[parent], st.f_method[parent]);
+    let K = st.f_K[parent];
+    // a sister works of the same concern, in the same town, with room
+    let cell = st.town_cells[i].iter().copied().find(|&c| c != st.f_cell[parent] && st.land_use[c] != 0 && st.cell_K_share[c] < 0.1).expect("a cell");
+    let ev = firms::evaluate_sites(&st, &C, &on, i, m, &[cell], K, &pbar, &wbar);
+    let reason = firms::reason_record(&st, i, m, cell, &ev, 0, K, 1749, "expansion");
+    let mut rng = rng::Rng::from_seed([0; 32]);
+    let sister = firms::create_firm(&mut st, &C, &on, &mut rng, i, m, cell, K, ev.rent_bid[0], reason, 1749, 0.0, Some("Sister".to_string()), Some(parent))
+        .expect("room in the table");
+    st.f_K[sister] = K;
+    st.f_order_K[sister] = 0.0;
+    st.f_order.row_mut(sister).iter_mut().for_each(|v| *v = 0.0);
+    let unit: f64 = (0..C.G).map(|g| C.m_cap[(m, g)] * pbar[(i, g)]).sum();
+    let dK = 0.5 * K;
+
+    // nobody has the money: the growth is not ordered and no purse is touched
+    let (hh, lord) = (st.hh_cash[i], st.lord_cash[i]);
+    st.f_cash[parent] = 0.0;
+    st.hh_cash[i] = 0.0;
+    st.lord_cash[i] = 0.0;
+    let poor = econ::money_total(&st);
+    assert!(works::extend_sister(&mut st, &C, &on, parent, dK, unit), "there is a sister works with room");
+    assert_eq!(st.f_order_K[sister], 0.0);
+    assert_eq!((st.f_cash[parent], st.f_cash[sister], st.hh_cash[i], st.lord_cash[i]), (0.0, 0.0, 0.0, 0.0));
+    assert_eq!(econ::money_total(&st), poor);
+
+    // the town's savers back it: the order goes to the sister works and the money only changes hands
+    st.hh_cash[i] = hh;
+    st.lord_cash[i] = lord;
+    let cost = dK * unit * 1.15;
+    assert!(firms::town_pool(&st, &on, i) > cost, "the town can pay for half a smithy");
+    let rich = econ::money_total(&st);
+    assert!(works::extend_sister(&mut st, &C, &on, parent, dK, unit));
+    assert_eq!(st.f_order_K[sister], dK);
+    assert!((st.f_cash[sister] - cost).abs() < 1e-9 * cost);
+    assert!((econ::money_total(&st) - rich).abs() < 1e-9 * rich);
+    // under the port there is no such thing
+    assert!(!works::extend_sister(&mut st, &C, &port(7, 0, 1750), parent, dK, unit));
 }
 
 #[test]

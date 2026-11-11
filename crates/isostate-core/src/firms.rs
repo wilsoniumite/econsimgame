@@ -336,11 +336,11 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
             continue;
         }
         let cell = cells[j];
-        if used_cells.contains(&(cell, m)) || st.cell_K_share[cell] >= 0.9 || !works::cell_fits(st, C, P, cell, m, K) {
-            continue;
-        }
         if roi > 0.6 && !sized {
             K *= 2.0;
+        }
+        if used_cells.contains(&(cell, m)) || st.cell_K_share[cell] >= 0.9 || !works::cell_fits(st, C, P, cell, m, K) {
+            continue;
         }
         let cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
         if town_pool(st, P, i) < cost || st.F_count >= st.f_alive.len() {

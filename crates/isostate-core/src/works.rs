@@ -108,7 +108,10 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         return;
     }
     st.works_added = Mat::zeros(st.T_max, C.M);
-    st.works_lease = vec![0.0; st.f_alive.len()];
+    // no works stands yet when a run starts; a state that takes the life cycle
+    // up part-way (`new_year` calls this then) has works already on their land,
+    // and their leases cover it
+    st.works_lease = (0..st.f_alive.len()).map(|f| if st.f_alive[f] { land_held(st, C, P, f) } else { 0.0 }).collect();
 }
 
 // ---------------------------------------------------------------- B. land
@@ -194,7 +197,7 @@ fn root(st: &State, mut f: usize) -> usize {
 /// that has room: the largest such in its town. The money is found as for a
 /// new sister works: four fifths of the parent's cash first, then its backers.
 /// False if there is no such works, or under the port, and then a new sister
-/// works is tried.
+/// works is tried. True when there is one, whether or not the money was found.
 pub fn extend_sister(st: &mut State, C: &Content, P: &Params, parent: usize, dK: f64, unit_cap: f64) -> bool {
     if !P.works.enabled {
         return false;
@@ -217,18 +220,18 @@ pub fn extend_sister(st: &mut State, C: &Content, P: &Params, parent: usize, dK:
     let Some(f) = target else { return false };
     let cost = dK * unit_cap * 1.15;
     let own = (st.f_cash[parent].max(0.0) * 0.8).min(cost);
-    let backed = if own < cost { firms::back_firm(st, P, parent, cost - own) } else { 0.0 };
-    if own + backed < 0.6 * cost {
-        // not enough found: the works keeps its cash, and what its backers put
-        // up goes back to them (a family's to the family, a town's savers' to
-        // its households, as the port returns the money of a sister works that
-        // was not built)
-        match families::owner_of_firm(st, parent) {
-            Some(k) => st.families[k].cash += backed,
-            None => st.hh_cash[i] += backed,
-        }
+    // what its backers could add: the family's cash, or what the town's savers offer
+    let offered = match families::owner_of_firm(st, parent) {
+        Some(k) => st.families[k].cash.max(0.0),
+        None => firms::town_pool(st, P, i),
+    };
+    if own + offered.min(cost - own) < 0.6 * cost {
+        // the concern cannot pay for the growth this year. Nobody's money is
+        // touched, and a new sister works, which would cost no less, is not
+        // tried either.
         return true;
     }
+    let backed = if own < cost { firms::back_firm(st, P, parent, cost - own) } else { 0.0 };
     st.f_cash[parent] -= own;
     st.f_cash[f] += own + backed;
     for g in 0..C.G {
@@ -245,7 +248,8 @@ pub fn extend_sister(st: &mut State, C: &Content, P: &Params, parent: usize, dK:
 /// (and so may not grow, shrink or be judged idle).
 pub fn building(P: &Params, K: f64, on_order: f64) -> bool {
     let w = &P.works;
-    if w.enabled { on_order > w.built_share * (K + on_order) } else { on_order > 0.0 }
+    // a works with nothing built yet is building whatever the share
+    if w.enabled { on_order > 0.0 && (K <= 0.0 || on_order > w.built_share * (K + on_order)) } else { on_order > 0.0 }
 }
 
 // ---------------------------------------------------------------- C. the spread
@@ -322,6 +326,17 @@ pub fn entry_K(st: &State, C: &Content, P: &Params, i: usize, m: usize) -> f64 {
     }
 }
 
+/// A new works of capacity K cut down to what `purse` pays for, where a unit of
+/// capacity costs `unit_cost` in capital goods (and founding 15 per cent over
+/// that), but never below the smallest works. A family that cannot afford a
+/// works sized to its market founds the one it can afford. Under the port, K.
+pub fn within_purse(C: &Content, P: &Params, m: usize, K: f64, purse: f64, unit_cost: f64) -> f64 {
+    if !sized_entry(P) {
+        return K;
+    }
+    K.min(0.999 * purse.max(0.0) / (1.15 * unit_cost).max(1e-12)).max(P.entry_K_frac * C.m_K0[m])
+}
+
 /// The candidate cells entry may propose a works of capacity K on: none if the
 /// works already there took the year's room, otherwise those with room for it.
 /// Under the port, all of them.
@@ -389,7 +404,10 @@ pub fn opened(st: &mut State, C: &Content, P: &Params, f: usize, K: f64) {
 /// A standing works ordered dK more capacity: it counts against the year's
 /// room, and if the works now needs more land than its lease covers, it rents
 /// the rest at what the cell's land earns this year (the same bid a new works
-/// makes, without its floor). The rent is paid monthly like the rest.
+/// makes, without its floor), and never for less than it pays for the ground
+/// it has: once the works have taken most of a cell no other use is left there
+/// to set a price, and the ground would come free. The rent is paid monthly
+/// like the rest.
 ///
 /// In the year a town is founded its mean wage is zero and the land bids around
 /// it are astronomical (FAMILIES.md, "Surprises"); a new works would see that
@@ -410,13 +428,10 @@ pub fn ordered(st: &mut State, C: &Content, P: &Params, f: usize, dK: f64) {
         let lease = st.works_lease[f];
         if need > lease {
             let priced = st.wbar.get(i).is_some_and(|&w| w > 0.0);
-            st.f_rent[f] += if priced {
-                1.25 * st.land_rent_only[c] * (need - lease)
-            } else if lease > 0.0 {
-                st.f_rent[f] * (need - lease) / lease
-            } else {
-                0.0
-            };
+            // a cell's worth of ground a month: at the rate it pays now, at the cell's rent this year
+            let own = if lease > 0.0 { st.f_rent[f] / lease } else { 0.0 };
+            let cell = if priced { 1.25 * st.land_rent_only[c] } else { 0.0 };
+            st.f_rent[f] += own.max(cell) * (need - lease);
             st.works_lease[f] = need;
         }
     }
