@@ -429,7 +429,11 @@ fn main() {
         match replay::load(&args.run) {
             Ok(r) => (r, None, None),
             Err(e) => {
-                eprintln!("{e}\nMake a run first, for example:\n  cargo run --release -p isostate-core -- run --seed 7 --out runs/rust7\nor start a new game with --new");
+                eprintln!("{e}");
+                // how to make a run is the answer to a file that is not there, not to one that is damaged
+                if !std::path::Path::new(&args.run).exists() {
+                    eprintln!("Make a run first, for example:\n  cargo run --release -p isostate-core -- run --seed 7 --out runs/rust7\nor start a new game with --new");
+                }
                 std::process::exit(1);
             }
         }
