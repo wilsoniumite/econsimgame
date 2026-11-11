@@ -63,7 +63,8 @@ const EXT: (f32, f32) = (0.011, 0.0105);
 /// step, the higher showing its gable over the lower. Behind, each pair of
 /// houses shares a back extension, and each has a walled yard with a privy
 /// at the foot of it and a gate to the back lane. A long row may have a
-/// way through for a cart.
+/// way through for a cart, and a row of the later years has a bay window
+/// to each front room.
 ///
 /// From far off it is its walls and its roof. At the distance the game is
 /// played from it has its openings, its stacks, its back extensions and
@@ -143,6 +144,8 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
     // every house has its door and its windows; alternate houses are handed the other way, so doors stand in pairs
     let mut front = Vec::new();
     let mut back = Vec::new();
+    // the rows of the later years have a bay window to each front room
+    let mut bays: Vec<f32> = Vec::new();
     if !k.far() {
         for i in 0..count {
             let j = run.from + i;
@@ -154,6 +157,9 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
             if arch_at == Some(j) {
                 front.push(Opening { u: at(0.62), y: FOOT, w: unit * 0.5, h: 0.0138, kind: Open::Arch });
                 front.push(door_at(at(0.17), Open::Door { paint, over }));
+            } else if t.era == Era::Late {
+                front.push(door_at(at(0.2), Open::Door { paint, over }));
+                bays.push(at(0.66));
             } else {
                 front.push(door_at(at(0.24), Open::Door { paint, over }));
                 front.push(window_at(at(0.68), 0, 0.0084, 0.0066, 0.009, glazing));
@@ -182,6 +188,9 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
     k.roof(&body, &RoofSpec { h, rise, eaves: lie.eaves, verge, ends: [roof_end(run.right), roof_end(run.left)], col: colour, gable: wall.col, thick: lie.thick });
     if k.far() {
         return;
+    }
+    for &u in &bays {
+        k.bay(&body, 0, u, unit * 0.36, 0.0018, y0, FOOT + 0.0148, &wall, shade(colour, 0.9));
     }
 
     // a stack on every party wall and at each end, astride the ridge
@@ -348,7 +357,7 @@ mod tests {
     #[test]
     fn a_long_row_may_have_a_way_through() {
         let pal = Palette::standard();
-        let dark = *pal.bridges.arch_shadow;
+        let dark = *pal.smoke.soot;
         let with = (0..60).filter(|&n| build(6, 2, Seed::of(n), Detail::Play).solid.col.contains(&dark)).count();
         assert!((10..40).contains(&with), "{with} of 60 long rows have an arch");
         assert!((0..60).all(|n| !build(4, 2, Seed::of(n), Detail::Play).solid.col.contains(&dark)));

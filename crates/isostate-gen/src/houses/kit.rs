@@ -495,7 +495,7 @@ impl<'a, 's> Kit<'a, 's> {
                 self.panel(f, u0 - 0.001, u1 + 0.001, y1, y1 + 0.0032, PROUD, paint, paint);
             }
             Open::Arch => {
-                let dark = *self.pal.bridges.arch_shadow;
+                let dark = *self.pal.smoke.soot;
                 self.panel(f, u0, u1, y0, y1, PROUD, dark, dark);
             }
         }
@@ -582,9 +582,9 @@ impl<'a, 's> Kit<'a, 's> {
             }
             Open::Arch => {
                 let depth = 0.005;
-                let dark = *self.pal.bridges.arch_shadow;
+                let dark = *self.pal.smoke.soot;
                 jambs(self, depth, shade(w.col, k * 0.6));
-                self.panel(f, u0, u1, y0, y1, -depth, shade(dark, 1.3), dark);
+                self.panel(f, u0, u1, y0, y1, -depth, shade(dark, 1.5), dark);
                 // the haunches of the arch
                 let hw = (u1 - u0) * 0.22;
                 let col = shade(w.col, k);
