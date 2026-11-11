@@ -2166,6 +2166,39 @@ mod tests {
     }
 
     #[test]
+    fn a_wood_sheds_and_buds_once_a_round_at_any_speed_and_holds_when_paused() {
+        // the trees go by the seasons' clock: each group of broadleaves loses its leaves once and
+        // gets them back once in a round, at 1x and at 8x alike, and the leaves are gold before they fall
+        let dt = 1.0 / 30.0;
+        let lk = Look::standard();
+        for speed in [0.5, 4.0] {
+            for group in 0..LEAF_GROUPS {
+                let mut c = SeasonClock::default();
+                let (mut t, mut shed, mut bud, mut gold) = (10.0f32, 0, 0, false);
+                assert!(in_leaf(c.phase, group), "a game opens in summer leaf");
+                for _ in 0..(SEASON_ROUND_SECS / dt).round() as usize {
+                    let before = in_leaf(c.phase, group);
+                    t += speed * dt;
+                    c.advance(true, speed, t, dt);
+                    let now = in_leaf(c.phase, group);
+                    shed += (before && !now) as usize;
+                    bud += (!before && now) as usize;
+                    let tint = lk.foliage.tint(c.phase);
+                    gold |= now && tint[0] > 1.15 * tint[1];
+                }
+                assert_eq!((shed, bud), (1, 1), "group {group} at {speed} years a second");
+                assert!(gold, "group {group} is never gold in leaf at {speed} years a second");
+                // paused in the depth of winter, the trees stay bare
+                let mut c = SeasonClock { phase: 0.02, follows: false };
+                for _ in 0..300 {
+                    c.advance(false, speed, t, dt);
+                }
+                assert!(!in_leaf(c.phase, group));
+            }
+        }
+    }
+
+    #[test]
     fn seasons_follow_the_year_when_the_years_go_slowly() {
         // a year in 60 seconds: the season is the date's
         let speed = 1.0 / 60.0;
