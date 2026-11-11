@@ -147,6 +147,8 @@ market_paving = "#d8cdb6"
 farmyard = "#bca783"
 farmyard_edge = "#b59f7a"
 station_platform = "#6b5a4e"
+# the grass of a churchyard, mown and a little dull beside a meadow
+churchyard_grass = "#9db06c"
 # heaps at the pits: coal, ironstone, quarry waste, clay
 spoil_coal = "#3c3936"
 spoil_ironstone = "#8e5a44"
@@ -178,6 +180,8 @@ tile_dark = "#b5523f"
 tile_farm = "#b8573f"
 # an old roof gone green
 moss = "#6e8f5c"
+# the lead of a church roof, weathered pale
+church_lead = "#9aa0a3"
 # a lowland barn
 barn = "#6b5a4e"
 station_canopy = "#7a8a6a"
@@ -211,10 +215,17 @@ headframe = "#6b4a32"
 # a lowland barn in tarred boards
 barn_tarred = "#5b4a3c"
 door = "#6a4632"
+# the louvres of a church tower's bell openings, dark with age
+belfry_louvre = "#4d463f"
 
 [stone]
 # the church, and the pillars of the market hall
 church = "#ddd5c4"
+# a church's spire, a little greyer than its walls, the low wall round its
+# yard, and the gravestones
+church_spire = "#c9c3b6"
+churchyard_wall = "#a59d8e"
+gravestone = "#cfcabf"
 market_cross = "#d9d0be"
 # stone-built works: smithies, furnaces, crucible shops
 works = "#bdb4a5"
@@ -254,6 +265,8 @@ converter = "#5c5a58"
 trunk = "#7a5536"
 broadleaf = ["#5e9a45", "#6aa84f", "#4f8a3d", "#79b25a", "#8ab85c"]
 conifer = ["#2f6a49", "#3a7a51", "#2c5f43"]
+# the yews of a churchyard, nearly black
+yew = "#2c5440"
 # low bushes on the heath
 gorse = "#9aa548"
 broom = "#6b7f3e"

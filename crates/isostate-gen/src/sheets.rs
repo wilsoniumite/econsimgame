@@ -86,7 +86,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "terraces", about: "A terraced row: two and three storeys down the rows; three to six houses across, each a seed of its own.", land: Land::Town, build: terraces },
     Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: with back lanes built before 1815, and after.", land: Land::Town, build: street },
     Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up, and a big town fully.", land: Land::Town, build: market },
-    Sheet { name: "landmarks", about: "What marks a town out: its church (and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
+    Sheet { name: "landmarks", about: "What marks a town out: its church in its churchyard (a small town's, with a spire, and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
     Sheet { name: "works-trades", about: "The cottage trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_trades },
     Sheet { name: "works-iron", about: "Ironmaking: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_iron },
     Sheet { name: "works-heavy", about: "The heavy trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_heavy },
@@ -154,9 +154,15 @@ fn market(pal: &Palette) -> Vec<Vec<Cell>> {
 }
 
 fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {
+    // the churches are seen from the south, the tower and its gate to the left
+    let church = |big: bool, spire: bool, label: &str| {
+        let c = town::Church { big, spire, seed: Seed::of(big as u32 + 1) };
+        Cell::turned(label, -0.75, |m, site| town::church(&mut m.solid, site, &c, pal))
+    };
     vec![vec![
-        Cell::new("church", |m, site| town::church(&mut m.solid, site, false, pal)),
-        Cell::new("a big town's church", |m, site| town::church(&mut m.solid, site, true, pal)),
+        church(false, false, "a small town's church"),
+        church(false, true, "the same with a spire"),
+        church(true, true, "a big town's church"),
         Cell::new("station", |m, site| town::station(&mut m.solid, site, pal)),
         Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, pal)),
         Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, pal)),

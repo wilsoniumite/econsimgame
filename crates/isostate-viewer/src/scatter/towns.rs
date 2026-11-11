@@ -1,5 +1,5 @@
 //! Towns, laid out the way market towns grew. There is a market place with the
-//! church on one side. High streets run along the roads in, with an unbroken
+//! church in its yard just off it, in a quarter between the roads. High streets run along the roads in, with an unbroken
 //! frontage near the middle. Back lanes run behind the plots, with cross streets
 //! between them; their houses go up a row at a time. A station stands at the end
 //! of its own road.
@@ -99,20 +99,101 @@ pub fn square_of(r: &Replay, cen: &[(f32, f32)], k: usize, t: usize) -> Option<(
     squares(r, cen, k).into_iter().find(|s| s.town == t).map(|s| (s.at, s.radius, s.yaw))
 }
 
-/// The church faces the square from its east side, the station is down its own road to the south.
-fn church_at(s: &Square) -> Vec2 {
-    let q = bevy::math::Quat::from_rotation_y(s.yaw);
-    let o = q * Vec3::new(s.radius + 0.05, 0.0, 0.0);
-    s.at + Vec2::new(o.x, o.z)
+/// A town's parish church: which church it is, the middle of its churchyard
+/// and the way it faces.
+pub(super) struct Parish {
+    church: town::Church,
+    at: Vec2,
+    yaw: f32,
 }
 
+impl Parish {
+    /// Whether a point is in the churchyard or within `margin` of it.
+    pub(super) fn holds(&self, p: Vec2, margin: f32) -> bool {
+        p.distance_squared(self.at) < 0.04 && self.church.yard_holds(self.at, self.yaw, p, margin)
+    }
+
+    /// Whether a house plot or a back street here would crowd the church or block the way to its gate.
+    fn crowded_by(&self, p: Vec2) -> bool {
+        p.distance_squared(self.at) < 0.06 && self.church.crowded_by(self.at, self.yaw, p)
+    }
+}
+
+/// East, south, west and north on the map, in the order they come round.
+const WAYS: [(isize, isize); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
+
+/// A town's church stands off its market place, tower and gate toward it, in
+/// one of the four quarters between the ways to the neighbouring squares of
+/// the map (where the roads run, now or later), and stays there: the quarter
+/// is chosen by what does not change. It must be dry land clear of those
+/// ways, and of the quarters that are, the one that keeps the churchyard
+/// nearest the middle of its square of the map is taken, as the works stand
+/// round the edge. Only a road that cuts across a quarter, which is rare, is
+/// a reason to take another, from the year it is first laid.
+fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> Parish {
+    let t = s.town;
+    let node = r.header.towns[t].node;
+    // a big town's church was rebuilt bigger, and stays so; a small town's gets its spire in a year of its own
+    let grown = (0..=k).any(|y| r.town_urban[y * r.n_towns + t] > 12000.0);
+    let spire_year = 1825 + (world::hash2(t as i32, 3, 5) * 50.0) as i32;
+    let church = town::Church { big: grown, spire: grown || r.y0 + k as i32 >= spire_year, seed: Seed::new(world::hash2(t as i32, 4, 5), world::hash2(t as i32, 5, 5)) };
+    let (cx, cy) = ((node % r.w) as isize, (node / r.w) as isize);
+    let cell = |(dx, dy): (isize, isize)| -> Option<usize> {
+        let (x, y) = (cx + dx, cy + dy);
+        (x >= 0 && y >= 0 && (x as usize) < r.w && (y as usize) < r.h).then(|| y as usize * r.w + x as usize)
+    };
+    // the ways out: toward the middle of each neighbouring square
+    let ways = WAYS.map(|w| {
+        let plain = Vec2::new(w.0 as f32, w.1 as f32);
+        cell(w).map_or(plain, |c| (v2(cen[c]) - s.at).normalize_or(plain))
+    });
+    let roaded = |c: Option<usize>, y: usize| c.is_some_and(|c| r.trans[y * r.n + c] & 2 != 0);
+    let middle = Vec2::new(cx as f32 + 0.5, cy as f32 + 0.5);
+    let (w, d) = church.yard();
+    let mut best: Option<(f32, Vec2, f32)> = None;
+    for i in 0..4 {
+        let (a, b) = (ways[i], ways[(i + 1) % 4]);
+        let bearing = (a + b).normalize_or(Vec2::new(-a.y, a.x));
+        let (at, yaw) = church.beside_square(s.at, bearing);
+        let across = Vec2::new(-bearing.y, bearing.x);
+        let corners = [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(sx, sz)| at + across * (sx * w * 0.5) + bearing * (sz * d * 0.5));
+        let mut faults = 0;
+        // dry land under the whole yard
+        if corners.iter().chain([&at]).any(|p| world::height_at(g, p.x, p.y) < 0.05 || world::water_dist(g, p.x, p.y) < 0.03) {
+            faults += 2;
+        }
+        // clear of the ways either side of it, where a main road and its frontage may come
+        if corners.iter().any(|p| [a, b].iter().any(|way| (*p - s.at).dot(*way) > 0.0 && (*p - s.at).perp_dot(*way).abs() < 0.024)) {
+            faults += 1;
+        }
+        // a road across the quarter, to the square of the map cornerwise, in any year so far
+        let (da, db) = (WAYS[i], WAYS[(i + 1) % 4]);
+        let corner = cell((da.0 + db.0, da.1 + db.1));
+        if (0..=k).any(|y| roaded(Some(node), y) && roaded(corner, y) && !roaded(cell(da), y) && !roaded(cell(db), y)) {
+            faults += 4;
+        }
+        let reach = corners.iter().map(|p| (*p - middle).abs().max_element()).fold(0.0f32, f32::max);
+        let score = faults as f32 * 10.0 + reach;
+        if best.map_or(true, |(sc, _, _)| score < sc) {
+            best = Some((score, at, yaw));
+        }
+    }
+    let (_, at, yaw) = best.unwrap_or((0.0, s.at, 0.0));
+    Parish { church, at, yaw }
+}
+
+/// The station is down its own road to the south of the market place.
 fn station_at(s: &Square) -> Vec2 {
     let q = bevy::math::Quat::from_rotation_y(s.yaw);
     let o = q * Vec3::new(0.0, 0.0, 0.24);
     s.at + Vec2::new(o.x, o.z)
 }
 
-pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32)>>) {
+/// The market places, churches, stations and lighthouses of the towns. The
+/// churchyards are handed back, for everything else to keep out of.
+pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32)>>) -> Vec<Parish> {
+    let height = |x: f32, z: f32| world::height_at(g, x, z);
+    let mut parishes = Vec::new();
     for s in squares(r, cen, k) {
         let node = r.header.towns[s.town].node;
         // the market place, paved, with a cross or a hall in the middle
@@ -135,9 +216,9 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         } else {
             town::market_cross(houses, &Site::level(m, s.yaw), lk);
         }
-        let c = church_at(&s);
-        town::church(houses, &Site::level(ground(g, c.x, c.y), s.yaw + std::f32::consts::FRAC_PI_2), s.big, lk);
-        plots.entry(node).or_default().push((c.x, c.y));
+        let p = parish(r, g, cen, k, &s);
+        town::church(houses, &Site::on(ground(g, p.at.x, p.at.y), p.yaw, &height), &p.church, lk);
+        parishes.push(p);
         plots.entry(node).or_default().push((s.at.x, s.at.y));
         if r.trans[k * r.n + node] & 4 != 0 {
             let st = station_at(&s);
@@ -167,6 +248,7 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
             town::lighthouse(houses, &Site::level(ground(g, lx, lz), 0.0), lk);
         }
     }
+    parishes
 }
 
 /// The density a point's ground is built up to: a town square's own reading, or a guess for
@@ -237,9 +319,10 @@ fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Stree
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
+pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
     let sq = squares(r, cen, k);
-    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(church_at(s)) < 0.07 || p.distance(station_at(s)) < 0.07);
+    // a house keeps its whole plot out of a churchyard
+    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(station_at(s)) < 0.07) || parishes.iter().any(|c| c.crowded_by(p));
     let built = |p: Vec2, need: f32| -> bool {
         if world::height_at(g, p.x, p.y) < 0.05 {
             return false;

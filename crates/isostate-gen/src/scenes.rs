@@ -166,7 +166,8 @@ pub struct Market {
 }
 
 /// A market place: its paving, the cross or the hall in the middle, the
-/// church on its east side, and houses round it facing in.
+/// church in its yard off the east side (a big town's has a spire), and
+/// houses round it facing in.
 pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
     let radius = if mk.big { 0.09 } else { 0.06 };
     let mid = site.origin + Vec3::Y * 0.009;
@@ -187,8 +188,10 @@ pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
     } else {
         town::market_cross(&mut m.solid, site, pal);
     }
-    let church_at = Vec2::new(radius + 0.05, 0.0);
-    town::church(&mut m.solid, &site.moved(site.at(church_at.x, church_at.y), site.yaw + std::f32::consts::FRAC_PI_2), mk.big, pal);
+    // the church stands off the east side, its tower and gate to the market place
+    let church = town::Church { big: mk.big, spire: mk.big, seed: Seed::of(mk.id as u32) };
+    let (church_at, church_yaw) = church.beside_square(Vec2::ZERO, Vec2::X);
+    town::church(&mut m.solid, &site.moved(site.at(church_at.x, church_at.y), site.yaw + church_yaw), &church, pal);
     // houses round the market place, facing in
     let count = ((std::f32::consts::TAU * (radius + 0.03)) / PLOT.0).floor() as i32;
     let id = -1000 - mk.id;
@@ -196,7 +199,7 @@ pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
         let a = i as f32 / count as f32 * std::f32::consts::TAU;
         let dir = Vec2::new(a.cos(), a.sin());
         let p = dir * (radius + 0.03);
-        if p.distance(church_at) < 0.07 {
+        if church.crowded_by(church_at, church_yaw, p) {
             continue;
         }
         let seed = Seed::new(hash2(id, i, 26), hash2(id, i, 27));
@@ -330,6 +333,8 @@ mod tests {
         // the paving is nine wedges; even with no houses the church and the cross stand
         assert_eq!(empty.flat.triangles(), 9);
         assert!(empty.solid.bounds().unwrap().1.y > 0.14);
+        // a big town's church has a spire
+        assert!(build(true, 0.0).solid.bounds().unwrap().1.y > 0.25);
         assert!(full.solid.triangles() > empty.solid.triangles() + 8 * 22);
         // a big town's place is wider
         let width = |m: &Model| m.flat.bounds().map(|(lo, hi)| hi.x - lo.x).unwrap();

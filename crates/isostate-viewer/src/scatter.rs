@@ -328,10 +328,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
-    towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
+    let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
+    // near a works or a market place, or in a churchyard
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-        plots.get(&c).map(|v| v.iter().any(|&(px, pz)| (px - x).abs() < 0.085 && (pz - z).abs() < 0.085)).unwrap_or(false)
+        plots.get(&c).map(|v| v.iter().any(|&(px, pz)| (px - x).abs() < 0.085 && (pz - z).abs() < 0.085)).unwrap_or(false) || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.012))
     };
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
@@ -372,7 +373,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         yard_shed(&mut houses, &mut smoke, &Site::level(p, yaw), &YardShed { seed: Seed::new(s.u, s.v), smoke_seed: s.yaw }, lk);
     }
 
-    towns::houses(r, g, slots, cen, k, lk, &near_plot_or_water, &mut houses, &mut smoke);
+    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut houses, &mut smoke);
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;

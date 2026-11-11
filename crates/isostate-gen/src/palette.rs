@@ -24,6 +24,7 @@ pub struct Ground {
     pub farmyard: Colour,
     pub farmyard_edge: Colour,
     pub station_platform: Colour,
+    pub churchyard_grass: Colour,
     pub spoil_coal: Colour,
     pub spoil_ironstone: Colour,
     pub spoil_stone: Colour,
@@ -66,6 +67,7 @@ pub struct Roofs {
     pub tile_dark: Colour,
     pub tile_farm: Colour,
     pub moss: Colour,
+    pub church_lead: Colour,
     pub barn: Colour,
     pub station_canopy: Colour,
     pub drying_shed: Colour,
@@ -99,12 +101,16 @@ pub struct Timber {
     pub headframe: Colour,
     pub barn_tarred: Colour,
     pub door: Colour,
+    pub belfry_louvre: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Stone {
     pub church: Colour,
+    pub church_spire: Colour,
+    pub churchyard_wall: Colour,
+    pub gravestone: Colour,
     pub market_cross: Colour,
     pub works: Colour,
     pub shed: Colour,
@@ -153,6 +159,7 @@ pub struct Foliage {
     pub trunk: Colour,
     pub broadleaf: Vec<Colour>,
     pub conifer: Vec<Colour>,
+    pub yew: Colour,
     pub gorse: Colour,
     pub broom: Colour,
     pub tint_winter: [f32; 3],
