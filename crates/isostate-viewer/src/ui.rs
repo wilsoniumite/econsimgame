@@ -85,6 +85,10 @@ pub struct UiState {
     pub rival: Option<usize>,
     /// how many items the News panel lists, newest first; Show more adds to it
     pub news_rows: usize,
+    /// which half of the Markets panel shows
+    pub markets: MarketsShow,
+    /// the good whose history is open in the Markets panel
+    pub good: Option<usize>,
     built: Option<(Option<Tab>, usize, NewsShow, u64)>,
 }
 
@@ -93,7 +97,37 @@ const NEWS_ROWS: usize = 120;
 
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, news_rows: NEWS_ROWS, built: None }
+        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, news_rows: NEWS_ROWS, markets: MarketsShow::Prices, good: None, built: None }
+    }
+}
+
+/// The Markets panel has two halves: the goods and their prices, and the island as a whole.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MarketsShow {
+    Prices,
+    Island,
+}
+
+/// Whether a word of a `--view` says what the Markets panel shows: "island",
+/// or "open:GOOD" for the goods with one good's history open.
+pub fn markets_word(word: &str) -> bool {
+    let w = word.to_ascii_lowercase();
+    w == "island" || w.starts_with("open:")
+}
+
+impl UiState {
+    /// Set the Markets panel as a `markets_word` asks (for screenshots).
+    pub fn show_markets(&mut self, word: &str, r: &Replay) {
+        let w = word.to_ascii_lowercase();
+        let (show, good) = match w.strip_prefix("open:") {
+            Some(g) => (MarketsShow::Prices, r.header.goods.iter().position(|x| x.name.eq_ignore_ascii_case(g) || x.label.eq_ignore_ascii_case(g))),
+            None => (MarketsShow::Island, self.good),
+        };
+        if self.markets != show || self.good != good {
+            self.markets = show;
+            self.good = good;
+            self.dirty += 1;
+        }
     }
 }
 
@@ -170,16 +204,27 @@ pub struct NextYearButton;
 /// A live game: says when the next year is being worked out.
 #[derive(Component)]
 pub struct StepNote;
+/// A good's row in the Markets panel: click to open its history, or close it.
+#[derive(Component)]
+pub struct GoodRow(pub usize);
+/// Choose a half of the Markets panel.
+#[derive(Component)]
+pub struct MarketsChip(pub MarketsShow);
+/// A row that lights up under the pointer; `open` rows keep a ground of their own.
+#[derive(Component)]
+pub struct RowHover {
+    pub open: bool,
+}
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
     );
 }
 
 /// A key drawn as a little raised cap.
-fn keycap(p: &mut ChildSpawnerCommands, f: &Handle<Font>, key: &str) {
+pub fn keycap(p: &mut ChildSpawnerCommands, f: &Handle<Font>, key: &str) {
     p.spawn((
         Node { padding: UiRect::axes(Val::Px(7.0), Val::Px(1.0)), border: UiRect::new(Val::Px(1.0), Val::Px(1.0), Val::Px(1.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
         BackgroundColor(Color::srgb(1.0, 0.99, 0.96)),
@@ -211,7 +256,7 @@ fn button_node(px: f32, py: f32) -> Node {
 // ------------------------------------------------------------------ building the interface
 
 /// A floating paper card that keeps the pointer off the map.
-fn card(node: Node) -> impl Bundle {
+pub fn card(node: Node) -> impl Bundle {
     (node, BackgroundColor(PAPER), card_shadow(), Interaction::default(), FocusPolicy::Block, UiBlock, GlobalZIndex(10))
 }
 
@@ -411,7 +456,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
             GlobalZIndex(30),
-            Visibility::Hidden,
+            // ISOSTATE_HELP=1 opens it from the start, to see it in a screenshot
+            if std::env::var_os("ISOSTATE_HELP").is_some() { Visibility::Inherited } else { Visibility::Hidden },
             HelpCard,
         ))
         .with_children(|wrap| {
@@ -428,6 +474,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ("Left, Right", "one year back or on"),
                     ("Up, Down", "faster or slower"),
                     ("1 2 3 4", "family, holdings, markets, news"),
+                    ("M", "map views: rent, markets, reach, prices, wages"),
+                    ("G", "the next good, when prices are mapped"),
                     ("T", "miniature focus on or off"),
                     ("Esc", "close the note about what you clicked"),
                 ] {
@@ -523,6 +571,42 @@ fn panel_visibility(ui: Res<UiState>, mut panel: Query<&mut Visibility, With<Sid
     let want = if ui.tab.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     for mut v in &mut panel {
         v.set_if_neq(want);
+    }
+}
+
+/// Rows that can be clicked show it under the pointer, and are otherwise bare.
+fn row_colours(mut q: Query<(&Interaction, &RowHover, &mut BackgroundColor), Changed<Interaction>>) {
+    for (i, row, mut bg) in &mut q {
+        bg.0 = match i {
+            Interaction::Pressed => BTN_HOVER,
+            Interaction::Hovered => BTN,
+            Interaction::None if row.open => PAPER_2,
+            Interaction::None => Color::NONE,
+        };
+    }
+}
+
+fn markets_clicks(
+    mut ui: ResMut<UiState>,
+    mut ov: ResMut<crate::overlay::MapOverlay>,
+    rows: Query<(&Interaction, &GoodRow), Changed<Interaction>>,
+    chips: Query<(&Interaction, &MarketsChip), Changed<Interaction>>,
+) {
+    for (i, g) in &rows {
+        if *i == Interaction::Pressed {
+            ui.good = if ui.good == Some(g.0) { None } else { Some(g.0) };
+            ui.dirty += 1;
+            // the price map follows: the good whose history is open is the good it shows
+            if ui.good.is_some() && ov.good != g.0 {
+                ov.good = g.0;
+            }
+        }
+    }
+    for (i, c) in &chips {
+        if *i == Interaction::Pressed && ui.markets != c.0 {
+            ui.markets = c.0;
+            ui.dirty += 1;
+        }
     }
 }
 
@@ -795,6 +879,7 @@ fn panel_rebuild(
     font: Res<UiFont>,
     fam: Option<Res<FamilyView>>,
     live: Option<Res<crate::live::Live>>,
+    mut images: ResMut<Assets<Image>>,
     mut body: Query<(Entity, Option<&Children>, &mut ScrollPosition), With<PanelBody>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut last_list: Local<Option<(Tab, NewsShow)>>,
@@ -825,9 +910,10 @@ fn panel_rebuild(
     let fam = fam.as_deref();
     // the family is known as it stands today: its panels say so when the clock has been taken back
     let past = live.is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
+    let accent = fam.and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
     commands.entity(be).with_children(|p| match tab {
         Tab::News => news_panel(p, &f, r, k, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
-        Tab::Markets => markets_panel(p, &f, r, k),
+        Tab::Markets => markets_panel(p, &f, &mut images, r, k, ui.markets, ui.good, accent),
         Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k, past),
     });
@@ -938,10 +1024,106 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
     }
 }
 
-fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize) {
-    p.spawn(text(f, "Prices against 1750, and the change over the last ten years.", 13.0, MUTED));
+/// A whole number with commas: 12,340.
+pub fn thousands(v: f32) -> String {
+    let digits = format!("{:.0}", v.abs());
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    if v < 0.0 { format!("-{out}") } else { out }
+}
+
+/// A count in the few characters there are beside a chart: 37, 1,204, 412k, 1.2m.
+fn short_count(v: f32) -> String {
+    if v >= 999_500.0 { format!("{:.1}m", v / 1e6) } else if v >= 9_999.5 { format!("{:.0}k", v / 1e3) } else { thousands(v) }
+}
+
+/// A quantity that may be small: 0.42, 3.6, 1,204, 412k.
+fn short_qty(v: f32) -> String {
+    if v >= 99.95 { short_count(v) } else if v >= 9.995 { format!("{v:.1}") } else { format!("{v:.2}") }
+}
+
+/// Room for a chart inside the side panel.
+const CHART_W: f32 = 342.0;
+
+/// A small round dot of a line's colour, for the key above a chart.
+fn key_dot(p: &mut ChildSpawnerCommands, c: Color) {
+    p.spawn((Node { width: Val::Px(8.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(c)));
+}
+
+/// The island as a whole, a chart each: its people, what a wage buys, how many
+/// live in towns, the railway and the works.
+fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, accent: Color) {
+    let year = r.y0 + k as i32;
+    p.spawn(text(f, &format!("The island as a whole, year by year. The marker and the figures are {year}."), 13.0, MUTED));
+    let acc = accent.to_srgba().to_u8_array();
+    let pct = |v: f32| format!("{:.0}%", v * 100.0);
+    let plain = |v: f32| format!("{v:.2}");
+    let km = |v: f32| format!("{} km", thousands(v));
+    let people = |v: f32| thousands(v);
+    type Fig<'a> = &'a dyn Fn(f32) -> String;
+    let rows: [(&str, &str, Fig, Fig); 5] = [
+        ("pop", "People", &people, &short_count),
+        ("real_wage", "What a wage buys (1750 = 1)", &plain, &plain),
+        ("urban_share", "Living in towns", &pct, &pct),
+        ("rail_km", "Railway", &km, &short_count),
+        ("firms", "Works and shops", &people, &short_count),
+    ];
+    for (name, label, now, side) in rows {
+        let vals = replay::yearly(r, name);
+        if !vals.iter().any(|v| v.is_finite()) {
+            continue;
+        }
+        p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|col| {
+            col.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, padding: UiRect::right(Val::Px(4.0)), ..default() }).with_children(|row| {
+                row.spawn(text(f, label, 15.0, INK));
+                row.spawn(text(f, &vals.get(k).filter(|v| v.is_finite()).map(|&v| now(v)).unwrap_or_default(), 15.0, INK));
+            });
+            let c = crate::chart::Chart { width: CHART_W, height: 58.0, line: &vals, second: None, accent: [acc[0], acc[1], acc[2]], mark: k, years: vals.len(), first_year: r.y0 };
+            crate::chart::spawn(col, f, images, &c, side, side);
+        });
+    }
+}
+
+/// A good's history, under its row: its price in ink and how much of it is
+/// made in the family's colour, each with a scale of its own.
+fn good_chart(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, name: &str, accent: Color) {
+    let price = replay::yearly(r, &format!("price_{name}"));
+    let made = replay::yearly(r, &format!("out_{name}"));
+    let acc = accent.to_srgba().to_u8_array();
+    let money = |v: f32| crate::overlay::coin(v);
+    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), padding: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(2.0), Val::Px(8.0)), margin: UiRect::bottom(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() }, BorderColor::all(RULE))).with_children(|col| {
+        col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::left(Val::Px(6.0)), ..default() }).with_children(|row| {
+            key_dot(row, INK);
+            let now = price.get(k).filter(|v| v.is_finite()).map(|&v| money(v)).unwrap_or_else(|| "none sold".into());
+            row.spawn((text(f, &format!("Price {now}"), 13.0, INK), Node { margin: UiRect::right(Val::Px(12.0)), ..default() }));
+            key_dot(row, accent);
+            let now = made.get(k).filter(|v| v.is_finite()).map(|&v| format!("{} a month", short_qty(v))).unwrap_or_else(|| "none".into());
+            row.spawn(text(f, &format!("Made {now}"), 13.0, accent));
+        });
+        let c = crate::chart::Chart { width: CHART_W, height: 88.0, line: &price, second: Some(&made), accent: [acc[0], acc[1], acc[2]], mark: k, years: price.len(), first_year: r.y0 };
+        crate::chart::spawn(col, f, images, &c, &money, &short_qty);
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, show: MarketsShow, open: Option<usize>, accent: Color) {
+    // two halves, chosen by a chip: the goods, or the island as a whole
+    p.spawn(Node { column_gap: Val::Px(5.0), margin: UiRect::bottom(Val::Px(2.0)), ..default() }).with_children(|row| {
+        for (label, s) in [("Goods", MarketsShow::Prices), ("The island", MarketsShow::Island)] {
+            family::chip_button(row, f, label, s == show, accent, MarketsChip(s));
+        }
+    });
+    if show == MarketsShow::Island {
+        return island_charts(p, f, images, r, k, accent);
+    }
+    p.spawn(text(f, "Prices against 1750, and the change over the last ten years. Click a good for its history.", 13.0, MUTED));
     let back = k.saturating_sub(10);
-    for g in &r.header.goods {
+    for (gi, g) in r.header.goods.iter().enumerate() {
         let name = format!("price_{}", g.name);
         let (Some(now), Some(first), Some(then)) = (replay::annual(r, &name, k), replay::annual(r, &name, 0), replay::annual(r, &name, back)) else { continue };
         if !(first > 0.0 && now > 0.0) {
@@ -949,8 +1131,16 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
         }
         let idx = now / first;
         let ch = if then > 0.0 { now / then - 1.0 } else { 0.0 };
-        let made = replay::annual(r, &format!("out_{}", g.name), k).unwrap_or(0.0);
-        p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|row| {
+        let is_open = open == Some(gi);
+        p.spawn((
+            Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() },
+            BackgroundColor(if is_open { PAPER_2 } else { Color::NONE }),
+            Interaction::default(),
+            FocusPolicy::Block,
+            RowHover { open: is_open },
+            GoodRow(gi),
+        ))
+        .with_children(|row| {
             row.spawn((text(f, &g.label, 14.5, INK), Node { width: Val::Px(92.0), ..default() }));
             // a bar on a log scale from the 1750 price in the middle: dearer to the right, cheaper to the left
             row.spawn((Node { width: Val::Px(110.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(RULE))).with_children(|bar| {
@@ -965,8 +1155,10 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: 
             row.spawn((text(f, &format!("{:.2}", idx), 13.5, INK), Node { width: Val::Px(40.0), ..default() }));
             let s = if ch.abs() < 0.03 { "steady".to_string() } else if ch > 0.0 { format!("up {:.0}%", ch * 100.0) } else { format!("down {:.0}%", -ch * 100.0) };
             row.spawn((text(f, &s, 13.0, MUTED), Node { width: Val::Px(64.0), ..default() }));
-            let _ = made;
         });
+        if is_open {
+            good_chart(p, f, images, r, k, &g.name, accent);
+        }
     }
     // what investors are building now
     let year = r.y0 + k as i32;

@@ -128,12 +128,20 @@ pub struct Replay {
     pub inten: Vec<u8>,
     pub trans: Vec<u8>,
     pub catch: Vec<u8>,
+    /// land rent of every cell by year, on the record's log scale (see `rent_of`); empty if the run has none
+    pub rent: Vec<u8>,
+    /// path cost from every cell to its market town by year, in quarter units (255: no way there)
+    pub dist: Vec<u8>,
     pub mix_a: Vec<u8>,
     pub mix_b: Vec<u8>,
     pub mix_s: Vec<u8>,
     pub town_active: Vec<u8>,
     pub town_pop: Vec<f32>,
     pub town_urban: Vec<f32>,
+    /// the year's mean wage in every town, `[year, town]`; empty if the run has none
+    pub town_wage: Vec<f32>,
+    /// the year's mean price of every good in every town, `[year, town, good]`
+    pub town_price: Vec<f32>,
     pub firm_first: Vec<i32>,
     pub firm_len: Vec<i32>,
     pub firm_off: Vec<i32>,
@@ -203,6 +211,12 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     let series_len = across("series")?;
     let series_names = header.series.names.clone();
     let has_mix = header.arrays.iter().any(|a| a.name == "mix_a");
+    // what the map overlays read; a run without them still plays, and the overlays say so
+    let has = |name: &str| header.arrays.iter().any(|a| a.name == name);
+    let rent = if has("rent") { u8s("rent")? } else { Vec::new() };
+    let dist = if has("dist") { u8s("dist")? } else { Vec::new() };
+    let town_wage = if has("town_wage") { f32s("town_wage")? } else { Vec::new() };
+    let town_price = if has("town_price") { f32s("town_price")? } else { Vec::new() };
     let use_ = u8s("use")?;
     let (mix_a, mix_b, mix_s) = if has_mix {
         (u8s("mix_a")?, u8s("mix_b")?, u8s("mix_s")?)
@@ -231,12 +245,16 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         inten: u8s("inten")?,
         trans: u8s("trans")?,
         catch: u8s("catch")?,
+        rent,
+        dist,
         mix_a,
         mix_b,
         mix_s,
         town_active: u8s("town_active")?,
         town_pop: f32s("town_pop")?,
         town_urban: f32s("town_urban")?,
+        town_wage,
+        town_price,
         firm_first: i32s("firm_first")?,
         firm_len: i32s("firm_len")?,
         firm_off: i32s("firm_off")?,
@@ -250,6 +268,12 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     })
 }
 
+/// The rent a cell's land earns in a month, from the record's byte: 0 is no
+/// rent, and 1 to 255 run from 0.001 to 1000 on a log scale (`record::layers`).
+pub fn rent_of(byte: u8) -> f32 {
+    if byte == 0 { 0.0 } else { 10f32.powf(byte as f32 / 255.0 * 6.0 - 3.0) }
+}
+
 /// Capacity of firm `f` in year index `k` (0 when it does not exist that year).
 pub fn firm_k(r: &Replay, f: usize, k: usize) -> f32 {
     // a works founded this year in a live game is in the family's books
@@ -260,6 +284,20 @@ pub fn firm_k(r: &Replay, f: usize, k: usize) -> f32 {
         return 0.0;
     }
     r.firm_k.get((off + k - first) as usize).copied().unwrap_or(0.0)
+}
+
+/// The annual means of a named series for every year there is so far, for a
+/// chart: NaN where a year has no figure, and empty if the run has no such series.
+pub fn yearly(r: &Replay, name: &str) -> Vec<f32> {
+    let Some(i) = r.series_names.iter().position(|s| s == name) else { return Vec::new() };
+    let row = &r.series[i * r.series_len..(i + 1) * r.series_len];
+    (0..r.filled.min(r.ny))
+        .map(|k| {
+            let months = &row[(k * 12).min(row.len())..((k + 1) * 12).min(row.len())];
+            let (sum, n) = months.iter().filter(|v| v.is_finite()).fold((0.0f32, 0), |(s, n), v| (s + v, n + 1));
+            if n > 0 { sum / n as f32 } else { f32::NAN }
+        })
+        .collect()
 }
 
 /// Annual mean of a named monthly series, or None if the run does not have it.

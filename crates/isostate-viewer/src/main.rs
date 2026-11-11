@@ -11,6 +11,7 @@
 
 mod boats;
 mod carts;
+mod chart;
 mod cursor;
 mod family;
 mod fields;
@@ -21,6 +22,7 @@ mod live;
 mod look;
 mod meshkit;
 mod network;
+mod overlay;
 mod plan;
 mod rails;
 mod replay;
@@ -113,6 +115,8 @@ struct Args {
     loupe: u32,
     /// how far the lab turns each thing about its own middle, in degrees
     lab_turn: Option<f32>,
+    /// the map overlay to start with: rent, areas, reach, price (or price:coal), wages
+    overlay: Option<String>,
     /// steps to play as a player would, printing what happens (see script.rs)
     script: Option<String>,
 }
@@ -129,6 +133,10 @@ struct ShotSpec {
     season: Option<f32>,
     /// which side panel to show: Some(None) closes it
     tab: Option<Option<ui::Tab>>,
+    /// the map overlay for this shot, as `overlay::parse` reads it
+    overlay: Option<String>,
+    /// what the Markets panel shows, as `ui::markets_word` knows it: "island" or "open:GOOD"
+    markets: Option<String>,
 }
 
 const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
@@ -155,13 +163,17 @@ With no run named, a new game starts.
   --no-tilt            no miniature focus
   --season F           hold the season: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
   --pick X,Z           start with this spot clicked
+  --overlay NAME       start with a map view: rent, areas, reach, price, price:GOOD, wages
+                       or plain
   --describe X,Z       print what a click there would show, and stop
 
 Pictures and checks with no window:
 
-  --view PATH,YEAR,X,Z,YAW,PITCH,DIST[,SEASON][,PANEL]
+  --view PATH,YEAR,X,Z,YAW,PITCH,DIST[,SEASON][,WORDS]
                        a picture; give it once for each. Empty values fall back to
-                       the opening view; PANEL is family, holdings, markets, news or none
+                       the opening view. WORDS, in any order: a panel (family, holdings,
+                       markets, news or none), a map view as for --overlay, and island
+                       or open:GOOD for what the Markets panel shows
   --shot PATH          a picture of the opening view
   --wait S             seconds before the first picture, for shaders to compile (45)
   --frames N           frames to let a picture settle (40)
@@ -264,6 +276,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         lab_tilt: false,
         loupe: 1,
         lab_turn: None,
+        overlay: None,
         script: None,
     };
     let mut i = 0;
@@ -307,6 +320,14 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--pick" => { a.pick = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
+            "--overlay" => {
+                let w = next(i)?;
+                if !overlay::is_word(&w) {
+                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain"));
+                }
+                a.overlay = Some(w);
+                i += 1;
+            }
             "--script" => { a.script = Some(next(i)?); i += 1; }
             "--season" => { a.season = Some(number(opt, &next(i)?)?); i += 1; }
             "--shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); i += 1; }
@@ -326,7 +347,8 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--turn" => { a.lab_turn = Some(number(opt, &next(i)?)?); i += 1; }
             "--describe" => { a.describe = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--view" => {
-                // path,year,x,z,yaw,pitch,dist[,season][,tab]: a number after dist is a season, a word a panel
+                // path,year,x,z,yaw,pitch,dist[,season][,words]: a number after dist is a season; a word
+                // is a panel, a map overlay, or what the Markets panel shows
                 let p: Vec<String> = next(i)?.split(',').map(String::from).collect();
                 // an empty value falls back; one that is not a number is refused
                 let num = |j: usize| -> Result<Option<f32>, String> {
@@ -335,6 +357,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
                         Some(s) => number(opt, s).map(Some),
                     }
                 };
+                let words: Vec<&String> = p.iter().skip(7).filter(|s| !s.is_empty() && s.parse::<f32>().is_err()).collect();
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
                     year: num(1)?.map(|y| y as i32),
@@ -343,7 +366,9 @@ fn parse(v: &[String]) -> Result<Args, String> {
                     pitch: num(5)?.unwrap_or(shots::PLAY_PITCH),
                     dist: num(6)?,
                     season: p.iter().skip(7).find_map(|s| s.parse::<f32>().ok()),
-                    tab: p.iter().skip(7).find(|s| !s.is_empty() && s.parse::<f32>().is_err()).map(|s| ui::Tab::parse(s)),
+                    tab: words.iter().find(|s| !overlay::is_word(s) && !ui::markets_word(s)).map(|s| ui::Tab::parse(s)),
+                    overlay: words.iter().find(|s| overlay::is_word(s)).map(|s| s.to_string()),
+                    markets: words.iter().find(|s| ui::markets_word(s)).map(|s| s.to_string()),
                 });
                 i += 1;
             }
@@ -628,6 +653,14 @@ fn main() {
             eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
         }
     }
+    // an overlay word that cannot be shown is refused, so a mistyped shot is not taken for the plain map
+    // (a word that is no map view was refused with the options; a good is known only with the run)
+    for w in args.overlay.iter().chain(args.views.iter().filter_map(|v| v.overlay.as_ref())) {
+        if let Some(why) = overlay::complaint(w, &r) {
+            eprintln!("--overlay: {why}");
+            std::process::exit(2);
+        }
+    }
     let latest = r.filled.clamp(1, r.ny) - 1;
     let k0 = match args.year {
         Some(y) => ((y - r.y0).max(0) as usize).min(latest),
@@ -637,7 +670,15 @@ fn main() {
         // print what a click at this spot would show, then stop
         let hit = Vec3::new(x, world::height_at(&g, x, z), z);
         match choose(&r, &slots, &cen, hit, k0) {
-            Some(p) => println!("{}", describe(&r, p, k0)),
+            Some(p) => {
+                println!("{}", describe(&r, p, k0));
+                // with --overlay, what that overlay says of the spot, as the inspector would
+                if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
+                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0)) {
+                        println!("\n{line}");
+                    }
+                }
+            }
             None => println!("nothing there"),
         }
         return;
@@ -673,7 +714,7 @@ fn main() {
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
-        views.insert(0, ShotSpec { path, year: args.year, look: args.at, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
+        views.insert(0, ShotSpec { path, year: args.year, look: args.at, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None, overlay: None, markets: None });
     }
     // a picture (or a class map) whose directory is not there would be made and then not written
     for v in &views {
@@ -738,6 +779,8 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
+    let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
+    app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
@@ -754,6 +797,7 @@ fn main() {
         .init_resource::<Rails>()
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
+        .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
@@ -869,6 +913,7 @@ fn setup_world(
             year: year_cells.clone(),
             fixed: fixed_cells,
             paint: lk.land.uniform(),
+            overlay: images.add(overlay::blank(r)),
         },
     });
     for chunk in terrain::terrain_chunks(g) {
@@ -1492,6 +1537,7 @@ fn labels(
     data: Res<Data>,
     tl: Res<Timeline>,
     o: Res<Orbit>,
+    ov: Res<overlay::MapOverlay>,
     cams: Query<(&Camera, &GlobalTransform), With<MainCam>>,
     mut q: Query<(&TownLabel, &mut Node, &mut Visibility, &Children)>,
     mut boxes: Query<&Children, Without<TownLabel>>,
@@ -1503,7 +1549,8 @@ fn labels(
     // rank towns by size so only the bigger ones are named when zoomed out
     let mut order: Vec<(usize, f32)> = (0..r.n_towns).filter(|&t| r.town_active[k * r.n_towns + t] > 0).map(|t| (t, r.town_urban[k * r.n_towns + t])).collect();
     order.sort_by(|a, b| ui::biggest_first(a.1, b.1));
-    let max_shown = if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
+    // a map view that goes by market towns names every one of them
+    let max_shown = if ov.names_towns() { 99 } else if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
     let biggest = order.first().map(|x| x.1).unwrap_or(1.0).max(1.0);
     for (lab, mut node, mut vis, children) in &mut q {
         let t = lab.0;
@@ -1617,6 +1664,7 @@ fn take_shot(
     mut o: ResMut<Orbit>,
     mut ui: ResMut<UiState>,
     mut sm: ResMut<SeasonMats>,
+    mut ov: ResMut<overlay::MapOverlay>,
     data: Res<Data>,
     sheet: Option<Res<shots::Sheet>>,
     waiting: Res<PipelinesWaiting>,
@@ -1651,6 +1699,16 @@ fn take_shot(
         if ui.tab != tab {
             ui.tab = tab;
         }
+    }
+    if let Some((kind, good)) = v.overlay.as_deref().and_then(|w| overlay::parse(w, r)) {
+        let good = good.unwrap_or(ov.good);
+        if ov.kind != kind || ov.good != good {
+            ov.set(kind);
+            ov.good = good;
+        }
+    }
+    if let Some(w) = v.markets.as_deref() {
+        ui.show_markets(w, r);
     }
     let season = v.season.or(plan.default_season);
     if sm.forced != season {
@@ -1864,6 +1922,15 @@ fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: 
     None
 }
 
+/// The square a picked thing stands on.
+fn pick_cell(r: &Replay, what: Pick) -> usize {
+    match what {
+        Pick::Firm(f) => r.header.firms[f].cell,
+        Pick::Town(t) => r.header.towns[t].node,
+        Pick::Cell(c) => c,
+    }
+}
+
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
 
 fn describe(r: &Replay, what: Pick, k: usize) -> String {
@@ -1939,21 +2006,28 @@ fn inspect_panel(
     picked: Res<Picked>,
     tl: Res<Timeline>,
     data: Res<Data>,
+    ov: Res<overlay::MapOverlay>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
-    mut last: Local<Option<(Option<Pick>, usize)>>,
+    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    if *last == Some((picked.what, k)) {
+    let key = (picked.what, k, ov.kind, ov.good);
+    if *last == Some(key) {
         return;
     }
-    *last = Some((picked.what, k));
+    *last = Some(key);
     for mut v in &mut panel {
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
-        let s = describe(&data.r, w, k);
+        let mut s = describe(&data.r, w, k);
+        // with a map overlay on, what it says of this square
+        if let Some(line) = ov.said(&data.r, k, pick_cell(&data.r, w)) {
+            s.push_str("\n\n");
+            s.push_str(&line);
+        }
         let (head, body) = s.split_once('\n').unwrap_or((s.as_str(), ""));
         for mut t in &mut title {
             t.0 = head.to_string();
@@ -2107,6 +2181,13 @@ mod tests {
         let v = &a.views[1];
         assert_eq!((v.year, v.look, v.dist, v.season, v.tab), (None, None, None, None, Some(None)));
         assert_eq!((a.views[2].path.as_str(), a.views[2].tab), ("c.png", None));
+        // a view's words: a panel, a map view and what the Markets panel shows, in any order
+        let a = args("--overlay price:coal --view a.png,1850,,,,,,markets,price:coal,open:coal --view b.png,1850,,,,,,wages,0.0,island").unwrap();
+        assert_eq!(a.overlay.as_deref(), Some("price:coal"));
+        let v = &a.views[0];
+        assert_eq!((v.tab, v.overlay.as_deref(), v.markets.as_deref()), (Some(Some(ui::Tab::Markets)), Some("price:coal"), Some("open:coal")));
+        let v = &a.views[1];
+        assert_eq!((v.tab, v.overlay.as_deref(), v.markets.as_deref(), v.season), (None, Some("wages"), Some("island"), Some(0.0)));
         // the standard shots play the whole game first
         let a = args("--advance 20 --shots out/shots --shots-compare out/before --shots-note abc123").unwrap();
         assert_eq!((a.shots.as_deref(), a.shots_compare.as_deref(), a.shots_note.as_str(), a.advance), (Some("out/shots"), Some("out/before"), "abc123", usize::MAX - 1));
@@ -2163,6 +2244,9 @@ mod tests {
         assert_eq!(args("--shots").err().unwrap(), "--shots needs a value after it");
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
+        // map views (a good the run does not have is refused once the run is read)
+        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain");
+        assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
         // saved games
         assert_eq!(args("--load").err().unwrap(), "--load needs a value after it");
         assert_eq!(args("--new --save").err().unwrap(), "--save needs a value after it");
@@ -2176,7 +2260,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

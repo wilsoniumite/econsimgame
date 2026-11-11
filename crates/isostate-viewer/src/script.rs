@@ -6,7 +6,8 @@
 //! Steps, separated by semicolons:
 //!
 //!     key:NAME        press a key for one frame (Space, Left, Right, Up, Down,
-//!                     PageUp, PageDown, Escape, a letter or a digit)
+//!                     PageUp, PageDown, Escape, a letter or a digit; Shift+M
+//!                     with Shift held)
 //!     click:LABEL     click the button that says LABEL (the smallest thing on
 //!                     screen holding that text; a card open over it stops the click)
 //!     decide:N        click option N of the open decision, counting from 0
@@ -25,6 +26,19 @@
 //!     scroll:PIXELS   scroll the side panel down this far
 //!     shot:PATH       save a picture
 //!
+//! and for the map views and the Markets panel:
+//!
+//!     chip:NAME       click a chip of the legend card: rent, areas, reach,
+//!                     price, wages, plain, or pill for the Map views button
+//!                     that stands there while the map is plain
+//!     good:next       the legend's steps through the goods whose price is
+//!     good:back       mapped
+//!     row:GOOD        click a good's row in the Markets panel (row:coal)
+//!     half:island     click a chip of the Markets panel: the island's charts,
+//!     half:goods      or the goods
+//!     map[:NOTE]      let the panels catch up, then print in one line what
+//!                     the map and the Markets panel show
+//!
 //! The lines it prints start with "script:" and go to standard output.
 
 // see the note at the top of ui.rs
@@ -39,12 +53,14 @@ use bevy::ui::{FocusPolicy, ScrollPosition, UiSystems};
 use crate::family::FamilyView;
 use crate::game::{ActionButton, DecideButton, Game};
 use crate::live::Live;
-use crate::ui::{self, UiState};
+use crate::overlay::{GoodStep, MapOverlay, Overlay, OverlayChip};
+use crate::ui::{self, GoodRow, MarketsChip, MarketsShow, UiState};
 use crate::{world, Data, InspectActions, MainCam, Orbit, Picked, Timeline};
 
 #[derive(Clone, Debug, PartialEq)]
 enum Step {
-    Key(KeyCode),
+    /// the key, and whether Shift is held with it
+    Key(KeyCode, bool),
     Click(String),
     Decide(usize),
     Wait(f32),
@@ -58,7 +74,18 @@ enum Step {
     Look(f32, f32, f32),
     Scroll(f32),
     Shot(String),
+    /// a chip of the legend card: an overlay, or none for Plain map and the pill
+    Chip(String),
+    /// the legend's step through the goods: 1 on, -1 back
+    Good(i32),
+    /// a good's row in the Markets panel, by name
+    Row(String),
+    Half(MarketsShow),
+    Map(String),
 }
+
+/// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
+const CATCH_UP: u32 = 8;
 
 /// What a `sample` step counted.
 #[derive(Default)]
@@ -92,7 +119,8 @@ struct Script {
     begun: bool,
     until: f32,
     frames: u32,
-    key: Option<KeyCode>,
+    /// the keys held this frame, to be let go of in the next
+    keys: Vec<KeyCode>,
     clicked: Option<Entity>,
     tally: Tally,
     image: Handle<Image>,
@@ -121,7 +149,9 @@ fn key_code(name: &str) -> Option<KeyCode> {
         "d" => KeyCode::KeyD,
         "e" => KeyCode::KeyE,
         "f" => KeyCode::KeyF,
+        "g" => KeyCode::KeyG,
         "h" => KeyCode::KeyH,
+        "m" => KeyCode::KeyM,
         "q" => KeyCode::KeyQ,
         "r" => KeyCode::KeyR,
         "s" => KeyCode::KeyS,
@@ -139,7 +169,13 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
         let num = |what: &str| arg.parse::<f32>().map_err(|_| format!("{part}: {what} must be a number"));
         let nums = || arg.split(',').map(|v| v.trim().parse::<f32>()).collect::<Result<Vec<f32>, _>>().map_err(|_| format!("{part}: numbers separated by commas"));
         steps.push(match word {
-            "key" => Step::Key(key_code(arg).ok_or_else(|| format!("{part}: no key called {arg}"))?),
+            "key" => {
+                let (shift, name) = match arg.split_once('+') {
+                    Some((with, name)) if with.eq_ignore_ascii_case("shift") => (true, name),
+                    _ => (false, arg),
+                };
+                Step::Key(key_code(name).ok_or_else(|| format!("{part}: no key called {name}"))?, shift)
+            }
             "click" if !arg.is_empty() => Step::Click(arg.to_string()),
             "decide" => Step::Decide(num("the option")? as usize),
             "wait" => Step::Wait(num("the seconds")?),
@@ -159,6 +195,20 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             },
             "scroll" => Step::Scroll(num("the pixels")?),
             "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
+            "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') => Step::Chip(arg.to_ascii_lowercase()),
+            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, wages, plain and pill")),
+            "good" => match arg.to_ascii_lowercase().as_str() {
+                "next" => Step::Good(1),
+                "back" => Step::Good(-1),
+                _ => return Err(format!("{part}: good:next or good:back")),
+            },
+            "row" if !arg.is_empty() => Step::Row(arg.to_string()),
+            "half" => match arg.to_ascii_lowercase().as_str() {
+                "island" => Step::Half(MarketsShow::Island),
+                "goods" => Step::Half(MarketsShow::Prices),
+                _ => return Err(format!("{part}: half:island or half:goods")),
+            },
+            "map" => Step::Map(arg.to_string()),
             _ => return Err(format!("{part}: not a step (see the top of script.rs)")),
         });
     }
@@ -171,7 +221,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
 /// Add the scripted run to the app, or say what is wrong with the script.
 pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> {
     let steps = parse(script)?;
-    app.insert_resource(Script { steps, at: 0, begun: false, until: 0.0, frames: 0, key: None, clicked: None, tally: Tally::default(), image: Handle::default(), closing: None })
+    app.insert_resource(Script { steps, at: 0, begun: false, until: 0.0, frames: 0, keys: Vec::new(), clicked: None, tally: Tally::default(), image: Handle::default(), closing: None })
         .add_systems(PostStartup, move |mut commands: Commands, mut images: ResMut<Assets<Image>>, mut sc: ResMut<Script>, cams: Query<Entity, With<MainCam>>| {
             // with no window, the camera draws into a picture the shot step can save
             let mut img = Image::new_target_texture(size.0, size.1, TextureFormat::Rgba8UnormSrgb, None);
@@ -316,6 +366,33 @@ fn print_state(world: &mut World, note: &str) {
     }
 }
 
+/// What the map and the Markets panel show, in one line.
+fn print_map(world: &World, note: &str) {
+    let (ov, ui, data) = (world.resource::<MapOverlay>(), world.resource::<UiState>(), world.resource::<Data>());
+    let good = |i: usize| data.r.header.goods.get(i).map_or("?", |g| g.name.as_str());
+    let map = ov.kind.map_or("plain".to_string(), |k| format!("{k:?}").to_lowercase());
+    let half = if ui.markets == MarketsShow::Island { "island" } else { "goods" };
+    let panel = ui.tab.map_or("none".to_string(), |t| format!("{t:?}").to_lowercase());
+    println!(
+        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}",
+        if note.is_empty() { String::new() } else { format!("[{note}] ") },
+        good(ov.good),
+        ui.good.map_or("none", good)
+    );
+}
+
+/// The thing of one kind that the pointer could reach, chosen by `want`: on
+/// screen, and not under an open card.
+fn find_marked<C: Component>(world: &mut World, what: &str, want: impl Fn(&C) -> bool) -> Result<Entity, String> {
+    let mut q = world.query::<(Entity, &C)>();
+    let all: Vec<Entity> = q.iter(world).filter(|(_, c)| want(c)).map(|(e, _)| e).collect();
+    let Some(e) = all.into_iter().find(|&e| shown(world, e)) else { return Err(format!("{what}: nothing to press")) };
+    if root_z(world, e) < cover_z(world) {
+        return Err(format!("{what} is under an open card and cannot be clicked"));
+    }
+    Ok(e)
+}
+
 fn sample(world: &mut World, t: &mut Tally) {
     let (k, latest) = clock_year(world);
     if t.frames == 0 {
@@ -366,7 +443,7 @@ fn keep_playing(world: &mut World, sc: &mut Script) -> bool {
         sc.tally.resume = false;
         if !world.resource::<Timeline>().playing {
             world.resource_mut::<ButtonInput<KeyCode>>().press(KeyCode::Space);
-            sc.key = Some(KeyCode::Space);
+            sc.keys.push(KeyCode::Space);
             return true;
         }
     }
@@ -408,8 +485,11 @@ fn run(world: &mut World) {
 
 fn step(world: &mut World, sc: &mut Script) {
     // let go of what the last frame pressed
-    if let Some(k) = sc.key.take() {
-        world.resource_mut::<ButtonInput<KeyCode>>().release(k);
+    if !sc.keys.is_empty() {
+        let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
+        for k in sc.keys.drain(..) {
+            keys.release(k);
+        }
         return;
     }
     if let Some(e) = sc.clicked.take() {
@@ -436,9 +516,14 @@ fn step(world: &mut World, sc: &mut Script) {
         let mut done = true;
         let mut frame = false;
         match st {
-            Step::Key(k) => {
-                world.resource_mut::<ButtonInput<KeyCode>>().press(k);
-                sc.key = Some(k);
+            Step::Key(k, shift) => {
+                let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
+                if shift {
+                    keys.press(KeyCode::ShiftLeft);
+                    sc.keys.push(KeyCode::ShiftLeft);
+                }
+                keys.press(k);
+                sc.keys.push(k);
                 frame = true;
             }
             Step::Click(label) => {
@@ -527,6 +612,48 @@ fn step(world: &mut World, sc: &mut Script) {
                 }
                 frame = true;
             }
+            Step::Chip(name) => {
+                // Plain map and the pill are the same chip: the one that asks for no overlay
+                let want: Option<Overlay> = crate::overlay::parse(&name, &world.resource::<Data>().r).and_then(|p| p.0);
+                match find_marked::<OverlayChip>(world, &format!("chip:{name}"), |c| c.0 == want) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Good(turn) => {
+                match find_marked::<GoodStep>(world, if turn < 0 { "good:back" } else { "good:next" }, |s| s.0 == turn) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Row(name) => {
+                let want = world.resource::<Data>().r.header.goods.iter().position(|g| g.name.eq_ignore_ascii_case(&name) || g.label.eq_ignore_ascii_case(&name));
+                match find_marked::<GoodRow>(world, &format!("row:{name}"), |g| Some(g.0) == want) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Half(half) => {
+                match find_marked::<MarketsChip>(world, if half == MarketsShow::Island { "half:island" } else { "half:goods" }, |c| c.0 == half) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Map(note) => {
+                if !sc.begun {
+                    sc.begun = true;
+                    sc.frames = CATCH_UP;
+                }
+                done = sc.frames == 0;
+                sc.frames = sc.frames.saturating_sub(1);
+                if done {
+                    print_map(world, &note);
+                }
+            }
             Step::Shot(path) => {
                 if !sc.begun {
                     sc.begun = true;
@@ -545,5 +672,41 @@ fn step(world: &mut World, sc: &mut Script) {
         if frame {
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_steps_of_both_kinds_are_read() {
+        let steps = parse("key:Space; wait:2;click:Next year;decide:1;frames:3;settle;sample:5;run:10;print:a note;tab:markets;pick:31.5,27.5;look:60,46,130;scroll:36;shot:out/a.png").unwrap();
+        assert_eq!(steps.len(), 14);
+        assert_eq!(steps[0], Step::Key(KeyCode::Space, false));
+        assert_eq!(steps[2], Step::Click("Next year".into()));
+        assert_eq!((&steps[6], &steps[7]), (&Step::Sample(5.0, false), &Step::Sample(10.0, true)));
+        assert_eq!(steps[10], Step::Pick(31.5, 27.5));
+        // the map views and the Markets panel
+        let steps = parse("key:M;key:Shift+M;key:shift+g;chip:rent;chip:Plain;chip:pill;good:next;good:back;row:coal;half:island;half:goods;map;map:after").unwrap();
+        assert_eq!(steps[..3], [Step::Key(KeyCode::KeyM, false), Step::Key(KeyCode::KeyM, true), Step::Key(KeyCode::KeyG, true)]);
+        assert_eq!(steps[3..6], [Step::Chip("rent".into()), Step::Chip("plain".into()), Step::Chip("pill".into())]);
+        assert_eq!(steps[6..9], [Step::Good(1), Step::Good(-1), Step::Row("coal".into())]);
+        assert_eq!(steps[9..], [Step::Half(MarketsShow::Island), Step::Half(MarketsShow::Prices), Step::Map(String::new()), Step::Map("after".into())]);
+    }
+
+    #[test]
+    fn a_step_that_is_not_one_is_refused() {
+        assert_eq!(parse("").err().unwrap(), "the script has no steps");
+        assert_eq!(parse("bogus").err().unwrap(), "bogus: not a step (see the top of script.rs)");
+        assert_eq!(parse("key:Nope").err().unwrap(), "key:Nope: no key called Nope");
+        assert_eq!(parse("key:Shift+Nope").err().unwrap(), "key:Shift+Nope: no key called Nope");
+        assert_eq!(parse("wait:long").err().unwrap(), "wait:long: the seconds must be a number");
+        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, plain and pill");
+        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, plain and pill");
+        assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
+        assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island or half:goods");
+        // steps are parted by semicolons: commas belong to pick and look
+        assert!(parse("key:M,key:M").is_err());
     }
 }
