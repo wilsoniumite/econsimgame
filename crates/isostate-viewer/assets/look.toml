@@ -371,13 +371,6 @@ bank_grass_shade = "#6c8546"
 bank_scree = "#b3ab9e"
 stone = "#b9ad97"
 viaduct_brick = "#a45f45"
-# a cutting: grass where it is shallow and rock where it is deep, each lit
-# on one side and in shade on the other, and the grass back of its banks
-cutting_grass_lit = "#93a660"
-cutting_grass_shade = "#6d7f49"
-cutting_rock_lit = "#b5ab97"
-cutting_rock_shade = "#857e70"
-cutting_back = "#86a056"
 tunnel_mouth = "#2a2522"
 # a plate girder bridge over a river
 girder = "#4c4f55"
@@ -440,7 +433,7 @@ outline_alpha = 0.95
 [sun]
 # which way the sun stands, in radians from due south (the camera's side at
 # the start), negative toward the west: -0.75 is south-west. The hedge
-# shadows painted on the ground and the lit side of a railway cutting assume
+# shadows painted on the ground and the lit side of a railway's bank assume
 # this south-west sun and do not follow a change here.
 turn = -0.75
 # how high it stands, in radians above the horizon: in midwinter, and how

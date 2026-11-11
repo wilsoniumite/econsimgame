@@ -184,7 +184,10 @@ and the ground, in the viewer (`isostate-viewer/src/rails.rs`). What stands
 beside the line is here (`rail.rs`, and the station in `town/`), and the
 `railway` sheet shows each by a length of track. Each stands with its front
 (+z) to the track; the viewer hands it a level site at the height of the
-rails.
+rails, on ground that lies within a little of that height and clear of every
+line (and builds a stone footing under it where the ground falls away), so a
+winding house or a shed must keep to the ground its constant says: the
+viewer sets that aside and nothing more.
 
 The sheets: `works-kinds` (every kind at size 3), `works-small` and
 `works-standard` (at 0.4 and 1, built early and late), `works-great` (at

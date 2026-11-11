@@ -671,7 +671,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let site = Site::on(ground(g, p.0, p.1), p.2, &height);
         works(&mut works_b, &mut smoke, &mut lanes, &site, &w, lk);
     }
-    // the railway's embankments, viaducts, cuttings, portals and bridges, and a
+    // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river
     let (rail_works, rail_smoke) = crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk);
     works_b.append(rail_works);

@@ -1714,6 +1714,55 @@ mod tests {
         assert_eq!(&k[1..4], &[Kind::Tunnel; 3]);
     }
 
+    /// A year's railway of one straight line along x at these heights over ground at nought.
+    fn one_line(over: &[f32]) -> RailYear {
+        let pts: Vec<Vec3> = over.iter().enumerate().map(|(i, &h)| Vec3::new(3.0 + i as f32 * 0.02, h, 5.5)).collect();
+        let n = pts.len();
+        let kind = classify(&pts, &vec![0.0; n], &vec![false; n], &vec![false; n]);
+        let line = Line { pts, ground: vec![0.0; n], kind, worked: vec![Worked::Plain; n], upland: vec![false; n] };
+        RailYear { lines: vec![line], building: Vec::new(), stops: HashMap::new(), stands: Vec::new(), works: OnceLock::new(), room: OnceLock::new() }
+    }
+
+    #[test]
+    fn the_railway_takes_the_ground_it_runs_on_and_its_banks() {
+        // on the ground: the bed and a little beside it
+        let ry = one_line(&[0.0; 40]);
+        assert!(ry.near(3.4, 5.5, 0.0) && ry.near(3.4, 5.5 + HALF, 0.0));
+        assert!(!ry.near(3.4, 5.56, 0.0) && ry.near(3.4, 5.56, 0.03));
+        // nowhere else on the island, in the same cell or far from it
+        assert!(!ry.near(3.4, 5.9, 0.016) && !ry.near(40.2, 17.5, 0.016) && !ry.near(3.4, 4.5, 0.016));
+        // on a bank it takes the bank's slopes too
+        let ry = one_line(&[0.06; 40]);
+        assert!(ry.near(3.4, 5.58, 0.0) && !ry.near(3.4, 5.7, 0.0));
+        // just across the edge of a cell from the line is still by the line
+        let ry = one_line(&[0.0; 40]);
+        let mut edge = one_line(&[0.0; 40]);
+        edge.lines[0].pts.iter_mut().for_each(|p| p.z = 6.01);
+        assert!(edge.near(3.4, 5.99, 0.0) && !ry.near(3.4, 5.99, 0.0));
+    }
+
+    #[test]
+    fn what_stands_by_the_line_holds_its_own_ground_and_no_more() {
+        use isostate_gen::rail;
+        // a shed whose front faces +z, its middle at the origin
+        let st = Stand { what: Standing::BankerShed, at: Vec3::new(10.0, 0.3, 20.0), yaw: 0.0 };
+        let (w, d) = rail::BANKER_SHED;
+        assert!(stand_holds(&st, Vec2::new(10.0 + 0.49 * w, 20.0 - 0.49 * d), 0.0));
+        assert!(!stand_holds(&st, Vec2::new(10.0 + 0.51 * w, 20.0), 0.0) && !stand_holds(&st, Vec2::new(10.0, 20.0 + 0.51 * d), 0.0));
+        // the track it faces runs clear of it, with the room a bed takes
+        let track = Vec2::new(10.0, 20.0 + 0.5 * d + rail::TRACK_CLEAR);
+        assert!(!stand_holds(&st, track, 0.8 * HALF));
+        // turned a quarter, its length lies along z
+        let turned = Stand { yaw: std::f32::consts::FRAC_PI_2, ..st };
+        assert!(stand_holds(&turned, Vec2::new(10.0, 20.0 + 0.45 * w), 0.0) && !stand_holds(&turned, Vec2::new(10.0 + 0.45 * w, 20.0), 0.0));
+        // and what the yards are told to keep off covers it
+        let mut ry = one_line(&[0.0; 4]);
+        ry.stands.push(st);
+        let grounds = ry.grounds();
+        assert_eq!(grounds.len(), 1);
+        assert!(grounds[0].1 >= 0.5 * w.hypot(d));
+    }
+
     #[test]
     fn the_rules_allow_what_the_track_is_drawn_to() {
         // two neighbouring points of a length may differ by no more than the ruling gradient
