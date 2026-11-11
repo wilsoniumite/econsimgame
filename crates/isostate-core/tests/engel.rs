@@ -75,6 +75,51 @@ fn the_budget_is_spent_exactly_at_every_income() {
 }
 
 #[test]
+fn odd_curves_and_lopsided_sets_still_spend_the_budget() {
+    // a richer set that is all comfort, and one that is all bread (an Engel curve
+    // run backwards); reference incomes from below subsistence to far above the
+    // island's; curves from nearly flat to nearly a step
+    let with = |line: &str| {
+        let at = DEFAULT_CONTENT_TOML.find("lord_shares").expect("the services table has lord_shares");
+        content_from_str(&format!("{}{line}\n{}", &DEFAULT_CONTENT_TOML[..at], &DEFAULT_CONTENT_TOML[at..])).unwrap()
+    };
+    let contents = [
+        default_content(),
+        with("shares_rich = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0]"),
+        with("shares_rich = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]"),
+    ];
+    for C in &contents {
+        let (_, unit) = service_mix(&prices(C, |g| 0.4 + 0.37 * ((g * 7 + 3) % 11) as f64), &C.props, 0.25);
+        let sub: f64 = (0..C.S).map(|s| C.subsistence[s] * unit[(0, s)]).sum();
+        for y_ref in [-1.0, 0.0, 0.5, 1.0, 1.3, 7.5, 1e6] {
+            for strength in [-2.0, 1e-3, 3.0, 500.0] {
+                let E = EngelParams { enabled: true, y_ref, strength };
+                let mut last = vec![0.0; C.S];
+                let mut y = 0.05;
+                while y < 400.0 {
+                    let budget = y * sub;
+                    let q = engel_q(C, &E, budget, &unit);
+                    let spent = spending(&q, &unit);
+                    let total: f64 = spent.iter().sum();
+                    assert!((total - budget).abs() <= 1e-12 * budget, "y_ref {y_ref}, strength {strength}, income {y}: {total} of {budget}");
+                    assert!(spent.iter().all(|v| v.is_finite() && *v >= 0.0), "y_ref {y_ref}, strength {strength}, income {y}: {spent:?}");
+                    // more income never buys less of anything, to rounding
+                    assert!((0..C.S).all(|s| spent[s] >= last[s] - 1e-12 * budget), "y_ref {y_ref}, strength {strength}, income {y}: a need lost");
+                    // a reference income under subsistence is taken as subsistence: up to
+                    // there, and with a curve of no strength everywhere, it is the port's rule
+                    if y <= y_ref.max(1.0) || strength <= 0.0 {
+                        let (port, _) = econ::les(&[budget], &unit, &C.subsistence, &C.shares);
+                        assert_eq!(bits(&q.data), bits(&port.data), "y_ref {y_ref}, strength {strength}, income {y}");
+                    }
+                    last = spent;
+                    y *= 1.07;
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn up_to_the_reference_income_it_is_the_ports_rule() {
     let C = default_content();
     for price in price_lists(&C) {

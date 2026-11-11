@@ -84,7 +84,8 @@ pub const RICH_SHARES: [(&str, f64); 6] =
 /// The richer set for a content file that has none: each need named in
 /// `RICH_SHARES` takes its share from there and a need that is not keeps the
 /// content's share; the named ones are then scaled so that the whole adds up to
-/// what `shares` adds up to. For the port's six needs that is `RICH_SHARES` as
+/// what `shares` adds up to (to nothing, if the needs it does not know already
+/// take the whole of it). For the port's six needs that is `RICH_SHARES` as
 /// written.
 pub fn default_shares_rich(names: &[String], shares: &[f64]) -> Vec<f64> {
     let named: Vec<Option<f64>> = names.iter().map(|n| RICH_SHARES.iter().find(|(r, _)| r == n).map(|&(_, v)| v)).collect();
@@ -92,10 +93,11 @@ pub fn default_shares_rich(names: &[String], shares: &[f64]) -> Vec<f64> {
     let want = pairwise_sum(shares);
     let known: f64 = named.iter().flatten().sum();
     let rest = pairwise_sum(&rich) - known;
-    if known > 0.0 && want > rest && (known + rest - want).abs() > 1e-12 {
+    if known > 0.0 && (known + rest - want).abs() > 1e-12 {
+        let scale = ((want - rest) / known).max(0.0);
         for (v, n) in rich.iter_mut().zip(&named) {
             if n.is_some() {
-                *v *= (want - rest) / known;
+                *v *= scale;
             }
         }
     }
@@ -340,6 +342,12 @@ mod tests {
         assert!((pairwise_sum(&rich) - 1.0).abs() < 1e-12);
         assert_eq!(rich[1], 0.2);
         assert!(rich[0] < 0.5 && rich[2] > 0.3);
+        // where the needs it does not know take every further shilling, the named ones get none
+        let rich = default_shares_rich(&names, &[0.0, 1.0, 0.0]);
+        assert_eq!(rich, vec![0.0, 1.0, 0.0]);
+        // and a content that names none of them keeps its own shares
+        let names: Vec<String> = ["bread", "light"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(default_shares_rich(&names, &[0.6, 0.4]), vec![0.6, 0.4]);
     }
 
     #[test]
