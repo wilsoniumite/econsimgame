@@ -59,6 +59,22 @@ what one thing looks like.
   `crates/isostate-viewer/assets/look.toml` and to `palette.rs`, named for
   what it is in the world, not for where the code uses it. `shade(c, k)`
   darkens or lightens a token for a face.
+- **Use a token for what it is named for: winter goes by it.** Nothing of
+  winter is built into a mesh. The viewer's material for what is built
+  (`solid`, and `flat`) lays winter on every face that looks to the sky, and
+  what it lays there is said by a mark each token carries in its alpha
+  (`colour::settles`; `Palette::mark_for_winter` sets them, `shade` and
+  `lerp` carry them along, and a solid mesh has no other use for alpha):
+  snow on anything unmarked (a roof, a wall's top, a stack of goods); frost,
+  and its green gone dull or to bare earth, on the `[ground]` tokens and what
+  grows on them (`foliage.hedge`, `foliage.vegetables`) and on a railway's own
+  ground; ice on `water.river`; and nothing on a fire or what is hot over one
+  (`iron.glow`, `iron.plate`, `iron.converter`, `smoke.soot`,
+  `smoke.stack_top`, `roofs.coke_ovens`, the charcoal clamp). So a furnace's
+  throat drawn in soot keeps clear of snow and one drawn in a roof's slate
+  would not. A new `[ground]` token must be named in `mark_for_winter` or the
+  crate does not build; a new token for something hot or wet must be added
+  there by hand. Never write an alpha of your own into `solid` or `flat`.
 - **Append only.** A generator adds to the buffers it is given and never
   clears or reads them: the game hands it the one buffer all the island's
   houses share.
@@ -294,7 +310,8 @@ After a change to a generator the viewer rebuilds in about eight seconds and
 one sheet takes about three, so edit, build, render, look is under fifteen.
 
 Options: `--season X` (0 midwinter, 0.5 midsummer, as the game has it: at 0
-the broadleaf trees are bare, at 0.8 they are gold),
+the broadleaf trees are bare and snow lies on what is built, drawn in the
+game's own material; at 0.8 the trees are gold),
 `--turn DEG` (each thing is turned 30 degrees to its right unless told
 otherwise, to show a gable as well as a front; `--turn 0` is square on),
 `--loupe N` (enlarge the close picture N times), `--tilt` (the tilt-shift

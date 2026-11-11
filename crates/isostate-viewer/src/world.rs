@@ -929,16 +929,6 @@ pub fn pick_class(r: &Replay, k: usize, c: usize, u255: f32) -> u8 {
     }
 }
 
-/// Share of a class in a cell's mix for year k (0..1).
-pub fn class_share(r: &Replay, k: usize, c: usize, class: u8) -> f32 {
-    let off = k * r.n + c;
-    let s = r.mix_s[off] as f32 / 255.0;
-    let mut v = 0.0;
-    if r.mix_a[off] == class { v += s; }
-    if r.mix_b[off] == class && r.mix_b[off] != r.mix_a[off] { v += 1.0 - s; }
-    v
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
