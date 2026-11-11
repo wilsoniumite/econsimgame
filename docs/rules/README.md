@@ -441,4 +441,6 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 ## Mechanisms under the game's rules
 
-None yet. One line each as they arrive: the name, its page, its switch.
+One line each as they arrive: the name, its page, its switch.
+
+- **The chronicle** ([chronicle.md](chronicle.md), `chronicle.enabled`): news that reads like a history. Why each item is news, the two to four a decade a history would keep, stories of towns and districts, and an end to the flood of the player's own works. It never touches the economy.
