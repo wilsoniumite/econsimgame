@@ -61,6 +61,10 @@ regional stories below, large closures, and hunger.
          "note": "12% below the peak of 1783, which is 8 years old (it needs 10% below a peak at least 8 years old)" }
 ```
 
+(Skelford's district was cut for Golddale in 1783, so its count starts
+again there; the story says "had 9,652 people in 1783", not "at their
+peak".)
+
 The numbers are rounded to six figures; they are for reading. Inventions,
 railways, new towns and the families' items have no `why`: they are things
 that happened, not tests that fired.
@@ -104,11 +108,20 @@ from the same prices and incomes that drove it:
 Towns are ranked with their districts (`st.pop`), not by the people inside
 the town (`st.urban_pop`), which is a quarter of that and too even between
 towns to rank by; hence "first town" and not "largest", and every such story
-says "X and its district". A new town takes people and pits from its
-neighbours' districts, so nothing is compared across a founding: peaks and
-places start again that year. A town in its first five years has no boom or
-closures story; a district that never held `min_people` (5,000) is not said
-to decline or to be the fastest-growing; a boom or a round of closures is not
+says "X and its district". A new town takes people and pits from the
+districts it is cut out of (`people::resettle_new_towns`), so nothing about
+it, or about the towns that held its ground the year before, is compared
+across its founding: their peaks start again that year, their coal and their
+decade's growth are not set against what they were, and the island's first
+and second places are seated afresh, without a story, if one of those towns
+held a place or was about to take one. The towns a founding did not touch
+keep their stories, so an island where towns go on being founded all century
+still has them (with `found_activity` raised until the last town is founded
+around 1850 or later, a run still tells 20 to 33 regional stories). A town
+in its first five years has no boom or closures story, and a new town that
+never grew past the people it was founded with is not said to decline: it
+did not take. A district that never held `min_people` (5,000) is not said to
+decline or to be the fastest-growing; a boom or a round of closures is not
 told of the same town again within `quiet_years` (15), and a decline only
 after a new peak. One story of a kind a year: if several towns qualify the
 one hit hardest leads and the others are named in its last sentence.
@@ -161,37 +174,44 @@ run failed. What moves:
 | `news_family` | | | 1,243 | 436 |
 | `news_milestone` | 11.1 | 16.5 | 11.8 | 18.4 |
 | `news_town` | 13.2 | 15.5 | 13.8 | 15.8 |
-| `news_region` | | 40.9 | | 38.6 |
-| `news_total` | 245.8 | 294.2 | 1,485 | 726 |
+| `news_region` | | 47.8 | | 47.5 |
+| `news_total` | 245.8 | 301.1 | 1,485 | 734.6 |
+
+Seeds 9 to 16, which nothing here was chosen on, say the same: again only
+the news counts differ and no run fails. Without families `news_region` is
+46.2 [39 .. 51] and `news_total` goes from 237.8 to 291; with six,
+`news_family` goes from 1,177 to 433, `news_region` is 42.5 [34 .. 48] and
+`news_total` goes from 1,416 to 723.
 
 And what a reader of the major feed meets, six families, the port's rules
 against the game's (`--example chronicle -- --seeds 1-8`):
 
 | per run, mean [least .. greatest] of 8 seeds | port | game |
 |---|---|---|
-| all items | 1,485 [1,324 .. 1,683] | 726 [698 .. 758] |
-| the major feed | 1,127 [981 .. 1,328] | 55.2 [53 .. 59] |
+| all items | 1,485 [1,324 .. 1,683] | 735 [707 .. 767] |
+| the major feed | 1,127 [981 .. 1,328] | 55.4 [53 .. 59] |
 | the major feed in a decade | 14 in the 1750s rising to 115 in the 1890s | 3.0 to 4.0, never under 2 or over 4 |
 | the player's own items | 1,051 [910 .. 1,254] | 244 [225 .. 260] |
 | of them major | all | 11.8 [10 .. 14] |
 
 Major items in a run by kind, port then game: the player's family 1,051 and
-12; markets (booms, gluts, slumps) 22 and 9; inventions 10
-and 9; slumps dated 11 and 9; regional stories none and 8; turning points 5
+12; markets (booms, gluts, slumps) 22 and 8; inventions 10
+and 9; slumps dated 11 and 9; regional stories none and 9; turning points 5
 and 4; new towns 14 and 2 (the decade's digest); milestones 6 and 2; the
 first railway 1 and 1; alarms 8 and none at the end (each has been dated by
 then).
 
-Of the 39 regional stories in a run, 8 are kept: about 2 each of coal booms,
-overtakings and closures, 1.5 declines, 1 fastest-growing town.
+Of the 48 regional stories in a run, 9 are kept: 2.5 overtakings, 2.4 coal
+booms, 2.2 declines, 1 fastest-growing town and 0.8 rounds of closures (of
+4.1, 6.0, 16.5, 10.6 and 10.2 told).
 
 Seed 7 with six families, three decades of the major feed as it now reads:
 
 ```text
 The 1790s
-  1791  Town and country Skelford in decline
-        Skelford and its district had 9,652 people at their peak in 1783. There are 8,496 now, 12% fewer.
-        Its people leave for Melbourne, where a household's income goes 10% further.
+  1791  Town and country Granness overtakes Etherside as the island's second town
+        Granness and its district have 22,001 people to Etherside's 20,427. In ten years Granness has grown
+        by 8% and Etherside has shrunk by 1%. Granness supplies 23% of the island's rails.
   1791  Your family      Henry Fairfax heads the family
         Henry follows Anne Fairfax, who died at 77 and is buried at Melbourne, the family's seat.
   1795  Milestone        Real output doubles since 1750–54
@@ -263,3 +283,23 @@ The 1810s
 - **Events have no stable id.** `rekept` names an event by its place in the
   run's list, which works because the list only grows. Saving and loading a
   game would need the same order kept.
+- **A works ordered by hand may get no toast.** The event is what it was
+  (0.6), but the toasts now ask for the mark, and the family has one place a
+  decade: if a succession or a new trade already holds it, the works the
+  player has just ordered is in the family's list and nowhere else. If that
+  feels like silence, the toasts could also show the player's own items at
+  0.6 or more (about one every three years); it is one condition in
+  `main.rs`.
+- **What fills a thin decade.** A finished decade with fewer than two items
+  at 0.6 takes the best of what is left above 0.45, and with families that
+  can be the player's everyday news (a birth, at 0.5). It has not happened
+  on seeds 1 to 16, where no decade is that thin.
+- **Districts move without foundings too.** Roads and railways shift cells
+  between districts every year. People do not move with them, so the stories
+  about people are safe; a district's coal does, so a "coal boom" can be
+  partly a railway redrawing whose pits are whose. The story says when a
+  line has just reached the town.
+- **Settings far from the defaults give nonsense, not a crash.** With every
+  threshold at zero, or huge, or negative, runs finish (three seeds each):
+  the stories are five hundred a run, or none. `closures_min = 0` used to
+  stop the run and no longer does.

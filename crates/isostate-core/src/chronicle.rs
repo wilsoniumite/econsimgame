@@ -627,7 +627,14 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
     }
     let (now, then) = (ch.coal[k][t], ch.coal[k - back][t]);
     let name = &st.town_name[t];
-    let grew = if then > 0.0 { format!("{:.1} times the coal they raised in {was}", now / then) } else { format!("coal where none was raised in {was}") };
+    let grew = if then <= 0.0 {
+        format!("coal where none was raised in {was}")
+    } else if now / then >= 20.0 {
+        // a pit or two five years ago: the multiple would be a number nobody can picture
+        format!("many times the coal they raised in {was}")
+    } else {
+        format!("{:.1} times the coal they raised in {was}", now / then)
+    };
     // what carries it away, if that is new
     let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
     let carried = match line {
@@ -709,7 +716,17 @@ fn declines(st: &State, P: &Params, ch: &mut ChronicleState, year: i64, events: 
             if let Some(b) = best.filter(|&b| flow[(a, b)] > 0.0) {
                 let j = act[b];
                 let ratio = st.y_ratio[j] / st.y_ratio[t].max(1e-3);
-                let further = if ratio >= 2.0 { format!("more than {} times as far", number(ratio.floor() as usize)) } else { format!("{} further", fmt_pct((ratio - 1.0).max(0.0), 0)) };
+                let further = if ratio >= 10.0 {
+                    "many times as far".to_string()
+                } else if ratio >= 3.0 {
+                    format!("more than {} times as far", number(ratio.floor() as usize))
+                } else if ratio >= 2.0 {
+                    "more than twice as far".to_string()
+                } else if ratio >= 1.01 {
+                    format!("{} further", fmt_pct(ratio - 1.0, 0))
+                } else {
+                    "a little further".to_string()
+                };
                 reason = format!(" Its people leave for {}, where a household's income goes {further}.", st.town_name[j]);
             }
         }
