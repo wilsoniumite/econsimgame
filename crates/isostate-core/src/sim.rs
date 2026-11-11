@@ -418,7 +418,6 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         people::migration(st, C, P);
         tech::discovery(st, C, P, &mut rng.tech, year, events);
         founded = people::found_towns(st, C, P, &mut rng.people, year, events);
-        towns::new_town_year(st, P, &founded, &mut pbar, &mut wbar); // towns: a new town's year is its donor's
     } else {
         st.y_ratio = st.y_acc.iter().map(|v| v / 12.0).collect();
         st.y_acc.iter_mut().for_each(|v| *v = 0.0);
@@ -427,6 +426,9 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     tech::diffusion(st, C, P);
     st.cell_flow_year = st.cell_flow.clone();
     update_roads(st, C, P);
+    // towns: a new town's year is its donor's. Here, after whichever rule founds
+    // towns has run and while the market areas are still last year's
+    towns::new_town_year(st, P, &founded, &mut pbar, &mut wbar);
     st.prev_catch = st.catch.clone();
     land::update_transport(st, C, P);
     if !founded.is_empty() {

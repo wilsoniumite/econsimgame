@@ -93,8 +93,11 @@ impl Default for TownsParams {
         TownsParams {
             enabled: false,
             d_new: 300.0,
-            d_old: 600.0,
-            d_old_growth: 3.0,
+            // 530 puts the first towns on as many cells as the port gives them
+            // in 1750; 5 a year is for the game as it is played, where the
+            // town people grow ninefold by 1900 and not fivefold (towns.md)
+            d_old: 530.0,
+            d_old_growth: 5.0,
             tau: 30.0,
             works_room: 0.5,
             smooth: 0.5,
@@ -213,7 +216,8 @@ pub fn year_hands(st: &mut State, P: &Params) {
     st.town_hands_acc.iter_mut().for_each(|v| *v = 0.0);
 }
 
-/// `sim::yearly`, after `people::found_towns`: a town founded this year has no
+/// `sim::yearly`, once the year's towns are founded and before the market areas
+/// are worked out again: a town founded this year has no
 /// year behind it, so its mean wage is nothing and its mean prices are the first
 /// year's list. Left so, `land::sector_bids` prices the land round it for a year
 /// as if labour were free (rents of 1e9 and more) and entry reckons its works

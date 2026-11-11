@@ -262,6 +262,8 @@ fn a_town_keeps_its_ground_and_grows_from_it() {
     let mut before = s.st.urban.clone();
     let mut built = s.st.town_built.clone();
     let (mut left, mut joined, mut detached) = (0usize, 0usize, 0usize);
+    // the town reads last year's map for the pits it grows round
+    let mut use_before = s.st.land_use.clone();
     while s.year <= s.end_year {
         sim::run_year(&mut s).expect("money is conserved");
         let (st, year) = (&s.st, s.year - 1);
@@ -285,17 +287,21 @@ fn a_town_keeps_its_ground_and_grows_from_it() {
                 });
                 if !touches && !new_town {
                     detached += 1;
+                    let pit = |u: u8| u == land::USE_SECTOR0 + 5 || u == land::USE_SECTOR0 + 6;
+                    let by_pit = (0..st.N).any(|d| pit(use_before[d]) && (d as i64 / W - y).abs() <= 1 && (d as i64 % W - x).abs() <= 1);
+                    assert!(by_pit, "{year}: cell {c} joined {} without touching it, and no pit lies between", st.town_name[st.catch[c] as usize]);
                 }
             }
         }
         before = st.urban.clone();
+        use_before = st.land_use.clone();
         built = st.town_built.clone();
     }
     let end = town_cells(&s.st);
     assert!(end as f64 >= 1.4 * start as f64, "the towns grew from {start} cells to {end} in fifty years");
     assert!(joined >= end - start);
     assert!(left * 20 <= joined, "{left} cells left town ground while {joined} joined: ground is kept");
-    assert!(detached * 20 <= joined, "{detached} of {joined} new cells did not touch their town");
+    assert!(detached * 10 <= joined, "{detached} of {joined} new cells did not touch their town");
     // the port's towns stand on about as many cells in 1800 as in 1750
     let port = sim::run_with(&without(7, 0, 1800), default_content(), false, true).expect("money is conserved");
     assert!(end as f64 > 1.5 * town_cells(&port.state) as f64, "{end} cells against the port's {}", town_cells(&port.state));
