@@ -5,13 +5,15 @@
 //! There is one autosave for each island and number of families,
 //! `island-7-families-6.json`, in a folder of the player's own. Beside it are
 //! the last few it replaced (`.1.json` the newest) and, once a new game has
-//! been started on the same island, the game before it (`.previous.json`).
+//! been started on the same island, the game before it (`.previous.json`) and
+//! the few before that (`.previous.2.json` and on).
 
 use std::path::{Path, PathBuf};
 
 use isostate_core::save::Save;
 
-/// How many earlier autosaves are kept beside the latest.
+/// How many earlier autosaves are kept beside the latest, and how many
+/// earlier games on the same island.
 pub const KEPT: usize = 3;
 
 /// The folder for saved games: `ISOSTATE_SAVES` if set; else the usual place
@@ -59,6 +61,11 @@ pub fn earlier(path: &Path, n: usize) -> PathBuf {
 /// The game that was on this island before a new one was started.
 pub fn previous(path: &Path) -> PathBuf {
     beside(path, "previous")
+}
+
+/// The n-th game back that was on this island (1 is `previous`).
+pub fn game_before(path: &Path, n: usize) -> PathBuf {
+    if n <= 1 { previous(path) } else { beside(path, &format!("previous.{n}")) }
 }
 
 pub fn read(path: &Path) -> Result<Save, String> {
@@ -120,8 +127,16 @@ impl Saver {
         }
         if !self.settled {
             // another game's save is here (a new game on the same island, or a
-            // file named with --save): it is set aside whole, not written over
+            // file named with --save): it is set aside whole, not written over,
+            // and so are the few set aside before it, so that starting a new
+            // game twice by mistake does not lose the one that mattered
             if read(path).is_ok_and(|old| old.started != save.started || old.seed != save.seed || old.families != save.families) {
+                for n in (1..KEPT).rev() {
+                    let from = game_before(path, n);
+                    if from.exists() {
+                        std::fs::rename(&from, game_before(path, n + 1)).map_err(told)?;
+                    }
+                }
                 std::fs::rename(path, previous(path)).map_err(told)?;
                 // its earlier saves are years the one set aside already holds
                 for n in 1..=KEPT {
@@ -205,6 +220,8 @@ mod tests {
         let p = Path::new("x").join("island-7-families-6.json");
         assert_eq!(earlier(&p, 2), Path::new("x").join("island-7-families-6.2.json"));
         assert_eq!(previous(&p), Path::new("x").join("island-7-families-6.previous.json"));
+        assert_eq!(game_before(&p, 1), previous(&p));
+        assert_eq!(game_before(&p, 2), Path::new("x").join("island-7-families-6.previous.2.json"));
         assert_eq!(autosave(7, 6).file_name().unwrap(), "island-7-families-6.json");
     }
 
@@ -267,6 +284,15 @@ mod tests {
         new.write(&save(2, 1751), true).unwrap();
         assert_eq!(files(&dir), ["game.1.json", "game.json", "game.previous.json"]);
         assert_eq!(read(&previous(&path)).unwrap().year, 1791, "the game set aside is left alone after that");
+        // more new games: the last few set aside are all kept, the newest first, and no more than that
+        for started in 3..=6 {
+            Saver::new(path.clone()).write(&save(started, 1750), true).unwrap();
+        }
+        assert_eq!(files(&dir), ["game.json", "game.previous.2.json", "game.previous.3.json", "game.previous.json"]);
+        assert_eq!(read(&path).unwrap().started, 6);
+        assert_eq!(read(&previous(&path)).unwrap().started, 5);
+        assert_eq!(read(&game_before(&path, 2)).unwrap().started, 4);
+        assert_eq!(read(&game_before(&path, 3)).unwrap().started, 3);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

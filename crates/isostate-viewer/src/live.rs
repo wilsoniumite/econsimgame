@@ -286,10 +286,15 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         None if o.shots => None,
         None => Some(Saver::new(saves::autosave(game.sim.params.seed, game.sim.params.n_families))),
     };
-    if let (Some(s), Some(_)) = (&mut saver, &o.save) {
-        // a place that was named is written at once, to say now if it cannot be
-        s.write(&game.save(saves::now()), true)?;
-        eprintln!("saved in {}: {}", game.last_year(), s.path.display());
+    match (&mut saver, &o.save) {
+        (Some(s), Some(_)) => {
+            // a place that was named is written at once, to say now if it cannot be
+            s.write(&game.save(saves::now()), true)?;
+            eprintln!("saved in {}: {}", game.last_year(), s.path.display());
+        }
+        // the autosave is first written when something happens in the game
+        (Some(s), None) => eprintln!("the game is kept in {}", s.path.display()),
+        (None, _) => {}
     }
 
     let (tx_cmd, rx_cmd) = mpsc::channel::<Cmd>();
