@@ -28,7 +28,7 @@ Started before this file existed, and left to finish. I went through them for wo
 | The production tree's first stage (core) | 8, in part | `night/tree` | being built |
 | Months that step, and slower speeds (viewer) | 10 | `night/calendar` | being built |
 | Railways with one continuous profile (viewer) | 12 | `night/rails` | being built |
-| Towns drawn from the ground they keep (viewer) | 14 | `night/town-ground` | being built |
+| Towns drawn from the ground they keep (viewer) | 14 | `night/town-ground` | being built; its first helper was cut off at 17:03 and a second carries on from the saved work |
 | Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | being built |
 | Wood and heath edges at mid distance (viewer) | 5 | `night/wood-edges` | being built |
 | Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | being built |
