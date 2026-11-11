@@ -14,13 +14,9 @@
 
 use super::*;
 use bevy::math::Vec2;
+use isostate_gen::houses::{self, storeys, Cottage, Terrace, Townhouse};
+use isostate_gen::town;
 use std::collections::HashMap;
-
-/// Packed earth and setts for the back streets, and stone for the market place.
-const STREET: u32 = 0xc4ad87;
-const SQUARE: u32 = 0xd8cdb6;
-/// Brick for terraces, from fresh red to sooty brown.
-const BRICK: [u32; 4] = [0xb5634c, 0xa65a45, 0xc07a5a, 0x96574a];
 
 /// Where a road enters town and what lies along it, in world units.
 const BACK_LANE: f32 = 0.13;
@@ -116,11 +112,11 @@ fn station_at(s: &Square) -> Vec2 {
     s.at + Vec2::new(o.x, o.z)
 }
 
-pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32)>>) {
+pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32)>>) {
     for s in squares(r, cen, k) {
         let node = r.header.towns[s.town].node;
         // the market place, paved, with a cross or a hall in the middle
-        let paving = hex(SQUARE);
+        let paving = *lk.ground.market_paving;
         let n: usize = 9;
         let mut ring = Vec::new();
         for i in 0..n {
@@ -135,29 +131,17 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, ho
         }
         let m = ground(g, s.at.x, s.at.y);
         if s.big {
-            // a market hall on stone pillars
-            let stone = hex(0xddd5c4);
-            for (dx, dz) in [(-0.016, -0.01), (0.016, -0.01), (-0.016, 0.01), (0.016, 0.01)] {
-                let q = bevy::math::Quat::from_rotation_y(s.yaw);
-                let o = q * Vec3::new(dx, 0.0, dz);
-                houses.beam(m + o, m + o + Vec3::Y * 0.014, 0.004, stone);
-            }
-            houses.block(m + Vec3::Y * 0.014, 0.044, 0.03, 0.012, s.yaw, hex(0xf0dcb8), None, 0.0);
-            houses.gable(m + Vec3::Y * 0.014, 0.044, 0.03, 0.012, 0.014, s.yaw, 0.003, hex(0xb5523f), hex(0xf0dcb8));
+            town::market_hall(houses, &Site::level(m, s.yaw), lk);
         } else {
-            // a market cross on its steps
-            let stone = hex(0xd9d0be);
-            houses.block(m, 0.016, 0.016, 0.004, s.yaw, stone, Some(stone), 0.0);
-            houses.beam(m, m + Vec3::Y * 0.03, 0.0035, stone);
-            houses.beam(m + Vec3::new(-0.006, 0.024, 0.0), m + Vec3::new(0.006, 0.024, 0.0), 0.003, stone);
+            town::market_cross(houses, &Site::level(m, s.yaw), lk);
         }
         let c = church_at(&s);
-        church(houses, ground(g, c.x, c.y), s.yaw + std::f32::consts::FRAC_PI_2, s.big);
+        town::church(houses, &Site::level(ground(g, c.x, c.y), s.yaw + std::f32::consts::FRAC_PI_2), s.big, lk);
         plots.entry(node).or_default().push((c.x, c.y));
         plots.entry(node).or_default().push((s.at.x, s.at.y));
         if r.trans[k * r.n + node] & 4 != 0 {
             let st = station_at(&s);
-            station(houses, ground(g, st.x, st.y), s.yaw);
+            town::station(houses, &Site::level(ground(g, st.x, st.y), s.yaw), lk);
             plots.entry(node).or_default().push((st.x, st.y));
         }
         // a lighthouse if the town is a harbour: walk toward the sea to the waterline
@@ -180,7 +164,7 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, ho
                 lx = nx;
                 lz = nz;
             }
-            lighthouse(houses, ground(g, lx, lz));
+            town::lighthouse(houses, &Site::level(ground(g, lx, lz), 0.0), lk);
         }
     }
 }
@@ -253,7 +237,7 @@ fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Stree
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
+pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
     let sq = squares(r, cen, k);
     let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(church_at(s)) < 0.07 || p.distance(station_at(s)) < 0.07);
     let built = |p: Vec2, need: f32| -> bool {
@@ -268,7 +252,7 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
     let mut laid: Vec<(Street, Vec<(f32, f32)>)> = Vec::new();
     let mut street_pts: HashMap<(i32, i32), Vec<(Vec2, f32)>> = HashMap::new();
     let cell = |p: Vec2| ((p.x / 0.05).floor() as i32, (p.y / 0.05).floor() as i32);
-    let colour = hex(STREET);
+    let colour = *lk.ground.street_earth;
     for s in streets(r, cen, k, &sq) {
         let len = s.a.distance(s.b);
         let steps = ((len / 0.03).ceil() as usize).max(1);
@@ -428,15 +412,15 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
             }
         }
         if j - i >= 2 {
-            terrace(houses, smoke, g, &standing[i..j]);
+            terrace(houses, smoke, lk, g, &standing[i..j]);
         } else {
             for (pl, d, _) in &standing[i..j] {
                 // on the high streets and the market place a house is rebuilt as a
                 // townhouse of the full plot once its ground is dense enough, each at its own point
                 if pl.high && *d >= pl.need + 0.12 + 0.25 * pl.v {
-                    townhouse(houses, smoke, g, pl, *d);
+                    townhouse(houses, smoke, lk, g, pl, *d);
                 } else {
-                    cottage(houses, smoke, g, pl, *d);
+                    cottage(houses, smoke, lk, g, pl, *d);
                 }
             }
         }
@@ -454,116 +438,34 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
             continue;
         }
         let pl = Plot { p, yaw: (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2, run: (0, 0), row: None, high: false, index: 0, width: 0.05, depth: 0.036, need: 0.0, u: s.u, v: s.v };
-        cottage(houses, smoke, g, &pl, density(r, k, c));
+        cottage(houses, smoke, lk, g, &pl, density(r, k, c));
     }
 }
 
-/// A house standing on its own plot, a little narrower than the plot so the gaps show.
-fn cottage(houses: &mut Builder, smoke: &mut Builder, g: &Ground, pl: &Plot, dens: f32) {
-    let p = ground(g, pl.p.x, pl.p.y);
-    // each house adds a storey at its own density, so a street grows a house at a time
-    let storeys = 1.0 + ((dens >= 0.35 + 0.35 * pl.v) as u8 as f32) + ((dens >= 0.8 + 0.15 * pl.u) as u8 as f32);
-    let w = pl.width * (0.68 + 0.22 * pl.v);
-    let d = pl.depth * (0.9 + 0.2 * pl.u);
-    let yaw = pl.yaw + (pl.v - 0.5) * 0.08;
-    let wall = hex(WALLS[(pl.v * 6.0) as usize % 6]);
-    let roof = hex(ROOFS[(pl.u * 13.0) as usize % 5]);
-    house(houses, p, w, d, storeys, yaw, wall, roof);
-    windows(houses, p, w, d, storeys, yaw, 1, true);
-    if pl.u < 0.3 {
-        let cp = p + bevy::math::Quat::from_rotation_y(yaw) * Vec3::new(w * 0.3, 0.0, 0.0);
-        if pl.v > 0.8 {
-            smoking_chimney(houses, smoke, cp, 0.024 * storeys + 0.03, 0.004, pl.u * 7.0);
-        } else {
-            chimney(houses, cp, 0.024 * storeys + 0.03, 0.004);
-        }
-    }
+/// A house standing on its own plot. Each adds a storey at its own density,
+/// so a street grows a house at a time.
+fn cottage(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32) {
+    let seed = Seed::new(pl.u, pl.v);
+    let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), seed };
+    houses::cottage(houses, smoke, &Site::level(ground(g, pl.p.x, pl.p.y), pl.yaw), &c, lk);
 }
 
-/// A terraced row: one long block and roof over several plots, in brick, with a
-/// chimney stack on every party wall.
-fn terrace(houses: &mut Builder, smoke: &mut Builder, g: &Ground, row: &[(Plot, f32, i32)]) {
+/// A terraced row over several plots, raised a storey when its own ground is dense enough.
+fn terrace(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, row: &[(Plot, f32, i32)]) {
     let (a, b) = (row[0].0.p, row[row.len() - 1].0.p);
     let mid = (a + b) * 0.5;
-    let unit = row[0].0.width;
-    let len = a.distance(b) + unit * 0.96;
     let first = &row[0].0;
     let dens = row.iter().map(|(_, d, _)| *d).sum::<f32>() / row.len() as f32;
-    // a row is raised a storey when its own ground is dense enough
-    let storeys = if dens >= 0.78 + 0.2 * first.v { 3.0 } else { 2.0 };
     // ground under the row: the lower end, so it never floats
     let h = row.iter().map(|(pl, _, _)| world::height_at(g, pl.p.x, pl.p.y)).fold(f32::MAX, f32::min);
-    let p = Vec3::new(mid.x, h, mid.y);
-    let yaw = first.yaw;
-    let wall = hex(BRICK[(first.v * 4.0) as usize % 4]);
-    let roof = hex(if first.u < 0.75 { 0x55617a } else { 0xb5523f });
-    // terraces have lower roofs than cottages
-    let h = 0.024 * storeys;
-    houses.block(p, len, first.depth, h, yaw, wall, None, 0.03);
-    houses.gable(p, len, first.depth, h, first.depth * 0.36, yaw, 0.004, roof, wall);
-    windows(houses, p, len, first.depth, storeys, yaw, row.len(), true);
-    let q = bevy::math::Quat::from_rotation_y(yaw);
-    let top = h + first.depth * 0.36 * 0.55;
-    for i in 0..=row.len() {
-        let x = -len * 0.5 + len * i as f32 / row.len() as f32;
-        let cp = p + q * Vec3::new(x.clamp(-len * 0.5 + 0.004, len * 0.5 - 0.004), 0.0, 0.0);
-        if i == row.len() / 2 && first.u < 0.25 {
-            smoking_chimney(houses, smoke, cp, top + 0.012, 0.0045, first.v * 9.0);
-        } else {
-            houses.block(cp + Vec3::Y * top, 0.008, 0.006, 0.01, yaw, hex(0x8f4b3b), Some(hex(0x5a4036)), 0.0);
-        }
-    }
+    let seed = Seed::new(first.u, first.v);
+    let t = Terrace { houses: row.len(), length: a.distance(b) + first.width * 0.96, depth: first.depth, storeys: storeys::terrace(dens, seed), seed };
+    houses::terrace(houses, smoke, &Site::level(Vec3::new(mid.x, h, mid.y), first.yaw), &t, lk);
 }
 
-/// Windows and doors on both long faces: two windows a storey for each house in
-/// the block, and a door in place of one on the ground floor.
-fn windows(b: &mut Builder, p: Vec3, w: f32, d: f32, storeys: f32, yaw: f32, units: usize, door: bool) {
-    let q = bevy::math::Quat::from_rotation_y(yaw);
-    let glass = hex(0x414552);
-    let wood = hex(0x6a4632);
-    let unit = w / units as f32;
-    let (ww, wh) = ((unit * 0.16).min(0.007), 0.0075);
-    for side in [-1.0f32, 1.0] {
-        let z = side * (d * 0.5 + 0.0006);
-        for u in 0..units {
-            let cx = -w * 0.5 + unit * (u as f32 + 0.5);
-            for s in 0..(storeys as usize) {
-                let y = 0.024 * s as f32 + 0.0125;
-                for (k, dx) in [-unit * 0.24, unit * 0.24].into_iter().enumerate() {
-                    let (x0, x1, y0, y1, col) = if s == 0 && door && k == 1 && side > 0.0 {
-                        (cx + dx - ww * 0.5, cx + dx + ww * 0.5, 0.0005, 0.0145, wood)
-                    } else {
-                        (cx + dx - ww * 0.5, cx + dx + ww * 0.5, y - wh * 0.5, y + wh * 0.5, glass)
-                    };
-                    let c = [Vec3::new(x0, y0, z), Vec3::new(x1, y0, z), Vec3::new(x1, y1, z), Vec3::new(x0, y1, z)].map(|v| p + q * v);
-                    if side > 0.0 {
-                        b.quad(c[0], c[1], c[2], c[3], col);
-                    } else {
-                        b.quad(c[0], c[3], c[2], c[1], col);
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// A house in a continuous frontage: the full width of its plot, two or three
-/// storeys, its own colour and roof, so a high street reads as a row of separate houses.
-fn townhouse(houses: &mut Builder, smoke: &mut Builder, g: &Ground, pl: &Plot, dens: f32) {
-    let p = ground(g, pl.p.x, pl.p.y);
-    let storeys = 2.0 + ((dens >= 0.62 + 0.35 * pl.u) as u8 as f32);
-    let w = pl.width * 0.99;
-    let d = pl.depth * (0.95 + 0.15 * pl.u);
-    let wall = if pl.v < 0.25 { hex(BRICK[(pl.u * 4.0) as usize % 4]) } else { hex(WALLS[(pl.v * 6.0) as usize % 6]) };
-    let roof = hex(ROOFS[(pl.u * 13.0) as usize % 5]);
-    let h = 0.024 * storeys;
-    houses.block(p, w, d, h, pl.yaw, wall, None, 0.03);
-    houses.gable(p, w, d, h, d * (0.4 + 0.2 * pl.u), pl.yaw, 0.004, roof, wall);
-    windows(houses, p, w, d, storeys, pl.yaw, 1, true);
-    let cp = p + bevy::math::Quat::from_rotation_y(pl.yaw) * Vec3::new(w * 0.42, 0.0, 0.0);
-    if pl.u < 0.12 {
-        smoking_chimney(houses, smoke, cp, h + d * 0.3, 0.004, pl.v * 7.0);
-    } else {
-        chimney(houses, cp, h + d * 0.3, 0.004);
-    }
+/// A house in a continuous frontage: the full width of its plot, two or three storeys.
+fn townhouse(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32) {
+    let seed = Seed::new(pl.u, pl.v);
+    let t = Townhouse { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::townhouse(dens, seed), seed };
+    houses::townhouse(houses, smoke, &Site::level(ground(g, pl.p.x, pl.p.y), pl.yaw), &t, lk);
 }

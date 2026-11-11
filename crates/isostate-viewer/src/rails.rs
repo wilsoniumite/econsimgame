@@ -11,11 +11,12 @@
 //! Everything for a year is worked out once and kept, since the track, the
 //! structures and the trains all ask for it.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use bevy::math::{Quat, Vec2, Vec3};
 
-use crate::meshkit::{hex, shade, Builder};
+use crate::look::Look;
+use crate::meshkit::{shade, Builder};
 use crate::replay::Replay;
 use crate::rivers;
 use crate::trains::TrainPath;
@@ -47,8 +48,8 @@ pub struct RailYear {
     pub lines: Vec<Line>,
     /// track being laid: dashed, straight between cell centres
     pub building: Vec<(Vec2, Vec2)>,
-    /// the solid works, made once with the lines
-    works: Builder,
+    /// the solid works, made once, the first time they are asked for
+    works: OnceLock<Builder>,
 }
 
 /// The cells whose transport byte has track, linked to their neighbours (a
@@ -274,9 +275,7 @@ fn build_year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RailYear 
             }
         }
     }
-    let mut ry = RailYear { lines, building, works: Builder::default() };
-    ry.works = build_structures(&ry, g);
-    ry
+    RailYear { lines, building, works: OnceLock::new() }
 }
 
 static CACHE: Mutex<Option<(u64, Arc<RailYear>)>> = Mutex::new(None);
@@ -300,9 +299,9 @@ pub fn year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Arc<RailYea
 
 /// The track: a bed of ballast and a pair of dark rails, on the line's own
 /// level; nothing inside a tunnel; dashed earthworks where track is being laid.
-pub fn track(ry: &RailYear, g: &Ground) -> Builder {
+pub fn track(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let (ballast, iron, build) = (hex(0x8d877f), hex(0x3d3633), hex(0xa3967f));
+    let (ballast, iron, build) = (*lk.rail.ballast, *lk.rail.rails, *lk.rail.earthworks);
     for line in &ry.lines {
         let n = line.pts.len();
         let mut i = 0;
@@ -375,17 +374,18 @@ fn side_of(a: Vec3, b: Vec3) -> Vec3 {
 }
 
 /// The solid works: embankments, viaducts and bridges, the banks of the
-/// cuttings, and the portals of the tunnels.
-pub fn structures(ry: &RailYear) -> Builder {
-    ry.works.clone()
+/// cuttings, and the portals of the tunnels. They are kept with the lines, in
+/// the look they were first asked for in: the look does not change in a run.
+pub fn structures(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
+    ry.works.get_or_init(|| build_structures(ry, g, lk)).clone()
 }
 
-fn build_structures(ry: &RailYear, g: &Ground) -> Builder {
+fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let grass = hex(0x7f9a52);
-    let grass_dark = hex(0x6c8546);
-    let stone = hex(0xb9ad97);
-    let brick = hex(0xa45f45);
+    let grass = *lk.rail.bank_grass;
+    let grass_dark = *lk.rail.bank_grass_shade;
+    let stone = *lk.rail.stone;
+    let brick = *lk.rail.viaduct_brick;
     for (li, line) in ry.lines.iter().enumerate() {
         let n = line.pts.len();
         if n < 2 {
@@ -426,7 +426,7 @@ fn build_structures(ry: &RailYear, g: &Ground) -> Builder {
             // the top of the bank, under the ballast
             let (a0, a1) = (p0 + s0 * half, p1 + s1 * half);
             let (c0, c1) = (p0 - s0 * half, p1 - s1 * half);
-            b.quad(a0, a1, c1, c0, hex(0x9a8f78));
+            b.quad(a0, a1, c1, c0, *lk.rail.bank_top);
         }
         // viaducts: piers and arches of stone or brick, a parapet along the top
         let mut i = 0;
@@ -478,8 +478,12 @@ fn build_structures(ry: &RailYear, g: &Ground) -> Builder {
                 let (outer0, outer1) = (at(p0, s0, 0.04 + 2.6 * h0, -0.004), at(p1, s1, 0.04 + 2.6 * h1, -0.004));
                 let facing = Vec2::new(-s0.x * side, -s0.z * side);
                 let lit = facing.dot(Vec2::new(-0.682, 0.731)) > 0.0;
-                let face = crate::meshkit::lerp(if lit { hex(0x93a660) } else { hex(0x6d7f49) }, if lit { hex(0xb5ab97) } else { hex(0x857e70) }, deep * 0.8);
-                let back = hex(0x86a056);
+                let face = crate::meshkit::lerp(
+                    if lit { *lk.rail.cutting_grass_lit } else { *lk.rail.cutting_grass_shade },
+                    if lit { *lk.rail.cutting_rock_lit } else { *lk.rail.cutting_rock_shade },
+                    deep * 0.8,
+                );
+                let back = *lk.rail.cutting_back;
                 if side > 0.0 {
                     b.quad(inner0, crest0, crest1, inner1, face);
                     b.quad(crest0, outer0, outer1, crest1, back);
@@ -500,7 +504,7 @@ fn build_structures(ry: &RailYear, g: &Ground) -> Builder {
             let p = line.pts[outside];
             let q = line.pts[inside];
             let out_dir = Vec3::new(p.x - q.x, 0.0, p.z - q.z).normalize_or(Vec3::X);
-            portal(&mut b, Vec3::new(p.x, bed_level(line, outside), p.z), out_dir, stone);
+            portal(&mut b, Vec3::new(p.x, bed_level(line, outside), p.z), out_dir, stone, *lk.rail.tunnel_mouth);
         }
     }
     // road bridges are made in scatter.rs; rail bridges over rivers here
@@ -516,7 +520,7 @@ fn build_structures(ry: &RailYear, g: &Ground) -> Builder {
                 }
                 let along = Vec3::new(p1.x - p0.x, 0.0, p1.z - p0.z).normalize_or(Vec3::X);
                 let deck = p0.y.max(p1.y) + 0.006;
-                girder_bridge(&mut b, Vec3::new(at.x, deck, at.y), along, half * 2.0 + 0.05, g);
+                girder_bridge(&mut b, lk, Vec3::new(at.x, deck, at.y), along, half * 2.0 + 0.05, g);
             }
         }
     }
@@ -607,14 +611,13 @@ fn viaduct(b: &mut Builder, line: &Line, i: usize, j: usize, g: &Ground, col: [f
 
 /// A tunnel portal: a stone face across the line with a dark arch, and wing
 /// walls stepping back into the hillside.
-fn portal(b: &mut Builder, p: Vec3, out: Vec3, stone: [f32; 4]) {
+fn portal(b: &mut Builder, p: Vec3, out: Vec3, stone: [f32; 4], dark: [f32; 4]) {
     let yaw = (-out.z).atan2(out.x);
     let q = Quat::from_rotation_y(yaw);
     let at = |x: f32, y: f32, z: f32| p + q * Vec3::new(x, y, z);
     // the face, a slab standing across the line
     b.block(at(0.0, -0.02, 0.0), 0.016, 0.085, 0.075, yaw, stone, Some(shade(stone, 1.05)), 0.0);
     // the dark mouth of the tunnel on the outer face
-    let dark = hex(0x2a2522);
     let (w, h) = (0.022, 0.04);
     let face = 0.0081;
     let segs = 6;
@@ -632,12 +635,12 @@ fn portal(b: &mut Builder, p: Vec3, out: Vec3, stone: [f32; 4]) {
 }
 
 /// An iron girder bridge carrying the line over a river, on stone abutments.
-fn girder_bridge(b: &mut Builder, centre: Vec3, along: Vec3, span: f32, g: &Ground) {
+fn girder_bridge(b: &mut Builder, lk: &Look, centre: Vec3, along: Vec3, span: f32, g: &Ground) {
     let yaw = (-along.z).atan2(along.x);
     let q = Quat::from_rotation_y(yaw);
     let at = |x: f32, y: f32, z: f32| centre + q * Vec3::new(x, y, z);
-    let iron = hex(0x4c4f55);
-    let stone = hex(0xb9ad97);
+    let iron = *lk.rail.girder;
+    let stone = *lk.rail.stone;
     let half = span * 0.5;
     // the deck and two plate girders either side
     b.block(at(0.0, -0.008, 0.0), span, 0.048, 0.008, yaw, iron, Some(shade(iron, 1.2)), 0.0);

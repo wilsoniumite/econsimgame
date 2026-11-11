@@ -1,0 +1,12 @@
+[package]
+name = "isostate-gen"
+description = "Isolated State: the generators that turn what the simulation knows into buildings and trees (maths only, no Bevy)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+# the version Bevy 0.20 is built on, so a Vec3 here is the viewer's Vec3
+glam = "0.33.12"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.1"
