@@ -111,17 +111,38 @@ fn a_price_stands_off_its_anchor_with_the_stock() {
 #[test]
 fn a_new_town_takes_its_mother_towns_anchors() {
     let P = params(3, 1752, PriceParams::game());
-    let mut st = run_to(&P, 1750).st;
+    let s = run_to(&P, 1750);
+    let (C, mut st) = (s.content.clone(), s.st);
     let n = (0..st.T_max).find(|&t| !st.town_active[t]).expect("room for a town");
     let G = st.price.cols;
     assert!((0..G).any(|g| st.price_anchor[(n, g)] != st.price_anchor[(0, g)]), "the empty slot already matches");
-    prices::found_town(&mut st, &P, n, 0);
+    assert!((0..G).any(|g| st.pexp[(n, g)] != st.pexp[(0, g)]), "the empty slot already expects her prices");
+    // a site on her doorstep: her anchors, and exactly what her people expect
+    let home = st.town_node[0];
+    assert_eq!(st.dcatch[home], 0.0);
+    prices::found_town(&mut st, &C, &P, n, 0, home);
     assert!((0..G).all(|g| st.price_anchor[(n, g)] == st.price_anchor[(0, g)]));
+    assert!((0..G).all(|g| st.pexp[(n, g)] == st.pexp[(0, g)]));
+    // a site at the far edge of her country: what a load from there fetched,
+    // her expected price less the carriage, and never under the floor
+    let site = (0..st.N).filter(|&c| st.catch[c] == 0 && st.dcatch[c].is_finite()).max_by(|&a, &b| st.dcatch[a].total_cmp(&st.dcatch[b])).unwrap();
+    assert!(st.dcatch[site] > 5.0, "her country is too small to tell");
+    prices::found_town(&mut st, &C, &P, n, 0, site);
+    assert!((0..G).all(|g| st.price_anchor[(n, g)] == st.price_anchor[(0, g)]));
+    for g in 0..G {
+        let net = st.pexp[(0, g)] - P.freight * C.weight[g] * st.dcatch[site];
+        assert_eq!(st.pexp[(n, g)], net.max(P.price_floor * C.base_price[g]), "{}", C.good_name[g]);
+        assert!(st.pexp[(n, g)] > 0.0);
+    }
+    let coal = C.gi("coal");
+    assert!(st.pexp[(n, coal)] < st.pexp[(0, coal)], "coal is heavy: it fetched less out there");
     // and nothing at all while the mechanism is off
     let off = params(3, 1752, PriceParams::default());
     let mut st = run_to(&off, 1750).st;
-    prices::found_town(&mut st, &off, n, 0);
+    let stale = st.pexp.clone();
+    prices::found_town(&mut st, &C, &off, n, 0, site);
     assert_eq!(st.price_anchor.rows, 0);
+    assert_eq!(st.pexp, stale);
 }
 
 /// The same through a run's own year end, which is what holds the one line in
@@ -140,8 +161,14 @@ fn a_town_founded_in_a_run_starts_from_another_towns_anchors() {
         let row = |t: usize| -> Vec<u64> { (0..G).map(|g| st.price_anchor[(t, g)].to_bits()).collect() };
         let new: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] == year).collect();
         for &n in &new {
-            assert!((0..st.T_max).any(|t| t != n && st.town_active[t] && row(t) == row(n)), "the town founded in {year} has nobody's anchors");
+            let mother = (0..st.T_max).find(|&t| t != n && st.town_active[t] && row(t) == row(n));
+            assert!(mother.is_some(), "the town founded in {year} has nobody's anchors");
             assert!((0..G).any(|g| st.price_anchor[(n, g)] != s.content.base_price[g]), "its anchors are still the base prices");
+            // its people expect what the mother town's do, less the carriage: no more
+            // than she does for any good, and less for something (it was founded far off)
+            let m = mother.unwrap();
+            assert!((0..G).all(|g| st.pexp[(n, g)] <= st.pexp[(m, g)]), "the town founded in {year} expects more than its mother town for something");
+            assert!((0..G).any(|g| st.pexp[(n, g)] < st.pexp[(m, g)]), "the town founded in {year} expects the carriage to cost nothing");
         }
         if !new.is_empty() {
             break;

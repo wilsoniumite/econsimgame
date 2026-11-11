@@ -29,6 +29,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::Content;
 use crate::params::Params;
 use crate::state::State;
 
@@ -108,13 +109,32 @@ pub fn mark(st: &mut State, P: &Params, t: usize, g: usize, gap: f64, imbalance:
 /// A new town takes its mother town's anchors along with her prices
 /// (`people::found_towns`); without them it would start from a stale idea of
 /// what things are worth.
-pub fn found_town(st: &mut State, P: &Params, n: usize, donor: usize) {
+///
+/// And its people go on expecting what they have been getting (`pexp`, the
+/// prices farms and pits hire on): the mother town's expected price less the
+/// carriage from the new town's site to her, which is what a load from here
+/// fetched the day before. So nobody's net price moves on the day the town is
+/// founded; from then on its own market finds its own prices and what people
+/// expect follows them.
+///
+/// The port leaves a town that is not yet founded expecting the prices of
+/// 1750. That does little harm to a town founded in 1753. A town founded in
+/// 1888, on an island where the machines have made grain three times cheaper,
+/// expected 1750's grain price, asked for thirty-five times the hands it had
+/// and paid them out of the landlords' purse: the wage doubled month after
+/// month and the island's prices quadrupled in five years (seed 6 with six
+/// families, found when the machines were merged; docs/rules/prices.md, "In
+/// company with the machines").
+pub fn found_town(st: &mut State, C: &Content, P: &Params, n: usize, donor: usize, site: usize) {
     if !P.prices.enabled {
         return;
     }
     ensure_anchor(st);
+    let far = if st.dcatch[site].is_finite() { st.dcatch[site] } else { 0.0 };
     for g in 0..st.price.cols {
         st.price_anchor[(n, g)] = st.price_anchor[(donor, g)];
+        let carriage = P.freight * C.weight[g] * far;
+        st.pexp[(n, g)] = (st.pexp[(donor, g)] - carriage).max(P.price_floor * C.base_price[g]);
     }
 }
 
