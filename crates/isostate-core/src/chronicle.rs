@@ -71,7 +71,11 @@ pub struct ChronicleParams {
     /// Doublings are measured from the mean of this many first years.
     pub base_years: i64,
     /// A coalfield booms when it raises `boom_growth` times the coal of
-    /// `boom_years` earlier and at least `boom_share` of the island's.
+    /// `boom_years` earlier and at least `boom_share` of the island's. One
+    /// and a half times is the line beside the game's other rules: with the
+    /// merchants' prices a district's coal no longer swings with the iron
+    /// trade, and the 2 this was first set at, under the port, is passed less
+    /// than once a run (docs/rules/chronicle.md, "In company").
     pub boom_years: i64,
     pub boom_growth: f64,
     pub boom_share: f64,
@@ -114,7 +118,7 @@ impl Default for ChronicleParams {
             own_summary: 0.45,
             base_years: 5,
             boom_years: 5,
-            boom_growth: 2.0,
+            boom_growth: 1.5,
             boom_share: 0.15,
             decline_years: 8,
             decline_fall: 0.1,
@@ -1094,6 +1098,8 @@ fn class(e: &Event) -> &str {
     match e.kind.as_str() {
         "alarm" | "verdict" => "cycle",
         "railway" | "rail_plan" => "railway",
+        // the harvest's own news: a dearth is the price of a short crop
+        "harvest" | "dearth" => "harvest",
         "family" if e.family == Some(0) => "own",
         kind => kind,
     }

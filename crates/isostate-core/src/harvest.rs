@@ -28,6 +28,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::chronicle;
 use crate::content::Content;
 use crate::families;
 use crate::mat::Mat;
@@ -109,6 +110,8 @@ const LEAN_Z: f64 = 0.5;
 const LEAN_YEARS: usize = 3;
 /// A dearth already announced is not announced again for this many years.
 const DEARTH_QUIET: i64 = 3;
+/// What the harvest's news is read from, as its provenance names it (chronicle).
+const HARVEST_SERIES: &str = "the country's harvest against an ordinary year";
 
 /// One standard normal draw (Box and Muller's method: two uniforms each).
 fn normal(rng: &mut Rng) -> f64 {
@@ -372,6 +375,20 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
             ),
         );
         ev.series = out_series.clone();
+        // chronicle: why each of the harvest's items is news (nothing while it is off)
+        let line = (-LEAN_Z * H.island_sd).exp();
+        ev.why = chronicle::why(
+            P,
+            "three short harvests running",
+            HARVEST_SERIES,
+            nation,
+            line,
+            Some(1.0),
+            format!(
+                "the last {LEAN_YEARS} harvests were each more than {} short of an ordinary year ({LEAN_Z} of the island's usual spread), and the one before them was not",
+                fmt_pct(1.0 - line, 1)
+            ),
+        );
         events.push(ev);
     } else if H.island_sd > 0.0 && dev < -limit {
         national = true;
@@ -391,6 +408,20 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
             ev.town = Some(w);
             ev.cell = Some(st.town_node[w]);
         }
+        ev.why = chronicle::why(
+            P,
+            "the harvest against an ordinary year",
+            HARVEST_SERIES,
+            nation,
+            (-limit).exp(),
+            Some(1.0),
+            format!(
+                "the country's harvest was {} short; it is news past {} ({} times the island's usual spread)",
+                fmt_pct(short, 1),
+                fmt_pct(1.0 - (-limit).exp(), 1),
+                H.news_z
+            ),
+        );
         events.push(ev);
     } else if H.island_sd > 0.0 && dev > limit {
         national = true;
@@ -406,6 +437,20 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
         }
         let mut ev = Event::new(when, "harvest", (0.25 + 1.5 * over).clamp(0.3, 0.5), "A bumper harvest".to_string(), text);
         ev.series = out_series.clone();
+        ev.why = chronicle::why(
+            P,
+            "the harvest against an ordinary year",
+            HARVEST_SERIES,
+            nation,
+            limit.exp(),
+            Some(1.0),
+            format!(
+                "the country's harvest was {} above an ordinary year; it is news past {} ({} times the island's usual spread)",
+                fmt_pct(over, 1),
+                fmt_pct(limit.exp_m1(), 1),
+                H.news_z
+            ),
+        );
         events.push(ev);
     }
 
@@ -438,6 +483,22 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
                 ev.series = out_series.clone();
                 ev.town = Some(w);
                 ev.cell = Some(st.town_node[w]);
+                ev.why = chronicle::why(
+                    P,
+                    "one district's harvest against the country's",
+                    &format!("the harvest around {} against an ordinary year", st.town_name[w]),
+                    f,
+                    short.exp() * nation.min(1.0),
+                    Some(nation),
+                    format!(
+                        "farms around {} brought in {} of an ordinary year's crop and the country {}; a district fails when it is {} short of the country's harvest and of an ordinary year alike ({} times the districts' usual spread), in a year when the country's own harvest is not news",
+                        st.town_name[w],
+                        fmt_pct(f, 0),
+                        fmt_pct(nation, 0),
+                        fmt_pct(1.0 - short.exp(), 1),
+                        H.news_local_z
+                    ),
+                );
                 events.push(ev);
             }
         }
@@ -472,6 +533,20 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
                 text,
             );
             ev.series = Some(format!("price_{gname}"));
+            let pointed = (level + 3.0 * drift).exp();
+            ev.why = chronicle::why(
+                P,
+                "a price far above its trend",
+                &format!("price_{gname}"),
+                price_at(year),
+                (1.0 + H.dearth_rise) * pointed,
+                Some(pointed),
+                format!(
+                    "the year's mean price is {} above the mean of the five years before, carried forward at the drift of the last {m} years (it needs {}, and {DEARTH_QUIET} years since the last dearth)",
+                    fmt_pct(above.exp_m1(), 1),
+                    fmt_pct(H.dearth_rise, 0)
+                ),
+            );
             events.push(ev);
         }
     }

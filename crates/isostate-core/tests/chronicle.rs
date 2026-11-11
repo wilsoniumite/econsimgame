@@ -37,6 +37,7 @@ fn class(e: &Event) -> String {
     match e.kind.as_str() {
         "alarm" | "verdict" => "cycle".to_string(),
         "railway" | "rail_plan" => "railway".to_string(),
+        "harvest" | "dearth" => "harvest".to_string(),
         "family" if e.family == Some(0) => "own".to_string(),
         kind => kind.to_string(),
     }
@@ -85,7 +86,8 @@ fn it_never_touches_the_economy_and_runs_are_deterministic() {
 #[test]
 fn every_observer_item_says_why() {
     let r = whole_game();
-    let observer = ["crossing", "milestone", "steep", "alarm", "verdict", "first", "region", "famine"];
+    // the harvest's news is of the same sort: a test that fired on a number
+    let observer = ["crossing", "milestone", "steep", "alarm", "verdict", "first", "region", "famine", "harvest", "dearth"];
     for e in r.events.iter().filter(|e| observer.contains(&e.kind.as_str())) {
         let w = e.why.as_ref().unwrap_or_else(|| panic!("{} ({}) has no provenance", e.title, e.kind));
         assert!(!w.test.is_empty() && !w.series.is_empty() && !w.note.is_empty(), "{}: {w:?}", e.title);
@@ -93,6 +95,22 @@ fn every_observer_item_says_why() {
     }
     for kind in ["crossing", "milestone", "steep", "verdict", "region"] {
         assert!(r.events.iter().any(|e| e.kind == kind), "the run has a {kind} item");
+    }
+    if r.params.harvest.enabled {
+        for kind in ["harvest", "dearth"] {
+            assert!(r.events.iter().any(|e| e.kind == kind), "the run has a {kind} item");
+        }
+        // a dearth carries the price, where the earlier years pointed, and the line above that
+        let dearth = r.events.iter().find(|e| e.kind == "dearth").unwrap();
+        let w = dearth.why.as_ref().unwrap();
+        let pointed = w.baseline.expect("a dearth is measured against a trend");
+        assert!(w.value >= w.threshold && (w.threshold / pointed - (1.0 + r.params.harvest.dearth_rise)).abs() < 1e-4, "{w:?}");
+        // a poor harvest is under its line and a bumper one over, both against an ordinary year
+        for e in r.events.iter().filter(|e| e.title == "A poor harvest" || e.title == "A bumper harvest") {
+            let w = e.why.as_ref().unwrap();
+            assert_eq!(w.baseline, Some(1.0));
+            assert!(if e.title == "A poor harvest" { w.value < w.threshold && w.threshold < 1.0 } else { w.value > w.threshold && w.threshold > 1.0 }, "{}: {w:?}", e.title);
+        }
     }
     // a doubling is measured from the mean of the first five years, and says so
     let doubling = r.events.iter().find(|e| e.title.starts_with("Real output doubles")).expect("real output doubles in seed 7");
@@ -328,6 +346,11 @@ fn ranking_a_decade() {
     // the alarm's decade is ranked again without it; the verdict stands by its depth, above the boom
     assert_eq!(kept_titles(&slump), ["grain slump", "the depression of 1810 to 1812", "iron boom", "an invention"]);
     assert_eq!(slump[0].kept, Some(false));
+
+    // a short crop and the dear bread that follows are one story: the heavier is kept
+    let mut bread = vec![item(1887.7, "dearth", 0.7, "a dearth"), item(1889.55, "harvest", 0.75, "a poor harvest"), item(1883.8, "steep", 0.8, "grain shortage")];
+    chronicle::rank(&mut bread, &P, 1750, 1900, 1889);
+    assert_eq!(kept_titles(&bread), ["a poor harvest", "grain shortage"]);
 
     // 1900 goes with the 1890s; and off, nothing is marked
     let mut last = vec![item(1895.5, "discovery", 0.9, "a"), item(1900.5, "discovery", 0.9, "b"), item(1900.6, "discovery", 0.9, "c")];
