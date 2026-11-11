@@ -119,6 +119,7 @@ mine[f"works_size_median_{y1}"] = quantile(size, 0.5)
 mine[f"works_size_p90_{y1}"] = quantile(size, 0.9)
 mine[f"works_size_largest_{y1}"] = size[-1]
 life = sorted(f["died"] - f["born"] for f in firms if f["died"] >= y0)
+mine["works_founded"] = sum(1 for f in firms if f["born"] >= y0)
 mine["works_closed"] = len(life)
 mine["works_closed_median_life"] = quantile(life, 0.5) if life else None
 

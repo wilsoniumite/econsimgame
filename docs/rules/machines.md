@@ -343,6 +343,20 @@ many seeds, with the works rules and six families on. Until that is done the
 safe setting is `machines.inherit = 0`: under the works rules it leaves the
 converter unbuilt, and it is the best row of both tables in everything else.
 
+**Since merged.** The life cycle for works is now in the game's rules beside
+the machines, the merchants' prices, the curve and the harvests, at its
+reviewed numbers (`works.md`, "In company with the rest of the game"; seeds
+1 to 12, six families). The wage did not suffer as the trial above feared:
+1.56, 2.51 and 2.80 in 1800, 1850 and 1900 for 1.42, 1.84 and 2.45 without
+the life cycle, higher on every island. The rest is as foretold. The
+converter makes all the steel by 1880 but is found between 1816 and 1830 in
+three seeds of six; steel rails are a quarter of rails in 1890 where they
+were all of them, iron being half the price it was; and growth has moved
+forward, the wage hardly rising after the 1850s. `inherit = 0` gives 2.98 in
+1900 for 2.80 on seeds 1 to 6 and no converter; it was left at 0.5, since a
+game without a converter is the poorer for it and the wage is not in
+danger. The tuning asked for above is still to do.
+
 ## In company with the merchants' prices and the curve
 
 Everything above was measured on the port with the machines alone. When they

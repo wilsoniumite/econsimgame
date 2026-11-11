@@ -80,6 +80,15 @@ with the line at 12 per cent, where it stood until harvests were set beside
 the game's other rules; "In company" says why it moved and what the count is
 now.)
 
+Since the chronicle joined the game's rules ([chronicle.md](chronicle.md))
+the major feed is no longer "weights from 0.6" but the few items a decade a
+history would keep. The harvest's news is ranked there with everything else,
+and a harvest and a dearth count as one kind, so a decade keeps at most one
+of them, the heavier: 1.4 harvests and 2.2 dearths in a run of 150 years
+(seeds 1 to 12, six families), of 16 and 5.4 told. Each item also says why
+it is news (`why`: the crop or the price, and the line it passed) while the
+chronicle is on.
+
 ## What the viewer is given
 
 Only when the mechanism is on:

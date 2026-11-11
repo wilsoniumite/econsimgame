@@ -59,6 +59,19 @@ pub struct Project {
     pub roi: f64,
     pub cost: f64,
     pub length_km: f64,
+    // ---- ways (docs/rules/railways.md): the port's own projects leave these at their defaults
+    /// Whose project this is: `ways::PORT` (0) for the port's promoters, `ways::RAILWAY`
+    /// for the game's.
+    pub way: u8,
+    /// Months the line takes if the market fills every order; 0 means the port's ten.
+    pub months: f64,
+    /// What the line is for: `ways::SERVES_TRUNK`, `ways::SERVES_TOWN`, or the
+    /// land-use code of the district a branch runs to.
+    pub serves: u8,
+    /// All the money subscribers have put in so far.
+    pub paid_in: f64,
+    /// Who put it in: (landlords or households, town, amount).
+    pub subs: Vec<(bool, usize, f64)>,
 }
 
 /// One opened line: (year, a, b, km) in Python; b is -1 for a spur.
@@ -388,4 +401,52 @@ pub struct State {
     // ---------------- chronicle (not in the Python; empty unless `chronicle.enabled`)
     /// What the chronicle remembers of towns and families between years.
     pub chron: crate::chronicle::ChronicleState,
+
+    // ---------------- works: the life cycle (not in the Python; both empty while `works.enabled` is off)
+    /// (T, M): capacity each method in each town has ordered so far this year
+    /// (growth, sister works, new works), against the year's room.
+    pub works_added: Mat,
+    /// The share of its cell each works pays rent on: the most land it has taken so far.
+    pub works_lease: Vec<f64>,
+
+    // ---------------- railways (docs/rules/railways.md; empty while `railways` is off)
+    /// What the game's railway promoters remember: pairs joined, places refused,
+    /// every line opened and each year's figures.
+    pub rw: crate::ways::WayBook,
+
+    // ---------------- carting (docs/rules/carting.md; empty while `carting` is off)
+    /// The carting bill of the month so far, by town: cells to market, works'
+    /// inputs and output, and the trade each town sent out.
+    pub cart_bill: Vec<f64>,
+    /// Hands at work carting this month, by town.
+    pub carters: Vec<f64>,
+    /// Months counted into the year being added up at the end of `cart_years`.
+    pub cart_months: usize,
+    /// One entry per twelve months since the warm-up began: the year's carting
+    /// bill and its carters (each summed over the months), whole country.
+    pub cart_years: Vec<(f64, f64)>,
+
+    // ---------------- people (docs/rules/people.md; all empty while `P.people` is off)
+    /// The rate of increase each town had last year.
+    pub pp_growth: Vec<f64>,
+    /// Its part from income alone (the sweep reads how near its ceiling a town is).
+    pub pp_income_term: Vec<f64>,
+    /// People who have left the island so far.
+    pub pp_emigrants: f64,
+    /// Towns founded under these rules, and why.
+    pub pp_foundings: Vec<crate::peopling::Founding>,
+    /// The year each town last gave people to a founding, or was founded itself.
+    pub pp_gave: Vec<i64>,
+    /// Each cell's path cost to its market before this year's catchments were worked out.
+    pub pp_dcatch_was: Vec<f64>,
+    /// The share of each town's people who came to it, or left it, with their
+    /// cells when this year's catchments were worked out (the larger of the two).
+    /// The chronicle reads it: a town whose district was redrawn is not set
+    /// against what it was before.
+    pub pp_moved: Vec<f64>,
+    /// Stream 8: the names of towns founded under these rules.
+    pub pp_rng: Option<crate::rng::Rng>,
+    /// For tests and scenarios: a cell where a town is to be founded this year,
+    /// whatever the founding rule would say of its district.
+    pub pp_found_next: Option<usize>,
 }

@@ -71,7 +71,11 @@ pub struct ChronicleParams {
     /// Doublings are measured from the mean of this many first years.
     pub base_years: i64,
     /// A coalfield booms when it raises `boom_growth` times the coal of
-    /// `boom_years` earlier and at least `boom_share` of the island's.
+    /// `boom_years` earlier and at least `boom_share` of the island's. One
+    /// and a half times is the line beside the game's other rules: with the
+    /// merchants' prices a district's coal no longer swings with the iron
+    /// trade, and the 2 this was first set at, under the port, is passed less
+    /// than once a run (docs/rules/chronicle.md, "In company").
     pub boom_years: i64,
     pub boom_growth: f64,
     pub boom_share: f64,
@@ -87,7 +91,10 @@ pub struct ChronicleParams {
     pub fastest_margin: f64,
     /// A district's works close together when at least `closures_min` shut in
     /// a year and they are `closures_share` of those that stood (in a usual
-    /// year a district loses one or two in a hundred).
+    /// year a district loses one or two in a hundred). Five, where it was ten
+    /// before the life cycle for works: a district then has some forty works
+    /// where it had four hundred, and ten of them hardly ever shut in a year
+    /// (docs/rules/works.md, "In company with the rest of the game").
     pub closures_min: usize,
     pub closures_share: f64,
     /// A decade of new towns is told when at least this many were founded in it.
@@ -114,14 +121,14 @@ impl Default for ChronicleParams {
             own_summary: 0.45,
             base_years: 5,
             boom_years: 5,
-            boom_growth: 2.0,
+            boom_growth: 1.5,
             boom_share: 0.15,
             decline_years: 8,
             decline_fall: 0.1,
             overtake_years: 3,
             overtake_margin: 0.05,
             fastest_margin: 0.1,
-            closures_min: 10,
+            closures_min: 5,
             closures_share: 0.1,
             new_towns_min: 3,
             min_people: 5000.0,
@@ -186,6 +193,9 @@ pub struct ChronicleState {
     pub reached: BTreeSet<(usize, usize, usize)>,
     /// The works the player's branches opened this year, and whether each was told on its own.
     pub branch_opened: Vec<(usize, bool)>,
+    /// The works the player's branches extended this year, and what each extension cost
+    /// (empty without the life cycle for works).
+    pub branch_extended: Vec<(usize, f64)>,
     /// For each of `MILESTONE_CITY`, the towns that have passed it and the year.
     pub city_passed: Vec<Vec<(usize, i64)>>,
     /// One entry a year since the start, each a value per town: people in the
@@ -305,43 +315,57 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     true
 }
 
-/// One item for all the works the player's branches opened this year
-/// (`families::yearly`, after the branches have run), unless each was told on
-/// its own. It is light: it belongs in the family's news, not the island's.
+/// A branch of a family has ordered more capacity for a works it has
+/// (`works::extend_for_family`: with the life cycle for works a growing branch
+/// extends before it founds). Returns true if the chronicle has dealt with the
+/// news, so the works' own item is not made: an extension is the branch's own
+/// doing, as a works it opens is, and waits for the year's summary. Without
+/// this a player's branches file some 240 such items in a game, which is the
+/// flood over again.
+pub fn works_extended(st: &mut State, P: &Params, family: usize, fid: usize, cost: f64) -> bool {
+    if !P.chronicle.enabled || family != 0 {
+        return false;
+    }
+    st.chron.branch_extended.push((fid, cost));
+    true
+}
+
+/// One item for all that the player's branches did on their own this year
+/// (`families::yearly`, after the branches have run): the works they opened,
+/// unless each was told on its own, and the works they extended. It is light:
+/// it belongs in the family's news, not the island's.
 pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, year: i64, events: &mut Vec<Event>) {
     if !P.chronicle.enabled || family != 0 {
         return;
     }
     let opened = std::mem::take(&mut st.chron.branch_opened);
-    if opened.iter().all(|&(_, told)| told) {
+    let extended = std::mem::take(&mut st.chron.branch_extended);
+    // works that were each told on their own are not told again
+    let opened: Vec<usize> = if opened.iter().all(|&(_, told)| told) { Vec::new() } else { opened.iter().map(|&(f, _)| f).collect() };
+    if opened.is_empty() && extended.is_empty() {
         return;
     }
     let surname = &st.families[family].surname;
     let trade = |f: usize| Group::of_method(C, st.f_method[f]).map_or("other trades".to_string(), |g| g.label().to_lowercase());
-    // towns in the order the branches ran, trades in the order they built
-    let mut towns: Vec<(usize, Vec<(String, usize)>)> = Vec::new();
-    for &(f, _) in &opened {
-        let t = st.f_town[f];
-        let at = match towns.iter().position(|(town, _)| *town == t) {
-            Some(at) => at,
-            None => {
-                towns.push((t, Vec::new()));
-                towns.len() - 1
+    // "at Melbourne two in iron and steel and one in textiles; at Granness one in
+    // engineering": towns in the order the branches ran, trades in the order they built
+    let by_town = |works: &[usize]| -> String {
+        let mut towns: Vec<(usize, Vec<(String, usize)>)> = Vec::new();
+        for &f in works {
+            let t = st.f_town[f];
+            let at = match towns.iter().position(|(town, _)| *town == t) {
+                Some(at) => at,
+                None => {
+                    towns.push((t, Vec::new()));
+                    towns.len() - 1
+                }
+            };
+            let name = trade(f);
+            match towns[at].1.iter_mut().find(|(n, _)| *n == name) {
+                Some((_, n)) => *n += 1,
+                None => towns[at].1.push((name, 1)),
             }
-        };
-        let name = trade(f);
-        match towns[at].1.iter_mut().find(|(n, _)| *n == name) {
-            Some((_, n)) => *n += 1,
-            None => towns[at].1.push((name, 1)),
         }
-    }
-    let (title, text) = if opened.len() == 1 {
-        let f = opened[0].0;
-        (
-            format!("The {surname} branch at {} opens a works", st.town_name[st.f_town[f]]),
-            format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * st.f_reason[f].roi),
-        )
-    } else {
         let per_town: Vec<String> = towns
             .iter()
             .map(|(t, trades)| {
@@ -349,10 +373,38 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
                 format!("at {} {}", st.town_name[*t], and_list(&list))
             })
             .collect();
-        (format!("The {surname} branches open {} works", number(opened.len())), format!("{}.", capital(&per_town.join("; "))))
+        per_town.join("; ")
     };
+    let grown: Vec<usize> = extended.iter().map(|&(f, _)| f).collect();
+    let laid_out: f64 = extended.iter().map(|&(_, cost)| cost).sum();
+    let (title, text) = match (opened.len(), grown.len()) {
+        (1, 0) => {
+            let f = opened[0];
+            (
+                format!("The {surname} branch at {} opens a works", st.town_name[st.f_town[f]]),
+                format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * st.f_reason[f].roi),
+            )
+        }
+        (n, 0) => (format!("The {surname} branches open {} works", number(n)), format!("{}.", capital(&by_town(&opened)))),
+        (0, 1) => {
+            let f = grown[0];
+            (
+                format!("The {surname} branch at {} extends a works", st.town_name[st.f_town[f]]),
+                format!("{}, in {}: more capacity is ordered for {}.", st.f_name[f], trade(f), fmt_thousands_f0(laid_out)),
+            )
+        }
+        (0, n) => (
+            format!("The {surname} branches extend {} works", number(n)),
+            format!("{}. More capacity is ordered for {} in all.", capital(&by_town(&grown)), fmt_thousands_f0(laid_out)),
+        ),
+        (a, b) => (
+            format!("The {surname} branches open {} works and extend {}", number(a), number(b)),
+            format!("{}. Extended, for {} in all: {}.", capital(&by_town(&opened)), fmt_thousands_f0(laid_out), by_town(&grown)),
+        ),
+    };
+    let first = *opened.first().or(grown.first()).expect("something was opened or extended");
     let mut e = Event::new(year as f64 + 0.95, "family", P.chronicle.own_summary, title, text);
-    e.town = Some(towns[0].0);
+    e.town = Some(st.f_town[first]);
     e.family = Some(family);
     events.push(e);
 }
@@ -534,20 +586,34 @@ fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
 /// The towns whose districts a founding redrew this year: each new town, and
 /// every town that held some of its ground the year before. Those are the
 /// towns `people::resettle_new_towns` takes its people from.
+///
+/// Under the game's rules for people (docs/rules/people.md) households go with
+/// their cells every year, founding or no founding: a road or a railway can
+/// carry a district from one market to another, and a town's people jump when
+/// it does. A town that gained or lost `REDRAWN_SHARE` of its people that way
+/// in the year is redrawn too.
 fn redrawn_towns(st: &State, year: i64) -> Vec<bool> {
     let T = st.T_max;
     let new: Vec<bool> = (0..T).map(|t| st.town_active[t] && st.town_founded[t] == year).collect();
     let mut cut = new.clone();
-    if !new.contains(&true) {
-        return cut;
-    }
-    for (&now, &was) in st.catch.iter().zip(&st.prev_catch) {
-        if now >= 0 && was >= 0 && (now as usize) < T && (was as usize) < T && new[now as usize] {
-            cut[was as usize] = true;
+    if new.contains(&true) {
+        for (&now, &was) in st.catch.iter().zip(&st.prev_catch) {
+            if now >= 0 && was >= 0 && (now as usize) < T && (was as usize) < T && new[now as usize] {
+                cut[was as usize] = true;
+            }
         }
+    }
+    for t in 0..T.min(st.pp_moved.len()) {
+        cut[t] = cut[t] || (st.town_active[t] && st.pp_moved[t] >= REDRAWN_SHARE);
     }
     cut
 }
+
+/// A town is redrawn when this share of its people came or went with their
+/// cells in a year. It is the least fall the chronicle calls a decline
+/// (`decline_fall`) and the least lead it calls outgrowing the island
+/// (`fastest_margin`): a smaller redrawing cannot make a story by itself.
+pub const REDRAWN_SHARE: f64 = 0.1;
 
 /// The towns `st.migration_flow` is indexed by, if it is this year's.
 fn movers(st: &State, year: i64) -> Option<Vec<usize>> {
@@ -636,11 +702,22 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         format!("{:.1} times the coal they raised in {was}", now / then)
     };
     // what carries it away, if that is new
-    let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
-    let carried = match line {
-        Some(r) if r.b < 0 => format!(" A mineral line opened in {} brings it down from the pits.", r.year.floor()),
-        Some(r) => format!(" The railway that reached {name} in {} carries it away.", r.year.floor()),
-        None => String::new(),
+    let carried = if P.railways.enabled {
+        // the game's railways (docs/rules/railways.md): a line with no second town
+        // may be a branch to farms, woods or works as well as to pits, or the town's
+        // own first line, so the promoters' book is asked what the line was for
+        match crate::railways::line_for_coal(st, t, was as f64) {
+            Some((opened, true)) => format!(" A branch line to the collieries, opened in {}, brings it down from the pits.", opened.floor()),
+            Some((opened, false)) => format!(" The railway that reached {name} in {} carries it away.", opened.floor()),
+            None => String::new(),
+        }
+    } else {
+        let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
+        match line {
+            Some(r) if r.b < 0 => format!(" A mineral line opened in {} brings it down from the pits.", r.year.floor()),
+            Some(r) => format!(" The railway that reached {name} in {} carries it away.", r.year.floor()),
+            None => String::new(),
+        }
     };
     // and what the price says about why
     let (p1, p0) = (ch.prices[k][(t, coal)], ch.prices[k - back][(t, coal)]);
@@ -1094,6 +1171,8 @@ fn class(e: &Event) -> &str {
     match e.kind.as_str() {
         "alarm" | "verdict" => "cycle",
         "railway" | "rail_plan" => "railway",
+        // the harvest's own news: a dearth is the price of a short crop
+        "harvest" | "dearth" => "harvest",
         "family" if e.family == Some(0) => "own",
         kind => kind,
     }

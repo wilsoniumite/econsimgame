@@ -13,6 +13,7 @@ use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
 use crate::prices;
 use crate::state::{MonthStats, State};
+use crate::works;
 use crate::util::{bincount, bool_f, pairwise_sum, pairwise_sum_by};
 
 pub fn sigmoid(x: f64) -> f64 {
@@ -388,6 +389,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let K: Vec<f64> = fi.iter().map(|&i| st.f_K[i]).collect();
     let fprod: Vec<f64> = fi.iter().map(|&i| st.f_prod[i]).collect();
     let (mut a, mut h, mut l) = firm_coefficients(C, &fm, &K, &fprod);
+    works::walk_to_work(st, P, &fc, &mut l); // works: hands walk out from the town
     if families::active(st) {
         families::scale_firm_inputs(st, C, P, &fi, &mut a, &mut h, &mut l);
     }
@@ -415,7 +417,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let phi_prev: Vec<f64> = fi.iter().map(|&i| st.f_fill[i]).collect();
 
     // ---------------- labour market: one wage per town clears supply and demand
-    let supply: Vec<f64> = st.pop.iter().map(|&p| P.participation * p).collect();
+    let mut supply: Vec<f64> = st.pop.iter().map(|&p| P.participation * p).collect();
+    // carting (docs/rules/carting.md): the hands that carted last month's goods are not for hire
+    crate::carting::take_carters(st, P, &mut supply);
+    let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
     // so a price blip does not empty the fields in a month.
     let prev_w = st.wage.clone();
@@ -598,14 +603,20 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_by_town(&mut R, &ot, &req_inv);
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for pr in &st.projects {
-        let rq: Vec<f64> = (0..G).map(|g| pr.order[g].min(pr.need[g] / 10.0)).collect();
+        // railways (docs/rules/railways.md): the game's lines say how long they take,
+        // and order no more than the cash in hand will pay for
+        let months = if pr.months > 0.0 { pr.months } else { 10.0 };
+        let mut rq: Vec<f64> = (0..G).map(|g| pr.order[g].min(pr.need[g] / months)).collect();
+        crate::ways::within_means(pr, &mut rq, st.price.row(pr.town));
         for g in 0..G {
             R[(pr.town, g)] += rq[g];
         }
         proj_req.push(rq);
     }
 
-    if families::active(st) {
+    // people (docs/rules/people.md) keeps it too: what a district's buyers asked for
+    // goes with them when the district changes market
+    if families::active(st) || P.people.enabled {
         // what each town's buyers asked for, for the families' site sums
         st.requests = R.clone();
     }
@@ -719,6 +730,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.m_merch_margin = pairwise_sum(&margin_v);
     add_to(&mut sales_value, &bincount(&ft, &pay_in, T));
     add_to(&mut hh_inc, &bincount(&ft, &hh_f, T));
+    // carting (docs/rules/carting.md): the works' carting, in and out, goes on the town's bill
+    crate::carting::add_bill(st, P, &ft, (0..NFI).map(|i| cart_in[i] + cart_out[i]));
     pay_cell_rents(st, P, &ft, &fc, &rent_f, T);
 
     // land-based enterprises
@@ -733,6 +746,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_to(&mut merch, &bincount(&et, &merch_ex, T));
     add_to(&mut sales_value, &bincount(&et, &in_paid, T));
     add_to(&mut hh_inc, &bincount(&et, &hh_ex, T));
+    // carting: so does the land's produce on its way to market
+    crate::carting::add_bill(st, P, &et, cart_ex.iter().copied());
     pay_cell_rents(st, P, &et, &ex, &rent_ex, T);
 
     // engel: what households spent on each need, noted for the observer before prices move
@@ -915,6 +930,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             }
             merch[ti] += pay_out - pay_in_ - tc_in;
             hh_inc[ti] += tc_out;
+            // carting: and the trade the town sends out
+            crate::carting::add_bill_town(st, P, ti, tc_out);
         }
         st.m_trade_value = pairwise_sum(&pay.data);
     } else {
@@ -1065,6 +1082,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
 
     let mut employment = bincount(&et, &Lex, T);
     add_to(&mut employment, &bincount(&ft, &labor_f, T));
+    // carting: carters are at work too
+    crate::carting::count_carters(st, P, &mut employment);
     let mut heat_use = vec![0.0; NF];
     for i in 0..NFI {
         for k in 0..NF {

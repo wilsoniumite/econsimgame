@@ -23,6 +23,7 @@ use crate::state::{Event, State};
 use crate::tech;
 use crate::transport as tr;
 use crate::util::{argsort, bincount, pairwise_sum};
+use crate::works;
 use crate::world::{World, generate_world, site_context};
 
 /// The initial state: world, towns, the first land allocation and the first firms.
@@ -122,6 +123,7 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
         *v = vec![0.0; Fm];
     }
     st.f_order = Mat::zeros(Fm, G);
+    works::init(&mut st, C, P); // works: its two tables (empty while it is off)
 
     // money and markets
     let pop = st.pop.clone();
@@ -242,7 +244,7 @@ pub fn after_transport(st: &mut State, C: &Content, P: &Params) {
         cnt[st.f_cell[f]] += 1.0;
     }
     st.any_counts = ndimage::uniform_filter(&cnt, H, W, 5, Mode::Constant).iter().map(|v| v * 25.0).collect();
-    let foot: Vec<f64> = alive.iter().map(|&f| st.f_K[f] / (P.footprint_K_mult * C.m_K0[st.f_method[f]])).collect();
+    let foot: Vec<f64> = alive.iter().map(|&f| works::land_held(st, C, P, f)).collect(); // works: the one sum of a works' land
     let mut ks = vec![0.0; N];
     for (k, &f) in alive.iter().enumerate() {
         ks[st.f_cell[f]] += foot[k];
@@ -414,7 +416,10 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         people::growth(st, C, P, year, events);
         people::migration(st, C, P);
         tech::discovery(st, C, P, &mut rng.tech, year, events);
-        founded = people::found_towns(st, C, P, &mut rng.people, year, events);
+        // people (docs/rules/people.md): its own founding rule runs below, once the year's roads are known
+        if !P.people.enabled {
+            founded = people::found_towns(st, C, P, &mut rng.people, year, events);
+        }
     } else {
         st.y_ratio = st.y_acc.iter().map(|v| v / 12.0).collect();
         st.y_acc.iter_mut().for_each(|v| *v = 0.0);
@@ -423,9 +428,19 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     tech::diffusion(st, C, P);
     st.cell_flow_year = st.cell_flow.clone();
     update_roads(st, C, P);
+    if !warm && P.people.enabled {
+        founded = crate::peopling::found_towns(st, C, P, year, events);
+        // people: what each cell paid to reach its market, before the paths are worked out again
+        st.pp_dcatch_was = st.dcatch.clone();
+    }
     st.prev_catch = st.catch.clone();
     land::update_transport(st, C, P);
-    if !founded.is_empty() {
+    if P.people.enabled {
+        // people: households go with their cells every year, not only at a founding
+        if !warm {
+            crate::peopling::move_with_cells(st, C, P);
+        }
+    } else if !founded.is_empty() {
         people::resettle_new_towns(st, C, P);
     }
     after_transport(st, C, P);

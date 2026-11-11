@@ -18,6 +18,7 @@ cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules port --familie
 cargo run --release -p isostate-core --example chronicle            # seed 7's major feed, decade by decade
 cargo run --release -p isostate-core --example chronicle -- --why   # the same, with each item's provenance
 cargo run --release -p isostate-core --example chronicle -- --seeds 1-8   # the counts below
+cargo run --release -p isostate-core --example chronicle -- --seeds 1-8 --set prices.enabled=false   # the same with one parameter changed
 ```
 
 The code is `crates/isostate-core/src/chronicle.rs`. The hooks in other files
@@ -37,7 +38,11 @@ player's items in a mean game, all of them "major". With the chronicle:
   return);
 - everything else the branches opened in the year is one item at the year's
   end ("The Fairfax branches open five works", with the towns and trades), at
-  0.45, which keeps it in the family's news and out of the major feed;
+  0.45, which keeps it in the family's news and out of the major feed. With
+  the life cycle for works (`works.md`) a branch extends a works it has
+  before it opens another, and what the branches extended is in the same
+  item ("The Fairfax branches open two works and extend three", or "The
+  Fairfax branch at Melbourne extends a works"), with what it cost;
 - the family's everyday news (births, a child turning fourteen, trainings,
   sales, burials) weighs 0.5; its great moments (a new trade, a new head)
   0.7. A head's death and the succession used to be two items of the same
@@ -67,12 +72,16 @@ peak".)
 
 The numbers are rounded to six figures; they are for reading. Inventions,
 railways, new towns and the families' items have no `why`: they are things
-that happened, not tests that fired.
+that happened, not tests that fired. The harvest's news (`harvest.rs`) is of
+the testing sort and says why too: how short the crop was and the line it
+had to pass, and for a dearth the price, where the earlier years pointed and
+the line above that.
 
 **Ranking.** Each event carries `kept`: whether a history of its decade would
 keep it. Within a decade the heaviest go first, with at most four in all
 (`per_decade`), one of a kind (`per_kind`; slumps called and slumps dated are
-one kind, as are railway schemes and openings) and two inventions
+one kind, as are railway schemes and openings, and a harvest and the dearth
+that is its price) and two inventions
 (`inventions`), and nothing lighter than 0.6 (`floor`). One place is the
 player's: the heaviest of the family's own items at 0.6 or more is kept
 whatever else happened. A decade that is over and still has fewer than two
@@ -98,11 +107,11 @@ from the same prices and incomes that drove it:
 
 | story | when | the reason it gives |
 |---|---|---|
-| Coal boom around X (0.72) | the pits of X's district raise `boom_growth` (2) times the coal of `boom_years` (5) years before, and `boom_share` (15%) of the island's | a railway or mineral line opened since, and what the local price of coal did: dearer (buyers want more than the pits raise), cheaper (the pits outran their buyers) or steady |
+| Coal boom around X (0.72) | the pits of X's district raise `boom_growth` (1.5) times the coal of `boom_years` (5) years before, and `boom_share` (15%) of the island's | a railway or mineral line opened since (under the game's railways: the line that reached the town, or a branch to its collieries), and what the local price of coal did: dearer (buyers want more than the pits raise), cheaper (the pits outran their buyers) or steady |
 | X in decline (0.68) | X and its district are `decline_fall` (10%) below a peak at least `decline_years` (8) old | where this year's leavers went and how much further an income goes there (what `people::migration` weighs), or that incomes no longer keep a family |
 | X overtakes Y as the island's first (0.8) or second (0.7) town | X has been `overtake_margin` (5%) ahead of Y for `overtake_years` (3) running | each town's growth over ten years and what X supplies most of |
 | X is the fastest-growing town of the decade (0.62) | at the decade's end, if X outgrew the island by `fastest_margin` (10 points) | how much of the growth moved in from other towns, and what X supplies |
-| N works close around X (0.66) | at least `closures_min` (10) works of a district shut in a year and they are `closures_share` (10%) of those that stood, shops and trades aside | what most of them made, and its price a year or three years back, or the price of what they work up, or wages; the largest is named |
+| N works close around X (0.66) | at least `closures_min` (5) works of a district shut in a year and they are `closures_share` (10%) of those that stood, shops and trades aside | what most of them made, and its price a year or three years back, or the price of what they work up, or wages; the largest is named |
 | N new towns in the decade (kind `town`, 0.65) | `new_towns_min` (3) or more founded in a decade | which, when, and the largest |
 
 Towns are ranked with their districts (`st.pop`), not by the people inside
@@ -151,17 +160,21 @@ one hit hardest leads and the others are named in its last sentence.
 | `floor`, `fill_floor` | 0.6, 0.45 | lightest item kept; lightest kept to fill a thin decade |
 | `own_great`, `own_small`, `own_summary` | 0.7, 0.5, 0.45 | weights of the player's own news |
 | `base_years` | 5 | years a doubling's baseline is the mean of |
-| `boom_years`, `boom_growth`, `boom_share` | 5, 2, 0.15 | coalfield boom |
+| `boom_years`, `boom_growth`, `boom_share` | 5, 1.5, 0.15 | coalfield boom (`boom_growth` was 2 until the chronicle met the game's other rules: "In company") |
 | `decline_years`, `decline_fall` | 8, 0.1 | town in decline |
 | `overtake_years`, `overtake_margin` | 3, 0.05 | one town overtaking another |
 | `fastest_margin` | 0.1 | fastest-growing town of a decade |
-| `closures_min`, `closures_share` | 10, 0.1 | a district's works closing together |
+| `closures_min`, `closures_share` | 5, 0.1 | a district's works closing together (ten before the life cycle for works; "Beside the life cycle for works", below) |
 | `new_towns_min` | 3 | a decade of new towns |
 | `min_people`, `quiet_years` | 5,000, 15 | no stories of smaller towns; years before a story repeats |
 
 No random number is drawn anywhere in it.
 
 ## What the sweeps showed
+
+This section is the chronicle alone, on the port, as it was built and
+reviewed: its coal booms are counted at `boom_growth` 2, which was the line
+then. What it does beside the game's other rules is under "In company".
 
 Seeds 1 to 8 under the port's rules with `--set chronicle.enabled=true`
 against the same build without it, seed for seed. Of the 129 facts both
@@ -240,7 +253,249 @@ The 1810s
         Historians will call this a depression.
 ```
 
+## In company
+
+The chronicle was merged into the game's rules after `prices`, `engel`,
+`machines` and `harvest`, so the island it now tells of is not the port's:
+merchants hold stock and prices no longer chase their own tail, a wage buys
+two and a half times as much by 1900, and the weather files news of its own.
+The integration's sweeps are under `.claude/night/reports/core-steps/`:
+`chronicle-before` and `chronicle-after` (the game's rules with six families
+on seeds 1 to 6, without and with the chronicle) and `chronicle-s7-12`.
+
+**It still touches nothing.** Of the 184 facts both sweeps have, 180 are `=`
+on every seed and the four that differ are counts of news; no run failed on
+seeds 1 to 12, and a run takes the 17 seconds it took. In `sim::run_year` it
+runs after the yearly step and the observer, so it ranks everything the year
+filed, the harvest's news with the rest, and before the snapshots.
+
+| per run, six families | alone, on the port (seeds 1 to 8) | in company (seeds 1 to 12) |
+|---|---|---|
+| all items, chronicle off | 1,485 | 1,614 (seeds 1 to 6) |
+| all items | 735 [707 .. 767] | 763 [680 .. 805] |
+| the major feed | 55.4 [53 .. 59] | 55.8 [52 .. 58] |
+| the major feed in a decade | 3.0 to 4.0, never under 2 or over 4 | 3.0 to 4.0, never under 2 or over 4 |
+| the player's own items | 244 [225 .. 260] | 246 [227 .. 262] |
+| of them major | 11.8 [10 .. 14] | 11.6 [9 .. 13] |
+| milestones told | 18.4 | 30.4 |
+| regional stories told | 47.5 | 45.2 |
+
+So the flood ends as it did and the feed is the length it was. There are
+more milestones because every town has them and this island's towns grow:
+0.43 of its people live in towns in 1900 against the port's quarter.
+
+What is kept in a run, by kind (seeds 1 to 12): the player's family 11.6,
+inventions 9.3, regional stories 8.6, markets 6.9, turning points 6.3,
+milestones 4.0, slumps dated 2.6, dearths 2.2, harvests 1.4, new towns 1.6,
+the first railway 1.1. Of the regional stories 3.2 are declines, 1.8
+overtakings, 1.7 fastest-growing towns, 1.0 rounds of closures and 0.9 coal
+booms (of 16.5, 3.2, 11.6, 10.0 and 3.8 told).
+
+Three things were different in company, and were mended in a few lines each.
+
+- **The coal booms had gone, and the line was lowered from 2 to 1.5.** Alone
+  on the port a district's pits doubled their coal in five years six times a
+  run. In company it was 0.7 times a run on seeds 1 to 6, and none was kept.
+  Taking the others away one at a time (`--example chronicle -- --seeds 1-6
+  --set NAME.enabled=false`) puts it on `prices`: 4.7 a run without the
+  merchants' prices, 1.5 without the machines, 1.8 without the curve. The
+  port's coal swung with its iron trade, which overshot and fell back every
+  few years, and most of those doublings were the upswing of that false
+  cycle; with stock held and gluts not bought into, a coalfield grows more
+  steadily. A district that raises half as much coal again in five years,
+  and 15 per cent of the island's, is still a boom on an island whose people
+  grow by a twentieth in that time, so the line is now 1.5: 3.8 booms told a
+  run on seeds 1 to 12 and about one kept. They come where they should, in
+  the 1760s to 1790s and again when the railway arrives ("The pits around
+  Wilmere raise 2.0 times the coal they raised in 1828, and 33% of all the
+  island's. The railway that reached Wilmere in 1833 carries it away."), and
+  eighteen of the twenty-one on seeds 1 to 6 say the price fell: the pits
+  outran their buyers. The number is in the struct's defaults, so the port
+  with `--set chronicle.enabled=true` now reads 1.5 too, and there, with its
+  false cycles, it tells 13 coal booms a run (seeds 1 to 8) where the tables
+  above say six. Nobody plays that island; for the old count add `--set
+  chronicle.boom_growth=2`.
+- **A short crop was told twice in one decade's history.** The harvest files
+  "A poor harvest" or "Three lean years" (kind `harvest`, up to 0.75) and "A
+  dearth of grain" (kind `dearth`, up to 0.8), and as two kinds they could
+  take two of a decade's four places for one bad run of years: in five
+  decades of the 180 on seeds 1 to 12, and in seed 5's 1890s both for the
+  same year. They are now one kind when places are shared out, as slumps
+  called and slumps dated are, and the heavier is kept. Nothing else about
+  either changes: both are still told, and both are in the "All" list.
+- **The harvest's news had no provenance.** It is news because a number
+  passed a line, like the observer's, so it now says which
+  (`chronicle::why` in `harvest::news`; nothing while the chronicle is off).
+  `tests/chronicle.rs` holds it to that.
+
+The viewer and the example label the two kinds "Harvest" and "Dearth" (they
+were "News", in grey), and the example takes `--set`, which is how the
+numbers above were had.
+
+### Beside the life cycle for works
+
+The life cycle for works (`works.md`) was merged after the chronicle, and it
+changes what there is to tell: a tenth as many works, each ten times the
+size, and a family that holds a few dozen of them. Seeds 1 to 12, six
+families, `--example chronicle -- --seeds 1-12` with it and with `--set
+works.enabled=false`:
+
+| per run | the game before | with the life cycle |
+|---|---|---|
+| all items | 763 [680 .. 805] | 888 [827 .. 926] |
+| the major feed | 55.8 [52 .. 58] | 57.5 [54 .. 59] |
+| the major feed in a decade | 3.0 to 4.0, never under 2 or over 4 | 3.5 to 4.0, never under 2 or over 4 |
+| the player's own items | 246 [227 .. 262] | 226 [200 .. 248] |
+| of them major | 11.6 | 12.1 |
+| closures told (weight 0.4, none kept) | 56 | 204 |
+| alarms; slumps and depressions dated, and kept | 8; 8, 3 | 17; 16, 7 |
+| regional stories told | 45.2 | 42.4 |
+| of them rounds of closures, told and kept | 10.0, 1.0 | 13.2, 1.8 |
+| declines of towns, told and kept | 16.5, 3.2 | 10.8, 1.8 |
+
+(The first column's rounds of closures are at the line of ten works it was
+measured with; at five the game without the life cycle tells 18.)
+
+The feed a history keeps is the length it was, with seven dated slumps in
+it where there were three: the life cycle brings a building cycle
+(`works.md`, "In company with the rest of the game"). Two things were
+mended, and one is left.
+
+- **A branch's extensions were the flood over again.** With the life cycle
+  a growing branch extends a works it has before it founds another, and
+  `works::extend_for_family` told the player of each: 240 items in seed 7's
+  game, in 102 of its years, up to eight in a year. They are the branch's own
+  doing, as a works it opens is, so they now wait for the year's summary
+  (`chronicle::works_extended`, `branch_summary`), which says what was opened
+  and what was extended, where, and for how much. With the chronicle off the
+  works' own item is made as it was.
+- **Rounds of closures had gone, and the line was lowered from ten works to
+  five.** A district had some four hundred works and has forty, so ten of
+  them shutting in one year hardly ever happens: the story was told once in
+  seed 7's game and never in seed 3's, where it had been told 8 and 13
+  times. At five (and a tenth of those that stood, as before) it is told 12
+  to 15 times a run on seeds 1, 3, 5 and 7, and 13 times on seeds 1 to 12.
+  Like the coal boom's line the number is in the struct's defaults, so the
+  game with `--set works.enabled=false` reads five too.
+- **Left: single closures.** `sim::notable_closures` tells of a works that
+  shuts at over one and a half times its trade's usual size, two a year at
+  most. That was a large works; the median works is now five or six usual
+  sizes, so nearly every year has its two, 204 in a run for 55. They weigh
+  0.4 and none is kept, so the major feed does not see them, but the "All"
+  list does. What makes a closure worth telling under the life cycle (its
+  hands, its place among the works of its kind) is a choice about the news
+  and was not made here.
+
+`tests/chronicle.rs` said three things of seed 7's game that are no longer
+so, and says them of the game as it is. The family's branches opened about
+a thousand works; they now open some fifty and extend them 240 times, so
+their doings are counted in the same game with the chronicle off (294 items)
+and the news of them must still be a fraction of that. The decade of new
+towns was the 1750s and was kept; with hands walking to work the towns come
+later, three of them in the 1760s, and the digest is told once with its
+years and is kept unless the decade's four places go to heavier things (they
+do: two inventions, a coal boom and the family's new trade). And "less news
+with the chronicle than without" is held over the whole game (849 items for
+975 on seed 7), and over the first forty years for the player's own news,
+since there is no longer a flood in every stretch of years to outweigh the
+stories the chronicle adds.
+
+### Beside the game's railways and carting
+
+The game's railways and carting (`railways.md`, `carting.md`) were merged
+last. Seeds 1 to 12, six families, `--example chronicle -- --seeds 1-12`
+with them and with `--set railways.enabled=false --set
+carting.enabled=false`:
+
+| per run | the game before | with railways and carting |
+|---|---|---|
+| all items | 888 [827 .. 926] | 902 [834 .. 960] |
+| the major feed | 57.5 [54 .. 59] | 58.2 [55 .. 60] |
+| the major feed in a decade | 3.5 to 4.0, never under 2 or over 4 | 3.6 to 4.0, never under 2 or over 4 |
+| the player's own items | 226 [200 .. 248] | 220 [160 .. 246] |
+| of them major | 12.1 | 12.3 |
+| railway openings and schemes told, and kept | 36 and 34, 1 | 83 and 20, 1 |
+| regional stories told | 42.4 | 47.0 |
+| of them coal booms, told and kept | 4.2, 1.8 | 4.6, 1.5 |
+| declines of towns, told and kept | 10.8, 1.8 | 13.0, 2.6 |
+
+The feed a history keeps is the length it was and keeps the same one
+railway item, the first line. The branches are told once a year, lightly
+(0.35), and stay in the "All" list: 13 or 14 railway items a decade there
+from the 1830s to the 1850s.
+
+One thing was mended. **A coal boom said a mineral line had opened whatever
+the branch was for.** The story's reason reads the record's list of opened
+lines, where the port marks a mineral spur by its having no second town.
+The game's promoters build branches to farms, woods, quarries and works as
+well, and a town's own first line, and all of them have no second town. So
+with `railways.enabled` the story asks the promoters' book what the line was
+for (`railways::line_for_coal`): the railway that reached the town carries
+the coal away, a branch to the district's collieries brings it down from
+the pits, and any other branch is left out of the story. With the switch
+off the reason is found as it was. `tests/chronicle.rs` holds the game to
+it, and two of its notes on seed 7's game were brought up to date: the last
+town is now founded in 1831, and the decade of new towns is the 1770s.
+
+### Beside the game's rules for people
+
+People (`people.md`) came last. Seeds 1 to 12, six families, `--example
+chronicle -- --seeds 1-12` with them and with `--set people.enabled=false
+--set carting.adjust=1`, which is the game before
+(`core-steps/people-probe/chronicle-game.txt` and `chronicle-before.txt`):
+
+| per run | the game before | with people |
+|---|---|---|
+| all items | 902 [834 .. 960] | 915 [847 .. 982] |
+| the major feed | 58.2 [55 .. 60] | 58.9 [57 .. 60] |
+| the player's own items, and of them major | 220, 12.3 | 222, 12.1 |
+| town items | 11 | 13 |
+| regional stories told, and kept | 47.0, 8 | 40.8, 8 |
+| of them coal booms | 4.6 | 4.1 |
+| one town overtaking another | 3.6 | 3.1 |
+| declines of towns | 13.0 | 11.2 |
+| the decade's fastest-growing town | 11.6 | 10.2 |
+| a district's works closing together | 14.2 | 12.2 |
+
+Two things were fitted.
+
+**A town is redrawn by its cells as well as by a founding.** Under people
+households go with their cells every year, so a road or a railway that
+carries a district from one market to another moves its people on the day,
+with no founding. A town that gained or lost a tenth of its people that way
+in a year (`st.pp_moved`, against `REDRAWN_SHARE`) is treated as a founding
+treats it: its peak starts again and nothing sets it against what it was.
+A tenth is the least fall told as a decline and the least lead told as
+outgrowing the island, so a smaller redrawing cannot make a story alone.
+That is why a seventh fewer regional stories are told; as many are kept.
+`tests/chronicle.rs` holds a town to being redrawn in exactly those years.
+
+**People taking ship is not the hunger.** The item has the kind `famine`,
+and `famine_provenance` would have given it the hunger's reason, which
+speaks of the food in the town named. The town named is the port they
+sailed from. `peopling::growth` now gives the item its own reason (how many
+left, against one in a thousand of the island), and the hunger's is only
+written where there is none.
+
 ## What worries me
+
+- **Grain is seven of the 56 items a history keeps.** In company 7.4 of a
+  run's kept items are about the crop (seeds 1 to 12): 2.2 dearths, 1.4
+  harvests, and 3.8 of the 6.9 markets items, which are "Grain glut" or
+  "Grain shortage". The last are the observer's steepness detector meeting
+  the weather: a bumper year is a rise in output far from trend with a fall
+  in price, and it says so at 0.8, above anything the harvest files, in the
+  year the harvest has already told. One decade in eighteen keeps two items
+  on grain (ten of 180), none three. I left it: markets have their one place a
+  decade and grain is the good a history would pick, but "Grain glut" is a
+  duller telling of a bumper harvest than the harvest's own. The mend would
+  be in the observer (no steep item on a good in a year its harvest was
+  news), not here.
+- **The coal line was moved on twelve seeds.** 1.5 gives three or four booms
+  a run on seeds 1 to 12 with the rules as they stand tonight. A mechanism
+  that changes how mines open or how coal is carried will move that again,
+  and the place to look is the last table of `--example chronicle -- --seeds
+  1-12`.
 
 - **Four a decade is the top of "two to four".** Most decades fill their
   four places (the mean is 3.7), one of them the player's. `per_decade=3`
@@ -279,7 +534,10 @@ The 1810s
   kind gets one place a decade. Nothing needs registering, but a mechanism
   that files many items at 0.6 or more will crowd the "All" list, not the
   major feed. It can add provenance with `chronicle::why(P, ...)`, which
-  returns nothing while the chronicle is off.
+  returns nothing while the chronicle is off. The harvest was the first to
+  arrive, and showed the one thing that does need a line here: a mechanism
+  that files two kinds about the same event wants them named as one in
+  `chronicle::class` ("In company").
 - **Events have no stable id.** `rekept` names an event by its place in the
   run's list, which works because the list only grows. Saving and loading a
   game would need the same order kept.
