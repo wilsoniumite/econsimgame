@@ -349,12 +349,13 @@ mod tests {
 
     #[test]
     fn the_projection_is_the_game_s_camera() {
-        // the same point through Bevy's own camera matrices
+        // the same point through the lens the game's camera is spawned with, and Bevy's own matrices
+        use bevy::camera::CameraProjection;
         use bevy::prelude::*;
         let v = View { target: Vec3::new(1.0, 0.0, 2.0), dist: 14.0, size: (1600.0, 1000.0), k: 1.0 };
         let orbit = crate::Orbit { target: v.target, yaw: 0.0, pitch: shots::PLAY_PITCH.to_radians(), dist: v.dist };
         let cam = crate::orbit_transform(&orbit);
-        let proj = Mat4::perspective_infinite_reverse_rh(crate::FOV_DEG.to_radians(), 1.6, 0.05);
+        let proj = PerspectiveProjection { fov: crate::FOV_DEG.to_radians(), aspect_ratio: 1.6, near: 0.05, far: 2000.0, ..default() }.get_clip_from_view();
         for p in [Vec3::new(0.3, 0.1, 1.2), Vec3::new(2.5, 0.0, 3.9), Vec3::new(1.0, 0.4, 2.0)] {
             let ndc = (proj * cam.to_matrix().inverse()).project_point3(p);
             let want = Vec2::new((ndc.x + 1.0) * 800.0, (1.0 - ndc.y) * 500.0);

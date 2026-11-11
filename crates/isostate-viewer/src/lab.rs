@@ -40,7 +40,7 @@ use std::sync::Arc;
 
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::camera::RenderTarget;
-use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::image::ImageSampler;
 use bevy::pbr::DistanceFog;
 use bevy::post_process::dof::DepthOfField;
@@ -103,6 +103,8 @@ struct Lab {
     turn: f32,
     out: PathBuf,
     started: std::time::Instant,
+    /// how many pictures were asked for and never written
+    failed: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -195,7 +197,7 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
         .insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(TheLook(look))
-        .insert_resource(Lab { sheets, jobs, index: 0, phase: Phase::Arrange, size: args.size, season, tilt: args.tilt, turn, out, started: std::time::Instant::now() })
+        .insert_resource(Lab { sheets, jobs, index: 0, phase: Phase::Arrange, size: args.size, season, tilt: args.tilt, turn, out, started: std::time::Instant::now(), failed: 0 })
         .add_systems(Startup, setup)
         .add_systems(Update, step);
     let waiting = PipelinesWaiting::default();
@@ -203,8 +205,10 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
     if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
         render.insert_resource(waiting).add_systems(bevy::render::Render, crate::count_waiting_pipelines.in_set(bevy::render::RenderSystems::Cleanup));
     }
-    app.run();
-    0
+    match app.run() {
+        AppExit::Success => 0,
+        AppExit::Error(code) => code.get() as i32,
+    }
 }
 
 /// A sheet's cells, each thing turned `turn` degrees about its own middle.
@@ -268,7 +272,9 @@ fn setup(mut commands: Commands, look: Res<TheLook>, lab: Res<Lab>, mut images: 
             Camera3d::default(),
             Camera { order: 0, clear_color: ClearColorConfig::Custom(PAPER.with_alpha(1.0)), ..default() },
             Msaa::Off,
+            // the camera's picture is tonemapped already; this one only lays it out under the labels
             Tonemapping::None,
+            DebandDither::Disabled,
             RenderTarget::Image(picture.clone().into()),
             Transform::from_xyz(0.0, -9000.0, 0.0).looking_to(Vec3::NEG_Y, Vec3::Z),
             IsDefaultUiCamera,
@@ -346,8 +352,8 @@ fn step(
             }
             if lab.index >= lab.jobs.len() {
                 write_index(&lab.out);
-                eprintln!("{} pictures in {:.1} s", lab.jobs.len(), lab.started.elapsed().as_secs_f32());
-                exit.write(AppExit::Success);
+                eprintln!("{} pictures in {:.1} s", lab.jobs.len() - lab.failed, lab.started.elapsed().as_secs_f32());
+                exit.write(if lab.failed == 0 { AppExit::Success } else { AppExit::error() });
                 return;
             }
             let job = &lab.jobs[lab.index];
@@ -480,6 +486,7 @@ fn step(
             if (frames >= 3 && path.exists()) || frames > 600 {
                 if !path.exists() {
                     eprintln!("{} was not written", path.display());
+                    lab.failed += 1;
                 }
                 lab.index += 1;
                 lab.phase = Phase::Arrange;
