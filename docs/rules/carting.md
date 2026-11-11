@@ -194,6 +194,7 @@ Two things do not follow, and I report them as they are:
   (`examples/bots.rs`) finish all sixteen runs under the game's rules, which
   now means railways and carting together. Against the port's rules their
   rank in 1900 moves by a place or two either way on seeds 1, 2 and 3; on seed 7
-  the landlord and the thoughtful player fall from first to fourth. One run
-  each, so I cannot say which of the two mechanisms did it or whether it is
-  chance.
+  the landlord falls from first to third and the thoughtful player from
+  first to fourth (after the review's repairs; before them both fell to
+  fourth). One run each, so I cannot say which of the two mechanisms did it
+  or whether it is chance.
