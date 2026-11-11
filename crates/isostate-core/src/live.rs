@@ -257,6 +257,10 @@ pub struct LiveYear {
     /// slot (1.0 is average; empty unless the mechanism is on), and the country's.
     pub harvest_town: Vec<f32>,
     pub harvest: Option<f32>,
+    /// accounts: the island's income account for the year (None unless the books
+    /// are kept). One town's or one works' books are asked for when wanted, with
+    /// `accounts::town_books` and `accounts::works_books`.
+    pub accounts: Option<crate::accounts::IslandYear>,
 }
 
 /// What the viewer has been sent so far.
@@ -370,5 +374,6 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         cell_owner: st.cell_owner.iter().map(|&o| o as i16).collect(),
         harvest_town: st.harvest_town.iter().map(|&v| v as f32).collect(),
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
+        accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
     }
 }

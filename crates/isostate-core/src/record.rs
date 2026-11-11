@@ -434,6 +434,13 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         arrays.push(f32_array("town_harvest", vec![n_years, T], &rec.town_harvest));
         arrays.push(f32_array("harvest", vec![n_years], &rec.harvest));
     }
+    // accounts: only a run that kept books has these (docs/rules/accounts.md has their shapes)
+    for table in crate::accounts::tables(st, lite) {
+        arrays.push(match table {
+            crate::accounts::Table::F32(name, shape, data) => f32_array(&name, shape, &data),
+            crate::accounts::Table::I32(name, shape, data) => i32_array(&name, shape, &data),
+        });
+    }
 
     let towns: Vec<Value> = (0..st.town_name.len())
         .map(|i| json!({"name": st.town_name[i], "node": st.town_node[i], "founded": st.town_founded[i]}))
@@ -501,6 +508,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         "share_groups": share_groups,
         "arrays": table,
     });
+    // accounts: the tables' columns and the island's account of every year
+    if let Some(books) = crate::accounts::header(st) {
+        header["accounts"] = books;
+    }
     clean(&mut header);
     let hjson = ensure_ascii(&serde_json::to_string(&header).unwrap()).into_bytes();
     let pad = (8 - (4 + hjson.len()) % 8) % 8;

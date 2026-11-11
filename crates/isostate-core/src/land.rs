@@ -296,6 +296,8 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         for c in 0..N {
             if st.catch[c] >= 0 && cleared[c] > 0.0 {
                 st.inv[(st.catch[c] as usize, timber)] += cleared[c] * P.clearing_timber;
+                // accounts: timber that no woodman cut goes into the town's books as made
+                crate::accounts::note_cleared(st, st.catch[c] as usize, timber, cleared[c] * P.clearing_timber);
             }
         }
     }

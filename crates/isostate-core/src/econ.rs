@@ -289,6 +289,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let NF = fuels.len();
     let heat_f: Vec<f64> = fuels.iter().map(|&g| C.heat[g]).collect();
     st.m_rent = 0.0;
+    // accounts (docs/rules/accounts.md): the books open on the month's stocks
+    crate::accounts::open_month(st);
 
     // ---------------- households: what they want to buy
     let (share, unit) = service_mix(&st.price, &C.props, P.logit_theta);
@@ -934,11 +936,31 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             crate::carting::add_bill_town(st, P, ti, tc_out);
         }
         st.m_trade_value = pairwise_sum(&pay.data);
+        // accounts: what went from each town to each other, and the carting paid on it
+        crate::accounts::note_trade(&mut st.acct, &A_idx, &qt, &tau, &st.price);
     } else {
         st.m_trade_value = 0.0;
     }
     for v in st.inv.data.iter_mut() {
         *v = v.max(0.0);
+    }
+
+    // accounts: the month's goods and payments go into the books before prices
+    // move. Everything handed over is a local of this function; nothing comes back.
+    if st.acct.on {
+        #[rustfmt::skip]
+        crate::accounts::note_month(st, C, P, &crate::accounts::Month {
+            ex: &ex, et: &et, sec: &sec, Y: &Y, Lex: &Lex, value: &value, wage_ex: &wage_ex, cart_ex: &cart_ex,
+            in_paid: &in_paid, rent_ex: &rent_ex, mach_got: &mach_got, rail_got: &rail_got,
+            fi: &fi, ft: &ft, fm: &fm, fc: &fc, out: &out, K: &K, q: &q, labor_f: &labor_f, wages_f: &wages_f,
+            rent_f: &rent_f, pay_in: &pay_in, cart_in: &cart_in, cart_out: &cart_out, rev: &rev,
+            a: &a, use_f: &use_f, pin: &pin,
+            hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
+            hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
+            q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
+            oi: &oi, ot: &ot, inv_got: &inv_got, proj_got: &proj_got,
+            R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
+        });
     }
 
     // ---------------- prices respond to inventories (level) and to this month's
@@ -987,6 +1009,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             div[k] = P.firm_div_rate * excess.max(0.0);
             st.f_cash[i] -= div[k];
         }
+        // accounts: every works' dividend, before the families take theirs out of the list
+        crate::accounts::note_dividends(&mut st.acct, &div);
         if families::active(st) {
             families::take_dividends(st, C, &fi, &mut div);
         }
@@ -1008,6 +1032,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let popshare = st.pop[t] / pop_total;
         hh_inc[t] += fdiv[t] + mdiv[t] + (fund_div + issue) * popshare;
     }
+    // accounts: the month's incomes, before the purses are credited
+    crate::accounts::close_month(st, &fi, &ft, &fm, &merch, &hh_inc, &fdiv, &mdiv, fund_div, issue, pop_total);
 
     for t in 0..T {
         st.hh_income[t] += hh_inc[t];

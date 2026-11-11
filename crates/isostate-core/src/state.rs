@@ -449,4 +449,9 @@ pub struct State {
     /// For tests and scenarios: a cell where a town is to be founded this year,
     /// whatever the founding rule would say of its district.
     pub pp_found_next: Option<usize>,
+
+    // ---------------- accounts (docs/rules/accounts.md; empty while `accounts` is off)
+    /// The books: the year now running, and every complete year's. Nothing in
+    /// the economy reads them.
+    pub acct: crate::accounts::Books,
 }

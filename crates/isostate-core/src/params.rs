@@ -278,6 +278,10 @@ pub struct Params {
     /// answers to how people live, and towns founded all century.
     #[serde(default, skip_serializing_if = "is_default")]
     pub people: crate::peopling::PeopleParams,
+    /// Books that say who makes, moves, buys and earns what (not in the Python;
+    /// see docs/rules/accounts.md). An observer: the economy never reads them.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub accounts: crate::accounts::AccountsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -477,6 +481,7 @@ pub fn default_params() -> Params {
         railways: crate::railways::RailwayParams::default(),
         carting: crate::carting::CartingParams::default(),
         people: crate::peopling::PeopleParams::default(),
+        accounts: crate::accounts::AccountsParams::default(),
     }
 }
 
@@ -502,6 +507,7 @@ pub fn game_params() -> Params {
     P.railways = crate::railways::RailwayParams::game();
     P.carting = crate::carting::CartingParams::game();
     P.people = crate::peopling::PeopleParams::game();
+    P.accounts = crate::accounts::AccountsParams::game();
     P
 }
 
