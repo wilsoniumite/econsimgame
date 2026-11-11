@@ -87,6 +87,13 @@ pub struct ArrayInfo {
     pub nbytes: usize,
 }
 
+/// The names of the monthly series, in the order of the rows of the `series` array.
+#[derive(Deserialize, Clone, Debug, Default)]
+pub struct SeriesNames {
+    #[serde(default)]
+    pub names: Vec<String>,
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct Header {
     pub meta: Meta,
@@ -99,6 +106,8 @@ pub struct Header {
     pub disp: Vec<String>,
     pub uses: Vec<String>,
     pub arrays: Vec<ArrayInfo>,
+    #[serde(default)]
+    pub series: SeriesNames,
 }
 
 /// Everything the viewer needs from one run, copied into plain vectors.
@@ -138,22 +147,39 @@ pub struct Replay {
     pub owner: Vec<i8>,
 }
 
-fn slice<'a>(buf: &'a [u8], base: usize, a: &ArrayInfo) -> &'a [u8] {
-    &buf[base + a.offset..base + a.offset + a.nbytes]
+/// The bytes of one array, or an error if the file ends before the array does.
+fn slice<'a>(path: &str, buf: &'a [u8], base: usize, a: &ArrayInfo) -> Result<&'a [u8], String> {
+    let end = base.checked_add(a.offset).and_then(|s| s.checked_add(a.nbytes));
+    match end {
+        Some(end) if end <= buf.len() => Ok(&buf[end - a.nbytes..end]),
+        _ => Err(format!(
+            "{path} is cut short: its array {} should end {} bytes in and the file has {}. Was it copied while the run was still being written?",
+            a.name,
+            end.map_or_else(|| "too many".to_string(), |e| e.to_string()),
+            buf.len()
+        )),
+    }
 }
 
 pub fn load(path: &str) -> Result<Replay, String> {
     let buf = std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    parse(path, &buf)
+}
+
+/// Read a run from the bytes of its file; `path` is for the messages.
+fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     if buf.len() < 8 {
         return Err(format!("{path} is too short to be a run"));
     }
     let hlen = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-    let header: Header = serde_json::from_slice(&buf[4..4 + hlen])
-        .map_err(|e| format!("bad header in {path}: {e}"))?;
+    let base = 4 + hlen;
+    if base > buf.len() {
+        return Err(format!("{path} is cut short: its header should be {hlen} bytes long and the file has {} after the first four", buf.len() - 4));
+    }
+    let header: Header = serde_json::from_slice(&buf[4..base]).map_err(|e| format!("bad header in {path}: {e}"))?;
     if header.meta.lite {
         return Err(format!("{path} is a lite run (charts only) and has no map layers"));
     }
-    let base = 4 + hlen;
     let find = |name: &str| -> Result<&ArrayInfo, String> {
         header
             .arrays
@@ -161,22 +187,21 @@ pub fn load(path: &str) -> Result<Replay, String> {
             .find(|a| a.name == name)
             .ok_or_else(|| format!("{path} has no array called {name}"))
     };
-    let u8s = |name: &str| -> Result<Vec<u8>, String> { Ok(slice(&buf, base, find(name)?).to_vec()) };
+    let u8s = |name: &str| -> Result<Vec<u8>, String> { Ok(slice(path, buf, base, find(name)?)?.to_vec()) };
     let f32s = |name: &str| -> Result<Vec<f32>, String> {
-        Ok(bytemuck::pod_collect_to_vec::<u8, f32>(slice(&buf, base, find(name)?)))
+        Ok(bytemuck::pod_collect_to_vec::<u8, f32>(slice(path, buf, base, find(name)?)?))
     };
     let i32s = |name: &str| -> Result<Vec<i32>, String> {
-        Ok(bytemuck::pod_collect_to_vec::<u8, i32>(slice(&buf, base, find(name)?)))
+        Ok(bytemuck::pod_collect_to_vec::<u8, i32>(slice(path, buf, base, find(name)?)?))
+    };
+    // the second dimension of a table: towns in `town_pop`, months in `series`
+    let across = |name: &str| -> Result<usize, String> {
+        find(name)?.shape.get(1).copied().ok_or_else(|| format!("{path}: its array {name} should be a table with two dimensions"))
     };
     let (w, h, ny) = (header.meta.w, header.meta.h, header.meta.n_years);
-    let n_towns = find("town_pop")?.shape[1];
-    let series_info = find("series")?;
-    let series_len = series_info.shape[1];
-    let series_names = serde_json::from_slice::<serde_json::Value>(&buf[4..4 + hlen])
-        .ok()
-        .and_then(|v| v["series"]["names"].as_array().cloned())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-        .unwrap_or_default();
+    let n_towns = across("town_pop")?;
+    let series_len = across("series")?;
+    let series_names = header.series.names.clone();
     let has_mix = header.arrays.iter().any(|a| a.name == "mix_a");
     let use_ = u8s("use")?;
     let (mix_a, mix_b, mix_s) = if has_mix {
@@ -187,6 +212,10 @@ pub fn load(path: &str) -> Result<Replay, String> {
         let a: Vec<u8> = use_.iter().map(|&u| map(u)).collect();
         (a.clone(), a, vec![255; use_.len()])
     };
+    // a year's layer has a value for every cell: anything less would be read past its end later
+    if use_.len() != ny * w * h {
+        return Err(format!("{path}: its land use has {} values, where {ny} years of {w} by {h} cells need {}", use_.len(), ny * w * h));
+    }
     Ok(Replay {
         w,
         h,
@@ -245,5 +274,108 @@ pub fn annual(r: &Replay, name: &str, k: usize) -> Option<f32> {
         None
     } else {
         Some(vals.iter().sum::<f32>() / vals.len() as f32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The bytes of a very small run: two cells, one year, one town, one firm,
+    /// one series, laid out as `record.pack` lays them out.
+    fn tiny_run() -> Vec<u8> {
+        let (n, ny, nt) = (2usize, 1usize, 1usize);
+        let mut body: Vec<u8> = Vec::new();
+        let mut arrays = Vec::new();
+        let mut add = |name: &str, dtype: &str, shape: Vec<usize>, bytes: Vec<u8>| {
+            arrays.push(serde_json::json!({"name": name, "dtype": dtype, "shape": shape, "offset": body.len(), "nbytes": bytes.len()}));
+            body.extend_from_slice(&bytes);
+            while body.len() % 8 != 0 {
+                body.push(0);
+            }
+        };
+        for name in ["elev", "terrain", "river"] {
+            add(name, "u1", vec![1, n], vec![1; n]);
+        }
+        add("down", "i4", vec![n], vec![0; n * 4]);
+        for name in ["use", "inten", "trans", "catch", "mix_a", "mix_b", "mix_s"] {
+            add(name, "u1", vec![ny, n], vec![1; ny * n]);
+        }
+        add("town_active", "u1", vec![ny, nt], vec![1; ny * nt]);
+        add("town_pop", "f4", vec![ny, nt], 1234.0f32.to_le_bytes().to_vec());
+        add("town_urban", "f4", vec![ny, nt], 400.0f32.to_le_bytes().to_vec());
+        // one firm, there for the one year, its capacities starting at the first value
+        for (name, v) in [("firm_first", 0i32), ("firm_len", 1), ("firm_off", 0)] {
+            add(name, "i4", vec![1], v.to_le_bytes().to_vec());
+        }
+        add("firm_Kvals", "f4", vec![1], 2.5f32.to_le_bytes().to_vec());
+        add("series", "f4", vec![1, 12], (0..12).flat_map(|m| (m as f32).to_le_bytes()).collect());
+        let header = serde_json::json!({
+            "meta": {"W": 2, "H": 1, "start_year": 1750, "n_years": ny, "seed": 7},
+            "goods": [], "methods": [], "towns": [{"name": "Ashby", "node": 0, "founded": 1700}],
+            "firms": [], "events": [], "uses": [],
+            "series": {"names": ["pop"], "start_year": 1750},
+            "arrays": arrays,
+        });
+        let mut h = serde_json::to_vec(&header).unwrap();
+        while (4 + h.len()) % 8 != 0 {
+            h.push(b' ');
+        }
+        let mut out = (h.len() as u32).to_le_bytes().to_vec();
+        out.extend_from_slice(&h);
+        out.extend_from_slice(&body);
+        out
+    }
+
+    #[test]
+    fn a_whole_run_is_read() {
+        let r = parse("tiny.bin", &tiny_run()).unwrap();
+        assert_eq!((r.w, r.h, r.ny, r.n_towns, r.filled), (2, 1, 1, 1, 1));
+        assert_eq!(r.town_pop, [1234.0]);
+        assert_eq!(r.series_names, ["pop"]);
+        assert_eq!(annual(&r, "pop", 0), Some(5.5));
+        assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn a_run_cut_short_is_an_error_that_says_so() {
+        let whole = tiny_run();
+        // cut anywhere, the reader gives an error and never panics
+        for len in 0..whole.len() {
+            let e = parse("cut.bin", &whole[..len]).err().unwrap_or_else(|| panic!("{len} of {} bytes were read as a whole run", whole.len()));
+            if len < 8 {
+                assert!(e.contains("too short"), "{len} bytes: {e}");
+            } else {
+                assert!(e.contains("cut.bin is cut short"), "{len} bytes: {e}");
+            }
+        }
+        // in the header, and in an array
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        let e = parse("cut.bin", &whole[..4 + hlen / 2]).err().unwrap();
+        assert!(e.contains("its header should be"), "{e}");
+        let e = parse("cut.bin", &whole[..whole.len() - 1]).err().unwrap();
+        assert!(e.contains("its array series should end"), "{e}");
+    }
+
+    #[test]
+    fn a_table_with_one_dimension_is_an_error() {
+        let whole = tiny_run();
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        // the same file with town_pop described as a plain list
+        let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
+        for a in v["arrays"].as_array_mut().unwrap() {
+            if a["name"] == "town_pop" {
+                a["shape"] = serde_json::json!([1]);
+            }
+        }
+        let mut h = serde_json::to_vec(&v).unwrap();
+        // the header may only grow by whole steps of eight bytes, to keep the arrays where they are
+        assert!(h.len() <= hlen);
+        h.resize(hlen, b' ');
+        let mut file = whole[..4].to_vec();
+        file.extend_from_slice(&h);
+        file.extend_from_slice(&whole[4 + hlen..]);
+        let e = parse("odd.bin", &file).err().unwrap();
+        assert!(e.contains("town_pop should be a table"), "{e}");
     }
 }

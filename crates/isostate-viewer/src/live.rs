@@ -315,6 +315,7 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         disp: stat.disp.clone(),
         uses: stat.uses.clone(),
         arrays: Vec::new(),
+        series: Default::default(),
     };
     let series_len = ny * 12;
     Replay {
