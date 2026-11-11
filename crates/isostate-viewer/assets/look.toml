@@ -148,6 +148,27 @@ open = "#2c5f86"
 # the foam at the water's edge and on the surf
 foam = "#f4f6f2"
 
+[winter]
+# Winter on what is built: houses, works, churches, farm buildings, bridges
+# (src/built.wesl). The land's own snow and frost are in [land] above.
+
+# snow lying on a roof, the top of a wall, a stack of goods, and how much of
+# such a surface it covers in midwinter (the rest shows the roof through)
+snow = "#f1f4f5"
+snow_cover = 0.9
+# hoar frost on the ground round a house, its yard and its garden, and how
+# strongly it lies
+frost = "#dfe5e8"
+frost_cover = 0.3
+# a mill pond frozen over
+ice = "#cbdbe1"
+# what the green round a house goes to: a bed or a hedge to bare earth and
+# twigs, a lawn to the dull grass of winter
+bare_earth = "#8a7658"
+winter_grass = "#8f9672"
+# how much more solid smoke stands in cold air: 0.15 is 15% more at midwinter
+smoke_fuller = 0.15
+
 [ground]
 # What lies on the land.
 # roads between the towns: gravel on the main roads, dust on the lesser ones

@@ -659,6 +659,9 @@ fn step(world: &mut World, sc: &mut Script) {
                 sc.frames = sc.frames.saturating_sub(1);
                 if done {
                     print_map(world, &note);
+                    // whether the trees stand aside for a map view, as they are set this frame
+                    let (shown, all) = crate::trees_showing(world);
+                    println!("script:   trees: {shown} of {all} meshes showing");
                 }
             }
             Step::Shot(path) => {

@@ -561,7 +561,6 @@ fn paint(
     sm: Option<Res<SeasonMats>>,
     mut mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut images: ResMut<Assets<Image>>,
-    mut scenery: Query<(&MeshMaterial3d<StandardMaterial>, &mut Visibility)>,
 ) {
     let Some(sm) = sm else { return };
     let r = &data.r;
@@ -571,8 +570,7 @@ fn paint(
     if ov.painted == Some(key) {
         return;
     }
-    let was_on = ov.painted.is_some_and(|p| p.0.is_some());
-    let w = ov.kind.map(|kind| wash(r, k, kind, good));
+    let w =ov.kind.map(|kind| wash(r, k, kind, good));
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
     if let (Some(w), Some(h)) = (&w, &handle) {
         if let Some(mut img) = images.get_mut(h) {
@@ -593,14 +591,9 @@ fn paint(
         }
     }
     // the woods would hide the wash under their leaves, so on a map view the trees
-    // stand aside; towns, works, roads and railways stay, being what the figures follow
-    if w.is_some() != was_on {
-        for (mat, mut vis) in &mut scenery {
-            if mat.0.id() == sm.trees.id() {
-                vis.set_if_neq(if w.is_some() { Visibility::Hidden } else { Visibility::Inherited });
-            }
-        }
-    }
+    // stand aside; towns, works, roads and railways stay, being what the figures follow.
+    // Nothing is hidden here: `show_trees` in main.rs reads `kind` and settles what shows
+    // of the trees together with the season, which used to put the leaves back
     ov.painted = Some(key);
     let legend = w.map(|w| w.legend);
     if ov.legend != legend {

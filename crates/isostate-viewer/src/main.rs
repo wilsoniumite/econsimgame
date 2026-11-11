@@ -10,6 +10,7 @@
 //! sheets of the scenery's generators and stops (lab.rs).
 
 mod boats;
+mod built;
 mod carts;
 mod chart;
 mod cursor;
@@ -515,12 +516,19 @@ struct Leaves(usize);
 #[derive(Component)]
 struct BareLimbs(usize);
 
+/// What is green all year of the trees and bushes: conifers, gorse, yews.
+#[derive(Component)]
+struct Evergreen;
+
 /// Materials that change with the seasons.
 #[derive(Resource)]
 struct SeasonMats {
     terrain: Handle<terrain::GroundMaterial>,
     trees: Handle<StandardMaterial>,
     rivers: Handle<StandardMaterial>,
+    /// what houses and works are drawn in: winter lies on it (`built.rs`)
+    built: Handle<built::BuiltMaterial>,
+    smoke: Handle<StandardMaterial>,
     /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
     forced: Option<f32>,
 }
@@ -813,6 +821,7 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
+    built::register(&mut app);
     let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
     app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(look.sky.background.color()))
@@ -839,6 +848,8 @@ fn main() {
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
     // the seasons' clock is read by the ground, the trees, the sun and the date alike
     app.add_systems(Update, season_clock.after(advance_time).before(seasons));
+    // which of the trees' meshes show is settled in one place, by the season and the map view together
+    app.add_systems(Update, show_trees.after(seasons));
     if let Some(l) = live {
         app.insert_resource(l);
     }
@@ -929,6 +940,7 @@ fn setup_world(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
+    mut built_mats: ResMut<Assets<built::BuiltMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut fonts: ResMut<Assets<Font>>,
 ) {
@@ -987,15 +999,19 @@ fn setup_world(
     let tree_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
     let bare_mat = materials.add(bare_limb_material(lk));
     for (group, [evergreen, leaves, bare]) in handles.trees.iter().enumerate() {
-        commands.spawn((Mesh3d(evergreen.clone()), MeshMaterial3d(evergreen_mat.clone())));
+        commands.spawn((Mesh3d(evergreen.clone()), MeshMaterial3d(evergreen_mat.clone()), Evergreen));
         commands.spawn((Mesh3d(leaves.clone()), MeshMaterial3d(tree_mat.clone()), Leaves(group)));
         commands.spawn((Mesh3d(bare.clone()), MeshMaterial3d(bare_mat.clone()), BareLimbs(group), Visibility::Hidden));
     }
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, forced: forced.0 });
-    commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
-    commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
-    commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
+    // houses and works (churches, farm buildings and bridges among them) are drawn in a
+    // material that winter lies on; the trains keep the plain one, an engine being warm
+    let phase = season_phase(&SeasonClock::default(), forced.0);
+    let built_mat = built_mats.add(built::material(lk, phase));
     let smoke_mat = materials.add(smoke_material(lk));
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: built_mat.clone(), smoke: smoke_mat.clone(), forced: forced.0 });
+    commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(built_mat.clone())));
+    commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(built_mat)));
+    commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
@@ -1380,9 +1396,8 @@ fn seasons(
     look: Res<TheLook>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
+    mut built_mats: ResMut<Assets<built::BuiltMaterial>>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
-    mut leaves: Query<(&Leaves, &mut Visibility), Without<BareLimbs>>,
-    mut bare: Query<(&BareLimbs, &mut Visibility), Without<Leaves>>,
     mut last: Local<Option<i32>>,
 ) {
     let ph = season_phase(&clock, sm.forced);
@@ -1396,10 +1411,28 @@ fn seasons(
     if let Some(mut m) = ground_mats.get_mut(&sm.terrain) {
         m.extension.params.season = ph;
     }
+    // snow lies on what is built in the depth of winter, frost on the ground round it, and
+    // its gardens are bare: the buildings' material is told the season and does the rest
+    // per pixel (built.wesl), so winter rebuilds no mesh. Outside the winter (seven months
+    // in twelve) its numbers do not change and it is left alone
+    let winter = built::params(&look, ph);
+    if built_mats.get(&sm.built).is_some_and(|m| m.extension.params.amounts != winter.amounts) {
+        if let Some(mut m) = built_mats.get_mut(&sm.built) {
+            m.extension.params = winter;
+        }
+    }
+    // and smoke stands a little fuller in the cold
+    let full = built::smoke_fullness(&look, ph);
+    if materials.get(&sm.smoke).is_some_and(|m| m.base_color.alpha() != full) {
+        if let Some(mut m) = materials.get_mut(&sm.smoke) {
+            m.base_color = Color::WHITE.with_alpha(full);
+        }
+    }
     // the leaves turn: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn; and each group of
     // broadleaf trees is in leaf from spring to autumn and shows its bare limbs through the
-    // winter. They go by the seasons' clock, as the ground and the sun do, so a wood is gold,
-    // bare and green again once a round at any speed of the years, and holds while paused
+    // winter (`show_trees`). They go by the seasons' clock, as the ground and the sun do, so
+    // a wood is gold, bare and green again once a round at any speed of the years, and holds
+    // while paused
     if let Some(mut m) = materials.get_mut(&sm.trees) {
         m.base_color = leaf_tint(&look, ph);
     }
@@ -1408,19 +1441,66 @@ fn seasons(
         let t = look.water.river_tint(ph);
         m.base_color = Color::srgb(t[0], t[1], t[2]);
     }
-    let shown = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
-    for (group, mut vis) in &mut leaves {
-        vis.set_if_neq(shown(in_leaf(ph, group.0)));
-    }
-    for (group, mut vis) in &mut bare {
-        vis.set_if_neq(shown(!in_leaf(ph, group.0)));
-    }
     let (strength, colour, stands) = sun_at(&look, ph);
     for (mut light, mut tf) in &mut sun {
         light.illuminance = strength;
         light.color = colour;
         *tf = stands;
     }
+}
+
+/// One of the three meshes a group of trees is drawn as.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TreePart {
+    Evergreen,
+    Leaves(usize),
+    BareLimbs(usize),
+}
+
+/// Whether a part of the trees shows at a phase of the year. Under a map view
+/// (`aside`) none does: the woods would hide the wash under their leaves, and
+/// bare limbs and conifers would speckle it. Otherwise a group of broadleaves
+/// shows its leaves while it is in leaf and its bare limbs while it is not,
+/// and what is evergreen always shows.
+fn tree_part_shown(part: TreePart, phase: f32, aside: bool) -> bool {
+    !aside
+        && match part {
+            TreePart::Evergreen => true,
+            TreePart::Leaves(group) => in_leaf(phase, group),
+            TreePart::BareLimbs(group) => !in_leaf(phase, group),
+        }
+}
+
+/// Show and hide the trees' meshes. This is the one place that does: the
+/// season and the map view both bear on it, and when each of them set the
+/// trees' visibility for itself, the season put back the leaves a map view
+/// had hidden (and the conifers and bare limbs were never hidden at all).
+/// It runs every frame over a dozen entities and writes only what changes.
+#[allow(clippy::type_complexity)]
+fn show_trees(
+    clock: Res<SeasonClock>,
+    sm: Option<Res<SeasonMats>>,
+    ov: Res<overlay::MapOverlay>,
+    debug: Res<GroundDebug>,
+    mut trees: Query<(Option<&Leaves>, Option<&BareLimbs>, &mut Visibility), Or<(With<Leaves>, With<BareLimbs>, With<Evergreen>)>>,
+) {
+    let ph = season_phase(&clock, sm.and_then(|sm| sm.forced));
+    // `--ground-debug` shows the ground alone
+    let aside = ov.kind.is_some() || debug.0;
+    for (leaves, bare, mut vis) in &mut trees {
+        let part = match (leaves, bare) {
+            (Some(l), _) => TreePart::Leaves(l.0),
+            (None, Some(b)) => TreePart::BareLimbs(b.0),
+            (None, None) => TreePart::Evergreen,
+        };
+        vis.set_if_neq(if tree_part_shown(part, ph, aside) { Visibility::Inherited } else { Visibility::Hidden });
+    }
+}
+
+/// How many of the trees' meshes are set to show, of how many (for `--script`'s `map`).
+fn trees_showing(world: &mut World) -> (usize, usize) {
+    let mut q = world.query_filtered::<&Visibility, Or<(With<Leaves>, With<BareLimbs>, With<Evergreen>)>>();
+    q.iter(world).fold((0, 0), |(shown, all), v| (shown + (*v != Visibility::Hidden) as usize, all + 1))
 }
 
 /// What the leaves are multiplied by at a phase of the year.
