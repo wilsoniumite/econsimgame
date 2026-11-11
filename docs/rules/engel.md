@@ -196,13 +196,18 @@ Households' budget shares by need, in 1750 and then in 1900:
 
 Reading it:
 
-- **1750 is not moved.** No number of 1750 changes by more than 0.003.
+- **1750 is hardly moved.** No share of 1750 changes by more than 0.003. It is
+  not nothing: the national income of 1750 is 1.83 bundles, under the
+  reference, but the best-off towns are already a little past it.
 - **The works gain what the land loses, and the towns follow.** By 1900 the
   works have 32 per cent of the hands where they had 25 (35 for 27 with
   families), the land 39 where it had 46 (34 for 45), and the towns hold 30 per
   cent of the people where they held 24 (32 for 26). It begins when incomes
   begin to rise, in the 1780s, and goes on to the end; the port's line is flat.
-  The mines' share does not move.
+  Set seed against seed, the towns' share is higher on all eight islands in
+  1800, 1850 and 1900, with families and without; the works' share on all
+  eight but for one island in one year (1900, no families). The mines' share
+  does not move.
 - **People eat less of their rise.** Grain output is a fifth lower in 1900 (7.2
   times its 1750 level for 8.9; with families 6.5 for 9.1). That is 1.4 times
   the grain a head of 1750 where the port's households ate 1.8 times. Food
@@ -299,24 +304,30 @@ probe's set, with comfort at 0.60 and less on shelter and clothing (0.04, 0.06,
 0.13, 0.13, 0.04, 0.60), gives 0.34 on today's island at strength 3 (0.30 to
 0.38 by seed) and 0.38 with `husbandry_boost=1.2` alone (income 4.2); that probe
 reported 0.45 for it with better husbandry and tools and a two-piece curve, and
-0.50 with the tier set lower. So one half wants
-three things together: this curve, incomes that keep rising past 1850, and
-consumer goods and building that are made by hands in town. The last is
-content, which is why the richer set lives there.
+0.50 with the tier set lower. So one half wants three things together: this
+curve, incomes that keep rising past 1850, and consumer goods and building that
+are made by hands in town. The last is content, which is why the richer set
+lives there.
 
 ### What else moved
 
-- **Grain's price swings a fifth harder** (`price_swing_grain` 0.102 for 0.086;
-  0.111 for 0.090 with families), **the farm zigzag is a sixth larger** (5.7 for
-  4.8; 5.7 for 5.0), **and there are nearly two more famine notices a run** (4.1
-  for 2.2; 3.9 for 2.5). None is starred, but all three move the same way in
-  both sweeps, and there is a reason: with less of each further shilling going
-  on food, the demand for grain bends less when its price moves, so the same
+- **Grain's price swings a fifth harder** (`price_swing_grain` 0.102 for 0.086,
+  up on seven islands of eight; 0.111 for 0.090 with families, up on all
+  eight), **the farm zigzag is a sixth larger** (5.7 for 4.8; 5.7 for 5.0; up
+  on seven of eight both times), **and there are more famine notices** (4.1 a
+  run for 2.2, up on six islands and down on one; 3.9 for 2.5 with families,
+  up on five and down on three, which is not much of a tally). None is
+  starred, but the first two move the same way on nearly every island in both
+  sweeps, and there is a reason: with less of each further shilling going on
+  food, the demand for grain bends less when its price moves, so the same
   shortfall takes a bigger price rise to clear, and households that eat 1.4
-  times subsistence instead of 1.8 are nearer the floor when it comes. Food
-  markets do behave so, but it feeds the cobweb that `dx-cycles` describes.
-- Farm cells are 6 per cent fewer in 1900 and pasture cells 7 per cent more;
-  town cells are 21 per cent more (88 for 72).
+  times the grain of 1750 instead of 1.8 are nearer the floor when it comes.
+  Food markets do behave so, but it feeds the cobweb that `dx-cycles`
+  describes.
+- The farms' area is 5 per cent less in 1900 (1,216 cells' worth for 1,282,
+  less on every island; 7 per cent less with families) and the pastures' and
+  woods' area is not moved. Towns cover a fifth more cells (88 for 72; 94 for
+  77 with families).
 - The railway is invented a few years sooner (1814 for 1822 without families,
   1817 for 1820 with), inside the spread between seeds.
 - Works, their sizes and lives, the railway's length, land rent's share of
@@ -343,7 +354,9 @@ is neither on the land nor in the works) and `grain_output_Y_vs_1750`, for every
 run; and for a run with the mechanism's series, `real_wage_chained_Y_vs_1750`,
 `real_income_Y` and `budget_NEED_Y`.
 
-These are not in the table of facts in `README.md` yet.
+These are not in the table of facts in this folder's `README.md` yet, and
+`parity/check_facts.py` does not work them out a second time (it lists them as
+not checked).
 
 ## What worries me
 
