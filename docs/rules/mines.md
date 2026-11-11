@@ -234,8 +234,9 @@ six families, byte for byte, `params.json` too); no hook does anything or
 draws a random number while it is off, and the mechanism draws none when it
 is on; all 64 runs of seeds 1 to 16, under the port and under the game's
 rules, with and without six families, pass the monthly money check; the
-first build's tables below were made again from a baseline of the
-reviewer's own and came out as printed. Three things were mended.
+first build's tables for the port were made again from a baseline of the
+reviewer's own and came out as printed, and its "before" figures under the
+game's rules to the last digit. Three things were mended.
 
 - **The largest collieries were being given up at their height.** A working
   was abandoned whenever its cell was one "no land use may have": town
@@ -249,8 +250,8 @@ reviewer's own and came out as printed. Three things were mended.
   town-months in that run with the wage moving by half or more in a month,
   against 7 with the mines off. Now only idleness ends a working that has
   hands, a town goes round every pit head at work, and works may fill the
-  cell beside one (D, above). The same run loses one working of half a hand
-  to a town and has 11 such months. This is most of the "bad years" worry
+  cell beside one (D, above). The same run loses one working, of under one
+  hand, to a town and has 11 such months. This is most of the "bad years" worry
   of the first build.
 - **Five hundred abandoned pits in 1750.** The surplus workings a run starts
   with were given up during the warm-up and then listed for the viewer as
@@ -272,8 +273,8 @@ tried first" says it should be. A `reserve` two hundred times smaller makes
 coal ten times as dear in 1900 and halves the baskets a head, so depth can
 be made to bite; nothing breaks. The one setting to keep away from
 is `idle_years` 1 with no `year_room`: one seed of two then has a year in
-which the real wage falls by more than half, the hasty closing and the
-unlimited opening chasing each other.
+which the real wage falls by more than half. (Hasty closing and unlimited
+opening chasing each other, I take it; I did not look.)
 
 **The final build on sixteen seeds**, mines on against off, every figure
 `before > after` with the seeds up and down (a star: every seed now clear of
@@ -549,16 +550,20 @@ farmland; the farms were not short of land so much as of hands.
 `examples/mines_census.rs --map SECTOR` prints the island with a sector's
 workings on it, and its table gives the hands' mean height (0 the shore, 1
 the highest summit) beside the height of the deposit they work and of the
-whole deposit. The game's rules, six families, eight seeds:
+whole deposit. The game's rules, six families, seeds 1 to 8, the final
+build (the port's rule is the first build's baseline):
 
 | | 1750 | 1800 | 1850 | 1900 | all the deposit |
 |---|---|---|---|---|---|
 | quarrymen's height, port's rule | 0.44 | 0.47 | 0.44 | 0.51 | 0.42 |
-| quarrymen's height | 0.37 | 0.41 | 0.42 | 0.48 | 0.42 |
-| height of the rock they work | 0.40 | 0.43 | 0.43 | 0.49 | |
-| their path cost to market | 8.1 > 5.8 | 6.9 > 5.2 | 3.2 > 2.0 | 2.0 > 1.9 | |
-| colliers' height | 0.21 | 0.18 | 0.18 | 0.21 | 0.24 |
-| iron miners' height | 0.44 | 0.24 | 0.21 | 0.25 | 0.33 |
+| quarrymen's height | 0.37 | 0.40 | 0.40 | 0.46 | 0.42 |
+| height of the rock they work | 0.40 | 0.42 | 0.42 | 0.47 | |
+| their path cost to market | 8.1 > 5.9 | 6.9 > 5.0 | 3.2 > 2.1 | 2.0 > 1.7 | |
+| colliers' height | 0.22 | 0.18 | 0.18 | 0.22 | 0.24 |
+| iron miners' height | 0.30 | 0.23 | 0.24 | 0.28 | 0.33 |
+
+The typical quarry has 23, 34, 65 and 124 hands in the four years and the
+largest colliery 124, 850, 1,413 and 1,968 (on 0.22 of its cell).
 
 So the pattern is the one asked for, in part.
 
@@ -574,7 +579,7 @@ So the pattern is the one asked for, in part.
   everywhere (every land cell has some), so "round the foot of the upland"
   holds for 1750 and not for 1900, when the upland has been opened up.
 - **The collieries stand on the low side of their coalfields throughout**
-  (0.21 against 0.24), and the iron mines from 1800 on. So did the port's:
+  (0.18 to 0.22 against 0.24), and so do the iron mines. So did the port's:
   that is the net price at work, not the leases.
 - **They are spaced**, two to four cells apart in a worked field, not edge to
   edge, and on the map of seed 7 many of the large ones are on a railway or
@@ -671,7 +676,16 @@ would be a patch on the wrong side of the trade.
   (`families::land_boost`); that is now the whole working if the family owns
   the pit head's cell, and nothing if it owns only cells of the lease. The
   families' own decisions are untouched. The scripted players
-  (`examples/bots.rs`, seeds 1, 2, 3 and 7) play all sixteen games through.
+  (`examples/bots.rs`, seeds 1, 2, 3 and 7) play all sixteen games through
+  on the final build. The review played them again with only the mines
+  switched off, to see whether royalties had made land the thing to buy.
+  They have not: the landlord finishes first on all four seeds either way,
+  worth 61, 96, 50 and 41 million in 1900 with the mines and 98, 63, 63 and
+  52 without; the thoughtful player is first on all four either way too
+  (92, 71, 52 and 42 against 47, 69, 60 and 52). The passive player is
+  where the histories differ most (fourth on three seeds with the mines and
+  first on seed 2; first on seed 1 without and fourth on the rest), which
+  is four islands' luck more than a rule.
 
 **Beside kept town ground.** The first build's tables were measured on the
 build this mechanism was written on, before `towns.md` was merged. The
@@ -724,7 +738,19 @@ had a month yet, and the test skips it.
   are up with the mines on, not down, and I saw no town held; but nothing
   prevents it, and nothing lets a town buy a quarry out for building ground.
   A new town is still founded where the carting says, pit head or no, and
-  the working on that cell is lost (two on seed 7, of 36 and 54 hands).
+  the working on that cell is lost (three on seed 7 with six families:
+  quarries of 4 and 32 hands and a clay pit of 54, in 1772, 1795 and 1834).
+- **Land over a new lease is cheap for a year.** `families::land_price` is
+  so many years of the rent a cell paid last year, with a floor. In the
+  year a working is sunk the cells of its lease are charged their share of
+  the sinkers, which can take a cell's rent below the floor just before its
+  royalty begins. A player who watches for new pit heads can buy coal
+  royalties at the price of heath. It is the railway's "buy ahead of the
+  line" again (DEVLOG, open design points), only sharper, and it wants the
+  same answer when that one is given. Cells with a deposit under them now
+  count as farmland to the families (their main use is farm, pasture or
+  wood), so the rivals' estates buy into royalties too; before, they
+  passed over any cell whose main use was a mine.
 - **A working raises while it is being sunk.** The sinkers are a cost and
   not a delay: there is no year between the decision and the first ton, as
   there was for a real shaft. A year's wait would be more honest and would
