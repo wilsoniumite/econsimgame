@@ -294,6 +294,9 @@ tint_autumn = [1.83, 0.93, 0.77]
 river = "#5d9fc4"
 # the wet bank either side of a river
 river_bank = "#7d8a55"
+# what the rivers and their banks are multiplied by in midwinter, when the
+# water is steel under a low sun: [red, green, blue], 1 leaves them as they are
+river_tint_winter = [0.80, 0.84, 0.88]
 # the deep floor under the sea, beyond the map (the sea's own colours are in [sea])
 sea_floor = [0.16, 0.36, 0.48]
 

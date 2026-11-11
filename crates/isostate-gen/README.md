@@ -74,11 +74,25 @@ what one thing looks like.
   afterwards. `site.at(dx, dz)` gives the point at an offset in the thing's
   own frame, on the ground there: use it for parts that stand apart (a barn
   across the yard, a chimney beside a mill).
-- **Four buffers**, because the viewer draws each with its own material:
-  `solid` (walls, roofs, everything built), `smoke` (lets light through, casts
-  no shadow), `green` (leaves, which turn with the seasons) and `flat` (what
-  lies on the ground: lanes, paving, water). A generator takes only the ones
-  it writes. `Model` holds one of each for the lab and for tests.
+- **Four kinds of buffer**, because the viewer draws each with its own
+  material: `solid` (walls, roofs, everything built), `smoke` (lets light
+  through, casts no shadow), `green` (trees and bushes) and `flat` (what lies
+  on the ground: lanes, paving, water). A generator takes only the ones it
+  writes. `Model` holds one of each for the lab and for tests.
+- **`green` is a `Greenery`: three buffers**, as the seasons need. `evergreen`
+  holds trunks, conifers and bushes, which stay as they are. `leaves` holds
+  the crowns of the broadleaf trees, which the viewer tints through the year
+  (gold in October) and does not draw while they are down. `bare` holds
+  their winter limbs, flat blades seen from both sides, drawn only then. A
+  broadleaf tree writes all three every time, so that the viewer changes the
+  season by showing and hiding and never builds scenery again for it:
+  `trees::in_leaf(phase, group)` says which is to be seen, and the island's
+  trees are in `LEAF_GROUPS` groups that turn one after another.
+- **A thing that knows its age takes it as a parameter**, in the steps it
+  shows. A house is handed its `Roof` (what it was covered with the year it
+  was built or last roofed, and how weathered that is now: `houses::Roof::of`),
+  not the year: the viewer knows when a plot was first built and what could
+  be had there then.
 - **Stay on the plot.** A house keeps inside its plot (the eaves may overhang
   by a hair). A works keeps inside a quarter of a cell: works plots are a
   third of a cell apart. The tests check both.
@@ -93,12 +107,13 @@ what one thing looks like.
 | `hash.rs` | `hash2`, `Seed` |
 | `site.rs` | `Site` (where a thing stands), `Model` (the four buffers) |
 | `parts.rs` | what houses share: `gabled`, `windows`, `chimney`, `smoking_chimney` |
-| `houses/` | `cottage`, `townhouse`, `terrace`, and the density at which each adds a storey |
+| `houses/` | `cottage`, `townhouse`, `terrace`, the density at which each adds a storey, and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, and how it weathers |
 | `works/` | `works` (sixteen kinds by tier), `scaffold`, `yard_shed`, `pit` |
 | `farm.rs` | `farmstead` |
-| `town/` | `church`, `station`, `market_cross`, `market_hall`, `lighthouse` |
-| `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush` |
-| `bridge.rs` | `road_bridge` |
+| `town/` | `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
+| `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
+| `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters |
+| `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
 | `scenes.rs` | small scenes for the lab: a street, a market place, a works in its yard, a patch of wood |
 | `sheets.rs` | the lab's contact sheets |
 
@@ -129,7 +144,8 @@ square: what you see is exactly what the game draws, only bigger.
 After a change to a generator the viewer rebuilds in about eight seconds and
 one sheet takes about three, so edit, build, render, look is under fifteen.
 
-Options: `--season X` (0 midwinter, 0.5 midsummer, as the game has it),
+Options: `--season X` (0 midwinter, 0.5 midsummer, as the game has it: at 0
+the broadleaf trees are bare, at 0.8 they are gold),
 `--turn DEG` (each thing is turned 30 degrees to its right unless told
 otherwise, to show a gable as well as a front; `--turn 0` is square on),
 `--loupe N` (enlarge the close picture N times), `--tilt` (the tilt-shift

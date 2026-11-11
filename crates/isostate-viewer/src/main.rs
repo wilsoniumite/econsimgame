@@ -348,6 +348,7 @@ struct BareLimbs(usize);
 struct SeasonMats {
     terrain: Handle<terrain::GroundMaterial>,
     trees: Handle<StandardMaterial>,
+    rivers: Handle<StandardMaterial>,
     /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
     forced: Option<f32>,
 }
@@ -723,7 +724,7 @@ fn setup_world(
 
     // rivers do not change
     let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.river, reflectance: lk.surfaces.river_reflectance, ..default() });
-    commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat.clone()), bevy::light::NotShadowCaster));
 
     // year meshes start empty; rebuild_year fills them
     let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
@@ -749,7 +750,7 @@ fn setup_world(
         commands.spawn((Mesh3d(leaves.clone()), MeshMaterial3d(tree_mat.clone()), Leaves(group)));
         commands.spawn((Mesh3d(bare.clone()), MeshMaterial3d(bare_mat.clone()), BareLimbs(group), Visibility::Hidden));
     }
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, forced: forced.0 });
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
@@ -1065,6 +1066,11 @@ fn seasons(
     // broadleaf trees is in leaf from spring to autumn and shows its bare limbs through the winter
     if let Some(mut m) = materials.get_mut(&sm.trees) {
         m.base_color = leaf_tint(&look, ph);
+    }
+    // the rivers go to steel in the depth of winter
+    if let Some(mut m) = materials.get_mut(&sm.rivers) {
+        let t = look.water.river_tint(ph);
+        m.base_color = Color::srgb(t[0], t[1], t[2]);
     }
     let shown = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
     for (group, mut vis) in &mut leaves {

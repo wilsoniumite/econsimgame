@@ -193,7 +193,18 @@ impl Foliage {
 pub struct Water {
     pub river: Colour,
     pub river_bank: Colour,
+    pub river_tint_winter: [f32; 3],
     pub sea_floor: Colour,
+}
+
+impl Water {
+    /// What the rivers are multiplied by at a phase of the year (0
+    /// midwinter, 0.5 midsummer): the winter tint in the depth of winter,
+    /// fading out by the end of February and in again from November.
+    pub fn river_tint(&self, phase: f32) -> [f32; 3] {
+        let winter = (((phase * std::f32::consts::TAU).cos() - 0.45) / 0.55).clamp(0.0, 1.0);
+        self.river_tint_winter.map(|t| 1.0 + (t - 1.0) * winter)
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -376,6 +387,16 @@ mod tests {
         let mut look: toml::Table = toml::from_str(LOOK_FILE).unwrap();
         look["foliage"].as_table_mut().unwrap().insert("conifer".into(), toml::Value::Array(vec![]));
         assert!(Palette::take_from(&mut look).unwrap_err().contains("foliage.conifer"));
+    }
+
+    #[test]
+    fn the_rivers_are_steel_in_midwinter_only() {
+        let w = Palette::standard().water;
+        assert_eq!(w.river_tint(0.0), w.river_tint_winter);
+        assert_eq!(w.river_tint(0.5), [1.0; 3]);
+        assert_eq!(w.river_tint(0.25), [1.0; 3]);
+        assert_eq!(w.river_tint(0.8), [1.0; 3]);
+        assert!(w.river_tint(0.95)[0] < 1.0 && w.river_tint(0.95)[0] > w.river_tint_winter[0]);
     }
 
     #[test]
