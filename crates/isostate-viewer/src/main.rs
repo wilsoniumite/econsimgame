@@ -829,6 +829,7 @@ fn main() {
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
         .init_resource::<Builds>()
+        .init_resource::<Shown>()
         .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt && look.tilt_shift.on))
@@ -861,6 +862,7 @@ fn main() {
         app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
     }
     if let Some(s) = &args.script {
+        KEEP_YEAR_MESHES.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Err(e) = script::add(&mut app, s, args.size) {
             eprintln!("--script: {e}");
             std::process::exit(2);
@@ -923,8 +925,27 @@ fn placeholder_mesh() -> Mesh {
     meshkit::into_mesh(b)
 }
 
+/// Whether the year's meshes keep a copy of themselves on the main thread
+/// once the renderer has taken them. Nothing in the game reads one back, and
+/// a year is some ten million corners (400 MB), so they do not: the renderer
+/// then takes the mesh itself and not a copy of it, which is a sixth off the
+/// time a new year holds a frame up, and the old year's buffers are not
+/// freed on the main thread (13 ms). A scripted run keeps them, to check
+/// what is on screen against the year built afresh (`check_scenery`).
+static KEEP_YEAR_MESHES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A year's mesh of one kind, for the renderer.
 fn non_empty(b: meshkit::Builder) -> Mesh {
-    if b.is_empty() { placeholder_mesh() } else { meshkit::into_mesh(b) }
+    let mut m = if b.is_empty() { placeholder_mesh() } else { meshkit::into_mesh(b) };
+    if !KEEP_YEAR_MESHES.load(std::sync::atomic::Ordering::Relaxed) {
+        m.asset_usage = bevy::asset::RenderAssetUsages::RENDER_WORLD;
+    }
+    m
+}
+
+/// Whether the trains of two years run on the same lines.
+fn same_lines(a: &[trains::TrainPath], b: &[trains::TrainPath]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.pts == b.pts)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1187,8 +1208,9 @@ struct Builds {
     task: Option<(usize, u32, Task<Scenery>)>,
 }
 
-/// What `rebuild_year` remembers of the scenery on screen.
-#[derive(Default)]
+/// What `rebuild_year` remembers of the scenery on screen (a resource, so
+/// that a scripted run can say what was put on screen and what it cost).
+#[derive(Resource, Default)]
 struct Shown {
     /// the camera its houses were built for
     lod: Option<scatter::Lod>,
@@ -1196,6 +1218,19 @@ struct Shown {
     run: u32,
     /// the year, and the state of the run, that everything on screen was last built from
     whole: Option<(usize, u32)>,
+    /// how many times a whole year went on screen, and how many times the houses and
+    /// their smoke alone, for the camera
+    swaps: (u32, u32),
+    /// the last time scenery went on screen: whether it was the houses alone, how many
+    /// corners were handed to the renderer, and how long the handing over took on the
+    /// main thread, in ms
+    last: Option<(bool, usize, f32)>,
+    /// how long the longest of the three frames after it took, in ms (the renderer takes
+    /// the new meshes then)
+    frame_after: Option<f32>,
+    /// the longest frame since the last scripted `print`, in ms
+    longest_frame: f32,
+    frames_to_watch: u8,
 }
 
 fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
@@ -1253,13 +1288,27 @@ fn rebuild_year(
     mut rails: ResMut<Rails>,
     mut builds: ResMut<Builds>,
     orbit: Res<Orbit>,
-    mut shown: Local<Shown>,
+    mut shown: ResMut<Shown>,
+    real: Res<Time<Real>>,
     old_trains: Query<Entity, With<Train>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     if data.is_changed() {
         shown.run = shown.run.wrapping_add(1);
+    }
+    // what the last frame cost, for a scripted run to report: the renderer takes new meshes
+    // in the frame after they are handed over
+    let frame_ms = real.delta_secs() * 1e3;
+    shown.longest_frame = shown.longest_frame.max(frame_ms);
+    if shown.frames_to_watch > 0 {
+        // the renderer runs a frame behind: it takes the meshes at the end of the frame they
+        // were handed over in, works on them beside the next, and holds up the one after
+        shown.frames_to_watch -= 1;
+        shown.frame_after = Some(shown.frame_after.map_or(frame_ms, |f| f.max(frame_ms)));
+        if shown.frames_to_watch == 0 && std::env::var_os("ISOSTATE_TIMING").is_some() {
+            eprintln!("  the longest of the three frames after took {:.0} ms", shown.frame_after.unwrap_or(0.0));
+        }
     }
     // the houses are built with as much as the camera can see of them: when it has moved or
     // zoomed past what the scenery on screen was built for, the year is built again
@@ -1270,6 +1319,7 @@ fn rebuild_year(
     // a finished build goes on screen
     if let Some((run, sc)) = builds.task.as_mut().and_then(|(_, run, t)| check_ready(t).map(|sc| (*run, sc))) {
         builds.task = None;
+        let began = std::time::Instant::now();
         shown.lod = Some(sc.lod);
         // a year built again for the camera alone, from the run as it was, differs only in its
         // houses and their smoke (a garden's tree is drawn at every level): the rest stays as
@@ -1278,16 +1328,28 @@ fn rebuild_year(
         let for_camera = shown.whole == Some((sc.k, run));
         shown.whole = Some((sc.k, run));
         let (ym, nets) = (sc.ym, sc.nets);
+        let mut corners = ym.houses.pos.len() + ym.smoke.pos.len();
+        if !for_camera {
+            corners += ym.works.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len() + ym.trees.iter().flat_map(|t| t.parts()).map(|b| b.pos.len()).sum::<usize>();
+        }
         if !for_camera {
             if let Some(mut img) = images.get_mut(&handles.year_cells) {
                 img.data = Some(sc.cells);
             }
-            // trains: one for every eight units of line, up to three, spread along it
-            for e in &old_trains {
-                commands.entity(e).despawn();
+            // trains: one for every eight units of line, up to three, spread along it. While
+            // the lines are as they were the trains run on from where they are: a new year
+            // does not send every train back to where it started, nor does a year built
+            // again for the camera after the run has moved on (in a live game the next year
+            // arrives a little before the clock reaches it, and a camera build begun in that
+            // while is not the camera's alone: the works may have been laid out again)
+            let relaid = !same_lines(&rails.0, &sc.rails);
+            if relaid {
+                for e in &old_trains {
+                    commands.entity(e).despawn();
+                }
+                rails.0 = sc.rails;
             }
-            rails.0 = sc.rails;
-            for (pi, p) in rails.0.iter().enumerate() {
+            for (pi, p) in rails.0.iter().enumerate().filter(|_| relaid) {
                 let count = (1 + (p.len / 8.0) as usize).min(3);
                 for i in 0..count {
                     let s = p.len * (i as f32 + 0.5) / count as f32;
@@ -1320,6 +1382,14 @@ fn rebuild_year(
             }
         }
         tl.built = Some(sc.k);
+        let ms = began.elapsed().as_secs_f32() * 1e3;
+        if for_camera { shown.swaps.1 += 1 } else { shown.swaps.0 += 1 }
+        shown.last = Some((for_camera, corners, ms));
+        shown.frames_to_watch = 3;
+        shown.frame_after = None;
+        if std::env::var_os("ISOSTATE_TIMING").is_some() {
+            eprintln!("year {} on screen: {} ({corners} corners) handed over in {ms:.1} ms on the main thread", data.r.y0 + sc.k as i32, if for_camera { "its houses and smoke alone, for the camera" } else { "the whole year" });
+        }
     }
     // the year on screen, if it is neither shown nor being built; a build for
     // another year (the clock moved on) finishes first and is shown on the way
@@ -1334,6 +1404,86 @@ fn rebuild_year(
 /// The scenery shows the year on the clock (screenshots wait for it).
 fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
     tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
+}
+
+/// For a scripted run's `print`: what scenery is on screen, how it got there
+/// and what the last change of it cost. The longest frame is counted from the
+/// last time this was asked.
+fn scenery_line(world: &mut World) -> String {
+    let orbit = world.resource::<Orbit>();
+    let cam = scatter::Lod::of_camera((orbit.target.x, orbit.target.z), orbit.dist);
+    let y0 = world.resource::<Data>().r.y0;
+    let built = world.resource::<Timeline>().built;
+    let mut shown = world.resource_mut::<Shown>();
+    let longest = std::mem::take(&mut shown.longest_frame);
+    let year = built.map_or("none".to_string(), |k| (y0 + k as i32).to_string());
+    let houses = match shown.lod {
+        Some(lod) => format!("houses for a camera {:.1} off at {:.1},{:.1}{}", lod.dist, lod.focus.0, lod.focus.1, if lod.stale(&cam) { ", which the camera has left" } else { "" }),
+        None => "no houses yet".to_string(),
+    };
+    let last = match (shown.last, shown.frame_after) {
+        (Some((for_camera, corners, ms)), after) => format!(
+            "the last was {} of {corners} corners, handed over in {ms:.1} ms{}",
+            if for_camera { "houses alone" } else { "a whole year" },
+            after.map_or(String::new(), |a| format!(", and the longest of the three frames after took {a:.0} ms"))
+        ),
+        (None, _) => "nothing yet".to_string(),
+    };
+    format!("scenery of {year}, {houses}; put on screen {} times whole and {} times as houses alone; {last}; longest frame since last asked {longest:.0} ms", shown.swaps.0, shown.swaps.1)
+}
+
+/// For a scripted run's `scenery`: build the year on the clock afresh, from
+/// the run as it stands and for the camera the houses on screen were built
+/// for, and say whether every mesh on screen is that build's. A swap that
+/// left something behind (the works of last year under this year's houses,
+/// say) shows here. Err names the meshes that differ.
+fn check_scenery(world: &mut World) -> Result<String, String> {
+    fn print_of(m: &Mesh) -> (usize, u64) {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for attr in [Mesh::ATTRIBUTE_POSITION, Mesh::ATTRIBUTE_COLOR] {
+            for &byte in m.attribute(attr).map_or(&[][..], |a| a.get_bytes()) {
+                h = (h ^ byte as u64).wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        (m.count_vertices(), h)
+    }
+    let Some(lod) = world.resource::<Shown>().lod else { return Err("no scenery has been built yet".into()) };
+    let (data, tl, look) = (world.resource::<Data>(), world.resource::<Timeline>(), world.resource::<TheLook>());
+    let k = (tl.t.floor() as usize).min(data.r.ny - 1);
+    if tl.built != Some(k) {
+        return Err(format!("the scenery on screen is of {:?}, not of the year on the clock ({k}): settle first", tl.built));
+    }
+    let year = data.r.y0 + k as i32;
+    let fresh = build_scenery(&data.r, &data.g, &data.slots, &data.cen, k, &look.0, lod);
+    let (handles, meshes) = (world.resource::<Handles>(), world.resource::<Assets<Mesh>>());
+    let mut pairs = vec![
+        ("houses".to_string(), &handles.houses, fresh.ym.houses),
+        ("smoke".to_string(), &handles.smoke, fresh.ym.smoke),
+        ("works".to_string(), &handles.works, fresh.ym.works),
+        ("yards and lanes".to_string(), &handles.lanes, fresh.ym.lanes),
+        ("roads".to_string(), &handles.roads, fresh.nets.roads),
+        ("railway".to_string(), &handles.rails, fresh.nets.rails),
+    ];
+    for (group, (hs, t)) in handles.trees.iter().zip(fresh.ym.trees).enumerate() {
+        for ((h, b), part) in hs.iter().zip([t.evergreen, t.leaves, t.bare]).zip(["evergreen", "leaves", "bare limbs"]) {
+            pairs.push((format!("trees {group} {part}"), h, b));
+        }
+    }
+    let mut corners = 0;
+    let mut wrong = Vec::new();
+    for (name, h, b) in pairs {
+        let want = print_of(&non_empty(b));
+        let have = meshes.get(h).map(print_of);
+        corners += want.0;
+        if have != Some(want) {
+            wrong.push(format!("{name} ({} corners on screen, {} in the year's own)", have.map_or(0, |p| p.0), want.0));
+        }
+    }
+    if wrong.is_empty() {
+        Ok(format!("all {corners} corners on screen are {year}'s own, built afresh for the same camera"))
+    } else {
+        Err(format!("on screen for {year} but not that year's own: {}", wrong.join(", ")))
+    }
 }
 
 /// One round of the seasons never takes less than this many seconds, however
@@ -2554,6 +2704,19 @@ mod tests {
         app.world_mut().resource_mut::<GroundDebug>().0 = true;
         app.update();
         assert_eq!(showing(&mut app), (0, all));
+    }
+
+    #[test]
+    fn the_trains_keep_running_while_their_lines_are_as_they_were() {
+        let line = |pts: &[(f32, f32)]| trains::TrainPath { pts: pts.iter().map(|&(x, z)| Vec3::new(x, 0.0, z)).collect(), cum: vec![0.0; pts.len()], len: 1.0 };
+        let old = [line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 6.0)])];
+        // the same lines built again (another year, or the same year for another camera)
+        assert!(same_lines(&old, &[line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 6.0)])]));
+        // a line more, a line fewer, a line laid elsewhere
+        assert!(!same_lines(&old, &old[..1]));
+        assert!(!same_lines(&old[..1], &old));
+        assert!(!same_lines(&old, &[line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 7.0)])]));
+        assert!(same_lines(&[], &[]));
     }
 
     #[test]

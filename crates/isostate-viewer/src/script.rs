@@ -21,8 +21,13 @@
 //!                     clock stood and how far the season moved
 //!     run:SECONDS     the same, keeping the years going: a decision that opens
 //!                     is given its default and the clock is started again
-//!     print[:NOTE]    print the clock, the cards and the order panel
-//!     tab:NAME        open a side panel (family, holdings, markets, news, none)
+//!     until:PART      let the game run until the clock is this far through a
+//!                     year (until:0.95 is just before the year turns)
+//!     print[:NOTE]    print the clock, the cards and the order panel, and what
+//!                     scenery is on screen and what putting it there cost
+//!     scenery[:NOTE]  build the year on the clock afresh and say whether what
+//!                     is on screen is that; stops the run if it is not
+//!     tab:NAME       open a side panel (family, holdings, markets, news, none)
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
@@ -70,7 +75,10 @@ enum Step {
     Settle,
     /// seconds, and whether to answer decisions and keep the clock going
     Sample(f32, bool),
+    /// how far through a year the clock must be
+    Until(f32),
     Print(String),
+    Scenery(String),
     Tab(Option<ui::Tab>),
     Pick(f32, f32),
     Look(f32, f32, f32),
@@ -185,7 +193,12 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "settle" => Step::Settle,
             "sample" => Step::Sample(num("the seconds")?, false),
             "run" => Step::Sample(num("the seconds")?, true),
+            "until" => match num("how far through the year")? {
+                part if (0.0..1.0).contains(&part) => Step::Until(part),
+                _ => return Err(format!("{part}: a part of a year runs from 0 to just under 1")),
+            },
             "print" => Step::Print(arg.to_string()),
+            "scenery" => Step::Scenery(arg.to_string()),
             "tab" => Step::Tab(ui::Tab::parse(arg)),
             "pick" => match nums()?.as_slice() {
                 [x, z] => Step::Pick(*x, *z),
@@ -343,6 +356,7 @@ fn print_state(world: &mut World, note: &str) {
     let ph = season(world);
     println!("script: {}{}; {}; date \"{}\"; season {:.3}", if note.is_empty() { String::new() } else { format!("[{note}] ") }, clock, sim, date, ph);
     println!("script:   {cards}; {fam}");
+    println!("script:   {}", crate::scenery_line(world));
     // the order panel under the inspector: what it says and what can be pressed
     let mut q = world.query_filtered::<Entity, With<InspectActions>>();
     let panel: Vec<Entity> = q.iter(world).collect();
@@ -592,7 +606,29 @@ fn step(world: &mut World, sc: &mut Script) {
                     print_tally(world, &sc.tally, s);
                 }
             }
+            Step::Until(part) => {
+                if !sc.begun {
+                    sc.begun = true;
+                    sc.until = now + 60.0;
+                }
+                // a decision that opens is given its default, as `run` does, to keep the years going
+                if keep_playing(world, sc) {
+                    return;
+                }
+                let tl = world.resource::<Timeline>();
+                done = tl.playing && tl.t.fract() >= part;
+                if !done && now >= sc.until {
+                    fail(&format!("until:{part}: the clock is {} and did not come to that part of a year in a minute", if tl.playing { "running" } else { "stopped" }));
+                }
+            }
             Step::Print(note) => print_state(world, &note),
+            Step::Scenery(note) => {
+                let note = if note.is_empty() { String::new() } else { format!("[{note}] ") };
+                match crate::check_scenery(world) {
+                    Ok(said) => println!("script: {note}scenery: {said}"),
+                    Err(why) => fail(&format!("{note}scenery: {why}")),
+                }
+            }
             Step::Tab(t) => {
                 world.resource_mut::<UiState>().tab = t;
                 frame = true;
