@@ -1157,6 +1157,8 @@ fn class(e: &Event) -> &str {
     match e.kind.as_str() {
         "alarm" | "verdict" => "cycle",
         "railway" | "rail_plan" => "railway",
+        // canals (docs/rules/canals.md): planned and opened are one kind too
+        "canal" | "canal_plan" => "canal",
         // the harvest's own news: a dearth is the price of a short crop
         "harvest" | "dearth" => "harvest",
         "family" if e.family == Some(0) => "own",

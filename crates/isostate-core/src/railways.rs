@@ -112,7 +112,7 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
     materials[C.gi("stone")] = R.cost_mult * P.rail_stone_per_cell;
     Way {
         id: ways::RAILWAY,
-        words: Words { kind: "railway", plan_kind: "rail_plan", noun: "railway", Noun: "Railway", track: "track", branch: "branch line" },
+        words: Words { kind: "railway", plan_kind: "rail_plan", noun: "railway", Noun: "Railway", track: "track", branch: "branch line", line: "line", weight: 0.45, branches_weight: 0.35 },
         run_cost: tr::RAIL_COST,
         materials,
         rise: Vec::new(),
@@ -139,6 +139,7 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
         opened: None,
         first_any: false,
         local: false,
+        rivals: None,
     }
 }
 

@@ -323,6 +323,20 @@ fn canal_opened(st: &mut State, pr: &Project, when: f64) {
     }
 }
 
+/// The railways being laid, put on the canal promoters' copy of the cost graph:
+/// a canal is not dug for carting that a line already building will take.
+fn railways_building(st: &State, g: &mut tr::Graph) {
+    let new: Vec<usize> = st.projects.iter().filter(|pr| pr.way != ways::CANAL).flat_map(|pr| pr.new.iter().copied()).collect();
+    if new.is_empty() {
+        return;
+    }
+    let mut laid: Vec<bool> = st.rail.iter().map(|&r| r > 0).collect();
+    for &c in &new {
+        laid[c] = true;
+    }
+    ways::lay(g, &st.world, &laid, &new, tr::RAIL_COST);
+}
+
 /// The canal as the promoters of `ways.rs` see it.
 pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
     let K = &P.canals;
@@ -338,7 +352,8 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
     }
     Way {
         id: ways::CANAL,
-        words: Words { kind: "canal", plan_kind: "canal_plan", noun: "canal", Noun: "Canal", track: "canal", branch: "branch canal" },
+        // the first canal is news of the first weight; the rest are told modestly
+        words: Words { kind: "canal", plan_kind: "canal_plan", noun: "canal", Noun: "Canal", track: "canal", branch: "branch canal", line: "canal", weight: 0.3, branches_weight: 0.25 },
         run_cost: K.cost,
         materials,
         rise,
@@ -366,6 +381,7 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
         opened: Some(canal_opened),
         first_any: true,
         local: true,
+        rivals: Some(railways_building),
     }
 }
 

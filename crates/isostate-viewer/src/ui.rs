@@ -750,6 +750,7 @@ pub fn kind_colour(kind: &str) -> Color {
     match kind {
         "discovery" | "first" => Color::srgb(0.75, 0.52, 0.12),
         "railway" | "rail_plan" => Color::srgb(0.25, 0.27, 0.32),
+        "canal" | "canal_plan" => Color::srgb(0.22, 0.42, 0.52),
         "milestone" => Color::srgb(0.28, 0.55, 0.33),
         "crossing" => Color::srgb(0.16, 0.48, 0.53),
         "steep" => Color::srgb(0.48, 0.36, 0.62),
@@ -767,6 +768,8 @@ pub fn kind_label(kind: &str) -> &'static str {
         "first" => "First output",
         "railway" => "Railway",
         "rail_plan" => "Railway scheme",
+        "canal" => "Canal",
+        "canal_plan" => "Canal scheme",
         "milestone" => "Milestone",
         "crossing" => "Turning point",
         "steep" => "Markets",

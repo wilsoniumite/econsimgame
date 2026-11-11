@@ -93,6 +93,12 @@ pub struct Words {
     pub track: &'static str,
     /// "branch line".
     pub branch: &'static str,
+    /// What a scheme is said to be for: "line" in "money for 40 km of line".
+    pub line: &'static str,
+    /// The weight of a scheme's news and of an opening after the first (0.45
+    /// for a railway), and of the year's branches taken together (0.35).
+    pub weight: f64,
+    pub branches_weight: f64,
 }
 
 /// One kind of way and the promoters' rules for it.
@@ -158,6 +164,10 @@ pub struct Way {
     /// market town knows how to build the way, not the dearest of the island
     /// (where the know-how is in one town, its districts are the ones looked at).
     pub local: bool,
+    /// Lays the lines of other ways that are being built on the promoters' copy
+    /// of the cost graph, so that nothing is promoted on carting a rival will
+    /// have taken by the time it opens (a canal beside a railway half laid).
+    pub rivals: Option<fn(&State, &mut tr::Graph)>,
 }
 
 /// One line that was built.
@@ -473,6 +483,9 @@ impl Net {
         let layer = (way.layer)(st);
         let mut laid: Vec<bool> = layer.iter().map(|&r| r > 0).collect();
         let mut g = st.graph.clone();
+        if let Some(rivals) = way.rivals {
+            rivals(st, &mut g);
+        }
         let under_way: Vec<usize> = st.projects.iter().filter(|pr| pr.way == way.id).flat_map(|pr| pr.new.iter().copied()).collect();
         for &c in &under_way {
             laid[c] = true;
@@ -775,7 +788,7 @@ fn report_branches(st: &State, way: &Way, book: &mut WayBook, year: i64, events:
     let mut ev = Event::new(
         when,
         way.words.kind,
-        0.35,
+        way.words.branches_weight,
         title,
         format!("{km:.0} km of {} opened in {year}, to {}.", way.words.branch, list(&parts)),
     );
@@ -899,11 +912,12 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         let mut ev = Event::new(
             year as f64 + 0.95,
             way.words.plan_kind,
-            0.45,
+            way.words.weight,
             format!("{} and {} {} promoted", st.town_name[a_], st.town_name[b_], way.words.Noun),
             format!(
-                "Promoters raise money for {:.0} km of line. They expect the carting it saves, between the towns and along the way, to repay {} a year.",
+                "Promoters raise money for {:.0} km of {}. They expect the carting it saves, between the towns and along the way, to repay {} a year.",
                 pr.length_km,
+                way.words.line,
                 fmt_pct(roi, 0)
             ),
         );
@@ -937,7 +951,12 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
     // the carting bill of each 5 by 5 block, on the network as it will be
     let bill: Vec<f64> = (0..N).map(|c| if net.d[c].is_finite() { st.cell_flow_year[c] * net.d[c] } else { 0.0 }).collect();
     let block: Vec<f64> = ndimage::uniform_filter(&bill, H, W, 5, Mode::Constant).iter().map(|v| v * 25.0).collect();
-    let free: Vec<bool> = net.laid.iter().map(|&l| !l).collect();
+    let mut free: Vec<bool> = net.laid.iter().map(|&l| !l).collect();
+    // (a town or a river a branch could start from counts as the way: a district
+    // that sits on one is no district for a branch)
+    for &q in &net.heads {
+        free[q] = false;
+    }
     let d_way = ndimage::distance_transform_edt(&free, H, W);
     let neg: Vec<f64> = block.iter().map(|&v| -v).collect();
     let mut picked: Vec<usize> = Vec::new();
@@ -947,10 +966,6 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         }
         // (a cell on the line is never a district, whatever the gap is set to)
         if st.catch[c] < 0 || !st.world.land[c] || net.laid[c] || d_way[c] < way.branch_gap {
-            continue;
-        }
-        // (nor is a district that sits on a town or a river a branch could start from)
-        if net.heads.iter().any(|&q| apart(W, q, c) < way.branch_gap) {
             continue;
         }
         if way.local && k[st.catch[c] as usize] < way.know {
@@ -1132,7 +1147,7 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             let mut ev = Event::new(
                 year_float,
                 way.words.kind,
-                if first { 1.0 } else { 0.45 },
+                if first { 1.0 } else { way.words.weight },
                 title,
                 format!(
                     "{:.0} km of {}, begun in {}. Freight between the towns now moves at a fraction of the carting cost.",
@@ -1152,7 +1167,7 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             let mut ev = Event::new(
                 year_float,
                 way.words.kind,
-                0.45,
+                way.words.weight,
                 format!("The {} reaches {}", way.words.noun, st.town_name[a_]),
                 format!("{:.0} km of {} join {} to {from}. The line was begun in {}.", pr.length_km, way.words.track, st.town_name[a_], pr.start),
             );
@@ -1311,5 +1326,86 @@ mod tests {
         // and taking it up again leaves the graph as it was
         unlay(&mut g, &changed);
         assert!(g.w.iter().zip(&before).all(|(x, y)| x.to_bits() == y.to_bits()));
+    }
+
+    /// The same for a way that floats, and for a railway laid where a canal is.
+    #[test]
+    fn a_canal_dug_and_improved_is_a_search_from_scratch() {
+        let (st, railway) = island();
+        let (P, C) = (default_params(), default_content());
+        let canal = crate::canals::way(&st, &C, &P);
+        // a canal between the first two towns that have a way round the mountains
+        let route = build_graph(&st.world, &vec![false; st.N], &canal.build);
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        let mut path = Vec::new();
+        'pairs: for &a in &act {
+            for &b in &act {
+                let (na, nb) = (st.town_node[a], st.town_node[b]);
+                let paths = tr::dijkstra(&route, &[(na, 0.0)], Some(nb));
+                if a < b && paths.dist[nb] < 1e5 {
+                    path = tr::path_cells(&paths.pred, na, nb);
+                    break 'pairs;
+                }
+            }
+        }
+        assert!(path.len() > 6, "two towns can be joined by canal");
+        assert!(path.iter().all(|&c| st.world.terrain[c] != MOUNTAINS), "no canal over the mountains");
+        let towns: Vec<(usize, f64)> = act.iter().map(|&t| (st.town_node[t], 0.0)).collect();
+        let mut g = st.graph.clone();
+        let base = tr::distances(&g, &towns);
+        let mut laid = vec![false; st.N];
+        for &c in &path {
+            laid[c] = true;
+        }
+        let same = |quick: &[f64], fresh: &[f64]| {
+            (0..st.N).all(|c| if fresh[c].is_finite() { (quick[c] - fresh[c]).abs() <= 1e-9 * fresh[c].max(1.0) } else { !quick[c].is_finite() })
+        };
+        let dug = lay_line(&mut g, &st.world, &canal, &laid, &path, &path);
+        assert!(dug.edges.is_empty() && dug.links.len() == path.len() - 1, "a canal is its links and leaves the ground alone");
+        let (quick, fresh) = (improve(&g, &base, &dug.edges), tr::distances(&g, &towns));
+        assert!(same(&quick, &fresh));
+        let saved: f64 = (0..st.N).filter(|&c| fresh[c].is_finite()).map(|c| base[c] - fresh[c]).sum();
+        assert!(saved > 0.0, "the canal brings some cells nearer a market");
+        // the search that keeps the trees gives the distances of the one that does not
+        let trees = tr::dijkstra(&g, &towns, None);
+        assert!(trees.dist.iter().zip(&fresh).all(|(x, y)| x.to_bits() == y.to_bits()));
+        // a railway laid beside it: what it makes cheaper reaches the water too
+        let line = a_line(&st, &railway);
+        let mut railed = vec![false; st.N];
+        for &c in &line {
+            railed[c] = true;
+        }
+        let track = lay_line(&mut g, &st.world, &railway, &railed, &line, &line);
+        assert!(track.links.is_empty() && !track.edges.is_empty());
+        let (quick, both) = (improve(&g, &fresh, &track.edges), tr::distances(&g, &towns));
+        assert!(same(&quick, &both));
+        // and both taken up again leave the graph as it was
+        take_up(&mut g, &track);
+        take_up(&mut g, &dug);
+        assert!(g.w.iter().zip(&st.graph.w).all(|(x, y)| x.to_bits() == y.to_bits()));
+        assert!(g.boat.iter().all(|links| links.is_empty()));
+        assert!(same(&tr::distances(&g, &towns), &base));
+    }
+
+    /// Locks are paid for: a canal's materials grow with the height it climbs.
+    #[test]
+    fn a_canal_pays_for_its_locks() {
+        let (st, railway) = island();
+        let (P, C) = (default_params(), default_content());
+        let canal = crate::canals::way(&st, &C, &P);
+        let path = a_line(&st, &railway);
+        let climb: f64 = path.windows(2).map(|p| (st.world.h[p[0]] - st.world.h[p[1]]).abs()).sum();
+        assert!(climb > 0.0);
+        let need = materials(&canal, &st.world, &path, &path);
+        let stone = C.gi("stone");
+        let want = P.canals.stone * (path.len() as f64 + P.canals.lock_cells * climb);
+        assert!((need[stone] - want).abs() < 1e-9 * want, "{} against {want}", need[stone]);
+        // clay lines the cut and is no part of a lock
+        assert_eq!(need[C.gi("clay")], P.canals.clay * path.len() as f64);
+        // a railway has no locks: so much a cell and no more
+        let rails = C.gi("rails");
+        assert_eq!(materials(&railway, &st.world, &path, &path)[rails], railway.materials[rails] * path.len() as f64);
+        // and a canal's navvies are paid twice the materials, a railway's three tenths
+        assert_eq!((canal.wages, railway.wages), (P.canals.wages, 0.3));
     }
 }
