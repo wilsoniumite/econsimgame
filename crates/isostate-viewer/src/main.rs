@@ -458,6 +458,7 @@ fn main() {
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt))
         .insert_resource(ForcedSeason(args.season))
+        .init_resource::<SeasonClock>()
         .insert_resource(GroundDebug(args.ground_debug))
         .init_resource::<Toasts>()
         .insert_resource(picked)
@@ -469,6 +470,8 @@ fn main() {
         .add_plugins(carts::plugin)
         .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain())
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
+    // the seasons' clock is read by the ground, the trees, the sun and the date alike
+    app.add_systems(Update, season_clock.after(advance_time).before(seasons));
     if let Some(l) = live {
         app.insert_resource(l);
     }
@@ -545,7 +548,7 @@ fn setup_world(
     let terrain_mat = ground_mats.add(terrain::GroundMaterial {
         base: StandardMaterial { perceptual_roughness: 0.92, reflectance: 0.18, ..default() },
         extension: terrain::Patchwork {
-            params: terrain::patchwork_params(r, g, season_phase(&tl, forced.0), debug.0),
+            params: terrain::patchwork_params(r, g, season_phase(&SeasonClock::default(), forced.0), debug.0),
             year: year_cells.clone(),
             fixed: fixed_cells,
         },
@@ -760,23 +763,74 @@ fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
     tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
 }
 
-/// Phase of the year: while playing the months roll by; a paused year shows high summer.
-fn season_phase(tl: &Timeline, forced: Option<f32>) -> f32 {
-    if let Some(f) = forced {
-        return f.rem_euclid(1.0);
+/// One round of the seasons never takes less than this many seconds, however
+/// fast the years go by.
+const SEASON_ROUND_SECS: f32 = 24.0;
+
+/// The seasons' own clock. A year lasts two seconds at 1x and a quarter of a
+/// second at 8x, and a season tied to it strobes the fields and the sun. So
+/// the seasons turn in real time while the game plays: with the year when the
+/// years go slowly enough, and at one round in `SEASON_ROUND_SECS` when they
+/// go faster. Paused, the season holds where it is; it never jumps.
+#[derive(Resource, Clone, Copy, Debug)]
+struct SeasonClock {
+    /// phase of the year: 0 midwinter, 0.25 spring, 0.5 midsummer, 0.75 autumn
+    phase: f32,
+    /// the season on screen is the date's, so the top bar may name it
+    follows: bool,
+}
+
+impl Default for SeasonClock {
+    /// A game opens in high summer.
+    fn default() -> Self {
+        SeasonClock { phase: 0.55, follows: false }
     }
-    if tl.playing { tl.t.fract() } else { 0.55 }
+}
+
+impl SeasonClock {
+    /// Move on by `dt` seconds of real time, with the year's clock at `t`
+    /// years and running at `speed` years a second (or stopped).
+    fn advance(&mut self, playing: bool, speed: f32, t: f32, dt: f32) {
+        // a long frame must not show as a jump of the season
+        let dt = dt.clamp(0.0, 0.1);
+        let cap = 1.0 / SEASON_ROUND_SECS;
+        self.follows = playing && speed <= cap;
+        if !playing {
+            return;
+        }
+        if self.follows {
+            // ease onto the date the short way round, then stay on it
+            let d = (t.fract() - self.phase + 0.5).rem_euclid(1.0) - 0.5;
+            self.phase += d * (1.0 - (-4.0 * dt).exp());
+        } else {
+            self.phase += cap * dt;
+        }
+        self.phase = self.phase.rem_euclid(1.0);
+    }
+}
+
+fn season_clock(time: Res<Time>, tl: Res<Timeline>, mut clock: ResMut<SeasonClock>) {
+    clock.advance(tl.playing, tl.speed, tl.t, time.delta_secs());
+}
+
+/// Phase of the year for the ground, the trees, the sun and the date: the
+/// seasons' clock, or the season a screenshot asked for.
+fn season_phase(clock: &SeasonClock, forced: Option<f32>) -> f32 {
+    match forced {
+        Some(f) => f.rem_euclid(1.0),
+        None => clock.phase,
+    }
 }
 
 fn seasons(
-    tl: Res<Timeline>,
+    clock: Res<SeasonClock>,
     sm: Res<SeasonMats>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
     mut last: Local<Option<i32>>,
 ) {
-    let ph = season_phase(&tl, sm.forced);
+    let ph = season_phase(&clock, sm.forced);
     // only touch the materials when the season visibly moves, about twice a week
     let step = (ph * 192.0).floor() as i32;
     if *last == Some(step) {
@@ -1489,5 +1543,76 @@ fn move_trains(time: Res<Time>, rails: Res<Rails>, mut q: Query<(&mut Train, &mu
         let (pos, yaw) = p.at(t.s);
         tf.translation = pos;
         tf.rotation = Quat::from_rotation_y(yaw + if t.dir < 0.0 { std::f32::consts::PI } else { 0.0 });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run a season clock for some seconds at 30 frames a second; the year's
+    /// clock runs beside it at `speed`. Returns the clock, how far the season
+    /// went in all, and the biggest move between two frames.
+    fn run_seasons(mut c: SeasonClock, playing: bool, speed: f32, secs: f32) -> (SeasonClock, f32, f32) {
+        let dt = 1.0 / 30.0;
+        let (mut t, mut went, mut jump) = (10.0f32, 0.0f32, 0.0f32);
+        for _ in 0..(secs / dt).round() as usize {
+            let before = c.phase;
+            if playing {
+                t += speed * dt;
+            }
+            c.advance(playing, speed, t, dt);
+            let d = ((c.phase - before + 0.5).rem_euclid(1.0) - 0.5).abs();
+            went += d;
+            jump = jump.max(d);
+        }
+        (c, went, jump)
+    }
+
+    #[test]
+    fn seasons_take_their_time_at_any_speed() {
+        // at 8x (four years a second) and at 1x, one round in SEASON_ROUND_SECS and no faster
+        for speed in [0.5, 1.0, 2.0, 4.0, 20.0] {
+            let (c, went, jump) = run_seasons(SeasonClock::default(), true, speed, SEASON_ROUND_SECS);
+            assert!((went - 1.0).abs() < 0.01, "at {speed} years a second the season went {went} rounds in {SEASON_ROUND_SECS} s");
+            assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "a jump of {jump} at {speed}");
+            assert!(!c.follows);
+            assert!((c.phase - 0.55).abs() < 0.01, "a whole round comes back to where it began, not {}", c.phase);
+        }
+    }
+
+    #[test]
+    fn seasons_hold_when_paused_and_do_not_jump_on_resuming() {
+        let (c, _, _) = run_seasons(SeasonClock::default(), true, 4.0, 5.0);
+        let held = c.phase;
+        let (c, went, _) = run_seasons(c, false, 4.0, 60.0);
+        assert_eq!(c.phase, held);
+        assert_eq!(went, 0.0);
+        let (_, _, jump) = run_seasons(c, true, 0.5, 1.0);
+        assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "resuming jumped {jump}");
+    }
+
+    #[test]
+    fn seasons_follow_the_year_when_the_years_go_slowly() {
+        // a year in 60 seconds: the season is the date's
+        let speed = 1.0 / 60.0;
+        let (c, _, jump) = run_seasons(SeasonClock::default(), true, speed, 30.0);
+        assert!(c.follows);
+        // the year's clock began at 10.0 and has run half a year, to midsummer
+        assert!((c.phase - 0.5).abs() < 0.01, "the season is {} at midsummer", c.phase);
+        // easing from high summer round to midwinter took no visible jump
+        assert!(jump < 0.08, "eased with a jump of {jump}");
+        // paused, the name goes from the top bar and the season stays
+        let (p, went, _) = run_seasons(c, false, speed, 5.0);
+        assert!(!p.follows);
+        assert_eq!(went, 0.0);
+    }
+
+    #[test]
+    fn a_forced_season_wins() {
+        let c = SeasonClock { phase: 0.3, follows: false };
+        assert_eq!(season_phase(&c, None), 0.3);
+        assert_eq!(season_phase(&c, Some(0.0)), 0.0);
+        assert_eq!(season_phase(&c, Some(1.25)), 0.25);
     }
 }

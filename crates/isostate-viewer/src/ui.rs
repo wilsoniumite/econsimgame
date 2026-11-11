@@ -268,7 +268,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ..default()
                 }))
                 .with_children(|mid| {
-                    mid.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(150.0), ..default() }).with_children(|col| {
+                    // wide enough for the note under the year, so the buttons do not shift when it comes and goes
+                    mid.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(118.0), ..default() }).with_children(|col| {
                         col.spawn((text(f, "", 25.0, INK), TextLayout::default().with_no_wrap(), DateText));
                         if data.live {
                             col.spawn((text(f, "", 12.0, MUTED), TextLayout::default().with_no_wrap(), StepNote, Node { margin: UiRect::top(Val::Px(-3.0)), ..default() }));
@@ -657,6 +658,7 @@ fn topbar_text(
     tl: Res<Timeline>,
     data: Res<Data>,
     sm: Option<Res<crate::SeasonMats>>,
+    clock: Res<crate::SeasonClock>,
     fam: Option<Res<FamilyView>>,
     mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>)>,
     mut slots: Query<(&mut Text, &FortuneSlot), Without<DateText>>,
@@ -664,8 +666,11 @@ fn topbar_text(
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let year = r.y0 + k as i32;
-    // the same season the ground and trees are showing
-    let s = format!("{} {}", season_name(crate::season_phase(&tl, sm.as_ref().and_then(|m| m.forced))), year);
+    // the season is named only when it is the date's: the years going slowly
+    // enough for the seasons to keep up, or a still of a chosen season. The
+    // name is of the same phase the ground, the trees and the sun are showing.
+    let forced = sm.as_ref().and_then(|m| m.forced);
+    let s = if forced.is_some() || clock.follows { format!("{} {}", season_name(crate::season_phase(&clock, forced)), year) } else { format!("{year}") };
     for mut t in &mut date {
         if t.0 != s {
             t.0 = s.clone();

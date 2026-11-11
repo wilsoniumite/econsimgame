@@ -262,7 +262,7 @@ fn clock_year(world: &World) -> (usize, usize) {
 
 fn season(world: &World) -> f32 {
     let forced = world.get_resource::<crate::SeasonMats>().and_then(|m| m.forced);
-    crate::season_phase(world.resource::<Timeline>(), forced)
+    crate::season_phase(world.resource::<crate::SeasonClock>(), forced)
 }
 
 fn date_text(world: &mut World) -> String {
