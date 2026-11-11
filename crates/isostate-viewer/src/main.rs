@@ -510,6 +510,15 @@ fn main() {
     if let Some(path) = args.shot.clone() {
         views.insert(0, ShotSpec { path, year: args.year, look: args.at, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
     }
+    // a picture (or a class map) whose directory is not there would be made and then not written
+    for v in &views {
+        if let Some(parent) = std::path::Path::new(&v.path).parent().filter(|p| !p.as_os_str().is_empty()) {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("cannot make {}: {e}", parent.display());
+                std::process::exit(1);
+            }
+        }
+    }
     if args.class_map {
         // the CPU's answer for each view, to compare with a --ground-debug shot
         for v in &views {
@@ -546,15 +555,6 @@ fn main() {
         });
     }
     let headless = !views.is_empty();
-    // a picture whose directory is not there would be drawn and then not written
-    for v in &views {
-        if let Some(parent) = std::path::Path::new(&v.path).parent().filter(|p| !p.as_os_str().is_empty()) {
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                eprintln!("cannot make {}: {e}", parent.display());
-                std::process::exit(1);
-            }
-        }
-    }
     if headless {
         app.add_plugins(
             DefaultPlugins
