@@ -132,6 +132,9 @@ impl Parish {
     }
 }
 
+/// How much further out each try is for a church that cannot stand on dry ground by its market place.
+const FURTHER_OUT: f32 = 0.12;
+
 /// East, south, west and north on the map, in the order they come round.
 const WAYS: [(isize, isize); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
 
@@ -143,7 +146,9 @@ const WAYS: [(isize, isize); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
 /// nearest the middle of its square of the map is taken, as the works stand
 /// round the edge. Only a road that cuts across a quarter, which is rare, is
 /// a reason to take another, from the year it is first laid. A town with
-/// water in every quarter stands its church in one of the ways out.
+/// water in every quarter stands its church in one of the ways out, and one
+/// whose middle is drowned ground stands it further out the same way, on the
+/// nearest dry ground.
 fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> Parish {
     let t = s.town;
     let node = r.header.towns[t].node;
@@ -163,14 +168,23 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
     });
     let roaded = |c: Option<usize>, y: usize| c.is_some_and(|c| r.trans[y * r.n + c] & 2 != 0);
     let middle = Vec2::new(cx as f32 + 0.5, cy as f32 + 0.5);
-    let (w, d) = church.yard();
+    // where it stands is settled by the yard of the biggest church the town may come to have,
+    // so that a church rebuilt bigger grows back from its gate and does not move to another quarter
+    let widest = town::Church { big: true, ..church };
+    let (w, d) = widest.yard();
     let mut best: Option<(f32, Vec2, f32, u32)> = None;
-    // the four quarters, and then the four ways themselves, for a town with water in every quarter
-    for i in 0..8 {
+    // the four quarters, and then the four ways themselves, for a town with water in every
+    // quarter; and where the church would stand in the water in all eight (a town whose middle
+    // is drowned ground), the same again further and further out, to the nearest dry ground
+    for (i, step) in (0..5).flat_map(|step| (0..8).map(move |i| (i, step))) {
+        if i == 0 && best.is_some_and(|(_, _, _, faults)| faults & 8 == 0) {
+            break;
+        }
+        let out = step as f32 * FURTHER_OUT;
         let on_a_way = i >= 4;
         let (a, b) = (ways[i % 4], ways[(i + 1) % 4]);
         let bearing = if on_a_way { a } else { (a + b).normalize_or(Vec2::new(-a.y, a.x)) };
-        let (at, yaw) = church.beside_square(s.at, bearing);
+        let (at, _) = widest.beside_square(s.at + bearing * out, bearing);
         let across = Vec2::new(-bearing.y, bearing.x);
         let corners = [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(sx, sz)| at + across * (sx * w * 0.5) + bearing * (sz * d * 0.5));
         let mut faults = 0;
@@ -182,6 +196,9 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
         }
         if wet(&at) {
             faults += 8;
+        }
+        if step > 0 {
+            faults += 32;
         }
         if on_a_way {
             faults += 16;
@@ -203,10 +220,11 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
         let weigh = |bit: u32, by: f32| if faults & bit != 0 { by } else { 0.0 };
         let score = weigh(8, 100.0) + weigh(16, 60.0) + weigh(4, 40.0) + weigh(1, 10.0) + wet_corners as f32 * 2.0 + reach;
         if best.map_or(true, |(sc, _, _, _)| score < sc) {
-            best = Some((score, at, yaw, faults));
+            best = Some((score, bearing, out, faults));
         }
     }
-    let (_, at, yaw, faults) = best.unwrap_or((0.0, s.at, 0.0, 0));
+    let (_, bearing, out, faults) = best.unwrap_or((0.0, Vec2::X, 0.0, 0));
+    let (at, yaw) = church.beside_square(s.at + bearing * out, bearing);
     Parish { church, at, yaw, faults }
 }
 
@@ -250,7 +268,7 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
             // a works standing in or hard by the churchyard: the works were placed first and do not know of it
             let crowded = plots.values().flatten().filter(|&&(x, z)| p.holds(Vec2::new(x, z), 0.05)).count();
             if p.faults > 0 || crowded > 0 {
-                eprintln!("year {}: the church of town {} stands with faults {} (1 by a way out, 2 a corner of the yard on wet ground, 4 a road across, 8 the church on wet ground, 16 in a way out) and {} works by its yard; it is at {:.2}, {:.2}, where the ground is {:.3} high and the water {:.3} off", r.y0 + k as i32, s.town, p.faults, crowded, p.at.x, p.at.y, world::height_at(g, p.at.x, p.at.y), world::water_dist(g, p.at.x, p.at.y));
+                eprintln!("year {}: the church of town {} stands with faults {} (1 by a way out, 2 a corner of the yard on wet ground, 4 a road across, 8 the church on wet ground, 16 in a way out, 32 further out than the market place's edge) and {} works by its yard; it is at {:.2}, {:.2}, where the ground is {:.3} high and the water {:.3} off", r.y0 + k as i32, s.town, p.faults, crowded, p.at.x, p.at.y, world::height_at(g, p.at.x, p.at.y), world::water_dist(g, p.at.x, p.at.y));
             }
         }
         parishes.push(p);

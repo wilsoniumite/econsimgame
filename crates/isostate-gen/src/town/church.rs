@@ -158,8 +158,11 @@ pub fn church(solid: &mut MeshBuf, site: &Site, c: &Church, pal: &Palette) {
     let (ch_w, ch_len, ch_h) = (nave_w * 0.72, CHANCEL_LENGTH * k, nave_h * 0.78);
     solid.block(floor(0.0, chancel_z), ch_len, ch_w, ch_h, along, stone, None, 0.03);
     solid.gable(floor(0.0, chancel_z), ch_len, ch_w, ch_h, nave_rise * 0.72, along, 0.003, lead, stone);
-    // the east window
-    pane(solid, site, (ch_w * 0.2, chancel_z - ch_len * 0.5 - 0.0006), (-ch_w * 0.2, chancel_z - ch_len * 0.5 - 0.0006), ch_h * 0.3, ch_h * 0.95, glass);
+    // the east window: three lancets, the middle one the tallest
+    let east = chancel_z - ch_len * 0.5 - 0.0006;
+    for (x, top) in [(-0.29f32, 0.8), (0.0, 0.95), (0.29, 0.8)] {
+        pane(solid, site, ((x + 0.09) * ch_w, east), ((x - 0.09) * ch_w, east), ch_h * 0.34, ch_h * top, glass);
+    }
 
     // a big town's church has a lean-to aisle either side, and the nave's windows are in its clerestory
     let aisle = AISLE_WIDTH * k;
