@@ -297,8 +297,8 @@ fn heath(pal: &Palette) -> Vec<Vec<Cell>> {
 }
 
 fn bridges(pal: &Palette) -> Vec<Vec<Cell>> {
-    let halves = [0.012, 0.025, 0.04, 0.06];
-    grid(2, 4, |row, col| {
+    let halves = [0.012, 0.025, 0.04, 0.06, 0.1];
+    grid(2, 5, |row, col| {
         let (main, half) = (row == 1, halves[col]);
         let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main };
         let label = format!("{}\nriver {} wide", if main { "main road" } else { "lane" }, half * 2.0);

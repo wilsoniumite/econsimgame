@@ -318,10 +318,12 @@ tunnel_mouth = "#2a2522"
 girder = "#4c4f55"
 
 [bridges]
-# the stone bridges that carry roads over rivers, and the dark under an arch
-road_stone = "#c4b8a2"
-lane_stone = "#b9ab94"
-arch_shadow = "#3b3631"
+# the stone bridges that carry roads over rivers: a main road's in pale
+# dressed stone, a lane's a little browner, and the stone of the underside
+# of an arch, which is in its own shade
+road_stone = "#d6ccb8"
+lane_stone = "#cbbfa8"
+arch_shadow = "#8c8273"
 # a low causeway over drowned ground
 causeway = "#b8ac96"
 
