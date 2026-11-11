@@ -248,7 +248,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
                 if (sim.year - 1) % 10 == 0 {
                     eprintln!("  {}", sim.year - 1);
                 }
-            })?;
+            })
+            // a plain start would meet the same save every time: say the way round it
+            .map_err(|e| format!("{} cannot be played again ({e}); --new starts a new game and sets it aside", file.display()))?;
             for (given, why) in &loaded.refused {
                 eprintln!("  an order of {} could not be given again ({why}): {}", given.year, serde_json::to_string(&given.order).unwrap_or_default());
             }

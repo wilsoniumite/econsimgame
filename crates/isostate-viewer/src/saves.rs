@@ -195,7 +195,8 @@ impl Saver {
                     std::fs::rename(&from, earlier(path, n + 1)).map_err(told)?;
                 }
             }
-            std::fs::rename(path, earlier(path, 1)).map_err(told)?;
+            // copied, not moved: there is no moment without a latest
+            std::fs::copy(path, earlier(path, 1)).map_err(told)?;
         }
         std::fs::rename(tmp, path).map_err(told)
     }

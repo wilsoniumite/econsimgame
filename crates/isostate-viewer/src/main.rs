@@ -367,6 +367,9 @@ fn main() {
             }
         }
     } else {
+        if args.save.is_some() {
+            eprintln!("--save is for a game: {} is a recorded run, and nothing is saved", args.run);
+        }
         match replay::load(&args.run) {
             Ok(r) => (r, None, None),
             Err(e) => {
