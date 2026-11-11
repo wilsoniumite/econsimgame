@@ -93,6 +93,24 @@ fn branches_carry_the_network_past_the_ports() {
 }
 
 #[test]
+fn a_line_opens_only_onto_track_that_is_there() {
+    // year by year through the rush: every line that opened in the year runs
+    // over track from end to end, its junction and any stretch it shares with
+    // an older line included
+    let mut s = sim::start(&params(true), default_content());
+    let mut opened = 0;
+    while s.year <= 1850 {
+        let before = s.st.projects.clone();
+        sim::run_year(&mut s).expect("money is conserved every month");
+        for pr in before.iter().filter(|pr| !s.st.projects.iter().any(|q| q.new == pr.new)) {
+            opened += 1;
+            assert!(pr.cells.iter().all(|&c| s.st.rail[c] > 0), "a line begun in {} opened in {} onto a line still building", pr.start, s.year - 1);
+        }
+    }
+    assert!(opened >= 20, "{opened} lines opened by 1850");
+}
+
+#[test]
 fn the_news_keeps_the_trunks_and_folds_the_branches() {
     let r = railways();
     let book = &r.state.rw;

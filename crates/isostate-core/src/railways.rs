@@ -237,16 +237,22 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         };
         out.push((format!("rail_fares_over_capital_{y}"), Kind::Real, v));
     }
-    // what the lines serve
-    let count = |f: &dyn Fn(u8) -> bool| nan_off(book.lines.iter().filter(|l| f(l.serves)).count() as f64);
-    out.push(("rail_lines_trunk".into(), Kind::Count, count(&|s| s == SERVES_TRUNK)));
-    out.push(("rail_lines_to_towns".into(), Kind::Count, count(&|s| s == SERVES_TOWN)));
-    out.push(("rail_lines_to_farms".into(), Kind::Count, count(&|s| s == 2)));
-    out.push(("rail_lines_to_pastures".into(), Kind::Count, count(&|s| s == 3)));
-    out.push(("rail_lines_to_quarries".into(), Kind::Count, count(&|s| s == 5 || s == 6)));
-    out.push(("rail_lines_to_mines".into(), Kind::Count, count(&|s| s == 7 || s == 8)));
-    out.push(("rail_lines_to_works".into(), Kind::Count, count(&|s| s == 9)));
-    out.push(("rail_lines_to_woods".into(), Kind::Count, count(&|s| s == 4 || s > 9)));
+    // what the lines cost against what their promoters expected: all of them
+    // together, and the line that overran most (calls on the landlords have no limit)
+    let (spent, expected): (f64, f64) = book.lines.iter().fold((0.0, 0.0), |(s, e), l| (s + l.spent, e + l.cost));
+    out.push(("rail_spent_over_expected".into(), Kind::Ratio, if expected > 0.0 { spent / expected } else { f64::NAN }));
+    let worst = book.lines.iter().filter(|l| l.cost > 0.0).map(|l| l.spent / l.cost).fold(f64::NAN, f64::max);
+    out.push(("rail_worst_overrun".into(), Kind::Ratio, worst));
+    // what the lines serve, by the words the news uses
+    let lines_to = |words: &[&str]| nan_off(book.lines.iter().filter(|l| words.contains(&ways::serves_word(l.serves))).count() as f64);
+    out.push(("rail_lines_trunk".into(), Kind::Count, lines_to(&[ways::serves_word(SERVES_TRUNK)])));
+    out.push(("rail_lines_to_towns".into(), Kind::Count, lines_to(&[ways::serves_word(SERVES_TOWN)])));
+    out.push(("rail_lines_to_farms".into(), Kind::Count, lines_to(&["farms"])));
+    out.push(("rail_lines_to_pastures".into(), Kind::Count, lines_to(&["pastures"])));
+    out.push(("rail_lines_to_quarries".into(), Kind::Count, lines_to(&["quarries", "clay pits"])));
+    out.push(("rail_lines_to_mines".into(), Kind::Count, lines_to(&["iron mines", "collieries"])));
+    out.push(("rail_lines_to_works".into(), Kind::Count, lines_to(&["works"])));
+    out.push(("rail_lines_to_woods".into(), Kind::Count, lines_to(&["woods"])));
     let km_all: f64 = book.lines.iter().map(|l| 2.0 * l.new_cells as f64).sum();
     let km_branch: f64 = book.lines.iter().filter(|l| l.serves != SERVES_TRUNK).map(|l| 2.0 * l.new_cells as f64).sum();
     out.push(("rail_km_share_branches".into(), Kind::Share, nan_off(if km_all > 0.0 { km_branch / km_all } else { f64::NAN })));

@@ -31,7 +31,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::content::Content;
-use crate::land::{USE_INDUSTRY, USE_SECTOR0};
+use crate::land::{USE_INDUSTRY, USE_NAMES, USE_SECTOR0};
 use crate::mat::Mat;
 use crate::ndimage::{self, Mode};
 use crate::params::Params;
@@ -407,10 +407,27 @@ fn materials(way: &Way, n_new: usize) -> Vec<f64> {
     way.materials.iter().map(|&m| m * n_new as f64).collect()
 }
 
-/// What the promoters expect to pay for `need` bought in town `t`: the year's
-/// prices, with the order-book good marked up by what the lines already building
-/// still have on order, measured in years of the whole country's make of it; and
-/// three tenths on top for the navvies (`econ::step_month` pays them so).
+/// The price the promoters reckon on for `need` of good `g` bought in town `t`
+/// over `months`: the year's price there for what the town's own makers can
+/// supply in the time, and for the rest no less than what the country's makers
+/// got for it (each town's price weighted by what it made). A town that makes no
+/// rails may show a price of next to nothing, because nobody there has bought
+/// any; an order of some hundreds would not be filled at it.
+fn reckoned_price(st: &State, pbar: &Mat, g: usize, t: usize, need: f64, months: f64) -> f64 {
+    let local = pbar[(t, g)];
+    let made: f64 = (0..st.T_max).map(|i| st.town_prod_year[(i, g)]).sum();
+    if made <= 0.0 || need <= 0.0 {
+        return local;
+    }
+    let makers = (0..st.T_max).map(|i| st.town_prod_year[(i, g)] * pbar[(i, g)]).sum::<f64>() / made;
+    let own = (st.town_prod_year[(t, g)] * months / 12.0 / need).min(1.0);
+    own * local + (1.0 - own) * local.max(makers)
+}
+
+/// What the promoters expect to pay for `need` bought in town `t`: the prices of
+/// `reckoned_price`, with the order-book good marked up by what the lines already
+/// building still have on order, measured in years of the whole country's make
+/// of it; and three tenths on top for the navvies (`econ::step_month` pays them so).
 fn expected_cost(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], t: usize) -> f64 {
     let mut markup = 1.0;
     if let Some(gb) = way.order_book {
@@ -418,7 +435,15 @@ fn expected_cost(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], t
         let made: f64 = (0..st.T_max).map(|i| st.town_prod_year[(i, gb)]).sum();
         markup += backlog / made.max(1.0);
     }
-    pairwise_sum_by(C.G, |g| need[g] * pbar[(t, g)] * if Some(g) == way.order_book { markup } else { 1.0 }) * 1.3
+    let price = |g: usize| reckoned_price(st, pbar, g, t, need[g], way.build_months.max(1.0));
+    pairwise_sum_by(C.G, |g| if need[g] > 0.0 { need[g] * price(g) * if Some(g) == way.order_book { markup } else { 1.0 } } else { 0.0 }) * 1.3
+}
+
+/// The cheaper of two towns to buy `need` in, by the promoters' own reckoning,
+/// and what they expect to pay there.
+fn cheaper_town(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], a: usize, b: usize) -> (usize, f64) {
+    let (ca, cb) = (expected_cost(st, C, way, pbar, need, a), expected_cost(st, C, way, pbar, need, b));
+    if ca <= cb { (a, ca) } else { (b, cb) }
 }
 
 /// Subscriptions from the landlords (35 per cent of their cash) and households
@@ -442,7 +467,10 @@ fn subscribe(st: &mut State, towns: &[usize], cost: f64) -> Option<(f64, Vec<(bo
         }
     }
     if raised < 0.5 * cost {
-        repay(st, &subs, raised);
+        for &(lords, t, put) in &subs {
+            let cash = if lords { &mut st.lord_cash } else { &mut st.hh_cash };
+            cash[t] += put;
+        }
         return None;
     }
     Some((raised, subs))
@@ -495,20 +523,23 @@ fn district_use(st: &State, C: &Content, c: usize) -> u8 {
     best.1
 }
 
-/// The plural the news uses for what a district branch serves.
+/// The plural the news uses for what a line serves: for a district branch, the
+/// land use of `district_use` by its name in `land::USE_NAMES`.
 pub fn serves_word(serves: u8) -> &'static str {
     match serves {
         SERVES_TRUNK => "towns",
         SERVES_TOWN => "town",
-        2 => "farms",
-        3 => "pastures",
-        4 => "woods",
-        5 => "quarries",
-        6 => "clay pits",
-        7 => "iron mines",
-        8 => "collieries",
-        9 => "works",
-        _ => "district",
+        _ => match USE_NAMES.get(serves as usize).copied() {
+            Some("farm") => "farms",
+            Some("pasture") => "pastures",
+            Some("forestry") => "woods",
+            Some("quarry") => "quarries",
+            Some("claypit") => "clay pits",
+            Some("ironmine") => "iron mines",
+            Some("coalmine") => "collieries",
+            Some("industry") => "works",
+            _ => "district",
+        },
     }
 }
 
@@ -624,10 +655,11 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
     if act.len() < 2 || kmax < way.know || building(st) >= way.max_projects {
         return;
     }
+    // refusals that have run their time are forgotten
+    book.pair_cooldown.retain(|_, until| *until > year);
+    book.spot_cooldown.retain(|_, until| *until > year);
     let W = st.world.W;
     let mut net = Net::new(st, way);
-    // the good the buying town is chosen by: the order-book good, or the dearest material
-    let gb = way.order_book.unwrap_or_else(|| crate::util::argmax(&way.materials));
 
     // ---- trunks: pairs of towns, the busiest first
     let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
@@ -665,8 +697,7 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         }
         let (local, trade) = net.sums(st, P, way, &new_cells, &[a_, b_]);
         let need = materials(way, new_cells.len());
-        let buy_town = if pbar[(a_, gb)] <= pbar[(b_, gb)] { a_ } else { b_ };
-        let cost = expected_cost(st, C, way, pbar, &need, buy_town);
+        let (buy_town, cost) = cheaper_town(st, C, way, pbar, &need, a_, b_);
         let roi = way.induced * (local + trade) / cost.max(1e-9);
         if roi < way.hurdle {
             book.pair_cooldown.insert((a_, b_), year + 4);
@@ -764,8 +795,7 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         let serve: Vec<usize> = if serves == SERVES_TOWN { vec![town] } else { Vec::new() };
         let (local, trade) = net.sums(st, P, way, &new_cells, &serve);
         let need = materials(way, new_cells.len());
-        let buy_town = if pbar[(town, gb)] <= pbar[(jt, gb)] { town } else { jt };
-        let cost = expected_cost(st, C, way, pbar, &need, buy_town);
+        let (buy_town, cost) = cheaper_town(st, C, way, pbar, &need, town, jt);
         let roi = way.induced * (local + trade) / cost.max(1e-9);
         if roi < way.hurdle {
             book.spot_cooldown.insert(target, year + way.cool_years);
@@ -841,6 +871,14 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             }
         }
         if pairwise_sum(&pr.order) > 0.01 * pairwise_sum(&pr.need) {
+            keep.push(pr);
+            continue;
+        }
+        // A line that runs over, or branches from, one still building waits for it:
+        // a branch does not open onto a junction that is not there yet. (The other
+        // line was promoted first and cannot be waiting for this one.)
+        let layer = (way.layer)(st);
+        if pr.cells.iter().any(|c| layer[*c] == 0 && !pr.new.contains(c)) {
             keep.push(pr);
             continue;
         }
@@ -954,6 +992,33 @@ mod tests {
         let laid: Vec<bool> = st.rail.iter().map(|&r| r > 0).collect();
         let (ours, port) = (build_graph(&st.world, &laid, &way.build), tr::rail_build_graph(&st.world, &st.rail));
         assert!(ours.w.iter().zip(&port.w).all(|(x, y)| x.to_bits() == y.to_bits()));
+    }
+
+    #[test]
+    fn promoters_are_not_fooled_by_a_price_nobody_pays() {
+        let (mut st, _) = island();
+        let C = default_content();
+        let g = C.gi("rails");
+        let (maker, other) = (0, 1);
+        let mut pbar = Mat::zeros(st.T_max, C.G);
+        pbar[(maker, g)] = 10.0;
+        pbar[(other, g)] = 0.5; // nobody there ever bought a rail
+        st.town_prod_year = Mat::zeros(st.T_max, C.G);
+        // before anyone makes rails there is only the town's own price to go by
+        assert_eq!(reckoned_price(&st, &pbar, g, other, 600.0, 24.0), 0.5);
+        st.town_prod_year[(maker, g)] = 1200.0;
+        // the making town fills an order within its make at its own price
+        assert_eq!(reckoned_price(&st, &pbar, g, maker, 600.0, 24.0), 10.0);
+        // the other town's rails must come from the makers, at what they get
+        assert_eq!(reckoned_price(&st, &pbar, g, other, 600.0, 24.0), 10.0);
+        // unless it makes some itself: a quarter of the order here, at its own price
+        st.town_prod_year[(other, g)] = 75.0;
+        let makers = (1200.0 * 10.0 + 75.0 * 0.5) / 1275.0;
+        let want = 0.25 * 0.5 + 0.75 * makers;
+        assert!((reckoned_price(&st, &pbar, g, other, 600.0, 24.0) - want).abs() < 1e-12);
+        // and where rails are dearer than the makers' price, the town's price stands
+        pbar[(other, g)] = 14.0;
+        assert_eq!(reckoned_price(&st, &pbar, g, other, 600.0, 24.0), 14.0);
     }
 
     #[test]
