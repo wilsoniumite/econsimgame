@@ -735,20 +735,44 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
     }
 
-    for s in &slots.mines {
-        let c = s.wcell as usize;
-        let cls = world::pick_class(r, k, c, s.sub);
-        let kind = match cls {
-            world::COALMINE => PitKind::Coal,
-            world::IRONMINE => PitKind::Ironstone,
-            world::QUARRY => PitKind::Stone,
-            world::CLAYPIT => PitKind::Clay,
-            _ => continue,
-        };
-        if s.u > 0.7 || near_plot(s.x, s.z) {
-            continue;
+    let pit_kind = |cls: u8| match cls {
+        world::COALMINE => Some(PitKind::Coal),
+        world::IRONMINE => Some(PitKind::Ironstone),
+        world::QUARRY => Some(PitKind::Stone),
+        world::CLAYPIT => Some(PitKind::Clay),
+        _ => None,
+    };
+    // Where the run keeps its quarries, pits and mines as workings (a pit head on
+    // one cell, with its hands; the core's docs/rules/mines.md), each working at
+    // work gets one pit, on the first free spot of its cell: a stand-in until the
+    // pit heads and spoil heaps are drawn to their size. Otherwise the pits are
+    // read off the land mix, a pit on every spot the mix paints as diggings.
+    let year_workings = r.workings.get(k).filter(|w| !w.is_empty());
+    if let Some(list) = year_workings {
+        let mut waiting: std::collections::HashMap<u32, Vec<PitKind>> = std::collections::HashMap::new();
+        for w in list.iter().filter(|w| w.opened != 0 && w.hands >= 1.0) {
+            if let Some(kind) = pit_kind(w.class) {
+                waiting.entry(w.cell).or_default().push(kind);
+            }
         }
-        pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        for s in &slots.mines {
+            if near_plot(s.x, s.z) {
+                continue;
+            }
+            let Some(kinds) = waiting.get_mut(&s.wcell) else { continue };
+            let Some(kind) = kinds.pop() else { continue };
+            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        }
+    } else {
+        for s in &slots.mines {
+            let c = s.wcell as usize;
+            let cls = world::pick_class(r, k, c, s.sub);
+            let Some(kind) = pit_kind(cls) else { continue };
+            if s.u > 0.7 || near_plot(s.x, s.z) {
+                continue;
+            }
+            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        }
     }
 
     YearMeshes { trees, houses, works: works_b, smoke, lanes }
