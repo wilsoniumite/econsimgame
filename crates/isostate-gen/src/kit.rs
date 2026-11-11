@@ -83,9 +83,9 @@ impl Era {
 /// The height of one storey of a house. (A works' storey is a little more, and the towns' other
 /// buildings keep `parts::STOREY`: houses are drawn low, so that a street of three storeys is
 /// roofs and not towers.)
-pub(super) const STOREY: f32 = 0.0205;
+pub(crate) const STOREY: f32 = crate::scale::STOREY;
 /// How high the band at the foot of a wall is: a plinth, and the floor's height above the ground.
-pub(super) const FOOT: f32 = 0.0026;
+pub(crate) const FOOT: f32 = 0.0026;
 /// How deep the band of shadow under the eaves is.
 const EAVE_BAND: f32 = 0.003;
 /// How far a window sits back in its wall, and a doorway.
@@ -103,7 +103,7 @@ const SIDE_SHADE: [f32; 4] = [1.0, 0.93, 0.86, 0.95];
 /// runs to the back and +c is to the right; at 2 `a` runs to the left and
 /// +c is the back; at 3 `a` runs to the front and +c is to the left.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Range {
+pub(crate) struct Range {
     pub cx: f32,
     pub cz: f32,
     pub len: f32,
@@ -113,7 +113,7 @@ pub(super) struct Range {
 
 /// One side of a range, seen from outside: where it begins, the way it runs, and how long it is.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Face {
+pub(crate) struct Face {
     ox: f32,
     oz: f32,
     ux: f32,
@@ -170,7 +170,7 @@ impl Range {
 
 /// What a wall is made of.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Wall {
+pub(crate) struct Wall {
     pub col: Rgba,
     /// the band at its foot, where it is not the wall's own
     pub plinth: Option<Rgba>,
@@ -182,7 +182,7 @@ pub(super) struct Wall {
 
 /// What is over a door.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Over {
+pub(crate) enum Over {
     Nothing,
     /// a little pent roof on brackets
     Hood,
@@ -192,7 +192,7 @@ pub(super) enum Over {
 
 /// What an opening in a wall is.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Open {
+pub(crate) enum Open {
     /// a window of two sashes, one over the other
     Sash,
     /// a window of two lights side by side
@@ -206,7 +206,7 @@ pub(super) enum Open {
 
 /// An opening in a wall: its middle along the wall, its foot, how wide and how tall.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Opening {
+pub(crate) struct Opening {
     pub u: f32,
     pub y: f32,
     pub w: f32,
@@ -216,7 +216,7 @@ pub(super) struct Opening {
 
 /// How one side of a range is drawn.
 #[derive(Clone, Copy)]
-pub(super) struct Side<'o> {
+pub(crate) struct Side<'o> {
     pub show: bool,
     /// a wall that little light reaches (close against a neighbour) is drawn this much darker
     pub k: f32,
@@ -246,7 +246,7 @@ impl<'o> Side<'o> {
 
 /// How a roof ends.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum End {
+pub(crate) enum End {
     /// the wall runs up to the ridge and the roof oversails it
     Gable,
     /// the roof slopes back from the end as it does from the sides
@@ -262,7 +262,7 @@ pub(super) enum End {
 
 /// A pitched roof on a range.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct RoofSpec {
+pub(crate) struct RoofSpec {
     /// the height of the eaves (the top of the walls), and of the ridge above them
     pub h: f32,
     pub rise: f32,
@@ -287,7 +287,7 @@ impl RoofSpec {
 
 /// What a house builds with: the buffer, the site, the level of detail, and
 /// the frame its corners are worked out in.
-pub(super) struct Kit<'a, 's> {
+pub(crate) struct Kit<'a, 's> {
     pub solid: &'a mut MeshBuf,
     pub pal: &'a Palette,
     pub detail: Detail,

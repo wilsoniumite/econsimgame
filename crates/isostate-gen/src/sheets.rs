@@ -721,6 +721,34 @@ mod tests {
         assert!(find("no such sheet").is_none());
     }
 
+    /// Prints a fingerprint of every cell of every sheet: run it before and after a change
+    /// that should leave some sheets as they were, and compare the lines
+    /// (`cargo test -p isostate-gen fingerprints -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn fingerprints() {
+        let pal = Palette::standard();
+        for sheet in SHEETS {
+            let mut h = 0xcbf2_9ce4_8422_2325u64;
+            let mut eat = |v: u32| {
+                for byte in v.to_le_bytes() {
+                    h = (h ^ byte as u64).wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            };
+            let mut tris = 0;
+            for cell in (sheet.build)(&pal).into_iter().flatten() {
+                let m = &cell.model;
+                for b in [&m.solid, &m.smoke, &m.green.evergreen, &m.green.leaves, &m.green.bare, &m.flat] {
+                    tris += b.triangles();
+                    b.pos.iter().chain(&b.nrm).flatten().for_each(|v| eat(v.to_bits()));
+                    b.col.iter().flatten().for_each(|v| eat(v.to_bits()));
+                    b.idx.iter().for_each(|&i| eat(i));
+                }
+            }
+            println!("fingerprint {:<24} {h:016x} {tris} triangles", sheet.name);
+        }
+    }
+
     #[test]
     fn a_sheet_is_the_same_each_time_it_is_built() {
         let pal = Palette::standard();

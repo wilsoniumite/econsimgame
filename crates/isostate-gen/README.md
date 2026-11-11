@@ -115,6 +115,89 @@ what one thing looks like.
   and nothing else, so anything outside it may stand in a neighbour's yard.
   The tests check both. (Smoke is free to drift.)
 
+## The scale
+
+Every building answers to one scale of detail. It was read off the houses
+(`houses/`), which are the reference: bring a new thing to them, never them
+to it. The numbers live in `scale.rs`, and a test builds every generator at
+every level and measures it against them (see "Holding the line" below).
+
+**Units.**
+
+- **One storey is 0.0205** (`scale::STOREY`), floor to floor, for every
+  building: a house, a mill, a station, a granary. Rows of windows stand a
+  storey apart. Two things have a reason not to be a whole number of storeys
+  high. A *hall* is one tall space (a forge, a rolling mill, an engine
+  house, a casting house, a threshing barn, a nave): it is as high as its
+  work needs, and its openings are still sized and spaced by the storey and
+  the bay. A thatched cottage's eaves stand at 0.92 of a storey, under the
+  deep thatch.
+- **One bay is 0.014** (`scale::BAY`), the module openings repeat at along a
+  wall. Bays run from one module to one and a half: a cottage is two or
+  three bays, a townhouse three, a mill as many as its length holds. A
+  building grows by bays and storeys, never by drawing its windows bigger.
+- **Openings.** A window is about 0.0065 wide and 0.007 tall, its sill 0.0075
+  above its floor; a door 0.0052 by 0.0126; a cart or wagon door 0.012 to
+  0.02 wide. The floor stands 0.0026 above the ground (`kit::FOOT`), which
+  is also the height of the plinth.
+- **A roof oversails** its walls by 0.0028 at the eaves and 0.002 at a
+  gable's verge under slate (0.003 and 0.0022 under tile, 0.0042 and 0.003
+  under thatch: `houses::roof::Cover::lie`), and its edge is as thick as the
+  covering (0.0009 slate to 0.0034 thatch).
+
+**The three levels** (`Detail`, chosen for each building by the viewer's
+`scatter::Lod` from where the camera is). The numbers are what the houses
+measure, with a margin: the smallest feature is the least width of any
+triangle; wall is triangles to one bay of one storey of wall, roof is
+triangles to one bay by one bay of roof.
+
+| level | camera | what is drawn | smallest feature | wall | roof |
+| --- | --- | --- | --- | --- | --- |
+| far | beyond 40 | walls and roofs: the shell, its wings and lean-tos, tall chimneys as plain shafts | none finer than 0.0012 | 0.05 to 1.5 | 0.03 to 1.5 |
+| play | 4 to 40 | openings as flat panels 0.0006 proud of the wall, stacks and chimneys, the yard's wall as one run, what stands in the yard as plain blocks, the colour of a garden | 0.0012 to 0.006 | 0.6 to 4.5 | 0.25 to 2.5 |
+| near | 4 and nearer | openings let 0.0013 into the wall with jambs, sills and one glazing bar; eaves with an edge; stacks with oversailing heads and pots; copings, piers, gates; what stands in the yard in full | 0.00035 to 0.001 | 4 to 26 | 0.7 to 10 |
+
+(The houses measure: far 0.1 to 0.9 and 0.06 to 0.9; play 0.9 to 2.6 and
+0.4 to 1.5; near 6 to 16 and 1.2 to 6. A cottage is 14, 70 and about 350
+triangles.) At the play and near levels no wall may run more than four
+modules (`scale::BLANK`) with nothing on it: an opening, a pier, a lean-to,
+a stack against it.
+
+Only what goes into `solid` and `smoke` may follow the level. What goes
+into `flat` (a yard's ground, water) and `green` (a garden's tree) is the
+same at all three, because when the camera alone has moved the viewer puts
+the buildings and the smoke on screen again and leaves the rest.
+
+**Treatments that must match across kinds.** All of them are in `kit.rs`,
+which every building is put together from, so a building gets them by
+using the kit and not by copying numbers.
+
+- *How an opening sits in a wall.* Far: not drawn. Play: a flat panel on a
+  whole wall (`Kit::walls` with a `Side` of `Opening`s). Near: the wall is
+  built in strips round a hole, a storey at a time, and the window stands
+  0.0013 back with painted jambs, a sill and one bar.
+- *Eaves and verges.* `Kit::roof` oversails by what the covering asks and,
+  close to, has an edge of the covering's thickness. No roof stops flush
+  with its wall unless it stops against a neighbour (`End::Party`).
+- *Feet on slopes.* Walls reach below the origin to the lowest corner of
+  their range and a little more (`Kit::drop`); close to they have a plinth
+  band of `FOOT`. Yard walls and what stands about follow the ground.
+- *Wobble and crisp lines.* A building from before 1720 leans and its ridge
+  dips (`Kit::crooked`), less so to 1815, and not at all after: new work is
+  square and straight.
+- *Baked shade.* A wall is darker at its foot (0.78 of its colour; 0.7
+  rising to 0.96 over the plinth close to), under its eaves (a band of
+  0.003 falling to 0.72), toward an inside corner (0.74 over 0.012) and
+  where a neighbour stands close (0.84); the four sides of anything take
+  1, 0.93, 0.86 and 0.95 of its colour, front, right, back, left; a roof's
+  far slope takes 0.82.
+- *Weathering by age.* Roofs weather in four steps toward moss
+  (`houses::roof`); a derelict works is dulled and greened (`works`'
+  `tone`). Never a colour of its own.
+- *Palette families.* Walls, roofs, brick, stone, slate, timber and iron
+  come from the palette's families by token; a kind of building picks from
+  a family, it does not mix a colour.
+
 ## What is here
 
 | file | what |
