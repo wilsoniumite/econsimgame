@@ -124,7 +124,32 @@ fn a_new_town_takes_its_mother_towns_anchors() {
     assert_eq!(st.price_anchor.rows, 0);
 }
 
-/// Towns and goods where some works is making the good: (town, good, output last year).
+/// The same through a run's own year end, which is what holds the one line in
+/// `people::found_towns`: without it the new town's row would still be the
+/// goods' base prices, as every empty slot's is from the first month.
+#[test]
+fn a_town_founded_in_a_run_starts_from_another_towns_anchors() {
+    let P = params(3, 1770, PriceParams::game());
+    let mut s = sim::start(&P, default_content());
+    let G = s.st.price.cols;
+    loop {
+        assert!(s.year <= 1765, "no town was founded by 1765 on this seed");
+        let year = s.year;
+        sim::run_year(&mut s).expect("money conserved");
+        let st = &s.st;
+        let row = |t: usize| -> Vec<u64> { (0..G).map(|g| st.price_anchor[(t, g)].to_bits()).collect() };
+        let new: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] == year).collect();
+        for &n in &new {
+            assert!((0..st.T_max).any(|t| t != n && st.town_active[t] && row(t) == row(n)), "the town founded in {year} has nobody's anchors");
+            assert!((0..G).any(|g| st.price_anchor[(n, g)] != s.content.base_price[g]), "its anchors are still the base prices");
+        }
+        if !new.is_empty() {
+            break;
+        }
+    }
+}
+
+/// Towns and goods where some works is making the good.
 fn made_somewhere(s: &Sim) -> Vec<(usize, usize)> {
     let (st, C) = (&s.st, &s.content);
     let mut v: Vec<(usize, usize)> = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_K[f] > 0.0).map(|f| (st.f_town[f], C.method_out[st.f_method[f]])).collect();
