@@ -84,7 +84,7 @@ pub fn smithy(c: &mut Ctx) {
     c.wall(c.yard_wall(), 0.007, 0.02 * g);
     let (wall, roof) = (c.masonry(false), c.roofing());
     let (bay, dep, h) = ((0.036 * g).min(2.0 * hw - 0.016), 0.03 * g, 0.02 * g);
-    let wanted = size.sqrt().ceil().max(1.0) as usize;
+    let wanted = (1.6 * size.sqrt()).round().max(1.0) as usize;
     let per_row = c.fit(2.0 * hw - 0.016, bay, 8);
     let pitch = dep + 0.016 * g;
     let rows = c.fit(2.0 * hd - 0.02 - 0.012 * g, pitch, 4).min(wanted.div_ceil(per_row));

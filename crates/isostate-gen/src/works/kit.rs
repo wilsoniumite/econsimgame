@@ -825,3 +825,70 @@ pub fn plume(smoke: &mut MeshBuf, top: Vec3, scale: f32, phase: f32, col: Rgba) 
         smoke.idx.extend_from_slice(&[ring(N - 1, k), last, ring(N - 1, k + 1)]);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::works::Kind;
+
+    #[test]
+    fn a_plume_is_one_soft_shape_that_rises_leans_downwind_and_thins_to_nothing() {
+        let top = Vec3::new(1.0, 0.5, 2.0);
+        let build = |scale: f32| {
+            let mut b = MeshBuf::default();
+            plume(&mut b, top, scale, 0.3, [0.9, 0.9, 0.9, 1.0]);
+            assert!(b.is_sound());
+            b
+        };
+        let b = build(1.0);
+        // its corners are shared, so it is shaded as one shape: far fewer than three to a triangle
+        assert!(b.pos.len() < b.triangles());
+        let (lo, hi) = b.bounds().unwrap();
+        assert!(lo.y >= top.y - 1e-6 && hi.y > top.y + 0.03, "it rises from the flue");
+        assert!(hi.x - top.x > 0.05 && lo.x - top.x > -0.02 && hi.z > top.z, "it leans with the wind");
+        // solid at the flue, nothing at the tip, and thinner all the way
+        let alpha: Vec<f32> = b.col.iter().map(|c| c[3]).collect();
+        assert!(alpha[0] > 0.8 && *alpha.last().unwrap() == 0.0);
+        assert!(alpha.windows(2).all(|w| w[1] <= w[0]));
+        // every corner looks upward: there is no dark underside
+        assert!(b.nrm.iter().all(|n| n[1] > 0.3));
+        // more smoke is a bigger plume, not more triangles
+        let big = build(2.0);
+        assert_eq!(big.triangles(), b.triangles());
+        assert!(big.bounds().unwrap().1.y - top.y > 1.8 * (hi.y - top.y));
+    }
+
+    #[test]
+    fn things_in_a_line_share_the_room() {
+        let pal = Palette::standard();
+        let (mut a, mut b, mut f) = (MeshBuf::default(), MeshBuf::default(), MeshBuf::default());
+        let site = Site::level(Vec3::ZERO, 0.0);
+        let c = Ctx::new(&mut a, &mut b, &mut f, &site, &Works::new(Kind::Other, 1.0), &pal);
+        // one thing no longer than the room
+        assert_eq!(c.spread(0.05, 0.1, 0.01, 4), (1, 0.05));
+        // two things and the gap between them fill the room exactly
+        let (n, len) = c.spread(0.25, 0.2, 0.01, 4);
+        assert_eq!(n, 2);
+        assert!((2.0 * len + 0.01 - 0.25).abs() < 1e-6);
+        // never more than the most allowed, nor longer than the longest
+        assert_eq!(c.spread(2.0, 0.2, 0.01, 3), (3, 0.2));
+        assert_eq!(c.fit(0.1, 0.03, 8), 3);
+        assert_eq!(c.fit(0.01, 0.03, 8), 1);
+    }
+
+    #[test]
+    fn a_yard_follows_sloping_ground() {
+        let pal = Palette::standard();
+        let slope = |x: f32, _z: f32| x * 0.2;
+        let site = Site::on(Vec3::ZERO, 0.0, &slope);
+        let (mut solid, mut smoke, mut flat) = (MeshBuf::default(), MeshBuf::default(), MeshBuf::default());
+        crate::works::works(&mut solid, &mut smoke, &mut flat, &site, &Works::new(Kind::TextileMill, 30.0), &pal);
+        assert!(solid.is_sound() && flat.is_sound());
+        // the yard's ground lies just above the land everywhere, in squares small enough to follow it
+        assert!(flat.triangles() > 20);
+        for p in &flat.pos {
+            let above = p[1] - slope(p[0], p[2]);
+            assert!(above > 0.003 && above < 0.012, "the yard is {above} above the land at {p:?}");
+        }
+    }
+}

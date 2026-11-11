@@ -78,20 +78,30 @@ pub fn bloomery(c: &mut Ctx) {
     let hammer = size >= 2.5;
     let pitch = (0.03 * g).min(2.0 * hw - 0.03);
     let room = 2.0 * hw - 0.02 - if hammer { 0.04 * g } else { 0.0 };
-    let n = c.fit(room - 0.008 * g, pitch, 8).min(size.sqrt().round().max(1.0) as usize);
-    let (len, dep) = (n as f32 * pitch + 0.006 * g, (0.026 * g).min(2.0 * hd - 0.014 - 0.019 * g));
-    let x0 = -hw + 0.01 + len * 0.5;
-    let zs = -hd + 0.008 + 0.01 * g;
-    // the shafts, and the shelter over the working floor in front of them
-    for i in 0..n {
-        let x = x0 - len * 0.5 + 0.003 * g + pitch * (i as f32 + 0.5);
-        c.flue(x, zs, 0.036 * g, 0.0095 * g, 0.0065 * g, stone, c.throat(), 0.5);
+    let wanted = (1.3 * size.sqrt()).round().max(1.0) as usize;
+    let per = c.fit(room - 0.008 * g, pitch, 10).min(wanted);
+    let dep = (0.026 * g).min(2.0 * hd - 0.014 - 0.019 * g);
+    let deep = 0.019 * g + dep + 0.018 * g;
+    let rows = c.fit(2.0 * hd - 0.02 - 0.5 * hd + 0.018 * g, deep, 4).min(wanted.div_ceil(per));
+    let mut left = wanted.min(rows * per);
+    let mut front = -hd;
+    // the shafts in their rows, and a shelter over the working floor in front of each row
+    for j in 0..rows {
+        let n = left.min(per);
+        left -= n;
+        let len = n as f32 * pitch + 0.006 * g;
+        let x0 = -hw + 0.01 + len * 0.5;
+        let zs = -hd + 0.008 + 0.01 * g + j as f32 * deep;
+        for i in 0..n {
+            let x = x0 - len * 0.5 + 0.003 * g + pitch * (i as f32 + 0.5);
+            c.flue(x, zs, 0.036 * g, 0.0095 * g, 0.0065 * g, stone, c.throat(), 0.5);
+        }
+        let shelter = c.lean_to(x0, zs + 0.008 * g + dep * 0.5, len, dep, 0.013 * g, 0.027 * g, false, c.tone(*pal.timber.boards), roof);
+        if !c.going_up() {
+            c.panel(&shelter, Face::Front, -len * 0.4, len * 0.4, 0.0, 0.01 * g, false, *pal.smoke.soot);
+        }
+        front = zs + 0.008 * g + dep;
     }
-    let shelter = c.lean_to(x0, zs + 0.008 * g + dep * 0.5, len, dep, 0.013 * g, 0.027 * g, false, c.tone(*pal.timber.boards), roof);
-    if !c.going_up() {
-        c.panel(&shelter, Face::Front, -len * 0.4, len * 0.4, 0.0, 0.01 * g, false, *pal.smoke.soot);
-    }
-    let front = zs + 0.008 * g + dep;
     if hammer {
         let (hl, hdp, hh) = (0.034 * g, 0.028 * g, 0.024 * g);
         let (hx, hz) = (hw - 0.01 - hl * 0.5, -hd + 0.009 + hdp * 0.5);

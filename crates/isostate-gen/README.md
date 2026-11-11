@@ -76,12 +76,15 @@ what one thing looks like.
   across the yard, a chimney beside a mill).
 - **Four buffers**, because the viewer draws each with its own material:
   `solid` (walls, roofs, everything built), `smoke` (lets light through, casts
-  no shadow), `green` (leaves, which turn with the seasons) and `flat` (what
-  lies on the ground: lanes, paving, water). A generator takes only the ones
+  no shadow, and is blended: a corner's alpha is how solid the smoke is
+  there), `green` (leaves, which turn with the seasons) and `flat` (what
+  lies on the ground: lanes, paving, a works' yard, water). A generator takes only the ones
   it writes. `Model` holds one of each for the lab and for tests.
 - **Stay on the plot.** A house keeps inside its plot (the eaves may overhang
-  by a hair). A works keeps inside a quarter of a cell: works plots are a
-  third of a cell apart. The tests check both.
+  by a hair). A works keeps inside its yard, which is as wide and as deep as
+  `works::footprint(kind, size)` says: the viewer sets ground aside by that
+  and nothing else, so anything outside it may stand in a neighbour's yard.
+  The tests check both. (Smoke is free to drift.)
 
 ## What is here
 
@@ -94,18 +97,69 @@ what one thing looks like.
 | `site.rs` | `Site` (where a thing stands), `Model` (the four buffers) |
 | `parts.rs` | what houses share: `gabled`, `windows`, `chimney`, `smoking_chimney` |
 | `houses/` | `cottage`, `townhouse`, `terrace`, and the density at which each adds a storey |
-| `works/` | `works` (sixteen kinds by tier), `scaffold`, `yard_shed`, `pit` |
+| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit` |
 | `farm.rs` | `farmstead` |
 | `town/` | `church`, `station`, `market_cross`, `market_hall`, `lighthouse` |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush` |
 | `bridge.rs` | `road_bridge` |
-| `scenes.rs` | small scenes for the lab: a street, a market place, a works in its yard, a patch of wood |
+| `scenes.rs` | small scenes for the lab: a street, a market place, a patch of wood |
 | `sheets.rs` | the lab's contact sheets |
 
 The scenes follow the viewer's layout rules by hand (plot spacing, set-backs,
 the densities at which a plot is built). They are not what the game runs: a
 change to the layout in `scatter/towns.rs` is not seen in the lab until
 `scenes.rs` is changed to match.
+
+## Works
+
+A works is a compound in a yard of its own, and the one generator with a
+life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
+
+- **`kind`**: the method the firm works by (`Kind::of_method`). Shops and
+  trades (the simulation's "services") are a kind like any other.
+- **`size`**: capacity over the method's standard capacity (K over K0), from
+  0.4 (anything smaller is drawn as 0.4) to about 100. A works grows by
+  adding parts (bays, storeys, furnaces, chimneys, kilns, rows of sheds), and
+  its buildings grow only a little (`size` to the power 0.1), so a great
+  works is many buildings and not one large one. The viewer hands in a size
+  from a ladder, two rungs to a doubling (`rung`, `rung_size`), each works
+  with a phase of its own, so that a works changes in steps that can be seen
+  and the works of a town do not all step in the same year.
+- **`founded`**: the year sets the style for good. Before 1790 stone, stone
+  slates and timber, and a waterwheel where `water` is set; then brick and
+  slate; from 1840 iron and glass (north lights, lanterns, iron-cased
+  furnaces, a continuous kiln).
+- **`state`**: `GoingUp` (walls part of the way up, scaffolding, no roofs,
+  no smoke), `Extending` (at work, scaffolding round its newest part),
+  `Working`, `Idle` (whole, fires out, gate shut) and `Derelict` (roofs
+  falling in, stacks broken, weeds in the yard). The parts in `works/kit.rs`
+  know the state, so a kind does not have to: it says what stands where.
+- **`water`, `rail`**: what the caller knows of the site. `rail` is taken
+  and not yet drawn.
+- **`seed`**: settles what the works chooses for itself.
+
+`footprint(kind, size)` is the yard's width along the front and its depth.
+The yard's ground, wall and gate are part of the works, so it reads as a
+works on works ground, in a street or in a field. `flag_point` is the top of
+its highest gable, for the owner's flag. `plume` is the smoke: one soft shape
+with shared corners whose alpha thins downwind (the viewer's smoke material
+blends), leaning with `WIND`.
+
+To add a kind: a line in `Kind` (and in `of_method`, `method`, `label`,
+`plot` and `ALL`), a function in a file under `works/` that places parts
+from the kit in the yard (`c.hw`, `c.hd` are half its width and depth; `c.g`
+is how much bigger than standard the buildings are drawn), a line in
+`build`, and a sheet (`works_sizes(Kind::..)`). Lay it out at the standard
+size, then make every count come from what fits (`c.fit`, `c.spread`), so
+that it fills its yard at 100 and still fits at 0.4: the tests build every
+kind at every size, founding year and state and check that the footprint
+holds it.
+
+The sheets: `works-kinds` (every kind at size 3), `works-small` and
+`works-standard` (at 0.4 and 1, built early and late), `works-great` (at
+30), `works-states` and `works-states-great`, and one for each kind
+(`works-mill`, `works-coke-furnace`, ...) at sizes 0.4, 1, 3, 10, 30 and 100,
+built in 1760 and in 1870.
 
 ## Looking at a generator
 

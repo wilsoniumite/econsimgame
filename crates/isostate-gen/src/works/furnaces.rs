@@ -44,7 +44,8 @@ pub fn charcoal_furnace(c: &mut Ctx) {
     let (bw, bd) = (0.024 * g, 0.022 * g);
     let pitch = side + 0.02 * g;
     let n = (if size < 8.0 { 1 } else if size < 40.0 { 2 } else { 3 }).min(c.fit(2.0 * hw - 0.02 - bw, pitch, 3));
-    let zf = hd - 0.012 - cast + 0.005 * g - side * 0.5;
+    // as near the back of the yard as leaves a bank behind it; in a small yard, as near as the casting house allows
+    let zf = (hd - 0.012 - cast + 0.005 * g - side * 0.5).min(-hd + 0.006 + 0.06 * g + side * 0.5);
     let x0 = -hw + 0.008 + bw + 0.003;
     let row = n as f32 * pitch - 0.02 * g;
 
@@ -114,6 +115,17 @@ pub fn charcoal_furnace(c: &mut Ctx) {
         }
     } else if c.stocked() {
         c.heap(hw - 0.008 - room * 0.5, -hd * 0.3, room * 0.4, room * 0.32, *pal.goods.coal);
+    }
+    // in a deep yard, pig iron in rows before the casting houses, and charcoal to hand
+    let z0 = zf + side * 0.5 - 0.005 * g + cast + 0.008;
+    let d = hd - 0.012 - z0;
+    let w = xr - 0.006 + hw - 0.01;
+    if d > 0.014 && w > 0.03 {
+        c.stacks(-hw + 0.01 + w * 0.6, z0 + d * 0.5, w * 0.7, d * 0.8, c.fit(w * 0.7, 0.016 * g, 16), c.fit(d * 0.8, 0.012 * g, 8), 0.004 * g, *pal.iron.plate);
+        if c.stocked() {
+            let r = (w * 0.12).min(d * 0.4).min(0.03 * g);
+            c.heap(-hw + 0.012 + r, z0 + d * 0.5, r, r * 0.75, *pal.goods.coal);
+        }
     }
 }
 
@@ -213,7 +225,7 @@ pub fn coke_furnace(c: &mut Ctx) {
             c.panel(&s, Face::Front, -eng * 0.16, eng * 0.16, 0.012 * g, 0.034 * g, true, *pal.glass.window);
         }
     }
-    let tall = 0.16 * g * size.max(1.0).powf(0.04);
+    let tall = fh * 1.3 * size.max(1.0).powf(0.04);
     c.chimney(xr + eng + 0.016 * g, (zf - 0.008 * g).max(-hd + 0.008 + 0.016 * g), tall, 0.008 * g, 1.2);
     // what the rest of the yard holds
     let front = zf + r - 0.004 * g + cast;
