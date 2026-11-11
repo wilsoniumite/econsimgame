@@ -184,7 +184,9 @@ tables stay empty; `tests/golden.rs` holds the port to the byte.
   than nothing. None of them is in the code. What they share is that a run
   differs from its neighbour by more than the cure moves it, so anything
   short of a large effect is lost; the price rule is the better place to
-  look first.
+  look first. (The sweeps: `sweep-works-review-v3` for the thresholds,
+  `-v5-s16` and `-v5-f6-s16` for the trade at usual prices, `-v6-s16` and
+  `-v6-f6-s16` for the room alone, against `-v4-s16` and `-v4-f6-s16`.)
 
 ## Before and after
 
