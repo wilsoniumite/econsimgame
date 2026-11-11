@@ -312,12 +312,16 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         inten: vec![0; ny * n],
         trans: vec![0; ny * n],
         catch: vec![0; ny * n],
+        rent: vec![0; ny * n],
+        dist: vec![0; ny * n],
         mix_a: vec![0; ny * n],
         mix_b: vec![0; ny * n],
         mix_s: vec![255; ny * n],
         town_active: Vec::new(),
         town_pop: Vec::new(),
         town_urban: Vec::new(),
+        town_wage: Vec::new(),
+        town_price: Vec::new(),
         firm_first: Vec::new(),
         firm_len: Vec::new(),
         firm_off: Vec::new(),
@@ -343,6 +347,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         (&mut r.inten, &l.inten),
         (&mut r.trans, &l.trans),
         (&mut r.catch, &l.catch),
+        (&mut r.rent, &l.rent),
+        (&mut r.dist, &l.dist),
         (&mut r.mix_a, &l.mix_a),
         (&mut r.mix_b, &l.mix_b),
         (&mut r.mix_s, &l.mix_s),
@@ -357,12 +363,17 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         r.town_active = vec![0; ny * nt];
         r.town_pop = vec![0.0; ny * nt];
         r.town_urban = vec![0.0; ny * nt];
+        r.town_wage = vec![0.0; ny * nt];
+        r.town_price = vec![0.0; ny * nt * r.header.goods.len()];
     }
+    let ng = r.header.goods.len();
     for t in 0..nt.min(r.n_towns) {
         let i = k * r.n_towns + t;
         r.town_active[i] = y.towns.active[t] as u8;
         r.town_pop[i] = y.towns.pop[t];
         r.town_urban[i] = y.towns.urban[t];
+        r.town_wage[i] = y.towns.wage[t];
+        r.town_price[i * ng..(i + 1) * ng].copy_from_slice(&y.towns.price[t * ng..(t + 1) * ng]);
     }
     for t in &y.new_towns {
         debug_assert_eq!(t.id, r.header.towns.len());

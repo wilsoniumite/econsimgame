@@ -8,6 +8,7 @@
 
 mod boats;
 mod carts;
+mod chart;
 mod cursor;
 mod family;
 mod fields;
@@ -16,6 +17,7 @@ mod icons;
 mod live;
 mod meshkit;
 mod network;
+mod overlay;
 mod plan;
 mod rails;
 mod replay;
@@ -76,6 +78,8 @@ struct Args {
     pick: Option<(f32, f32)>,
     ground_debug: bool,
     class_map: bool,
+    /// the map overlay to start with: rent, areas, reach, price (or price:coal), wages
+    overlay: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +94,10 @@ struct ShotSpec {
     season: Option<f32>,
     /// which side panel to show: Some(None) closes it
     tab: Option<Option<ui::Tab>>,
+    /// the map overlay for this shot, as `overlay::parse` reads it
+    overlay: Option<String>,
+    /// what the Markets panel shows, as `ui::markets_word` knows it: "island" or "open:GOOD"
+    markets: Option<String>,
 }
 
 fn parse_args() -> Args {
@@ -117,6 +125,7 @@ fn parse_args() -> Args {
         pick: None,
         ground_debug: false,
         class_map: false,
+        overlay: None,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -153,6 +162,7 @@ fn parse_args() -> Args {
             }
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
+            "--overlay" => { a.overlay = Some(next(i)); i += 1; }
             "--season" => { a.season = next(i).parse().ok(); i += 1; }
             "--describe" => {
                 let s = next(i);
@@ -160,9 +170,11 @@ fn parse_args() -> Args {
                 i += 1;
             }
             "--view" => {
-                // path,year,x,z,yaw,pitch,dist[,season][,tab]: a number after dist is a season, a word a panel
+                // path,year,x,z,yaw,pitch,dist[,season][,words]: a number after dist is a season; a word
+                // is a panel, a map overlay, or what the Markets panel shows
                 let p: Vec<String> = next(i).split(',').map(String::from).collect();
                 let num = |j: usize| p.get(j).and_then(|s| s.parse::<f32>().ok());
+                let words: Vec<&String> = p.iter().skip(7).filter(|s| !s.is_empty() && s.parse::<f32>().is_err()).collect();
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
                     year: num(1).map(|y| y as i32),
@@ -171,7 +183,9 @@ fn parse_args() -> Args {
                     pitch: num(5).unwrap_or(52.0),
                     dist: num(6),
                     season: p.iter().skip(7).find_map(|s| s.parse::<f32>().ok()),
-                    tab: p.iter().skip(7).find(|s| !s.is_empty() && s.parse::<f32>().is_err()).map(|s| ui::Tab::parse(s)),
+                    tab: words.iter().find(|s| !overlay::is_word(s) && !ui::markets_word(s)).map(|s| ui::Tab::parse(s)),
+                    overlay: words.iter().find(|s| overlay::is_word(s)).map(|s| s.to_string()),
+                    markets: words.iter().find(|s| ui::markets_word(s)).map(|s| s.to_string()),
                 });
                 i += 1;
             }
@@ -382,7 +396,15 @@ fn main() {
         // print what a click at this spot would show, then stop
         let hit = Vec3::new(x, world::height_at(&g, x, z), z);
         match choose(&r, &slots, &cen, hit, k0) {
-            Some(p) => println!("{}", describe(&r, p, k0)),
+            Some(p) => {
+                println!("{}", describe(&r, p, k0));
+                // with --overlay, what that overlay says of the spot, as the inspector would
+                if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
+                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0)) {
+                        println!("\n{line}");
+                    }
+                }
+            }
             None => println!("nothing there"),
         }
         return;
@@ -417,7 +439,7 @@ fn main() {
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
-        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None });
+        views.insert(0, ShotSpec { path, year: args.year, look: args.look, yaw: args.yaw, pitch: args.pitch, dist: args.dist, season: None, tab: None, overlay: None, markets: None });
     }
     if args.class_map {
         // the CPU's answer for each view, to compare with a --ground-debug shot
@@ -445,6 +467,8 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
+    let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
+    app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))
         .insert_resource(GlobalAmbientLight { color: Color::srgb(0.78, 0.86, 1.0), brightness: 650.0, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
@@ -459,6 +483,7 @@ fn main() {
         .init_resource::<Rails>()
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
+        .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
@@ -538,6 +563,7 @@ fn setup_world(
             params: terrain::patchwork_params(r, g, season_phase(&tl, forced.0), debug.0),
             year: year_cells.clone(),
             fixed: fixed_cells,
+            overlay: images.add(overlay::blank(r)),
         },
     });
     for chunk in terrain::terrain_chunks(g) {
@@ -1009,6 +1035,7 @@ fn labels(
     data: Res<Data>,
     tl: Res<Timeline>,
     o: Res<Orbit>,
+    ov: Res<overlay::MapOverlay>,
     cams: Query<(&Camera, &GlobalTransform), With<MainCam>>,
     mut q: Query<(&TownLabel, &mut Node, &mut Visibility, &Children)>,
     mut boxes: Query<&Children, Without<TownLabel>>,
@@ -1020,7 +1047,8 @@ fn labels(
     // rank towns by size so only the bigger ones are named when zoomed out
     let mut order: Vec<(usize, f32)> = (0..r.n_towns).filter(|&t| r.town_active[k * r.n_towns + t] > 0).map(|t| (t, r.town_urban[k * r.n_towns + t])).collect();
     order.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    let max_shown = if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
+    // a map view that goes by market towns names every one of them
+    let max_shown = if ov.names_towns() { 99 } else if o.dist > 90.0 { 9 } else if o.dist > 45.0 { 16 } else { 99 };
     let biggest = order.first().map(|x| x.1).unwrap_or(1.0).max(1.0);
     for (lab, mut node, mut vis, children) in &mut q {
         let t = lab.0;
@@ -1138,6 +1166,7 @@ fn take_shot(
     mut o: ResMut<Orbit>,
     mut ui: ResMut<UiState>,
     mut sm: ResMut<SeasonMats>,
+    mut ov: ResMut<overlay::MapOverlay>,
     data: Res<Data>,
 ) {
     let Some(mut plan) = plan else { return };
@@ -1155,6 +1184,16 @@ fn take_shot(
         if ui.tab != tab {
             ui.tab = tab;
         }
+    }
+    if let Some((kind, good)) = v.overlay.as_deref().and_then(|w| overlay::parse(w, r)) {
+        let good = good.unwrap_or(ov.good);
+        if ov.kind != kind || ov.good != good {
+            ov.set(kind);
+            ov.good = good;
+        }
+    }
+    if let Some(w) = v.markets.as_deref() {
+        ui.show_markets(w, r);
     }
     let season = v.season.or(plan.default_season);
     if sm.forced != season {
@@ -1354,6 +1393,15 @@ fn choose(r: &Replay, slots: &scatter::Slots, cen: &[(f32, f32)], hit: Vec3, k: 
     None
 }
 
+/// The square a picked thing stands on.
+fn pick_cell(r: &Replay, what: Pick) -> usize {
+    match what {
+        Pick::Firm(f) => r.header.firms[f].cell,
+        Pick::Town(t) => r.header.towns[t].node,
+        Pick::Cell(c) => c,
+    }
+}
+
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
 
 fn describe(r: &Replay, what: Pick, k: usize) -> String {
@@ -1429,21 +1477,28 @@ fn inspect_panel(
     picked: Res<Picked>,
     tl: Res<Timeline>,
     data: Res<Data>,
+    ov: Res<overlay::MapOverlay>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
-    mut last: Local<Option<(Option<Pick>, usize)>>,
+    mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    if *last == Some((picked.what, k)) {
+    let key = (picked.what, k, ov.kind, ov.good);
+    if *last == Some(key) {
         return;
     }
-    *last = Some((picked.what, k));
+    *last = Some(key);
     for mut v in &mut panel {
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
-        let s = describe(&data.r, w, k);
+        let mut s = describe(&data.r, w, k);
+        // with a map overlay on, what it says of this square
+        if let Some(line) = ov.said(&data.r, k, pick_cell(&data.r, w)) {
+            s.push_str("\n\n");
+            s.push_str(&line);
+        }
         let (head, body) = s.split_once('\n').unwrap_or((s.as_str(), ""));
         for mut t in &mut title {
             t.0 = head.to_string();

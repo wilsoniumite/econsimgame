@@ -1080,7 +1080,18 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: 
 }
 
 /// When the last year has been played: where the families finished.
-fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: Res<FamilyView>, font: Res<UiFont>, keys: Res<ButtonInput<KeyCode>>, cards: Query<Entity, With<EndCard>>) {
+#[allow(clippy::too_many_arguments)]
+fn end_card(
+    mut commands: Commands,
+    mut game: ResMut<Game>,
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    fam: Res<FamilyView>,
+    font: Res<UiFont>,
+    keys: Res<ButtonInput<KeyCode>>,
+    cards: Query<Entity, With<EndCard>>,
+    shots: Option<Res<crate::ShotPlanArgs>>,
+) {
     if keys.just_pressed(KeyCode::Escape) {
         for e in &cards {
             commands.entity(e).despawn();
@@ -1088,6 +1099,10 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
     }
     let r = &data.r;
     if game.ended || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
+        return;
+    }
+    // like the welcome, it is left out of screenshots, where it would hide the last year
+    if shots.is_some() && !cards_in_shots() {
         return;
     }
     game.ended = true;

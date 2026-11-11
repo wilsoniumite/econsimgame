@@ -31,6 +31,14 @@ struct PatchworkParams {
     debug: u32,
     // the calendar year shown, for the open fields
     year: f32,
+    // how strongly the map overlay is washed over the land: 0 leaves the
+    // ground exactly as it is without one
+    overlay: f32,
+    // how far the overlay's tints run into each other across the edge of a
+    // square, in squares: 0.5 is a smooth wash, a small value keeps flat areas
+    overlay_soft: f32,
+    // 1 draws an ink line where the overlay's regions meet
+    overlay_lines: f32,
     // the 257 quantiles of the patch noise, four to a vector
     quant: array<vec4<f32>, 65>,
 }
@@ -42,6 +50,9 @@ struct PatchworkParams {
 // many times its parcels are cut into fields, and the year its open fields are
 // enclosed, less 1750 (0 if they never were open)
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_cells: texture_2d<f32>;
+// per cell, the map overlay (overlay.rs): a tint, and in alpha the region the
+// cell belongs to, 0 for none (the sea, which is left alone)
+@group(constants::MATERIAL_BIND_GROUP) @binding(103) var overlay_cells: texture_2d<f32>;
 
 // display classes, as in world.rs
 const SEA: u32 = 0u;
@@ -748,6 +759,62 @@ fn debug_colour(cls: u32) -> vec3<f32> {
     return c;
 }
 
+// ------------------------------------------------------------------ the map overlay
+
+fn overlay_tap(c: vec2<i32>) -> vec4<f32> {
+    let lim = vec2<i32>(i32(ground.width) - 1, i32(ground.height) - 1);
+    return textureLoad(overlay_cells, clamp(c, vec2<i32>(0), lim), 0);
+}
+
+// The overlay washed over the ground colour `col` at `p`: the tint of the
+// square the economy works in, as flat colour on a paper map, with the fields
+// and hedges showing through faintly. The edges of the squares wander a
+// little, as if drawn by hand, and where two regions meet (two towns' market
+// areas) there is an ink line, kept at least a pixel and a half wide.
+fn overlay_wash(col: vec3<f32>, p: vec2<f32>, foot: f32, land: f32) -> vec3<f32> {
+    let q = p + 0.11 * vec2<f32>(vnoise(p.x * 1.7 + 3.1, p.y * 1.7 + 9.2, 91), vnoise(p.x * 1.7 + 7.7, p.y * 1.7 + 1.3, 93));
+    let b = q - 0.5;
+    let i0 = vec2<i32>(floor(b));
+    let f = b - floor(b);
+    let t00 = overlay_tap(i0);
+    let t10 = overlay_tap(i0 + vec2<i32>(1, 0));
+    let t01 = overlay_tap(i0 + vec2<i32>(0, 1));
+    let t11 = overlay_tap(i0 + vec2<i32>(1, 1));
+    // blend the four squares round the nearest corner, leaving out any with no tint
+    let s = max(ground.overlay_soft, 0.75 * foot);
+    let wx = smoothstep(0.5 - s, 0.5 + s, f.x);
+    let wy = smoothstep(0.5 - s, 0.5 + s, f.y);
+    let w00 = (1.0 - wx) * (1.0 - wy) * step(0.002, t00.a);
+    let w10 = wx * (1.0 - wy) * step(0.002, t10.a);
+    let w01 = (1.0 - wx) * wy * step(0.002, t01.a);
+    let w11 = wx * wy * step(0.002, t11.a);
+    let cover = w00 + w10 + w01 + w11;
+    if (cover <= 0.001) {
+        return col;
+    }
+    let tint = (w00 * t00.rgb + w10 * t10.rgb + w01 * t01.rgb + w11 * t11.rgb) / cover;
+    // the ground under the wash, as light and dark only
+    let grey = dot(col, vec3<f32>(0.30, 0.59, 0.11));
+    var washed = tint * (0.74 + 0.52 * grey);
+    // the square this spot is in, and its neighbours across the two nearest edges
+    let right = f.x >= 0.5;
+    let down = f.y >= 0.5;
+    let own = select(select(t00.a, t10.a, right), select(t01.a, t11.a, right), down);
+    let nx = select(select(t10.a, t00.a, right), select(t11.a, t01.a, right), down);
+    let ny = select(select(t01.a, t11.a, right), select(t00.a, t10.a, right), down);
+    let hw = max(0.035, 0.8 * foot);
+    let aa = max(0.5 * foot, 1e-4);
+    var ink = 0.0;
+    if (own > 0.002 && nx > 0.002 && abs(own - nx) > 0.002) {
+        ink = max(ink, 1.0 - smoothstep(hw - aa, hw + aa, abs(f.x - 0.5)));
+    }
+    if (own > 0.002 && ny > 0.002 && abs(own - ny) > 0.002) {
+        ink = max(ink, 1.0 - smoothstep(hw - aa, hw + aa, abs(f.y - 0.5)));
+    }
+    washed = mix(washed, vec3<f32>(0.27, 0.22, 0.17), 0.72 * ink * ground.overlay_lines);
+    return mix(col, washed, ground.overlay * min(cover, 1.0) * land);
+}
+
 // ------------------------------------------------------------------ the fragment
 
 @fragment
@@ -890,6 +957,10 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     col *= 1.0 - 0.15 * contour * landk * open_ground;
     // fine grain, gone before it gets smaller than a pixel
     col *= 1.0 + 0.025 * vnoise(p.x * 23.0, p.y * 23.0, 77) * detail(23.0, foot);
+    // a map overlay, when one is chosen; without one nothing here runs
+    if (ground.overlay > 0.0) {
+        col = overlay_wash(col, p, foot, landk * (1.0 - wetk));
+    }
 
     pbr_input.material.base_color = vec4<f32>(srgb_to_linear(clamp(col, vec3<f32>(0.0), vec3<f32>(1.0))), 1.0);
     var out: FragmentOutput;
