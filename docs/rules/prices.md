@@ -406,6 +406,29 @@ families) the same change moves no fact clear of the spread between islands
 rent share -0.44, and a small one on seed 2). Towns founded after 1840, in 48
 runs of the whole game: five with the port's rule, nine with this one.
 
+## In company with people
+
+The game's rules for people (`people.md`) found towns by a rule of their
+own and move households with their cells every year, so the line above is
+no longer the only place a town's prices are set from outside the market.
+Two things keep the anchors in step. `peopling::open_town` calls
+`found_town` as the port's founding rule does, so a new town has its
+mother's anchors and not those its empty slot was given in 1750. And
+wherever `peopling::move_with_cells` sets a town's price to the average of
+its own and what an arriving district was used to, `anchor_follows` moves
+the anchor in the same proportion: the price stands as far off its anchor
+as it did, which is the stock speaking, and the stock is what it was (a new
+town's is its share of its mother's, as many months of sales as hers).
+Without it a new town's prices were walked back at 12 per cent a month
+toward the mother town's idea of what things are worth.
+
+What a new town's producers expect is set twice, in order: `found_town`
+takes the carriage to the mother town off her expected prices, and people's
+average then replaces that for every good the district makes or buys.
+People's is the finer rule (cell by cell, and the buyers' side too); the
+line above is left standing for goods nobody there trades, and for a game
+with people switched off.
+
 ## What worries me
 
 - **A town can hire more hands than it has.** This is the port's, and the

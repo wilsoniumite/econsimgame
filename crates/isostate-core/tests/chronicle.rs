@@ -498,7 +498,7 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
     // forty years of seed 7, in which most of its towns are founded
     let mut s = sim::start(&game(6, 1790), game_content());
     let T = s.st.T_max;
-    let (mut foundings, mut spared) = (0, 0);
+    let (mut foundings, mut spared, mut carried) = (0, 0, 0);
     let mut before = vec![1750; T];
     while s.year <= s.end_year {
         let year = s.year;
@@ -511,6 +511,14 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
         for c in 0..st.N {
             if st.catch[c] >= 0 && new[st.catch[c] as usize] && st.prev_catch[c] >= 0 {
                 cut[st.prev_catch[c] as usize] = true;
+            }
+        }
+        // and, under the game's rules for people, the towns a tenth of whose people
+        // came or went with their cells this year, founding or no founding
+        for t in 0..T {
+            if st.town_active[t] && st.pp_moved[t] >= chronicle::REDRAWN_SHARE && !cut[t] {
+                cut[t] = true;
+                carried += 1;
             }
         }
         for t in 0..T {
@@ -542,6 +550,7 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
         }
     }
     assert!(foundings >= 5 && spared > foundings, "{foundings} foundings, and towns they did not touch ({spared})");
+    assert!(carried > 0, "and a district that changed market with no founding redrew a town");
 }
 
 #[test]
