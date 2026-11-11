@@ -149,6 +149,10 @@ pub fn dearth_depth(pp: &PeopleParams, food_min: f64) -> f64 {
     ((pp.dearth_from - food_min) / (pp.dearth_from - pp.dearth_full).max(1e-9)).clamp(0.0, 1.0)
 }
 
+/// The least a town's rate of increase can be in one year, deaths and sailings
+/// together, however the numbers are set. The game's numbers stop at -0.08.
+const WORST_YEAR: f64 = -0.5;
+
 /// The year's rate of increase for every town, in place of the port's capped rule.
 /// Emigrants' cash is moved here; the caller applies the rate to `st.pop`.
 pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec<Event>) -> Vec<f64> {
@@ -166,11 +170,13 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         }
         let inc = income_term(pp, y[t]);
         let depth = dearth_depth(pp, st.food_min_acc[t]);
-        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(pp.growth_floor);
+        // whatever the numbers are set to, no town loses more than half its people in a
+        // year (a town with nobody in it is not something the markets can price)
+        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(pp.growth_floor).max(WORST_YEAR);
         if depth > 0.0 && pp.emigration > 0.0 {
             let port = ports.iter().copied().filter(|&j| st.town_cost[(t, j)].is_finite()).min_by(|&a, &b| st.town_cost[(t, a)].total_cmp(&st.town_cost[(t, b)]));
             if let Some(j) = port {
-                let share = pp.emigration * depth;
+                let share = (pp.emigration * depth).min(rate - WORST_YEAR);
                 // the passage: what they had goes to the port's merchants
                 let fare = st.hh_cash[t].max(0.0) * share;
                 st.hh_cash[t] -= fare;

@@ -159,6 +159,49 @@ fn with_the_rules_on_the_run_differs_and_with_them_off_it_does_not() {
     assert!(!c.state.pp_foundings.is_empty());
 }
 
+/// A wage that ran away without a tiny town. On this seed Kelrigg is founded in
+/// 1750 among quarries, on 217 cells. Its carts make roads, and a year later its
+/// market area has trebled and taken in a coalfield that used to send its coal
+/// to Sandmere. Before prices and the wage went with a district, those pits were
+/// offered Kelrigg's price for coal (a buyer's price: Kelrigg had no pits) at the
+/// pit mouth, wanted three times the hands the town had, and the wage doubled
+/// every month of 1752 to a hundred times the island's. With
+/// `peopling::price_with_produce` taken out this test fails in 1752, Kelrigg's
+/// wage for the year averaging 15.6 times the middle town's.
+#[test]
+fn a_district_that_changes_market_does_not_set_off_the_wage() {
+    let mut P = params(1756);
+    P.seed = 7;
+    let mut sim = sim::start(&P, default_content());
+    sim.check_money = true;
+    let (mut cells_at_founding, mut grew) = (vec![0usize; sim.st.T_max], false);
+    while sim.year <= sim.end_year {
+        let year = sim.year;
+        sim::run_year(&mut sim).unwrap_or_else(|e| panic!("{year}: {e}"));
+        let st = &sim.st;
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        for &t in &act {
+            if st.town_founded[t] == year {
+                cells_at_founding[t] = st.town_cells[t].len();
+            } else if st.town_founded[t] >= 1750 && st.town_cells[t].len() > 2 * cells_at_founding[t] {
+                grew = true;
+            }
+        }
+        // the year's average wage, town by town, against the middle town's (a town
+        // founded this year has no year behind it yet)
+        let mut wages: Vec<f64> = act.iter().filter(|&&t| st.town_founded[t] < year).map(|&t| st.wbar[t]).collect();
+        wages.sort_by(f64::total_cmp);
+        let middle = wages[wages.len() / 2];
+        for &t in &act {
+            if st.town_founded[t] < year {
+                let rel = st.wbar[t] / middle;
+                assert!((1.0 / 3.0..=3.0).contains(&rel), "{year}: the wage in {} averaged {rel:.1} times the middle town's", st.town_name[t]);
+            }
+        }
+    }
+    assert!(grew, "the case is gone: no new town's market area doubled after its founding");
+}
+
 /// The crash the growth probe hit (dx-growth, section 4): a town founded close
 /// to a rival got a market area of four cells and 363 people, migrants poured
 /// in, its wage went from 0.02 to 500 and the money check failed. The founding
