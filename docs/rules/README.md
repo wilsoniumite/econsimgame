@@ -11,8 +11,8 @@ that. Nothing new is ever switched on here.
 **The game's rules** are `game_params()` and `game_content()`: the port, plus
 every mechanism the Python never had (foreign trade, canals, harvests, a life
 cycle for works, whatever comes), each switched on with the numbers it was
-tuned to. This is what a live game is played under. Today the two are still
-the same; the list at the end of this page grows as mechanisms arrive.
+tuned to. This is what a live game is played under. The list at the end of
+this page says which mechanisms are in, and grows as they arrive.
 
 Families are the one thing older than this convention. They are off under
 both sets of rules until `n_families` says how many there are, which is the
