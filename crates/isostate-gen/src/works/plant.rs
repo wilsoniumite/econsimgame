@@ -226,9 +226,9 @@ impl Ctx<'_, '_> {
         for i in 0..8 {
             let a = i as f32 / 8.0 * TAU;
             let foot = p + Vec3::new(a.cos() * (r - 0.0005), top, a.sin() * (r - 0.0005));
-            self.solid.beam(foot, foot + Vec3::Y * rail, 0.0006, dark);
+            self.solid.beam(foot, foot + Vec3::Y * rail, 0.0009, dark);
         }
-        self.solid.frustum_turned(p + Vec3::Y * (top + rail - 0.0006), r - 0.0002, r - 0.0002, 0.0006, 8, 0.0, 0.0, dark, None);
+        self.solid.frustum_turned(p + Vec3::Y * (top + rail - 0.0009), r - 0.0002, r - 0.0002, 0.0009, 8, 0.0, 0.0, dark, None);
     }
 
     /// Hoops round a plain flue that stands at a place (`Ctx::flue`), at
@@ -260,16 +260,16 @@ impl Ctx<'_, '_> {
             return;
         }
         // a brace across every side in each lift of the tower, leaning one way and then the other
-        let lifts = ((h / (2.0 * k * 1.3)).round() as usize).clamp(2, 6);
+        let lifts = ((h / (2.0 * k * 1.6)).round() as usize).clamp(2, 6);
         let dark = shade(plate, 0.82);
         for i in 0..4 {
             let (a, b) = (feet[i], feet[(i + 1) % 4]);
             for j in 0..lifts {
                 let (y0, y1) = (h * j as f32 / lifts as f32, h * (j + 1) as f32 / lifts as f32);
                 let (from, to) = if j % 2 == 0 { (a, b) } else { (b, a) };
-                self.solid.beam(from + Vec3::Y * y0, to + Vec3::Y * y1, 0.0011 * g, dark);
+                self.solid.beam(from + Vec3::Y * y0, to + Vec3::Y * y1, 0.0015 * g, dark);
                 if j > 0 {
-                    self.solid.beam(a + Vec3::Y * y0, b + Vec3::Y * y0, 0.0011 * g, dark);
+                    self.solid.beam(a + Vec3::Y * y0, b + Vec3::Y * y0, 0.0015 * g, dark);
                 }
             }
         }
@@ -289,10 +289,10 @@ impl Ctx<'_, '_> {
         let (up, dark) = (Vec3::Y * (wide * 0.5 + 0.0036), shade(col, 0.72));
         let posts = (((b - a).length() / 0.012).round() as usize).clamp(1, 12);
         for s in [-1.0f32, 1.0] {
-            self.solid.beam(a + side * s + up, b + side * s + up, 0.0006, dark);
+            self.solid.beam(a + side * s + up, b + side * s + up, 0.0009, dark);
             for i in 0..=posts {
                 let foot = a + (b - a) * (i as f32 / posts as f32) + side * s;
-                self.solid.beam(foot, foot + up, 0.0006, dark);
+                self.solid.beam(foot, foot + up, 0.0009, dark);
             }
         }
     }
