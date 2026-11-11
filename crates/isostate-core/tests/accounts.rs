@@ -4,7 +4,7 @@
 //! With the switch off the golden test (tests/golden.rs) covers the port.
 #![allow(non_snake_case)]
 
-use isostate_core::accounts::{self, GOODS_FIELDS, KG, KW, WORKS_FIELDS};
+use isostate_core::accounts::{self, GOODS_FIELDS, KG, KL, KM, KT, KW, METHOD_FIELDS, TOWN_FIELDS, WORKS_FIELDS};
 use isostate_core::observer::annual;
 use isostate_core::*;
 
@@ -32,6 +32,14 @@ fn col(name: &str) -> usize {
 
 fn wcol(name: &str) -> usize {
     WORKS_FIELDS.iter().position(|&n| n == name).unwrap()
+}
+
+fn tcol(name: &str) -> usize {
+    TOWN_FIELDS.iter().position(|&n| n == name).unwrap()
+}
+
+fn mcol(name: &str) -> usize {
+    METHOD_FIELDS.iter().position(|&n| n == name).unwrap()
 }
 
 /// Names of the arrays in a packed run, and its header.
@@ -145,6 +153,41 @@ fn balances(rules: Rules, seed: u64, families: usize, end: i64) {
                 assert!((sent - v("sent")).abs() <= 1e-5 * sent + 1e-6 && (recv - v("received")).abs() <= 1e-5 * recv + 1e-6);
             }
         }
+        // stock that changed between two months went with a district from one town
+        // to another, so over the island `moved` comes to nothing: nothing is made
+        // or lost under that name
+        for g in 0..G {
+            let v = |t: usize, name: &str| rec.goods[(t * G + g) * KG + col(name)] as f64;
+            let moved: f64 = (0..T).map(|t| v(t, "moved")).sum();
+            let held: f64 = (0..T).map(|t| v(t, "stock_open") + v(t, "made") + v(t, "received")).sum();
+            assert!(moved.abs() <= 1e-5 * held + 1e-6, "{} {}: {moved} appeared between months", y.year, C.good_name[g]);
+        }
+        // the towns' tables add up to the island's account
+        let near = |a: f64, b: f64| (a - b).abs() <= 1e-5 * b.abs() + 1e-3;
+        let town = |name: &str| (0..T).map(|t| rec.towns[t * KT + tcol(name)] as f64).sum::<f64>();
+        let kinds = ["pay_works", "pay_land", "pay_projects", "cart_works", "cart_land", "cart_trade", "managers", "div_works", "div_merchants", "fund", "issue"];
+        let received: f64 = kinds.iter().map(|n| town(n)).sum();
+        assert!(near(received, y.to_households), "{}: the towns' households received {received}, the island's {}", y.year, y.to_households);
+        assert!(near(town("rent_land"), y.rent_farm + y.rent_pits) && near(town("rent_sites"), y.rent_sites) && near(town("rent_town"), y.rent_town));
+        assert!(near(town("rent_families"), y.to_families.iter().map(|f| f.rents).sum()));
+        assert!(near(town("div_families"), y.to_families.iter().map(|f| f.dividends).sum()));
+        let land_rent: f64 = rec.land.chunks(KL).map(|l| l[KL - 1] as f64).sum();
+        assert!(near(land_rent, y.rent_farm + y.rent_pits), "{}: the sectors' rents", y.year);
+        assert!(near(y.rent_by_sector.iter().sum(), y.rent_farm + y.rent_pits));
+        // what was spent on each need is what was spent on goods
+        let S = C.S;
+        let need = |who: usize| (0..T * S).map(|k| rec.needs[k * 2 + who] as f64).sum::<f64>();
+        assert!(near(need(0), y.spend_households), "{}: {} on households' needs, {} on their goods", y.year, need(0), y.spend_households);
+        assert!(near(need(1), y.spend_landlords + y.spend_families));
+        assert!(near(y.need_households.iter().sum(), y.spend_households));
+        // the works' rows add up to their methods' and to the island's
+        let works = |name: &str| rec.works.chunks(KW).map(|w| w[wcol(name)] as f64).sum::<f64>();
+        let method = |name: &str| rec.methods.chunks(KM).map(|m| m[mcol(name)] as f64).sum::<f64>();
+        for name in ["out", "value", "wages", "inputs", "fuel", "cart_in", "cart_out", "rent", "managers", "profit", "dividends"] {
+            assert!(near(works(name), method(name)), "{} {name}: {} over the works, {} over the methods", y.year, works(name), method(name));
+        }
+        assert!(near(works("dividends"), y.div_households + y.div_families));
+        assert!(near(works("wages"), y.pay_works) && near(works("invest"), y.invest));
     }
 }
 
@@ -167,6 +210,84 @@ fn the_books_balance_under_the_commons() {
     for y in &r.state.acct.years {
         assert!(y.balance_goods < 1e-9 && y.balance_income < 1e-9 && y.balance_spending < 1e-9, "{}", y.year);
         assert!(y.to_landlords == 0.0 && y.to_fund > 0.0 && y.fund_div > 0.0);
+    }
+}
+
+#[test]
+fn the_books_follow_what_a_player_does_between_years() {
+    // a works founded and land bought between two years, as the viewer's player
+    // does: the works has books from its first year, with its owner, the land's
+    // rent reaches the family in the books, and everything still balances
+    let P = params(Rules::Game, 3, 6, 1772, true);
+    let mut s = sim::start(&P, Rules::Game.content());
+    let C = s.content.clone();
+    let d = pending(&s.st, 0);
+    decide(&mut s.st, &C, 0, d[0].id, 0).unwrap();
+    // (the year it happened in, the works, the family's rents the year before)
+    let mut done: Option<(i64, usize, f64)> = None;
+    while s.year <= s.end_year {
+        sim::run_year(&mut s).expect("money is conserved every month");
+        if done.is_some() {
+            continue;
+        }
+        let seat = s.st.families[0].seat;
+        let mut founded = None;
+        'site: for c in 0..s.st.N {
+            if s.st.catch[c] != seat as i64 {
+                continue;
+            }
+            let Ok(options) = site_options(&s.st, &C, &s.params, 0, c) else { continue };
+            for o in options.iter().filter(|o| o.allowed.is_ok()) {
+                if let Ok(f) = found_works(&mut s.st, &C, &s.params, 0, o.method, c, s.year, &mut s.events) {
+                    founded = Some(f);
+                    break 'site;
+                }
+            }
+        }
+        let Some(f) = founded else { continue };
+        let mut bought = 0;
+        for c in 0..s.st.N {
+            if bought < 3 && s.st.catch[c] == seat as i64 && may_buy_land(&s.st, 0, c).is_ok() && buy_land(&mut s.st, &C, &s.params, 0, c).is_ok() {
+                bought += 1;
+            }
+        }
+        assert!(bought > 0, "the player can buy some land around its seat");
+        done = Some((s.year, f, s.st.acct.years.last().unwrap().to_families[0].rents));
+    }
+    let (year, f, rents_before) = done.expect("the player could found some works at its seat in twenty years");
+    let st = &s.st;
+    for y in &st.acct.years {
+        assert!(y.balance_goods < 1e-9 && y.balance_income < 1e-9 && y.balance_spending < 1e-9, "{}: {} {} {}", y.year, y.balance_goods, y.balance_income, y.balance_spending);
+    }
+    let wb = accounts::works_books(st, &C, f).expect("the new works' books");
+    assert_eq!(wb.years.first().map(|y| (y.year, y.owner)), Some((year, Some(0))), "it has books from its first year, in the player's name");
+    assert!(wb.years.iter().any(|y| y.invest > 0.0), "and they show it being built");
+    let k = (year - 1750) as usize;
+    assert!(st.acct.years[k].to_families[0].rents > rents_before, "the land's rent reaches the family in the books");
+}
+
+#[test]
+fn a_run_of_one_year_and_towns_not_yet_founded() {
+    let r = run(Rules::Game, &params(Rules::Game, 4, 0, 1750, true));
+    let (st, C) = (&r.state, &r.content);
+    assert_eq!((st.acct.years.len(), st.acct.hist.n), (1, 1));
+    let y = &st.acct.years[0];
+    assert!(y.balance_goods < 1e-9 && y.balance_income < 1e-9 && y.balance_spending < 1e-9);
+    assert!(y.to_families.is_empty() && y.div_families == 0.0 && y.works_value_families == 0.0);
+    // a slot with no town in it yet has empty books, with the prices it stands at
+    let empty = (0..st.T_max).find(|&t| !st.town_active[t]).expect("some slot is still empty");
+    let rec = st.acct.year(0).unwrap();
+    let row = &rec.towns[empty * KT..(empty + 1) * KT];
+    assert!(row.iter().all(|&v| v == 0.0), "an empty slot has figures: {row:?}");
+    for g in 0..C.G {
+        let v = |name: &str| rec.goods[(empty * C.G + g) * KG + col(name)];
+        assert!(v("made") == 0.0 && v("stock") == 0.0 && v("price").is_finite() && v("price_low") == v("price_high"));
+    }
+    assert!(accounts::town_books(st, C, empty, None).is_none(), "and the viewer is not handed them");
+    // every number kept is a number
+    let h = &st.acct.hist;
+    for (name, table) in [("goods", &h.goods), ("land", &h.land), ("methods", &h.methods), ("towns", &h.towns), ("needs", &h.needs), ("works", &h.works)] {
+        assert!(table.iter().all(|v| v.is_finite()), "the {name} table holds something that is not a number");
     }
 }
 
