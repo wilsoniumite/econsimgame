@@ -431,7 +431,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             family: e.family,
         });
     }
-    r.header.events.sort_by(|a, b| a.year.partial_cmp(&b.year).unwrap_or(std::cmp::Ordering::Equal));
+    // in order of date; nothing may keep a place in this list across years (the toasts keep copies)
+    r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
 
     // the monthly series arrive as yearly means: every month of the year gets the mean
     for (i, v) in y.series.iter().enumerate() {

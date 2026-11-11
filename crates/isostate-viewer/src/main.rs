@@ -257,10 +257,31 @@ struct ShotPlan {
     default_season: Option<f32>,
 }
 
+/// A piece of news shown as it happens. It carries its own words: the list
+/// of news is sorted again whenever a live game adds to it, so a place in
+/// that list does not stay the same item.
+#[derive(Clone, Debug, PartialEq)]
+struct Toast {
+    kind: String,
+    title: String,
+    year: i32,
+    /// when it went up, in seconds since the app started
+    since: f32,
+}
+
 #[derive(Resource, Default)]
 struct Toasts {
-    shown: Vec<(usize, f32)>,
+    shown: Vec<Toast>,
     last_k: Option<usize>,
+}
+
+/// The major news of a year, to go up as toasts.
+fn year_toasts(events: &[replay::Event], year: i32, now: f32) -> Vec<Toast> {
+    events
+        .iter()
+        .filter(|e| e.year.floor() as i32 == year && e.weight >= 0.6)
+        .map(|e| Toast { kind: e.kind.clone(), title: e.title.clone(), year, since: now })
+        .collect()
 }
 
 #[derive(Resource)]
@@ -1162,11 +1183,7 @@ fn toasts(
         if jump {
             st.shown.clear();
         }
-        for (i, e) in r.header.events.iter().enumerate() {
-            if e.year.floor() as i32 == year && e.weight >= 0.6 {
-                st.shown.push((i, now));
-            }
-        }
+        st.shown.extend(year_toasts(&r.header.events, year, now));
         while st.shown.len() > 3 {
             st.shown.remove(0);
         }
@@ -1174,7 +1191,7 @@ fn toasts(
         changed = true;
     }
     let before = st.shown.len();
-    st.shown.retain(|&(_, t0)| now - t0 < 7.0);
+    st.shown.retain(|t| now - t.since < 7.0);
     changed |= st.shown.len() != before;
     if !changed {
         return;
@@ -1188,8 +1205,7 @@ fn toasts(
     let f = &font.0;
     let shown = st.shown.clone();
     commands.entity(boxe).with_children(|p| {
-        for (i, _) in shown.iter().rev() {
-            let e = &r.header.events[*i];
+        for e in shown.iter().rev() {
             p.spawn((
                 Node {
                     flex_direction: FlexDirection::Column,
@@ -1203,7 +1219,7 @@ fn toasts(
                 BorderColor::all(kind_colour(&e.kind)),
             ))
             .with_children(|q| {
-                q.spawn(text(f, &format!("{} \u{00b7} {}", kind_label(&e.kind), e.year.floor() as i32), 13.0, kind_colour(&e.kind)));
+                q.spawn(text(f, &format!("{} \u{00b7} {}", kind_label(&e.kind), e.year), 13.0, kind_colour(&e.kind)));
                 q.spawn(text(f, &e.title, 18.0, INK));
             });
         }
@@ -1629,6 +1645,27 @@ mod tests {
         assert_eq!(fmt_pop(999_999.7), "1.00 million");
         assert_eq!(fmt_pop(1_251_000.0), "1.25 million");
         assert_eq!(fmt_pop(f32::NAN), "0");
+    }
+
+    fn news(year: f32, weight: f32, title: &str) -> replay::Event {
+        replay::Event { year, kind: "family".into(), weight, title: title.into(), text: String::new(), cell: None, family: None }
+    }
+
+    #[test]
+    fn toasts_keep_their_words_when_the_news_is_sorted_again() {
+        let mut events = vec![news(1759.9, 0.9, "An old thing"), news(1760.7, 0.7, "Coke smelting"), news(1760.8, 0.3, "A small thing"), news(1760.95, 0.6, "A works opens")];
+        // the year's major news, and nothing minor or from another year
+        let shown = year_toasts(&events, 1760, 5.0);
+        let titles: Vec<&str> = shown.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(titles, ["Coke smelting", "A works opens"]);
+        assert!(shown.iter().all(|t| t.year == 1760 && t.since == 5.0));
+        // a live game adds news dated before what is there and sorts the list, as live::apply_year does
+        events.push(news(1760.1, 0.9, "News that came late"));
+        events.sort_by(|a, b| a.year.total_cmp(&b.year));
+        // the place a toast came from now holds something else; the toast still says what it said
+        assert_eq!(events[1].title, "News that came late");
+        assert_eq!(shown[0].title, "Coke smelting");
+        assert_eq!(shown[1].title, "A works opens");
     }
 
     #[test]
