@@ -7,7 +7,7 @@
 
 use glam::{Vec2, Vec3};
 
-use crate::colour::shade;
+use crate::colour::{shade, Rgba};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 
@@ -18,7 +18,8 @@ pub struct RoadBridge {
     pub at: Vec2,
     /// the way the road runs, a unit vector on the map
     pub along: Vec2,
-    /// half the river's width at the crossing
+    /// half the river's width at the crossing, as the road crosses it: more
+    /// than the river's own where the road runs aslant
     pub half: f32,
     /// the height of the water
     pub level: f32,
@@ -131,8 +132,8 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
         solid.quad(at(t1, -edge, low1), at(t0, -edge, low0), at(t0, -edge, top0), at(t1, -edge, top1), shaded);
         solid.quad(at(t0, inner, top0), at(t0, edge, top0), at(t1, edge, top1), at(t1, inner, top1), shade(stone, 1.06));
         solid.quad(at(t0, -edge, top0), at(t0, -inner, top0), at(t1, -inner, top1), at(t1, -edge, top1), shade(stone, 1.06));
-        solid.quad(at(t1, inner, d1), at(t0, inner, d0), at(t0, inner, top0), at(t1, inner, top1), shaded);
-        solid.quad(at(t0, -inner, d0), at(t1, -inner, d1), at(t1, -inner, top1), at(t0, -inner, top0), lit);
+        upright(solid, at(t1, inner, d1), at(t0, inner, d0), at(t0, inner, top0), at(t1, inner, top1), shaded);
+        upright(solid, at(t0, -inner, d0), at(t1, -inner, d1), at(t1, -inner, top1), at(t0, -inner, top0), lit);
         if arch {
             // the underside of the arch, in shadow
             solid.quad(at(t0, edge, low0), at(t0, -edge, low0), at(t1, -edge, low1), at(t1, edge, low1), under);
@@ -156,6 +157,19 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
             solid.quad(at(t, tip, foot), at(r, s * edge, foot), at(r, s * edge, top + 0.006), at(t, tip, top), shade(stone, 0.92));
             solid.tri(at(l, s * edge, top + 0.006), at(t, tip, top), at(r, s * edge, top + 0.006), shade(stone, 1.05));
         }
+    }
+}
+
+/// An upright face low0-low1-high1-high0 that may have no height at one
+/// end, as the inner side of a parapet has at the foot of a ramp. A quad
+/// takes its facing from its first corner, so the corners are given from the
+/// end that has height: begun at the other, the face would have no facing
+/// and be drawn unlit.
+fn upright(solid: &mut MeshBuf, low0: Vec3, low1: Vec3, high1: Vec3, high0: Vec3, col: Rgba) {
+    if high0.y - low0.y > 1e-6 {
+        solid.quad(low0, low1, high1, high0, col);
+    } else {
+        solid.quad(low1, high1, high0, low0, col);
     }
 }
 
@@ -201,7 +215,7 @@ mod tests {
     #[test]
     fn the_arches_are_open_and_the_piers_are_stone() {
         for main in [false, true] {
-            for half in [0.012, 0.025, 0.04, 0.06, 0.1] {
+            for half in [0.012, 0.025, 0.04, 0.06, 0.1, 0.15] {
                 let (b, m) = (bridge(half, main), build(half, main));
                 let z = b.width() * 0.5;
                 let x_of = |t: f32| b.span() * (t - 0.5);
@@ -242,10 +256,12 @@ mod tests {
 
     #[test]
     fn its_faces_look_outward() {
-        for half in [0.02, 0.06, 0.1] {
+        for half in [0.02, 0.06, 0.1, 0.15] {
             let b = bridge(half, true);
             let m = build(half, true);
             let pal = Palette::standard();
+            // every face has a facing, the parapets' inner sides on the ramps too, where they run down to nothing
+            assert!(m.nrm.iter().all(|n| (Vec3::from_array(*n).length() - 1.0).abs() < 1e-4), "a face of a bridge over {} has no facing", half * 2.0);
             for t in m.idx.chunks(3) {
                 let (p, n) = (Vec3::from_array(m.pos[t[0] as usize]), Vec3::from_array(m.nrm[t[0] as usize]));
                 let col = m.col[t[0] as usize];

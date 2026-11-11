@@ -395,6 +395,26 @@ mod tests {
     }
 
     #[test]
+    fn every_face_that_can_be_seen_has_a_facing() {
+        // a quad takes its facing from its first corner; begun at a corner where two of its
+        // points meet, it has none, and is drawn unlit: a dark wedge on a pale thing
+        let pal = Palette::standard();
+        for sheet in SHEETS {
+            for cell in (sheet.build)(&pal).into_iter().flatten() {
+                let m = &cell.model;
+                for b in [&m.solid, &m.smoke, &m.green.evergreen, &m.green.leaves, &m.green.bare, &m.flat] {
+                    for t in b.idx.chunks(3) {
+                        let p = [0, 1, 2].map(|i| glam::Vec3::from_array(b.pos[t[i] as usize]));
+                        let area = (p[1] - p[0]).cross(p[2] - p[0]).length();
+                        let facing = glam::Vec3::from_array(b.nrm[t[0] as usize]).length();
+                        assert!(area < 1e-9 || facing > 0.5, "{}: {} has a face of {area} with no facing at {}", sheet.name, cell.label, p[0]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_cell_fits_the_closest_view() {
         // the camera at its closest sees about 1.2 by 0.9 of a map cell; a cell
         // wider or deeper than that would be cut off in the close picture

@@ -326,8 +326,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk));
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
-        for (at, _, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
-            road_bridge(&mut works_b, &RoadBridge { at, along: (b - a).normalize_or(bevy::math::Vec2::X), half, level, main: lv == 3 }, &height, lk);
+        let along = (b - a).normalize_or(bevy::math::Vec2::X);
+        for (at, river, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
+            // a road that crosses aslant has further to go from bank to bank (up to three times as far)
+            let half = half / along.perp_dot(river).abs().max(0.34);
+            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3 }, &height, lk);
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
