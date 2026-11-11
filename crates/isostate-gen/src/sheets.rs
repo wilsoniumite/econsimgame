@@ -389,16 +389,16 @@ fn landmarks(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     // the churches are seen from the south, the tower and its gate to the left
     let church = |big: bool, spire: bool, label: &str| {
         let c = town::Church { big, spire, seed: Seed::of(big as u32 + 1) };
-        Cell::turned(label, -0.75, |m, site| town::church(&mut m.solid, site, &c, pal))
+        Cell::turned(label, -0.75, |m, site| town::church(&mut m.solid, site, &c, detail, pal))
     };
     vec![vec![
         church(false, false, "a small town's church"),
         church(false, true, "the same with a spire"),
         church(true, true, "a big town's church"),
-        Cell::new("station", |m, site| town::station(&mut m.solid, site, pal)),
-        Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, pal)),
-        Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, pal)),
-        Cell::new("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, pal)),
+        Cell::new("station", |m, site| town::station(&mut m.solid, site, detail, pal)),
+        Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, detail, pal)),
+        Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, detail, pal)),
+        Cell::new("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, detail, pal)),
     ]]
 }
 

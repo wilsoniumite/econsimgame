@@ -477,7 +477,8 @@ fn station_at(s: &Square) -> Vec2 {
 /// churchyards are handed back, for everything else to keep out of. `plots`
 /// holds the yards of the year's works as it comes in, and is given the
 /// market places and the stations.
-pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32, f32, f32)>>) -> Vec<Parish> {
+// (task B, one scale of detail: the landmarks take their level from the camera, as the houses do: `lod`)
+pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32, f32, f32)>>) -> Vec<Parish> {
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     let mut parishes = Vec::new();
     let railways = Railways::up_to(r, g, cen, k);
@@ -499,12 +500,12 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         }
         let m = ground(g, s.at.x, s.at.y);
         if s.big {
-            town::market_hall(houses, &Site::level(m, s.yaw), lk);
+            town::market_hall(houses, &Site::level(m, s.yaw), lod.at(m.x, m.z), lk);
         } else {
-            town::market_cross(houses, &Site::level(m, s.yaw), lk);
+            town::market_cross(houses, &Site::level(m, s.yaw), lod.at(m.x, m.z), lk);
         }
         let p = parish(r, g, cen, k, railways.through[s.town], &s);
-        town::church(houses, &Site::on(ground(g, p.at.x, p.at.y), p.yaw, &height), &p.church, lk);
+        town::church(houses, &Site::on(ground(g, p.at.x, p.at.y), p.yaw, &height), &p.church, lod.at(p.at.x, p.at.y), lk);
         if std::env::var_os("ISOSTATE_TIMING").is_some() {
             // a works whose yard (and the room kept round it) reaches into the churchyard: the works
             // take their ground clear of every churchyard (`churchyards`), so there should be none
@@ -519,7 +520,7 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         plots.entry(node).or_default().push((s.at.x, s.at.y, 0.085, 0.085));
         if r.trans[k * r.n + node] & 4 != 0 {
             let st = station_at(&s);
-            town::station(houses, &Site::level(ground(g, st.x, st.y), s.yaw), lk);
+            town::station(houses, &Site::level(ground(g, st.x, st.y), s.yaw), lod.at(st.x, st.y), lk);
             plots.entry(node).or_default().push((st.x, st.y, 0.085, 0.085));
         }
         // a lighthouse if the town is a harbour: walk toward the sea to the waterline
@@ -542,7 +543,7 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
                 lx = nx;
                 lz = nz;
             }
-            town::lighthouse(houses, &Site::level(ground(g, lx, lz), 0.0), lk);
+            town::lighthouse(houses, &Site::level(ground(g, lx, lz), 0.0), lod.at(lx, lz), lk);
         }
     }
     parishes

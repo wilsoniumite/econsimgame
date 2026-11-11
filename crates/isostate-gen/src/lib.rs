@@ -21,7 +21,6 @@ pub mod houses;
 mod kit;
 pub mod mesh;
 pub mod palette;
-pub mod parts;
 pub mod registry;
 pub mod scale;
 pub mod scenes;

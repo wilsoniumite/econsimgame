@@ -20,6 +20,7 @@ use crate::works::{pit, works, Kind, Pit, PitKind, Works};
 use crate::palette::Palette;
 use crate::scale::{take_tally, Tally};
 use crate::site::{Model, Site};
+use crate::town;
 
 /// What kind of thing a generator makes, which settles what of the scale it answers to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -182,6 +183,30 @@ fn farmsteads(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     out
 }
 
+fn churches(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    [(false, false, "a small town's church"), (false, true, "a small town's church with a spire"), (true, true, "a big town's church"), (true, false, "a big town's church without a spire")]
+        .into_iter()
+        .enumerate()
+        .map(|(i, (big, spire, name))| specimen(name, |m, site| town::church(&mut m.solid, site, &town::Church { big, spire, seed: Seed::of(i as u32 + 1) }, detail, pal)))
+        .collect()
+}
+
+fn stations(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("station", |m, site| town::station(&mut m.solid, site, detail, pal))]
+}
+
+fn market_halls(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("market hall", |m, site| town::market_hall(&mut m.solid, site, detail, pal))]
+}
+
+fn market_crosses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("market cross", |m, site| town::market_cross(&mut m.solid, site, detail, pal))]
+}
+
+fn lighthouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, detail, pal))]
+}
+
 fn pits(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     let mut out = Vec::new();
     for (kind, name) in [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")] {
@@ -217,6 +242,11 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "works: brickworks", class: Class::Building, covers: &["works/mod::works"], build: works_of::<15>, levels: true },
     Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<16>, levels: true },
     Entry { name: "farmstead", class: Class::Building, covers: &["farm::farmstead"], build: farmsteads, levels: true },
+    Entry { name: "church", class: Class::Building, covers: &["town/church::church"], build: churches, levels: true },
+    Entry { name: "station", class: Class::Building, covers: &["town/station::station"], build: stations, levels: true },
+    Entry { name: "market hall", class: Class::Building, covers: &["town/market::market_hall"], build: market_halls, levels: true },
+    Entry { name: "market cross", class: Class::Structure, covers: &["town/market::market_cross"], build: market_crosses, levels: true },
+    Entry { name: "lighthouse", class: Class::Structure, covers: &["town/lighthouse::lighthouse"], build: lighthouses, levels: true },
     Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
 ];
 
@@ -334,8 +364,7 @@ mod tests {
 
     /// Work in progress: the generators not yet brought to the scale. To be emptied and removed.
     const NOT_YET: &[&str] = &[
-        "bridge::road_bridge", "fence::fence", "parts::gabled", "town/church::church", "town/lighthouse::lighthouse", "town/market::market_cross", "town/market::market_hall",
-        "town/station::station", "trees::bush", "trees::hedge_tree", "trees::tree",
+        "bridge::road_bridge", "fence::fence", "trees::bush", "trees::hedge_tree", "trees::tree",
     ];
 
     #[test]

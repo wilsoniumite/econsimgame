@@ -783,7 +783,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
-    let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
+    let parishes = towns::landmarks(r, g, cen, k, lk, lod, &mut houses, &mut plots);
     // near a works or a market place, or in a churchyard
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
