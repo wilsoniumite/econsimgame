@@ -1,7 +1,8 @@
 //! The harvest (`harvest.rs`, docs/rules/harvest.md): off under the port and on
 //! in the game; felt by farms and pastures after their labour is hired; money
-//! conserved and runs repeatable with it on; news that does not flood the feed;
-//! each town's harvest kept for the viewer only when it is on.
+//! conserved and runs repeatable with it on; a bad year dear in bread and low in
+//! the real wage, and told; news that does not flood the feed; each town's
+//! harvest kept for the viewer only when it is on.
 
 use isostate_core::harvest::HarvestParams;
 use isostate_core::mat::Mat;
@@ -130,6 +131,19 @@ fn the_weather_reaches_farms_and_pastures_after_the_hands_are_hired() {
     assert!(seen.wage[best] > wet.wage[best], "the wage where the harvest is best: {} seen, {} unseen", seen.wage[best], wet.wage[best]);
     let (a, b) = (econ::money_total(&seen) - seen.issued, econ::money_total(&dry) - dry.issued);
     assert!((a - b).abs() < 1e-9 * a, "money differs: {a} against {b}");
+
+    // the share seen is held between 0 and 1: more than all of it is all of it,
+    // and less than none is none
+    let month = |foreseen: f64| {
+        let mut Q = P.clone();
+        Q.harvest.foreseen = foreseen;
+        let mut st = s.st.clone();
+        econ::step_month(&mut st, C, &Q);
+        st
+    };
+    let same = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits());
+    assert!(same(&month(2.0).wage, &seen.wage) && same(&month(2.0).ex_labor, &seen.ex_labor));
+    assert!(same(&month(-1.0).wage, &wet.wage) && same(&month(-1.0).ex_labor, &wet.ex_labor));
 }
 
 #[test]
@@ -216,6 +230,53 @@ fn harvests_are_recorded_and_the_news_is_sparse() {
         let k = (e.year.floor() as i64 - r.content.start_year) as usize;
         assert!(rec.harvest[k] < 0.95, "{}: the harvest was {}", e.year, rec.harvest[k]);
     }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn a_bad_year_is_dear_bread_and_a_lower_real_wage_and_the_news_says_so() {
+    // shocks large enough to stand out from the port's own swing in grain
+    let P = params(5, 1809, Some(HarvestParams { island_sd: 0.12, ..HarvestParams::game() }));
+    let r = run(&P);
+    let (y0, years) = (r.content.start_year, r.rec.n_years);
+    let yearly = |name: &str| -> Vec<f64> {
+        (0..years).map(|k| isostate_core::observer::annual(r.state.series.get(name), y0, y0 + k as i64)).collect()
+    };
+    let (price, wage) = (yearly("price_grain"), yearly("real_wage"));
+    let harvest: Vec<f64> = r.rec.harvest.iter().map(|&v| v as f64).collect();
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+
+    // the real wage falls in the years the harvest is short and rises in the full ones
+    let change = |v: &[f64], k: usize| (v[k] / v[k - 1]).ln();
+    let short: Vec<f64> = (1..years).filter(|&k| harvest[k] < 0.92).map(|k| change(&wage, k)).collect();
+    let full: Vec<f64> = (1..years).filter(|&k| harvest[k] > 1.08).map(|k| change(&wage, k)).collect();
+    assert!(short.len() >= 5 && full.len() >= 5, "{} short years and {} full ones", short.len(), full.len());
+    assert!(mean(&short) < -0.01 && mean(&full) > 0.01, "the real wage moves {} in short years and {} in full ones", mean(&short), mean(&full));
+
+    // a dearth is told in years when grain is dear, which are the years after short crops
+    let dearths: Vec<usize> = r.events.iter().filter(|e| e.kind == "dearth").map(|e| (e.year.floor() as i64 - y0) as usize).collect();
+    assert!(!dearths.is_empty(), "sixty years of hard weather and no dearth");
+    assert!(dearths.windows(2).all(|w| w[1] - w[0] >= 3), "dearths told in {dearths:?}");
+    for &k in &dearths {
+        let before = mean(&price[k - 5..k]);
+        assert!(price[k] > before, "{}: grain at {} after five years at {before}", y0 + k as i64, price[k]);
+    }
+    let in_dearth = mean(&dearths.iter().map(|&k| harvest[k]).collect::<Vec<_>>());
+    assert!(in_dearth < 0.97, "the harvest in the years of dearth averaged {in_dearth}");
+    for e in r.events.iter().filter(|e| e.kind == "dearth") {
+        assert!(e.weight >= 0.55 && e.weight <= 0.8 && e.title == "A dearth of grain", "{}: weight {}", e.title, e.weight);
+        assert_eq!(e.series.as_deref(), Some("price_grain"));
+    }
+
+    // every poor harvest that is told was one, and the worst year of the sixty is told
+    let told = |title: &str| -> Vec<usize> {
+        r.events.iter().filter(|e| e.kind == "harvest" && e.title == title).map(|e| (e.year.floor() as i64 - y0) as usize).collect()
+    };
+    let limit = (-P.harvest.news_z * P.harvest.island_sd).exp();
+    assert!(told("A poor harvest").iter().all(|&k| harvest[k] < limit));
+    assert!(told("A bumper harvest").iter().all(|&k| harvest[k] > 1.0 / limit));
+    let worst = (0..years).min_by(|&a, &b| harvest[a].total_cmp(&harvest[b])).unwrap();
+    assert!(told("A poor harvest").contains(&worst) || told("Three lean years").contains(&worst), "the worst harvest, {} in {}, went untold", harvest[worst], y0 + worst as i64);
 }
 
 #[test]

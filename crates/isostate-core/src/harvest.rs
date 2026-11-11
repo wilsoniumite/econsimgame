@@ -61,7 +61,7 @@ pub struct HarvestParams {
     /// in a bad year (measured: docs/rules/harvest.md). At 1 the crop is seen
     /// standing all year and fewer hands are taken on to bring a thin one in.
     /// The game's half is the half of a farm's year that comes after the crop
-    /// shows: reaping, threshing and carting.
+    /// shows: reaping, threshing and carting. Held between 0 and 1.
     pub foreseen: f64,
     /// The country's harvest is news when it is this many `island_sd` from an
     /// average year, either way.
@@ -201,8 +201,13 @@ fn draw(st: &mut State, C: &Content, P: &Params, rng: &mut Rng) {
 /// What the land's masters can see of the year when they hire: each unit's
 /// worth of a hand (`Cc` in `econ::step_month`) is scaled by its cell's
 /// multiplier to the power `foreseen`. Nothing at 0, the pure surprise.
+///
+/// The share is held between 0 and 1. Above 1 a farm would hire for a better
+/// crop than the good year brings and pay wages no crop covers: at 2, with
+/// shocks of 0.3, the island's stock of money ran down to nothing by 1830 in
+/// both seeds tried.
 pub fn foreseen(st: &State, P: &Params, Cc: &mut [f64]) {
-    let share = P.harvest.foreseen;
+    let share = P.harvest.foreseen.clamp(0.0, 1.0);
     if !P.harvest.enabled || share == 0.0 || st.harvest_mult.data.is_empty() {
         return;
     }
@@ -216,8 +221,9 @@ pub fn foreseen(st: &State, P: &Params, Cc: &mut [f64]) {
 
 /// The crop actually brought in. `Y` is what each land unit would yield in an
 /// average year with the hands it has hired; farms and pastures get the year's
-/// multiplier (all of it: what was foreseen only changed how many were hired). Called from `econ::step_month` once labour and machine requests
-/// are settled, so everything after it (sales, rents, stocks) is the real crop.
+/// multiplier (all of it: what was foreseen only changed how many were hired).
+/// Called from `econ::step_month` once labour and machine requests are settled,
+/// so everything after it (sales, rents, stocks) is the real crop.
 pub fn brought_in(st: &mut State, C: &Content, P: &Params, Y: Vec<f64>) -> Vec<f64> {
     if !P.harvest.enabled || st.harvest_mult.data.is_empty() {
         return Y;
