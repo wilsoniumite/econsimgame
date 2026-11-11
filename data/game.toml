@@ -65,8 +65,11 @@ theta = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 2.0]   # household goods are 
 
 [services.props]
 building = { shelter = 3.0 }   # stone, brick and timber put up by men who know how
-stone = { shelter = 0.3 }   # re-rated for the game (the port has 0.5): a household that heaps up its own wall gets a hovel
-bricks = { shelter = 0.6 }   # re-rated (the port has 1.0)
+stone = { shelter = 0.25 }   # re-rated for the game (the port has 0.5): a household that heaps up its own wall gets a hovel
+bricks = { shelter = 0.5 }   # re-rated (the port has 1.0)
+# RUN: the draft had stone 0.3 and bricks 0.6. With those the builders held nine tenths of shelter to 1850
+# and three quarters in 1900, when kiln brick and machine-dug stone are cheapest; at 0.25 and 0.5 they
+# hold it all century.
 timber = { shelter = 0.4, wares = 0.1 }   # shelter: re-rated (the port has 0.6); wares: treen: bowls and spoons whittled at home
 lumber = { shelter = 0.6, wares = 0.35 }   # shelter: boards for a man who builds for himself; wares: plain furniture
 lime = { shelter = 0.5 }   # limewash and plaster
@@ -148,11 +151,16 @@ stage = 1
 # Plant 2.8 a unit of monthly capacity, 1.3 months of output; about 135 hands at K0.
 # The lime is a tenth of a unit: one kiln serves a town, and the opening stock covers the months before the
 # first kiln burns.
+# RUN: the draft had timber 0.35 and no sawn timber. In runs the masons are nine tenths of all building
+# until the contract builders come (the timber-frame builders and bricklayers, who were to buy the sawn
+# timber, are a hundredth of it), so sawn timber had a tenth of the market reckoned for it and the steam
+# sawmill was found in three seeds of eight, forty years late. The masons' floors and roofs are now sawn
+# timber: 0.2 of it is 0.28 of timber through a saw pit, a little less than the draft's 0.35.
 [[method]]
 name = "masons"
 label = "Masons and carpenters"
 output = "building"
-inputs = { stone = 1.1, timber = 0.35, lime = 0.1 }
+inputs = { stone = 1.1, lumber = 0.2, lime = 0.1 }
 heat = 0.0
 labor = 0.25
 capital = { timber = 3, tools = 0.05 }
@@ -190,7 +198,7 @@ stage = 1
 name = "bricklayers"
 label = "Bricklayers"
 output = "building"
-inputs = { bricks = 0.6, lime = 0.12, lumber = 0.2 }
+inputs = { bricks = 0.6, lime = 0.12, lumber = 0.1 }
 heat = 0.0
 labor = 0.24
 capital = { timber = 3, tools = 0.05 }
@@ -210,7 +218,7 @@ stage = 1
 name = "contract_builders"
 label = "Contract builders"
 output = "building"
-inputs = { bricks = 0.65, lime = 0.1, lumber = 0.18, glass = 0.02 }
+inputs = { bricks = 0.65, lime = 0.1, lumber = 0.04, glass = 0.02 }
 heat = 0.0
 labor = 0.1
 capital = { bricks = 2, lumber = 2, tools = 0.1 }
@@ -350,7 +358,7 @@ known = false
 A0 = 0.6
 Q0 = 300000.0
 b = 0.2
-discover = { beer = 2100000.0, coal = 13000000.0 }
+discover = { beer = 2600000.0, coal = 17000000.0 }   # RUN: were 2,100,000 and 13,000,000, both met by 1780 and found in 1777
 target = 1785
 group = "estates"
 stage = 1
@@ -622,7 +630,7 @@ known = false
 A0 = 1.0
 Q0 = 5000000.0
 b = 0.1
-discover = { gas = 1000000.0, services = 32000000.0 }
+discover = { gas = 1000000.0, services = 21000000.0 }   # RUN: services was 32,000,000, met in 1873 and found in 1871; the island makes a third less services with two more needs to spend on
 target = 1860
 stage = 1
 headline = "Plate-glass shopfronts at {town}"
@@ -812,7 +820,7 @@ known = false
 A0 = 0.6
 Q0 = 30000.0
 b = 0.3
-discover = { paper = 230000.0, machinery = 30000.0 }
+discover = { paper = 270000.0, machinery = 30000.0 }   # RUN: paper was 230,000: the hand mills' trade grows so slowly that the hazard found it seven years before the threshold was met
 target = 1815
 group = "building"
 stage = 1

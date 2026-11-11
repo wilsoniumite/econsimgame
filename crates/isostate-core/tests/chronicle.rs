@@ -613,8 +613,14 @@ fn towns_and_districts_have_stories() {
     // `chronicle::rank` keeps for the family's heaviest item whatever else
     // happened (here the Fairfaxes setting up in building materials, the lighter
     // of the two). So the player's place is left out of "all heavier" below.
+    // With the production tree laid (docs/rules/tree.md) seed 7 founds its towns
+    // two a decade until 1790 and has no such decade, so what is held is that
+    // each decade of the 1700s with enough foundings has its digest, and no other.
     let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
-    assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
+    let st = &r.state;
+    let founded_in = |d: i64| (0..st.T_max).filter(|&t| st.town_active[t] && (d..d + 10).contains(&st.town_founded[t])).count();
+    let due = (0..5).map(|k| 1750 + 10 * k).filter(|&d| founded_in(d) >= r.params.chronicle.new_towns_min.max(1)).count();
+    assert_eq!(digests.len(), due, "a digest for each decade of new towns");
     let mut decades = std::collections::BTreeSet::new();
     for digest in &digests {
         assert!(decades.insert(decade(digest)), "one digest a decade: {}", digest.title);

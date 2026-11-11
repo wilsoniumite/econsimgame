@@ -867,23 +867,26 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         // tau, want and qt are (na, na, G), indexed [(i * na + j) * G + g]
         let mut tau = vec![0.0; na * na * G];
         let mut want = vec![0.0; na * na * G];
+        // tree: a good made where it is used (building work, town gas) is not
+        // carried: nothing is wanted of it and it is left out of the sums. Under
+        // the port every good is carried and `tg` is all of them in their order
+        let tg = crate::tree::traded_goods(C);
         for (i, &ti) in A_idx.iter().enumerate() {
             for (j, &tj) in A_idx.iter().enumerate() {
                 let c0 = st.town_cost[(ti, tj)];
                 let c = if c0.is_finite() { c0 } else { 1e9 };
-                for g in 0..G {
+                for &g in &tg {
                     let k = (i * na + j) * G + g;
                     tau[k] = P.freight * C.weight[g] * c + P.handling * p[(ti, g)];
                     let gap = p[(tj, g)] - p[(ti, g)] - tau[k];
-                    // tree: a good made where it is used (building work, town gas) is not carried
-                    let frac = if i == j || !C.traded[g] { 0.0 } else { (gap / p[(tj, g)].max(1e-9)).clamp(0.0, 0.5) * P.trade_k };
+                    let frac = if i == j { 0.0 } else { (gap / p[(tj, g)].max(1e-9)).clamp(0.0, 0.5) * P.trade_k };
                     want[k] = frac * st.inv[(ti, g)];
                 }
             }
         }
         let mut scale = vec![0.0; na * G];
         for i in 0..na {
-            for g in 0..G {
+            for &g in &tg {
                 let mut tot = 0.0;
                 for j in 0..na {
                     tot += want[(i * na + j) * G + g];
@@ -895,7 +898,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let mut qt = want;
         for i in 0..na {
             for j in 0..na {
-                for g in 0..G {
+                for &g in &tg {
                     qt[(i * na + j) * G + g] *= scale[i * G + g];
                 }
             }
@@ -904,7 +907,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let mut im_q = Mat::zeros(na, G);
         for i in 0..na {
             for j in 0..na {
-                for g in 0..G {
+                for &g in &tg {
                     let v = qt[(i * na + j) * G + g];
                     ex_q[(i, g)] += v;
                     im_q[(j, g)] += v;

@@ -500,6 +500,13 @@ pub fn traded_goods(C: &Content) -> Vec<usize> {
     (0..C.G).filter(|&g| C.traded.get(g).copied().unwrap_or(true)).collect()
 }
 
+/// The goods whose delivered price at a cell anybody reads: those some method
+/// takes as an input, and the fuels. Under the port all are marked, and the
+/// yearly pass is the port's.
+pub fn delivered_goods(C: &Content) -> Vec<bool> {
+    (0..C.G).map(|g| C.stage == 0 || C.heat[g] > 0.0 || (0..C.M).any(|m| C.m_in[(m, g)] > 0.0)).collect()
+}
+
 /// The 1750 trades of the goods the port does not have. `need` is what each
 /// town's households want of every good a month (and, for the port's goods,
 /// what its own plan adds); this adds what the seeded works will themselves
