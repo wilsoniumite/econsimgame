@@ -336,6 +336,7 @@ pub struct State {
 
     // ---------------- machines (not in the Python; empty while `machines.enabled` is off)
     /// (T, NS * machines::SLOTS): the share of each land sector's output in each
-    /// town worked by machines now standing, one column per use (`machines::uses`).
+    /// town worked by machines now standing, one column per use (`machines::uses`);
+    /// -1 in a town not yet founded.
     pub machine_stock: Mat,
 }

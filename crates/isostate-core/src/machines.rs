@@ -1,4 +1,4 @@
-//! Machines: bought where they pay, better with every ton of converter steel, and
+//! Machines: bought where they pay, better with every ton of steel poured, and
 //! new methods that start from what the trade already knows. Not in the Python;
 //! `docs/rules/machines.md` is the longer account.
 //!
@@ -15,10 +15,11 @@
 //!    machine stands for years ([`end_month`]): what it adds follows what was
 //!    bought over those years, not what the market could deliver last month.
 //! 2. *Nothing gets better after 1800.* Here machines have a learning curve of
-//!    their own, on the steel the converters have poured ([`quality`]), in the
+//!    their own, on all the steel the island has poured ([`quality`]), in the
 //!    same form as the methods' curves. A better machine adds more in the mine
 //!    and on the farm, and in time is good enough to pay in a quarry or a clay
-//!    pit.
+//!    pit. Steel matters because of it: a converter that triples the steel
+//!    poured brings the better machine sooner.
 //! 3. *A converter nobody builds.* A new way of making a good the island
 //!    already makes starts from part of the skill of the old way
 //!    ([`inherit_skill`]). The rest of that story is content: what a converter
@@ -40,19 +41,23 @@ pub struct MachineParams {
     /// Machines are bought where they pay, improve with the steel poured, and a
     /// new method inherits part of its predecessor's skill.
     pub enabled: bool,
-    /// How steeply adoption follows the return. A machine is taken on no output
-    /// where it only earns its cost, on all of it where it earns its cost
+    /// How far farms and pits differ. A machine is taken on no output where it
+    /// only earns its cost, on all of it where it earns its cost
     /// `1 + adopt_span` times over, and in proportion between.
     pub adopt_span: f64,
-    /// Pumps and wagonways in the mines are bought by the same rule. False: as
-    /// the port buys them, per unit of output whatever they cost.
-    pub adopt_mines: bool,
+    /// Pumps in the mines are bought by the same rule. False: as the port buys
+    /// them, per unit of output whatever they cost. Measured both ways; see
+    /// docs/rules/machines.md for why they are left as they were.
+    pub adopt_pumps: bool,
+    /// Wagonways in the mines likewise. On, the first railway comes a generation
+    /// late: the rails that teach the island to roll rails are the ones the
+    /// collieries lay at a loss.
+    pub adopt_wagonways: bool,
     /// Months a machine stands. The machines at work move towards what is being
     /// bought by one part in this many each month.
     pub life_months: f64,
     /// The machines' own learning curve: quality = (1 + Q / quality_Q0)^quality_b,
-    /// where Q is the steel made so far by every way of making steel found after
-    /// the first (on this island, the converter).
+    /// where Q is all the steel made so far, by any method.
     pub quality_Q0: f64,
     pub quality_b: f64,
     /// Quality stops here (as the methods stop at `learn_cap`).
@@ -72,14 +77,15 @@ impl Default for MachineParams {
     fn default() -> MachineParams {
         MachineParams {
             enabled: false,
-            adopt_span: 1.0,
-            adopt_mines: false,
-            life_months: 48.0,
-            quality_Q0: 250_000.0,
-            quality_b: 0.3,
+            adopt_span: 4.0,
+            adopt_pumps: false,
+            adopt_wagonways: false,
+            life_months: 96.0,
+            quality_Q0: 1_000_000.0,
+            quality_b: 0.6,
             quality_cap: 4.0,
             quarry_reach: 1.0,
-            quarry_input: 0.002,
+            quarry_input: 0.001,
             inherit: 0.5,
         }
     }
@@ -109,19 +115,19 @@ fn predecessors<'a>(st: &'a State, C: &'a Content, m: usize) -> impl Iterator<It
 
 /// How good machines are now, 1 being the machines of 1750.
 ///
-/// Learning by doing, embodied in the machines. Crucible steel is poured by the
-/// pound and goes into razors and files; a machine is built of steel only once
-/// steel is made by the ton. So the experience counted is the steel made by
-/// every method of steelmaking that had a predecessor (on this island, the
-/// converter): each ton teaches the engine builders something about boilers,
-/// shafts and cutting edges, as each unit a method makes teaches the method.
+/// Learning by doing, embodied in the machines. The experience counted is all
+/// the steel the island has made: each ton teaches the engine builders
+/// something about boilers, shafts and cutting edges, as each unit a method
+/// makes teaches the method. Counting only the converter's steel was tried and
+/// dropped: the converter is found by a draw that can come thirty years late,
+/// and in such a seed nothing got better at all.
 pub fn quality(st: &State, C: &Content, P: &Params) -> f64 {
     let M = &P.machines;
     if !M.enabled || M.quality_b <= 0.0 {
         return 1.0;
     }
     let Some(&steel) = C.good_index.get("steel") else { return 1.0 };
-    let Q: f64 = (0..C.M).filter(|&m| C.method_out[m] == steel && predecessors(st, C, m).next().is_some()).map(|m| st.method_Q[m]).sum();
+    let Q: f64 = (0..C.M).filter(|&m| C.method_out[m] == steel).map(|m| st.method_Q[m]).sum();
     (1.0 + Q / M.quality_Q0.max(1e-9)).powf(M.quality_b).min(M.quality_cap.max(1.0))
 }
 
@@ -190,8 +196,8 @@ pub fn uses(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price:
         }
     };
     if C.sector_mine[sec] {
-        add("pump", 0, gm, P.pump_boost * q, P.pump_input, kp, M.adopt_mines);
-        add("wagonway", 1, gr, P.wagon_boost * q, P.wagon_input, kw, M.adopt_mines);
+        add("pump", 0, gm, P.pump_boost * q, P.pump_input, kp, M.adopt_pumps);
+        add("wagonway", 1, gr, P.wagon_boost * q, P.wagon_input, kw, M.adopt_wagonways);
     }
     if name == "farm" {
         add("farm machinery", 0, gm, P.farm_mach_boost * q, P.farm_mach_input, kf, true);
@@ -222,8 +228,10 @@ pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, 
     let (gm, gr) = (C.gi("machinery"), C.gi("rails"));
     let (mut boost, mut mach, mut rails) = (0.0, 0.0, 0.0);
     for u in uses(st, C, P, sec, town, price) {
-        // before the first month has been counted: the machines they would keep
-        let standing = if st.machine_stock.rows > 0 { st.machine_stock[(town, sec * SLOTS + u.slot)] } else { u.know * u.share };
+        // before the first month has been counted, and in a town not yet
+        // founded (marked below zero): the machines they would keep
+        let stock = if st.machine_stock.rows > 0 { st.machine_stock[(town, sec * SLOTS + u.slot)] } else { -1.0 };
+        let standing = if stock >= 0.0 { stock } else { u.know * u.share };
         boost += u.boost * standing;
         if u.good == gm {
             mach += u.asked();
@@ -239,7 +247,9 @@ pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, 
 /// share of output worked by machine goes one part in `life_months` of the way
 /// to the share that kept its machines up this month and was supplied
 /// (`st.fill`). A month the engine works cannot deliver does not flood the pits;
-/// years of it do. Called at the end of `econ::step_month`.
+/// years of it do. A town not yet founded has none and is marked -1, so that
+/// its first month starts from what its settlers keep up: they bring their
+/// engines with them. Called at the end of `econ::step_month`.
 pub fn end_month(st: &mut State, C: &Content, P: &Params) {
     let M = &P.machines;
     if !M.enabled {
@@ -250,14 +260,20 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
     if first {
         st.machine_stock = Mat::zeros(T, NS * SLOTS);
     }
-    let step = if first { 1.0 } else { 1.0 / M.life_months.max(1.0) };
+    let step = 1.0 / M.life_months.max(1.0);
     for town in 0..T {
         for sec in 0..NS {
+            if !st.town_active[town] {
+                for slot in 0..SLOTS {
+                    st.machine_stock[(town, sec * SLOTS + slot)] = -1.0;
+                }
+                continue;
+            }
             let now = uses(st, C, P, sec, town, &st.pexp);
             for slot in 0..SLOTS {
                 let target = now.iter().find(|u| u.slot == slot).map_or(0.0, |u| u.know * u.share * st.fill[(town, u.good)]);
                 let s = &mut st.machine_stock[(town, sec * SLOTS + slot)];
-                *s += step * (target - *s);
+                *s = if first || *s < 0.0 { target } else { *s + step * (target - *s) };
             }
         }
     }

@@ -352,9 +352,9 @@ pub const MACHINES_STEEL_RAIL_WORTH: f64 = 3.0;
 
 /// (method, good, cumulative output needed): the thresholds the game changes.
 pub const MACHINES_THRESHOLDS: [(&str, &str, f64); 5] = [
-    ("bessemer", "steel", 2_400_000.0),
+    ("bessemer", "steel", 2_800_000.0),
     ("bessemer", "machinery", 90_000.0),
-    ("steel_rolling", "steel", 3_600_000.0),
+    ("steel_rolling", "steel", 3_300_000.0),
     ("steel_rolling", "rails", 350_000.0),
     ("steel_rolling", "machinery", 150_000.0),
 ];

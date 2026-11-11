@@ -134,7 +134,7 @@ fn step_year(s: &mut Sim, C: &Content, basket: &mut Vec<(Vec<f64>, Vec<f64>)>) -
                 den += w;
                 if P.machines.enabled {
                     // the machines standing, for the uses bought where they pay
-                    let stock = |u: &machines::Use| if st.machine_stock.rows > 0 { st.machine_stock[(t, si * machines::SLOTS + u.slot)] } else { 0.0 };
+                    let stock = |u: &machines::Use| if st.machine_stock.rows > 0 { st.machine_stock[(t, si * machines::SLOTS + u.slot)].max(0.0) } else { 0.0 };
                     num += w * machines::uses(st, C, P, si, t, &st.pexp).iter().filter(|u| u.priced).map(stock).sum::<f64>();
                 } else if C.sector_name[si] == "farm" {
                     let k = st.know[(t, st.t_fmach)];
