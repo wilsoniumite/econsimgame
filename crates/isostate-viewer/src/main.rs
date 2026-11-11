@@ -592,6 +592,23 @@ fn main() {
         let same = shots::compare_sets(a, b);
         std::process::exit(if same { 0 } else { 1 });
     }
+    if let Ok(list) = std::env::var("ISOSTATE_COMPARE_CLASSES") {
+        // no island and no window: --ground-debug shots against their --class-map
+        let mut same = true;
+        for shot in list.split(';').filter(|s| !s.is_empty()) {
+            match shots::compare_classes(std::path::Path::new(shot)) {
+                Ok((line, ok)) => {
+                    eprintln!("{line}");
+                    same &= ok;
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    same = false;
+                }
+            }
+        }
+        std::process::exit(if same { 0 } else { 1 });
+    }
     // the look first, so a slip in a look file is told at once
     let look = match &args.look_file {
         Some(path) => match Look::with_file(path) {
@@ -921,8 +938,8 @@ fn setup_world(
     commands.insert_resource(UiFont(fonts.add(Font::from_bytes(FREDOKA.to_vec()))));
 
     // ground: one heightfield, its patchwork painted per pixel from the year's land mix
-    let year_cells = images.add(terrain::cell_image(r, terrain::year_cells(r, k), TextureFormat::Rgba8Unorm));
-    let fixed_cells = images.add(terrain::cell_image(r, terrain::fixed_cells(r, g), TextureFormat::Rgba8Unorm));
+    let year_cells = images.add(terrain::parcel_image(g, terrain::year_parcels(r, g, k)));
+    let fixed_cells = images.add(terrain::parcel_image(g, terrain::fixed_parcels(r, g)));
     let terrain_mat = ground_mats.add(terrain::GroundMaterial {
         base: StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() },
         extension: terrain::Patchwork {
@@ -931,6 +948,7 @@ fn setup_world(
             fixed: fixed_cells,
             paint: lk.land.uniform(),
             overlay: images.add(overlay::blank(r)),
+            rivers: images.add(world::timed("far rivers", || terrain::river_far(g))),
         },
     });
     for chunk in terrain::terrain_chunks(g) {
@@ -1161,7 +1179,7 @@ struct Shown {
 
 fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
     let t0 = std::time::Instant::now();
-    let cells = terrain::year_cells(r, k);
+    let cells = terrain::year_parcels(r, g, k);
     let ym = scatter::build_year(r, g, slots, cen, k, lk, &lod);
     let t1 = t0.elapsed().as_secs_f32();
     let nets = network::year_nets(r, g, cen, k, lk);
@@ -1907,13 +1925,14 @@ fn write_class_map(r: &Replay, g: &Ground, v: &ShotSpec, size: (u32, u32), defau
     let (w, h) = (size.0 as usize, size.1 as usize);
     let tan = (FOV_DEG.to_radians() * 0.5).tan();
     let aspect = w as f32 / h as f32;
+    let land = world::year_land(r, g, k);
     let px: Vec<u8> = (0..w * h)
         .into_par_iter()
         .map(|i| {
             let (x, y) = ((i % w) as f32 + 0.5, (i / w) as f32 + 0.5);
             let d = cam.rotation * Vec3::new((x / w as f32 * 2.0 - 1.0) * tan * aspect, (1.0 - y / h as f32 * 2.0) * tan, -1.0);
             match mesh_hit(g, cam.translation, d.normalize()) {
-                Some(p) if p.y >= 0.03 && p.x >= 0.0 && p.z >= 0.0 && p.x < r.w as f32 && p.z < r.h as f32 => world::class_at(r, g, k, p.x, p.z).0,
+                Some(p) if p.y >= 0.03 && p.x >= 0.0 && p.z >= 0.0 && p.x < r.w as f32 && p.z < r.h as f32 => world::class_at(g, &land, p.x, p.z),
                 _ => 255,
             }
         })

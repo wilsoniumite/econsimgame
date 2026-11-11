@@ -119,6 +119,22 @@ seabed_deep = "#2f5f78"
 beach_wet = "#cfbd8b"
 beach = "#ead9a3"
 shingle = "#a49c8a"
+# ploughed soil on the light lands (chalk and sand) and on the red marls; the
+# plain soil above is the loam between them
+soil_light = "#b39c74"
+soil_red = "#8f5f45"
+# rough grass and scrub: a glade or a ride in a wood, and the margin a wood or
+# a heath leaves along the fields
+rough_grass = "#86a856"
+# a wood's canopy seen from so far off that the trees cannot be told apart
+wood_canopy = "#447336"
+# a river seen from far off, drawn as a thread that keeps a pixel or two of width
+river_thread = "#5b9dc6"
+# the line of sand ruled along the shore in the far view
+shore_far = "#f0e2b4"
+# the canopy of a broadleaf wood in October, from as far off: the gold of its
+# trees (tint_autumn over the broadleaf greens, in [foliage]), a little shaded
+wood_canopy_autumn = "#a8883e"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).
