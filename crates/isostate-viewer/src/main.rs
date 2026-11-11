@@ -1073,8 +1073,17 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     }
 }
 
+/// A number of people: whole, with a comma for the thousands, in millions from a million up.
 fn fmt_pop(p: f32) -> String {
-    if p >= 1e6 { format!("{:.2} million", p / 1e6) } else { format!("{:.0},{:03.0}", (p / 1000.0).floor(), p % 1000.0) }
+    // round first, so that 12,999.6 is 13,000 and not 12,1000
+    let n = if p.is_finite() { p.round().max(0.0) as u64 } else { 0 };
+    if n >= 1_000_000 {
+        format!("{:.2} million", n as f64 / 1e6)
+    } else if n >= 1000 {
+        format!("{},{:03}", n / 1000, n % 1000)
+    } else {
+        format!("{n}")
+    }
 }
 
 fn labels(
@@ -1606,6 +1615,19 @@ mod tests {
         let (p, went, _) = run_seasons(c, false, speed, 5.0);
         assert!(!p.follows);
         assert_eq!(went, 0.0);
+    }
+
+    #[test]
+    fn people_are_counted_with_a_comma_for_thousands() {
+        assert_eq!(fmt_pop(0.0), "0");
+        assert_eq!(fmt_pop(950.0), "950");
+        assert_eq!(fmt_pop(999.6), "1,000");
+        assert_eq!(fmt_pop(1_004.0), "1,004");
+        assert_eq!(fmt_pop(12_999.6), "13,000");
+        assert_eq!(fmt_pop(254_038.2), "254,038");
+        assert_eq!(fmt_pop(999_999.7), "1.00 million");
+        assert_eq!(fmt_pop(1_251_000.0), "1.25 million");
+        assert_eq!(fmt_pop(f32::NAN), "0");
     }
 
     #[test]
