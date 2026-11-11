@@ -455,7 +455,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     // the churchyards of every year so far. When one is new (a town founded, a church rebuilt
     // bigger, or moved by a road or the railway), the cells it reaches are laid out again,
     // so that a works standing where the church has come to gives way to it
-    let yards = towns::churchyards(r, g, &cen);
+    let yards = world::timed("churchyards", || towns::churchyards(r, g, &cen));
     let marks = yards.iter().fold(0u64, |all, y| all ^ y.mark());
     if marks != slots.churchyards {
         slots.churchyards = marks;

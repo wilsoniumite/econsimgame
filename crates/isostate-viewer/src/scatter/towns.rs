@@ -224,14 +224,15 @@ fn rail_hits(r: &Replay, g: &Ground, cen: &[(f32, f32)], y: usize, rail_key: u64
     if let Some(&known) = KNOWN.lock().unwrap().as_ref().and_then(|m| m.hits.get(&key)) {
         return known;
     }
-    let rails = crate::rails::year(r, g, cen, y);
+    // the furthest spot's yard ends well within a cell of the market place
+    let near = railway_near(&crate::rails::year(r, g, cen, y), square, 1.3);
     let mut hits = 0u64;
-    if !(rails.lines.is_empty() && rails.building.is_empty()) {
+    if !near.is_empty() {
         let ways = ways_out(r, cen, t);
         for step in 0..STEPS {
             for i in 0..SPOTS {
                 let (_, _, at, yaw) = spot(&ways, square, i, step);
-                if railway_through(&rails, &widest(), at, yaw, 0.01) {
+                if railway_through(&near, &widest(), at, yaw, 0.01) {
                     hits |= 1 << (step * SPOTS + i);
                 }
             }
@@ -424,10 +425,16 @@ pub(super) fn churchyards(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> Vec<Chu
     out
 }
 
-/// Whether the railway, laid or being laid, runs through a churchyard whose
+/// The lengths of railway, laid or being laid, that come within `reach` of a point.
+fn railway_near(rails: &crate::rails::RailYear, p: Vec2, reach: f32) -> Vec<(Vec2, Vec2)> {
+    let laid = rails.lines.iter().flat_map(|l| l.pts.windows(2).map(|w| (Vec2::new(w[0].x, w[0].z), Vec2::new(w[1].x, w[1].z))));
+    laid.chain(rails.building.iter().copied()).filter(|&(a, b)| a.distance(p) <= a.distance(b) + reach).collect()
+}
+
+/// Whether one of these lengths of railway runs through a churchyard whose
 /// middle is at `at`, or within `margin` of it.
-fn railway_through(rails: &crate::rails::RailYear, church: &town::Church, at: Vec2, yaw: f32, margin: f32) -> bool {
-    let through = |a: Vec2, b: Vec2| {
+fn railway_through(lengths: &[(Vec2, Vec2)], church: &town::Church, at: Vec2, yaw: f32, margin: f32) -> bool {
+    lengths.iter().any(|&(a, b)| {
         // a length of line far from the yard is passed over; one near it is walked in short steps
         let len = a.distance(b);
         if a.distance(at) > len + 0.25 {
@@ -435,8 +442,7 @@ fn railway_through(rails: &crate::rails::RailYear, church: &town::Church, at: Ve
         }
         let steps = (len / 0.02).ceil().max(1.0) as usize;
         (0..=steps).any(|i| church.yard_holds(at, yaw, a.lerp(b, i as f32 / steps as f32), margin))
-    };
-    rails.lines.iter().any(|l| l.pts.windows(2).any(|w| through(Vec2::new(w[0].x, w[0].z), Vec2::new(w[1].x, w[1].z)))) || rails.building.iter().any(|&(a, b)| through(a, b))
+    })
 }
 
 /// The station is down its own road to the south of the market place.
