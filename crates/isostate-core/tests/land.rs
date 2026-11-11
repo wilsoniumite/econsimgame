@@ -124,8 +124,8 @@ fn water_runs_downhill_to_the_sea() {
                 RiverEnd::River(m) => assert!(m < lf.rivers.len() && m != k),
             }
         }
-        // lakes lie above the sea, and every lake node is under a listed lake
-        assert!(lf.lakes.iter().all(|l| l.level > 0.0 && l.area_km2 > 0.0 && l.depth > 0.0));
+        // lakes lie above the sea, water runs out of each, and every lake node is under a listed lake
+        assert!(lf.lakes.iter().all(|l| l.level > 0.0 && l.area_km2 > 0.0 && l.depth > 0.0 && l.outflow > 0.0));
         assert!(lf.lake_id.iter().all(|&l| l as usize <= lf.lakes.len()));
         // rain: the wet side is wetter than the rain shadow
         let rain: Vec<f32> = (0..N).filter(|&c| w.land[c]).map(|c| lf.rain[c]).collect();
@@ -144,6 +144,65 @@ fn water_runs_downhill_to_the_sea() {
         let (jan, jul) = (lf.discharge_month(&w, 0), lf.discharge_month(&w, 6));
         let big = (0..N).filter(|&c| w.navigable[c]).max_by(|&a, &b| lf.discharge[a].total_cmp(&lf.discharge[b])).unwrap();
         assert!(jan[big] > 1.3 * jul[big], "seed {seed}: January {} against July {}", jan[big], jul[big]);
+    }
+}
+
+#[test]
+fn rivers_reach_the_sea_by_their_estuaries() {
+    // the drowned valleys are inlets narrower than a cell: the cells along one
+    // are land with a tideway through them, and a boat on the river above goes
+    // down it to the coast
+    for seed in [1, 6, 10] {
+        let w = island(seed);
+        let lf = form(&w);
+        let (W, H) = (w.W, w.H);
+        let N = W * H;
+        let near = |c: usize| -> Vec<usize> {
+            let mut out = Vec::new();
+            for (dy, dx) in world::NEIGH8 {
+                let (y, x) = ((c / W) as isize + dy, (c % W) as isize + dx);
+                if y >= 0 && y < H as isize && x >= 0 && x < W as isize {
+                    out.push(y as usize * W + x as usize);
+                }
+            }
+            out
+        };
+        // every land cell's water has somewhere to go, and gets to the sea or a lake
+        for c in 0..N {
+            if w.land[c] {
+                assert!(w.down[c] >= 0, "seed {seed}: land cell {c} runs nowhere");
+            }
+        }
+        // a tideway is land, is a river, and its water gets out to the open sea
+        let tideways: Vec<usize> = (0..N).filter(|&c| lf.estuary[c]).collect();
+        assert!(tideways.len() >= 10, "seed {seed}: {} cells of tideway", tideways.len());
+        for &start in &tideways {
+            assert!(w.land[start] && w.river[start]);
+            let mut c = start;
+            while w.land[c] {
+                c = w.down[c] as usize;
+            }
+            assert!(!lf.lake[c], "seed {seed}: the tideway from {start} ends in a lake");
+        }
+        // most navigable water is joined to the coast by navigable water (what
+        // is not lies above a reach too steep for boats, or on an upland lake)
+        let mut seen = vec![false; N];
+        let mut stack: Vec<usize> = (0..N).filter(|&c| w.navigable[c] && w.coast[c]).collect();
+        for &c in &stack {
+            seen[c] = true;
+        }
+        while let Some(c) = stack.pop() {
+            for nc in near(c) {
+                if w.navigable[nc] && !seen[nc] {
+                    seen[nc] = true;
+                    stack.push(nc);
+                }
+            }
+        }
+        let (nav, joined) = (w.navigable.iter().filter(|&&n| n).count(), seen.iter().filter(|&&s| s).count());
+        assert!(joined * 5 >= nav * 4, "seed {seed}: {joined} of {nav} navigable cells reach the coast");
+        // and some river's estuary has a head, where a town would stand
+        assert!(lf.site_kind.iter().any(|&k| k == landcells::SITE_ESTUARY));
     }
 }
 

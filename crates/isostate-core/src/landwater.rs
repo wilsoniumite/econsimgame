@@ -588,7 +588,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
     // lakes: hollows big enough to keep; the small ones silt up
     let mut lake_id = vec![0u16; n];
     let mut lakes: Vec<Lake> = Vec::new();
-    let mut outlet_node: Vec<usize> = Vec::new();
+    let mut lake_level: Vec<f64> = Vec::new();
     {
         let min_nodes = ((0.75 / node_km2).ceil() as usize).max(3);
         let off = g.offsets();
@@ -632,7 +632,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
             }
             let out = rt.rcv[low] as usize;
             let (ox, oy) = g.xy(out);
-            outlet_node.push(out);
+            lake_level.push(level);
             lakes.push(Lake {
                 level: level as f32,
                 area_km2: (nodes.len() as f64 * node_km2) as f32,
@@ -672,8 +672,25 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
             flow[r] += flow[c as usize];
         }
     }
-    for (l, &o) in lakes.iter_mut().zip(&outlet_node) {
-        l.outflow = if sea[o] { 0.0 } else { flow[o] as f32 };
+    // what leaves a lake: the flow of every lake node that drains out of it for
+    // good (water that crosses a shoal and comes back into the lake has not left)
+    let mut outflow = vec![0.0f64; lakes.len()];
+    for &c in &rt.order {
+        let c = c as usize;
+        let id = lake_id[c];
+        if id == 0 || lake_id[rt.rcv[c] as usize] == id {
+            continue;
+        }
+        let mut cur = rt.rcv[c] as usize;
+        while !sea[cur] && lake_id[cur] != id && rt.fill[cur] >= lake_level[id as usize - 1] {
+            cur = rt.rcv[cur] as usize;
+        }
+        if sea[cur] || lake_id[cur] != id {
+            outflow[id as usize - 1] += flow[c];
+        }
+    }
+    for (l, &o) in lakes.iter_mut().zip(&outflow) {
+        l.outflow = o as f32;
     }
 
     // height above the water each node drains to; flood plain and marsh

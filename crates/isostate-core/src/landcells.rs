@@ -84,7 +84,11 @@ pub struct Landform {
     pub rain: Vec<f32>,
     /// Cell: runoff in each month of an average year, mm (`runoff[m * N + c]`, m = 0 for January).
     pub runoff: Vec<f32>,
-    /// Cell: mean flow of its largest stream, cubic metres a second.
+    /// Cell: land with a river's tideway through it: an inlet of the sea narrower
+    /// than a cell, with a river's flow or more running down it.
+    pub estuary: Vec<bool>,
+    /// Cell: mean flow of its largest stream, cubic metres a second (on a
+    /// tideway, all that runs into the inlet from there up).
     pub discharge: Vec<f32>,
     /// Cell: the sea outlet its water reaches (a place in `outlets`), -1 for water.
     pub basin: Vec<i32>,
@@ -174,6 +178,7 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
     let dx = g.dx();
     let node_km2 = dx * dx / 1e6;
     let rt = &wt.rt;
+    let h_ref = P.h_ref.max(1.0);
 
     // what each cell is made of
     let (mut n_dry, mut n_lake) = (vec![0usize; N], vec![0usize; N]);
@@ -201,7 +206,7 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         }
         land = lab.iter().map(|&l| l as usize == keep).collect();
     }
-    let mut lake: Vec<bool> = (0..N).map(|c| !land[c] && n_lake[c] as f64 * 2.0 > k2 - n_dry[c] as f64).collect();
+    let lake: Vec<bool> = (0..N).map(|c| !land[c] && n_lake[c] as f64 * 2.0 > k2 - n_dry[c] as f64).collect();
     // water the open sea does not reach (boats go by all eight neighbours) and
     // that is not a lake is an inlet narrower than a cell: land, as in the port
     {
@@ -223,12 +228,6 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         for c in 0..N {
             if !land[c] && !lake[c] && !open[c] {
                 land[c] = true;
-            }
-        }
-        // a lake the sea touches is a lagoon: sea
-        for c in 0..N {
-            if lake[c] && n_lake[c] == 0 {
-                lake[c] = false;
             }
         }
     }
@@ -318,12 +317,13 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         outlets: Vec::new(),
         wind: d.wind,
         drowned: wt.drowned,
-        h_ref: P.h_ref,
+        h_ref,
         lake: lake.clone(),
         shore: vec![false; N],
         lake_share: (0..N).map(|c| (n_lake[c] as f64 / k2) as f32).collect(),
         rain: wt.rain.iter().map(|&v| v as f32).collect(),
         runoff: wt.runoff.clone(),
+        estuary: vec![false; N],
         discharge: vec![0.0; N],
         basin: vec![-1; N],
         stream: vec![-1; N],
@@ -341,7 +341,7 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         if land[c] {
             let zc = zsum[c] / nd;
             let rel = if zmax[c] > zmin[c] { zmax[c] - zmin[c] } else { 0.0 };
-            h[c] = (zc / P.h_ref).clamp(0.0, 1.0);
+            h[c] = (zc / h_ref).clamp(0.0, 1.0);
             terrain[c] = if zc > 380.0 || rel > 260.0 {
                 MOUNTAINS
             } else if zc > 90.0 || rel > 50.0 {
@@ -370,7 +370,85 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
                     }
                 }
             }
-            h[c] = (lev / P.h_ref).clamp(0.0, 1.0);
+            h[c] = (lev / h_ref).clamp(0.0, 1.0);
+        }
+    }
+
+    // tidewater. The sea's rise drowned the lower valleys into inlets narrower
+    // than a cell, so a river often meets the tide well inside what the cells
+    // call land. `tide` is how far a cell's tidewater lies from a cell of open
+    // sea, in fine steps over the water (0 for the open sea itself), and
+    // `to_sea` is the neighbour its tideway runs on into: always one nearer
+    // the sea, so following it ends there.
+    let open = |c: usize| !land[c] && !lake[c];
+    let mut tide = vec![u32::MAX; N];
+    {
+        let mut steps = vec![u32::MAX; g.n()];
+        let mut queue = std::collections::VecDeque::new();
+        for n in 0..g.n() {
+            if wt.sea[n] && open(g.cell(n)) {
+                steps[n] = 0;
+                queue.push_back(n);
+            }
+        }
+        while let Some(n) = queue.pop_front() {
+            let (i, j) = ((n % g.w) as isize, (n / g.w) as isize);
+            for (di, dj, _) in crate::landform::N8 {
+                let (ni, nj) = (i + di, j + dj);
+                if ni >= 0 && nj >= 0 && (ni as usize) < g.w && (nj as usize) < g.h {
+                    let nb = nj as usize * g.w + ni as usize;
+                    if wt.sea[nb] && steps[nb] == u32::MAX {
+                        steps[nb] = steps[n] + 1;
+                        queue.push_back(nb);
+                    }
+                }
+            }
+        }
+        for n in 0..g.n() {
+            if steps[n] != u32::MAX {
+                let c = g.cell(n);
+                tide[c] = tide[c].min(steps[n]);
+            }
+        }
+        for c in 0..N {
+            if open(c) {
+                tide[c] = 0;
+            }
+        }
+    }
+    let mut to_sea = vec![usize::MAX; N];
+    let mut tidal: Vec<usize> = (0..N).filter(|&c| land[c] && tide[c] != u32::MAX).collect();
+    for &c in &tidal {
+        let mut best = tide[c];
+        for (dy, dx8) in NEIGH8 {
+            let (y, x) = ((c / W) as isize + dy, (c % W) as isize + dx8);
+            if y >= 0 && y < H as isize && x >= 0 && x < W as isize {
+                let nc = y as usize * W + x as usize;
+                if tide[nc] < best {
+                    best = tide[nc];
+                    to_sea[c] = nc;
+                }
+            }
+        }
+    }
+    // what runs into each cell's tidewater from the land, and with it what
+    // comes down the inlet from the cells further in (their flow, and the
+    // nodes they drain)
+    let (mut tideway, mut tideway_area) = (vec![0.0f64; N], vec![0.0f64; N]);
+    for &c in &rt.order {
+        let c = c as usize;
+        let r = rt.rcv[c] as usize;
+        if wt.sea[r] {
+            tideway[g.cell(r)] += wt.flow[c];
+            tideway_area[g.cell(r)] += rt.area[c];
+        }
+    }
+    tidal.sort_by_key(|&c| (std::cmp::Reverse(tide[c]), c));
+    for &c in &tidal {
+        let d = to_sea[c];
+        if d != usize::MAX && land[d] {
+            tideway[d] += tideway[c];
+            tideway_area[d] += tideway_area[c];
         }
     }
 
@@ -411,16 +489,16 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
                 gradient[c] = (rt.fill[m] - if wt.sea[r] { 0.0 } else { rt.fill[r] }) / ((steps + 1) as f64 * dx);
                 steps += 1;
             }
-            if wt.sea[r] {
-                // the stream reaches the sea: it runs to the nearest water cell,
-                // as the port's coastal cells do (or nowhere, on an inlet
-                // narrower than a cell)
+            if wt.sea[r] && g.cell(r) == c {
+                // the stream reaches the tide in its own cell: it runs to the
+                // nearest cell of open sea, as the port's coastal cells do, or,
+                // on an inlet narrower than a cell, down the inlet
                 let (ry, rx) = (r / g.w, r % g.w);
                 let mut best = f64::INFINITY;
                 for (dy, dx8) in NEIGH8 {
                     let (y, x) = ((c / W) as isize + dy, (c % W) as isize + dx8);
                     let nc = y as usize * W + x as usize;
-                    if !land[nc] {
+                    if open(nc) {
                         let dist = ((y as f64 + 0.5) * g.k as f64 - ry as f64).hypot((x as f64 + 0.5) * g.k as f64 - rx as f64);
                         if dist < best {
                             best = dist;
@@ -428,13 +506,33 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
                         }
                     }
                 }
+                if down[c] < 0 && to_sea[c] != usize::MAX {
+                    down[c] = to_sea[c] as i64;
+                }
                 break;
             }
             if g.cell(r) != c {
-                down[c] = g.cell(r) as i64;
+                // the stream leaves the cell (by land, or into a neighbour's
+                // tidewater). A cell with more water in its own tideway than
+                // in its largest stream goes with the tide; else with the stream
+                down[c] = if to_sea[c] != usize::MAX && tideway[c] >= wt.flow[m] { to_sea[c] as i64 } else { g.cell(r) as i64 };
                 break;
             }
             cur = r;
+        }
+    }
+    // a cell's water is then its tideway where that is the bigger: no cell runs
+    // into one with less (the stream that reaches the tide is counted in the
+    // tideway it reaches, and a tideway only gathers on its way out), so `down`
+    // still has no loops
+    for &c in &tidal {
+        if tideway[c] > lf.discharge[c] as f64 {
+            lf.discharge[c] = tideway[c] as f32;
+        }
+        acc[c] = acc[c].max(tideway_area[c] / k2);
+        lf.estuary[c] = tideway[c] >= P.river_flow;
+        if down[c] < 0 && to_sea[c] != usize::MAX {
+            down[c] = to_sea[c] as i64; // a cell that is all tidewater and shore
         }
     }
     mouth_of.sort_unstable();
@@ -460,10 +558,15 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
     let coast: Vec<bool> = (0..N).map(|c| land[c] && near(&|n| !land[n] && !lake[n], c)).collect();
     lf.shore = (0..N).map(|c| land[c] && near(&|n| lake[n], c)).collect();
     // a river is a cell with flow enough; boats use it where it is big and slack,
-    // and a cell with a good part under a lake
+    // on the tideway below it (which is level), and on a cell with a good part
+    // under a lake
     let river: Vec<bool> = (0..N).map(|c| land[c] && (lf.discharge[c] as f64 >= P.river_flow || lf.lake_share[c] >= 0.25)).collect();
-    let navigable: Vec<bool> =
-        (0..N).map(|c| land[c] && ((lf.discharge[c] as f64 >= P.nav_flow && gradient[c] <= P.nav_slope) || lf.lake_share[c] >= 0.25)).collect();
+    let navigable: Vec<bool> = (0..N)
+        .map(|c| {
+            let slack = main[c] != usize::MAX && wt.flow[main[c]] >= P.nav_flow && gradient[c] <= P.nav_slope;
+            land[c] && (slack || tideway[c] >= P.nav_flow || lf.lake_share[c] >= 0.25)
+        })
+        .collect();
 
     // the resource fields
     let jitter: Vec<f64> = (0..N).map(|c| fbm01((c % W) as f64 / 4.0, (c / W) as f64 / 4.0, d.seeds[2] ^ 0x717, 2, 0.5)).collect();
@@ -524,11 +627,14 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
     world.jitter = jitter;
 
     // town sites: where towns really grew
-    let mut up_rivers = vec![0u8; N];
+    let (mut up_rivers, mut up_tide) = (vec![0u8; N], vec![0u8; N]);
     for c in 0..N {
         let dn = world.down[c];
         if world.land[c] && world.river[c] && dn >= 0 && world.land[dn as usize] {
             up_rivers[dn as usize] += 1;
+            if lf.estuary[c] {
+                up_tide[dn as usize] += 1;
+            }
         }
     }
     for c in 0..N {
@@ -537,9 +643,14 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         }
         let dn = world.down[c];
         let (mut kind, mut s) = (SITE_NONE, 0.0f64);
-        if world.river[c] && dn >= 0 && !world.land[dn as usize] && !lake[dn as usize] {
+        // the head of an estuary: the innermost cell of a river's tideway, or
+        // the last cell of a river that runs straight out into the open sea
+        let head = if lf.estuary[c] { up_tide[c] == 0 } else { world.river[c] && dn >= 0 && !world.land[dn as usize] && !lake[dn as usize] };
+        if head {
+            // the bigger the river, the better the place: a small river's
+            // head counts for less than a confluence, a great one's for most
             kind = SITE_ESTUARY;
-            s = 0.6 + 0.4 * (lf.discharge[c] as f64 / P.nav_flow).min(1.0);
+            s = 0.3 + 0.6 * (lf.discharge[c] as f64 / (3.0 * P.nav_flow)).min(1.0);
         }
         if up_rivers[c] >= 2 && world.navigable[c] && s < 0.5 {
             kind = SITE_CONFLUENCE;
@@ -549,8 +660,8 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         // level with the ground along the other axis
         let (y, x) = ((c / W) as isize, (c % W) as isize);
         if s < 0.5 && x >= 4 && y >= 4 && x + 4 < W as isize && y + 4 < H as isize {
-            let hm = |dy: isize, dx8: isize| world.h[((y + dy) * W as isize + x + dx8) as usize] * P.h_ref;
-            let here = world.h[c] * P.h_ref;
+            let hm = |dy: isize, dx8: isize| world.h[((y + dy) * W as isize + x + dx8) as usize] * h_ref;
+            let here = world.h[c] * h_ref;
             for (dy, dx8) in [(0isize, 1isize), (1, 0), (1, 1), (1, -1)] {
                 let walls = hm(3 * dy, 3 * dx8).min(hm(-3 * dy, -3 * dx8)) - here;
                 let along = hm(3 * dx8, -3 * dy).max(hm(-3 * dx8, 3 * dy)) - here;
@@ -648,7 +759,7 @@ fn i32_bytes(v: &[i32]) -> Vec<u8> {
 /// lake L, else the river it joins). Oxbows likewise: `oxbow_start`, `oxbow_xy`,
 /// and `oxbow_width`, `oxbow_level` by oxbow.
 ///
-/// Cells, `[H, W]`: `land_lakecell`, `land_shore`, `land_site_kind` (uint8);
+/// Cells, `[H, W]`: `land_lakecell`, `land_shore`, `land_estuary`, `land_site_kind` (uint8);
 /// `land_basin`, `land_stream` (int32); `land_lake_share`, `land_rain`,
 /// `land_discharge`, `land_power`, `land_floodplain`, `land_marsh`,
 /// `land_wetness`, `land_slope`, `land_relief`, `land_site` (float32); and
@@ -707,6 +818,7 @@ pub fn static_arrays(lf: &Landform, W: usize, H: usize) -> Vec<(String, &'static
     let flags = |v: &[bool]| v.iter().map(|&b| b as u8).collect::<Vec<u8>>();
     out.push(("land_lakecell".into(), "uint8", cells.clone(), flags(&lf.lake)));
     out.push(("land_shore".into(), "uint8", cells.clone(), flags(&lf.shore)));
+    out.push(("land_estuary".into(), "uint8", cells.clone(), flags(&lf.estuary)));
     out.push(("land_site_kind".into(), "uint8", cells.clone(), lf.site_kind.clone()));
     out.push(("land_basin".into(), "int32", cells.clone(), i32_bytes(&lf.basin)));
     out.push(("land_stream".into(), "int32", cells.clone(), i32_bytes(&lf.stream)));

@@ -52,7 +52,8 @@ pub struct LandParams {
     pub creep: f64,
     /// Steepest slope rock holds before it slides.
     pub max_slope: f64,
-    /// Each seed looks for 2 upland lakes and up to this many more.
+    /// The most upland lakes an island looks for: each seed looks for 2 or
+    /// more, up to this many (0 for none).
     pub upland_lakes: usize,
     /// Chance that an island has a large lowland lake.
     pub lowland_lake: f64,
@@ -85,7 +86,7 @@ impl Default for LandParams {
             deposition: 0.6,
             creep: 0.06,
             max_slope: 0.55,
-            upland_lakes: 4,
+            upland_lakes: 5,
             lowland_lake: 0.35,
             rain: 900.0,
             river_flow: 5.0,
@@ -471,7 +472,9 @@ pub fn draw_design(rng: &mut Rng, W: usize, H: usize, P: &LandParams) -> Design 
         d.basins.push(Blob { x, y, sx: uniform(rng, 7.0, 11.0), sy: uniform(rng, 5.0, 8.0), ang: uniform(rng, 0.0, PI), k: 1.0 });
     }
     d.lowland_lake = random(rng) < P.lowland_lake;
-    d.upland_lakes = 2 + ((random(rng) * P.upland_lakes.max(1) as f64) as usize).min(P.upland_lakes.max(1) - 1);
+    // (the draw is made whatever the number, so the stream stays in step)
+    let more = P.upland_lakes.saturating_sub(1).max(1);
+    d.upland_lakes = (2 + ((random(rng) * more as f64) as usize).min(more - 1)).min(P.upland_lakes);
     // coalfields on the belt's flanks, lying along it; ore in the belt itself
     for _ in 0..4 {
         let t = uniform(rng, 0.12, 0.88);

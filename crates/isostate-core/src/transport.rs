@@ -93,6 +93,14 @@ pub fn build_graph(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], 
             }
             if both_sea {
                 cost = SEA_COST * step;
+                // land: a lake is not an arm of the sea. Where a lake cell and
+                // a sea cell lie side by side there is a bar of land between
+                // them, and a boat's load is carried over it as over a beach
+                if let Some(lf) = &world.landform {
+                    if lf.lake[a] != lf.lake[b] {
+                        cost = BEACH_COST;
+                    }
+                }
             }
             if !both_land && !both_sea {
                 let landside = if world.land[a] { a } else { b };
