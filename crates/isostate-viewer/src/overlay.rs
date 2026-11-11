@@ -424,6 +424,8 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize) -> Optio
     let town = market(r, k, c);
     Some(match kind {
         Overlay::Rent => match rent_year(r, k, c)? {
+            // the record's scale stops at its top step, which the middle of a town reaches
+            v if r.rent[k * r.n + c] == u8::MAX => format!("Rent: the ground of this square earns {} a year or more.", coin(round_sig(v))),
             v if v > 0.0 => format!("Rent: the ground of this square earns about {} a year.", coin(round_sig(v))),
             _ => "Rent: the ground of this square earns nothing.".to_string(),
         },
@@ -769,6 +771,8 @@ mod tests {
         assert_eq!(said(&r, 0, 0, Overlay::Rent, 0), None);
         // 12 months of the record's middle value: 10^(128/255*6 - 3) is about 1.03 a month
         assert_eq!(said(&r, 0, 2, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns about \u{00a3}12.0 a year.");
+        // the record's top step is a floor, not a figure
+        assert_eq!(said(&r, 0, 3, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns \u{00a3}12k a year or more.");
         assert_eq!(said(&r, 0, 2, Overlay::Areas, 0).unwrap(), "Market: it buys and sells at Ashby, one of 2 squares that do.");
         assert_eq!(said(&r, 0, 1, Overlay::Reach, 0).unwrap(), "Way to market: Ashby's market is here.");
         assert_eq!(said(&r, 0, 2, Overlay::Reach, 0).unwrap(), "Way to market: Ashby is as far as 6.0 km of flat open country.");
