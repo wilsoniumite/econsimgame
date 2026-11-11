@@ -448,5 +448,6 @@ One line each as they arrive: the name, its page, its switch.
   island has hundreds of works of every size instead of thousands of small ones.
 - **Town ground that is kept**: [towns.md](towns.md), `towns.enabled`. A town
   keeps the cells it builds on and grows outward from them along its roads,
-  taking in the works beside it, so its ground is three or four times as wide
-  in 1900 as in 1750 and a cell that joins a town stays.
+  taking in the works beside it, so the island's town ground is three times as
+  wide in 1900 as in 1750 (five times beside the game's other rules) and a
+  cell that joins a town stays.
