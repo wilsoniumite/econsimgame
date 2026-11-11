@@ -168,13 +168,13 @@ pub fn new_game_args(args: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use isostate_core::save::{Given, Order, Rules};
+    use isostate_core::save::{Given, Order, RulesId};
 
     fn save(started: u64, year: i64) -> Save {
         Save {
             format: 1,
             version: "0.1.0".into(),
-            rules: Rules { name: "default".into(), fingerprint: "0".into() },
+            rules: RulesId { name: "game".into(), fingerprint: "0".into() },
             seed: 7,
             families: 6,
             started,

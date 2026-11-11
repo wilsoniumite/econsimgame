@@ -191,7 +191,8 @@ impl Board {
 /// `advance` more, to start later), then the simulation moves to its own
 /// thread. With a save to go on from (one named, or the island's autosave when
 /// nothing else was asked for) its years are played again first, with the
-/// orders in it.
+/// orders in it. A new game is played under the game's rules (`game_params`,
+/// `game_content`), not the port's; a saved one under the rules it names.
 pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let t0 = std::time::Instant::now();
     let from = match &o.load {
@@ -212,7 +213,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let mut resumed = None;
     let mut game = match &from {
         Some((save, file)) => {
-            let years = (save.year - iso::default_content().start_year + 1).max(0);
+            let years = (save.year - save.played_under().content().start_year + 1).max(0);
             eprintln!(
                 "going on with the {} family's game on island {} ({} families), saved {} in {}: {}",
                 save.family,

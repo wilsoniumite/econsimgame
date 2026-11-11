@@ -23,9 +23,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::{DEFAULT_CONTENT_TOML, default_content};
 use crate::families::{self, Choice, Group, Posting, Stance};
-use crate::params::{Params, default_params};
+use crate::params::{Params, Rules};
 use crate::sim::{self, Sim};
 
 /// The layout of the file. A reader refuses a later one.
@@ -120,27 +119,32 @@ pub struct Given {
     pub order: Order,
 }
 
-/// Which rules a game is played under.
+/// Which rules a game is played under, as a save names them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Rules {
+pub struct RulesId {
+    /// "game" or "port" (`params::Rules`).
     pub name: String,
     /// A fingerprint of every number of the rules (the parameters and the
-    /// content). It does not see changes to the code; `Save::check` does.
+    /// content), so a mechanism added or retuned since the save shows. It does
+    /// not see changes to the code; `Save::check` does.
     pub fingerprint: String,
 }
 
-/// The rules every game is played under today: the default parameters and the
-/// content shipped with the repository.
-pub fn rules() -> Rules {
+/// The rules as a save names them, with their numbers as they are today.
+pub fn rules_id(rules: Rules) -> RulesId {
     let mut h = Fnv::new();
-    h.bytes(serde_json::to_string(&default_params()).unwrap_or_default().as_bytes());
-    h.bytes(DEFAULT_CONTENT_TOML.as_bytes());
-    Rules { name: "default".to_string(), fingerprint: h.hex() }
+    h.bytes(serde_json::to_string(&rules.params()).unwrap_or_default().as_bytes());
+    // the content has no serialised form, but it prints; its one table with
+    // no order of its own (the goods by name) is left out
+    let mut content = rules.content();
+    content.good_index.clear();
+    h.bytes(format!("{content:?}").as_bytes());
+    RulesId { name: rules.as_str().to_string(), fingerprint: h.hex() }
 }
 
 /// The parameters of a game on island `seed` with `families` families.
-pub fn params(seed: u64, families: usize) -> Params {
-    let mut P = default_params();
+pub fn params(rules: Rules, seed: u64, families: usize) -> Params {
+    let mut P = rules.params();
     P.seed = seed;
     P.n_families = families.max(1);
     P
@@ -150,6 +154,8 @@ pub fn params(seed: u64, families: usize) -> Params {
 #[derive(Clone, Debug)]
 pub struct Game {
     pub sim: Sim,
+    /// The rules it is played under: the game's, unless a save says the port's.
+    pub rules: Rules,
     pub orders: Vec<Given>,
     /// When the game began, in seconds since 1970. It tells one game on an
     /// island from another, so a new game does not write over an old one unseen.
@@ -157,9 +163,14 @@ pub struct Game {
 }
 
 impl Game {
-    /// A new game, before its first year.
+    /// A new game under the game's rules, before its first year.
     pub fn new(seed: u64, families: usize, started: u64) -> Game {
-        Game { sim: sim::start(&params(seed, families), default_content()), orders: Vec::new(), started }
+        Game::under(Rules::Game, seed, families, started)
+    }
+
+    /// A new game under these rules.
+    pub fn under(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
+        Game { sim: sim::start(&params(rules, seed, families), rules.content()), rules, orders: Vec::new(), started }
     }
 
     /// The last year played (the year before the first, if none has been).
@@ -190,7 +201,7 @@ impl Game {
         Save {
             format: FORMAT,
             version: env!("CARGO_PKG_VERSION").to_string(),
-            rules: rules(),
+            rules: rules_id(self.rules),
             seed: self.sim.params.seed,
             families: self.sim.params.n_families,
             started: self.started,
@@ -211,7 +222,7 @@ pub struct Save {
     pub format: u32,
     /// The version of this crate that wrote it.
     pub version: String,
-    pub rules: Rules,
+    pub rules: RulesId,
     pub seed: u64,
     pub families: usize,
     pub started: u64,
@@ -273,9 +284,15 @@ impl Save {
         serde_json::from_value(value).map_err(|e| format!("not a saved game: {e}"))
     }
 
+    /// The rules it was played under. A name this version does not know is
+    /// taken for the game's, which every game a player starts is under.
+    pub fn played_under(&self) -> Rules {
+        Rules::parse(&self.rules.name).unwrap_or(Rules::Game)
+    }
+
     /// Whether it was written under the rules of today, by this version.
     pub fn same_rules(&self) -> bool {
-        self.rules == rules() && self.version == env!("CARGO_PKG_VERSION")
+        self.rules == rules_id(self.played_under()) && self.version == env!("CARGO_PKG_VERSION")
     }
 }
 
@@ -301,7 +318,7 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     if save.format > FORMAT {
         return Err(format!("saved by a later version of the game (layout {}; this one reads up to {FORMAT})", save.format));
     }
-    let mut game = Game::new(save.seed, save.families, save.started);
+    let mut game = Game::under(save.played_under(), save.seed, save.families, save.started);
     let mut refused = Vec::new();
     let mut next = 0;
     let until = save.year.min(game.sim.end_year);

@@ -300,6 +300,14 @@ pub fn default_content() -> Content {
     content_from_str(DEFAULT_CONTENT_TOML).expect("embedded data/content.toml is valid")
 }
 
+/// The content a live game is played with: the port's goods, methods and techs,
+/// plus whatever a mechanism that is not in the Python needs (a new good, a new
+/// method). Each such mechanism makes its additions here and nowhere in
+/// `default_content`, which stays the port. For now the two are the same.
+pub fn game_content() -> Content {
+    default_content()
+}
+
 pub fn tech_index(c: &Content, name: &str) -> usize {
     c.tech_name.iter().position(|n| n == name).unwrap_or_else(|| panic!("unknown tech {name:?}"))
 }

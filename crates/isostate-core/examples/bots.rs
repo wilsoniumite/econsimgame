@@ -3,7 +3,12 @@
 //! `post_member`, `set_stance`, `move_seat`, `site_options`, `found_works`,
 //! `buy_land`, `family_report`, and the `families::prospects` hint).
 //!
-//!     cargo run -p isostate-core --release --example bots [SEED ...]
+//!     cargo run -p isostate-core --release --example bots [--rules port|game] [SEED ...]
+//!
+//! The bots play under the game's rules (`game_params`, `game_content`), as a
+//! player does; `--rules port` plays them on the port of the Python instead.
+//! The argument parsing is that small: `--rules X` anywhere, every other
+//! argument a seed.
 //!
 //! Strategies, each over a whole run with six families:
 //!
@@ -202,12 +207,12 @@ fn best_works_cost(s: &Sim) -> Option<f64> {
     best.map(|b| b.1)
 }
 
-fn play(seed: u64, bot: Bot) -> Outcome {
+fn play(seed: u64, bot: Bot, rules: Rules) -> Outcome {
     let t0 = Instant::now();
-    let mut P = default_params();
+    let mut P = rules.params();
     P.seed = seed;
     P.n_families = 6;
-    let mut s = sim::start(&P, default_content());
+    let mut s = sim::start(&P, rules.content());
     let mut out = Outcome::default();
     let mut founded: Vec<usize> = Vec::new();
     let (mut spent, mut earned) = (0.0, 0.0);
@@ -260,16 +265,26 @@ fn money(x: f64) -> String {
 }
 
 fn main() {
-    let seeds: Vec<u64> = {
-        let v: Vec<u64> = std::env::args().skip(1).map(|a| a.parse().expect("seed")).collect();
-        if v.is_empty() { vec![1, 2, 3, 7] } else { v }
-    };
+    let mut rules = Rules::Game;
+    let mut seeds: Vec<u64> = Vec::new();
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--rules" {
+            rules = args.next().as_deref().and_then(Rules::parse).expect("--rules port or --rules game");
+        } else {
+            seeds.push(a.parse().expect("seed"));
+        }
+    }
+    if seeds.is_empty() {
+        seeds = vec![1, 2, 3, 7];
+    }
+    println!("rules: {}\n", rules.as_str());
     let bots = [Bot::Passive, Bot::Landlord, Bot::Founder, Bot::Thoughtful];
     println!("| seed | strategy | 1775 | 1800 | 1850 | 1900 | richest rival 1900 | rank 1775/1800/1850/1900 | saved 1750s | cash for a works | works founded, standing | trades | branches | run |");
     println!("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for &seed in &seeds {
         for &bot in &bots {
-            let o = play(seed, bot);
+            let o = play(seed, bot, rules);
             let ranks: Vec<String> = o.rank.iter().map(|r| r.to_string()).collect();
             println!(
                 "| {seed} | {} | {} | {} | {} | {} | {} | {} | {:.0}% | {} | {}, {} | {} | {} | {:.0} s |",

@@ -209,6 +209,25 @@ fn a_save_the_rules_no_longer_agree_with_says_so() {
     old.rules.fingerprint = "0000000000000000".into();
     assert!(!old.same_rules());
 
+    // a game is played under the game's rules and its save says so; the
+    // fingerprint is of the rules' numbers, and the same each time it is taken
+    assert_eq!(saved.rules.name, "game");
+    assert_eq!(saved.rules, save::rules_id(Rules::Game));
+    assert_eq!(save::rules_id(Rules::Game), save::rules_id(Rules::Game));
+    assert_eq!(saved.played_under(), Rules::Game);
+    // a save that names the port is played again under the port
+    let mut port = Game::under(Rules::Port, 7, 3, 5);
+    play(&mut port, 2);
+    let port_saved = port.save(0);
+    assert_eq!(port_saved.rules.name, "port");
+    let d = save::load(&port_saved, |_| {}).unwrap();
+    assert_eq!((d.game.rules, d.drifted, d.refused.len()), (Rules::Port, false, 0));
+    // rules this version has never heard of are taken for the game's, and are not today's
+    let mut odd_rules = saved.clone();
+    odd_rules.rules.name = "house".into();
+    assert_eq!(odd_rules.played_under(), Rules::Game);
+    assert!(!odd_rules.same_rules());
+
     // a later layout is refused by name; rubbish is not a save
     let later = saved.to_text().replace("\"format\": 1,", "\"format\": 2,");
     assert!(Save::from_text(&later).unwrap_err().contains("later version"));
