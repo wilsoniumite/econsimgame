@@ -124,7 +124,7 @@ what one thing looks like.
 | `palette.rs` | `Palette`: the named colours, read from the look file |
 | `hash.rs` | `hash2`, `Seed` |
 | `site.rs` | `Site` (where a thing stands), `Model` (the four buffers) |
-| `parts.rs` | what houses share: `gabled`, `windows`, `chimney`, `smoking_chimney` |
+| `parts.rs` | `gabled`, a plain building (the barns and sheds of a farmstead), and `STOREY`, the storey of what is neither a house nor a works |
 | `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; `kit.rs`, the parts they are put together from; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
 | `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit` |
 | `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the barn, a cart shed, a rick |

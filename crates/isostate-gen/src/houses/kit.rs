@@ -1122,7 +1122,7 @@ mod tests {
         // a wing behind a main range, their eaves level: the wing's ridge runs on to the main slope
         let pal = Palette::standard();
         let site = Site::level(Vec3::ZERO, 0.0);
-        let main = Range::rect(-0.03, 0.03, -0.012, 0.012);
+        // (the main range is 0.024 deep about the origin)
         let (h, rise, wing_rise) = (0.024, 0.012, 0.007);
         let wing = Range::rect_across(-0.007, 0.007, -0.03, -0.012);
         let run = 0.012 * wing_rise / rise;
@@ -1133,7 +1133,6 @@ mod tests {
         let reach = b.pos.iter().filter(|p| (p[1] - (h + wing_rise + 0.0005)).abs() < 1e-6).map(|p| p[2]).fold(f32::MIN, f32::max);
         let slope_at = |z: f32| h + rise * (z + 0.012) / 0.012;
         assert!((slope_at(reach) - (h + wing_rise)).abs() < 1e-5, "the ridge ends at {reach}");
-        let _ = main;
     }
 
     #[test]

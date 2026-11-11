@@ -241,8 +241,9 @@ rick = "#d8b55e"
 # second also on the terraces
 house = "#626e86"
 town = "#55617a"
-# the thick sandstone slates of the hills
-stone = "#a59c8a"
+# the thick sandstone slates of the hills, weathered darker than the stone of
+# the walls under them, so that a hill town's roofs read apart from its walls
+stone = "#82786a"
 # on works, sheds and engine houses
 works = "#4a5468"
 upland_farm = "#5b6577"

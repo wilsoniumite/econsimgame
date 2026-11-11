@@ -86,16 +86,29 @@ struct Fabric {
     pub yard_wall: Rgba,
 }
 
+/// In the hills at least this share of the houses show their stone; the rest are limewashed over it.
+const UPLAND_BARE: f32 = 0.6;
+
 impl Fabric {
-    /// `brick_share`: how many of the lowland's houses of the brick eras are of brick (the rest are washed).
+    /// `brick_early`, `brick_late`: how many of the lowland's houses of this
+    /// kind are of brick, before the brick years and in them (the rest are
+    /// washed). In the hills stone stands where brick would, and for
+    /// `UPLAND_BARE` of the houses at the least.
     pub fn of(pal: &Palette, era: Era, upland: bool, brick_early: f32, brick_late: f32, seed: Seed) -> Fabric {
         let (frame, sill) = (*pal.walls.window_frame, *pal.stone.sill);
+        let share = if era >= Era::Brick { brick_late } else { brick_early };
         if upland {
             // the hills build in their own stone, to the ground
-            let col = pick(&pal.stone.upland_farm, seed.v);
-            return Fabric { wall: Wall { col, plinth: None, frame, sill }, timber: false, brick: false, stack: shade(col, 0.9), yard_wall: *pal.stone.garden_wall };
+            let stone = pick(&pal.stone.upland_farm, seed.v);
+            let (stack, yard_wall) = (shade(stone, 0.9), *pal.stone.garden_wall);
+            if seed.pick(1) < share.max(UPLAND_BARE) {
+                return Fabric { wall: Wall { col: stone, plinth: None, frame, sill }, timber: false, brick: false, stack, yard_wall };
+            }
+            // a coat of limewash over the rubble, white or cream, down to a foot of bare stone: a
+            // town of nothing but stone under stone slates is one grey from the play distance
+            let col = if seed.pick(2) < 0.6 { *pal.walls.limewash } else { *pal.walls.cream };
+            return Fabric { wall: Wall { col, plinth: Some(shade(stone, 0.86)), frame, sill }, timber: false, brick: false, stack, yard_wall };
         }
-        let share = if era >= Era::Brick { brick_late } else { brick_early };
         if seed.pick(1) < share {
             let col = pal.brick.terrace(seed.u);
             return Fabric { wall: Wall { col, plinth: None, frame, sill }, timber: false, brick: true, stack: *pal.brick.chimney, yard_wall: *pal.brick.dark };
@@ -169,4 +182,27 @@ fn hearth_smoke(smoke: &mut MeshBuf, top: Vec3, seed: Seed, pal: &Palette) {
 fn garden_tree(green: &mut Greenery, k: &Kit, site: &Site, x: f32, z: f32, size: f32, seed: Seed, pal: &Palette) {
     let p = k.pt(x, k.ground(x, z), z);
     hedge_tree(green, &site.moved(p, 0.0), size, seed.pick(17) * 3.0, seed.pick(18) * 6.0, pal);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hills_build_in_stone_and_limewash_some_of_it() {
+        let pal = Palette::standard();
+        let of_stone = |f: &Fabric| pal.stone.upland_farm.iter().any(|c| **c == f.wall.col);
+        // houses that stand apart: most show their stone, the rest are white or cream on a foot of stone
+        let houses: Vec<Fabric> = (0..400).map(|n| Fabric::of(&pal, Era::Georgian, true, 0.0, 0.6, Seed::of(n))).collect();
+        let bare = houses.iter().filter(|f| of_stone(f)).count();
+        assert!((200..290).contains(&bare), "{bare} of 400 show their stone");
+        for f in houses.iter().filter(|f| !of_stone(f)) {
+            assert!(f.wall.col == *pal.walls.limewash || f.wall.col == *pal.walls.cream);
+            assert!(f.wall.plinth.is_some());
+        }
+        // none is framed or of brick, washed or not, and their stacks are of stone
+        assert!(houses.iter().all(|f| !f.timber && !f.brick && f.stack != *pal.brick.chimney));
+        // a row, which in the lowland is all of brick, is all of stone
+        assert!((0..400).all(|n| of_stone(&Fabric::of(&pal, Era::Brick, true, 1.0, 1.0, Seed::of(n)))));
+    }
 }
