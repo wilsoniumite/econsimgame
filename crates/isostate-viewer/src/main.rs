@@ -546,6 +546,15 @@ fn main() {
         });
     }
     let headless = !views.is_empty();
+    // a picture whose directory is not there would be drawn and then not written
+    for v in &views {
+        if let Some(parent) = std::path::Path::new(&v.path).parent().filter(|p| !p.as_os_str().is_empty()) {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("cannot make {}: {e}", parent.display());
+                std::process::exit(1);
+            }
+        }
+    }
     if headless {
         app.add_plugins(
             DefaultPlugins
