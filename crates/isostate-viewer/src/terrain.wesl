@@ -43,6 +43,81 @@ struct PatchworkParams {
 // enclosed, less 1750 (0 if they never were open)
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_cells: texture_2d<f32>;
 
+// The land's colours, from the look file (look.rs Land, in the same order), in
+// sRGB as they are mixed here.
+struct LandPaint {
+    soil: vec4<f32>,
+    soil_winter: vec4<f32>,
+    stubble: vec4<f32>,
+    corn_green: vec4<f32>,
+    wheat_ripe: vec4<f32>,
+    barley_ripe: vec4<f32>,
+    oats_ripe: vec4<f32>,
+    roots: vec4<f32>,
+    roots_winter: vec4<f32>,
+    hay: vec4<f32>,
+    hay_spring: vec4<f32>,
+    hay_tall: vec4<f32>,
+    hay_drying: vec4<f32>,
+    hay_winter: vec4<f32>,
+    fallow_weeds: vec4<f32>,
+    pasture: vec4<f32>,
+    pasture_light: vec4<f32>,
+    pasture_deep: vec4<f32>,
+    pasture_pale: vec4<f32>,
+    grass_dry: vec4<f32>,
+    grass_autumn: vec4<f32>,
+    grass_winter: vec4<f32>,
+    balk: vec4<f32>,
+    headland: vec4<f32>,
+    water_meadow: vec4<f32>,
+    rock: vec4<f32>,
+    snow: vec4<f32>,
+    frost: vec4<f32>,
+    hedge: vec4<f32>,
+    hedge_autumn: vec4<f32>,
+    hedge_winter: vec4<f32>,
+    field_wall: vec4<f32>,
+    wood: vec4<f32>,
+    wood_shade: vec4<f32>,
+    wood_spring: vec4<f32>,
+    wood_autumn: vec4<f32>,
+    wood_winter: vec4<f32>,
+    heath: vec4<f32>,
+    heath_hill: vec4<f32>,
+    heath_mountain: vec4<f32>,
+    heath_brown: vec4<f32>,
+    heather_drift: vec4<f32>,
+    heather_drift_bloom: vec4<f32>,
+    heather: vec4<f32>,
+    heather_bloom: vec4<f32>,
+    gorse: vec4<f32>,
+    gorse_flower: vec4<f32>,
+    town_earth: vec4<f32>,
+    garden: vec4<f32>,
+    garden_dug: vec4<f32>,
+    cobbles: vec4<f32>,
+    town_far: vec4<f32>,
+    yard: vec4<f32>,
+    yard_cinder: vec4<f32>,
+    yard_gravel: vec4<f32>,
+    yard_lane: vec4<f32>,
+    derelict: vec4<f32>,
+    derelict_weeds: vec4<f32>,
+    quarry: vec4<f32>,
+    clay_pit: vec4<f32>,
+    iron_mine: vec4<f32>,
+    colliery: vec4<f32>,
+    seabed_sand: vec4<f32>,
+    seabed_shelf: vec4<f32>,
+    seabed_deep: vec4<f32>,
+    beach_wet: vec4<f32>,
+    beach: vec4<f32>,
+    shingle: vec4<f32>,
+}
+
+@group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
+
 // display classes, as in world.rs
 const SEA: u32 = 0u;
 const FARM: u32 = 1u;
@@ -275,10 +350,6 @@ fn field_key(bl: Block, c: Cut) -> u32 {
 
 // ------------------------------------------------------------------ helpers
 
-fn hex(c: u32) -> vec3<f32> {
-    return vec3<f32>(f32((c >> 16u) & 255u), f32((c >> 8u) & 255u), f32(c & 255u)) / 255.0;
-}
-
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let lo = c / 12.92;
     let hi = pow((c + 0.055) / 1.055, vec3<f32>(2.4));
@@ -381,9 +452,9 @@ struct Look {
 // barley, barley, oats, green crop, green crop, hay, fallow, wheat) at phase ph
 // of its own year; k is the field's own random number.
 fn crop_look(crop: u32, ph: f32, k: f32) -> Look {
-    let soil = mix(hex(0xb08455u), hex(0x9a7651u), 0.6 * winter(ph));
-    let stubble = hex(0xdccb98u);
-    var canopy = hex(0xa4c660u);
+    let soil = mix(paint.soil.rgb, paint.soil_winter.rgb, 0.6 * winter(ph));
+    let stubble = paint.stubble.rgb;
+    var canopy = paint.corn_green.rgb;
     var cover = 0.0;
     var stub = 0.0;
     var rows = 0.0;
@@ -397,7 +468,7 @@ fn crop_look(crop: u32, ph: f32, k: f32) -> Look {
                 let cut = smoothstep(harvest - 0.015, harvest, ph);
                 cover = mix(0.3, 1.0, smoothstep(0.1, 0.36, ph)) * (1.0 - cut);
                 stub = cut;
-                canopy = mix(canopy, hex(0xe3c25eu), smoothstep(0.42, 0.53, ph));
+                canopy = mix(canopy, paint.wheat_ripe.rgb, smoothstep(0.42, 0.53, ph));
             } else {
                 // stubble, then the plough, then next year's shoots
                 stub = 1.0 - smoothstep(plough, plough + 0.03, ph);
@@ -418,14 +489,14 @@ fn crop_look(crop: u32, ph: f32, k: f32) -> Look {
             } else if (ph >= harvest) {
                 stub = 1.0 - smoothstep(plough, plough + 0.03, ph);
             }
-            let ripe = select(hex(0xebd891u), hex(0xd8c779u), crop == 4u);
+            let ripe = select(paint.barley_ripe.rgb, paint.oats_ripe.rgb, crop == 4u);
             canopy = mix(canopy, ripe, smoothstep(0.44, 0.54, ph));
             rows = mix(0.07, 0.02, cover);
         }
         case 5u, 6u: {
             // turnips and clover: green all year, darker and grazed in winter
             cover = 0.96 - 0.3 * winter(ph);
-            canopy = mix(hex(0x9cc05au), hex(0x7f9d5bu), winter(ph));
+            canopy = mix(paint.roots.rgb, paint.roots_winter.rgb, winter(ph));
             rows = 0.045;
         }
         case 7u: {
@@ -433,17 +504,17 @@ fn crop_look(crop: u32, ph: f32, k: f32) -> Look {
             // windrows to dry, green again by autumn
             let cut = 0.5 + 0.04 * k;
             cover = 1.0;
-            var grass = mix(hex(0x9bc35eu), hex(0xa8cc66u), bell(ph, 0.32, 0.12));
-            grass = mix(grass, hex(0xb8c46au), smoothstep(0.38, 0.48, ph) * (1.0 - smoothstep(cut, cut + 0.01, ph)));
+            var grass = mix(paint.hay.rgb, paint.hay_spring.rgb, bell(ph, 0.32, 0.12));
+            grass = mix(grass, paint.hay_tall.rgb, smoothstep(0.38, 0.48, ph) * (1.0 - smoothstep(cut, cut + 0.01, ph)));
             let drying = smoothstep(cut, cut + 0.01, ph) * (1.0 - smoothstep(cut + 0.08, cut + 0.2, ph));
-            canopy = mix(grass, hex(0xcdbb69u), drying);
-            canopy = mix(canopy, hex(0x8d9a6au), 0.5 * winter(ph));
+            canopy = mix(grass, paint.hay_drying.rgb, drying);
+            canopy = mix(canopy, paint.hay_winter.rgb, 0.5 * winter(ph));
             rows = 0.06 * drying;
         }
         default: {
             // fallow: bare furrows, a little green with weeds in summer
             cover = 0.25 * bell(ph, 0.58, 0.14);
-            canopy = hex(0x9aae5cu);
+            canopy = paint.fallow_weeds.rgb;
             rows = 0.07;
         }
     }
@@ -456,18 +527,18 @@ fn crop_look(crop: u32, ph: f32, k: f32) -> Look {
 fn grass_season(c0: vec3<f32>, ph: f32) -> vec3<f32> {
     var c = c0;
     c = mix(c, c * vec3<f32>(1.02, 1.06, 0.92), bell(ph, 0.33, 0.12));
-    c = mix(c, mix(c, hex(0xbdbb72u), 0.3), bell(ph, 0.67, 0.08));
-    c = mix(c, mix(c, hex(0x8f9f5au), 0.35), bell(ph, 0.84, 0.1));
-    c = mix(c, mix(c, hex(0x8a9470u), 0.55), winter(ph));
+    c = mix(c, mix(c, paint.grass_dry.rgb, 0.3), bell(ph, 0.67, 0.08));
+    c = mix(c, mix(c, paint.grass_autumn.rgb, 0.35), bell(ph, 0.84, 0.1));
+    c = mix(c, mix(c, paint.grass_winter.rgb, 0.55), winter(ph));
     return c;
 }
 
 fn meadow_look(m: u32, ph: f32) -> Look {
-    var c = hex(0x8fc15au);
+    var c = paint.pasture.rgb;
     switch m {
-        case 1u: { c = hex(0x9bcb63u); }
-        case 2u: { c = hex(0x86b851u); }
-        case 3u: { c = hex(0xa6cf71u); }
+        case 1u: { c = paint.pasture_light.rgb; }
+        case 2u: { c = paint.pasture_deep.rgb; }
+        case 3u: { c = paint.pasture_pale.rgb; }
         default: {}
     }
     return Look(grass_season(c, ph), 0.0);
@@ -529,15 +600,15 @@ fn open_field(sp: Spot, pasture: bool) -> vec3<f32> {
         let ridges = cos(TAU * fx * 3.0) * (1.0 - smoothstep(0.25, 0.5, sp.foot * 3.0 / strip));
         c *= 1.0 + (0.05 + look.rows) * ridges;
         let balk = band(min(fx, 1.0 - fx) * strip, 0.0018, sp.foot);
-        c = mix(c, hex(0x9fb565u), 0.8 * balk);
+        c = mix(c, paint.balk.rgb, 0.8 * balk);
         let lod = smoothstep(1.5, 4.0, strip / max(sp.foot, 1e-5));
         c = mix(fields_far(false, sp.ph), c, lod);
     }
     // the headland round the furlong
     let headland = band(sp.edge, 0.005, sp.foot);
-    c = mix(c, grass_season(hex(0x9cc463u), sp.ph), 0.85 * headland);
-    c = mix(c, hex(0x9b9588u), sp.rock);
-    c = mix(c, hex(0xf5f5f1u), sp.snow);
+    c = mix(c, grass_season(paint.headland.rgb, sp.ph), 0.85 * headland);
+    c = mix(c, paint.rock.rgb, sp.rock);
+    c = mix(c, paint.snow.rgb, sp.snow);
     return c;
 }
 
@@ -574,9 +645,9 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
         c *= 1.0 + 0.06 * vnoise(sp.p.x * 11.0, sp.p.y * 11.0, 83) * detail(11.0, sp.foot);
     }
     // water meadows on the valley floors: greener, with darker rushes
-    c = mix(c, hex(0x8cbf63u) * (1.0 + 0.08 * vnoise(sp.p.x * 9.0, sp.p.y * 9.0, 87)), 0.5 * sp.flood);
-    c = mix(c, hex(0x9b9588u), sp.rock);
-    c = mix(c, hex(0xf5f5f1u), sp.snow);
+    c = mix(c, paint.water_meadow.rgb * (1.0 + 0.08 * vnoise(sp.p.x * 9.0, sp.p.y * 9.0, 87)), 0.5 * sp.flood);
+    c = mix(c, paint.rock.rgb, sp.rock);
+    c = mix(c, paint.snow.rgb, sp.snow);
     // the hedge or wall: uneven along its length and bushy up close
     let along = dot(sp.p, vec2<f32>(-sp.toward.y, sp.toward.x));
     let wall = sp.terr >= 3u || (sp.terr == 2u && hash3(bitcast<u32>(bl.i), bitcast<u32>(bl.j), 181u) < 0.65);
@@ -591,15 +662,15 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
     let shadow = band(sp.edge, hw + sw, sp.foot) * shade_side;
     c *= 1.0 - 0.18 * shadow;
     let cover = band(sp.edge, hw, sp.foot);
-    var hc = hex(0x4a7533u);
-    hc = mix(hc, hex(0x6b6837u), 0.6 * bell(sp.ph, 0.84, 0.1));
-    hc = mix(hc, hex(0x575443u), 0.6 * winter(sp.ph));
+    var hc = paint.hedge.rgb;
+    hc = mix(hc, paint.hedge_autumn.rgb, 0.6 * bell(sp.ph, 0.84, 0.1));
+    hc = mix(hc, paint.hedge_winter.rgb, 0.6 * winter(sp.ph));
     // darker and lighter bushes along the hedge, which shows through snow
     hc *= 1.0 + 0.14 * vnoise(sp.p.x * 60.0, sp.p.y * 60.0, 77) * detail(60.0, sp.foot);
     if (wall) {
-        hc = hex(0xa59f92u) * (1.0 + 0.1 * vnoise(along * 80.0, 3.0, 79) * detail(80.0, sp.foot));
+        hc = paint.field_wall.rgb * (1.0 + 0.1 * vnoise(along * 80.0, 3.0, 79) * detail(80.0, sp.foot));
     }
-    hc = mix(hc, hex(0xf5f5f1u), 0.35 * sp.snow);
+    hc = mix(hc, paint.snow.rgb, 0.35 * sp.snow);
     return mix(c, hc, 0.92 * cover);
 }
 
@@ -608,35 +679,35 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
 fn wood_floor(sp: Spot) -> vec3<f32> {
     let n = vnoise(sp.p.x * 12.0, sp.p.y * 12.0, 81);
     let shade = spots(n, 0.125, 12.0 * sp.foot, detail(12.0, sp.foot), 0.4);
-    var c = mix(hex(0x4b7738u), hex(0x3f6a30u), shade);
-    c = mix(c, hex(0x5a8a3eu), 0.35 * bell(sp.ph, 0.33, 0.12));
-    c = mix(c, hex(0x7a6a3au), 0.45 * bell(sp.ph, 0.83, 0.12));
-    c = mix(c, hex(0x5b5945u), 0.5 * winter(sp.ph));
+    var c = mix(paint.wood.rgb, paint.wood_shade.rgb, shade);
+    c = mix(c, paint.wood_spring.rgb, 0.35 * bell(sp.ph, 0.33, 0.12));
+    c = mix(c, paint.wood_autumn.rgb, 0.45 * bell(sp.ph, 0.83, 0.12));
+    c = mix(c, paint.wood_winter.rgb, 0.5 * winter(sp.ph));
     return c;
 }
 
 fn heath(sp: Spot) -> vec3<f32> {
-    var base = hex(0xbcbb7eu);
+    var base = paint.heath.rgb;
     if (sp.terr == 2u) {
-        base = hex(0xaead73u);
+        base = paint.heath_hill.rgb;
     } else if (sp.terr == 3u) {
-        base = hex(0xa39d8fu);
+        base = paint.heath_mountain.rgb;
     }
     // heather flowers in late summer, gorse in spring; brown in autumn and winter
     let bloom = smoothstep(0.52, 0.6, sp.ph) * (1.0 - smoothstep(0.72, 0.8, sp.ph));
     let flower = bell(sp.ph, 0.34, 0.09);
     // soft drifts where heather grows thicker, a few hundred metres across
     let drift = smoothstep(-0.2, 0.6, vnoise(sp.p.x * 6.0 + 4.1, sp.p.y * 6.0 + 2.3, 19));
-    base = mix(base, mix(hex(0xa08f88u), hex(0xa27ca2u), bloom), (0.22 + 0.14 * bloom) * drift);
-    base = mix(base, hex(0x9c8a68u), 0.3 * max(winter(sp.ph), bell(sp.ph, 0.86, 0.1)));
+    base = mix(base, mix(paint.heather_drift.rgb, paint.heather_drift_bloom.rgb, bloom), (0.22 + 0.14 * bloom) * drift);
+    base = mix(base, paint.heath_brown.rgb, 0.3 * max(winter(sp.ph), bell(sp.ph, 0.86, 0.1)));
     // and small clumps of heather and gorse
     let n = vnoise(sp.p.x * 34.0, sp.p.y * 34.0, 17);
     let nf = 34.0 * sp.foot;
     let d = detail(34.0, sp.foot);
     let heather = spots(n, 0.433, nf, d, 0.18);
     let gorse = spots(-n, 0.58, nf, d, 0.1);
-    var c = mix(base, mix(hex(0xa58fa6u), hex(0x9a62a6u), bloom), heather * mix(0.4, 0.6, bloom));
-    c = mix(c, mix(hex(0x7d8a45u), hex(0xd9b93cu), flower), gorse * mix(0.4, 0.7, flower));
+    var c = mix(base, mix(paint.heather.rgb, paint.heather_bloom.rgb, bloom), heather * mix(0.4, 0.6, bloom));
+    c = mix(c, mix(paint.gorse.rgb, paint.gorse_flower.rgb, flower), gorse * mix(0.4, 0.7, flower));
     return c;
 }
 
@@ -654,18 +725,18 @@ fn town(sp: Spot) -> vec3<f32> {
     let plot = cut(sp.bl, sp.leaf, 7u, 9u);
     let k = hash3(field_key(sp.bl, plot), 91u, 0u);
     let garden_share = max(0.42 - 0.38 * sp.dense, 0.04);
-    var c = hex(0xc9b79du);
+    var c = paint.town_earth.rgb;
     if (k < garden_share) {
         // a garden: beds of green and dug earth
         let rows = 0.5 + 0.5 * cos(TAU * dot(sp.p, vec2<f32>(0.6, 0.8)) / 0.011);
-        c = mix(hex(0x9fae6eu), hex(0x8d9a5cu), rows * detail(90.0, sp.foot));
+        c = mix(paint.garden.rgb, paint.garden_dug.rgb, rows * detail(90.0, sp.foot));
     } else if (k < garden_share + 0.3) {
         // cobbles
-        c = hex(0xb8ad9cu) * (1.0 + 0.06 * vnoise(sp.p.x * 120.0, sp.p.y * 120.0, 97) * detail(120.0, sp.foot));
+        c = paint.cobbles.rgb * (1.0 + 0.06 * vnoise(sp.p.x * 120.0, sp.p.y * 120.0, 97) * detail(120.0, sp.foot));
     }
     // far away the plots blend into the town's average ground
     let lod = detail(18.0, sp.foot);
-    let avg = mix(hex(0xc4b398u), hex(0x9fae6eu), garden_share * 0.8);
+    let avg = mix(paint.town_far.rgb, paint.garden.rgb, garden_share * 0.8);
     c = mix(avg, c, lod);
     let edge = band(cut_edge(sp.bl, plot), 0.0016, sp.foot);
     c = mix(c, c * 0.84, edge * lod);
@@ -678,9 +749,9 @@ fn works_yard(sp: Spot) -> vec3<f32> {
     let qf = 3.5 * sp.foot;
     let id = vec2<i32>(floor(q));
     let b = hash2(id.x, id.y, 93);
-    let base = hex(0x8f857au);
-    let cinder = hex(0x786f67u);
-    let gravel = hex(0xa1998cu);
+    let base = paint.yard.rgb;
+    let cinder = paint.yard_cinder.rgb;
+    let gravel = paint.yard_gravel.rgb;
     var yard = base;
     if (b < 0.3) {
         yard = cinder;
@@ -690,14 +761,14 @@ fn works_yard(sp: Spot) -> vec3<f32> {
     let average = base * 0.42 + cinder * 0.3 + gravel * 0.28;
     var c = mix(average, yard, detail(10.0, sp.foot));
     let lane = 1.0 - (1.0 - lines(q.x, qf, 0.07)) * (1.0 - lines(q.y, qf, 0.07));
-    c = mix(c, hex(0xa69e92u), 0.8 * lane);
+    c = mix(c, paint.yard_lane.rgb, 0.8 * lane);
     return mottled(c, sp, 0.05);
 }
 
 fn derelict(sp: Spot) -> vec3<f32> {
     let n = vnoise(sp.p.x * 7.0, sp.p.y * 7.0, 97);
     let weeds = spots(n, 0.19, 7.0 * sp.foot, detail(7.0, sp.foot), 0.35);
-    return mix(hex(0x968f81u), hex(0x8f9a62u), 0.6 * weeds);
+    return mix(paint.derelict.rgb, paint.derelict_weeds.rgb, 0.6 * weeds);
 }
 
 fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
@@ -707,25 +778,25 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         case PASTURE: { c = fields(sp, true); }
         case WOOD: { c = wood_floor(sp); }
         case HEATH: { c = heath(sp); }
-        case QUARRY: { c = mottled(hex(0xc9c3b7u), sp, 0.06); }
-        case CLAYPIT: { c = mottled(hex(0xc69466u), sp, 0.08); }
-        case IRONMINE: { c = mottled(hex(0xa76c4cu), sp, 0.08); }
-        case COALMINE: { c = mottled(hex(0x4a4643u), sp, 0.12); }
+        case QUARRY: { c = mottled(paint.quarry.rgb, sp, 0.06); }
+        case CLAYPIT: { c = mottled(paint.clay_pit.rgb, sp, 0.08); }
+        case IRONMINE: { c = mottled(paint.iron_mine.rgb, sp, 0.08); }
+        case COALMINE: { c = mottled(paint.colliery.rgb, sp, 0.12); }
         case WORKS: { c = works_yard(sp); }
         case URBAN: { c = town(sp); }
         case DERELICT: { c = derelict(sp); }
         // land that lies in a sea cell: rough coastal grass
-        default: { c = hex(0xbcbb7eu); }
+        default: { c = paint.heath.rgb; }
     }
     var frost = sp.frost;
     if (cls == URBAN || cls == WORKS) {
         frost *= 0.6;
     } else if (cls != FARM && cls != PASTURE) {
         // fields() lays its own rock and snow under the hedges
-        c = mix(c, hex(0x9b9588u), sp.rock);
-        c = mix(c, hex(0xf5f5f1u), sp.snow);
+        c = mix(c, paint.rock.rgb, sp.rock);
+        c = mix(c, paint.snow.rgb, sp.snow);
     }
-    return mix(c, hex(0xdfe5e8u), frost);
+    return mix(c, paint.frost.rgb, frost);
 }
 
 fn debug_colour(cls: u32) -> vec3<f32> {
@@ -843,16 +914,16 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let wetk = clamp((-0.004 - h) / hf + 0.5, 0.0, 1.0);
     let depth_w = clamp(-h, 0.0, 1.0);
     var col = select(
-        mix(hex(0x6fa8a3u), hex(0x2f5f78u), min((depth_w - 0.12) / 0.6, 1.0)),
-        mix(hex(0xd2cd9cu), hex(0x6fa8a3u), depth_w / 0.12),
+        mix(paint.seabed_shelf.rgb, paint.seabed_deep.rgb, min((depth_w - 0.12) / 0.6, 1.0)),
+        mix(paint.seabed_sand.rgb, paint.seabed_shelf.rgb, depth_w / 0.12),
         depth_w < 0.12,
     );
     let nrm = normalize(in.world_normal);
     let slope = length(nrm.xz) / max(nrm.y, 0.05);
     if (wetk < 1.0) {
         // dry sand, darker where the sea has just been; shingle and rock on a steep shore
-        var top = mix(hex(0xcfbd8bu), hex(0xead9a3u), smoothstep(0.0, 0.012, h));
-        top = mix(top, hex(0xa49c8au), smoothstep(0.5, 1.2, slope));
+        var top = mix(paint.beach_wet.rgb, paint.beach.rgb, smoothstep(0.0, 0.012, h));
+        top = mix(top, paint.shingle.rgb, smoothstep(0.5, 1.2, slope));
         if (landk > 0.0) {
             let winter_k = winter(ph);
             var sp: Spot;

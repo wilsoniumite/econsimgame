@@ -3,7 +3,8 @@
 
 use bevy::math::Vec3;
 
-use crate::meshkit::{hex, Builder};
+use crate::look::Look;
+use crate::meshkit::Builder;
 use crate::replay::Replay;
 use crate::world::{self, Ground};
 
@@ -40,8 +41,8 @@ fn drape(g: &Ground, pts2: &[(f32, f32)], lift: f32) -> Vec<Vec3> {
 }
 
 /// The rivers: water and wet banks, lying on each river's own level (see rivers.rs).
-pub fn rivers(_r: &Replay, g: &Ground, _cen: &[(f32, f32)]) -> Builder {
-    crate::rivers::ribbons(&g.rivers)
+pub fn rivers(g: &Ground, lk: &Look) -> Builder {
+    crate::rivers::ribbons(&g.rivers, lk)
 }
 
 pub struct Nets {
@@ -79,15 +80,15 @@ pub fn road_segments(r: &Replay, k: usize) -> Vec<(usize, usize, u8)> {
     out
 }
 
-pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
-    world::timed("year nets", || year_nets_inner(r, g, cen, k))
+pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look) -> Nets {
+    world::timed("year nets", || year_nets_inner(r, g, cen, k, lk))
 }
 
-fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Nets {
+fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look) -> Nets {
     let mut roads = Builder::default();
     // the railways are graded curves with their own works (rails.rs)
-    let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g);
-    let (lane, main) = (hex(0xcdb88d), hex(0xd9c596));
+    let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g, lk);
+    let (lane, main) = (*lk.ground.lane_dust, *lk.ground.road_gravel);
     for (c, m, lv) in road_segments(r, k) {
         let pts = drape(g, &[cen[c], cen[m]], 0.01);
         roads.ribbon(&pts, if lv == 3 { 0.034 } else { 0.022 }, if lv == 3 { main } else { lane });

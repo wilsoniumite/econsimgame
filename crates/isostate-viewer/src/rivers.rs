@@ -15,7 +15,8 @@
 use bevy::math::{Vec2, Vec3};
 
 use crate::fields::smoothstep;
-use crate::meshkit::{hex, Builder};
+use crate::look::Look;
+use crate::meshkit::Builder;
 use crate::replay::Replay;
 use crate::world::{hash2, vnoise};
 
@@ -569,10 +570,10 @@ pub fn crossings(rivers: &[River], index: &WaterIndex, a: Vec2, b: Vec2) -> Vec<
 
 /// The water, and a strip of wet bank on either side, as ribbons lying on the
 /// river's own level.
-pub fn ribbons(rivers: &[River]) -> Builder {
+pub fn ribbons(rivers: &[River], lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let water = hex(0x5d9fc4);
-    let bank = hex(0x7d8a55);
+    let water = *lk.water.river;
+    let bank = *lk.water.river_bank;
     for rv in rivers {
         // only the part above the sea
         let mut start = None;
