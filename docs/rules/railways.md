@@ -46,12 +46,27 @@ more cheaply is searched again; a test holds it to a search from scratch.)
 
 **A refused line cools off.** A pair of towns is left alone for four years, a
 town or district for `cool_years` (five), or for two if the sum was good and
-only the money was short. Nothing is barred for good.
+only the money was short. Nothing is barred for good. (A refused district
+also keeps the promoters away from anything within four cells of it for
+those years, a town included.)
 
 **Lines building count as laid** when the next is reckoned. So two lines of
 one year never pay twice for cells they share, the second is not credited
 with what the first already saves, and a branch can be promoted off a trunk
-that is still building. A line lays only its own cells when it opens.
+that is still building. A line lays only its own cells when it opens, and it
+does not open before the lines its route runs over: a branch never opens
+onto a junction that is not there yet. (Before the review a four-cell branch
+to the woods could open months ahead of the first railway it hung from.)
+
+**The cost is reckoned at prices somebody pays.** The promoters used to take
+the year's price of rails, timber and stone in the buying town. In a town
+that neither makes nor buys rails that price sits near the floor, because
+nobody has ever paid it, and a line promoted on it then paid many times the
+estimate once its own orders arrived. Now what the town's own makers can
+supply in the time is reckoned at the town's price, and the rest at no less
+than what the country's makers got for it (each town's price weighted by
+what it made). The buying town is whichever of the line's two towns is
+cheaper by that reckoning.
 
 **Money.** As before, the landlords of a line's two towns put up to 35 per
 cent of their cash and the households 8 per cent, and the line goes ahead if
@@ -61,7 +76,11 @@ town of the district and the town at the junction. Three things are new:
 - A line orders each month no more than its cash will pay for at the day's
   prices, so it never owes anything: dear rails slow it down.
 - A line short of cash for the month calls on its two towns' landlords, a
-  tenth of their cash at most.
+  tenth of their cash at most. Where a town's landlords are in debt, its
+  households, who subscribed with them, answer in their place with a
+  fortieth of their cash. (Landlords can be in debt for decades. Before the
+  review a line whose landlords were could call on nobody, and two branches
+  on seed 12 waited forty years.)
 - What is left when it opens goes back to the subscribers in proportion to
   what each put in.
 
@@ -71,23 +90,23 @@ counts (a line's cash is `Project::cash`, as in the port).
 **Priced properly.** A cell of line takes `cost_mult` (five) times the port's
 rails, timber and stone, and a line takes `build_months` (24) instead of ten
 if the market fills every order. And the promoters read the order book: the
-price of rails they reckon with is the year's price times one plus the rails
-all lines still have on order, over a year's make of rails in the whole
-country. A crowd of schemes prices the next one out until the mills catch up.
-That, and the money the towns can raise, is what paces the rush; the cap on
-lines building at once (`max_projects`, 40) is never reached (the most on any
-seed is 35).
+price of rails they reckon with is marked up by one plus the rails all lines
+still have on order, over a year's make of rails in the whole country. A
+crowd of schemes prices the next one out until the mills catch up. That, and
+the money the towns can raise, is what paces the rush; the cap on lines
+building at once (`max_projects`, 40) is a backstop (the most at once is 19
+to 37 across the sweeps below, and 40 in one run of 56).
 
 **News.** The first railway is the big item it was. Every trunk and every
 town's first line is an item of its own. The district branches of a year are
 folded into one, lighter, which says how many opened, how many km, and what
-they serve (seed 3: "6 branch lines open. 63 km of branch line opened in
-1841, to the quarries near Penheath, Highford and Sandside, the collieries
-near Penhurst, the works near Carwater and the iron mines near Greybourne.").
-Nothing is
-called a mineral line for pits and works any more; what a branch serves is
-whatever fills most carts in its district, land sector by land sector, with
-the works counted by what they move beyond the land's own produce.
+they serve ("6 branch lines open. 63 km of branch line opened in 1841, to
+the quarries near Penheath, Highford and Sandside, the collieries near
+Penhurst, the works near Carwater and the iron mines near Greybourne."). It
+is dated by the last of them to open. Nothing is called a mineral line for
+pits and works any more; what a branch serves is whatever fills most carts
+in its district, land sector by land sector, with the works counted by what
+they move beyond the land's own produce.
 
 ## The numbers
 
@@ -98,7 +117,7 @@ with these.
 |---|---|---|
 | `enabled` | false | the game's promoters replace the port's |
 | `cost_mult` | 5 | rails, timber and stone per cell, times the port's 40, 30 and 30 |
-| `build_months` | 24 | months a line takes if every order is filled (the port: 10) |
+| `build_months` | 24 | months a line takes if every order is filled (the port: 10); under 1 is taken as 1 |
 | `order_book` | true | promoters mark rails up by what is on order |
 | `max_projects` | 40 | lines building at once: a backstop, not the pace |
 | `districts` | 8 | districts looked at each year |
@@ -113,62 +132,93 @@ the know-how (`rail_know`) and the running cost of a cell of track
 ## What the sweeps showed
 
 Seeds 1 to 8 to 1900, the port's rules with only this switched on, against
-the port; then the same with six families. Mean, and in brackets the least and
-greatest seed. Sweep folders `sweep-railways*` under `.claude/night/reports/`.
+the port; then the same with six families, and with carting. Mean, and in
+brackets the least and greatest seed. These are the numbers after the
+review's repairs (sweep folders `sweep-railways-review-*` under
+`.claude/night/reports/`); the network is about a tenth smaller than the
+first version's, because lines are now priced at what they will really cost.
 
 Kilometres of line:
 
 | | 1830 | 1840 | 1850 | 1860 | 1870 | 1880 | 1890 | 1900 |
 |---|---|---|---|---|---|---|---|---|
 | port | 260 | 743 | 990 | 1,014 | 1,016 | 1,020 | 1,023 | 1,024 (920 to 1,258) |
-| railways | 67 | 458 | 1,160 | 1,614 | 1,825 | 2,001 | 2,125 | 2,236 (2,102 to 2,383) |
+| railways | 78 | 373 | 1,006 | 1,519 | 1,738 | 1,849 | 1,932 | 2,022 (1,931 to 2,104) |
 | port, six families | 358 | 825 | 1,057 | 1,070 | 1,071 | 1,072 | 1,072 | 1,072 (880 to 1,186) |
-| railways, six families | 219 | 611 | 1,345 | 1,724 | 1,966 | 2,137 | 2,278 | 2,404 (2,306 to 2,506) |
-| railways and carting | 100 | 336 | 832 | 1,268 | 1,599 | 1,792 | 1,929 | 2,053 (1,939 to 2,158) |
-| railways and carting, six families | 197 | 495 | 931 | 1,419 | 1,777 | 1,957 | 2,107 | 2,222 (2,050 to 2,366) |
+| railways, six families | 149 | 521 | 1,192 | 1,610 | 1,855 | 1,973 | 2,083 | 2,167 (2,072 to 2,320) |
+| railways and carting | 96 | 289 | 722 | 1,141 | 1,455 | 1,657 | 1,805 | 1,885 (1,548 to 1,990) |
+| railways and carting, six families | 138 | 393 | 852 | 1,244 | 1,606 | 1,802 | 1,908 | 2,021 (1,865 to 2,140) |
 
-So: a slower start than the port's (dearer lines), a rush of 45 to 70 km a
-year through the 1840s and 1850s, and then branches at 20 km a year falling
-to 11 by the end of the century. The network grows in every decade from 1840 on every
-seed (in one seed of eight with carting and families, five decades of six).
+So: a slower start than the port's (dearer lines), a rush of nearly 60 km a
+year through the 1840s and 1850s, 22 a year in the 1860s, and then branches
+at about 10 km a year to the end of the century. Without carting the network
+grows in every decade from 1840 on every seed. With carting it does so from
+its first line on: one seed of eight discovers the railway only in 1843 and
+has nothing to show for the 1840s.
 
-| | port | railways | railways, six families |
-|---|---|---|---|
-| first line | 1828 (1815 to 1838) | 1831 (1820 to 1840) | 1829 (1811 to 1842) |
-| towns with track in 1860 | 0.98 | 1.00 | 1.00 |
-| cell traffic within a cell of track, 1900 | 0.39 | 0.77 (0.75 to 0.80) | 0.81 (0.78 to 0.82) |
-| dearest year for rails over the mean of 1800 to 1825 | 2.95 (1.18 to 5.30) | 3.15 (1.72 to 4.86) | 2.63 (1.09 to 5.92) |
-| what the network cost, in years of output | 0.02 to 0.04 | 0.42 (0.36 to 0.50) | 0.38 (0.33 to 0.43) |
-| fares on track over capital laid out, 1870 | | 0.075 (0.053 to 0.090) | 0.088 (0.064 to 0.113) |
-| the same, 1900 | | 0.071 (0.045 to 0.094) | 0.084 (0.067 to 0.107) |
-| most lines building at once | 6 | 25.5 (22 to 27) | 27.5 (24 to 35) |
-| railway news items (openings; schemes) | 38; 36 | 81; 24 | 89; 26 |
+| | port | railways | railways, six families | railways and carting | the same, six families |
+|---|---|---|---|---|---|
+| first line | 1828 (1815 to 1838) | 1833 (1821 to 1845) | 1831 (1815 to 1843) | 1836 (1816 to 1854) | 1833 (1806 to 1855) |
+| towns with track in 1860 | 0.98 | 1.00 | 1.00 | 0.89 (0.13 to 1) | 0.91 (0.50 to 1) |
+| cell traffic within a cell of track, 1900 | 0.39 | 0.75 (0.73 to 0.78) | 0.77 (0.73 to 0.81) | 0.71 (0.63 to 0.74) | 0.74 (0.70 to 0.77) |
+| dearest year for rails over the mean of 1800 to 1825 | 2.95 (1.18 to 5.30) | 3.05 (1.71 to 5.68) | 3.61 (1.25 to 7.89) | 2.69 (1.91 to 3.37) | 3.13 (2.11 to 5.07) |
+| what the network cost, in years of output | 0.02 to 0.04 | 0.37 (0.30 to 0.42) | 0.36 (0.27 to 0.55) | 0.36 (0.32 to 0.39) | 0.38 (0.30 to 0.49) |
+| what the lines cost over what was expected | | 0.92 (0.78 to 1.08) | 0.98 (0.78 to 1.22) | 0.93 (0.85 to 1.16) | 1.01 (0.82 to 1.20) |
+| the same for the worst line of a run | | 5.4 (2.6 to 9.2) | 4.8 (2.6 to 6.5) | 3.4 (2.5 to 4.3) | 5.4 (3.0 to 7.6) |
+| fares on track over capital laid out, 1870 | | 0.075 (0.056 to 0.096) | 0.090 (0.059 to 0.126) | 0.066 (0.043 to 0.093) | 0.067 (0.036 to 0.094) |
+| the same, 1900 | | 0.083 (0.063 to 0.117) | 0.093 (0.077 to 0.120) | 0.074 (0.060 to 0.088) | 0.078 (0.049 to 0.106) |
+| most lines building at once | 6 | 25 (20 to 29) | 29 (21 to 40) | 23 (19 to 29) | 27 (21 to 33) |
+| the slowest line, years from promotion to opening | | 9.1 (7.0 to 11.5) | 10.2 (6.7 to 13.5) | 8.7 (6.8 to 12.2) | 10.4 (6.6 to 12.8) |
+| railway news items (openings; schemes) | 38; 36 | 81; 27 | 85; 28 | 77; 27 | 83; 27 |
 
 (The port's cost is dx-rail's figure. "Fares" are the year's traffic over
 each cell of track at the running cost of track; the capital is each line's
 outlay brought to that year's prices by the cost of living. Nobody collects
-these fares yet: see below.)
+these fares yet: see below. Before the review's repairs the lines cost 1.2
+to 1.4 times what was expected and the worst of a run 8 to 18 times.)
 
-What the lines serve, of about 220 lines a run (no families): 24 trunks; one
-town's first line; and of the branches, 92 to works, 51 to quarries and clay
-pits, 24 to woods, 21 to farms, 4 to collieries and iron mines, 4 to pasture.
-Branches are 68 per cent of the kilometres.
+What the lines serve, of about 190 lines a run (no families): 27 trunks; one
+town's first line; and of the branches, 87 to works, 36 to quarries and clay
+pits, 20 to woods, 14 to farms, 4 to pasture, 3 to collieries and iron
+mines. Branches are 66 per cent of the kilometres.
 
 **Output per head and the real wage do not move.** Means of 1860 to 1900,
 output per head in 1750 money and the real wage with 1750 as 1:
 
 | | no railways at all | port's railways | railways |
 |---|---|---|---|
-| output per head | 6.23 | 6.29 | 6.21 |
-| real wage | 1.31 | 1.33 | 1.32 |
-| output per head, six families | | 6.55 | 6.46 |
-| real wage, six families | | 1.45 | 1.43 |
+| output per head | 6.23 | 6.29 | 6.26 |
+| real wage | 1.31 | 1.33 | 1.34 |
+| output per head, six families | | 6.54 | 6.46 |
+| real wage, six families | | 1.45 | 1.42 |
 
 A seed's own two runs differ by five per cent either way, so none of these
 differences is established. This is dx-rail's finding again: under the port's
 rules carting uses nobody's time, so cheaper carriage frees nothing. What
 railways do to living standards once carting takes labour is in
 `carting.md`.
+
+**Out of sample.** Seeds 9 to 16, which the numbers above were never tuned
+on:
+
+| | 1830 | 1840 | 1850 | 1860 | 1870 | 1880 | 1890 | 1900 |
+|---|---|---|---|---|---|---|---|---|
+| port | 149 | 445 | 603 | 923 | 998 | 1,008 | 1,011 | 1,012 (812 to 1,264) |
+| railways | 24 | 202 | 513 | 972 | 1,435 | 1,710 | 1,838 | 1,937 (1,742 to 2,160) |
+| railways and carting | 4 | 65 | 193 | 490 | 962 | 1,487 | 1,719 | 1,837 (1,646 to 1,976) |
+| railways and carting, six families | 36 | 169 | 522 | 901 | 1,358 | 1,628 | 1,823 | 1,952 (1,760 to 2,210) |
+
+The shape holds: the network is about 1,900 km in 1900, 0.71 to 0.74 of cell
+traffic is within a cell of track, the lines cost 0.92 to 1.04 of what was
+expected, the slowest takes 7 to 13 years, no run fails. The calendar does
+not. These islands discover the railway ten years later than seeds 1 to 8
+even under the port (first line 1838 against 1828), the game's lines take
+another five to open, and carting another seven: the first line is in 1843
+(1827 to 1858) with railways alone and in 1850 (1830 to 1863) with carting,
+and in 1860 fewer than half the towns have track (three quarters with
+families). The rails price peak is
+also less tame here with carting: 4.4 and 5.2 times on average, and 10 and
+11 times in the worst seed of each sweep.
 
 ## What a canal age needs
 
@@ -196,42 +246,46 @@ A canal needs, beyond its `Way`:
 
 Two things are still the railway's alone and are marked in the code: opened
 lines are also written to `State::rail_opened` (the record's list), and the
-order book is one good.
+order book is one good. Nothing has yet run two ways at once.
 
 ## What worries me
 
 - **The branches do not visibly pay the country back.** With everything else
-  the same, output per head in 1860 to 1900 is 0 to 2 per cent lower with the
-  branches than with the port's trunks (four pairs of sweeps, with and
-  without carting and families: minus 1.3, minus 0.1, minus 1.3, minus 1.6
-  per cent; each inside the spread between seeds, all four the same way). The
-  network costs 0.4 of a year's output where the port's cost 0.03, and by the
-  promoters' own sum a line needs to save only 2.4 per cent of its cost a
-  year to go ahead (the 6 per cent hurdle after the 2.5 for induced traffic;
-  both are the port's numbers, tuned to lines a fifth as dear). I tried a
-  stricter promoter, `--set rail_induced=1,1.5` with carting on: 1,680 and
-  1,850 km in 1900 instead of 2,050, still rising in every decade but one in
-  one seed, and
-  output per head of 5.88 and 5.88 against 5.92. So it is not the marginal
-  lines; the difference is noise, or it is the trunks' own cost. I left the
-  port's 2.5.
+  the same, output per head in 1860 to 1900 is a little lower with the
+  branches than with the port's trunks in all four pairs of sweeps: minus
+  0.5 per cent, minus 1.2 with families, minus 0.6 with carting, and minus
+  2.5 with carting and families. The first three are inside the spread
+  between seeds. The last is seven seeds of eight, with the real wage at
+  1.25 against 1.32, and that is the pair the game is played under. The
+  network costs 0.36 of a year's output where the port's cost 0.03, and by
+  the promoters' own sum a line needs to save only 2.4 per cent of its cost
+  a year to go ahead (the 6 per cent hurdle after the 2.5 for induced
+  traffic; both are the port's numbers, tuned to lines a fifth as dear).
+  Before the review's repairs a stricter promoter was tried
+  (`--set rail_induced=1,1.5` with carting on): about a fifth less line and
+  no change in output per head, so it is not the marginal lines. The
+  trunks take most of what there is to save.
 - **Subscribers get nothing back.** They pay for the line and the saving goes
-  to whoever carts. Fares over track come to 7 or 8 per cent of the capital a
-  year, so a company that took them could pay a believable dividend, and a
+  to whoever carts. Fares over track come to 7 to 9 per cent of the capital
+  a year, so a company that took them could pay a believable dividend, and a
   family could hold its shares. That is dx-rail's recommendation 5 and is not
   built.
-- **A line that runs out of money waits.** It calls on its towns each month
-  and is never abandoned. Under the game's rules the slowest line of a run
-  took 8 to 19 years from its promotion to its opening (11 on average over
-  the seeds), all of them in the rush, when rails are dear. None was still
-  waiting in 1900 after ten years or more (`rail_lines_stuck_at_end` is 0 on
-  every seed), but nothing prevents it, and while it waits other lines are
-  reckoned as if it were there.
+- **Calls have no limit.** A line goes ahead on an estimate, and its
+  subscribers then answer calls for whatever the materials turn out to cost.
+  Taken together the lines cost what was expected (0.92 to 1.01), but the
+  worst line of a run costs 2.5 to 9 times its estimate, in the rush, and
+  nothing asks whether it is still worth building at that price. A company
+  with shares would be the place to settle this too.
+- **Nothing abandons a line.** A line short of money or of rails waits. The
+  slowest of a run takes 7 to 13 years from its promotion to its opening,
+  and the lines that lean on it wait with it. None was still waiting after
+  ten years at the end of any run (`rail_lines_stuck_at_end` is 0 on all 56).
+- **The date of the railway age is not the promoters'.** It follows the
+  discovery, which moves by decades between islands, and comes later with
+  carting. Under the game's rules the first line opens in 1850 or later on
+  7 islands of 16 (4 of 16 with six families), so anything that needs
+  railways by mid-century will often not find them.
 - **Every cell of track is a station**, as in the port.
-- **With carting on, the start is uneven**: the first line comes between 1816
-  and 1850 across eight seeds, and in the latest seed only half the towns
-  have track in 1860. That is the smaller economy discovering railways later
-  in that seed, not the promoters.
 - **What a branch serves is an estimate.** The works' share of a district's
   carts is the cells' traffic less twelve times last month's land produce.
   Nearly half the branches are counted as serving works, more than dx-rail's
@@ -243,7 +297,7 @@ order book is one good.
 
 ## Facts added to the sweep
 
-Under "Railways": `rail_km_Y` for every decade from 1830; 
+Under "Railways": `rail_km_Y` for every decade from 1830;
 `rail_decades_grown_of_6`, the decades from 1840 that ended with more line
 than they began with; `rail_towns_with_track_1860` and `_1900`;
 `rail_traffic_near_track_1900`, the share of the last year's cell traffic
@@ -252,6 +306,8 @@ the promoters' book, with no value while the switch is off:
 `rail_cost_in_years_of_output` (each line's outlay over the output of the
 year it opened, summed), `rail_most_lines_building`,
 `rail_slowest_line_years`, `rail_lines_stuck_at_end`,
-`rail_fares_over_capital_1870` and `_1900`, `rail_lines_trunk`,
-`rail_lines_to_towns`, `_farms`, `_pastures`, `_quarries`, `_mines`,
-`_works`, `_woods`, and `rail_km_share_branches`.
+`rail_fares_over_capital_1870` and `_1900`, `rail_spent_over_expected` (what
+all the lines cost over what their promoters expected) and
+`rail_worst_overrun` (the same for the line that overran most),
+`rail_lines_trunk`, `rail_lines_to_towns`, `_farms`, `_pastures`,
+`_quarries`, `_mines`, `_works`, `_woods`, and `rail_km_share_branches`.
