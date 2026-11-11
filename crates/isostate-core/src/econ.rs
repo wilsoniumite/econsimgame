@@ -148,6 +148,10 @@ pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, 
     if ag {
         mult *= 1.0 + P.husbandry_boost * k[(town, st.t_husb)];
     }
+    // machines (docs/rules/machines.md): bought where they pay, and better with the steel poured
+    if P.machines.enabled {
+        return crate::machines::sector_tfp(st, C, P, sec, town, price, mult);
+    }
     let mine = C.sector_mine[sec];
     let (kp, kw, kf) = (k[(town, st.t_pump)], k[(town, st.t_wagon)], k[(town, st.t_fmach)]);
     let use_pump = bool_f(mine && kp > 0.05);
@@ -1036,6 +1040,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         heat_use,
         supply,
     };
+    // machines (docs/rules/machines.md): the machines standing move towards what was bought
+    crate::machines::end_month(st, C, P);
 }
 
 /// For each good, `np.bincount(town, weights=rows[:, g], minlength=T)`, in one pass

@@ -303,10 +303,61 @@ pub fn default_content() -> Content {
 /// The content a live game is played with: the port's goods, methods and techs,
 /// plus whatever a mechanism that is not in the Python needs (a new good, a new
 /// method). Each such mechanism makes its additions here and nowhere in
-/// `default_content`, which stays the port. For now the two are the same.
+/// `default_content`, which stays the port.
 pub fn game_content() -> Content {
-    default_content()
+    let mut c = default_content();
+    machines_content(&mut c);
+    c
 }
+
+/// MACHINES (docs/rules/machines.md): the content the machines mechanism changes,
+/// all of it here. A converter that costs what its steel can carry, a steel rail
+/// that is worth the iron rails it outlasts, and thresholds that let both be found
+/// while there is a century left to use them.
+fn machines_content(c: &mut Content) {
+    let (Some(bessemer), Some(steel_rolling)) =
+        (c.method_name.iter().position(|n| n == "bessemer"), c.method_name.iter().position(|n| n == "steel_rolling"))
+    else {
+        return; // another content file without them
+    };
+    let good = |c: &Content, name: &str| c.good_index.get(name).copied();
+    // The port's converter needs 150 bricks and 2 machinery for each unit of monthly
+    // capacity, about a thousand in money, five times what a rolling mill costs for
+    // the same capacity: at the hurdle rate that is 12 a unit of steel in capital
+    // alone, where crucible steel carries 2. Three tenths of it is still the dearest
+    // plant on the island, and one its steel can pay for.
+    for m in [bessemer, steel_rolling] {
+        for g in 0..c.G {
+            c.m_cap[(m, g)] *= MACHINES_PLANT_SCALE;
+        }
+    }
+    // A steel rail outlasts iron ones several times over. There is one good,
+    // "rails", counted in iron rails, so a ton of steel rail is entered as the
+    // iron rails it stands in for: the mill uses that much less steel per rail.
+    if let Some(steel) = good(c, "steel") {
+        c.m_in[(steel_rolling, steel)] /= MACHINES_STEEL_RAIL_WORTH;
+    }
+    // Discovery thresholds, in cumulative output since 1750.
+    for (m, name, x) in MACHINES_THRESHOLDS {
+        let (Some(t), Some(g)) = (c.method_name.iter().position(|n| n == m), good(c, name)) else { continue };
+        c.tech_disc[(t, g)] = x;
+    }
+}
+
+/// The converter's and the steel rail mill's plant, as a share of the port's.
+pub const MACHINES_PLANT_SCALE: f64 = 0.3;
+
+/// Iron rails one steel rail of the same weight stands in for.
+pub const MACHINES_STEEL_RAIL_WORTH: f64 = 3.0;
+
+/// (method, good, cumulative output needed): the thresholds the game changes.
+pub const MACHINES_THRESHOLDS: [(&str, &str, f64); 5] = [
+    ("bessemer", "steel", 2_400_000.0),
+    ("bessemer", "machinery", 90_000.0),
+    ("steel_rolling", "steel", 3_600_000.0),
+    ("steel_rolling", "rails", 350_000.0),
+    ("steel_rolling", "machinery", 150_000.0),
+];
 
 pub fn tech_index(c: &Content, name: &str) -> usize {
     c.tech_name.iter().position(|n| n == name).unwrap_or_else(|| panic!("unknown tech {name:?}"))

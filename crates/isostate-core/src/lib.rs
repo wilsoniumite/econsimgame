@@ -29,6 +29,7 @@ pub mod families;
 pub mod firms;
 pub mod land;
 pub mod live;
+pub mod machines;
 pub mod mat;
 pub mod names;
 pub mod ndimage;

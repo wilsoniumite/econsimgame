@@ -333,4 +333,9 @@ pub struct State {
     /// (T, G): what each town's buyers asked for last month (households, landlords,
     /// works, mines, building and railway orders), whether or not they got it.
     pub requests: Mat,
+
+    // ---------------- machines (not in the Python; empty while `machines.enabled` is off)
+    /// (T, NS * machines::SLOTS): the share of each land sector's output in each
+    /// town worked by machines now standing, one column per use (`machines::uses`).
+    pub machine_stock: Mat,
 }
