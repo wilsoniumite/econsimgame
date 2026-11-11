@@ -133,7 +133,8 @@ open = "#2c5f86"
 foam = "#f4f6f2"
 
 [ground]
-# what lies on the land: roads between the towns: gravel on the main roads, dust on the lesser ones
+# What lies on the land.
+# roads between the towns: gravel on the main roads, dust on the lesser ones
 road_gravel = "#d9c596"
 lane_dust = "#cdb88d"
 # a farm's own lane from its yard gate to the road

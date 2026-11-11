@@ -45,7 +45,7 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
     let (half, level, along) = (b.half, b.level, b.along);
     let stone = if b.main { *pal.bridges.road_stone } else { *pal.bridges.lane_stone };
     let dark = *pal.bridges.arch_shadow;
-    let span = 2.0 * half + 0.035;
+    let span = b.span();
     let width = if b.main { 0.042 } else { 0.03 };
     let dir = Vec3::new(along.x, 0.0, along.y);
     let side = Vec3::new(-along.y, 0.0, along.x);
@@ -63,7 +63,7 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
         let y = ends.max(level + 0.02) + hump * (std::f32::consts::PI * t).sin();
         Vec3::new(p.x, y, p.z)
     };
-    let arches = if span > 0.11 { 2 } else { 1 };
+    let arches = b.arches();
     for k in 0..segs {
         let (t0, t1) = (k as f32 / segs as f32, (k + 1) as f32 / segs as f32);
         let (p0, p1) = (deck(t0), deck(t1));

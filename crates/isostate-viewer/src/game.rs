@@ -15,10 +15,10 @@ use isostate_core::{Choice, Decision, FamilyReport};
 
 use crate::family::{self, short_group, trade, FamilyRow, FamilyView, GotoFirm, GotoTown, MemberRow, OpenDecision, PostButton, RivalRow, StanceButton};
 use crate::live::{self, Cmd, Live, Msg, SiteInfo, PLAYER};
+use crate::look::{Look, TheLook};
 use crate::meshkit::{hex, lerp, Builder};
 use crate::replay::{self, Replay};
 use crate::ui::{money, text, UiState, BTN, INK, MUTED, PAPER_2, RULE};
-use crate::look::{Look, TheLook};
 use crate::{scatter, world, Data, InspectActions, Orbit, Pick, Picked, Timeline, UiFont};
 
 #[derive(Resource, Default)]
