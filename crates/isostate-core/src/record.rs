@@ -195,9 +195,17 @@ pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
     }
     let (mix_a, mix_b, mix_s) = display_mix(st, C);
     let mut trans: Vec<u8> = (0..N).map(|c| st.road[c].min(3) + if st.rail[c] > 0 { 4 } else { 0 }).collect();
+    // canals (docs/rules/canals.md): 16 marks a cell with a canal open and 32 one
+    // being dug (the layer is empty while they are off); 8 stays a railway building
+    for (t, &c) in trans.iter_mut().zip(&st.canal) {
+        if c > 0 {
+            *t |= 16;
+        }
+    }
     for pr in &st.projects {
+        let bit = if pr.way == crate::ways::CANAL { 32 } else { 8 };
         for &c in &pr.new {
-            trans[c] |= 8;
+            trans[c] |= bit;
         }
     }
     let mut out: Vec<Vec<u8>> = (0..LAYERS.len()).map(|_| vec![0u8; N]).collect();
@@ -255,6 +263,8 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
     rec.projects.push(
         st.projects
             .iter()
+            // canals: a canal being dug is not on the list of railways building
+            .filter(|pr| pr.way != crate::ways::CANAL)
             .map(|pr| {
                 let order: f64 = crate::util::pairwise_sum(&pr.order);
                 let need: f64 = crate::util::pairwise_sum(&pr.need);
@@ -501,6 +511,15 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         "share_groups": share_groups,
         "arrays": table,
     });
+    // canals (docs/rules/canals.md): the network as links from cell to cell, each with
+    // the year its canal was begun and the moment it opened (null if still digging)
+    if P.canals.enabled {
+        header["canals"] = json!({
+            "cost": P.canals.cost,
+            "wharf": P.canals.wharf,
+            "links": serde_json::to_value(crate::canals::links_out(st)).unwrap(),
+        });
+    }
     clean(&mut header);
     let hjson = ensure_ascii(&serde_json::to_string(&header).unwrap()).into_bytes();
     let pad = (8 - (4 + hjson.len()) % 8) % 8;

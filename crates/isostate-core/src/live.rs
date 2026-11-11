@@ -257,6 +257,11 @@ pub struct LiveYear {
     /// slot (1.0 is average; empty unless the mechanism is on), and the country's.
     pub harvest_town: Vec<f32>,
     pub harvest: Option<f32>,
+    /// canals (docs/rules/canals.md): every link of canal so far, from cell to
+    /// cell, with the year its canal was begun and the moment it opened (absent
+    /// while it is being dug). Empty unless the mechanism is on. The `trans`
+    /// layer marks the same cells with 16 (open) and 32 (digging).
+    pub canals: Vec<crate::canals::LinkOut>,
 }
 
 /// What the viewer has been sent so far.
@@ -346,6 +351,8 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
     let projects = st
         .projects
         .iter()
+        // canals: a canal being dug is not on the list of railways building
+        .filter(|pr| pr.way != crate::ways::CANAL)
         .map(|pr| {
             let order: f64 = crate::util::pairwise_sum(&pr.order);
             let need: f64 = crate::util::pairwise_sum(&pr.need);
@@ -370,5 +377,6 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         cell_owner: st.cell_owner.iter().map(|&o| o as i16).collect(),
         harvest_town: st.harvest_town.iter().map(|&v| v as f32).collect(),
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
+        canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
     }
 }

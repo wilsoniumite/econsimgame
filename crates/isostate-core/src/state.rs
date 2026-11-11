@@ -72,6 +72,12 @@ pub struct Project {
     pub paid_in: f64,
     /// Who put it in: (landlords or households, town, amount).
     pub subs: Vec<(bool, usize, f64)>,
+    // ---- canals (docs/rules/canals.md)
+    /// Wages paid on every shilling of materials; 0 means the port's three tenths.
+    pub wages: f64,
+    /// The wages the project paid last month (canals: its navvies are hands
+    /// taken from the town that supplies it).
+    pub navvy_pay: f64,
 }
 
 /// One opened line: (year, a, b, km) in Python; b is -1 for a spur.
@@ -443,4 +449,10 @@ pub struct State {
     /// For tests and scenarios: a cell where a town is to be founded this year,
     /// whatever the founding rule would say of its district.
     pub pp_found_next: Option<usize>,
+
+    // ---------------- canals (docs/rules/canals.md; all empty while `P.canals` is off)
+    /// 1 where a cell has a canal open.
+    pub canal: Vec<u8>,
+    /// What the canal promoters remember, and what the canals carried.
+    pub cn: crate::canals::CanalState,
 }
