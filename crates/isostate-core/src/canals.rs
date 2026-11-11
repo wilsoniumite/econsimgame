@@ -325,7 +325,7 @@ fn canal_opened(st: &mut State, pr: &Project, when: f64) {
 
 /// The railways being laid, put on the canal promoters' copy of the cost graph:
 /// a canal is not dug for carting that a line already building will take.
-fn railways_building(st: &State, g: &mut tr::Graph) {
+fn railways_building(st: &State, _P: &Params, g: &mut tr::Graph) {
     let new: Vec<usize> = st.projects.iter().filter(|pr| pr.way != ways::CANAL).flat_map(|pr| pr.new.iter().copied()).collect();
     if new.is_empty() {
         return;
@@ -335,6 +335,24 @@ fn railways_building(st: &State, g: &mut tr::Graph) {
         laid[c] = true;
     }
     ways::lay(g, &st.world, &laid, &new, tr::RAIL_COST);
+}
+
+/// And the other way about (`railways::way` hands this to its promoters): the
+/// canals being dug, put on the railway promoters' copy of the cost graph, so
+/// that no line is promoted on carting a canal will have taken by the time it
+/// opens. With no canal digging the graph is not touched.
+pub fn digging(st: &State, P: &Params, g: &mut tr::Graph) {
+    if !P.canals.enabled {
+        return;
+    }
+    let W = st.world.W;
+    for pr in st.projects.iter().filter(|pr| pr.way == ways::CANAL) {
+        g.wharf = P.canals.wharf;
+        for p in pr.cells.windows(2) {
+            let step = ((p[0] / W) as f64 - (p[1] / W) as f64).hypot((p[0] % W) as f64 - (p[1] % W) as f64);
+            g.link_boats(p[0], p[1], P.canals.cost * step);
+        }
+    }
 }
 
 /// The canal as the promoters of `ways.rs` see it.
@@ -885,8 +903,12 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     }
 
     // ---- from the promoters' book
-    let lines_to = |words: &[&str]| nan_off(book.lines.iter().filter(|l| words.contains(&ways::serves_word(l.serves))).count() as f64);
+    // (a junction cut between two canals side by side is in the book as a trunk
+    // with no new cell: it is counted by itself and not among the canals)
+    let junction = |l: &ways::Line| l.serves == SERVES_TRUNK && l.new_cells == 0;
+    let lines_to = |words: &[&str]| nan_off(book.lines.iter().filter(|l| !junction(l) && words.contains(&ways::serves_word(l.serves))).count() as f64);
     out.push(("canal_lines_trunk".into(), Kind::Count, lines_to(&[ways::serves_word(SERVES_TRUNK)])));
+    out.push(("canal_junctions_cut".into(), Kind::Count, nan_off(book.lines.iter().filter(|l| junction(l)).count() as f64)));
     out.push(("canal_lines_to_collieries".into(), Kind::Count, lines_to(&["collieries"])));
     out.push(("canal_lines_to_quarries".into(), Kind::Count, lines_to(&["quarries", "clay pits"])));
     out.push(("canal_lines_to_iron_mines".into(), Kind::Count, lines_to(&["iron mines"])));

@@ -139,7 +139,9 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
         opened: None,
         first_any: false,
         local: false,
-        rivals: None,
+        // canals (docs/rules/canals.md): a canal being dug will have taken its
+        // carting by the time a line opens; nothing while no canal is digging
+        rivals: Some(crate::canals::digging),
     }
 }
 

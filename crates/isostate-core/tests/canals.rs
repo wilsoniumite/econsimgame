@@ -236,6 +236,42 @@ fn a_short_hop_stays_on_the_road_and_a_long_one_takes_the_boat() {
     assert_eq!(tr::distances(&bare, &[(0, 0.0)]), vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
 }
 
+/// The game as it is played: every mechanism on and six families, to 1800.
+#[test]
+fn in_company_with_six_families_canals_are_dug_and_money_is_conserved() {
+    let mut P = game_params();
+    P.seed = 7;
+    P.n_families = 6;
+    P.end_year = Some(1800);
+    assert!(P.canals.enabled && P.railways.enabled && P.carting.enabled);
+    let r = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
+    let st = &r.state;
+    let drift = econ::money_total(st) - (st.money_start + st.issued);
+    assert!(drift.abs() <= 1e-9 * econ::money_total(st), "money drifted by {drift:e}");
+    let book = &st.cn.book;
+    assert!(book.lines.len() >= 5 && st.cn.links.len() >= 50, "{} canals, {} links", book.lines.len(), st.cn.links.len());
+    assert!(st.projects.iter().all(|pr| pr.cash >= 0.0));
+    assert!(st.cn.years.iter().any(|y| y.navvies > 50.0 && y.ton_cells > 0.0));
+    // a junction cut between two canals that lay side by side is told as one, never
+    // as so many km of canal; every other canal between towns is told by its towns
+    let news: Vec<&Event> = r.events.iter().filter(|e| e.kind == "canal").collect();
+    for l in book.lines.iter().filter(|l| l.serves == ways::SERVES_TRUNK) {
+        let item = news
+            .iter()
+            .find(|e| (e.year - l.opened).abs() < 1e-9 && e.cell == Some(st.town_node[l.a]) && e.cell2 == Some(st.town_node[l.b]))
+            .expect("a canal between towns is news when it opens");
+        assert_eq!(l.new_cells == 0, item.title.starts_with("A junction joins"), "{}: {}", l.new_cells, item.title);
+        assert!(l.new_cells > 0 || !item.text.contains(" km"), "{}", item.text);
+    }
+    // the header and the facts are there, as alone
+    assert!(header(&r)["canals"]["links"].as_array().is_some_and(|l| l.len() >= st.cn.links.len()));
+    let facts = canals::facts(&r);
+    let fact = |name: &str| facts.iter().find(|f| f.0 == name).map(|f| f.2).unwrap();
+    let junctions = book.lines.iter().filter(|l| l.serves == ways::SERVES_TRUNK && l.new_cells == 0).count();
+    assert_eq!(fact("canal_junctions_cut"), junctions as f64);
+    assert_eq!(fact("canal_lines_trunk") + fact("canal_junctions_cut"), book.lines.iter().filter(|l| l.serves == ways::SERVES_TRUNK).count() as f64);
+}
+
 #[test]
 fn canals_alone_or_in_company_are_the_same_mechanism() {
     // the switch is one field of the parameters, and the game has it on

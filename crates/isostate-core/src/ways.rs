@@ -166,8 +166,9 @@ pub struct Way {
     pub local: bool,
     /// Lays the lines of other ways that are being built on the promoters' copy
     /// of the cost graph, so that nothing is promoted on carting a rival will
-    /// have taken by the time it opens (a canal beside a railway half laid).
-    pub rivals: Option<fn(&State, &mut tr::Graph)>,
+    /// have taken by the time it opens (a canal beside a railway half laid, a
+    /// railway beside a canal half dug).
+    pub rivals: Option<fn(&State, &Params, &mut tr::Graph)>,
 }
 
 /// One line that was built.
@@ -479,12 +480,12 @@ struct Net {
 }
 
 impl Net {
-    fn new(st: &State, way: &Way) -> Net {
+    fn new(st: &State, P: &Params, way: &Way) -> Net {
         let layer = (way.layer)(st);
         let mut laid: Vec<bool> = layer.iter().map(|&r| r > 0).collect();
         let mut g = st.graph.clone();
         if let Some(rivals) = way.rivals {
-            rivals(st, &mut g);
+            rivals(st, P, &mut g);
         }
         let under_way: Vec<usize> = st.projects.iter().filter(|pr| pr.way == way.id).flat_map(|pr| pr.new.iter().copied()).collect();
         for &c in &under_way {
@@ -854,7 +855,7 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
     book.pair_cooldown.retain(|_, until| *until > year);
     book.spot_cooldown.retain(|_, until| *until > year);
     let W = st.world.W;
-    let mut net = Net::new(st, way);
+    let mut net = Net::new(st, P, way);
 
     // ---- trunks: pairs of towns, the busiest first
     let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
@@ -909,25 +910,41 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         };
         let pr = project(way, SERVES_TRUNK, a_, b_, nb, buy_town, path, new_cells, need, raised, subs, year, roi, cost, W);
-        let mut ev = Event::new(
-            year as f64 + 0.95,
-            way.words.plan_kind,
-            way.words.weight,
-            format!("{} and {} {} promoted", st.town_name[a_], st.town_name[b_], way.words.Noun),
-            format!(
-                "Promoters raise money for {:.0} km of {}. They expect the carting it saves, between the towns and along the way, to repay {} a year.",
-                pr.length_km,
-                way.words.line,
-                fmt_pct(roi, 0)
-            ),
-        );
+        let mut ev = if pr.new.is_empty() {
+            // (a way that floats) nothing new but the cut between two lines that lie
+            // side by side: told as what it is, not as so many km of new line
+            Event::new(
+                year as f64 + 0.95,
+                way.words.plan_kind,
+                way.words.branches_weight,
+                format!("A {} junction promoted between {} and {}", way.words.noun, st.town_name[a_], st.town_name[b_]),
+                format!(
+                    "Two {}s lie side by side on the way between the towns and do not meet. Promoters raise money for a short cut to join them, and expect the carting it saves to repay {} a year.",
+                    way.words.noun,
+                    fmt_pct(roi, 0)
+                ),
+            )
+        } else {
+            Event::new(
+                year as f64 + 0.95,
+                way.words.plan_kind,
+                way.words.weight,
+                format!("{} and {} {} promoted", st.town_name[a_], st.town_name[b_], way.words.Noun),
+                format!(
+                    "Promoters raise money for {:.0} km of {}. They expect the carting it saves, between the towns and along the way, to repay {} a year.",
+                    pr.length_km,
+                    way.words.line,
+                    fmt_pct(roi, 0)
+                ),
+            )
+        };
         ev.town = Some(a_);
         ev.cell = Some(na);
         events.push(ev);
         // a pair with a line building is not looked at again
         book.links.insert((a_, b_));
         st.projects.push(pr);
-        net = Net::new(st, way);
+        net = Net::new(st, P, way);
     }
 
     // ---- branches: from the nearest point of the network
@@ -1022,7 +1039,7 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         };
         st.projects.push(project(way, serves, town, jt, target, buy_town, path, new_cells, need, raised, subs, year, roi, cost, W));
-        net = Net::new(st, way);
+        net = Net::new(st, P, way);
     }
 }
 
@@ -1137,7 +1154,20 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             st.rail_opened.push(RailOpened { year: year_float, a: pr.a, b: if trunk { pr.b as i64 } else { -1 }, km: pr.length_km });
         }
         let (a_, b_) = (pr.a, pr.b);
-        if trunk {
+        if trunk && pr.new.is_empty() {
+            // (a way that floats) a junction cut between two lines that lay side by side
+            let mut ev = Event::new(
+                year_float,
+                way.words.kind,
+                way.words.branches_weight,
+                format!("A junction joins the {}s between {} and {}", way.words.noun, st.town_name[a_], st.town_name[b_]),
+                format!("A short cut, begun in {}. Boats now pass between two {}s that lay side by side and did not meet.", pr.start, way.words.noun),
+            );
+            ev.town = Some(a_);
+            ev.cell = Some(st.town_node[a_]);
+            ev.cell2 = Some(st.town_node[b_]);
+            events.push(ev);
+        } else if trunk {
             let title = format!(
                 "{}{} to {}",
                 if first { format!("The first {} opens: ", way.words.noun) } else { format!("{} opens: ", way.words.Noun) },
@@ -1385,6 +1415,39 @@ mod tests {
         assert!(g.w.iter().zip(&st.graph.w).all(|(x, y)| x.to_bits() == y.to_bits()));
         assert!(g.boat.iter().all(|links| links.is_empty()));
         assert!(same(&tr::distances(&g, &towns), &base));
+    }
+
+    /// The railway's promoters reckon with a canal that is still being dug, as the
+    /// canal's reckon with a line being laid: neither is promoted on carting the
+    /// other will have taken.
+    #[test]
+    fn a_canal_being_dug_is_on_the_railway_promoters_graph() {
+        let (mut st, railway) = island();
+        let (mut P, C) = (default_params(), default_content());
+        let canal = crate::canals::way(&st, &C, &P);
+        let path = a_line(&st, &railway);
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        let (a, b) = (act[0], act[1]);
+        let need = materials(&canal, &st.world, &path, &path);
+        let W = st.world.W;
+        st.projects.push(project(&canal, SERVES_TRUNK, a, b, path[path.len() - 1], a, path.clone(), path.clone(), need, 0.0, Vec::new(), 1800, 0.1, 1.0, W));
+        // switched off, the graph is the island's own
+        let net = Net::new(&st, &P, &railway);
+        assert!(!net.g.has_boats() && net.laid.iter().all(|&l| !l), "a canal is no railway under way");
+        P.canals.enabled = true;
+        let net = Net::new(&st, &P, &railway);
+        let links: usize = net.g.boat.iter().map(|l| l.len()).sum();
+        assert_eq!(links, 2 * (path.len() - 1), "every link of the canal, both ways");
+        assert_eq!(net.g.wharf, P.canals.wharf);
+        // and the two towns are nearer each other for it
+        let from_a = |g: &tr::Graph| tr::distances(g, &[(st.town_node[a], 0.0)])[st.town_node[b]];
+        assert!(from_a(&net.g) < from_a(&st.graph), "{} against {}", from_a(&net.g), from_a(&st.graph));
+        // the canal's promoters see a railway being laid in the same way
+        st.projects.clear();
+        st.canal = vec![0; st.N]; // as `canals::plan` makes it
+        st.projects.push(project(&railway, SERVES_TRUNK, a, b, path[path.len() - 1], a, path.clone(), path.clone(), vec![0.0; C.G], 0.0, Vec::new(), 1800, 0.1, 1.0, W));
+        let net = Net::new(&st, &P, &canal);
+        assert!(!net.g.has_boats() && from_a(&net.g) < from_a(&st.graph));
     }
 
     /// Locks are paid for: a canal's materials grow with the height it climbs.

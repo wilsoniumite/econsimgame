@@ -77,6 +77,7 @@ fn main() {
         println!("\nbegun  opened  km  serves                      expected    spent  return");
         for l in &book.lines {
             let what = match l.serves {
+                SERVES_TRUNK if l.new_cells == 0 => format!("junction, {} to {}", st.town_name[l.a], st.town_name[l.b]),
                 SERVES_TRUNK => format!("{} to {}", st.town_name[l.a], st.town_name[l.b]),
                 SERVES_TOWN => format!("{} (its first)", st.town_name[l.a]),
                 s => format!("{} near {}", serves_word(s), st.town_name[l.a]),
