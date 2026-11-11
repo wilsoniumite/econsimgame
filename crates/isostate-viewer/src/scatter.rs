@@ -70,37 +70,44 @@ pub struct Slots {
     pub farm_open: Vec<i32>,
 }
 
-fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<Slot> {
-    let mut out = Vec::new();
-    for c in 0..r.n {
-        if r.terrain[c] == 0 {
-            continue;
-        }
-        let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
-        for j in 0..n {
-            for i in 0..n {
-                let id = (c * n * n + j * n + i) as i32;
-                let x = cx + (i as f32 + 0.5 + jitter * (world::hash2(id, 1, seed) - 0.5)) / n as f32;
-                let z = cy + (j as f32 + 0.5 + jitter * (world::hash2(id, 2, seed) - 0.5)) / n as f32;
-                // nothing on the beach or in a river
-                if world::height_at(g, x, z) < 0.05 || world::water_dist(g, x, z) < 0.025 {
-                    continue;
-                }
-                let (wc, sub) = world::class_key(g, x, z);
-                out.push(Slot {
-                    x,
-                    z,
-                    wcell: wc as u32,
-                    sub,
-                    place: world::place_at(g, x, z),
-                    u: world::hash2(id, 3, seed),
-                    v: world::hash2(id, 4, seed),
-                    yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
-                });
+/// A jittered grid of n by n spots in every land cell. `placed` finds each
+/// spot's place in the field system too, for the things that go by the open
+/// land's classes (trees, farms); houses and pits go by the cell rule alone.
+fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: bool) -> Vec<Slot> {
+    use rayon::prelude::*;
+    (0..r.n)
+        .into_par_iter()
+        .flat_map_iter(|c| {
+            let mut out = Vec::new();
+            if r.terrain[c] == 0 {
+                return out;
             }
-        }
-    }
-    out
+            let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
+            for j in 0..n {
+                for i in 0..n {
+                    let id = (c * n * n + j * n + i) as i32;
+                    let x = cx + (i as f32 + 0.5 + jitter * (world::hash2(id, 1, seed) - 0.5)) / n as f32;
+                    let z = cy + (j as f32 + 0.5 + jitter * (world::hash2(id, 2, seed) - 0.5)) / n as f32;
+                    // nothing on the beach or in a river
+                    if world::height_at(g, x, z) < 0.05 || world::water_dist(g, x, z) < 0.025 {
+                        continue;
+                    }
+                    let (wc, sub) = world::class_key(g, x, z);
+                    out.push(Slot {
+                        x,
+                        z,
+                        wcell: wc as u32,
+                        sub,
+                        place: if placed { world::place_at(g, x, z) } else { world::Place { parcel: 0, beyond: 0, lean: 0 } },
+                        u: world::hash2(id, 3, seed),
+                        v: world::hash2(id, 4, seed),
+                        yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
+                    });
+                }
+            }
+            out
+        })
+        .collect()
 }
 
 // ------------------------------------------------------------------ where the works stand
@@ -511,10 +518,10 @@ pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
 
 fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     let mut slots = Slots {
-        trees: grid_slots(r, g, 7, 11, 0.9),
-        houses: grid_slots(r, g, 7, 12, 0.7),
+        trees: grid_slots(r, g, 7, 11, 0.9, true),
+        houses: grid_slots(r, g, 7, 12, 0.7, false),
         farms: Vec::new(),
-        mines: grid_slots(r, g, 2, 14, 0.7),
+        mines: grid_slots(r, g, 2, 14, 0.7, false),
         firm_pos: Vec::new(),
         firm_cap: Vec::new(),
         firm_water: Vec::new(),
@@ -525,7 +532,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
         farm_open: Vec::new(),
     };
     (slots.hedge, slots.hedge_open) = hedge_slots(r, g).into_iter().unzip();
-    slots.farms = grid_slots(r, g, 2, 13, 0.5).into_iter().map(|s| farm_spot(g, s)).collect();
+    slots.farms = grid_slots(r, g, 2, 13, 0.5, true).into_iter().map(|s| farm_spot(g, s)).collect();
     slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.place.parcel as usize]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
@@ -706,7 +713,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             world::WOOD => {
                 let deep = (wooded * 2.0 - 1.0).clamp(0.0, 1.0);
                 let open = world::glade(s.x, s.z, deep);
-                ((1.0 - s.u) < (0.78 + 0.22 * deep) * (1.0 - open), (0.62 + 0.3 * deep) * (0.78 + 0.44 * stand) + 0.3 * s.v)
+                ((1.0 - s.u) < (0.7 + 0.26 * deep) * (1.0 - open),(0.62 + 0.3 * deep) * (0.78 + 0.44 * stand) + 0.3 * s.v)
             }
             // the odd tree out in a field, and clumps and lone trees near a wood;
             // most of a field's trees stand in its hedges

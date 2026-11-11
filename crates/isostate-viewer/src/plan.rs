@@ -155,6 +155,28 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         for t in 0..4 {
             eprintln!("  {:8} {:5.1} / {:5.1} / {:5.1}", names[t], rec[t], drawn[t], old[t]);
         }
+        // the same as it is painted, with the edges of the woods and heaths leaning across
+        // the parcels' sides: the class under ten points each way to a cell
+        let grid = 10;
+        let counts = (0..r.h * grid)
+            .into_par_iter()
+            .map(|j| {
+                let mut n = [0.0f64; 5];
+                for i in 0..r.w * grid {
+                    let (x, z) = ((i as f32 + 0.5) / grid as f32, (j as f32 + 0.5) / grid as f32);
+                    if world::height_at(g, x, z) > 0.02 {
+                        let (cls, margin) = land.at(world::place_at(g, x, z));
+                        if (world::FARM..=world::HEATH).contains(&cls) {
+                            n[if margin { 4 } else { (cls - world::FARM) as usize }] += 1.0;
+                        }
+                    }
+                }
+                n
+            })
+            .reduce(|| [0.0; 5], |a, b| std::array::from_fn(|t| a[t] + b[t]));
+        let all_painted: f64 = counts.iter().sum::<f64>().max(1.0);
+        eprintln!("  as painted, with the edges of wood and heath leaning: {}, and their margins of rough grass {:.1}",
+            (0..4).map(|t| format!("{} {:.1}", names[t], 100.0 * counts[t] / all_painted)).collect::<Vec<_>>().join(", "), 100.0 * counts[4] / all_painted);
         // the districts that are mostly land: how far each class's share is out, in points of the open land
         let (mut n, mut mean, mut worst) = (0, [0.0f64; 2], [0.0f64; 2]);
         let mut by_class = [[0.0f64; 4]; 2];

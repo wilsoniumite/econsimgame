@@ -2,14 +2,17 @@
 // any zoom, while Bevy's lighting, shadows, ambient occlusion and fog work as
 // for any StandardMaterial.
 //
-// Each 2 km cell has a mix of two land classes for the year: mix_a, mix_b and
-// mix_s, the share of mix_a in 255ths. The land is divided into fields by the
-// field system of fields.rs, and every parcel of fields takes one class by the
-// rule of world.rs: the same integer hash, value noise, warp and quantile table,
-// looked up at the parcel's own point, with the lower class number always taking
-// the low noise values. The trees and houses that scatter.rs places with that
-// rule therefore stand on matching ground, and land classes change only at
-// hedge lines.
+// The land is divided into fields by the field system of fields.rs, repeated
+// here, and every parcel of fields has one class for the year, which world.rs
+// decides (year_land) and hands over in a texture with a texel for each
+// parcel. So the trees and houses that scatter.rs places by the same table
+// stand on matching ground. What is finer than a parcel is worked out here
+// and repeated on the CPU: the edges of wood and heath, which lean to and fro
+// across a parcel's side, and the glades in the woods.
+//
+// From far off the ground is drawn as a map-maker would draw it: the woods by
+// their canopy, the relief shaded, the rivers as threads that keep a pixel or
+// two of width, the shore ruled with sand.
 //
 // Colours are mixed in sRGB, as the old CPU painter did, and turned linear at
 // the end.
@@ -171,8 +174,8 @@ const TAU: f32 = 6.2831853;
 const SUN_XZ: vec2<f32> = vec2<f32>(-0.682, 0.731);
 
 // ------------------------------------------------------------------ the CPU rule
-// hash2, hash3, vnoise, warp_raw, sub_raw and the field system are world.rs
-// and fields.rs line for line; keep them in step. WGSL u32 arithmetic wraps like
+// hash2, hash3, vnoise and the field system are world.rs and fields.rs line
+// for line; keep them in step. WGSL u32 arithmetic wraps like
 // Rust's wrapping_mul, so the hashes match bit for bit.
 
 fn hash2(x: i32, y: i32, s: i32) -> f32 {
@@ -607,7 +610,7 @@ fn field_look(key: u32, pasture: bool, ph: f32, ley: f32, tone: f32) -> Look {
     var look: Look;
     if (pasture) {
         look = meadow_look(u32(u * 4.0) % 4u, ph);
-        look.col *= vec3<f32>(0.97 + 0.06 * tone, 0.96 + 0.08 * tone, 0.98 + 0.02 * tone);
+        look.col *= vec3<f32>(0.94 + 0.12 * tone, 0.95 + 0.1 * tone, 0.97 + 0.04 * tone);
     } else {
         var crop = 0u;
         if (u < ley) {
@@ -626,7 +629,7 @@ fn field_look(key: u32, pasture: bool, ph: f32, ley: f32, tone: f32) -> Look {
 // What a crowd of fields too small to see one by one averages out to.
 fn fields_far(pasture: bool, ph: f32, ley: f32, tone: f32) -> vec3<f32> {
     if (pasture) {
-        return 0.5 * (meadow_look(0u, ph).col + meadow_look(2u, ph).col) * vec3<f32>(0.97 + 0.06 * tone, 0.96 + 0.08 * tone, 0.98 + 0.02 * tone);
+        return 0.5 * (meadow_look(0u, ph).col + meadow_look(2u, ph).col) * vec3<f32>(0.94 + 0.12 * tone, 0.95 + 0.1 * tone, 0.97 + 0.04 * tone);
     }
     let grass = 0.6 * crop_look(5u, ph, 0.5, tone).col + 0.4 * crop_look(7u, ph, 0.5, tone).col;
     let corn = 0.45 * crop_look(0u, ph, 0.5, tone).col + 0.4 * crop_look(2u, ph, 0.5, tone).col + 0.15 * crop_look(8u, ph, 0.5, tone).col;
@@ -706,8 +709,10 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
     let lod = smoothstep(1.5, 4.0, sp.size / max(sp.foot, 1e-5));
     c = mix(fields_far(pasture, sp.ph, sp.ley, sp.soil), c, lod);
     if (pasture) {
-        // tussocks and wetter hollows
+        // tussocks and wetter hollows; and the higher a pasture lies the rougher
+        // and paler its grass, until it is hard to tell from the moor above it
         c *= 1.0 + 0.06 * vnoise(sp.p.x * 11.0, sp.p.y * 11.0, 83) * detail(11.0, sp.foot);
+        c = mix(c, paint.heath_hill.rgb, 0.42 * smoothstep(0.3, 0.8, sp.h + 0.08 * vnoise(sp.p.x * 1.9, sp.p.y * 1.9, 445)));
     }
     // water meadows on the valley floors: greener, with darker rushes
     c = mix(c, paint.water_meadow.rgb * (1.0 + 0.08 * vnoise(sp.p.x * 9.0, sp.p.y * 9.0, 87)), 0.5 * sp.flood);

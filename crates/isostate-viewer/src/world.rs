@@ -1,10 +1,13 @@
-//! Shared spatial logic: the ground's heights, its rivers, and the patchwork
-//! rule that turns each cell's land mix into fields, woods and towns. The
-//! scattered trees and houses and the road ribbons ask these functions, and the
-//! ground shader (terrain.wesl) repeats `hash2`, `vnoise`, `warp_raw`, `sub_raw`,
-//! the field system of fields.rs and `pick_class` exactly on the GPU, so
-//! everything agrees about what is where. Change one side and you must change
-//! the other.
+//! Shared spatial logic: the ground's heights, its rivers, and the rules that
+//! turn each cell's land mix into fields, woods and towns. The class of every
+//! parcel of the field system is decided here, once a year (`year_land`), and
+//! handed to the ground shader (terrain.wesl) in a texture with a texel for
+//! each parcel, so the two cannot disagree about a parcel. The shader repeats
+//! only what is finer than a parcel: `hash2`, `vnoise`, the field system of
+//! fields.rs, the edges of wood and heath that lean across a parcel's side
+//! (`place_at`, `fringe`) and the glades (`glade`). The scattered trees and
+//! houses and the road ribbons ask the functions here. Change one side of
+//! what is repeated and you must change the other.
 
 use bevy::math::Vec2;
 
@@ -530,10 +533,18 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
         .collect();
     debug_assert_eq!(ones.len(), n);
 
-    // the ranks: each parcel's place among the dry parcels within a little over two
-    // squares of it, by area; `moor` and `lea` among those of them about as wild as
-    // itself, so that they say nothing more about how wild it is
-    const REACH: f32 = 2.2;
+    // The ranks: each parcel's place among the dry parcels within two squares and a
+    // half of it, by area. First each measure has its trend across that country
+    // taken out (a plane fitted to it there): a rank against one's neighbours is
+    // only even where the measure has no drift, and on the flank of a mountain,
+    // where everything to one side is higher, every parcel would otherwise rank
+    // in the middle and the shares would not be kept. So the ground decides
+    // within a district, and the districts keep their shares against each other.
+    // `moor` and `lea` are ranked among the neighbours about as wild as the
+    // parcel itself, so that they say nothing more about how wild it is (if they
+    // did, the split of the wild land into wood and heath, and of the rest into
+    // arable and pasture, would come out uneven).
+    const REACH: f32 = 2.6;
     let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); w * h];
     for (i, o) in ones.iter().enumerate() {
         if o.area > 0.0 {
@@ -553,6 +564,42 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
             }
         }
     };
+    // each measure less the plane that fits it best over the country round the parcel
+    let level: Vec<[f32; 3]> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if ones[i].area <= 0.0 {
+                return [0.0; 3];
+            }
+            let p = ones[i].at;
+            // sums of 1, x, y, xx, xy, yy, and for each measure of v, vx, vy, all by area
+            let (mut s, mut t) = ([0.0f64; 6], [[0.0f64; 3]; 3]);
+            near(i, &mut |j| {
+                let (a, d) = (ones[j].area as f64, ones[j].at - p);
+                let (x, y) = (d.x as f64, d.y as f64);
+                for (k, v) in [1.0, x, y, x * x, x * y, y * y].into_iter().enumerate() {
+                    s[k] += a * v;
+                }
+                for m in 0..3 {
+                    let v = ones[j].raw[m] as f64;
+                    t[m][0] += a * v;
+                    t[m][1] += a * v * x;
+                    t[m][2] += a * v * y;
+                }
+            });
+            // the plane's height at the parcel itself, by Cramer's rule
+            let det = s[0] * (s[3] * s[5] - s[4] * s[4]) - s[1] * (s[1] * s[5] - s[4] * s[2]) + s[2] * (s[1] * s[4] - s[3] * s[2]);
+            std::array::from_fn(|m| {
+                let [v, vx, vy] = t[m];
+                let here = if det.abs() > 1e-6 * s[0].powi(3) {
+                    (v * (s[3] * s[5] - s[4] * s[4]) - s[1] * (vx * s[5] - s[4] * vy) + s[2] * (vx * s[4] - s[3] * vy)) / det
+                } else {
+                    v / s[0].max(1e-9)
+                };
+                ones[i].raw[m] - here as f32
+            })
+        })
+        .collect();
     let wild: Vec<f32> = (0..n)
         .into_par_iter()
         .map(|i| {
@@ -562,7 +609,7 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
             let (mut below, mut all) = (0.0f32, 0.0f32);
             near(i, &mut |j| {
                 all += ones[j].area;
-                if ones[j].raw[0] < ones[i].raw[0] {
+                if level[j][0] < level[i][0] {
                     below += ones[j].area;
                 }
             });
@@ -577,10 +624,10 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
             }
             let (mut below, mut all) = ([0.0f32; 2], 0.0f32);
             near(i, &mut |j| {
-                if (wild[j] - wild[i]).abs() <= 0.2 {
+                if (wild[j] - wild[i]).abs() <= 0.1 {
                     all += ones[j].area;
                     for t in 0..2 {
-                        if ones[j].raw[t + 1] < ones[i].raw[t + 1] {
+                        if level[j][t + 1] < level[i][t + 1] {
                             below[t] += ones[j].area;
                         }
                     }
@@ -877,4 +924,208 @@ pub fn class_share(r: &Replay, k: usize, c: usize, class: u8) -> f32 {
     if r.mix_a[off] == class { v += s; }
     if r.mix_b[off] == class && r.mix_b[off] != r.mix_a[off] { v += 1.0 - s; }
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A made-up island of 14 squares by 12: sea round the rim, the land in
+    /// ridges that run north and south, four squares from crest to crest,
+    /// arable and wood in the west half (six to four) and pasture and heath in
+    /// the east (four to six).
+    fn island() -> Replay {
+        let (w, h) = (14usize, 12usize);
+        let n = w * h;
+        let header: crate::replay::Header =
+            serde_json::from_str(r#"{"meta":{"W":14,"H":12,"start_year":1750,"n_years":1},"goods":[],"methods":[],"towns":[],"firms":[],"events":[],"uses":[],"arrays":[]}"#).unwrap();
+        let land = |c: usize| {
+            let (x, y) = (c % w, c / w);
+            x >= 1 && y >= 1 && x < w - 1 && y < h - 1
+        };
+        let mut r = Replay {
+            header,
+            w,
+            h,
+            n,
+            ny: 1,
+            y0: 1750,
+            n_towns: 0,
+            elev: (0..n).map(|c| if land(c) { 30 + 20 * [0, 1, 2, 1][(c % w) % 4] } else { 0 }).collect(),
+            terrain: (0..n).map(|c| if !land(c) { 0 } else if c % w > 9 { 2 } else { 1 }).collect(),
+            river: vec![0; n],
+            down: vec![-1; n],
+            use_: vec![0; n],
+            inten: vec![0; n],
+            trans: vec![0; n],
+            catch: vec![0; n],
+            rent: Vec::new(),
+            dist: Vec::new(),
+            mix_a: vec![SEA; n],
+            mix_b: vec![SEA; n],
+            mix_s: vec![255; n],
+            town_active: Vec::new(),
+            town_pop: Vec::new(),
+            town_urban: Vec::new(),
+            town_wage: Vec::new(),
+            town_price: Vec::new(),
+            firm_first: Vec::new(),
+            firm_len: Vec::new(),
+            firm_off: Vec::new(),
+            firm_k: Vec::new(),
+            series_names: Vec::new(),
+            series: Vec::new(),
+            series_len: 0,
+            filled: 1,
+            owner: Vec::new(),
+        };
+        for c in (0..n).filter(|&c| land(c)) {
+            (r.mix_a[c], r.mix_b[c], r.mix_s[c]) = if c % w < 7 { (FARM, WOOD, 153) } else { (PASTURE, HEATH, 102) };
+        }
+        r
+    }
+
+    /// The dry area of the parcels of each open class, as shares of them all.
+    fn drawn(g: &Ground, land: &YearLand) -> [f32; 4] {
+        let mut a = [0.0f32; 4];
+        for i in 0..g.land.at.len() {
+            if (FARM..=HEATH).contains(&land.class[i]) {
+                a[(land.class[i] - FARM) as usize] += g.land.area[i];
+            }
+        }
+        let all: f32 = a.iter().sum();
+        a.map(|v| v / all)
+    }
+
+    #[test]
+    fn a_parcel_s_number_finds_it_again() {
+        let r = island();
+        let g = build_ground(&r);
+        for i in 0..400 {
+            let (x, y) = (1.0 + 12.0 * hash2(i, 1, 7), 1.0 + 10.0 * hash2(i, 2, 7));
+            let at = g.land.at[parcel_index(&g, x, y)];
+            assert_eq!((at.x, at.y), class_point(x, y), "the parcel at {x}, {y}");
+        }
+    }
+
+    #[test]
+    fn the_ranks_are_even_over_the_land() {
+        let r = island();
+        let g = build_ground(&r);
+        for (name, rank) in [("wild", &g.land.wild), ("moor", &g.land.moor), ("lea", &g.land.lea)] {
+            let mut tenths = [0.0f32; 10];
+            for i in 0..rank.len() {
+                assert!((0.0..1.0).contains(&rank[i]), "{name} of parcel {i} is {}", rank[i]);
+                tenths[(rank[i] * 10.0) as usize] += g.land.area[i];
+            }
+            let all: f32 = tenths.iter().sum();
+            for (t, a) in tenths.iter().enumerate() {
+                assert!((a / all - 0.1).abs() < 0.035, "{:.3} of the land has a {name} in tenth {t}", a / all);
+            }
+        }
+    }
+
+    #[test]
+    fn the_drawn_land_keeps_the_record_s_shares() {
+        let r = island();
+        let g = build_ground(&r);
+        let got = drawn(&g, &year_land(&r, &g, 0));
+        // sixty squares of six arable to four wood, sixty of four pasture to six heath
+        for (name, got, want) in [("arable", got[0], 0.3), ("pasture", got[1], 0.2), ("wood", got[2], 0.2), ("heath", got[3], 0.3)] {
+            assert!((got - want).abs() < 0.04, "{name} is {got:.3} of the open land, the record says {want}");
+        }
+    }
+
+    #[test]
+    fn the_mix_changes_smoothly_and_not_at_a_cell_s_edge() {
+        let r = island();
+        let g = build_ground(&r);
+        let land = year_land(&r, &g, 0);
+        // the two halves meet at x = 7: within a square of the line both mixes are drawn
+        let mut seen = [[false; 4]; 2];
+        for i in 0..g.land.at.len() {
+            let p = g.land.at[i];
+            if g.land.area[i] > 0.0 && (p.x - 7.0).abs() < 1.0 && (FARM..=HEATH).contains(&land.class[i]) {
+                seen[(p.x >= 7.0) as usize][(land.class[i] - FARM) as usize] = true;
+            }
+        }
+        assert!(seen[0][1] || seen[0][3], "no pasture or heath reaches west of the line");
+        assert!(seen[1][0] || seen[1][2], "no arable or wood reaches east of the line");
+    }
+
+    #[test]
+    fn the_ground_decides_where_each_use_lies() {
+        let r = island();
+        let g = build_ground(&r);
+        let land = year_land(&r, &g, 0);
+        let mean_height = |class: u8| {
+            let (mut sum, mut area) = (0.0, 0.0);
+            for i in 0..g.land.at.len() {
+                if land.class[i] == class && g.land.area[i] > 0.0 {
+                    sum += height_at(&g, g.land.at[i].x, g.land.at[i].y) * g.land.area[i];
+                    area += g.land.area[i];
+                }
+            }
+            sum / area
+        };
+        // on the ridges, wood lies higher than the arable and heath than the pasture
+        assert!(mean_height(WOOD) > mean_height(FARM) + 0.01, "wood at {} and arable at {}", mean_height(WOOD), mean_height(FARM));
+        assert!(mean_height(HEATH) > mean_height(PASTURE) + 0.01, "heath at {} and pasture at {}", mean_height(HEATH), mean_height(PASTURE));
+    }
+
+    #[test]
+    fn towns_stay_where_the_cell_rule_puts_them() {
+        let mut r = island();
+        let c = 5 * r.w + 4;
+        (r.mix_a[c], r.mix_b[c], r.mix_s[c]) = (URBAN, FARM, 140);
+        let g = build_ground(&r);
+        let land = year_land(&r, &g, 0);
+        let mut towns = 0;
+        for i in 0..g.land.at.len() {
+            let cell = g.land.wcell[i] as usize;
+            let first = if r.terrain[cell] == 0 { SEA } else { pick_class(&r, 0, cell, g.land.sub[i]) };
+            assert_eq!(land.class[i] == URBAN, first == URBAN, "parcel {i}");
+            towns += (first == URBAN) as usize;
+        }
+        assert!(towns > 0, "the town has no parcel");
+    }
+
+    #[test]
+    fn a_leaning_edge_gives_as_it_takes() {
+        // parcels: 0 a wood, 1 arable, 2 heath, 3 pasture
+        let land = YearLand { class: vec![WOOD, FARM, HEATH, PASTURE], wood: vec![200, 60, 0, 0] };
+        let at = |parcel: u32, beyond: u32, lean: i8| land.at(Place { parcel, beyond, lean });
+        // a wood takes the field's edge where the lean is its way, and leaves a margin of its own where it is not
+        assert_eq!(at(1, 0, 1), (WOOD, false));
+        assert_eq!(at(1, 0, -1), (FARM, false));
+        assert_eq!(at(0, 1, -1), (WOOD, true));
+        assert_eq!(at(0, 1, 1), (WOOD, false));
+        // wood against heath: the heath takes what the wood gives up
+        assert_eq!(at(2, 0, 1), (WOOD, false));
+        assert_eq!(at(0, 2, -1), (HEATH, false));
+        // heath against pasture, as wood against arable
+        assert_eq!(at(3, 2, 1), (HEATH, false));
+        assert_eq!(at(2, 3, -1), (HEATH, true));
+        // and the hedge between two fields stays where it is
+        assert_eq!(at(1, 3, 1), (FARM, false));
+        assert_eq!(at(3, 1, -1), (PASTURE, false));
+        // a wood leant into a field is a wood's edge there
+        assert_eq!(land.wooded(Place { parcel: 1, beyond: 0, lean: 1 }), 0.5);
+    }
+
+    #[test]
+    fn a_wood_leans_over_its_sides_both_ways() {
+        // over the island, the spots a wilder neighbour may take and those a wild
+        // parcel may give up are as many, within a tenth
+        let r = island();
+        let g = build_ground(&r);
+        let (mut take, mut give) = (0, 0);
+        for i in 0..20000 {
+            let pl = place_at(&g, 1.0 + 12.0 * hash2(i, 3, 9), 1.0 + 10.0 * hash2(i, 4, 9));
+            assert!(pl.lean == 0 || pl.beyond != pl.parcel);
+            take += (pl.lean > 0) as i32;
+            give += (pl.lean < 0) as i32;
+        }
+        assert!(take > 1000 && (take - give).abs() * 10 < take, "{take} to take and {give} to give");
+    }
 }

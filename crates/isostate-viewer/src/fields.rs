@@ -10,13 +10,14 @@
 //! enclosed country. Some blocks are laid out in long strips.
 //!
 //! The first `PARCEL_LEVEL` cuts make parcels, and a whole parcel takes one land
-//! class: the class rule in world.rs looks up the patch noise and the warped
-//! cell at the parcel's centre, so every boundary between farm, pasture, wood
-//! and town runs along a hedge line. How much further a parcel is cut depends on
-//! the ground (`Ground::field_depth`): small closes round the towns, larger
-//! fields in the lowland and large enclosures on the hills.
+//! class, decided in world.rs (`year_land`) for the parcel's own point, so the
+//! boundaries between arable, pasture and town run along hedge lines; a wood
+//! or a heath leans a little way across a parcel's side (`across`, `FRINGE`).
+//! How much further a parcel is cut is the parcel's own (`Land::depth`): small
+//! crooked closes in old-enclosed country, on the hill margins and round the
+//! towns, large straight fields on the late-enclosed plains and the hills.
 //!
-//! terrain.wesl repeats all of this line for line, in the same order of
+//! terrain.wesl repeats the cutting line for line, in the same order of
 //! operations, so the ground it paints agrees with the trees and houses placed
 //! here. Change one side and you must change the other.
 
