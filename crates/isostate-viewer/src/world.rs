@@ -431,8 +431,9 @@ pub struct Land {
     pub tex: Vec<u32>,
     /// for each texel, a slow swell that is added to the year's field of wood
     /// and another to its field of heath before the districts' areas are
-    /// kept: where it stands high the woods run together in masses, where
-    /// low they break up into copses, so that woods come in every size
+    /// kept: where it stands high the woods run together in masses some
+    /// kilometres across, where low they break up into copses and the
+    /// farmland lies open, so that woods and clearings come in every size
     pub swell: Vec<[f32; 2]>,
 }
 
@@ -683,8 +684,10 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
         .into_par_iter()
         .map(|t| {
             let (x, y) = (((t % tw) as f32 + 0.5) / FIELD_RES as f32, ((t / tw) as f32 + 0.5) / FIELD_RES as f32);
-            let slow = |s: i32| 0.26 * vnoise(x * 0.43 + 2.9, y * 0.43 + 7.3, s) + 0.17 * vnoise(x * 1.07 + 5.1, y * 1.07 + 0.7, s + 1);
-            [slow(477), slow(481)]
+            let slow = |s: i32, wide: f32, close: f32| wide * vnoise(x * 0.3 + 2.9, y * 0.3 + 7.3, s) + close * vnoise(x * 1.07 + 5.1, y * 1.07 + 0.7, s + 1);
+            // the woods' is strong enough to outweigh a parcel's own rank: a wood of a few
+            // parcels and a forest some kilometres across in the same district
+            [slow(477, 1.04, 0.48), slow(481, 0.26, 0.12)]
         })
         .collect();
     Land {
@@ -721,14 +724,11 @@ fn field_depth(size: f32, near: f32) -> u8 {
     (size + 1.3 * (1.0 - fields::smoothstep(0.8, CLOSES_REACH, near))).floor().clamp(fields::PARCEL_LEVEL as f32, fields::MAX_DEPTH as f32) as u8
 }
 
-/// The year's land: the class of every parcel, how wooded each is, and where
-/// within the parcels the woods and the heaths lie.
+/// The year's land: the class of every parcel, and where within the parcels
+/// the woods and the heaths lie.
 pub struct YearLand {
     /// the display class of each parcel
     pub class: Vec<u8>,
-    /// for a wood, 128 at its edge to 255 deep inside; for other open land,
-    /// 0 to 127 as it comes nearer to being wood
-    pub wood: Vec<u8>,
     /// How wooded the land is, and how much heath, as two fields that vary
     /// smoothly across the country: two bytes to a texel of the land's grid
     /// (`Land::tw` by `Land::th`), read between texels. A spot of pasture,
@@ -777,13 +777,15 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
     let n = l.at.len();
     let shares: Vec<[f32; 4]> = (0..r.n).map(|c| open_shares(r, k, c)).collect();
     let mut class = vec![SEA; n];
-    let mut wood = vec![0u8; n];
     let mut under = vec![SEA; n];
     // how far each parcel's ranks stand inside what makes a wood of it, and a
-    // heath (negative: outside), in units of FRAY, -1 to 1
+    // heath (negative: outside), in units of SURE, -1 to 1
     let mut lean = vec![[-1.0f32; 2]; n];
-    // how far inside a rank's threshold counts as deep in the wood, or far from it
-    const FRAY: f32 = 0.22;
+    // How far inside a rank's threshold a parcel is surely wood (or heath), and how far
+    // outside surely not. Between, it leans one way by degrees and the country round it
+    // decides (`land_field`): were every parcel sure, the woods would all be of one grain,
+    // that of the ranks, in belts a kilometre wide from one end of the island to the other.
+    const SURE: f32 = 0.45;
     for i in 0..n {
         let c = l.wcell[i] as usize;
         if r.terrain[c] == 0 {
@@ -816,25 +818,13 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
             let a = if tame <= 0.02 && l.wild[i] >= tame { 1.0 } else { l.wild[i] - tame };
             let b = if f[2] <= 0.0 { -1.0 } else if woods >= 0.98 && l.moor[i] < woods { 1.0 } else { woods - l.moor[i] };
             let c = if f[3] <= 0.0 { -1.0 } else if woods <= 0.02 && l.moor[i] >= woods { 1.0 } else { l.moor[i] - woods };
-            lean[i] = [(a.min(b) / FRAY).clamp(-1.0, 1.0), (a.min(c) / FRAY).clamp(-1.0, 1.0)];
+            lean[i] = [(a.min(b) / SURE).clamp(-1.0, 1.0), (a.min(c) / SURE).clamp(-1.0, 1.0)];
         }
-        if l.wild[i] >= tame && wilds > 0.0 {
-            let woods = f[2] / wilds;
-            if l.moor[i] >= woods {
-                class[i] = HEATH;
-                wood[i] = if f[2] > 0.0 { (127.0 * (1.0 - (l.moor[i] - woods) / FRAY).clamp(0.0, 1.0)) as u8 } else { 0 };
-            } else {
-                class[i] = WOOD;
-                let from_fields = if tame > 0.02 { (l.wild[i] - tame) / FRAY } else { 1.0 };
-                let from_heath = if woods < 0.98 { (woods - l.moor[i]) / FRAY } else { 1.0 };
-                wood[i] = 128 + (127.0 * from_fields.min(from_heath).clamp(0.0, 1.0)) as u8;
-            }
+        class[i] = if l.wild[i] >= tame && wilds > 0.0 {
+            if l.moor[i] >= f[2] / wilds { HEATH } else { WOOD }
         } else {
-            class[i] = under[i];
-            if f[2] > 0.0 {
-                wood[i] = (127.0 * (1.0 - (tame - l.wild[i]) / FRAY).clamp(0.0, 1.0) * (f[2] / wilds)) as u8;
-            }
-        }
+            under[i]
+        };
     }
     let field = timed("year's wood and heath", || land_field(l, &class, &lean));
     // the small closes round the towns founded since the record began
@@ -858,7 +848,7 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
             }
         }
     }
-    YearLand { class, wood, field, tw: l.tw, under, depth }
+    YearLand { class, field, tw: l.tw, under, depth }
 }
 
 // Where the woods and the heaths lie. Built ground is what it is, to its
@@ -872,16 +862,24 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
 // sides. A slow swell is added (`Land::swell`), so that the woods run
 // together in masses in one stretch of country and break up into copses in
 // the next. Smoothing loses the small woods and fills the small clearings,
-// and the swell adds and takes, so
-// each district's fields are then shifted until as much of it stands above
-// the line as its parcels of wood (and of heath) come to: the areas are the
-// simulation's, district by district, and only the outlines are the
-// viewer's. What a wood or a heath does not reach of its own parcels is
-// farmed (`YearLand::under`), as pasture or arable in the district's own
-// proportion, which makes up for what they take of the parcels beside them.
+// and the swell adds and takes, so each district's fields are then shifted
+// until as much of it stands above the line as its parcels of wood (and of
+// heath) come to: the areas are the simulation's, district by district, and
+// only the outlines are the viewer's. What a wood or a heath does not reach
+// of its own parcels is farmed (`YearLand::under`), as pasture or arable in
+// the district's own proportion, which makes up for what they take of the
+// parcels beside them.
 
 /// The side of the districts the areas of wood and heath are kept over, in cells.
-const KEEP: usize = 4;
+const KEEP: usize = 3;
+
+/// How many times the districts' lines are drawn (`land_field`).
+const KEEP_ROUNDS: usize = 4;
+
+/// How much steeper than they were smoothed the fields of wood and of heath
+/// are handed on, about the line that makes a wood or a heath: it keeps the
+/// fraying of an edge (`edge_fray`) and the scrub outside it narrow.
+const STEEPEN: (f32, f32) = (1.8, 1.5);
 
 fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]]) -> Vec<u8> {
     use rayon::prelude::*;
@@ -913,74 +911,102 @@ fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]]) -> Vec<u8> {
             (fw[t], fh[t]) = (-1.0, -1.0);
         }
     }
-    // The line each district must draw to keep its areas: as many texels above
-    // it as lie in its parcels of wood; and of the rest, as many above the
-    // heath's line as lie in its parcels of heath.
+    // Each district's open texels, and how many of them lie in its parcels of
+    // wood and of heath: so many must stand above the wood's line, and of the
+    // rest so many above the heath's.
     let side = KEEP * FIELD_RES;
     let (dw, dh) = (tw.div_ceil(side), th.div_ceil(side));
-    let lines: Vec<Option<(f32, f32)>> = (0..dw * dh)
+    let districts: Vec<(Vec<u32>, usize, usize)> = (0..dw * dh)
         .into_par_iter()
         .map(|d| {
             let (x0, y0) = ((d % dw) * side, (d / dw) * side);
-            let mut own: Vec<usize> = Vec::with_capacity(side * side);
+            let mut own: Vec<u32> = Vec::with_capacity(side * side);
             for y in y0..(y0 + side).min(th) {
-                own.extend((x0..(x0 + side).min(tw)).map(|x| y * tw + x).filter(|&t| free(t)));
+                own.extend((x0..(x0 + side).min(tw)).map(|x| y * tw + x).filter(|&t| free(t)).map(|t| t as u32));
             }
-            if own.len() < 8 {
-                return None;
-            }
-            // the line that leaves `want` of the values above it; with none or all wanted, the
-            // line the parcels themselves draw (0) unless smoothing has carried values across it
-            let line = |v: &mut Vec<f32>, want: usize| -> f32 {
-                v.sort_unstable_by(|a, b| b.total_cmp(a));
-                if want == 0 {
-                    (v[0] + 0.01).max(0.0)
-                } else if want >= v.len() {
-                    (v[v.len() - 1] - 0.01).min(0.0)
-                } else {
-                    0.5 * (v[want - 1] + v[want])
-                }
-            };
-            let count = |c: u8| own.iter().filter(|&&t| class[l.tex[t] as usize] == c).count();
-            let mut v: Vec<f32> = own.iter().map(|&t| fw[t]).collect();
-            let wood_line = line(&mut v, count(WOOD));
-            let mut v: Vec<f32> = own.iter().filter(|&&t| fw[t] <= wood_line).map(|&t| fh[t]).collect();
-            let want = count(HEATH).min(v.len());
-            let heath_line = if v.is_empty() { 0.0 } else { line(&mut v, want) };
-            Some((wood_line, heath_line))
+            let count = |c: u8| own.iter().filter(|&&t| class[l.tex[t as usize] as usize] == c).count();
+            let (woods, heaths) = (count(WOOD), count(HEATH));
+            (own, woods, heaths)
         })
         .collect();
-    // a district with no such land takes the lines of those round it, or the parcels' own
-    let line_of = |dx: usize, dy: usize| -> (f32, f32) {
-        if let Some(v) = lines[dy * dw + dx] {
-            return v;
-        }
-        let (mut sum, mut k) = ((0.0, 0.0), 0.0);
-        for y in dy.saturating_sub(1)..=(dy + 1).min(dh - 1) {
-            for x in dx.saturating_sub(1)..=(dx + 1).min(dw - 1) {
-                if let Some(v) = lines[y * dw + x] {
-                    sum = (sum.0 + v.0, sum.1 + v.1);
-                    k += 1.0;
-                }
-            }
-        }
-        if k > 0.0 { (sum.0 / k, sum.1 / k) } else { (0.0, 0.0) }
+    // the lines at a texel, read between the districts' middles so that no edge steps where
+    // two districts meet
+    let at = |lines: &[(f32, f32)], t: usize| -> (f32, f32) {
+        let (u, v) = (((t % tw) as f32 + 0.5) / side as f32 - 0.5, ((t / tw) as f32 + 0.5) / side as f32 - 0.5);
+        let (i, j) = (u.floor().clamp(0.0, dw as f32 - 1.0), v.floor().clamp(0.0, dh as f32 - 1.0));
+        let (a, b) = ((u - i).clamp(0.0, 1.0), (v - j).clamp(0.0, 1.0));
+        let (i, j) = (i as usize, j as usize);
+        let (i1, j1) = ((i + 1).min(dw - 1), (j + 1).min(dh - 1));
+        let of = |x: usize, y: usize| lines[y * dw + x];
+        let mix = |p: (f32, f32), q: (f32, f32), k: f32| (p.0 + (q.0 - p.0) * k, p.1 + (q.1 - p.1) * k);
+        mix(mix(of(i, j), of(i1, j), a), mix(of(i, j1), of(i1, j1), a), b)
     };
-    let lines: Vec<(f32, f32)> = (0..dw * dh).map(|d| line_of(d % dw, d / dw)).collect();
-    // the fields less their lines, the lines read between the districts' middles
+    // how far a line must rise to leave `want` of the values above it; with none or all
+    // wanted, no further than clears the values smoothing or the swell carried across it
+    let rise = |v: &mut [f32], want: usize| -> f32 {
+        if want == 0 {
+            (v.iter().copied().fold(f32::MIN, f32::max) + 0.01).max(0.0)
+        } else if want >= v.len() {
+            (v.iter().copied().fold(f32::MAX, f32::min) - 0.01).min(0.0)
+        } else {
+            let (above, nth, _) = v.select_nth_unstable_by(want, |a, b| b.total_cmp(a));
+            0.5 * (above.iter().copied().fold(f32::MAX, f32::min) + *nth)
+        }
+    };
+    // Reading the lines between the districts' middles lets a district's neighbours move
+    // its edges, so the lines are drawn a few times over, each district making up what the
+    // round before left it short of or over.
+    let mut lines = vec![(0.0f32, 0.0f32); dw * dh];
+    for _ in 0..KEEP_ROUNDS {
+        let drawn: Vec<Option<(f32, f32)>> = districts
+            .par_iter()
+            .enumerate()
+            .map(|(d, (own, woods, heaths))| {
+                if own.len() < 8 {
+                    return None;
+                }
+                let left: Vec<(f32, f32)> = own
+                    .iter()
+                    .map(|&t| {
+                        let line = at(&lines, t as usize);
+                        (fw[t as usize] - line.0, fh[t as usize] - line.1)
+                    })
+                    .collect();
+                let mut v: Vec<f32> = left.iter().map(|x| x.0).collect();
+                let wood = rise(&mut v, *woods);
+                let mut v: Vec<f32> = left.iter().filter(|x| x.0 <= wood).map(|x| x.1).collect();
+                let want = (*heaths).min(v.len());
+                let heath = if v.is_empty() { 0.0 } else { rise(&mut v, want) };
+                Some((lines[d].0 + wood, lines[d].1 + heath))
+            })
+            .collect();
+        // a district with no such land takes the lines of those round it, or the parcels' own
+        lines = (0..dw * dh)
+            .map(|d| {
+                if let Some(v) = drawn[d] {
+                    return v;
+                }
+                let (dx, dy) = (d % dw, d / dw);
+                let (mut sum, mut k) = ((0.0, 0.0), 0.0);
+                for y in dy.saturating_sub(1)..=(dy + 1).min(dh - 1) {
+                    for x in dx.saturating_sub(1)..=(dx + 1).min(dw - 1) {
+                        if let Some(v) = drawn[y * dw + x] {
+                            sum = (sum.0 + v.0, sum.1 + v.1);
+                            k += 1.0;
+                        }
+                    }
+                }
+                if k > 0.0 { (sum.0 / k, sum.1 / k) } else { (0.0, 0.0) }
+            })
+            .collect();
+    }
+    // the fields less their lines
     (0..n)
         .into_par_iter()
         .flat_map_iter(|t| {
-            let (u, v) = (((t % tw) as f32 + 0.5) / side as f32 - 0.5, ((t / tw) as f32 + 0.5) / side as f32 - 0.5);
-            let (i, j) = (u.floor().clamp(0.0, dw as f32 - 1.0), v.floor().clamp(0.0, dh as f32 - 1.0));
-            let (a, b) = ((u - i).clamp(0.0, 1.0), (v - j).clamp(0.0, 1.0));
-            let (i, j) = (i as usize, j as usize);
-            let (i1, j1) = ((i + 1).min(dw - 1), (j + 1).min(dh - 1));
-            let at = |x: usize, y: usize| lines[y * dw + x];
-            let mix = |p: (f32, f32), q: (f32, f32), k: f32| (p.0 + (q.0 - p.0) * k, p.1 + (q.1 - p.1) * k);
-            let line = mix(mix(at(i, j), at(i1, j), a), mix(at(i, j1), at(i1, j1), a), b);
+            let line = at(&lines, t);
             let byte = |v: f32| (127.5 + 127.5 * v.clamp(-1.0, 1.0)).round() as u8;
-            [byte(fw[t] - line.0), byte(fh[t] - line.1)]
+            [byte((fw[t] - line.0) * STEEPEN.0), byte((fh[t] - line.1) * STEEPEN.1)]
         })
         .collect()
 }
@@ -1448,7 +1474,6 @@ mod tests {
         // four texels in a row and two rows: wood rising to the right, heath to the bottom
         let land = YearLand {
             class: vec![PASTURE, WOOD, HEATH, FARM, URBAN],
-            wood: vec![0; 5],
             field: vec![0, 0, 85, 0, 170, 0, 255, 0, 0, 255, 85, 255, 170, 255, 255, 255],
             tw: 4,
             under: vec![PASTURE, FARM, PASTURE, FARM, URBAN],

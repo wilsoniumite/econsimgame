@@ -1148,7 +1148,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
                 walled = false;
             } else if (f.y > 0.5) {
                 cls = HEATH;
-                walled = under == PASTURE;
+                // an intake the moor has grown over keeps its walls; the moor's own
+                // parcels were never enclosed
+                walled = own_cls == PASTURE;
             } else {
                 cls = under;
             }
