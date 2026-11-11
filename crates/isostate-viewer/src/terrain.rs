@@ -120,6 +120,9 @@ pub struct Patchwork {
     /// per cell, fixed: the terrain class and the field depth (`fixed_cells`)
     #[texture(102)]
     pub fixed: Handle<Image>,
+    /// the land's colours, from the look
+    #[uniform(103)]
+    pub paint: crate::look::LandUniform,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -180,6 +183,9 @@ pub struct Sea {
     /// the ground's height at every vertex, one float each
     #[texture(101, sample_type = "float", filterable = false)]
     pub heights: Handle<Image>,
+    /// the water's colours, from the look
+    #[uniform(102)]
+    pub paint: crate::look::SeaUniform,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -197,7 +203,7 @@ impl MaterialExtension for Sea {
 }
 
 /// A sheet of water at sea level over the whole map and well beyond.
-fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, mut meshes: ResMut<Assets<Mesh>>, mut seas: ResMut<Assets<SeaMaterial>>, mut images: ResMut<Assets<Image>>) {
+fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::look::TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut seas: ResMut<Assets<SeaMaterial>>, mut images: ResMut<Assets<Image>>) {
     let g = &data.g;
     let size = Extent3d { width: g.gw as u32, height: g.gh as u32, depth_or_array_layers: 1 };
     let bytes: Vec<u8> = g.hgt.iter().flat_map(|h| h.to_le_bytes()).collect();
@@ -209,11 +215,11 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, mut meshes: ResMut<
         base: StandardMaterial {
             base_color: Color::WHITE,
             alpha_mode: AlphaMode::Blend,
-            perceptual_roughness: 0.14,
-            reflectance: 0.45,
+            perceptual_roughness: look.surfaces.sea,
+            reflectance: look.surfaces.sea_reflectance,
             ..default()
         },
-        extension: Sea { params: SeaParams { grid_w: g.gw as f32, grid_h: g.gh as f32, res: VRES as f32, season: 0.5 }, heights },
+        extension: Sea { params: SeaParams { grid_w: g.gw as f32, grid_h: g.gh as f32, res: VRES as f32, season: 0.5 }, heights, paint: look.sea.uniform() },
     });
     commands.spawn((Mesh3d(meshes.add(plane(-4.0 * w, -4.0 * h, 5.0 * w, 5.0 * h, 0.0))), MeshMaterial3d(mat), bevy::light::NotShadowCaster));
 }
