@@ -308,8 +308,9 @@ row but the seconds, since a run is the same run every time.
 
 All of them are worked out after the run from what it already keeps (the
 observer's series, the yearly snapshots, the final state); the simulation's
-loop is not touched. The one thing nobody keeps, the towns' growth against the
-cap, is noted between years by the sweep's own loop. They are computed from
+loop is not touched. Two things nobody keeps, the towns' growth against the
+cap and the land under each use, are noted between years by the sweep's own
+loop. They are computed from
 the content, so another content file works: a method or good it lacks is
 skipped.
 
@@ -323,11 +324,11 @@ names change with the run (`pop_1760` for a run to 1760).
 
 Seed 7's facts were worked out a second time from the files `isostate-core
 run` writes (the monthly CSV, the events and `run.bin`), by a separate script
-written from this page, with and without families: all 127 that can be had
-from those files agree. The four that cannot (`growth_capped_*`,
-`works_top_1pct_capacity_share`, `works_utilisation`) are worked out a second
-way in `tests/sweep.rs`, from the yearly snapshot and the final state of a
-run to 1790.
+written from this page, with and without families: all 107 that can be had
+from those files agree. The rest (`growth_capped_*`,
+`works_top_1pct_capacity_share`, `works_utilisation` and the `area_*`) are
+worked out a second way in `tests/sweep.rs`, from the yearly snapshot and the
+final state of a run to 1790.
 
 | Heading | Facts |
 |---|---|
@@ -335,7 +336,7 @@ run to 1790.
 | Work and wages | `farm_share_Y` and `industry_share_Y` of employment; `real_wage_Y_vs_1750` and `output_per_head_Y_vs_1750`; `output_per_head_peak_year` |
 | Railways | `rail_first_year`; `rail_km_Y` for 1850, 1870 and 1900; `rail_last_growth_year`, the last year that ended with more line than the year before |
 | Works | `works_Y` standing at the year's end and `works_ex_services_Y`; `works_per_1000_people`; size as built capacity K over the method's K0, for works with something built: `works_size_median`, `_p90`, `_largest`; `works_top_1pct_capacity_share`, the share of all capacity (built and on order, at the year's capital-goods prices) held by the largest hundredth of works; `works_closed` and their `works_closed_median_life` in years; `works_utilisation`, the mean over works |
-| Land | `cells_USE_Y`: the number of cells whose main use is urban, industry, farm, pasture, forestry, mines (quarries, pits and mines together), wild or derelict; `urban_churn_10y`, of the cells urban in a year the share not urban ten years on, averaged over the run |
+| Land | `cells_urban_Y`, `cells_industry_Y` and `cells_derelict_Y`: the number of whole cells a town, the works or dereliction has taken; `area_USE_Y`: the land under farm, pasture, forestry, mines (quarries, pits and mines together) and left wild, in cells, as every cell's share summed (a cell is 2 km square); `urban_churn_10y`, of the cells urban in a year the share not urban ten years on, averaged over the run |
 | Methods and inventions | for each method or tech not known at the start: `discovered_NAME`, and for methods `first_output_NAME` and `half_of_output_NAME`, the first year it makes half of all that its good's methods make; the plan's five: `share_coke_furnace_1800`, `share_textile_mill_1830`, `share_bessemer_1880`, `share_rolling_mill_1850`, `share_steel_rolling_1890`; and the list of methods never built |
 | Prices and cycles | `price_swing_GOOD` for grain, iron, rails and cloth: the standard deviation of the yearly change in the log of the price, 1760 to the end; `farm_zigzag`, the mean absolute second difference of the yearly farm share of employment, times 100 |
 | News | `news_KIND`, the number of news items of each kind, and `news_total` |
@@ -385,6 +386,11 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 - **Iron and rail prices swing two and a half times as hard as grain and
   cloth** (0.22 and 0.20 against 0.086 and 0.083).
 - **No town is founded after about 1800** (the latest in any seed is 1824).
+- **The woods retreat by a third and the wild land halves** (1,211 cells'
+  worth of forestry in 1750 and 853 in 1900; 565 of wild land and 288), while
+  the farms' and pastures' area falls a little (1,404 to 1,282 and 1,525 to
+  1,301). What grows is the land under quarries, pits and mines (below) and
+  the works' yards, from 204 cells to 886.
 
 ## What worries me
 
@@ -412,9 +418,15 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 - **`growth_capped_*` does not see famines.** It reads the income rule in
   `people::growth` before the clamp; a town at the cap in a famine year grew
   two points slower and is still counted as capped.
-- **Land counts are of a cell's main use.** A cell that is two fifths farm,
-  two fifths pasture and a fifth quarry counts as farm. Forestry and wild land
-  almost never lead a cell, so they read as zero while the map shows woods.
+- **Quarries, pits and mines take a fifth of the land.** The land is counted
+  by area (it used to be counted by each cell's main use, by which the woods
+  came to nothing: seven cells in 1750 and none after, against 1,211 cells'
+  worth by area). By area the mines together go from 880 cells' worth in 1750
+  to 1,190 in 1900, as much land as the farms: about 4,800 square kilometres
+  of holes in the ground. I have not traced why. The land rule shares each
+  cell out in proportion to bid^(1/theta), so every use with any bid at all
+  gets a slice, and that may be all it is; it looks like one of the port's
+  oddities and is worth a look of its own.
 - **`seconds` is wall time under load**: a run takes about 17 seconds alone
   and 27 or more with seven others beside it, so it says more about the
   machine that night than about the code.

@@ -61,8 +61,10 @@ fn a_tiny_sweep_writes_finite_facts() {
             "works_closed_median_life",
             "works_utilisation_1760",
             "cells_urban_1760",
-            "cells_farm_1760",
-            "cells_mines_1760",
+            "area_farm_1760",
+            "area_forestry_1760",
+            "area_mines_1760",
+            "area_wild_1760",
             "urban_churn_10y",
             "price_swing_grain",
             "price_swing_iron",
@@ -186,6 +188,20 @@ fn the_facts_no_file_holds_agree_with_the_record() {
     let share = value[value.len() - top..].iter().sum::<f64>() / value.iter().sum::<f64>();
     assert!(top >= 5 && share > 0.01 && share < 0.5, "{top} works hold {share}");
     assert!((f.get("works_top_1pct_capacity_share_1790").unwrap() - share).abs() < 1e-12);
+
+    // the land by area: the last year's is the final state's shares summed, there are woods
+    // though hardly a cell has them as its main use, and the whole is no more than the island
+    let area = |name: &str| f.get(&format!("area_{name}_1790")).unwrap();
+    let row = |r: usize| (0..st.N).map(|c| st.lam[(r, c)]).sum::<f64>();
+    let sector = |name: &str| C.sector_name.iter().position(|s| s == name).unwrap();
+    assert!((area("farm") - row(sector("farm"))).abs() < 1e-9);
+    assert!((area("forestry") - row(sector("forestry"))).abs() < 1e-9);
+    assert!((area("wild") - row(C.NS)).abs() < 1e-9);
+    let woods_lead = (0..st.N).filter(|&c| st.land_use[c] == isostate_core::land::USE_SECTOR0 + sector("forestry") as u8).count();
+    assert!(area("forestry") > 500.0 && woods_lead < 50, "{} cells' worth of woods, the main use of {woods_lead}", area("forestry"));
+    let shared: f64 = ["farm", "pasture", "forestry", "mines", "wild"].iter().map(|n| area(n)).sum();
+    let land = st.world.land.iter().filter(|&&l| l).count() as f64;
+    assert!(shared > 0.5 * land && shared <= land + 1e-6, "{shared} cells' worth shared out on an island of {land}");
 }
 
 #[test]
