@@ -80,8 +80,9 @@ pub struct TownsParams {
     /// A town founded at the year's end is reckoned for that year at its donor's
     /// mean wage and prices (the port leaves the wage at nothing).
     pub donor_wage: bool,
-    /// Ground is never priced under what it would earn as open land: a town
-    /// cell's rent, and what a works bids against on a cell the works have taken.
+    /// Ground is never priced under what it would earn without them: a town cell
+    /// pays at least its rent under the plough, and on a cell the works have
+    /// taken a works bids against what the cell would earn as open land.
     pub rent_floor: bool,
 }
 
@@ -137,14 +138,13 @@ pub fn room_beside_works(P: &Params, ks: f64) -> f64 {
     1.0 - (1.0 - P.towns.works_room.clamp(0.0, 1.0)) * ks.clamp(0.0, 1.0)
 }
 
-/// What a whole clear cell would pay as open land: its ground shared out among
-/// the land uses in proportion to bid^(1/theta), as `land::update_land_use` shares
-/// it, the wild share paying nothing. This is the rent of the farm beside it.
-pub fn open_rent(P: &Params, bids: &Mat, wild_bid: f64, c: usize) -> f64 {
-    let NS = bids.rows;
+/// What a whole clear cell would pay if it were shared out among `uses` (rows of
+/// `bids`) in proportion to bid^(1/theta), as `land::update_land_use` shares it,
+/// the wild share paying nothing.
+fn shared_rent(P: &Params, bids: &Mat, wild_bid: f64, c: usize, uses: &[usize]) -> f64 {
     let log = |b: f64| if b > 0.0 { b.max(1e-12).ln() / P.land_theta } else { f64::NEG_INFINITY };
     let mut mx = log(wild_bid);
-    for s in 0..NS {
+    for &s in uses {
         mx = mx.max(log(bids[(s, c)]));
     }
     if !mx.is_finite() {
@@ -152,12 +152,33 @@ pub fn open_rent(P: &Params, bids: &Mat, wild_bid: f64, c: usize) -> f64 {
     }
     let mut zsum = (log(wild_bid) - mx).exp();
     let mut rent = 0.0;
-    for s in 0..NS {
+    for &s in uses {
         let z = (log(bids[(s, c)]) - mx).exp();
         zsum += z;
         rent += z * bids[(s, c)];
     }
     rent / zsum.max(1e-12)
+}
+
+/// What a whole clear cell would pay as open land, every use bidding for it,
+/// pits and quarries too: the rent of the open cell beside it.
+pub fn open_rent(P: &Params, bids: &Mat, wild_bid: f64, c: usize) -> f64 {
+    let all: Vec<usize> = (0..bids.rows).collect();
+    shared_rent(P, bids, wild_bid, c, &all)
+}
+
+/// The land uses of the plough: farm, pasture and woodland.
+pub fn plough_uses(C: &Content) -> Vec<usize> {
+    (0..C.NS).filter(|&s| matches!(C.sector_name[s].as_str(), "farm" | "pasture" | "forestry")).collect()
+}
+
+/// What a whole clear cell would pay under the plough (`plough_uses`), whatever
+/// lies beneath it: the floor under a town cell's rent. The coal or clay under a
+/// town is not what its houses displaced, and a pit's bid swings with the price
+/// of what it digs; held to that, a town on a coalfield paid half its wages in
+/// rent in a dear year, and a hamlet founded on one several times its wages.
+pub fn plough_rent(P: &Params, bids: &Mat, wild_bid: f64, c: usize, plough: &[usize]) -> f64 {
+    shared_rent(P, bids, wild_bid, c, plough)
 }
 
 // ---------------------------------------------------------------- the month
@@ -210,12 +231,12 @@ pub fn new_town_year(st: &mut State, P: &Params, founded: &[usize], pbar: &mut M
         }
         let d = donor as usize;
         wbar[n] = wbar[d];
+        st.wbar[n] = wbar[d];
         for g in 0..pbar.cols {
             pbar[(n, g)] = pbar[(d, g)];
+            st.pbar[(n, g)] = pbar[(d, g)];
         }
     }
-    st.wbar = wbar.to_vec();
-    st.pbar = pbar.clone();
 }
 
 /// The yearly update of town ground, in place of `land::update_urban`.
@@ -246,6 +267,7 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         })
         .collect();
     let ks = st.cell_K_share.clone();
+    let plough = plough_uses(C);
 
     // a cell whose market town changed goes with its new town and keeps its
     // year; one left with no market is given up
@@ -404,13 +426,17 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         for (j, &c) in list.iter().enumerate() {
             let per_head = P.urban_rent_rate * wbar[i] * (1.0 - st.dist[(i, c)] / fringe).max(0.0);
             // what the cell would pay if houses stood on all of it
-            let mut ground = clear[j] * per_room * per_head;
-            if tp.rent_floor && wbar[i] > 0.0 {
-                ground = ground.max(open_rent(P, bids, wild_bid, c));
-            }
+            let houses = clear[j] * per_room * per_head;
+            let floor = if tp.rent_floor && wbar[i] > 0.0 { plough_rent(P, bids, wild_bid, c, &plough) } else { 0.0 };
             st.town_room[c] = rooms[j];
-            st.town_ground_rent[c] = ground;
-            st.cell_urban_rent[c] = ground * rooms[j] / clear[j].max(1e-9);
+            // a works' yard displaces the houses or the plough, whichever pays more
+            st.town_ground_rent[c] = houses.max(floor);
+            // the residents pay for the part the works leave them. A full cell
+            // never pays under the plough's rent; in a town that has emptied the
+            // floor falls with the people, or the few who stayed would pay the
+            // farm rent of ground nobody lives on (more than their wages, in a
+            // town at a tenth of its room)
+            st.cell_urban_rent[c] = houses.max(floor * per_room.min(1.0)) * rooms[j] / clear[j].max(1e-9);
             bill += st.cell_urban_rent[c];
         }
         st.urban_rent[i] = bill;

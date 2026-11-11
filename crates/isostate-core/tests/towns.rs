@@ -105,6 +105,98 @@ fn the_sums_of_kept_ground() {
     bids[(1, 0)] = 100.0;
     assert!((towns::open_rent(&on, &bids, 0.0, 0) - 100.0).abs() < 1e-9, "two uses at the same bid pay it between them");
     assert_eq!(towns::open_rent(&on, &bids, 0.0, 1), 0.0);
+    // under the plough: the farm, the pasture and the wood bid, the pits do not
+    let plough = towns::plough_uses(&C);
+    assert_eq!(plough.iter().map(|&s| C.sector_name[s].as_str()).collect::<Vec<_>>(), ["farm", "pasture", "forestry"]);
+    let coal = C.sector_name.iter().position(|n| n == "coalmine").unwrap();
+    bids[(coal, 0)] = 1e6;
+    assert!(towns::open_rent(&on, &bids, 0.0, 0) > 1e5, "open land is let to the pit");
+    assert!((towns::plough_rent(&on, &bids, 0.0, 0, &plough) - 100.0).abs() < 1e-9, "the plough's rent is not the pit's");
+}
+
+#[test]
+fn a_town_cell_pays_at_least_the_ploughs_rent() {
+    let P = params(7, 0, 1750);
+    let C = default_content();
+    let s = sim::start(&P, C.clone());
+    let st = &s.st;
+    let i = (0..st.T_max).find(|&i| st.town_active[i] && st.town_ground[i].len() >= 3).expect("a town");
+    // its newest cell: the furthest out, where houses pay least
+    let c = *st.town_ground[i].last().unwrap();
+    let (pbar, wbar) = (st.pbar.clone(), st.wbar.clone());
+    let bids = land::sector_bids(st, &C, &P, &pbar, &wbar);
+    let wild = P.land_fixed_cost * wbar[i];
+    let plough = towns::plough_uses(&C);
+    let farm = C.sector_name.iter().position(|n| n == "farm").unwrap();
+    let coal = C.sector_name.iter().position(|n| n == "coalmine").unwrap();
+    let after = |bids: &Mat, people: f64| -> State {
+        let mut st = st.clone();
+        for v in [&mut st.pop[i], &mut st.ind_labor[i], &mut st.urban_pop[i]] {
+            *v *= people;
+        }
+        towns::update_urban(&mut st, &C, &P, C.start_year, &wbar, bids, false);
+        st
+    };
+    let plain = after(&bids, 1.0);
+    // coal found under the town is nothing to its households, or to a works there
+    let mut dear = bids.clone();
+    dear[(coal, c)] = 1e7;
+    let pit = after(&dear, 1.0);
+    assert_eq!(pit.urban_rent[i].to_bits(), plain.urban_rent[i].to_bits());
+    assert_eq!(pit.town_ground_rent[c].to_bits(), plain.town_ground_rent[c].to_bits());
+    // good farm land is: the cell pays what the plough would, and the town's bill is that much more
+    dear = bids.clone();
+    dear[(farm, c)] = 1e7;
+    let floor = towns::plough_rent(&P, &dear, wild, c, &plough);
+    assert!(floor > 100.0 * plain.town_ground_rent[c]);
+    let rich = after(&dear, 1.0);
+    assert_eq!(rich.town_ground_rent[c], floor, "a works' yard there displaces the plough");
+    let full = rich.urban_pop[i] / rich.town_ground[i].iter().map(|&d| rich.town_room[d]).sum::<f64>();
+    assert!(full > 0.9 && full <= 1.0 + 1e-9, "the town fits its ground: {full}");
+    assert!(rich.cell_urban_rent[c] > 0.9 * floor * towns::room_beside_works(&P, rich.cell_K_share[c]) * full.min(1.0));
+    assert!((rich.urban_rent[i] - plain.urban_rent[i] - (rich.cell_urban_rent[c] - plain.cell_urban_rent[c])).abs() < 1e-6 * rich.urban_rent[i]);
+    // in a town that has emptied, the few who stay do not pay the farm rent of ground nobody lives on
+    let empty = after(&dear, 0.1);
+    assert_eq!(empty.town_ground[i].len(), st.town_ground[i].len(), "the ground is kept");
+    assert_eq!(empty.town_ground_rent[c], floor, "and costs a works what it did");
+    assert!(empty.cell_urban_rent[c] < 0.15 * rich.cell_urban_rent[c], "{} against {}", empty.cell_urban_rent[c], rich.cell_urban_rent[c]);
+    // without the floor the cell pays what its houses do, as under the port's rule
+    let mut off = P.clone();
+    off.towns.rent_floor = false;
+    let mut bare = st.clone();
+    towns::update_urban(&mut bare, &C, &off, C.start_year, &wbar, &dear, false);
+    assert!(bare.town_ground_rent[c] < 0.01 * floor);
+}
+
+#[test]
+fn a_town_with_nowhere_to_grow_crowds_the_ground_it_has() {
+    let P = params(7, 0, 1750);
+    let C = default_content();
+    let mut s = sim::start(&P, C.clone());
+    let st = &mut s.st;
+    let i = (0..st.T_max).find(|&i| st.town_active[i]).expect("a town");
+    let n = st.town_ground[i].len();
+    let (pbar, wbar) = (st.pbar.clone(), st.wbar.clone());
+    // the rest of its market area is lost to it, and its people grow sixfold
+    for c in 0..st.N {
+        if st.catch[c] == i as i64 && !st.urban[c] {
+            st.catch[c] = -1;
+        }
+    }
+    st.pop[i] *= 6.0;
+    st.ind_labor[i] *= 6.0;
+    for y in 0..8 {
+        land::update_land_use(st, &C, &P, C.start_year + y, &pbar, &wbar, false);
+    }
+    assert_eq!(st.town_ground[i].len(), n, "there is nothing to take");
+    let (room, res): (f64, f64) = st.town_ground[i].iter().map(|&c| (st.town_room[c], st.urban_res[c])).fold((0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1));
+    assert!(st.urban_pop[i] > 4.0 * room, "{} people in room for {room}", st.urban_pop[i]);
+    assert!((res - st.urban_pop[i]).abs() < 1e-6 * res, "they all live somewhere");
+    // the record's byte for residents stops at its top and does not wrap
+    let layers = record::town_layers(st).expect("kept ground");
+    let top = st.town_ground[i].iter().map(|&c| layers[1][c]).max().unwrap();
+    assert_eq!(top, 255);
+    assert!(st.town_ground[i].iter().all(|&c| st.urban_res[c] / RES_UNIT < 255.0 || layers[1][c] == 255));
 }
 
 /// What must hold of kept ground in any year.
