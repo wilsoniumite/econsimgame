@@ -37,8 +37,9 @@ parameters, or `isostate-core run --families 6`.
 - **Branches.** A trade in a town where the family has someone to run it: a
   manager of that trade living there, or the head at the seat for every known
   trade. Each branch Grows (founds one works a year, two under a runner of
-  skill above 0.6, by the prudent rules below; estates branches buy farmland
-  instead), Holds, or Winds down (sells one works a year, the smallest first,
+  skill above 0.6, by the prudent rules below, and under the game's rules
+  extends a works it has before it founds another; estates branches buy
+  farmland instead), Holds, or Winds down (sells one works a year, the smallest first,
   to the town's savers at book value; estates: one farm to the gentry).
 - **Bonus.** A family's works under a branch need `1 - bonus` of the inputs,
   heat and labor per unit: `family_bonus` (0.08) times the manager's skill, or
@@ -94,6 +95,138 @@ parameters, or `isostate-core run --families 6`.
   at most `family_max_price_ratio` (3) times its base, relative to the town's
   typical good; the best expected returns above the hurdle rate first; and a
   cash reserve of `family_reserve_months` of spending.
+
+## A family's works under the game's rules
+
+The design above was written under the port's rules, where every new works is
+two fifths of its trade's usual size and all a family chooses is what and
+where. A game is played under the game's rules, and there works have a life
+cycle (`docs/rules/works.md`, `src/works.rs`). It changes three things for a
+family: how big a works is founded, when a branch extends a works it has and
+does not found another, and when a works is refused. This section was checked
+against `works.rs`, `families.rs` and `firms.rs` on 11 November 2026. Under
+the port every function named here gives the port's number.
+
+**How big a works is founded** (`families::founding_K`). First the size its
+market calls for, `works::entry_K`, which is the size the island's other
+investors build at too:
+
+- a tenth (`works.entry_share`) of the town's monthly trade in what the works
+  makes, which is what its market sold and shipped out, smoothed
+  (`State::outflow`);
+- no more than is left of the year's room for that trade in that town
+  (`works::room_left`: 0.15 of the same monthly trade, less what has been
+  ordered there this year);
+- no more than a works may be where it stands (`works::max_K`: four fifths of
+  a cell, at 2,000 hands to a cell);
+- and never less than the smallest works anyone builds, two fifths of the
+  usual size (`entry_K_frac`), which is the port's size.
+
+Then the purse (`works::within_purse`): the works is cut down to what the
+family's cash pays for, at the town's prices for capital goods plus 15 per
+cent, and again never below the smallest works. A tenth of a big town's trade
+is many usual sizes, and without this a family too poor for it could found
+nothing there.
+
+The sums the player is shown for a site (`site_options`) are for a works of
+that size. The expected return in them now takes off the merchant's 6 per
+cent (`works::entry_spread`) and adds the hands' walk from the town to the
+labour (`works::walk`: 2 per cent more for each unit of path cost to the
+market), so it is the return a works there gets. `prospects` reckons each
+trade at `entry_K`, before the purse.
+
+**Its ground.** A works takes land by its hands: its capacity times its
+method's labour per unit, over 2,000 (`works::land_take`). A smithy of five
+men takes a yard, a mill of a thousand hands half a cell. The ground is taken
+on the day the capacity is ordered, built or not, and rent is paid on it from
+then. When a works needs more ground than it has leased, the rest is rented
+at what the cell's land earns that year, and never for less than the works
+already pays (`works::ordered`).
+
+**When a works is refused.** `found_works` refuses, in this order, and the
+`allowed` field of each `SiteOption` gives the same reason (cash aside):
+
+1. a cell that is off the map, sea, out of every town's reach, derelict, or
+   already built up (nine tenths of it under works);
+2. a method that is no family trade, a trade the family does not know yet, or
+   a town that is not the seat;
+3. a method not yet known in the town;
+4. new with the life cycle: a cell with no room. `works::room_on_cell` adds
+   the land the new works would take to what the cell's works already hold,
+   and if that is more than the cell it says "the cell has no room left for
+   powered mill of this size". A poorer family founds a smaller works, which
+   may fit where a richer one's would not;
+5. too little cash: "it costs 2,400 and the Fairfax family has 1,900". With
+   the purse rule this happens only when even the smallest works is beyond
+   the family.
+
+The year's room never refuses a family. What a family founds or extends is
+counted against the room (`State::works_added`) and sized within what is
+left, but with nothing left it still gets the smallest works. So a town's
+trade can order more than its room in a year by what its families add
+(works.md, "What worries me").
+
+**When a branch extends a works.** A growing branch still does one thing a
+year, or two under a runner of skill above 0.6, by the prudent rules, the
+best return above the hurdle first (`families::grow`). For each method of its
+trade it reckons a works of `entry_K` on the best cell that has room for one.
+Before it founds that works it looks for one to extend: the family's largest
+works of the same method in the same town that would still fit, which means
+that its capacity built and on order, with the new capacity added, stays
+within `max_K`, and that its cell has room (`works::family_extension`). If
+there is one, the capacity is ordered there and the family pays the works
+what the new works would have cost (`works::extend_for_family`). The branch
+founds a new works only where it has none, or none with room. The player
+hears of an extension at once, or with the chronicle in the year's summary of
+what the branches did. `works.family_extends` switches this part off.
+
+The player has no order to extend a works: `found_works` always founds a new
+one. Founding beside your own works is a poor move under these rules, and the
+scripted player who founds a works every year loses most of them (works.md).
+
+**What happens to it afterwards.** The yearly review (`firms::review`) treats
+a family's works as it treats any other, whatever the branch's stance:
+
+- A works has finished building when under a twentieth of its capacity is
+  still on order (`works::building`), so it can be reviewed every year.
+- In its first three years the family's cash covers a works that is in the
+  red.
+- It grows where it stands when its return over the past year beat the hurdle
+  (12 per cent) and it ran above 0.65 of its capacity. It asks for a fifth
+  more at the hurdle, more as the return is higher, and never more than a
+  half; the year's room cuts that to what is left, and to a third of the room
+  at most for one works (`works::growth_allowed`). The works pays from its own
+  cash, and the family's cash is drawn on for what is short
+  (`firms::back_firm`).
+- When it would pass `max_K`, or its cell is full, the growth goes to another
+  works of the same line in the town that has room (`works::extend_sister`),
+  and failing that to a new sister works within two cells
+  (`firms::spawn_sister`). A family's works opens a new sister works only
+  under a branch set to Grow (`families::may_spawn`).
+- It shrinks by 15 per cent in a year it ran under a quarter of its capacity,
+  and closes after three years of loss while nearly idle, or when it is
+  insolvent or tiny. Any cash it has left goes back to the family.
+
+So Hold stops what a branch does of itself, the founding, the extending and
+the new sister works. It does not stop a works growing where it stands, or
+into a sister works it already has, on the family's cash.
+
+**What it comes to.** A family ends the century with a few dozen works of
+some size, where under the port it had several hundred small ones. On seed 7
+under the game's rules, with every default taken, the player has 26 works in
+1900, and the six families hold 7, 44, 49 and 51 per cent of the works'
+capital in 1750, 1800, 1850 and 1900, 13 to 22 per cent of the rent and 2 to
+10 per cent of the money (`examples/live.rs`, run on 11 November 2026).
+
+The tables and the worries in the rest of this page were measured under the
+port's rules, before the game's rules existed. `examples/bots.rs` and
+`examples/live.rs` now play the game's rules unless given `--rules port`. The
+scripted players under the game's rules are in `docs/rules/works.md` ("The
+scripted players" and "In company with the rest of the game") and
+`docs/rules/towns.md` ("In company, after the merge"): the landlord still
+comes first on every island, the founder founds 120 to 148 works and has 25
+to 32 standing, and the player who takes every default ends fourth of six on
+three islands of four.
 
 ## The API
 
@@ -165,6 +298,12 @@ the player. Rivals are heard of only for big moves: a new trade, a head's death
 and the succession (0.3), and their first works of each kind (0.35).
 
 ## Is there a game? (v2)
+
+This section and the three after it were measured on 9 November 2026, under
+what are now the port's rules. `examples/bots.rs --rules port` plays them
+today, and `docs/rules/works.md` has a later table of it beside the game's.
+What changes under the game's rules is in "A family's works under the game's
+rules" above.
 
 `examples/bots.rs` plays the player's family through the public API with six
 families and the defaults, on seeds 1, 2, 3 and 7:
