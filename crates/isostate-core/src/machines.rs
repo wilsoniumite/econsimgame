@@ -77,7 +77,7 @@ impl Default for MachineParams {
     fn default() -> MachineParams {
         MachineParams {
             enabled: false,
-            adopt_span: 4.0,
+            adopt_span: 6.0,
             adopt_pumps: false,
             adopt_wagonways: false,
             life_months: 96.0,
@@ -235,8 +235,13 @@ pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, 
     // A farm that keeps its machines up buys for its own output, which is that
     // of a farm with every machine it knows (the `all` its gain was reckoned
     // on in `uses`), not that of the town's average farm (1 + boost): for each
-    // unit the sector makes, a farm that buys makes `own`. A use the port
-    // charges in full is charged on every unit, whatever the know-how.
+    // unit the sector makes, a farm that buys makes `own`. That is also what
+    // `end_month` does to the machines standing, counted in machines: if an
+    // equipped farm's machines are `input * life_months` for each unit it
+    // makes a month, then replacing what wears out and adding what is new
+    // comes to `input` a unit for every farm that keeps them up, whether its
+    // machines stand yet or not. A use the port charges in full is charged on
+    // every unit, whatever the know-how.
     let own = (1.0 + us.iter().map(|u| u.boost).sum::<f64>()) / (1.0 + boost);
     let (mut mach, mut rails) = (0.0, 0.0);
     for u in &us {
