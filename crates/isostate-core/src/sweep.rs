@@ -997,7 +997,8 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         text.push_str(&compare(&sw, then, dir));
     }
     write_outputs(&sw, &o, &text)?;
-    print!("{text}");
+    // not print!, which panics when the reader has gone (sweep ... | head)
+    let _ = std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes());
     let failed = sw.runs.iter().filter(|r| r.outcome.is_err()).count();
     if failed > 0 {
         return Err(format!("{failed} of {} runs failed; the rest are in {}", sw.runs.len(), o.out.display()));

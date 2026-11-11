@@ -369,6 +369,19 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   is given for), but there are over a hundred facts, and it says nothing about
   a shift that is real and smaller than the spread. For anything close, run
   more seeds.
+- **The golden hashes are this machine's.** They were taken on Windows with
+  the MSVC toolchain. Logarithms, exponentials and powers come from the
+  platform's maths library, so another system may round a last digit the
+  other way, and over 150 years that grows into a different run. Not tried:
+  if the golden test fails on a fresh machine with no change to the code,
+  suspect this first.
+- **The golden test watches the economy, not the map.** It hashes the monthly
+  series and the news. A change that only moves what `run.bin` records for
+  the viewer (a map layer, the works' table) passes it.
+- **Without the Python dumps the golden test stands alone.** `tests/parity.rs`
+  compares each step with the Python, but only against fixtures made by
+  `parity/dump_state.py`, which are not in the repository; with none there
+  its fifteen tests pass in no time and check nothing.
 - **`growth_capped_*` does not see famines.** It reads the income rule in
   `people::growth` before the clamp; a town at the cap in a famine year grew
   two points slower and is still counted as capped.
