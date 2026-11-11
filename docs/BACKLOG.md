@@ -2,7 +2,7 @@
 
 What Stella notices while playing, in her words, and what becomes of each note. It is also where the order of work is decided. The diary of what was done is [DEVLOG.md](DEVLOG.md); this file is what is waiting, what is being done, and why in that order.
 
-Last gone through: the evening of 11 November 2026, after the sweep of what helpers had left open.
+Last gone through: the evening of 11 November 2026, when the probe of combined works came in.
 
 ## How it is kept
 
@@ -32,7 +32,6 @@ Started before this file existed, and left to finish. I went through them for wo
 | Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | being built |
 | Wood and heath edges at mid distance (viewer) | 5 | `night/wood-edges` | being built |
 | Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | being built |
-| What a works holds, and combined works: measuring and a design, no mechanism yet (core) | 16 | `night/dx-combines` | measuring |
 | Where frames stall: a recorder, measurements and a design, no fix yet (viewer) | 17 | `night/smooth-probe` | measuring |
 | The run to 2050: a design to read, no code | 1 | documents only | being written |
 
@@ -47,12 +46,12 @@ Nothing here is started until its trigger is met and the backlog has been gone t
 3. **Roads, bridges and carts laid again on the new rivers** (notes 19, 20; F3). The cart that sails over a river and clips through a bridge was already in a helper's notes: a cart's path is a straight line between cell centres at the height of the ground. The roads' links and every bridge are the viewer's own invention, which is why a road down a valley crosses its river again and again. Neither is mended on its own, because the rivers are about to be replaced. *Trigger:* the viewer draws the new land. *If the new land does not land,* mend both on today's rivers.
 4. **Map views and charts that say what is so** (F2; bears on note 13). One outlying town flattens the price map's scale; a price is shown for goods nobody makes yet; a wage chart that should read 1 in 1750 reads 1.04. *Trigger:* `night/calendar` and `night/town-ground` are merged, since both work in the map views.
 5. **A look at each viewer piece once it has landed:** towns (F5), railways (F6), works (F8). What reviewers could not judge until the piece was in. *Trigger:* each landing.
-6. **What the record carries for the viewer, and a test that holds it** (F9). The record keeps two land classes a cell where the picture uses four, clips rent and distance, and carries no traffic; the golden test would not notice a change to any of it. *Trigger:* mines, canals, the new land and the books of account are merged, since each adds to the record. *Why here:* the inspector, ownership on the map and anything that follows traffic wait on it.
+6. **What the record carries for the viewer, and a test that holds it** (F9; note 16). The record keeps two land classes a cell where the picture uses four, clips rent and distance, and carries no traffic; the golden test would not notice a change to any of it. With it goes a row for each works and year (capacity, what is on order, hands, how hard it runs, its state: twelve bytes), which the probe of combined works found to be true today and which the viewer's site planner needs in place of its stand-ins. *Trigger:* mines, canals, the new land and the books of account are merged, since each adds to the record. *Why here:* the inspector, ownership on the map and anything that follows traffic wait on it.
 7. **The inspector** (note 13): a market's industries as a flow, with prices, volumes and carting. *Trigger:* the books of account are merged, and item 6.
 8. **A hand-over that keeps the view smooth** (note 17; F14). *Trigger:* the probe's design is written and checked, and the monthly clock and the buildings' levels of detail are merged, since all three change the same code.
 9. **A save that outlives a change to the simulation** (F10). A saved game is its orders played again from 1750, so every core piece merged makes older saves drift, and loading a century takes 23 seconds. *Trigger:* `night/calendar` and the core pieces in review are merged; before the run to 2050. Large.
 10. **A pass over all the game's rules together, and a scorecard.** First the sweep's own tools (F11: twenty-year means over sixteen seeds, tolerances, facts not named by year), then the things measured and never explained, which the books make cheap to trace (F12), then the pass itself (F18: growth that comes early and stops in the 1880s, the wage's dip with kept town ground, swings, famines, the steel rail, numbers never searched). *Trigger:* mines, canals, the new land and the books of account are merged.
-11. **Combined works as a mechanism, and what the record should say of each works** (note 16; F4). *Trigger:* the production tree's first stage is merged and the probe's critic says build.
+11. **Combined works as a mechanism** (note 16; F4). The probe is in ([probes/dx-combines.md](probes/dx-combines.md)) and its critic says build it changed: a concern with books for each stage, stages kept in proportion, formed by neighbours merging or by a user building its own maker, families' works included. As prototyped it moves nothing on the island, so it is for the picture and for the tree's longer chains, and ranks no higher than this. Stock yards at the works are not to be built as first specified: a works holds no goods today, and the yards as designed would hoard in a shortage. *Trigger:* the production tree's first stage is merged.
 12. **Roads and bridges that cost, and a railway company: someone who pays and someone who is paid** (notes 20, 21; F15, F16). Today nobody pays for a road and nobody is paid a railway's fares: see the answer under note 21. *Trigger:* the new land is merged (a bridge's cost should follow the river's width), canals are merged (their promoters are the pattern), and the public purse in the 2050 design has been read.
 13. **A lab that shows what the game runs** (note 14; F13). The lab's streets, market places and woods are a second copy kept by hand, and will stop matching the game when the new towns and wood edges land. *Trigger:* `night/town-ground`, `night/wood-edges` and `night/works-detail` are merged.
 14. **What the simulation knows and the picture does not show** (notes 13, 16; F17): machines, harvests, who owns the land, where a news item happened. *Trigger:* items 6 and 7.
@@ -82,6 +81,7 @@ Not her notes: what helpers and reviewers reported and left open. On the evening
 - **5, land that looks ruled:** answered from the whole-island view by the far view, merged 11 November. From mid distance it is still in flight (`night/wood-edges`), so the note stays open there.
 - **11, "I really like a lot of the new looks":** nothing to do but keep going that way.
 - **15, examples of the generators:** five contact sheets sent; twelve are under `.claude/night/shots/lab-for-stella/` on her machine, and `isostate-viewer --lab list` names the rest.
+- **16, in part: what the simulation knows of a works.** Measured on 11 November: a works holds plant and cash and no goods; being on a railway is worth about 0.3 per cent of its output. So stock yards and sidings are drawn from stand-ins and from where the track runs, and the picture should not claim more. The rest of note 16 is in flight or at Ready next 6 and 11.
 - **18, the backlog itself:** this file.
 - **22, pushing, and `main`:** `rust-3d` was moved onto `main` and pushed on the evening of 11 November; what is committed on `main` is pushed in the same step, and there are no pull requests.
 
