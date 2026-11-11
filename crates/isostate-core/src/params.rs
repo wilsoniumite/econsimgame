@@ -66,6 +66,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::towns::TownsParams;
 use crate::works::WorksParams;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,6 +252,9 @@ pub struct Params {
     /// A life cycle for works (not in the Python; see docs/rules/works.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub works: WorksParams,
+    /// Town ground that is kept (not in the Python; see docs/rules/towns.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub towns: TownsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -442,6 +446,7 @@ pub fn default_params() -> Params {
         university_gain: UNIVERSITY_GAIN,
         end_year: None,
         works: WorksParams::default(),
+        towns: TownsParams::default(),
     }
 }
 
@@ -459,6 +464,7 @@ impl Default for Params {
 pub fn game_params() -> Params {
     let mut P = default_params();
     P.works = WorksParams::game();
+    P.towns = TownsParams::game();
     P
 }
 

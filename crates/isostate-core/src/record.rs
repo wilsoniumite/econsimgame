@@ -18,6 +18,20 @@ use crate::world::World;
 
 pub const LAYERS: [&str; 9] = ["use", "inten", "rent", "trans", "catch", "dist", "mix_a", "mix_b", "mix_s"];
 
+/// towns: three more layers, kept only by a run with `towns.enabled` (a port
+/// run's file has none of them). One byte per cell and year, as the nine above:
+///
+/// - `built`: the year the cell joined its town less `BUILT_YEAR0`, held to 1 to
+///   255; 0 where the cell is not town ground;
+/// - `res`: the cell's residents, in units of `RES_UNIT` people (255 at the most);
+/// - `works`: the share of the cell under works, 0 to 255, on every cell, town
+///   ground included.
+pub const TOWN_LAYERS: [&str; 3] = ["built", "res", "works"];
+/// `built` counts years from here.
+pub const BUILT_YEAR0: i64 = 1645;
+/// People to one step of `res`.
+pub const RES_UNIT: f64 = 8.0;
+
 /// Display classes for the map. Each cell is drawn as a patchwork of its two
 /// largest classes, so mixed land shows as mixed land instead of one colour.
 pub const DISP: [&str; 12] =
@@ -139,20 +153,29 @@ pub struct Record {
     /// Per year: the firms alive and their capacity.
     pub firm_K: Vec<(Vec<usize>, Vec<f32>)>,
     pub projects: Vec<Vec<ProjectSnap>>,
+    /// towns: the `TOWN_LAYERS`, laid out as `layers` is (empty unless `towns.enabled`).
+    pub town_layers: Vec<Vec<u8>>,
 }
 
 impl Record {
     pub fn layer(&self, name: &str) -> &[u8] {
         &self.layers[LAYERS.iter().position(|&l| l == name).unwrap()]
     }
+
+    /// One of the `TOWN_LAYERS`, if the run kept them.
+    pub fn town_layer(&self, name: &str) -> Option<&[u8]> {
+        let k = TOWN_LAYERS.iter().position(|&l| l == name)?;
+        self.town_layers.get(k).map(|l| &l[..])
+    }
 }
 
-pub fn init(st: &State, C: &Content, _P: &Params, n_years: usize) -> Record {
+pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
     let (N, T) = (st.N, st.T_max);
     Record {
         n_years,
         N,
         T,
+        town_layers: if P.towns.enabled { (0..TOWN_LAYERS.len()).map(|_| vec![0u8; n_years * N]).collect() } else { Vec::new() },
         layers: (0..LAYERS.len()).map(|_| vec![0u8; n_years * N]).collect(),
         town_active: vec![0; n_years * T],
         town_pop: vec![0.0; n_years * T],
@@ -218,6 +241,19 @@ pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
     out
 }
 
+/// towns: the three `TOWN_LAYERS` of the current year, or None in a run whose
+/// towns do not keep their ground.
+pub fn town_layers(st: &State) -> Option<Vec<Vec<u8>>> {
+    if !crate::towns::kept(st) {
+        return None;
+    }
+    let N = st.N;
+    let built = (0..N).map(|c| if st.urban[c] { (st.town_built[c] - BUILT_YEAR0).clamp(1, 255) as u8 } else { 0 }).collect();
+    let res = (0..N).map(|c| to_u8((st.urban_res[c] / RES_UNIT).round_ties_even().clamp(0.0, 255.0))).collect();
+    let works = (0..N).map(|c| to_u8((st.cell_K_share[c].clamp(0.0, 1.0) * 255.0).round_ties_even())).collect();
+    Some(vec![built, res, works])
+}
+
 /// Knowledge as recorded: 0 to 255.
 pub fn know_byte(x: f64) -> u8 {
     to_u8((x.clamp(0.0, 1.0) * 255.0).round_ties_even())
@@ -228,6 +264,12 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
     let base = k * N;
     for (dst, src) in rec.layers.iter_mut().zip(layers(st, C)) {
         dst[base..base + N].copy_from_slice(&src);
+    }
+    // towns: when each cell joined its town, its residents, and the works' share of it
+    if !rec.town_layers.is_empty() {
+        for (dst, src) in rec.town_layers.iter_mut().zip(town_layers(st).unwrap_or_default()) {
+            dst[base..base + N].copy_from_slice(&src);
+        }
     }
     for t in 0..T {
         let act = st.town_active[t];
@@ -375,6 +417,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     }
     if !lite {
         for (name, layer) in LAYERS.iter().zip(&rec.layers) {
+            arrays.push(u8_array(name, vec![n_years, N], layer.clone()));
+        }
+        // towns: three more, only in a run that kept them
+        for (name, layer) in TOWN_LAYERS.iter().zip(&rec.town_layers) {
             arrays.push(u8_array(name, vec![n_years, N], layer.clone()));
         }
     }

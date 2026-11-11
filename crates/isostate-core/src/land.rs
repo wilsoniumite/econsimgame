@@ -219,7 +219,12 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
     let ct: Vec<usize> = st.catch.iter().map(|&c| if c >= 0 { c as usize } else { 0 }).collect();
     let wild_bid: Vec<f64> = ct.iter().map(|&t| P.land_fixed_cost * wbar[t].max(1e-6)).collect();
 
-    update_urban(st, C, P, year, wbar);
+    if P.towns.enabled {
+        // towns: a town keeps its ground and grows from it, in place of the yearly re-pick
+        crate::towns::update_urban(st, C, P, year, wbar, &bids, initial);
+    } else {
+        update_urban(st, C, P, year, wbar);
+    }
 
     for t in st.derelict_timer.iter_mut() {
         *t = (*t - 1).max(0);
@@ -376,6 +381,7 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         rent[c] = if st.urban[c] { st.cell_urban_rent[c] } else { r };
     }
     st.land_rent_only = rent.clone();
+    crate::towns::price_ground(st, P); // towns: a works on town ground bids against the housing it displaces
     for f in 0..st.f_alive.len() {
         if st.f_alive[f] {
             rent[st.f_cell[f]] += st.f_rent[f];
