@@ -472,6 +472,12 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
+    // an overlay word that would be passed over is said, so a mistyped shot is not taken for the plain map
+    for w in args.overlay.iter().chain(views.iter().filter_map(|v| v.overlay.as_ref())) {
+        if let Some(why) = overlay::complaint(w, &r) {
+            eprintln!("overlay: {why}");
+        }
+    }
     let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
     app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(Color::srgb(0.70, 0.83, 0.92)))

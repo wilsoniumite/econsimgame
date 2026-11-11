@@ -68,6 +68,21 @@ pub fn parse(word: &str, r: &Replay) -> Option<(Option<Overlay>, Option<usize>)>
     Some((kind, good))
 }
 
+/// What is wrong with a word given for an overlay on the command line, if
+/// anything: a name that is no overlay, or a good the run does not have. Such
+/// a word is otherwise passed over (the plain map, or the good as it was).
+pub fn complaint(word: &str, r: &Replay) -> Option<String> {
+    match parse(word, r) {
+        None => Some(format!("\"{word}\" is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain")),
+        Some((_, None)) => {
+            let good = word.split_once(':')?.1;
+            let names: Vec<&str> = r.header.goods.iter().map(|g| g.name.as_str()).collect();
+            Some(format!("\"{good}\" is not a good of this run: use one of {}", names.join(", ")))
+        }
+        Some(_) => None,
+    }
+}
+
 /// Whether a word of a `--view` names an overlay (before the run is loaded).
 pub fn is_word(word: &str) -> bool {
     let w = word.to_ascii_lowercase();
@@ -198,6 +213,13 @@ pub fn coin(v: f32) -> String {
     } else {
         format!("\u{00a3}{v:.2}")
     }
+}
+
+/// A sum that is only known roughly, to two figures and without pence it does
+/// not have: £97 where `coin` would write £97.0.
+fn about(v: f32) -> String {
+    let v = round_sig(v);
+    if (9.995..99.95).contains(&v) { format!("\u{00a3}{v:.0}") } else { coin(v) }
 }
 
 fn land(r: &Replay, c: usize) -> bool {
@@ -332,8 +354,8 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
                 title,
                 note: "What the ground of each square earns its owners in a year, from farms, mines, works and town houses.".into(),
                 ramp: ramp_bar(&SEPIA),
-                low: format!("{} or less", coin(sc.lo)),
-                high: format!("{} or more", coin(sc.hi)),
+                low: format!("{} or less", about(sc.lo)),
+                high: format!("{} or more", about(sc.hi)),
             };
             Wash { cells, legend, soft: 0.5, lines: false }
         }
@@ -390,7 +412,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
                 } else if r.town_price.is_empty() {
                     "This record does not hold the towns' prices.".to_string()
                 } else {
-                    format!("No {label} was sold in any market in {year}.")
+                    format!("No market has a price for {label} in {year}.")
                 };
                 return Wash { cells, legend: none(title, note), soft: 0.06, lines: true };
             };
@@ -425,8 +447,8 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize) -> Optio
     Some(match kind {
         Overlay::Rent => match rent_year(r, k, c)? {
             // the record's scale stops at its top step, which the middle of a town reaches
-            v if r.rent[k * r.n + c] == u8::MAX => format!("Rent: the ground of this square earns {} a year or more.", coin(round_sig(v))),
-            v if v > 0.0 => format!("Rent: the ground of this square earns about {} a year.", coin(round_sig(v))),
+            v if r.rent[k * r.n + c] == u8::MAX => format!("Rent: the ground of this square earns {} a year or more.", about(v)),
+            v if v > 0.0 => format!("Rent: the ground of this square earns about {} a year.", about(v)),
             _ => "Rent: the ground of this square earns nothing.".to_string(),
         },
         Overlay::Areas => match town {
@@ -444,9 +466,12 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize) -> Optio
         },
         Overlay::Price => {
             let g = r.header.goods.get(good)?;
-            match town.and_then(|t| price(r, k, t, good).map(|p| (t, p))) {
-                Some((t, p)) => format!("Price: {} sells at {} in {}'s market, where this square trades.", g.label.to_lowercase(), coin(p), town_name(r, t)),
-                None => format!("Price: no {} is sold in this square's market.", g.label.to_lowercase()),
+            // the record holds a price, not whether any was sold at it, and a good may be
+            // one thing or many (coal, rails), so the sentence commits to neither
+            match town.map(|t| (t, price(r, k, t, good))) {
+                Some((t, Some(p))) => format!("Price: {} for {} at {}, the market this square trades in.", coin(p), g.label.to_lowercase(), town_name(r, t)),
+                Some((t, None)) => format!("Price: {}'s market has no price for {} this year.", town_name(r, t), g.label.to_lowercase()),
+                None => "Price: it trades in no town's market.".to_string(),
             }
         }
         Overlay::Wages => match town.and_then(|t| wage(r, k, t).map(|w| (t, w))) {
@@ -755,11 +780,15 @@ mod tests {
         assert_eq!(&tint(&w, 1)[..3], &rgb(MADDER[0]));
         assert_eq!(&tint(&w, 3)[..3], &rgb(MADDER[4]));
         assert!(w.lines);
-        // coal is sold only at Brill: Ashby's squares are blank, and the inspector says so
+        // coal has a price only at Brill: Ashby's squares are blank, and the inspector says so
         let w = wash(&r, 0, Overlay::Price, 1);
         assert_eq!(&tint(&w, 1)[..3], &rgb(BLANK));
-        assert_eq!(said(&r, 0, 2, Overlay::Price, 1).unwrap(), "Price: no coal is sold in this square's market.");
-        assert_eq!(said(&r, 0, 3, Overlay::Price, 1).unwrap(), "Price: coal sells at \u{00a3}0.80 in Brill's market, where this square trades.");
+        assert_eq!(said(&r, 0, 2, Overlay::Price, 1).unwrap(), "Price: Ashby's market has no price for coal this year.");
+        assert_eq!(said(&r, 0, 3, Overlay::Price, 1).unwrap(), "Price: \u{00a3}0.80 for coal at Brill, the market this square trades in.");
+        // a square outside every market area has no price to take
+        let mut lone = strip();
+        lone.catch[3] = 0;
+        assert_eq!(said(&lone, 0, 3, Overlay::Price, 0).unwrap(), "Price: it trades in no town's market.");
         let w = wash(&r, 0, Overlay::Wages, 0);
         assert_eq!((w.legend.low.as_str(), w.legend.high.as_str()), ("\u{00a3}2.00 at Ashby", "\u{00a3}3.00 at Brill"));
         assert_eq!(said(&r, 0, 2, Overlay::Wages, 0).unwrap(), "Wages: a month's work pays \u{00a3}2.00 at Ashby.");
@@ -770,7 +799,7 @@ mod tests {
         let r = strip();
         assert_eq!(said(&r, 0, 0, Overlay::Rent, 0), None);
         // 12 months of the record's middle value: 10^(128/255*6 - 3) is about 1.03 a month
-        assert_eq!(said(&r, 0, 2, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns about \u{00a3}12.0 a year.");
+        assert_eq!(said(&r, 0, 2, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns about \u{00a3}12 a year.");
         // the record's top step is a floor, not a figure
         assert_eq!(said(&r, 0, 3, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns \u{00a3}12k a year or more.");
         assert_eq!(said(&r, 0, 2, Overlay::Areas, 0).unwrap(), "Market: it buys and sells at Ashby, one of 2 squares that do.");
@@ -813,6 +842,11 @@ mod tests {
         assert_eq!(parse("plain", &r), Some((None, None)));
         assert_eq!(parse("markets", &r), None);
         assert!(is_word("price:coal") && is_word("areas") && !is_word("markets") && !is_word("island"));
+        // a word that would be passed over is complained of, a good one is not
+        assert_eq!(complaint("price:coal", &r), None);
+        assert_eq!(complaint("wages", &r), None);
+        assert!(complaint("rents", &r).unwrap().contains("not a map view"));
+        assert_eq!(complaint("price:gin", &r).unwrap(), "\"gin\" is not a good of this run: use one of grain, coal");
     }
 
     #[test]
@@ -836,6 +870,11 @@ mod tests {
         assert_eq!(coin(12.34), "\u{00a3}12.3");
         assert_eq!(coin(480.0), "\u{00a3}480");
         assert_eq!(coin(2600.0), "\u{00a3}2,600");
+        // a rough sum keeps its two figures and no more
+        assert_eq!(about(97.3), "\u{00a3}97");
+        assert_eq!(about(0.744), "\u{00a3}0.74");
+        assert_eq!(about(4.38), "\u{00a3}4.40");
+        assert_eq!(about(1234.0), "\u{00a3}1,200");
     }
 
     #[test]

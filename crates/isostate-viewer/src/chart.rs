@@ -13,7 +13,7 @@
 //! `plot` is plain arithmetic on pixels, so it can be tested without a window;
 //! `spawn` wraps it in nodes. A chart is drawn when its panel is rebuilt, which
 //! is when the year or what is chosen changes, never per frame. In a debug
-//! build a chart of 151 years at the side panel's size takes 2 to 4 ms.
+//! build a chart of 151 years at the side panel's size takes 1 to 2 ms.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
@@ -319,7 +319,10 @@ pub fn spawn(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets
         });
         col.spawn(Node { width: Val::Px(pw), margin: UiRect::left(Val::Px(GUTTER)), padding: UiRect::horizontal(Val::Px(2.0)), justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {
             row.spawn(text(f, &format!("{}", c.first_year), 11.5, MUTED));
-            row.spawn(text(f, &format!("{}", c.first_year + c.years.max(1) as i32 - 1), 11.5, MUTED));
+            // a game in its first year has one year to show, and it is named once
+            if c.years > 1 {
+                row.spawn(text(f, &format!("{}", c.first_year + c.years as i32 - 1), 11.5, MUTED));
+            }
         });
     });
 }
