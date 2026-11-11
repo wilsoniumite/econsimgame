@@ -252,6 +252,10 @@ pub struct Params {
     /// An Engel curve in what households buy (not in the Python; see docs/rules/engel.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub engel: crate::engel::EngelParams,
+    /// Machines bought where they pay, that improve, and steel that matters (not in
+    /// the Python; see docs/rules/machines.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub machines: crate::machines::MachineParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -444,6 +448,7 @@ pub fn default_params() -> Params {
         end_year: None,
         prices: crate::prices::PriceParams::default(),
         engel: crate::engel::EngelParams::default(),
+        machines: crate::machines::MachineParams::default(),
     }
 }
 
@@ -462,6 +467,7 @@ pub fn game_params() -> Params {
     let mut P = default_params();
     P.prices = crate::prices::PriceParams::game();
     P.engel = crate::engel::EngelParams::game();
+    P.machines = crate::machines::MachineParams::game();
     P
 }
 

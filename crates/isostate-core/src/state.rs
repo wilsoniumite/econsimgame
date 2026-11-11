@@ -351,4 +351,11 @@ pub struct State {
     // ---------------- engel (not in the Python; empty while `engel.enabled` is off)
     /// What the observer keeps for the chained price index and the budget shares.
     pub engel: crate::engel::EngelState,
+
+    // ---------------- machines (not in the Python; empty while `machines.enabled` is off)
+    /// (T, NS * machines::SLOTS): the share of each land sector in each town
+    /// worked by machines now standing (of its farms or pits, each counted by
+    /// what it makes with no machine), one column per use (`machines::uses`);
+    /// -1 in a town not yet founded.
+    pub machine_stock: Mat,
 }

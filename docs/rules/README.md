@@ -450,3 +450,6 @@ One line each as they arrive: the name, its page, its switch.
   leans from the content's shares toward a richer set (less food and warmth,
   more comfort), and the observer keeps a chained cost of living and real
   wage beside the fixed-basket ones. [engel.md](engel.md), `engel.enabled`.
+- **machines**: farm and quarry machinery is bought where it pays, machines
+  stand for years and get better with the steel poured, and a converter and
+  a steel rail that pay. [machines.md](machines.md), `machines.enabled`.
