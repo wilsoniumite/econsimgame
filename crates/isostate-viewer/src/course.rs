@@ -236,9 +236,57 @@ pub fn along(pts: &[Vec2]) -> Vec<f32> {
     s
 }
 
+/// The radius of the circle through three points (infinite where they lie in a line).
+pub fn radius(a: Vec2, b: Vec2, c: Vec2) -> f32 {
+    let area2 = (b - a).perp_dot(c - a).abs();
+    if area2 < 1e-9 {
+        return f32::INFINITY;
+    }
+    a.distance(b) * b.distance(c) * c.distance(a) / (2.0 * area2)
+}
+
+/// How tightly a line of points curves at each of them: the radius of the
+/// circle through the point and the points about half of `over` before and
+/// after it along the line (so a kink between two points is not a curve of
+/// no radius, and a way that doubles back on itself within that length is
+/// as tight as can be). Infinite at the ends and where the line is straight.
+pub fn radii(pts: &[Vec2], over: f32) -> Vec<f32> {
+    let s = along(pts);
+    let (mut lo, mut hi) = (0, 0);
+    (0..pts.len())
+        .map(|i| {
+            while s[i] - s[lo] > 0.5 * over {
+                lo += 1;
+            }
+            while hi + 1 < pts.len() && s[hi] - s[i] < 0.5 * over {
+                hi += 1;
+            }
+            if lo < i && i < hi { radius(pts[lo], pts[i], pts[hi]) } else { f32::INFINITY }
+        })
+        .collect()
+}
+
+/// The radius of the tightest curve in a line of points (`radii`).
+pub fn tightest(pts: &[Vec2], over: f32) -> f32 {
+    radii(pts, over).into_iter().fold(f32::INFINITY, f32::min)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tightest_curve_of_a_line_is_found() {
+        // a straight line has none; a quarter circle of radius 0.3 has that; and a hairpin is tight
+        let straight: Vec<Vec2> = (0..50).map(|i| Vec2::new(i as f32 * 0.02, 0.0)).collect();
+        assert!(tightest(&straight, 0.08) > 1e3);
+        let arc: Vec<Vec2> = (0..=40).map(|i| Vec2::from_angle(i as f32 / 40.0 * std::f32::consts::FRAC_PI_2) * 0.3).collect();
+        assert!((tightest(&arc, 0.08) - 0.3).abs() < 0.01, "{}", tightest(&arc, 0.08));
+        let mut hairpin = straight.clone();
+        hairpin.extend((0..=10).map(|i| Vec2::new(0.98, 0.02) + Vec2::from_angle(-std::f32::consts::FRAC_PI_2 + i as f32 / 10.0 * std::f32::consts::PI) * 0.02));
+        hairpin.extend((0..50).map(|i| Vec2::new(0.98 - i as f32 * 0.02, 0.04)));
+        assert!(tightest(&hairpin, 0.08) < 0.03, "{}", tightest(&hairpin, 0.08));
+    }
 
     #[test]
     fn a_curve_starts_and_ends_where_and_as_it_is_told() {

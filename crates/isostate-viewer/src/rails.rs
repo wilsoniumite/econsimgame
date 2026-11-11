@@ -60,6 +60,11 @@ const HIDDEN: f32 = 0.07;
 const SUBS: usize = 3;
 /// The first year a steep length is worked by a banking engine and not a rope.
 const BANKING_FROM: i32 = 1850;
+/// A curve of less than this radius is tighter than a train can take: the
+/// trains are 0.16 long.
+const TIGHT: f32 = 0.05;
+/// The length of line a curve's radius is measured over.
+const CURVE_OVER: f32 = 0.08;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -551,8 +556,11 @@ struct Draft {
     /// the distance along it to each point, and its whole length
     s: Vec<f32>,
     len: f32,
-    /// the ground under each point, at its middle and under the width of the bed, and how near a river is
+    /// the ground under each point, at its middle and under the width of the bed; the least the
+    /// line may lie at there (the bed's ground, and clear of a river where it crosses one); and
+    /// how near a river is
     ground: Vec<f32>,
+    bed: Vec<f32>,
     floor: Vec<f32>,
     water: Vec<f32>,
     /// the highest ground about each of the points between its ends whose level is settled, and by each end
@@ -620,12 +628,13 @@ fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, la: f32, 
     let ground: Vec<f32> = pts.iter().map(|p| world::height_at(g, p.x, p.y).max(0.0)).collect();
     let water: Vec<f32> = pts.iter().map(|p| world::water_dist(g, p.x, p.y)).collect();
     // the ground under the bed, and clear of a river where it crosses one
-    let floor: Vec<f32> = (0..=n).map(|i| bed_ground(g, pts[i], side(i)) + if water[i] < 0.03 { 0.05 } else { 0.0 }).collect();
+    let bed: Vec<f32> = (0..=n).map(|i| bed_ground(g, pts[i], side(i))).collect();
+    let floor: Vec<f32> = (0..=n).map(|i| bed[i] + if water[i] < 0.03 { 0.05 } else { 0.0 }).collect();
     let highest = |from: f32, to: f32| -> f32 { (0..=n).filter(|&i| s[i] >= from * len - 1e-4 && s[i] <= to * len + 1e-4).map(|i| floor[i]).fold(0.0, f32::max) };
     let part = 1.0 / (SUBS + 1) as f32;
     let sub_ground = std::array::from_fn(|k| highest((k as f32 + 0.5) * part, (k as f32 + 1.5) * part));
     let end_ground = [highest(0.0, 0.5 * part), highest(1.0 - 0.5 * part, 1.0)];
-    Draft { a: a_cell, b: b_cell, stage, signs: (sa, sb), pts, s, len, ground, floor, water, sub_ground, end_ground }
+    Draft { a: a_cell, b: b_cell, stage, signs: (sa, sb), pts, s, len, ground, bed, floor, water, sub_ground, end_ground }
 }
 
 /// Give a drafted length its level: a smooth curve through the levels
@@ -633,7 +642,7 @@ fn draft(g: &Ground, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, la: f32, 
 /// stands above it, and under the ground only where `holes` says a tunnel is
 /// (at each of the settled points, the two cells among them).
 fn finish(d: Draft, a: &Cell, b: &Cell, subs: [f32; SUBS], holes: [bool; SUBS + 2], opened: usize) -> Length {
-    let Draft { pts, s, len, ground, floor, water, .. } = d;
+    let Draft { pts, s, len, ground, bed, floor, water, .. } = d;
     let n = pts.len() - 1;
     let incline = d.stage >= RULES.incline();
     // the settled points: how far along each is, its level, and the slope there
@@ -659,19 +668,20 @@ fn finish(d: Draft, a: &Cell, b: &Cell, subs: [f32; SUBS], holes: [bool; SUBS + 
     }
     let grad = if incline { (0..m).map(|k| 1.6 * (h[k + 1] - h[k]).abs() / (at[k + 1] - at[k])).fold(RULING, f32::max) } else { RULING };
     // a tunnel about each settled point that is to be in one: from where the hill is deepest
-    // over the line there, out to where the line comes to the surface
+    // over the line there, out to where the line comes to the surface. (The hill is the ground
+    // itself: the room a river asks for over its water is no hill, and is never bored.)
     let mut under = vec![false; n + 1];
     for k in (0..=m).filter(|&k| holes[k]) {
         let (lo, hi) = (at[k] - 0.5 * len / m as f32, at[k] + 0.5 * len / m as f32);
-        let Some(deep) = (0..=n).filter(|&i| s[i] >= lo && s[i] <= hi).max_by(|&i, &j| (floor[i] - smooth[i]).total_cmp(&(floor[j] - smooth[j]))) else { continue };
-        if floor[deep] - smooth[deep] <= HIDDEN {
+        let Some(deep) = (0..=n).filter(|&i| s[i] >= lo && s[i] <= hi).max_by(|&i, &j| (bed[i] - smooth[i]).total_cmp(&(bed[j] - smooth[j]))) else { continue };
+        if bed[deep] - smooth[deep] <= HIDDEN {
             continue;
         }
         let (mut i, mut j) = (deep, deep);
-        while i > 0 && floor[i - 1] - smooth[i - 1] > 0.012 {
+        while i > 0 && bed[i - 1] - smooth[i - 1] > 0.012 {
             i -= 1;
         }
-        while j < n && floor[j + 1] - smooth[j + 1] > 0.012 {
+        while j < n && bed[j + 1] - smooth[j + 1] > 0.012 {
             j += 1;
         }
         under[i..=j].fill(true);
@@ -683,8 +693,9 @@ fn finish(d: Draft, a: &Cell, b: &Cell, subs: [f32; SUBS], holes: [bool; SUBS + 
         let reach = (a.level + grad * s[i]).min(b.level + grad * (len - s[i]));
         if least[i] > reach {
             least[i] = reach;
-            // ground that the line cannot get over is roofed
-            if floor[i] - reach > 0.006 {
+            // ground that the line cannot get over is roofed (a river it cannot get so far
+            // over is crossed lower)
+            if bed[i] - reach > 0.006 {
                 under[i] = true;
             }
         }
@@ -698,7 +709,7 @@ fn finish(d: Draft, a: &Cell, b: &Cell, subs: [f32; SUBS], holes: [bool; SUBS + 
         while j < n && under[j + 1] == under[i] {
             j += 1;
         }
-        if under[i] && j - i < 2 && (i..=j).all(|q| floor[q] - least[q] < LIFT) {
+        if under[i] && j - i < 2 && (i..=j).all(|q| bed[q] - least[q] < LIFT) {
             under[i..=j].fill(false);
         }
         i = j + 1;
@@ -873,6 +884,34 @@ fn stands(lines: &[Line], stops: &HashMap<usize, Stop>, g: &Ground) -> Vec<Stand
         }
     }
     out
+}
+
+/// The ground an engine house or a shed keeps: along the track, and back from it.
+fn stand_size(what: Standing) -> (f32, f32) {
+    use isostate_gen::rail;
+    match what {
+        Standing::WindingHouse => rail::WINDING_HOUSE,
+        Standing::BankerShed => rail::BANKER_SHED,
+        Standing::BufferStop => (0.0, 0.0),
+    }
+}
+
+/// Whether a spot lies on the ground of something that stands by the line, or within `extra` of it.
+fn stand_holds(st: &Stand, p: Vec2, extra: f32) -> bool {
+    let (w, d) = stand_size(st.what);
+    let rel = Quat::from_rotation_y(-st.yaw) * Vec3::new(p.x - st.at.x, 0.0, p.y - st.at.z);
+    rel.x.abs() < 0.5 * w + extra && rel.z.abs() < 0.5 * d + extra
+}
+
+/// The lowest and the highest ground under the four corners and the middle of what stands by the line.
+fn stand_ground(g: &Ground, st: &Stand) -> (f32, f32) {
+    let (w, d) = stand_size(st.what);
+    let q = Quat::from_rotation_y(st.yaw);
+    [(0.0, 0.0), (0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5)].into_iter().fold((f32::MAX, f32::MIN), |(lo, hi), (fx, fz)| {
+        let p = st.at + q * Vec3::new(fx * w, 0.0, fz * d);
+        let h = world::height_at(g, p.x, p.z);
+        (lo.min(h), hi.max(h))
+    })
 }
 
 static CACHE: Mutex<Option<(u64, Arc<RailYear>)>> = Mutex::new(None);
@@ -1346,10 +1385,21 @@ pub struct Checked {
     pub roofed_cells: f32,
     pub inclines: usize,
     pub incline_cells: f32,
+    /// the tightest curve of any line, as one over its radius, and how many curves are
+    /// tighter than a train can take (`TIGHT`)
+    pub curve: (f32, f32, f32),
+    pub hooks: usize,
+    /// the furthest the track stands over the ground where it is drawn as a tunnel
+    pub tunnel_in_air: (f32, f32, f32),
+    /// what stands by the line (engine houses and sheds): how many, the furthest the ground
+    /// under one lies from the rails beside it, and how many stand on a line
+    pub stands: usize,
+    pub stand_off: (f32, f32, f32),
+    pub stands_on_track: usize,
 }
 
 /// Walk every line of a year and measure how well it holds together.
-pub fn check(ry: &RailYear) -> Checked {
+pub fn check(ry: &RailYear, g: &Ground) -> Checked {
     let mut c = Checked { lines: ry.lines.len(), ..Checked::default() };
     let worst = |slot: &mut (f32, f32, f32), v: f32, p: Vec3| {
         if v > slot.0 {
@@ -1365,6 +1415,8 @@ pub fn check(ry: &RailYear) -> Checked {
             if line.kind[i] != Kind::Tunnel {
                 worst(&mut c.tallest, p.y - line.ground[i], p);
                 worst(&mut c.buried, line.ground[i] - p.y, p);
+            } else {
+                worst(&mut c.tunnel_in_air, p.y - line.ground[i], p);
             }
             if let Some(&y) = trains.get(&((p.x * 1000.0).round() as i32, (p.z * 1000.0).round() as i32)) {
                 worst(&mut c.train_off, (y - (p.y + LIFT + 0.004)).abs(), p);
@@ -1403,6 +1455,12 @@ pub fn check(ry: &RailYear) -> Checked {
             worst(&mut c.longest_tunnel, len, line.pts[i]);
         }
         c.inclines += runs_of(n, |q| line.worked[q] != Worked::Plain).len();
+        let flat: Vec<Vec2> = line.pts.iter().map(|p| Vec2::new(p.x, p.z)).collect();
+        let radii = course::radii(&flat, CURVE_OVER);
+        for (i, &r) in radii.iter().enumerate() {
+            worst(&mut c.curve, 1.0 / r, line.pts[i]);
+        }
+        c.hooks += runs_of(n, |q| radii[q] < TIGHT).len();
         for i in [0, n - 1] {
             let p = line.pts[i];
             ends.entry(((p.x * 1000.0).round() as i32, (p.z * 1000.0).round() as i32)).or_default().push((p.y, p, line.ground[i]));
@@ -1413,6 +1471,14 @@ pub fn check(ry: &RailYear) -> Checked {
         worst(&mut c.meet, hi - lo, v[0].1);
         if v.len() == 1 {
             worst(&mut c.end_off, (v[0].0 - v[0].2).abs(), v[0].1);
+        }
+    }
+    for st in ry.stands.iter().filter(|st| st.what != Standing::BufferStop) {
+        c.stands += 1;
+        let (lo, hi) = stand_ground(g, st);
+        worst(&mut c.stand_off, (st.at.y - lo).max(hi - st.at.y), st.at);
+        if ry.lines.iter().any(|line| line.pts.iter().zip(&line.kind).any(|(p, k)| *k != Kind::Tunnel && stand_holds(st, Vec2::new(p.x, p.z), 0.8 * HALF))) {
+            c.stands_on_track += 1;
         }
     }
     c
@@ -1436,11 +1502,11 @@ pub fn maybe_check(r: &Replay, g: &Ground) {
         if ry.lines.is_empty() {
             continue;
         }
-        let c = check(&ry);
+        let c = check(&ry, g);
         let at = |s: (f32, f32, f32)| format!("{:.3} at {:.1},{:.1}", s.0, s.1, s.2);
         eprintln!(
-            "rail check {}: {} lines, {:.0} km; step along a line {}; step where lines meet {}; steepest {}; steepest incline {}; highest over the ground {}; deepest under it outside a tunnel {}; trains off the track's level {}; a dead end off the ground {}; {} viaducts ({:.1} cells), {} tunnels ({:.1} cells, {:.1} of them roofed, the longest {}), {} inclines and banks ({:.1} cells)",
-            r.y0 + k as i32, c.lines, c.km, at(c.step), at(c.meet), at(c.steepest), at(c.steepest_incline), at(c.tallest), at(c.buried), at(c.train_off), at(c.end_off), c.viaducts, c.viaduct_cells, c.tunnels, c.tunnel_cells, c.roofed_cells, at(c.longest_tunnel), c.inclines, c.incline_cells
+            "rail check {}: {} lines, {:.0} km; step along a line {}; step where lines meet {}; steepest {}; steepest incline {}; highest over the ground {}; deepest under it outside a tunnel {}; trains off the track's level {}; a dead end off the ground {}; {} viaducts ({:.1} cells), {} tunnels ({:.1} cells, {:.1} of them roofed, the longest {}; in a tunnel yet over the ground {}), {} inclines and banks ({:.1} cells); the tightest curve has a radius of {:.3} at {:.1},{:.1}, {} curves tighter than {TIGHT}; {} engine houses and sheds, {} of them on a line, the ground furthest from the rails {}",
+            r.y0 + k as i32, c.lines, c.km, at(c.step), at(c.meet), at(c.steepest), at(c.steepest_incline), at(c.tallest), at(c.buried), at(c.train_off), at(c.end_off), c.viaducts, c.viaduct_cells, c.tunnels, c.tunnel_cells, c.roofed_cells, at(c.longest_tunnel), at(c.tunnel_in_air), c.inclines, c.incline_cells, 1.0 / c.curve.0.max(1e-6), c.curve.1, c.curve.2, c.hooks, c.stands, c.stands_on_track, at(c.stand_off)
         );
     }
     if let Some(net) = NET.lock().unwrap().as_ref() {
@@ -1464,6 +1530,12 @@ pub fn maybe_check(r: &Replay, g: &Ground) {
                     let over = (i..=j).map(|q| line.pts[q].y - line.ground[q]).fold(f32::MIN, f32::max);
                     eprintln!("line {li}: {what} from {:.2},{:.2} to {:.2},{:.2}, {:.2} long, levels {:.3} to {:.3}, at most {:.3} over the ground", a.x, a.z, b.x, b.z, len, a.y, b.y, over);
                 }
+            }
+            let flat: Vec<Vec2> = line.pts.iter().map(|p| Vec2::new(p.x, p.z)).collect();
+            let radii = course::radii(&flat, CURVE_OVER);
+            for (i, j) in runs_of(n, |q| radii[q] < TIGHT) {
+                let q = (i..=j).min_by(|&a, &b| radii[a].total_cmp(&radii[b])).unwrap_or(i);
+                eprintln!("line {li}: tight curve at {:.2},{:.2}, radius {:.3}", line.pts[q].x, line.pts[q].z, radii[q]);
             }
         }
     }
