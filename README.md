@@ -173,7 +173,7 @@ On the command line it is `--regime commons`, in the Python and the Rust alike. 
 cargo run -p isostate-core --release -- sweep --seeds 1-8 --rules game --families 6 --set rent_regime=landlords,commons --out runs/sweep-regimes
 ```
 
-On those eight islands, as run on 11 November 2026, the commons island ends with more people (808 thousand against 690 thousand), half the famine years (1.0 a run against 2.2), a lower wage (2.22 times 1750's against 2.59, though a commons household also has its dividend, which the wage does not count) and much less railway (1,506 km against 2,594). Nobody has yet worked out why for each, so take them as what the model does and not as findings.
+On those eight islands, as run on 11 November 2026, the commons islands end the century with more people (808 thousand against 690 thousand), half the famine years (1.0 a run against 2.2), a lower wage (2.22 times 1750's against 2.59, though a commons household also has its dividend, which the wage does not count) and much less railway (1,506 km against 2,594). Nobody has yet traced why, so take these as what the model does and not as findings.
 
 ## Layout
 
@@ -249,7 +249,7 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 - [docs/BACKLOG.md](docs/BACKLOG.md): what is waiting, what is being done and why in that order. The pages under `docs/backlog/` hold what helpers and reviewers found along the way and what waits on a decision.
 - [docs/rules/](docs/rules/README.md): the port and the game's rules, the golden test, the sweep and its facts, and a page for each mechanism with its numbers, what the sweeps showed and what worries us.
 - [docs/designs/](docs/designs/README.md): designs worked out and argued over but not yet built. Today, a deeper production tree.
-- [docs/probes/](docs/probes/README.md): five diagnoses of the simulation, each measured on 8 to 16 islands, that the game's mechanisms were built from. Kept as written.
+- [docs/probes/](docs/probes/README.md): diagnoses of the simulation, each measured on eight or more islands with a rough prototype of a cure. The game's mechanisms were built from them. Kept as written.
 - [docs/ART.md](docs/ART.md): the plan for the look: generators and not asset files, and change you can see happen.
 - [crates/isostate-viewer/README.md](crates/isostate-viewer/README.md): playing, the keys, every option, saved games, and how the picture is made.
 - [crates/isostate-gen/README.md](crates/isostate-gen/README.md): what a generator is, the kits the houses and works are built from, and how to add one.
@@ -281,7 +281,8 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 - The railway age begins anywhere from 1818 to 1853, so in 1850 one island has no line and another has 1,936 km. Nobody collects a railway's fares, and nobody pays for a road or a bridge.
 - Quarries, pits and mines take over a fifth of the land, as they do under the port, and nobody has traced why. A mechanism for mines is in review.
 - Most of the mechanisms' numbers were set on a few islands and never searched. Eight islands is a small sample, and a single year's wage misleads: read twenty-year means before believing a row (`docs/rules/towns.md`).
-- No foreign trade and no government, and money grows at a fixed rate. Run past 1900, the island goes Malthusian: there is no demographic transition and no technology after steel.
+- No foreign trade and no government, and money grows at a fixed rate.
+- Run past 1900, the island goes Malthusian, because there is no demographic transition and no technology after steel. On island 7 with `--end-year 2050` the people grow from 670 thousand in 1900 to 3.9 million, and what a wage buys falls from 2.9 times 1750's to about what it bought in 1750.
 
 **The port's rules.** These are the Python model's own weaknesses. The port keeps them on purpose, and the game's rules are the answer to most. On eight islands without families (`docs/rules/README.md`, "What the port's baseline says"):
 
