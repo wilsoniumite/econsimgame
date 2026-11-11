@@ -126,9 +126,9 @@ life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
   with a phase of its own, so that a works changes in steps that can be seen
   and the works of a town do not all step in the same year.
 - **`founded`**: the year sets the style for good. Before 1790 stone, stone
-  slates and timber, and a waterwheel where `water` is set; then brick and
-  slate; from 1840 iron and glass (north lights, lanterns, iron-cased
-  furnaces, a continuous kiln).
+  slates and timber, and a waterwheel where `water` is set (a powered mill
+  then has its pond in the yard); then brick and slate; from 1840 iron and
+  glass (north lights, lanterns, iron-cased furnaces, a continuous kiln).
 - **`state`**: `GoingUp` (walls part of the way up, scaffolding, no roofs,
   no smoke), `Extending` (at work, scaffolding round its newest part),
   `Working`, `Idle` (whole, fires out, gate shut) and `Derelict` (roofs

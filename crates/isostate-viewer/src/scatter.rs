@@ -813,3 +813,18 @@ fn lane(b: &mut Builder, lk: &Look, g: &Ground, from: (f32, f32), to: (f32, f32)
         .collect();
     b.ribbon(&pts, 0.011, *lk.ground.farm_lane);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_try_for_a_yard_asks_for_less_room_than_the_last() {
+        let tries = [Room::Proper, Room::Tight, Room::Any];
+        for pair in tries.windows(2) {
+            assert!(pair[1].dry() < pair[0].dry() && pair[1].shore() < pair[0].shore());
+        }
+        // and the last still keeps a yard out of the sea and out of a river
+        assert!(Room::Any.dry() > 0.0 && Room::Any.shore() > 0.0);
+    }
+}

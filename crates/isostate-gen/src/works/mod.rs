@@ -487,6 +487,18 @@ mod tests {
     }
 
     #[test]
+    fn a_mill_that_a_wheel_turns_has_its_pond() {
+        let water = *Palette::standard().water.river;
+        let wet = |w: &Works| build_at(w, 0.0).flat.col.iter().filter(|c| **c == water).count();
+        let mill = Works { founded: 1760, water: true, ..Works::new(Kind::TextileMill, 10.0) };
+        // the smallest has its race and no room for a pond
+        assert!(wet(&mill) > wet(&Works { size: 0.4, ..mill }) && wet(&Works { size: 0.4, ..mill }) > 0);
+        // and there is no water in the yard of a mill away from the river, or of one an engine turns
+        assert_eq!(wet(&Works { water: false, ..mill }), 0);
+        assert_eq!(wet(&Works { founded: 1870, ..mill }), 0);
+    }
+
+    #[test]
     fn the_site_turns_the_yard() {
         let w = Works::new(Kind::CokeFurnace, 10.0);
         let (mut turned, built) = (build_at(&w, 0.0), build_at(&w, 0.7));

@@ -161,7 +161,7 @@ charcoal_clamp_top = "#3a322b"
 # burners' clearing, and any of them once the works is derelict and the weeds
 # are in
 yard_cinders = "#7d756d"
-yard_setts = "#b9ae9d"
+yard_setts = "#9f9381"
 yard_earth = "#bfa783"
 shop_pavement = "#d5cab4"
 charcoal_hearth = "#6a5d50"
@@ -205,7 +205,7 @@ station_canopy = "#7a8a6a"
 drying_shed = "#6e5a48"
 coke_ovens = "#5a4a42"
 # stone slates, on the works built before brick and Welsh slate
-stone_slate = "#6d665c"
+stone_slate = "#5f594f"
 # a shop's awning, in one of these
 awnings = ["#c9584a", "#e9dcbc", "#5c8a94", "#dba94a"]
 

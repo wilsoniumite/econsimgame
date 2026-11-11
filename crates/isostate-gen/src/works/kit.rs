@@ -200,6 +200,7 @@ impl<'a, 's> Ctx<'a, 's> {
 
     // -------------------------------------------------------------- buildings
 
+    #[allow(clippy::too_many_arguments)]
     fn frame(&self, x: f32, z: f32, len: f32, dep: f32, h: f32, rise: f32, across: bool) -> Shed {
         let yaw = self.site.yaw + if across { std::f32::consts::FRAC_PI_2 } else { 0.0 };
         Shed { x, z, len, dep, h, rise, across, o: self.site.at(x, z), q: Quat::from_rotation_y(yaw), yaw }
