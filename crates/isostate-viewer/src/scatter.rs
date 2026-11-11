@@ -858,8 +858,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let census = towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &land, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
     if let Some(c) = census.filter(|_| std::env::var_os("ISOSTATE_TOWNS").is_some()) {
         eprintln!(
-            "towns {}: {} cells of town ground, {:.0} residents, {} houses wanted and {} drawn ({:.1} people to a house): {} cottages, {} townhouses, {} in terraces, {} villas; {} of one storey, {} of two, {} of three or more ({} of those with no neighbour on one side)",
-            r.y0 + k as i32, c.cells, c.residents, c.wanted, c.drawn, c.residents / c.drawn.max(1) as f32, c.cottages, c.townhouses, c.terraced, c.villas, c.storeys[0], c.storeys[1], c.storeys[2], c.tall_alone
+            "towns {}: {} cells of town ground, {:.0} residents, {} houses wanted and {} drawn ({:.1} people to a house): {} cottages, {} townhouses, {} in terraces, {} villas; {} of one storey, {} of two, {} of three or more ({} of those with no neighbour on one side); {} houses short on cells with open ground left and {} on cells built up whole",
+            r.y0 + k as i32, c.cells, c.residents, c.wanted, c.drawn, c.residents / c.drawn.max(1) as f32, c.cottages, c.townhouses, c.terraced, c.villas, c.storeys[0], c.storeys[1], c.storeys[2], c.tall_alone, c.short, c.short_full
         );
     }
 

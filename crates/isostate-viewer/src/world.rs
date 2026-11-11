@@ -771,17 +771,20 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
 // A run under the port's rules has none of this: all its town ground is
 // built up, and is drawn as it always was.
 
-/// People to one drawn house. A plot of the towns is 100 m wide (everything
-/// that stands on the map is drawn about five times life size), and at eight
-/// people to a house the fullest ground of 1900 (1,430 people) is 179 houses,
-/// which with their yards and streets fill four fifths of the cell: as
-/// close-built as the layout goes. The newest ground (300 people) is 37
-/// houses along the way out of town. It is also the unit the record keeps
-/// residents in, so a step of the record is a house.
-pub const PEOPLE_TO_A_HOUSE: f32 = 8.0;
+/// People to one drawn house: twelve. The number is the map's, not the
+/// period's: everything that stands on the map is drawn about five times life
+/// size, a town plot is 100 m wide, and the streets of a cell that is built
+/// up whole have plots for about 120 houses. At twelve people to a house
+/// the fullest ground of 1900 (1,430 people) is 119 houses, which with their
+/// yards and streets take the whole of the cell, and the newest ground (300
+/// people) is 25 houses along the way out of town. (The first helper on the
+/// task had eight, the unit the record keeps residents in. That asks 179
+/// houses of the fullest ground, and four fifths of the houses asked for
+/// were drawn; at ten it was nine tenths.)
+pub const PEOPLE_TO_A_HOUSE: f32 = 12.0;
 /// The ground a drawn house takes with its yard, the streets and the room
 /// left about it, in square cells: what the built-up closes are counted out by.
-pub const HOUSE_GROUND: f32 = 0.0052;
+pub const HOUSE_GROUND: f32 = 0.0084;
 /// Houses outlast a fall in their cell's residents of this share: a town that
 /// has lost a quarter of its people still stands whole.
 pub const HOUSES_KEEP: f32 = 0.25;
@@ -830,11 +833,13 @@ pub struct TownClosesKnown {
 pub struct CloseLookup<'a> {
     g: &'a Ground,
     cells: std::collections::HashMap<u32, std::sync::Arc<Vec<(u32, u8)>>>,
+    /// the cell asked for last, which is most often the cell asked for next
+    last: Option<(u32, std::sync::Arc<Vec<(u32, u8)>>)>,
 }
 
 impl<'a> CloseLookup<'a> {
     pub fn new(g: &'a Ground) -> CloseLookup<'a> {
-        CloseLookup { g, cells: Default::default() }
+        CloseLookup { g, cells: Default::default(), last: None }
     }
 
     /// The parcel at a spot and which of its eight closes the spot lies in, to the nearest 42 m.
@@ -842,7 +847,10 @@ impl<'a> CloseLookup<'a> {
         let g = self.g;
         let (cx, cy) = ((x.max(0.0) as usize).min(g.w - 1), (z.max(0.0) as usize).min(g.h - 1));
         let c = (cy * g.w + cx) as u32;
-        let grid = self.cells.entry(c).or_insert_with(|| close_grid(g, c));
+        if self.last.as_ref().map(|l| l.0) != Some(c) {
+            self.last = Some((c, self.cells.entry(c).or_insert_with(|| close_grid(g, c)).clone()));
+        }
+        let grid = &self.last.as_ref().unwrap().1;
         let n = CLOSE_GRID as f32;
         let (i, j) = ((((x - cx as f32) * n).max(0.0) as usize).min(CLOSE_GRID - 1), (((z - cy as f32) * n).max(0.0) as usize).min(CLOSE_GRID - 1));
         grid[j * CLOSE_GRID + i]
@@ -1019,6 +1027,8 @@ pub fn close_at(g: &Ground, x: f32, z: f32) -> (u32, u8) {
 
 /// How much further a spot counts from the market place for each cell it lies off the road.
 const OFF_THE_ROAD: f32 = 3.0;
+/// The same in the cell of a town's market place.
+const OFF_THE_ROAD_AT_MARKET: f32 = 1.6;
 
 /// The order in which the closes of cell `c`'s town ground (its `parcels`)
 /// are built up. Each close has a way to the market place of the town the
@@ -1058,13 +1068,16 @@ fn town_order(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize, pa
             }
         }
     }
+    // a town's first cell is built up closer round its market place than the ground beyond
+    // is along its roads: the old middle is a knot of streets, not a ribbon
+    let off = if r.header.towns.iter().any(|t| t.node == c) { OFF_THE_ROAD_AT_MARKET } else { OFF_THE_ROAD };
     let score = |q: Vec2| {
         let by_road = roads.iter().map(|&(a, b)| {
             let t = ((q - a).dot(b - a) / a.distance_squared(b).max(1e-9)).clamp(0.0, 1.0);
             let foot = a + (b - a) * t;
-            OFF_THE_ROAD * q.distance(foot) + foot.distance(market)
+            off * q.distance(foot) + foot.distance(market)
         });
-        by_road.fold(OFF_THE_ROAD * q.distance(market), f32::min)
+        by_road.fold(off * q.distance(market), f32::min)
     };
     let mut all: Vec<(f32, u32, u8, f32)> = Vec::with_capacity(parcels.len() * 8);
     for &i in parcels {
