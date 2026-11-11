@@ -29,6 +29,17 @@ fn whole_game() -> &'static RunResult {
     RUN.get_or_init(|| sim::run_with(&game(6, 1900), game_content(), false, true).expect("money is conserved every month"))
 }
 
+/// The same game with the chronicle switched off: the same economy to the last
+/// bit, with the news as the port and the other mechanisms file it.
+fn whole_game_untold() -> &'static RunResult {
+    static RUN: OnceLock<RunResult> = OnceLock::new();
+    RUN.get_or_init(|| {
+        let mut P = game(6, 1900);
+        P.chronicle = ChronicleParams::default();
+        sim::run_with(&P, game_content(), false, true).expect("money is conserved every month")
+    })
+}
+
 fn decade(e: &Event) -> i64 {
     ((e.year.floor() as i64 - 1750) / 10).min(14)
 }
@@ -37,6 +48,7 @@ fn class(e: &Event) -> String {
     match e.kind.as_str() {
         "alarm" | "verdict" => "cycle".to_string(),
         "railway" | "rail_plan" => "railway".to_string(),
+        "harvest" | "dearth" => "harvest".to_string(),
         "family" if e.family == Some(0) => "own".to_string(),
         kind => kind.to_string(),
     }
@@ -79,13 +91,22 @@ fn it_never_touches_the_economy_and_runs_are_deterministic() {
     for (a, b) in on.state.families.iter().zip(&off.state.families) {
         assert_eq!(a.cash.to_bits(), b.cash.to_bits());
     }
-    assert!(on.events.len() < off.events.len(), "and there is less news, not more: {} against {}", on.events.len(), off.events.len());
+    // and there is less news, not more. In these forty years that is said of
+    // the player's own: with the life cycle for works a family's branches open
+    // a twentieth of the works they did, so the flood the chronicle ends is no
+    // longer greater than the stories it adds in every stretch of years. Of the
+    // whole game it is said of all the news
+    // (`the_players_works_no_longer_flood_the_news`).
+    let own = |r: &RunResult| r.events.iter().filter(|e| e.family == Some(0)).count();
+    assert!(own(&on) < own(&off), "and there is less of the player's news, not more: {} against {}", own(&on), own(&off));
+    assert!(on.events.len() < off.events.len() + 10, "nor a flood of anything else: {} items against {}", on.events.len(), off.events.len());
 }
 
 #[test]
 fn every_observer_item_says_why() {
     let r = whole_game();
-    let observer = ["crossing", "milestone", "steep", "alarm", "verdict", "first", "region", "famine"];
+    // the harvest's news is of the same sort: a test that fired on a number
+    let observer = ["crossing", "milestone", "steep", "alarm", "verdict", "first", "region", "famine", "harvest", "dearth"];
     for e in r.events.iter().filter(|e| observer.contains(&e.kind.as_str())) {
         let w = e.why.as_ref().unwrap_or_else(|| panic!("{} ({}) has no provenance", e.title, e.kind));
         assert!(!w.test.is_empty() && !w.series.is_empty() && !w.note.is_empty(), "{}: {w:?}", e.title);
@@ -93,6 +114,22 @@ fn every_observer_item_says_why() {
     }
     for kind in ["crossing", "milestone", "steep", "verdict", "region"] {
         assert!(r.events.iter().any(|e| e.kind == kind), "the run has a {kind} item");
+    }
+    if r.params.harvest.enabled {
+        for kind in ["harvest", "dearth"] {
+            assert!(r.events.iter().any(|e| e.kind == kind), "the run has a {kind} item");
+        }
+        // a dearth carries the price, where the earlier years pointed, and the line above that
+        let dearth = r.events.iter().find(|e| e.kind == "dearth").unwrap();
+        let w = dearth.why.as_ref().unwrap();
+        let pointed = w.baseline.expect("a dearth is measured against a trend");
+        assert!(w.value >= w.threshold && (w.threshold / pointed - (1.0 + r.params.harvest.dearth_rise)).abs() < 1e-4, "{w:?}");
+        // a poor harvest is under its line and a bumper one over, both against an ordinary year
+        for e in r.events.iter().filter(|e| e.title == "A poor harvest" || e.title == "A bumper harvest") {
+            let w = e.why.as_ref().unwrap();
+            assert_eq!(w.baseline, Some(1.0));
+            assert!(if e.title == "A poor harvest" { w.value < w.threshold && w.threshold < 1.0 } else { w.value > w.threshold && w.threshold > 1.0 }, "{}: {w:?}", e.title);
+        }
     }
     // a doubling is measured from the mean of the first five years, and says so
     let doubling = r.events.iter().find(|e| e.title.starts_with("Real output doubles")).expect("real output doubles in seed 7");
@@ -171,9 +208,26 @@ fn the_players_works_no_longer_flood_the_news() {
         assert!(e.weight < 0.6 && e.kept == Some(false), "{} weighs {}", e.title, e.weight);
         assert!(years.insert(e.year.floor() as i64), "two summaries in {}", e.year.floor());
     }
-    // the family's branches opened about a thousand works in this game: the news of them is a fraction of that
+    // nor for a works a branch extended (the life cycle for works, docs/rules/works.md):
+    // those are in the summaries too
+    assert!(own.iter().all(|e| !e.title.contains(" family extends ")), "no extension is told one by one");
+    assert!(summaries.iter().any(|e| e.title.contains(" extend")), "the summaries tell of works extended");
+    // what the family's branches did on their own in this game, counted in the
+    // same game with the chronicle off, where every works a branch opens or
+    // extends is an item: the news of them is a fraction of that. (Before the
+    // life cycle for works the branches opened about a thousand works; with it
+    // they open some fifty and extend them a couple of hundred times.)
+    let untold = whole_game_untold();
+    let one_by_one = |e: &&Event| e.family == Some(0) && (e.title.contains(" family opens a") || e.title.contains(" family extends "));
+    let acts = untold.events.iter().filter(one_by_one).count();
     let works = (0..r.state.F_count).filter(|&f| r.state.f_reason[f].kind == "family" && r.state.f_owner[f] == 0).count();
-    assert!(works > 500 && own.len() < 320, "{} items for {works} works", own.len());
+    assert!(works > 40 && acts > 250 && own.len() < 320, "{} items for {works} works opened, {acts} opened or extended", own.len());
+    let told = summaries.len() + reached.len();
+    assert!(told * 2 < acts, "{told} items for the {acts} things the branches did");
+    let untold_own = untold.events.iter().filter(|e| e.family == Some(0)).count();
+    assert!(own.len() * 3 < untold_own * 2, "the player's news is {} items, {untold_own} without the chronicle", own.len());
+    // and with the stories the chronicle adds, the whole game's news is still shorter
+    assert!(r.events.len() < untold.events.len(), "there is less news, not more: {} against {}", r.events.len(), untold.events.len());
     // the game's rules for the player's own news: its great moments weigh 0.6 or
     // more, the everyday less, and a decade keeps one of them at most
     let Q = &r.params.chronicle;
@@ -329,6 +383,11 @@ fn ranking_a_decade() {
     assert_eq!(kept_titles(&slump), ["grain slump", "the depression of 1810 to 1812", "iron boom", "an invention"]);
     assert_eq!(slump[0].kept, Some(false));
 
+    // a short crop and the dear bread that follows are one story: the heavier is kept
+    let mut bread = vec![item(1887.7, "dearth", 0.7, "a dearth"), item(1889.55, "harvest", 0.75, "a poor harvest"), item(1883.8, "steep", 0.8, "grain shortage")];
+    chronicle::rank(&mut bread, &P, 1750, 1900, 1889);
+    assert_eq!(kept_titles(&bread), ["a poor harvest", "grain shortage"]);
+
     // 1900 goes with the 1890s; and off, nothing is marked
     let mut last = vec![item(1895.5, "discovery", 0.9, "a"), item(1900.5, "discovery", 0.9, "b"), item(1900.6, "discovery", 0.9, "c")];
     chronicle::rank(&mut last, &P, 1750, 1900, 1900);
@@ -439,7 +498,7 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
     // forty years of seed 7, in which most of its towns are founded
     let mut s = sim::start(&game(6, 1790), game_content());
     let T = s.st.T_max;
-    let (mut foundings, mut spared) = (0, 0);
+    let (mut foundings, mut spared, mut carried) = (0, 0, 0);
     let mut before = vec![1750; T];
     while s.year <= s.end_year {
         let year = s.year;
@@ -452,6 +511,14 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
         for c in 0..st.N {
             if st.catch[c] >= 0 && new[st.catch[c] as usize] && st.prev_catch[c] >= 0 {
                 cut[st.prev_catch[c] as usize] = true;
+            }
+        }
+        // and, under the game's rules for people, the towns a tenth of whose people
+        // came or went with their cells this year, founding or no founding
+        for t in 0..T {
+            if st.town_active[t] && st.pp_moved[t] >= chronicle::REDRAWN_SHARE && !cut[t] {
+                cut[t] = true;
+                carried += 1;
             }
         }
         for t in 0..T {
@@ -483,6 +550,7 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
         }
     }
     assert!(foundings >= 5 && spared > foundings, "{foundings} foundings, and towns they did not touch ({spared})");
+    assert!(carried > 0, "and a district that changed market with no founding redrew a town");
 }
 
 #[test]
@@ -501,8 +569,21 @@ fn towns_and_districts_have_stories() {
     for t in ["coal raised against a few years before", "people against the town's own peak", "one town's people against another's", "the decade's fastest-growing town", "works closed in one district in a year"] {
         assert!(tests.contains(t), "seed 7 has a story of the kind: {t}");
     }
+    // under the game's railways (docs/rules/railways.md) a line with no second town
+    // may run to farms, woods or works: a coal boom names the line that reached the
+    // town or a branch to its collieries, and nothing is called a mineral line
+    if r.params.railways.enabled {
+        assert!(r.events.iter().all(|e| !e.text.contains("mineral line")), "no branch is told as a mineral line");
+        let lines = &r.state.rw.lines;
+        for e in stories.iter().filter(|e| e.text.contains("brings it down from the pits")) {
+            let (t, year) = (e.town.unwrap(), e.year.floor());
+            assert!(e.text.contains("A branch line to the collieries, opened in "), "{}", e.text);
+            assert!(lines.iter().any(|l| l.a == t && l.opened < year + 1.0 && ways::serves_word(l.serves) == "collieries" && e.text.contains(&format!("opened in {},", l.opened.floor()))), "{}", e.text);
+        }
+    }
     // a founding somewhere does not silence the rest of the island: seed 7's last
-    // town is Golddale, in 1783, and towns it did not touch have stories before then
+    // town is Ruthdale, in 1831 (it was Golddale, in 1783, before carting and the
+    // game's railways), and towns it did not touch have stories before then
     let last_founding = (0..r.state.T_max).filter(|&t| r.state.town_active[t]).map(|t| r.state.town_founded[t]).max().unwrap();
     assert!(stories.iter().any(|e| !e.title.contains("works close") && (e.year.floor() as i64) < last_founding), "a story of a town's people before {last_founding}");
     // but no town is said to decline from the people it was founded with
@@ -518,7 +599,23 @@ fn towns_and_districts_have_stories() {
             assert!(e.year - last >= r.params.chronicle.decline_years as f64, "{} twice", e.title);
         }
     }
-    // a decade of new towns is one item
-    let digest = r.events.iter().find(|e| e.kind == "town" && e.title.contains("new towns in the 1750s")).expect("the 1750s digest");
-    assert!(digest.kept == Some(true) && digest.text.contains("(175"));
+    // a decade of new towns is one item, with each town's year, and it is kept
+    // unless the decade is full of heavier things. With the life cycle for works
+    // (docs/rules/works.md) seed 7's towns come later: three in the 1760s, where
+    // two inventions, a coal boom and the family's new trade outweigh them.
+    // (Before it the digest was of the 1750s and was one of that decade's four.)
+    // With carting and the game's railways merged (docs/rules/carting.md) the
+    // digest is of the 1770s, three towns again, where two inventions, coke
+    // iron's crossing and the family's new trade outweigh it.
+    let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
+    assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
+    let mut decades = std::collections::BTreeSet::new();
+    for digest in &digests {
+        assert!(decades.insert(decade(digest)), "one digest a decade: {}", digest.title);
+        let years = format!("({}", 175 + decade(digest));
+        assert!(digest.text.contains(&years) && digest.why.is_some(), "{}: {}", digest.title, digest.text);
+        let kept: Vec<&Event> = r.events.iter().filter(|e| e.kept == Some(true) && decade(e) == decade(digest)).collect();
+        let outweighed = kept.len() == r.params.chronicle.per_decade && kept.iter().all(|e| e.weight > digest.weight);
+        assert!(digest.kept == Some(true) || outweighed, "{} is kept, or the decade's {} are all heavier", digest.title, kept.len());
+    }
 }

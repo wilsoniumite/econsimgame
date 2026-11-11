@@ -2,7 +2,7 @@
 //! and the counts behind it.
 //!
 //!     cargo run -p isostate-core --release --example chronicle [--rules port|game] [--seed N | --seeds A-B]
-//!         [--families N] [--end-year Y] [--why] [--all] [--counts]
+//!         [--families N] [--end-year Y] [--set NAME=VALUE]... [--why] [--all] [--counts]
 //!
 //! With one seed (7 unless `--seed` says otherwise) it prints the major feed:
 //! every item the viewer's "major" filter would show, under its decade, with
@@ -14,6 +14,10 @@
 //! `--counts`, or more than one seed (`--seeds 1-8`, run side by side), prints
 //! the numbers instead: items per decade by kind, the major feed's length per
 //! decade, and how many of the player's own items are major.
+//!
+//! `--set` changes one parameter of the chosen rules, by the names the sweep
+//! takes (`--set harvest.enabled=false`, `--set chronicle.boom_growth=1.5`):
+//! the feed with one mechanism away, or one threshold moved.
 //!
 //! Six families by default, the player's taking every default, as in
 //! `examples/live.rs`. The argument parsing is that small.
@@ -39,6 +43,8 @@ fn kind_label(kind: &str) -> &'static str {
         "alarm" => "Hard times",
         "verdict" => "In hindsight",
         "famine" => "Hunger",
+        "harvest" => "Harvest",
+        "dearth" => "Dearth",
         "town" => "New town",
         "region" => "Town and country",
         "closure" => "Closure",
@@ -52,6 +58,7 @@ fn main() {
     let mut seeds: Vec<u64> = vec![7];
     let (mut families, mut end_year) = (6usize, None);
     let (mut show_why, mut all, mut counts) = (false, false, false);
+    let mut sets: Vec<(String, String)> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = |name: &str| args.next().unwrap_or_else(|| panic!("{name} needs a value"));
@@ -65,18 +72,28 @@ fn main() {
             }
             "--families" => families = value("--families").parse().expect("a number of families"),
             "--end-year" => end_year = Some(value("--end-year").parse().expect("a year")),
+            "--set" => {
+                let v = value("--set");
+                let (key, val) = v.split_once('=').expect("--set NAME=VALUE");
+                sets.push((key.to_string(), val.to_string()));
+            }
             "--why" => show_why = true,
             "--all" => all = true,
             "--counts" => counts = true,
             other => panic!("unknown option {other:?}"),
         }
     }
+    let mut base = rules.params();
+    for (key, val) in &sets {
+        base = sweep::set_field(&base, key, &sweep::parse_value(val)).unwrap_or_else(|e| panic!("{e}"));
+    }
+    let base = &base;
     let runs: Vec<RunResult> = std::thread::scope(|scope| {
         let handles: Vec<_> = seeds
             .iter()
             .map(|&seed| {
                 scope.spawn(move || {
-                    let mut P = rules.params();
+                    let mut P = base.clone();
                     P.seed = seed;
                     P.n_families = families;
                     P.end_year = end_year;
@@ -87,6 +104,9 @@ fn main() {
         handles.into_iter().map(|h| h.join().expect("the run finishes")).collect()
     });
     println!("{} rules, {} families, seed{} {}", rules.as_str(), families, if seeds.len() == 1 { "" } else { "s" }, seeds.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" "));
+    for (key, val) in &sets {
+        println!("with {key} = {val}");
+    }
     if counts || runs.len() > 1 {
         print_counts(&runs);
     } else {

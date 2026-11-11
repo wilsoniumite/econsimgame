@@ -138,6 +138,27 @@ pub fn found_town(st: &mut State, C: &Content, P: &Params, n: usize, donor: usiz
     }
 }
 
+/// A price that something other than the market's own rule has just set takes
+/// its anchor with it. `people` does this once a year: a district that changes
+/// market brings the prices it was used to (`peopling::move_with_cells`), and
+/// town `t`'s price of good `g`, which was `was`, becomes an average of its own
+/// and the newcomers'. The anchor moves in the same proportion, so the price
+/// stands as far above or below it as it did. That distance is the merchants'
+/// stock speaking, and the stock is what it was (a new town's is its share of
+/// its mother town's, as many months of sales as hers).
+///
+/// Without this the new price would be walked back toward the old anchor at 12
+/// per cent a month: for a new town, toward what the mother town thought the
+/// good was worth, which is the mistake the average was made to avoid.
+pub fn anchor_follows(st: &mut State, C: &Content, P: &Params, t: usize, g: usize, was: f64) {
+    if !P.prices.enabled || !(was > 0.0) {
+        return;
+    }
+    ensure_anchor(st);
+    let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
+    st.price_anchor[(t, g)] = (st.price_anchor[(t, g)] * st.price[(t, g)] / was).clamp(lo, hi);
+}
+
 /// The share of capacity merchants will take at a stock of `stock` against
 /// smoothed monthly sales and shipments of `outflow`: 1 up to `glut_months` of
 /// sales, falling in a straight line to `glut_floor` at `glut_stop_months`.
@@ -189,6 +210,29 @@ mod tests {
             assert!(v <= last && (0.0..=1.0).contains(&v));
             last = v;
         }
+    }
+
+    #[test]
+    fn an_anchor_follows_a_price_set_from_outside() {
+        let C = crate::default_content();
+        let P = crate::game_params();
+        let base = C.base_price[0];
+        let mut st = State { price: crate::mat::Mat::filled(2, C.G, base), price_anchor: crate::mat::Mat::filled(2, C.G, 1.25 * base), ..State::default() };
+        // town 1's price of good 0 is set a fifth lower by a district that came over
+        st.price[(1, 0)] = 0.8 * base;
+        anchor_follows(&mut st, &C, &P, 1, 0, base);
+        assert!((st.price_anchor[(1, 0)] - base).abs() < 1e-12, "the anchor went a fifth lower with it");
+        assert!((st.price[(1, 0)] / st.price_anchor[(1, 0)] - 0.8).abs() < 1e-12, "and the price stands off it as it did");
+        assert_eq!(st.price_anchor[(0, 0)], 1.25 * base, "no other town's moved");
+        assert_eq!(st.price_anchor[(1, 1)], 1.25 * base, "nor any other good's");
+        // never past the floor and ceiling prices keep to
+        st.price[(1, 0)] = P.price_ceiling * base;
+        anchor_follows(&mut st, &C, &P, 1, 0, 0.8 * base);
+        assert_eq!(st.price_anchor[(1, 0)], P.price_ceiling * base);
+        // and with the merchants' prices off there is no anchor to move
+        let mut off = State { price: crate::mat::Mat::filled(2, C.G, base), ..State::default() };
+        anchor_follows(&mut off, &C, &crate::default_params(), 1, 0, 2.0 * base);
+        assert_eq!(off.price_anchor.rows, 0);
     }
 
     #[test]

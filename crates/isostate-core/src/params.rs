@@ -66,6 +66,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::works::WorksParams;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RentRegime {
@@ -262,6 +264,20 @@ pub struct Params {
     /// The chronicle: news that reads like a history (not in the Python; see docs/rules/chronicle.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub chronicle: crate::chronicle::ChronicleParams,
+    /// A life cycle for works (not in the Python; see docs/rules/works.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub works: WorksParams,
+    /// Branch lines priced on what they save, at a believable cost (not in the
+    /// Python; see docs/rules/railways.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub railways: crate::railways::RailwayParams,
+    /// Carting takes labour (not in the Python; see docs/rules/carting.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub carting: crate::carting::CartingParams,
+    /// People (not in the Python; see docs/rules/people.md): a population that
+    /// answers to how people live, and towns founded all century.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub people: crate::peopling::PeopleParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -457,6 +473,10 @@ pub fn default_params() -> Params {
         machines: crate::machines::MachineParams::default(),
         harvest: crate::harvest::HarvestParams::default(),
         chronicle: crate::chronicle::ChronicleParams::default(),
+        works: WorksParams::default(),
+        railways: crate::railways::RailwayParams::default(),
+        carting: crate::carting::CartingParams::default(),
+        people: crate::peopling::PeopleParams::default(),
     }
 }
 
@@ -478,6 +498,10 @@ pub fn game_params() -> Params {
     P.machines = crate::machines::MachineParams::game();
     P.harvest = crate::harvest::HarvestParams::game();
     P.chronicle = crate::chronicle::ChronicleParams::game();
+    P.works = WorksParams::game();
+    P.railways = crate::railways::RailwayParams::game();
+    P.carting = crate::carting::CartingParams::game();
+    P.people = crate::peopling::PeopleParams::game();
     P
 }
 

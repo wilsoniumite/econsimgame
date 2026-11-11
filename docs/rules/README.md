@@ -337,7 +337,7 @@ snapshot and the final state of a run to 1790.
 | People and towns | `pop_Y`; `growth_capped_years`, the share of years in which most people lived in towns whose growth was held at `growth_cap`, and `growth_capped_people`, the average share of people in such towns; `urban_share_Y`; `towns_Y`; `last_town_founded` |
 | Work and wages | `farm_share_Y` and `industry_share_Y` of employment; `real_wage_Y_vs_1750` and `output_per_head_Y_vs_1750`; `output_per_head_peak_year` |
 | Railways | `rail_first_year`; `rail_km_Y` for 1850, 1870 and 1900; `rail_last_growth_year`, the last year that ended with more line than the year before |
-| Works | `works_Y` standing at the year's end and `works_ex_services_Y`; `works_per_1000_people`; size as built capacity K over the method's K0, for works with something built: `works_size_median`, `_p90`, `_largest`; `works_top_1pct_capacity_share`, the share of all capacity (built and on order, at the year's capital-goods prices) held by the largest hundredth of works; `works_closed` and their `works_closed_median_life` in years; `works_utilisation`, the mean over works |
+| Works | `works_Y` standing at the year's end and `works_ex_services_Y`; `works_per_1000_people`; size as built capacity K over the method's K0, for works with something built: `works_size_median`, `_p90`, `_largest`; `works_top_1pct_capacity_share`, the share of all capacity (built and on order, at the year's capital-goods prices) held by the largest hundredth of works; `works_founded`, every works opened from the first year on, sister works included; `works_closed` and their `works_closed_median_life` in years; `works_utilisation`, the mean over works |
 | Land | `cells_urban_Y`, `cells_industry_Y` and `cells_derelict_Y`: the number of whole cells a town, the works or dereliction has taken; `area_USE_Y`: the land under farm, pasture, forestry, mines (quarries, pits and mines together) and left wild, in cells, as every cell's share summed (a cell is 2 km square); `urban_churn_10y`, of the cells urban in a year the share not urban ten years on, averaged over the run |
 | Methods and inventions | for each method or tech not known at the start: `discovered_NAME`, and for methods `first_output_NAME` and `half_of_output_NAME`, the first year it makes half of all that its good's methods make; the plan's five: `share_coke_furnace_1800`, `share_textile_mill_1830`, `share_bessemer_1880`, `share_rolling_mill_1850`, `share_steel_rolling_1890`; and the list of methods never built |
 | Prices and cycles | `price_swing_GOOD` for grain, iron, rails and cloth: the standard deviation of the yearly change in the log of the price, 1760 to the end; `farm_zigzag`, the mean absolute second difference of the yearly farm share of employment, times 100 |
@@ -461,3 +461,18 @@ One line each as they arrive: the name, its page, its switch.
   two to four a decade a history would keep, stories of towns and districts,
   and an end to the flood of the player's own works. It never touches the
   economy. [chronicle.md](chronicle.md), `chronicle.enabled`.
+- **works**: a life cycle for works. They grow where they stand, take land
+  by their hands and stand by their town, so the island has hundreds of works
+  of every size instead of thousands of small ones. [works.md](works.md),
+  `works.enabled`.
+- **railways**: branch lines to towns and districts, every line priced on the
+  carting it saves, at five times the port's cost. [railways.md](railways.md),
+  `railways.enabled`.
+- **carting**: the carting bill takes hands out of each town's labour supply,
+  so cheaper carriage frees people for other work. [carting.md](carting.md),
+  `carting.enabled`.
+- **people**: births and deaths that answer to income, crowding and dearth;
+  towns founded all century where a market would save the most carting; and
+  households that go with their cells when a market's area changes, taking
+  their wage and their prices with them. [people.md](people.md),
+  `people.enabled`.
