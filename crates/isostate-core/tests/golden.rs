@@ -96,7 +96,8 @@ fn check(name: &str, const_name: &str, n_families: usize, want: (u64, u64)) {
          If it was on purpose, take the new hashes with\n\n    \
          ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden\n\n\
          (each test then stops with its constant), paste them over the constants of the same names in \
-         crates/isostate-core/tests/golden.rs, and say in the commit message why the port moved. ISOSTATE_GOLDEN_DUMP=DIR writes the two files of each run for a diff.\n",
+         crates/isostate-core/tests/golden.rs, and say in the commit message why the port moved. \
+         ISOSTATE_GOLDEN_DUMP=DIR writes the two files of each run for a diff.\n",
         got.0, got.1, want.0, want.1
     );
 }

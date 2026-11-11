@@ -1268,7 +1268,8 @@ never built, hurdle=0.12: nothing
         }
         let text = compare(&sw, &[wider], Path::new("then"));
         println!("{text}");
-        assert!(text.contains("now: hurdle=0.1 (4 runs); then: hurdle=0.1 (5 runs) in then\nseed for seed, on the seeds both have: 1 2 3 4\n"), "{text}");
+        assert!(text.contains("now: hurdle=0.1 (4 runs); then: hurdle=0.1 (5 runs) in then\n"), "{text}");
+        assert!(text.contains("seed for seed, on the seeds both have: 1 2 3 4\n"), "{text}");
         assert!(text.contains("of the 4 facts both have, the seconds aside, 0 differ and 0 of those are starred"), "{text}");
 
         // no seed in common: all the runs of each, no tally, and the reader is told
