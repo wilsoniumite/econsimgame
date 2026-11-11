@@ -449,4 +449,20 @@ pub struct State {
     /// For tests and scenarios: a cell where a town is to be founded this year,
     /// whatever the founding rule would say of its district.
     pub pp_found_next: Option<usize>,
+    // ---------------- towns: kept town ground (not in the Python; all empty while `towns.enabled` is off)
+    /// The year each cell joined its town (0: not town ground).
+    pub town_built: Vec<i64>,
+    /// The people each town cell has room for this year, works on it allowed for.
+    pub town_room: Vec<f64>,
+    /// Each town's cells in the order they joined, the centre first.
+    pub town_ground: Vec<Vec<usize>>,
+    /// The most town people each town has had (cut back when it gives up ground).
+    pub town_peak: Vec<f64>,
+    /// Years in a row each town has had fewer people than `towns.empty` of that.
+    pub town_low_years: Vec<i64>,
+    /// What each town cell would pay a month if houses stood on all of it (what
+    /// a works there bids against).
+    pub town_ground_rent: Vec<f64>,
+    /// Works' hands by town, summed over the months of the year so far.
+    pub town_hands_acc: Vec<f64>,
 }
