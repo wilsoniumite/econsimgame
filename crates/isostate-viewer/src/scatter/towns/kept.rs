@@ -34,6 +34,36 @@
 //!
 //! A run under the port's rules has no such record and is laid out as before
 //! (`houses_port`).
+//!
+//! **Taken over.** The first helper on this task was cut off and left no
+//! account of its decisions. Read back from its code, they were these, and
+//! the second helper kept every one of them unless a line below says not:
+//!
+//! 1. Eight people to a drawn house (`world::PEOPLE_TO_A_HOUSE`): the unit
+//!    the record keeps residents in, and as many houses as the fullest
+//!    ground of 1900 has room for at the size houses are drawn.
+//! 2. A parcel of town ground is cut three times more, into eight closes
+//!    (some eighty to a cell), and a close is built up or open.
+//! 3. The order a cell's closes are built up in is fixed the year the cell
+//!    joins (`world::town_order`): by the way to the market place along the
+//!    roads of that year, ground off the road counting three times.
+//! 4. As many closes are built up as the cell's houses need at
+//!    `world::HOUSE_GROUND` each, and its works for their share of the cell.
+//! 5. Houses outlast a fall of a quarter in their cell's residents
+//!    (`world::HOUSES_KEEP`).
+//! 6. A plot's turn is its close's place in that order plus up to `THIN`
+//!    closes of its own, and the cell's houses stand on the plots whose turn
+//!    comes first.
+//! 7. A house's year is the year the record first shows its cell with that
+//!    many houses; ground older than the record is dated back by the rule
+//!    the simulation fills it by.
+//! 8. Cottages of one storey, then two; townhouses on roads and market
+//!    places only where a neighbour stands; a third storey only between two
+//!    neighbours; terraces on rows from 1815; villas on lanes of ground with
+//!    little works.
+//! 9. The open closes are painted by the ground shader as paddocks,
+//!    orchards, garden ground and greens within hedges (`town_edge` in
+//!    terrain.wesl).
 
 use super::*;
 
