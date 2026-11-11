@@ -354,3 +354,5 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 ## Mechanisms under the game's rules
 
 None yet. One line each as they arrive: the name, its page, its switch.
+
+- **engel**, [engel.md](engel.md), `engel.enabled`: past a reference income each further shilling of a household leans from the content's shares toward a richer set (less food and warmth, more comfort), and the observer keeps a chained cost of living and real wage beside the fixed-basket ones.

@@ -254,6 +254,30 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let pc = series("gdp_pc");
     let peak = (0..pc.len()).filter(|&k| pc[k].is_finite()).max_by(|&i, &j| pc[i].total_cmp(&pc[j]));
     b.year("output_per_head_peak_year".into(), peak.map(|k| years[k]));
+    // engel: where the hands and the bread go. Quarries, pits and mines are the
+    // work that is neither on the land nor in the works; the rest are facts only
+    // of a run that has the mechanism's series (docs/rules/engel.md).
+    for &y in &marks {
+        b.num(format!("mine_share_{y}"), Kind::Share, 1.0 - at("ag_share", y) - at("ind_share", y));
+    }
+    if C.good_index.contains_key("grain") {
+        for &y in &marks[1..] {
+            b.num(format!("grain_output_{y}_vs_{y0}"), Kind::Ratio, at("out_grain", y) / at("out_grain", y0));
+        }
+    }
+    if st.series.index.contains_key("real_wage_chained") {
+        for &y in &marks[1..] {
+            b.num(format!("real_wage_chained_{y}_vs_{y0}"), Kind::Ratio, at("real_wage_chained", y) / at("real_wage_chained", y0));
+        }
+        for &y in &marks {
+            b.num(format!("real_income_{y}"), Kind::Ratio, at("real_income", y));
+        }
+        for name in &C.service_name {
+            for &y in &marks {
+                b.num(format!("budget_{name}_{y}"), Kind::Share, at(&format!("budget_{name}"), y));
+            }
+        }
+    }
 
     // ---- railways
     b.group = GROUPS[2];

@@ -333,4 +333,8 @@ pub struct State {
     /// (T, G): what each town's buyers asked for last month (households, landlords,
     /// works, mines, building and railway orders), whether or not they got it.
     pub requests: Mat,
+
+    // ---------------- engel (not in the Python; empty while `engel.enabled` is off)
+    /// What the observer keeps for the chained price index and the budget shares.
+    pub engel: crate::engel::EngelState,
 }

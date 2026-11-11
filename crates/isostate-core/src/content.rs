@@ -31,6 +31,10 @@ pub struct Content {
     pub subsistence: Vec<f64>,
     pub shares: Vec<f64>,
     pub lord_shares: Vec<f64>,
+    /// engel: the marginal shares of households far above subsistence (`engel.rs`;
+    /// read only when that mechanism is on). `shares_rich` in the services table,
+    /// or the mechanism's own set for the needs it knows by name.
+    pub shares_rich: Vec<f64>,
     /// (G, S): how much of each service one unit of each good provides.
     pub props: Mat,
     pub heat: Vec<f64>,
@@ -114,6 +118,7 @@ struct RawServices {
     subsistence: Vec<f64>,
     shares: Vec<f64>,
     lord_shares: Option<Vec<f64>>,
+    shares_rich: Option<Vec<f64>>,
     props: BTreeMap<String, BTreeMap<String, f64>>,
 }
 
@@ -189,6 +194,21 @@ pub fn content_from_str(text: &str) -> Result<Content, String> {
         }
     }
 
+    // engel: the richer set must be a set of shares over the same needs, adding up to the same
+    let shares_rich = match &svc.shares_rich {
+        None => crate::engel::default_shares_rich(&sname, &svc.shares),
+        Some(rich) => {
+            let (want, got) = (svc.shares.iter().sum::<f64>(), rich.iter().sum::<f64>());
+            if rich.len() != S || rich.iter().any(|&v| !(v >= 0.0)) {
+                return Err(format!("content: shares_rich must be {S} shares, none negative (one for each need)"));
+            }
+            if (got - want).abs() > 1e-9 {
+                return Err(format!("content: shares_rich adds up to {got}, but shares adds up to {want}"));
+            }
+            rich.clone()
+        }
+    };
+
     let mut heat = vec![0.0; G];
     for (g, v) in &raw.heat {
         heat[good(g)?] = *v;
@@ -247,6 +267,7 @@ pub fn content_from_str(text: &str) -> Result<Content, String> {
         subsistence: svc.subsistence.clone(),
         shares: svc.shares.clone(),
         lord_shares: svc.lord_shares.clone().unwrap_or_else(|| svc.shares.clone()),
+        shares_rich,
         props,
         heat,
         fuel_goods,
