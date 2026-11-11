@@ -695,8 +695,10 @@ fn topbar_text(
     sm: Option<Res<crate::SeasonMats>>,
     clock: Res<crate::SeasonClock>,
     fam: Option<Res<FamilyView>>,
-    mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>)>,
-    mut slots: Query<(&mut Text, &FortuneSlot), Without<DateText>>,
+    live: Option<Res<crate::live::Live>>,
+    mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>, Without<FamilyNameText>)>,
+    mut slots: Query<(&mut Text, &FortuneSlot), (Without<DateText>, Without<FamilyNameText>)>,
+    mut name: Query<&mut Text, (With<FamilyNameText>, Without<DateText>, Without<FortuneSlot>)>,
 ) {
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
@@ -712,7 +714,19 @@ fn topbar_text(
         }
     }
     let vals: Vec<String> = match fam.as_ref().and_then(|v| v.player()) {
-        Some(p) => vec![format!("Worth {}", money(p.net_worth)), money(p.cash), format!("{}", p.works), format!("{}", p.land)],
+        Some(p) => {
+            // the family is known as it stands today: beside an earlier date
+            // its card says which year its figures are of (in the name, the
+            // shorter line, so the cards beside it stay where they are)
+            let past = live.as_ref().is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
+            let who = if past { format!("The {} family in {}", p.name, r.y0 + data.latest() as i32) } else { format!("The {} family", p.name) };
+            for mut t in &mut name {
+                if t.0 != who {
+                    t.0 = who.clone();
+                }
+            }
+            vec![format!("Worth {}", money(p.net_worth)), money(p.cash), format!("{}", p.works), format!("{}", p.land)]
+        }
         None => {
             let pop = replay::annual(r, "pop", k).unwrap_or(0.0);
             vec![crate::fmt_pop(pop), format!("replay of seed {}", r.header.meta.seed)]
