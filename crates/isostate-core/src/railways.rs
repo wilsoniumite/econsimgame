@@ -40,7 +40,8 @@ pub struct RailwayParams {
     /// Rails, timber and stone per cell of line, as a multiple of the port's
     /// (`rail_rails_per_cell` and its two neighbours).
     pub cost_mult: f64,
-    /// Months a line takes if the market fills every order (the port's take ten).
+    /// Months a line takes if the market fills every order (the port's take
+    /// ten). Anything under 1 is taken as 1.
     pub build_months: f64,
     /// Promoters price rails at the year's price times one plus the rails all
     /// lines have on order over a year's make of rails.
@@ -110,7 +111,8 @@ pub fn way(st: &State, C: &Content, P: &Params) -> Way {
         words: Words { kind: "railway", plan_kind: "rail_plan", noun: "railway", Noun: "Railway", track: "track", branch: "branch line" },
         run_cost: tr::RAIL_COST,
         materials,
-        build_months: R.build_months,
+        // a month at the least: `Project::months` of 0 marks a project of the port's
+        build_months: R.build_months.max(1.0),
         // transport::rail_build_graph's numbers: slopes, mountains and bridges are dear
         build: BuildCost { lowland: 1.0, hills: 2.2, mountains: 6.0, other: 50.0, river: 1.5, slope: 40.0, laid: 0.15 },
         tech: st.t_rail,

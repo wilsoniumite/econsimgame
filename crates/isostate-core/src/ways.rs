@@ -96,7 +96,8 @@ pub struct Way {
     pub run_cost: f64,
     /// Units of each good one new cell takes (length G).
     pub materials: Vec<f64>,
-    /// Months a line takes if the market fills every order.
+    /// Months a line takes if the market fills every order: 1 or more
+    /// (`Project::months` of 0 marks a project of the port's).
     pub build_months: f64,
     pub build: BuildCost,
     /// The technology a town must know (`st.know` column) and how well.
@@ -435,7 +436,7 @@ fn expected_cost(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], t
         let made: f64 = (0..st.T_max).map(|i| st.town_prod_year[(i, gb)]).sum();
         markup += backlog / made.max(1.0);
     }
-    let price = |g: usize| reckoned_price(st, pbar, g, t, need[g], way.build_months.max(1.0));
+    let price = |g: usize| reckoned_price(st, pbar, g, t, need[g], way.build_months);
     pairwise_sum_by(C.G, |g| if need[g] > 0.0 { need[g] * price(g) * if Some(g) == way.order_book { markup } else { 1.0 } } else { 0.0 }) * 1.3
 }
 
@@ -752,7 +753,8 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         if picked.len() >= way.districts || block[c] <= 0.0 {
             break;
         }
-        if st.catch[c] < 0 || !st.world.land[c] || d_way[c] < way.branch_gap {
+        // (a cell on the line is never a district, whatever the gap is set to)
+        if st.catch[c] < 0 || !st.world.land[c] || net.laid[c] || d_way[c] < way.branch_gap {
             continue;
         }
         if picked.iter().any(|&q| apart(W, q, c) < way.district_spacing) || cooling(book, c) {
