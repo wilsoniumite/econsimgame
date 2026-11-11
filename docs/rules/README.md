@@ -446,3 +446,7 @@ One line each as they arrive: the name, its page, its switch.
 - **A life cycle for works**: [works.md](works.md), `works.enabled`. Works grow
   where they stand, take land by their hands and stand by their town, so the
   island has hundreds of works of every size instead of thousands of small ones.
+- **Town ground that is kept**: [towns.md](towns.md), `towns.enabled`. A town
+  keeps the cells it builds on and grows outward from them along its roads,
+  taking in the works beside it, so its ground is three or four times as wide
+  in 1900 as in 1750 and a cell that joins a town stays.
