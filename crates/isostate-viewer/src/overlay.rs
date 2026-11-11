@@ -390,7 +390,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
             let n = markets(r, k).len();
             let legend = none(
                 format!("Market areas in {year}"),
-                format!("Each tint is the country that buys and sells in one town's market, and the lines are where one town's pull gives way to the next. {n} market{} in {year}.", if n == 1 { "" } else { "s" }),
+                format!("Each tint is the country that buys and sells in one town's market, and the lines are where one town's pull gives way to the next. {n} market{}.", if n == 1 { "" } else { "s" }),
             );
             Wash { cells, legend, soft: 0.06, lines: true }
         }
@@ -815,7 +815,9 @@ mod tests {
         assert_ne!(t[0], t[1]);
         let w = wash(&r, 0, Overlay::Areas, 0);
         assert_ne!(&tint(&w, 2)[..3], &tint(&w, 3)[..3]);
-        assert!(w.legend.note.ends_with("2 markets in 1750."));
+        // the year is in the title, and is not said again
+        assert_eq!(w.legend.title, "Market areas in 1750");
+        assert!(w.legend.note.ends_with("gives way to the next. 2 markets."));
     }
 
     #[test]
