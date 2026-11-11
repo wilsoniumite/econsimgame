@@ -161,7 +161,7 @@ impl Kind {
             Kind::Bloomery => (0.085, 0.07),
             Kind::CharcoalFurnace => (0.13, 0.10),
             Kind::CokeFurnace => (0.15, 0.11),
-            Kind::TextileMill => (0.13, 0.09),
+            Kind::TextileMill => (0.13, 0.10),
             Kind::EngineWorks => (0.13, 0.10),
             Kind::ForgeRails => (0.13, 0.09),
             Kind::RollingMill => (0.14, 0.10),
@@ -250,13 +250,13 @@ pub fn rung_size(rung: i32, phase: f32) -> f32 {
 /// buildings do, so that a great works is many buildings and not one large one.
 pub fn footprint(kind: Kind, size: f32) -> (f32, f32) {
     let (w, d) = kind.plot();
-    let k = size.clamp(0.4, 120.0).powf(0.36);
+    let k = size.clamp(0.4, 120.0).powf(0.32);
     (w * k, d * k)
 }
 
 /// How much bigger than at the standard size a works' buildings are drawn.
 fn grain(size: f32) -> f32 {
-    size.clamp(0.4, 120.0).powf(0.13)
+    size.clamp(0.4, 120.0).powf(0.10)
 }
 
 /// Draw a works in its yard: the site's origin is the middle of the yard,
@@ -409,9 +409,9 @@ mod tests {
                 assert!(w < 0.95 && d < 0.7, "{kind:?} at {size} takes {w} by {d}");
                 last = w * d;
             }
-            // a works of a hundred times the size takes about thirty times the ground
+            // a works of a hundred times the size takes about twenty times the ground
             let (a, b) = (footprint(kind, 1.0), footprint(kind, 100.0));
-            assert!((b.0 * b.1) / (a.0 * a.1) > 20.0);
+            assert!((b.0 * b.1) / (a.0 * a.1) > 15.0);
         }
     }
 
@@ -425,7 +425,8 @@ mod tests {
                     let m = build_at(&Works { founded, ..Works::new(kind, size) }, 0.0);
                     let (lo, hi) = m.solid.bounds().unwrap();
                     let spread = (hi.x - lo.x) * (hi.z - lo.z);
-                    assert!(m.solid.triangles() >= last.0, "{kind:?} founded {founded} has less to it at {size}");
+                    // (a stack or two of goods may be away, so not to the last triangle)
+                    assert!(m.solid.triangles() * 10 >= last.0 * 9, "{kind:?} founded {founded} has less to it at {size}: {} triangles after {}", m.solid.triangles(), last.0);
                     assert!(spread > last.1, "{kind:?} founded {founded} does not spread at {size}");
                     last = (m.solid.triangles(), spread);
                 }

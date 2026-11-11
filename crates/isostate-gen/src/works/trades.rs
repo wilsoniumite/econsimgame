@@ -15,7 +15,7 @@ pub fn hand_loom(c: &mut Ctx) {
     let washed = c.early() && c.w.seed.u < 0.6;
     let wall = c.tone(if washed { *pal.walls.weaver_cottage } else if c.early() { *pal.stone.works } else { pal.brick.terrace(c.w.seed.v) });
     let roof = c.roofing();
-    let (uw, dep) = (0.03 * g, 0.026 * g);
+    let (uw, dep) = ((0.036 * g).min(2.0 * hw - 0.012), 0.026 * g);
     let storeys = if size < 2.5 { 2 } else { 3 };
 
     // the row along the back, and from a middling size a wing down each side
@@ -168,7 +168,7 @@ pub fn millwright(c: &mut Ctx) {
     let depth = hd - 0.01 - front - 0.008;
     if depth > 0.008 {
         let z = front + 0.008 + depth * 0.5;
-        c.stacks(-hw * 0.4, z, hw * 0.9, depth, c.fit(hw * 0.9, 0.03 * g, 6), c.fit(depth, 0.011 * g, 5), 0.007 * g, *pal.timber.planks);
+        c.stacks(-hw * 0.4, z, hw * 0.9, depth, c.fit(hw * 0.9, 0.03 * g, 6), c.fit(depth, 0.011 * g, 5), 0.009 * g, *pal.timber.planks);
         if c.stocked() {
             c.pile(hw * 0.72, z, 0.007 * g, (0.04 * g).min(depth), 0.007 * g, false, *pal.timber.logs);
             if size >= 0.8 {
@@ -190,9 +190,9 @@ pub fn shops(c: &mut Ctx) {
     c.ground(*pal.ground.shop_pavement, false);
     let wall = c.tone(if c.early() { pal.walls.town_house(c.w.seed.v) } else { pal.brick.terrace(c.w.seed.v) });
     let roof = c.tone(if c.early() { *pal.roofs.tile_red } else { *pal.slate.town });
-    let (sw, dep) = ((0.022 * g).min(2.0 * hw - 0.014), 0.026 * g);
+    let (sw, dep) = ((0.03 * g).min(2.0 * hw - 0.014), 0.026 * g);
     let storeys = if size < 3.0 { 2 } else { 3 };
-    let wanted = (1.5 * size.sqrt()).ceil().max(1.0) as usize;
+    let wanted = (1.3 * size.sqrt()).ceil().max(1.0) as usize;
     let n_back = c.fit(2.0 * hw - 0.014, sw, 14).min(wanted);
     let zb = -hd + 0.007 + dep * 0.5;
     shop_row(c, 0.0, zb, n_back, sw, dep, storeys, false, Face::Front, wall, roof);

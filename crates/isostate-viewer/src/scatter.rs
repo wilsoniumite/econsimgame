@@ -215,7 +215,20 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
         }
     }
     spots.sort_by(|a, b| a.4.total_cmp(&b.4));
-    let dry = |x: f32, z: f32| world::height_at(g, x, z) >= 0.07;
+    // where the land is nearly all shore, river or road, the smallest works make do with less:
+    // a finer grid of spots, highest first, nearer the water and with no care for the roads
+    const FINE: usize = 18;
+    let mut tight: Vec<(f32, f32, f32)> = Vec::new();
+    for j in 0..FINE {
+        for i in 0..FINE {
+            let (x, z) = (cx + (i as f32 + 0.5) / FINE as f32, cy + (j as f32 + 0.5) / FINE as f32);
+            let h = world::height_at(g, x, z);
+            if h >= 0.045 {
+                tight.push((x, z, h));
+            }
+        }
+    }
+    tight.sort_by(|a, b| b.2.total_cmp(&a.2));
     let mut lots: Vec<Lot> = Vec::new();
     let (mut squeezed, mut homeless) = (0, 0);
     for &f in firms {
@@ -224,8 +237,9 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
         let quarter = (world::hash2(f as i32, 9, 3) * 4.0).floor() as i32;
         let own = works::rung_size(rungs[f], firm_phase(f));
         // does a yard with these half sizes fit at this spot?
-        let fits = |x: f32, z: f32, hx: f32, hz: f32, lots: &[Lot]| -> bool {
-            if x - hx < cx + 0.04 || x + hx > cx + 0.96 || z - hz < cy + 0.04 || z + hz > cy + 0.96 {
+        let fits = |x: f32, z: f32, hx: f32, hz: f32, lots: &[Lot], strict: bool| -> bool {
+            let edge = if strict { 0.04 } else { 0.01 };
+            if x - hx < cx + edge || x + hx > cx + 1.0 - edge || z - hz < cy + edge || z + hz > cy + 1.0 - edge {
                 return false;
             }
             if lots.iter().any(|l| (l.x - x).abs() < l.hx + hx + 0.012 && (l.z - z).abs() < l.hz + hz + 0.012 && from < l.to && l.from < to) {
@@ -238,15 +252,16 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
                     return false;
                 }
             }
-            if ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
+            if strict && ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
                 return false;
             }
+            let (dry, shore) = if strict { (0.07, 0.045) } else { (0.045, 0.02) };
             // dry land under all of it, and no river through it
             let (nx, nz) = (((2.0 * hx / 0.05).ceil() as usize).max(1), ((2.0 * hz / 0.05).ceil() as usize).max(1));
             for jz in 0..=nz {
                 for ix in 0..=nx {
                     let (px, pz) = (x - hx + 2.0 * hx * ix as f32 / nx as f32, z - hz + 2.0 * hz * jz as f32 / nz as f32);
-                    if !dry(px, pz) || world::water_dist(g, px, pz) < 0.045 {
+                    if world::height_at(g, px, pz) < dry || world::water_dist(g, px, pz) < shore {
                         return false;
                     }
                 }
@@ -267,7 +282,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
                         if pass < liked.len() && world::pick_class(r, year, wc, sub) != liked[pass] {
                             continue;
                         }
-                        if fits(x, z, hx, hz, &lots) {
+                        if fits(x, z, hx, hz, &lots, true) {
                             found = Some((x, z, q));
                             break 'search;
                         }
@@ -279,12 +294,25 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             }
             size = (size * 0.5).max(0.4);
         }
+        if found.is_none() {
+            let (w, d) = works::footprint(kind, size);
+            'tight: for q in [quarter, quarter + 1] {
+                let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
+                for &(x, z, _) in &tight {
+                    if fits(x, z, hx, hz, &lots, false) {
+                        found = Some((x, z, q));
+                        break 'tight;
+                    }
+                }
+            }
+        }
         if found.is_some() && size < own {
             squeezed += 1;
         }
         let (x, z, q) = found.unwrap_or_else(|| {
             homeless += 1;
-            let at = spots.get(f % spots.len().max(1)).map(|s| (s.0, s.1)).unwrap_or((cx + 0.5, cy + 0.5));
+            // no ground at all: the highest land the cell has, a little apart from the last such
+            let at = tight.get((homeless - 1) % tight.len().max(1)).map(|s| (s.0, s.1)).unwrap_or((cx + 0.5, cy + 0.5));
             (at.0, at.1, quarter)
         });
         let (w, d) = works::footprint(kind, size);
@@ -295,6 +323,10 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
         slots.firm_cap[f] = if size < own { size } else { f32::MAX };
         slots.firm_water[f] = world::water_dist(g, x, z) < hx.hypot(hz) + 0.09;
         lots.push(Lot { x, z, hx, hz, from, to });
+    }
+    if homeless > 0 && std::env::var_os("ISOSTATE_PLOTS").is_some() {
+        let most = (0..r.ny).map(|k| lots.iter().filter(|l| l.from <= k && k < l.to).count()).max().unwrap_or(0);
+        eprintln!("cell {cell}: {} works over the years, {most} at once at most, {} spots, town {}, {} points of road and rail, {homeless} with no ground", firms.len(), spots.len(), town.is_some(), ways.len());
     }
     (squeezed, homeless)
 }

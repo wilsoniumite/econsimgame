@@ -205,7 +205,7 @@ station_canopy = "#7a8a6a"
 drying_shed = "#6e5a48"
 coke_ovens = "#5a4a42"
 # stone slates, on the works built before brick and Welsh slate
-stone_slate = "#8f8778"
+stone_slate = "#6d665c"
 # a shop's awning, in one of these
 awnings = ["#c9584a", "#e9dcbc", "#5c8a94", "#dba94a"]
 

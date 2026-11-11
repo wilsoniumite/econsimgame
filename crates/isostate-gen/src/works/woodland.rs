@@ -10,7 +10,7 @@ use super::kit::{Ctx, Face};
 pub fn charcoal_burning(c: &mut Ctx) {
     let (hw, hd, g, size, pal) = (c.hw, c.hd, c.g, c.w.size, c.pal);
     c.ground(*pal.ground.charcoal_hearth, true);
-    let r = 0.013 * g;
+    let r = 0.016 * g;
     let wanted = (1.6 * size.sqrt()).ceil().max(2.0) as usize;
     // the places a clamp may stand: a staggered grid inside the clearing, nearest the middle first
     let (rx, rz, step) = (hw - r - 0.006, hd - r - 0.006, r * 2.4);
@@ -44,9 +44,9 @@ pub fn charcoal_burning(c: &mut Ctx) {
                 c.heap(x + r * 0.3, z, r * 0.5, r * 0.35, *pal.goods.coal);
             }
             _ => {
-                c.solid.frustum_turned(p, r, r * 0.62, r * 0.55, 7, 0.0, 0.01, turf, None);
-                c.solid.frustum_turned(p + Vec3::Y * r * 0.55, r * 0.62, 0.0, r * 0.32, 7, 0.0, 0.0, c.tone(*pal.ground.charcoal_clamp_top), None);
-                c.plume(p + Vec3::Y * r * 0.85, 0.42);
+                c.solid.frustum_turned(p, r, r * 0.66, r * 0.7, 7, 0.0, 0.01, turf, None);
+                c.solid.frustum_turned(p + Vec3::Y * r * 0.7, r * 0.66, 0.0, r * 0.36, 7, 0.0, 0.0, c.tone(*pal.ground.charcoal_clamp_top), None);
+                c.plume(p + Vec3::Y * r * 1.04, 0.45);
             }
         }
     }

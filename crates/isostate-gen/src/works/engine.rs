@@ -21,9 +21,9 @@ pub fn engine_works(c: &mut Ctx) {
     let (fl, fd) = (0.034 * g, 0.045 * g);
     let room = 2.0 * hw - 0.016 - if foundry { fl + 0.006 } else { 0.014 * g };
     let wanted = (3.0 * size.sqrt()).ceil().max(2.0) as usize;
-    let per = c.fit(room, bay, 12).min(wanted);
+    let per = c.fit(room, bay, 16).min(wanted);
     let pitch = dep + 0.014 * g;
-    let rows = c.fit(2.0 * hd - 0.016 - 0.5 * hd, pitch, 3).min(wanted.div_ceil(per));
+    let rows = c.fit(2.0 * hd - 0.016 - 0.3 * hd, pitch, 4).min(wanted.div_ceil(per));
     let mut left = wanted.min(rows * per);
     let mut front = -hd;
     for j in 0..rows {

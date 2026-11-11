@@ -51,10 +51,17 @@ pub fn crucible(c: &mut Ctx) {
     if cd > 0.012 && cw > 0.02 {
         let mut z0 = behind + 0.008;
         if size >= 15.0 {
+            // forges to draw the steel down: one, then rows of them
             let (len, d2) = ((0.09 * g).min(cw * 0.6), (0.034 * g).min(cd * 0.4));
-            let s = c.shed(-cw * 0.12, z0 + 0.006 + d2 * 0.5, len, d2, 0.026 * g, false, wall, roof);
-            c.ridge_vent(&s, 0.7, false);
-            z0 += 0.012 + d2;
+            let cols = c.fit(cw * 0.7 + 0.012, len + 0.012, 2);
+            let rows = c.fit(cd * 0.6, d2 + 0.012, 3);
+            for j in 0..rows {
+                for i in 0..cols {
+                    let s = c.shed(-cw * 0.36 + len * 0.5 + i as f32 * (len + 0.012), z0 + 0.006 + d2 * 0.5 + j as f32 * (d2 + 0.012), len, d2, 0.026 * g, false, wall, roof);
+                    c.ridge_vent(&s, 0.7, false);
+                }
+            }
+            z0 += 0.012 + rows as f32 * (d2 + 0.012);
         }
         if size >= 10.0 {
             c.chimney(cw * 0.5 - 0.016 * g, behind + 0.02 * g, 0.13 * g, 0.0065 * g, 1.0);
@@ -82,10 +89,7 @@ fn melting_shops(c: &mut Ctx, x: f32, z: f32, n: usize, ul: f32, dep: f32, acros
     let brick = c.tone(*pal.brick.chimney);
     for i in 0..n {
         let cx = -(n as f32) * ul * 0.5 + ul * (i as f32 + 0.5);
-        for k in 0..3 {
-            let (sx, sz) = s.local(cx + (k as f32 - 1.0) * (0.0105 * g).min(ul * 0.28), out * dep * 0.5);
-            c.stack(sx, sz, h + s.rise + 0.026 * g, 0.008 * g, brick, if k == 1 { 0.45 } else { 0.0 });
-        }
+        c.slab_stack(&s, cx, out * dep * 0.5, (0.03 * g).min(ul * 0.7), 0.008 * g, h + s.rise + 0.024 * g, brick, 0.6);
     }
     s
 }
@@ -106,7 +110,7 @@ pub fn converter(c: &mut Ctx) {
     let wanted = (size.sqrt() / 1.5).ceil().max(1.0) as usize;
     let per = c.fit(room, ul, 5);
     let pitch = dep + cup + 0.03 * g;
-    let rows = c.fit(2.0 * hd - 0.016 - 0.5 * hd, pitch, 2).min(wanted.div_ceil(per));
+    let rows = c.fit(2.0 * hd - 0.016 - 0.4 * hd, pitch, 3).min(wanted.div_ceil(per));
     let mut left = wanted.min(rows * per);
     let zrow = |j: usize| -hd + 0.008 + cup + dep * 0.5 + j as f32 * pitch;
     for j in 0..rows {
@@ -144,7 +148,7 @@ pub fn converter(c: &mut Ctx) {
     let d = hd - 0.012 - z0;
     if d > 0.008 {
         let w = hw * 1.2;
-        c.stacks(-hw * 0.25, z0 + d * 0.5, w, d * 0.8, c.fit(w, 0.014 * g, 16), c.fit(d * 0.8, 0.012 * g, 6), 0.006 * g, plate);
+        c.stacks(-hw * 0.25, z0 + d * 0.5, w, d * 0.8, c.fit(w, 0.012 * g, 16), c.fit(d * 0.8, 0.012 * g, 6), 0.008 * g, plate);
         if size >= 3.0 && d > 0.03 {
             c.sheer_legs(hw * 0.55, z0 + d * 0.5, 0.05 * g);
         }

@@ -17,8 +17,7 @@ pub fn forge(c: &mut Ctx) {
     let brick = c.tone(*pal.brick.chimney);
     let (dep, h, ham) = (0.036 * g, 0.024 * g, 0.03 * g);
     let room = 2.0 * hw - 0.016 - ham - 0.004;
-    let len = room.min(0.16 * g).max(0.03);
-    let cols = c.fit(room + 0.02 * g, len + 0.02 * g, 3);
+    let (cols, len) = c.spread(room, 0.16 * g, 0.02 * g, 3);
     let pitch = dep + 0.016 * g;
     let rows = c.fit(2.0 * hd - 0.016 - 0.01 * g - 0.4 * hd, pitch, 4);
     let zrow = |j: usize| -hd + 0.008 + 0.009 * g + dep * 0.5 + j as f32 * pitch;
@@ -90,8 +89,7 @@ pub fn rolling_mill(c: &mut Ctx) {
     let plate = c.tone(*pal.iron.plate);
     let (dep, h, eh) = (0.046 * g, 0.03 * g, 0.032 * g);
     let room = 2.0 * hw - 0.016 - eh - 0.004;
-    let len = room.min(0.14 * g).max(0.03);
-    let cols = c.fit(room + 0.016 * g, len + 0.016 * g, 2);
+    let (cols, len) = c.spread(room, 0.15 * g, 0.016 * g, 3);
     let pitch = dep + 0.014 * g;
     let rows = c.fit(2.0 * hd - 0.016 - 0.01 * g - 0.4 * hd, pitch, 3);
     let zrow = |j: usize| -hd + 0.008 + 0.009 * g + dep * 0.5 + j as f32 * pitch;
@@ -154,8 +152,7 @@ pub fn steel_rail_mill(c: &mut Ctx) {
     let plate = c.tone(*pal.iron.plate);
     let (dep, h, lead, tail) = (0.03 * g, 0.03 * g, 0.022 * g, 0.03 * g);
     let room = 2.0 * hw - 0.016 - lead - tail;
-    let len = room.min(0.2 * g).max(0.03);
-    let cols = c.fit(room + 0.02 * g, len + 0.02 * g, 2);
+    let (cols, len) = c.spread(room, 0.22 * g, 0.02 * g, 2);
     let pitch = 2.0 * dep + 0.014 * g;
     let rows = c.fit(2.0 * hd - 0.016 - 0.5 * hd + 0.014 * g, pitch, 3);
     let z0 = |j: usize| -hd + 0.008 + j as f32 * pitch;

@@ -88,7 +88,8 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up, and a big town fully.", land: Land::Town, build: market },
     Sheet { name: "landmarks", about: "What marks a town out: its church (and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
     Sheet { name: "works-kinds", about: "Every kind of works at three times the standard size, built about 1820, side by side: to tell them apart by shape.", land: Land::Pasture, build: works_kinds },
-    Sheet { name: "works-small", about: "Every kind of works as most stand in the game today: at 0.4 and at the standard size, built in 1760 and in 1870.", land: Land::Yard, build: works_small },
+    Sheet { name: "works-small", about: "Every kind of works at its smallest, 0.4 of the standard size, as most stand in the game today: built in 1760, then built in 1870.", land: Land::Yard, build: works_small },
+    Sheet { name: "works-standard", about: "Every kind of works at the standard size: built in 1760, then built in 1870.", land: Land::Yard, build: works_standard },
     Sheet { name: "works-great", about: "Every kind of works at thirty times the standard size, built about 1850.", land: Land::Pasture, build: works_great },
     Sheet { name: "works-states", about: "The states of a works down the rows: going up, being enlarged, working, standing idle, derelict. Six kinds across, at three times the standard size.", land: Land::Pasture, build: works_states },
     Sheet { name: "works-states-great", about: "The states of a great works down the rows: going up, being enlarged, working, standing idle, derelict. Three kinds across, at thirty times the standard size.", land: Land::Pasture, build: works_states_great },
@@ -290,12 +291,23 @@ fn works_great(pal: &Palette) -> Vec<Vec<Cell>> {
     works_all(30.0, 1850, 3, pal)
 }
 
-fn works_small(pal: &Palette) -> Vec<Vec<Cell>> {
+/// Every kind at one size, built early and then built late, in rows of nine.
+fn works_early_and_late(size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
     let mut rows = Vec::new();
-    for (size, founded) in [(0.4, 1760), (0.4, 1870), (1.0, 1760), (1.0, 1870)] {
-        rows.push(Kind::ALL.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{size}, {founded}", kind.label()), Works { founded, seed: Seed::of(i as u32), ..Works::new(kind, size) }, pal)).collect());
+    for founded in [1760, 1870] {
+        for (row, kinds) in Kind::ALL.chunks(9).enumerate() {
+            rows.push(kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{founded}", kind.label()), Works { founded, seed: Seed::of((row * 9 + i) as u32), ..Works::new(kind, size) }, pal)).collect());
+        }
     }
     rows
+}
+
+fn works_small(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_early_and_late(0.4, pal)
+}
+
+fn works_standard(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_early_and_late(1.0, pal)
 }
 
 /// The states of a works down the rows, a kind in each column.

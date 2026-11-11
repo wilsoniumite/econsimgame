@@ -49,7 +49,7 @@ pub fn charcoal_furnace(c: &mut Ctx) {
     let row = n as f32 * pitch - 0.02 * g;
 
     // the bank the furnace is charged from
-    let (b0, b1, bank_h) = (-hd + 0.006, zf - side * 0.5 - 0.005 * g, fh * 0.7);
+    let (b0, b1, bank_h) = (-hd + 0.006, zf - side * 0.5 - 0.005 * g, fh * 0.56);
     let banked = b1 - b0 > 0.004;
     if banked {
         bank(c, x0 - 0.003 * g, x0 + row + 0.003 * g, b0, b1, bank_h * 0.4, bank_h);
@@ -88,23 +88,29 @@ pub fn charcoal_furnace(c: &mut Ctx) {
         // a blowing engine in place of the wheel
         c.stack(bx, zf - bd * 0.5 - 0.005 * g, 0.022 * g + b.rise + 0.03 * g, 0.008 * g, c.tone(*pal.brick.chimney), 0.4);
     }
-    // the charcoal barn, and the stock before it
+    // the charcoal barns down the side, and the stock before them
     let xr = x0 + row + 0.006;
     let room = hw - 0.008 - xr;
     if room >= 0.024 * g {
         let dep = (0.03 * g).min(room);
-        let len = (0.045 * g * (1.0 + 0.3 * (n as f32 - 1.0))).min(zf + side * 0.5 + hd - 0.008);
-        let barn = c.shed(xr + dep * 0.5, -hd + 0.008 + len * 0.5, len, dep, 0.03 * g, true, c.tone(*pal.timber.boards), roof);
-        if !c.going_up() {
-            c.panel(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.02 * g, false, *pal.timber.door);
+        let len = (0.045 * g).min(zf + side * 0.5 + hd - 0.008);
+        let cols = c.fit(room + 0.008, dep + 0.008, 4);
+        let barns = c.fit(2.0 * hd - 0.02 - 0.03 * g + 0.008, len + 0.008, 4).min(if size < 3.0 { 1 } else { 4 });
+        for i in 0..cols {
+            for j in 0..barns {
+                let barn = c.shed(xr + dep * 0.5 + i as f32 * (dep + 0.008), -hd + 0.008 + len * 0.5 + j as f32 * (len + 0.008), len, dep, 0.024 * g, true, c.tone(*pal.timber.boards), roof);
+                if !c.going_up() {
+                    c.panel(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.017 * g, false, *pal.timber.door);
+                }
+            }
         }
-        let front = -hd + 0.008 + len;
+        let front = -hd + 0.008 + barns as f32 * (len + 0.008);
         let depth = hd - 0.012 - front;
         if c.stocked() && depth > 0.012 {
-            let r = (room * 0.24).min(depth * 0.3).min(0.016 * g);
+            let r = (room * 0.24).min(depth * 0.3).min(0.03 * g);
             c.heap(xr + room * 0.27, front + depth * 0.3, r, r * 0.8, *pal.ground.spoil_ironstone);
             c.heap(xr + room * 0.75, front + depth * 0.32, r * 0.9, r * 0.7, *pal.stone.limestone);
-            c.stacks(xr + room * 0.5, front + depth * 0.78, room * 0.8, depth * 0.3, c.fit(room * 0.8, 0.014 * g, 8), 1, 0.004 * g, *pal.iron.plate);
+            c.stacks(xr + room * 0.5, front + depth * 0.78, room * 0.8, depth * 0.3, c.fit(room * 0.8, 0.014 * g, 12), c.fit(depth * 0.3, 0.012 * g, 4), 0.004 * g, *pal.iron.plate);
         }
     } else if c.stocked() {
         c.heap(hw - 0.008 - room * 0.5, -hd * 0.3, room * 0.4, room * 0.32, *pal.goods.coal);
@@ -209,44 +215,77 @@ pub fn coke_furnace(c: &mut Ctx) {
     }
     let tall = 0.16 * g * size.max(1.0).powf(0.04);
     c.chimney(xr + eng + 0.016 * g, (zf - 0.008 * g).max(-hd + 0.008 + 0.016 * g), tall, 0.008 * g, 1.2);
-    // what the spare ground holds: slag on one side; pig iron, stock and the coke ovens on the other
+    // what the rest of the yard holds
     let front = zf + r - 0.004 * g + cast;
-    let slag = (spare * 0.45 * 0.5).min(hd * 0.62);
-    if slag > 0.004 && !c.going_up() {
-        c.heap(-hw + 0.008 + slag, hd - 0.012 - slag, slag, slag * 0.75, *pal.ground.slag);
-    }
-    let ox0 = fx(n - 1) + 0.015 * g + 0.006 * g;
-    let olen = hw - 0.01 - ox0;
-    let oz = hd - 0.012 - 0.008 * g;
-    if olen >= 0.02 {
-        let s = c.bank(ox0 + olen * 0.5, oz, olen, 0.016 * g, 0.011 * g, false, c.tone(*pal.brick.dark), c.tone(*pal.roofs.coke_ovens));
+    let deep = hd - 0.012 - front;
+    let slag_col = c.tone(*pal.ground.slag);
+    if deep >= 0.04 * g {
+        // a great works. Before the casting houses, the pig beds; then across the yard the slag
+        // tip on one side and, on the other, the stock in heaps and the batteries of coke ovens
+        let (x0, x1) = (-hw + 0.01, hw - 0.01);
+        let pig = 0.02 * g;
+        c.stacks((fx(0) + fx(n - 1)) * 0.5, front + 0.006 + pig * 0.5, n as f32 * pitch, pig, n * 3, 2, 0.004 * g, plate);
+        let (z0, z1) = (front + 0.012 + pig, hd - 0.012);
+        let d = z1 - z0;
+        let tip = (x1 - x0) * 0.3;
         if !c.going_up() {
-            let doors = c.fit(olen, 0.011 * g, 60);
-            for i in 0..doors {
-                let cx = -olen * 0.5 + olen * (i as f32 + 0.5) / doors as f32;
-                c.glow(&s, Face::Front, cx - 0.0028 * g, cx + 0.0028 * g, 0.001, 0.007 * g, false);
-            }
-            for i in 0..(olen / 0.09).ceil() as usize {
-                let px = ox0 + olen * (i as f32 + 0.5) / (olen / 0.09).ceil();
-                c.plume(c.at(px, oz) + Vec3::Y * 0.011 * g, 0.4);
+            let rr = (tip * 0.5).min(d * 0.5);
+            c.heap(x0 + rr, z1 - rr, rr, rr * 0.62, slag_col);
+            if d > rr * 3.0 {
+                c.heap(x0 + rr * 0.75, z1 - rr * 2.5, rr * 0.7, rr * 0.4, slag_col);
             }
         }
-        // pig iron between the engine house and the ovens
-        let (z0, z1) = (zf + eng.max(r) * 0.5 + 0.01 * g, oz - 0.008 * g - 0.006);
-        let (px0, px1) = (xr.max(ox0), hw - 0.012);
-        if z1 - z0 > 0.01 && px1 - px0 > 0.015 {
-            let (w, d) = (px1 - px0, z1 - z0);
-            c.stacks((px0 + px1) * 0.5, z0 + d * 0.72, w * 0.9, d * 0.5, c.fit(w * 0.9, 0.02 * g, 12), c.fit(d * 0.5, 0.01 * g, 6), 0.004 * g, plate);
+        let (ox0, olen) = (x0 + tip + 0.012, x1 - x0 - tip - 0.012);
+        let stock = (0.034 * g).min(d * 0.3);
+        if c.stocked() {
+            let heaps = c.fit(olen, stock * 1.3, 12);
+            let cols = [*pal.goods.coal, *pal.ground.spoil_ironstone, *pal.stone.limestone];
+            for i in 0..heaps {
+                c.heap(ox0 + olen * (i as f32 + 0.5) / heaps as f32, z0 + stock * 0.5, stock * 0.5, stock * 0.4, cols[i * 3 / heaps]);
+            }
+        }
+        let room = d - stock - 0.006;
+        let batteries = if room >= 0.018 * g { c.fit(room, 0.034 * g, 4) } else { 0 };
+        for j in 0..batteries {
+            coke_ovens(c, ox0, olen, z1 - 0.008 * g - j as f32 * 0.034 * g);
+        }
+    } else {
+        // a small works: slag in the spare corner, the ovens along the front beside the casting houses
+        let slag = (spare * 0.45 * 0.5).min(hd * 0.62);
+        if slag > 0.004 && !c.going_up() {
+            c.heap(-hw + 0.008 + slag, hd - 0.012 - slag, slag, slag * 0.75, slag_col);
+        }
+        let ox0 = fx(n - 1) + 0.015 * g + 0.006 * g;
+        let olen = hw - 0.01 - ox0;
+        let oz = hd - 0.012 - 0.008 * g;
+        if olen >= 0.02 {
+            coke_ovens(c, ox0, olen, oz);
+            // pig iron between the engine house and the ovens
+            let (z0, z1) = (zf + eng.max(r) * 0.5 + 0.01 * g, oz - 0.008 * g - 0.006);
+            let (px0, px1) = (xr.max(ox0), hw - 0.012);
+            if z1 - z0 > 0.01 && px1 - px0 > 0.015 {
+                let (w, d) = (px1 - px0, z1 - z0);
+                c.stacks((px0 + px1) * 0.5, z0 + d * 0.72, w * 0.9, d * 0.5, c.fit(w * 0.9, 0.02 * g, 12), c.fit(d * 0.5, 0.01 * g, 6), 0.004 * g, plate);
+            }
         }
     }
-    // coal, ore and limestone behind, in the spare ground on the engine's side
-    let sx0 = xr + eng + 0.034 * g;
-    let zone = hw - 0.01 - sx0;
-    if c.stocked() && zone > 0.03 {
-        let rr = (zone / 6.4).min(hd * 0.3).min(0.03 * g);
-        for (i, col) in [*pal.goods.coal, *pal.ground.spoil_ironstone, *pal.stone.limestone].into_iter().enumerate() {
-            c.heap(sx0 + zone * (i as f32 + 0.5) / 3.0, -hd + 0.01 + rr, rr, rr * 0.8, col);
-        }
+}
+
+/// A battery of coke ovens: a long low bank, a fire at every door and a
+/// little smoke along its top. It runs `len` from `x0` along the front.
+fn coke_ovens(c: &mut Ctx, x0: f32, len: f32, z: f32) {
+    let (g, pal) = (c.g, c.pal);
+    let s = c.bank(x0 + len * 0.5, z, len, 0.016 * g, 0.011 * g, false, c.tone(*pal.brick.dark), c.tone(*pal.roofs.coke_ovens));
+    if c.going_up() {
+        return;
     }
-    let _ = front;
+    let doors = c.fit(len, 0.011 * g, 60);
+    for i in 0..doors {
+        let cx = -len * 0.5 + len * (i as f32 + 0.5) / doors as f32;
+        c.glow(&s, Face::Front, cx - 0.0028 * g, cx + 0.0028 * g, 0.001, 0.007 * g, false);
+    }
+    let wisps = (len / 0.09).ceil();
+    for i in 0..wisps as usize {
+        c.plume(c.at(x0 + len * (i as f32 + 0.5) / wisps, z) + Vec3::Y * 0.011 * g, 0.4);
+    }
 }

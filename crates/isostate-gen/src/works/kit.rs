@@ -159,6 +159,13 @@ impl<'a, 's> Ctx<'a, 's> {
         ((room / unit.max(1e-4)).floor() as usize).clamp(1, most.max(1))
     }
 
+    /// How to fill `room` with things in a line, `gap` apart and none longer
+    /// than `longest`: how many, and how long each (they share the room evenly).
+    pub fn spread(&self, room: f32, longest: f32, gap: f32, most: usize) -> (usize, f32) {
+        let n = (((room + gap) / (longest + gap)).ceil() as usize).clamp(1, most.max(1));
+        (n, ((room - gap * (n as f32 - 1.0)) / n as f32).min(longest).max(0.02))
+    }
+
     /// A colour as it weathers: dulled and greened once the works is derelict.
     pub fn tone(&self, c: Rgba) -> Rgba {
         if self.derelict() { shade(lerp(c, *self.pal.ground.yard_weeds, 0.22), 0.88) } else { c }
@@ -181,7 +188,7 @@ impl<'a, 's> Ctx<'a, 's> {
 
     /// The wall round a yard, in the stone or the brick of the period.
     pub fn yard_wall(&self) -> Rgba {
-        if self.early() { *self.pal.stone.yard_wall } else { *self.pal.brick.shed }
+        if self.early() { *self.pal.stone.yard_wall } else { shade(*self.pal.brick.dark, 0.92) }
     }
 
     /// A point that may be the works' highest: the family's flag flies from the highest.
@@ -314,7 +321,7 @@ impl<'a, 's> Ctx<'a, 's> {
     #[allow(clippy::too_many_arguments)]
     pub fn sawtooth(&mut self, x: f32, z: f32, len: f32, dep: f32, h: f32, teeth: usize, across: bool, wall: Rgba, roof: Rgba) -> Shed {
         let pitch = len / teeth.max(1) as f32;
-        let rise = pitch * 0.5;
+        let rise = pitch * 0.55;
         let s = self.frame(x, z, len, dep, h, rise, across);
         self.walls(&s, wall);
         self.sheds.push(s);
@@ -329,12 +336,13 @@ impl<'a, 's> Ctx<'a, 's> {
             }
             let (x0, x1) = (-len * 0.5 + pitch * i as f32, -len * 0.5 + pitch * (i + 1) as f32);
             let top = h + rise;
-            self.solid.quad(s.pt(x0, h, -hd), s.pt(x0, h, hd), s.pt(x0, top, hd), s.pt(x0, top, -hd), glass);
-            self.solid.quad(s.pt(x0, top, hd), s.pt(x1, h, hd), s.pt(x1, h, -hd), s.pt(x0, top, -hd), roof);
-            self.solid.tri(s.pt(x0, h, hd), s.pt(x1, h, hd), s.pt(x0, top, hd), wall);
-            self.solid.tri(s.pt(x1, h, -hd), s.pt(x0, h, -hd), s.pt(x0, top, -hd), shade(wall, 0.86));
+            // the glass looks along the shed's own +x, the slates slope up to it from behind
+            self.solid.quad(s.pt(x1, h, hd), s.pt(x1, h, -hd), s.pt(x1, top, -hd), s.pt(x1, top, hd), glass);
+            self.solid.quad(s.pt(x0, h, hd), s.pt(x1, top, hd), s.pt(x1, top, -hd), s.pt(x0, h, -hd), roof);
+            self.solid.tri(s.pt(x0, h, hd), s.pt(x1, h, hd), s.pt(x1, top, hd), wall);
+            self.solid.tri(s.pt(x1, h, -hd), s.pt(x0, h, -hd), s.pt(x1, top, -hd), shade(wall, 0.86));
         }
-        self.note_peak(s.pt(-len * 0.5, h + rise, hd));
+        self.note_peak(s.pt(len * 0.5, h + rise, hd));
         s
     }
 
@@ -489,6 +497,23 @@ impl<'a, 's> Ctx<'a, 's> {
         };
         let turn = std::f32::consts::FRAC_PI_4 - self.site.yaw;
         self.solid.frustum_turned(p, side * 0.707, side * 0.6, h, 4, turn, SINK, col, Some(*self.pal.smoke.soot));
+        if puff > 0.0 {
+            self.plume(p + Vec3::Y * h, puff);
+        }
+    }
+
+    /// A broad slab of a stack standing against a shed, at a place in the
+    /// shed's own frame: `w` along the shed and `d` through, as the flues of
+    /// a row of melting holes are gathered into one.
+    #[allow(clippy::too_many_arguments)]
+    pub fn slab_stack(&mut self, s: &Shed, sx: f32, sz: f32, w: f32, d: f32, h: f32, col: Rgba, puff: f32) {
+        let h = match self.w.state {
+            State::GoingUp => h * 0.45,
+            State::Derelict => h * (0.65 + 0.25 * self.rnd()),
+            _ => h,
+        };
+        let p = s.pt(sx, 0.0, sz);
+        self.solid.block(p, w, d, h, s.yaw, col, Some(*self.pal.smoke.soot), SINK);
         if puff > 0.0 {
             self.plume(p + Vec3::Y * h, puff);
         }
@@ -692,7 +717,7 @@ impl<'a, 's> Ctx<'a, 's> {
             let (p, q) = (at(i), at(i + 1));
             self.solid.quad(p + o - down, q + o - down, q + o + up, p + o + up, col);
             self.solid.quad(q - o - down, p - o - down, p - o + up, q - o + up, shade(col, 0.84));
-            self.solid.quad(p + o + up, q + o + up, q - o + up, p - o + up, shade(col, 1.08));
+            self.solid.quad(p + o + up, q + o + up, q - o + up, p - o + up, shade(col, 1.03));
         }
     }
 
@@ -704,7 +729,7 @@ impl<'a, 's> Ctx<'a, 's> {
             return;
         }
         let col = self.tone(col);
-        let (hw, hd, t) = (self.hw - 0.002, self.hd - 0.002, 0.0034);
+        let (hw, hd, t) = (self.hw - 0.0025, self.hd - 0.0025, 0.0046);
         let gate = gate.min(hw * 1.2);
         self.wall_run((hw, -hd), (-hw, -hd), h, t, col);
         self.wall_run((-hw, -hd), (-hw, hd), h, t, col);

@@ -67,7 +67,7 @@ pub fn brickworks(c: &mut Ctx) {
     let bx0 = -hw + 0.008 + if shed_rows > 0 { cols as f32 * (sl + 0.008) } else { 0.0 };
     let bw = -hw + 0.008 + kw - bx0;
     if bw > 0.012 && depth > 0.008 {
-        c.stacks(bx0 + bw * 0.5, z0 + depth * 0.5, bw, depth, c.fit(bw, 0.016 * g, 10), c.fit(depth, 0.012 * g, 10), 0.008 * g, *pal.goods.bricks);
+        c.stacks(bx0 + bw * 0.5, z0 + depth * 0.5, bw, depth, c.fit(bw, 0.014 * g, 10), c.fit(depth, 0.011 * g, 10), 0.011 * g, *pal.goods.bricks);
     }
     // the clay pit
     let (px, prx, prz) = (-hw + 2.0 * hw * 0.81, 2.0 * hw * 0.165, hd * 0.78);
