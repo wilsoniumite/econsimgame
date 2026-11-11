@@ -361,7 +361,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
         let capval = K.max(1e-9) * unit_cap;
         let roi = st.f_profit_acc[fid] / capval.max(1e-9);
         let u = st.f_u[fid];
-        let building = st.f_order_K[fid] > std::env::var("HACK_BUILDING").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0) * K; // TEMP HACK
+        let building = st.f_order_K[fid] > 0.0;
         if st.f_cash[fid] < 0.0 && year - st.f_born[fid] <= 3 {
             let need = -st.f_cash[fid];
             st.f_cash[fid] += back_firm(st, P, fid, need);
