@@ -1131,6 +1131,8 @@ fn orbit_transform(o: &Orbit) -> Transform {
 /// A year's scenery: the ground's land mix, the meshes and the railway paths.
 struct Scenery {
     k: usize,
+    /// the camera its houses were built for
+    lod: scatter::Lod,
     cells: Vec<u8>,
     ym: scatter::YearMeshes,
     nets: network::Nets,
@@ -1142,18 +1144,30 @@ struct Scenery {
 /// scenery until the next is ready, and the ground changes with it.
 #[derive(Resource, Default)]
 struct Builds {
-    task: Option<(usize, Task<Scenery>)>,
+    /// the year being built, and which state of the run it is built from (`Shown::run`)
+    task: Option<(usize, u32, Task<Scenery>)>,
 }
 
-fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> Scenery {
+/// What `rebuild_year` remembers of the scenery on screen.
+#[derive(Default)]
+struct Shown {
+    /// the camera its houses were built for
+    lod: Option<scatter::Lod>,
+    /// how many times the run has changed under the viewer (a live game's new year)
+    run: u32,
+    /// the year, and the state of the run, that everything on screen was last built from
+    whole: Option<(usize, u32)>,
+}
+
+fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
     let t0 = std::time::Instant::now();
     let cells = terrain::year_cells(r, k);
-    let ym = scatter::build_year(r, g, slots, cen, k, lk);
+    let ym = scatter::build_year(r, g, slots, cen, k, lk, &lod);
     let t1 = t0.elapsed().as_secs_f32();
     let nets = network::year_nets(r, g, cen, k, lk);
     let rails = trains::rail_paths(r, g, cen, k);
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
-        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread)", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3);
+        eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread); {} vertices of houses for a camera {:.1} off", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3, ym.houses.pos.len(), lod.dist);
     }
     if std::env::var_os("ISOSTATE_MESH_SUMS").is_some() {
         // a fingerprint of the year's geometry: two builds of the viewer that print the
@@ -1168,7 +1182,7 @@ fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f3
             .collect();
         eprintln!("year {} meshes: {}", r.y0 + k as i32, sums.join(", "));
     }
-    Scenery { k, cells, ym, nets, rails }
+    Scenery { k, lod, cells, ym, nets, rails }
 }
 
 /// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
@@ -1199,44 +1213,69 @@ fn rebuild_year(
     ta: Res<TrainAssets>,
     mut rails: ResMut<Rails>,
     mut builds: ResMut<Builds>,
+    orbit: Res<Orbit>,
+    mut shown: Local<Shown>,
     old_trains: Query<Entity, With<Train>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    if data.is_changed() {
+        shown.run = shown.run.wrapping_add(1);
+    }
+    // the houses are built with as much as the camera can see of them: when it has moved or
+    // zoomed past what the scenery on screen was built for, the year is built again
+    let lod = scatter::Lod::of_camera((orbit.target.x, orbit.target.z), orbit.dist);
+    if tl.built.is_some() && shown.lod.is_some_and(|was| was.stale(&lod)) {
+        tl.built = None;
+    }
     // a finished build goes on screen
-    if let Some(sc) = builds.task.as_mut().and_then(|(_, t)| check_ready(t)) {
+    if let Some((run, sc)) = builds.task.as_mut().and_then(|(_, run, t)| check_ready(t).map(|sc| (*run, sc))) {
         builds.task = None;
-        if let Some(mut img) = images.get_mut(&handles.year_cells) {
-            img.data = Some(sc.cells);
-        }
-        // trains: one for every eight units of line, up to three, spread along it
-        for e in &old_trains {
-            commands.entity(e).despawn();
-        }
-        rails.0 = sc.rails;
-        for (pi, p) in rails.0.iter().enumerate() {
-            let count = (1 + (p.len / 8.0) as usize).min(3);
-            for i in 0..count {
-                let s = p.len * (i as f32 + 0.5) / count as f32;
-                let (pos, yaw) = p.at(s);
-                let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
-                commands.spawn((
-                    Mesh3d(ta.mesh.clone()),
-                    MeshMaterial3d(ta.mat.clone()),
-                    Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
-                    Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
-                ));
-            }
-        }
+        shown.lod = Some(sc.lod);
+        // a year built again for the camera alone, from the run as it was, differs only in its
+        // houses and their smoke (a garden's tree is drawn at every level): the rest stays as
+        // it is on screen, trees and works are not sent to the card again (they are most of
+        // the year's corners), and the trains run on from where they are
+        let for_camera = shown.whole == Some((sc.k, run));
+        shown.whole = Some((sc.k, run));
         let (ym, nets) = (sc.ym, sc.nets);
-        for (hs, t) in handles.trees.iter().zip(ym.trees) {
-            for (h, b) in hs.iter().zip([t.evergreen, t.leaves, t.bare]) {
+        if !for_camera {
+            if let Some(mut img) = images.get_mut(&handles.year_cells) {
+                img.data = Some(sc.cells);
+            }
+            // trains: one for every eight units of line, up to three, spread along it
+            for e in &old_trains {
+                commands.entity(e).despawn();
+            }
+            rails.0 = sc.rails;
+            for (pi, p) in rails.0.iter().enumerate() {
+                let count = (1 + (p.len / 8.0) as usize).min(3);
+                for i in 0..count {
+                    let s = p.len * (i as f32 + 0.5) / count as f32;
+                    let (pos, yaw) = p.at(s);
+                    let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
+                    commands.spawn((
+                        Mesh3d(ta.mesh.clone()),
+                        MeshMaterial3d(ta.mat.clone()),
+                        Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
+                        Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
+                    ));
+                }
+            }
+            for (h, b) in [(&handles.works, ym.works), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
                 if let Some(mut m) = meshes.get_mut(h) {
                     *m = non_empty(b);
                 }
             }
+            for (hs, t) in handles.trees.iter().zip(ym.trees) {
+                for (h, b) in hs.iter().zip([t.evergreen, t.leaves, t.bare]) {
+                    if let Some(mut m) = meshes.get_mut(h) {
+                        *m = non_empty(b);
+                    }
+                }
+            }
         }
-        for (h, b) in [(&handles.houses, ym.houses), (&handles.works, ym.works), (&handles.smoke, ym.smoke), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
+        for (h, b) in [(&handles.houses, ym.houses), (&handles.smoke, ym.smoke)] {
             if let Some(mut m) = meshes.get_mut(h) {
                 *m = non_empty(b);
             }
@@ -1248,8 +1287,8 @@ fn rebuild_year(
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     if tl.built != Some(k) && builds.task.is_none() {
         let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k, &lk) });
-        builds.task = Some((k, task));
+        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k, &lk, lod) });
+        builds.task = Some((k, shown.run, task));
     }
 }
 

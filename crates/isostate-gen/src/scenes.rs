@@ -13,7 +13,7 @@ use glam::{Vec2, Vec3};
 
 use crate::hash::{hash2, Seed};
 use crate::houses::roof::{self, Roof};
-use crate::houses::{self, storeys, Cottage, Terrace, Townhouse, BACK_PLOT_WIDTH, PLOT};
+use crate::houses::{self, storeys, Cottage, Detail, Era, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
 use crate::palette::Palette;
 use crate::site::{Model, Site};
 use crate::town;
@@ -65,6 +65,8 @@ pub struct Street {
     pub year: i32,
     /// a number of the street's own, which fixes every plot along it
     pub id: i32,
+    /// how much of each house to draw
+    pub detail: Detail,
 }
 
 /// The back lane runs this far behind the high street.
@@ -93,30 +95,42 @@ pub fn street(m: &mut Model, site: &Site, s: &Street, pal: &Palette) {
     let lift = |p: Vec3, by: f32| p + Vec3::Y * by;
     // the road itself, in gravel
     m.flat.ribbon(&[lift(site.at(-half, 0.0), 0.01), lift(site.at(half, 0.0), 0.01)], 0.034, *pal.ground.road_gravel);
-    // the towns hand a plot its facing so: along the street, turned about on the far side
-    let facing = |side: f32| site.yaw + if side < 0.0 { std::f32::consts::PI } else { 0.0 };
+    // the towns hand a plot its facing so: along the street, its front to it
+    let facing = |side: f32| site.yaw + if side > 0.0 { std::f32::consts::PI } else { 0.0 };
+    // the plots either side of one, as its house sees them from the street: its left and its right
+    let beside = |side: f32, before: bool, after: bool| if side > 0.0 { (after, before) } else { (before, after) };
 
     // the frontage: a plot every 0.05 on both sides, each built once its ground is dense enough
     let set_back = 0.034 * 0.5 + PLOT.1 * 0.5 + 0.005;
     let count = (s.length / PLOT.0).floor() as i32;
     for (j, side) in [(0, -1.0f32), (1, 1.0)] {
         let id = s.id * 4 + j;
-        for i in 0..count {
+        let plot = |i: i32| {
             let x = -half + (i as f32 + 0.5) * PLOT.0;
             let seed = Seed::new(hash2(id, i, 24), hash2(id, i, 25));
-            let (need, d) = (seed.u * 0.75, density(x));
+            (x, seed, seed.u * 0.75, density(x))
+        };
+        let stands = |i: i32| i >= 0 && i < count && plot(i).3 >= plot(i).2;
+        for i in 0..count {
+            let (x, seed, need, d) = plot(i);
             if d < need {
                 continue;
             }
-            let plot = site.moved(site.at(x, side * set_back), facing(side));
-            let (_, roof) = roof_of(need, d, s.year, seed);
+            let at = site.moved(site.at(x, side * set_back), facing(side));
+            let (built, roof) = roof_of(need, d, s.year, seed);
+            let neighbours = beside(side, stands(i - 1), stands(i + 1));
             // a house is rebuilt as a townhouse of the full plot once its ground is dense enough
-            if d >= need + 0.12 + 0.25 * seed.v {
-                let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::townhouse(d, seed), roof, seed };
-                houses::townhouse(&mut m.solid, &mut m.smoke, &plot, &t, pal);
+            let rebuilt = need + 0.12 + 0.25 * seed.v;
+            if d >= rebuilt {
+                let era = Era::of(roof_of(rebuilt, d, s.year, seed).0);
+                let t = Townhouse { era, shop: houses::shop_at(d, seed), neighbours, detail: s.detail, ..Townhouse::new(PLOT.0, PLOT.1, storeys::townhouse(d, seed), roof, seed) };
+                houses::townhouse(&mut m.solid, &mut m.smoke, &at, &t, pal);
+            } else if houses::villa_plot(built, seed) {
+                let v = Villa { era: Era::of(built), detail: s.detail, ..Villa::new(PLOT.0, PLOT.1, roof, seed) };
+                houses::villa(&mut m.solid, &mut m.smoke, &mut m.green, &at, &v, pal);
             } else {
-                let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::cottage(d, seed), roof, seed };
-                houses::cottage(&mut m.solid, &mut m.smoke, &plot, &c, pal);
+                let c = Cottage { era: Era::of(built), neighbours, detail: s.detail, ..Cottage::new(PLOT.0, PLOT.1, storeys::cottage(d, seed), roof, seed) };
+                houses::cottage(&mut m.solid, &mut m.smoke, &mut m.green, &at, &c, pal);
             }
         }
     }
@@ -155,14 +169,15 @@ pub fn street(m: &mut Model, site: &Site, s: &Street, pal: &Palette) {
                     let (built, roof) = roof_of(need, mean, s.year, first);
                     if built >= TERRACE_ERA && len >= 2 {
                         let mid = 0.5 * (x_of(i) + x_of(i + len - 1));
-                        let t = Terrace { houses: len as usize, length: Terrace::length_of(len as usize, BACK_PLOT_WIDTH), depth: PLOT.1, storeys: storeys::terrace(mean, first), roof, seed: first };
+                        let t = Terrace { era: Era::of(built), detail: s.detail, ..Terrace::new(len as usize, Terrace::length_of(len as usize, BACK_PLOT_WIDTH), PLOT.1, storeys::terrace(mean, first), roof, first) };
                         houses::terrace(&mut m.solid, &mut m.smoke, &site.moved(site.at(mid, z + side * lane_back), facing(side)), &t, pal);
                     } else {
                         for q in i..i + len {
                             let seed = Seed::new(hash2(id, q, 24), hash2(id, q, 25));
                             let roof = Roof::of(built, s.year, false, Roof::laid(built, s.year, seed) >= 1845, seed);
-                            let c = Cottage { plot_width: BACK_PLOT_WIDTH, plot_depth: PLOT.1, storeys: storeys::cottage(density(x_of(q)), seed), roof, seed };
-                            houses::cottage(&mut m.solid, &mut m.smoke, &site.moved(site.at(x_of(q), z + side * lane_back), facing(side)), &c, pal);
+                            let neighbours = beside(side, q > i, q + 1 < i + len);
+                            let c = Cottage { era: Era::of(built), neighbours, detail: s.detail, ..Cottage::new(BACK_PLOT_WIDTH, PLOT.1, storeys::cottage(density(x_of(q)), seed), roof, seed) };
+                            houses::cottage(&mut m.solid, &mut m.smoke, &mut m.green, &site.moved(site.at(x_of(q), z + side * lane_back), facing(side)), &c, pal);
                         }
                     }
                 }
@@ -185,6 +200,8 @@ pub struct Market {
     /// the year it is seen in, which with each plot's need settles how old its house is
     pub year: i32,
     pub id: i32,
+    /// how much of each house to draw
+    pub detail: Detail,
 }
 
 /// A market place: its paving, the cross or the hall in the middle, the
@@ -217,26 +234,32 @@ pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
     // houses round the market place, facing in
     let count = ((std::f32::consts::TAU * (radius + 0.03)) / PLOT.0).floor() as i32;
     let id = -1000 - mk.id;
-    for i in 0..count {
+    let plot = |i: i32| {
+        let i = i.rem_euclid(count);
         let a = i as f32 / count as f32 * std::f32::consts::TAU;
         let dir = Vec2::new(a.cos(), a.sin());
-        let p = dir * (radius + 0.03);
-        if church.crowded_by(church_at, church_yaw, p) {
-            continue;
-        }
         let seed = Seed::new(hash2(id, i, 26), hash2(id, i, 27));
-        let need = 0.55 * seed.u;
-        if mk.density < need {
+        (dir, seed, 0.55 * seed.u)
+    };
+    let stands = |i: i32| !church.crowded_by(church_at, church_yaw, plot(i).0 * (radius + 0.03)) && mk.density >= plot(i).2;
+    for i in 0..count {
+        let (dir, seed, need) = plot(i);
+        if !stands(i) {
             continue;
         }
-        let plot = site.moved(site.at(p.x, p.y), site.yaw + dir.y.atan2(-dir.x) + std::f32::consts::FRAC_PI_2);
-        let (_, roof) = roof_of(need, mk.density, mk.year, seed);
-        if mk.density >= need + 0.12 + 0.25 * seed.v {
-            let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::townhouse(mk.density, seed), roof, seed };
-            houses::townhouse(&mut m.solid, &mut m.smoke, &plot, &t, pal);
+        let p = dir * (radius + 0.03);
+        let at = site.moved(site.at(p.x, p.y), site.yaw + dir.y.atan2(-dir.x) + std::f32::consts::FRAC_PI_2);
+        let (built, roof) = roof_of(need, mk.density, mk.year, seed);
+        // the houses face in, so the next round the ring is on a house's right
+        let neighbours = (stands(i - 1), stands(i + 1));
+        let rebuilt = need + 0.12 + 0.25 * seed.v;
+        if mk.density >= rebuilt {
+            let era = Era::of(roof_of(rebuilt, mk.density, mk.year, seed).0);
+            let t = Townhouse { era, shop: houses::shop_at(mk.density, seed), neighbours, detail: mk.detail, ..Townhouse::new(PLOT.0, PLOT.1, storeys::townhouse(mk.density, seed), roof, seed) };
+            houses::townhouse(&mut m.solid, &mut m.smoke, &at, &t, pal);
         } else {
-            let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: storeys::cottage(mk.density, seed), roof, seed };
-            houses::cottage(&mut m.solid, &mut m.smoke, &plot, &c, pal);
+            let c = Cottage { era: Era::of(built), neighbours, detail: mk.detail, ..Cottage::new(PLOT.0, PLOT.1, storeys::cottage(mk.density, seed), roof, seed) };
+            houses::cottage(&mut m.solid, &mut m.smoke, &mut m.green, &at, &c, pal);
         }
     }
 }
@@ -302,7 +325,7 @@ mod tests {
         let pal = Palette::standard();
         let build = |middle: f32, ends: f32, year: i32| {
             let mut m = Model::default();
-            street(&mut m, &level(), &Street { length: 1.0, middle, ends, year, id: 3 }, &pal);
+            street(&mut m, &level(), &Street { length: 1.0, middle, ends, year, id: 3, detail: Detail::Play }, &pal);
             assert!(m.is_sound());
             m
         };
@@ -311,12 +334,15 @@ mod tests {
         // a thinly built street has no back lanes: only the road lies flat
         assert_eq!(thin.flat.triangles(), 2);
         assert_eq!(thick.flat.triangles(), 6);
-        // the houses stand along the road, within the lanes' reach of it
+        // the houses stand along the road, within the lanes' reach of it and the yards behind them
         let (lo, hi) = thick.solid.bounds().unwrap();
-        assert!(lo.x >= -0.53 && hi.x <= 0.56 && lo.z > -0.2 && hi.z < 0.2, "{lo} {hi}");
+        assert!(lo.x >= -0.53 && hi.x <= 0.56 && lo.z > -0.21 && hi.z < 0.21, "{lo} {hi}");
         // terraces put fewer, longer roofs on the back lanes than separate cottages do
         let later = build(0.95, 0.3, 1880);
         assert_ne!(later.solid.triangles(), thick.solid.triangles());
+        // every front door faces its street: the high street's doors look across it at each other
+        let doors: Vec<f32> = thick.solid.pos.iter().zip(&thick.solid.nrm).zip(&thick.solid.col).filter(|((p, _), c)| p[2].abs() < 0.06 && pal.walls.door_paints.iter().any(|d| **d == **c)).map(|((p, n), _)| p[2] * n[2]).collect();
+        assert!(doors.len() > 40 && doors.iter().all(|toward| *toward < 0.0), "{} door corners", doors.len());
         // and by then some roofs are blue slate, which none was in 1800
         let slate = |m: &Model| m.solid.col.iter().filter(|c| **c == *pal.slate.house || **c == *pal.slate.town).count();
         assert!(slate(&thick) == 0 && slate(&later) > 0);
@@ -327,7 +353,7 @@ mod tests {
         let pal = Palette::standard();
         let build = |big: bool, density: f32| {
             let mut m = Model::default();
-            market(&mut m, &level(), &Market { big, density, year: 1850, id: 2 }, &pal);
+            market(&mut m, &level(), &Market { big, density, year: 1850, id: 2, detail: Detail::Play }, &pal);
             assert!(m.is_sound());
             m
         };
@@ -338,6 +364,10 @@ mod tests {
         // a big town's church has a spire
         assert!(build(true, 0.0).solid.bounds().unwrap().1.y > 0.25);
         assert!(full.solid.triangles() > empty.solid.triangles() + 8 * 22);
+        // from far off the same houses are far fewer triangles
+        let mut far = Model::default();
+        market(&mut far, &level(), &Market { big: false, density: 1.0, year: 1850, id: 2, detail: Detail::Far }, &pal);
+        assert!(far.solid.triangles() < empty.solid.triangles() + (full.solid.triangles() - empty.solid.triangles()) / 2);
         // a big town's place is wider
         let width = |m: &Model| m.flat.bounds().map(|(lo, hi)| hi.x - lo.x).unwrap();
         assert!(width(&build(true, 1.0)) > width(&full));
