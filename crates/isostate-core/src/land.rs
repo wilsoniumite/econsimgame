@@ -381,7 +381,6 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
         rent[c] = if st.urban[c] { st.cell_urban_rent[c] } else { r };
     }
     st.land_rent_only = rent.clone();
-    crate::towns::price_ground(st, P); // towns: a works on town ground bids against the housing it displaces
     for f in 0..st.f_alive.len() {
         if st.f_alive[f] {
             rent[st.f_cell[f]] += st.f_rent[f];
@@ -389,4 +388,5 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
     }
     st.cell_rent = rent;
     st.bids = bids;
+    crate::towns::price_ground(st, P, wbar); // towns: what ground costs a works, on town ground and where works hold the cell
 }

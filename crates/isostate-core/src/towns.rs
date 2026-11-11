@@ -80,7 +80,8 @@ pub struct TownsParams {
     /// A town founded at the year's end is reckoned for that year at its donor's
     /// mean wage and prices (the port leaves the wage at nothing).
     pub donor_wage: bool,
-    /// A town cell's rent is never under what its ground would earn as open land.
+    /// Ground is never priced under what it would earn as open land: a town
+    /// cell's rent, and what a works bids against on a cell the works have taken.
     pub rent_floor: bool,
 }
 
@@ -92,8 +93,8 @@ impl Default for TownsParams {
             enabled: false,
             d_new: 300.0,
             d_old: 600.0,
-            d_old_growth: 2.0,
-            tau: 40.0,
+            d_old_growth: 3.0,
+            tau: 30.0,
             works_room: 0.5,
             smooth: 0.5,
             empty: 0.6,
@@ -441,17 +442,29 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
     st.urban_density = ceiling(C, P, year);
 }
 
-/// The end of `land::update_land_use`: what a cell's worth of town ground costs
-/// a works. The port prices it at what the cell's residents pay, so a cell half
-/// under works already is half price. Here it is what the whole cell would pay
-/// under houses, the housing the works would displace.
-pub fn price_ground(st: &mut State, P: &Params) {
+/// The end of `land::update_land_use`: what a cell's worth of ground costs a
+/// works (`State::land_rent_only`, which a works' rent bid is reckoned from).
+///
+/// On town ground the port prices it at what the cell's residents pay, so a
+/// cell half under works already is half price. Here it is what the whole cell
+/// would pay under houses, the housing the works would displace.
+///
+/// Outside the towns, a cell the works have taken three fifths of is shared out
+/// to no other use (`land::update_land_use`), so nothing is left there to set a
+/// price and the rest of its ground comes at the port's floor of a hundredth.
+/// With `rent_floor` it costs what the cell would earn as open land.
+pub fn price_ground(st: &mut State, P: &Params, wbar: &[f64]) {
     if !P.towns.enabled || !kept(st) {
         return;
     }
     for c in 0..st.N {
         if st.urban[c] {
             st.land_rent_only[c] = st.town_ground_rent[c];
+        } else if P.towns.rent_floor && st.cell_K_share[c] >= 0.6 && st.world.land[c] && st.catch[c] >= 0 {
+            let w = wbar[st.catch[c] as usize];
+            if w > 0.0 {
+                st.land_rent_only[c] = open_rent(P, &st.bids, P.land_fixed_cost * w, c);
+            }
         }
     }
 }
