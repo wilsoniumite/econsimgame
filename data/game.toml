@@ -198,7 +198,7 @@ stage = 1
 name = "bricklayers"
 label = "Bricklayers"
 output = "building"
-inputs = { bricks = 0.6, lime = 0.12, lumber = 0.1 }
+inputs = { bricks = 0.6, lime = 0.12, lumber = 0.05 }   # RUN: sawn timber was 0.2; see the contract builders
 heat = 0.0
 labor = 0.24
 capital = { timber = 3, tools = 0.05 }
@@ -214,14 +214,21 @@ stage = 1
 # at 0.4 K0 needs 9.17 when found, 7.87 once know-how is 0.6, 6.89 at 1 (1.17, 1.01, 0.88 of the going
 # price). Its smallest works is 0% of the island's trade that year.
 # Breaks even at base prices because bricks are dear there (1.8); it is carried by the continuous kiln's bricks.
+# RUN: the draft had sawn timber 0.18 a unit and 2 in the plant. The island's woods give some 30,000 units
+# of timber a month and less each decade as they are cleared, and nothing lands timber at the ports until
+# stage 3. At 0.18 timber ran to eight times its base price and building work never fell; at 0.04 the
+# builders took the whole cut by the 1880s, the woods were overcut, and in every seed the real wage's worst
+# year of the century was a year the sawmills ran short and the builders stood idle (building work up by
+# half in a year). At 0.02, with 0.5 in the plant, the builders want about what the island cut before them.
+# When timber lands at the ports this is the number to raise.
 [[method]]
 name = "contract_builders"
 label = "Contract builders"
 output = "building"
-inputs = { bricks = 0.65, lime = 0.1, lumber = 0.04, glass = 0.02 }
+inputs = { bricks = 0.65, lime = 0.1, lumber = 0.02, glass = 0.02 }
 heat = 0.0
 labor = 0.1
-capital = { bricks = 2, lumber = 2, tools = 0.1 }
+capital = { bricks = 2, lumber = 0.5, tools = 0.1 }
 K0 = 800.0
 known = false
 A0 = 1.0
@@ -697,7 +704,11 @@ inputs = { lime = 0.25 }
 heat = 1.0
 labor = 0.04
 capital = { bricks = 30, iron = 3, machinery = 0.15 }
-K0 = 2000.0
+# RUN: the usual size was 2000. A first works is a tenth of its town's trade in soap and chemicals, a few
+# hundred units a month, and at a fifth of its usual size a works pays a penalty in hands and materials that
+# the recipe cannot carry: without families (who found works larger) it was found and not built in six
+# seeds of eight.
+K0 = 600.0
 known = false
 A0 = 1.0
 Q0 = 800000.0
@@ -769,7 +780,9 @@ inputs = { stone = 0.9, chemicals = 0.2, lime = 0.12 }
 heat = 1.5
 labor = 0.09
 capital = { bricks = 30, steel = 0.3, machinery = 0.15 }
-K0 = 1500.0
+# RUN: the usual size was 1500, for the same reason as the ammonia-soda works': its first works came ten
+# years after it was found.
+K0 = 600.0
 known = false
 A0 = 1.0
 Q0 = 800000.0
