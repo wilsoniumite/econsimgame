@@ -79,10 +79,11 @@ pub fn params(lk: &Look, phase: f32) -> WinterParams {
     }
 }
 
-/// The material itself, at a phase of the year.
-pub fn material(lk: &Look, phase: f32) -> BuiltMaterial {
+/// The material itself, at a phase of the year: `rough` is how matt it is
+/// (`surfaces.buildings` for what stands, `surfaces.paths` for what lies flat).
+pub fn material(lk: &Look, phase: f32, rough: f32) -> BuiltMaterial {
     BuiltMaterial {
-        base: StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.buildings, reflectance: lk.surfaces.painted_reflectance, ..default() },
+        base: StandardMaterial { base_color: Color::WHITE, perceptual_roughness: rough, reflectance: lk.surfaces.painted_reflectance, ..default() },
         extension: Winter { params: params(lk, phase) },
     }
 }

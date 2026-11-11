@@ -526,8 +526,9 @@ struct SeasonMats {
     terrain: Handle<terrain::GroundMaterial>,
     trees: Handle<StandardMaterial>,
     rivers: Handle<StandardMaterial>,
-    /// what houses and works are drawn in: winter lies on it (`built.rs`)
-    built: Handle<built::BuiltMaterial>,
+    /// what houses and works are drawn in, and the yards and ponds that lie flat round
+    /// them: winter lies on both (`built.rs`)
+    built: [Handle<built::BuiltMaterial>; 2],
     smoke: Handle<StandardMaterial>,
     /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
     forced: Option<f32>,
@@ -1006,16 +1007,20 @@ fn setup_world(
     // houses and works (churches, farm buildings and bridges among them) are drawn in a
     // material that winter lies on; the trains keep the plain one, an engine being warm
     let phase = season_phase(&SeasonClock::default(), forced.0);
-    let built_mat = built_mats.add(built::material(lk, phase));
+    let built_mat = built_mats.add(built::material(lk, phase, lk.surfaces.buildings));
+    // and so is what lies flat round them (the yards of the works, their ponds, the farm
+    // lanes): frost on the yards, ice on a mill pond. The roads and the railway keep the
+    // plain material: they are trodden clear, and must stay easy to follow
+    let yards_mat = built_mats.add(built::material(lk, phase, lk.surfaces.paths));
     let smoke_mat = materials.add(smoke_material(lk));
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: built_mat.clone(), smoke: smoke_mat.clone(), forced: forced.0 });
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
     commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(built_mat.clone())));
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(built_mat)));
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(yards_mat), bevy::light::NotShadowCaster));
     commands.insert_resource(handles);
 
     // a warm low sun from the south-west, and soft sky light; the seasons
@@ -1416,9 +1421,11 @@ fn seasons(
     // per pixel (built.wesl), so winter rebuilds no mesh. Outside the winter (seven months
     // in twelve) its numbers do not change and it is left alone
     let winter = built::params(&look, ph);
-    if built_mats.get(&sm.built).is_some_and(|m| m.extension.params.amounts != winter.amounts) {
-        if let Some(mut m) = built_mats.get_mut(&sm.built) {
-            m.extension.params = winter;
+    for h in &sm.built {
+        if built_mats.get(h).is_some_and(|m| m.extension.params.amounts != winter.amounts) {
+            if let Some(mut m) = built_mats.get_mut(h) {
+                m.extension.params = winter;
+            }
         }
     }
     // and smoke stands a little fuller in the cold
@@ -2499,6 +2506,69 @@ mod tests {
         // the list names every option the reader knows
         for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
+        }
+    }
+
+    #[test]
+    fn the_trees_stand_aside_for_a_map_view_whatever_the_season_does() {
+        // the three meshes of each group of trees, as setup_world spawns them, and the two
+        // things that bear on which of them show
+        let mut app = App::new();
+        app.insert_resource(SeasonClock { phase: 0.5, follows: false })
+            .insert_resource(SeasonMats { terrain: Handle::default(), trees: Handle::default(), rivers: Handle::default(), built: [Handle::default(), Handle::default()], smoke: Handle::default(), forced: None })
+            .insert_resource(overlay::MapOverlay::new(None, 0))
+            .insert_resource(GroundDebug(false))
+            .add_systems(Update, show_trees);
+        for group in 0..LEAF_GROUPS {
+            app.world_mut().spawn((Evergreen, Visibility::default()));
+            app.world_mut().spawn((Leaves(group), Visibility::default()));
+            app.world_mut().spawn((BareLimbs(group), Visibility::Hidden));
+        }
+        let showing = |app: &mut App| trees_showing(app.world_mut());
+        let all = 3 * LEAF_GROUPS;
+        // high summer on the plain map: what is evergreen and every group's leaves
+        app.update();
+        assert_eq!(showing(&mut app), (2 * LEAF_GROUPS, all));
+        // a map view goes on: every mesh of the trees is hidden, the conifers and the bare limbs too
+        app.world_mut().resource_mut::<overlay::MapOverlay>().set(Some(overlay::Overlay::Rent));
+        app.update();
+        assert_eq!(showing(&mut app), (0, all), "trees show under a map view");
+        // the season moves on under the view, right round the year: they stay hidden (the
+        // seasons used to put each group's leaves or limbs back as it turned)
+        for step in 0..=48 {
+            app.world_mut().resource_mut::<SeasonClock>().phase = (0.5 + step as f32 / 48.0).rem_euclid(1.0);
+            app.update();
+            assert_eq!(showing(&mut app), (0, all), "trees came back under a map view when the season reached {}", step as f32 / 48.0);
+        }
+        // a season held for a picture does not bring them back either
+        app.world_mut().resource_mut::<SeasonMats>().forced = Some(0.0);
+        app.update();
+        assert_eq!(showing(&mut app), (0, all));
+        // the plain map again, in the midwinter the picture holds: evergreens and bare limbs
+        app.world_mut().resource_mut::<overlay::MapOverlay>().set(None);
+        app.update();
+        assert_eq!(showing(&mut app), (2 * LEAF_GROUPS, all));
+        let mut leaves = app.world_mut().query::<(&Leaves, &Visibility)>();
+        assert!(leaves.iter(app.world()).all(|(_, v)| *v == Visibility::Hidden), "no tree is in leaf at midwinter");
+        // and `--ground-debug` shows the ground alone
+        app.world_mut().resource_mut::<GroundDebug>().0 = true;
+        app.update();
+        assert_eq!(showing(&mut app), (0, all));
+    }
+
+    #[test]
+    fn each_part_of_a_tree_shows_in_its_season() {
+        for group in 0..LEAF_GROUPS {
+            for i in 0..96 {
+                let ph = i as f32 / 96.0;
+                // one or the other of a group's leaves and limbs, never both and never neither
+                assert_ne!(tree_part_shown(TreePart::Leaves(group), ph, false), tree_part_shown(TreePart::BareLimbs(group), ph, false));
+                assert!(tree_part_shown(TreePart::Evergreen, ph, false));
+                for part in [TreePart::Evergreen, TreePart::Leaves(group), TreePart::BareLimbs(group)] {
+                    assert!(!tree_part_shown(part, ph, true));
+                }
+            }
+            assert!(tree_part_shown(TreePart::Leaves(group), 0.5, false) && tree_part_shown(TreePart::BareLimbs(group), 0.0, false));
         }
     }
 

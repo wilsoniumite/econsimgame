@@ -476,13 +476,17 @@ impl Palette {
         // a mill pond, a water butt
         mark(&mut [&mut w.river], ICE);
         // fires, and what is hot over one: a smouldering clamp, the top of a bank of coke ovens,
-        // the mouth of a flue and the top of a house's stack; and the dark of a tunnel or under an arch
+        // the mouth of a flue and the top of a house's stack, the iron plate of a furnace's shell,
+        // a stove, a boiler or a converter (pig iron in the stack is drawn in the same plate, and
+        // goes without its snow for that); and the dark of a tunnel or under an arch
         mark(
             &mut [
                 charcoal_clamp,
                 charcoal_clamp_top,
                 &mut self.roofs.coke_ovens,
                 &mut self.iron.glow,
+                &mut self.iron.plate,
+                &mut self.iron.converter,
                 &mut self.glass.lighthouse_lamp,
                 &mut self.smoke.soot,
                 &mut self.smoke.stack_top,

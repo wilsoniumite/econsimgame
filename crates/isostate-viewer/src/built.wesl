@@ -80,6 +80,10 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             let cover = winter.amounts.z * up * lying;
             col = mix(col, winter.snow.rgb, cover);
             pbr_input.material.perceptual_roughness = mix(pbr_input.material.perceptual_roughness, 1.0, cover);
+            // snow lies in a soft blanket whose top looks more to the sky than the roof under
+            // it does: without this the slope turned from a low winter sun is slate-dark in
+            // its own shade and does not read as snow at all
+            pbr_input.N = normalize(mix(pbr_input.N, vec3<f32>(0.0, 1.0, 0.0), 0.55 * cover));
         } else if (mark > 0.375) {
             // what grows has lost its green: the more of it there was, the barer it is now
             let green = clamp((col.g - max(col.r, col.b)) / max(col.g, 1e-4), 0.0, 1.0);
