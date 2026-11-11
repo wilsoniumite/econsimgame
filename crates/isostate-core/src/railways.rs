@@ -212,6 +212,13 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     out.push(("rail_cost_in_years_of_output".into(), Kind::Real, nan_off(cost_share)));
     let most = book.years.iter().map(|n| n.building).max().unwrap_or(0);
     out.push(("rail_most_lines_building".into(), Kind::Count, nan_off(most as f64)));
+    // how long the slowest line took from its promotion to its opening, and how
+    // many at the end have been building for ten years or more (a line short of
+    // money waits; nothing abandons it)
+    let slowest = book.lines.iter().map(|l| l.opened - l.start as f64).fold(f64::NAN, f64::max);
+    out.push(("rail_slowest_line_years".into(), Kind::Real, slowest));
+    let stuck = st.projects.iter().filter(|pr| pr.way == ways::RAILWAY && pr.start + 10 <= y1).count();
+    out.push(("rail_lines_stuck_at_end".into(), Kind::Count, nan_off(stuck as f64)));
     // fares on the year's traffic over track against the capital laid out, the
     // capital brought to that year's prices by the cost of living
     for y in [1870, y1].into_iter().filter(|&y| y >= y0 && y <= y1) {

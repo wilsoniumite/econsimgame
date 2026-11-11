@@ -441,4 +441,11 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 ## Mechanisms under the game's rules
 
-None yet. One line each as they arrive: the name, its page, its switch.
+One line each as they arrive: the name, its page, its switch.
+
+- **Railways**: branch lines to towns and districts, every line priced on the
+  carting it saves, at five times the port's cost. [railways.md](railways.md),
+  `railways.enabled`.
+- **Carting**: the carting bill takes hands out of each town's labour supply,
+  so cheaper carriage frees people for other work. [carting.md](carting.md),
+  `carting.enabled`.
