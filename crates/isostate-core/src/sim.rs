@@ -21,6 +21,7 @@ use crate::record::{self, Record};
 use crate::rng::{Rngs, make_rngs};
 use crate::state::{Event, State};
 use crate::tech;
+use crate::towns;
 use crate::transport as tr;
 use crate::util::{argsort, bincount, pairwise_sum};
 use crate::works;
@@ -396,7 +397,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     let (N, T) = (st.N, st.T_max);
     let mut pbar = st.price_acc.clone();
     pbar.data.iter_mut().for_each(|v| *v /= 12.0);
-    let wbar: Vec<f64> = st.wage_acc.iter().map(|v| v / 12.0).collect();
+    let mut wbar: Vec<f64> = st.wage_acc.iter().map(|v| v / 12.0).collect();
     st.pbar = pbar.clone();
     st.wbar = wbar.clone();
     st.price_acc.fill(0.0);
@@ -409,6 +410,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     st.ag_labor = bincount(&st.ex_town, &ag_w, T);
     let ind_w: Vec<f64> = (0..st.f_alive.len()).map(|f| if st.f_alive[f] { st.f_labor[f] } else { 0.0 }).collect();
     st.ind_labor = bincount(&st.f_town, &ind_w, T);
+    towns::year_hands(st, P); // towns: the year's mean of works' hands, not December's
     st.cell_labor = bincount(&st.ex_cell, &st.ex_labor, N);
 
     let mut founded = Vec::new();
@@ -436,6 +438,9 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         // people: what each cell paid to reach its market, before the paths are worked out again
         st.pp_dcatch_was = st.dcatch.clone();
     }
+    // towns: a new town's year is its donor's. Here, after whichever rule founds
+    // towns has run and while the market areas are still last year's
+    towns::new_town_year(st, P, &founded, &mut pbar, &mut wbar);
     st.prev_catch = st.catch.clone();
     land::update_transport(st, C, P);
     if P.people.enabled {

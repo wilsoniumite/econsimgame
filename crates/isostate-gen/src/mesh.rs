@@ -49,6 +49,36 @@ impl MeshBuf {
         self.idx.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
+    /// A flat quad whose corners each have a colour of their own (a wall
+    /// darker at its foot, where little light reaches), turned to face
+    /// `toward`: the corners may be given either way round. Its facing is
+    /// worked out from all four corners, so it may begin at any of them and
+    /// may taper to a point.
+    pub fn quad_toward(&mut self, p: [Vec3; 4], col: [Rgba; 4], toward: Vec3) {
+        let n = (p[2] - p[0]).cross(p[3] - p[1]).normalize_or_zero();
+        let (n, order) = if n.dot(toward) < 0.0 { (-n, [0, 3, 2, 1]) } else { (n, [0, 1, 2, 3]) };
+        let base = self.pos.len() as u32;
+        for i in order {
+            self.pos.push(p[i].to_array());
+            self.nrm.push(n.to_array());
+            self.col.push(col[i]);
+        }
+        self.idx.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// A flat triangle whose corners each have a colour of their own, turned to face `toward`.
+    pub fn tri_toward(&mut self, p: [Vec3; 3], col: [Rgba; 3], toward: Vec3) {
+        let n = (p[1] - p[0]).cross(p[2] - p[0]).normalize_or_zero();
+        let (n, order) = if n.dot(toward) < 0.0 { (-n, [0, 2, 1]) } else { (n, [0, 1, 2]) };
+        let base = self.pos.len() as u32;
+        for i in order {
+            self.pos.push(p[i].to_array());
+            self.nrm.push(n.to_array());
+            self.col.push(col[i]);
+        }
+        self.idx.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+
     /// A box standing on `base` (centre of its bottom face), rotated by `yaw`.
     /// The bottom is left open; walls reach `sink` below the base so slopes do not show gaps.
     #[allow(clippy::too_many_arguments)]
@@ -91,12 +121,20 @@ impl MeshBuf {
     /// With r1 at nothing it is a cone or, with four sides, a spire or a hipped roof.
     #[allow(clippy::too_many_arguments)]
     pub fn frustum(&mut self, base: Vec3, r0: f32, r1: f32, h: f32, seg: usize, col: Rgba, cap: Option<Rgba>) {
+        self.frustum_turned(base, r0, r1, h, seg, 0.0, 0.02, col, cap);
+    }
+
+    /// A tapered column whose first corner is turned `turn` about the upright
+    /// (so that a square stack can stand square to its building: a quarter of
+    /// a turn less the building's yaw), reaching `sink` below its base.
+    #[allow(clippy::too_many_arguments)]
+    pub fn frustum_turned(&mut self, base: Vec3, r0: f32, r1: f32, h: f32, seg: usize, turn: f32, sink: f32, col: Rgba, cap: Option<Rgba>) {
         let ring = |r: f32, y: f32, i: usize| {
-            let a = i as f32 / seg as f32 * std::f32::consts::TAU;
+            let a = i as f32 / seg as f32 * std::f32::consts::TAU + turn;
             base + Vec3::new(a.cos() * r, y, a.sin() * r)
         };
         for i in 0..seg {
-            let (a0, a1) = (ring(r0, -0.02, i), ring(r0, -0.02, i + 1));
+            let (a0, a1) = (ring(r0, -sink, i), ring(r0, -sink, i + 1));
             let (b0, b1) = (ring(r1, h, i), ring(r1, h, i + 1));
             let k = 0.88 + 0.12 * ((i as f32 / seg as f32 * std::f32::consts::TAU + 0.8).cos() * 0.5 + 0.5);
             if r1 > 1e-4 {
@@ -286,6 +324,28 @@ mod tests {
             let n = Vec3::from_array(b.nrm[t[0] as usize]);
             assert!(n.dot(p - mid) > -1e-4, "a face looks inward at {p}");
         }
+    }
+
+    #[test]
+    fn a_quad_turned_toward_a_side_faces_it_whichever_way_round_it_was_given() {
+        let c = [RED; 4];
+        let p = [Vec3::ZERO, Vec3::X, Vec3::new(1.0, 1.0, 0.0), Vec3::Y];
+        for (toward, pts) in [(Vec3::Z, p), (Vec3::NEG_Z, p), (Vec3::Z, [p[0], p[3], p[2], p[1]])] {
+            let mut b = MeshBuf::default();
+            b.quad_toward(pts, c, toward);
+            b.tri_toward([pts[0], pts[1], pts[2]], [RED; 3], toward);
+            assert!(b.is_sound());
+            for t in b.idx.chunks(3) {
+                let v = [0, 1, 2].map(|i| Vec3::from_array(b.pos[t[i] as usize]));
+                // wound the way it faces, and its corners say so too
+                assert!((v[1] - v[0]).cross(v[2] - v[0]).dot(toward) > 0.0);
+                assert!(Vec3::from_array(b.nrm[t[0] as usize]).dot(toward) > 0.99);
+            }
+        }
+        // begun where two corners meet, it still has a facing
+        let mut b = MeshBuf::default();
+        b.quad_toward([Vec3::ZERO, Vec3::ZERO, Vec3::X, Vec3::Y], c, Vec3::Z);
+        assert_eq!(b.nrm[0], [0.0, 0.0, 1.0]);
     }
 
     #[test]

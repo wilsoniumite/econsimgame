@@ -8,9 +8,14 @@
 use isostate_core::peopling::{self, PeopleParams};
 use isostate_core::*;
 
+/// The port's rules with people on, at the two numbers people was tuned to on
+/// the port's island (`y_still` 1.5, `growth_top` 0.0165). The game's are 1.3
+/// and 0.016, set where its own island stands in 1750 (docs/rules/people.md, "In
+/// company"). The histories below (Kelrigg, the hemmed-in sites) are the port's
+/// island's under the first pair, so they are kept on it.
 fn params(end_year: i64) -> Params {
     let mut P = default_params();
-    P.people = PeopleParams::game();
+    P.people = PeopleParams { y_still: 1.5, growth_top: 0.0165, ..PeopleParams::game() };
     P.end_year = Some(end_year);
     P
 }
@@ -279,4 +284,64 @@ fn a_town_with_a_tiny_market_area_does_not_run_away() {
     }
     assert!(least_cells <= 8, "the planted towns were meant to be tiny; the smallest area was {least_cells} cells");
     assert!(small_years >= 60, "a town was meant to stay hemmed in; it was for {small_years} town-years");
+}
+
+/// In company (docs/rules/people.md, "In company"): the whole of the game's
+/// rules with six families, seed 4 to 1800, month by month. When people was
+/// merged a new town's wage went to three or four times the middle town's in
+/// its first spring, on every island, and a town's wage doubled and halved month
+/// about in a quarter of all town-months. Both were the carters: hired all at
+/// once on last month's bill, in a district that had just become an exporter
+/// with a market of its own. With carters taken on by degrees
+/// (`carting.adjust`), and the merchants' anchors going with the prices a
+/// district brings (`prices::anchor_follows`), neither happens.
+#[test]
+fn in_company_no_wage_runs_away_or_flips() {
+    let mut P = game_params();
+    P.seed = 4;
+    P.n_families = 6;
+    P.end_year = Some(1800);
+    let mut sim = sim::start(&P, game_content());
+    sim.check_money = true;
+    let T = sim.st.T_max;
+    let (mut flips, mut months) = (0usize, 0usize);
+    let mut last = sim.st.wage.clone();
+    let mut young_months = 0;
+    while sim.year <= sim.end_year {
+        let year = sim.year;
+        for month in 0..12 {
+            sim::run_month(&mut sim, month).unwrap_or_else(|e| panic!("{year}: {e}"));
+            let st = &sim.st;
+            let act: Vec<usize> = (0..T).filter(|&t| st.town_active[t] && st.pop[t] > 0.0).collect();
+            let mut wages: Vec<f64> = act.iter().map(|&t| st.wage[t]).collect();
+            wages.sort_by(f64::total_cmp);
+            let middle = wages[wages.len() / 2];
+            for &t in &act {
+                let rel = st.wage[t] / middle;
+                assert!((0.2..=3.0).contains(&rel), "{year}-{:02}: the wage in {} (founded {}) is {rel:.2} times the middle town's", month + 1, st.town_name[t], st.town_founded[t]);
+                if month > 0 && last[t] > 0.0 {
+                    months += 1;
+                    flips += ((st.wage[t] / last[t]).ln().abs() >= 1.5f64.ln()) as usize;
+                }
+                young_months += (st.town_founded[t] > sim.content.start_year && year - st.town_founded[t] <= 2) as usize;
+                // the anchors go with the prices: no market's price is left far from what
+                // its merchants think the good is worth (the markup is at most e^0.5)
+                if st.town_founded[t] == year - 1 && month == 0 {
+                    for g in 0..sim.content.G {
+                        let r = st.price[(t, g)] / st.price_anchor[(t, g)];
+                        assert!((0.5..=2.0).contains(&r), "{year}: {} opens with {} at {r:.2} times its anchor", st.town_name[t], sim.content.good_name[g]);
+                    }
+                }
+            }
+            last = st.wage.clone();
+        }
+        let Sim { st, content: C, params: P, rngs, events, rec, .. } = &mut sim;
+        sim::yearly(st, C, P, rngs, year, events, false);
+        observer::yearly(st, C, P, year, events);
+        record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
+        sim.year += 1;
+    }
+    assert!(sim.st.pp_foundings.len() >= 3 && young_months >= 60, "the case is gone: {} towns founded", sim.st.pp_foundings.len());
+    let share = flips as f64 / months as f64;
+    assert!(share < 0.005, "the wage moved by half or more in {share:.4} of town-months");
 }

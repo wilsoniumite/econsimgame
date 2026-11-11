@@ -33,7 +33,7 @@ use crate::works;
 // ---------------------------------------------------------------- types
 
 /// The trades: industry groups a family can know and run.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Group {
     Iron,
@@ -143,7 +143,7 @@ pub enum Post {
 }
 
 /// What a branch does each year.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stance {
     /// Found works of its trade in its town (estates: buy land there).
@@ -155,7 +155,7 @@ pub enum Stance {
 }
 
 /// Where the player can post an adult.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Posting {
     Manager { group: Group, town: usize },
@@ -212,7 +212,7 @@ impl Income {
 }
 
 /// One answer to a decision.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Choice {
     /// The family's first trade.

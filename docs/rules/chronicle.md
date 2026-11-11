@@ -437,6 +437,46 @@ off the reason is found as it was. `tests/chronicle.rs` holds the game to
 it, and two of its notes on seed 7's game were brought up to date: the last
 town is now founded in 1831, and the decade of new towns is the 1770s.
 
+### Beside the game's rules for people
+
+People (`people.md`) came last. Seeds 1 to 12, six families, `--example
+chronicle -- --seeds 1-12` with them and with `--set people.enabled=false
+--set carting.adjust=1`, which is the game before
+(`core-steps/people-probe/chronicle-game.txt` and `chronicle-before.txt`):
+
+| per run | the game before | with people |
+|---|---|---|
+| all items | 902 [834 .. 960] | 915 [847 .. 982] |
+| the major feed | 58.2 [55 .. 60] | 58.9 [57 .. 60] |
+| the player's own items, and of them major | 220, 12.3 | 222, 12.1 |
+| town items | 11 | 13 |
+| regional stories told, and kept | 47.0, 8 | 40.8, 8 |
+| of them coal booms | 4.6 | 4.1 |
+| one town overtaking another | 3.6 | 3.1 |
+| declines of towns | 13.0 | 11.2 |
+| the decade's fastest-growing town | 11.6 | 10.2 |
+| a district's works closing together | 14.2 | 12.2 |
+
+Two things were fitted.
+
+**A town is redrawn by its cells as well as by a founding.** Under people
+households go with their cells every year, so a road or a railway that
+carries a district from one market to another moves its people on the day,
+with no founding. A town that gained or lost a tenth of its people that way
+in a year (`st.pp_moved`, against `REDRAWN_SHARE`) is treated as a founding
+treats it: its peak starts again and nothing sets it against what it was.
+A tenth is the least fall told as a decline and the least lead told as
+outgrowing the island, so a smaller redrawing cannot make a story alone.
+That is why a seventh fewer regional stories are told; as many are kept.
+`tests/chronicle.rs` holds a town to being redrawn in exactly those years.
+
+**People taking ship is not the hunger.** The item has the kind `famine`,
+and `famine_provenance` would have given it the hunger's reason, which
+speaks of the food in the town named. The town named is the port they
+sailed from. `peopling::growth` now gives the item its own reason (how many
+left, against one in a thousand of the island), and the hunger's is only
+written where there is none.
+
 ## What worries me
 
 - **Grain is seven of the 56 items a history keeps.** In company 7.4 of a

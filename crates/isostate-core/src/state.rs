@@ -431,6 +431,7 @@ pub struct State {
     /// One entry per twelve months since the warm-up began: the year's carting
     /// bill and its carters (each summed over the months), whole country.
     pub cart_years: Vec<(f64, f64)>,
+
     // ---------------- people (docs/rules/people.md; all empty while `P.people` is off)
     /// The rate of increase each town had last year.
     pub pp_growth: Vec<f64>,
@@ -444,11 +445,32 @@ pub struct State {
     pub pp_gave: Vec<i64>,
     /// Each cell's path cost to its market before this year's catchments were worked out.
     pub pp_dcatch_was: Vec<f64>,
+    /// The share of each town's people who came to it, or left it, with their
+    /// cells when this year's catchments were worked out (the larger of the two).
+    /// The chronicle reads it: a town whose district was redrawn is not set
+    /// against what it was before.
+    pub pp_moved: Vec<f64>,
     /// Stream 8: the names of towns founded under these rules.
     pub pp_rng: Option<crate::rng::Rng>,
     /// For tests and scenarios: a cell where a town is to be founded this year,
     /// whatever the founding rule would say of its district.
     pub pp_found_next: Option<usize>,
+    // ---------------- towns: kept town ground (not in the Python; all empty while `towns.enabled` is off)
+    /// The year each cell joined its town (0: not town ground).
+    pub town_built: Vec<i64>,
+    /// The people each town cell has room for this year, works on it allowed for.
+    pub town_room: Vec<f64>,
+    /// Each town's cells in the order they joined, the centre first.
+    pub town_ground: Vec<Vec<usize>>,
+    /// The most town people each town has had (cut back when it gives up ground).
+    pub town_peak: Vec<f64>,
+    /// Years in a row each town has had fewer people than `towns.empty` of that.
+    pub town_low_years: Vec<i64>,
+    /// What each town cell would pay a month if houses stood on all of it (what
+    /// a works there bids against).
+    pub town_ground_rent: Vec<f64>,
+    /// Works' hands by town, summed over the months of the year so far.
+    pub town_hands_acc: Vec<f64>,
 
     // ---------------- canals (docs/rules/canals.md; all empty while `P.canals` is off)
     /// 1 where a cell has a canal open.

@@ -26,7 +26,8 @@
 //! tonemapping and the lens are the look's, set up by the same functions the
 //! game uses. The tilt-shift is off unless `--tilt` is given, as it blurs
 //! what the sheet is for looking at. `--season X` is the game's: 0 midwinter,
-//! 0.5 midsummer; it moves the sun, turns the leaves and, in winter, the grass.
+//! 0.5 midsummer; it moves the sun, turns the leaves (and shows the broadleaf
+//! trees bare while they are down) and, in winter, the grass.
 //!
 //! Each thing is turned 30 degrees to its right about its own middle, so
 //! that a gable shows as well as a front; `--turn DEG` turns it otherwise
@@ -126,7 +127,10 @@ struct Kit {
     picture: Handle<Image>,
     ui_camera: Entity,
     solid: Handle<StandardMaterial>,
+    /// what is green all year, the leaves that turn, and the bare limbs of winter
+    evergreen: Handle<StandardMaterial>,
     green: Handle<StandardMaterial>,
+    bare: Handle<StandardMaterial>,
     smoke: Handle<StandardMaterial>,
     flat: Handle<StandardMaterial>,
     ground: Handle<StandardMaterial>,
@@ -288,7 +292,9 @@ fn setup(mut commands: Commands, look: Res<TheLook>, lab: Res<Lab>, mut images: 
         picture,
         ui_camera,
         solid: crate::vertex_coloured(&mut materials, lk, lk.surfaces.buildings),
+        evergreen: crate::vertex_coloured(&mut materials, lk, lk.surfaces.foliage),
         green: crate::vertex_coloured(&mut materials, lk, lk.surfaces.foliage),
+        bare: materials.add(crate::bare_limb_material(lk)),
         smoke: materials.add(crate::smoke_material(lk)),
         flat: crate::vertex_coloured(&mut materials, lk, lk.surfaces.paths),
         ground: materials.add(StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() }),
@@ -402,7 +408,10 @@ fn step(
                 all.merge_at(&cells[pl.row][pl.col].model, pl.origin);
             }
             let Model { solid, smoke, green, flat } = all;
-            for (b, mat, shadow) in [(solid, &kit.solid, true), (green, &kit.green, true), (smoke, &kit.smoke, false), (flat, &kit.flat, false)] {
+            // the broadleaf trees as the season has them (a sheet's trees are all of the first group): in leaf, or bare
+            let in_leaf = isostate_gen::trees::in_leaf(lab.season, 0);
+            let (leaves, bare) = if in_leaf { (green.leaves, Builder::default()) } else { (Builder::default(), green.bare) };
+            for (b, mat, shadow) in [(solid, &kit.solid, true), (green.evergreen, &kit.evergreen, true), (leaves, &kit.green, true), (bare, &kit.bare, true), (smoke, &kit.smoke, false), (flat, &kit.flat, false)] {
                 if b.is_empty() {
                     continue;
                 }

@@ -137,7 +137,7 @@ pub fn standard_views(r: &Replay, cen: &[(f32, f32)], slots: &scatter::Slots, ho
     let mut out: Vec<Standard> = Vec::new();
     let mut add = |name: String, caption: String, year: i32, look: (f32, f32), yaw: f32, pitch: f32, dist: f32, season: f32| {
         out.push(Standard {
-            spec: ShotSpec { path: path(&name), year: Some(year_of(year)), look: Some(look), yaw, pitch, dist: Some(dist), season: Some(season), tab: Some(None) },
+            spec: ShotSpec { path: path(&name), year: Some(year_of(year)), look: Some(look), yaw, pitch, dist: Some(dist), season: Some(season), tab: Some(None), overlay: None, markets: None },
             name,
             caption,
         });
@@ -231,6 +231,79 @@ fn load_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
     let (w, h) = (img.width(), img.height());
     let data = img.data.ok_or_else(|| format!("{} has no pixels", path.display()))?;
     Ok((w, h, data))
+}
+
+/// Compare a `--ground-debug` shot (what the shader draws, in the flat class
+/// colours of `debug_colour` in terrain.wesl) with the `--class-map` of the
+/// same view (what `world::class_at` says, in `shot.classes.pgm` beside it).
+/// It writes `shot.diff.png`: grey where the two agree, red where they differ
+/// on a class edge (a pixel's middle can fall either side), yellow where they
+/// differ away from one, dark where there is nothing to compare. It gives a
+/// line saying how many pixels agree, and whether none differ away from an
+/// edge but a few (under a thousandth of those compared).
+pub fn compare_classes(shot: &Path) -> Result<(String, bool), String> {
+    const PAL: [[i32; 3]; 12] =
+        [[0, 0, 255], [255, 255, 0], [0, 255, 0], [0, 128, 0], [255, 0, 255], [0, 255, 255], [255, 128, 0], [128, 0, 0], [128, 0, 255], [255, 0, 0], [0, 128, 255], [128, 255, 128]];
+    let (w, h, px) = load_rgba(shot)?;
+    let (w, h) = (w as usize, h as usize);
+    let pgm = shot.with_extension("classes.pgm");
+    let data = std::fs::read(&pgm).map_err(|e| format!("cannot read {}: {e}", pgm.display()))?;
+    // the header is three lines: P5, the size, 255
+    let start = data.iter().enumerate().filter(|x| *x.1 == b'\n').nth(2).map(|(i, _)| i + 1).ok_or("the class map has no header")?;
+    let cpu = &data[start..];
+    if cpu.len() != w * h {
+        return Err(format!("{} and {} are not the same size", shot.display(), pgm.display()));
+    }
+    // the shader's class under each pixel, where the pixel is a class colour
+    let gpu: Vec<u8> = (0..w * h)
+        .map(|i| {
+            let p = &px[i * 4..i * 4 + 3];
+            let d = |c: &[i32; 3]| (0..3).map(|k| (p[k] as i32 - c[k]).pow(2)).sum::<i32>();
+            let best = (0..12).min_by_key(|&c| d(&PAL[c])).unwrap();
+            if d(&PAL[best]) < 400 { best as u8 } else { 255 }
+        })
+        .collect();
+    let (mut both, mut agree, mut differ, mut inner, mut unknown) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut out = vec![0u8; w * h * 3];
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if cpu[i] == 255 {
+                continue;
+            }
+            if gpu[i] == 255 {
+                unknown += 1;
+                continue;
+            }
+            both += 1;
+            let col = if gpu[i] == cpu[i] {
+                agree += 1;
+                [150, 150, 150]
+            } else {
+                differ += 1;
+                // next to a class edge of the CPU's map?
+                let edge = (-1..=1isize).any(|dy| (-1..=1isize).any(|dx| {
+                    let (xx, yy) = ((x as isize + dx).rem_euclid(w as isize) as usize, (y as isize + dy).rem_euclid(h as isize) as usize);
+                    cpu[yy * w + xx] != cpu[i]
+                }));
+                if edge {
+                    [255, 40, 40]
+                } else {
+                    inner += 1;
+                    [255, 255, 0]
+                }
+            };
+            out[i * 3..i * 3 + 3].copy_from_slice(&col);
+        }
+    }
+    let diff = shot.with_extension("diff.png");
+    crate::plan::write_picture(&diff.to_string_lossy(), w, h, &out)?;
+    let line = format!(
+        "{}: {both} land pixels compared, {agree} agree ({:.3}%), {differ} differ, of which {inner} away from a class edge; {unknown} land pixels without a class colour (interface, smoothing)",
+        shot.display(),
+        100.0 * agree as f64 / both.max(1) as f64
+    );
+    Ok((line, inner * 1000 <= both))
 }
 
 /// Compare two pictures pixel by pixel. Where they differ at all, a picture of

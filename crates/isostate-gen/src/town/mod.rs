@@ -6,7 +6,7 @@ mod lighthouse;
 mod market;
 mod station;
 
-pub use church::church;
+pub use church::{church, Church};
 pub use lighthouse::lighthouse;
 pub use market::{market_cross, market_hall};
 pub use station::station;

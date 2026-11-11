@@ -19,6 +19,7 @@ pub struct Icons {
     pub holdings: Handle<Image>,
     pub markets: Handle<Image>,
     pub news: Handle<Image>,
+    pub map: Handle<Image>,
 }
 
 const N: usize = 64;
@@ -196,6 +197,16 @@ fn news() -> Image {
     c.image()
 }
 
+fn map() -> Image {
+    let mut c = Canvas::new();
+    // a folded map: three leaves, the middle one tipped the other way, and a place marked on it
+    c.fill(&poly(vec![(0.10, 0.24), (0.36, 0.16), (0.36, 0.78), (0.10, 0.86)]), WHITE);
+    c.fill(&poly(vec![(0.385, 0.16), (0.615, 0.24), (0.615, 0.86), (0.385, 0.78)]), [1.0, 1.0, 1.0, 0.6]);
+    c.fill(&poly(vec![(0.64, 0.24), (0.90, 0.16), (0.90, 0.78), (0.64, 0.86)]), WHITE);
+    c.fill(&circle(0.5, 0.5, 0.07), WHITE);
+    c.image()
+}
+
 pub fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let mut add = |img: Image| images.add(img);
     let icons = Icons {
@@ -207,6 +218,7 @@ pub fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         holdings: add(holdings()),
         markets: add(markets()),
         news: add(news()),
+        map: add(map()),
     };
     commands.insert_resource(icons);
 }

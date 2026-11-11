@@ -498,7 +498,7 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
     // forty years of seed 7, in which most of its towns are founded
     let mut s = sim::start(&game(6, 1790), game_content());
     let T = s.st.T_max;
-    let (mut foundings, mut spared) = (0, 0);
+    let (mut foundings, mut spared, mut carried) = (0, 0, 0);
     let mut before = vec![1750; T];
     while s.year <= s.end_year {
         let year = s.year;
@@ -511,6 +511,14 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
         for c in 0..st.N {
             if st.catch[c] >= 0 && new[st.catch[c] as usize] && st.prev_catch[c] >= 0 {
                 cut[st.prev_catch[c] as usize] = true;
+            }
+        }
+        // and, under the game's rules for people, the towns a tenth of whose people
+        // came or went with their cells this year, founding or no founding
+        for t in 0..T {
+            if st.town_active[t] && st.pp_moved[t] >= chronicle::REDRAWN_SHARE && !cut[t] {
+                cut[t] = true;
+                carried += 1;
             }
         }
         for t in 0..T {
@@ -542,6 +550,7 @@ fn a_founding_redraws_only_the_districts_it_was_cut_from() {
         }
     }
     assert!(foundings >= 5 && spared > foundings, "{foundings} foundings, and towns they did not touch ({spared})");
+    assert!(carried > 0, "and a district that changed market with no founding redrew a town");
 }
 
 #[test]
@@ -598,6 +607,12 @@ fn towns_and_districts_have_stories() {
     // With carting and the game's railways merged (docs/rules/carting.md) the
     // digest is of the 1770s, three towns again, where two inventions, coke
     // iron's crossing and the family's new trade outweigh it.
+    // With kept town ground merged (docs/rules/towns.md) it is of the 1750s
+    // again, three towns: coal's crossing, an iron glut and a coal boom round
+    // Granness outweigh it, and the decade's fourth place is the player's, which
+    // `chronicle::rank` keeps for the family's heaviest item whatever else
+    // happened (here the Fairfaxes setting up in building materials, the lighter
+    // of the two). So the player's place is left out of "all heavier" below.
     let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
     assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
     let mut decades = std::collections::BTreeSet::new();
@@ -606,7 +621,12 @@ fn towns_and_districts_have_stories() {
         let years = format!("({}", 175 + decade(digest));
         assert!(digest.text.contains(&years) && digest.why.is_some(), "{}: {}", digest.title, digest.text);
         let kept: Vec<&Event> = r.events.iter().filter(|e| e.kept == Some(true) && decade(e) == decade(digest)).collect();
-        let outweighed = kept.len() == r.params.chronicle.per_decade && kept.iter().all(|e| e.weight > digest.weight);
-        assert!(digest.kept == Some(true) || outweighed, "{} is kept, or the decade's {} are all heavier", digest.title, kept.len());
+        // the player's place: the heaviest of the family's own items that were kept, the earlier of equals
+        let own = kept.iter().enumerate().filter(|(_, e)| class(e) == "own").fold(None, |best: Option<usize>, (k, e)| match best {
+            Some(b) if kept[b].weight >= e.weight => Some(b),
+            _ => Some(k),
+        });
+        let outweighed = kept.len() == r.params.chronicle.per_decade && kept.iter().enumerate().all(|(k, e)| Some(k) == own || e.weight > digest.weight);
+        assert!(digest.kept == Some(true) || outweighed, "{} is kept, or the decade's {} are all heavier, the player's place aside", digest.title, kept.len());
     }
 }
