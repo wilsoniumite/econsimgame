@@ -12,6 +12,7 @@
 mod boats;
 mod carts;
 mod chart;
+mod course;
 mod cursor;
 mod family;
 mod fences;
@@ -25,6 +26,7 @@ mod meshkit;
 mod network;
 mod overlay;
 mod plan;
+mod profile;
 mod rails;
 mod replay;
 mod rivers;

@@ -265,6 +265,7 @@ pub struct Rail {
     pub cutting_back: Colour,
     pub tunnel_mouth: Colour,
     pub girder: Colour,
+    pub rope: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]

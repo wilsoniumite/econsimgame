@@ -379,6 +379,8 @@ cutting_back = "#86a056"
 tunnel_mouth = "#2a2522"
 # a plate girder bridge over a river
 girder = "#4c4f55"
+# the hemp rope of an inclined plane, between its rails
+rope = "#c9b48a"
 
 [bridges]
 # the stone bridges that carry roads over rivers: a main road's in pale
