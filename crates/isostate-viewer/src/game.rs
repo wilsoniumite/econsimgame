@@ -53,6 +53,22 @@ pub struct Game {
     card_drawn: Option<(Option<u64>, u64)>,
 }
 
+impl Game {
+    /// For the scripted runs: which cards are up and how the last order went.
+    pub fn summary(&self) -> String {
+        let card = match (self.welcoming, self.open) {
+            (true, _) => "the welcome card is up".to_string(),
+            (false, Some(id)) => format!("decision {id} is open"),
+            (false, None) => "no card is open".to_string(),
+        };
+        let note = match &self.note {
+            Some((ok, text)) => format!("; the last order {}: {text}", if *ok { "went through" } else { "was refused" }),
+            None => String::new(),
+        };
+        format!("{card}{}{}{note}", if self.ended { ", the end card has been shown" } else { "" }, if self.busy { ", an order is out" } else { "" })
+    }
+}
+
 /// The card shown when the century is over.
 #[derive(Component)]
 struct EndCard;
@@ -80,9 +96,9 @@ pub struct ActionButton(pub Action);
 
 /// One option of a decision.
 #[derive(Component, Clone, Copy)]
-struct DecideButton {
-    id: u64,
-    option: usize,
+pub struct DecideButton {
+    pub id: u64,
+    pub option: usize,
 }
 
 /// Close the decision card and decide later.
