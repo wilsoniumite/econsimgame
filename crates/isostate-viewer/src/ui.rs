@@ -780,6 +780,7 @@ fn panel_rebuild(
     data: Res<Data>,
     font: Res<UiFont>,
     fam: Option<Res<FamilyView>>,
+    live: Option<Res<crate::live::Live>>,
     mut body: Query<(Entity, Option<&Children>, &mut ScrollPosition), With<PanelBody>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut last_list: Local<Option<(Tab, NewsShow)>>,
@@ -808,11 +809,13 @@ fn panel_rebuild(
     let f = font.0.clone();
     let r = &data.r;
     let fam = fam.as_deref();
+    // the family is known as it stands today: its panels say so when the clock has been taken back
+    let past = live.is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
     commands.entity(be).with_children(|p| match tab {
         Tab::News => news_panel(p, &f, r, k, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
         Tab::Markets => markets_panel(p, &f, r, k),
-        Tab::Family => family::family_panel(p, &f, fam, r, k, ui.expanded, ui.rival),
-        Tab::Holdings => family::holdings_panel(p, &f, fam, r, k),
+        Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival),
+        Tab::Holdings => family::holdings_panel(p, &f, fam, r, k, past),
     });
 }
 

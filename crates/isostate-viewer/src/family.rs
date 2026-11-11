@@ -255,6 +255,19 @@ fn heading(p: &mut ChildSpawnerCommands, f: &Handle<Font>, s: &str) {
     p.spawn((text(f, s, 17.0, INK), Node { margin: UiRect::top(Val::Px(12.0)), ..default() }));
 }
 
+/// What the family panels say when the clock has been taken back.
+fn past_words(now: i32, then: i32) -> String {
+    format!("This is the family as it stands in {now}. How it stood in {then} is not kept.")
+}
+
+/// The family is known as it stands in the newest year only, so with the
+/// clock taken back to an earlier year its panels say which year they show.
+fn past_note(p: &mut ChildSpawnerCommands, f: &Handle<Font>, v: &FamilyView, r: &Replay, k: usize) {
+    p.spawn((Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)), margin: UiRect::bottom(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() }, BackgroundColor(PAPER_2))).with_children(|n| {
+        n.spawn(text(f, &past_words(v.year, r.y0 + k as i32), 12.5, MUTED));
+    });
+}
+
 fn no_family(p: &mut ChildSpawnerCommands, f: &Handle<Font>, what: &str) {
     p.spawn((
         Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(12.0)), margin: UiRect::top(Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(12.0)), ..default() },
@@ -328,11 +341,15 @@ fn sparkline(p: &mut ChildSpawnerCommands, f: &Handle<Font>, history: &[f32], co
 
 // ------------------------------------------------------------------ the family tab
 
-pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize, expanded: Option<usize>, rival: Option<usize>) {
+#[allow(clippy::too_many_arguments)]
+pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize, past: bool, expanded: Option<usize>, rival: Option<usize>) {
     let Some(v) = fam else { return no_family(p, f, "family") };
     let Some(me) = v.player() else { return no_family(p, f, "family") };
     let rep = &me.rep;
     let accent = me.colour;
+    if past {
+        past_note(p, f, v, r, k);
+    }
     let mut rank: Vec<usize> = (0..v.families.len()).collect();
     rank.sort_by(|&a, &b| v.families[b].net_worth.total_cmp(&v.families[a].net_worth));
     let my_rank = rank.iter().position(|&i| Some(i) == v.player).unwrap_or(0) + 1;
@@ -644,11 +661,14 @@ pub fn join_words(items: &[String]) -> String {
 
 // ------------------------------------------------------------------ the holdings tab
 
-pub fn holdings_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize) {
+pub fn holdings_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize, past: bool) {
     let Some(v) = fam else { return no_family(p, f, "property") };
     let Some(me) = v.player() else { return no_family(p, f, "property") };
     let rep = &me.rep;
     let accent = me.colour;
+    if past {
+        past_note(p, f, v, r, k);
+    }
     p.spawn(text(f, &format!("{} works and {} squares of land, bringing in {} last year.", me.works, me.land, money(me.income)), 14.0, MUTED));
 
     heading(p, f, "Branches");
