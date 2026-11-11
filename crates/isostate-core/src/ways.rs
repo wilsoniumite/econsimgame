@@ -566,7 +566,9 @@ impl Net {
 /// made: so much a cell, and for a way with locks so much for every unit of
 /// height between a new cell and its neighbour on the line.
 fn materials(way: &Way, world: &World, path: &[usize], new_cells: &[usize]) -> Vec<f64> {
-    let mut need: Vec<f64> = way.materials.iter().map(|&m| m * new_cells.len() as f64).collect();
+    // (a junction cut between two canals that lie side by side is a cell's work)
+    let cells = if way.wharf.is_some() { new_cells.len().max(1) } else { new_cells.len() };
+    let mut need: Vec<f64> = way.materials.iter().map(|&m| m * cells as f64).collect();
     if !way.rise.is_empty() {
         let climb: f64 = path.windows(2).filter(|p| new_cells.contains(&p[0]) || new_cells.contains(&p[1])).map(|p| (world.h[p[0]] - world.h[p[1]]).abs()).sum();
         for (n, &r) in need.iter_mut().zip(&way.rise) {
@@ -864,6 +866,9 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         let (na, nb) = (st.town_node[a_], st.town_node[b_]);
         let paths = tr::dijkstra(&net.route, &[(na, 0.0)], Some(nb));
         if !paths.dist[nb].is_finite() || paths.dist[nb] > 1e5 {
+            // no way over land (or, for a canal, none that keeps off the mountains):
+            // the ground does not change, so there is no hurry to look again
+            book.pair_cooldown.insert((a_, b_), year + 10);
             continue;
         }
         let path = tr::path_cells(&paths.pred, na, nb);
@@ -871,7 +876,10 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         }
         let new_cells: Vec<usize> = path.iter().copied().filter(|&c| !net.laid[c]).collect();
-        if new_cells.is_empty() {
+        // (a way that floats is not joined where two of its lines merely lie in
+        // neighbouring cells: there a junction is still to be cut, with no new cell)
+        let joined = way.wharf.is_none() || path.windows(2).all(|p| net.g.boat.get(p[0]).is_some_and(|links| links.iter().any(|l| l.0 as usize == p[1])));
+        if new_cells.is_empty() && joined {
             book.links.insert((a_, b_));
             continue;
         }

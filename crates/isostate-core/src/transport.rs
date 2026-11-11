@@ -214,7 +214,7 @@ pub fn dijkstra(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> P
 pub fn distances(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
     // canals (docs/rules/canals.md): with a canal open the search has two layers
     if g.has_boats() {
-        return dijkstra_boats(g, sources, None).dist;
+        return distances_boats(g, sources);
     }
     if g.min_w > 0.0 && g.max_w / g.min_w < 65_536.0 {
         dijkstra_buckets(g, sources, None).dist
@@ -459,6 +459,113 @@ fn dijkstra_boats(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) ->
         }
     }
     Paths { dist, pred, order }
+}
+
+/// canals: `distances` when some cells have a canal. The two layers of
+/// `dijkstra_boats` on the bucket queue of `dijkstra_buckets`, which is sound
+/// here for the same reason: the bucket is a hair narrower than the cheapest
+/// step of any kind (an edge of the ground, a link of water, the wharf), so
+/// nothing in a bucket can shorten anything else in it. The distances are those
+/// `dijkstra_boats` gives.
+fn distances_boats(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
+    let N = g.N;
+    let (mut lo, mut hi) = (g.min_w.min(g.wharf), g.max_w.max(g.wharf));
+    for links in &g.boat {
+        for &(_, w) in links {
+            lo = lo.min(w);
+            hi = hi.max(w);
+        }
+    }
+    if !(lo > 0.0 && hi / lo < 65_536.0) {
+        return dijkstra_boats(g, sources, None).dist;
+    }
+    let mut dist = vec![f64::INFINITY; N];
+    let mut afloat = vec![f64::INFINITY; N];
+    // node c is the ground of cell c, node N + c its water
+    let mut done = vec![false; 2 * N];
+    let per_width = 1.0 / (lo * (1.0 - 1e-9));
+    let bucket = |d: f64| (d * per_width) as usize;
+    let ring = ((hi * per_width) as usize + 2).next_power_of_two();
+    let mask = ring - 1;
+    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); ring];
+    let mut srcs: Vec<(usize, f64)> = sources.to_vec();
+    srcs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+    let mut next_src = 0;
+    let mut queued = 0usize;
+    let mut cur = match srcs.first() {
+        Some(&(_, d0)) => bucket(d0),
+        None => return dist,
+    };
+    loop {
+        while next_src < srcs.len() && bucket(srcs[next_src].1) <= cur {
+            let (s, d0) = srcs[next_src];
+            next_src += 1;
+            if d0 < dist[s] {
+                dist[s] = d0;
+                buckets[cur & mask].push(s as u32);
+                queued += 1;
+            }
+        }
+        if queued == 0 {
+            match srcs.get(next_src) {
+                Some(&(_, d0)) => {
+                    cur = bucket(d0);
+                    continue;
+                }
+                None => break,
+            }
+        }
+        let mut items = std::mem::take(&mut buckets[cur & mask]);
+        queued -= items.len();
+        for &node in &items {
+            let node = node as usize;
+            if done[node] {
+                continue;
+            }
+            done[node] = true;
+            if node < N {
+                let u = node;
+                let du = dist[u];
+                let wu = &g.w[u * 8..u * 8 + 8];
+                for_each_edge(g, u, |k, v| {
+                    if done[v] {
+                        return;
+                    }
+                    let nd = du + wu[k];
+                    if nd < dist[v] {
+                        dist[v] = nd;
+                        buckets[bucket(nd) & mask].push(v as u32);
+                        queued += 1;
+                    }
+                });
+                if !g.boat[u].is_empty() && !done[N + u] && du + g.wharf < afloat[u] {
+                    afloat[u] = du + g.wharf;
+                    buckets[bucket(afloat[u]) & mask].push((N + u) as u32);
+                    queued += 1;
+                }
+            } else {
+                let u = node - N;
+                let d = afloat[u];
+                for &(v, w) in &g.boat[u] {
+                    let v = v as usize;
+                    if !done[N + v] && d + w < afloat[v] {
+                        afloat[v] = d + w;
+                        buckets[bucket(d + w) & mask].push((N + v) as u32);
+                        queued += 1;
+                    }
+                }
+                if !done[u] && d + g.wharf < dist[u] {
+                    dist[u] = d + g.wharf;
+                    buckets[bucket(dist[u]) & mask].push(u as u32);
+                    queued += 1;
+                }
+            }
+        }
+        items.clear();
+        buckets[cur & mask] = items;
+        cur += 1;
+    }
+    dist
 }
 
 /// Distances, predecessor trees and settle orders from every active town.

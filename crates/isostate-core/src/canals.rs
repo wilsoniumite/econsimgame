@@ -522,6 +522,10 @@ impl<'a> Water<'a> {
     /// ground between them costs.
     fn afloat(&self, i: usize, p: usize, n: usize) -> bool {
         let g = &self.st.graph;
+        // a boat is boarded and left only where there is a canal
+        if g.boat[p].is_empty() || g.boat[n].is_empty() {
+            return false;
+        }
         for k in 0..8 {
             if tr::neighbour(g.H, g.W, p, k) == Some(n) {
                 return self.st.dist[(i, n)] != self.st.dist[(i, p)] + g.w[p * 8 + k];
