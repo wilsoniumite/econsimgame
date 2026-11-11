@@ -2923,12 +2923,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "isostate-gen"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "isostate-viewer"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "bytemuck",
  "isostate-core",
+ "isostate-gen",
  "rayon",
  "serde",
  "serde_json",
