@@ -70,6 +70,10 @@ pub struct HarvestParams {
     /// below the country's, and as far below an average year.
     pub news_local_z: f64,
     /// Grain is in dearth when its yearly price stands this far above its trend.
+    /// 0.15 is one and a half times what the price of grain moves in a year
+    /// with the game's other rules beside it (0.10: households that lean off
+    /// bread as they grow richer make it jumpier than the 0.08 this was first
+    /// set against, at 0.12; docs/rules/harvest.md, "In company").
     pub dearth_rise: f64,
 }
 
@@ -87,7 +91,7 @@ impl Default for HarvestParams {
             foreseen: 0.5,
             news_z: 1.8,
             news_local_z: 2.3,
-            dearth_rise: 0.12,
+            dearth_rise: 0.15,
         }
     }
 }
