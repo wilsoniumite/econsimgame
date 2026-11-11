@@ -1301,7 +1301,8 @@ fn take_shot(
     // point the camera, the clock, the calendar and the side panel at this view
     let r = &data.r;
     if let Some(y) = v.year {
-        tl.t = (y - r.y0).clamp(0, r.ny as i32 - 1) as f32;
+        // a game has only the years played so far: a later one would draw an empty island
+        tl.t = (y - r.y0).clamp(0, data.latest() as i32) as f32;
     }
     if let Some(tab) = v.tab {
         if ui.tab != tab {
