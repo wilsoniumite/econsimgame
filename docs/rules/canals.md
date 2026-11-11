@@ -60,7 +60,11 @@ materials delivered a canal pays two in wages (a railway pays three tenths),
 and the navvies are hands: last month's wage bill of each canal, at the wage
 of the town that supplies it, is that many people who are not there to be
 hired by farms and works this month, up to a fifth of the town's hands. They
-are counted as employed. In the busiest year of a run that is 800 to 2,800
+are counted as employed. They are taken on and let go by degrees, a quarter
+of the way each month (`navvy_adjust`), as the carters are: a canal's orders
+are filled in lumps, its wage bill halves or doubles from one month to the
+next in one town-month in twenty, and when the hands followed the bill at
+once a town's wage rose and fell by half with it (see the review, below). In the busiest year of a run that is 800 to 2,800
 people on an island of 200,000. Railway navvies are still paid and cost
 nobody's time, as in the port: that is the railways' to change.
 
@@ -161,6 +165,7 @@ these.
 | `wages` | 2 | wages on every shilling of materials |
 | `navvies` | true | the navvies are hands taken from the supplying town |
 | `navvy_max_share` | 0.2 | of a town's hands, at most |
+| `navvy_adjust` | 0.25 | of the way each month to the navvies the wage bill pays for |
 | `build_months` | 36 | if every order is filled |
 | `hurdle` | 0.1 | the yearly return a canal must promise |
 | `induced` | 1 | on today's traffic and no more |
@@ -482,11 +487,24 @@ A second helper went over the mechanism before it was merged.
   else go wrong. The cap of a fifth of a town's hands as navvies never bound
   on these two seeds, and nor did twelve canals at once (on seeds 2, 4 and 5
   twelve are digging in the busiest year).
-- **Three things were changed.** A junction is told and counted as a
-  junction: before, the news promoted "62 km of canal" for a cut of one
-  cell, and one canal in seven in the facts was such a cut. The railway's
-  promoters see canals being dug. And the page no longer says that canals
-  leave the island behind in 1850, which seeds 9 to 16 do not bear out.
+- **Beside the trunk.** The branch was merged with `rust-3d` (kept town
+  ground, carters taken on by degrees, the anchors that go with a district)
+  before it was handed on: three conflicts, all of them blocks appended at
+  the same place. One of the trunk's tests then failed with canals on, and
+  that is the fourth change below.
+- **Four things were changed.** The navvies are taken on by degrees. As
+  first built they left a town's labour market all at once on last month's
+  wage bill, up to a sixth of its hands, and came back the month after if
+  the stone had not arrived. Under the game's rules on seed 4 a town's wage
+  moved by half or more in 35 of the 663 town-months with navvies in the
+  town, and in one of the 4,500 without; `tests/people.rs` holds the game to
+  one town-month in two hundred and failed at seven in a thousand. With a
+  quarter of the way a month it is none in 937, and none on seeds 7 and 12.
+  A junction is told and counted as a junction: before, the news promoted
+  "62 km of canal" for a cut of one cell, and one canal in seven in the
+  facts was such a cut. The railway's promoters see canals being dug. And
+  the page no longer says that canals leave the island behind in 1850,
+  which seeds 9 to 16 do not bear out.
 
 ## Facts added to the sweep
 

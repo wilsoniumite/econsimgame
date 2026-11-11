@@ -236,6 +236,59 @@ fn a_short_hop_stays_on_the_road_and_a_long_one_takes_the_boat() {
     assert_eq!(tr::distances(&bare, &[(0, 0.0)]), vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
 }
 
+/// Navvies are taken on and let go by degrees. A canal's orders are filled in
+/// lumps, and hands that left a town's labour market all at once on last month's
+/// wage bill, and came back the month after, made its wage rise and fall by half
+/// (tests/people.rs holds the game's wages to that with canals on, on seed 4).
+#[test]
+fn navvies_are_taken_on_and_let_go_by_degrees() {
+    let mut P = params(true);
+    P.end_year = Some(1800);
+    let k = P.canals.navvy_adjust;
+    assert!(k > 0.0 && k < 1.0);
+    let mut sim = sim::start(&P, default_content());
+    sim.check_money = true;
+    let T = sim.st.T_max;
+    let mut was = vec![0.0; T];
+    let (mut most, mut months, mut lumps) = (0.0f64, 0usize, 0usize);
+    let mut last_pay = vec![0.0; T];
+    while sim.year <= sim.end_year {
+        let year = sim.year;
+        for month in 0..12 {
+            sim::run_month(&mut sim, month).unwrap_or_else(|e| panic!("{year}: {e}"));
+            let st = &sim.st;
+            // the wage bills that the next month's navvies answer to: lumpy
+            let mut pay = vec![0.0; T];
+            for pr in st.projects.iter().filter(|pr| pr.way == ways::CANAL) {
+                pay[pr.town] += pr.navvy_pay;
+            }
+            for t in 0..T {
+                let now = st.cn.navvies.get(t).copied().unwrap_or(0.0);
+                // never more than a quarter of a gang goes in a month (a gang of under
+                // a man aside, and a town at its cap of a fifth of its hands)
+                let capped = was[t] > 0.9 * P.canals.navvy_max_share * P.participation * st.pop[t];
+                assert!(now >= (1.0 - k) * was[t] - 1.0 || capped, "{year}-{:02} {}: {} navvies after {}", month + 1, st.town_name[t], now, was[t]);
+                most = most.max(now);
+                if last_pay[t] > 0.0 || pay[t] > 0.0 {
+                    months += 1;
+                    lumps += (pay[t] < 0.5 * last_pay[t] || last_pay[t] < 0.5 * pay[t]) as usize;
+                }
+                was[t] = now;
+            }
+            last_pay = pay;
+        }
+        let Sim { st, content: C, params: P, rngs, events, rec, .. } = &mut sim;
+        sim::yearly(st, C, P, rngs, year, events, false);
+        observer::yearly(st, C, P, year, events);
+        record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
+        sim.year += 1;
+    }
+    assert!(most > 100.0, "the largest gang in a town was {most:.0}");
+    // and the bills they follow do come in lumps: this is what the degrees are for
+    // (one town-month in twenty on this island)
+    assert!(months > 100 && lumps * 50 > months, "{lumps} of {months} town-months saw the canals' wage bill halve or double");
+}
+
 /// The game as it is played: every mechanism on and six families, to 1800.
 #[test]
 fn in_company_with_six_families_canals_are_dug_and_money_is_conserved() {

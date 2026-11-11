@@ -78,6 +78,11 @@ pub struct CanalParams {
     pub navvies: bool,
     /// At most this share of a town's hands can be digging.
     pub navvy_max_share: f64,
+    /// Each month a town's navvies move this much of the way to the number
+    /// last month's wage bill pays for (1 would be all at once; the carters'
+    /// `adjust` is a quarter too, and farms and works take on hands at 0.15
+    /// and 0.35 of the way a month).
+    pub navvy_adjust: f64,
     /// Months a canal takes if the market fills every order.
     pub build_months: f64,
     /// The yearly return on cost a canal must promise, on the carting it saves...
@@ -126,6 +131,7 @@ impl Default for CanalParams {
             wages: 2.0,
             navvies: true,
             navvy_max_share: 0.2,
+            navvy_adjust: 0.25,
             build_months: 36.0,
             hurdle: 0.1,
             induced: 1.0,
@@ -449,23 +455,38 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
 /// The start of a month's labour market: the navvies who dug last month, at last
 /// month's wage, are not for hire (as `carting::take_carters`). They are counted
 /// in the town whose market supplies the works, which is where they are paid.
+///
+/// They are taken on and let go by degrees, as the carters are
+/// (`carting.adjust`): a canal's orders are filled in lumps, so its wage bill
+/// is large one month and small the next, and a town that lost a sixth of its
+/// hands in a month and had them back the month after saw its wage rise and
+/// fall by half. The navvies move `navvy_adjust` of the way to what the bill
+/// pays for; over the life of a canal that comes to the same hands.
 pub fn take_navvies(st: &mut State, P: &Params, supply: &mut [f64]) {
     if !P.canals.enabled || !P.canals.navvies {
         return;
     }
-    if !st.projects.iter().any(|pr| pr.way == ways::CANAL) {
+    if !st.projects.iter().any(|pr| pr.way == ways::CANAL) && st.cn.navvies.iter().all(|&n| n <= 0.0) {
         st.cn.navvies.clear();
         return;
     }
     let T = supply.len();
-    let mut hands = vec![0.0; T];
+    let mut want = vec![0.0; T];
     for pr in st.projects.iter().filter(|pr| pr.way == ways::CANAL) {
         if st.wage[pr.town] > 0.0 {
-            hands[pr.town] += pr.navvy_pay / st.wage[pr.town];
+            want[pr.town] += pr.navvy_pay / st.wage[pr.town];
         }
     }
+    let k = P.canals.navvy_adjust.clamp(0.0, 1.0);
+    let was = if st.cn.navvies.len() == T { std::mem::take(&mut st.cn.navvies) } else { vec![0.0; T] };
+    let mut hands = vec![0.0; T];
     for t in 0..T {
-        hands[t] = hands[t].min(P.canals.navvy_max_share * supply[t]).max(0.0);
+        let most = (P.canals.navvy_max_share * supply[t]).max(0.0);
+        hands[t] = (was[t] + k * (want[t].min(most) - was[t])).clamp(0.0, most);
+        // (the last hundredth of a man goes at once, so that a town's gang ends)
+        if hands[t] < 0.01 {
+            hands[t] = 0.0;
+        }
         supply[t] -= hands[t];
     }
     st.cn.navvy_acc += hands.iter().sum::<f64>();
