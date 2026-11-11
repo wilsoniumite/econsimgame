@@ -328,7 +328,9 @@ pub fn faults(m: &Measure, detail: Detail) -> Vec<String> {
     out
 }
 
-/// A measure in a line or two, for a label on the lab's `scale` sheet.
+/// A measure in a line, for a label on the lab's `scale` sheet: the smallest feature in
+/// thousandths of a map unit, the triangles to a bay of a storey of wall and to a bay
+/// by a bay of roof, and the longest bare wall in bays.
 pub fn words(m: &Measure) -> String {
-    format!("{} tris, finest {:.1} mm\nwall {:.1}, roof {:.1}, bare {:.1}", m.triangles, m.smallest * 1000.0, m.wall, m.roof, m.blank)
+    format!("finest {:.2}, wall {:.1}, roof {:.1}, bare {:.1}", m.smallest * 1000.0, m.wall, m.roof, m.blank)
 }

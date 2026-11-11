@@ -147,6 +147,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "heath", about: "Two patches of heath, fifteen slots each: gorse and broom at about one slot in six (and a tree at one in thirty: none here).", land: Land::Heath, build: heath },
     Sheet { name: "fences", about: "A family's fence round a field, in four colours a family might have (the banners themselves are the interface's): timber rails stained toward the colour, and post caps painted in it.", land: Land::Pasture, build: fences },
     Sheet { name: "bridges", about: "A road bridge: a lane's and a main road's down the rows; wider rivers across (water drawn flat and matt here).", land: Land::Pasture, build: bridges },
+    Sheet { name: "scale", about: "One of every generator in the registry at each level of detail: far, play and near across. Under each: its triangles; its finest feature in thousandths of a unit; triangles to a bay of a storey of wall and to a bay by a bay of roof; its longest bare wall in bays.", land: Land::Pasture, build: scale },
 ];
 
 /// The sheet of this name, if there is one.
@@ -631,11 +632,37 @@ fn fences(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
         .collect()]
 }
 
+/// One of every generator at each level, with what it measures against the scale.
+fn scale(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
+    use crate::registry::{Class, REGISTRY};
+    REGISTRY
+        .iter()
+        .map(|e| {
+            Detail::ALL
+                .iter()
+                .map(|&d| {
+                    let s = (e.build)(d, pal).swap_remove(0);
+                    // what is built of it, or for a plant what is grown
+                    let mut b = s.model.solid.clone();
+                    if e.class == Class::Plant {
+                        for g in [&s.model.green.evergreen, &s.model.green.leaves, &s.model.green.bare] {
+                            b.merge(g);
+                        }
+                    }
+                    let m = crate::scale::measure(&b, &s.tally, pal);
+                    Cell { label: format!("{}, {}: {} triangles
+{}", e.name, d.label(), m.triangles, crate::scale::words(&m)), model: s.model }
+                })
+                .collect()
+        })
+        .collect()
+}
+
 fn bridges(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let halves = [0.012, 0.025, 0.04, 0.06, 0.1];
     grid(2, 5, |row, col| {
         let (main, half) = (row == 1, halves[col]);
-        let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main };
+        let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main, detail };
         let label = format!("{}\nriver {} wide", if main { "main road" } else { "lane" }, half * 2.0);
         Cell::new(label, |m, _| {
             // the river under it and the road up to it, flat on the lab's level ground

@@ -779,7 +779,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         for (at, river, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
             // a road that crosses aslant has further to go from bank to bank (up to three times as far)
             let half = half / along.perp_dot(river).abs().max(0.34);
-            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3 }, &height, lk);
+            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3, detail: lod.at(at.x, at.y) }, &height, lk);
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }

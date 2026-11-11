@@ -10,9 +10,12 @@
 //! lab's `scale` sheet stands the first specimen of every entry side by side
 //! at each level with its numbers under it.
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
+use crate::bridge::{road_bridge, RoadBridge};
 use crate::farm::{farmstead, Farmstead};
+use crate::fence::fence;
+use crate::trees::{bush, hedge_tree, tree, Species, Tree};
 use crate::hash::Seed;
 use crate::houses::roof::Roof;
 use crate::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
@@ -207,6 +210,52 @@ fn lighthouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     vec![specimen("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, detail, pal))]
 }
 
+fn bridges(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for main in [true, false] {
+        for half in [0.025, 0.012, 0.06, 0.1] {
+            let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main, detail };
+            out.push(specimen(format!("{} bridge over {} of river", if main { "a main road's" } else { "a lane's" }, half * 2.0), |m, _| road_bridge(&mut m.solid, &b, &|_, _| 0.0, pal)));
+        }
+    }
+    out
+}
+
+/// A family's fence round a field. (It is a mark of the game and the same at every level.)
+fn fences(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("a fence round a field", |m, site| {
+        let (w, d) = (0.27, 0.18);
+        let mut line = Vec::new();
+        for (from, to, posts) in [((-w, -d), (w, -d), 6), ((w, -d), (w, d), 4), ((w, d), (-w, d), 6), ((-w, d), (-w, -d), 4)] {
+            for i in 0..posts {
+                let t = i as f32 / posts as f32;
+                line.push(site.at(0.5 * (from.0 + (to.0 - from.0) * t), 0.5 * (from.1 + (to.1 - from.1) * t)));
+            }
+        }
+        line.push(line[0]);
+        fence(&mut m.solid, &line, *pal.walls.lighthouse_red, pal);
+    })]
+}
+
+/// Trees and bushes. (The viewer leaves the island's trees as they are when the camera alone moves, so they have no levels.)
+fn trees(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (species, name) in [(Species::Broadleaf, "broadleaf"), (Species::Conifer, "conifer")] {
+        for (i, size) in [0.9, 0.6, 1.25].into_iter().enumerate() {
+            out.push(specimen(format!("{name}, size {size}"), |m, site| tree(&mut m.green, site, &Tree { species, size, tint: i as f32 / 3.0, turn: i as f32 }, pal)));
+        }
+    }
+    out
+}
+
+fn hedge_trees(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    [0.7, 0.55, 0.85].into_iter().map(|size| specimen(format!("hedgerow tree, size {size}"), |m, site| hedge_tree(&mut m.green, site, size, 0.3, 1.0, pal))).collect()
+}
+
+fn bushes(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    [(0.2, "gorse"), (0.8, "broom")].into_iter().map(|(v, name)| specimen(name, |m, site| bush(&mut m.green, site, v, 1.0, pal))).collect()
+}
+
 fn pits(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     let mut out = Vec::new();
     for (kind, name) in [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")] {
@@ -248,6 +297,11 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "market cross", class: Class::Structure, covers: &["town/market::market_cross"], build: market_crosses, levels: true },
     Entry { name: "lighthouse", class: Class::Structure, covers: &["town/lighthouse::lighthouse"], build: lighthouses, levels: true },
     Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
+    Entry { name: "road bridge", class: Class::Structure, covers: &["bridge::road_bridge"], build: bridges, levels: true },
+    Entry { name: "fence", class: Class::Structure, covers: &["fence::fence"], build: fences, levels: false },
+    Entry { name: "tree", class: Class::Plant, covers: &["trees::tree"], build: trees, levels: false },
+    Entry { name: "hedgerow tree", class: Class::Plant, covers: &["trees::hedge_tree"], build: hedge_trees, levels: false },
+    Entry { name: "bush", class: Class::Plant, covers: &["trees::bush"], build: bushes, levels: false },
 ];
 
 /// The houses: the entries the scale was read off, which the others are held to.
@@ -257,6 +311,18 @@ pub const REFERENCE: [&str; 5] = ["cottage", "townhouse", "terrace", "villa", "f
 mod tests {
     use super::*;
     use crate::scale::{self, measure};
+
+    /// What of a specimen is measured: what is built of it, or for a plant what is grown.
+    fn built(m: &Model, class: Class) -> crate::mesh::MeshBuf {
+        if class != Class::Plant {
+            return m.solid.clone();
+        }
+        let mut all = crate::mesh::MeshBuf::default();
+        for b in [&m.green.evergreen, &m.green.leaves, &m.green.bare] {
+            all.merge(b);
+        }
+        all
+    }
 
     #[test]
     fn every_generator_keeps_to_the_scale_at_every_level() {
@@ -270,7 +336,7 @@ mod tests {
                 let mut walled = false;
                 for s in &specimens {
                     assert!(s.model.is_sound() && !s.model.is_empty(), "{}: {} at the {} level", e.name, s.label, detail.label());
-                    let m = measure(&s.model.solid, &s.tally, &pal);
+                    let m = measure(&built(&s.model, e.class), &s.tally, &pal);
                     let faults = match e.class {
                         Class::Building => {
                             walled |= m.wall_area > 0.0;
@@ -288,7 +354,7 @@ mod tests {
                 // specimens there are walls, and the kit built them
                 assert!(walled || e.class != Class::Building, "{} is a building and the kit built none of its walls at the {} level: build walls with kit::Kit", e.name, detail.label());
                 // each level draws no less than the one before it, and the same things
-                let now: Vec<usize> = specimens.iter().map(|s| s.model.solid.triangles()).collect();
+                let now: Vec<usize> = specimens.iter().map(|s| built(&s.model, e.class).triangles()).collect();
                 if let Some(was) = &last {
                     assert_eq!(was.len(), now.len(), "{} has other specimens at the {} level", e.name, detail.label());
                     for (i, s) in specimens.iter().enumerate() {
@@ -304,6 +370,11 @@ mod tests {
 
     #[test]
     fn the_houses_are_the_reference_and_in_the_registry() {
+        // and every kind of works has an entry of its own, named for it
+        for kind in Kind::ALL {
+            assert_eq!(Kind::ALL[slot(kind)], kind);
+            assert!(REGISTRY.iter().any(|e| e.name == format!("works: {}", kind.label())), "{kind:?} has no entry");
+        }
         for name in REFERENCE {
             assert!(REGISTRY.iter().any(|e| e.name == name && e.class == Class::Building), "{name}");
         }
@@ -362,11 +433,6 @@ mod tests {
         ("scenes::cover", "a lab scene of trees and bushes, each of which is listed"),
     ];
 
-    /// Work in progress: the generators not yet brought to the scale. To be emptied and removed.
-    const NOT_YET: &[&str] = &[
-        "bridge::road_bridge", "fence::fence", "trees::bush", "trees::hedge_tree", "trees::tree",
-    ];
-
     #[test]
     fn a_generator_that_is_not_in_the_registry_fails() {
         let found = generators_in_the_source();
@@ -374,7 +440,7 @@ mod tests {
         let covered: Vec<&str> = REGISTRY.iter().flat_map(|e| e.covers.iter().copied()).collect();
         let mut missing = Vec::new();
         for g in &found {
-            if !covered.contains(&g.as_str()) && !NOT_GENERATORS.iter().any(|(n, _)| n == g) && !NOT_YET.contains(&g.as_str()) {
+            if !covered.contains(&g.as_str()) && !NOT_GENERATORS.iter().any(|(n, _)| n == g) {
                 missing.push(g.clone());
             }
         }
