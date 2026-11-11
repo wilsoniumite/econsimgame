@@ -2137,7 +2137,7 @@ mod tests {
     }
 
     fn news(year: f32, weight: f32, title: &str) -> replay::Event {
-        replay::Event { year, kind: "family".into(), weight, title: title.into(), text: String::new(), cell: None, family: None }
+        replay::Event { year, kind: "family".into(), weight, title: title.into(), text: String::new(), cell: None, family: None, kept: None, seq: 0 }
     }
 
     #[test]
