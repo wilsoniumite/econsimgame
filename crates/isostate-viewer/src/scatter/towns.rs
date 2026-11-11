@@ -116,6 +116,8 @@ pub(super) struct Parish {
     church: town::Church,
     at: Vec2,
     yaw: f32,
+    /// what is wrong with where it stands, if no quarter was without fault (see `parish`)
+    faults: u32,
 }
 
 impl Parish {
@@ -140,7 +142,8 @@ const WAYS: [(isize, isize); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
 /// ways, and of the quarters that are, the one that keeps the churchyard
 /// nearest the middle of its square of the map is taken, as the works stand
 /// round the edge. Only a road that cuts across a quarter, which is rare, is
-/// a reason to take another, from the year it is first laid.
+/// a reason to take another, from the year it is first laid. A town with
+/// water in every quarter stands its church in one of the ways out.
 fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> Parish {
     let t = s.town;
     let node = r.header.towns[t].node;
@@ -161,36 +164,50 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
     let roaded = |c: Option<usize>, y: usize| c.is_some_and(|c| r.trans[y * r.n + c] & 2 != 0);
     let middle = Vec2::new(cx as f32 + 0.5, cy as f32 + 0.5);
     let (w, d) = church.yard();
-    let mut best: Option<(f32, Vec2, f32)> = None;
-    for i in 0..4 {
-        let (a, b) = (ways[i], ways[(i + 1) % 4]);
-        let bearing = (a + b).normalize_or(Vec2::new(-a.y, a.x));
+    let mut best: Option<(f32, Vec2, f32, u32)> = None;
+    // the four quarters, and then the four ways themselves, for a town with water in every quarter
+    for i in 0..8 {
+        let on_a_way = i >= 4;
+        let (a, b) = (ways[i % 4], ways[(i + 1) % 4]);
+        let bearing = if on_a_way { a } else { (a + b).normalize_or(Vec2::new(-a.y, a.x)) };
         let (at, yaw) = church.beside_square(s.at, bearing);
         let across = Vec2::new(-bearing.y, bearing.x);
         let corners = [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(sx, sz)| at + across * (sx * w * 0.5) + bearing * (sz * d * 0.5));
         let mut faults = 0;
-        // dry land under the whole yard
-        if corners.iter().chain([&at]).any(|p| world::height_at(g, p.x, p.y) < 0.05 || world::water_dist(g, p.x, p.y) < 0.03) {
+        // dry land under the whole yard, and under the church above all
+        let wet = |p: &Vec2| world::height_at(g, p.x, p.y) < 0.05 || world::water_dist(g, p.x, p.y) < 0.03;
+        let wet_corners = corners.iter().filter(|p| wet(p)).count();
+        if wet_corners > 0 {
             faults += 2;
         }
-        // clear of the ways either side of it, where a main road and its frontage may come
-        if corners.iter().any(|p| [a, b].iter().any(|way| (*p - s.at).dot(*way) > 0.0 && (*p - s.at).perp_dot(*way).abs() < 0.024)) {
-            faults += 1;
+        if wet(&at) {
+            faults += 8;
         }
-        // a road across the quarter, to the square of the map cornerwise, in any year so far
-        let (da, db) = (WAYS[i], WAYS[(i + 1) % 4]);
-        let corner = cell((da.0 + db.0, da.1 + db.1));
-        if (0..=k).any(|y| roaded(Some(node), y) && roaded(corner, y) && !roaded(cell(da), y) && !roaded(cell(db), y)) {
-            faults += 4;
+        if on_a_way {
+            faults += 16;
+        } else {
+            // clear of the ways either side of it, where a main road and its frontage may come
+            if corners.iter().any(|p| [a, b].iter().any(|way| (*p - s.at).dot(*way) > 0.0 && (*p - s.at).perp_dot(*way).abs() < 0.024)) {
+                faults += 1;
+            }
+            // a road across the quarter, to the square of the map cornerwise, in any year so far
+            let (da, db) = (WAYS[i], WAYS[(i + 1) % 4]);
+            let corner = cell((da.0 + db.0, da.1 + db.1));
+            if (0..=k).any(|y| roaded(Some(node), y) && roaded(corner, y) && !roaded(cell(da), y) && !roaded(cell(db), y)) {
+                faults += 4;
+            }
         }
         let reach = corners.iter().map(|p| (*p - middle).abs().max_element()).fold(0.0f32, f32::max);
-        let score = faults as f32 * 10.0 + reach;
-        if best.map_or(true, |(sc, _, _)| score < sc) {
-            best = Some((score, at, yaw));
+        // the church in the water is the worst of the faults, then standing in a way out, a road
+        // across its quarter, and a way close by; a corner of the yard by the water is the least
+        let weigh = |bit: u32, by: f32| if faults & bit != 0 { by } else { 0.0 };
+        let score = weigh(8, 100.0) + weigh(16, 60.0) + weigh(4, 40.0) + weigh(1, 10.0) + wet_corners as f32 * 2.0 + reach;
+        if best.map_or(true, |(sc, _, _, _)| score < sc) {
+            best = Some((score, at, yaw, faults));
         }
     }
-    let (_, at, yaw) = best.unwrap_or((0.0, s.at, 0.0));
-    Parish { church, at, yaw }
+    let (_, at, yaw, faults) = best.unwrap_or((0.0, s.at, 0.0, 0));
+    Parish { church, at, yaw, faults }
 }
 
 /// The station is down its own road to the south of the market place.
@@ -229,6 +246,13 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         }
         let p = parish(r, g, cen, k, &s);
         town::church(houses, &Site::on(ground(g, p.at.x, p.at.y), p.yaw, &height), &p.church, lk);
+        if std::env::var_os("ISOSTATE_TIMING").is_some() {
+            // a works standing in or hard by the churchyard: the works were placed first and do not know of it
+            let crowded = plots.values().flatten().filter(|&&(x, z)| p.holds(Vec2::new(x, z), 0.05)).count();
+            if p.faults > 0 || crowded > 0 {
+                eprintln!("year {}: the church of town {} stands with faults {} (1 by a way out, 2 a corner of the yard on wet ground, 4 a road across, 8 the church on wet ground, 16 in a way out) and {} works by its yard; it is at {:.2}, {:.2}, where the ground is {:.3} high and the water {:.3} off", r.y0 + k as i32, s.town, p.faults, crowded, p.at.x, p.at.y, world::height_at(g, p.at.x, p.at.y), world::water_dist(g, p.at.x, p.at.y));
+            }
+        }
         parishes.push(p);
         plots.entry(node).or_default().push((s.at.x, s.at.y));
         if r.trans[k * r.n + node] & 4 != 0 {
