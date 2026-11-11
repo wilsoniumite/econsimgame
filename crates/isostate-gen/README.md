@@ -218,7 +218,7 @@ using the kit and not by copying numbers.
 | `scale.rs` | the scale: `STOREY`, `BAY`, what each level may and must draw (`LEVELS`), `measure` and `faults`, and the `Tally` the kit keeps of the walls and roofs it builds |
 | `registry.rs` | every generator, with specimens of each, and the tests that hold them to the scale |
 | `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
-| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit |
+| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit, and `plant.rs`, the furnaces, lifts and kilns |
 | `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the threshing barn with its porch and great doors, a cart shed or a byre, a granary on staddle stones, a rick |
 | `town/` | each at three levels: `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
@@ -392,9 +392,24 @@ In the yard: `ground`, `patch`, `race` (these three lie flat and are the
 same at every level), `wall` (the yard's wall or fence with its gate:
 piers from the play distance; a coping, corner piers and the gate's leaves
 close to), `heap`, `pile`, `stacks` (goods in rows), `wheel`, `sheer_legs`,
-`scaffold`, `builders_yard`. What a kind draws for itself (a furnace's
-shell, a kiln, a gantry) it draws straight into `c.solid`, asking `c.far()`
-and `c.near()` what the level wants.
+`scaffold`, `builders_yard`.
+
+The plant of the fire trades (`works/plant.rs`, also methods of `Ctx`):
+`furnace_stack` (a blast furnace built of masonry: square and battered,
+with its blowing arches, string courses and tie plates), `furnace_shell`
+(one cased in brick or iron: round, on the brick drum of its hearth, with
+its tuyere arches, blast main and hoops), `charging_gallery` (the platform
+round a furnace's throat, railed close to), `lift` (the four-legged tower
+barrows go up in, braced close to), `barrow_way` (a gantry, a charging
+bridge or an incline: a beam with a rail either side close to), `hoops`
+(for a `flue`: a stove's, a cupola's) and `bottle_kiln` (wicket to the
+front of the yard, firing holes, iron bands). Each is the plain shape from
+far off, shows its openings as dark panels and one band from the play
+distance, and has the rest close to. The little a kind still draws for
+itself (a converter's vessel, a tunnel head, the bell of a closed furnace
+top) it draws straight into `c.solid`, asking `c.far()` and `c.near()` what
+the level wants; anything that more than one kind could use belongs in the
+kit as a part.
 
 To add a kind: a line in `Kind` (and in `of_method`, `method`, `label`,
 `plot` and `ALL`; `registry::slot` will not compile until it has a place
