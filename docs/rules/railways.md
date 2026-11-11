@@ -220,6 +220,105 @@ families). The rails price peak is
 also less tame here with carting: 4.4 and 5.2 times on average, and 10 and
 11 times in the worst seed of each sweep.
 
+## In company
+
+Everything above was measured on the port with the railways alone, or with
+carting. They were merged into the game's rules together, after the
+merchants' prices, the Engel curve, the machines, the harvests, the
+chronicle and the life cycle for works, so the island they are built on is
+not the port's: a wage buys nearly three times as much by 1900, half the
+hands are in a few hundred large works, and some of the mills roll steel
+rails. The
+integration's sweeps are under `.claude/night/reports/core-steps/`:
+`railways-before` and `railways-after` (the game's rules with six families
+on seeds 1 to 6, before the merge and after), `railways-x-2x2` and
+`railways-x-2x2-s7-12` (seeds 1 to 6 and 7 to 12 with `railways.enabled` and
+`carting.enabled` each off and on, so each can be read alone in company),
+and `railways-probe/bots-game.txt`. No run failed, and a run takes the
+twelve or thirteen seconds it took.
+
+**Switched off, nothing moves.** With both switches off under the game's
+rules the merged code gives every one of the 186 facts of every seed as the
+code before the merge gave it.
+
+Kilometres of line, twelve seeds, six families, carting on in every row but
+the last:
+
+| | 1830 | 1840 | 1850 | 1860 | 1870 | 1880 | 1890 | 1900 |
+|---|---|---|---|---|---|---|---|---|
+| the port's promoters, in company | 436 | 739 | 882 | 945 | 961 | 962 | 962 | 972 (808 to 1,156) |
+| the game's, in company | 314 | 809 | 1,282 | 1,754 | 2,100 | 2,369 | 2,539 | 2,630 (2,458 to 2,714) |
+| the game's, alone on the port (seeds 1 to 8, above) | 138 | 393 | 852 | 1,244 | 1,606 | 1,802 | 1,908 | 2,021 (1,865 to 2,140) |
+
+| the game's railways and carting, six families | alone on the port (seeds 1 to 8) | in company (seeds 1 to 12) |
+|---|---|---|
+| first line | 1833 (1806 to 1855) | 1828 (1804 to 1848) |
+| decades from 1840 in which the network grew | all six | all six, on every seed |
+| towns with track in 1860 | 0.91 (0.50 to 1) | 1.00 |
+| cell traffic within a cell of track, 1900 | 0.74 (0.70 to 0.77) | 0.87 (0.85 to 0.89) |
+| dearest year for rails over the mean of 1800 to 1825 | 3.13 (2.11 to 5.07) | 1.58 (0.76 to 4.11) |
+| what the network cost, in years of output | 0.38 (0.30 to 0.49) | 0.25 (0.17 to 0.32) |
+| what the lines cost over what was expected | 1.01 (0.82 to 1.20) | 0.81 (0.71 to 0.92) |
+| the same for the worst line of a run | 5.4 (3.0 to 7.6) | 3.0 (1.4 to 7.3) |
+| fares on track over capital laid out, 1870 and 1900 | 0.067, 0.078 | 0.23, 0.26 (0.20 to 0.37) |
+| most lines building at once | 27 (21 to 33) | 26 (22 to 33) |
+| the slowest line, years from promotion to opening | 10.4 (6.6 to 12.8) | 7.0 (5.0 to 9.6) |
+| lines still building after ten years, at the end | 0 | 0 |
+| railway news items (openings; schemes) | 83; 27 | 83; 20 |
+
+So the promoters do in company what they do alone: a slower start than the
+port's (three years later to the first line, on every seed, and less line
+than the port's in 1830), then growth in every decade to the end of the
+century, every town joined by 1860, no line stuck. What is different is the
+size. The network is 2,630 km where alone it was 2,020, and the rush is
+sooner: 1,280 km by 1850 for 850. There is more to carry (at the content's
+base prices the island makes 7.2 of goods a head in 1850 and 11.3 in 1900,
+where the port with the same two switches made 4.3 and 5.1), and rails are
+cheaper, because the machines' steel rail stands for three iron ones and the
+mills that roll it can grow. So more lines clear the same hurdle, they come
+in under their estimates instead of on them, and the traffic over them would
+pay a quarter of their cost a year in fares where alone it paid a
+fourteenth. Of some 300 lines a run 20 are trunks and one or two a town's
+first line; of the branches 107 run to works, 76 to quarries and clay pits,
+47 to woods, 31 to farms, 8 to pasture and 7 to collieries and iron mines.
+Branches are 78 per cent of the kilometres (66 alone).
+
+**In company the branches do pay the country back.** With carting on, the
+game's railways against the port's, seed for seed on twelve seeds: in 1900
+households' budgets buy 3.5 per cent more baskets (8.56 for 8.27, nine
+seeds of twelve higher), 3.6 per cent more goods are made a head (eleven of
+twelve), carters are 6.6 per cent of all hands where they were 8.2 (eleven
+of twelve lower), and a run has 2.0 famine years for 3.3. In 1850 there is
+nothing to see (4.88 baskets for 4.87): the two networks of 1850 differ by
+400 km and the trunks do most of the saving. Alone on the port the same
+comparison showed nothing or a little less (the first worry below). With
+carting off the branches are still worth 2 per cent of goods a head in 1900
+(eleven seeds of twelve), which the port's rules never showed; I did not
+trace through which of the other mechanisms.
+
+One thing was different in company, and was mended in a few lines.
+
+- **The chronicle called every branch a mineral line.** Its story of a coal
+  boom says what carries the coal away, and it read the record's list of
+  opened lines as the port wrote it: a line with no second town was a mineral
+  spur. Under the game's promoters such a line may run to farms, woods or
+  works, or be a town's own first line, so a boom was told with "A mineral
+  line opened in 1847 brings it down from the pits" whatever that year's
+  branch ran to. With `railways.enabled` the story now asks
+  the promoters' book what the line was for (`railways::line_for_coal`): the
+  railway that reached the town, as a trunk or as its first line, "carries
+  it away"; a branch to the district's collieries "brings it down from the
+  pits"; any other branch is not mentioned. In seed 7's game three booms
+  named a mineral line: one now names the railway that reached Ashdelf in
+  1827 and two say nothing of a line, since no line to the pits had opened.
+  With the switch off the story is the port's, word for word.
+  `tests/chronicle.rs` holds the game to it.
+
+The news: a run's railway items are 83 openings and 20 schemes where the
+port's promoters gave 35 and 34, and of all of them the major feed keeps
+one, the first railway, as before. The major feed is the length it was
+(58 items a run for 57.5).
+
 ## What a canal age needs
 
 `ways.rs` is written so that canals are a second `Way` and not a second
@@ -264,12 +363,17 @@ order book is one good. Nothing has yet run two ways at once.
   Before the review's repairs a stricter promoter was tried
   (`--set rail_induced=1,1.5` with carting on): about a fifth less line and
   no change in output per head, so it is not the marginal lines. The
-  trunks take most of what there is to save.
+  trunks take most of what there is to save. In company with the game's
+  other rules the same comparison comes out the other way by 1900 (3.5 per
+  cent more baskets a head, nine seeds of twelve; "In company", above), and
+  shows nothing in 1850.
 - **Subscribers get nothing back.** They pay for the line and the saving goes
   to whoever carts. Fares over track come to 7 to 9 per cent of the capital
   a year, so a company that took them could pay a believable dividend, and a
   family could hold its shares. That is dx-rail's recommendation 5 and is not
-  built.
+  built. In company the fares come to 23 to 26 per cent of the capital a
+  year: on the game's island a railway would be the best thing anyone could
+  own, and nobody owns it.
 - **Calls have no limit.** A line goes ahead on an estimate, and its
   subscribers then answer calls for whatever the materials turn out to cost.
   Taken together the lines cost what was expected (0.92 to 1.01), but the
@@ -284,8 +388,21 @@ order book is one good. Nothing has yet run two ways at once.
   discovery, which moves by decades between islands, and comes later with
   carting. Under the game's rules the first line opens in 1850 or later on
   7 islands of 16 (4 of 16 with six families), so anything that needs
-  railways by mid-century will often not find them.
+  railways by mid-century will often not find them. (Those were the port
+  with these two switches. In company the first line is open by 1848 on all
+  of seeds 1 to 12, but the length of 1850 runs from 130 km to 1,956.)
 - **Every cell of track is a station**, as in the port.
+- **In company it is a great deal of railway.** 2,630 km is some 1,300 cells
+  of track on an island of about 5,900 land cells: more than one cell in
+  five has a line through it, 87 per cent of all cell traffic starts within
+  a cell of one, and at the height of the rush 22 to 33 lines are building
+  at once. By area that is near Britain's density of line in 1900, and the
+  promoters' sums say every kilometre pays, but nobody has looked at it on
+  the map, where a line is drawn across its whole cell and every cell of it
+  has a station. If it reads as too much, `branch_gap` and `districts` are
+  the dials (how far from track a district must be, and how many are looked
+  at a year), and a higher `rail_hurdle` would thin it too. None was tried
+  in company.
 - **What a branch serves is an estimate.** The works' share of a district's
   carts is the cells' traffic less twelve times last month's land produce.
   Nearly half the branches are counted as serving works, more than dx-rail's

@@ -147,6 +147,22 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
     ways::progress(st, &way, year_float, events);
 }
 
+/// For the chronicle's coalfield stories: the latest of the game's lines opened
+/// since `since` that carries town `t`'s coal, with the moment it opened. `true`
+/// is a branch to the collieries of the town's district; `false` is the railway
+/// reaching the town itself, as a trunk or as its first line. A branch to the
+/// district's farms, woods, quarries or works is passed over: it is on the same
+/// list of opened lines (`State::rail_opened`, with no second town, where the
+/// port has only its mineral spurs), but it is not what brings the coal down.
+pub fn line_for_coal(st: &State, t: usize, since: f64) -> Option<(f64, bool)> {
+    st.rw.lines.iter().rev().filter(|l| l.opened >= since).find_map(|l| match l.serves {
+        SERVES_TRUNK if l.a == t || l.b == t => Some((l.opened, false)),
+        SERVES_TOWN if l.a == t => Some((l.opened, false)),
+        serves if l.a == t && ways::serves_word(serves) == "collieries" => Some((l.opened, true)),
+        _ => None,
+    })
+}
+
 /// Facts about the network for the sweep's table, under "Railways". Those that
 /// need the promoters' book have no value in a run with the mechanism off.
 pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
@@ -259,4 +275,41 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     let km_branch: f64 = book.lines.iter().filter(|l| l.serves != SERVES_TRUNK).map(|l| 2.0 * l.new_cells as f64).sum();
     out.push(("rail_km_share_branches".into(), Kind::Share, nan_off(if km_all > 0.0 { km_branch / km_all } else { f64::NAN })));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::land::{USE_NAMES, USE_SECTOR0};
+    use crate::ways::Line;
+
+    #[test]
+    fn the_chronicle_is_told_what_a_line_was_for() {
+        let code = |name: &str| USE_NAMES.iter().position(|n| *n == name).expect("a land use of that name") as u8;
+        assert!(code("coalmine") >= USE_SECTOR0 && ways::serves_word(code("coalmine")) == "collieries");
+        let line = |opened: f64, serves: u8, a: usize, b: usize| Line { opened, serves, a, b, ..Line::default() };
+        let mut st = State::default();
+        // town 2: its first line in 1831, a branch to its farms in 1836, one to its
+        // pits in 1838 and one to its works in 1840; a trunk from 0 to 1 in 1833
+        st.rw.lines = vec![
+            line(1831.5, SERVES_TOWN, 2, 0),
+            line(1833.2, SERVES_TRUNK, 0, 1),
+            line(1836.4, code("farm"), 2, 2),
+            line(1838.9, code("coalmine"), 2, 0),
+            line(1840.1, code("industry"), 2, 2),
+        ];
+        // the latest line that carries coal: the colliery branch, not the works' branch after it
+        assert_eq!(line_for_coal(&st, 2, 1835.0), Some((1838.9, true)));
+        // since 1839 only the works' branch has opened, and that is no coal line
+        assert_eq!(line_for_coal(&st, 2, 1839.0), None);
+        // before the branches, the line that reached the town
+        st.rw.lines.truncate(3);
+        assert_eq!(line_for_coal(&st, 2, 1830.0), Some((1831.5, false)));
+        // a trunk is told of both its towns; the junction town of another's first line is not
+        assert_eq!(line_for_coal(&st, 1, 1830.0), Some((1833.2, false)));
+        assert_eq!(line_for_coal(&st, 0, 1830.0), Some((1833.2, false)));
+        assert_eq!(line_for_coal(&st, 0, 1834.0), None);
+        // and with the mechanism off the book is empty
+        assert_eq!(line_for_coal(&State::default(), 2, 1700.0), None);
+    }
 }

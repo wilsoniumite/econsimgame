@@ -688,11 +688,22 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         format!("{:.1} times the coal they raised in {was}", now / then)
     };
     // what carries it away, if that is new
-    let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
-    let carried = match line {
-        Some(r) if r.b < 0 => format!(" A mineral line opened in {} brings it down from the pits.", r.year.floor()),
-        Some(r) => format!(" The railway that reached {name} in {} carries it away.", r.year.floor()),
-        None => String::new(),
+    let carried = if P.railways.enabled {
+        // the game's railways (docs/rules/railways.md): a line with no second town
+        // may be a branch to farms, woods or works as well as to pits, or the town's
+        // own first line, so the promoters' book is asked what the line was for
+        match crate::railways::line_for_coal(st, t, was as f64) {
+            Some((opened, true)) => format!(" A branch line to the collieries, opened in {}, brings it down from the pits.", opened.floor()),
+            Some((opened, false)) => format!(" The railway that reached {name} in {} carries it away.", opened.floor()),
+            None => String::new(),
+        }
+    } else {
+        let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
+        match line {
+            Some(r) if r.b < 0 => format!(" A mineral line opened in {} brings it down from the pits.", r.year.floor()),
+            Some(r) => format!(" The railway that reached {name} in {} carries it away.", r.year.floor()),
+            None => String::new(),
+        }
     };
     // and what the price says about why
     let (p1, p0) = (ch.prices[k][(t, coal)], ch.prices[k - back][(t, coal)]);

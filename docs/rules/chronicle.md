@@ -107,7 +107,7 @@ from the same prices and incomes that drove it:
 
 | story | when | the reason it gives |
 |---|---|---|
-| Coal boom around X (0.72) | the pits of X's district raise `boom_growth` (1.5) times the coal of `boom_years` (5) years before, and `boom_share` (15%) of the island's | a railway or mineral line opened since, and what the local price of coal did: dearer (buyers want more than the pits raise), cheaper (the pits outran their buyers) or steady |
+| Coal boom around X (0.72) | the pits of X's district raise `boom_growth` (1.5) times the coal of `boom_years` (5) years before, and `boom_share` (15%) of the island's | a railway or mineral line opened since (under the game's railways: the line that reached the town, or a branch to its collieries), and what the local price of coal did: dearer (buyers want more than the pits raise), cheaper (the pits outran their buyers) or steady |
 | X in decline (0.68) | X and its district are `decline_fall` (10%) below a peak at least `decline_years` (8) old | where this year's leavers went and how much further an income goes there (what `people::migration` weighs), or that incomes no longer keep a family |
 | X overtakes Y as the island's first (0.8) or second (0.7) town | X has been `overtake_margin` (5%) ahead of Y for `overtake_years` (3) running | each town's growth over ten years and what X supplies most of |
 | X is the fastest-growing town of the decade (0.62) | at the decade's end, if X outgrew the island by `fastest_margin` (10 points) | how much of the growth moved in from other towns, and what X supplies |
@@ -399,6 +399,43 @@ with the chronicle than without" is held over the whole game (849 items for
 975 on seed 7), and over the first forty years for the player's own news,
 since there is no longer a flood in every stretch of years to outweigh the
 stories the chronicle adds.
+
+### Beside the game's railways and carting
+
+The game's railways and carting (`railways.md`, `carting.md`) were merged
+last. Seeds 1 to 12, six families, `--example chronicle -- --seeds 1-12`
+with them and with `--set railways.enabled=false --set
+carting.enabled=false`:
+
+| per run | the game before | with railways and carting |
+|---|---|---|
+| all items | 888 [827 .. 926] | 902 [834 .. 960] |
+| the major feed | 57.5 [54 .. 59] | 58.2 [55 .. 60] |
+| the major feed in a decade | 3.5 to 4.0, never under 2 or over 4 | 3.6 to 4.0, never under 2 or over 4 |
+| the player's own items | 226 [200 .. 248] | 220 [160 .. 246] |
+| of them major | 12.1 | 12.3 |
+| railway openings and schemes told, and kept | 36 and 34, 1 | 83 and 20, 1 |
+| regional stories told | 42.4 | 47.0 |
+| of them coal booms, told and kept | 4.2, 1.8 | 4.6, 1.5 |
+| declines of towns, told and kept | 10.8, 1.8 | 13.0, 2.6 |
+
+The feed a history keeps is the length it was and keeps the same one
+railway item, the first line. The branches are told once a year, lightly
+(0.35), and stay in the "All" list: 13 or 14 railway items a decade there
+from the 1830s to the 1850s.
+
+One thing was mended. **A coal boom said a mineral line had opened whatever
+the branch was for.** The story's reason reads the record's list of opened
+lines, where the port marks a mineral spur by its having no second town.
+The game's promoters build branches to farms, woods, quarries and works as
+well, and a town's own first line, and all of them have no second town. So
+with `railways.enabled` the story asks the promoters' book what the line was
+for (`railways::line_for_coal`): the railway that reached the town carries
+the coal away, a branch to the district's collieries brings it down from
+the pits, and any other branch is left out of the story. With the switch
+off the reason is found as it was. `tests/chronicle.rs` holds the game to
+it, and two of its notes on seed 7's game were brought up to date: the last
+town is now founded in 1831, and the decade of new towns is the 1770s.
 
 ## What worries me
 

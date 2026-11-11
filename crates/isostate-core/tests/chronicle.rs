@@ -560,8 +560,21 @@ fn towns_and_districts_have_stories() {
     for t in ["coal raised against a few years before", "people against the town's own peak", "one town's people against another's", "the decade's fastest-growing town", "works closed in one district in a year"] {
         assert!(tests.contains(t), "seed 7 has a story of the kind: {t}");
     }
+    // under the game's railways (docs/rules/railways.md) a line with no second town
+    // may run to farms, woods or works: a coal boom names the line that reached the
+    // town or a branch to its collieries, and nothing is called a mineral line
+    if r.params.railways.enabled {
+        assert!(r.events.iter().all(|e| !e.text.contains("mineral line")), "no branch is told as a mineral line");
+        let lines = &r.state.rw.lines;
+        for e in stories.iter().filter(|e| e.text.contains("brings it down from the pits")) {
+            let (t, year) = (e.town.unwrap(), e.year.floor());
+            assert!(e.text.contains("A branch line to the collieries, opened in "), "{}", e.text);
+            assert!(lines.iter().any(|l| l.a == t && l.opened < year + 1.0 && ways::serves_word(l.serves) == "collieries" && e.text.contains(&format!("opened in {},", l.opened.floor()))), "{}", e.text);
+        }
+    }
     // a founding somewhere does not silence the rest of the island: seed 7's last
-    // town is Golddale, in 1783, and towns it did not touch have stories before then
+    // town is Ruthdale, in 1831 (it was Golddale, in 1783, before carting and the
+    // game's railways), and towns it did not touch have stories before then
     let last_founding = (0..r.state.T_max).filter(|&t| r.state.town_active[t]).map(|t| r.state.town_founded[t]).max().unwrap();
     assert!(stories.iter().any(|e| !e.title.contains("works close") && (e.year.floor() as i64) < last_founding), "a story of a town's people before {last_founding}");
     // but no town is said to decline from the people it was founded with
@@ -582,6 +595,9 @@ fn towns_and_districts_have_stories() {
     // (docs/rules/works.md) seed 7's towns come later: three in the 1760s, where
     // two inventions, a coal boom and the family's new trade outweigh them.
     // (Before it the digest was of the 1750s and was one of that decade's four.)
+    // With carting and the game's railways merged (docs/rules/carting.md) the
+    // digest is of the 1770s, three towns again, where two inventions, coke
+    // iron's crossing and the family's new trade outweigh it.
     let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
     assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
     let mut decades = std::collections::BTreeSet::new();
