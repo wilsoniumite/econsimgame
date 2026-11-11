@@ -163,6 +163,7 @@ const fn slot(kind: Kind) -> usize {
 /// the `works-kinds` sheet shows), then small and great, early and late.
 fn works_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     let kind = Kind::ALL[K];
+    debug_assert_eq!(slot(kind), K);
     [(3.0, 1820, false), (0.4, 1760, true), (1.0, 1870, false), (10.0, 1760, false), (30.0, 1850, false), (100.0, 1870, false)]
         .into_iter()
         .map(|(size, founded, water)| {

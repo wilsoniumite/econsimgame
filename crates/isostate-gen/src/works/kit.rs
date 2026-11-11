@@ -646,8 +646,8 @@ impl<'a, 's> Ctx<'a, 's> {
         self.open(s, face, u0, u1, 0.0, FOOT + 0.0112, Open::Shop { paint, awning: None });
     }
 
-    /// Slats in a wall, to let the heat out.
-    #[allow(clippy::too_many_arguments)]
+    /// Slats in a wall, to let the heat out. (No kind uses it yet: it is here for the site planner.)
+    #[allow(clippy::too_many_arguments, dead_code)]
     pub fn louvre(&mut self, s: &Shed, face: Face, u0: f32, u1: f32, y0: f32, y1: f32) {
         self.open(s, face, u0, u1, y0, y1, Open::Louvre);
     }
@@ -723,8 +723,9 @@ impl<'a, 's> Ctx<'a, 's> {
         }
     }
 
-    /// A painted board on a face of a shed (a shop's fascia), from `u0` to `u1` and `y0` to `y1`.
-    #[allow(clippy::too_many_arguments)]
+    /// A painted board on a face of a shed (a name board, a sign), from `u0` to `u1` and `y0` to `y1`.
+    /// (No kind uses it yet: it is here for the site planner.)
+    #[allow(clippy::too_many_arguments, dead_code)]
     pub fn board(&mut self, s: &Shed, face: Face, u0: f32, u1: f32, y0: f32, y1: f32, col: Rgba) {
         if self.going_up() || self.far() {
             return;

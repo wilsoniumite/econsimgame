@@ -77,6 +77,8 @@ pub fn engine_works(c: &mut Ctx) {
         if size >= 10.0 && d > 0.03 * g {
             let s = c.shed(hw * 0.55, hd - 0.012 - 0.011 * g, 0.04 * g, 0.022 * g, 2.0 * STOREY, false, wall, roof);
             c.windows(&s, 0, 2, true);
+            // the office's own door, to the yard
+            c.door(&s, Face::Back, 0.0);
         }
     }
 }

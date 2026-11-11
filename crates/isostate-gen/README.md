@@ -66,8 +66,8 @@ what one thing looks like.
 ## Units and conventions
 
 - **One unit is one cell of the map, 2 km.** A house plot is 0.05 by 0.036; a
-  storey of a house is 0.0205 (of a works 0.022, of the towns' other buildings
-  0.024, `parts::STOREY`); a full-grown tree is about 0.11 tall.
+  storey of any building is 0.0205 (`scale::STOREY`: see "The scale"); a
+  full-grown tree is about 0.11 tall.
   Nothing is to scale with the map (a house 100 m wide), but things are to
   scale with each other. Up is +y, with heights exaggerated as on a model.
 - **The site's origin is the middle of the thing's footprint, on the ground.**
@@ -147,21 +147,28 @@ every level and measures it against them (see "Holding the line" below).
 
 **The three levels** (`Detail`, chosen for each building by the viewer's
 `scatter::Lod` from where the camera is). The numbers are what the houses
-measure, with a margin: the smallest feature is the least width of any
-triangle; wall is triangles to one bay of one storey of wall, roof is
-triangles to one bay by one bay of roof.
+measure, with a margin (`scale::LEVELS`): the smallest feature is the least
+width of any triangle of the thing; wall is the triangles the kit built to
+one bay of one storey of wall, roof the triangles to one bay by one bay of
+roof.
 
 | level | camera | what is drawn | smallest feature | wall | roof |
 | --- | --- | --- | --- | --- | --- |
-| far | beyond 40 | walls and roofs: the shell, its wings and lean-tos, tall chimneys as plain shafts | none finer than 0.0012 | 0.05 to 1.5 | 0.03 to 1.5 |
-| play | 4 to 40 | openings as flat panels 0.0006 proud of the wall, stacks and chimneys, the yard's wall as one run, what stands in the yard as plain blocks, the colour of a garden | 0.0012 to 0.006 | 0.6 to 4.5 | 0.25 to 2.5 |
-| near | 4 and nearer | openings let 0.0013 into the wall with jambs, sills and one glazing bar; eaves with an edge; stacks with oversailing heads and pots; copings, piers, gates; what stands in the yard in full | 0.00035 to 0.001 | 4 to 26 | 0.7 to 10 |
+| far | beyond 40 | walls and roofs: the shell, its wings and lean-tos, tall chimneys as plain shafts, the great heaps | none finer than 0.0012 | 0.02 to 1.5 | 0.03 to 2.8 |
+| play | 4 to 40 | openings as flat panels 0.0006 proud of the wall, stacks and chimneys, the yard's wall as one run, what stands in the yard as plain blocks, the colour of a garden | 0.0012 to 0.006 | 0.6 to 4 | 0.04 to 3.2 |
+| near | 4 and nearer | openings let 0.0013 into the wall with jambs, sills and glazing bars; eaves with an edge; stacks with oversailing heads and pots; copings, piers, gates; what stands in the yard in full | 0.00035 to 0.001 | 4 to 24 | 0.1 to 8 |
 
-(The houses measure: far 0.1 to 0.9 and 0.06 to 0.9; play 0.9 to 2.6 and
-0.4 to 1.5; near 6 to 16 and 1.2 to 6. A cottage is 14, 70 and about 350
-triangles.) At the play and near levels no wall may run more than four
-modules (`scale::BLANK`) with nothing on it: an opening, a pier, a lean-to,
-a stack against it.
+(The houses measure: far 0.1 to 0.9 and 0.1 to 1.9; play 0.9 to 2.5 and
+0.4 to 2.1; near 6.4 to 15.6 and 1.0 to 5.1. A cottage is 14, 70 and about
+350 triangles. The wall bands are the houses' with a margin either side.
+The roof bands reach lower than the houses' because a roof's detail is at
+its edges, its ridge and what stands on it, and a works' roof is many
+times the size of a cottage's: a wide plain roof is right.) At the play
+and near levels no wall of most of a storey's height may run more than four
+modules (`scale::BLANK`) with nothing on it or before it: an opening, a
+pier, a lean-to, a stack against it. A thing that is not a building (a
+bridge, a pit's heap, a tree) answers only for the first of these: nothing
+in it finer than its level allows.
 
 Only what goes into `solid` and `smoke` may follow the level. What goes
 into `flat` (a yard's ground, water) and `green` (a garden's tree) is the
@@ -207,13 +214,15 @@ using the kit and not by copying numbers.
 | `palette.rs` | `Palette`: the named colours, read from the look file |
 | `hash.rs` | `hash2`, `Seed` |
 | `site.rs` | `Site` (where a thing stands), `Model` (the four buffers) |
-| `parts.rs` | `gabled`, a plain building (the barns and sheds of a farmstead), and `STOREY`, the storey of what is neither a house nor a works |
-| `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; `kit.rs`, the parts they are put together from; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
-| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit` |
-| `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the barn, a cart shed, a rick |
-| `town/` | `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
+| `kit.rs` | the parts every building is put together from: ranges with walls and openings, roofs, lean-tos, dormers, bays, stacks, and what stands in a yard (see "Houses"); `Detail` and `Era` |
+| `scale.rs` | the scale: `STOREY`, `BAY`, what each level may and must draw (`LEVELS`), `measure` and `faults`, and the `Tally` the kit keeps of the walls and roofs it builds |
+| `registry.rs` | every generator, with specimens of each, and the tests that hold them to the scale |
+| `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
+| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit |
+| `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the threshing barn with its porch and great doors, a cart shed or a byre, a granary on staddle stones, a rick |
+| `town/` | each at three levels: `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
-| `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
+| `bridge.rs` | `road_bridge`, at three levels: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
 | `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
 | `scenes.rs` | small scenes for the lab: a street, a market place, a patch of wood |
 | `sheets.rs` | the lab's contact sheets |
@@ -232,10 +241,9 @@ shots show the woods.
 
 ## Houses
 
-A house is put together from the parts in `houses/kit.rs`, as a works is
-from `works/kit.rs`. (The two kits are separate: a works' parts know its
-state, a house's its level of detail and its age. They share `MeshBuf`, the
-palette, `Site` and the works' `plume`.) A kind of house is a few lines that
+A house is put together from the parts in `kit.rs`, as every building is
+(a works' own parts, in `works/kit.rs`, are built on them and add the
+works' state). A kind of house is a few lines that
 place parts on its plot:
 
 - **A `Range`** is a rectangle of the plan with a way round (`a` along its
@@ -246,9 +254,14 @@ place parts on its plot:
   eaves: that is the ambient occlusion, baked into the corners' colours.
 - **Openings are placed by rule** (`Opening`: its middle along the wall, its
   foot, its size, and what it is: `Sash`, `Casement`, `Door` with a hood or a
-  fanlight, `Shop`, `Arch`). Close to, the wall is built in strips round a
-  hole for each, a storey at a time, and the window or door is let into the
-  hole; from the play distance the same list is flat panels on a whole wall.
+  fanlight, `Shop`, `Arch`; and for the buildings that are not houses
+  `Paned`, a window of small panes, round-headed or not; `Leaves`, a pair
+  of boarded doors wide enough for a cart; `Mouth`, an opening with nothing
+  in it, dark or lit by a fire; `Louvre`). Close to, the wall is built in
+  strips round a hole for each, a storey at a time, and the window or door
+  is let into the hole; from the play distance the same list is flat panels
+  on a whole wall. A `Side::free` wall is cut round openings of any height
+  wherever they stand (a hall's tall doors and windows), in level bands.
 - **`roof`** fits a pitched roof to a range, each end a gable, a hip, a
   half-hip, stopped against a party wall, or run on into another roof with
   valleys (`End::Valley(run)`: a wing whose eaves are level with its
@@ -299,14 +312,15 @@ The sheets: `cottages`, `cottages-eras`, `townhouses`, `townhouses-eras`,
 `terraces`, `terraces-slope` (the ground is built too, as a bank), `villas`,
 `house-backs` (seen from their yards), `house-levels` (the three levels
 side by side, with their triangles), `roofs`, `farmsteads`; and the scenes
-`street` and `market` (every house in full), `street-play`, `street-far`
-and `market-play` (at the level the game draws from that distance: the play
-picture of `street-play` is what the game shows).
+`street` and `market` (each picture at the level the game draws from its
+distance, as every sheet's is), and `street-play`, `street-far` and
+`market-play` (one level in every picture, to see it close up).
 
 ## Works
 
-A works is a compound in a yard of its own, and the one generator with a
-life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
+A works is a compound in a yard of its own, built of the same parts as a
+house (`kit.rs`) and of its own (`works/kit.rs`), and the one generator
+with a life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
 
 - **`kind`**: the method the firm works by (`Kind::of_method`). Shops and
   trades (the simulation's "services") are a kind like any other.
@@ -329,6 +343,14 @@ life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
   know the state, so a kind does not have to: it says what stands where.
 - **`water`, `rail`**: what the caller knows of the site. `rail` is taken
   and not yet drawn.
+- **`detail`**: the level it is drawn at, chosen by the camera as a house's
+  is. Far: walls, roofs, the tall chimneys, the furnaces and the great
+  heaps. Play: openings as flat panels, stacks, the yard's wall and gate
+  piers, goods and heaps, wheels, scaffolding. Near: everything. It is the
+  same works at each: the yard's ground and water (`flat`), the smoke, the
+  flag's place and every number the works takes for itself are the same at
+  all three (a part takes as many of `c.rnd()` at every level), and the
+  tests hold it to that.
 - **`seed`**: settles what the works chooses for itself.
 
 `footprint(kind, size)` is the yard's width along the front and its depth.
@@ -338,17 +360,56 @@ its highest gable, for the owner's flag. `plume` is the smoke: one soft shape
 with shared corners whose alpha thins downwind (the viewer's smoke material
 blends), leaning with `WIND`.
 
+**The works' parts** (`works/kit.rs`, methods of `Ctx`; each knows the
+state and the level). Buildings, each giving back a `Shed` to hang things
+on:
+
+- `shed`, `shed_pitched`: four walls under a pitched roof, its ridge along
+  the front or across the yard. Built before 1790, its ridge sags a little.
+- `lean_to` (against a taller building; `stands_free` gives it a back wall
+  of its own), `open_shed` (a roof on posts), `sawtooth` (north lights,
+  glazed, with their bars close to), `tower` (square, under a pyramid),
+  `bank` (flat-topped: coke ovens).
+- On a roof: `ridge_vent` (louvred, or a glazed lantern), `roof_lights`.
+
+Openings, hung on a face of a `Shed` (`Face::Front`, `Back`, `EndA`,
+`EndB`) and built into the wall when the works is finished
+(`Ctx::finish`): `windows` (a bay and a storey apart, or tall on a hall),
+`window_band` and `light` (one window of any size, round-headed or not),
+`door` (a man's), `doors` (a cart's, boarded), `mouth` (an open bay or
+arcade), `glow` (a fire seen in an opening, lit while the works is at
+work), `shop_front`, `hoist` (loading doors one above another under a beam
+and its hood), `louvre`, `board`. A stretch of wall a kind hung nothing on
+is given what such a wall has (`fill`: `Fill::Windows`, the default;
+`Fill::Posts` for a boarded shed, the posts and joints of its frame;
+`Fill::Nothing`).
+
+Fires and flues: `chimney` (tall and round on a square plinth, with iron
+bands and a corbelled head close to), `stack` (short and square), `slab_stack`
+(broad, against a shed), `flue` (a plain round one), `plume`, `throat`.
+
+In the yard: `ground`, `patch`, `race` (these three lie flat and are the
+same at every level), `wall` (the yard's wall or fence with its gate:
+piers from the play distance; a coping, corner piers and the gate's leaves
+close to), `heap`, `pile`, `stacks` (goods in rows), `wheel`, `sheer_legs`,
+`scaffold`, `builders_yard`. What a kind draws for itself (a furnace's
+shell, a kiln, a gantry) it draws straight into `c.solid`, asking `c.far()`
+and `c.near()` what the level wants.
+
 To add a kind: a line in `Kind` (and in `of_method`, `method`, `label`,
-`plot` and `ALL`), a function in a file under `works/` that places parts
+`plot` and `ALL`; `registry::slot` will not compile until it has a place
+there, and the tests then ask for its entry in `registry::REGISTRY`), a
+function in a file under `works/` that places parts
 from the kit in the yard (`c.hw`, `c.hd` are half its width and depth; `c.g`
-is how much bigger than standard the buildings are drawn), a line in
+is how much bigger than standard the buildings are drawn; a building of
+storeys is `c.storeys(n)` high, a hall as high as its work needs), a line in
 `build`, and a sheet (`works_sizes(Kind::..)`). Lay it out at the standard
 size, then make every count come from what fits (`c.fit`, `c.spread`), so
 that it fills its yard at 100 and still fits at 0.4: the tests build every
 kind at every size, founding year and state and check that the footprint
 holds it.
 
-The sheets: `works-kinds` (every kind at size 3), `works-small` and
+The sheets: `scale` (see "Looking at a generator"), `works-kinds` (every kind at size 3), `works-small` and
 `works-standard` (at 0.4 and 1, built early and late), `works-great` (at
 30), `works-states` and `works-states-great`, and one for each kind
 (`works-mill`, `works-coke-furnace`, ...) at sizes 0.4, 1, 3, 10, 30 and 100,
@@ -373,6 +434,17 @@ play distance a house is seven pixels wide, so the play and far pictures show
 the middle of the true picture enlarged a whole number of times, each pixel a
 square: what you see is exactly what the game draws, only bigger.
 
+Each picture is built at the level of detail the game uses from its
+distance (the picture's heading says which): the close picture at the near
+level, the play picture at the play level, the far picture at the far
+level. A sheet's function is handed that level and passes it to what it
+builds. (`house-levels`, `street-play`, `street-far` and `market-play` fix
+their own, to show a level from another distance.) The sheet `scale`
+stands one of every generator in the registry at each of the three levels,
+with its measures against the scale under it: its triangles, its finest
+feature in thousandths of a unit, the triangles to a bay of a storey of
+wall and to a bay by a bay of roof, and its longest bare wall in bays.
+
 After a change to a generator the viewer rebuilds in about eight seconds and
 one sheet takes about three, so edit, build, render, look is under fifteen.
 
@@ -387,17 +459,22 @@ lens, off in the lab), `--size WxH`, and `--look FILE` to try a palette.
 
 1. Write the function and its parameter struct in a module of its own, with
    the rules above. Give the struct doc comments that say where each number
-   comes from.
+   comes from, and a `detail: Detail` for the level it is drawn at. Build
+   its walls, roofs and openings with `kit::Kit` and size it by the scale
+   (`scale::STOREY`, `scale::BAY`): "The scale" says what each level draws.
 2. Test what must not break: that it is sound (`Model::is_sound`), that it is
    the same each time, that it stays on its plot, and whatever its parameters
    promise (three storeys are taller than two).
-3. Add a sheet for it in `sheets.rs`: a function that returns rows of cells,
+3. List it in `registry::REGISTRY`: a function that builds a few specimens
+   of it at a level, and a line naming the generator functions it covers.
+   Until it is listed the crate's tests fail (see "Holding the line").
+4. Add a sheet for it in `sheets.rs`: a function that returns rows of cells,
    and a line in `SHEETS`.
 
 ```rust
-fn my_things(pal: &Palette) -> Vec<Vec<Cell>> {
+fn my_things(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     grid(2, 6, |row, col| {
-        let p = MyThing { storeys: row as u8 + 1, seed: Seed::of(col as u32) };
+        let p = MyThing { storeys: row as u8 + 1, detail, seed: Seed::of(col as u32) };
         Cell::new(format!("{} storeys\nseed {col}", row + 1), |m, site| my_thing(&mut m.solid, site, &p, pal))
     })
 }
@@ -412,11 +489,42 @@ Sheet { name: "my-things", about: "My thing: storeys down the rows, six seeds ac
    each cell holds, so a sheet says nothing about layout. A label is one or
    two short lines. `land` is the ground the thing stands on in the game, which
    sets the colour of the lab's ground.
-4. Call it from the viewer where the thing is placed (`scatter.rs` or
-   `scatter/towns.rs`), handing it the site, the slot's seed and the look
-   (which stands for its palette).
-5. Render the sheet and look at it at all three distances. Play distance is
-   the one that matters most: it is where the game is played.
+5. Call it from the viewer where the thing is placed (`scatter.rs` or
+   `scatter/towns.rs`), handing it the site, the slot's seed, the level the
+   camera gives its place (`lod.at(x, z)`) and the look (which stands for
+   its palette). Put it in a buffer the viewer swaps when the camera alone
+   has moved (the houses' or the works'), or give it no levels.
+6. Render the sheet and look at it at all three distances, and at `scale`
+   beside its neighbours. Play distance is the one that matters most: it
+   is where the game is played.
+
+## Holding the line
+
+Each kind of thing was once built with a kit of its own and its own idea
+of how fine detail goes, and the picture swung from one to the other. Three
+tests in `registry.rs` stop that happening again:
+
+- **Every generator keeps to the scale at every level.** Each entry's
+  specimens are built at far, play and near and measured (`scale::measure`,
+  from the mesh and from the tally the kit keeps of the walls and roofs it
+  builds). A building fails if its smallest feature is finer than its
+  level allows or coarser than the level asks; if its triangles to a bay of
+  a storey of wall, or to a bay by a bay of roof, lie outside the level's
+  band; if at the play or the near level a wall runs more than four
+  modules bare; if windows of one size stand one above another at anything
+  but a whole number of storeys; if a level has less to it than the one
+  before; or if it is a building and the kit built none of its walls.
+- **A generator that is not in the registry fails.** The test reads the
+  crate's source for free public functions that are handed a `MeshBuf`, a
+  `Greenery` or a `Model` to write into, and each must be covered by an
+  entry (or named, with the reason, in `NOT_GENERATORS`).
+- **The houses are the reference**, and every kind of works has an entry.
+
+`cargo test -p isostate-gen measures -- --ignored --nocapture` prints what
+every entry measures at every level (`EACH=1` for every specimen), which is
+how the bands were read off the houses; `fingerprints` prints a hash of
+every sheet, to prove that a change that should leave some things as they
+were did.
 
 ## Changing a generator the game already uses
 

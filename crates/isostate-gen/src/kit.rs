@@ -1,4 +1,6 @@
-//! The parts a house is put together from.
+//! The parts a building is put together from: a house, a works' sheds, a barn,
+//! a church, a station. (They were the houses' first, and the houses are still
+//! the measure of how fine they go: `scale.rs`.)
 //!
 //! A house is a few ranges (a main range, perhaps a rear wing or an outshut)
 //! with walls, a roof fitted to each, chimney stacks, and what stands behind
@@ -80,9 +82,8 @@ impl Era {
     }
 }
 
-/// The height of one storey of a house. (A works' storey is a little more, and the towns' other
-/// buildings keep `parts::STOREY`: houses are drawn low, so that a street of three storeys is
-/// roofs and not towers.)
+/// The height of one storey: the scale's, for every building. (Buildings are drawn low, so
+/// that a street of three storeys is roofs and not towers.)
 pub(crate) const STOREY: f32 = crate::scale::STOREY;
 /// How high the band at the foot of a wall is: a plinth, and the floor's height above the ground.
 pub(crate) const FOOT: f32 = 0.0026;

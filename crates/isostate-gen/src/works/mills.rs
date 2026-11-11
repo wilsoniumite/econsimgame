@@ -26,6 +26,8 @@ pub fn forge(c: &mut Ctx) {
             let (x, z) = (-hw + 0.008 + len * 0.5 + i as f32 * (len + 0.02 * g), zrow(j));
             let s = c.shed(x, z, len, dep, h, false, wall, roof);
             c.ridge_vent(&s, 0.8, false);
+            // the wide doors in its end, for the carts of pig iron and coal
+            c.doors(&s, Face::EndB, -dep * 0.24, dep * 0.24, 0.0, h * 0.74, false, *pal.timber.door);
             let ns = ((len / (0.03 * g)).floor() as usize).max(1);
             let sh = h + s.rise + 0.02 * g;
             for k in 0..ns {
