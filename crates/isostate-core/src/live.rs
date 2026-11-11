@@ -243,6 +243,10 @@ pub struct LiveYear {
     pub projects: Vec<ProjectSnap>,
     /// News since the previous call.
     pub events: Vec<Event>,
+    /// Chronicle: news sent in earlier calls whose `kept` mark has changed since,
+    /// as (place in the run's event list, the mark now). The places count the
+    /// events in the order they were sent. Empty without the chronicle.
+    pub rekept: Vec<(usize, bool)>,
     /// The year's mean of every monthly series, in `LiveStatic::series` order.
     pub series: Vec<f64>,
     /// Every family's report (empty without families).
@@ -260,12 +264,14 @@ pub struct LiveCursor {
     towns: usize,
     events: usize,
     alive: Vec<bool>,
+    /// Chronicle: the `kept` mark each event had when it was last sent.
+    kept: Vec<Option<bool>>,
 }
 
 impl LiveCursor {
     /// A cursor that has sent nothing; its first `live_year` reports the first year.
     pub fn new(C: &Content) -> LiveCursor {
-        LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new() }
+        LiveCursor { next_year: C.start_year, firms: 0, towns: 0, events: 0, alive: Vec::new(), kept: Vec::new() }
     }
 }
 
@@ -322,6 +328,15 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
     cursor.towns = st.town_name.len();
 
     let new_events = events[cursor.events.min(events.len())..].to_vec();
+    // chronicle: a decade is ranked again as it fills, so marks already sent can change
+    let rekept: Vec<(usize, bool)> = if P.chronicle.enabled {
+        (0..cursor.kept.len().min(events.len())).filter(|&i| events[i].kept != cursor.kept[i]).map(|i| (i, events[i].kept == Some(true))).collect()
+    } else {
+        Vec::new()
+    };
+    if P.chronicle.enabled {
+        cursor.kept = events.iter().map(|e| e.kept).collect();
+    }
     cursor.events = events.len();
 
     let projects = st
@@ -345,6 +360,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         new_towns,
         projects,
         events: new_events,
+        rekept,
         series: st.series.data.iter().map(|d| annual(d, C.start_year, year)).collect(),
         families: (0..st.families.len()).map(|k| families::family_report(st, C, P, k).expect("family exists")).collect(),
         cell_owner: st.cell_owner.iter().map(|&o| o as i16).collect(),
