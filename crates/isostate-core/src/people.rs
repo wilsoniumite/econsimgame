@@ -121,7 +121,6 @@ pub fn migration(st: &mut State, _C: &Content, P: &Params) {
     st.migration_flow = flow;
 }
 
-pub static TEMP_FORCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(usize::MAX);
 /// Mining and industrial settlements far from existing markets become towns.
 pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year: i64, events: &mut Vec<Event>) -> Vec<usize> {
     let (H, W, N) = (st.world.H, st.world.W, st.N);
@@ -150,14 +149,7 @@ pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year
     }
     let score: Vec<f64> = (0..N).map(|c| if land[c] && far[c] && st.dcatch[c].is_finite() { near[c] } else { 0.0 }).collect();
     let mut founded = Vec::new();
-    let mut c = argmax(&score);
-    // TEMP experiment
-    let forced = TEMP_FORCE.swap(usize::MAX, std::sync::atomic::Ordering::SeqCst);
-    let mut score = score;
-    if forced != usize::MAX {
-        c = forced;
-        score[c] = 1e9;
-    }
+    let c = argmax(&score);
     if score[c] > P.found_activity {
         // settle on the best nearby site: flat ground, water, close to the work
         let (cy, cx) = ((c / W) as isize, (c % W) as isize);
