@@ -508,8 +508,8 @@ pub fn game_params() -> Params {
     P.carting = crate::carting::CartingParams::game();
     P.people = crate::peopling::PeopleParams::game();
     // land (docs/rules/land.md) is not switched on yet: the viewer cannot draw
-    // it, and three tests are written to the port's island. When it is, the
-    // line is `P.land = crate::landform::LandParams::game();`.
+    // it, and a test or three of other mechanisms are written to the port's
+    // island. When it is, the line is `P.land = crate::landform::LandParams::game();`.
     P
 }
 

@@ -8,8 +8,8 @@ viewer). It draws from a random stream of its own (`rng::land_stream`,
 stream 11); the port's `generate_world` is not touched.
 
 It is **not yet switched on in the game's rules**. The economy stands on the
-new land (the sweeps below), but the viewer cannot draw it yet and three
-tests of other mechanisms are written to the port's island. "Why it is off"
+new land (the sweeps below), but the viewer cannot draw it yet and a test
+or three of other mechanisms are written to the port's island. "Why it is off"
 says what is needed.
 
 ## What was wrong
@@ -448,23 +448,32 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
    it knows nothing of a tideway, so a town at an estuary's head is a port
    with no sea in sight. Teaching it `land_height`, the river lines, the
    lakes and the tideways is the next helper's work.
-2. **Three tests are written to the port's island under the game's rules**
-   and fail on another: `tests/chronicle.rs`
-   `a_founding_redraws_only_the_districts_it_was_cut_from` and
-   `towns_and_districts_have_stories` (both assert particulars of seed 7's
-   history), and `tests/machines.rs`
+2. **Tests of other mechanisms are written to the port's island under the
+   game's rules.** With the switch thrown for a trial on the island as it
+   now is, one fails and the rest pass: `tests/chronicle.rs`
+   `towns_and_districts_have_stories`, which asserts particulars of seed
+   7's history. On the island as it first was, two more failed, and a
+   change to the land may bring them back, since each depends on what
+   happens to happen: `tests/chronicle.rs`
+   `a_founding_redraws_only_the_districts_it_was_cut_from`, and
+   `tests/machines.rs`
    `money_is_conserved_and_runs_are_deterministic_with_machines_on`, which
-   finds an active town whose machine table is still -1 (town 11, founded in
-   the run's last year: an edge the old history did not reach, and worth its
-   owner's look whatever island is used). Everything else passed with it on
-   when that was tried, which was before the tideways were added.
+   found an active town whose machine table was still -1 (a town founded in
+   the run's last year: an edge worth its owner's look whatever island is
+   used).
 3. **It has not been run beside the mechanisms being built tonight** (canals,
-   mines, the water industry, logging), which were tuned on the old island,
-   nor under the scripted players (`examples/bots.rs` plays the game's
-   rules, so it plays the old island until the switch is thrown).
+   mines, the water industry, logging), which were tuned on the old island.
+
+The scripted players are not in the way. `examples/bots.rs` plays the game's
+rules, so it plays the old island until the switch is thrown; with it thrown
+for a trial, all sixteen games (four strategies on seeds 1, 2, 3 and 7) play
+to 1900 on the new land, and the player's fortunes are of the same order as
+on the old (the thoughtful player ends first of six on all four seeds on
+either island, with 57 to 127 million against 40 to 105).
 
 To switch it on: `P.land = crate::landform::LandParams::game();` in
-`game_params()`, re-anchor those three tests, and run the sweeps again.
+`game_params()`, re-anchor that test (and the other two if they fail again),
+and run the sweeps again.
 
 ## How it was checked
 
