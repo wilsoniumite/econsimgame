@@ -1767,6 +1767,8 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
             apply_choice(st, C, k, Choice::Head { member: eldest }, None, year, events);
             let first = st.families[k].members[eldest].first.clone();
             news_items.push(news_at(P, k, Some(0.3), year, format!("{first} {surname} heads the family"), format!("The {surname}s are led from {}.", st.town_name[seat]), seat));
+            // chronicle: the player's succession is one great item, which says whom the new head follows
+            crate::chronicle::succession(P, k, &mut news_items);
             if k == 0 && cands.len() > 1 {
                 let fam = &st.families[k];
                 let options: Vec<DecisionOption> = cands

@@ -85,7 +85,7 @@ fn it_never_touches_the_economy_and_runs_are_deterministic() {
 #[test]
 fn every_observer_item_says_why() {
     let r = whole_game();
-    let observer = ["crossing", "milestone", "steep", "alarm", "verdict", "first", "region"];
+    let observer = ["crossing", "milestone", "steep", "alarm", "verdict", "first", "region", "famine"];
     for e in r.events.iter().filter(|e| observer.contains(&e.kind.as_str())) {
         let w = e.why.as_ref().unwrap_or_else(|| panic!("{} ({}) has no provenance", e.title, e.kind));
         assert!(!w.test.is_empty() && !w.series.is_empty() && !w.note.is_empty(), "{}: {w:?}", e.title);
@@ -178,10 +178,18 @@ fn the_players_works_no_longer_flood_the_news() {
     // more, the everyday less, and a decade keeps one of them at most
     let Q = &r.params.chronicle;
     for e in &own {
-        let great = e.title.contains("takes up") || e.title.contains("heads the family") || e.title.contains("sets up in") || e.text.contains("head of the family");
+        let great = e.title.contains("takes up") || e.title.contains("heads the family") || e.title.contains("sets up in");
         if e.kind == "family" {
             assert_eq!(e.weight >= 0.6, great, "{} weighs {}", e.title, e.weight);
         }
+    }
+    // a succession is one great item that says whom the new head follows; the burial is everyday news
+    let successions: Vec<&&Event> = own.iter().filter(|e| e.title.contains("heads the family")).collect();
+    assert!(successions.len() >= 5, "{} successions in a century and a half", successions.len());
+    for e in &successions {
+        assert!(e.text.contains(" follows ") && e.text.contains(", who died at ") && (e.text.contains(" are led from ") || e.text.ends_with("the family's seat.")), "{}", e.text);
+        let burial = own.iter().find(|b| b.year == e.year && b.text.contains(" head of the family, is buried at ")).expect("the burial is told too");
+        assert!(burial.weight == Q.own_small && e.text.contains(burial.title.split(" dies at ").next().unwrap()), "{} / {}", burial.title, e.text);
     }
     assert!(own.iter().any(|e| e.weight == Q.own_great) && own.iter().any(|e| e.weight == Q.own_small) && own.iter().any(|e| e.weight == Q.own_summary));
     let mut kept: BTreeMap<i64, usize> = BTreeMap::new();

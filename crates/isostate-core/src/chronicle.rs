@@ -352,6 +352,30 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
     events.push(e);
 }
 
+/// A head of the player's family has died and another has taken over
+/// (`families::people`, with the year's family news before it is filed). The
+/// port files two items of the same weight, and a decade's place for the
+/// family went to the burial every time. Here the succession is the item a
+/// history keeps, and says whom the new head follows; the burial stays in the
+/// family's own news. The last item is the succession; the burial is found by
+/// the port's wording, and if that is ever changed nothing is done.
+pub fn succession(P: &Params, family: usize, items: &mut [Option<Event>]) {
+    if !P.chronicle.enabled || family != 0 {
+        return;
+    }
+    let Some((Some(heads), before)) = items.split_last_mut() else { return };
+    let Some(burial) = before.iter_mut().flatten().find(|e| e.text.contains(" head of the family, is buried at ")) else { return };
+    let (Some((who, age)), Some((_, place))) = (burial.title.split_once(" dies at "), burial.text.split_once(" is buried at ")) else { return };
+    let first = heads.title.split(' ').next().unwrap_or("The new head");
+    let place = place.trim_end_matches('.');
+    heads.text = if heads.text.ends_with(&format!(" are led from {place}.")) {
+        format!("{first} follows {who}, who died at {age} and is buried at {place}, the family's seat.")
+    } else {
+        format!("{first} follows {who}, who died at {age} and is buried at {place}. {}", heads.text)
+    };
+    burial.weight = P.chronicle.own_small;
+}
+
 // ---------------------------------------------------------------- the observer's faults
 
 /// The level a doubling is measured from. The port takes the first year alone;
@@ -733,8 +757,11 @@ fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, yea
             ch.leaders[1] = Some(now);
         }
         let (a, b) = (&st.town_name[now], &st.town_name[holder]);
+        // "first", not "largest": the towns are ranked with their districts, and
+        // the town itself may be the smaller of the two (the city milestones
+        // count the people inside the town)
         let (title, weight) = if place == 0 {
-            (format!("{a} overtakes {b} as the island's largest town"), 0.8)
+            (format!("{a} overtakes {b} as the island's first town"), 0.8)
         } else {
             (format!("{a} overtakes {b} as the island's second town"), 0.7)
         };
@@ -809,22 +836,35 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
     if k >= 3 {
         let fall = |years: usize| 1.0 - ch.prices[k][(t, g)] / ch.prices[k - years][(t, g)].max(1e-9);
         let dw = ch.wage[k][t] / ch.wage[k - 1][t].max(1e-9) - 1.0;
+        // what the commonest kind among them spends most on, and what that costs now
+        let mut by_method: BTreeMap<usize, usize> = BTreeMap::new();
+        for &f in closed[t].iter().filter(|&&f| C.method_out[st.f_method[f]] == g) {
+            *by_method.entry(st.f_method[f]).or_insert(0) += 1;
+        }
+        let m = *by_method.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).expect("some made it").0;
+        let spend = |x: usize| C.m_in[(m, x)] * ch.prices[k][(t, x)];
+        let input = (0..C.G).filter(|&x| x != g && spend(x) > 0.0).max_by(|&a, &b| spend(a).total_cmp(&spend(b)).then(b.cmp(&a)));
+        let dearer = input.map_or(0.0, |x| ch.prices[k][(t, x)] / ch.prices[k - 1][(t, x)].max(1e-9) - 1.0);
         if fall(1) > 0.05 {
             reason = format!(" The price of {good} there is {} lower than a year ago.", fmt_pct(fall(1), 0));
         } else if fall(3) > 0.05 {
             reason = format!(" The price of {good} there is {} lower than three years ago.", fmt_pct(fall(3), 0));
+        } else if dearer > 0.05 {
+            let x = input.expect("an input grew dearer");
+            reason = format!(" The {} they work up costs {} more there than a year ago, and the price of {good} has not followed.", C.good_label[x].to_lowercase(), fmt_pct(dearer, 0));
         } else if dw > 0.05 {
             reason = format!(" Wages there are up {} in a year, and the price of {good} has not followed.", fmt_pct(dw, 0));
         }
     }
     let biggest = closed[t].iter().copied().max_by(|&a, &b| st.f_K[a].total_cmp(&st.f_K[b]).then(b.cmp(&a))).expect("some closed");
+    let named = format!(" The largest was {}, open since {}.", st.f_name[biggest], st.f_born[biggest]);
     let mut ev = Event::new(
         year as f64 + 0.9,
         "region",
         0.66,
         format!("{} works close around {name}", capital(&number(n))),
         format!(
-            "{} of the {} works in and around {name} shut in {year}, {makers}.{reason}{}",
+            "{} of the {} works in and around {name} shut in {year}, {makers}.{reason}{named}{}",
             capital(&number(n)),
             stood[t],
             and_others(st, &towns[1..], "had a hard year too")
@@ -945,6 +985,27 @@ fn new_towns_of_decade(st: &State, P: &Params, year: i64, events: &mut Vec<Event
         format!("{} towns were founded from {decade} to {year} (it needs {})", towns.len(), P.chronicle.new_towns_min),
     );
     events.push(ev);
+}
+
+/// The year's hunger (`people::growth`) says how short the food ran. The 0.82
+/// is the port's line for a famine.
+pub fn famine_provenance(st: &State, P: &Params, year: i64, events: &mut [Event]) {
+    if !P.chronicle.enabled {
+        return;
+    }
+    for e in events.iter_mut().filter(|e| e.kind == "famine" && e.why.is_none() && e.year.floor() as i64 == year) {
+        let Some(t) = e.town else { continue };
+        let hit = (0..st.T_max).filter(|&i| st.town_active[i] && st.food_min_acc[i] < 0.82 && st.town_founded[i] < year - 2).count();
+        e.why = why(
+            P,
+            "food short at the worst month of the year",
+            &format!("the least share of their food that households in {} got in a month", st.town_name[t]),
+            st.food_min_acc[t],
+            0.82,
+            None,
+            format!("{} got {} of its food at the worst point (hunger is under 82%); {} went hungry, and three or more are told as one", st.town_name[t], fmt_pct(st.food_min_acc[t], 0), if hit == 1 { "one town".to_string() } else { format!("{} towns", number(hit)) }),
+        );
+    }
 }
 
 /// The year's large closures (`sim::notable_closures`) say how large.

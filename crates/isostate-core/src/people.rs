@@ -59,6 +59,8 @@ pub fn growth(st: &mut State, _C: &Content, P: &Params, year: i64, events: &mut 
             events.push(ev);
         }
     }
+    // chronicle: the year's hunger says how short the food ran, before the measure is cleared
+    crate::chronicle::famine_provenance(st, P, year, events);
     for t in 0..T {
         st.pop[t] = if act[t] { st.pop[t] * (1.0 + g[t]) } else { 0.0 };
     }
