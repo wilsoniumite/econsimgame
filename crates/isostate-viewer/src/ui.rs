@@ -741,7 +741,21 @@ pub fn money(v: f32) -> String {
     if v < 0.0 { format!("-{s}") } else { s }
 }
 
-fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Query<&RelativeCursorPosition, With<SidePanel>>, mut body: Query<&mut ScrollPosition, With<PanelBody>>) {
+/// Where a list is scrolled to after the wheel turns `dy` pixels (up is
+/// positive). `asked` is where it was last asked to be and `shown` where the
+/// layout could put it, which is never past the end: starting from the lesser,
+/// wheeling down at the foot of the list does not pile up a distance that
+/// would have to be wheeled back before the list moved again.
+fn scroll_to(asked: f32, shown: f32, dy: f32) -> f32 {
+    (asked.min(shown) - dy).max(0.0)
+}
+
+/// Turn the wheel over the side panel.
+pub fn scroll_panel(s: &mut ScrollPosition, c: &ComputedNode, dy: f32) {
+    s.0.y = scroll_to(s.0.y, c.scroll_position.y * c.inverse_scale_factor, dy);
+}
+
+fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Query<&RelativeCursorPosition, With<SidePanel>>, mut body: Query<(&mut ScrollPosition, &ComputedNode), With<PanelBody>>) {
     if ui.tab.is_none() || !panel.iter().any(|p| p.cursor_over()) {
         return;
     }
@@ -750,8 +764,8 @@ fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Qu
         MouseScrollUnit::Pixel => scroll.delta.y,
     };
     if dy != 0.0 {
-        for mut s in &mut body {
-            s.0.y = (s.0.y - dy).max(0.0);
+        for (mut s, c) in &mut body {
+            scroll_panel(&mut s, c, dy);
         }
     }
 }
@@ -766,8 +780,9 @@ fn panel_rebuild(
     data: Res<Data>,
     font: Res<UiFont>,
     fam: Option<Res<FamilyView>>,
-    body: Query<(Entity, Option<&Children>), With<PanelBody>>,
+    mut body: Query<(Entity, Option<&Children>, &mut ScrollPosition), With<PanelBody>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
+    mut last_list: Local<Option<(Tab, NewsShow)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let key = (ui.tab, k, ui.news, ui.dirty);
@@ -779,11 +794,16 @@ fn panel_rebuild(
     for mut t in &mut title {
         t.0 = tab.label().to_string();
     }
-    let Ok((be, children)) = body.single() else { return };
+    let Ok((be, children, mut scroll)) = body.single_mut() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
             commands.entity(c).despawn();
         }
+    }
+    // another panel, or another choice of news, opens at its top
+    if *last_list != Some((tab, ui.news)) {
+        *last_list = Some((tab, ui.news));
+        scroll.0.y = 0.0;
     }
     let f = font.0.clone();
     let r = &data.r;
@@ -999,6 +1019,22 @@ mod tests {
             let times: f32 = label.trim_end_matches('\u{00d7}').parse().unwrap();
             assert_eq!(v / SPEEDS[0].1, times, "{label} is {} times 1x", v / SPEEDS[0].1);
         }
+    }
+
+    #[test]
+    fn the_wheel_moves_the_list_at_once_from_its_foot() {
+        // a list 10,860 pixels long, wheeled far past its foot
+        let mut asked = 0.0;
+        for _ in 0..400 {
+            asked = scroll_to(asked, asked.min(10_860.0), -36.0);
+        }
+        // one step past the end at most, however long the wheel turned
+        assert_eq!(asked, 10_896.0);
+        // one step up shows on screen at once
+        let up = scroll_to(asked, 10_860.0, 36.0);
+        assert_eq!(up, 10_824.0);
+        // and it stops at the top
+        assert_eq!(scroll_to(20.0, 20.0, 36.0), 0.0);
     }
 
     #[test]

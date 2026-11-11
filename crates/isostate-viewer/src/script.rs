@@ -519,9 +519,10 @@ fn step(world: &mut World, sc: &mut Script) {
                 frame = true;
             }
             Step::Scroll(px) => {
-                let mut q = world.query_filtered::<&mut ScrollPosition, With<ui::PanelBody>>();
-                for mut s in q.iter_mut(world) {
-                    s.0.y += px;
+                // as the wheel would, a positive turn of the wheel being up
+                let mut q = world.query_filtered::<(&mut ScrollPosition, &ComputedNode), With<ui::PanelBody>>();
+                for (mut s, c) in q.iter_mut(world) {
+                    ui::scroll_panel(&mut s, c, -px);
                 }
                 frame = true;
             }
