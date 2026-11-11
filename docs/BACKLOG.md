@@ -8,7 +8,7 @@ Last gone through: the evening of 11 November 2026.
 
 - **A note goes in here first**, dated and word for word, in "The notes, as written" at the foot. It is not started because it was said.
 - **Notes on one thing are gathered** and taken up together, so that a second thought can change the first before any work is done.
-- **The backlog is gone through at each landing** (whenever a piece is merged into `rust-3d`) and when a round of notes arrives. Notes the landed work has answered are closed, with where. Notes it has made moot are pruned, with a line saying why. The rest are ranked again.
+- **The backlog is gone through at each landing** (whenever a piece is merged into `main`) and when a round of notes arrives. Notes the landed work has answered are closed, with where. Notes it has made moot are pruned, with a line saying why. The rest are ranked again.
 - **A note is taken up when its time has come:** nothing in flight is rewriting the same code or the same part of the picture; what it depends on has landed; and it ranks above whatever else is ready. Two exceptions: something that stops her playing, and a fix of a line or two in code nobody is working in.
 - **The ranking**, highest first: what breaks play or makes the picture say something untrue; what many other things wait on; what she has raised more than once; what makes the island's economics truer; polish.
 - **What helpers and reviewers find** along the way is kept in its own section, ranked in the same list, and never dressed as her note.
