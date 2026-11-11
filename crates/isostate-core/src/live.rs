@@ -249,6 +249,10 @@ pub struct LiveYear {
     pub families: Vec<FamilyReport>,
     /// Owning family of every cell, -1 for none (empty without families).
     pub cell_owner: Vec<i16>,
+    /// harvest: each town's harvest this year against an average year, by town
+    /// slot (1.0 is average; empty unless the mechanism is on), and the country's.
+    pub harvest_town: Vec<f32>,
+    pub harvest: Option<f32>,
 }
 
 /// What the viewer has been sent so far.
@@ -348,5 +352,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         series: st.series.data.iter().map(|d| annual(d, C.start_year, year)).collect(),
         families: (0..st.families.len()).map(|k| families::family_report(st, C, P, k).expect("family exists")).collect(),
         cell_owner: st.cell_owner.iter().map(|&o| o as i16).collect(),
+        harvest_town: st.harvest_town.iter().map(|&v| v as f32).collect(),
+        harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
     }
 }

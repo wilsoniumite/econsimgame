@@ -8,6 +8,7 @@ use crate::content::{Content, default_content, tech_index};
 use crate::econ;
 use crate::families;
 use crate::firms;
+use crate::harvest;
 use crate::land;
 use crate::mat::Mat;
 use crate::names::town_name;
@@ -436,6 +437,10 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     let closed = firms::review(st, C, P, &mut rng.firms, year, &pbar, &wbar);
     firms::entry(st, C, P, &mut rng.firms, year, &pbar, &wbar, None);
     after_transport(st, C, P);
+    // harvest: the books close on the year's crop and the coming year's weather is
+    // drawn, on the land as it has just been shared out and before the families
+    // act (they price land on the year's rents)
+    harvest::yearly(st, C, P, &mut rng.harvest, year, events, warm);
     if !warm {
         rail::plan(st, C, P, &mut rng.rail, year, &pbar, events);
         rail::plan_spurs(st, C, P, &mut rng.rail, year, &pbar, events);
@@ -592,6 +597,7 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
     yearly(st, C, P, rngs, year, events, false);
     observer::yearly(st, C, P, year, events);
     record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
+    harvest::snapshot(rec, st, P, (year - C.start_year) as usize);
     sim.year += 1;
     Ok(())
 }

@@ -333,4 +333,23 @@ pub struct State {
     /// (T, G): what each town's buyers asked for last month (households, landlords,
     /// works, mines, building and railway orders), whether or not they got it.
     pub requests: Mat,
+
+    // ---------------- harvest (not in the Python; all empty while `harvest.enabled` is off)
+    /// (NS, N): what each sector's land in each cell yields in the year now
+    /// running, against an average year. Empty during the warm-up.
+    pub harvest_mult: Mat,
+    /// The country's harvest in the year now running (the mean over all farmland), and each town's.
+    pub harvest_now: f64,
+    pub harvest_town_now: Vec<f64>,
+    /// The same for the year just finished: what the record and the live view show.
+    pub harvest_year: f64,
+    pub harvest_town: Vec<f64>,
+    /// The country's harvest in every year so far.
+    pub harvest_past: Vec<f64>,
+    /// The last year a dearth was announced.
+    pub harvest_dearth_year: i64,
+    /// With families: the rent the weather has taken from each cell this year so
+    /// far (negative where it gave), and over the last complete year.
+    pub harvest_rent_gap: Vec<f64>,
+    pub harvest_rent_gap_year: Vec<f64>,
 }

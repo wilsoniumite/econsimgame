@@ -7,6 +7,7 @@
 
 use crate::content::Content;
 use crate::families;
+use crate::harvest;
 use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
 use crate::state::{MonthStats, State};
@@ -554,6 +555,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mine_rail: Vec<f64> = (0..NE).map(|u| Y[u] * rail_unit[u]).collect();
     add_column(&mut R, gm, &bincount(&et, &mine_mach, T));
     add_column(&mut R, gr, &bincount(&et, &mine_rail, T));
+    // harvest: the year's weather is felt here, after the hands are hired and the
+    // machines asked for on an average year's yield. From here on Y is the crop
+    // actually brought in.
+    let Y = harvest::brought_in(st, C, P, Y);
     let oi: Vec<usize> = (0..st.f_alive.len()).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
     let ot: Vec<usize> = oi.iter().map(|&i| st.f_town[i]).collect();
     let mut req_inv = Mat::zeros(oi.len(), G);

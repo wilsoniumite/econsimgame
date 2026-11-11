@@ -53,6 +53,8 @@ pub struct Rngs {
     pub people: Rng,
     pub rail: Rng,
     pub misc: Rng,
+    /// The weather (`harvest`; not in the Python, stream 7).
+    pub harvest: Rng,
 }
 
 fn splitmix64(x: &mut u64) -> u64 {
@@ -81,6 +83,7 @@ pub fn make_rngs(seed: u64) -> Rngs {
         people: stream(4),
         rail: stream(5),
         misc: stream(6),
+        harvest: stream(7),
     }
 }
 

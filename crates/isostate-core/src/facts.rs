@@ -399,6 +399,38 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let farm = series("ag_share");
     let zig: Vec<f64> = farm.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).filter(|v| v.is_finite()).collect();
     b.num("farm_zigzag".into(), Kind::Real, 100.0 * mean(&zig));
+    // harvest: how grain moves from year to year, and what the worst years do.
+    // Yearly changes of the log, from PRICE_FROM as above. A lag-one correlation
+    // near -0.5 is what independent yearly shocks to a level give; near zero or
+    // above, the level wanders; well below, it rings.
+    if C.good_index.contains_key("grain") {
+        let changes = |name: &str| -> Vec<f64> {
+            let v = series(name).get((from - y0) as usize..).unwrap_or(&[]);
+            v.windows(2).map(|w| (w[1] / w[0]).ln()).filter(|d| d.is_finite()).collect()
+        };
+        let sd = |d: &[f64]| {
+            let m = mean(d);
+            if d.len() >= 2 { mean(&d.iter().map(|v| (v - m) * (v - m)).collect::<Vec<_>>()).sqrt() } else { f64::NAN }
+        };
+        let ac1 = |d: &[f64]| {
+            let m = mean(d);
+            let var: f64 = d.iter().map(|v| (v - m) * (v - m)).sum();
+            let cov: f64 = d.windows(2).map(|w| (w[0] - m) * (w[1] - m)).sum();
+            if d.len() >= 3 && var > 0.0 { cov / var } else { f64::NAN }
+        };
+        let (dp, dq) = (changes("price_grain"), changes("out_grain"));
+        b.num("output_swing_grain".into(), Kind::Real, sd(&dq));
+        b.num("price_ac1_grain".into(), Kind::Real, ac1(&dp));
+        b.num("output_ac1_grain".into(), Kind::Real, ac1(&dq));
+        // the hardest single year for wage earners: the real wage's largest fall on the year before
+        let dw = changes("real_wage");
+        b.num("real_wage_worst_year".into(), Kind::Real, dw.iter().copied().fold(f64::NAN, f64::min).exp_m1());
+        b.num("real_wage_swing".into(), Kind::Real, sd(&dw));
+    }
+    // years in which people::growth found at least one town short of food
+    let mut hungry: Vec<i64> = r.events.iter().filter(|e| e.kind == "famine").map(|e| e.year.floor() as i64).collect();
+    hungry.dedup();
+    b.num("famine_years".into(), Kind::Count, hungry.len() as f64);
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
