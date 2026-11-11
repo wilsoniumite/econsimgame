@@ -55,7 +55,7 @@ pub struct Game {
     pub open: Option<u64>,
     /// the welcome card is up: decisions wait behind it
     welcoming: bool,
-    card_drawn: Option<(Option<u64>, u64)>,
+    card_drawn: Option<(Option<u64>, u64, bool)>,
 }
 
 impl Game {
@@ -470,7 +470,9 @@ fn decide_clicks(
     mut game: ResMut<Game>,
 ) {
     for (i, d) in &q {
-        if *i == Interaction::Pressed && !game.busy {
+        // a year on its way takes the default before an answer sent now could
+        // arrive, and the answer would be refused: the card says so and waits
+        if *i == Interaction::Pressed && !game.busy && !live.stepping {
             live.send(Cmd::Decide { id: d.id, option: d.option });
             game.busy = true;
             game.open = None;
@@ -955,8 +957,11 @@ fn option_note(d: &Decision, choice: Choice, fam: &FamilyView, me: &FamilyRow, r
 }
 
 #[allow(clippy::too_many_arguments)]
-fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<FamilyView>, data: Res<Data>, font: Res<UiFont>, cards: Query<Entity, With<DecisionCard>>) {
-    let key = (game.open, game.version);
+fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, cards: Query<Entity, With<DecisionCard>>) {
+    // with the next year on its way (the card opened from the badge while the
+    // years ran) an answer cannot land in time: the options wait, unlit
+    let turning = live.stepping;
+    let key = (game.open, game.version, turning);
     if game.card_drawn == Some(key) && !fam.is_changed() {
         return;
     }
@@ -1016,17 +1021,18 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                 c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
                 for (i, o) in d.options.iter().enumerate() {
                     let note = option_note(d, o.choice, &fam, me, r);
-                    c.spawn((
+                    let mut option = c.spawn((
                         Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
                         BackgroundColor(BTN),
                         Interaction::default(),
                         FocusPolicy::Block,
-                        crate::ui::Hoverable,
-                        DecideButton { id: d.id, option: i },
-                    ))
-                    .with_children(|b| {
+                    ));
+                    if !turning {
+                        option.insert((crate::ui::Hoverable, DecideButton { id: d.id, option: i }));
+                    }
+                    option.with_children(|b| {
                         b.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|head| {
-                            head.spawn(text(&f, &o.label, 15.5, INK));
+                            head.spawn(text(&f, &o.label, 15.5, if turning { MUTED } else { INK }));
                             if i == d.default {
                                 head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(accent.with_alpha(0.15))))
                                     .with_children(|t| {
@@ -1040,7 +1046,8 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                     });
                 }
                 c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|row| {
-                    row.spawn(text(&f, &format!("Unanswered, the default is taken at the end of {}.", d.due), 12.5, MUTED));
+                    let foot = if turning { "The year is turning\u{2026}".to_string() } else { format!("Unanswered, the default is taken at the end of {}.", d.due) };
+                    row.spawn(text(&f, &foot, 12.5, MUTED));
                     row.spawn((
                         Node { padding: UiRect::axes(Val::Px(11.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(9.0)), flex_shrink: 0.0, ..default() },
                         BackgroundColor(BTN),

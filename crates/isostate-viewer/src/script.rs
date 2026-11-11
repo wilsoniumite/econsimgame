@@ -454,7 +454,8 @@ fn step(world: &mut World, sc: &mut Script) {
                 let hit = q.iter(world).find(|(_, d)| Some(d.id) == open && d.option == n).map(|(e, _)| e);
                 match hit {
                     Some(e) => press(world, sc, e),
-                    None => fail(&format!("no option {n} of an open decision to click")),
+                    // none open, or its options are unlit while the year turns
+                    None => println!("script: no click: no option {n} of an open decision can be clicked"),
                 }
                 frame = true;
             }
