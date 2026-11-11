@@ -14,9 +14,10 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// `isostate-core sweep ARGS`, without the table on stdout (the harness would not hide it).
 fn sweep(args: &[&str]) -> Result<(), String> {
-    let args: Vec<String> = std::iter::once("sweep").chain(args.iter().copied()).map(String::from).collect();
-    main_with_args(&args)
+    let args: Vec<String> = args.iter().copied().map(String::from).collect();
+    isostate_core::sweep::command(&args, false)
 }
 
 #[test]
@@ -193,6 +194,9 @@ fn a_bad_setting_is_refused_before_anything_runs() {
     let out = dir.to_str().unwrap();
     let e = sweep(&["--seeds", "1", "--set", "land_thetta=2,3", "--out", out, "--quiet"]).unwrap_err();
     assert!(e.contains("Did you mean land_theta?"), "{e}");
+    // the same through the command line's front door
+    let front: Vec<String> = ["sweep", "--seeds", "1", "--set", "land_thetta=2,3", "--out", out].iter().map(|s| s.to_string()).collect();
+    assert_eq!(main_with_args(&front).unwrap_err(), e);
     let e = sweep(&["--seeds", "1", "--set", "land_theta=wide", "--out", out, "--quiet"]).unwrap_err();
     assert!(e.contains("land_theta") && e.contains("invalid type"), "{e}");
     let e = sweep(&["--seeds", "1", "--compare", out, "--out", out, "--quiet"]).unwrap_err();

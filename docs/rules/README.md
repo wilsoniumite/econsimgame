@@ -229,48 +229,73 @@ never built, port rules: bessemer (in 5 of 8 runs), steel_rolling (in 7 of 8 run
 ```
 
 With `--compare OTHER_DIR` it then reads `OTHER_DIR/facts.json` and sets each
-fact's mean now beside its mean then, with the change. A line at the top
-counts what moved. `=` is a fact that came out the same: as many runs with a
-value, the same mean, least and greatest. A star marks a fact whose ranges
-across seeds do not overlap: every seed now is above, or below, every seed
-then. It is only given with four runs or more a side; with fewer, two sets of
-seeds under the very same rules stand clear of each other too often (one time
-in three with two a side). Six families against none, the headings and the
-starred rows only:
+fact's mean now beside its mean then, with the change. Like is compared with
+like: where the two sweeps have seeds in common, only those seeds' runs are
+used on either side, so four seeds are never set against eight and the
+difference between islands taken for a difference between rules. (With no seed
+in common every run of each is used, and the table says so.)
+
+- A line at the top counts what moved.
+- `=` is a fact that every seed gives exactly as it gave it before.
+- `up/down` counts, seed by seed, where the fact is greater now and where it
+  is less. `8/0` is every island moving the same way, however little; by
+  chance alone that happens for one fact in 128.
+- A star marks a fact whose ranges across seeds do not overlap: every seed now
+  is above, or below, every seed then. That is a much harder test (a shift
+  larger than the whole spread between islands). It is only given with four
+  runs or more a side; with fewer, two sets of seeds under the very same rules
+  stand clear of each other too often (one time in three with two a side).
+
+Six families against none, the headings and the starred rows only:
 
 ```text
 now: port rules, 6 families (8 runs); then: port rules (8 runs) in .claude/night/reports/sweep-port-baseline
-of the 128 facts both have, the seconds aside, 113 differ and 11 of those are starred
-= the same number of runs with the same mean, least and greatest
+seed for seed, on seeds 1 2 3 4 5 6 7 8
+of the 128 facts both have, the seconds aside, 114 differ and 11 of those are starred
+= every seed gives the number it gave
+up/down: the seeds in which the fact is greater now, and those in which it is less
 * the ranges across seeds do not overlap: every seed now is above, or below, every seed then
   (marked only with 4 runs or more a side)
 
-                                          now     then            change
+                                          now     then            change  up/down
 People and towns
 Work and wages
 Railways
 Works
-  works_1800                            2,131    1,536     +594 (+38.7%)  *
-  works_1850                            4,156    2,804   +1,352 (+48.2%)  *
-  works_1900                            6,973    4,512   +2,461 (+54.5%)  *
-  works_ex_services_1800                2,046    1,456     +590 (+40.6%)  *
-  works_ex_services_1850                4,010    2,660   +1,351 (+50.8%)  *
-  works_ex_services_1900                6,700    4,260   +2,440 (+57.3%)  *
-  works_per_1000_people_1900             10.2     6.61     +3.6 (+54.4%)  *
-  works_size_median_1900                 0.46     0.84             -0.38  *
-  works_size_p90_1900                    2.52     2.86             -0.34  *
-  works_closed                          5,472    4,710     +763 (+16.2%)  *
+  works_1800                            2,131    1,536     +594 (+38.7%)      8/0  *
+  works_1850                            4,156    2,804   +1,352 (+48.2%)      8/0  *
+  works_1900                            6,973    4,512   +2,461 (+54.5%)      8/0  *
+  works_ex_services_1800                2,046    1,456     +590 (+40.6%)      8/0  *
+  works_ex_services_1850                4,010    2,660   +1,351 (+50.8%)      8/0  *
+  works_ex_services_1900                6,700    4,260   +2,440 (+57.3%)      8/0  *
+  works_per_1000_people_1900             10.2     6.61     +3.6 (+54.4%)      8/0  *
+  works_size_median_1900                 0.46     0.84             -0.38      0/8  *
+  works_size_p90_1900                    2.52     2.86             -0.34      0/8  *
+  works_closed                          5,472    4,710     +763 (+16.2%)      8/0  *
 Land
 Methods and inventions
 Prices and cycles
 News
-  news_total                            1,485    245.8  +1,240 (+504.4%)  *
+  news_total                            1,485    245.8  +1,240 (+504.4%)      8/0  *
 Speed
 ```
 
 So with families there are half as many works again and the typical one is
-half the size. No other fact moves clear of the spread between seeds, the
-news aside, where the families' own items are counted.
+half the size. Nothing else moves clear of the spread between seeds, the news
+aside, where the families' own items are counted. The tally shows what the
+star cannot: these rows have no star, and every island moves the same way.
+
+```text
+  urban_share_1850                      0.257    0.231            +0.027      8/0
+  urban_share_1900                      0.255    0.237            +0.018      8/0
+  industry_share_1850                   0.274    0.239            +0.035      8/0
+  industry_share_1900                   0.272    0.248            +0.024      8/0
+  works_top_1pct_capacity_share_1900    0.058    0.080            -0.022      0/8
+  cells_industry_1900                   980.8    886.2    +94.5 (+10.7%)      8/0
+```
+
+Six families building works every year raise the share of people in towns and
+of work in industry by two or three points, on every island.
 
 Each setting of the new sweep is set against the old sweep's setting of the
 same name, or its first if none has that name. `OTHER_DIR` may be `DIR`
@@ -366,9 +391,11 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 - **Eight seeds is a small sample.** The star in the comparison is a blunt
   test: with eight runs a side, two ranges fail to overlap by chance about
   once in 6,400 tries for one fact (once in 35 with four a side, the fewest it
-  is given for), but there are over a hundred facts, and it says nothing about
-  a shift that is real and smaller than the spread. For anything close, run
-  more seeds.
+  is given for), and it says nothing about a shift that is real and smaller
+  than the spread. The `up/down` tally sees those, but it is a weak test taken
+  a hundred and thirty times: `8/0` comes up by chance once in 128, so in any
+  comparison one such row may mean nothing, and `7/1` means little. For
+  anything close, run more seeds.
 - **The golden hashes are this machine's.** They were taken on Windows with
   the MSVC toolchain. Logarithms, exponentials and powers come from the
   platform's maths library, so another system may round a last digit the

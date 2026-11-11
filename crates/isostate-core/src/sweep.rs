@@ -22,7 +22,9 @@
 //! mechanism's own struct (`canals.cost=0.2,0.3`). The value goes in through the
 //! parameters' JSON form, so a field added tomorrow can be swept with no table of
 //! names to keep up to date here. `--compare OTHER_DIR` sets the new means beside
-//! those of an earlier sweep and marks the facts whose seed ranges do not overlap.
+//! those of an earlier sweep, seed for seed where the two have seeds in common,
+//! counts the seeds in which each fact rose and fell, and marks the facts whose
+//! seed ranges do not overlap.
 //!
 //! Whatever is wrong with the command line is refused before the first run and
 //! before anything is written. A sweep already in `DIR` is replaced; `--compare`
@@ -671,15 +673,18 @@ pub struct Stat {
     pub max: f64,
 }
 
-fn stat(values: &[f64]) -> Option<Stat> {
+/// One fact's values across the runs of a setting, each with its run's seed.
+type Seeded = Vec<(u64, f64)>;
+
+fn stat(values: &[(u64, f64)]) -> Option<Stat> {
     if values.is_empty() {
         return None;
     }
     Some(Stat {
         n: values.len(),
-        mean: values.iter().sum::<f64>() / values.len() as f64,
-        min: values.iter().copied().fold(f64::INFINITY, f64::min),
-        max: values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        mean: values.iter().map(|&(_, v)| v).sum::<f64>() / values.len() as f64,
+        min: values.iter().map(|&(_, v)| v).fold(f64::INFINITY, f64::min),
+        max: values.iter().map(|&(_, v)| v).fold(f64::NEG_INFINITY, f64::max),
     })
 }
 
@@ -735,12 +740,13 @@ fn fmt_change(kind: Kind, now: f64, then: f64) -> String {
 }
 
 /// Each fact's values over the finished runs of one setting, by name.
-fn setting_values(sw: &Sweep, k: usize) -> HashMap<&str, Vec<f64>> {
-    let mut m: HashMap<&str, Vec<f64>> = HashMap::new();
-    for done in sw.runs.iter().filter(|r| r.setting == k).filter_map(|r| r.outcome.as_ref().ok()) {
+fn setting_values(sw: &Sweep, k: usize) -> HashMap<&str, Seeded> {
+    let mut m: HashMap<&str, Seeded> = HashMap::new();
+    for run in sw.runs.iter().filter(|r| r.setting == k) {
+        let Ok(done) = &run.outcome else { continue };
         for f in &done.facts.facts {
             if let Some(v) = f.value {
-                m.entry(f.name.as_str()).or_default().push(v);
+                m.entry(f.name.as_str()).or_default().push((run.seed, v));
             }
         }
     }
@@ -819,7 +825,7 @@ pub fn table(sw: &Sweep) -> String {
         sw.seconds,
         sw.jobs
     );
-    let values: Vec<HashMap<&str, Vec<f64>>> = (0..sw.settings.len()).map(|k| setting_values(sw, k)).collect();
+    let values: Vec<HashMap<&str, Seeded>> = (0..sw.settings.len()).map(|k| setting_values(sw, k)).collect();
     // per setting: the mean under the setting's name, then the range and the (n/N) note
     let mut head = vec![String::new()];
     let mut sides = vec![Side::Left];
@@ -880,8 +886,9 @@ pub fn table(sw: &Sweep) -> String {
 #[derive(Clone, Debug, Default)]
 pub struct Then {
     pub label: String,
-    pub runs: usize,
-    pub values: HashMap<String, Vec<f64>>,
+    /// The seeds of its finished runs.
+    pub seeds: Vec<u64>,
+    pub values: HashMap<String, Seeded>,
 }
 
 /// The settings of the sweep in `dir`, with each fact's values across its finished runs.
@@ -889,10 +896,12 @@ pub fn read_then(dir: &Path) -> Result<Vec<Then>, String> {
     let path = dir.join("facts.json");
     let text = std::fs::read_to_string(&path).map_err(|e| format!("--compare: {}: {e}", path.display()))?;
     let doc: Value = serde_json::from_str(&text).map_err(|e| format!("--compare: {}: {e}", path.display()))?;
-    let runs = doc["runs"].as_array().ok_or_else(|| format!("--compare: {} has no runs; is it a sweep's facts.json?", path.display()))?;
+    let not_a_sweep = |what: &str| format!("--compare: {} has {what}; is it a sweep's facts.json?", path.display());
+    let runs = doc["runs"].as_array().ok_or_else(|| not_a_sweep("no runs"))?;
     let mut out: Vec<Then> = Vec::new();
     for run in runs.iter().filter(|r| r["ok"].as_bool() == Some(true)) {
         let label = run["setting"].as_str().unwrap_or("").to_string();
+        let seed = run["seed"].as_u64().ok_or_else(|| not_a_sweep("a run without a seed"))?;
         let k = match out.iter().position(|t| t.label == label) {
             Some(k) => k,
             None => {
@@ -900,10 +909,10 @@ pub fn read_then(dir: &Path) -> Result<Vec<Then>, String> {
                 out.len() - 1
             }
         };
-        out[k].runs += 1;
+        out[k].seeds.push(seed);
         for (name, v) in run["facts"].as_object().into_iter().flatten() {
             if let Some(v) = v.as_f64() {
-                out[k].values.entry(name.clone()).or_default().push(v);
+                out[k].values.entry(name.clone()).or_default().push((seed, v));
             }
         }
     }
@@ -920,15 +929,26 @@ pub const STAR_RUNS: usize = 4;
 
 /// Each fact's mean now, its mean then and the change, for every setting of this
 /// sweep against the earlier sweep's setting of the same name (or its first).
-/// `=` is a fact that came out the same; a star marks one whose ranges across
-/// seeds do not overlap.
+///
+/// Like is compared with like: where the two have seeds in common, only those
+/// seeds' runs are used on either side, so that eight seeds are never set
+/// against four of them and the difference between islands taken for a
+/// difference between rules. Seed by seed the table then counts where a fact
+/// rose and where it fell. `=` is a fact that came out the same; a star marks
+/// one whose ranges across seeds do not overlap.
 pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
     let mut out = String::new();
     for (k, setting) in sw.settings.iter().enumerate() {
         let other = then.iter().find(|t| t.label == setting.label).unwrap_or(&then[0]);
         let now = setting_values(sw, k);
-        let head: Vec<String> = ["", "now", "then", "change", ""].iter().map(|s| s.to_string()).collect();
-        let sides = [Side::Left, Side::Right, Side::Right, Side::Right, Side::Left];
+        let seeds: Vec<u64> = sw.runs.iter().filter(|r| r.setting == k && r.outcome.is_ok()).map(|r| r.seed).collect();
+        let common: Vec<u64> = seeds.iter().copied().filter(|s| other.seeds.contains(s)).collect();
+        let paired = !common.is_empty();
+        let kept = |v: Option<&Seeded>| -> Seeded {
+            v.into_iter().flatten().copied().filter(|(s, _)| !paired || common.contains(s)).collect()
+        };
+        let head: Vec<String> = ["", "now", "then", "change", if paired { "up/down" } else { "" }, ""].iter().map(|s| s.to_string()).collect();
+        let sides = [Side::Left, Side::Right, Side::Right, Side::Right, Side::Right, Side::Left];
         let mut rows: Vec<(Option<&'static str>, Vec<String>)> = Vec::new();
         let mut group = "";
         // the facts both sweeps have, those of them that moved, and those that moved clear of the spread
@@ -938,16 +958,31 @@ pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
                 group = *g;
                 rows.push((Some(*g), Vec::new()));
             }
-            let a = now.get(name.as_str()).and_then(|v| stat(v));
-            let b = other.values.get(name).and_then(|v| stat(v));
+            let (va, vb) = (kept(now.get(name.as_str())), kept(other.values.get(name)));
+            let (a, b) = (stat(&va), stat(&vb));
+            // seed by seed: where the fact is greater now, where it is less
+            let (mut up, mut down) = (0, 0);
+            for &(seed, x) in va.iter().filter(|_| paired) {
+                if let Some(&(_, y)) = vb.iter().find(|(s, _)| *s == seed) {
+                    up += (x > y) as usize;
+                    down += (x < y) as usize;
+                }
+            }
+            let same = if paired {
+                // the same seeds have a value, and in each it is the value it was
+                va.len() == vb.len() && va.iter().all(|(s, _)| vb.iter().any(|(t, _)| t == s)) && up + down == 0
+            } else {
+                a == b
+            };
             let show = |s: Option<Stat>| s.map_or("-".to_string(), |s| fmt_fact(*kind, s.mean));
-            let (change, mark) = match (a, b) {
-                (Some(a), Some(b)) if a == b => ("=".to_string(), ""),
+            let (change, tally, mark) = match (a, b) {
+                (Some(_), Some(_)) if same => ("=".to_string(), String::new(), ""),
                 (Some(a), Some(b)) => {
                     let apart = a.n >= STAR_RUNS && b.n >= STAR_RUNS && (a.min > b.max || a.max < b.min);
-                    (fmt_change(*kind, a.mean, b.mean), if apart { "*" } else { "" })
+                    let tally = if paired { format!("{up}/{down}") } else { String::new() };
+                    (fmt_change(*kind, a.mean, b.mean), tally, if apart { "*" } else { "" })
                 }
-                _ => (String::new(), ""),
+                _ => (String::new(), String::new(), ""),
             };
             // how long the runs took is no fact about the rules: it is shown, not counted
             if a.is_some() && b.is_some() && *g != SPEED {
@@ -955,20 +990,32 @@ pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
                 moved += (change != "=") as usize;
                 clear += (mark == "*") as usize;
             }
-            rows.push((None, vec![name.clone(), show(a), show(b), change, mark.to_string()]));
+            rows.push((None, vec![name.clone(), show(a), show(b), change, tally, mark.to_string()]));
         }
+        let list = |v: &[u64]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" ");
+        let on = if !paired {
+            "no seed in common: every run of each is used, and the islands may differ by more than the rules do".to_string()
+        } else if common.len() == seeds.len() && common.len() == other.seeds.len() {
+            format!("seed for seed, on seeds {}", list(&common))
+        } else {
+            format!("seed for seed, on the seeds both have: {}", list(&common))
+        };
         let _ = writeln!(
             out,
             "\nnow: {} ({}); then: {} ({}) in {}\n\
+             {on}\n\
              of the {both} facts both have, the seconds aside, {moved} differ and {clear} of those are starred\n\
-             = the same number of runs with the same mean, least and greatest\n\
+             = {}\n\
+             {}\
              * the ranges across seeds do not overlap: every seed now is above, or below, every seed then\n  \
              (marked only with {STAR_RUNS} runs or more a side)\n",
             setting.label,
-            count_runs(ok_runs(sw, k)),
+            count_runs(seeds.len()),
             other.label,
-            count_runs(other.runs),
-            dir.display()
+            count_runs(other.seeds.len()),
+            dir.display(),
+            if paired { "every seed gives the number it gave" } else { "the same number of runs with the same mean, least and greatest" },
+            if paired { "up/down: the seeds in which the fact is greater now, and those in which it is less\n" } else { "" },
         );
         out.push_str(&layout(&head, &sides, &rows));
     }
@@ -977,6 +1024,12 @@ pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
 
 /// The `sweep` subcommand: run, write the files, print the table.
 pub fn main_with_args(args: &[String]) -> Result<(), String> {
+    command(args, true)
+}
+
+/// The subcommand with or without the table on stdout (it is in summary.txt
+/// either way; the tests leave it off).
+pub fn command(args: &[String], print: bool) -> Result<(), String> {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         println!("{USAGE}");
         return Ok(());
@@ -997,8 +1050,10 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         text.push_str(&compare(&sw, then, dir));
     }
     write_outputs(&sw, &o, &text)?;
-    // not print!, which panics when the reader has gone (sweep ... | head)
-    let _ = std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes());
+    if print {
+        // not print!, which panics when the reader has gone (sweep ... | head)
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes());
+    }
     let failed = sw.runs.iter().filter(|r| r.outcome.is_err()).count();
     if failed > 0 {
         return Err(format!("{failed} of {} runs failed; the rest are in {}", sw.runs.len(), o.out.display()));
@@ -1197,11 +1252,37 @@ never built, hurdle=0.12: nothing
         let text = compare(&sw, &then[..1], Path::new("then"));
         println!("{text}");
         assert!(text.contains("now: hurdle=0.12 (4 runs); then: hurdle=0.1 (4 runs) in then"), "{text}");
+        assert!(text.contains("seed for seed, on seeds 1 2 3 4\n"), "{text}");
         assert!(text.contains("of the 4 facts both have, the seconds aside, 3 differ and 2 of those are starred"), "{text}");
         assert!(text.contains("  pop_1750                 135,000  135,000                =\n"), "{text}");
-        assert!(text.contains("  pop_1800                 241,500  231,500  +10,000 (+4.3%)  *\n"), "{text}");
-        assert!(text.contains("  urban_share_1800           0.325    0.225           +0.100  *\n"), "{text}");
-        assert!(text.contains("  rail_first_year             1833     1823            +10.0\n"), "{text}");
+        assert!(text.contains("  pop_1800                 241,500  231,500  +10,000 (+4.3%)      4/0  *\n"), "{text}");
+        assert!(text.contains("  urban_share_1800           0.325    0.225           +0.100      4/0  *\n"), "{text}");
+        assert!(text.contains("  rail_first_year             1833     1823            +10.0      3/0\n"), "{text}");
+
+        // an earlier sweep with more seeds than this one: only the seeds both have are used on
+        // either side, so the same rules show no change though the earlier mean was over more islands
+        let mut wider = then[0].clone();
+        wider.seeds.push(9);
+        for values in wider.values.values_mut() {
+            values.push((9, 1e6));
+        }
+        let text = compare(&sw, &[wider], Path::new("then"));
+        println!("{text}");
+        assert!(text.contains("now: hurdle=0.1 (4 runs); then: hurdle=0.1 (5 runs) in then\nseed for seed, on the seeds both have: 1 2 3 4\n"), "{text}");
+        assert!(text.contains("of the 4 facts both have, the seconds aside, 0 differ and 0 of those are starred"), "{text}");
+
+        // no seed in common: all the runs of each, no tally, and the reader is told
+        let mut elsewhere = then[0].clone();
+        elsewhere.seeds = vec![11, 12, 13, 14];
+        for values in elsewhere.values.values_mut() {
+            values.iter_mut().for_each(|(seed, _)| *seed += 10);
+        }
+        let text = compare(&sw, &[elsewhere], Path::new("then"));
+        println!("{text}");
+        assert!(text.contains("no seed in common"), "{text}");
+        assert!(!text.contains("up/down") && !text.contains("4/0"), "{text}");
+        // the same numbers on other seeds: equal as far as a mean and a range can tell
+        assert!(text.contains("  pop_1800                 231,500  231,500       =\n"), "{text}");
     }
 
     #[test]
