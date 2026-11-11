@@ -154,6 +154,15 @@ pub fn cell_fits(st: &State, C: &Content, P: &Params, cell: usize, m: usize, K: 
     !P.works.enabled || st.cell_K_share[cell] + land_take(C, P, m, K) <= 1.0
 }
 
+/// `cell_fits` for someone who will be told why not (the family's site list).
+pub fn room_on_cell(st: &State, C: &Content, P: &Params, cell: usize, m: usize, K: f64) -> Result<(), String> {
+    if cell_fits(st, C, P, cell, m, K) {
+        Ok(())
+    } else {
+        Err(format!("the cell has no room left for {} of this size", C.method_label[m].to_lowercase()))
+    }
+}
+
 /// Whether a works that closes leaves its cell derelict: under the port one of
 /// at least the usual size (a quarter of a cell); with land by hands, one that
 /// took the quarter of a cell that makes the cell industrial on the map.

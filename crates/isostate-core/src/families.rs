@@ -1070,7 +1070,8 @@ pub fn site_options(st: &State, C: &Content, P: &Params, family: usize, cell: us
             };
             let allowed = match &sums {
                 Err(e) => Err(e.clone()),
-                Ok(_) => may_found(st, C, family, m, i),
+                // works: and only where the cell has room for a works of that size
+                Ok(s) => may_found(st, C, family, m, i).and_then(|_| works::room_on_cell(st, C, P, cell, m, s.K)),
             };
             SiteOption { method: m, name: C.method_name[m].clone(), label: C.method_label[m].clone(), group: Group::of_method(C, m), sums, allowed }
         })
@@ -1111,6 +1112,7 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
         return Err("the firm table is full".to_string());
     }
     let K = works::entry_K(st, C, P, i, method);
+    works::room_on_cell(st, C, P, cell, method, K)?; // works: the cell must have room for it
     let (ev, _) = evaluate(st, C, P, family, method, cell, i);
     let cost = ev.cap_cost * 1.15;
     let fam = &st.families[family];
@@ -1987,7 +1989,8 @@ fn grow(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, g: Gro
         if share > P.family_max_share || ratio > P.family_max_price_ratio {
             continue;
         }
-        let cells = firms::candidate_cells(st, C, P, t, m, rng);
+        let mut cells = firms::candidate_cells(st, C, P, t, m, rng);
+        cells.retain(|&c| works::cell_fits(st, C, P, c, m, K)); // works: only cells with room for it
         if cells.is_empty() {
             continue;
         }
