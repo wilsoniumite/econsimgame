@@ -1344,25 +1344,24 @@ fn rebuild_year(
             // again for the camera after the run has moved on (in a live game the next year
             // arrives a little before the clock reaches it, and a camera build begun in that
             // while is not the camera's alone: the works may have been laid out again)
-            let relaid = !same_lines(&rails.0, &sc.rails);
-            if relaid {
+            if !same_lines(&rails.0, &sc.rails) {
                 for e in &old_trains {
                     commands.entity(e).despawn();
                 }
                 rails.0 = sc.rails;
-            }
-            for (pi, p) in rails.0.iter().enumerate().filter(|_| relaid) {
-                let count = (1 + (p.len / 8.0) as usize).min(3);
-                for i in 0..count {
-                    let s = p.len * (i as f32 + 0.5) / count as f32;
-                    let (pos, yaw) = p.at(s);
-                    let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
-                    commands.spawn((
-                        Mesh3d(ta.mesh.clone()),
-                        MeshMaterial3d(ta.mat.clone()),
-                        Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
-                        Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
-                    ));
+                for (pi, p) in rails.0.iter().enumerate() {
+                    let count = (1 + (p.len / 8.0) as usize).min(3);
+                    for i in 0..count {
+                        let s = p.len * (i as f32 + 0.5) / count as f32;
+                        let (pos, yaw) = p.at(s);
+                        let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
+                        commands.spawn((
+                            Mesh3d(ta.mesh.clone()),
+                            MeshMaterial3d(ta.mat.clone()),
+                            Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
+                            Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
+                        ));
+                    }
                 }
             }
             for (h, b) in [(&handles.works, ym.works), (&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {

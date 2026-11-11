@@ -570,7 +570,7 @@ fn paint(
     if ov.painted == Some(key) {
         return;
     }
-    let w =ov.kind.map(|kind| wash(r, k, kind, good));
+    let w = ov.kind.map(|kind| wash(r, k, kind, good));
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
     if let (Some(w), Some(h)) = (&w, &handle) {
         if let Some(mut img) = images.get_mut(h) {

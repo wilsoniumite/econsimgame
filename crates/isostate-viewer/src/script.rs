@@ -27,7 +27,7 @@
 //!                     scenery is on screen and what putting it there cost
 //!     scenery[:NOTE]  build the year on the clock afresh and say whether what
 //!                     is on screen is that; stops the run if it is not
-//!     tab:NAME       open a side panel (family, holdings, markets, news, none)
+//!     tab:NAME        open a side panel (family, holdings, markets, news, none)
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
