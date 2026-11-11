@@ -529,8 +529,12 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
         refused.push((given.clone(), format!("it is dated {}, after the save's last year", given.year)));
     }
     let drifted = !save.check.is_empty() && check(&game.sim) != save.check;
-    // what was waiting for the year's end waits again
-    if game.month > 0 {
+    // what was waiting waits again: for the year's end, in a save made in the
+    // middle of a year; in one made at a year's turn before `Game::turn` was
+    // called, the works and land that the turn carries out, which the next
+    // `month`, `give` or `turn` does as it would have. Only a save whose game
+    // was over before it got there has orders that can never be carried out
+    if game.month > 0 || (game.last_year(), game.month) == (save.year, save.month) {
         game.waiting = save.waiting.clone();
     } else {
         for order in &save.waiting {

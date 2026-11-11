@@ -403,6 +403,31 @@ fn orders_given_in_the_middle_of_a_year_wait_for_its_end() {
 }
 
 #[test]
+fn a_save_made_at_a_turn_before_its_orders_are_carried_out_keeps_them() {
+    let mut a = Game::new(7, 6, 0);
+    play(&mut a, 3);
+    months(&mut a, 4);
+    let square = cheapest_square(&a);
+    assert_eq!(a.give(Order::BuyLand { cell: square }), Ok(save::Done::Waits));
+    // December is played and the books are closed, but `turn` has not been called: the land still waits
+    while !a.month().unwrap() {}
+    let saved = a.save(0);
+    assert_eq!((saved.year, saved.month, saved.waiting.len()), (1753, 0, 1));
+    let b = save::load(&Save::from_text(&saved.to_text()).unwrap(), |_| {}).unwrap();
+    assert!(b.refused.is_empty() && !b.drifted, "{:?}", b.refused);
+    let mut b = b.game;
+    assert_eq!(b.waiting, a.waiting);
+    // the turn carries it out in both, and they are the same game after
+    for g in [&mut a, &mut b] {
+        let done = g.turn();
+        assert!(matches!(done[0].result, Ok(save::Done::Bought(_))), "{done:?}");
+        g.year().unwrap();
+    }
+    assert_eq!(b.orders, a.orders);
+    assert_eq!(save::check(&b.sim), save::check(&a.sim));
+}
+
+#[test]
 fn a_decision_answered_late_in_the_year_takes_the_place_of_its_default() {
     // the family's first trade waits from the start; it is left unanswered into the spring
     let mut g = Game::new(7, 6, 0);
