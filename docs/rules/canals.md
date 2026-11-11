@@ -391,12 +391,13 @@ earlier on a quieter machine, and a fifth when timed one run after another
 on seed 3 before the merge.
 
 **The scripted players** (`examples/bots.rs`, the game's rules, seeds 1, 2,
-3 and 7) play all sixteen games through with canals on, on the first build
-(`.claude/night/reports/canals-bots-game.txt`) and on the review's before
-the merge (`canals-review/bots-game.txt`). The landlord and the thoughtful
-player finish richest of the six families on every seed, as they did before
-(`core-steps/people-probe/bots-game.txt`); the passive player and the
-founder finish first to fourth, as they did. Seed by seed the fortunes of
+3 and 7) play all sixteen games through with canals on: on the first build
+(`.claude/night/reports/canals-bots-game.txt`), on the review's before the
+merge (`canals-review/bots-game.txt`) and on the merged build
+(`canals-review/bots-game-merged.txt`). In all three the landlord and the
+thoughtful player finish richest of the six families on every seed, as they
+did before (`core-steps/people-probe/bots-game.txt`); the passive player and
+the founder finish first to fourth, as they did. Seed by seed the fortunes of
 1900 differ by up to half in either direction, and that earlier run was made
 with slightly older code, so this says the game still plays and no more.
 
@@ -484,10 +485,9 @@ A second helper went over the mechanism before it was merged.
   run under the game's rules (seed 3, and seed 7 with six families) writes
   the same four files, `run.bin` included, byte for byte, as the build this
   branch was cut from. So the changes to `ways.rs`, `rail.rs`, `econ.rs` and
-  the searches do nothing to a game without canals. (That was checked before
-  the merge with the trunk and with the first two of the changes below in.
-  It was not checked again against the trunk's own build; the golden test
-  passes on the merged code, and so do the trunk's tests.)
+  the searches do nothing to a game without canals. After the merge with the
+  trunk the same was done against the trunk's own build (`rust-3d` at
+  cd9b41c), on the same two runs, and again every file is the same.
 - **Extreme settings.** Each number in turn was set to nought and to
   something absurd on seeds 3 and 7 (`canals-review/x-*`): 64 runs, none
   failed, money conserved every month. A hurdle of 5, a wharf of 5, a cell
