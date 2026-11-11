@@ -12,6 +12,7 @@
 
 use glam::Vec3;
 
+use crate::farm::{farmstead, Farmstead};
 use crate::hash::Seed;
 use crate::houses::roof::Roof;
 use crate::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
@@ -167,6 +168,20 @@ fn works_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
         .collect()
 }
 
+fn farmsteads(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    // a big arable farm in brick, a small one in tarred boards, a hill farm, a big farm of stock, and seeds at large
+    for (arable, upland, seed, name) in [(true, false, Seed::new(0.4, 0.7), "a big arable farm"), (true, false, Seed::new(0.1, 0.3), "a small boarded farm"), (false, true, Seed::new(0.5, 0.3), "a small hill farm"), (false, false, Seed::new(0.6, 0.8), "a big farm of stock"), (true, true, Seed::new(0.12, 0.9), "a big hill farm")] {
+        let f = Farmstead { arable, upland, detail, seed };
+        out.push(specimen(name, |m, site| farmstead(&mut m.solid, &mut m.smoke, &mut m.green, &site.moved(site.origin, std::f32::consts::PI), &f, pal)));
+    }
+    for n in 0..6 {
+        let f = Farmstead { arable: n % 2 == 0, upland: n % 3 == 0, detail, seed: Seed::of(n) };
+        out.push(specimen(format!("a farmstead, seed {n}"), |m, site| farmstead(&mut m.solid, &mut m.smoke, &mut m.green, site, &f, pal)));
+    }
+    out
+}
+
 fn pits(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     let mut out = Vec::new();
     for (kind, name) in [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")] {
@@ -201,6 +216,7 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "works: powered mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<14>, levels: true },
     Entry { name: "works: brickworks", class: Class::Building, covers: &["works/mod::works"], build: works_of::<15>, levels: true },
     Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<16>, levels: true },
+    Entry { name: "farmstead", class: Class::Building, covers: &["farm::farmstead"], build: farmsteads, levels: true },
     Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
 ];
 
@@ -318,7 +334,7 @@ mod tests {
 
     /// Work in progress: the generators not yet brought to the scale. To be emptied and removed.
     const NOT_YET: &[&str] = &[
-        "bridge::road_bridge", "farm::farmstead", "fence::fence", "parts::gabled", "town/church::church", "town/lighthouse::lighthouse", "town/market::market_cross", "town/market::market_hall",
+        "bridge::road_bridge", "fence::fence", "parts::gabled", "town/church::church", "town/lighthouse::lighthouse", "town/market::market_cross", "town/market::market_hall",
         "town/station::station", "trees::bush", "trees::hedge_tree", "trees::tree",
     ];
 
