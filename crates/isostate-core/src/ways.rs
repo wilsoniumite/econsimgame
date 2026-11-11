@@ -19,7 +19,12 @@
 //!
 //! Lines being built count as laid when the next one is reckoned, so two projects
 //! of one year never pay twice for the cells they share, and the second is not
-//! credited with what the first already saves.
+//! credited with what the first already saves. A line that leans on another in
+//! this way does not open before it.
+//!
+//! The cost a line is set against is reckoned at prices somebody pays: the
+//! buying town's own for what its makers can supply, the country's makers' for
+//! the rest (`reckoned_price`), and rails marked up by the order book.
 //!
 //! The module knows nothing about railways in particular. A [`Way`] says what is
 //! being built: what it costs to run on, what a cell of it is made of, how long
@@ -593,8 +598,11 @@ fn report_branches(st: &State, way: &Way, book: &mut WayBook, year: i64, events:
     } else {
         format!("{} {}s open", lines.len(), way.words.branch)
     };
+    // dated by the last of them to open: a branch that opened in December with
+    // the line it joins is not reported ahead of it
+    let when = lines.iter().map(|l| l.opened).fold(year as f64 + 0.9, f64::max);
     let mut ev = Event::new(
-        year as f64 + 0.9,
+        when,
         way.words.kind,
         0.35,
         title,
@@ -852,24 +860,30 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
         }
         // Half the money may still be owing, and prices may have risen since it was
         // raised: a line without the cash for next month's materials makes a call
-        // on the landlords of its two towns, a tenth of their cash at most.
+        // on those who subscribed. The landlords of its two towns first, a tenth
+        // of their cash at most; then the households, a fortieth (about the 35 to
+        // 8 in which the two subscribe). Landlords can be in debt for decades, and
+        // a line that could call on nobody else would wait as long.
         let months = if pr.months > 0.0 { pr.months } else { 10.0 };
         let rq: Vec<f64> = (0..pr.order.len()).map(|g| pr.order[g].min(pr.need[g] / months)).collect();
         let mut short = month_bill(&rq, st.price.row(pr.town)) - pr.cash;
-        for (n, t) in [pr.a, pr.b].into_iter().enumerate() {
-            if short <= 0.0 || (n == 1 && pr.b == pr.a) {
-                continue;
-            }
-            let call = (st.lord_cash[t].max(0.0) * 0.1).min(short);
-            if call > 0.0 {
-                st.lord_cash[t] -= call;
-                pr.cash += call;
-                pr.paid_in += call;
-                match pr.subs.iter_mut().find(|s| s.0 && s.1 == t) {
-                    Some(s) => s.2 += call,
-                    None => pr.subs.push((true, t, call)),
+        for (lords, frac) in [(true, 0.1), (false, 0.025)] {
+            for (n, t) in [pr.a, pr.b].into_iter().enumerate() {
+                if short <= 0.0 || (n == 1 && pr.b == pr.a) {
+                    continue;
                 }
-                short -= call;
+                let cash = if lords { &mut st.lord_cash } else { &mut st.hh_cash };
+                let call = (cash[t].max(0.0) * frac).min(short);
+                if call > 0.0 {
+                    cash[t] -= call;
+                    pr.cash += call;
+                    pr.paid_in += call;
+                    match pr.subs.iter_mut().find(|s| s.0 == lords && s.1 == t) {
+                        Some(s) => s.2 += call,
+                        None => pr.subs.push((lords, t, call)),
+                    }
+                    short -= call;
+                }
             }
         }
         if pairwise_sum(&pr.order) > 0.01 * pairwise_sum(&pr.need) {
@@ -1021,6 +1035,32 @@ mod tests {
         // and where rails are dearer than the makers' price, the town's price stands
         pbar[(other, g)] = 14.0;
         assert_eq!(reckoned_price(&st, &pbar, g, other, 600.0, 24.0), 14.0);
+    }
+
+    #[test]
+    fn a_line_whose_landlords_are_in_debt_calls_on_the_households() {
+        let (mut st, way) = island();
+        let path = a_line(&st, &way);
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        let (a, b) = (act[0], act[1]);
+        let need = materials(&way, path.len());
+        let W = st.world.W;
+        st.projects.push(project(&way, SERVES_TRUNK, a, b, path[path.len() - 1], a, path.clone(), path, need, 0.0, Vec::new(), 1800, 0.1, 1.0, W));
+        for t in [a, b] {
+            st.lord_cash[t] = -1000.0;
+            st.hh_cash[t] = 1e9;
+        }
+        let before = crate::econ::money_total(&st);
+        progress(&mut st, &way, 1800.5, &mut Vec::new());
+        let pr = &st.projects[0];
+        // the month's bill, all of it from the first town's households
+        let rq: Vec<f64> = pr.need.iter().map(|n| n / way.build_months).collect();
+        let bill = month_bill(&rq, st.price.row(a));
+        assert!(bill > 0.0 && (pr.cash - bill).abs() <= 1e-9 * bill, "{} called against a bill of {bill}", pr.cash);
+        assert_eq!(pr.subs, vec![(false, a, pr.cash)]);
+        assert_eq!((st.lord_cash[a], st.lord_cash[b], st.hh_cash[b]), (-1000.0, -1000.0, 1e9));
+        let after = crate::econ::money_total(&st);
+        assert!((after - before).abs() <= 1e-9 * before.abs(), "a call is a transfer");
     }
 
     #[test]

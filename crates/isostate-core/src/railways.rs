@@ -240,7 +240,7 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         out.push((format!("rail_fares_over_capital_{y}"), Kind::Real, v));
     }
     // what the lines cost against what their promoters expected: all of them
-    // together, and the line that overran most (calls on the landlords have no limit)
+    // together, and the line that overran most (calls on the subscribers have no limit)
     let (spent, expected): (f64, f64) = book.lines.iter().fold((0.0, 0.0), |(s, e), l| (s + l.spent, e + l.cost));
     out.push(("rail_spent_over_expected".into(), Kind::Ratio, if expected > 0.0 { spent / expected } else { f64::NAN }));
     let worst = book.lines.iter().filter(|l| l.cost > 0.0).map(|l| l.spent / l.cost).fold(f64::NAN, f64::max);
