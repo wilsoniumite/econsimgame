@@ -1091,9 +1091,10 @@ fn banner_rgba(i: usize) -> [f32; 4] {
     hex(family::BANNERS[i % family::BANNERS.len()])
 }
 
-/// A pennant on a pole beside every family works, a low fence round every
+/// A pennant on the highest gable of every family works, a low fence round every
 /// family's land, and a tall flag on the market square of every family's seat.
-fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look) -> Builder {
+#[allow(clippy::too_many_arguments)]
+fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look, flags: &mut scatter::Flags) -> Builder {
     let mut b = Builder::default();
     let pole = *lk.marks.pole;
     for (i, &(fam, town, moving)) in seats.iter().enumerate() {
@@ -1122,17 +1123,18 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         if replay::firm_k(r, f, k) <= 0.0 {
             continue;
         }
-        let Some(&(x, z, yaw)) = slots.firm_pos.get(f) else { continue };
-        let q = Quat::from_rotation_y(yaw);
-        let off = q * Vec3::new(-0.055, 0.0, -0.045);
-        let base = Vec3::new(x + off.x, world::height_at(g, x + off.x, z + off.z), z + off.z);
-        let top = base + Vec3::Y * 0.13;
-        b.beam(base - Vec3::Y * 0.01, top, 0.005, pole);
-        // the pennant streams downwind, the same way on every pole
-        let fly = Vec3::new(0.06, -0.012, 0.03);
+        // one flag on the works' highest gable, on a staff half the building's height: big
+        // enough to tell the family by from close up, a fleck of its colour from play distance
+        let Some(peak) = scatter::firm_flag(r, g, slots, f, k, lk, flags) else { continue };
+        let tall = (peak.y - world::height_at(g, peak.x, peak.z)).max(0.0);
+        let staff = (tall * 0.5).clamp(0.022, 0.04);
+        let top = peak + Vec3::Y * staff;
+        b.beam(peak - Vec3::Y * 0.004, top, staff * 0.1, pole);
+        // the pennant streams downwind, the same way on every staff (and with the smoke)
+        let fly = isostate_gen::works::WIND * (staff * 1.1) - Vec3::Y * (staff * 0.2);
         let col = banner_rgba(o);
-        b.tri(top, top - Vec3::Y * 0.032, top + fly, col);
-        b.tri(top, top + fly, top - Vec3::Y * 0.032, col);
+        b.tri(top, top - Vec3::Y * (staff * 0.6), top + fly, col);
+        b.tri(top, top + fly, top - Vec3::Y * (staff * 0.6), col);
     }
     if !r.owner.is_empty() {
         let n = r.n;
@@ -1200,7 +1202,7 @@ fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize
 }
 
 #[allow(clippy::too_many_arguments)]
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>, mut flags: Local<scatter::Flags>) {
     let Some(marks) = marks else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there (and
@@ -1217,7 +1219,7 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
         return;
     }
     game.marks = Some(key);
-    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look);
+    let mut b = world::timed("year marks", || build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look, &mut flags));
     if front {
         for &c in &game.pending {
             stakes(&mut b, &look, &data.g, &data.r, c, banner_rgba(PLAYER));

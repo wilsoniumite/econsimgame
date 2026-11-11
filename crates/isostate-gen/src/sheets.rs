@@ -25,11 +25,11 @@ use crate::farm::{farmstead, Farmstead};
 use crate::hash::Seed;
 use crate::houses::{cottage, terrace, townhouse, Cottage, Terrace, Townhouse, BACK_PLOT_WIDTH, PLOT};
 use crate::palette::Palette;
-use crate::scenes::{self, Cover, Market, Street, WorksYard};
+use crate::scenes::{self, Cover, Market, Street};
 use crate::site::{Model, Site};
 use crate::town;
 use crate::trees::{bush, hedge_tree, tree, Species, Tree};
-use crate::works::{pit, scaffold, works, yard_shed, Kind, Pit, PitKind, Works, YardShed};
+use crate::works::{pit, works, Kind, Pit, PitKind, State, Works};
 
 /// The ground a sheet stands on: the land its things stand on in the game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -87,14 +87,29 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: with back lanes built before 1815, and after.", land: Land::Town, build: street },
     Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up, and a big town fully.", land: Land::Town, build: market },
     Sheet { name: "landmarks", about: "What marks a town out: its church (and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
-    Sheet { name: "works-trades", about: "The cottage trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_trades },
-    Sheet { name: "works-iron", about: "Ironmaking: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_iron },
-    Sheet { name: "works-heavy", about: "The heavy trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_heavy },
-    Sheet { name: "works-mills", about: "Mills, kilns and the rest: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_mills },
-    Sheet { name: "works-kinds", about: "Every kind of works at tier 2, side by side, to tell them apart by shape.", land: Land::Yard, build: works_kinds },
-    Sheet { name: "works-going-up", about: "A works under scaffolding, as it is the year it opens and the year it grows a tier: four kinds across, tier 1 and tier 2.", land: Land::Yard, build: works_going_up },
-    Sheet { name: "works-yards", about: "A works among the sheds of its yard, as works ground is filled.", land: Land::Yard, build: works_yards },
-    Sheet { name: "yard-sheds", about: "The sheds and warehouses of a works yard: sixteen seeds.", land: Land::Yard, build: yard_sheds },
+    Sheet { name: "works-kinds", about: "Every kind of works at three times the standard size, built about 1820, side by side: to tell them apart by shape.", land: Land::Pasture, build: works_kinds },
+    Sheet { name: "works-small", about: "Every kind of works at its smallest, 0.4 of the standard size, as most stand in the game today: built in 1760, then built in 1870.", land: Land::Yard, build: works_small },
+    Sheet { name: "works-standard", about: "Every kind of works at the standard size: built in 1760, then built in 1870.", land: Land::Yard, build: works_standard },
+    Sheet { name: "works-great", about: "Every kind of works at thirty times the standard size, built about 1850.", land: Land::Pasture, build: works_great },
+    Sheet { name: "works-states", about: "The states of a works down the rows: going up, being enlarged, working, standing idle, derelict. Six kinds across, at three times the standard size.", land: Land::Pasture, build: works_states },
+    Sheet { name: "works-states-great", about: "The states of a great works down the rows: going up, being enlarged, working, standing idle, derelict. Three kinds across, at thirty times the standard size.", land: Land::Pasture, build: works_states_great },
+    Sheet { name: "works-loom", about: "Handloom weavers: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_loom },
+    Sheet { name: "works-smithy", about: "Smithies: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_smithy },
+    Sheet { name: "works-millwright", about: "Millwrights: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_millwright },
+    Sheet { name: "works-shops", about: "Shops and trades: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_shops },
+    Sheet { name: "works-charcoal", about: "Charcoal burning: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Wood, build: works_charcoal },
+    Sheet { name: "works-bloomery", about: "Bloomeries: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_bloomery },
+    Sheet { name: "works-charcoal-furnace", about: "Charcoal blast furnaces: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_charcoal_furnace },
+    Sheet { name: "works-coke-furnace", about: "Coke blast furnaces: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_coke_furnace },
+    Sheet { name: "works-forge", about: "Forges making wrought rails: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_forge },
+    Sheet { name: "works-rolling", about: "Rolling mills: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_rolling },
+    Sheet { name: "works-rail-mill", about: "Steel rail mills: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_rail_mill },
+    Sheet { name: "works-crucible", about: "Crucible steel: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_crucible },
+    Sheet { name: "works-converter", about: "Converter shops: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_converter },
+    Sheet { name: "works-engine", about: "Engine works: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_engine },
+    Sheet { name: "works-mill", about: "Powered mills: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_mill },
+    Sheet { name: "works-brick", about: "Brickworks: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_brick },
+    Sheet { name: "works-other", about: "A works of a kind the generators do not know: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_other },
     Sheet { name: "pits", about: "Pits and their spoil heaps: coal, ironstone, stone and clay down the rows; a small, a middling and a large heap across.", land: Land::Heath, build: pits },
     Sheet { name: "farmsteads", about: "A farmstead seen from its yard: lowland and upland, arable and pasture down the rows; six seeds across.", land: Land::Pasture, build: farmsteads },
     Sheet { name: "trees", about: "Trees and bushes: broadleaf, conifer, hedgerow tree and heath bush down the rows; sizes across (a tree has no age yet).", land: Land::Pasture, build: trees },
@@ -166,70 +181,149 @@ fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {
 
 // ------------------------------------------------------------------ works
 
-/// A row for each kind, tiers 1 to 4 across.
-fn works_rows(kinds: &[Kind], pal: &Palette) -> Vec<Vec<Cell>> {
-    kinds
-        .iter()
-        .enumerate()
-        .map(|(i, &kind)| {
-            (1..=4u8)
-                .map(|tier| {
-                    let w = Works { kind, tier, seed: (i as f32 * 4.0 + tier as f32) * 0.37 };
-                    Cell::new(format!("{}\ntier {tier}", kind.label()), |m, site| works(&mut m.solid, &mut m.smoke, site, &w, pal))
+/// The sizes a works is shown at: from a workshop to a great works.
+const SIZES: [f32; 6] = [0.4, 1.0, 3.0, 10.0, 30.0, 100.0];
+
+/// A works in a cell.
+fn works_cell(label: String, w: Works, pal: &Palette) -> Cell {
+    Cell::new(label, |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
+}
+
+/// One kind at every size: built early and by water, then built late and by rail.
+fn works_sizes(kind: Kind, pal: &Palette) -> Vec<Vec<Cell>> {
+    [(1760, true), (1870, false)]
+        .into_iter()
+        .map(|(founded, water)| {
+            SIZES
+                .iter()
+                .enumerate()
+                .map(|(i, &size)| {
+                    let w = Works { founded, water, rail: !water, seed: Seed::of(kind as u32 * 16 + i as u32), ..Works::new(kind, size) };
+                    works_cell(format!("{}, {founded}\nsize {size}", kind.label()), w, pal)
                 })
                 .collect()
         })
         .collect()
 }
 
-fn works_trades(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::HandLoom, Kind::Smithy, Kind::Millwright], pal)
+fn works_loom(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::HandLoom, pal)
 }
 
-fn works_iron(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::CharcoalBurning, Kind::Bloomery, Kind::CharcoalFurnace, Kind::CokeFurnace], pal)
+fn works_smithy(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Smithy, pal)
 }
 
-fn works_heavy(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::ForgeRails, Kind::RollingMill, Kind::SteelRolling, Kind::Bessemer, Kind::EngineWorks], pal)
+fn works_millwright(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Millwright, pal)
 }
 
-fn works_mills(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::TextileMill, Kind::Brickworks, Kind::CrucibleSteel, Kind::Other], pal)
+fn works_shops(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Shops, pal)
 }
 
-fn works_kinds(pal: &Palette) -> Vec<Vec<Cell>> {
-    grid(4, 4, |row, col| {
-        let kind = Kind::ALL[row * 4 + col];
-        Cell::new(kind.label(), |m, site| works(&mut m.solid, &mut m.smoke, site, &Works { kind, tier: 2, seed: (row * 4 + col) as f32 * 0.37 }, pal))
-    })
+fn works_charcoal(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CharcoalBurning, pal)
 }
 
-/// The one state a works has besides its tier: scaffolding, the year it opens and the year it grows a tier.
-fn works_going_up(pal: &Palette) -> Vec<Vec<Cell>> {
-    let kinds = [Kind::Smithy, Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill];
-    grid(2, 4, |row, col| {
-        let (kind, tier) = (kinds[col], row as u8 + 1);
-        Cell::new(format!("{}\ntier {tier}, going up", kind.label()), |m, site| {
-            works(&mut m.solid, &mut m.smoke, site, &Works { kind, tier, seed: col as f32 * 0.37 }, pal);
-            scaffold(&mut m.solid, site, tier, pal);
-        })
-    })
+fn works_bloomery(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Bloomery, pal)
 }
 
-fn works_yards(pal: &Palette) -> Vec<Vec<Cell>> {
-    [(Kind::CokeFurnace, 3u8), (Kind::TextileMill, 3), (Kind::RollingMill, 4)]
-        .into_iter()
+fn works_charcoal_furnace(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CharcoalFurnace, pal)
+}
+
+fn works_coke_furnace(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CokeFurnace, pal)
+}
+
+fn works_forge(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::ForgeRails, pal)
+}
+
+fn works_rolling(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::RollingMill, pal)
+}
+
+fn works_rail_mill(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::SteelRolling, pal)
+}
+
+fn works_crucible(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CrucibleSteel, pal)
+}
+
+fn works_converter(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Bessemer, pal)
+}
+
+fn works_engine(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::EngineWorks, pal)
+}
+
+fn works_mill(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::TextileMill, pal)
+}
+
+fn works_brick(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Brickworks, pal)
+}
+
+fn works_other(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Other, pal)
+}
+
+/// Every kind at one size and one founding year, in rows of `across`.
+fn works_all(size: f32, founded: i32, across: usize, pal: &Palette) -> Vec<Vec<Cell>> {
+    Kind::ALL
+        .chunks(across)
         .enumerate()
-        .map(|(i, (kind, tier))| vec![Cell::new(format!("{}, tier {tier}, in its yard", kind.label()), |m, site| scenes::works_yard(m, site, &WorksYard { kind, tier, id: i as i32 + 1 }, pal))])
+        .map(|(row, kinds)| kinds.iter().enumerate().map(|(col, &kind)| works_cell(kind.label().into(), Works { founded, seed: Seed::of((row * across + col) as u32), ..Works::new(kind, size) }, pal)).collect())
         .collect()
 }
 
-fn yard_sheds(pal: &Palette) -> Vec<Vec<Cell>> {
-    grid(2, 8, |row, col| {
-        let n = (row * 8 + col) as u32;
-        Cell::new(format!("seed {n}"), |m, site| yard_shed(&mut m.solid, &mut m.smoke, site, &YardShed { seed: Seed::of(n), smoke_seed: n as f32 }, pal))
-    })
+fn works_kinds(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_all(3.0, 1820, 6, pal)
+}
+
+fn works_great(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_all(30.0, 1850, 3, pal)
+}
+
+/// Every kind at one size, built early and then built late, in rows of nine.
+fn works_early_and_late(size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
+    let mut rows = Vec::new();
+    for founded in [1760, 1870] {
+        for (row, kinds) in Kind::ALL.chunks(9).enumerate() {
+            rows.push(kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{founded}", kind.label()), Works { founded, seed: Seed::of((row * 9 + i) as u32), ..Works::new(kind, size) }, pal)).collect());
+        }
+    }
+    rows
+}
+
+fn works_small(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_early_and_late(0.4, pal)
+}
+
+fn works_standard(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_early_and_late(1.0, pal)
+}
+
+/// The states of a works down the rows, a kind in each column.
+fn works_in_states(kinds: &[Kind], size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
+    State::ALL
+        .iter()
+        .map(|&state| kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{}", kind.label(), state.label()), Works { state, founded: 1840, seed: Seed::of(i as u32), ..Works::new(kind, size) }, pal)).collect())
+        .collect()
+}
+
+fn works_states(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_in_states(&[Kind::Smithy, Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Brickworks, Kind::CrucibleSteel], 3.0, pal)
+}
+
+fn works_states_great(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_in_states(&[Kind::TextileMill, Kind::CokeFurnace, Kind::EngineWorks], 30.0, pal)
 }
 
 fn pits(pal: &Palette) -> Vec<Vec<Cell>> {
@@ -341,7 +435,9 @@ mod tests {
                 for cell in row {
                     let (lo, hi) = cell.model.bounds().unwrap();
                     assert!(hi.x - lo.x <= 1.15, "{}: {} is {} wide", sheet.name, cell.label, hi.x - lo.x);
-                    assert!((hi.z - lo.z) + (hi.y - lo.y) * 0.8 <= 0.8, "{}: {} is {} deep and {} tall", sheet.name, cell.label, hi.z - lo.z, hi.y - lo.y);
+                    // (a great works is deeper: the lab stands back until the whole of it shows)
+                    let room = if sheet.name.starts_with("works") { 1.0 } else { 0.8 };
+                    assert!((hi.z - lo.z) + (hi.y - lo.y) * 0.8 <= room, "{}: {} is {} deep and {} tall", sheet.name, cell.label, hi.z - lo.z, hi.y - lo.y);
                 }
             }
         }
