@@ -50,7 +50,8 @@ pub struct EngelParams {
     /// Households' marginal budget shares move with their real income.
     pub enabled: bool,
     /// Real income a head (goods budget over the cost of subsistence) up to which
-    /// the content's shares hold. About the island's level in 1750.
+    /// the content's shares hold. About the island's level in 1750. Anything
+    /// under 1 is taken as 1: subsistence is always bought by the subsistence rule.
     pub y_ref: f64,
     /// How fast the marginal shares turn past `y_ref`: at twice the reference
     /// income they are `1 - 0.5^strength` of the way to the richer set. 0 is a

@@ -137,6 +137,14 @@ at once; when December is in, the year's own means close the link. The first
 link starts where the fixed basket does, at the last month of the warm-up, so
 the two indices agree in January 1750.
 
+The twelve readings of a year do not average exactly to the link the year
+closes on, because one month's purchases are not the year's. Measured on seed 3
+over the 150 years, the two differ by 0.06 per cent in a typical year and by
+0.35 per cent in the worst, so a year's mean of `cpi_chained` (which is what the
+sweep's facts use) can be taken for the chain. `tests/engel.rs` works the chain
+out a second time, month by month, from the prices and purchases the observer
+reads.
+
 The old `cpi`, `real_wage`, `gdp_real` and `gdp_pc` are untouched and still on
 the 1750 basket; the news still reads the old ones.
 
@@ -145,7 +153,7 @@ the 1750 basket; the news still reads the old ones.
 | | | |
 |---|---|---|
 | `engel.enabled` | off (port), on (game) | households' marginal shares move with real income, and the nine series are kept |
-| `engel.y_ref` | 2.0 | real income up to which the content's shares hold |
+| `engel.y_ref` | 2.0 | real income up to which the content's shares hold. A value under 1 is taken as 1: subsistence is always bought by the subsistence rule |
 | `engel.strength` | 3.0 | how fast the shares turn: at twice `y_ref` they are `1 - 0.5^strength` of the way. 0 is a flat curve: the port's households, with the new series recorded |
 | `shares_rich` (content) | 0.05, 0.06, 0.24, 0.22, 0.07, 0.36 | the richer set |
 
@@ -224,6 +232,43 @@ Reading it:
   basket and 1.01 chained. `dx-growth` found 1.36 against 1.71 on sixteen seeds
   and five-year means; this is the same gap.
 
+### Eight more islands
+
+The game's numbers were chosen on seeds 1 to 8, so a reviewer ran seeds 9 to 16,
+which nobody had looked at, with the same settings. 1900, the port and then the
+curve, with the tally seed for seed (islands where the curve's number is
+greater, then less):
+
+| | no families | | six families | |
+|---|---|---|---|---|
+| towns: share of people | 0.240, 0.300 | 8/0 | 0.257, 0.323 | 8/0* |
+| works: share of labour | 0.250, 0.328 | 8/0* | 0.276, 0.359 | 8/0* |
+| land: share of labour | 0.457, 0.391 | 1/7 | 0.433, 0.338 | 1/7 |
+| mines: share of labour | 0.294, 0.281 | 2/6 | 0.291, 0.304 | 6/2 |
+| food: share of budgets | 0.327, 0.267 | 0/8 | 0.331, 0.251 | 0/8* |
+| comfort: share of budgets | 0.073, 0.139 | 8/0* | 0.074, 0.149 | 8/0* |
+| grain output (1750 = 1) | 9.28, 7.39 | 0/8 | 9.03, 6.53 | 1/7 |
+| real wage, 1750 basket | 1.32, 1.30 | 4/4 | 1.38, 1.37 | 4/4 |
+| real wage, chained | 1.66, 1.66 | 3/5 | 1.78, 1.87 | 8/0 |
+| grain's price swing | 0.083, 0.104 | 8/0 | 0.085, 0.107 | 8/0* |
+| famine notices a run | 1.8, 3.6 | 8/0 | 0.8, 3.2 | 6/0 |
+
+It is the same picture to the second decimal: six points more of town, eight
+more of works, a fifth less grain (more than a quarter less with families), the
+wage unmoved. On
+all sixteen islands together the towns' share of 1900 is 0.298 for 0.238
+without families (higher on every island) and 0.321 for 0.256 with them (every
+island, and the ranges do not overlap). The chained wage's 8/0 with families is
+one row among many; on seeds 1 to 8 it was five up and three down, and I would
+not claim it.
+
+What the second eight islands add is that the price of the cure is as steady
+as the cure. Grain's price swings a fifth to a quarter harder on 31 islands of
+32 (the two sweeps of sixteen, with and without families), and famine notices
+about double: 3.9 a run for 2.0 without families (more on fourteen islands,
+fewer on one) and 3.6 for 1.6 with them (more on eleven, fewer on three). The
+people of 1900 are a quarter to a half of one per cent fewer for it.
+
 ### Across strengths
 
 Five-year means here (1900 is 1898 to 1900, 1750 is 1750 to 1752), because one
@@ -244,6 +289,8 @@ No families:
 | grain output | 8.67 | 7.71 | 7.42 | 6.87 | 6.47 | 6.05 |
 | real wage, 1750 basket | 1.31 | 1.28 | 1.36 | 1.28 | 1.33 | 1.32 |
 | real wage, chained | 1.64 | 1.61 | 1.75 | 1.64 | 1.71 | 1.71 |
+| grain's price swing (whole run) | 0.086 | 0.090 | 0.100 | 0.102 | 0.106 | 0.115 |
+| famine notices (whole run) | 2.2 | 2.8 | 3.6 | 4.1 | 5.0 | 5.6 |
 
 Six families:
 
@@ -259,9 +306,14 @@ Six families:
 | grain output | 8.41 | 7.77 | 6.98 | 6.34 |
 | real wage, 1750 basket | 1.34 | 1.32 | 1.34 | 1.38 |
 | real wage, chained | 1.74 | 1.74 | 1.80 | 1.87 |
+| grain's price swing (whole run) | 0.090 | 0.096 | 0.111 | 0.115 |
+| famine notices (whole run) | 2.5 | 1.6 | 3.9 | 3.5 |
 
 The shares answer in order all the way up; the wages do not answer at all
-beyond the noise. Strengths 2 and 3 cannot be told apart on eight seeds. A
+beyond the noise. Grain's price swings harder with every step of strength, and
+without families the famine notices rise in step with it (with families the
+count is too jumpy on eight seeds to put in order). Strengths 2 and 3 cannot be
+told apart on eight seeds. A
 strength of 8 is nearly the two-piece curve of the `dx-towns` probe (a further
 shilling is nine tenths of the way to the richer set at an income of 2.6) and
 buys three or four more points of town than 3 does. The game has 3 because the
@@ -316,23 +368,57 @@ lives there.
   eight), **the farm zigzag is a sixth larger** (5.7 for 4.8; 5.7 for 5.0; up
   on seven of eight both times), **and there are more famine notices** (4.1 a
   run for 2.2, up on six islands and down on one; 3.9 for 2.5 with families,
-  up on five and down on three, which is not much of a tally). None is
-  starred, but the first two move the same way on nearly every island in both
-  sweeps, and there is a reason: with less of each further shilling going on
-  food, the demand for grain bends less when its price moves, so the same
-  shortfall takes a bigger price rise to clear, and households that eat 1.4
-  times the grain of 1750 instead of 1.8 are nearer the floor when it comes.
-  Food markets do behave so, but it feeds the cobweb that `dx-cycles`
-  describes.
+  up on five and down on three, which is not much of a tally on its own; the
+  second eight islands, above, settle it). None is starred on seeds 1 to 8,
+  but all three move the same way on nearly every island in every sweep, and
+  there is a reason: with less of each further shilling going on food, the
+  demand for grain bends less when its price moves, so the same shortfall
+  takes a bigger price rise to clear, and households that eat 1.4 times the
+  grain of 1750 instead of 1.8 are nearer the floor when it comes. (A famine
+  notice is a month in which a town's households get less than 0.82 of their
+  subsistence food. Buying 1.8 times subsistence, they can be short by more
+  than half before that happens; buying 1.4 times, by four tenths.) Food
+  markets do behave so, but it feeds the cobweb that `dx-cycles` describes.
 - The farms' area is 5 per cent less in 1900 (1,216 cells' worth for 1,282,
   less on every island; 7 per cent less with families) and the pastures' and
   woods' area is not moved. Towns cover a fifth more cells (88 for 72; 94 for
   77 with families).
-- The railway is invented a few years sooner (1814 for 1822 without families,
-  1817 for 1820 with), inside the spread between seeds.
+- The railway is invented a few years sooner on seeds 1 to 8 (1814 for 1822
+  without families, 1817 for 1820 with) and a few years later on seeds 9 to 16
+  (1834 for 1832, 1829 for 1823): noise.
+- Output per head in 1900, which is deflated by the 1750 basket, is a little
+  lower (1.44 times 1750's for 1.47 on sixteen islands, 1.48 for 1.51 with
+  families; lower on 23 islands of 32), inside the spread.
 - Works, their sizes and lives, the railway's length, land rent's share of
   output and the news counts apart from famines: no change beyond noise.
-- No run failed: 156 runs to 1900 with the mechanism switched on.
+- No run failed: 156 runs to 1900 with the mechanism switched on, and 96 more
+  in the review (a flat curve and the game's on seeds 1 to 16, with and
+  without families, and the odd settings below), every one passing the monthly
+  money check.
+
+### Odd settings
+
+Tried to see that nothing breaks or runs away, on seeds 3 and 7 (two islands,
+so read the direction and not the digits; six families but for the last
+case, where the port has the towns at 0.25 in 1900 and one to four famine
+notices a run):
+
+- **A curve that is nearly a step** (`strength` 60 or 500) at `y_ref` 20 is
+  the port to within noise (not to the bit: some town is past twenty bundles a
+  head at some point). At 1.5 it has the towns at 0.40 in 1900 and 18 to 20
+  famine notices a run. At 1 (or 0, which is taken as 1) the towns are 0.37 in
+  1750 and 0.43 in 1900, there are 50 to 70 famine notices and a fifth fewer
+  people. Households that give up bread for comfort the moment they can afford
+  subsistence live on the edge of it. This is the far end of the trade the
+  strengths table shows, and the reason not to take `y_ref` much below where
+  the island starts.
+- **A curve that is nearly flat** (`strength` 0.01) is the port to within
+  noise at every `y_ref`.
+- **A richer set that is all comfort** (`shares_rich` 0, 0, 0, 0, 0, 1 in a
+  content file) puts the towns at 0.43 in 1900 on today's incomes. **One that
+  is all bread**, an Engel curve run backwards (no families), shrinks them to
+  0.23 and takes food to half of budgets. Both run to 1900 with money
+  conserved.
 
 ### The scripted players
 
@@ -369,8 +455,13 @@ not checked).
   household buys that is not one of the other five needs, which is a lot to ask
   of shops and trades. Whoever adds consumer goods should write `shares_rich`
   for them and look at this page's tables again.
-- **Grain is a jumpier market with the curve on**, as measured above. If the
-  cycles work wants a calm grain price, it will find this pulling the other way.
+- **Grain is a jumpier market with the curve on, and famines about double**,
+  as measured above on sixteen islands with and without families. It is the
+  honest other side of the cure (people who eat less of their rise have less
+  to give up in a bad year) and it grows with the strength of the curve, so it
+  is the thing to watch when choosing between 3 and something steeper. If the
+  cycles work wants a calm grain price, it will find this pulling the other
+  way.
 - **`y_ref` is tied to where the island starts.** If another mechanism lifts
   the incomes of 1750 above 2 bundles, the curve is already turning in 1750 and
   1750 is no longer the port's. On the richer islands above (real income 2.25
@@ -382,8 +473,10 @@ not checked).
   change, but it changes what the player is told, so it wants a decision.
 - **A month's chained value is read against last year's basket and that month's
   purchases**, and the year's link is closed on the year's means. The mean of
-  the twelve months is therefore not exactly the closed link. I did not measure
-  the gap; the facts use the monthly series, as they do for every series.
+  the twelve months is therefore not exactly the closed link, though the gap is
+  small (measured above: 0.35 per cent in the worst year of one seed). Both
+  indices also price a month's purchases at the prices the month ends on, not
+  the ones they were bought at, as the port's `cpi` always has.
 - **National prices are town prices weighted by people**, as for the fixed
   basket, not what was paid per unit bought. A good bought mostly in cheap towns
   is priced a little too high in both indices.
@@ -394,7 +487,10 @@ not checked).
   asks what a town at 2.1 bundles would buy, with the content's shares). At
   `y_ref` 2 the difference is nothing to speak of, but a much lower `y_ref` would
   start the island with too few shops.
-- **Eight seeds, one run each.** A star says the two ranges do not overlap,
-  which with eight seeds is strong for one fact and weak across 136 of them. The
-  shares of labour and of budgets move far outside the spread; the wages, the
-  railway's date and the famine count do not.
+- **Sixteen seeds for the game's numbers, eight for everything else.** A star
+  says the two ranges do not overlap, which with eight seeds is strong for one
+  fact and weak across 136 of them. The shares of labour and of budgets move
+  far outside the spread on both sets of islands, and grain's price swing and
+  the famine count move the same way on nearly all of them; the wages and the
+  railway's date do not move. The strengths, the reference income and the
+  richer islands were measured on seeds 1 to 8 only.
