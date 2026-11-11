@@ -626,8 +626,12 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         ),
     );
     ev.town = Some(t);
+    // the pit with most hands. Not `ex_out`: the land was shared out again at the
+    // year's end and the units listed afresh, so last month's output no longer
+    // lines up with them; the labour is carried over to the new list.
+    let hands = |u: usize| st.ex_Lprev.get(u).copied().unwrap_or(0.0);
     ev.cell = mine
-        .and_then(|s| (0..st.ex_cell.len()).filter(|&u| st.ex_town[u] == t && st.ex_sector[u] == s).max_by(|&a, &b| st.ex_out[a].total_cmp(&st.ex_out[b]).then(b.cmp(&a))))
+        .and_then(|s| (0..st.ex_cell.len()).filter(|&u| st.ex_town[u] == t && st.ex_sector[u] == s).max_by(|&a, &b| hands(a).total_cmp(&hands(b)).then(b.cmp(&a))))
         .map(|u| st.ex_cell[u])
         .or(Some(st.town_node[t]));
     ev.why = why(
