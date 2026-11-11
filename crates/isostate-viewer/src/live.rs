@@ -401,7 +401,8 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             cell: f.cell,
             town: f.town as i32,
             born: f.born as i32,
-            died: 0,
+            // still at work, as a recorded run writes it
+            died: -1,
             reason: serde_json::to_value(&f.reason).ok(),
             owner: f.owner,
         });

@@ -509,6 +509,9 @@ fn stance_clicks(q: Query<(&Interaction, &StanceButton), Changed<Interaction>>, 
         if *i == Interaction::Pressed && !game.busy {
             live.send(Cmd::Stance { group: s.group, town: s.town, stance: s.stance });
             game.busy = true;
+            // as the other orders do: the last order's note goes, and the order panel is drawn again
+            game.note = None;
+            game.version += 1;
         }
     }
 }
