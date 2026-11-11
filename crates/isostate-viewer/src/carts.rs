@@ -27,9 +27,9 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Roads>().add_systems(Startup, setup).add_systems(Update, (place, drive).chain());
 }
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mesh = meshes.add(trains::cart_mesh().into_mesh());
-    let mat = crate::vertex_coloured(&mut materials, 0.85);
+fn setup(mut commands: Commands, look: Res<crate::look::TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
+    let mesh = meshes.add(crate::meshkit::into_mesh(trains::cart_mesh(&look)));
+    let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.buildings);
     commands.insert_resource(CartAssets { mesh, mat });
 }
 

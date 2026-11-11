@@ -2,7 +2,8 @@
 
 use bevy::math::Vec3;
 
-use crate::meshkit::{hex, Builder};
+use crate::look::Look;
+use crate::meshkit::Builder;
 use crate::replay::Replay;
 use crate::world::{self, Ground};
 
@@ -116,30 +117,29 @@ fn along(cells: &[usize], g: &Ground, cen: &[(f32, f32)], lift: f32) -> Option<T
 }
 
 /// A locomotive and three wagons, pointing along +x, centred on the engine.
-pub fn train_mesh() -> Builder {
+pub fn train_mesh(lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let green = hex(0x2f6b55);
-    let black = hex(0x2b2725);
-    let wagons = [hex(0xb5523f), hex(0x8a6a4a), hex(0x6f7a8a)];
+    let green = *lk.vehicles.engine;
+    let black = *lk.vehicles.engine_black;
     b.block(Vec3::new(0.008, 0.0, 0.0), 0.05, 0.02, 0.02, 0.0, green, Some(green), 0.0);
     b.block(Vec3::new(-0.014, 0.0, 0.0), 0.016, 0.022, 0.034, 0.0, green, Some(black), 0.0);
     b.frustum(Vec3::new(0.026, 0.02, 0.0), 0.0045, 0.0055, 0.016, 6, black, Some(black));
-    b.ball(Vec3::new(0.036, 0.048, 0.0), 0.009, 0.007, 6, 3, hex(0xf2f0ec), 0.3);
-    b.ball(Vec3::new(0.05, 0.056, 0.004), 0.007, 0.006, 6, 3, hex(0xeeece8), 1.1);
-    for (i, c) in wagons.iter().enumerate() {
+    b.ball(Vec3::new(0.036, 0.048, 0.0), 0.009, 0.007, 6, 3, *lk.smoke.steam, 0.3);
+    b.ball(Vec3::new(0.05, 0.056, 0.004), 0.007, 0.006, 6, 3, *lk.smoke.puff, 1.1);
+    for (i, c) in lk.vehicles.wagons.iter().enumerate() {
         let x = -0.05 - 0.036 * i as f32;
-        b.block(Vec3::new(x, 0.0, 0.0), 0.03, 0.019, 0.018, 0.0, *c, Some(*c), 0.0);
+        b.block(Vec3::new(x, 0.0, 0.0), 0.03, 0.019, 0.018, 0.0, **c, Some(**c), 0.0);
     }
     b
 }
 
 /// A covered cart and its horse, pointing along +x.
-pub fn cart_mesh() -> Builder {
+pub fn cart_mesh(lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let wood = hex(0x8a5f3c);
-    let canvas = hex(0xefe6cf);
-    let horse = hex(0x6b4632);
-    let dark = hex(0x3a2c24);
+    let wood = *lk.vehicles.cart_wood;
+    let canvas = *lk.vehicles.cart_canvas;
+    let horse = *lk.vehicles.horse;
+    let dark = *lk.vehicles.cart_wheels;
     // the cart: a bed, a canvas tilt and two wheels' worth of dark below
     b.block(Vec3::new(-0.012, 0.006, 0.0), 0.03, 0.016, 0.006, 0.0, wood, Some(wood), 0.0);
     b.ball(Vec3::new(-0.012, 0.014, 0.0), 0.016, 0.009, 6, 3, canvas, 0.2);

@@ -8,6 +8,7 @@
 use crate::content::Content;
 use crate::engel;
 use crate::families;
+use crate::harvest;
 use crate::mat::Mat;
 use crate::params::{Params, RentRegime};
 use crate::prices;
@@ -373,6 +374,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let npr = pe[(t, g_s[u])] - st.ex_tau[u] - in_unit;
         Cc[u] = if npr > 0.0 && f[u] > 0.0 { (1.0 - alpha[u]) * A[u] * f[u] * npr } else { 0.0 };
     }
+    // harvest: what can be seen of the year's weather when the hands are hired
+    // (half of it in the game, nothing at `harvest.foreseen` 0)
+    harvest::foreseen(st, P, &mut Cc);
     let lam = st.ex_lam.clone();
 
     // ---------------- firms: unit economics at their own location
@@ -579,6 +583,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mine_rail: Vec<f64> = (0..NE).map(|u| Y[u] * rail_unit[u]).collect();
     add_column(&mut R, gm, &bincount(&et, &mine_mach, T));
     add_column(&mut R, gr, &bincount(&et, &mine_rail, T));
+    // harvest: the year's weather is felt here, after the hands are hired and the
+    // machines asked for on an average year's yield. From here on Y is the crop
+    // actually brought in.
+    let Y = harvest::brought_in(st, C, P, Y);
     let oi: Vec<usize> = (0..st.f_alive.len()).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
     let ot: Vec<usize> = oi.iter().map(|&i| st.f_town[i]).collect();
     let mut req_inv = Mat::zeros(oi.len(), G);

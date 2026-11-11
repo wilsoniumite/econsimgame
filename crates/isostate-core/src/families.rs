@@ -325,7 +325,10 @@ pub fn works_value(st: &State, C: &Content, f: usize) -> f64 {
 pub fn land_price(st: &State, P: &Params, cell: usize) -> f64 {
     let t = st.catch[cell];
     let floor = if t >= 0 { 12.0 * P.land_rent_floor * st.wage[t as usize] } else { 0.0 };
-    P.years_purchase * st.cell_rent_year[cell].max(floor)
+    // harvest: the rent an average year would have paid, so that a failed crop
+    // does not put the district's land on sale at half price
+    let rent = crate::harvest::average_rent(st, cell, st.cell_rent_year[cell]);
+    P.years_purchase * rent.max(floor)
 }
 
 /// Cash taken from a family, up to what it has (for its works' needs).

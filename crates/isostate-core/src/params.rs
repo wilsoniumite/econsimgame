@@ -256,6 +256,9 @@ pub struct Params {
     /// the Python; see docs/rules/machines.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub machines: crate::machines::MachineParams,
+    /// Good years and bad (not in the Python; see docs/rules/harvest.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub harvest: crate::harvest::HarvestParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -449,6 +452,7 @@ pub fn default_params() -> Params {
         prices: crate::prices::PriceParams::default(),
         engel: crate::engel::EngelParams::default(),
         machines: crate::machines::MachineParams::default(),
+        harvest: crate::harvest::HarvestParams::default(),
     }
 }
 
@@ -468,6 +472,7 @@ pub fn game_params() -> Params {
     P.prices = crate::prices::PriceParams::game();
     P.engel = crate::engel::EngelParams::game();
     P.machines = crate::machines::MachineParams::game();
+    P.harvest = crate::harvest::HarvestParams::game();
     P
 }
 

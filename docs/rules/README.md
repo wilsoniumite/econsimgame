@@ -453,3 +453,7 @@ One line each as they arrive: the name, its page, its switch.
 - **machines**: farm and quarry machinery is bought where it pays, machines
   stand for years and get better with the steel poured, and a converter and
   a steel rail that pay. [machines.md](machines.md), `machines.enabled`.
+- **harvest**: good years and bad on the farms and pastures, island-wide and
+  by district, half of each seen when the hands are hired; with the news of
+  poor and bumper harvests, lean years and dearths. It belongs with `prices`.
+  [harvest.md](harvest.md), `harvest.enabled`.

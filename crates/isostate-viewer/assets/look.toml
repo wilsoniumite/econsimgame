@@ -1,0 +1,444 @@
+# The look of the island: every colour the scenery is built in, and the light
+# and the lens it is seen through. This file is built into the viewer, so it
+# is the look of the game as it stands.
+#
+# To try another look, write a file with only the lines you want to change
+# (keep their [table] headings) and pass it with --look:
+#
+#     isostate-viewer --look dusk.toml
+#     isostate-viewer --look dusk.toml --shots out/dusk --shots-compare out/before
+#
+# A name the viewer does not know is an error, so a slip of the pen is caught.
+#
+# A colour is "#rrggbb", as a painter's swatch, or [red, green, blue] from
+# 0 to 1 where finer steps are wanted. Tokens are named for what they are in
+# the world, not for where the code uses them: one brick, wherever it is laid.
+# Where a thing is drawn in several tints (the leaves of the trees, a train's
+# wagons) the token is a list, and each one takes a tint by a number of its own.
+#
+# Not here: the interface's colours (ui.rs, family.rs; the families' banner
+# colours are among them).
+
+# ---------------------------------------------------------------- the scenery
+
+[land]
+# The land itself, which the ground's shader paints from these (src/terrain.wesl).
+# The shader mixes them as they stand here and adds its own small variety field
+# by field, so a change here moves every field of that kind together.
+
+# ploughed soil, and the same in winter; stubble after the harvest
+soil = "#b08455"
+soil_winter = "#9a7651"
+stubble = "#dccb98"
+# corn: green in the blade, then wheat, barley and oats as they ripen
+corn_green = "#a4c660"
+wheat_ripe = "#e3c25e"
+barley_ripe = "#ebd891"
+oats_ripe = "#d8c779"
+# turnips and clover, and the same grazed down in winter
+roots = "#9cc05a"
+roots_winter = "#7f9d5b"
+# a hay meadow: its grass, fresher in spring, tall before the cut, drying in
+# windrows, dull in winter
+hay = "#9bc35e"
+hay_spring = "#a8cc66"
+hay_tall = "#b8c46a"
+hay_drying = "#cdbb69"
+hay_winter = "#8d9a6a"
+# the weeds on a fallow
+fallow_weeds = "#9aae5c"
+# pasture, in four greens, a field taking one
+pasture = "#8fc15a"
+pasture_light = "#9bcb63"
+pasture_deep = "#86b851"
+pasture_pale = "#a6cf71"
+# what grass turns toward late in summer, in autumn and in winter
+grass_dry = "#bdbb72"
+grass_autumn = "#8f9f5a"
+grass_winter = "#8a9470"
+# open fields: the grass balks between strips and the headland round a furlong
+balk = "#9fb565"
+headland = "#9cc463"
+# water meadows on a valley floor
+water_meadow = "#8cbf63"
+# steep ground, high ground, and a hard morning
+rock = "#9b9588"
+snow = "#f5f5f1"
+frost = "#dfe5e8"
+# a hedge through the year, and the dry-stone wall that stands for it in the hills
+hedge = "#4a7533"
+hedge_autumn = "#6b6837"
+hedge_winter = "#575443"
+field_wall = "#a59f92"
+# the floor of a wood under the trees: in light and shade, and through the year
+wood = "#4b7738"
+wood_shade = "#3f6a30"
+wood_spring = "#5a8a3e"
+wood_autumn = "#7a6a3a"
+wood_winter = "#5b5945"
+# heath in the lowland (and rough grass by the sea), in the hills and on the
+# mountains; brown in autumn and winter
+heath = "#bcbb7e"
+heath_hill = "#aead73"
+heath_mountain = "#a39d8f"
+heath_brown = "#9c8a68"
+# heather: in wide drifts and in clumps, each out of flower and in
+heather_drift = "#a08f88"
+heather_drift_bloom = "#a27ca2"
+heather = "#a58fa6"
+heather_bloom = "#9a62a6"
+# gorse, and in flower
+gorse = "#7d8a45"
+gorse_flower = "#d9b93c"
+# the ground of a town: beaten earth, gardens with their dug beds, cobbles,
+# and the whole from far off
+town_earth = "#c9b79d"
+garden = "#9fae6e"
+garden_dug = "#8d9a5c"
+cobbles = "#b8ad9c"
+town_far = "#c4b398"
+# a works yard: its ground, cinder, gravel, and the lanes across it
+yard = "#8f857a"
+yard_cinder = "#786f67"
+yard_gravel = "#a1998c"
+yard_lane = "#a69e92"
+# ground left derelict, and the weeds on it
+derelict = "#968f81"
+derelict_weeds = "#8f9a62"
+# the ground of quarries, clay pits, iron mines and collieries
+quarry = "#c9c3b7"
+clay_pit = "#c69466"
+iron_mine = "#a76c4c"
+colliery = "#4a4643"
+# the bed of the sea, seen through the water: sand, the shelf, the deep
+seabed_sand = "#d2cd9c"
+seabed_shelf = "#6fa8a3"
+seabed_deep = "#2f5f78"
+# the beach where the sea has just been and where it is dry, and shingle on a
+# steep shore
+beach_wet = "#cfbd8b"
+beach = "#ead9a3"
+shingle = "#a49c8a"
+
+[sea]
+# The sea's surface, painted by its own shader (src/sea.wesl).
+
+# the water by its depth: clear over the sand, green-blue over the shelf,
+# darker beyond, dark blue far out
+shallows = "#9ad6cb"
+shelf = "#5aa8b8"
+deep = "#3b7fa3"
+open = "#2c5f86"
+# the foam at the water's edge and on the surf
+foam = "#f4f6f2"
+
+[ground]
+# What lies on the land.
+# roads between the towns: gravel on the main roads, dust on the lesser ones
+road_gravel = "#d9c596"
+lane_dust = "#cdb88d"
+# a farm's own lane from its yard gate to the road
+farm_lane = "#cdb98f"
+# the back streets of a town, packed earth and setts
+street_earth = "#c4ad87"
+# the market place, in stone
+market_paving = "#d8cdb6"
+# a farmyard's beaten earth, and the edge of it where the ground falls away
+farmyard = "#bca783"
+farmyard_edge = "#b59f7a"
+station_platform = "#6b5a4e"
+# heaps at the pits: coal, ironstone, quarry waste, clay
+spoil_coal = "#3c3936"
+spoil_ironstone = "#8e5a44"
+spoil_stone = "#b9b2a5"
+spoil_clay = "#b07a55"
+# a charcoal burner's clamp: turf over smouldering wood
+charcoal_clamp = "#4a3f36"
+charcoal_clamp_top = "#3a322b"
+
+[walls]
+# the washes of the separate houses in town and of the lowland farmhouses;
+# cream is the commonest
+cream = "#f6deb4"
+limewash = "#faf0dc"
+ochre = "#f4d38f"
+rose = "#f0bfa3"
+sage = "#dfe2bf"
+station = "#f1e3c6"
+market_hall = "#f0dcb8"
+weaver_cottage = "#f0e2c4"
+lighthouse_white = "#f7f5ef"
+lighthouse_red = "#c94b3c"
+
+[roofs]
+# clay tile: the common red, a darker one (also the station and the market
+# hall), and the lowland farmhouse's
+tile_red = "#c6604a"
+tile_dark = "#b5523f"
+tile_farm = "#b8573f"
+# an old roof gone green
+moss = "#6e8f5c"
+# a lowland barn
+barn = "#6b5a4e"
+station_canopy = "#7a8a6a"
+# the long drying shed of a brickworks, and the top of a bank of coke ovens
+drying_shed = "#6e5a48"
+coke_ovens = "#5a4a42"
+
+[thatch]
+farmhouse = "#c9a75c"
+weaver_cottage = "#d6b263"
+# a rick of corn or hay
+rick = "#d8b55e"
+
+[slate]
+# on the separate houses in town
+house = "#5b6b86"
+# on the church and the terraces
+town = "#55617a"
+# on works, sheds and engine houses
+works = "#4a5468"
+upland_farm = "#5b6577"
+upland_barn = "#56606f"
+
+[timber]
+# boarded works: millwrights, furnace sheds, drying sheds
+boards = "#9a6b45"
+scaffold_pole = "#a98559"
+scaffold_board = "#c9a877"
+# the legs of a pit's headframe
+headframe = "#6b4a32"
+# a lowland barn in tarred boards
+barn_tarred = "#5b4a3c"
+door = "#6a4632"
+
+[stone]
+# the church, and the pillars of the market hall
+church = "#ddd5c4"
+market_cross = "#d9d0be"
+# stone-built works: smithies, furnaces, crucible shops
+works = "#bdb4a5"
+# a stone shed in a works yard
+shed = "#a9a196"
+# farmhouses in the hills, in three tints
+upland_farm = ["#cfc6b4", "#bdb4a3", "#d8cfbd"]
+upland_barn = "#a9a08f"
+
+[brick]
+# the common brick: mills and engine works, terraces, sheds, engine houses
+red = "#b5634c"
+# sootier: forges and rolling mills, coke ovens, the stacks of a terrace
+dark = "#8f4b3b"
+shed = "#9b5a48"
+# the other bricks a terrace may be built in, from fresh to sooty
+terrace_brown = "#a65a45"
+terrace_orange = "#c07a5a"
+terrace_sooty = "#96574a"
+chimney = "#a9553f"
+# a lowland barn
+barn = "#a8553e"
+
+[glass]
+window = "#414552"
+# the lit rows of a textile mill
+mill_lit = "#f3e2b0"
+lighthouse_lamp = "#ffe58a"
+
+[iron]
+# the wheel housing on a headframe
+winding_gear = "#3d3a38"
+# a Bessemer converter
+converter = "#5c5a58"
+
+[foliage]
+trunk = "#7a5536"
+broadleaf = ["#5e9a45", "#6aa84f", "#4f8a3d", "#79b25a", "#8ab85c"]
+conifer = ["#2f6a49", "#3a7a51", "#2c5f43"]
+# low bushes on the heath
+gorse = "#9aa548"
+broom = "#6b7f3e"
+# what the leaves are multiplied by through the year: [red, green, blue],
+# 1 leaves them as they are
+tint_winter = [0.78, 0.74, 0.70]
+tint_spring = [0.92, 1.12, 0.86]
+tint_summer = [1.0, 1.0, 1.0]
+tint_autumn = [1.35, 0.88, 0.52]
+
+[water]
+river = "#5d9fc4"
+# the wet bank either side of a river
+river_bank = "#7d8a55"
+# the deep floor under the sea, beyond the map (the sea's own colours are in [sea])
+sea_floor = [0.16, 0.36, 0.48]
+
+[smoke]
+# chimney smoke, and the whiter steam of a locomotive
+puff = "#eeece8"
+steam = "#f2f0ec"
+# the black mouth of a flue: chimney tops, furnace and kiln throats
+soot = "#3a3330"
+# the top of a terrace's chimney stack
+stack_top = "#5a4036"
+
+[rail]
+ballast = "#8d877f"
+rails = "#3d3633"
+# the dashed earthworks of a line being laid
+earthworks = "#a3967f"
+# an embankment: its top under the ballast, its grass sides (one in shade),
+# and stone where it meets the sea; the same stone builds viaducts, tunnel
+# portals and the abutments of girder bridges
+bank_top = "#9a8f78"
+bank_grass = "#7f9a52"
+bank_grass_shade = "#6c8546"
+stone = "#b9ad97"
+viaduct_brick = "#a45f45"
+# a cutting: grass where it is shallow and rock where it is deep, each lit
+# on one side and in shade on the other, and the grass back of its banks
+cutting_grass_lit = "#93a660"
+cutting_grass_shade = "#6d7f49"
+cutting_rock_lit = "#b5ab97"
+cutting_rock_shade = "#857e70"
+cutting_back = "#86a056"
+tunnel_mouth = "#2a2522"
+# a plate girder bridge over a river
+girder = "#4c4f55"
+
+[bridges]
+# the stone bridges that carry roads over rivers, and the dark under an arch
+road_stone = "#c4b8a2"
+lane_stone = "#b9ab94"
+arch_shadow = "#3b3631"
+# a low causeway over drowned ground
+causeway = "#b8ac96"
+
+[vehicles]
+engine = "#2f6b55"
+engine_black = "#2b2725"
+# a train's wagons, front to back
+wagons = ["#b5523f", "#8a6a4a", "#6f7a8a"]
+cart_wood = "#8a5f3c"
+cart_canvas = "#efe6cf"
+cart_wheels = "#3a2c24"
+horse = "#6b4632"
+boat_hull = "#6b4a35"
+boat_deck = "#b08a5e"
+boat_mast = "#5a4030"
+sail = "#f3ead6"
+jib = "#e8dcc0"
+
+[marks]
+# what the game draws on the island. The banner colours themselves are the
+# families', with the interface (family.rs).
+pole = "#6b5a48"
+# the gilt ball on a seat's flagpole
+finial = "#d9b44a"
+# plain cloth: fences, and the flag of a seat still to be moved to, are the
+# family's colour mixed toward it
+cloth_pale = "#f4ecd8"
+# fence posts are the fence's colour mixed toward this
+post_shade = "#5a4a3a"
+# surveyors' pegs where a works is ordered
+peg = "#e9dcc0"
+# the square under the pointer, and how solid its line is
+hover = "#fffbf0"
+hover_alpha = 0.75
+# the clicked square is outlined in the player's colour; this when there is
+# no player, as in a replay
+outline_plain = [0.30, 0.25, 0.20]
+outline_alpha = 0.95
+
+# ---------------------------------------------------------------- the light
+
+[sun]
+# which way the sun stands, in radians from due south (the camera's side at
+# the start), negative toward the west: -0.75 is south-west. The hedge
+# shadows painted on the ground and the lit side of a railway cutting assume
+# this south-west sun and do not follow a change here.
+turn = -0.75
+# how high it stands, in radians above the horizon: in midwinter, and how
+# much higher at midsummer
+height_winter = 0.5
+height_summer_adds = 0.35
+# its strength in lux, and what midsummer adds
+strength_winter = 7000.0
+strength_summer_adds = 3000.0
+# its colour in midwinter, and what midsummer adds to each of red, green
+# and blue (so the summer sun is [1.0, 0.95, 0.85])
+colour_winter = [1.0, 0.90, 0.78]
+colour_summer_adds = [0.0, 0.05, 0.07]
+
+[shadows]
+# the sun's shadows are drawn in this many steps of fineness, the finest out
+# to `first_far` from the camera and the last to `max_distance`
+cascades = 3
+first_far = 12.0
+max_distance = 220.0
+
+[sky]
+# what shows where there is nothing to draw
+background = [0.70, 0.83, 0.92]
+# the soft light from the whole sky, and its strength
+light = [0.78, 0.86, 1.0]
+brightness = 650.0
+
+[haze]
+colour = [0.72, 0.84, 0.93]
+# the haze warms toward the sun: the colour, how strongly, and how tight a
+# patch round the sun (higher is tighter)
+sun_glow = [1.0, 0.93, 0.8]
+sun_glow_strength = 0.4
+sun_glow_tightness = 24.0
+# where the haze begins and where it is complete, as multiples of the
+# camera's distance from what it looks at
+start = 1.2
+end = 4.0
+
+# ---------------------------------------------------------------- the lens
+
+[post]
+# how bright light is brought into the range of a screen: none, linear,
+# reinhard, reinhard_luminance, aces_fitted, agx,
+# somewhat_boring_display_transform, tony_mc_mapface, blender_filmic or
+# khronos_pbr_neutral
+tonemapping = "tony_mc_mapface"
+# exposure as EV100: higher is darker
+exposure = 9.7
+# the glow round bright things; 0 turns it off
+bloom = 0.06
+
+[ambient_occlusion]
+# the darkening where surfaces meet, worked out from what is on screen
+on = true
+# low, medium, high or ultra
+quality = "high"
+# how far it reaches, and how thick things are taken to be
+radius = 0.7285
+thickness = 0.25
+
+[tilt_shift]
+# the miniature look: only what the camera looks at is sharp (T turns it off
+# and on in the game, --no-tilt at the start)
+on = true
+# the lens opening is `focus` divided by the camera's distance, kept between
+# `widest` and `narrowest`; a smaller number blurs more
+focus = 30.0
+widest = 0.8
+narrowest = 3.5
+
+[surfaces]
+# how matt each kind of surface is (1 is chalk, 0 a mirror) and how much it
+# reflects at a glance (0 to 1)
+buildings = 0.85
+paths = 0.95
+foliage = 0.9
+boats_and_marks = 0.8
+painted_reflectance = 0.25
+ground = 0.92
+ground_reflectance = 0.18
+river = 0.25
+river_reflectance = 0.4
+sea = 0.14
+sea_reflectance = 0.45
+# how much light passes through a puff of smoke
+smoke_translucence = 0.3

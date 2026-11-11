@@ -28,6 +28,7 @@ pub mod engel;
 pub mod facts;
 pub mod families;
 pub mod firms;
+pub mod harvest;
 pub mod land;
 pub mod live;
 pub mod machines;

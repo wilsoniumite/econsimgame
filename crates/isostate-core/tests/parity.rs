@@ -695,6 +695,7 @@ fn sim_yearly_matches_python_draw_for_draw() {
             people: stream("people"),
             rail: stream("rail"),
             misc: stream("misc"),
+            harvest: Rng::replaying(Vec::new()),
         };
         let mut events = Vec::new();
         let year = d.arg_f64("year") as i64;
@@ -875,6 +876,7 @@ fn sim_init_state_matches_python_draw_for_draw() {
             people: stream("people"),
             rail: stream("rail"),
             misc: stream("misc"),
+            harvest: Rng::replaying(Vec::new()),
         };
         let python_world = load_state(&set.join("seed_firms_before")).world;
         let (mut st, pbar, wbar) = sim::init_before_firms(&P, &C, python_world, &mut rngs);
@@ -995,6 +997,7 @@ fn full_run_matches_python_draw_for_draw() {
             people: stream("people"),
             rail: stream("rail"),
             misc: stream("misc"),
+            harvest: Rng::replaying(Vec::new()),
         };
         let (mut st, pbar, wbar) = sim::init_before_firms(&P, &C, load_world(&d), &mut rngs);
         sim::seed_firms(&mut st, &C, &P, &mut rngs, &pbar, &wbar);
