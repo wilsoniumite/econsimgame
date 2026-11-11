@@ -184,7 +184,10 @@ pub fn pages(cells: &[Vec<Cell>], shot: Shot, size: (u32, u32), loupe: u32) -> V
             return vec![page];
         }
     }
-    paginate(&boxes, shot.dist(), 1, size)
+    // a picture too small for the sheet even at its true size (the labels do
+    // not shrink with it): break the rows into lines and go over pages, as close up
+    let lines: Vec<Vec<Bx>> = boxes.into_iter().flat_map(|row| broken(row, shot.dist(), 1, size)).collect();
+    paginate(&lines, shot.dist(), 1, size)
 }
 
 /// A row as the lines it takes to fit the picture: itself if it fits, or
@@ -395,6 +398,23 @@ mod tests {
                 }
                 if shot != Shot::Close {
                     assert_eq!(pages.len(), 1, "{} {} does not fit one page", sheet.name, shot.name());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_small_picture_takes_more_pages_and_cuts_nothing_off() {
+        // ten labels side by side are wider than a picture of 800, whatever the distance
+        let pal = Palette::standard();
+        for sheet in SHEETS {
+            let cells = crate::lab::cells_of(sheet, &pal, crate::lab::TURN);
+            let count: usize = cells.iter().map(|r| r.len()).sum();
+            for shot in Shot::ALL {
+                let pages = pages(&cells, shot, (800, 600), 1);
+                assert_eq!(pages.iter().map(|p| p.placed.len()).sum::<usize>(), count, "{} {}", sheet.name, shot.name());
+                for (i, page) in pages.iter().enumerate() {
+                    assert!(!page.cut_off, "{} {} page {} is cut off", sheet.name, shot.name(), i + 1);
                 }
             }
         }
