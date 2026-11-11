@@ -844,11 +844,13 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             keep.push(pr);
             continue;
         }
-        let first = book.lines.is_empty();
-        for &c in &pr.cells {
+        let first = !book.lines.iter().any(|l| l.serves == SERVES_TRUNK);
+        // Only its own cells: where its route runs over a line still building, that
+        // line lays them when it opens (and pays for them, once).
+        for &c in &pr.new {
             (way.layer_mut)(st)[c] = 1;
         }
-        // what is left goes back to those who subscribed (what is owed is called from them)
+        // what is left goes back to those who subscribed
         let subs = std::mem::take(&mut pr.subs);
         repay(st, &subs, pr.cash);
         let spent = pr.paid_in - pr.cash;
@@ -917,4 +919,71 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
     }
     st.projects = keep;
     *(way.book_mut)(st) = book;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{default_content, default_params, init_state};
+
+    /// The island of seed 3 as it starts, and the railway's rules.
+    fn island() -> (State, Way) {
+        let (P, C) = (default_params(), default_content());
+        let (st, _) = init_state(&P, &C);
+        let way = crate::railways::way(&st, &C, &P);
+        (st, way)
+    }
+
+    /// A route between the first two towns, as the promoters would find it.
+    fn a_line(st: &State, way: &Way) -> Vec<usize> {
+        let route = build_graph(&st.world, &vec![false; st.N], &way.build);
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        let (na, nb) = (st.town_node[act[0]], st.town_node[act[1]]);
+        let paths = tr::dijkstra(&route, &[(na, 0.0)], Some(nb));
+        let path = tr::path_cells(&paths.pred, na, nb);
+        assert!(path.len() > 3, "the two towns are joined over land");
+        path
+    }
+
+    #[test]
+    fn the_railways_route_graph_is_the_ports() {
+        let (mut st, way) = island();
+        for c in a_line(&st, &way) {
+            st.rail[c] = 1;
+        }
+        let laid: Vec<bool> = st.rail.iter().map(|&r| r > 0).collect();
+        let (ours, port) = (build_graph(&st.world, &laid, &way.build), tr::rail_build_graph(&st.world, &st.rail));
+        assert!(ours.w.iter().zip(&port.w).all(|(x, y)| x.to_bits() == y.to_bits()));
+    }
+
+    #[test]
+    fn laying_a_line_and_improving_is_a_search_from_scratch() {
+        let (st, way) = island();
+        let line = a_line(&st, &way);
+        let mut g = st.graph.clone();
+        let before = g.w.clone();
+        let towns: Vec<(usize, f64)> = (0..st.T_max).filter(|&t| st.town_active[t]).map(|t| (st.town_node[t], 0.0)).collect();
+        let base = tr::distances(&g, &towns);
+        let mut laid = vec![false; st.N];
+        for &c in &line {
+            laid[c] = true;
+        }
+        let changed = lay(&mut g, &st.world, &laid, &line, way.run_cost);
+        assert!(!changed.is_empty(), "a railway is cheaper than the road it follows");
+        let quick = improve(&g, &base, &changed);
+        let fresh = tr::distances(&g, &towns);
+        let mut saved = 0.0;
+        for c in 0..st.N {
+            if fresh[c].is_finite() {
+                assert!((quick[c] - fresh[c]).abs() <= 1e-9 * fresh[c].max(1.0), "cell {c}: {} against {}", quick[c], fresh[c]);
+                saved += base[c] - fresh[c];
+            } else {
+                assert!(!quick[c].is_finite());
+            }
+        }
+        assert!(saved > 0.0, "the line brings some cells nearer a market");
+        // and taking it up again leaves the graph as it was
+        unlay(&mut g, &changed);
+        assert!(g.w.iter().zip(&before).all(|(x, y)| x.to_bits() == y.to_bits()));
+    }
 }

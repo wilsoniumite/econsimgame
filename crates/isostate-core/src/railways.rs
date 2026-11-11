@@ -45,7 +45,9 @@ pub struct RailwayParams {
     /// Promoters price rails at the year's price times one plus the rails all
     /// lines have on order over a year's make of rails.
     pub order_book: bool,
-    /// Lines that may be building at once.
+    /// Lines that may be building at once. A backstop, not the pace: at the
+    /// height of the rush 21 to 30 lines are building, held there by the money
+    /// their towns can raise and the price of rails.
     pub max_projects: usize,
     /// Districts looked at each year: those with the largest carting bill.
     pub districts: usize,
@@ -66,7 +68,7 @@ impl Default for RailwayParams {
             cost_mult: 5.0,
             build_months: 24.0,
             order_book: true,
-            max_projects: 12,
+            max_projects: 40,
             districts: 8,
             branch_gap: 3.0,
             district_spacing: 6.0,
