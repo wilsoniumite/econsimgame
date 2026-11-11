@@ -144,6 +144,7 @@ struct LandPaint {
     wood_canopy: vec4<f32>,
     river_thread: vec4<f32>,
     shore_far: vec4<f32>,
+    wood_canopy_autumn: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
@@ -776,10 +777,14 @@ fn wood_floor(sp: Spot) -> vec3<f32> {
     let deep = clamp(sp.wood * 2.0 - 1.0, 0.0, 1.0);
     // from far off the trees are too small to tell apart and the wood reads
     // by its canopy: darker in its depths, with a slow swell of taller and
-    // lower stands
-    let stand = 0.5 + 0.5 * vnoise(sp.p.x * 2.3 + 1.7, sp.p.y * 2.3 + 4.9, 443);
+    // lower stands (the stands scatter.rs grows the trees in)
+    let stand = 0.5 + 0.5 * vnoise(sp.p.x * 2.9 + 3.1, sp.p.y * 2.9 + 8.7, 457);
     var canopy = mix(paint.wood_canopy.rgb, paint.wood_shade.rgb, 0.25 + 0.45 * deep * stand);
-    canopy = mix(canopy, paint.wood_autumn.rgb, 0.4 * bell(sp.ph, 0.83, 0.12));
+    // in October the broadleaf woods of the low ground are gold, as their
+    // trees are, so that the far view is one tone and not gold specks on
+    // green; the conifers of the high ground keep their colour
+    let broadleaf = 1.0 - 0.75 * smoothstep(0.34, 0.8, sp.h);
+    canopy = mix(canopy, paint.wood_canopy_autumn.rgb, 0.8 * broadleaf * bell(sp.ph, 0.83, 0.12));
     canopy = mix(canopy, paint.wood_winter.rgb, 0.55 * winter(sp.ph));
     c = mix(c, canopy, sp.far);
     // glades and rides, which the trees keep out of

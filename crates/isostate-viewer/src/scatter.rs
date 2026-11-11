@@ -695,6 +695,15 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let land = world::year_land(r, g, k);
     for s in &slots.trees {
         let (cls, margin) = land.at(s.place);
+        if !(world::FARM..=world::HEATH).contains(&cls) {
+            continue;
+        }
+        // the tree line: fewer and lower trees and bushes up to the summer snow, none on it
+        let p = ground(g, s.x, s.z);
+        let bare = world::above_tree_line(s.x, s.z, p.y);
+        if (s.v * 13.37).fract() < bare {
+            continue;
+        }
         let wooded = land.wooded(s.place);
         // 0 far from any wood, 1 at a wood's edge
         let by_wood = (wooded * 2.0).min(1.0);
@@ -706,14 +715,14 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             world::WOOD | world::HEATH if margin => {
                 // scrub on the margin: bushes, and a low tree here and there
                 if u2 < 0.3 && !near_plot(s.x, s.z) {
-                    bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
+                    bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
                 }
                 (s.u < 0.1, 0.5 + 0.25 * s.v)
             }
             world::WOOD => {
                 let deep = (wooded * 2.0 - 1.0).clamp(0.0, 1.0);
                 let open = world::glade(s.x, s.z, deep);
-                ((1.0 - s.u) < (0.7 + 0.26 * deep) * (1.0 - open),(0.62 + 0.3 * deep) * (0.78 + 0.44 * stand) + 0.3 * s.v)
+                ((1.0 - s.u) < (0.7 + 0.26 * deep) * (1.0 - open), (0.62 + 0.3 * deep) * (0.78 + 0.44 * stand) + 0.3 * s.v)
             }
             // the odd tree out in a field, and clumps and lone trees near a wood;
             // most of a field's trees stand in its hedges
@@ -721,7 +730,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             world::HEATH => {
                 // gorse and broom: low bushes, and the odd tree, more of them by a wood
                 if u2 < 0.16 && !near_plot(s.x, s.z) {
-                    bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
+                    bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
                 }
                 (s.u < 0.025 + by_wood * (0.03 + 0.3 * clump), 0.55 + 0.15 * stand + 0.25 * s.v)
             }
@@ -730,7 +739,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if !grow || near_plot(s.x, s.z) {
             continue;
         }
-        let p = ground(g, s.x, s.z);
+        let scale = scale * (1.0 - 0.45 * bare);
         // conifers in stands, on high ground and on the poor tops
         let high = fields_smooth(0.34, 0.8, p.y + 0.12 * world::vnoise(s.x * 0.9, s.z * 0.9, 453));
         let poor = fields_smooth(0.55, 0.95, g.land.moor[s.place.parcel as usize]);
@@ -758,6 +767,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             continue;
         }
         let p = ground(g, s.x, s.z);
+        if (s.u * 13.37).fract() < world::above_tree_line(s.x, s.z, p.y) {
+            continue;
+        }
         hedge_tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
     }
 
@@ -772,9 +784,14 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if roads.nearest(s.x, s.z, 0.075).is_some() {
             continue;
         }
+        // nobody farms from a house above the tree line: the mountain's grass is grazed from below
+        let p = ground(g, s.x, s.z);
+        if world::above_tree_line(s.x, s.z, p.y) > 0.0 {
+            continue;
+        }
         // stone and slate in the hills
         let upland = r.terrain[c] >= 2;
-        let site = Site::on(ground(g, s.x, s.z), s.yaw, &height);
+        let site = Site::on(p, s.yaw, &height);
         farmstead(&mut houses, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);

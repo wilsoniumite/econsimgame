@@ -824,6 +824,15 @@ pub fn glade(x: f32, z: f32, deep: f32) -> f32 {
     open.max(ride * deep)
 }
 
+/// How far above the tree line a spot of height `h` is, 0 to 1. Over the last
+/// climb to the snow that lies on the mountain all summer the woods thin out
+/// and their trees dwindle, and nothing grows on the snow itself. The line is
+/// the summer snow line of terrain.wesl (`sp.snow`), with the same noise, so
+/// the trees stop where the white begins.
+pub fn above_tree_line(x: f32, z: f32, h: f32) -> f32 {
+    fields::smoothstep(-0.3, 0.08, h - (1.75 - 0.12 * vnoise(x * 1.7, z * 1.7, 31)))
+}
+
 /// How far a spot is from the water of a river (negative in it); about 0.25 or
 /// more means nowhere near.
 pub fn water_dist(g: &Ground, x: f32, z: f32) -> f32 {
@@ -1111,6 +1120,19 @@ mod tests {
         assert_eq!(at(3, 1, -1), (PASTURE, false));
         // a wood leant into a field is a wood's edge there
         assert_eq!(land.wooded(Place { parcel: 1, beyond: 0, lean: 1 }), 0.5);
+    }
+
+    #[test]
+    fn the_trees_stop_at_the_summer_snow() {
+        for i in 0..200 {
+            let (x, z) = (100.0 * hash2(i, 5, 11), 80.0 * hash2(i, 6, 11));
+            // the shader's summer snow begins at this height (terrain.wesl, `sp.snow`)
+            let snow = 1.75 - 0.12 * vnoise(x * 1.7, z * 1.7, 31);
+            assert_eq!(above_tree_line(x, z, 1.3), 0.0, "the hillsides keep their woods");
+            assert_eq!(above_tree_line(x, z, snow + 0.08), 1.0, "nothing grows on the snow");
+            let (low, high) = (above_tree_line(x, z, snow - 0.2), above_tree_line(x, z, snow - 0.05));
+            assert!(0.0 < low && low < high && high < 1.0, "the woods thin out on the way up: {low} then {high}");
+        }
     }
 
     #[test]

@@ -132,6 +132,9 @@ wood_canopy = "#447336"
 river_thread = "#5b9dc6"
 # the line of sand ruled along the shore in the far view
 shore_far = "#f0e2b4"
+# the canopy of a broadleaf wood in October, from as far off: the gold of its
+# trees (tint_autumn over the broadleaf greens, in [foliage]), a little shaded
+wood_canopy_autumn = "#a8883e"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).

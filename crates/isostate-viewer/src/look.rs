@@ -157,6 +157,7 @@ shader_paint! {
         wood_canopy,
         river_thread,
         shore_far,
+        wood_canopy_autumn,
     }
 }
 
