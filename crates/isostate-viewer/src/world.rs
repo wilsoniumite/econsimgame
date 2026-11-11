@@ -785,6 +785,14 @@ pub const HOUSE_GROUND: f32 = 0.0052;
 /// Houses outlast a fall in their cell's residents of this share: a town that
 /// has lost a quarter of its people still stands whole.
 pub const HOUSES_KEEP: f32 = 0.25;
+/// How many closes the edge of a cell's built-up ground thins out over: a
+/// house plot's turn comes up to this many closes after its close's place in
+/// the cell's order (`scatter/towns/kept.rs`), and a plot is built on only
+/// once its turn is under the count of built-up closes. So the order the
+/// plots of a cell are built in never changes as its ground grows, and half
+/// of this many closes are built up beyond what the houses need, for the
+/// plots at the edge whose turn has not come.
+pub const EDGE_CLOSES: f32 = 5.0;
 /// The cuts that make a close of town ground: three more than a parcel.
 pub const CLOSE_LEVEL: u32 = fields::PARCEL_LEVEL + 3;
 
@@ -798,7 +806,7 @@ pub struct Close {
 
 /// The closes of a cell's town ground in the order they are built up: the
 /// parcel and the close's number in it, and its area.
-type Order = std::sync::Arc<Vec<(u32, u8, f32)>>;
+pub type Order = std::sync::Arc<Vec<(u32, u8, f32)>>;
 
 /// How finely the closes are kept for looking up (`CloseLookup`): this many
 /// spots along each side of a cell, 42 m apart.
@@ -812,6 +820,8 @@ pub struct TownClosesKnown {
     orders: std::sync::Mutex<std::collections::HashMap<(u32, u32, u32), Order>>,
     /// the parcel and the close at each of `CLOSE_GRID` by `CLOSE_GRID` spots of a cell of the map, by the cell
     grids: std::sync::Mutex<std::collections::HashMap<u32, std::sync::Arc<Vec<(u32, u8)>>>>,
+    /// how many years of the record's roads have been gone through, and the first year each road ran (`road_years`)
+    roads: std::sync::Mutex<(usize, std::collections::HashMap<(u32, u32), u32>)>,
 }
 
 /// The closes of the map's cells for looking up, as far as they have been
@@ -853,8 +863,10 @@ fn close_grid(g: &Ground, c: u32) -> std::sync::Arc<Vec<(u32, u8)>> {
 }
 
 /// A cell of town ground this year, in a run that keeps it.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TownCell {
+    /// its closes in the order they are built up (`town_order`)
+    pub order: Order,
     /// how many closes it has dry ground for, and how many of them (the first of its order) are built up
     pub closes: u16,
     pub built: u16,
@@ -906,6 +918,19 @@ pub fn town_houses(r: &Replay, k: usize, c: usize) -> usize {
         peak = peak.max(of(y));
     }
     now.max(peak.min(now / (1.0 - HOUSES_KEEP))).round() as usize
+}
+
+/// The most of cell `c` that has been under works in any year since it joined
+/// its town, up to year `k`: ground that has been a yard stays built-up ground.
+pub fn town_works(r: &Replay, k: usize, c: usize) -> f32 {
+    let mut most = r.works_share(k, c);
+    for y in (0..k).rev() {
+        if r.built[y * r.n + c] == 0 {
+            break;
+        }
+        most = most.max(r.works_share(y, c));
+    }
+    most
 }
 
 /// Whether a road ran between two neighbouring cells in year `k` (`network::road_segments`).
@@ -1054,6 +1079,44 @@ fn town_order(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize, pa
     order
 }
 
+/// How many of a cell's closes, the first of its `order`, are built up for
+/// `houses` houses with a share `works` of the cell under works: ground for
+/// the houses at `HOUSE_GROUND` each and for the works' yards (the works
+/// stand where they stand, `scatter.rs`, and the houses keep out of their
+/// yards), and the edge, where the plots' turns come one by one
+/// (`EDGE_CLOSES`). Closes in the water are never built up.
+pub fn closes_built(order: &[(u32, u8, f32)], houses: usize, works: f32) -> usize {
+    let dry: f32 = order.iter().map(|o| o.2).sum();
+    let want = houses as f32 * HOUSE_GROUND + works * dry;
+    let (mut have, mut built) = (0.0, 0usize);
+    while built < order.len() && order[built].2 > 0.0 && (have < want || (built == 0 && houses > 0)) {
+        have += order[built].2;
+        built += 1;
+    }
+    let mut edge = if houses > 0 { (EDGE_CLOSES * 0.5).round() as usize } else { 0 };
+    while edge > 0 && built < order.len() && order[built].2 > 0.0 {
+        built += 1;
+        edge -= 1;
+    }
+    built
+}
+
+/// The first year (counted from the start) each pair of neighbouring cells
+/// had a road between them, among the years up to `k`: by the lower cell and
+/// the higher. A road the map draws no more (a diagonal is left out once two
+/// straight roads join its ends) is still a street of the town it ran through.
+pub fn road_years(r: &Replay, g: &Ground, k: usize) -> std::collections::HashMap<(u32, u32), u32> {
+    let mut known = g.land.closes.roads.lock().unwrap();
+    while known.0 <= k {
+        let y = known.0;
+        for (a, b, _) in crate::network::road_segments(r, y) {
+            known.1.entry((a.min(b) as u32, a.max(b) as u32)).or_insert(y as u32);
+        }
+        known.0 += 1;
+    }
+    known.1.iter().filter(|&(_, &y)| y as usize <= k).map(|(&l, &y)| (l, y)).collect()
+}
+
 /// Which of the year's town ground is built up. `class` is the year's class of every parcel.
 pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround {
     let l = &g.land;
@@ -1084,16 +1147,9 @@ pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround
         let c = c as usize;
         let parent = town_parent(r, k, c);
         let order = town_order(r, g, &cen, k, c, parcels);
-        let dry: f32 = order.iter().map(|o| o.2).sum();
         let houses = town_houses(r, k, c);
-        // ground for the houses and for the works' yards; the works stand where they stand
-        // (`scatter.rs`), and the houses keep out of their yards
-        let want = houses as f32 * HOUSE_GROUND + r.works_share(k, c) * dry;
-        let (mut have, mut built) = (0.0, 0usize);
-        while built < order.len() && order[built].2 > 0.0 && (have < want || (built == 0 && houses > 0)) {
-            have += order[built].2;
-            built += 1;
-        }
+        // (yards do not give ground back: the most of the cell the works have held since it joined)
+        let built = closes_built(&order, houses, town_works(r, k, c));
         for (n, &(i, sub, _)) in order.iter().enumerate() {
             town.rank[i as usize * 8 + sub as usize] = n as u16;
             if n < built {
@@ -1101,7 +1157,7 @@ pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround
             }
         }
         let closes = order.iter().filter(|o| o.2 > 0.0).count();
-        town.cells.insert(c as u32, TownCell { closes: closes as u16, built: built as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32) });
+        town.cells.insert(c as u32, TownCell { order: order.clone(), closes: closes as u16, built: built as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32) });
     }
     town
 }

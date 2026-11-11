@@ -474,7 +474,8 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ("Left, Right", "one year back or on"),
                     ("Up, Down", "faster or slower"),
                     ("1 2 3 4", "family, holdings, markets, news"),
-                    ("M", "map views: rent, markets, reach, prices, wages"),
+                    // (task A) two more: when town ground joined its town, and who lives on it
+                    ("M", "map views: rent, markets, reach, prices, wages, town growth, residents"),
                     ("G", "the next good, when prices are mapped"),
                     ("T", "miniature focus on or off"),
                     ("Esc", "close the note about what you clicked"),

@@ -165,7 +165,7 @@ With no run named, a new game starts.
   --no-tilt            no miniature focus
   --season F           hold the season: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
   --pick X,Z           start with this spot clicked
-  --overlay NAME       start with a map view: rent, areas, reach, price, price:GOOD, wages
+  --overlay NAME       start with a map view: rent, areas, reach, price, price:GOOD, wages, growth, residents
                        or plain
   --describe X,Z       print what a click there would show, and stop
 
@@ -325,7 +325,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--overlay" => {
                 let w = next(i)?;
                 if !overlay::is_word(&w) {
-                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain"));
+                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain"));
                 }
                 a.overlay = Some(w);
                 i += 1;
@@ -2399,7 +2399,7 @@ mod tests {
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
         // map views (a good the run does not have is refused once the run is read)
-        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain");
+        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain");
         assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
         // a script's steps are read with the options
         assert_eq!(args("--script bogus").err().unwrap(), "--script: bogus: not a step (see the top of script.rs)");

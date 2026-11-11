@@ -639,6 +639,21 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
     None
 }
 
+/// (task A) With ISOSTATE_TOWNS=years, build the scenery of every year of
+/// the run one after another and stop, so that what ISOSTATE_TOWNS prints
+/// says for each year how the towns' houses follow their people and how
+/// many of the houses of the year before are gone (`kept::steadiness`).
+pub(super) fn maybe_years(r: &Replay, g: &Ground, slots: &Slots) {
+    if std::env::var("ISOSTATE_TOWNS").as_deref() != Ok("years") {
+        return;
+    }
+    let (cen, lk, lod) = (crate::network::centres(r), Look::standard(), Lod::all(houses::Detail::Far));
+    for k in 0..r.filled.min(r.ny) {
+        build_year(r, g, slots, &cen, k, &lk, &lod);
+    }
+    std::process::exit(0);
+}
+
 #[allow(clippy::too_many_arguments)]
 fn houses_port(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, into: &mut Into) {
     let houses = &mut *into.houses;

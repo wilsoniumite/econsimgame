@@ -539,6 +539,8 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     place_new_firms(r, g, &mut slots);
     crate::plan::maybe_areas(r, g);
     crate::plan::maybe_write(r, g, &slots);
+    // (task A) ISOSTATE_TOWNS=years: every year's towns laid out in turn and counted
+    towns::maybe_years(r, g, &slots);
     crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
 }
