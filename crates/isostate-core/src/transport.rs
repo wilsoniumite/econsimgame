@@ -106,11 +106,14 @@ pub fn build_graph(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], 
                 let landside = if world.land[a] { a } else { b };
                 cost = if port_mask[landside] { PORT_COST } else { BEACH_COST };
                 // land: a boat on a navigable river goes on into the lake the
-                // river runs through, and out of it again
+                // river runs through, and out of it again; and the mouth of a
+                // tideway is a harbour without a town's having to make one
                 if let Some(lf) = &world.landform {
                     let waterside = if world.land[a] { b } else { a };
                     if lf.lake[waterside] && world.navigable[landside] {
                         cost = cost.min(RIVER_COST * step);
+                    } else if !lf.lake[waterside] && lf.estuary[landside] && world.navigable[landside] {
+                        cost = cost.min(PORT_COST);
                     }
                 }
             }

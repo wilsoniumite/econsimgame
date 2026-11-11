@@ -555,7 +555,9 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
             y >= 0 && y < H as isize && x >= 0 && x < W as isize && mask(y as usize * W + x as usize)
         })
     };
-    let coast: Vec<bool> = (0..N).map(|c| land[c] && near(&|n| !land[n] && !lake[n], c)).collect();
+    // the coast is where ships come: land beside a cell of open sea, and land on
+    // a tideway with water enough for boats (the head of an estuary is a port)
+    let coast: Vec<bool> = (0..N).map(|c| land[c] && (near(&|n| !land[n] && !lake[n], c) || (lf.estuary[c] && tideway[c] >= P.nav_flow))).collect();
     lf.shore = (0..N).map(|c| land[c] && near(&|n| lake[n], c)).collect();
     // a river is a cell with flow enough; boats use it where it is big and slack,
     // on the tideway below it (which is level), and on a cell with a good part
@@ -647,10 +649,11 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         // the last cell of a river that runs straight out into the open sea
         let head = if lf.estuary[c] { up_tide[c] == 0 } else { world.river[c] && dn >= 0 && !world.land[dn as usize] && !lake[dn as usize] };
         if head {
-            // the bigger the river, the better the place: a small river's
-            // head counts for less than a confluence, a great one's for most
+            // the bigger the river, the better the place. The number is small
+            // because a head on a tideway boats can use is coast and navigable
+            // water besides, and `pick_sites` counts those too
             kind = SITE_ESTUARY;
-            s = 0.3 + 0.6 * (lf.discharge[c] as f64 / (3.0 * P.nav_flow)).min(1.0);
+            s = 0.1 + 0.2 * (lf.discharge[c] as f64 / (3.0 * P.nav_flow)).min(1.0);
         }
         if up_rivers[c] >= 2 && world.navigable[c] && s < 0.5 {
             kind = SITE_CONFLUENCE;

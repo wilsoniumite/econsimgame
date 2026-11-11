@@ -34,7 +34,7 @@ fn main() {
     let (W, H) = (120usize, 84usize);
     let N = W * H;
     let mut bad = 0;
-    println!("seed  towns  land  lakes  lake cells  by the sea  no way down  gaps  est heads  confluences  outlets  tideways    nav  nav to sea  faults");
+    println!("seed  towns  ports  land  lakes  lake cells  by the sea  no way down  gaps  est heads  confluences  outlets  tideways    nav  nav to sea  faults");
     for &seed in &seeds {
         let made = std::panic::catch_unwind(|| generate_land(seed, W, H, 6, &P));
         let w = match made {
@@ -109,10 +109,10 @@ fn main() {
         let by_sea = (0..N).filter(|&c| lf.lake[c] && near(c, &|n| !w.land[n] && !lf.lake[n])).count();
         let no_down = (0..N).filter(|&c| w.land[c] && w.down[c] < 0).count();
         let kinds = |k: u8| (0..N).filter(|&c| lf.site_kind[c] == k).count();
-        // navigable water from which a boat reaches the coast without leaving it
+        // navigable water from which a boat reaches the open sea without leaving it
         let nav = w.navigable.iter().filter(|&&n| n).count();
         let mut seen = vec![false; N];
-        let mut stack: Vec<usize> = (0..N).filter(|&c| w.navigable[c] && w.coast[c]).collect();
+        let mut stack: Vec<usize> = (0..N).filter(|&c| w.navigable[c] && near(c, &|n| !w.land[n] && !lf.lake[n])).collect();
         for &c in &stack {
             seen[c] = true;
         }
@@ -132,8 +132,9 @@ fn main() {
         if lf.lakes.iter().any(|l| !(l.outflow > 0.0)) {
             faults.push("a lake with nothing running out of it".into());
         }
+        let ports = w.town_sites.iter().filter(|&&c| w.coast[c]).count();
         println!(
-            "{seed:4}  {:5}  {:4}  {:5}  {:10}  {:10}  {:11}  {:4}  {:9}  {:11}  {:7}  {:9}  {nav:5}  {nav_sea:9}  {}",
+            "{seed:4}  {:5}  {ports:5}  {:4}  {:5}  {:10}  {:10}  {:11}  {:4}  {:9}  {:11}  {:7}  {:9}  {nav:5}  {nav_sea:9}  {}",
             w.town_sites.len(),
             w.land.iter().filter(|&&l| l).count(),
             lf.lakes.len(),

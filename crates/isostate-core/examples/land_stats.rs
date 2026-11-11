@@ -31,6 +31,9 @@ struct Tally {
     coast: f64,
     dh: f64,
     h: f64,
+    /// Of the first towns: on the coast, and on navigable water.
+    town_ports: f64,
+    town_nav: f64,
 }
 
 fn tally(w: &World) -> Tally {
@@ -65,6 +68,8 @@ fn tally(w: &World) -> Tally {
         coast: count(&|c| w.coast[c]),
         dh: dh / nd,
         h: sum(&w.h) / land.len() as f64,
+        town_ports: w.town_sites.iter().filter(|&&c| w.coast[c]).count() as f64,
+        town_nav: w.town_sites.iter().filter(|&&c| w.navigable[c]).count() as f64,
     }
 }
 
@@ -87,8 +92,11 @@ fn main() {
         }
     }
     let P: LandParams = serde_json::from_value(over).unwrap();
-    let names = ["land", "hills", "mountains", "fert", "fertile", "pasture", "forest", "rock", "clay", "coal", "coal_cells", "ore", "river", "nav", "coast", "dh*1000", "h*1000"];
-    let row = |t: &Tally| [t.land, t.hills, t.mountains, t.fert, t.fertile, t.pasture, t.forest, t.rock, t.clay, t.coal, t.coal_cells, t.ore, t.river, t.nav, t.coast, 1000.0 * t.dh, 1000.0 * t.h];
+    let names =
+        ["land", "hills", "mountains", "fert", "fertile", "pasture", "forest", "rock", "clay", "coal", "coal_cells", "ore", "river", "nav", "coast", "dh*1000", "h*1000", "town ports", "town nav"];
+    let row = |t: &Tally| {
+        [t.land, t.hills, t.mountains, t.fert, t.fertile, t.pasture, t.forest, t.rock, t.clay, t.coal, t.coal_cells, t.ore, t.river, t.nav, t.coast, 1000.0 * t.dh, 1000.0 * t.h, t.town_ports, t.town_nav]
+    };
     let (mut old_sum, mut new_sum) = (vec![0.0; names.len()], vec![0.0; names.len()]);
     let (mut old_all, mut new_all): (Vec<Vec<f64>>, Vec<Vec<f64>>) = (Vec::new(), Vec::new());
     println!("seed  secs (relief water cells)  lakes  largest km2  upland  nav km  river km  basin%  max m  mean m  hills  mtns  land  lake cells  sites");

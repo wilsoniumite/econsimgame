@@ -184,10 +184,11 @@ fn rivers_reach_the_sea_by_their_estuaries() {
             }
             assert!(!lf.lake[c], "seed {seed}: the tideway from {start} ends in a lake");
         }
-        // most navigable water is joined to the coast by navigable water (what
-        // is not lies above a reach too steep for boats, or on an upland lake)
+        // most navigable water is joined to the open sea by navigable water
+        // (what is not lies above a reach too steep for boats, or on an upland lake)
+        let open = |c: usize| !w.land[c] && !lf.lake[c];
         let mut seen = vec![false; N];
-        let mut stack: Vec<usize> = (0..N).filter(|&c| w.navigable[c] && w.coast[c]).collect();
+        let mut stack: Vec<usize> = (0..N).filter(|&c| w.navigable[c] && near(c).into_iter().any(open)).collect();
         for &c in &stack {
             seen[c] = true;
         }
@@ -200,9 +201,54 @@ fn rivers_reach_the_sea_by_their_estuaries() {
             }
         }
         let (nav, joined) = (w.navigable.iter().filter(|&&n| n).count(), seen.iter().filter(|&&s| s).count());
-        assert!(joined * 5 >= nav * 4, "seed {seed}: {joined} of {nav} navigable cells reach the coast");
-        // and some river's estuary has a head, where a town would stand
+        assert!(joined * 5 >= nav * 4, "seed {seed}: {joined} of {nav} navigable cells reach the sea");
+        // some river's estuary has a head, where a town would stand, and ships
+        // come up a tideway: it is coast, and one of the first towns is a port
         assert!(lf.site_kind.iter().any(|&k| k == landcells::SITE_ESTUARY));
+        assert!(tideways.iter().any(|&c| w.coast[c] && !near(c).into_iter().any(open)), "seed {seed}: no tideway is coast");
+        assert!(w.town_sites.iter().any(|&c| w.coast[c]), "seed {seed}: no first town is a port");
+    }
+}
+
+#[test]
+fn a_lake_is_not_the_sea_and_a_tideway_s_mouth_is_a_harbour() {
+    use isostate_core::transport::{self as tr, BEACH_COST, PORT_COST, SEA_COST};
+    let mut w = island(8);
+    let (W, H) = (w.W, w.H);
+    let N = W * H;
+    let no = vec![0u8; N];
+    let (ports, cover) = (vec![false; N], vec![0.0; N]);
+    let edge = |g: &tr::Graph, a: usize, b: usize| (0..8).find(|&k| tr::neighbour(H, W, a, k) == Some(b)).map(|k| g.w[a * 8 + k]).unwrap();
+    // with no town's harbour anywhere, the mouth of a navigable tideway still lets boats out
+    let g = tr::build_graph(&w, &no, &no, &ports, &cover);
+    let lf = form(&w);
+    let mut mouths = 0;
+    for a in 0..N {
+        for k in 0..8 {
+            let Some(b) = tr::neighbour(H, W, a, k) else { continue };
+            if w.land[a] && !w.land[b] && !lf.lake[b] {
+                let harbour = lf.estuary[a] && w.navigable[a];
+                assert_eq!(g.w[a * 8 + k], if harbour { PORT_COST } else { BEACH_COST });
+                assert_eq!(g.w[a * 8 + k], edge(&g, b, a));
+                mouths += harbour as usize;
+            }
+        }
+    }
+    assert!(mouths > 0, "no tideway meets the open sea");
+    // put a lake cell beside the sea: the two are not one water
+    let lake = (0..N).find(|&c| lf.lake[c]).expect("seed 8 has a lowland lake");
+    let sea = lake + 1;
+    let lf = w.landform.as_mut().unwrap();
+    lf.lake[sea] = false;
+    w.land[sea] = false;
+    let g = tr::build_graph(&w, &no, &no, &ports, &cover);
+    assert_eq!(edge(&g, lake, sea), BEACH_COST);
+    assert_eq!(edge(&g, sea, lake), BEACH_COST);
+    // while two cells of the lake are crossed at the sea's rate
+    let lf = form(&w);
+    if let Some(other) = (0..8).filter_map(|k| tr::neighbour(H, W, lake, k)).find(|&c| lf.lake[c]) {
+        let step = if (other / W != lake / W) && (other % W != lake % W) { std::f64::consts::SQRT_2 } else { 1.0 };
+        assert_eq!(edge(&g, lake, other), SEA_COST * step);
     }
 }
 
