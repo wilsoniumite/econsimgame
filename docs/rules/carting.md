@@ -114,9 +114,14 @@ it).
 With carting off the three columns differ by less than the spread between
 seeds. With it on, railways are worth 5.9 per cent of output per head, and
 every one of the eight seeds is higher with them (by 3.4 to 11.8 per cent
-under the port's network, 1.2 to 17.8 under the game's). The second famine
-item in three also goes: 4.9 a run without the game's railways, 2.4 with
-them.
+under the port's network, 1.2 to 17.8 under the game's).
+
+Famines are odd. With carting on there are 1.8 famine items a run with no
+railways at all, 4.9 with the port's railways (every seed of eight higher),
+and 2.4 with the game's (2.5 with six families, against 4.8). So the extra
+famines in the table above belong to the port's cheap railway rush once
+carters are real, not to carting itself, and the game's dearer, slower
+railways do not bring them. I did not trace why.
 
 Two things do not follow, and I report them as they are:
 
@@ -141,9 +146,9 @@ Two things do not follow, and I report them as they are:
   Anything under 1 leaves part of the bill as the port had it, income that
   costs nobody anything.
 - **Everything tuned to the early years shifts.** The economy is a twelfth
-  smaller from the start, the towns are four points less urban, population
-  falls short of the cap more often and famines double. PLAN's targets for
-  1750 to 1800 were set without it.
+  smaller from the start, the towns are four points less urban and
+  population falls short of the cap more often. PLAN's targets for 1750 to
+  1800 were set without it.
 - **The first railway comes later in some seeds** (between 1813 and 1849 on
   eight seeds, against 1815 to 1838): a smaller iron trade learns rails later.
 - **Carters are a town's, not a road's.** They are taken from the town that
@@ -153,5 +158,10 @@ Two things do not follow, and I report them as they are:
   month late. I saw no oscillation in the wage series, and the money check
   holds every month, but I did not look for one at monthly resolution beyond
   the tests.
-- **The bots were run under these rules but not compared** with a run without
-  them; see the report.
+- **The family game shifts on one seed of four.** The scripted players
+  (`examples/bots.rs`) finish all sixteen runs under the game's rules, which
+  now means railways and carting together. Against the port's rules their
+  rank in 1900 moves by a place or two either way on seeds 1, 2 and 3; on seed 7
+  the landlord and the thoughtful player fall from first to fourth. One run
+  each, so I cannot say which of the two mechanisms did it or whether it is
+  chance.
