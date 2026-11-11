@@ -129,6 +129,44 @@ fn main() {
     let mean_books = runs.iter().map(|(r, _)| r.state.acct.seconds).sum::<f64>() / runs.len() as f64;
     println!("the books take {:.1} ms a simulated year on average", 1000.0 * mean_books / years);
 
+    // which goods were sold though they were not in store, all runs and years together
+    {
+        let C = &runs[0].0.content;
+        let col = |name: &str| accounts::GOODS_FIELDS.iter().position(|&n| n == name).unwrap();
+        let (mut over, mut bought) = (vec![0.0f64; C.G], vec![0.0f64; C.G]);
+        for (r, _) in &runs {
+            for row in r.state.acct.hist.goods.chunks(C.G * accounts::KG) {
+                for g in 0..C.G {
+                    let v = &row[g * accounts::KG..(g + 1) * accounts::KG];
+                    over[g] += v[col("oversold")] as f64;
+                    bought[g] += (col("households")..=col("projects")).map(|c| v[c] as f64).sum::<f64>();
+                }
+            }
+        }
+        let list: Vec<String> = (0..C.G).filter(|&g| over[g] > 0.0).map(|g| format!("{} {:.2e}", C.good_name[g], over[g] / bought[g])).collect();
+        println!("sold though not in store, as a share of all that was bought of the good: {}", if list.is_empty() { "nothing".to_string() } else { list.join(", ") });
+    }
+
+    // the years the land paid more than it earned, or nearly: rent is what is left
+    // of the produce after wages and carting, and nothing keeps it above nothing
+    println!("\nthe land's worst year in each run, the years its rents were below nothing, and the landlords' cash at its lowest");
+    for ((r, _), seed) in runs.iter().zip(&seeds) {
+        let ys = &r.state.acct.years;
+        let worst = ys.iter().min_by(|a, c| a.share_land.total_cmp(&c.share_land)).unwrap();
+        let below = ys.iter().filter(|y| y.share_land < 0.0).count();
+        let cash = ys.iter().min_by(|a, c| a.money.landlords.total_cmp(&c.money.landlords)).unwrap();
+        let in_debt = ys.iter().filter(|y| y.money.landlords < 0.0).count();
+        println!(
+            "{seed:4}   {}: land's share {:6.3}, work's {:5.3};  {below} years below nothing;  landlords' cash lowest in {} at {:.0} ({:.2} of that year's income), below nothing in {in_debt} years",
+            worst.year,
+            worst.share_land,
+            worst.share_work,
+            cash.year,
+            cash.money.landlords,
+            cash.money.landlords / cash.income
+        );
+    }
+
     // ---- the worked example, on the first seed
     let (r, _) = &runs[0];
     let (st, C) = (&r.state, &r.content);
