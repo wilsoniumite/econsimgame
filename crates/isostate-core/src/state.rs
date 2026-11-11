@@ -333,4 +333,48 @@ pub struct State {
     /// (T, G): what each town's buyers asked for last month (households, landlords,
     /// works, mines, building and railway orders), whether or not they got it.
     pub requests: Mat,
+
+    // ---------------- prices (not in the Python; see prices.rs). The anchors are
+    // empty while `prices.enabled` is off; the rest is for probes and tests.
+    /// (T, G): the slow anchor of each town's price of each good, moved by the
+    /// port's price rule; the price stands above or below it with the stock.
+    pub price_anchor: Mat,
+    /// A probe sets this to have `month_requests` and `month_sold` kept.
+    pub watch_markets: bool,
+    /// (T, G): what each town's buyers asked for last month, and what they got.
+    pub month_requests: Mat,
+    pub month_sold: Mat,
+    /// A test sets this to find each town's wage by the Python's plain bisection,
+    /// every midpoint evaluated, with no Newton steps to say where the root is.
+    pub plain_bisection: bool,
+
+    // ---------------- engel (not in the Python; empty while `engel.enabled` is off)
+    /// What the observer keeps for the chained price index and the budget shares.
+    pub engel: crate::engel::EngelState,
+
+    // ---------------- machines (not in the Python; empty while `machines.enabled` is off)
+    /// (T, NS * machines::SLOTS): the share of each land sector in each town
+    /// worked by machines now standing (of its farms or pits, each counted by
+    /// what it makes with no machine), one column per use (`machines::uses`);
+    /// -1 in a town not yet founded.
+    pub machine_stock: Mat,
+
+    // ---------------- harvest (not in the Python; all empty while `harvest.enabled` is off)
+    /// (NS, N): what each sector's land in each cell yields in the year now
+    /// running, against an average year. Empty during the warm-up.
+    pub harvest_mult: Mat,
+    /// The country's harvest in the year now running (the mean over all farmland), and each town's.
+    pub harvest_now: f64,
+    pub harvest_town_now: Vec<f64>,
+    /// The same for the year just finished: what the record and the live view show.
+    pub harvest_year: f64,
+    pub harvest_town: Vec<f64>,
+    /// The country's harvest in every year so far.
+    pub harvest_past: Vec<f64>,
+    /// The last year a dearth was announced.
+    pub harvest_dearth_year: i64,
+    /// With families: the rent the weather has taken from each cell this year so
+    /// far (negative where it gave), and over the last complete year.
+    pub harvest_rent_gap: Vec<f64>,
+    pub harvest_rent_gap_year: Vec<f64>,
 }

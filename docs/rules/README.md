@@ -11,8 +11,8 @@ that. Nothing new is ever switched on here.
 **The game's rules** are `game_params()` and `game_content()`: the port, plus
 every mechanism the Python never had (foreign trade, canals, harvests, a life
 cycle for works, whatever comes), each switched on with the numbers it was
-tuned to. This is what a live game is played under. Today the two are still
-the same; the list at the end of this page grows as mechanisms arrive.
+tuned to. This is what a live game is played under. The list at the end of
+this page says which mechanisms are in, and grows as they arrive.
 
 Families are the one thing older than this convention. They are off under
 both sets of rules until `n_families` says how many there are, which is the
@@ -441,4 +441,19 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
 
 ## Mechanisms under the game's rules
 
-None yet. One line each as they arrive: the name, its page, its switch.
+One line each as they arrive: the name, its page, its switch.
+
+- **prices**: merchants mark prices with the stock they hold and stop buying
+  into a glut, which ends the false cycles in iron and on the farms.
+  [prices.md](prices.md), `prices.enabled`.
+- **engel**: past a reference income each further shilling of a household
+  leans from the content's shares toward a richer set (less food and warmth,
+  more comfort), and the observer keeps a chained cost of living and real
+  wage beside the fixed-basket ones. [engel.md](engel.md), `engel.enabled`.
+- **machines**: farm and quarry machinery is bought where it pays, machines
+  stand for years and get better with the steel poured, and a converter and
+  a steel rail that pay. [machines.md](machines.md), `machines.enabled`.
+- **harvest**: good years and bad on the farms and pastures, island-wide and
+  by district, half of each seen when the hands are hired; with the news of
+  poor and bumper harvests, lean years and dearths. It belongs with `prices`.
+  [harvest.md](harvest.md), `harvest.enabled`.

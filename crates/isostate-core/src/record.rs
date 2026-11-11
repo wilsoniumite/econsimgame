@@ -139,6 +139,10 @@ pub struct Record {
     /// Per year: the firms alive and their capacity.
     pub firm_K: Vec<(Vec<usize>, Vec<f32>)>,
     pub projects: Vec<Vec<ProjectSnap>>,
+    /// harvest: each town's harvest against an average year, `[year * T + town]`,
+    /// and the country's, `[year]`. Empty unless the mechanism is on.
+    pub town_harvest: Vec<f32>,
+    pub harvest: Vec<f32>,
 }
 
 impl Record {
@@ -163,6 +167,8 @@ pub fn init(st: &State, C: &Content, _P: &Params, n_years: usize) -> Record {
         town_know: vec![0; n_years * T * C.NT],
         firm_K: Vec::new(),
         projects: Vec::new(),
+        town_harvest: Vec::new(),
+        harvest: Vec::new(),
     }
 }
 
@@ -423,6 +429,11 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     let n_months = st.series.data.first().map_or(0, |d| d.len());
     let ser: Vec<f32> = st.series.data.iter().flat_map(|d| d.iter().map(|&v| v as f32)).collect();
     arrays.push(f32_array("series", vec![names.len(), n_months], &ser));
+    // harvest: only a run with the mechanism on has these two
+    if !rec.town_harvest.is_empty() {
+        arrays.push(f32_array("town_harvest", vec![n_years, T], &rec.town_harvest));
+        arrays.push(f32_array("harvest", vec![n_years], &rec.harvest));
+    }
 
     let towns: Vec<Value> = (0..st.town_name.len())
         .map(|i| json!({"name": st.town_name[i], "node": st.town_node[i], "founded": st.town_founded[i]}))

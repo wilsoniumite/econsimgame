@@ -246,6 +246,19 @@ pub struct Params {
     /// Last simulated year; `None` means the content's end year (Python: `P.get("end_year", C["end_year"])`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_year: Option<i64>,
+    /// Merchants who mark prices with the stock they hold (not in the Python; see docs/rules/prices.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub prices: crate::prices::PriceParams,
+    /// An Engel curve in what households buy (not in the Python; see docs/rules/engel.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub engel: crate::engel::EngelParams,
+    /// Machines bought where they pay, that improve, and steel that matters (not in
+    /// the Python; see docs/rules/machines.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub machines: crate::machines::MachineParams,
+    /// Good years and bad (not in the Python; see docs/rules/harvest.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub harvest: crate::harvest::HarvestParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -265,7 +278,6 @@ const UNIVERSITY_GAIN: f64 = 0.25;
 
 /// For `skip_serializing_if` on a mechanism's field: true while it is switched
 /// off, so the `params.json` of a port run never mentions it.
-#[allow(dead_code)] // until the first mechanism's field uses it
 pub(crate) fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     *v == T::default()
 }
@@ -437,6 +449,10 @@ pub fn default_params() -> Params {
         absentee_cut: ABSENTEE_CUT,
         university_gain: UNIVERSITY_GAIN,
         end_year: None,
+        prices: crate::prices::PriceParams::default(),
+        engel: crate::engel::EngelParams::default(),
+        machines: crate::machines::MachineParams::default(),
+        harvest: crate::harvest::HarvestParams::default(),
     }
 }
 
@@ -452,8 +468,11 @@ impl Default for Params {
 /// `default_params`, which stays the port. Families are not switched on here: how
 /// many there are is the caller's choice (`n_families`), as it is under the port.
 pub fn game_params() -> Params {
-    #[allow(unused_mut)] // until the first mechanism sets its field
     let mut P = default_params();
+    P.prices = crate::prices::PriceParams::game();
+    P.engel = crate::engel::EngelParams::game();
+    P.machines = crate::machines::MachineParams::game();
+    P.harvest = crate::harvest::HarvestParams::game();
     P
 }
 

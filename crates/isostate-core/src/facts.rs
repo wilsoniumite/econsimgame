@@ -259,6 +259,30 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let pc = series("gdp_pc");
     let peak = (0..pc.len()).filter(|&k| pc[k].is_finite()).max_by(|&i, &j| pc[i].total_cmp(&pc[j]));
     b.year("output_per_head_peak_year".into(), peak.map(|k| years[k]));
+    // engel: where the hands and the bread go. Quarries, pits and mines are the
+    // work that is neither on the land nor in the works; the rest are facts only
+    // of a run that has the mechanism's series (docs/rules/engel.md).
+    for &y in &marks {
+        b.num(format!("mine_share_{y}"), Kind::Share, 1.0 - at("ag_share", y) - at("ind_share", y));
+    }
+    if C.good_index.contains_key("grain") {
+        for &y in &marks[1..] {
+            b.num(format!("grain_output_{y}_vs_{y0}"), Kind::Ratio, at("out_grain", y) / at("out_grain", y0));
+        }
+    }
+    if st.series.index.contains_key("real_wage_chained") {
+        for &y in &marks[1..] {
+            b.num(format!("real_wage_chained_{y}_vs_{y0}"), Kind::Ratio, at("real_wage_chained", y) / at("real_wage_chained", y0));
+        }
+        for &y in &marks {
+            b.num(format!("real_income_{y}"), Kind::Ratio, at("real_income", y));
+        }
+        for name in &C.service_name {
+            for &y in &marks {
+                b.num(format!("budget_{name}_{y}"), Kind::Share, at(&format!("budget_{name}"), y));
+            }
+        }
+    }
 
     // ---- railways
     b.group = GROUPS[2];
@@ -410,6 +434,63 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let farm = series("ag_share");
     let zig: Vec<f64> = farm.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).filter(|v| v.is_finite()).collect();
     b.num("farm_zigzag".into(), Kind::Real, 100.0 * mean(&zig));
+    // harvest: how grain moves from year to year, and what the worst years do.
+    // Yearly changes of the log, from PRICE_FROM as above. A lag-one correlation
+    // near -0.5 is what independent yearly shocks to a level give; near zero or
+    // above, the level wanders; well below, it rings.
+    if C.good_index.contains_key("grain") {
+        let changes = |name: &str| -> Vec<f64> {
+            let v = series(name).get((from - y0) as usize..).unwrap_or(&[]);
+            v.windows(2).map(|w| (w[1] / w[0]).ln()).filter(|d| d.is_finite()).collect()
+        };
+        let sd = |d: &[f64]| {
+            let m = mean(d);
+            if d.len() >= 2 { mean(&d.iter().map(|v| (v - m) * (v - m)).collect::<Vec<_>>()).sqrt() } else { f64::NAN }
+        };
+        let ac1 = |d: &[f64]| {
+            let m = mean(d);
+            let var: f64 = d.iter().map(|v| (v - m) * (v - m)).sum();
+            let cov: f64 = d.windows(2).map(|w| (w[0] - m) * (w[1] - m)).sum();
+            if d.len() >= 3 && var > 0.0 { cov / var } else { f64::NAN }
+        };
+        let (dp, dq) = (changes("price_grain"), changes("out_grain"));
+        b.num("output_swing_grain".into(), Kind::Real, sd(&dq));
+        b.num("price_ac1_grain".into(), Kind::Real, ac1(&dp));
+        b.num("output_ac1_grain".into(), Kind::Real, ac1(&dq));
+        // the hardest single year for wage earners: the real wage's largest fall on the year before
+        let dw = changes("real_wage");
+        b.num("real_wage_worst_year".into(), Kind::Real, dw.iter().copied().fold(f64::NAN, f64::min).exp_m1());
+        b.num("real_wage_swing".into(), Kind::Real, sd(&dw));
+        // With harvests on: how large they were, and what a year's harvest does that
+        // same year. Each `_on_harvest` is the slope of the yearly change in a log on
+        // the log of the country's harvest (1 is an average year), over every year
+        // after the first: -1.5 for the price says a harvest ten per cent short
+        // comes with grain fifteen per cent dearer than the year before. The
+        // `_year_after_harvest` slopes are the same over two years, from the year
+        // before the harvest to the year after it: what is left of it by then.
+        let h: Vec<f64> = r.rec.harvest.iter().map(|&v| (v as f64).ln()).collect();
+        if h.len() >= 10 && h.len() == series("out_grain").len() {
+            let slope = |name: &str, after: usize| -> f64 {
+                let v = series(name);
+                let (x, d): (Vec<f64>, Vec<f64>) =
+                    (1..h.len() - after).map(|k| (h[k], (v[k + after] / v[k - 1]).ln())).filter(|(_, d)| d.is_finite()).unzip();
+                let (mx, md) = (mean(&x), mean(&d));
+                let sxx: f64 = x.iter().map(|a| (a - mx) * (a - mx)).sum();
+                let sxd: f64 = x.iter().zip(&d).map(|(a, c)| (a - mx) * (c - md)).sum();
+                if sxx > 0.0 { sxd / sxx } else { f64::NAN }
+            };
+            b.num("harvest_sd".into(), Kind::Real, sd(&h));
+            b.num("grain_output_on_harvest".into(), Kind::Real, slope("out_grain", 0));
+            b.num("grain_price_on_harvest".into(), Kind::Real, slope("price_grain", 0));
+            b.num("real_wage_on_harvest".into(), Kind::Real, slope("real_wage", 0));
+            b.num("grain_price_year_after_harvest".into(), Kind::Real, slope("price_grain", 1));
+            b.num("real_wage_year_after_harvest".into(), Kind::Real, slope("real_wage", 1));
+        }
+    }
+    // years in which people::growth found at least one town short of food
+    let mut hungry: Vec<i64> = r.events.iter().filter(|e| e.kind == "famine").map(|e| e.year.floor() as i64).collect();
+    hungry.dedup();
+    b.num("famine_years".into(), Kind::Count, hungry.len() as f64);
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();

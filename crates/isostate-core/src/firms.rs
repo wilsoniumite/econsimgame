@@ -47,7 +47,9 @@ pub fn same_method_counts(st: &State, C: &Content) -> Mat {
 }
 
 pub fn update_productivity(st: &mut State, C: &Content, P: &Params) {
-    let A = learning(C, P, &st.method_Q);
+    let mut A = learning(C, P, &st.method_Q);
+    // machines (docs/rules/machines.md): a new method inherits part of its predecessor's skill
+    crate::machines::inherit_skill(st, C, P, &mut A);
     let counts = same_method_counts(st, C);
     for f in 0..st.f_alive.len() {
         if st.f_alive[f] {
