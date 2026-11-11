@@ -279,10 +279,13 @@ See the first worry below.
 
 The two were tried together in review: `night/works` (at 96f7dbc) laid over
 this branch in a scratch copy, nothing committed, and
-`examples/machines.rs` run on seeds 1 to 8 without families. This was done
-with `adopt_span` still at 4; five-year means on the model's index.
+`examples/machines.rs` run on seeds 1 to 8. Five-year means on the model's
+index; "peak" is machinery's highest yearly price after 1850 over its usual
+price, "years" the years it spends above three times usual.
 
-| works, and | wage 1900 | lowest 1855-85 | 1890s over 1850 | machinery peak over usual | years above 3 times | converter's share 1880 | steel rails' share 1890 | steel a month 1900 |
+Without families, to see which part does what (these five at `adopt_span` 4):
+
+| works, and | wage 1900 | lowest 1855-85 | 1890s over 1850 | peak | years | converter's share 1880 | steel rails' share 1890 | steel a month 1900 |
 |---|---|---|---|---|---|---|---|---|
 | nothing of machines | 1.52 [1.45 .. 1.60] | 1.23 [0.91 .. 1.45] | 1.01 [0.86 .. 1.07] | 12.4 [3.4 .. 21.9] | 11 [1 .. 16] | 0 | 0 | |
 | machines, port's content, `inherit` 0 | 2.59 [2.43 .. 2.79] | 1.95 [1.43 .. 2.34] | 1.42 [1.08 .. 1.87] | 3.7 [1.2 .. 7.9] | 2 [0 .. 7] | 0 | 0 | |
@@ -290,34 +293,55 @@ with `adopt_span` still at 4; five-year means on the model's index.
 | machines, port's content, `inherit` 0.5 | 2.48 [2.35 .. 2.58] | 1.90 [1.43 .. 2.22] | 1.36 [1.04 .. 1.80] | 4.7 [1.4 .. 8.2] | 4 [0 .. 9] | 0.78 | 0.01 | 30,100 |
 | the whole game | 2.22 [1.43 .. 2.63] | 1.88 [1.52 .. 2.13] | 1.23 [0.87 .. 1.51] | 5.0 [1.9 .. 9.4] | 8 [0 .. 20] | 0.91 | 0.18 | 44,200 |
 
-What that says:
+At the final numbers (`adopt_span` 6), without families and then with six,
+which is how a game is played:
+
+| works, and | wage 1900 | lowest 1855-85 | 1890s over 1850 | the same, chained | peak | years | converter's share 1880 | steel rails' share 1890 |
+|---|---|---|---|---|---|---|---|---|
+| the whole game, no families | 2.27 [2.02 .. 2.61] | 1.82 [1.51 .. 2.08] | 1.24 [1.07 .. 1.32] | 1.54 [1.30 .. 1.65] | 4.5 [2.4 .. 7.4] | 7 [0 .. 18] | 0.93 | 0.24 |
+| the whole game, six families | 2.05 [1.68 .. 2.39] | 1.92 [1.32 .. 2.18] | 1.04 [0.93 .. 1.27] | 1.33 [1.10 .. 1.72] | 7.9 [2.3 .. 21.1] | 6 [0 .. 12] | 1.00 | 0.67 |
+| six families, `inherit` 0 | 2.50 [2.13 .. 2.65] | 2.18 [1.75 .. 2.47] | 1.15 [0.94 .. 1.41] | 1.32 [1.13 .. 1.68] | 3.1 [1.9 .. 4.1] | 2 [0 .. 5] | 0.01 | 0.12 |
+| six families, `inherit` 0.5 on the port's content | 2.31 [1.98 .. 2.47] | 2.15 [1.93 .. 2.37] | 1.06 [0.82 .. 1.45] | 1.29 [1.02 .. 1.78] | 3.8 [2.2 .. 5.3] | 3 [0 .. 6] | 0.94 | 0 |
+| six families, `quality_Q0` 3 million | 1.90 [1.49 .. 2.16] | 1.62 [1.48 .. 1.81] | 1.20 [0.88 .. 1.32] | 1.51 [1.28 .. 1.60] | 5.4 [2.4 .. 7.7] | 7 [0 .. 15] | 0.85 | 0.80 |
+
+No run of these failed the money check. What they say:
 
 - **The machines do their work beside the works mechanism.** It keeps the
   port's machinery famine on its own (peak 12 times usual); with the machines
-  the famine goes and the 1900 wage is 2.6, higher than either alone.
+  the famine goes and the 1900 wage is 2.5 to 2.6, higher than either alone.
 - **The converter's numbers do not carry over.** Under the works rules the
   cheap plant alone no longer gets a converter built, inheritance alone gets
   it four fifths of the steel by 1880, and the two together pour twice the
-  steel and cost a seventh of the 1900 wage: in two seeds of eight the 1890s
-  are below 1850 (seed 4 ends at 1.43, with machinery at 200 to 320 from
-  1891 on, ten times its price of the 1880s, and a third of its farms'
-  machines given up). The steel rail hardly arrives at all (0.18 of rails in
-  1890 against 0.86 here). The first helper saw this coming from a stand-in
-  for the building rule, which made it look much worse than it is (a 1900
-  wage of 1.54 [0.80 .. 2.08]); their reading of one seed was that converter
-  works which may grow by half a year, in a method whose skill doubles in a
-  few years, overshoot the steel market and drag iron and the toolmakers
-  after it.
-- **Quality is at the cap in every seed by 1900** (by 1875 to 1885 in the
-  three seeds looked at), because twice the steel is poured. After that
-  nothing improves, and that is when the two bad seeds turn down.
+  steel (44,000 a month and more against 19,000 here) and cost the 1900 wage
+  a seventh without families and a fifth with them (2.05 against 2.50), with
+  machinery up to twenty times its usual price in the worst seed. At
+  `adopt_span` 4 two seeds of eight ended the 1890s below 1850 (seed 4: 1.43
+  in 1900, machinery at 200 to 320 from 1891 on, ten times its price of the
+  1880s, and a third of its farms' machines given up); at 6 none does without
+  families. The first helper saw this coming from a stand-in for the building
+  rule, which made it look worse than it is (a 1900 wage of 1.54
+  [0.80 .. 2.08]); their reading of one seed was that converter works which
+  may grow by half a year, in a method whose skill doubles in a few years,
+  overshoot the steel market and drag iron and the toolmakers after it. I
+  did not trace it further.
+- **The quality curve arrives too soon there.** The works rules pour more
+  steel from the start, so quality is 2.2 to 2.5 in 1850 (2.0 to 2.1 here) and at the cap
+  of 4 in every seed and every row by 1900, by 1875 to 1885 in the three
+  seeds looked at. With six families that leaves the 1890s where 1850 was on
+  the model's index (1.04 to 1.15) whatever the converter does, though the
+  1900 wage is as high as 2.5: the growth has moved into the first half of
+  the century.
+  A slower curve (`quality_Q0` 3 million: quality 1.6 in 1850, 3.0 in 1900)
+  spreads it out again but, with the converter on, lowers the whole path.
+- **The steel rail does not carry over either**: 0.18 to 0.24 of rails in
+  1890 without families and 0.67 with, against 0.86 and 0.96 here.
 
 So when the two are merged, the converter's three numbers (`inherit`,
 `MACHINES_PLANT_SCALE`, `MACHINES_STEEL_RAIL_WORTH`) and the quality curve
-(`quality_Q0`, `quality_b`) need tuning again together, on many seeds, with
-the works rules on. Until then the safe setting is `machines.inherit = 0`,
-which under the works rules leaves the converter unbuilt and everything else
-as good as it gets in that table.
+(`quality_Q0`, `quality_b`, `quality_cap`) need tuning again together, on
+many seeds, with the works rules and six families on. Until that is done the
+safe setting is `machines.inherit = 0`: under the works rules it leaves the
+converter unbuilt, and it is the best row of both tables in everything else.
 
 ## What worries me
 
