@@ -363,6 +363,20 @@ fn every_town_has_its_milestones() {
     assert_eq!(events[2].text, "Kelgate is the third town on the island with more than 10,000 inhabitants, after Ashby and Norford (1790).");
     assert!(events[1].weight < 0.6 && events[2].town == Some(1) && events[2].cell == Some(20));
     assert!(events.iter().all(|e| e.why.as_ref().is_some_and(|w| w.value >= w.threshold)));
+    // past the tenth the place is a figure, with the ending it takes in English
+    let mut st = State { T_max: 23, ..State::default() };
+    st.town_active = vec![true; 23];
+    st.town_name = (0..23).map(|t| format!("Town{t}")).collect();
+    st.town_node = (0..23).collect();
+    st.urban_pop = (0..23).map(|t| if t < 20 { 12_000.0 } else { 9_000.0 }).collect();
+    let mut events = Vec::new();
+    chronicle::city_milestones(&mut st, &P, 1750, &mut events, 1750);
+    for t in 20..23 {
+        st.urban_pop[t] = 10_500.0;
+        chronicle::city_milestones(&mut st, &P, 1760 + t as i64, &mut events, 1750);
+    }
+    let places: Vec<&str> = events.iter().map(|e| e.text.split(' ').nth(3).unwrap()).collect();
+    assert_eq!(places, ["21st", "22nd", "23rd"]);
     // and in the whole game the first town past a size is not the only one told
     assert!(whole_game().events.iter().any(|e| e.kind == "milestone" && e.text.contains("second town on the island")));
 }
@@ -421,6 +435,57 @@ fn a_run_without_families_has_its_history_too() {
 }
 
 #[test]
+fn a_founding_redraws_only_the_districts_it_was_cut_from() {
+    // forty years of seed 7, in which most of its towns are founded
+    let mut s = sim::start(&game(6, 1790), game_content());
+    let T = s.st.T_max;
+    let (mut foundings, mut spared) = (0, 0);
+    let mut before = vec![1750; T];
+    while s.year <= s.end_year {
+        let year = s.year;
+        let told = s.events.len();
+        sim::run_year(&mut s).unwrap();
+        let st = &s.st;
+        let new: Vec<bool> = (0..T).map(|t| st.town_active[t] && st.town_founded[t] == year).collect();
+        // the towns a new one took ground from: where its cells looked the year before
+        let mut cut = new.clone();
+        for c in 0..st.N {
+            if st.catch[c] >= 0 && new[st.catch[c] as usize] && st.prev_catch[c] >= 0 {
+                cut[st.prev_catch[c] as usize] = true;
+            }
+        }
+        for t in 0..T {
+            if cut[t] {
+                assert_eq!(st.chron.redrawn[t], year, "{} was redrawn in {year}", st.town_name[t]);
+                assert_eq!(st.chron.peak[t], (year, st.pop[t]), "and its peak starts again");
+            } else {
+                assert_eq!(st.chron.redrawn[t], before[t], "town {t} was not touched in {year}");
+            }
+        }
+        if new.contains(&true) {
+            foundings += 1;
+            assert!((0..T).any(|t| cut[t] && !new[t]), "the new town of {year} was cut out of somebody's district");
+            spared += (0..T).filter(|&t| st.town_active[t] && !cut[t]).count();
+        }
+        before = st.chron.redrawn.clone();
+        // no story sets a town against what it was before its district was redrawn
+        let Q = &s.params.chronicle;
+        for e in s.events[told..].iter().filter(|e| e.kind == "region") {
+            let t = e.town.unwrap();
+            let since = st.chron.redrawn[t];
+            if e.title.starts_with("Coal boom") {
+                assert!(year - Q.boom_years >= since, "{} in {year}, redrawn in {since}", e.title);
+            } else if e.title.contains("fastest-growing") {
+                assert!(year - 9 >= since, "{} in {year}, redrawn in {since}", e.title);
+            } else if e.title.ends_with("in decline") {
+                assert!(st.chron.peak[t].0 >= since && year - st.chron.peak[t].0 >= Q.decline_years, "{} in {year}, redrawn in {since}", e.title);
+            }
+        }
+    }
+    assert!(foundings >= 5 && spared > foundings, "{foundings} foundings, and towns they did not touch ({spared})");
+}
+
+#[test]
 fn towns_and_districts_have_stories() {
     let r = whole_game();
     let stories: Vec<&Event> = r.events.iter().filter(|e| e.kind == "region").collect();
@@ -436,10 +501,15 @@ fn towns_and_districts_have_stories() {
     for t in ["coal raised against a few years before", "people against the town's own peak", "one town's people against another's", "the decade's fastest-growing town", "works closed in one district in a year"] {
         assert!(tests.contains(t), "seed 7 has a story of the kind: {t}");
     }
-    // nothing is compared across the founding of a town: seed 7's last is Golddale, in 1783
+    // a founding somewhere does not silence the rest of the island: seed 7's last
+    // town is Golddale, in 1783, and towns it did not touch have stories before then
     let last_founding = (0..r.state.T_max).filter(|&t| r.state.town_active[t]).map(|t| r.state.town_founded[t]).max().unwrap();
-    for e in stories.iter().filter(|e| !e.title.contains("works close")) {
-        assert!(e.year.floor() as i64 > last_founding, "{} in {}", e.title, e.year.floor());
+    assert!(stories.iter().any(|e| !e.title.contains("works close") && (e.year.floor() as i64) < last_founding), "a story of a town's people before {last_founding}");
+    // but no town is said to decline from the people it was founded with
+    for e in stories.iter().filter(|e| e.title.ends_with("in decline")) {
+        let note = &e.why.as_ref().unwrap().note;
+        let peak_year: i64 = note.split("the peak of ").nth(1).and_then(|s| s.get(..4)).and_then(|y| y.parse().ok()).unwrap_or_else(|| panic!("a year in: {note}"));
+        assert!(peak_year > r.state.town_founded[e.town.unwrap()], "{}: {}", e.title, e.text);
     }
     // the same town is not said to decline twice within a few years
     let mut told: BTreeMap<&str, f64> = BTreeMap::new();

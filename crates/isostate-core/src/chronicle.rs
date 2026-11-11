@@ -171,7 +171,8 @@ fn sig6(x: f64) -> f64 {
         return x;
     }
     let scale = 10f64.powi(5 - x.abs().log10().floor() as i32);
-    (x * scale).round() / scale
+    // a number too small to scale is left as it is
+    if scale.is_finite() && scale > 0.0 { (x * scale).round() / scale } else { x }
 }
 
 // ---------------------------------------------------------------- memory
@@ -208,9 +209,10 @@ pub struct ChronicleState {
     pub lead_years: [i64; 2],
     /// (story, town) -> the year it was last told.
     pub told: BTreeMap<(String, usize), i64>,
-    /// The last year a town was founded (or the first year): a new town redraws
-    /// its neighbours' districts, and nothing is compared across that.
-    pub redrawn: i64,
+    /// For each town, the last year a founding redrew its district (its own, or
+    /// that of a new town cut out of it), or the first year: nothing about a
+    /// town is compared across that.
+    pub redrawn: Vec<i64>,
 }
 
 /// The families' holdings at the start count as held, so a works given at the
@@ -503,13 +505,22 @@ fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
     ch.moved.push(moved);
     ch.peak.resize(T, (year, 0.0));
     ch.decline_told.resize(T, false);
-    // a new town takes people and pits from its neighbours' districts, so nothing
-    // is compared across its founding: peaks and places start again
-    if ch.pop.len() == 1 || (0..T).any(|t| st.town_active[t] && st.town_founded[t] == year) {
-        ch.redrawn = year;
-        ch.leaders = [None; 2];
-        for t in 0..T {
-            ch.peak[t] = (year, 0.0);
+    ch.redrawn.resize(T, year);
+    // a new town takes people and pits from the districts it is cut out of, so
+    // nothing about it or about them is compared across its founding: their
+    // peaks start again, and so do the island's places if one of them held or
+    // was about to take one. The towns it did not touch keep their stories.
+    let cut = redrawn_towns(st, year);
+    for t in (0..T).filter(|&t| cut[t]) {
+        ch.redrawn[t] = year;
+        ch.peak[t] = (year, 0.0);
+    }
+    if cut.iter().any(|&c| c) {
+        let mut order: Vec<usize> = (0..T).filter(|&t| st.town_active[t]).collect();
+        order.sort_by(|&a, &b| st.pop[b].total_cmp(&st.pop[a]).then(a.cmp(&b)));
+        let placed = ch.leaders.iter().chain(&ch.challenger).flatten().any(|&t| cut[t]);
+        if placed || order.iter().take(2).any(|&t| cut[t]) {
+            ch.leaders = [None; 2];
         }
     }
     for t in 0..T {
@@ -518,6 +529,24 @@ fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
             ch.decline_told[t] = false;
         }
     }
+}
+
+/// The towns whose districts a founding redrew this year: each new town, and
+/// every town that held some of its ground the year before. Those are the
+/// towns `people::resettle_new_towns` takes its people from.
+fn redrawn_towns(st: &State, year: i64) -> Vec<bool> {
+    let T = st.T_max;
+    let new: Vec<bool> = (0..T).map(|t| st.town_active[t] && st.town_founded[t] == year).collect();
+    let mut cut = new.clone();
+    if !new.contains(&true) {
+        return cut;
+    }
+    for (&now, &was) in st.catch.iter().zip(&st.prev_catch) {
+        if now >= 0 && was >= 0 && (now as usize) < T && (was as usize) < T && new[now as usize] {
+            cut[was as usize] = true;
+        }
+    }
+    cut
 }
 
 /// The towns `st.migration_flow` is indexed by, if it is this year's.
@@ -571,14 +600,14 @@ fn changed(x: f64) -> String {
 
 /// A coalfield boom: the pits around a town raise several times the coal of a
 /// few years earlier, and a fair share of the island's. One story a year, led
-/// by the largest field; a year that is still inside the window of a new
-/// town's founding is skipped, because the districts were redrawn.
+/// by the largest field; a district that a founding redrew inside those years
+/// is passed over, because its pits are not the pits it had.
 fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal: usize, year: i64, events: &mut Vec<Event>) {
     let Q = &P.chronicle;
     let k = ch.coal.len() - 1;
     let back = Q.boom_years.max(1) as usize;
     let was = year - back as i64;
-    if k < back || was < ch.redrawn {
+    if k < back {
         return;
     }
     let total = pairwise_sum(&ch.coal[k]);
@@ -588,7 +617,7 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
     let mut fields: Vec<usize> = (0..st.T_max)
         .filter(|&t| {
             let (now, then) = (ch.coal[k][t], ch.coal[k - back][t]);
-            st.town_active[t] && st.town_founded[t] <= was - YOUNG && now > 0.0 && now >= Q.boom_growth * then && now >= Q.boom_share * total && !quiet(ch, P, "coal", t, year)
+            st.town_active[t] && st.town_founded[t] <= was - YOUNG && ch.redrawn[t] <= was && now > 0.0 && now >= Q.boom_growth * then && now >= Q.boom_share * total && !quiet(ch, P, "coal", t, year)
         })
         .collect();
     fields.sort_by(|&a, &b| ch.coal[k][b].total_cmp(&ch.coal[k][a]).then(a.cmp(&b)));
@@ -650,14 +679,16 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
 }
 
 /// A town in decline: well below a peak it reached years ago. One story a
-/// year, led by the town that has lost most people. Peaks are counted from
-/// the last year a new town redrew the districts.
+/// year, led by the town that has lost most people. A town's peak is counted
+/// from the last year a founding redrew its district, and a new town that
+/// never grew past the people it was founded with is not said to decline: it
+/// did not take.
 fn declines(st: &State, P: &Params, ch: &mut ChronicleState, year: i64, events: &mut Vec<Event>) {
     let Q = &P.chronicle;
     let mut towns: Vec<usize> = (0..st.T_max)
         .filter(|&t| {
             let (py, peak) = ch.peak[t];
-            st.town_active[t] && !ch.decline_told[t] && peak >= Q.min_people && year - py >= Q.decline_years && st.pop[t] <= (1.0 - Q.decline_fall) * peak
+            st.town_active[t] && !ch.decline_told[t] && py > st.town_founded[t] && peak >= Q.min_people && year - py >= Q.decline_years && st.pop[t] <= (1.0 - Q.decline_fall) * peak
         })
         .collect();
     towns.sort_by(|&a, &b| (ch.peak[b].1 - st.pop[b]).total_cmp(&(ch.peak[a].1 - st.pop[a])).then(a.cmp(&b)));
@@ -697,8 +728,10 @@ fn declines(st: &State, P: &Params, ch: &mut ChronicleState, year: i64, events: 
         0.68,
         format!("{name} in decline"),
         format!(
-            "{name} and its district had {} people at their peak in {py}. There are {} now, {} fewer.{reason}{}",
+            "{name} and its district had {} people {}in {py}. There are {} now, {} fewer.{reason}{}",
             fmt_thousands_f0(peak),
+            // the count a district starts with, or is left with by a founding, is no peak it climbed to
+            if py == ch.redrawn[t] { "" } else { "at their peak " },
             fmt_thousands_f0(now),
             fmt_pct(1.0 - now / peak, 0),
             and_others(st, &towns[1..], if towns.len() == 2 { "has lost people too" } else { "have lost people too" })
@@ -729,16 +762,13 @@ fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, yea
         return;
     }
     let (Some(first), Some(second)) = (ch.leaders[0], ch.leaders[1]) else {
-        // the first year, or the districts have just been redrawn: nothing to compare with
+        // the first year, or a founding has just redrawn a leading town's district: nothing to compare with
         ch.leaders = [Some(order[0]), Some(order[1])];
         ch.challenger = [None; 2];
         ch.lead_years = [0; 2];
         return;
     };
     let k = ch.pop.len() - 1;
-    let back = ((year - ch.redrawn).max(0) as usize).min(10).min(k);
-    let then = ch.pop[k - back].clone();
-    let grown = |t: usize| -> String { if then[t] > 0.0 { changed(st.pop[t] / then[t] - 1.0) } else { "grown from nothing".to_string() } };
     for place in 0..2 {
         let holder = if place == 0 { first } else { ch.leaders[1].unwrap_or(second) };
         // the largest town not already at this place or above it
@@ -764,6 +794,10 @@ fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, yea
             ch.leaders[1] = Some(now);
         }
         let (a, b) = (&st.town_name[now], &st.town_name[holder]);
+        // how each has done in ten years, or since a founding last redrew either's district
+        let back = ((year - ch.redrawn[now].max(ch.redrawn[holder])).max(0) as usize).min(10).min(k);
+        let then = &ch.pop[k - back];
+        let grown = |t: usize| -> String { if then[t] > 0.0 { changed(st.pop[t] / then[t] - 1.0) } else { "grown from nothing".to_string() } };
         // "first", not "largest": the towns are ranked with their districts, and
         // the town itself may be the smaller of the two (the city milestones
         // count the people inside the town)
@@ -819,9 +853,10 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
         stood[st.f_town[f]] += 1;
     }
     let share = |t: usize| closed[t].len() as f64 / stood[t].max(1) as f64;
-    // a town in its first years is still finding what it can make
+    // a town in its first years is still finding what it can make (and whatever
+    // `closures_min` is set to, a district where nothing shut has no story)
     let mut towns: Vec<usize> = (0..st.T_max)
-        .filter(|&t| st.town_active[t] && st.town_founded[t] <= year - YOUNG && closed[t].len() >= Q.closures_min && share(t) >= Q.closures_share && !quiet(ch, P, "closures", t, year))
+        .filter(|&t| st.town_active[t] && st.town_founded[t] <= year - YOUNG && closed[t].len() >= Q.closures_min.max(1) && share(t) >= Q.closures_share && !quiet(ch, P, "closures", t, year))
         .collect();
     towns.sort_by(|&a, &b| share(b).total_cmp(&share(a)).then(a.cmp(&b)));
     let Some(&t) = towns.first() else { return };
@@ -892,27 +927,30 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
 }
 
 /// The town that grew fastest over the decade just ended, if it outgrew the
-/// island by a margin and no new town redrew the districts in those years.
+/// island by a margin. A town whose district a founding redrew in those years
+/// is not in the running.
 fn fastest_of_decade(st: &State, C: &Content, P: &Params, ch: &ChronicleState, year: i64, events: &mut Vec<Event>) {
     let Q = &P.chronicle;
     let k = ch.pop.len() - 1;
     // from the end of the decade before, or from the first year in the first decade
     let k0 = k.saturating_sub(10);
-    if k == k0 || year - ((k - k0) as i64) < ch.redrawn {
+    if k == k0 {
         return;
     }
+    let from = year - (k - k0) as i64;
     let (all1, all0) = (pairwise_sum(&ch.pop[k]), pairwise_sum(&ch.pop[k0]));
     if all0 <= 0.0 {
         return;
     }
     let island = all1 / all0 - 1.0;
     let best = (0..st.T_max)
-        .filter(|&t| st.town_active[t] && ch.pop[k0][t] >= Q.min_people)
+        .filter(|&t| st.town_active[t] && ch.redrawn[t] <= from && ch.pop[k0][t] > 0.0 && ch.pop[k0][t] >= Q.min_people)
         .max_by(|&a, &b| (ch.pop[k][a] / ch.pop[k0][a]).total_cmp(&(ch.pop[k][b] / ch.pop[k0][b])).then(b.cmp(&a)));
     let Some(t) = best else { return };
     let (p1, p0) = (ch.pop[k][t], ch.pop[k0][t]);
     let g = p1 / p0 - 1.0;
-    if g < island + Q.fastest_margin {
+    // (a town that shrank less than the rest is not the fastest-growing)
+    if g < island + Q.fastest_margin || g <= 0.0 {
         return;
     }
     let name = &st.town_name[t];
@@ -1143,9 +1181,17 @@ fn number(n: usize) -> String {
     WORDS.get(n).map_or_else(|| n.to_string(), |w| w.to_string())
 }
 
+/// "third", or "11th", "21st", "22nd" past tenth.
 fn ordinal(n: usize) -> String {
     const WORDS: [&str; 11] = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
-    WORDS.get(n).filter(|w| !w.is_empty()).map_or_else(|| format!("{n}th"), |w| w.to_string())
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    WORDS.get(n).filter(|w| !w.is_empty()).map_or_else(|| format!("{n}{suffix}"), |w| w.to_string())
 }
 
 fn capital(s: &str) -> String {
