@@ -7,8 +7,11 @@
 //! which the simulation ever reads:
 //!
 //!   - the works a family's branches open on their own are told once, when a
-//!     trade first reaches a town, and otherwise in one summary a year;
-//!   - every observer event says why it is news (`Event::why`);
+//!     trade first reaches a town, and otherwise in one summary a year; the
+//!     family's everyday news weighs less than its great moments, and a
+//!     succession is one item;
+//!   - every observer event says why it is news (`Event::why`), and so do
+//!     hunger and large closures;
 //!   - the few items of each decade that a history would keep are marked
 //!     (`Event::kept`), year by year in a live game and again in `sim::finish`;
 //!   - towns and districts get stories of their own: a coalfield boom, a town

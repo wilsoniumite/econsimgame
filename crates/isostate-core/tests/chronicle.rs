@@ -398,6 +398,29 @@ fn a_doubling_is_measured_from_the_first_years() {
 }
 
 #[test]
+fn a_run_without_families_has_its_history_too() {
+    // seed 2 with nobody playing, the whole run. (It once stopped in mid-century:
+    // a coal boom looked for its busiest pit in last month's output, which no
+    // longer lines up with the pits once the year's land has been shared out.)
+    let mut P = game_params();
+    P.seed = 2;
+    let r = sim::run_with(&P, game_content(), false, true).expect("the run finishes and money is conserved");
+    assert!(r.state.chron.kinds.is_empty() && r.events.iter().all(|e| e.kind != "family"), "no families, none of their news");
+    let booms: Vec<&Event> = r.events.iter().filter(|e| e.title.starts_with("Coal boom around")).collect();
+    assert!(!booms.is_empty(), "seed 2 has a coal boom");
+    for e in &booms {
+        assert!(e.cell.is_some_and(|c| c < r.state.N) && e.why.is_some(), "{}", e.title);
+    }
+    let mut by_decade: BTreeMap<i64, usize> = BTreeMap::new();
+    for e in r.events.iter().filter(|e| e.kept == Some(true)) {
+        *by_decade.entry(decade(e)).or_insert(0) += 1;
+    }
+    let Q = &r.params.chronicle;
+    assert_eq!(by_decade.len(), 15);
+    assert!(by_decade.values().all(|n| (Q.at_least..=Q.per_decade).contains(n)), "{by_decade:?}");
+}
+
+#[test]
 fn towns_and_districts_have_stories() {
     let r = whole_game();
     let stories: Vec<&Event> = r.events.iter().filter(|e| e.kind == "region").collect();
