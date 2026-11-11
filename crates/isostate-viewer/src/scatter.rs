@@ -162,7 +162,9 @@ fn firm_life(r: &Replay, f: usize) -> (usize, usize, f32) {
 
 /// The roads and railways of year `k` as points along them, by the cell each
 /// point lies in, with the room to leave either side: works keep clear of them.
-fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<(f32, f32, f32)>> {
+/// The railway is taken where it runs (`rails.rs`), not as straight lines
+/// between the middles of its cells.
+fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<(f32, f32, f32)>> {
     let mut out: std::collections::HashMap<usize, Vec<(f32, f32, f32)>> = Default::default();
     let mut lay = |a: (f32, f32), b: (f32, f32), clear: f32| {
         let len = (b.0 - a.0).hypot(b.1 - a.1);
@@ -177,17 +179,22 @@ fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<u
     for (c, m, lv) in crate::network::road_segments(r, k) {
         lay(cen[c], cen[m], if lv == 3 { 0.03 } else { 0.024 });
     }
-    // the railway, as the straight lines between the middles of its cells (the line itself curves a little)
-    let tr = &r.trans[k * r.n..(k + 1) * r.n];
-    let has = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < r.w && (y as usize) < r.h && tr[y as usize * r.w + x as usize] & 4 != 0;
-    for c in 0..r.n {
-        if tr[c] & 4 == 0 {
-            continue;
-        }
-        let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
-        for (dx, dy) in [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)] {
-            if has(x + dx, y + dy) && !(dx != 0 && dy != 0 && (has(x + dx, y) || has(x, y + dy))) {
-                lay(cen[c], cen[(y + dy) as usize * r.w + (x + dx) as usize], 0.05);
+    // the railway where it really runs, with room for its banks: every point of every line that
+    // is not under the ground, told to the cell it lies in and to a neighbour it lies close by
+    for line in &crate::rails::year(r, g, cen, k).lines {
+        for (i, p) in line.pts.iter().enumerate() {
+            if line.kind[i] == crate::rails::Kind::Tunnel {
+                continue;
+            }
+            let clear = 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12);
+            let cell = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
+            let mut told: Vec<usize> = Vec::with_capacity(3);
+            for (dx, dz) in [(0.0f32, 0.0f32), (0.12, 0.0), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
+                let c = cell(p.x + dx, p.z + dz);
+                if !told.contains(&c) {
+                    told.push(c);
+                    out.entry(c).or_default().push((p.x, p.z, clear));
+                }
             }
         }
     }
@@ -467,7 +474,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     if dirty.is_empty() {
         return;
     }
-    let ways = ways(r, &cen, r.filled.clamp(1, r.ny) - 1);
+    let ways = ways(r, g, &cen, r.filled.clamp(1, r.ny) - 1);
     let mut by_cell: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
     for f in 0..n {
         if dirty.contains(&r.header.firms[f].cell) {
@@ -651,7 +658,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     }
     // the railway's embankments, viaducts, cuttings, portals and bridges, and a
     // bridge wherever a road crosses a river
-    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk));
+    let (rail_works, rail_smoke) = crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk);
+    works_b.append(rail_works);
+    smoke.append(rail_smoke);
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         let along = (b - a).normalize_or(bevy::math::Vec2::X);
@@ -663,10 +672,13 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
     let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
-    // near a works or a market place, or in a churchyard
+    // near a works or a market place, in a churchyard, or on the railway or its banks
+    let rail_year = crate::rails::year(r, g, cen, k);
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false) || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
+        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false)
+            || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
+            || rail_year.near(x, z, 0.03)
     };
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };

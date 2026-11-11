@@ -31,6 +31,8 @@ pub struct Rules {
     pub wind_steps: u8,
     /// a cell's level may stand this far above its ground before the way must follow the ground more closely
     pub high: f32,
+    /// and this far where the way stands so high for a long stretch (a cell and all within two of it)
+    pub bank: f32,
     /// a cell whose level would lie this far under its ground is in a tunnel
     pub tunnel: f32,
 }
@@ -74,6 +76,11 @@ pub struct Edge {
     pub stage: u8,
     /// laid now: its stage may still be raised
     pub new: bool,
+    /// the edges of one length of way (one number for each length) are raised together
+    pub group: usize,
+    /// the highest stage it may be raised to: a length is made an incline
+    /// only where the ground it has to climb from end to end asks for one
+    pub top: u8,
 }
 
 pub struct Settled {
@@ -124,9 +131,10 @@ pub fn spread(adj: &[Vec<(usize, f32, usize)>], start: &[f32]) -> (Vec<f32>, Vec
     (val, by)
 }
 
-/// Settle the levels of the nodes that have none, and how each new edge
-/// climbs. `longest_tunnel` is how many cells on end may lie in one tunnel.
-pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel: usize) -> Settled {
+/// Settle the levels of the nodes that have none, and (where `give` is set)
+/// how each new edge climbs. `longest_tunnel` is how many nodes on end may
+/// lie in one tunnel.
+pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel: usize, give: bool) -> Settled {
     let n = nodes.len();
     let mut given_up = vec![false; n];
     let mut no_tunnel = vec![false; n];
@@ -134,10 +142,15 @@ pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel:
     let mut out = Settled { level: nodes.iter().map(|x| x.fixed.unwrap_or(x.ground)).collect(), under: vec![false; n], given_up: 0 };
     for _ in 0..edges.len() * (rules.incline() as usize + 2) + n + 4 {
         // an edge between two settled cells climbs what it must
-        for e in edges.iter_mut().filter(|e| e.new) {
-            if let (Some(ha), Some(hb)) = (nodes[e.a].fixed, nodes[e.b].fixed) {
-                while (ha - hb).abs() > rules.cap(e.len, e.stage) + 1e-5 && e.stage < rules.incline() {
-                    e.stage += 1;
+        for i in 0..edges.len() {
+            let e = edges[i];
+            if let (true, true, Some(ha), Some(hb)) = (give, e.new, nodes[e.a].fixed, nodes[e.b].fixed) {
+                let mut stage = e.stage;
+                while (ha - hb).abs() > rules.cap(e.len, stage) + 1e-5 && stage < e.top {
+                    stage += 1;
+                }
+                for other in edges.iter_mut().filter(|o| o.group == e.group) {
+                    other.stage = stage;
                 }
             }
         }
@@ -187,6 +200,9 @@ pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel:
         let level: Vec<f32> = (0..n).map(|c| nodes[c].fixed.unwrap_or(up[c].min(hi[c]))).collect();
         out.level = level.clone();
         out.under = under.clone();
+        if !give {
+            break;
+        }
         // a tunnel that came out shallow is no tunnel
         if let Some(c) = (0..n).find(|&c| under[c] && nodes[c].ground - level[c] < 0.6 * rules.tunnel) {
             no_tunnel[c] = true;
@@ -201,6 +217,12 @@ pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel:
                 (nodes[c].ground - level[c], [&hi_by, &hi_by])
             } else if level[c] - nodes[c].ground > rules.high {
                 (level[c] - nodes[c].ground - rules.high, [&up_by, &up_by])
+            } else if level[c] - nodes[c].ground > rules.bank && {
+                // every node within two of it stands as high
+                let over = |m: usize| nodes[m].fixed.is_none() && level[m] - nodes[m].ground > rules.bank;
+                adj[c].len() > 1 && adj[c].iter().all(|&(m, _, _)| over(m) && adj[m].iter().all(|&(m2, _, _)| over(m2)))
+            } {
+                (0.5 * (level[c] - nodes[c].ground - rules.bank), [&up_by, &up_by])
             } else {
                 continue;
             };
@@ -217,7 +239,7 @@ pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel:
             let mut steps = 0;
             while let Some(e) = by[at] {
                 let edge = &edges[e];
-                if edge.new && edge.stage < rules.incline() {
+                if edge.new && edge.stage < edge.top {
                     let over = (ground(edge.a) - ground(edge.b)).abs() - rules.cap(edge.len, edge.stage);
                     if pick.map_or(true, |p| over > p.0) {
                         pick = Some((over, e));
@@ -231,7 +253,12 @@ pub fn settle(nodes: &[Node], edges: &mut [Edge], rules: &Rules, longest_tunnel:
             }
         }
         match pick {
-            Some((_, e)) => edges[e].stage += 1,
+            Some((_, e)) => {
+                let (group, stage) = (edges[e].group, edges[e].stage + 1);
+                for other in edges.iter_mut().filter(|o| o.group == group) {
+                    other.stage = stage;
+                }
+            }
             None => given_up[c] = true,
         }
     }
@@ -270,13 +297,13 @@ mod tests {
     use super::*;
 
     fn rules() -> Rules {
-        Rules { ruling: 0.085, ease: 0.7, steep: 0.45, wind: 1.6, wind_steps: 4, high: 0.1, tunnel: 0.1 }
+        Rules { ruling: 0.085, ease: 0.7, steep: 0.45, wind: 1.6, wind_steps: 4, high: 0.1, bank: 0.07, tunnel: 0.1 }
     }
 
     /// A line of cells one after another, a cell apart, on this ground.
     fn line(ground: &[f32], fixed: &[usize]) -> (Vec<Node>, Vec<Edge>) {
         let nodes = ground.iter().enumerate().map(|(i, &g)| Node { ground: g, fixed: fixed.contains(&i).then_some(g), tunnel_ok: i > 0 && i + 1 < ground.len() }).collect();
-        let edges = (1..ground.len()).map(|i| Edge { a: i - 1, b: i, len: 1.0, stage: 0, new: true }).collect();
+        let edges = (1..ground.len()).map(|i| Edge { a: i - 1, b: i, len: 1.0, stage: 0, new: true, group: i, top: 5 }).collect();
         (nodes, edges)
     }
 
@@ -311,7 +338,7 @@ mod tests {
     fn gentle_ground_is_followed() {
         let r = rules();
         let (nodes, mut edges) = line(&[0.10, 0.13, 0.17, 0.2, 0.18], &[0]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         for (c, node) in nodes.iter().enumerate() {
             assert!((s.level[c] - node.ground).abs() < 1e-5);
@@ -323,17 +350,17 @@ mod tests {
     fn a_dip_is_bridged_and_a_narrow_ridge_bored() {
         let r = rules();
         let (nodes, mut edges) = line(&[0.2, 0.2, 0.12, 0.2, 0.2], &[]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         assert!(s.level[2] > 0.13 && !s.under[2], "the dip is crossed high: {:?}", s.level);
         let (nodes, mut edges) = line(&[0.2, 0.2, 0.45, 0.2, 0.2], &[]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         assert!(s.under[2] && s.level[2] < 0.3, "the ridge is bored: {:?}", s.level);
         assert!((s.level[1] - 0.2).abs() < 1e-5 && (s.level[3] - 0.2).abs() < 1e-5);
         // but not before a tunnel of that length could be bored: then the line climbs over, as an incline if it must
         let (nodes, mut edges) = line(&[0.2, 0.2, 0.45, 0.45, 0.45, 0.2, 0.2], &[]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         assert!(!s.under.iter().any(|&u| u));
         assert!(s.level[3] > 0.44);
@@ -344,19 +371,19 @@ mod tests {
         let r = rules();
         // a rise of an eighth in one cell: more than a straight length climbs, less than a wound one
         let (nodes, mut edges) = line(&[0.1, 0.1, 0.23, 0.23], &[0, 3]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         assert!(edges.iter().all(|e| e.stage < r.incline()), "{edges:?}");
         assert!(edges.iter().any(|e| e.stage > 0));
         assert!(s.given_up == 0 && s.level[1] >= 0.1 - 2e-3 && s.level[2] >= 0.23 - 2e-3, "{:?}", s.level);
         // a rise of three tenths between two stations a cell apart: an incline
         let (nodes, mut edges) = line(&[0.1, 0.4], &[0, 1]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         assert_eq!(edges[0].stage, r.incline());
         // and a quarry up a hillside from a line that is there already
         let (nodes, mut edges) = line(&[0.1, 0.2, 0.4], &[0]);
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         holds(&nodes, &edges, &s, &r);
         assert_eq!(s.given_up, 0);
         assert!(s.level[2] >= 0.4 - 2e-3 && s.level[1] >= 0.2 - 2e-3, "{:?}", s.level);
@@ -369,7 +396,7 @@ mod tests {
         let (mut nodes, mut edges) = line(&[0.1, 0.12, 0.3], &[0, 1]);
         nodes[1].fixed = Some(0.15);
         edges[0].new = false;
-        let s = settle(&nodes, &mut edges, &r, 1);
+        let s = settle(&nodes, &mut edges, &r, 1, true);
         assert_eq!((s.level[0], s.level[1]), (0.1, 0.15));
         assert_eq!(edges[0].stage, 0);
         assert!(edges[1].stage > 0);

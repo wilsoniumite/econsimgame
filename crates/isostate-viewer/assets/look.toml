@@ -367,6 +367,8 @@ earthworks = "#a3967f"
 bank_top = "#9a8f78"
 bank_grass = "#7f9a52"
 bank_grass_shade = "#6c8546"
+# a bank on the high fells, of broken rock
+bank_scree = "#b3ab9e"
 stone = "#b9ad97"
 viaduct_brick = "#a45f45"
 # a cutting: grass where it is shallow and rock where it is deep, each lit
@@ -381,6 +383,8 @@ tunnel_mouth = "#2a2522"
 girder = "#4c4f55"
 # the hemp rope of an inclined plane, between its rails
 rope = "#c9b48a"
+# the painted beam of a buffer stop at the end of a line
+buffer = "#b5523f"
 
 [bridges]
 # the stone bridges that carry roads over rivers: a main road's in pale
