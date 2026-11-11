@@ -457,3 +457,7 @@ One line each as they arrive: the name, its page, its switch.
   by district, half of each seen when the hands are hired; with the news of
   poor and bumper harvests, lean years and dearths. It belongs with `prices`.
   [harvest.md](harvest.md), `harvest.enabled`.
+- **chronicle**: news that reads like a history: why each item is news, the
+  two to four a decade a history would keep, stories of towns and districts,
+  and an end to the flood of the player's own works. It never touches the
+  economy. [chronicle.md](chronicle.md), `chronicle.enabled`.

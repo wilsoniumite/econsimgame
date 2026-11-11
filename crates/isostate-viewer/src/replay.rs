@@ -76,6 +76,22 @@ pub struct Event {
     /// the family the news is about
     #[serde(default)]
     pub family: Option<usize>,
+    /// chronicle: whether a history of the decade would keep this item (absent
+    /// in a run made without the chronicle)
+    #[serde(default)]
+    pub kept: Option<bool>,
+    /// chronicle: the item's place in a live game's event list, by which the
+    /// simulation says that its `kept` mark has changed
+    #[serde(skip)]
+    pub seq: usize,
+}
+
+impl Event {
+    /// Whether this belongs in the major feed, on the timeline and in the
+    /// toasts: the chronicle's mark where there is one, else weight 0.6 or more.
+    pub fn major(&self) -> bool {
+        self.kept.unwrap_or(self.weight >= 0.6)
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]

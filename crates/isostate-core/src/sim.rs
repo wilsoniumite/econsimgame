@@ -565,6 +565,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     let rec = record::init(&st, &C, P, n_years);
     // families (if any) start here, on the warmed-up economy
     families::init(&mut st, &C, P, &mut rngs.misc);
+    // chronicle: what the families start with counts as held
+    crate::chronicle::init(&mut st, &C, P);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
@@ -596,6 +598,8 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
     let Sim { st, content: C, params: P, rngs, events, rec, .. } = sim;
     yearly(st, C, P, rngs, year, events, false);
     observer::yearly(st, C, P, year, events);
+    // chronicle: the towns' stories, and the decades ranked with what the year added
+    crate::chronicle::yearly(st, C, P, year, events);
     record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
     harvest::snapshot(rec, st, P, (year - C.start_year) as usize);
     sim.year += 1;
@@ -605,6 +609,8 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
 pub fn finish(sim: Sim) -> RunResult {
     let mut events = sim.events;
     events.sort_by(|a, b| a.year.total_cmp(&b.year));
+    // chronicle: the marks a live game has reached, on the sorted list
+    crate::chronicle::rank(&mut events, &sim.params, sim.content.start_year, sim.content.end_year, sim.year - 1);
     RunResult { state: sim.st, content: sim.content, params: sim.params, events, rec: sim.rec }
 }
 

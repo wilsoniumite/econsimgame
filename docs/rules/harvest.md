@@ -68,13 +68,17 @@ numbers), kind `harvest` unless said:
 | A bumper harvest | the same above | 0.3 to 0.5 |
 | Three lean years | the third year running at least half a deviation short; it takes the place of that year's poor harvest | 0.45 to 0.75, by what the three years lost together |
 | The harvest fails around TOWN | one town's farms are `news_local_z` (2.3) district deviations below the country's and below an ordinary year, in a year when the country's harvest is not itself news | 0.35 to 0.55 |
-| A dearth of grain (kind `dearth`) | the year's grain price stands `dearth_rise` (12 per cent) above its trend: the mean of the five years before, carried forward at the drift of the last twenty. At most once in three years | 0.55 to 0.8 |
+| A dearth of grain (kind `dearth`) | the year's grain price stands `dearth_rise` (15 per cent) above its trend: the mean of the five years before, carried forward at the drift of the last twenty. At most once in three years | 0.55 to 0.8 |
 
 The viewer's "major" feed shows weights from 0.6, so it gets the dearths, the
 worst harvests and the worst runs of lean years; bumper years and one
 district's failure stay in the full feed. With prices on that is 17 harvest
 items and 6 dearths in 150 years, three every two decades; under the port's
 own price rule, whose false swing keeps tripping the dearth line, 16 and 15.
+(Those counts, and every count of dearths in the tables below, were taken
+with the line at 12 per cent, where it stood until harvests were set beside
+the game's other rules; "In company" says why it moved and what the count is
+now.)
 
 ## What the viewer is given
 
@@ -103,7 +107,7 @@ Only when the mechanism is on:
 | `foreseen` | 0.5 | share of the weather known when the hands are hired; 0 is a pure surprise; held between 0 and 1 |
 | `news_z` | 1.8 | island deviations that make a poor or a bumper harvest news |
 | `news_local_z` | 2.3 | district deviations that make one town's failure news |
-| `dearth_rise` | 0.12 | how far above its trend the grain price is a dearth |
+| `dearth_rise` | 0.15 | how far above its trend the grain price is a dearth (0.12 until the merge; "In company") |
 
 With both parts at 0.05 the country's harvest has a standard deviation of
 0.051 (the district part nearly averages out over the island), and a town's is
@@ -353,8 +357,135 @@ Only in runs with harvests on:
 - A run with harvests on takes about a twentieth longer (13.6 and 14.3
   seconds for seed 5, side by side on a busy machine).
 
+## In company
+
+Harvests were merged into the game's rules after `prices`, `engel` and
+`machines`, so the island they now run on is not the one the tables above
+were made on: its households lean off bread as they grow richer, its farms
+buy machines, and by 1900 a wage buys two and a half times what it did. This
+is what a sweep of the game's rules showed with harvests off and on, six
+families, seeds 1 to 12 (`core-steps/harvest-on-off-s1-12` under
+`.claude/night/reports/`; the integration's own before and after on seeds 1
+to 6 are `core-steps/harvest-before` and `harvest-after`). The first column
+is the review's sweep of harvests with prices alone, six families, sixteen
+seeds.
+
+| | alone, with prices | in company, off | in company, on |
+|---|---|---|---|
+| grain price swing | 0.081 | 0.027 | 0.100 [0.086..0.115] |
+| grain output swing | 0.092 | 0.016 | 0.096 [0.081..0.106] |
+| price `ac1` | -0.56 | +0.28 | -0.63 [-0.75..-0.49] |
+| output `ac1` | -0.66 | -0.19 | -0.73 [-0.80..-0.67] |
+| farm zigzag | 1.85 | 0.60 | 1.95 [1.42..2.44] |
+| grain output on the harvest | 0.84 | - | 0.74 [0.56..0.98] |
+| grain price on the harvest | -0.92 | - | -0.98 [-1.22..-0.78] |
+| real wage on the harvest | 0.21 | - | 0.25 [0.17..0.32] |
+| grain price, the year after | 0.14 | - | 0.33 [0.13..0.47] |
+| real wage, the year after | -0.09 | - | -0.15 [-0.27..-0.07] |
+| worst year's fall in the real wage | -0.103 | -0.058 | -0.076 [-0.112..-0.055] |
+| years with a town in famine | 1.4 [0..3] | 1.8 [0..4] | 3.7 [2..7] |
+| downturns the observer calls (`alarm`) | 6.9 | 0.8 | 8.4 [6..13] |
+| harvest items told | 16.8 | - | 16.1 [7..21] |
+| dearths told, line at 0.12 | 6.6 [4..9] | - | 10.4 [8..13] |
+| dearths told, line at 0.15 (the game's now) | | - | 5.5 [2..8] |
+| people in 1900 | 684,779 | 684,938 | 683,218 [674,647..688,684] |
+
+**It does in company what it does alone.** The three slopes on the harvest
+have their signs in all twelve seeds, and their sizes are the page's: a
+harvest ten per cent short brings in seven per cent less grain, sells it ten
+per cent dearer and takes two and a half per cent off what a wage buys. The
+long run does not move. Towns, works, railway, the shares of work and the
+real wage of 1900 are inside the spread between seeds (the wage of 1900 is
+2.44 times 1750's against 2.46). On seeds 1 to 6 the facts of 1850 look like
+a setback (grain output of 1850 lower in all six, output per head in five),
+but 1850 is half way up the steep climb the machines give this island, and a
+climb that comes three years late reads as a large gap in any one year. On
+twelve seeds the real wage of 1840 to 1859 is higher with harvests in five
+and lower in seven, 1.7 per cent lower on average, and by 1880 to 1899 it is
+six and six. No run failed, money holds every month, and a run takes two to
+five per cent longer (17.2 and 17.7 seconds on two tries against 16.9, six
+at a time).
+
+Four things are different, and one number was changed for them.
+
+- **Grain's price answers harder, and that is the Engel curve.** The swing
+  is 0.10 a year where it was 0.08. Switching the others off one at a time
+  with harvests on (`core-steps/harvest-who`, seeds 1 to 6) puts it on
+  `engel`: 0.099 with the curve and 0.077 to 0.079 without, whatever the
+  machines do; the price's slope on the harvest is -0.98 to -1.02 against
+  -0.88. Households past the reference income put little of a further
+  shilling into food, so what they buy of bread hardly gives when it is dear,
+  and the price has further to go before the market clears. This is the
+  worry below that "the price answers weakly", a little answered by another
+  mechanism. It is still nothing like the eighteenth century's three for one.
+- **The echo is longer than one year.** The year after a harvest ten per
+  cent short, grain is three per cent cheaper than it was before it (one and
+  a half alone). The correlation of one year's change in the price with the
+  change one, two, three and four years on is -0.63, +0.36, -0.21, +0.19;
+  alone with prices it was -0.56, +0.27, -0.14, +0.12, and independent years
+  would give -0.5, 0, 0, 0. So a short year is followed by a full one, then
+  a rather short one, each about half the size of the last: a saw's edge that
+  dies away, not one echo as the worries below have it. It is the farm hands
+  answering a price half a year late, as there; the same two-year beat is
+  faintly in the price with harvests off (the even lags stand above the odd
+  ones: +0.28, +0.62, +0.15, +0.43). The weather only sets it going, and a
+  price that answers harder sets it going harder.
+- **Famines double.** A town is short of food in 3.7 years of a run against
+  1.8, more in eleven seeds of twelve and never fewer, and there are a
+  quarter of a per cent fewer people in 1900 (fewer in ten seeds of twelve).
+  Alone with prices that took a shock of 0.12. It needs both of the others:
+  2.3 years with the curve and no machines, 1.5 with the machines and no
+  curve or with neither. I have not traced it further than that. My guess is
+  the same thing as the harder price: where households will not give up
+  bread, the merchants' markup rations less, and the shelves empty instead.
+  In seed 6 the hunger comes between 1796 and 1814, all but once in towns
+  that have stood for twenty years or more, and in three of them "households
+  get 0% of the food they need" in the worst month. One such item is there
+  with harvests off too (Ulstrand, 1803), so some town's shelves are emptying
+  for a reason that is not the weather, and the weather adds to it. This is no longer "a bad year is mild", and it is worth a look by
+  whoever does the people's side.
+- **The dearth line stood too low for this island, and was raised from 0.12
+  to 0.15.** At 0.12 a dearth was told 10.4 times a run where the page meant
+  six, and of seed 6's thirteen, eight came after a harvest two to four per
+  cent short or not short at all: it was the saw's edge tripping the line,
+  the fault this page found in the port's price rule, in small. At 0.12 the
+  line stood at one and a half times what grain's price moved in a year
+  (0.08); it moves 0.10 now, and one and a half times that is 0.15. That gives 5.5
+  dearths a run [2..8] (`core-steps/harvest-dearth-line`, twelve seeds; 2.4
+  at 0.18), and seed 6's six come after harvests 8, 11, 7, 9, 4 and 4 per
+  cent short. Nothing in the economy reads the line; only the news does.
+  With the Engel curve off it now gives two or three a run, so the counts of
+  dearths in the tables above are no longer what `--set harvest.enabled=true`
+  alone tells.
+- **The observer tells some harvests a second time, and gets the reason
+  wrong.** Its "steep" items (a good's output far off its trend) go from 17 a
+  run to 28, and its alarms from one a run to eight. Most are fair: a bad
+  harvest is a downturn. But a bumper year can come out as "Grain glut ...
+  new capacity is flooding the market" beside "A bumper harvest", and a
+  short one as "Grain shortage ... supply has failed" beside a dearth. The
+  observer does not know about weather. That is for the chronicle to sort
+  out, not for a threshold here.
+
+The tests pass as they stood, the golden constants untouched, and the
+scripted players (`examples/bots.rs`, seeds 3 and 7) play all four strategies
+to 1900 under the four mechanisms together.
+
 ## What worries me
 
+- **In company, famines double and the price saws.** Both are in the section
+  above. Neither breaks anything, and neither was so with prices alone, so
+  the reassurances further down this list ("a bad year is mild", "one year of
+  echo") describe harvests alone and not the game. If the famines turn out to
+  be too many once people answer to how they live, the first thing to try is
+  the size of the shock; the second is whatever is emptying a town's shelves
+  to nothing with no weather at all.
+- **The country's harvest may vary more late in the century.** In two seeds
+  of three looked at (6 and 9; not 3) the standard deviation of the country's
+  harvest is about 0.044 before 1800 and 0.056 to 0.06 after 1850, and seed 6
+  has harvests 20 and 18 per cent above an ordinary year in the 1890s. The
+  country's figure is the mean over farmland, and my guess is that as the
+  farms draw in to the best land the district part stops averaging out.
+  Three seeds, one look; I did not measure it properly.
 - **Harvests alone are not ready to play.** They were built for an island
   whose prices have been steadied. Under the port's price rule they work and
   conserve money, but they feed the false swing. If `prices` were ever

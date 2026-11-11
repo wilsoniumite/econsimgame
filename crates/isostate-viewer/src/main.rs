@@ -493,7 +493,7 @@ struct Toasts {
 fn year_toasts(events: &[replay::Event], year: i32, now: f32) -> Vec<Toast> {
     events
         .iter()
-        .filter(|e| e.year.floor() as i32 == year && e.weight >= 0.6)
+        .filter(|e| e.year.floor() as i32 == year && e.major())
         .map(|e| Toast { kind: e.kind.clone(), title: e.title.clone(), year, since: now })
         .collect()
 }

@@ -738,9 +738,10 @@ fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (Wi
 }
 
 /// News ticks along the timeline, redrawn as a live game adds news.
-fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<usize>>) {
+fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<(usize, usize)>>) {
     let r = &data.r;
-    let n = r.header.events.len();
+    // chronicle: the marks of news already drawn can change, so the count of major items is part of the key
+    let n = (r.header.events.len(), r.header.events.iter().filter(|e| e.major()).count());
     if *drawn == Some(n) {
         return;
     }
@@ -753,7 +754,7 @@ fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity,
     }
     let span = (r.ny.max(2) - 1) as f32;
     commands.entity(e).with_children(|track| {
-        for e in r.header.events.iter().filter(|e| e.weight >= 0.6) {
+        for e in r.header.events.iter().filter(|e| e.major()) {
             let x = ((e.year - r.y0 as f32) / span * 100.0).clamp(0.0, 100.0);
             let h = 6.0 + 10.0 * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
             track.spawn((
@@ -927,7 +928,7 @@ pub fn kind_colour(kind: &str) -> Color {
         "crossing" => Color::srgb(0.16, 0.48, 0.53),
         "steep" => Color::srgb(0.48, 0.36, 0.62),
         "alarm" | "famine" => Color::srgb(0.70, 0.25, 0.22),
-        "town" => Color::srgb(0.55, 0.40, 0.23),
+        "town" | "region" => Color::srgb(0.55, 0.40, 0.23),
         "family" => Color::srgb(0.62, 0.30, 0.45),
         _ => Color::srgb(0.45, 0.45, 0.45),
     }
@@ -946,6 +947,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "verdict" => "In hindsight",
         "famine" => "Hunger",
         "town" => "New town",
+        "region" => "Town and country",
         "closure" => "Closure",
         "family" => "Families",
         _ => "News",
@@ -970,7 +972,7 @@ fn news_foot(listed: usize, n: usize) -> Option<String> {
 fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, rows: usize, player: Option<usize>) {
     let year = r.y0 + k as i32;
     let wanted = |e: &replay::Event| match show {
-        NewsShow::Major => e.weight >= 0.6,
+        NewsShow::Major => e.major(),
         NewsShow::All => true,
         NewsShow::Families => e.family.is_some(),
     };

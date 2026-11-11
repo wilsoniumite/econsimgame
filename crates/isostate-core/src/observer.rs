@@ -314,6 +314,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 if first { title.to_string() } else { format!("{title} again") },
                 text.replace("{share}", &fmt_pct(v, 0)),
             );
+            ev.why = crate::chronicle::why(P, "a share crosses half", &name, v, P.crossing_hi, None, format!("the mean share of the year's last three months rose above {} from below; it can fire again once it has been under {}", P.crossing_hi, P.crossing_lo));
             ev.series = Some(name);
             events.push(ev);
         } else if state == "above" && v < P.crossing_lo {
@@ -335,6 +336,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
             format!("Industry employs {} of workers; farms, pastures and woods {}.", fmt_pct(ind, 0), fmt_pct(ag, 0)),
         );
         ev.series = Some("ind_share".to_string());
+        ev.why = crate::chronicle::why(P, "one share passes another", "ind_share", ind, ag, None, "the year's mean share of workers in industry passed the share on the land (ag_share) for the first time".to_string());
         events.push(ev);
     }
     for (thr, label) in [
@@ -356,6 +358,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 format!("{} of the population lives in towns.", fmt_pct(urb, 0)),
             );
             ev.series = Some("urban_share".to_string());
+            ev.why = crate::chronicle::why(P, "a series passes a round number", "urban_share", urb, thr, None, format!("the year's mean share of people living in towns passed {thr} for the first time"));
             events.push(ev);
         }
     }
@@ -378,6 +381,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
             ob.base.insert(name.to_string(), (year, v));
             continue;
         };
+        // chronicle: measured from the mean of the first few years, not from the first alone
+        let Some((when, v0)) = crate::chronicle::baseline(P, s.get(name), y0, year, when, v0) else { continue };
         let ratio = v / v0;
         let lvl = if ratio >= kind as f64 { (ratio.ln() / (kind as f64).ln() + 1e-9).floor() as i64 } else { 0 };
         let key = format!("{name}:{lvl}");
@@ -394,6 +399,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 format!("{label} is now {ratio:.1} times its {when} level."),
             );
             ev.series = Some(name.to_string());
+            ev.why = crate::chronicle::why(P, "a multiple of the starting level", name, v, mult as f64 * v0, Some(v0), format!("the year's mean is {ratio:.2} times the {when} level; a milestone at each power of {kind}"));
             events.push(ev);
         }
     }
@@ -412,12 +418,20 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 format!("There are now {} km of railway in the country.", fmt_thousands_f0(km)),
             );
             ev.series = Some("rail_km".to_string());
+            ev.why = crate::chronicle::why(P, "a series passes a round number", "rail_km", km, thr as f64, None, format!("the year's mean length of railway passed {thr} km for the first time"));
             events.push(ev);
         }
     }
 
     // ---- cities passing round numbers
-    for i in 0..st.T_max {
+    // chronicle: every town has its milestones, not only the first past each size
+    let towns = if P.chronicle.enabled {
+        crate::chronicle::city_milestones(st, P, year, events, y0);
+        0
+    } else {
+        st.T_max
+    };
+    for i in 0..towns {
         if !st.town_active[i] {
             continue;
         }
@@ -491,6 +505,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
             let kind = title.split_whitespace().last().unwrap().to_string();
             let mut ev = Event::new(year as f64 + 0.85, "steep", weight, title, text);
             ev.series = Some(format!("out_{gname}"));
+            ev.why = crate::chronicle::why(P, "a year's growth far from its trend", &format!("out_{gname}"), now, mean + 2.5 * std.max(0.04) * now.signum(), Some(mean), format!("log growth of {now:.3} against a mean of {mean:.3} and a spread of {std:.3} over the {} years before: z = {z:.1} (it needs 2.5, a move of 0.12 and four years since this good's last alarm); the price moved {:.3}", hist.len(), dp[dp.len() - 1]));
             steep.push((kind, label.clone(), ev));
         }
     }
@@ -520,6 +535,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 format!("{listing} all moved far outside their trend this year. {why}"),
             );
             ev.series = items[0].1.series.clone();
+            ev.why = crate::chronicle::why(P, "several goods far from trend the same way", "out_*", items.len() as f64, 3.0, None, format!("{listing} each moved far from trend in the same way this year; three or more are told as one"));
             events.push(ev);
         } else {
             events.extend(items.into_iter().map(|(_, ev)| ev));
@@ -548,6 +564,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 format!("Real output fell {} this year. Nobody yet knows how long it will last.", fmt_pct(-fall, 1)),
             );
             ev.series = Some("gdp_real".to_string());
+            ev.why = crate::chronicle::why(P, "output falls on the year", "gdp_real", fall, -0.02, Some(prev), format!("the year's mean real output is {:.1} per cent below the year before (it needs 2), and no slump was already running", -100.0 * fall));
             events.push(ev);
         } else if ob.in_slump {
             if gdp < ob.trough.unwrap().1 {
@@ -571,6 +588,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 ev.clock = "verdict".to_string();
                 ev.span = Some([py as f64 + 0.5, ty as f64 + 0.5]);
                 ev.series = Some("gdp_real".to_string());
+                ev.why = crate::chronicle::why(P, "output passes its old peak", "gdp_real", gdp, pv, Some(tv), format!("real output is back above its {py} peak; the trough in {ty} was {:.1} per cent below it (a depression if more than 8)", 100.0 * depth));
                 events.push(ev);
                 ob.in_slump = false;
                 ob.peak = Some((year, gdp));
@@ -596,6 +614,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
         ev.town = Some(i);
         ev.cell = Some(st.f_cell[fid]);
         ev.firm = Some(fid);
+        ev.why = crate::chronicle::why(P, "the first works of a new method", &format!("mout_{}", C.method_name[m]), 1.0, 1.0, None, "no works of this method had been founded before this year".to_string());
         events.push(ev);
     }
     st.series = s;

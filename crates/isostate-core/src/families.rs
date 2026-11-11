@@ -1100,11 +1100,13 @@ pub fn found_works(
     }
     let i = buildable(st, cell)?;
     may_found(st, C, family, method, i)?;
-    found_at(st, C, P, family, method, cell, year, events)
+    found_at(st, C, P, family, method, cell, year, events, true)
 }
 
+/// `by_hand`: ordered by the family itself (`found_works`), not opened by a
+/// branch on its own. Only the chronicle tells the two apart.
 #[allow(clippy::too_many_arguments)]
-fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usize, cell: usize, year: i64, events: &mut Vec<Event>) -> Result<usize, String> {
+fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usize, cell: usize, year: i64, events: &mut Vec<Event>, by_hand: bool) -> Result<usize, String> {
     let i = buildable(st, cell)?;
     if !(st.know[(i, method)] > 0.02) {
         return Err(format!("{} is not known in {} yet", C.method_label[method], st.town_name[i]));
@@ -1121,6 +1123,8 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
     }
     let name = family_works_name(st, C, family, method, i);
     let first_of_kind = !(0..st.F_count).any(|f| st.f_owner[f] == family as i64 && st.f_method[f] == method);
+    // chronicle: the first ever, not the first since the family sold its last one
+    let first_of_kind = first_of_kind && crate::chronicle::first_of_kind(st, P, family, method);
     let reason = firms::reason_record(st, i, method, cell, &ev, 0, K, year, "family");
     // the name is given, so create_firm draws nothing from this stream
     let mut unused = Rng::from_seed([0; 32]);
@@ -1130,8 +1134,11 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
         .expect("checked that the firm table has room");
     st.f_owner[fid] = family as i64;
     st.new_firms_year.push(fid);
+    // chronicle: a works one of the player's branches opened on its own is told
+    // once, when the trade first reaches the town, and otherwise in the year's summary
+    let told = crate::chronicle::works_founded(st, C, P, family, fid, by_hand, cost, ev.roi[0], year, events);
     // the player hears of every works of its own, and of a rival's first of each kind
-    if family == 0 || first_of_kind {
+    if !told && (family == 0 || first_of_kind) {
         let fam = &st.families[family];
         let what = C.method_label[method].to_lowercase();
         let title = if family == 0 {
@@ -1592,6 +1599,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
             ai_choose(st, C, k, year, &values, events);
         }
         run_branches(st, C, P, rng, k, year, events);
+        // chronicle: one item for the works the player's branches opened this year
+        crate::chronicle::branch_summary(st, C, P, k, year, events);
         st.families[k].net_worth = net_worth(st, C, P, k);
         let fam = &mut st.families[k];
         fam.last_year = std::mem::take(&mut fam.income);
@@ -1649,7 +1658,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
                 m.post = Post::Unposted;
                 m.next = None;
                 let ai = if was_head { Some(0.3) } else { None };
-                news_items.push(news_at(k, ai, year, format!("{} {} dies at {}", m.first, surname, m.age), format!("{} {},{} is buried at {}.", m.first, surname, ran, st.town_name[m.town]), m.town));
+                news_items.push(news_at(P, k, ai, year, format!("{} {} dies at {}", m.first, surname, m.age), format!("{} {},{} is buried at {}.", m.first, surname, ran, st.town_name[m.town]), m.town));
             }
         }
     }
@@ -1671,6 +1680,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
                 m.town = town;
                 m.post = Post::Manager { group };
                 news_items.push(news_at(
+                    P,
                     k,
                     None,
                     year,
@@ -1680,6 +1690,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
                 ));
                 if new_trade {
                     news_items.push(news_at(
+                        P,
                         k,
                         Some(0.3),
                         year,
@@ -1695,7 +1706,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
                 m.educated = true;
                 m.post = Post::Unposted;
                 let town = m.town;
-                news_items.push(news_at(k, None, year, format!("{first} {surname} comes down from university"), format!("{first} is educated and waits for a post."), town));
+                news_items.push(news_at(P, k, None, year, format!("{first} {surname} comes down from university"), format!("{first} is educated and waits for a post."), town));
             }
         }
     }
@@ -1710,7 +1721,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
         } else if m.age >= TRAINING_AGE && !st.families[k].decisions.iter().any(|d| d.member == Some(j)) {
             let first = m.first.clone();
             let town = m.town;
-            news_items.push(news_at(k, None, year, format!("{first} {surname} turns fourteen"), format!("{first} is old enough to be trained."), town));
+            news_items.push(news_at(P, k, None, year, format!("{first} {surname} turns fourteen"), format!("{first} is old enough to be trained."), town));
             raises.push((first, j));
         }
     }
@@ -1733,7 +1744,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
             let skill = 0.5 * pskill + 0.5 * (0.2 + 0.7 * random(rng));
             let mut child = new_member(rng, &mut used, 0, year, ptown, skill);
             child.parent = Some(j);
-            news_items.push(news_at(k, None, year, format!("{} is born to the {surname} family", child.first), format!("A child at {}.", st.town_name[ptown]), ptown));
+            news_items.push(news_at(P, k, None, year, format!("{} is born to the {surname} family", child.first), format!("A child at {}.", st.town_name[ptown]), ptown));
             st.families[k].members.push(child);
             born += 1;
         }
@@ -1758,7 +1769,9 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
         if let Some(&eldest) = cands.first() {
             apply_choice(st, C, k, Choice::Head { member: eldest }, None, year, events);
             let first = st.families[k].members[eldest].first.clone();
-            news_items.push(news_at(k, Some(0.3), year, format!("{first} {surname} heads the family"), format!("The {surname}s are led from {}.", st.town_name[seat]), seat));
+            news_items.push(news_at(P, k, Some(0.3), year, format!("{first} {surname} heads the family"), format!("The {surname}s are led from {}.", st.town_name[seat]), seat));
+            // chronicle: the player's succession is one great item, which says whom the new head follows
+            crate::chronicle::succession(P, k, &mut news_items);
             if k == 0 && cands.len() > 1 {
                 let fam = &st.families[k];
                 let options: Vec<DecisionOption> = cands
@@ -1787,8 +1800,9 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
     events.extend(news_items.into_iter().flatten());
 }
 
-fn news_at(k: usize, ai: Option<f64>, year: i64, title: String, text: String, town: usize) -> Option<Event> {
-    let w = if k == 0 { 0.6 } else { ai? };
+fn news_at(P: &Params, k: usize, ai: Option<f64>, year: i64, title: String, text: String, town: usize) -> Option<Event> {
+    // chronicle: the player's great moments are those a rival's would be news for too
+    let w = if k == 0 { crate::chronicle::own_weight(P, ai.is_some()) } else { ai? };
     let mut e = Event::new(year as f64 + 0.95, "family", w, title, text);
     e.town = Some(town);
     e.family = Some(k);
@@ -2017,7 +2031,7 @@ fn grow(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, g: Gro
         if cost > *spare || !used.insert(c) {
             continue;
         }
-        if found_at(st, C, P, k, m, c, year, events).is_ok() {
+        if found_at(st, C, P, k, m, c, year, events, false).is_ok() {
             *spare -= cost;
             built += 1;
         }
@@ -2077,7 +2091,7 @@ fn wind_down(st: &mut State, C: &Content, P: &Params, k: usize, g: Group, t: usi
         st.families[k].cash += got;
         st.families[k].income.sales += got;
         st.cell_owner[c] = -1;
-        events.extend(news_at(k, None, year, format!("The {surname} family sells a farm near {}", st.town_name[t]), format!("Sold for {got:.0}."), t));
+        events.extend(news_at(P, k, None, year, format!("The {surname} family sells a farm near {}", st.town_name[t]), format!("Sold for {got:.0}."), t));
         return;
     }
     let works = (0..st.F_count)
@@ -2092,5 +2106,5 @@ fn wind_down(st: &mut State, C: &Content, P: &Params, k: usize, g: Group, t: usi
     st.families[k].cash += got;
     st.families[k].income.sales += got;
     st.f_owner[f] = -1;
-    events.extend(news_at(k, None, year, format!("The {surname} family sells {}", st.f_name[f]), format!("Sold to investors at {} for {got:.0}.", st.town_name[t]), t));
+    events.extend(news_at(P, k, None, year, format!("The {surname} family sells {}", st.f_name[f]), format!("Sold to investors at {} for {got:.0}.", st.town_name[t]), t));
 }
