@@ -402,8 +402,9 @@ but 1850 is half way up the steep climb the machines give this island, and a
 climb that comes three years late reads as a large gap in any one year. On
 twelve seeds the real wage of 1840 to 1859 is higher with harvests in five
 and lower in seven, 1.7 per cent lower on average, and by 1880 to 1899 it is
-six and six. No run failed, money holds every month, and a run takes a
-twentieth longer (17.7 seconds against 16.9, six at a time).
+six and six. No run failed, money holds every month, and a run takes two to
+five per cent longer (17.2 and 17.7 seconds on two tries against 16.9, six
+at a time).
 
 Four things are different, and one number was changed for them.
 
