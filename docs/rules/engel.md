@@ -431,7 +431,82 @@ script finishes first on every seed either way, and no script moves by more than
 one place. The landlord's net worth in 1900 is about a tenth lower with the
 curve (25.9m for 28.7m on average), as one would expect when less grain is
 wanted, and the thoughtful player's too (22.3m for 25.5m); these are four single
-runs a side and I would not lean on them.
+runs a side and I would not lean on them. (They were run before any other
+mechanism joined the game's rules, so "the game's rules" in this paragraph is
+the port with the curve.)
+
+### In company with prices
+
+Everything above was measured on the port with the curve alone. When the curve
+was merged into the game's rules the merchants' prices (`prices.md`) were
+already there, so the pair was run together: seeds 1 to 6 and then 7 to 12,
+six families, to 1900, the game's rules without the curve and with it
+(`core-steps/engel-before`, `engel-after` and `engel-s7-12` under
+`.claude/night/reports/`). No run failed. Seeds 1 to 6, with the tally seed
+for seed, and beside it what the curve did alone on seeds 1 to 8:
+
+| 1900, six families | prices | prices and the curve | tally | alone (port, then curve) |
+|---|---|---|---|---|
+| towns: share of people | 0.259 | 0.320 | 6/0* | 0.255, 0.318 |
+| works: share of labour | 0.277 | 0.354 | 6/0* | 0.272, 0.351 |
+| land: share of labour | 0.430 | 0.364 | 0/6* | 0.452, 0.343 |
+| mines: share of labour | 0.293 | 0.283 | | 0.275, 0.306 |
+| grain output (1750 = 1) | 9.18 | 7.48 | 0/6* | 9.12, 6.47 |
+| food, comfort: share of budgets | | 0.266, 0.145 | | 0.258, 0.147 |
+| real wage, 1750 basket (1750 = 1) | 1.42 | 1.45 | 5/1 | 1.35, 1.34 |
+| real wage, chained (1750 = 1) | | 1.77 | | 1.74, 1.83 |
+| output per head (1750 = 1) | 1.51 | 1.50 | 2/4 | |
+| grain's price swing | 0.027 | 0.032 | 6/0 | 0.090, 0.111 |
+| farm zigzag | 0.76 | 0.84 | 4/2 | 4.99, 5.65 |
+| famine notices a run | 1.5 | 3.3 | 5/0 | 2.5, 3.9 |
+| alarms a run | 2.0 | 2.2 | 2/4 | |
+| town cells | 79.7 | 94.8 | 6/0* | 77, 94 |
+
+Seeds 7 to 12 say the same, each on all six islands unless a tally is given:
+towns 0.327 for 0.260, works 0.362 for 0.278, grain 7.51 for 9.14, the wage
+1.43 for 1.40 (5/1), grain's swing 0.031 for 0.029 (4/2), the zigzag 0.92 for
+0.81, famine notices 3.3 for 2.2 (5/1).
+
+So in company the curve does what it does alone: six points more of town,
+eight more of works, a fifth less grain, the wage where it was. The land gives
+up seven points where alone it gave eleven; the mines' share, which is jumpy
+from year to year, makes the difference, and I would not read anything into
+it. People, works, their sizes and lives, and the iron, rail and cloth
+prices' swings are not moved beyond the spread between seeds. Two things
+moved on one set of islands and not on the other, and I take both for noise
+until more seeds say otherwise: engine works reach half of their good's
+output ten years later on seeds 1 to 6 (later on five islands) and two years
+sooner on seeds 7 to 12 (sooner on four); and the railway of 1900 is 6 per
+cent shorter on all of seeds 7 to 12 (1,078 km for 1,145) and 4 per cent
+longer on seeds 1 to 6 (three islands up, three down).
+
+**The worry about the cobweb is much smaller than it was.** Alone, the curve
+made grain's price swing a fifth harder on top of the port's false cycle
+(0.111 for 0.090) and the zigzag a sixth larger. With the merchants' markup
+the fifth is still there on seeds 1 to 6, but it is a fifth of very little:
+0.032 for 0.027. The zigzag is a tenth larger on ten islands of the twelve,
+0.84 and 0.92 for 0.76 and 0.81, and 1.04 on the worst island: still under
+the 1.2 the prices page asks for, with less room than there was. **The famines are not smaller**: notices still about double.
+They come from households that eat 1.5 times the grain of 1750 where they ate
+1.8 times, and so stand nearer the floor in a bad year, and steady prices do
+nothing for that. It is the thing to look at again when harvests arrive.
+
+**The island starts a little nearer the reference.** Under the merchants'
+prices the households of 1750 have 1.89 bundles a head (1.94 on seeds 7 to 12,
+1.98 on the best-off island) where the port has 1.84, and `y_ref` is 2. So a
+few more towns are already past it in 1750: the towns' share of 1750 is 0.002
+higher, on eleven of the twelve islands. That is too little to retune for,
+and `y_ref` is left at 2; but one more mechanism that lifts the incomes of
+1750 would put the whole island past the reference at the start, and then
+`y_ref` wants moving with it.
+
+With the curve switched off (`--set engel.enabled=false` under the game's
+rules) the merged code gives every fact of every seed exactly as the code
+before the merge gave it, so the curve leaks nothing into the others when it
+is off in their company (`core-steps/engel-off`).
+
+Not done here: the scripted players and the prices probe's shock were not run
+again on the pair.
 
 ## Facts added to the sweep
 
