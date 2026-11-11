@@ -269,7 +269,7 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) {
         }
     };
     for s in &slots.hedge {
-        let cls = land.class[s.parcel as usize];
+        let cls = land.at(s.place).0;
         if px < 0.03 && (cls == world::FARM || cls == world::PASTURE) {
             dot(s.x, s.z, [0.12, 0.3, 0.1]);
         }

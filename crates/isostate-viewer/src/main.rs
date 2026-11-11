@@ -948,6 +948,7 @@ fn setup_world(
             fixed: fixed_cells,
             paint: lk.land.uniform(),
             overlay: images.add(overlay::blank(r)),
+            rivers: images.add(world::timed("far rivers", || terrain::river_far(g))),
         },
     });
     for chunk in terrain::terrain_chunks(g) {

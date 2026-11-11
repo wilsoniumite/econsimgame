@@ -699,6 +699,84 @@ pub fn parcel_index(g: &Ground, fx: f32, fy: f32) -> usize {
     g.land.index(bl.i, bl.j, pc.id)
 }
 
+// Wood and heath do not stop at a parcel's straight side. Where one meets
+// other open land, the line between them leans to and fro about the side by
+// a coherent noise (`fringe`): the wilder of the two (wood before heath,
+// heath before the fields) takes the neighbour's ground where the lean is
+// its way, and gives up as much of its own where it is not, so neither gains
+// area. What a wood or a heath gives up to a field is its margin: rough
+// grass and scrub, still the wood's parcel. terrain.wesl does the same per
+// pixel.
+
+/// Which way the line between wild land and its neighbour leans at a spot, -1 to 1.
+pub fn fringe(x: f32, z: f32) -> f32 {
+    0.65 * vnoise(x * 4.3, z * 4.3, 421) + 0.35 * vnoise(x * 10.7, z * 10.7, 423)
+}
+
+/// Where a spot lies in the field system, for asking what it is in any year:
+/// its parcel, the parcel across the nearest side, and whether the spot is
+/// near enough to that side for a wilder neighbour to take it (`lean` 1) or
+/// for its own wild parcel to give it up (-1).
+#[derive(Clone, Copy, Debug)]
+pub struct Place {
+    pub parcel: u32,
+    pub beyond: u32,
+    pub lean: i8,
+}
+
+pub fn place_at(g: &Ground, fx: f32, fy: f32) -> Place {
+    let (bl, pc, _) = fields::parcel(Vec2::new(fx, fy));
+    let parcel = g.land.index(bl.i, bl.j, pc.id) as u32;
+    let (side, nb, npc) = fields::across(&bl, pc);
+    if side >= fields::FRINGE {
+        return Place { parcel, beyond: parcel, lean: 0 };
+    }
+    let lean = fringe(fx, fy);
+    Place { parcel, beyond: g.land.index(nb.i, nb.j, npc.id) as u32, lean: if side < fields::FRINGE * lean { 1 } else if side < -fields::FRINGE * lean { -1 } else { 0 } }
+}
+
+impl YearLand {
+    /// The class drawn at a place, and whether the place is the margin a
+    /// wood or heath leaves to the fields beside it.
+    pub fn at(&self, pl: Place) -> (u8, bool) {
+        let own = self.class[pl.parcel as usize];
+        let open = |c: u8| (FARM..=HEATH).contains(&c);
+        if pl.lean == 0 || !open(own) {
+            return (own, false);
+        }
+        let other = self.class[pl.beyond as usize];
+        if other == own || !open(other) || (own < WOOD && other < WOOD) {
+            return (own, false);
+        }
+        let wildness = |c: u8| if c == WOOD { 2 } else if c == HEATH { 1 } else { 0 };
+        if wildness(other) > wildness(own) {
+            (if pl.lean > 0 { other } else { own }, false)
+        } else if pl.lean < 0 {
+            if other >= WOOD { (other, false) } else { (own, true) }
+        } else {
+            (own, false)
+        }
+    }
+
+    /// How wooded a place is, 0 to 1: `wood` of its parcel, or a wood's edge
+    /// where a wood has leant across into it.
+    pub fn wooded(&self, pl: Place) -> f32 {
+        if self.class[pl.parcel as usize] != WOOD && self.at(pl).0 == WOOD { 0.5 } else { self.wood[pl.parcel as usize] as f32 / 255.0 }
+    }
+}
+
+/// How open a wood is at a spot, 0 under the trees to 1 in a glade or a ride,
+/// for a wood of depth `deep` (0 at its edge to 1 far inside). The ground
+/// shader paints the glades by the same measure (`glade` in terrain.wesl).
+pub fn glade(x: f32, z: f32, deep: f32) -> f32 {
+    let qx = x + 0.12 * vnoise(x * 2.1 + 3.3, z * 2.1 + 7.1, 431);
+    let qz = z + 0.12 * vnoise(x * 2.1 + 9.2, z * 2.1 + 1.4, 433);
+    let n = 0.5 + 0.5 * (0.7 * vnoise(qx * 3.7, qz * 3.7, 435) + 0.3 * vnoise(qx * 9.1, qz * 9.1, 437));
+    let open = fields::smoothstep(0.0, 0.07, n - (0.66 + (0.8 - 0.66) * deep));
+    let ride = 1.0 - fields::smoothstep(0.012, 0.03, vnoise(qx * 1.3 + 5.5, qz * 1.3 + 2.5, 439).abs());
+    open.max(ride * deep)
+}
+
 /// How far a spot is from the water of a river (negative in it); about 0.25 or
 /// more means nowhere near.
 pub fn water_dist(g: &Ground, x: f32, z: f32) -> f32 {
@@ -769,7 +847,7 @@ pub fn field_at(g: &Ground, fx: f32, fy: f32) -> fields::Field {
 
 /// Which display class is drawn at a position, given the year's land.
 pub fn class_at(g: &Ground, land: &YearLand, fx: f32, fy: f32) -> u8 {
-    land.class[parcel_index(g, fx, fy)]
+    land.at(place_at(g, fx, fy)).0
 }
 
 /// The patchwork rule cell by cell: the class a cell's own mix gives a parcel

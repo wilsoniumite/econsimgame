@@ -127,6 +127,10 @@ pub struct Patchwork {
     /// per cell, the map overlay: a tint and the region it belongs to (`overlay.rs`)
     #[texture(104)]
     pub overlay: Handle<Image>,
+    /// the rivers for the far view: the distance to the nearest and its width (`river_far`)
+    #[texture(105)]
+    #[sampler(106)]
+    pub rivers: Handle<Image>,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -267,6 +271,29 @@ pub fn fixed_parcels(r: &Replay, g: &Ground) -> Vec<u8> {
         out.extend_from_slice(&[l.depth[i] | (r.terrain[l.wcell[i] as usize] << 4), open, l.ley[i], l.soil[i]]);
     }
     out
+}
+
+/// The rivers as the far view draws them, sixteen texels to a cell and read
+/// between texels: how far each spot is from the middle of the nearest river
+/// (255 is a quarter of a cell or more), and that river's half width (255 is
+/// 0.06 of a cell). From far off the shader rules a thread along the rivers
+/// that keeps a pixel or two of width, as a map does.
+pub fn river_far(g: &Ground) -> Image {
+    use rayon::prelude::*;
+    const RES: usize = 16;
+    let (tw, th) = (g.w * RES, g.h * RES);
+    let data: Vec<u8> = (0..tw * th)
+        .into_par_iter()
+        .flat_map_iter(|i| {
+            let p = Vec2::new(((i % tw) as f32 + 0.5) / RES as f32, ((i / tw) as f32 + 0.5) / RES as f32);
+            let (d, half) = g.water.nearest(p);
+            [((d / 0.25).clamp(0.0, 1.0) * 255.0) as u8, ((half / 0.06).clamp(0.0, 1.0) * 255.0) as u8]
+        })
+        .collect();
+    let size = Extent3d { width: tw as u32, height: th as u32, depth_or_array_layers: 1 };
+    let mut img = Image::new(size, TextureDimension::D2, data, TextureFormat::Rg8Unorm, RenderAssetUsages::RENDER_WORLD);
+    img.sampler = ImageSampler::linear();
+    img
 }
 
 /// A texture with one texel per parcel, eight in a row for each block of the

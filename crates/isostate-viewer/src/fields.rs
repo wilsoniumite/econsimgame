@@ -226,6 +226,51 @@ pub fn parcels_of(bl: &Block) -> [(Cut, Vec2, f32); 8] {
     })
 }
 
+/// How far a wood or heath may lean across a parcel's side, in cells
+/// (`world::place_at`; terrain.wesl has the same number).
+pub const FRINGE: f32 = 0.085;
+
+/// How far the block's point is from the nearest side of its parcel `pc`, in
+/// cells, and the parcel across that side with its block. terrain.wesl does
+/// the same in its fragment, step for step.
+pub fn across(bl: &Block, pc: Cut) -> (f32, Block, Cut) {
+    const ACROSS: f32 = 0.004;
+    let g = bl.a - bl.b + bl.c - bl.d;
+    let ju = (bl.b - bl.a) + g * bl.uv.y;
+    let jv = (bl.d - bl.a) + g * bl.uv.x;
+    let det = cross(ju, jv).abs().max(1e-6);
+    let su = det / jv.length().max(1e-6);
+    let sv = det / ju.length().max(1e-6);
+    let (pu0, pu1) = (bl.uv.x - pc.lo.x, pc.hi.x - bl.uv.x);
+    let (pv0, pv1) = (bl.uv.y - pc.lo.y, pc.hi.y - bl.uv.y);
+    let (peu, pev) = (pu0.min(pu1) * su, pv0.min(pv1) * sv);
+    let mut uv = bl.uv;
+    if peu < pev {
+        uv.x = if pu0 < pu1 { pc.lo.x - ACROSS } else { pc.hi.x + ACROSS };
+    } else {
+        uv.y = if pv0 < pv1 { pc.lo.y - ACROSS } else { pc.hi.y + ACROSS };
+    }
+    let (mut ni, mut nj) = (bl.i, bl.j);
+    if uv.x < 0.0 {
+        ni -= 1;
+        uv.x = 1.0 - ACROSS;
+    } else if uv.x >= 1.0 {
+        ni += 1;
+        uv.x = ACROSS;
+    }
+    if uv.y < 0.0 {
+        nj -= 1;
+        uv.y = 1.0 - ACROSS;
+    } else if uv.y >= 1.0 {
+        nj += 1;
+        uv.y = ACROSS;
+    }
+    let mut nb = if ni != bl.i || nj != bl.j { block(ni, nj) } else { *bl };
+    nb.uv = uv;
+    let npc = cut(&nb, Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 }, 0, PARCEL_LEVEL);
+    (peu.min(pev) * BLOCK, nb, npc)
+}
+
 /// How old the enclosures of the country round a spot are, 0 to 1: old ones
 /// bend and are small, planned ones run straight and are large. It is the
 /// measure `to_block` bends the hedges by.

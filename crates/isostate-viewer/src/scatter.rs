@@ -35,8 +35,9 @@ pub struct Slot {
     pub wcell: u32,
     /// patch-noise value at the spot, 0..255, so the slot agrees with the painted ground
     pub sub: f32,
-    /// the parcel the spot lies in (`world::Land`), whose class the year's land gives
-    pub parcel: u32,
+    /// where the spot lies in the field system (`world::place_at`), for asking
+    /// the year's land what it stands on
+    pub place: world::Place,
     /// fixed thresholds and variety
     pub u: f32,
     pub v: f32,
@@ -91,7 +92,7 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
                     z,
                     wcell: wc as u32,
                     sub,
-                    parcel: world::parcel_index(g, x, z) as u32,
+                    place: world::place_at(g, x, z),
                     u: world::hash2(id, 3, seed),
                     v: world::hash2(id, 4, seed),
                     yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
@@ -510,7 +511,7 @@ pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
 
 fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     let mut slots = Slots {
-        trees: grid_slots(r, g, 6, 11, 0.9),
+        trees: grid_slots(r, g, 7, 11, 0.9),
         houses: grid_slots(r, g, 7, 12, 0.7),
         farms: Vec::new(),
         mines: grid_slots(r, g, 2, 14, 0.7),
@@ -525,7 +526,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     };
     (slots.hedge, slots.hedge_open) = hedge_slots(r, g).into_iter().unzip();
     slots.farms = grid_slots(r, g, 2, 13, 0.5).into_iter().map(|s| farm_spot(g, s)).collect();
-    slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.parcel as usize]).collect();
+    slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.place.parcel as usize]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
     crate::plan::maybe_areas(r, g);
@@ -582,12 +583,12 @@ fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
                         z: hz,
                         wcell: wc as u32,
                         sub,
-                        parcel: world::parcel_index(g, x, z) as u32,
+                        place: world::place_at(g, x, z),
                         u,
                         v: world::hash2(id, 4, 17),
                         yaw: world::hash2(id, 5, 17) * std::f32::consts::TAU,
                     };
-                    out.push((slot, g.land.open_until[slot.parcel as usize]));
+                    out.push((slot, g.land.open_until[slot.place.parcel as usize]));
                 }
             }
             out
@@ -607,6 +608,8 @@ fn farm_spot(g: &Ground, s: Slot) -> Slot {
     out.yaw = (-f.toward.y).atan2(f.toward.x) + std::f32::consts::FRAC_PI_2;
     out
 }
+
+use crate::fields::smoothstep as fields_smooth;
 
 fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
     Vec3::new(x, world::height_at(g, x, z), z)
@@ -675,20 +678,45 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
 
+    // Woods with a shape of their own. A wood is thick and tall in its depths
+    // and thinner and lower toward its edge (`YearLand::wood`), with glades
+    // and rides the trees keep out of (`world::glade`, which the ground paints
+    // too); the country next to a wood carries clumps and lone trees that thin
+    // out away from it; and the margin a wood leaves to the fields is scrub.
+    // Trees stand in stands, taller in one and lower in the next, and the
+    // conifers gather on high and poor ground, the broadleaves on the low.
     let land = world::year_land(r, g, k);
     for s in &slots.trees {
-        let cls = land.class[s.parcel as usize];
-        let terr = r.terrain[s.wcell as usize];
+        let (cls, margin) = land.at(s.place);
+        let wooded = land.wooded(s.place);
+        // 0 far from any wood, 1 at a wood's edge
+        let by_wood = (wooded * 2.0).min(1.0);
+        // a second and a third number of the slot's own
+        let (u2, u3) = ((s.v * 7.13).fract(), (s.u * 11.7).fract());
+        let clump = fields_smooth(0.6, 0.78, 0.5 + 0.5 * world::vnoise(s.x * 5.1, s.z * 5.1, 451));
+        let stand = 0.5 + 0.5 * world::vnoise(s.x * 2.9 + 3.1, s.z * 2.9 + 8.7, 457);
         let (grow, scale) = match cls {
-            world::WOOD => (true, 0.85 + 0.4 * s.v),
-            // the odd tree out in a field; most stand in the hedges
-            world::FARM | world::PASTURE => (s.u < 0.012, 0.75 + 0.3 * s.v),
-            world::HEATH => {
-                // gorse and broom: low bushes, and the odd tree
-                if s.u < 0.16 && !near_plot(s.x, s.z) {
+            world::WOOD | world::HEATH if margin => {
+                // scrub on the margin: bushes, and a low tree here and there
+                if u2 < 0.3 && !near_plot(s.x, s.z) {
                     bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
                 }
-                (s.u < if terr >= 3 { 0.02 } else { 0.035 }, 0.6 + 0.3 * s.v)
+                (s.u < 0.1, 0.5 + 0.25 * s.v)
+            }
+            world::WOOD => {
+                let deep = (wooded * 2.0 - 1.0).clamp(0.0, 1.0);
+                let open = world::glade(s.x, s.z, deep);
+                ((1.0 - s.u) < (0.78 + 0.22 * deep) * (1.0 - open), (0.62 + 0.3 * deep) * (0.78 + 0.44 * stand) + 0.3 * s.v)
+            }
+            // the odd tree out in a field, and clumps and lone trees near a wood;
+            // most of a field's trees stand in its hedges
+            world::FARM | world::PASTURE => (s.u < 0.012 + by_wood * (0.03 + 0.5 * clump), 0.7 + 0.2 * stand + 0.25 * s.v),
+            world::HEATH => {
+                // gorse and broom: low bushes, and the odd tree, more of them by a wood
+                if u2 < 0.16 && !near_plot(s.x, s.z) {
+                    bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
+                }
+                (s.u < 0.025 + by_wood * (0.03 + 0.3 * clump), 0.55 + 0.15 * stand + 0.25 * s.v)
             }
             _ => (false, 1.0),
         };
@@ -696,7 +724,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             continue;
         }
         let p = ground(g, s.x, s.z);
-        let conifer = terr >= 2 && s.v > 0.35 || s.v > 0.88;
+        // conifers in stands, on high ground and on the poor tops
+        let high = fields_smooth(0.34, 0.8, p.y + 0.12 * world::vnoise(s.x * 0.9, s.z * 0.9, 453));
+        let poor = fields_smooth(0.55, 0.95, g.land.moor[s.place.parcel as usize]);
+        let share = (0.05 + 0.75 * high + 0.2 * poor).min(0.92);
+        let conifer = 0.65 * (0.5 + 0.5 * world::vnoise(s.x * 2.3 + 6.1, s.z * 2.3 + 1.9, 455)) + 0.35 * u3 < 0.2 + 0.6 * share;
         let species = if conifer { Species::Conifer } else { Species::Broadleaf };
         tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
     }
@@ -710,8 +742,12 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if year < open {
             continue;
         }
-        let cls = land.class[s.parcel as usize];
+        let (cls, _) = land.at(s.place);
         if !(cls == world::FARM || cls == world::PASTURE) || near_plot(s.x, s.z) || roads.nearest(s.x, s.z, 0.03).is_some() {
+            continue;
+        }
+        // the hedges are fuller of trees near a wood than out on the open plain
+        if (s.v * 5.77).fract() > 0.6 + 0.8 * land.wooded(s.place) {
             continue;
         }
         let p = ground(g, s.x, s.z);
@@ -722,7 +758,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     for (s, &open) in slots.farms.iter().zip(&slots.farm_open) {
         let c = s.wcell as usize;
         // the farm is of the land it stands on
-        let main = land.class[s.parcel as usize];
+        let (main, _) = land.at(s.place);
         if year < open || !(main == world::FARM || main == world::PASTURE) || s.u > 0.32 || near_plot(s.x, s.z) {
             continue;
         }
