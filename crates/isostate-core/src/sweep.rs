@@ -38,9 +38,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::cli::parse_rules;
+use crate::cli::{check_end_year, parse_rules};
 use crate::content::{Content, load_content};
-use crate::facts::{self, Fact, Facts, GROUPS, Kind};
+use crate::facts::{self, Fact, Facts, GROUPS, Kind, NEWS, SPEED};
 use crate::params::{Params, Rules};
 use crate::sim;
 use crate::util::{fmt_g6, fmt_thousands_f0};
@@ -116,9 +116,13 @@ pub struct Sweep {
 
 // ---------------------------------------------------------------- the command line
 
+/// More seeds than this in one `--seeds` is taken for a slip of the hand (`1-80000`
+/// for `1-8`): ten thousand whole runs are already most of a day.
+pub const MAX_SEEDS: u64 = 10_000;
+
 /// `1-8`, `1,2,5` or a mixture (`1-3,7`).
 pub fn parse_seeds(s: &str) -> Result<Vec<u64>, String> {
-    let bad = |e: std::num::ParseIntError| format!("--seeds {s:?}: {e}");
+    let bad = |e: std::num::ParseIntError| format!("--seeds {s:?}: {e}; write it as 1-8 or 1,2,5");
     let mut out = Vec::new();
     for part in s.split(',') {
         match part.split_once('-') {
@@ -127,6 +131,10 @@ pub fn parse_seeds(s: &str) -> Result<Vec<u64>, String> {
                 if a > b {
                     return Err(format!("--seeds {s:?}: {a}-{b} runs backwards"));
                 }
+                // checked before the range is laid out: 0-99999999999 would not fit in memory
+                if b - a >= MAX_SEEDS || out.len() as u64 + (b - a) >= MAX_SEEDS {
+                    return Err(format!("--seeds {s:?}: more than {MAX_SEEDS} seeds"));
+                }
                 out.extend(a..=b);
             }
             None => out.push(part.trim().parse().map_err(bad)?),
@@ -134,6 +142,9 @@ pub fn parse_seeds(s: &str) -> Result<Vec<u64>, String> {
     }
     let mut seen = HashSet::new();
     out.retain(|x| seen.insert(*x));
+    if out.len() as u64 > MAX_SEEDS {
+        return Err(format!("--seeds {s:?}: more than {MAX_SEEDS} seeds"));
+    }
     Ok(out)
 }
 
@@ -202,6 +213,10 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
                 if o.sets.iter().any(|(k, _)| *k == key) {
                     return Err(format!("--set {key}: given twice; list its values in one --set, separated by commas"));
                 }
+                // the same value twice would be two columns with one name
+                if let Some(twice) = values.iter().enumerate().find(|(k, x)| values[..*k].contains(x)).map(|(_, x)| x) {
+                    return Err(format!("--set {key}: {twice} is listed twice"));
+                }
                 o.sets.push((key, values));
             }
             "--params" => o.params_file = Some(PathBuf::from(value("--params")?)),
@@ -247,7 +262,8 @@ fn near_matches<'a>(bad: &str, known: &[&'a str]) -> Vec<&'a str> {
         .iter()
         .filter_map(|&k| {
             let d = edit_distance(bad, k);
-            let inside = bad.len() >= 3 && (k.contains(bad) || bad.contains(k));
+            // the one-letter parameters W and H are inside most words: a name counts from three letters
+            let inside = bad.len() >= 3 && (k.contains(bad) || (k.len() >= 3 && bad.contains(k)));
             (d <= limit || inside).then_some((d, k))
         })
         .collect();
@@ -326,8 +342,12 @@ pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
             P = set_field(&P, key, &parse_value(v))?;
         }
         let label = if values.is_empty() {
-            // nothing swept: name the column after what was run
-            let families = o.families.filter(|&n| n > 0).map_or(String::new(), |n| format!(", {n} families"));
+            // nothing swept: name the column after what was run (the families may come from --params)
+            let families = match base.n_families {
+                0 => String::new(),
+                1 => ", 1 family".to_string(),
+                n => format!(", {n} families"),
+            };
             format!("{} rules{families}", o.rules.as_str())
         } else {
             o.sets.iter().zip(&values).map(|((k, _), v)| format!("{k}={v}")).collect::<Vec<_>>().join(" ")
@@ -363,13 +383,29 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     format!("panicked: {}", text.unwrap_or_else(|| "no message".to_string()))
 }
 
-/// Run the whole sweep. Nothing is written or printed here but the progress lines.
-pub fn run(o: &Options) -> Result<Sweep, String> {
+/// What a sweep will run, worked out and checked before anything runs or is written.
+#[derive(Clone, Debug)]
+pub struct Plan {
+    pub settings: Vec<Setting>,
+    pub content: Content,
+}
+
+/// The settings and the content of a sweep, or what is wrong with the command line.
+pub fn plan(o: &Options) -> Result<Plan, String> {
     let settings = settings(o)?;
     let content = match &o.content_file {
         Some(p) => load_content(p)?,
         None => o.rules.content(),
     };
+    for s in &settings {
+        check_end_year(&s.params, &content)?;
+    }
+    Ok(Plan { settings, content })
+}
+
+/// Run the whole sweep. Nothing is written or printed here but the progress lines.
+pub fn run(o: &Options, plan: Plan) -> Sweep {
+    let Plan { settings, content } = plan;
     let todo: Vec<(usize, u64)> = (0..settings.len()).flat_map(|k| o.seeds.iter().map(move |&s| (k, s))).collect();
     let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
     let jobs = o.jobs.unwrap_or((cores / 2).max(1)).min(todo.len()).max(1);
@@ -413,9 +449,9 @@ pub fn run(o: &Options) -> Result<Sweep, String> {
         let Ok(done) = &mut run.outcome else { continue };
         let count = |k: &str| done.facts.news.get(k).copied().unwrap_or(0) as f64;
         let mut news: Vec<Fact> =
-            kinds.iter().map(|k| Fact { name: format!("news_{k}"), group: GROUPS[7], kind: Kind::Count, value: Some(count(k)) }).collect();
+            kinds.iter().map(|k| Fact { name: format!("news_{k}"), group: NEWS, kind: Kind::Count, value: Some(count(k)) }).collect();
         let total: usize = done.facts.news.values().sum();
-        news.push(Fact { name: "news_total".to_string(), group: GROUPS[7], kind: Kind::Count, value: Some(total as f64) });
+        news.push(Fact { name: "news_total".to_string(), group: NEWS, kind: Kind::Count, value: Some(total as f64) });
         done.facts.facts.extend(news);
     }
     let mut fact_index: Vec<(String, &'static str, Kind)> = Vec::new();
@@ -428,7 +464,7 @@ pub fn run(o: &Options) -> Result<Sweep, String> {
         }
     }
     fact_index.sort_by_key(|(_, group, _)| GROUPS.iter().position(|g| g == group));
-    Ok(Sweep {
+    Sweep {
         rules: o.rules,
         seeds: o.seeds.clone(),
         keys: o.sets.iter().map(|(k, _)| k.clone()).collect(),
@@ -437,7 +473,7 @@ pub fn run(o: &Options) -> Result<Sweep, String> {
         fact_index,
         jobs,
         seconds: t0.elapsed().as_secs_f64(),
-    })
+    }
 }
 
 // ---------------------------------------------------------------- the files
@@ -506,7 +542,7 @@ pub fn facts_csv(sw: &Sweep) -> String {
                 for (name, _, _) in &sw.fact_index {
                     out.push(',');
                     if let Some(Some(v)) = by_name.get(name.as_str()) {
-                        // whole numbers in full, the rest to 9 digits
+                        // in full: the shortest text that reads back as the same number
                         let _ = write!(out, "{v}");
                     }
                 }
@@ -716,8 +752,17 @@ fn ok_runs(sw: &Sweep, k: usize) -> usize {
     sw.runs.iter().filter(|r| r.setting == k && r.outcome.is_ok()).count()
 }
 
-/// Rows under their headings, the columns padded to line up: the first to the left, the rest to the right.
-fn layout(head: &[String], rows: &[(Option<&'static str>, Vec<String>)]) -> String {
+/// Which side of its column a cell is set against.
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Left,
+    Right,
+}
+
+/// Rows under their headings, the columns padded to line up. The first column is
+/// the fact's name, indented under its heading; `sides` says how each of the
+/// others is set.
+fn layout(head: &[String], sides: &[Side], rows: &[(Option<&'static str>, Vec<String>)]) -> String {
     let cols = head.len();
     let mut width: Vec<usize> = head.iter().map(|h| h.chars().count()).collect();
     for (_, cells) in rows.iter().filter(|(h, _)| h.is_none()) {
@@ -731,6 +776,8 @@ fn layout(head: &[String], rows: &[(Option<&'static str>, Vec<String>)]) -> Stri
             let cell = cells.get(c).map_or("", |x| x.as_str());
             if c == 0 {
                 let _ = write!(s, "{indent}{cell:<w$}", w = width[0] - indent.len());
+            } else if sides[c] == Side::Left {
+                let _ = write!(s, "  {cell:<w$}", w = width[c]);
             } else {
                 let _ = write!(s, "  {cell:>w$}", w = width[c]);
             }
@@ -749,13 +796,16 @@ fn layout(head: &[String], rows: &[(Option<&'static str>, Vec<String>)]) -> Stri
     out
 }
 
-/// The summary: for every fact its mean and `[least .. greatest]` across seeds, one column per setting.
+/// The summary: for every fact its mean across seeds and, beside it, the least
+/// and the greatest, one pair of columns per setting. The means stand in a
+/// column of their own so the eye can run down them.
 pub fn table(sw: &Sweep) -> String {
     let failed: Vec<&Run> = sw.runs.iter().filter(|r| r.outcome.is_err()).collect();
     let seeds: Vec<String> = sw.seeds.iter().map(|s| s.to_string()).collect();
     let mut out = format!(
         "{} under the {} rules: seeds {}, {} setting{}; {} failed; {:.0} s, {} at a time\n\
-         each fact: mean [least .. greatest] across seeds; (n/N) when only n of N runs have a value\n\n",
+         each fact: its mean across seeds, then [least .. greatest] unless the two print the same;\n\
+         (n/N) when only n of N runs have a value, - when none has\n\n",
         count_runs(sw.runs.len()),
         sw.rules.as_str(),
         seeds.join(" "),
@@ -766,8 +816,13 @@ pub fn table(sw: &Sweep) -> String {
         sw.jobs
     );
     let values: Vec<HashMap<&str, Vec<f64>>> = (0..sw.settings.len()).map(|k| setting_values(sw, k)).collect();
+    // per setting: the mean under the setting's name, then the range and the (n/N) note
     let mut head = vec![String::new()];
-    head.extend(sw.settings.iter().map(|s| s.label.clone()));
+    let mut sides = vec![Side::Left];
+    for s in &sw.settings {
+        head.extend([s.label.clone(), String::new()]);
+        sides.extend([Side::Right, Side::Left]);
+    }
     let mut rows: Vec<(Option<&'static str>, Vec<String>)> = Vec::new();
     let mut group = "";
     for (name, g, kind) in &sw.fact_index {
@@ -778,23 +833,21 @@ pub fn table(sw: &Sweep) -> String {
         let mut cells = vec![name.clone()];
         for (k, vals) in values.iter().enumerate() {
             let total = ok_runs(sw, k);
-            cells.push(match vals.get(name.as_str()).and_then(|v| stat(v)) {
-                None => "-".to_string(),
+            match vals.get(name.as_str()).and_then(|v| stat(v)) {
+                None => cells.extend(["-".to_string(), String::new()]),
                 Some(s) => {
-                    let mut cell = fmt_fact(*kind, s.mean);
-                    if total > 1 {
-                        let _ = write!(cell, " [{} .. {}]", fmt_fact(*kind, s.min), fmt_fact(*kind, s.max));
-                    }
+                    let (least, greatest) = (fmt_fact(*kind, s.min), fmt_fact(*kind, s.max));
+                    let mut note = if least == greatest { String::new() } else { format!("[{least} .. {greatest}]") };
                     if s.n < total {
-                        let _ = write!(cell, " ({}/{total})", s.n);
+                        let _ = write!(note, "{}({}/{total})", if note.is_empty() { "" } else { " " }, s.n);
                     }
-                    cell
+                    cells.extend([fmt_fact(*kind, s.mean), note]);
                 }
-            });
+            }
         }
         rows.push((None, cells));
     }
-    out.push_str(&layout(&head, &rows));
+    out.push_str(&layout(&head, &sides, &rows));
 
     // methods never built, with the number of runs each was missing from
     for (k, setting) in sw.settings.iter().enumerate() {
@@ -856,27 +909,26 @@ pub fn read_then(dir: &Path) -> Result<Vec<Then>, String> {
     Ok(out)
 }
 
+/// A star needs this many runs on each side. With fewer, two sets of seeds under
+/// the same rules stand clear of each other too often for a star to mean much:
+/// one time in three with two a side, one in ten with three, one in 35 with four.
+pub const STAR_RUNS: usize = 4;
+
 /// Each fact's mean now, its mean then and the change, for every setting of this
 /// sweep against the earlier sweep's setting of the same name (or its first).
-/// A star marks a fact whose ranges across seeds do not overlap.
+/// `=` is a fact that came out the same; a star marks one whose ranges across
+/// seeds do not overlap.
 pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
     let mut out = String::new();
     for (k, setting) in sw.settings.iter().enumerate() {
         let other = then.iter().find(|t| t.label == setting.label).unwrap_or(&then[0]);
         let now = setting_values(sw, k);
-        let _ = writeln!(
-            out,
-            "\nnow: {} ({}); then: {} ({}) in {}\n\
-             * the ranges across seeds do not overlap\n",
-            setting.label,
-            count_runs(ok_runs(sw, k)),
-            other.label,
-            count_runs(other.runs),
-            dir.display()
-        );
         let head: Vec<String> = ["", "now", "then", "change", ""].iter().map(|s| s.to_string()).collect();
+        let sides = [Side::Left, Side::Right, Side::Right, Side::Right, Side::Left];
         let mut rows: Vec<(Option<&'static str>, Vec<String>)> = Vec::new();
         let mut group = "";
+        // the facts both sweeps have, those of them that moved, and those that moved clear of the spread
+        let (mut both, mut moved, mut clear) = (0, 0, 0);
         for (name, g, kind) in &sw.fact_index {
             if *g != group {
                 group = *g;
@@ -886,14 +938,35 @@ pub fn compare(sw: &Sweep, then: &[Then], dir: &Path) -> String {
             let b = other.values.get(name).and_then(|v| stat(v));
             let show = |s: Option<Stat>| s.map_or("-".to_string(), |s| fmt_fact(*kind, s.mean));
             let (change, mark) = match (a, b) {
+                (Some(a), Some(b)) if a == b => ("=".to_string(), ""),
                 (Some(a), Some(b)) => {
-                    (fmt_change(*kind, a.mean, b.mean), if a.min > b.max || a.max < b.min { "*" } else { "" })
+                    let apart = a.n >= STAR_RUNS && b.n >= STAR_RUNS && (a.min > b.max || a.max < b.min);
+                    (fmt_change(*kind, a.mean, b.mean), if apart { "*" } else { "" })
                 }
                 _ => (String::new(), ""),
             };
+            // how long the runs took is no fact about the rules: it is shown, not counted
+            if a.is_some() && b.is_some() && *g != SPEED {
+                both += 1;
+                moved += (change != "=") as usize;
+                clear += (mark == "*") as usize;
+            }
             rows.push((None, vec![name.clone(), show(a), show(b), change, mark.to_string()]));
         }
-        out.push_str(&layout(&head, &rows));
+        let _ = writeln!(
+            out,
+            "\nnow: {} ({}); then: {} ({}) in {}\n\
+             of the {both} facts both have, the seconds aside, {moved} differ and {clear} of those are starred\n\
+             = the same number of runs with the same mean, least and greatest\n\
+             * the ranges across seeds do not overlap: every seed now is above, or below, every seed then\n  \
+             (marked only with {STAR_RUNS} runs or more a side)\n",
+            setting.label,
+            count_runs(ok_runs(sw, k)),
+            other.label,
+            count_runs(other.runs),
+            dir.display()
+        );
+        out.push_str(&layout(&head, &sides, &rows));
     }
     out
 }
@@ -905,12 +978,16 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let o = parse_args(args)?;
-    // read the earlier sweep first, so a wrong path costs nothing
+    // whatever is wrong is found before the first run, so that it costs nothing: the earlier
+    // sweep's path, a setting, the content, a directory that cannot be made. The earlier sweep
+    // is read here, so --compare may name --out itself: what was there is compared, then replaced.
     let then = match &o.compare {
         Some(dir) => Some(read_then(dir)?),
         None => None,
     };
-    let sw = run(&o)?;
+    let plan = plan(&o)?;
+    std::fs::create_dir_all(&o.out).map_err(|e| format!("--out {}: {e}", o.out.display()))?;
+    let sw = run(&o, plan);
     let mut text = table(&sw);
     if let (Some(then), Some(dir)) = (&then, &o.compare) {
         text.push_str(&compare(&sw, then, dir));
@@ -934,7 +1011,11 @@ mod tests {
         assert_eq!(parse_seeds("1-4").unwrap(), vec![1, 2, 3, 4]);
         assert_eq!(parse_seeds("1,2,5").unwrap(), vec![1, 2, 5]);
         assert_eq!(parse_seeds("1-3,7,2").unwrap(), vec![1, 2, 3, 7]);
-        assert!(parse_seeds("3-1").is_err() && parse_seeds("a").is_err());
+        assert!(parse_seeds("3-1").is_err() && parse_seeds("a").is_err() && parse_seeds("-1").is_err() && parse_seeds("1-").is_err());
+        // a slip of the hand is refused before the list is laid out in memory
+        assert_eq!(parse_seeds("1-10000").unwrap().len(), 10_000);
+        assert!(parse_seeds("0-99999999999").unwrap_err().contains("more than 10000 seeds"));
+        assert!(parse_seeds("1-6000,7001-12000").unwrap_err().contains("more than 10000 seeds"));
         assert_eq!(split_values("2,3,4"), vec!["2", "3", "4"]);
         assert_eq!(split_values("[1500,9000,40000],[1,2,3]"), vec!["[1500,9000,40000]", "[1,2,3]"]);
         assert_eq!(parse_value("2.5"), json!(2.5));
@@ -1014,6 +1095,121 @@ mod tests {
         assert_eq!(settings(&none).unwrap()[0].label, "port rules");
         assert_eq!(none.seeds, (1..=8).collect::<Vec<u64>>());
         assert!(parse_args(&["--out".to_string(), "x".to_string(), "--set".to_string(), "seed=3".to_string()]).is_err());
+        let twice = parse_args(&["--out".to_string(), "x".to_string(), "--set".to_string(), "land_theta=2,3,2".to_string()]);
+        assert!(twice.unwrap_err().contains("2 is listed twice"));
+        // the column is named after the families that run, wherever they were asked for
+        let mut six = none.clone();
+        six.families = Some(6);
+        assert_eq!(settings(&six).unwrap()[0].label, "port rules, 6 families");
+        six.rules = Rules::Game;
+        six.families = Some(1);
+        assert_eq!(settings(&six).unwrap()[0].label, "game rules, 1 family");
+    }
+
+    /// A sweep written out by hand: two settings, four seeds, a few facts of each kind.
+    /// The second setting is ten of every unit above the first; seed 2 never builds a railway.
+    fn by_hand() -> Sweep {
+        let fact = |name: &str, group: &'static str, kind: Kind, value: Option<f64>| Fact { name: name.to_string(), group, kind, value };
+        let mut runs = Vec::new();
+        for (k, seed) in (0..2).flat_map(|k| (1..=4u64).map(move |seed| (k, seed))) {
+            let x = (k * 10) as f64 + seed as f64;
+            let facts = vec![
+                fact("pop_1750", GROUPS[0], Kind::Count, Some(135_000.0)),
+                fact("pop_1800", GROUPS[0], Kind::Count, Some(229_000.0 + 1000.0 * x)),
+                fact("urban_share_1800", GROUPS[0], Kind::Share, Some(0.2 + 0.01 * x)),
+                fact("rail_first_year", GROUPS[2], Kind::Year, (seed != 2).then_some(1820.0 + x)),
+                fact("half_of_output_bessemer", GROUPS[5], Kind::Year, None),
+                fact("seconds", SPEED, Kind::Real, Some(17.0 + x)),
+            ];
+            let done = Done { facts: Facts { facts, ..Facts::default() }, annual: Vec::new(), names: Vec::new(), start_year: 1750 };
+            runs.push(Run { id: runs.len(), seed, setting: k, outcome: Ok(done), seconds: 17.0 });
+        }
+        let setting = |v: &str| Setting { label: format!("hurdle={v}"), values: vec![v.to_string()], params: crate::params::default_params() };
+        let fact_index = match &runs[0].outcome {
+            Ok(done) => done.facts.facts.iter().map(|f| (f.name.clone(), f.group, f.kind)).collect(),
+            Err(_) => unreachable!(),
+        };
+        Sweep {
+            rules: Rules::Port,
+            seeds: vec![1, 2, 3, 4],
+            keys: vec!["hurdle".to_string()],
+            settings: vec![setting("0.1"), setting("0.12")],
+            runs,
+            fact_index,
+            jobs: 2,
+            seconds: 51.0,
+        }
+    }
+
+    #[test]
+    fn the_table_lines_the_means_up() {
+        let text = table(&by_hand());
+        println!("{text}");
+        let want = "\
+8 runs under the port rules: seeds 1 2 3 4, 2 settings; 0 failed; 51 s, 2 at a time
+each fact: its mean across seeds, then [least .. greatest] unless the two print the same;
+(n/N) when only n of N runs have a value, - when none has
+
+                           hurdle=0.1                        hurdle=0.12
+People and towns
+  pop_1750                    135,000                            135,000
+  pop_1800                    231,500  [230,000 .. 233,000]      241,500  [240,000 .. 243,000]
+  urban_share_1800              0.225  [0.210 .. 0.240]            0.325  [0.310 .. 0.340]
+Railways
+  rail_first_year                1823  [1821 .. 1824] (3/4)         1833  [1831 .. 1834] (3/4)
+Methods and inventions
+  half_of_output_bessemer           -                                  -
+Speed
+  seconds                        19.5  [18.0 .. 21.0]               29.5  [28.0 .. 31.0]
+
+never built, hurdle=0.1: nothing
+
+never built, hurdle=0.12: nothing
+";
+        assert_eq!(text, want);
+    }
+
+    #[test]
+    fn a_sweep_set_beside_itself_shows_no_change() {
+        let sw = by_hand();
+        // the earlier sweep as --compare reads it back: through facts.json's text
+        let dir = std::env::temp_dir().join(format!("isostate-sweep-unit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("facts.json"), serde_json::to_string_pretty(&facts_json(&sw, "by hand", None)).unwrap()).unwrap();
+        let then = read_then(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(then.len(), 2);
+        let text = compare(&sw, &then, Path::new("then"));
+        println!("{text}");
+        assert!(text.contains("now: hurdle=0.12 (4 runs); then: hurdle=0.12 (4 runs) in then"), "{text}");
+        assert_eq!(text.matches("of the 4 facts both have, the seconds aside, 0 differ and 0 of those are starred").count(), 2, "{text}");
+        // not a change and not a star anywhere, the seconds included
+        assert!(!text.contains('+') && !text.contains("  *"), "{text}");
+
+        // with only the first setting to compare with, the second is set against it: everything
+        // but the 1750 population moves clear of the seeds' spread. The railway's year has three
+        // runs a side, too few for a star.
+        let text = compare(&sw, &then[..1], Path::new("then"));
+        println!("{text}");
+        assert!(text.contains("now: hurdle=0.12 (4 runs); then: hurdle=0.1 (4 runs) in then"), "{text}");
+        assert!(text.contains("of the 4 facts both have, the seconds aside, 3 differ and 2 of those are starred"), "{text}");
+        assert!(text.contains("  pop_1750                 135,000  135,000                =\n"), "{text}");
+        assert!(text.contains("  pop_1800                 241,500  231,500  +10,000 (+4.3%)  *\n"), "{text}");
+        assert!(text.contains("  urban_share_1800           0.325    0.225           +0.100  *\n"), "{text}");
+        assert!(text.contains("  rail_first_year             1833     1823            +10.0\n"), "{text}");
+    }
+
+    #[test]
+    fn a_number_read_back_from_json_is_the_number_written() {
+        // what `=` in a comparison rests on, and what serde_json's float_roundtrip feature
+        // (Cargo.toml) is switched on for: without it some numbers come back one ulp off
+        // (3.5968292645345246, among these)
+        let mut x = 0.123_456_789_f64;
+        for _ in 0..20_000 {
+            x = (x * 1.618_033_988_75 + 0.000_271_828) % 1000.0;
+            let text = serde_json::to_string(&x).unwrap();
+            assert_eq!(serde_json::from_str::<f64>(&text).unwrap().to_bits(), x.to_bits(), "{text}");
+        }
     }
 
     #[test]

@@ -81,6 +81,11 @@ pub const GROUPS: [&str; 9] = [
     "Speed",
 ];
 
+/// The two headings the sweep needs by name: it adds the news facts itself, and
+/// leaves the speed out when it counts what changed between two sweeps.
+pub const NEWS: &str = GROUPS[7];
+pub const SPEED: &str = GROUPS[8];
+
 /// PLAN.md 1.3: a method's share of all its good's output in a given year. Coke's
 /// share of iron in 1800, powered mills' of cloth in 1830, the converter's of steel
 /// in 1880, rolled rails' of rails in 1850 and steel rails' in 1890.
@@ -254,6 +259,7 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.group = GROUPS[2];
     let km = Named { index: &st.series.index, data: &st.series.data }.get("rail_km");
     b.year("rail_first_year".into(), km.iter().position(|&v| v > 0.0).map(|t| y0 + (t / 12) as i64));
+    // 1800 is left out: under the port no seed has a line before 1815, and a row of noughts says nothing
     let mut rail_years: Vec<i64> = marks[1..].iter().copied().filter(|&y| y >= 1850 || y == y1).collect();
     if y0 < RAIL_YEAR && RAIL_YEAR < y1 {
         rail_years.push(RAIL_YEAR);
@@ -401,7 +407,7 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     }
 
     // ---- speed
-    b.group = GROUPS[8];
+    b.group = SPEED;
     b.num("seconds".into(), Kind::Real, seconds);
 
     Facts { facts: b.facts, never_built, news }

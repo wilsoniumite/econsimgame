@@ -114,6 +114,14 @@ fn a_tiny_sweep_writes_finite_facts() {
     assert!(annual.starts_with("run,seed,growth_cap,year,pop,"));
     assert!(annual.lines().nth(7).unwrap().starts_with("1,1,0.02,1750,"));
 
+    // the first sweep again, over itself: what was there is read, compared and then replaced,
+    // and since a run is the same run every time, nothing has changed
+    sweep(&["--seeds", "1,2", "--end-year", "1760", "--out", out, "--compare", out, "--jobs", "1", "--quiet"]).expect("the sweep runs again");
+    let again = std::fs::read_to_string(dir.join("summary.txt")).unwrap();
+    assert!(again.contains("now: port rules (2 runs); then: port rules (2 runs)"), "{again}");
+    assert!(again.contains("the seconds aside, 0 differ and 0 of those are starred"), "{again}");
+    assert_eq!(std::fs::read_to_string(dir.join("annual.csv")).unwrap().lines().collect::<Vec<_>>(), lines);
+
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&dir2);
 }
@@ -128,7 +136,24 @@ fn a_bad_setting_is_refused_before_anything_runs() {
     assert!(e.contains("land_theta") && e.contains("invalid type"), "{e}");
     let e = sweep(&["--seeds", "1", "--compare", out, "--out", out, "--quiet"]).unwrap_err();
     assert!(e.contains("--compare") && e.contains("facts.json"), "{e}");
+    let e = sweep(&["--seeds", "1", "--set", "land_theta=2,3,2", "--out", out, "--quiet"]).unwrap_err();
+    assert!(e.contains("listed twice"), "{e}");
+    let e = sweep(&["--seeds", "0-99999999999", "--out", out, "--quiet"]).unwrap_err();
+    assert!(e.contains("more than 10000 seeds"), "{e}");
+    // a run that would end before it starts
+    let e = sweep(&["--seeds", "1", "--end-year", "1749", "--out", out, "--quiet"]).unwrap_err();
+    assert!(e.contains("1749") && e.contains("before the start year, 1750"), "{e}");
+    let e = sweep(&["--seeds", "1", "--set", "end_year=1760,1700", "--out", out, "--quiet"]).unwrap_err();
+    assert!(e.contains("1700") && e.contains("before the start year"), "{e}");
     assert!(!dir.exists(), "nothing is written when the command line is wrong");
+
+    // a place that cannot be written to is found out before the runs, not after them
+    std::fs::write(&dir, "a file where the directory should go").unwrap();
+    let t0 = std::time::Instant::now();
+    let e = sweep(&["--seeds", "1-8", "--out", out, "--quiet"]).unwrap_err();
+    assert!(e.contains("--out"), "{e}");
+    assert!(t0.elapsed().as_secs_f64() < 5.0, "eight whole runs were made before --out was found to be a file");
+    let _ = std::fs::remove_file(&dir);
 }
 
 #[test]
