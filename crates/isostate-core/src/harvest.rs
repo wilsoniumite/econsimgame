@@ -50,6 +50,11 @@ pub struct HarvestParams {
     pub pasture: f64,
     /// Share of the shock that woods feel.
     pub woods: f64,
+    /// Share of the year's weather that the land's masters can see when they
+    /// hire. At 0 it is a pure surprise: the hands are taken on for an average
+    /// year. At 1 a thin crop is seen standing and fewer are taken on to bring
+    /// it in, so the wage feels the harvest as well as the rent.
+    pub foreseen: f64,
     /// The country's harvest is news when it is this many `island_sd` from an
     /// average year, either way.
     pub news_z: f64,
@@ -71,6 +76,7 @@ impl Default for HarvestParams {
             reach: 30.0,
             pasture: 0.4,
             woods: 0.0,
+            foreseen: 0.0,
             news_z: 1.8,
             news_local_z: 2.3,
             dearth_rise: 0.2,
@@ -182,6 +188,22 @@ fn draw(st: &mut State, C: &Content, P: &Params, rng: &mut Rng) {
     st.harvest_mult = mult;
     st.harvest_now = nation;
     st.harvest_town_now = town;
+}
+
+/// What the land's masters can see of the year when they hire: each unit's
+/// worth of a hand (`Cc` in `econ::step_month`) is scaled by its cell's
+/// multiplier to the power `foreseen`. Nothing at 0, the surprise the game plays.
+pub fn foreseen(st: &State, P: &Params, Cc: &mut [f64]) {
+    let share = P.harvest.foreseen;
+    if !P.harvest.enabled || share == 0.0 || st.harvest_mult.data.is_empty() {
+        return;
+    }
+    for u in 0..Cc.len() {
+        let m = st.harvest_mult[(st.ex_sector[u], st.ex_cell[u])];
+        if m != 1.0 {
+            Cc[u] *= m.powf(share);
+        }
+    }
 }
 
 /// The crop actually brought in. `Y` is what each land unit would yield in an

@@ -115,6 +115,20 @@ fn the_weather_reaches_farms_and_pastures_after_the_hands_are_hired() {
     // the same sum either way (the surprise is paid for out of rent)
     let (a, b) = (econ::money_total(&wet) - wet.issued, econ::money_total(&dry) - dry.issued);
     assert!((a - b).abs() < 1e-9 * a, "money differs: {a} against {b}");
+
+    // with `foreseen` the thin crop is seen standing: where the harvest is poor
+    // fewer hands are asked for and the town's wage is lower, the crop per hand the same
+    let mut Q = P.clone();
+    Q.harvest.foreseen = 1.0;
+    let mut seen = s.st.clone();
+    econ::step_month(&mut seen, C, &Q);
+    let worst = *towns.iter().min_by(|&&a, &&b| st.harvest_town_now[a].total_cmp(&st.harvest_town_now[b])).unwrap();
+    let best = *towns.iter().max_by(|&&a, &&b| st.harvest_town_now[a].total_cmp(&st.harvest_town_now[b])).unwrap();
+    assert!(st.harvest_town_now[worst] < 1.0 && st.harvest_town_now[best] > 1.0);
+    assert!(seen.wage[worst] < wet.wage[worst], "the wage where the harvest is worst: {} seen, {} unseen", seen.wage[worst], wet.wage[worst]);
+    assert!(seen.wage[best] > wet.wage[best], "the wage where the harvest is best: {} seen, {} unseen", seen.wage[best], wet.wage[best]);
+    let (a, b) = (econ::money_total(&seen) - seen.issued, econ::money_total(&dry) - dry.issued);
+    assert!((a - b).abs() < 1e-9 * a, "money differs: {a} against {b}");
 }
 
 #[test]

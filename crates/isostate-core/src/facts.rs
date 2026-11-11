@@ -441,22 +441,26 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         // same year. Each `_on_harvest` is the slope of the yearly change in a log on
         // the log of the country's harvest (1 is an average year), over every year
         // after the first: -1.5 for the price says a harvest ten per cent short
-        // comes with grain fifteen per cent dearer than the year before.
+        // comes with grain fifteen per cent dearer than the year before. The
+        // `_year_after_harvest` slopes are the same over two years, from the year
+        // before the harvest to the year after it: what is left of it by then.
         let h: Vec<f64> = r.rec.harvest.iter().map(|&v| (v as f64).ln()).collect();
         if h.len() >= 10 && h.len() == series("out_grain").len() {
-            let slope = |name: &str| -> f64 {
+            let slope = |name: &str, after: usize| -> f64 {
                 let v = series(name);
                 let (x, d): (Vec<f64>, Vec<f64>) =
-                    (1..h.len()).map(|k| (h[k], (v[k] / v[k - 1]).ln())).filter(|(_, d)| d.is_finite()).unzip();
+                    (1..h.len() - after).map(|k| (h[k], (v[k + after] / v[k - 1]).ln())).filter(|(_, d)| d.is_finite()).unzip();
                 let (mx, md) = (mean(&x), mean(&d));
                 let sxx: f64 = x.iter().map(|a| (a - mx) * (a - mx)).sum();
                 let sxd: f64 = x.iter().zip(&d).map(|(a, c)| (a - mx) * (c - md)).sum();
                 if sxx > 0.0 { sxd / sxx } else { f64::NAN }
             };
             b.num("harvest_sd".into(), Kind::Real, sd(&h));
-            b.num("grain_output_on_harvest".into(), Kind::Real, slope("out_grain"));
-            b.num("grain_price_on_harvest".into(), Kind::Real, slope("price_grain"));
-            b.num("real_wage_on_harvest".into(), Kind::Real, slope("real_wage"));
+            b.num("grain_output_on_harvest".into(), Kind::Real, slope("out_grain", 0));
+            b.num("grain_price_on_harvest".into(), Kind::Real, slope("price_grain", 0));
+            b.num("real_wage_on_harvest".into(), Kind::Real, slope("real_wage", 0));
+            b.num("grain_price_year_after_harvest".into(), Kind::Real, slope("price_grain", 1));
+            b.num("real_wage_year_after_harvest".into(), Kind::Real, slope("real_wage", 1));
         }
     }
     // years in which people::growth found at least one town short of food

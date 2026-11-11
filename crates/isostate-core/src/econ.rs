@@ -362,6 +362,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let npr = pe[(t, g_s[u])] - st.ex_tau[u] - in_unit;
         Cc[u] = if npr > 0.0 && f[u] > 0.0 { (1.0 - alpha[u]) * A[u] * f[u] * npr } else { 0.0 };
     }
+    // harvest: what can be seen of the year's weather when the hands are hired (nothing, unless asked)
+    harvest::foreseen(st, P, &mut Cc);
     let lam = st.ex_lam.clone();
 
     // ---------------- firms: unit economics at their own location
