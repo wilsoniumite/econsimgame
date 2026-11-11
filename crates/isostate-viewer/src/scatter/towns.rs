@@ -145,11 +145,13 @@ const WAYS: [(isize, isize); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
 /// ways, and of the quarters that are, the one that keeps the churchyard
 /// nearest the middle of its square of the map is taken, as the works stand
 /// round the edge. Only a road that cuts across a quarter, which is rare, is
-/// a reason to take another, from the year it is first laid. A town with
+/// a reason to take another, from the year it is first laid, and so is a
+/// railway laid through the churchyard (the line goes where the simulation
+/// has it, and the church gives way the year it is begun). A town with
 /// water in every quarter stands its church in one of the ways out, and one
 /// whose middle is drowned ground stands it further out the same way, on the
 /// nearest dry ground.
-fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> Parish {
+fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], rails: &crate::rails::RailYear, k: usize, s: &Square) -> Parish {
     let t = s.town;
     let node = r.header.towns[t].node;
     // a big town's church was rebuilt bigger, and stays so; a small town's gets its spire in a year of its own
@@ -184,7 +186,7 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
         let on_a_way = i >= 4;
         let (a, b) = (ways[i % 4], ways[(i + 1) % 4]);
         let bearing = if on_a_way { a } else { (a + b).normalize_or(Vec2::new(-a.y, a.x)) };
-        let (at, _) = widest.beside_square(s.at + bearing * out, bearing);
+        let (at, yaw) = widest.beside_square(s.at + bearing * out, bearing);
         let across = Vec2::new(-bearing.y, bearing.x);
         let corners = [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(sx, sz)| at + across * (sx * w * 0.5) + bearing * (sz * d * 0.5));
         let mut faults = 0;
@@ -199,6 +201,9 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
         }
         if step > 0 {
             faults += 32;
+        }
+        if railway_through(rails, &widest, at, yaw, 0.01) {
+            faults += 64;
         }
         if on_a_way {
             faults += 16;
@@ -215,10 +220,11 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
             }
         }
         let reach = corners.iter().map(|p| (*p - middle).abs().max_element()).fold(0.0f32, f32::max);
-        // the church in the water is the worst of the faults, then standing in a way out, a road
-        // across its quarter, and a way close by; a corner of the yard by the water is the least
+        // the church in the water is the worst of the faults, then standing in a way out, the
+        // railway through its yard, a road across its quarter, and a way close by; a corner of
+        // the yard by the water is the least
         let weigh = |bit: u32, by: f32| if faults & bit != 0 { by } else { 0.0 };
-        let score = weigh(8, 100.0) + weigh(16, 60.0) + weigh(4, 40.0) + weigh(1, 10.0) + wet_corners as f32 * 2.0 + reach;
+        let score = weigh(8, 100.0) + weigh(16, 60.0) + weigh(64, 50.0) + weigh(4, 40.0) + weigh(1, 10.0) + wet_corners as f32 * 2.0 + reach;
         if best.map_or(true, |(sc, _, _, _)| score < sc) {
             best = Some((score, bearing, out, faults));
         }
@@ -226,6 +232,21 @@ fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> P
     let (_, bearing, out, faults) = best.unwrap_or((0.0, Vec2::X, 0.0, 0));
     let (at, yaw) = church.beside_square(s.at + bearing * out, bearing);
     Parish { church, at, yaw, faults }
+}
+
+/// Whether the railway, laid or being laid, runs through a churchyard whose
+/// middle is at `at`, or within `margin` of it.
+fn railway_through(rails: &crate::rails::RailYear, church: &town::Church, at: Vec2, yaw: f32, margin: f32) -> bool {
+    let through = |a: Vec2, b: Vec2| {
+        // a length of line far from the yard is passed over; one near it is walked in short steps
+        let len = a.distance(b);
+        if a.distance(at) > len + 0.25 {
+            return false;
+        }
+        let steps = (len / 0.02).ceil().max(1.0) as usize;
+        (0..=steps).any(|i| church.yard_holds(at, yaw, a.lerp(b, i as f32 / steps as f32), margin))
+    };
+    rails.lines.iter().any(|l| l.pts.windows(2).any(|w| through(Vec2::new(w[0].x, w[0].z), Vec2::new(w[1].x, w[1].z)))) || rails.building.iter().any(|&(a, b)| through(a, b))
 }
 
 /// The station is down its own road to the south of the market place.
@@ -240,6 +261,7 @@ fn station_at(s: &Square) -> Vec2 {
 pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32)>>) -> Vec<Parish> {
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     let mut parishes = Vec::new();
+    let rails = crate::rails::year(r, g, cen, k);
     for s in squares(r, cen, k) {
         let node = r.header.towns[s.town].node;
         // the market place, paved, with a cross or a hall in the middle
@@ -262,13 +284,13 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         } else {
             town::market_cross(houses, &Site::level(m, s.yaw), lk);
         }
-        let p = parish(r, g, cen, k, &s);
+        let p = parish(r, g, cen, &rails, k, &s);
         town::church(houses, &Site::on(ground(g, p.at.x, p.at.y), p.yaw, &height), &p.church, lk);
         if std::env::var_os("ISOSTATE_TIMING").is_some() {
             // a works standing in or hard by the churchyard: the works were placed first and do not know of it
             let crowded = plots.values().flatten().filter(|&&(x, z)| p.holds(Vec2::new(x, z), 0.05)).count();
             if p.faults > 0 || crowded > 0 {
-                eprintln!("year {}: the church of town {} stands with faults {} (1 by a way out, 2 a corner of the yard on wet ground, 4 a road across, 8 the church on wet ground, 16 in a way out, 32 further out than the market place's edge) and {} works by its yard; it is at {:.2}, {:.2}, where the ground is {:.3} high and the water {:.3} off", r.y0 + k as i32, s.town, p.faults, crowded, p.at.x, p.at.y, world::height_at(g, p.at.x, p.at.y), world::water_dist(g, p.at.x, p.at.y));
+                eprintln!("year {}: the church of town {} stands with faults {} (1 by a way out, 2 a corner of the yard on wet ground, 4 a road across, 8 the church on wet ground, 16 in a way out, 32 further out than the market place's edge, 64 the railway through the yard it may come to have) and {} works by its yard; it is at {:.2}, {:.2}, where the ground is {:.3} high and the water {:.3} off", r.y0 + k as i32, s.town, p.faults, crowded, p.at.x, p.at.y, world::height_at(g, p.at.x, p.at.y), world::water_dist(g, p.at.x, p.at.y));
             }
         }
         parishes.push(p);
