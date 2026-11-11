@@ -188,7 +188,7 @@ impl<'a, 's> Ctx<'a, 's> {
 
     /// The wall round a yard, in the stone or the brick of the period.
     pub fn yard_wall(&self) -> Rgba {
-        if self.early() { *self.pal.stone.yard_wall } else { shade(*self.pal.brick.dark, 0.92) }
+        if self.early() { *self.pal.stone.yard_wall } else { lerp(*self.pal.brick.dark, *self.pal.smoke.soot, 0.3) }
     }
 
     /// A point that may be the works' highest: the family's flag flies from the highest.

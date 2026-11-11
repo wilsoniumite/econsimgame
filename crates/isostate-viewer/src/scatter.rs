@@ -112,8 +112,12 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
 //
 // A cell with more works than it has room for: a works that finds no spot is
 // tried at half the size, and half again, down to the smallest; it is then
-// drawn no bigger than fits (`Slots::firm_cap`). If even the smallest finds
-// no spot it stands on the first spot on dry land and overlaps its neighbours.
+// drawn no bigger than fits (`Slots::firm_cap`). If the smallest finds no
+// spot either (a cell that is nearly all shore, river or road), it is tried
+// on a finer grid with less room to the water and none to the roads; and if
+// that fails too it stands on the cell's highest land and overlaps its
+// neighbours. ISOSTATE_TIMING says how many of each there were, and
+// ISOSTATE_PLOTS names the cells.
 
 /// The two fixed numbers of a firm's works, and the phase of its size ladder.
 fn firm_seed(f: usize) -> Seed {
