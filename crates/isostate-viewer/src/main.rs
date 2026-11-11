@@ -146,9 +146,28 @@ fn parse_args() -> Args {
     }
 }
 
+/// A value on the command line as a number. One that cannot be read is
+/// refused, like an option that is not one, rather than replaced by the
+/// default without a word: --advance 3O would otherwise open on 1750.
+fn number<T: std::str::FromStr>(opt: &str, s: &str) -> Result<T, String> {
+    let s = s.trim();
+    // "nan" and "inf" read as numbers, and would hang a wait or blank a season
+    let endless = s.parse::<f32>().is_ok_and(|x| !x.is_finite());
+    s.parse().ok().filter(|_| !endless).ok_or_else(|| format!("{opt}: {s} is not a number it can take"))
+}
+
+/// Two numbers with `sep` between them, as in --look 31.5,29.5 and --size 1600x1000.
+fn pair<T: std::str::FromStr>(opt: &str, s: &str, sep: char) -> Result<(T, T), String> {
+    match s.split_once(sep) {
+        Some((a, b)) => Ok((number(opt, a)?, number(opt, b)?)),
+        None => Err(format!("{opt}: {s} should be two numbers with {} between them", if sep == 'x' { "an x" } else { "a comma" })),
+    }
+}
+
 /// Read the command line. An option that is not one is refused, with the
 /// list of those there are, rather than dropped: a mistyped --sesaon would
 /// otherwise run as if it had not been given. An empty error asks for the list.
+/// A value that cannot be read is refused in the same way.
 fn parse(v: &[String]) -> Result<Args, String> {
     let mut a = Args {
         run: "runs/landlords/run.bin".into(),
@@ -179,55 +198,52 @@ fn parse(v: &[String]) -> Result<Args, String> {
     let mut i = 0;
     while i < v.len() {
         let next = |i: usize| v.get(i + 1).cloned().ok_or_else(|| format!("{} needs a value after it", v[i]));
-        match v[i].as_str() {
-            "--year" => { a.year = next(i)?.parse().ok(); i += 1; }
+        let opt = v[i].as_str();
+        match opt {
+            "--year" => { a.year = Some(number(opt, &next(i)?)?); i += 1; }
             "--shot" => { a.shot = Some(next(i)?); i += 1; }
             "--size" => {
-                let s = next(i)?;
-                if let Some((w, h)) = s.split_once('x') { a.size = (w.parse().unwrap_or(1600), h.parse().unwrap_or(1000)); }
+                a.size = pair(opt, &next(i)?, 'x')?;
+                if a.size.0 == 0 || a.size.1 == 0 {
+                    return Err(format!("{opt}: a picture needs a width and a height"));
+                }
                 i += 1;
             }
-            "--look" => {
-                let s = next(i)?;
-                if let Some((x, z)) = s.split_once(',') { a.look = Some((x.parse().unwrap_or(60.0), z.parse().unwrap_or(42.0))); }
-                i += 1;
-            }
-            "--yaw" => { a.yaw = next(i)?.parse().unwrap_or(0.0); i += 1; }
-            "--pitch" => { a.pitch = next(i)?.parse().unwrap_or(52.0); i += 1; }
-            "--dist" => { a.dist = next(i)?.parse().ok(); i += 1; }
-            "--frames" => { a.frames = next(i)?.parse().unwrap_or(40); i += 1; }
-            "--wait" => { a.wait = next(i)?.parse().unwrap_or(45.0); i += 1; }
+            "--look" => { a.look = Some(pair(opt, &next(i)?, ',')?); i += 1; }
+            "--yaw" => { a.yaw = number(opt, &next(i)?)?; i += 1; }
+            "--pitch" => { a.pitch = number(opt, &next(i)?)?; i += 1; }
+            "--dist" => { a.dist = Some(number(opt, &next(i)?)?); i += 1; }
+            "--frames" => { a.frames = number(opt, &next(i)?)?; i += 1; }
+            "--wait" => { a.wait = number(opt, &next(i)?)?; i += 1; }
             "--no-tilt" => a.tilt = false,
             "--new" => a.new = true,
-            "--seed" => { a.seed = next(i)?.parse().unwrap_or(7); i += 1; }
-            "--families" => { a.families = next(i)?.parse().unwrap_or(6); i += 1; }
-            "--advance" => { a.advance = next(i)?.parse().unwrap_or(0); i += 1; }
+            "--seed" => { a.seed = number(opt, &next(i)?)?; i += 1; }
+            "--families" => { a.families = number(opt, &next(i)?)?; i += 1; }
+            "--advance" => { a.advance = number(opt, &next(i)?)?; i += 1; }
             "--demo" => a.demo = true,
-            "--pick" => {
-                let s = next(i)?;
-                if let Some((x, z)) = s.split_once(',') { a.pick = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
-                i += 1;
-            }
+            "--pick" => { a.pick = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--ground-debug" => a.ground_debug = true,
             "--class-map" => a.class_map = true,
             "--script" => { a.script = Some(next(i)?); i += 1; }
-            "--season" => { a.season = next(i)?.parse().ok(); i += 1; }
-            "--describe" => {
-                let s = next(i)?;
-                if let Some((x, z)) = s.split_once(',') { a.describe = Some((x.parse().unwrap_or(0.0), z.parse().unwrap_or(0.0))); }
-                i += 1;
-            }
+            "--season" => { a.season = Some(number(opt, &next(i)?)?); i += 1; }
+            "--describe" => { a.describe = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--view" => {
                 // path,year,x,z,yaw,pitch,dist[,season][,tab]: a number after dist is a season, a word a panel
                 let p: Vec<String> = next(i)?.split(',').map(String::from).collect();
-                let num = |j: usize| p.get(j).and_then(|s| s.parse::<f32>().ok());
+                // an empty value falls back; one that is not a number is refused
+                let num = |j: usize| -> Result<Option<f32>, String> {
+                    match p.get(j).map(|s| s.trim()) {
+                        None | Some("") => Ok(None),
+                        Some(s) => number(opt, s).map(Some),
+                    }
+                };
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
-                    year: num(1).map(|y| y as i32),
-                    look: match (num(2), num(3)) { (Some(x), Some(z)) => Some((x, z)), _ => None },
-                    yaw: num(4).unwrap_or(0.0),
-                    pitch: num(5).unwrap_or(52.0),
-                    dist: num(6),
+                    year: num(1)?.map(|y| y as i32),
+                    look: match (num(2)?, num(3)?) { (Some(x), Some(z)) => Some((x, z)), _ => None },
+                    yaw: num(4)?.unwrap_or(0.0),
+                    pitch: num(5)?.unwrap_or(52.0),
+                    dist: num(6)?,
                     season: p.iter().skip(7).find_map(|s| s.parse::<f32>().ok()),
                     tab: p.iter().skip(7).find(|s| !s.is_empty() && s.parse::<f32>().is_err()).map(|s| ui::Tab::parse(s)),
                 });
@@ -1776,6 +1792,20 @@ mod tests {
         assert_eq!(args("--advance").err().unwrap(), "--advance needs a value after it");
         // a negative number after an option is its value, not an option
         assert_eq!(args("--yaw -30").unwrap().yaw, -30.0);
+        // a value that cannot be read is refused, not replaced by the default
+        assert_eq!(args("--advance 3O").err().unwrap(), "--advance: 3O is not a number it can take");
+        assert_eq!(args("--advance -5").err().unwrap(), "--advance: -5 is not a number it can take");
+        assert_eq!(args("--season summer").err().unwrap(), "--season: summer is not a number it can take");
+        assert_eq!(args("--wait nan").err().unwrap(), "--wait: nan is not a number it can take");
+        assert_eq!(args("--year 1846.5").err().unwrap(), "--year: 1846.5 is not a number it can take");
+        assert_eq!(args("--describe 12").err().unwrap(), "--describe: 12 should be two numbers with a comma between them");
+        assert_eq!(args("--look 31.5,here").err().unwrap(), "--look: here is not a number it can take");
+        assert_eq!(args("--size 800").err().unwrap(), "--size: 800 should be two numbers with an x between them");
+        assert_eq!(args("--size 0x600").err().unwrap(), "--size: a picture needs a width and a height");
+        // in a view an empty value falls back, and one that is not a number is refused
+        assert_eq!(args("--view a.png,l850").err().unwrap(), "--view: l850 is not a number it can take");
+        assert_eq!(args("--view a.png,1850,markets").err().unwrap(), "--view: markets is not a number it can take");
+        assert!(args("--view a.png,,,,,,").is_ok());
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
