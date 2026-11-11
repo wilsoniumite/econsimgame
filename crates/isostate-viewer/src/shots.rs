@@ -266,6 +266,10 @@ pub fn land_views(r: &Replay, g: &crate::world::Ground, cen: &[(f32, f32)], home
     if g.hgt[top] > 1.75 {
         cams.push(("snowline", "The snow line".into(), ((top % g.gw) as f32 / world::VRES as f32, (top / g.gw) as f32 / world::VRES as f32 + 1.0), PLAY_PITCH, 18.0));
     }
+    // where each camera looks, for pointing a --view of one's own at the same country
+    for (name, _, look, _, dist) in &cams {
+        eprintln!("land view {name}: looks at {:.1},{:.1} from {dist:.0}", look.0, look.1);
+    }
     let mut out = Vec::new();
     for (year, season, when) in [(1800, 0.5, "summer"), (1900, 0.5, "summer"), (1800, 0.8, "october"), (1900, 0.0, "midwinter")] {
         for (name, caption, look, pitch, dist) in &cams {

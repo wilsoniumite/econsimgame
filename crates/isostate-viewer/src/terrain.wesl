@@ -390,12 +390,12 @@ fn parcel_texel(i: i32, j: i32, id: u32) -> vec2<i32> {
 // by a slow noise, so that their edges wander in lobes and bays
 // (world::edge_warp).
 fn edge_warp(p: vec2<f32>) -> vec2<f32> {
-    return p + 0.11 * vec2<f32>(vnoise(p.x * 1.9 + 3.7, p.y * 1.9 + 8.2, 461), vnoise(p.x * 1.9 + 6.4, p.y * 1.9 + 1.1, 463));
+    return p + 0.14 * vec2<f32>(vnoise(p.x * 1.5 + 3.7, p.y * 1.5 + 8.2, 461), vnoise(p.x * 1.5 + 6.4, p.y * 1.5 + 1.1, 463));
 }
 
 // What is added to both fields at a spot, to fray their edges (world::edge_fray).
 fn edge_fray(p: vec2<f32>) -> f32 {
-    return 0.09 * vnoise(p.x * 4.1, p.y * 4.1, 465) + 0.06 * vnoise(p.x * 9.7, p.y * 9.7, 467) + 0.03 * vnoise(p.x * 23.0, p.y * 23.0, 469);
+    return 0.09 * vnoise(p.x * 3.7, p.y * 3.7, 465) + 0.055 * vnoise(p.x * 8.9, p.y * 8.9, 467) + 0.028 * vnoise(p.x * 21.0, p.y * 21.0, 469);
 }
 
 // ------------------------------------------------------------------ helpers
@@ -708,9 +708,9 @@ fn moor_margin(sp: Spot, near: f32) -> vec3<f32> {
     let rust = max(smoothstep(0.72, 0.82, sp.ph), 1.0 - smoothstep(0.2, 0.3, sp.ph));
     let fern = mix(paint.bracken.rgb, paint.bracken_autumn.rgb, rust);
     let drift = 0.5 + 0.5 * (0.6 * vnoise(sp.p.x * 5.3 + 1.7, sp.p.y * 5.3 + 4.9, 471) + 0.4 * vnoise(sp.p.x * 13.0, sp.p.y * 13.0, 473));
-    let thr = mix(0.78, 0.42, near);
-    let bracken = spots(drift, thr, 0.03 + 13.0 * sp.foot, detail(5.3, sp.foot), 0.05 + 0.35 * near);
-    c = mix(c, fern, 0.75 * bracken);
+    let thr = mix(0.78, 0.56, near);
+    let bracken = spots(drift, thr, 0.02 + 6.0 * sp.foot, detail(5.3, sp.foot), 0.05 + 0.35 * near);
+    c = mix(c, fern, 0.85 * bracken);
     // rushes in small dark tufts
     let n = vnoise(sp.p.x * 27.0, sp.p.y * 27.0, 475);
     let rushes = spots(n, 0.42, 27.0 * sp.foot, detail(27.0, sp.foot), 0.12);
@@ -752,8 +752,8 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
         // edge it is hard to tell from the moor: an intake still stands out
         // by its walls and its greener middle, not by a cut line.
         let high = smoothstep(0.3, 0.8, sp.h + 0.08 * vnoise(sp.p.x * 1.9, sp.p.y * 1.9, 445));
-        let near = smoothstep(0.24, 0.5, sp.heath);
-        let roughness = clamp(0.45 * high + near * (0.5 + 0.35 * high), 0.0, 0.9);
+        let near = smoothstep(0.3, 0.5, sp.heath);
+        let roughness = clamp(0.4 * high + near * (0.45 + 0.3 * high), 0.0, 0.85);
         c = mix(c, moor_margin(sp, near), roughness);
     }
     // water meadows on the valley floors: greener, with darker rushes
@@ -838,12 +838,12 @@ fn wood_floor(sp: Spot) -> vec3<f32> {
     // by its canopy: darker in its depths, with a slow swell of taller and
     // lower stands (the stands scatter.rs grows the trees in)
     let stand = 0.5 + 0.5 * vnoise(sp.p.x * 2.9 + 3.1, sp.p.y * 2.9 + 8.7, 457);
-    var canopy = mix(paint.wood_canopy.rgb, paint.wood_shade.rgb, 0.25 + 0.45 * deep * stand);
+    var canopy = mix(paint.wood_canopy.rgb, paint.wood_shade.rgb, 0.1 + 0.4 * deep * stand);
     // in October the broadleaf woods of the low ground are gold, as their
     // trees are, so that the far view is one tone and not gold specks on
     // green; the conifers of the high ground keep their colour
     let broadleaf = 1.0 - 0.75 * smoothstep(0.34, 0.8, sp.h);
-    canopy = mix(canopy, paint.wood_canopy_autumn.rgb, 0.8 * broadleaf * bell(sp.ph, 0.83, 0.12));
+    canopy = mix(canopy, paint.wood_canopy_autumn.rgb, 0.7 * broadleaf * bell(sp.ph, 0.83, 0.12));
     canopy = mix(canopy, paint.wood_winter.rgb, 0.55 * winter(sp.ph));
     c = mix(c, canopy, sp.far);
     // glades and rides, which the trees keep out of
@@ -866,8 +866,8 @@ fn heath(sp: Spot) -> vec3<f32> {
     base = mix(base, paint.heath_brown.rgb, 0.3 * max(winter(sp.ph), bell(sp.ph, 0.86, 0.1)));
     // toward its edge the moor goes to rough grass and bracken, as the
     // pasture beside it does, so the two meet without a line
-    let inside = smoothstep(0.5, 0.74, sp.heath);
-    base = mix(moor_margin(sp, 1.0), base, 0.35 + 0.65 * inside);
+    let inside = smoothstep(0.5, 0.66, sp.heath);
+    base = mix(moor_margin(sp, 1.0), base, 0.45 + 0.55 * inside);
     // and small clumps of heather and gorse
     let n = vnoise(sp.p.x * 34.0, sp.p.y * 34.0, 17);
     let nf = 34.0 * sp.foot;
@@ -944,8 +944,9 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
     // just outside a wood, and outside a heath where the plough comes up to
     // it, the ground is rough with scrub (world::SCRUB); a pasture grades
     // into the moor by itself
-    let by_wood = smoothstep(0.4, 0.5, sp.wood);
-    let by_heath = smoothstep(0.4, 0.5, sp.heath);
+    let seen = 1.0 - smoothstep(0.006, 0.02, sp.foot);
+    let by_wood = smoothstep(0.42, 0.5, sp.wood) * seen;
+    let by_heath = smoothstep(0.42, 0.5, sp.heath) * seen;
     switch cls {
         case FARM: { c = hedged(mix(fields(sp, false), rough(sp), 0.85 * max(by_wood, by_heath)), sp); }
         case PASTURE: { c = hedged(mix(fields(sp, true), rough(sp), 0.85 * by_wood), sp); }
@@ -1111,7 +1112,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             heathy = 1.0;
         } else {
             let f = textureSampleLevel(land_field, land_field_sampler, edge_warp(p) / vec2<f32>(ground.width, ground.height), 0.0).rg + vec2<f32>(edge_fray(p));
-            wooded = clamp(f.x, 0.0, 1.0);
+            // a wood deepens inward faster than its field (world::WOOD_DEPTH)
+            wooded = clamp(select(f.x, 0.5 + 1.8 * (f.x - 0.5), f.x > 0.5), 0.0, 1.0);
             heathy = clamp(f.y, 0.0, 1.0);
             let under = u32(round(yp.w * 255.0));
             // the parcel's walls and hedges stand, whatever grows over its grass

@@ -424,6 +424,11 @@ pub struct Land {
     pub tw: usize,
     pub th: usize,
     pub tex: Vec<u32>,
+    /// for each texel, a slow swell that is added to the year's field of wood
+    /// and another to its field of heath before the districts' areas are
+    /// kept: where it stands high the woods run together in masses, where
+    /// low they break up into copses, so that woods come in every size
+    pub swell: Vec<[f32; 2]>,
 }
 
 /// Texels of the year's wood and heath fields (`YearLand::field`) to a cell,
@@ -665,10 +670,19 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
             (b * 8 + (pc.id as usize).saturating_sub(8).min(7)) as u32
         })
         .collect();
+    let swell: Vec<[f32; 2]> = (0..tw * th)
+        .into_par_iter()
+        .map(|t| {
+            let (x, y) = (((t % tw) as f32 + 0.5) / FIELD_RES as f32, ((t / tw) as f32 + 0.5) / FIELD_RES as f32);
+            let slow = |s: i32| 0.26 * vnoise(x * 0.43 + 2.9, y * 0.43 + 7.3, s) + 0.17 * vnoise(x * 1.07 + 5.1, y * 1.07 + 0.7, s + 1);
+            [slow(477), slow(481)]
+        })
+        .collect();
     Land {
         tw,
         th,
         tex,
+        swell,
         bi0,
         bj0,
         bw,
@@ -810,7 +824,10 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
 // and smoothed over the open parcels round about, so that a wood's edge runs
 // between the middles of a wooded parcel and a farmed one, nearer the one
 // that is less surely what it is, round their corners and not along their
-// sides. Smoothing loses the small woods and fills the small clearings, so
+// sides. A slow swell is added (`Land::swell`), so that the woods run
+// together in masses in one stretch of country and break up into copses in
+// the next. Smoothing loses the small woods and fills the small clearings,
+// and the swell adds and takes, so
 // each district's fields are then shifted until as much of it stands above
 // the line as its parcels of wood (and of heath) come to: the areas are the
 // simulation's, district by district, and only the outlines are the
@@ -845,8 +862,8 @@ fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]]) -> Vec<u8> {
     let [wt, mut fw, mut fh] = layers;
     for t in 0..n {
         if wt[t] > 1e-4 {
-            fw[t] /= wt[t];
-            fh[t] /= wt[t];
+            fw[t] = fw[t] / wt[t] + l.swell[t][0];
+            fh[t] = fh[t] / wt[t] + l.swell[t][1];
         } else {
             (fw[t], fh[t]) = (-1.0, -1.0);
         }
@@ -940,6 +957,10 @@ pub fn parcel_index(g: &Ground, fx: f32, fy: f32) -> usize {
 // what it is. Above the snow that lies all summer nothing is enclosed: all
 // open land there is moor. terrain.wesl does the same per pixel.
 
+/// How much faster than its field a wood deepens inward from its edge
+/// (`YearLand::wooded`; terrain.wesl has the same number).
+pub const WOOD_DEPTH: f32 = 1.8;
+
 /// How high a field must stand, short of the half that makes a wood or a
 /// heath, for the ground to be rough with scrub: the ragged edge outside one.
 pub const SCRUB: f32 = 0.44;
@@ -947,12 +968,12 @@ pub const SCRUB: f32 = 0.44;
 /// Where the fields of wood and heath are read for a spot: a little way off,
 /// by a slow noise, so that their edges wander in lobes and bays.
 pub fn edge_warp(x: f32, z: f32) -> (f32, f32) {
-    (x + 0.11 * vnoise(x * 1.9 + 3.7, z * 1.9 + 8.2, 461), z + 0.11 * vnoise(x * 1.9 + 6.4, z * 1.9 + 1.1, 463))
+    (x + 0.14 * vnoise(x * 1.5 + 3.7, z * 1.5 + 8.2, 461), z + 0.14 * vnoise(x * 1.5 + 6.4, z * 1.5 + 1.1, 463))
 }
 
 /// What is added to both fields at a spot, to fray their edges.
 pub fn edge_fray(x: f32, z: f32) -> f32 {
-    0.09 * vnoise(x * 4.1, z * 4.1, 465) + 0.06 * vnoise(x * 9.7, z * 9.7, 467) + 0.03 * vnoise(x * 23.0, z * 23.0, 469)
+    0.09 * vnoise(x * 3.7, z * 3.7, 465) + 0.055 * vnoise(x * 8.9, z * 8.9, 467) + 0.028 * vnoise(x * 21.0, z * 21.0, 469)
 }
 
 /// The height at which the snow that lies all summer begins at a spot: the
@@ -1026,9 +1047,12 @@ impl YearLand {
     }
 
     /// How wooded a place is, 0 to 1: a half at a wood's edge, more inside
-    /// it, less out in the country it frays into.
+    /// it, less out in the country it frays into. Inside, the field rises
+    /// slowly from the edge (it is smoothed), so it is steepened: a wood is
+    /// at its full depth a few hundred metres in.
     pub fn wooded(&self, pl: Place) -> f32 {
-        self.fields(pl).0.clamp(0.0, 1.0)
+        let w = self.fields(pl).0;
+        (if w > 0.5 { 0.5 + WOOD_DEPTH * (w - 0.5) } else { w }).clamp(0.0, 1.0)
     }
 }
 
@@ -1405,6 +1429,10 @@ mod tests {
         // above the summer snow all open land is moor
         assert_eq!(land.at(Place { parcel: 3, tex: 0, tx: 0.0, ty: 0.0, fray: 0.0, snow: true }), (HEATH, false));
         assert_eq!(land.wooded(Place { parcel: 3, tex: 2, tx: 1.0, ty: 0.0, fray: 0.2, snow: false }), 1.0);
+        // a wood deepens inward faster than its field, and what lies outside it is as the field says
+        let deep = land.wooded(Place { parcel: 0, tex: 1, tx: 0.8, ty: 0.0, fray: 0.0, snow: false });
+        assert!((deep - (0.5 + WOOD_DEPTH * 0.1)).abs() < 1e-4, "{deep}");
+        assert!((land.wooded(Place { parcel: 0, tex: 0, tx: 0.9, ty: 0.0, fray: 0.0, snow: false }) - 0.3).abs() < 1e-4);
     }
 
     #[test]
