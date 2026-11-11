@@ -1335,9 +1335,17 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: 
         });
 }
 
+/// A key that only goes with others, or belongs to the desktop. Alt on its
+/// way to Alt-Tab, or the key that takes a picture of the screen, is not the
+/// player beginning the game.
+fn goes_with_others(k: &KeyCode) -> bool {
+    use KeyCode::*;
+    matches!(k, AltLeft | AltRight | ControlLeft | ControlRight | ShiftLeft | ShiftRight | SuperLeft | SuperRight | PrintScreen | CapsLock | NumLock | ScrollLock)
+}
+
 fn close_welcome(mut commands: Commands, q: Query<(Entity, &Interaction), With<Welcome>>, keys: Res<ButtonInput<KeyCode>>, game: Option<ResMut<Game>>) {
     for (e, i) in &q {
-        if *i == Interaction::Pressed || keys.get_just_pressed().next().is_some() {
+        if *i == Interaction::Pressed || keys.get_just_pressed().any(|k| !goes_with_others(k)) {
             commands.entity(e).despawn();
             if let Some(mut game) = game {
                 game.welcoming = false;
@@ -1366,6 +1374,16 @@ mod tests {
         // to the front again: the past until the clock is on the newest year
         assert_eq!(now_of(36, 37, 37), Now::Past);
         assert_eq!(now_of(3, 37, 37), Now::Past);
+    }
+
+    #[test]
+    fn a_key_held_with_others_does_not_close_the_welcome() {
+        for k in [KeyCode::AltLeft, KeyCode::ShiftRight, KeyCode::ControlLeft, KeyCode::SuperLeft, KeyCode::PrintScreen] {
+            assert!(goes_with_others(&k), "{k:?}");
+        }
+        for k in [KeyCode::Space, KeyCode::Enter, KeyCode::Escape, KeyCode::KeyA, KeyCode::ArrowRight] {
+            assert!(!goes_with_others(&k), "{k:?}");
+        }
     }
 
     #[test]
