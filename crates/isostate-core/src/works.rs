@@ -460,7 +460,8 @@ pub fn family_extension(st: &State, C: &Content, P: &Params, k: usize, t: usize,
 
 /// Family k orders K more capacity for its works f and pays `cost` into the
 /// works' cash for it, as it would have paid to found a works of that size. The
-/// player hears of it.
+/// player hears of it: at once, or with the chronicle in the year's summary of
+/// what the branches did (`chronicle::branch_summary`).
 #[allow(clippy::too_many_arguments)]
 pub fn extend_for_family(st: &mut State, C: &Content, P: &Params, k: usize, f: usize, K: f64, cost: f64, year: i64, events: &mut Vec<Event>) {
     let m = st.f_method[f];
@@ -472,7 +473,8 @@ pub fn extend_for_family(st: &mut State, C: &Content, P: &Params, k: usize, f: u
     }
     st.f_order_K[f] += K;
     ordered(st, C, P, f, K);
-    if k == 0 {
+    // chronicle: an extension is a branch's own doing and goes into the year's summary
+    if k == 0 && !crate::chronicle::works_extended(st, P, k, f, cost) {
         let fam = &st.families[k];
         let title = format!("The {} family extends {}", fam.surname, st.f_name[f]);
         let text = format!("More capacity is ordered for {cost:.0}.");

@@ -448,4 +448,10 @@ fn a_family_extends_the_works_it_has() {
     assert!(10 * twice <= own.len(), "{twice} of {} family works were founded beside one with room", own.len());
     // the port has no such rule
     assert!(works::family_extension(&old.state, &old.content, &old.params, 0, 0, 0, 1.0).is_none());
+    // the player hears of each extension, with the works it was (under the
+    // game's rules the chronicle puts them in the year's summary instead:
+    // tests/chronicle.rs)
+    let told: Vec<&Event> = new.events.iter().filter(|e| e.family == Some(0) && e.title.contains(" family extends ")).collect();
+    assert!(!told.is_empty() && told.iter().all(|e| e.kind == "family" && e.firm.is_some() && e.town.is_some()), "{} extensions told", told.len());
+    assert!(old.events.iter().all(|e| !e.title.contains(" extends ")), "and the port has none to tell");
 }

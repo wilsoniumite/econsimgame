@@ -29,6 +29,17 @@ fn whole_game() -> &'static RunResult {
     RUN.get_or_init(|| sim::run_with(&game(6, 1900), game_content(), false, true).expect("money is conserved every month"))
 }
 
+/// The same game with the chronicle switched off: the same economy to the last
+/// bit, with the news as the port and the other mechanisms file it.
+fn whole_game_untold() -> &'static RunResult {
+    static RUN: OnceLock<RunResult> = OnceLock::new();
+    RUN.get_or_init(|| {
+        let mut P = game(6, 1900);
+        P.chronicle = ChronicleParams::default();
+        sim::run_with(&P, game_content(), false, true).expect("money is conserved every month")
+    })
+}
+
 fn decade(e: &Event) -> i64 {
     ((e.year.floor() as i64 - 1750) / 10).min(14)
 }
@@ -80,7 +91,15 @@ fn it_never_touches_the_economy_and_runs_are_deterministic() {
     for (a, b) in on.state.families.iter().zip(&off.state.families) {
         assert_eq!(a.cash.to_bits(), b.cash.to_bits());
     }
-    assert!(on.events.len() < off.events.len(), "and there is less news, not more: {} against {}", on.events.len(), off.events.len());
+    // and there is less news, not more. In these forty years that is said of
+    // the player's own: with the life cycle for works a family's branches open
+    // a twentieth of the works they did, so the flood the chronicle ends is no
+    // longer greater than the stories it adds in every stretch of years. Of the
+    // whole game it is said of all the news
+    // (`the_players_works_no_longer_flood_the_news`).
+    let own = |r: &RunResult| r.events.iter().filter(|e| e.family == Some(0)).count();
+    assert!(own(&on) < own(&off), "and there is less of the player's news, not more: {} against {}", own(&on), own(&off));
+    assert!(on.events.len() < off.events.len() + 10, "nor a flood of anything else: {} items against {}", on.events.len(), off.events.len());
 }
 
 #[test]
@@ -189,9 +208,26 @@ fn the_players_works_no_longer_flood_the_news() {
         assert!(e.weight < 0.6 && e.kept == Some(false), "{} weighs {}", e.title, e.weight);
         assert!(years.insert(e.year.floor() as i64), "two summaries in {}", e.year.floor());
     }
-    // the family's branches opened about a thousand works in this game: the news of them is a fraction of that
+    // nor for a works a branch extended (the life cycle for works, docs/rules/works.md):
+    // those are in the summaries too
+    assert!(own.iter().all(|e| !e.title.contains(" family extends ")), "no extension is told one by one");
+    assert!(summaries.iter().any(|e| e.title.contains(" extend")), "the summaries tell of works extended");
+    // what the family's branches did on their own in this game, counted in the
+    // same game with the chronicle off, where every works a branch opens or
+    // extends is an item: the news of them is a fraction of that. (Before the
+    // life cycle for works the branches opened about a thousand works; with it
+    // they open some fifty and extend them a couple of hundred times.)
+    let untold = whole_game_untold();
+    let one_by_one = |e: &&Event| e.family == Some(0) && (e.title.contains(" family opens a") || e.title.contains(" family extends "));
+    let acts = untold.events.iter().filter(one_by_one).count();
     let works = (0..r.state.F_count).filter(|&f| r.state.f_reason[f].kind == "family" && r.state.f_owner[f] == 0).count();
-    assert!(works > 500 && own.len() < 320, "{} items for {works} works", own.len());
+    assert!(works > 40 && acts > 250 && own.len() < 320, "{} items for {works} works opened, {acts} opened or extended", own.len());
+    let told = summaries.len() + reached.len();
+    assert!(told * 2 < acts, "{told} items for the {acts} things the branches did");
+    let untold_own = untold.events.iter().filter(|e| e.family == Some(0)).count();
+    assert!(own.len() * 3 < untold_own * 2, "the player's news is {} items, {untold_own} without the chronicle", own.len());
+    // and with the stories the chronicle adds, the whole game's news is still shorter
+    assert!(r.events.len() < untold.events.len(), "there is less news, not more: {} against {}", r.events.len(), untold.events.len());
     // the game's rules for the player's own news: its great moments weigh 0.6 or
     // more, the everyday less, and a decade keeps one of them at most
     let Q = &r.params.chronicle;
@@ -541,7 +577,20 @@ fn towns_and_districts_have_stories() {
             assert!(e.year - last >= r.params.chronicle.decline_years as f64, "{} twice", e.title);
         }
     }
-    // a decade of new towns is one item
-    let digest = r.events.iter().find(|e| e.kind == "town" && e.title.contains("new towns in the 1750s")).expect("the 1750s digest");
-    assert!(digest.kept == Some(true) && digest.text.contains("(175"));
+    // a decade of new towns is one item, with each town's year, and it is kept
+    // unless the decade is full of heavier things. With the life cycle for works
+    // (docs/rules/works.md) seed 7's towns come later: three in the 1760s, where
+    // two inventions, a coal boom and the family's new trade outweigh them.
+    // (Before it the digest was of the 1750s and was one of that decade's four.)
+    let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
+    assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
+    let mut decades = std::collections::BTreeSet::new();
+    for digest in &digests {
+        assert!(decades.insert(decade(digest)), "one digest a decade: {}", digest.title);
+        let years = format!("({}", 175 + decade(digest));
+        assert!(digest.text.contains(&years) && digest.why.is_some(), "{}: {}", digest.title, digest.text);
+        let kept: Vec<&Event> = r.events.iter().filter(|e| e.kept == Some(true) && decade(e) == decade(digest)).collect();
+        let outweighed = kept.len() == r.params.chronicle.per_decade && kept.iter().all(|e| e.weight > digest.weight);
+        assert!(digest.kept == Some(true) || outweighed, "{} is kept, or the decade's {} are all heavier", digest.title, kept.len());
+    }
 }

@@ -91,7 +91,10 @@ pub struct ChronicleParams {
     pub fastest_margin: f64,
     /// A district's works close together when at least `closures_min` shut in
     /// a year and they are `closures_share` of those that stood (in a usual
-    /// year a district loses one or two in a hundred).
+    /// year a district loses one or two in a hundred). Five, where it was ten
+    /// before the life cycle for works: a district then has some forty works
+    /// where it had four hundred, and ten of them hardly ever shut in a year
+    /// (docs/rules/works.md, "In company with the rest of the game").
     pub closures_min: usize,
     pub closures_share: f64,
     /// A decade of new towns is told when at least this many were founded in it.
@@ -125,7 +128,7 @@ impl Default for ChronicleParams {
             overtake_years: 3,
             overtake_margin: 0.05,
             fastest_margin: 0.1,
-            closures_min: 10,
+            closures_min: 5,
             closures_share: 0.1,
             new_towns_min: 3,
             min_people: 5000.0,
@@ -190,6 +193,9 @@ pub struct ChronicleState {
     pub reached: BTreeSet<(usize, usize, usize)>,
     /// The works the player's branches opened this year, and whether each was told on its own.
     pub branch_opened: Vec<(usize, bool)>,
+    /// The works the player's branches extended this year, and what each extension cost
+    /// (empty without the life cycle for works).
+    pub branch_extended: Vec<(usize, f64)>,
     /// For each of `MILESTONE_CITY`, the towns that have passed it and the year.
     pub city_passed: Vec<Vec<(usize, i64)>>,
     /// One entry a year since the start, each a value per town: people in the
@@ -309,43 +315,57 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     true
 }
 
-/// One item for all the works the player's branches opened this year
-/// (`families::yearly`, after the branches have run), unless each was told on
-/// its own. It is light: it belongs in the family's news, not the island's.
+/// A branch of a family has ordered more capacity for a works it has
+/// (`works::extend_for_family`: with the life cycle for works a growing branch
+/// extends before it founds). Returns true if the chronicle has dealt with the
+/// news, so the works' own item is not made: an extension is the branch's own
+/// doing, as a works it opens is, and waits for the year's summary. Without
+/// this a player's branches file some 240 such items in a game, which is the
+/// flood over again.
+pub fn works_extended(st: &mut State, P: &Params, family: usize, fid: usize, cost: f64) -> bool {
+    if !P.chronicle.enabled || family != 0 {
+        return false;
+    }
+    st.chron.branch_extended.push((fid, cost));
+    true
+}
+
+/// One item for all that the player's branches did on their own this year
+/// (`families::yearly`, after the branches have run): the works they opened,
+/// unless each was told on its own, and the works they extended. It is light:
+/// it belongs in the family's news, not the island's.
 pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, year: i64, events: &mut Vec<Event>) {
     if !P.chronicle.enabled || family != 0 {
         return;
     }
     let opened = std::mem::take(&mut st.chron.branch_opened);
-    if opened.iter().all(|&(_, told)| told) {
+    let extended = std::mem::take(&mut st.chron.branch_extended);
+    // works that were each told on their own are not told again
+    let opened: Vec<usize> = if opened.iter().all(|&(_, told)| told) { Vec::new() } else { opened.iter().map(|&(f, _)| f).collect() };
+    if opened.is_empty() && extended.is_empty() {
         return;
     }
     let surname = &st.families[family].surname;
     let trade = |f: usize| Group::of_method(C, st.f_method[f]).map_or("other trades".to_string(), |g| g.label().to_lowercase());
-    // towns in the order the branches ran, trades in the order they built
-    let mut towns: Vec<(usize, Vec<(String, usize)>)> = Vec::new();
-    for &(f, _) in &opened {
-        let t = st.f_town[f];
-        let at = match towns.iter().position(|(town, _)| *town == t) {
-            Some(at) => at,
-            None => {
-                towns.push((t, Vec::new()));
-                towns.len() - 1
+    // "at Melbourne two in iron and steel and one in textiles; at Granness one in
+    // engineering": towns in the order the branches ran, trades in the order they built
+    let by_town = |works: &[usize]| -> String {
+        let mut towns: Vec<(usize, Vec<(String, usize)>)> = Vec::new();
+        for &f in works {
+            let t = st.f_town[f];
+            let at = match towns.iter().position(|(town, _)| *town == t) {
+                Some(at) => at,
+                None => {
+                    towns.push((t, Vec::new()));
+                    towns.len() - 1
+                }
+            };
+            let name = trade(f);
+            match towns[at].1.iter_mut().find(|(n, _)| *n == name) {
+                Some((_, n)) => *n += 1,
+                None => towns[at].1.push((name, 1)),
             }
-        };
-        let name = trade(f);
-        match towns[at].1.iter_mut().find(|(n, _)| *n == name) {
-            Some((_, n)) => *n += 1,
-            None => towns[at].1.push((name, 1)),
         }
-    }
-    let (title, text) = if opened.len() == 1 {
-        let f = opened[0].0;
-        (
-            format!("The {surname} branch at {} opens a works", st.town_name[st.f_town[f]]),
-            format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * st.f_reason[f].roi),
-        )
-    } else {
         let per_town: Vec<String> = towns
             .iter()
             .map(|(t, trades)| {
@@ -353,10 +373,38 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
                 format!("at {} {}", st.town_name[*t], and_list(&list))
             })
             .collect();
-        (format!("The {surname} branches open {} works", number(opened.len())), format!("{}.", capital(&per_town.join("; "))))
+        per_town.join("; ")
     };
+    let grown: Vec<usize> = extended.iter().map(|&(f, _)| f).collect();
+    let laid_out: f64 = extended.iter().map(|&(_, cost)| cost).sum();
+    let (title, text) = match (opened.len(), grown.len()) {
+        (1, 0) => {
+            let f = opened[0];
+            (
+                format!("The {surname} branch at {} opens a works", st.town_name[st.f_town[f]]),
+                format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * st.f_reason[f].roi),
+            )
+        }
+        (n, 0) => (format!("The {surname} branches open {} works", number(n)), format!("{}.", capital(&by_town(&opened)))),
+        (0, 1) => {
+            let f = grown[0];
+            (
+                format!("The {surname} branch at {} extends a works", st.town_name[st.f_town[f]]),
+                format!("{}, in {}: more capacity is ordered for {}.", st.f_name[f], trade(f), fmt_thousands_f0(laid_out)),
+            )
+        }
+        (0, n) => (
+            format!("The {surname} branches extend {} works", number(n)),
+            format!("{}. More capacity is ordered for {} in all.", capital(&by_town(&grown)), fmt_thousands_f0(laid_out)),
+        ),
+        (a, b) => (
+            format!("The {surname} branches open {} works and extend {}", number(a), number(b)),
+            format!("{}. Extended, for {} in all: {}.", capital(&by_town(&opened)), fmt_thousands_f0(laid_out), by_town(&grown)),
+        ),
+    };
+    let first = *opened.first().or(grown.first()).expect("something was opened or extended");
     let mut e = Event::new(year as f64 + 0.95, "family", P.chronicle.own_summary, title, text);
-    e.town = Some(towns[0].0);
+    e.town = Some(st.f_town[first]);
     e.family = Some(family);
     events.push(e);
 }
