@@ -176,7 +176,8 @@ Pictures and checks with no window:
                        a picture; give it once for each. Empty values fall back to
                        the opening view. WORDS, in any order: a panel (family, holdings,
                        markets, news or none), a map view as for --overlay, and island
-                       or open:GOOD for what the Markets panel shows
+                       or open:GOOD for what the Markets panel shows (island:months and
+                       open:GOOD:months for its charts month by month)
   --shot PATH          a picture of the opening view
   --wait S             seconds before the first picture, for shaders to compile (45)
   --frames N           frames to let a picture settle (40)
