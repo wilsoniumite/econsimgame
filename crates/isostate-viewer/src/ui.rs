@@ -475,7 +475,11 @@ fn toggle_tab(ui: &mut UiState, t: Tab) {
     ui.tab = if ui.tab == Some(t) { None } else { Some(t) };
 }
 
-fn hotkeys(keys: Res<ButtonInput<KeyCode>>, mut ui: ResMut<UiState>, mut help: Query<&mut Visibility, With<HelpCard>>) {
+fn hotkeys(keys: Res<ButtonInput<KeyCode>>, mut ui: ResMut<UiState>, mut help: Query<&mut Visibility, With<HelpCard>>, cards: Res<crate::game::CardOpen>) {
+    // the panels and the help wait while a card wants an answer
+    if cards.0 {
+        return;
+    }
     for (k, t) in [(KeyCode::Digit1, Tab::Family), (KeyCode::Digit2, Tab::Holdings), (KeyCode::Digit3, Tab::Markets), (KeyCode::Digit4, Tab::News)] {
         if keys.just_pressed(k) {
             toggle_tab(&mut ui, t);

@@ -40,6 +40,8 @@ pub struct Game {
     pending: Vec<usize>,
     /// the end of the game has been shown
     ended: bool,
+    /// the card that ends the game is up
+    end_open: bool,
     drawn: Option<(Option<Pick>, usize, u64)>,
     marks: Option<(usize, usize, usize, u64)>,
     /// decisions already put in front of the player, so each opens by itself only once
@@ -54,19 +56,37 @@ pub struct Game {
 }
 
 impl Game {
+    /// A card that wants an answer is up: the welcome, a decision or the end
+    /// of the game. The clock stands still under it.
+    pub fn modal(&self) -> bool {
+        self.welcoming || self.open.is_some() || self.end_open
+    }
+
     /// For the scripted runs: which cards are up and how the last order went.
     pub fn summary(&self) -> String {
         let card = match (self.welcoming, self.open) {
             (true, _) => "the welcome card is up".to_string(),
             (false, Some(id)) => format!("decision {id} is open"),
+            (false, None) if self.end_open => "the end card is up".to_string(),
             (false, None) => "no card is open".to_string(),
         };
         let note = match &self.note {
             Some((ok, text)) => format!("; the last order {}: {text}", if *ok { "went through" } else { "was refused" }),
             None => String::new(),
         };
-        format!("{card}{}{}{note}", if self.ended { ", the end card has been shown" } else { "" }, if self.busy { ", an order is out" } else { "" })
+        format!("{card}{}{}{note}", if self.ended && !self.end_open { ", the end card has been shown" } else { "" }, if self.busy { ", an order is out" } else { "" })
     }
+}
+
+/// Whether a card that wants an answer was up when this frame began. A key
+/// that closes or answers the card is the card's alone: read here, not from
+/// `Game`, it stays so whichever system runs first, so Space on the welcome
+/// card cannot also start the clock.
+#[derive(Resource, Default)]
+pub struct CardOpen(pub bool);
+
+fn note_cards(game: Res<Game>, mut open: ResMut<CardOpen>) {
+    open.0 = game.modal();
 }
 
 /// The card shown when the century is over.
@@ -114,6 +134,8 @@ struct Marks(Handle<Mesh>);
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<Game>()
+        .init_resource::<CardOpen>()
+        .add_systems(First, note_cards)
         .add_systems(Startup, setup_marks.run_if(resource_exists::<Live>))
         .add_systems(PostStartup, welcome.run_if(resource_exists::<Live>))
         .add_systems(Update, close_welcome)
@@ -291,9 +313,13 @@ fn cards_in_shots() -> bool {
 }
 
 /// Ask for the next year when the clock reaches the last one there is.
-fn drive(mut live: ResMut<Live>, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, keys: Res<ButtonInput<KeyCode>>) {
+fn drive(mut live: ResMut<Live>, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, keys: Res<ButtonInput<KeyCode>>, cards: Res<CardOpen>) {
     let r = &data.r;
     if r.filled >= r.ny || live.stepping {
+        return;
+    }
+    // no year is worked out under a card that waits for the player
+    if cards.0 || game.modal() {
         return;
     }
     let at_end = tl.t >= data.latest() as f32;
@@ -1101,12 +1127,14 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
         for e in &cards {
             commands.entity(e).despawn();
         }
+        game.end_open = false;
     }
     let r = &data.r;
     if game.ended || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
         return;
     }
     game.ended = true;
+    game.end_open = true;
     let f = font.0.clone();
     let mut rank: Vec<&FamilyRow> = fam.families.iter().collect();
     rank.sort_by(|a, b| b.net_worth.partial_cmp(&a.net_worth).unwrap_or(std::cmp::Ordering::Equal));

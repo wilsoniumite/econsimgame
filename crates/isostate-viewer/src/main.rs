@@ -810,7 +810,11 @@ fn seasons(
     }
 }
 
-fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: Res<Data>, mut tilt: ResMut<Tilt>) {
+fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: Res<Data>, mut tilt: ResMut<Tilt>, cards: Res<game::CardOpen>) {
+    // with a decision, the welcome or the end card up, the keys are the card's
+    if cards.0 {
+        return;
+    }
     let last = data.latest() as f32;
     if keys.just_pressed(KeyCode::Space) {
         if !tl.playing && tl.t >= (data.r.ny - 1) as f32 && !data.live {
@@ -843,7 +847,11 @@ fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: R
     }
 }
 
-fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>) {
+fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>, game: Res<game::Game>) {
+    // a card that waits for the player stops the clock, however it came to be open
+    if game.modal() && tl.playing {
+        tl.playing = false;
+    }
     if !tl.playing {
         return;
     }
@@ -1308,8 +1316,10 @@ fn pick(
     tl: Res<Timeline>,
     ui: Res<UiState>,
     mut picked: ResMut<Picked>,
+    cards: Res<game::CardOpen>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
+    // Esc on an open card puts that off and leaves the note alone
+    if keys.just_pressed(KeyCode::Escape) && !cards.0 {
         picked.what = None;
     }
     let Ok(window) = windows.single() else { return };
