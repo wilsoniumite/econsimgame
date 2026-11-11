@@ -841,25 +841,31 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         },
     ));
 
-    // ---- where works stand: the share of the works' capacity within a cell and
-    // a half of a canal at the end, against the share of the land that is
+    // ---- where works stand: of all the works, each counted by its size against
+    // the usual size of its kind, the share within a cell and a half of where the
+    // canals are at the end, before there were any and after; and the share of
+    // the land that is
     let (H, W) = (st.world.H, st.world.W);
+    let near_years: Vec<i64> = [1760, 1800, 1830, y1].into_iter().filter(|&y| y >= y0 && y <= y1).collect();
     if st.canal.iter().any(|&c| c > 0) {
         let off: Vec<bool> = st.canal.iter().map(|&c| c == 0).collect();
         let d = crate::ndimage::distance_transform_edt(&off, H, W);
-        let (mut near, mut all) = (0.0, 0.0);
-        // (works counted by their hands, which add up across methods)
-        for f in (0..st.f_alive.len()).filter(|&f| st.f_alive[f]) {
-            let k = st.f_labor[f];
-            all += k;
-            if d[st.f_cell[f]] < 1.5 {
-                near += k;
+        for &y in &near_years {
+            let (mut near, mut all) = (0.0, 0.0);
+            if let Some((alive, K)) = rec.firm_K.get((y - y0) as usize) {
+                for (&f, &k) in alive.iter().zip(K) {
+                    let size = k as f64 / C.m_K0[st.f_method[f]];
+                    all += size;
+                    if d[st.f_cell[f]] < 1.5 {
+                        near += size;
+                    }
+                }
             }
+            out.push((format!("canal_works_near_{y}"), Kind::Share, if all > 0.0 { near / all } else { f64::NAN }));
         }
         let land = (0..st.N).filter(|&c| st.world.land[c]).count() as f64;
         let land_near = (0..st.N).filter(|&c| st.world.land[c] && d[c] < 1.5).count() as f64;
-        out.push((format!("canal_works_near_{y1}"), Kind::Share, if all > 0.0 { near / all } else { f64::NAN }));
-        out.push((format!("canal_land_near_{y1}"), Kind::Share, land_near / land.max(1.0)));
+        out.push(("canal_land_near".into(), Kind::Share, land_near / land.max(1.0)));
         // and the share of canal cells that have track on them or beside them
         let railed: Vec<bool> = st.rail.iter().map(|&x| x == 0).collect();
         if st.rail.iter().any(|&x| x > 0) {
@@ -871,8 +877,10 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             out.push((format!("canal_km_beside_track_{y1}"), Kind::Share, f64::NAN));
         }
     } else {
-        out.push((format!("canal_works_near_{y1}"), Kind::Share, f64::NAN));
-        out.push((format!("canal_land_near_{y1}"), Kind::Share, f64::NAN));
+        for &y in &near_years {
+            out.push((format!("canal_works_near_{y}"), Kind::Share, f64::NAN));
+        }
+        out.push(("canal_land_near".into(), Kind::Share, f64::NAN));
         out.push((format!("canal_km_beside_track_{y1}"), Kind::Share, f64::NAN));
     }
 

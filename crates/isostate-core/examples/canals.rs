@@ -3,12 +3,15 @@
 //! network and what it carried decade by decade, beside the railway.
 //!
 //!     cargo run --release -p isostate-core --example canals -- [SEED] [--rules port|game]
-//!         [--families N] [--end-year Y] [--set NAME=VALUE]... [--quiet]
+//!         [--families N] [--end-year Y] [--set NAME=VALUE]... [--quiet] [--coal]
 //!
 //! The rules default to the port with only the canals switched on, which is how
 //! the sweep measures them alone; `--rules game` runs them in company. `--set`
 //! takes any parameter by its dotted name (`canals.wharf=0.6`,
-//! `railways.enabled=true`). `--quiet` leaves the list of canals out.
+//! `railways.enabled=true`, and `canals.enabled=false` for the same island
+//! without them). `--quiet` leaves the list of canals out. `--coal` adds the
+//! price of coal in every town every twenty years, with the year the town's
+//! first canal opened.
 #![allow(non_snake_case)]
 use isostate_core::ways::{SERVES_TOWN, SERVES_TRUNK, serves_word};
 use isostate_core::*;
@@ -16,7 +19,7 @@ use isostate_core::*;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut rules = Rules::Port;
-    let (mut seed, mut families, mut end_year, mut quiet) = (7u64, 0usize, None, false);
+    let (mut seed, mut families, mut end_year, mut quiet, mut coal) = (7u64, 0usize, None, false, false);
     let mut sets: Vec<(String, String)> = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -39,6 +42,7 @@ fn main() {
                 i += 1;
             }
             "--quiet" => quiet = true,
+            "--coal" => coal = true,
             s => seed = s.parse().expect("the seed is a number"),
         }
         i += 1;
@@ -121,5 +125,23 @@ fn main() {
     }
     for y in [1800, 1850, 1900].into_iter().filter(|&y| y < y0 + r.rec.n_years as i64) {
         println!("{y}: output per head {:.3}, real wage {:.3}", at("gdp_pc", y), at("real_wage", y));
+    }
+    if coal {
+        // the price of coal town by town, with the year each town's first canal opened
+        let (rec, T, G) = (&r.rec, r.rec.T, C.G);
+        let g = C.gi("coal");
+        let years: Vec<i64> = [1760, 1780, 1800, 1820, 1840].into_iter().filter(|&y| y < y0 + rec.n_years as i64).collect();
+        println!("\ncoal's price by town       canal  {}   coal dug a year, {}", years.iter().map(|y| format!("{y:>6}")).collect::<String>(), years.last().unwrap());
+        for t in (0..T).filter(|&t| st.town_active[t]) {
+            let first = book.lines.iter().filter(|l| l.a == t || l.b == t).map(|l| l.opened).fold(f64::NAN, f64::min);
+            let prices: String = years
+                .iter()
+                .map(|&y| {
+                    let k = (y - y0) as usize;
+                    if rec.town_active[k * T + t] > 0 { format!("{:6.2}", rec.town_price[(k * T + t) * G + g]) } else { "     -".to_string() }
+                })
+                .collect();
+            println!("  {:<22} {:>7}  {prices}   {:>9.0}", st.town_name[t], if first.is_finite() { format!("{first:.0}") } else { "-".into() }, st.town_prod_year[(t, g)]);
+        }
     }
 }
