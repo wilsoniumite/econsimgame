@@ -315,7 +315,7 @@ fn f32_array(name: &str, shape: Vec<usize>, data: &[f32]) -> Array {
 }
 
 /// Today's date as YYYY-MM-DD (UTC), for the header's `generated` field.
-fn today() -> String {
+pub(crate) fn today() -> String {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let days = (secs / 86_400) as i64;
     // civil date from days since 1970-01-01 (Howard Hinnant's algorithm)

@@ -4,6 +4,65 @@
 //! comes out the same. Overrides are partial TOML or JSON documents: any field left
 //! out keeps its default, and an unknown field is an error (Python would silently
 //! store a misspelt key).
+//!
+//! # Two sets of rules
+//!
+//! [`default_params`] is the port: a run under it is the Python's run, byte for
+//! byte, and must stay so (`tests/golden.rs` holds it to that). [`game_params`] is
+//! what a live game is played under: the port plus every mechanism the Python never
+//! had. `docs/rules/README.md` is the longer account.
+//!
+//! # Adding a mechanism
+//!
+//! A mechanism that is not in the Python keeps its numbers in its own small struct
+//! in its own module. The struct derives `Clone, Debug, PartialEq, Serialize,
+//! Deserialize` and carries `#[serde(default, deny_unknown_fields)]`; its `Default`
+//! is the mechanism switched off, and a `game()` constructor gives the tuned values
+//! a game is played with. `Params` gets one field for it, marked
+//! `#[serde(default, skip_serializing_if = "is_default")]`, so the `params.json` of
+//! a port run does not change. `default_params` leaves the field at its default and
+//! `game_params` sets it to `game()`. Switched off, the mechanism must do nothing
+//! at all: no change to the state, no draw from a random stream the port uses.
+//!
+//! A worked example, for canals:
+//!
+//! ```text
+//! // canals.rs
+//! #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+//! #[serde(default, deny_unknown_fields)]
+//! pub struct CanalParams {
+//!     /// Promoters may dig canals.
+//!     pub enabled: bool,
+//!     /// Cost of carrying a ton a cell by canal, relative to a turnpike.
+//!     pub cost: f64,
+//! }
+//!
+//! impl Default for CanalParams {
+//!     /// Off: what the port runs with.
+//!     fn default() -> CanalParams {
+//!         CanalParams { enabled: false, cost: 0.3 }
+//!     }
+//! }
+//!
+//! impl CanalParams {
+//!     /// The game's canals.
+//!     pub fn game() -> CanalParams {
+//!         CanalParams { enabled: true, ..CanalParams::default() }
+//!     }
+//! }
+//!
+//! // params.rs, at the end of `Params`
+//!     /// Canals (not in the Python; see docs/rules/canals.md).
+//!     #[serde(default, skip_serializing_if = "is_default")]
+//!     pub canals: CanalParams,
+//!
+//! // in default_params():   canals: CanalParams::default(),
+//! // in game_params():      P.canals = CanalParams::game();
+//! ```
+//!
+//! The sweep can then set `--set canals.enabled=true` or `--set canals.cost=0.2,0.3,0.4`
+//! with no further wiring. The family fields below predate this convention and stay
+//! as they are.
 
 use serde::{Deserialize, Serialize};
 
@@ -204,6 +263,13 @@ const FAMILY_BIRTH_RATE: f64 = 0.15;
 const ABSENTEE_CUT: f64 = 0.2;
 const UNIVERSITY_GAIN: f64 = 0.25;
 
+/// For `skip_serializing_if` on a mechanism's field: true while it is switched
+/// off, so the `params.json` of a port run never mentions it.
+#[allow(dead_code)] // until the first mechanism's field uses it
+pub(crate) fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
 fn is_zero(v: &usize) -> bool {
     *v == 0
 }
@@ -380,6 +446,76 @@ impl Default for Params {
     }
 }
 
+/// The rules a live game is played under: the port's numbers, plus every mechanism
+/// that is not in the Python switched on with its tuned values. Each new mechanism
+/// adds its switch here (`P.canals = CanalParams::game();`) and nowhere in
+/// `default_params`, which stays the port. Families are not switched on here: how
+/// many there are is the caller's choice (`n_families`), as it is under the port.
+pub fn game_params() -> Params {
+    #[allow(unused_mut)] // until the first mechanism sets its field
+    let mut P = default_params();
+    P
+}
+
+/// Which rules a run is played under (`--rules port|game` on the command line).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rules {
+    /// The port of the Python: `default_params` and `default_content`.
+    Port,
+    /// The game's rules: `game_params` and `game_content`.
+    Game,
+}
+
+impl Rules {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Rules::Port => "port",
+            Rules::Game => "game",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Rules> {
+        match s {
+            "port" => Some(Rules::Port),
+            "game" => Some(Rules::Game),
+            _ => None,
+        }
+    }
+
+    pub fn params(self) -> Params {
+        match self {
+            Rules::Port => default_params(),
+            Rules::Game => game_params(),
+        }
+    }
+
+    pub fn content(self) -> crate::content::Content {
+        match self {
+            Rules::Port => crate::content::default_content(),
+            Rules::Game => crate::content::game_content(),
+        }
+    }
+}
+
+/// Lay `over` on `base`: objects are merged key by key, so a partial document for
+/// one mechanism (`{"canals": {"cost": 0.2}}`) keeps the rest of its numbers;
+/// anything else replaces what was there.
+fn merge_json(base: &mut serde_json::Value, over: &serde_json::Value) {
+    match (base, over) {
+        (serde_json::Value::Object(b), serde_json::Value::Object(o)) => {
+            for (k, v) in o {
+                match b.get_mut(k) {
+                    Some(slot) => merge_json(slot, v),
+                    None => {
+                        b.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+        (b, o) => *b = o.clone(),
+    }
+}
+
 impl Params {
     /// Defaults overridden by a partial TOML document, e.g. `seed = 3` and `land_theta = 2.5`.
     pub fn from_toml_str(text: &str) -> Result<Params, String> {
@@ -391,25 +527,42 @@ impl Params {
         serde_json::from_str(text).map_err(|e| format!("params: {e}"))
     }
 
-    /// These parameters overridden by a partial JSON object.
+    /// These parameters overridden by a partial JSON object. A mechanism's
+    /// struct is merged field by field, not replaced.
     pub fn with_json_overrides(&self, text: &str) -> Result<Params, String> {
-        let mut base = serde_json::to_value(self).map_err(|e| format!("params: {e}"))?;
         let over: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("params: {e}"))?;
-        let (Some(b), Some(o)) = (base.as_object_mut(), over.as_object()) else {
-            return Err("params: overrides must be a JSON object".to_string());
-        };
-        for (k, v) in o {
-            b.insert(k.clone(), v.clone());
+        self.with_overrides(&over)
+    }
+
+    /// These parameters overridden by a partial TOML document.
+    pub fn with_toml_overrides(&self, text: &str) -> Result<Params, String> {
+        let over: serde_json::Value = toml::from_str(text).map_err(|e| format!("params: {e}"))?;
+        self.with_overrides(&over)
+    }
+
+    fn with_overrides(&self, over: &serde_json::Value) -> Result<Params, String> {
+        if !over.is_object() {
+            return Err("params: overrides must be a JSON object or a TOML table".to_string());
         }
+        let mut base = serde_json::to_value(self).map_err(|e| format!("params: {e}"))?;
+        merge_json(&mut base, over);
         serde_json::from_value(base).map_err(|e| format!("params: {e}"))
     }
 
     /// Load overrides from a `.toml` or `.json` file on top of the defaults.
     pub fn load(path: &std::path::Path) -> Result<Params, String> {
+        default_params().load_over(path)
+    }
+
+    /// Load overrides from a `.toml` or `.json` file on top of these parameters
+    /// (the game's rules, say).
+    pub fn load_over(&self, path: &std::path::Path) -> Result<Params, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        match path.extension().and_then(|e| e.to_str()) {
-            Some("json") => Params::from_json_str(&text),
-            _ => Params::from_toml_str(&text),
-        }
+        let read = match path.extension().and_then(|e| e.to_str()) {
+            Some("json") => self.with_json_overrides(&text),
+            _ => self.with_toml_overrides(&text),
+        };
+        // name the file: a wrong field is found after the merge, where its line is no longer known
+        read.map_err(|e| format!("{}: {e}", path.display()))
     }
 }

@@ -193,4 +193,37 @@ fn params_round_trip_and_overrides() {
     let r = P.with_json_overrides(r#"{"seed": 11, "decay": [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]}"#).unwrap();
     assert_eq!(r.seed, 11);
     assert_eq!(r.decay.len(), 16);
+    // the same on top of the game's rules, from TOML
+    let g = isostate_core::game_params();
+    let t = g.with_toml_overrides("seed = 5\nhurdle = 0.2\n").unwrap();
+    assert_eq!((t.seed, t.hurdle, t.land_theta), (5, 0.2, g.land_theta));
+    assert!(g.with_toml_overrides("hurdel = 0.2").is_err());
+    // the fields params.json leaves out while they are at their defaults come through an
+    // override whether they are at their defaults or not
+    let mut f = g.clone();
+    (f.n_families, f.family_bonus, f.end_year) = (6, 0.5, Some(1800));
+    let t = f.with_toml_overrides("hurdle = 0.2\n").unwrap();
+    f.hurdle = 0.2;
+    assert_eq!(t, f);
+    assert_eq!(isostate_core::Rules::parse("port").map(|r| r.params()), Some(P));
+    assert_eq!(isostate_core::Rules::parse("game").map(|r| r.params()), Some(g));
+    assert_eq!(isostate_core::Rules::parse("python"), None);
+}
+
+#[test]
+fn the_run_command_refuses_what_cannot_run() {
+    let run = |args: &[&str]| isostate_core::cli::main_with_args(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    let out = std::env::temp_dir().join(format!("isostate-run-test-{}-refused", std::process::id()));
+    let dir = out.to_str().unwrap();
+    let e = run(&["run", "--out", dir, "--end-year", "1740"]).unwrap_err();
+    assert!(e.contains("1740") && e.contains("before the start year, 1750"), "{e}");
+    let e = run(&["run", "--out", dir, "--rules", "python"]).unwrap_err();
+    assert!(e.contains("not port or game"), "{e}");
+    // a params file with a misspelt field is named in the refusal
+    let file = std::env::temp_dir().join(format!("isostate-run-test-{}-params.toml", std::process::id()));
+    std::fs::write(&file, "hurdel = 0.2\n").unwrap();
+    let e = run(&["run", "--out", dir, "--rules", "game", "--params", file.to_str().unwrap()]).unwrap_err();
+    assert!(e.contains("params.toml") && e.contains("hurdel"), "{e}");
+    let _ = std::fs::remove_file(&file);
+    assert!(!out.exists(), "nothing is written when the command line is wrong");
 }

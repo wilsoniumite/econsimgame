@@ -2,7 +2,12 @@
 //! families, `live_year` after every year, then the time it took and a short
 //! table of the families and how much of the economy they own.
 //!
-//!     cargo run -p isostate-core --release --example live [N_FAMILIES] [END_YEAR]
+//!     cargo run -p isostate-core --release --example live [--rules port|game] [N_FAMILIES] [END_YEAR]
+//!
+//! The run is under the game's rules (`game_params`, `game_content`), as the
+//! viewer's is; `--rules port` runs the port of the Python instead. The
+//! argument parsing is that small: `--rules X` anywhere, the other arguments
+//! in order.
 #![allow(non_snake_case)]
 use std::time::Instant;
 
@@ -10,14 +15,23 @@ use isostate_core::families::{self, Strategy};
 use isostate_core::*;
 
 fn main() {
+    let mut rules = Rules::Game;
+    let mut rest: Vec<String> = Vec::new();
     let mut args = std::env::args().skip(1);
-    let mut P = default_params();
-    P.n_families = args.next().map_or(6, |s| s.parse().expect("number of families"));
-    if let Some(y) = args.next() {
+    while let Some(a) = args.next() {
+        if a == "--rules" {
+            rules = args.next().as_deref().and_then(Rules::parse).expect("--rules port or --rules game");
+        } else {
+            rest.push(a);
+        }
+    }
+    let mut P = rules.params();
+    P.n_families = rest.first().map_or(6, |s| s.parse().expect("number of families"));
+    if let Some(y) = rest.get(1) {
         P.end_year = Some(y.parse().expect("end year"));
     }
     let t0 = Instant::now();
-    let mut s = sim::start(&P, default_content());
+    let mut s = sim::start(&P, rules.content());
     let t_start = t0.elapsed().as_secs_f64();
     let stat = live_static(&s.st, &s.content);
     let mut cursor = LiveCursor::new(&s.content);
@@ -41,6 +55,7 @@ fn main() {
         }
     }
     let years = (s.end_year - s.content.start_year + 1) as f64;
+    println!("rules: {}", rules.as_str());
     println!(
         "{} years, {} families: start {:.2} s, simulation {:.2} s, live_year {:.1} ms a year on average (worst {:.1} ms in {}); {} cells, {} series, {} events sent",
         years,
