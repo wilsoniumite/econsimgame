@@ -860,30 +860,30 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
         }
         // Half the money may still be owing, and prices may have risen since it was
         // raised: a line without the cash for next month's materials makes a call
-        // on those who subscribed. The landlords of its two towns first, a tenth
-        // of their cash at most; then the households, a fortieth (about the 35 to
-        // 8 in which the two subscribe). Landlords can be in debt for decades, and
-        // a line that could call on nobody else would wait as long.
+        // on the landlords of its two towns, a tenth of their cash at most. Where a
+        // town's landlords are in debt (they can be for decades, and a line that
+        // could call on nobody else would wait as long) its households, who
+        // subscribed with them, answer in their place: a fortieth of their cash,
+        // about the 35 to 8 in which the two subscribe.
         let months = if pr.months > 0.0 { pr.months } else { 10.0 };
         let rq: Vec<f64> = (0..pr.order.len()).map(|g| pr.order[g].min(pr.need[g] / months)).collect();
         let mut short = month_bill(&rq, st.price.row(pr.town)) - pr.cash;
-        for (lords, frac) in [(true, 0.1), (false, 0.025)] {
-            for (n, t) in [pr.a, pr.b].into_iter().enumerate() {
-                if short <= 0.0 || (n == 1 && pr.b == pr.a) {
-                    continue;
+        for (n, t) in [pr.a, pr.b].into_iter().enumerate() {
+            if short <= 0.0 || (n == 1 && pr.b == pr.a) {
+                continue;
+            }
+            let (lords, frac) = if st.lord_cash[t] > 0.0 { (true, 0.1) } else { (false, 0.025) };
+            let cash = if lords { &mut st.lord_cash } else { &mut st.hh_cash };
+            let call = (cash[t].max(0.0) * frac).min(short);
+            if call > 0.0 {
+                cash[t] -= call;
+                pr.cash += call;
+                pr.paid_in += call;
+                match pr.subs.iter_mut().find(|s| s.0 == lords && s.1 == t) {
+                    Some(s) => s.2 += call,
+                    None => pr.subs.push((lords, t, call)),
                 }
-                let cash = if lords { &mut st.lord_cash } else { &mut st.hh_cash };
-                let call = (cash[t].max(0.0) * frac).min(short);
-                if call > 0.0 {
-                    cash[t] -= call;
-                    pr.cash += call;
-                    pr.paid_in += call;
-                    match pr.subs.iter_mut().find(|s| s.0 == lords && s.1 == t) {
-                        Some(s) => s.2 += call,
-                        None => pr.subs.push((lords, t, call)),
-                    }
-                    short -= call;
-                }
+                short -= call;
             }
         }
         if pairwise_sum(&pr.order) > 0.01 * pairwise_sum(&pr.need) {
@@ -1061,6 +1061,14 @@ mod tests {
         assert_eq!((st.lord_cash[a], st.lord_cash[b], st.hh_cash[b]), (-1000.0, -1000.0, 1e9));
         let after = crate::econ::money_total(&st);
         assert!((after - before).abs() <= 1e-9 * before.abs(), "a call is a transfer");
+        // landlords with anything at all answer for themselves, a tenth of it each
+        st.projects[0].cash = 0.0;
+        for t in [a, b] {
+            st.lord_cash[t] = 10.0;
+        }
+        progress(&mut st, &way, 1800.6, &mut Vec::new());
+        assert!((st.projects[0].cash - 2.0).abs() < 1e-12 && st.lord_cash[a] == 9.0 && st.lord_cash[b] == 9.0);
+        assert_eq!(st.hh_cash[b], 1e9);
     }
 
     #[test]
