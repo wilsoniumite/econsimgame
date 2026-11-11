@@ -258,6 +258,23 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     }
     let last_town = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] >= y0).map(|t| st.town_founded[t]).max();
     b.year("last_town_founded".into(), last_town);
+    // people: the towns founded from 1800 on, by what their districts were known for
+    // (a town can also be a port or on a railway), and how big they are at the end
+    if r.params.people.enabled {
+        let late: Vec<&crate::peopling::Founding> = st.pp_foundings.iter().filter(|f| f.year >= 1800).collect();
+        let count = |f: &dyn Fn(&crate::peopling::Founding) -> bool| late.iter().filter(|x| f(x)).count() as f64;
+        b.num("late_towns".into(), Kind::Count, late.len() as f64);
+        for kind in ["coal", "iron", "stone", "works", "farm"] {
+            b.num(format!("late_towns_{kind}"), Kind::Count, count(&|f| f.kind == kind));
+        }
+        b.num("late_towns_port".into(), Kind::Count, count(&|f| f.port));
+        b.num("late_towns_rail".into(), Kind::Count, count(&|f| f.rail));
+        let mut size: Vec<f64> = late.iter().map(|f| st.pop[f.town]).collect();
+        size.sort_by(f64::total_cmp);
+        b.num("late_town_people_median".into(), Kind::Count, quantile(&size, 0.5));
+        b.num("late_town_people_largest".into(), Kind::Count, size.last().copied().unwrap_or(f64::NAN));
+        b.num("emigrants".into(), Kind::Count, st.pp_emigrants);
+    }
 
     // ---- work and wages
     b.group = GROUPS[1];

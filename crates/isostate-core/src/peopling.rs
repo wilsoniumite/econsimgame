@@ -91,7 +91,7 @@ impl Default for PeopleParams {
             emigration: 0.02,
             growth_floor: -0.06,
             arrivals_max: 0.1,
-            found_saving: 0.05,
+            found_saving: 0.08,
             found_cells: 40,
             found_people: 3000.0,
             found_spacing: 8.0,
