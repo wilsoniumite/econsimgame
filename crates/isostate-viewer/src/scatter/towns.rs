@@ -1,5 +1,5 @@
 //! Towns, laid out the way market towns grew. There is a market place with the
-//! church on one side. High streets run along the roads in, with an unbroken
+//! church in its yard just off it, in a quarter between the roads. High streets run along the roads in, with an unbroken
 //! frontage near the middle. Back lanes run behind the plots, with cross streets
 //! between them; their houses go up a row at a time. A station stands at the end
 //! of its own road.
@@ -14,7 +14,7 @@
 
 use super::*;
 use bevy::math::Vec2;
-use isostate_gen::houses::{self, storeys, Cottage, Terrace, Townhouse};
+use isostate_gen::houses::{self, roof, storeys, Cottage, Roof, Terrace, Townhouse};
 use isostate_gen::town;
 use std::collections::HashMap;
 
@@ -71,6 +71,17 @@ fn first_built(r: &Replay, k: usize, wc: usize, sub: f32, need: f32) -> Option<u
     (0..=k).find(|&y| density(r, y, wc) >= need && matches!(world::pick_class(r, y, wc, sub), world::URBAN | world::WORKS))
 }
 
+/// The roof of a house that went up in year `built` (counted from the start)
+/// on the ground of cell `wc`, as it is in year `k`: what could be had
+/// there that year, weathered since. A house standing when the story opens
+/// was built some time before.
+fn roof_of(r: &Replay, k: usize, wc: usize, built: usize, seed: Seed) -> Roof {
+    let (year, now) = (if built == 0 { roof::built_before(r.y0, seed) } else { r.y0 + built as i32 }, r.y0 + k as i32);
+    // whether the railway had come by the year the roof it has now was laid
+    let laid = (Roof::laid(year, now, seed) - r.y0).clamp(0, k as i32) as usize;
+    Roof::of(year, now, r.terrain[wc] >= 2, r.trans[laid * r.n + wc] & 4 != 0, seed)
+}
+
 fn v2((x, z): (f32, f32)) -> Vec2 {
     Vec2::new(x, z)
 }
@@ -99,20 +110,160 @@ pub fn square_of(r: &Replay, cen: &[(f32, f32)], k: usize, t: usize) -> Option<(
     squares(r, cen, k).into_iter().find(|s| s.town == t).map(|s| (s.at, s.radius, s.yaw))
 }
 
-/// The church faces the square from its east side, the station is down its own road to the south.
-fn church_at(s: &Square) -> Vec2 {
-    let q = bevy::math::Quat::from_rotation_y(s.yaw);
-    let o = q * Vec3::new(s.radius + 0.05, 0.0, 0.0);
-    s.at + Vec2::new(o.x, o.z)
+/// A town's parish church: which church it is, the middle of its churchyard
+/// and the way it faces.
+pub(super) struct Parish {
+    church: town::Church,
+    at: Vec2,
+    yaw: f32,
+    /// what is wrong with where it stands, if no quarter was without fault (see `parish`)
+    faults: u32,
 }
 
+impl Parish {
+    /// Whether a point is in the churchyard or within `margin` of it.
+    pub(super) fn holds(&self, p: Vec2, margin: f32) -> bool {
+        p.distance_squared(self.at) < 0.04 && self.church.yard_holds(self.at, self.yaw, p, margin)
+    }
+
+    /// Whether a house plot or a back street here would crowd the church or block the way to its gate.
+    fn crowded_by(&self, p: Vec2) -> bool {
+        p.distance_squared(self.at) < 0.06 && self.church.crowded_by(self.at, self.yaw, p)
+    }
+}
+
+/// How much further out each try is for a church that cannot stand on dry ground by its market place.
+const FURTHER_OUT: f32 = 0.12;
+
+/// East, south, west and north on the map, in the order they come round.
+const WAYS: [(isize, isize); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
+
+/// A town's church stands off its market place, tower and gate toward it, in
+/// one of the four quarters between the ways to the neighbouring squares of
+/// the map (where the roads run, now or later), and stays there: the quarter
+/// is chosen by what does not change. It must be dry land clear of those
+/// ways, and of the quarters that are, the one that keeps the churchyard
+/// nearest the middle of its square of the map is taken, as the works stand
+/// round the edge. Only a road that cuts across a quarter, which is rare, is
+/// a reason to take another, from the year it is first laid, and so is a
+/// railway laid through the churchyard (the line goes where the simulation
+/// has it, and the church gives way the year it is begun). A town with
+/// water in every quarter stands its church in one of the ways out, and one
+/// whose middle is drowned ground stands it further out the same way, on the
+/// nearest dry ground.
+fn parish(r: &Replay, g: &Ground, cen: &[(f32, f32)], rails: &crate::rails::RailYear, k: usize, s: &Square) -> Parish {
+    let t = s.town;
+    let node = r.header.towns[t].node;
+    // a big town's church was rebuilt bigger, and stays so; a small town's gets its spire in a year of its own
+    let grown = (0..=k).any(|y| r.town_urban[y * r.n_towns + t] > 12000.0);
+    let spire_year = 1825 + (world::hash2(t as i32, 3, 5) * 50.0) as i32;
+    let church = town::Church { big: grown, spire: grown || r.y0 + k as i32 >= spire_year, seed: Seed::new(world::hash2(t as i32, 4, 5), world::hash2(t as i32, 5, 5)) };
+    let (cx, cy) = ((node % r.w) as isize, (node / r.w) as isize);
+    let cell = |(dx, dy): (isize, isize)| -> Option<usize> {
+        let (x, y) = (cx + dx, cy + dy);
+        (x >= 0 && y >= 0 && (x as usize) < r.w && (y as usize) < r.h).then(|| y as usize * r.w + x as usize)
+    };
+    // the ways out: toward the middle of each neighbouring square
+    let ways = WAYS.map(|w| {
+        let plain = Vec2::new(w.0 as f32, w.1 as f32);
+        cell(w).map_or(plain, |c| (v2(cen[c]) - s.at).normalize_or(plain))
+    });
+    let roaded = |c: Option<usize>, y: usize| c.is_some_and(|c| r.trans[y * r.n + c] & 2 != 0);
+    let middle = Vec2::new(cx as f32 + 0.5, cy as f32 + 0.5);
+    // where it stands is settled by the yard of the biggest church the town may come to have,
+    // so that a church rebuilt bigger grows back from its gate and does not move to another quarter
+    let widest = town::Church { big: true, ..church };
+    let (w, d) = widest.yard();
+    let mut best: Option<(f32, Vec2, f32, u32)> = None;
+    // the four quarters, and then the four ways themselves, for a town with water in every
+    // quarter; and where the church would stand in the water in all eight (a town whose middle
+    // is drowned ground), the same again further and further out, to the nearest dry ground
+    for (i, step) in (0..5).flat_map(|step| (0..8).map(move |i| (i, step))) {
+        if i == 0 && best.is_some_and(|(_, _, _, faults)| faults & 8 == 0) {
+            break;
+        }
+        let out = step as f32 * FURTHER_OUT;
+        let on_a_way = i >= 4;
+        let (a, b) = (ways[i % 4], ways[(i + 1) % 4]);
+        let bearing = if on_a_way { a } else { (a + b).normalize_or(Vec2::new(-a.y, a.x)) };
+        let (at, yaw) = widest.beside_square(s.at + bearing * out, bearing);
+        let across = Vec2::new(-bearing.y, bearing.x);
+        let corners = [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(sx, sz)| at + across * (sx * w * 0.5) + bearing * (sz * d * 0.5));
+        let mut faults = 0;
+        // dry land under the whole yard, and under the church above all
+        let wet = |p: &Vec2| world::height_at(g, p.x, p.y) < 0.05 || world::water_dist(g, p.x, p.y) < 0.03;
+        let wet_corners = corners.iter().filter(|p| wet(p)).count();
+        if wet_corners > 0 {
+            faults += 2;
+        }
+        if wet(&at) {
+            faults += 8;
+        }
+        if step > 0 {
+            faults += 32;
+        }
+        if railway_through(rails, &widest, at, yaw, 0.01) {
+            faults += 64;
+        }
+        if on_a_way {
+            faults += 16;
+        } else {
+            // clear of the ways either side of it, where a main road and its frontage may come
+            if corners.iter().any(|p| [a, b].iter().any(|way| (*p - s.at).dot(*way) > 0.0 && (*p - s.at).perp_dot(*way).abs() < 0.024)) {
+                faults += 1;
+            }
+            // a road across the quarter, to the square of the map cornerwise, in any year so far
+            let (da, db) = (WAYS[i], WAYS[(i + 1) % 4]);
+            let corner = cell((da.0 + db.0, da.1 + db.1));
+            if (0..=k).any(|y| roaded(Some(node), y) && roaded(corner, y) && !roaded(cell(da), y) && !roaded(cell(db), y)) {
+                faults += 4;
+            }
+        }
+        let reach = corners.iter().map(|p| (*p - middle).abs().max_element()).fold(0.0f32, f32::max);
+        // the church in the water is the worst of the faults, then standing in a way out, the
+        // railway through its yard, a road across its quarter, and a way close by; a corner of
+        // the yard by the water is the least
+        let weigh = |bit: u32, by: f32| if faults & bit != 0 { by } else { 0.0 };
+        let score = weigh(8, 100.0) + weigh(16, 60.0) + weigh(64, 50.0) + weigh(4, 40.0) + weigh(1, 10.0) + wet_corners as f32 * 2.0 + reach;
+        if best.map_or(true, |(sc, _, _, _)| score < sc) {
+            best = Some((score, bearing, out, faults));
+        }
+    }
+    let (_, bearing, out, faults) = best.unwrap_or((0.0, Vec2::X, 0.0, 0));
+    let (at, yaw) = church.beside_square(s.at + bearing * out, bearing);
+    Parish { church, at, yaw, faults }
+}
+
+/// Whether the railway, laid or being laid, runs through a churchyard whose
+/// middle is at `at`, or within `margin` of it.
+fn railway_through(rails: &crate::rails::RailYear, church: &town::Church, at: Vec2, yaw: f32, margin: f32) -> bool {
+    let through = |a: Vec2, b: Vec2| {
+        // a length of line far from the yard is passed over; one near it is walked in short steps
+        let len = a.distance(b);
+        if a.distance(at) > len + 0.25 {
+            return false;
+        }
+        let steps = (len / 0.02).ceil().max(1.0) as usize;
+        (0..=steps).any(|i| church.yard_holds(at, yaw, a.lerp(b, i as f32 / steps as f32), margin))
+    };
+    rails.lines.iter().any(|l| l.pts.windows(2).any(|w| through(Vec2::new(w[0].x, w[0].z), Vec2::new(w[1].x, w[1].z)))) || rails.building.iter().any(|&(a, b)| through(a, b))
+}
+
+/// The station is down its own road to the south of the market place.
 fn station_at(s: &Square) -> Vec2 {
     let q = bevy::math::Quat::from_rotation_y(s.yaw);
     let o = q * Vec3::new(0.0, 0.0, 0.24);
     s.at + Vec2::new(o.x, o.z)
 }
 
-pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32, f32, f32)>>) {
+/// The market places, churches, stations and lighthouses of the towns. The
+/// churchyards are handed back, for everything else to keep out of. `plots`
+/// holds the yards of the year's works as it comes in, and is given the
+/// market places and the stations.
+pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, houses: &mut Builder, plots: &mut HashMap<usize, Vec<(f32, f32, f32, f32)>>) -> Vec<Parish> {
+    let height = |x: f32, z: f32| world::height_at(g, x, z);
+    let mut parishes = Vec::new();
+    let rails = crate::rails::year(r, g, cen, k);
     for s in squares(r, cen, k) {
         let node = r.header.towns[s.town].node;
         // the market place, paved, with a cross or a hall in the middle
@@ -135,9 +286,16 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         } else {
             town::market_cross(houses, &Site::level(m, s.yaw), lk);
         }
-        let c = church_at(&s);
-        town::church(houses, &Site::level(ground(g, c.x, c.y), s.yaw + std::f32::consts::FRAC_PI_2), s.big, lk);
-        plots.entry(node).or_default().push((c.x, c.y, 0.085, 0.085));
+        let p = parish(r, g, cen, &rails, k, &s);
+        town::church(houses, &Site::on(ground(g, p.at.x, p.at.y), p.yaw, &height), &p.church, lk);
+        if std::env::var_os("ISOSTATE_TIMING").is_some() {
+            // a works whose yard reaches into the churchyard (so far only the yards of the works are in `plots`)
+            let crowded = plots.values().flatten().filter(|&&(x, z, hx, hz)| p.holds(Vec2::new(p.at.x.clamp(x - hx, x + hx), p.at.y.clamp(z - hz, z + hz)), 0.0)).count();
+            if p.faults > 0 || crowded > 0 {
+                eprintln!("year {}: the church of town {} stands with faults {} (1 by a way out, 2 a corner of the yard on wet ground, 4 a road across, 8 the church on wet ground, 16 in a way out, 32 further out than the market place's edge, 64 the railway through the yard it may come to have) and {} works by its yard; it is at {:.2}, {:.2}, where the ground is {:.3} high and the water {:.3} off", r.y0 + k as i32, s.town, p.faults, crowded, p.at.x, p.at.y, world::height_at(g, p.at.x, p.at.y), world::water_dist(g, p.at.x, p.at.y));
+            }
+        }
+        parishes.push(p);
         plots.entry(node).or_default().push((s.at.x, s.at.y, 0.085, 0.085));
         if r.trans[k * r.n + node] & 4 != 0 {
             let st = station_at(&s);
@@ -167,6 +325,7 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
             town::lighthouse(houses, &Site::level(ground(g, lx, lz), 0.0), lk);
         }
     }
+    parishes
 }
 
 /// The density a point's ground is built up to: a town square's own reading, or a guess for
@@ -237,9 +396,10 @@ fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Stree
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
+pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
     let sq = squares(r, cen, k);
-    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(church_at(s)) < 0.07 || p.distance(station_at(s)) < 0.07);
+    // a house keeps its whole plot out of a churchyard
+    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(station_at(s)) < 0.07) || parishes.iter().any(|c| c.crowded_by(p));
     let built = |p: Vec2, need: f32| -> bool {
         if world::height_at(g, p.x, p.y) < 0.05 {
             return false;
@@ -374,7 +534,7 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
     // ground as the town grows. Each knows the year it was built, which settles its style.
     cands.sort_by(|a, b| a.need.total_cmp(&b.need));
     let mut taken: HashMap<(i32, i32), Vec<Vec2>> = HashMap::new();
-    let mut standing: Vec<(Plot, f32, i32)> = Vec::new();
+    let mut standing: Vec<(Plot, f32, i32, Roof)> = Vec::new();
     let mut row_year: HashMap<(i32, i32), Option<usize>> = HashMap::new();
     for pl in cands {
         let (cls, wc) = class_here(r, g, k, pl.p.x, pl.p.y);
@@ -397,11 +557,12 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
             continue;
         }
         taken.entry(c).or_default().push(pl.p);
-        standing.push((pl, dens, r.y0 + built as i32));
+        let roof = roof_of(r, k, wc, built, Seed::new(pl.u, pl.v));
+        standing.push((pl, dens, r.y0 + built as i32, roof));
     }
 
     // rows built in the industrial years are brick terraces; everything else stands as separate houses
-    standing.sort_by_key(|(p, _, _)| (p.run, p.index));
+    standing.sort_by_key(|(p, _, _, _)| (p.run, p.index));
     let mut i = 0;
     while i < standing.len() {
         let (first, _, year) = (&standing[i].0, standing[i].1, standing[i].2);
@@ -414,13 +575,13 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
         if j - i >= 2 {
             terrace(houses, smoke, lk, g, &standing[i..j]);
         } else {
-            for (pl, d, _) in &standing[i..j] {
+            for (pl, d, _, roof) in &standing[i..j] {
                 // on the high streets and the market place a house is rebuilt as a
                 // townhouse of the full plot once its ground is dense enough, each at its own point
                 if pl.high && *d >= pl.need + 0.12 + 0.25 * pl.v {
-                    townhouse(houses, smoke, lk, g, pl, *d);
+                    townhouse(houses, smoke, lk, g, pl, *d, *roof);
                 } else {
-                    cottage(houses, smoke, lk, g, pl, *d);
+                    cottage(houses, smoke, lk, g, pl, *d, *roof);
                 }
             }
         }
@@ -438,34 +599,35 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
             continue;
         }
         let pl = Plot { p, yaw: (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2, run: (0, 0), row: None, high: false, index: 0, width: 0.05, depth: 0.036, need: 0.0, u: s.u, v: s.v };
-        cottage(houses, smoke, lk, g, &pl, density(r, k, c));
+        let built = first_built(r, k, c, s.sub, 0.0).unwrap_or(k);
+        cottage(houses, smoke, lk, g, &pl, density(r, k, c), roof_of(r, k, c, built, Seed::new(s.u, s.v)));
     }
 }
 
 /// A house standing on its own plot. Each adds a storey at its own density,
 /// so a street grows a house at a time.
-fn cottage(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32) {
+fn cottage(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32, roof: Roof) {
     let seed = Seed::new(pl.u, pl.v);
-    let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), seed };
+    let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), roof, seed };
     houses::cottage(houses, smoke, &Site::level(ground(g, pl.p.x, pl.p.y), pl.yaw), &c, lk);
 }
 
 /// A terraced row over several plots, raised a storey when its own ground is dense enough.
-fn terrace(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, row: &[(Plot, f32, i32)]) {
+fn terrace(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, row: &[(Plot, f32, i32, Roof)]) {
     let (a, b) = (row[0].0.p, row[row.len() - 1].0.p);
     let mid = (a + b) * 0.5;
     let first = &row[0].0;
-    let dens = row.iter().map(|(_, d, _)| *d).sum::<f32>() / row.len() as f32;
+    let dens = row.iter().map(|(_, d, _, _)| *d).sum::<f32>() / row.len() as f32;
     // ground under the row: the lower end, so it never floats
-    let h = row.iter().map(|(pl, _, _)| world::height_at(g, pl.p.x, pl.p.y)).fold(f32::MAX, f32::min);
+    let h = row.iter().map(|(pl, _, _, _)| world::height_at(g, pl.p.x, pl.p.y)).fold(f32::MAX, f32::min);
     let seed = Seed::new(first.u, first.v);
-    let t = Terrace { houses: row.len(), length: a.distance(b) + first.width * 0.96, depth: first.depth, storeys: storeys::terrace(dens, seed), seed };
+    let t = Terrace { houses: row.len(), length: a.distance(b) + first.width * 0.96, depth: first.depth, storeys: storeys::terrace(dens, seed), roof: row[0].3, seed };
     houses::terrace(houses, smoke, &Site::level(Vec3::new(mid.x, h, mid.y), first.yaw), &t, lk);
 }
 
 /// A house in a continuous frontage: the full width of its plot, two or three storeys.
-fn townhouse(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32) {
+fn townhouse(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32, roof: Roof) {
     let seed = Seed::new(pl.u, pl.v);
-    let t = Townhouse { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::townhouse(dens, seed), seed };
+    let t = Townhouse { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::townhouse(dens, seed), roof, seed };
     houses::townhouse(houses, smoke, &Site::level(ground(g, pl.p.x, pl.p.y), pl.yaw), &t, lk);
 }

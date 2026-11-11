@@ -56,14 +56,17 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
             let nets = crate::network::year_nets(r, g, cen, k, &lk);
             let paths = crate::trains::rail_paths(r, g, cen, k);
             let t2 = seconds();
-            let verts = ym.trees.pos.len() + ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len();
+            let trees: usize = ym.trees.iter().flat_map(|t| t.parts()).map(|b| b.pos.len()).sum();
+            let bare: usize = ym.trees.iter().map(|t| t.bare.pos.len()).sum();
+            let verts = trees + ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len();
             if round == 0 {
-                eprintln!("bench {} vertices: trees {}, houses {}, works {}, smoke {}, lanes {}, roads {}, rails {}", r.y0 + k as i32,
-                    ym.trees.pos.len(), ym.houses.pos.len(), ym.works.pos.len(), ym.smoke.pos.len(), ym.lanes.pos.len(), nets.roads.pos.len(), nets.rails.pos.len());
+                eprintln!("bench {} vertices: trees {} (of them bare limbs {}), houses {}, works {}, smoke {}, lanes {}, roads {}, rails {}", r.y0 + k as i32,
+                    trees, bare, ym.houses.pos.len(), ym.works.pos.len(), ym.smoke.pos.len(), ym.lanes.pos.len(), nets.roads.pos.len(), nets.rails.pos.len());
             }
-            let meshes = [ym.trees, ym.houses, ym.works, ym.smoke, ym.lanes, nets.roads, nets.rails].map(crate::meshkit::into_mesh);
+            let tree_meshes: Vec<_> = ym.trees.into_iter().flat_map(|t| [t.evergreen, t.leaves, t.bare]).map(crate::meshkit::into_mesh).collect();
+            let meshes = [ym.houses, ym.works, ym.smoke, ym.lanes, nets.roads, nets.rails].map(crate::meshkit::into_mesh);
             let t3 = seconds();
-            drop(meshes);
+            drop((meshes, tree_meshes));
             if round > 0 {
                 total += t3 - t0;
                 n += 1;

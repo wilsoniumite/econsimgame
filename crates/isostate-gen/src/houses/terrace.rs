@@ -1,6 +1,7 @@
 use glam::{Quat, Vec3};
 
 use crate::hash::Seed;
+use crate::houses::roof::Roof;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::parts::{smoking_chimney, windows, STOREY};
@@ -16,6 +17,8 @@ pub struct Terrace {
     pub depth: f32,
     /// two or three
     pub storeys: u8,
+    /// what the row was roofed with when it went up, and how weathered that is now
+    pub roof: Roof,
     /// the row's own numbers: its first plot's
     pub seed: Seed,
 }
@@ -40,7 +43,7 @@ pub fn terrace(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrac
     let Seed { u, v } = t.seed;
     let (len, storeys) = (t.length, t.storeys as f32);
     let wall = pal.brick.terrace(v);
-    let roof = if u < 0.75 { *pal.slate.town } else { *pal.roofs.tile_dark };
+    let roof = t.roof.rebuilt().colour(pal, t.seed);
     // terraces have lower roofs than cottages
     let h = STOREY * storeys;
     solid.block(p, len, t.depth, h, yaw, wall, None, 0.03);
@@ -67,7 +70,7 @@ mod tests {
 
     fn build(houses: usize, storeys: u8, seed: Seed) -> Model {
         let mut m = Model::default();
-        let t = Terrace { houses, length: Terrace::length_of(houses, BACK_PLOT_WIDTH), depth: PLOT.1, storeys, seed };
+        let t = Terrace { houses, length: Terrace::length_of(houses, BACK_PLOT_WIDTH), depth: PLOT.1, storeys, roof: Roof::of(1840, 1870, false, false, seed), seed };
         terrace(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, 0.0), &t, &Palette::standard());
         m
     }

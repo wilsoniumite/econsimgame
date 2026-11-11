@@ -1,6 +1,7 @@
 use glam::{Quat, Vec3};
 
 use crate::hash::Seed;
+use crate::houses::roof::{Cover, Roof};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::parts::{chimney, gabled, smoking_chimney, windows, STOREY};
@@ -14,6 +15,8 @@ pub struct Cottage {
     pub plot_depth: f32,
     /// one to three
     pub storeys: u8,
+    /// what it was roofed with when it went up, and how weathered that is now
+    pub roof: Roof,
     pub seed: Seed,
 }
 
@@ -22,8 +25,11 @@ pub fn storeys(density: f32, seed: Seed) -> u8 {
     1 + (density >= 0.35 + 0.35 * seed.v) as u8 + (density >= 0.8 + 0.15 * seed.u) as u8
 }
 
-/// A cottage: washed walls under a steep roof of tile or slate, a little
-/// askew on its plot, some with a chimney at one end and a few of those smoking.
+/// A cottage: washed walls under a steep roof, a little askew on its plot,
+/// some with a chimney at one end and a few of those smoking. The roof is
+/// what the house was given when it went up; thatch, which is steeper and
+/// deeper at the eaves, stays only on a cottage of one storey, as one that
+/// has been raised was roofed again in tile.
 pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, c: &Cottage, pal: &Palette) {
     let p = site.origin;
     let Seed { u, v } = c.seed;
@@ -32,8 +38,14 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, c: &Cottag
     let d = c.plot_depth * (0.9 + 0.2 * u);
     let yaw = site.yaw + (v - 0.5) * 0.08;
     let wall = pal.walls.town_house(v);
-    let roof = pal.house_roof(u);
-    gabled(solid, p, w, d, storeys, yaw, wall, roof);
+    let roof = if c.storeys > 1 { c.roof.rebuilt() } else { c.roof };
+    let colour = roof.colour(pal, c.seed);
+    if roof.cover == Cover::Thatch {
+        solid.block(p, w, d, STOREY * storeys, yaw, wall, None, 0.03);
+        solid.gable(p, w, d, STOREY * storeys, d * 0.68, yaw, 0.0045, colour, wall);
+    } else {
+        gabled(solid, p, w, d, storeys, yaw, wall, colour);
+    }
     windows(solid, pal, p, w, d, storeys, yaw, 1, true);
     if u < 0.3 {
         let cp = p + Quat::from_rotation_y(yaw) * Vec3::new(w * 0.3, 0.0, 0.0);
@@ -51,10 +63,29 @@ mod tests {
     use crate::houses::PLOT;
     use crate::site::Model;
 
-    fn build(storeys: u8, seed: Seed) -> Model {
+    fn roofed(storeys: u8, roof: Roof, seed: Seed) -> Model {
         let mut m = Model::default();
-        cottage(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, 0.0), &Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys, seed }, &Palette::standard());
+        cottage(&mut m.solid, &mut m.smoke, &Site::level(Vec3::ZERO, 0.0), &Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys, roof, seed }, &Palette::standard());
         m
+    }
+
+    /// A cottage standing when the game opens, as it is a century on: some are thatched.
+    fn build(storeys: u8, seed: Seed) -> Model {
+        roofed(storeys, Roof::of(1750, 1850, false, false, seed), seed)
+    }
+
+    #[test]
+    fn thatch_is_steeper_and_stays_only_on_one_storey() {
+        let pal = Palette::standard();
+        let seed = Seed::of(2);
+        let (thatch, tile) = (Roof { cover: Cover::Thatch, weathering: 0 }, Roof { cover: Cover::Tile, weathering: 0 });
+        let (a, b) = (roofed(1, thatch, seed), roofed(1, tile, seed));
+        assert!(a.solid.col.contains(&*pal.thatch.cottage) && !b.solid.col.contains(&*pal.thatch.cottage));
+        // the ridge is higher (a chimney, if there is one, is the same on both)
+        let ridge = |m: &Model| m.solid.pos.iter().zip(&m.solid.col).filter(|(_, c)| **c != *pal.brick.chimney && **c != *pal.smoke.soot).map(|(p, _)| p[1]).fold(f32::MIN, f32::max);
+        assert!(ridge(&a) > ridge(&b) + 0.003);
+        // raised a storey, it was roofed again in tile
+        assert!(!roofed(2, thatch, seed).solid.col.contains(&*pal.thatch.cottage));
     }
 
     #[test]

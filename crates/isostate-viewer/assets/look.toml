@@ -147,6 +147,8 @@ market_paving = "#d8cdb6"
 farmyard = "#bca783"
 farmyard_edge = "#b59f7a"
 station_platform = "#6b5a4e"
+# the grass of a churchyard, mown and a little dull beside a meadow
+churchyard_grass = "#9db06c"
 # heaps at the pits: coal, ironstone, quarry waste, clay
 spoil_coal = "#3c3936"
 spoil_ironstone = "#8e5a44"
@@ -192,12 +194,16 @@ lighthouse_red = "#c94b3c"
 
 [roofs]
 # clay tile: the common red, a darker one (also the station and the market
-# hall), and the lowland farmhouse's
+# hall), a pantile nearer orange, and the lowland farmhouse's
 tile_red = "#c6604a"
 tile_dark = "#b5523f"
+tile_orange = "#cd7350"
 tile_farm = "#b8573f"
-# an old roof gone green
-moss = "#6e8f5c"
+# what a roof of tile or slate weathers toward as moss and lichen take it: an
+# old roof is tinted a little this way, never painted in it
+moss = "#7c8663"
+# the lead of a church roof, weathered pale
+church_lead = "#9aa0a3"
 # a lowland barn
 barn = "#6b5a4e"
 station_canopy = "#7a8a6a"
@@ -212,14 +218,19 @@ awnings = ["#c9584a", "#e9dcbc", "#5c8a94", "#dba94a"]
 [thatch]
 farmhouse = "#c9a75c"
 weaver_cottage = "#d6b263"
+# a town cottage's thatch when it is new straw, and gone grey-brown with years
+cottage = "#c6a560"
+weathered = "#9b8b69"
 # a rick of corn or hay
 rick = "#d8b55e"
 
 [slate]
-# on the separate houses in town
-house = "#5b6b86"
-# on the church and the terraces
+# blue slate from the quarries, on the houses of a town: two tints, the
+# second also on the terraces
+house = "#626e86"
 town = "#55617a"
+# the thick sandstone slates of the hills
+stone = "#a59c8a"
 # on works, sheds and engine houses
 works = "#4a5468"
 upland_farm = "#5b6577"
@@ -241,10 +252,17 @@ fence = "#8b6b4a"
 planks = "#d6b988"
 logs = "#84603f"
 waterwheel = "#5f4733"
+# the louvres of a church tower's bell openings, dark with age
+belfry_louvre = "#4d463f"
 
 [stone]
 # the church, and the pillars of the market hall
 church = "#ddd5c4"
+# a church's spire, a little greyer than its walls, the low wall round its
+# yard, and the gravestones
+church_spire = "#c9c3b6"
+churchyard_wall = "#a59d8e"
+gravestone = "#cfcabf"
 market_cross = "#d9d0be"
 # stone-built works: smithies, furnaces, crucible shops
 works = "#bdb4a5"
@@ -299,22 +317,33 @@ bricks = "#b9614a"
 
 [foliage]
 trunk = "#7a5536"
+# the limbs of a broadleaf tree when its leaves are down
+bare_limb = "#7c6853"
 broadleaf = ["#5e9a45", "#6aa84f", "#4f8a3d", "#79b25a", "#8ab85c"]
 conifer = ["#2f6a49", "#3a7a51", "#2c5f43"]
+# the yews of a churchyard, nearly black
+yew = "#2c5440"
 # low bushes on the heath
 gorse = "#9aa548"
 broom = "#6b7f3e"
-# what the leaves are multiplied by through the year: [red, green, blue],
-# 1 leaves them as they are
-tint_winter = [0.78, 0.74, 0.70]
+# what the leaves of the broadleaf trees are multiplied by through the year:
+# [red, green, blue], 1 leaves them as they are (conifers, gorse and broom
+# keep their own green). Summer holds from May to late August; autumn is
+# the gold of October; and as the trees are bare in midwinter, the winter
+# tint is only what the last russet leaves of November and the first bronze
+# buds of March lean toward
+tint_winter = [1.66, 0.74, 0.67]
 tint_spring = [0.92, 1.12, 0.86]
 tint_summer = [1.0, 1.0, 1.0]
-tint_autumn = [1.35, 0.88, 0.52]
+tint_autumn = [1.83, 0.93, 0.77]
 
 [water]
 river = "#5d9fc4"
 # the wet bank either side of a river
 river_bank = "#7d8a55"
+# what the rivers and their banks are multiplied by in midwinter, when the
+# water is steel under a low sun: [red, green, blue], 1 leaves them as they are
+river_tint_winter = [0.80, 0.84, 0.88]
 # the deep floor under the sea, beyond the map (the sea's own colours are in [sea])
 sea_floor = [0.16, 0.36, 0.48]
 
@@ -352,10 +381,12 @@ tunnel_mouth = "#2a2522"
 girder = "#4c4f55"
 
 [bridges]
-# the stone bridges that carry roads over rivers, and the dark under an arch
-road_stone = "#c4b8a2"
-lane_stone = "#b9ab94"
-arch_shadow = "#3b3631"
+# the stone bridges that carry roads over rivers: a main road's in pale
+# dressed stone, a lane's a little browner, and the stone of the underside
+# of an arch, which is in its own shade
+road_stone = "#d6ccb8"
+lane_stone = "#cbbfa8"
+arch_shadow = "#8c8273"
 # a low causeway over drowned ground
 causeway = "#b8ac96"
 
@@ -380,10 +411,13 @@ jib = "#e8dcc0"
 pole = "#6b5a48"
 # the gilt ball on a seat's flagpole
 finial = "#d9b44a"
-# plain cloth: fences, and the flag of a seat still to be moved to, are the
-# family's colour mixed toward it
+# plain cloth: the flag of a seat still to be moved to is the family's colour
+# mixed toward it
 cloth_pale = "#f4ecd8"
-# fence posts are the fence's colour mixed toward this
+# the weathered timber of a family's fence: its rails are this stained toward
+# the family's colour, its posts this mixed toward the shade below, and only
+# the caps of the posts are painted in the family's colour itself
+fence_timber = "#8b7556"
 post_shade = "#5a4a3a"
 # surveyors' pegs where a works is ordered
 peg = "#e9dcc0"
@@ -489,3 +523,6 @@ sea = 0.14
 sea_reflectance = 0.45
 # how much light passes through a puff of smoke
 smoke_translucence = 0.3
+# how much light passes through the flat blade of a bare limb: at a half its
+# two sides are lit alike, whichever is turned to the sun
+bare_limb_translucence = 0.5

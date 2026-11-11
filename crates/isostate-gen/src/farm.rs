@@ -8,7 +8,7 @@ use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::parts::gabled;
 use crate::site::Site;
-use crate::trees::hedge_tree;
+use crate::trees::{hedge_tree, Greenery};
 
 /// A farmstead to draw. The site is the farmhouse; the yard and the barn lie behind it (toward -z).
 #[derive(Clone, Copy, Debug)]
@@ -24,7 +24,7 @@ pub struct Farmstead {
 /// barn across the yard and a cart shed or byre on one side; ricks of hay or
 /// corn by an arable farm, and a tree or two. Stone and slate in the hills,
 /// brick, tile and thatch in the lowland.
-pub fn farmstead(solid: &mut MeshBuf, green: &mut MeshBuf, site: &Site, f: &Farmstead, pal: &Palette) {
+pub fn farmstead(solid: &mut MeshBuf, green: &mut Greenery, site: &Site, f: &Farmstead, pal: &Palette) {
     let Seed { u, v } = f.seed;
     let yaw = site.yaw;
     let wall = if f.upland { pick(&pal.stone.upland_farm, v) } else { pal.walls.farmhouse(v) };
@@ -96,7 +96,7 @@ mod tests {
     fn the_bigger_farms_have_a_second_storey_and_a_cart_shed_and_the_smaller_a_tree() {
         let (small, big) = (build(false, false, Seed::new(0.5, 0.3)), build(false, false, Seed::new(0.5, 0.7)));
         assert!(big.solid.triangles() > small.solid.triangles());
-        assert!(!small.green.is_empty());
+        assert!(!small.green.leaves.is_empty() && !small.green.bare.is_empty());
         assert!(big.green.is_empty());
     }
 }

@@ -294,6 +294,7 @@ pub struct Surfaces {
     pub sea: f32,
     pub sea_reflectance: f32,
     pub smoke_translucence: f32,
+    pub bare_limb_translucence: f32,
 }
 
 // ------------------------------------------------------------------ the whole look

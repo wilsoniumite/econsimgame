@@ -18,7 +18,7 @@ pub mod towns;
 
 use isostate_gen::bridge::{road_bridge, RoadBridge};
 use isostate_gen::farm::{farmstead, Farmstead};
-use isostate_gen::trees::{bush, hedge_tree, tree, Species, Tree};
+use isostate_gen::trees::{bush, hedge_tree, leaf_group, tree, Greenery, Species, Tree, LEAF_GROUPS};
 use isostate_gen::works::{self, pit, works, Kind, Pit, PitKind, State, Works};
 use isostate_gen::{Seed, Site};
 
@@ -572,7 +572,10 @@ fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
 // ------------------------------------------------------------------ the year's meshes
 
 pub struct YearMeshes {
-    pub trees: Builder,
+    /// the trees and bushes, the broadleaves in the groups that come into
+    /// leaf and shed together (each group is three meshes: what is green all
+    /// year, the leaves, and the bare limbs shown when the leaves are down)
+    pub trees: [Greenery; LEAF_GROUPS],
     pub houses: Builder,
     pub works: Builder,
     pub smoke: Builder,
@@ -585,7 +588,7 @@ pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: 
 }
 
 fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
-    let mut trees = Builder::default();
+    let mut trees: [Greenery; LEAF_GROUPS] = Default::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
     let mut smoke = Builder::default();
@@ -612,15 +615,19 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk));
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
-        for (at, _, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
-            road_bridge(&mut works_b, &RoadBridge { at, along: (b - a).normalize_or(bevy::math::Vec2::X), half, level, main: lv == 3 }, &height, lk);
+        let along = (b - a).normalize_or(bevy::math::Vec2::X);
+        for (at, river, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
+            // a road that crosses aslant has further to go from bank to bank (up to three times as far)
+            let half = half / along.perp_dot(river).abs().max(0.34);
+            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3 }, &height, lk);
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
-    towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
+    let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
+    // near a works or a market place, or in a churchyard
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false)
+        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false) || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
     };
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
@@ -635,7 +642,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             world::HEATH => {
                 // gorse and broom: low bushes, and the odd tree
                 if s.u < 0.16 && !near_plot(s.x, s.z) {
-                    bush(&mut trees, &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
+                    bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
                 }
                 (s.u < if terr >= 3 { 0.02 } else { 0.035 }, 0.6 + 0.3 * s.v)
             }
@@ -647,10 +654,10 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let p = ground(g, s.x, s.z);
         let conifer = terr >= 2 && s.v > 0.35 || s.v > 0.88;
         let species = if conifer { Species::Conifer } else { Species::Broadleaf };
-        tree(&mut trees, &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
+        tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
     }
 
-    towns::houses(r, g, slots, cen, k, lk, &near_plot_or_water, &mut houses, &mut smoke);
+    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut houses, &mut smoke);
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
@@ -664,7 +671,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             continue;
         }
         let p = ground(g, s.x, s.z);
-        hedge_tree(&mut trees, &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
+        hedge_tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
     }
 
     // farmsteads among the fields, each with a lane to the nearest road
@@ -682,7 +689,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         // stone and slate in the hills
         let upland = r.terrain[c] >= 2;
         let site = Site::on(ground(g, s.x, s.z), s.yaw, &height);
-        farmstead(&mut houses, &mut trees, &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
+        farmstead(&mut houses, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {

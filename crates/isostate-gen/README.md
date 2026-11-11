@@ -74,12 +74,33 @@ what one thing looks like.
   afterwards. `site.at(dx, dz)` gives the point at an offset in the thing's
   own frame, on the ground there: use it for parts that stand apart (a barn
   across the yard, a chimney beside a mill).
-- **Four buffers**, because the viewer draws each with its own material:
-  `solid` (walls, roofs, everything built), `smoke` (lets light through, casts
-  no shadow, and is blended: a corner's alpha is how solid the smoke is
-  there), `green` (leaves, which turn with the seasons) and `flat` (what
-  lies on the ground: lanes, paving, a works' yard, water). A generator takes only the ones
-  it writes. `Model` holds one of each for the lab and for tests.
+- **Begin a quad at a corner where no two of its points meet.** `quad` takes
+  the face's facing from its first corner and the corners either side of it.
+  A face that tapers to nothing at one end (a parapet at the foot of a ramp)
+  has two points in one place there; begun at that end it has no facing and
+  is drawn unlit, a dark wedge on a pale thing. Begin it at the other end.
+  The sheets' tests look for such faces in every cell of every sheet.
+- **Four kinds of buffer**, because the viewer draws each with its own
+  material: `solid` (walls, roofs, everything built), `smoke` (lets light
+  through, casts no shadow, and is blended: a corner's alpha is how solid the
+  smoke is there), `green` (trees and bushes) and `flat` (what lies on the
+  ground: lanes, paving, a works' yard, water). A generator takes only the
+  ones it writes. `Model` holds one of each for the lab and for tests.
+- **`green` is a `Greenery`: three buffers**, as the seasons need. `evergreen`
+  holds trunks, conifers and bushes, which stay as they are. `leaves` holds
+  the crowns of the broadleaf trees, which the viewer tints through the year
+  (gold in October) and does not draw while they are down. `bare` holds
+  their winter limbs (boughs and the lesser limbs that fork from them, each
+  one flat blade seen from both sides), drawn only then. A
+  broadleaf tree writes all three every time, so that the viewer changes the
+  season by showing and hiding and never builds scenery again for it:
+  `trees::in_leaf(phase, group)` says which is to be seen, and the island's
+  trees are in `LEAF_GROUPS` groups that turn one after another.
+- **A thing that knows its age takes it as a parameter**, in the steps it
+  shows. A house is handed its `Roof` (what it was covered with the year it
+  was built or last roofed, and how weathered that is now: `houses::Roof::of`),
+  not the year: the viewer knows when a plot was first built and what could
+  be had there then.
 - **Stay on the plot.** A house keeps inside its plot (the eaves may overhang
   by a hair). A works keeps inside its yard, which is as wide and as deep as
   `works::footprint(kind, size)` says: the viewer sets ground aside by that
@@ -96,12 +117,13 @@ what one thing looks like.
 | `hash.rs` | `hash2`, `Seed` |
 | `site.rs` | `Site` (where a thing stands), `Model` (the four buffers) |
 | `parts.rs` | what houses share: `gabled`, `windows`, `chimney`, `smoking_chimney` |
-| `houses/` | `cottage`, `townhouse`, `terrace`, and the density at which each adds a storey |
+| `houses/` | `cottage`, `townhouse`, `terrace`, the density at which each adds a storey, and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, and how it weathers |
 | `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit` |
 | `farm.rs` | `farmstead` |
-| `town/` | `church`, `station`, `market_cross`, `market_hall`, `lighthouse` |
-| `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush` |
-| `bridge.rs` | `road_bridge` |
+| `town/` | `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
+| `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
+| `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
+| `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
 | `scenes.rs` | small scenes for the lab: a street, a market place, a patch of wood |
 | `sheets.rs` | the lab's contact sheets |
 
@@ -183,7 +205,8 @@ square: what you see is exactly what the game draws, only bigger.
 After a change to a generator the viewer rebuilds in about eight seconds and
 one sheet takes about three, so edit, build, render, look is under fifteen.
 
-Options: `--season X` (0 midwinter, 0.5 midsummer, as the game has it),
+Options: `--season X` (0 midwinter, 0.5 midsummer, as the game has it: at 0
+the broadleaf trees are bare, at 0.8 they are gold),
 `--turn DEG` (each thing is turned 30 degrees to its right unless told
 otherwise, to show a gable as well as a front; `--turn 0` is square on),
 `--loupe N` (enlarge the close picture N times), `--tilt` (the tilt-shift
