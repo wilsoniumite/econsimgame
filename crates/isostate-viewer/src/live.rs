@@ -89,7 +89,8 @@ pub struct Live {
 /// How going on with a saved game went.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Resumed {
-    /// the year the save had reached
+    /// the year the game is gone on with from: the one the save had reached,
+    /// or later if more were played before the window opened (`--advance`)
     pub year: i32,
     /// orders given again
     pub orders: usize,
@@ -148,7 +149,8 @@ pub struct Opening {
     /// years to play before the window opens, after the first (or after the saved ones)
     pub advance: usize,
     /// the player's family builds a works and buys a little land after the
-    /// first year, to have something to show in screenshots
+    /// first year, to have something to show in screenshots; such a game is
+    /// only saved where `save` says
     pub demo: bool,
     /// a saved game to go on with (`--load`)
     pub load: Option<String>,
@@ -199,6 +201,13 @@ impl Board {
 /// `game_content`), not the port's; a saved one under the rules it names.
 pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let t0 = std::time::Instant::now();
+    // said before any year is played, not after
+    if o.load.as_ref().is_some_and(|file| file.is_empty()) {
+        return Err("--load needs the name of a saved game".to_string());
+    }
+    if let Some(file) = &o.save {
+        saves::may_keep(std::path::Path::new(file))?;
+    }
     let mut passed_over = 0;
     let from = match &o.load {
         Some(file) => Some((saves::read(std::path::Path::new(file))?, std::path::PathBuf::from(file))),
@@ -273,6 +282,10 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             demo_orders(&mut game);
         }
     }
+    // years played on after the saved ones: the card says the year the game opens in
+    if let Some(back) = &mut resumed {
+        back.year = game.last_year() as i32;
+    }
     let Board { cursor, r, mut view } = board;
     // orders given since the last year: the family as it stands now, and the works to come
     if let Ok(rep) = iso::family_report(&game.sim.st, &game.sim.content, &game.sim.params, PLAYER) {
@@ -287,10 +300,11 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     view.prospects = all_prospects(&game.sim);
 
     // where the game is kept: a place that was named, or the island's autosave
-    // (which a run that only takes pictures leaves alone)
+    // (which a run that only takes pictures leaves alone, and so does the
+    // demo's game, made to be looked at: it would set the player's own aside)
     let mut saver = match &o.save {
         Some(file) => Some(Saver::new(file.into())),
-        None if o.shots => None,
+        None if o.shots || (o.demo && o.load.is_none()) => None,
         None => Some(Saver::new(saves::autosave(game.sim.params.seed, game.sim.params.n_families))),
     };
     match (&mut saver, &o.save) {

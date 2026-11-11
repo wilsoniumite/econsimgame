@@ -6,7 +6,8 @@
 //! `island-7-families-6.json`, in a folder of the player's own. Beside it are
 //! the last few it replaced (`.1.json` the newest) and, once a new game has
 //! been started on the same island, the game before it (`.previous.json`) and
-//! the few before that (`.previous.2.json` and on).
+//! the few before that (`.previous.2.json` and on). A file found in the
+//! autosave's place that cannot be read is set aside as `.unread.json`.
 
 use std::path::{Path, PathBuf};
 
@@ -68,9 +69,28 @@ pub fn game_before(path: &Path, n: usize) -> PathBuf {
     if n <= 1 { previous(path) } else { beside(path, &format!("previous.{n}")) }
 }
 
+/// What was at the autosave's place and could not be read, set aside when
+/// the game is first saved.
+pub fn unread(path: &Path) -> PathBuf {
+    beside(path, "unread")
+}
+
 pub fn read(path: &Path) -> Result<Save, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     Save::from_text(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Whether a game may be kept at a place that was named (`--save`): nothing
+/// is there, or a saved game is. Anything else is somebody's file (or a
+/// folder), and is not moved aside or written over.
+pub fn may_keep(path: &Path) -> Result<(), String> {
+    if path.as_os_str().is_empty() {
+        return Err("--save needs the name of a file to save in".to_string());
+    }
+    if !path.exists() {
+        return Ok(());
+    }
+    read(path).map(|_| ()).map_err(|e| format!("{e} (--save only writes over a saved game it can read)"))
 }
 
 /// The newest autosave that can be read: the latest, or failing that the
@@ -113,35 +133,58 @@ impl Saver {
     /// the latest is at every moment either the old one or the new one.
     pub fn write(&mut self, save: &Save, year_end: bool) -> Result<(), String> {
         let path = &self.path;
+        // a folder of that name would be renamed like a file, with all that is in it
+        if path.as_os_str().is_empty() || path.is_dir() {
+            return Err(format!("{}: that is not the name of a file", path.display()));
+        }
+        let tmp = beside(path, "writing");
+        let written = self.write_by_way_of(&tmp, save, year_end);
+        if written.is_err() {
+            // nothing half-written is left lying beside the save
+            let _ = std::fs::remove_file(&tmp);
+        }
+        written
+    }
+
+    fn write_by_way_of(&mut self, tmp: &Path, save: &Save, year_end: bool) -> Result<(), String> {
+        let path = &self.path;
         let told = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             std::fs::create_dir_all(dir).map_err(told)?;
         }
-        let tmp = beside(path, "writing");
         {
             use std::io::Write;
-            let mut f = std::fs::File::create(&tmp).map_err(told)?;
+            let mut f = std::fs::File::create(tmp).map_err(told)?;
             f.write_all(save.to_text().as_bytes()).map_err(told)?;
             // on the disk before it takes the latest's place
             f.sync_all().map_err(told)?;
         }
         if !self.settled {
-            // another game's save is here (a new game on the same island, or a
-            // file named with --save): it is set aside whole, not written over,
-            // and so are the few set aside before it, so that starting a new
-            // game twice by mistake does not lose the one that mattered
-            if read(path).is_ok_and(|old| old.started != save.started || old.seed != save.seed || old.families != save.families) {
-                for n in (1..KEPT).rev() {
-                    let from = game_before(path, n);
-                    if from.exists() {
-                        std::fs::rename(&from, game_before(path, n + 1)).map_err(told)?;
+            match read(path) {
+                // another game's save is here (a new game on the same island,
+                // or a file named with --save): it is set aside whole, not
+                // written over, and so are the few set aside before it, so
+                // that starting a new game twice by mistake does not lose the
+                // one that mattered
+                Ok(old) if old.started != save.started || old.seed != save.seed || old.families != save.families => {
+                    for n in (1..KEPT).rev() {
+                        let from = game_before(path, n);
+                        if from.exists() {
+                            std::fs::rename(&from, game_before(path, n + 1)).map_err(told)?;
+                        }
+                    }
+                    std::fs::rename(path, previous(path)).map_err(told)?;
+                    // its earlier saves are years the one set aside already holds
+                    for n in 1..=KEPT {
+                        let _ = std::fs::remove_file(earlier(path, n));
                     }
                 }
-                std::fs::rename(path, previous(path)).map_err(told)?;
-                // its earlier saves are years the one set aside already holds
-                for n in 1..=KEPT {
-                    let _ = std::fs::remove_file(earlier(path, n));
-                }
+                Ok(_) => {}
+                // a file that cannot be read (a save cut short, or one written
+                // by a later version of the game): it is set aside too, where
+                // the years to come cannot push it out
+                Err(_) if path.exists() => std::fs::rename(path, unread(path)).map_err(told)?,
+                Err(_) => {}
             }
             self.settled = true;
         }
@@ -154,7 +197,7 @@ impl Saver {
             }
             std::fs::rename(path, earlier(path, 1)).map_err(told)?;
         }
-        std::fs::rename(&tmp, path).map_err(told)
+        std::fs::rename(tmp, path).map_err(told)
     }
 }
 
@@ -316,10 +359,64 @@ mod tests {
         assert_eq!((got.year, from), (1751, earlier(&path, 1)));
         assert_eq!(passed.len(), 1);
         assert!(passed[0].contains("not a saved game"), "{}", passed[0]);
-        // the next write keeps the spoiled file as an earlier one and does not stop
+        // the next write sets the spoiled file aside and does not stop; the years kept stay as they were
         let mut again = Saver::new(path.clone());
         again.write(&got, true).unwrap();
         assert_eq!(read(&path).unwrap().year, 1751);
+        assert_eq!(std::fs::read_to_string(unread(&path)).unwrap().len(), 40);
+        assert_eq!(read(&earlier(&path, 1)).unwrap().year, 1751);
+        assert_eq!(read(&earlier(&path, 2)).unwrap().year, 1750);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_save_of_a_later_version_is_not_pushed_out_by_the_years() {
+        let dir = scratch("later");
+        let path = dir.join("game.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        let later = save(1, 1790).to_text().replace("\"format\": 1,", "\"format\": 2,");
+        std::fs::write(&path, &later).unwrap();
+        assert!(read_latest(&path).is_none(), "this version cannot go on with it");
+        // a new game is played on the island for longer than earlier years are kept
+        let mut s = Saver::new(path.clone());
+        s.write(&save(2, 1750), false).unwrap();
+        for year in 1751..=1760 {
+            s.write(&save(2, year), true).unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(unread(&path)).unwrap(), later);
+        assert_eq!(files(&dir), ["game.1.json", "game.2.json", "game.3.json", "game.json", "game.unread.json"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_folder_or_somebody_elses_file_is_left_alone() {
+        let dir = scratch("alone");
+        let folder = dir.join("runs");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("run.bin"), b"a recorded run").unwrap();
+        // a folder is not renamed out of the way, and nothing is left beside it
+        let e = Saver::new(folder.clone()).write(&save(1, 1750), true).unwrap_err();
+        assert!(e.contains("not the name of a file"), "{e}");
+        assert!(Saver::new(PathBuf::new()).write(&save(1, 1750), true).is_err());
+        assert_eq!(files(&dir), ["runs"]);
+        assert_eq!(files(&folder), ["run.bin"]);
+        // a place named with --save: free, or a saved game, and nothing else
+        let run = folder.join("run.bin");
+        assert!(may_keep(&run).unwrap_err().contains("not a saved game"));
+        assert!(may_keep(&folder).is_err());
+        assert!(may_keep(Path::new("")).unwrap_err().contains("needs the name"));
+        assert!(may_keep(&folder.join("new.json")).is_ok());
+        let mine = folder.join("mine.json");
+        Saver::new(mine.clone()).write(&save(1, 1750), true).unwrap();
+        assert!(may_keep(&mine).is_ok());
+        // a write that fails part of the way leaves no half-written file: here
+        // an earlier year cannot move up, its name being taken by a folder
+        std::fs::write(earlier(&mine, 2), b"").unwrap();
+        std::fs::create_dir_all(earlier(&mine, 3)).unwrap();
+        std::fs::write(earlier(&mine, 3).join("x"), b"x").unwrap();
+        assert!(Saver::new(mine.clone()).write(&save(1, 1751), true).is_err());
+        assert_eq!(files(&folder), ["mine.2.json", "mine.3.json", "mine.json", "run.bin"]);
+        assert_eq!(read(&mine).unwrap().year, 1750, "the latest is still the one before");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

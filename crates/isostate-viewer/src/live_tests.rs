@@ -220,7 +220,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     assert!(saves::earlier(&file, saves::KEPT).exists() && !saves::earlier(&file, saves::KEPT + 1).exists());
 
     // loaded as --load loads it; nothing is written, so the first game's file stays as it is
-    let mut b = Table::open(&Opening { load: Some(name), shots: true, ..default() });
+    let mut b = Table::open(&Opening { load: Some(name.clone()), shots: true, ..default() });
     assert_eq!(b.live.resumed, Some(Resumed { year: 1779, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
     assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
@@ -245,6 +245,20 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     drop(a);
     drop(b);
     assert!(!dir.join("game.writing.json").exists());
+
+    // years played on before the window opens: the card says the year the game opens in
+    let d = Table::open(&Opening { load: Some(name), advance: 2, shots: true, ..default() });
+    assert_eq!((d.year(), d.live.resumed.as_ref().unwrap().year), (1784, 1784));
+    drop(d);
+
+    // a place named to save in that holds something else is refused before
+    // anything is played, and the something is left as it was
+    let notes = dir.join("notes.txt");
+    std::fs::write(&notes, "not a game").unwrap();
+    let e = start(&Opening { seed: 7, families: 6, fresh: true, save: Some(notes.to_string_lossy().into_owned()), ..default() }).err().unwrap();
+    assert!(e.contains("not a saved game"), "{e}");
+    assert_eq!(std::fs::read_to_string(&notes).unwrap(), "not a game");
+    assert!(start(&Opening { load: Some(String::new()), ..default() }).err().unwrap().contains("--load needs"));
 
     // a save the rules no longer agree with: one order names a method that is
     // gone, and one that changed the island is missing. It loads, to the same
@@ -334,6 +348,12 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     drop(t);
     assert_eq!(saves::read(&file).unwrap().year, 1752);
     assert_eq!(saves::read(&file).unwrap().orders.len(), orders);
+    // so does the demo's game, which is made to be looked at
+    let mut t = Table::open(&Opening { seed: 7, families: 3, demo: true, ..default() });
+    assert!(t.live.resumed.is_none() && !t.live.kept);
+    t.step();
+    drop(t);
+    assert_eq!(saves::read(&file).unwrap().year, 1752);
 
     // another number of families is another game, with its own file
     let c = Table::open(&Opening { seed: 7, families: 2, ..default() });
