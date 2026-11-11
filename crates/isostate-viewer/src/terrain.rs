@@ -114,10 +114,11 @@ pub type GroundMaterial = ExtendedMaterial<StandardMaterial, Patchwork>;
 pub struct Patchwork {
     #[uniform(100)]
     pub params: PatchworkParams,
-    /// per cell, this year: mix_a, mix_b, mix_s and town density (`year_cells`)
+    /// per parcel, this year: its class, how wooded it is and its town density (`year_parcels`)
     #[texture(101)]
     pub year: Handle<Image>,
-    /// per cell, fixed: the terrain class and the field depth (`fixed_cells`)
+    /// per parcel, fixed: the field depth and terrain class, the year of
+    /// enclosure, the grass among its arable and its soil (`fixed_parcels`)
     #[texture(102)]
     pub fixed: Handle<Image>,
     /// the land's colours, from the look
@@ -146,8 +147,9 @@ pub struct PatchworkParams {
     pub overlay_soft: f32,
     /// 1 draws an ink line where the overlay's regions meet
     pub overlay_lines: f32,
-    /// `Ground::quant`, the 257 quantiles of the patch noise, four to a vector
-    pub quant: [Vec4; 65],
+    /// the first block of the parcel textures along each axis (`world::Land`)
+    pub block_i0: i32,
+    pub block_j0: i32,
 }
 
 impl MaterialExtension for Patchwork {
@@ -235,35 +237,46 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::lo
 }
 
 pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> PatchworkParams {
-    let mut quant = [Vec4::ZERO; 65];
-    for (i, &q) in g.quant.iter().enumerate() {
-        quant[i / 4][i % 4] = q;
-    }
-    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, quant }
+    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0 }
 }
 
-/// The year's land mix for every cell, as the shader reads it: mix_a, mix_b,
-/// mix_s, and the town density that scatter.rs builds houses by.
-pub fn year_cells(r: &Replay, k: usize) -> Vec<u8> {
-    let mut out = Vec::with_capacity(r.n * 4);
-    for c in 0..r.n {
-        let off = k * r.n + c;
+/// The year's land for every parcel, as the shader reads it: its class
+/// (`world::year_land`), how wooded it is, and the town density of its cell
+/// that scatter.rs builds houses by.
+pub fn year_parcels(r: &Replay, g: &Ground, k: usize) -> Vec<u8> {
+    let land = crate::world::year_land(r, g, k);
+    let mut out = Vec::with_capacity(land.class.len() * 4);
+    for (i, (&class, &wood)) in land.class.iter().zip(&land.wood).enumerate() {
+        let off = k * r.n + g.land.wcell[i] as usize;
         let dense = if r.use_[off] == 10 { r.inten[off] } else { 115 };
-        out.extend_from_slice(&[r.mix_a[off], r.mix_b[off], r.mix_s[off], dense]);
+        out.extend_from_slice(&[class, wood, dense, 0]);
     }
     out
 }
 
-/// What does not change about each cell: its terrain class (0 sea, 1 lowland,
-/// 2 hills, 3 mountains), how finely its parcels are cut into fields, and the
-/// year its open fields are enclosed, less 1750 (0 if they never were open).
-pub fn fixed_cells(r: &Replay, g: &Ground) -> Vec<u8> {
-    let mut out = Vec::with_capacity(r.n * 4);
-    for c in 0..r.n {
-        let open = if g.open_until[c] > 0 { (g.open_until[c] - 1750).clamp(1, 255) as u8 } else { 0 };
-        out.extend_from_slice(&[r.terrain[c], g.field_depth[c], open, 0]);
+/// What does not change about each parcel: how finely it is cut into fields
+/// (the low four bits) and the terrain class of its cell (0 sea, 1 lowland,
+/// 2 hills, 3 mountains; the high four); the year its open fields are
+/// enclosed, less 1750 (0 if they never were open); how much of its arable is
+/// under grass; and the tone of its soil.
+pub fn fixed_parcels(r: &Replay, g: &Ground) -> Vec<u8> {
+    let l = &g.land;
+    let mut out = Vec::with_capacity(l.at.len() * 4);
+    for i in 0..l.at.len() {
+        let open = if l.open_until[i] > 0 { (l.open_until[i] - 1750).clamp(1, 255) as u8 } else { 0 };
+        out.extend_from_slice(&[l.depth[i] | (r.terrain[l.wcell[i] as usize] << 4), open, l.ley[i], l.soil[i]]);
     }
     out
+}
+
+/// A texture with one texel per parcel, eight in a row for each block of the
+/// field system, which the shader reads with textureLoad. Replacing its data
+/// later writes into the same GPU texture.
+pub fn parcel_image(g: &Ground, data: Vec<u8>) -> Image {
+    let size = Extent3d { width: (g.land.bw * 8) as u32, height: g.land.bh as u32, depth_or_array_layers: 1 };
+    let mut img = Image::new(size, TextureDimension::D2, data, TextureFormat::Rgba8Unorm, RenderAssetUsages::default());
+    img.sampler = ImageSampler::nearest();
+    img
 }
 
 /// A texture with one texel per map cell, which the shader reads with

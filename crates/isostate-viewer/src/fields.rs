@@ -32,7 +32,7 @@ const TURN_S: f32 = 0.324_043_6;
 /// Cuts that make a parcel, the unit that takes one land class.
 pub const PARCEL_LEVEL: u32 = 3;
 /// The most cuts a field can have.
-pub const MAX_DEPTH: u32 = 5;
+pub const MAX_DEPTH: u32 = 6;
 
 pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
@@ -199,6 +199,39 @@ pub fn parcel(p: Vec2) -> (Block, Cut, Vec2) {
     let pc = cut(&bl, Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 }, 0, PARCEL_LEVEL);
     let centre = from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (pc.lo + pc.hi) * 0.5));
     (bl, pc, centre)
+}
+
+/// The block (i, j) with no point chosen in it.
+pub fn block(i: i32, j: i32) -> Block {
+    Block { i, j, uv: Vec2::ZERO, a: corner(i, j), b: corner(i + 1, j), c: corner(i + 1, j + 1), d: corner(i, j + 1) }
+}
+
+/// The eight parcels of a block, in the order of their numbers (8 to 15), each
+/// with the fixed point that stands for it (the same point `parcel` gives) and
+/// its area in square cells.
+pub fn parcels_of(bl: &Block) -> [(Cut, Vec2, f32); 8] {
+    std::array::from_fn(|n| {
+        let mut b = *bl;
+        let mut c = Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 };
+        for lvl in 0..PARCEL_LEVEL {
+            // a point in the corner of the half that is wanted
+            let upper = (n as u32 >> (PARCEL_LEVEL - 1 - lvl)) & 1 == 1;
+            b.uv = if upper { c.hi - Vec2::splat(1e-5) } else { c.lo };
+            c = cut(&b, c, lvl, lvl + 1);
+        }
+        let at = |u: f32, v: f32| bilinear(bl.a, bl.b, bl.c, bl.d, Vec2::new(u, v));
+        let q = [at(c.lo.x, c.lo.y), at(c.hi.x, c.lo.y), at(c.hi.x, c.hi.y), at(c.lo.x, c.hi.y)];
+        let area = 0.5 * (0..4).map(|k| cross(q[k], q[(k + 1) % 4])).sum::<f32>().abs() * BLOCK * BLOCK;
+        (c, from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (c.lo + c.hi) * 0.5)), area)
+    })
+}
+
+/// How old the enclosures of the country round a spot are, 0 to 1: old ones
+/// bend and are small, planned ones run straight and are large. It is the
+/// measure `to_block` bends the hedges by.
+pub fn old_country(p: Vec2) -> f32 {
+    let q = Vec2::new(TURN_C * p.x + TURN_S * p.y, -TURN_S * p.x + TURN_C * p.y) / BLOCK;
+    smoothstep(-0.3, 0.5, vnoise(q.x * 0.21 + 3.7, q.y * 0.21 + 1.3, 141))
 }
 
 /// A field, with how far the spot is from its nearest edge (in cells) and which

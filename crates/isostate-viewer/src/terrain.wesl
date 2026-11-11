@@ -39,17 +39,22 @@ struct PatchworkParams {
     overlay_soft: f32,
     // 1 draws an ink line where the overlay's regions meet
     overlay_lines: f32,
-    // the 257 quantiles of the patch noise, four to a vector
-    quant: array<vec4<f32>, 65>,
+    // the first block of the parcel textures along each axis (world.rs Land)
+    block_i0: i32,
+    block_j0: i32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
-// per cell, this year: mix_a, mix_b, mix_s, town density
-@group(constants::MATERIAL_BIND_GROUP) @binding(101) var year_cells: texture_2d<f32>;
-// per cell, fixed: terrain class (0 sea, 1 lowland, 2 hills, 3 mountains), how
-// many times its parcels are cut into fields, and the year its open fields are
-// enclosed, less 1750 (0 if they never were open)
-@group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_cells: texture_2d<f32>;
+// per parcel (eight texels in a row for each block of the field system), this
+// year: its class, how wooded it is (128 and up inside a wood, deeper as it
+// rises; below that, other open land as it comes near to being wood), and the
+// town density of its cell
+@group(constants::MATERIAL_BIND_GROUP) @binding(101) var year_parcels: texture_2d<f32>;
+// per parcel, fixed: how many times it is cut into fields (the low four bits)
+// and its terrain class (0 sea, 1 lowland, 2 hills, 3 mountains; the high
+// four); the year its open fields are enclosed, less 1750 (0 if they never
+// were open); how much of its arable is under grass; the tone of its soil
+@group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_parcels: texture_2d<f32>;
 // per cell, the map overlay (overlay.rs): a tint, and in alpha the region the
 // cell belongs to, 0 for none (the sea, which is left alone)
 @group(constants::MATERIAL_BIND_GROUP) @binding(104) var overlay_cells: texture_2d<f32>;
@@ -189,20 +194,6 @@ fn vnoise(x: f32, y: f32, s: i32) -> f32 {
     let c = hash2(ix, iy + 1, s);
     let d = hash2(ix + 1, iy + 1, s);
     return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2.0 - 1.0;
-}
-
-fn warp_raw(p: vec2<f32>) -> vec2<f32> {
-    let wx = p.x + 0.40 * vnoise(p.x * 0.7, p.y * 0.7, 5) + 0.15 * vnoise(p.x * 2.3, p.y * 2.3, 9);
-    let wy = p.y + 0.40 * vnoise(p.x * 0.7 + 31.7, p.y * 0.7 + 17.3, 7) + 0.15 * vnoise(p.x * 2.3 + 5.1, p.y * 2.3 + 9.7, 13);
-    return vec2<f32>(wx, wy);
-}
-
-fn sub_raw(p: vec2<f32>) -> f32 {
-    return vnoise(p.x * 1.7, p.y * 1.7, 31) + 0.45 * vnoise(p.x * 3.9, p.y * 3.9, 37);
-}
-
-fn quantile(i: u32) -> f32 {
-    return ground.quant[i >> 2u][i & 3u];
 }
 
 // --- the field system (fields.rs)
@@ -902,44 +893,27 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     // the parcel here, and the point that stands for it (fields::parcel)
     let bl = locate(to_block(p));
     let pc = cut(bl, Cut(vec2<f32>(0.0), vec2<f32>(1.0), 1u), 0u, PARCEL_LEVEL);
-    let centre = from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (pc.lo + pc.hi) * 0.5));
-    // its warped cell decides the mix, as in world::class_at
-    let w = warp_raw(centre);
-    let lim = vec2<i32>(i32(ground.width) - 1, i32(ground.height) - 1);
-    let cell = clamp(vec2<i32>(floor(w)), vec2<i32>(0), lim);
-    let yc = textureLoad(year_cells, cell, 0);
-    let fc = textureLoad(fixed_cells, cell, 0);
-    let ca = u32(round(yc.x * 255.0));
-    let cb = u32(round(yc.y * 255.0));
-    let s = u32(round(yc.z * 255.0));
-    let terr = u32(round(fc.x * 255.0));
-    var lo = min(ca, cb);
-    var hi = max(ca, cb);
-    if (terr == 0u) {
-        lo = SEA;
-        hi = SEA;
-    }
-    // world::pick_class: the lower class takes the low noise values, and it
-    // holds where sub_uniform * 255 < t, its share in 255ths. With the
-    // quantile table that is the same as sub_raw <= quant[t].
-    let t = select(255u - s, s, ca < cb);
-    var cls = lo;
-    if (lo != hi && t < 255u && (t == 0u || sub_raw(centre) > quantile(t))) {
-        cls = hi;
-    }
+    // its class this year and what does not change about it, from the parcel
+    // textures (world::Land::index): the CPU decides the class of every
+    // parcel (world::year_land) and the shader only looks it up
+    let tex_lim = vec2<i32>(textureDimensions(year_parcels)) - vec2<i32>(1);
+    let pt = clamp(vec2<i32>(8 * (bl.i - ground.block_i0) + i32(pc.id) - 8, bl.j - ground.block_j0), vec2<i32>(0), tex_lim);
+    let yp = textureLoad(year_parcels, pt, 0);
+    let fp = textureLoad(fixed_parcels, pt, 0);
+    let cls = u32(round(yp.x * 255.0));
+    let fixed_bits = u32(round(fp.x * 255.0));
+    let terr = fixed_bits >> 4u;
 
     if (ground.debug != 0u) {
-        // the exact rule, unlit, for checking against world::class_at
+        // the class alone, unlit, for checking against world::class_at
         var dbg: FragmentOutput;
         dbg.color = vec4<f32>(srgb_to_linear(debug_colour(cls)), 1.0);
         return dbg;
     }
 
-    // the field: the parcel cut as finely as its cell asks (world::field_at)
-    let own = clamp(vec2<i32>(floor(centre)), vec2<i32>(0), lim);
-    let fown = textureLoad(fixed_cells, own, 0);
-    let depth = max(u32(round(fown.y * 255.0)), PARCEL_LEVEL);
-    let open_code = round(fown.z * 255.0);
+    // the field: the parcel cut as finely as it asks (world::field_at)
+    let depth = max(fixed_bits & 15u, PARCEL_LEVEL);
+    let open_code = round(fp.y * 255.0);
     let open = open_code > 0.0 && ground.year < 1750.0 + open_code;
     let leaf = cut(bl, pc, PARCEL_LEVEL, depth);
     // distance to its nearest side, through the Jacobian of the block (fields::field)
@@ -998,7 +972,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             sp.foot = foot;
             sp.ph = ph;
             sp.terr = terr;
-            sp.dense = yc.w;
+            sp.dense = yp.z;
             sp.rock = clamp((slope - 1.15 + 0.3 * n2) / 1.1, 0.0, 1.0);
             // the snow line comes down the hills in winter
             sp.snow = clamp((h - 1.75 + 0.55 * winter_k + 0.12 * vnoise(p.x * 1.7, p.y * 1.7, 31)) / 0.45, 0.0, 1.0) * (1.0 - 0.5 * sp.rock);

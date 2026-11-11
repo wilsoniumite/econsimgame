@@ -35,6 +35,8 @@ pub struct Slot {
     pub wcell: u32,
     /// patch-noise value at the spot, 0..255, so the slot agrees with the painted ground
     pub sub: f32,
+    /// the parcel the spot lies in (`world::Land`), whose class the year's land gives
+    pub parcel: u32,
     /// fixed thresholds and variety
     pub u: f32,
     pub v: f32,
@@ -89,6 +91,7 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<S
                     z,
                     wcell: wc as u32,
                     sub,
+                    parcel: world::parcel_index(g, x, z) as u32,
                     u: world::hash2(id, 3, seed),
                     v: world::hash2(id, 4, seed),
                     yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
@@ -522,9 +525,10 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     };
     (slots.hedge, slots.hedge_open) = hedge_slots(r, g).into_iter().unzip();
     slots.farms = grid_slots(r, g, 2, 13, 0.5).into_iter().map(|s| farm_spot(g, s)).collect();
-    slots.farm_open = slots.farms.iter().map(|s| g.open_until[world::own_cell(g, s.x, s.z)]).collect();
+    slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.parcel as usize]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
+    crate::plan::maybe_areas(r, g);
     crate::plan::maybe_write(r, g, &slots);
     crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
@@ -578,11 +582,12 @@ fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
                         z: hz,
                         wcell: wc as u32,
                         sub,
+                        parcel: world::parcel_index(g, x, z) as u32,
                         u,
                         v: world::hash2(id, 4, 17),
                         yaw: world::hash2(id, 5, 17) * std::f32::consts::TAU,
                     };
-                    out.push((slot, g.open_until[world::own_cell(g, x, z)]));
+                    out.push((slot, g.land.open_until[slot.parcel as usize]));
                 }
             }
             out
@@ -670,8 +675,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
 
+    let land = world::year_land(r, g, k);
     for s in &slots.trees {
-        let cls = world::pick_class(r, k, s.wcell as usize, s.sub);
+        let cls = land.class[s.parcel as usize];
         let terr = r.terrain[s.wcell as usize];
         let (grow, scale) = match cls {
             world::WOOD => (true, 0.85 + 0.4 * s.v),
@@ -704,7 +710,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if year < open {
             continue;
         }
-        let cls = world::pick_class(r, k, s.wcell as usize, s.sub);
+        let cls = land.class[s.parcel as usize];
         if !(cls == world::FARM || cls == world::PASTURE) || near_plot(s.x, s.z) || roads.nearest(s.x, s.z, 0.03).is_some() {
             continue;
         }
@@ -715,13 +721,12 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // farmsteads among the fields, each with a lane to the nearest road
     for (s, &open) in slots.farms.iter().zip(&slots.farm_open) {
         let c = s.wcell as usize;
-        let off = k * r.n + c;
-        let main = r.mix_a[off];
+        // the farm is of the land it stands on
+        let main = land.class[s.parcel as usize];
         if year < open || !(main == world::FARM || main == world::PASTURE) || s.u > 0.32 || near_plot(s.x, s.z) {
             continue;
         }
-        let cls = world::pick_class(r, k, c, s.sub);
-        if !(cls == world::FARM || cls == world::PASTURE) || roads.nearest(s.x, s.z, 0.075).is_some() {
+        if roads.nearest(s.x, s.z, 0.075).is_some() {
             continue;
         }
         // stone and slate in the hills

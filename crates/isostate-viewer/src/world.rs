@@ -87,10 +87,8 @@ pub struct Ground {
     pub sea_dist: Vec<f32>,
     /// quantiles of the patch noise, for turning it into a uniform value
     pub quant: Vec<f32>,
-    /// per cell: how many times its parcels are cut into fields
-    pub field_depth: Vec<u8>,
-    /// per cell: the year its open fields are enclosed (0 where they never were open)
-    pub open_until: Vec<i32>,
+    /// the parcels of the field system, and what does not change about each
+    pub land: Land,
     /// the rivers, with their meanders, widths and water levels
     pub rivers: Vec<River>,
     /// the rivers' segments in buckets, for keeping things out of the water
@@ -316,32 +314,6 @@ fn build_ground_inner(r: &Replay) -> Ground {
     let rivers = rivers::build(r, &cen, &HeightGrid { hgt: &hgt, gw, gh, res });
     let floodplain = rivers::carve(&rivers, &mut hgt, gw, gh, res);
     let water = WaterIndex::new(&rivers, w, h);
-    // fields: large on the hills, smaller in the lowland, small round the towns;
-    // and round each town, open fields in strips until the parish is enclosed,
-    // in a year of its own between 1755 and 1835
-    let base_depth = |t: u8| -> u8 { if t >= 2 { 3 } else { 4 } };
-    let mut field_depth: Vec<u8> = r.terrain.iter().map(|&t| base_depth(t)).collect();
-    let mut open_until = vec![0i32; w * h];
-    for (ti, t) in r.header.towns.iter().enumerate() {
-        let enclosed = 1755 + (hash2(ti as i32, 7, 301) * 80.0) as i32;
-        let (tx, ty) = cen[t.node.min(r.n - 1)];
-        let (cx, cy) = (tx.floor() as isize, ty.floor() as isize);
-        for dy in -3..=3isize {
-            for dx in -3..=3isize {
-                let (x, y) = (cx + dx, cy + dy);
-                if x < 0 || y < 0 || x as usize >= w || y as usize >= h {
-                    continue;
-                }
-                let c = y as usize * w + x as usize;
-                let d = ((x as f32 + 0.5 - tx).powi(2) + (y as f32 + 0.5 - ty).powi(2)).sqrt();
-                let bonus = if d < 2.2 { 1 } else { 0 };
-                field_depth[c] = field_depth[c].max((base_depth(r.terrain[c]) + bonus).min(fields::MAX_DEPTH as u8));
-                if d < 1.7 && r.terrain[c] == 1 {
-                    open_until[c] = open_until[c].max(enclosed);
-                }
-            }
-        }
-    }
     // quantiles of the patch noise
     let mut samples: Vec<f32> = Vec::with_capacity(512 * 512);
     for j in 0..512 {
@@ -351,28 +323,380 @@ fn build_ground_inner(r: &Replay) -> Ground {
     }
     samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let quant: Vec<f32> = (0..=256).map(|q| samples[(q * (samples.len() - 1)) / 256]).collect();
-    Ground { w, h, gw, gh, hgt, sea_dist, quant, field_depth, open_until, rivers, water, floodplain }
+    let land = timed("land", || build_land(r, &Fields { hgt: &hgt, flood: &floodplain, gw, gh, water: &water }, &quant, &cen));
+    Ground { w, h, gw, gh, hgt, sea_dist, quant, land, rivers, water, floodplain }
+}
+
+/// A value of a vertex grid at a map position (in cells), between its vertices.
+fn grid_at(a: &[f32], gw: usize, gh: usize, x: f32, z: f32) -> f32 {
+    let gx = (x * VRES as f32).clamp(0.0, (gw - 1) as f32 - 0.001);
+    let gy = (z * VRES as f32).clamp(0.0, (gh - 1) as f32 - 0.001);
+    let (i, j) = (gx.floor() as usize, gy.floor() as usize);
+    let (tx, ty) = (gx - i as f32, gy - j as f32);
+    let k = j * gw + i;
+    (a[k] * (1.0 - tx) + a[k + 1] * tx) * (1.0 - ty) + (a[k + gw] * (1.0 - tx) + a[k + gw + 1] * tx) * ty
 }
 
 /// Terrain height at a map position (in cells).
 pub fn height_at(g: &Ground, x: f32, z: f32) -> f32 {
-    let gx = (x * VRES as f32).clamp(0.0, (g.gw - 1) as f32 - 0.001);
-    let gy = (z * VRES as f32).clamp(0.0, (g.gh - 1) as f32 - 0.001);
-    let (i, j) = (gx.floor() as usize, gy.floor() as usize);
-    let (tx, ty) = (gx - i as f32, gy - j as f32);
-    let k = j * g.gw + i;
-    (g.hgt[k] * (1.0 - tx) + g.hgt[k + 1] * tx) * (1.0 - ty) + (g.hgt[k + g.gw] * (1.0 - tx) + g.hgt[k + g.gw + 1] * tx) * ty
+    grid_at(&g.hgt, g.gw, g.gh, x, z)
 }
 
 /// How much a spot lies on a river's valley floor, 0..1.
 pub fn flood_at(g: &Ground, x: f32, z: f32) -> f32 {
-    let gx = (x * VRES as f32).clamp(0.0, (g.gw - 1) as f32 - 0.001);
-    let gy = (z * VRES as f32).clamp(0.0, (g.gh - 1) as f32 - 0.001);
-    let (i, j) = (gx.floor() as usize, gy.floor() as usize);
-    let (tx, ty) = (gx - i as f32, gy - j as f32);
-    let k = j * g.gw + i;
-    let f = &g.floodplain;
-    (f[k] * (1.0 - tx) + f[k + 1] * tx) * (1.0 - ty) + (f[k + g.gw] * (1.0 - tx) + f[k + g.gw + 1] * tx) * ty
+    grid_at(&g.floodplain, g.gw, g.gh, x, z)
+}
+
+// ------------------------------------------------------------------ the lie of the land
+//
+// The simulation says how much of each 2 km square is arable, pasture, wood and
+// heath; where within a district each lies is decided here, once, from the
+// shape of the ground. Every parcel of the field system gets three ranks, each
+// spread evenly over 0..1 among the parcels of the country round it (a couple
+// of squares each way):
+//
+//   wild   how unfit for the plough: steep, high, exposed, away from the
+//          valley floor. The wildest parcels of a district are its wood and heath.
+//   moor   among wild land, how much a top: high and exposed is heath, steep
+//          valley sides and stream banks are wood.
+//   lea    among improved land, how much grass: the floodplain's meadows, the
+//          steeper and higher closes are pasture, the flat and dry is arable.
+//
+// Each rank is coherent noise at several scales (`country`) added to what the
+// ground says, so where the ground is expressive it decides, and where it is
+// flat the noise does, and the uses meet along lines that wander. Because a
+// rank is even over a district, "the wildest 30%" is 30% of the district's
+// area whatever its shape: the shares the simulation gives are kept
+// (`year_land`). The rules read the height, slope, floodplain and distance to
+// water of the finished ground and nothing of how those were made.
+
+/// The fields of the finished ground that the lie of the land is read from.
+struct Fields<'a> {
+    hgt: &'a [f32],
+    flood: &'a [f32],
+    gw: usize,
+    gh: usize,
+    water: &'a WaterIndex,
+}
+
+/// The parcels of the field system (fields.rs), eight to a block, and what does
+/// not change about each. A parcel's number is its block's place in the grid
+/// of blocks that covers the map times eight, plus its number in the block.
+pub struct Land {
+    /// the first block along each axis, and how many there are
+    pub bi0: i32,
+    pub bj0: i32,
+    pub bw: usize,
+    pub bh: usize,
+    /// the point that stands for the parcel
+    pub at: Vec<Vec2>,
+    /// its dry land, in square cells (0 for a parcel in the sea)
+    pub area: Vec<f32>,
+    /// the cell of its warped point, and its patch noise in 0..255: what
+    /// `pick_class` reads
+    pub wcell: Vec<u32>,
+    pub sub: Vec<f32>,
+    /// the four cells round its warped point and their weights, for the
+    /// district's mix of open land there
+    pub blend: Vec<[(u32, f32); 4]>,
+    /// the ranks, each even over 0..1 across a district
+    pub wild: Vec<f32>,
+    pub moor: Vec<f32>,
+    pub lea: Vec<f32>,
+    /// how many times it is cut into fields
+    pub depth: Vec<u8>,
+    /// the year its open fields are enclosed (0 where they never were open)
+    pub open_until: Vec<i32>,
+    /// how much of its arable is under grass and green crops, and the tone of
+    /// its soil, both in 0..255
+    pub ley: Vec<u8>,
+    pub soil: Vec<u8>,
+}
+
+impl Land {
+    /// The number of parcel `id` (8 to 15) of block (bi, bj).
+    pub fn index(&self, bi: i32, bj: i32, id: u32) -> usize {
+        let i = (bi - self.bi0).clamp(0, self.bw as i32 - 1) as usize;
+        let j = (bj - self.bj0).clamp(0, self.bh as i32 - 1) as usize;
+        (j * self.bw + i) * 8 + (id as usize).saturating_sub(8).min(7)
+    }
+}
+
+/// Coherent noise at several scales about a spot, the wide scales weighing
+/// most, on a warped footing so that nothing in it runs straight, with a
+/// ridged layer for the bands and belts that woods and commons lie in.
+fn country(x: f32, y: f32, s: i32) -> f32 {
+    let wx = x + 0.9 * vnoise(x * 0.31 + 7.3, y * 0.31 + 2.1, s + 1);
+    let wy = y + 0.9 * vnoise(x * 0.31 + 1.9, y * 0.31 + 8.4, s + 2);
+    let fbm = vnoise(wx * 0.23, wy * 0.23, s) + 0.55 * vnoise(wx * 0.57, wy * 0.57, s + 3) + 0.24 * vnoise(wx * 1.3, wy * 1.3, s + 4) + 0.09 * vnoise(wx * 2.9, wy * 2.9, s + 5);
+    let ridge = 1.0 - 2.0 * vnoise(wx * 0.41 + 13.0, wy * 0.41 + 5.0, s + 6).abs();
+    fbm + 0.3 * ridge
+}
+
+fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land {
+    use rayon::prelude::*;
+    let (w, h) = (r.w, r.h);
+    // the blocks that cover the map, with room for their jitter and warp
+    let (mut lo, mut hi) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN));
+    for p in [Vec2::ZERO, Vec2::new(w as f32, 0.0), Vec2::new(0.0, h as f32), Vec2::new(w as f32, h as f32)] {
+        let q = fields::to_block(p);
+        lo = lo.min(q);
+        hi = hi.max(q);
+    }
+    let (bi0, bj0) = (lo.x.floor() as i32 - 2, lo.y.floor() as i32 - 2);
+    let (bw, bh) = ((hi.x.ceil() as i32 + 2 - bi0) as usize, (hi.y.ceil() as i32 + 2 - bj0) as usize);
+    let n = bw * bh * 8;
+    let height = |x: f32, z: f32| grid_at(f.hgt, f.gw, f.gh, x, z);
+    // heights smoothed over a square and a half each way, to tell tops from hollows
+    let mut smooth = f.hgt.to_vec();
+    box_blur(&mut smooth, f.gw, f.gh, VRES * 3 / 2);
+    let towns: Vec<(Vec2, i32)> = r.header.towns.iter().enumerate().map(|(ti, t)| {
+        let (tx, ty) = cen[t.node.min(r.n - 1)];
+        (Vec2::new(tx, ty), 1755 + (hash2(ti as i32, 7, 301) * 80.0) as i32)
+    }).collect();
+    let cell_of = |x: f32, y: f32| (y.floor().clamp(0.0, h as f32 - 1.0) as usize) * w + x.floor().clamp(0.0, w as f32 - 1.0) as usize;
+
+    struct One {
+        at: Vec2,
+        area: f32,
+        wcell: u32,
+        sub: f32,
+        blend: [(u32, f32); 4],
+        raw: [f32; 3],
+        depth: u8,
+        open_until: i32,
+        ley: u8,
+        soil: u8,
+    }
+    let ones: Vec<One> = (0..bw * bh)
+        .into_par_iter()
+        .flat_map_iter(|b| {
+            let bl = fields::block(bi0 + (b % bw) as i32, bj0 + (b / bw) as i32);
+            fields::parcels_of(&bl).into_iter().enumerate().map(|(pn, (_, at, quad))| {
+                let (x, y) = (at.x, at.y);
+                let (wx, wy) = warp_raw(x, y);
+                let wcell = cell_of(wx, wy);
+                let (bx, by) = (wx - 0.5, wy - 0.5);
+                let (tx, ty) = (bx - bx.floor(), by - by.floor());
+                let blend = [
+                    (cell_of(bx, by) as u32, (1.0 - tx) * (1.0 - ty)),
+                    (cell_of(bx + 1.0, by) as u32, tx * (1.0 - ty)),
+                    (cell_of(bx, by + 1.0) as u32, (1.0 - tx) * ty),
+                    (cell_of(bx + 1.0, by + 1.0) as u32, tx * ty),
+                ];
+                let mut one = One { at, area: 0.0, wcell: wcell as u32, sub: uniform(quant, sub_raw(x, y)) * 255.0, blend, raw: [0.0; 3], depth: 3, open_until: 0, ley: 77, soil: 128 };
+                if x < -0.5 || y < -0.5 || x > w as f32 + 0.5 || y > h as f32 + 0.5 {
+                    return one;
+                }
+                // the ground at the parcel: its height, how much of it is dry, its slope,
+                // whether it is a top or a hollow, the valley floor and the nearest water
+                let e = 0.08;
+                let hs = [height(x, y), height(x - e, y - e), height(x + e, y - e), height(x + e, y + e), height(x - e, y + e)];
+                let dry = hs.iter().filter(|&&v| v > 0.02).count() as f32 / 5.0;
+                one.area = quad * dry;
+                let hm = hs.iter().sum::<f32>() / 5.0;
+                let steep = ((height(x + e, y) - height(x - e, y)).hypot(height(x, y + e) - height(x, y - e)) / (2.0 * e)).min(1.6);
+                let top = ((hs[0] - grid_at(&smooth, f.gw, f.gh, x, y)) / 0.12).clamp(-1.5, 1.5);
+                let flood = grid_at(f.flood, f.gw, f.gh, x, y);
+                let stream = (1.0 - fields::smoothstep(0.02, 0.14, f.water.dist(at))) * (1.0 - flood);
+                one.raw = [
+                    1.5 * steep + 0.8 * hm + 0.25 * top - 0.7 * flood + 0.35 * stream + 0.42 * country(x, y, 201),
+                    1.3 * hm + 0.55 * top - 0.8 * steep - 0.5 * stream - 0.6 * flood + 0.4 * country(x, y, 221),
+                    1.4 * flood + 0.9 * steep + 0.5 * hm - 0.25 * top + 0.42 * country(x, y, 241),
+                ];
+                // fields: small crooked closes in old-enclosed country, on the hill margins and
+                // round the towns; large straight ones on the late-enclosed plains and the hills
+                let id = (b * 8 + pn) as u32;
+                let old = fields::old_country(at);
+                let hill = fields::smoothstep(0.30, 0.55, hm);
+                let margin = fields::smoothstep(0.22, 0.34, hm) * (1.0 - fields::smoothstep(0.42, 0.6, hm));
+                let (near, enclosed) = towns.iter().map(|&(t, y)| (t.distance(at), y)).fold((f32::MAX, 0), |a, b| if b.0 < a.0 { b } else { a });
+                let size = 4.0 + 2.2 * (old - 0.45) * (1.0 - hill) + margin - 1.3 * hill + 1.3 * (1.0 - fields::smoothstep(0.8, 2.6, near));
+                one.depth = (size + fields::hash3(id, 7, 311)).floor().clamp(fields::PARCEL_LEVEL as f32, fields::MAX_DEPTH as f32) as u8;
+                // round each town the lowland lies in open fields, in strips, until the
+                // parish is enclosed in a year of its own between 1755 and 1835
+                if r.terrain[cell_of(x, y)] == 1 && near + 0.3 * vnoise(x * 1.3, y * 1.3, 317) < 1.7 {
+                    one.open_until = enclosed;
+                }
+                // grass country and corn country, and the tone of the soil
+                let wet = flood.max(fields::smoothstep(0.0, 1.2, -top) * (1.0 - hill));
+                let ley = 0.14 + 0.3 * wet + 0.2 * hill + 0.3 * (0.5 + 0.5 * vnoise(x * 0.19 + 4.4, y * 0.19 + 9.1, 331)) + 0.08 * vnoise(x * 0.7, y * 0.7, 333);
+                one.ley = (ley.clamp(0.08, 0.8) * 255.0) as u8;
+                let soil = 0.5 + 0.5 * (0.7 * vnoise(x * 0.16 + 2.2, y * 0.16 + 6.3, 335) + 0.3 * vnoise(x * 0.55, y * 0.55, 337));
+                one.soil = (soil.clamp(0.0, 1.0) * 255.0) as u8;
+                one
+            }).collect::<Vec<One>>()
+        })
+        .collect();
+    debug_assert_eq!(ones.len(), n);
+
+    // the ranks: each parcel's place among the dry parcels within a little over two
+    // squares of it, by area; `moor` and `lea` among those of them about as wild as
+    // itself, so that they say nothing more about how wild it is
+    const REACH: f32 = 2.2;
+    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); w * h];
+    for (i, o) in ones.iter().enumerate() {
+        if o.area > 0.0 {
+            buckets[cell_of(o.at.x, o.at.y)].push(i as u32);
+        }
+    }
+    let near = |i: usize, each: &mut dyn FnMut(usize)| {
+        let p = ones[i].at;
+        let (cx, cy) = (p.x.floor() as isize, p.y.floor() as isize);
+        for y in (cy - 3).max(0)..=(cy + 3).min(h as isize - 1) {
+            for x in (cx - 3).max(0)..=(cx + 3).min(w as isize - 1) {
+                for &j in &buckets[y as usize * w + x as usize] {
+                    if ones[j as usize].at.distance_squared(p) < REACH * REACH {
+                        each(j as usize);
+                    }
+                }
+            }
+        }
+    };
+    let wild: Vec<f32> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if ones[i].area <= 0.0 {
+                return 0.5;
+            }
+            let (mut below, mut all) = (0.0f32, 0.0f32);
+            near(i, &mut |j| {
+                all += ones[j].area;
+                if ones[j].raw[0] < ones[i].raw[0] {
+                    below += ones[j].area;
+                }
+            });
+            ((below + 0.5 * ones[i].area) / all.max(1e-9)).min(0.9999)
+        })
+        .collect();
+    let within: Vec<(f32, f32)> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            if ones[i].area <= 0.0 {
+                return (0.5, 0.5);
+            }
+            let (mut below, mut all) = ([0.0f32; 2], 0.0f32);
+            near(i, &mut |j| {
+                if (wild[j] - wild[i]).abs() <= 0.2 {
+                    all += ones[j].area;
+                    for t in 0..2 {
+                        if ones[j].raw[t + 1] < ones[i].raw[t + 1] {
+                            below[t] += ones[j].area;
+                        }
+                    }
+                }
+            });
+            let rank = |b: f32| ((b + 0.5 * ones[i].area) / all.max(1e-9)).min(0.9999);
+            (rank(below[0]), rank(below[1]))
+        })
+        .collect();
+    Land {
+        bi0,
+        bj0,
+        bw,
+        bh,
+        at: ones.iter().map(|o| o.at).collect(),
+        area: ones.iter().map(|o| o.area).collect(),
+        wcell: ones.iter().map(|o| o.wcell).collect(),
+        sub: ones.iter().map(|o| o.sub).collect(),
+        blend: ones.iter().map(|o| o.blend).collect(),
+        wild,
+        moor: within.iter().map(|v| v.0).collect(),
+        lea: within.iter().map(|v| v.1).collect(),
+        depth: ones.iter().map(|o| o.depth).collect(),
+        open_until: ones.iter().map(|o| o.open_until).collect(),
+        ley: ones.iter().map(|o| o.ley).collect(),
+        soil: ones.iter().map(|o| o.soil).collect(),
+    }
+}
+
+/// The year's land: the class of every parcel, and how wooded each is.
+pub struct YearLand {
+    /// the display class of each parcel
+    pub class: Vec<u8>,
+    /// for a wood, 128 at its edge to 255 deep inside; for other open land,
+    /// 0 to 127 as it comes nearer to being wood (the country a wood's edge
+    /// frays into)
+    pub wood: Vec<u8>,
+}
+
+/// The shares of arable, pasture, wood and heath in a cell's mix for year k.
+pub fn open_shares(r: &Replay, k: usize, c: usize) -> [f32; 4] {
+    let off = k * r.n + c;
+    let (a, b, s) = (r.mix_a[off], r.mix_b[off], r.mix_s[off] as f32 / 255.0);
+    let mut out = [0.0; 4];
+    if (FARM..=HEATH).contains(&a) {
+        out[(a - FARM) as usize] += s;
+    }
+    if b != a && (FARM..=HEATH).contains(&b) {
+        out[(b - FARM) as usize] += 1.0 - s;
+    }
+    out
+}
+
+/// Decide every parcel's class for year k. Towns, works, diggings and derelict
+/// ground lie where the patchwork rule of `pick_class` puts them, cell by cell.
+/// The open land that rule leaves is shared out again: the mix of arable,
+/// pasture, wood and heath at a parcel is that of the four cells round it,
+/// blended, so that it changes smoothly across the country and never at a
+/// cell's edge; and the parcel's ranks say which of them it is. The wildest
+/// are wood and heath, the tops among those heath; the grassiest of the rest
+/// pasture.
+pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
+    let l = &g.land;
+    let n = l.at.len();
+    let shares: Vec<[f32; 4]> = (0..r.n).map(|c| open_shares(r, k, c)).collect();
+    let mut class = vec![SEA; n];
+    let mut wood = vec![0u8; n];
+    // how far inside a rank's threshold counts as deep in the wood, or far from it
+    const FRAY: f32 = 0.22;
+    for i in 0..n {
+        let c = l.wcell[i] as usize;
+        if r.terrain[c] == 0 {
+            continue;
+        }
+        let first = pick_class(r, k, c, l.sub[i]);
+        if !(FARM..=HEATH).contains(&first) {
+            class[i] = first;
+            continue;
+        }
+        let mut f = [0.0f32; 4];
+        for &(cell, wgt) in &l.blend[i] {
+            for (t, s) in shares[cell as usize].iter().enumerate() {
+                f[t] += wgt * s;
+            }
+        }
+        let (improved, wilds) = (f[0] + f[1], f[2] + f[3]);
+        if improved + wilds <= 1e-6 {
+            class[i] = first;
+            continue;
+        }
+        let tame = improved / (improved + wilds);
+        if l.wild[i] >= tame && wilds > 0.0 {
+            let woods = f[2] / wilds;
+            if l.moor[i] >= woods {
+                class[i] = HEATH;
+                wood[i] = if f[2] > 0.0 { (127.0 * (1.0 - (l.moor[i] - woods) / FRAY).clamp(0.0, 1.0)) as u8 } else { 0 };
+            } else {
+                class[i] = WOOD;
+                let from_fields = if tame > 0.02 { (l.wild[i] - tame) / FRAY } else { 1.0 };
+                let from_heath = if woods < 0.98 { (woods - l.moor[i]) / FRAY } else { 1.0 };
+                wood[i] = 128 + (127.0 * from_fields.min(from_heath).clamp(0.0, 1.0)) as u8;
+            }
+        } else {
+            class[i] = if l.lea[i] >= f[0] / improved.max(1e-6) { PASTURE } else { FARM };
+            if f[2] > 0.0 {
+                wood[i] = (127.0 * (1.0 - (tame - l.wild[i]) / FRAY).clamp(0.0, 1.0) * (f[2] / wilds)) as u8;
+            }
+        }
+    }
+    YearLand { class, wood }
+}
+
+/// The number of the parcel at a map position (`Land::index`).
+pub fn parcel_index(g: &Ground, fx: f32, fy: f32) -> usize {
+    let (bl, pc, _) = fields::parcel(Vec2::new(fx, fy));
+    g.land.index(bl.i, bl.j, pc.id)
 }
 
 /// How far a spot is from the water of a river (negative in it); about 0.25 or
@@ -412,8 +736,7 @@ pub fn warp(fx: f32, fy: f32) -> (f32, f32) {
     warp_raw(cx, cy)
 }
 
-fn uniform(g: &Ground, v: f32) -> f32 {
-    let q = &g.quant;
+fn uniform(q: &[f32], v: f32) -> f32 {
     let idx = q.partition_point(|&x| x < v);
     (idx as f32 / (q.len() - 1) as f32).min(0.999)
 }
@@ -421,47 +744,39 @@ fn uniform(g: &Ground, v: f32) -> f32 {
 /// The patch noise of the parcel at a position, mapped to an even spread over [0, 1).
 pub fn sub_uniform(g: &Ground, fx: f32, fy: f32) -> f32 {
     let (cx, cy) = class_point(fx, fy);
-    uniform(g, sub_raw(cx, cy))
+    uniform(&g.quant, sub_raw(cx, cy))
 }
 
-/// The warped cell and the patch value (0..255) that decide the class at a spot.
+/// The warped cell and the patch value (0..255) that `pick_class` reads at a spot.
 pub fn class_key(g: &Ground, fx: f32, fy: f32) -> (usize, f32) {
     let (px, py) = class_point(fx, fy);
     let (wx, wy) = warp_raw(px, py);
     let c = (wy.floor().clamp(0.0, g.h as f32 - 1.0) as usize) * g.w + wx.floor().clamp(0.0, g.w as f32 - 1.0) as usize;
-    (c, uniform(g, sub_raw(px, py)) * 255.0)
+    (c, uniform(&g.quant, sub_raw(px, py)) * 255.0)
 }
 
-/// The cell of the parcel's own point at a spot, which says how its fields are
-/// laid out (`field_depth`, `open_until`).
+/// The cell of the parcel's own point at a spot.
 pub fn own_cell(g: &Ground, fx: f32, fy: f32) -> usize {
     let (cx, cy) = class_point(fx, fy);
     (cy.floor().clamp(0.0, g.h as f32 - 1.0) as usize) * g.w + cx.floor().clamp(0.0, g.w as f32 - 1.0) as usize
 }
 
-/// The field at a map position, cut as finely as the ground there asks.
+/// The field at a map position, cut as finely as its parcel asks.
 pub fn field_at(g: &Ground, fx: f32, fy: f32) -> fields::Field {
-    let (bl, pc, centre) = fields::parcel(Vec2::new(fx, fy));
-    let c = ((centre.y.floor().clamp(0.0, g.h as f32 - 1.0)) as usize) * g.w + centre.x.floor().clamp(0.0, g.w as f32 - 1.0) as usize;
-    fields::field(&bl, pc, g.field_depth[c] as u32)
+    let (bl, pc, _) = fields::parcel(Vec2::new(fx, fy));
+    fields::field(&bl, pc, g.land.depth[g.land.index(bl.i, bl.j, pc.id)] as u32)
 }
 
-/// Which display class is drawn at a position in year index k, and in which cell.
-/// The lower class number always takes the low noise values, so patches run on
-/// across cell edges instead of stopping at them.
-pub fn class_at(r: &Replay, g: &Ground, k: usize, fx: f32, fy: f32) -> (u8, usize) {
-    let (px, py) = class_point(fx, fy);
-    let (wx, wy) = warp_raw(px, py);
-    let cx = (wx.floor() as isize).clamp(0, r.w as isize - 1) as usize;
-    let cy = (wy.floor() as isize).clamp(0, r.h as isize - 1) as usize;
-    let c = cy * r.w + cx;
-    if r.terrain[c] == 0 {
-        return (SEA, c);
-    }
-    let u = uniform(g, sub_raw(px, py)) * 255.0;
-    (pick_class(r, k, c, u), c)
+/// Which display class is drawn at a position, given the year's land.
+pub fn class_at(g: &Ground, land: &YearLand, fx: f32, fy: f32) -> u8 {
+    land.class[parcel_index(g, fx, fy)]
 }
 
+/// The patchwork rule cell by cell: the class a cell's own mix gives a parcel
+/// whose warped point lies in it, the lower class number taking the low values
+/// of the patch noise. It is the whole truth for towns, works, diggings and
+/// derelict ground. For open land (arable, pasture, wood, heath) it says only
+/// that the parcel is open: which of the four it is, `year_land` decides.
 pub fn pick_class(r: &Replay, k: usize, c: usize, u255: f32) -> u8 {
     let off = k * r.n + c;
     let (ca, cb, s) = (r.mix_a[off], r.mix_b[off], r.mix_s[off] as f32);
