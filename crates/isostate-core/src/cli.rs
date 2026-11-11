@@ -142,6 +142,10 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
             "--quiet" => quiet = true,
             "--params" => params_file = Some(PathBuf::from(value("--params")?)),
             "--content" => content_file = Some(PathBuf::from(value("--content")?)),
+            "-h" | "--help" => {
+                println!("{USAGE}");
+                return Ok(());
+            }
             other => return Err(format!("unknown option {other:?}\n{USAGE}")),
         }
     }

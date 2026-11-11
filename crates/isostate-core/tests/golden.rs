@@ -15,6 +15,15 @@
 //! with the files that commit's `isostate-core run --seed 7` and
 //! `--seed 7 --families 6` wrote.
 //!
+//! When the port is changed on purpose, take the new constants with
+//!
+//! ```text
+//! ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden
+//! ```
+//!
+//! Nothing is checked then: each of the three tests stops with the line to
+//! paste over its constant below. Say in the commit message why the port moved.
+//!
 //! To look at a change rather than only detect it, run
 //!
 //! ```text
@@ -42,6 +51,14 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
+/// With `ISOSTATE_GOLDEN_PRINT` set nothing is checked: each test stops here with
+/// the constant this code gives. A panic, because the harness hides what a
+/// passing test prints, and so that a run made to take new hashes can never be
+/// mistaken for one that passed.
+fn taken(line: &str) -> ! {
+    panic!("\n\nISOSTATE_GOLDEN_PRINT is set, so nothing was checked. This code gives\n\n    {line}\n\n");
+}
+
 #[allow(non_snake_case)]
 fn golden(name: &str, n_families: usize) -> RunResult {
     let mut P = default_params();
@@ -61,9 +78,7 @@ fn check(name: &str, const_name: &str, n_families: usize, want: (u64, u64)) {
     let r = golden(name, n_families);
     let got = (fnv1a(series_csv(&r).as_bytes()), fnv1a(events_json(&r).as_bytes()));
     if std::env::var("ISOSTATE_GOLDEN_PRINT").is_ok() {
-        // stderr, so it shows without --nocapture being remembered
-        eprintln!("const {const_name}: (u64, u64) = (0x{:016x}, 0x{:016x});", got.0, got.1);
-        return;
+        taken(&format!("const {const_name}: (u64, u64) = (0x{:016x}, 0x{:016x});", got.0, got.1));
     }
     let what = match (got.0 == want.0, got.1 == want.1) {
         (true, true) => return,
@@ -79,9 +94,10 @@ fn check(name: &str, const_name: &str, n_families: usize, want: (u64, u64)) {
          Either some new mechanism is leaking into the default rules (it must do nothing at all, not even draw a random \
          number, unless game_params() or a --set switches it on), or the port itself was changed on purpose.\n\
          If it was on purpose, take the new hashes with\n\n    \
-         ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden -- --nocapture\n\n\
-         paste the two lines it prints over the constants at the top of crates/isostate-core/tests/golden.rs, and say in \
-         the commit message why the port moved. ISOSTATE_GOLDEN_DUMP=DIR writes the two files of each run for a diff.\n",
+         ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden\n\n\
+         (each test then stops with its constant), paste them over the constants of the same names in \
+         crates/isostate-core/tests/golden.rs, and say in the commit message why the port moved. \
+         ISOSTATE_GOLDEN_DUMP=DIR writes the two files of each run for a diff.\n",
         got.0, got.1, want.0, want.1
     );
 }
@@ -99,8 +115,7 @@ fn the_ports_params_json_is_unchanged() {
     }
     let got = fnv1a(text.as_bytes());
     if std::env::var("ISOSTATE_GOLDEN_PRINT").is_ok() {
-        eprintln!("const PARAMS_JSON: u64 = 0x{got:016x};");
-        return;
+        taken(&format!("const PARAMS_JSON: u64 = 0x{got:016x};"));
     }
     assert!(
         got == PARAMS_JSON,
