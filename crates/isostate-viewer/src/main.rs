@@ -12,6 +12,7 @@
 mod boats;
 mod carts;
 mod chart;
+mod clock;
 mod cursor;
 mod family;
 mod fences;
@@ -481,7 +482,8 @@ struct ShotPlan {
 struct Toast {
     kind: String,
     title: String,
-    year: i32,
+    /// what stands over it beside its kind: the month it is dated in
+    when: String,
     /// when it went up, in seconds since the app started
     since: f32,
 }
@@ -489,15 +491,32 @@ struct Toast {
 #[derive(Resource, Default)]
 struct Toasts {
     shown: Vec<Toast>,
-    last_k: Option<usize>,
+    /// where the clock stood, as the news is dated, when the news was last looked through
+    last: Option<f32>,
+    /// how many items of news there were then: those that have come since are new
+    known: usize,
+    /// something was put up from elsewhere, and the box is to be drawn again
+    fresh: bool,
 }
 
-/// The major news of a year, to go up as toasts.
-fn year_toasts(events: &[replay::Event], year: i32, now: f32) -> Vec<Toast> {
+impl Toasts {
+    /// Put up a line that is not news of the island: what became of the player's orders.
+    fn say(&mut self, kind: &str, title: &str, when: &str, now: f32) {
+        self.shown.push(Toast { kind: kind.to_string(), title: title.to_string(), when: when.to_string(), since: now });
+        self.fresh = true;
+    }
+}
+
+/// The major news to go up as toasts when the clock has moved from `from` to
+/// `to` (both as the news is dated, in years): what is dated in between, each
+/// item in its month; and what has only now come from the simulation (`known`
+/// is how many items there were before) though its date is already past, as
+/// most of a year's news does at the year's end, if it is no more than a year old.
+fn news_toasts(events: &[replay::Event], from: f32, to: f32, known: usize, now: f32) -> Vec<Toast> {
     events
         .iter()
-        .filter(|e| e.year.floor() as i32 == year && e.major())
-        .map(|e| Toast { kind: e.kind.clone(), title: e.title.clone(), year, since: now })
+        .filter(|e| e.major() && e.year <= to && (e.year > from || (e.seq >= known && e.year > to - 1.0)))
+        .map(|e| Toast { kind: e.kind.clone(), title: e.title.clone(), when: clock::news_month(e.year), since: now })
         .collect()
 }
 
@@ -656,6 +675,12 @@ fn main() {
     let cen = network::centres(&r);
     eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
+    if live.is_some() {
+        // how long the game's years take at each of the clock's speeds, if nothing stops it
+        let left = r.ny.saturating_sub(r.filled);
+        let speeds: Vec<String> = clock::SPEEDS.iter().map(|s| format!("{} ({}; {})", s.name, s.pace, clock::length_words(clock::crossing(left, s.rate)))).collect();
+        eprintln!("the clock's speeds, with how long the {left} years to {} would take: {}", r.y0 + r.ny as i32 - 1, speeds.join(", "));
+    }
     if let Some(me) = families.as_ref().and_then(|f| f.player()) {
         let at = r.header.towns.get(me.seat).map(|t| cen[t.node]).unwrap_or((0.0, 0.0));
         eprintln!("you are the {} family of {} ({:.1},{:.1}), with {} in hand", me.name, me.seat_name, at.0, at.1, ui::money(me.cash));
@@ -728,6 +753,9 @@ fn main() {
         ..default()
     };
 
+    // a game left in the middle of a year is gone on with there, unless a year was asked for
+    let months = live.as_ref().map_or(0, |l| l.months);
+    let t0 = if args.year.is_none() && k0 == latest { clock::at(k0, months.min(11)) } else { k0 as f32 };
     let mut app = App::new();
     let mut views = args.views.clone();
     if let Some(path) = args.shot.clone() {
@@ -778,6 +806,8 @@ fn main() {
         });
     }
     let headless = !views.is_empty() || args.script.is_some();
+    // a game opens in the season of its date; pictures, and a recorded run, in high summer
+    let season0 = if live.is_some() && views.is_empty() { SeasonClock { phase: t0.fract(), follows: true } } else { SeasonClock::default() };
     if headless {
         app.add_plugins(
             DefaultPlugins
@@ -802,12 +832,13 @@ fn main() {
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
         .init_resource::<Builds>()
-        .insert_resource(Timeline { t: k0 as f32, built: None, playing: false, speed: 2.0 })
+        .insert_resource(Timeline { t: t0, built: None, playing: false, speed: clock::START_SPEED })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt && look.tilt_shift.on))
         .insert_resource(TheLook(look))
         .insert_resource(ForcedSeason(args.season))
-        .init_resource::<SeasonClock>()
+        .insert_resource(season0)
+        .init_resource::<live::Months>()
         .insert_resource(GroundDebug(args.ground_debug))
         .init_resource::<Toasts>()
         .insert_resource(picked)
@@ -1258,25 +1289,28 @@ fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
     tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
 }
 
-/// One round of the seasons never takes less than this many seconds, however
-/// fast the years go by.
+/// One round of the seasons' own clock takes this many seconds, however fast
+/// the years go by.
 const SEASON_ROUND_SECS: f32 = 24.0;
 
-/// The seasons' own clock. A year lasts two seconds at 1x and a quarter of a
-/// second at 8x, and a season tied to it strobes the fields and the sun. So
-/// the seasons turn in real time while the game plays: with the year when the
-/// years go slowly enough, and at one round in `SEASON_ROUND_SECS` when they
-/// go faster. Paused, the season holds where it is; it never jumps.
+/// The seasons' clock. Where the clock shows a month, and a year takes long
+/// enough to follow (`clock::FOLLOW_YEAR_SECS`: the two slowest speeds, and a
+/// clock that is stopped), the season is the date's: the ground, the trees,
+/// the sun and the date agree. A year that goes by faster would strobe the
+/// fields and the sun, so then the seasons turn in real time on a calm round
+/// of their own, one in `SEASON_ROUND_SECS`. Where the clock shows a year and
+/// no month (a year gone by, a still), a stopped clock holds the season where
+/// it is. The season never jumps: it eases onto the date the short way round.
 #[derive(Resource, Clone, Copy, Debug)]
 struct SeasonClock {
     /// phase of the year: 0 midwinter, 0.25 spring, 0.5 midsummer, 0.75 autumn
     phase: f32,
-    /// the season on screen is the date's, so the top bar may name it
+    /// the season on screen is the date's
     follows: bool,
 }
 
 impl Default for SeasonClock {
-    /// A game opens in high summer.
+    /// High summer: where a picture or a recorded run opens.
     fn default() -> Self {
         SeasonClock { phase: 0.55, follows: false }
     }
@@ -1284,28 +1318,39 @@ impl Default for SeasonClock {
 
 impl SeasonClock {
     /// Move on by `dt` seconds of real time, with the year's clock at `t`
-    /// years and running at `speed` years a second (or stopped).
-    fn advance(&mut self, playing: bool, speed: f32, t: f32, dt: f32) {
+    /// years and running at `speed` years a second (or stopped). `dated` says
+    /// the clock is showing a month.
+    fn advance(&mut self, playing: bool, speed: f32, t: f32, dt: f32, dated: bool) {
         // a long frame must not show as a jump of the season
         let dt = dt.clamp(0.0, 0.1);
-        let cap = 1.0 / SEASON_ROUND_SECS;
-        self.follows = playing && speed <= cap;
-        if !playing {
-            return;
-        }
+        self.follows = dated && (!playing || speed <= 1.0 / clock::FOLLOW_YEAR_SECS + 1e-4);
         if self.follows {
             // ease onto the date the short way round, then stay on it
             let d = (t.fract() - self.phase + 0.5).rem_euclid(1.0) - 0.5;
             self.phase += d * (1.0 - (-4.0 * dt).exp());
-        } else {
-            self.phase += cap * dt;
+        } else if playing {
+            self.phase += dt / SEASON_ROUND_SECS;
         }
         self.phase = self.phase.rem_euclid(1.0);
     }
 }
 
-fn season_clock(time: Res<Time>, tl: Res<Timeline>, mut clock: ResMut<SeasonClock>) {
-    clock.advance(tl.playing, tl.speed, tl.t, time.delta_secs());
+fn season_clock(time: Res<Time>, tl: Res<Timeline>, data: Res<Data>, live: Option<Res<live::Live>>, stills: Option<Res<ShotPlanArgs>>, mut clock: ResMut<SeasonClock>) {
+    let dated = shown_date(&tl, &data, live.as_deref(), stills.is_some()).is_some();
+    clock.advance(tl.playing, tl.speed, tl.t, time.delta_secs(), dated);
+}
+
+/// The date the top bar shows, where it shows a month: wherever the clock
+/// stands inside a year, and at the turn of the year a game is in. On the
+/// turn of a year gone by (and at the end of the last), and in every still,
+/// the bar shows that year alone, which is the year the map is of.
+fn shown_date(tl: &Timeline, data: &Data, live: Option<&live::Live>, stills: bool) -> Option<clock::Date> {
+    if stills {
+        return None;
+    }
+    let r = &data.r;
+    let in_progress = live.is_some() && tl.t.floor() as usize >= data.latest() && r.filled < r.ny;
+    (!clock::on_turn(tl.t) || in_progress).then(|| clock::date(r.y0, tl.t))
 }
 
 /// Phase of the year for the ground, the trees, the sun and the date: the
@@ -1384,15 +1429,19 @@ fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: R
         }
         tl.playing = !tl.playing;
     }
-    if keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period) {
+    // in a game, forwards from the year in progress is the simulation's to give:
+    // Right plays a month and Page Up plays on to the year's turn (game::next_clicks)
+    let in_progress = data.live && tl.t.floor() >= last;
+    if (keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period)) && !in_progress {
         tl.playing = false;
         tl.t = (tl.t.floor() + 1.0).min(last);
     }
     if keys.just_pressed(KeyCode::ArrowLeft) || keys.just_pressed(KeyCode::Comma) {
+        // back to the turn the year began at, and from a turn to the one before
         tl.playing = false;
-        tl.t = (tl.t.floor() - 1.0).max(0.0);
+        tl.t = if clock::on_turn(tl.t) { (tl.t.round() - 1.0).max(0.0) } else { tl.t.floor() };
     }
-    if keys.just_pressed(KeyCode::PageUp) {
+    if keys.just_pressed(KeyCode::PageUp) && !in_progress {
         tl.t = (tl.t.floor() + 10.0).min(last);
     }
     if keys.just_pressed(KeyCode::PageDown) {
@@ -1400,17 +1449,17 @@ fn time_input(keys: Res<ButtonInput<KeyCode>>, mut tl: ResMut<Timeline>, data: R
     }
     // faster and slower go from one speed button to the next
     if keys.just_pressed(KeyCode::ArrowUp) {
-        tl.speed = ui::step_speed(tl.speed, true);
+        tl.speed = clock::step_speed(tl.speed, true);
     }
     if keys.just_pressed(KeyCode::ArrowDown) {
-        tl.speed = ui::step_speed(tl.speed, false);
+        tl.speed = clock::step_speed(tl.speed, false);
     }
     if keys.just_pressed(KeyCode::KeyT) {
         tilt.0 = !tilt.0;
     }
 }
 
-fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>, game: Res<game::Game>) {
+fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>, game: Res<game::Game>, live: Option<Res<live::Live>>) {
     // a card that waits for the player stops the clock, however it came to be open
     if game.modal() && tl.playing {
         tl.playing = false;
@@ -1418,9 +1467,10 @@ fn advance_time(time: Res<Time>, mut tl: ResMut<Timeline>, data: Res<Data>, game
     if !tl.playing {
         return;
     }
-    // a live game waits at the end of the last year it has until the next arrives
+    // a live game runs into the first month still to come and waits inside it
+    // until that month arrives, and at December's end until the year does
     let end = (data.r.ny - 1) as f32;
-    let cap = if data.r.filled < data.r.ny { data.latest() as f32 + 0.999 } else { end };
+    let cap = if data.r.filled < data.r.ny { clock::frontier(data.latest(), live.map_or(11, |l| l.months)) } else { end };
     tl.t = (tl.t + time.delta_secs() * tl.speed).min(cap);
     if tl.t >= end {
         tl.playing = false;
@@ -1665,21 +1715,28 @@ fn toasts(
         v.set_if_neq(if ui.tab == Some(ui::Tab::News) || sheet.is_some() { Visibility::Hidden } else { Visibility::Inherited });
     }
     let r = &data.r;
-    let k = (tl.t.floor() as usize).min(r.ny - 1);
     let now = time.elapsed_secs();
-    let mut changed = false;
-    if st.last_k != Some(k) {
-        let year = r.y0 + k as i32;
-        let jump = st.last_k.map(|l| (l as i64 - k as i64).abs() > 1).unwrap_or(true);
-        if jump {
-            st.shown.clear();
-        }
-        st.shown.extend(year_toasts(&r.header.events, year, now));
-        while st.shown.len() > 3 {
-            st.shown.remove(0);
-        }
-        st.last_k = Some(k);
-        changed = true;
+    let mut changed = std::mem::take(&mut st.fresh);
+    // where the clock stands as the news is dated; the clock's whole numbers are years' ends
+    let to = clock::news_time(r.y0, tl.t.min((r.ny - 1) as f32));
+    let known = r.header.events.len();
+    if st.last != Some(to) || st.known != known {
+        // a clock that has gone back, or on by more than a year, starts afresh with the year up to where it stands
+        let from = match st.last {
+            Some(l) if to >= l - 1e-4 && to - l <= 1.0 + 1e-3 => l,
+            _ => {
+                st.shown.clear();
+                changed = true;
+                to - 1.0
+            }
+        };
+        let fresh = news_toasts(&r.header.events, from, to, st.known, now);
+        changed |= !fresh.is_empty();
+        st.shown.extend(fresh);
+        (st.last, st.known) = (Some(to), known);
+    }
+    while st.shown.len() > 3 {
+        st.shown.remove(0);
     }
     let before = st.shown.len();
     st.shown.retain(|t| now - t.since < 7.0);
@@ -1710,7 +1767,7 @@ fn toasts(
                 BorderColor::all(kind_colour(&e.kind)),
             ))
             .with_children(|q| {
-                q.spawn(text(f, &format!("{} \u{00b7} {}", kind_label(&e.kind), e.year), 13.0, kind_colour(&e.kind)));
+                q.spawn(text(f, &format!("{} \u{00b7} {}", kind_label(&e.kind), e.when), 13.0, kind_colour(&e.kind)));
                 q.spawn(text(f, &e.title, 18.0, INK));
             });
         }
@@ -2126,7 +2183,12 @@ mod tests {
     /// Run a season clock for some seconds at 30 frames a second; the year's
     /// clock runs beside it at `speed`. Returns the clock, how far the season
     /// went in all, and the biggest move between two frames.
-    fn run_seasons(mut c: SeasonClock, playing: bool, speed: f32, secs: f32) -> (SeasonClock, f32, f32) {
+    fn run_seasons(c: SeasonClock, playing: bool, speed: f32, secs: f32) -> (SeasonClock, f32, f32) {
+        run_dated(c, playing, speed, secs, true)
+    }
+
+    /// The same, saying whether the clock shows a month (it does while it runs).
+    fn run_dated(mut c: SeasonClock, playing: bool, speed: f32, secs: f32, dated: bool) -> (SeasonClock, f32, f32) {
         let dt = 1.0 / 30.0;
         let (mut t, mut went, mut jump) = (10.0f32, 0.0f32, 0.0f32);
         for _ in 0..(secs / dt).round() as usize {
@@ -2134,7 +2196,7 @@ mod tests {
             if playing {
                 t += speed * dt;
             }
-            c.advance(playing, speed, t, dt);
+            c.advance(playing, speed, t, dt, dated);
             let d = ((c.phase - before + 0.5).rem_euclid(1.0) - 0.5).abs();
             went += d;
             jump = jump.max(d);
@@ -2144,8 +2206,8 @@ mod tests {
 
     #[test]
     fn seasons_take_their_time_at_any_speed() {
-        // at 8x (four years a second) and at 1x, one round in SEASON_ROUND_SECS and no faster
-        for speed in [0.5, 1.0, 2.0, 4.0, 20.0] {
+        // from a season a second up, one round in SEASON_ROUND_SECS and no faster
+        for speed in [0.25, 0.5, 1.0, 2.0, 4.0, 20.0] {
             let (c, went, jump) = run_seasons(SeasonClock::default(), true, speed, SEASON_ROUND_SECS);
             assert!((went - 1.0).abs() < 0.01, "at {speed} years a second the season went {went} rounds in {SEASON_ROUND_SECS} s");
             assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "a jump of {jump} at {speed}");
@@ -2155,14 +2217,46 @@ mod tests {
     }
 
     #[test]
-    fn seasons_hold_when_paused_and_do_not_jump_on_resuming() {
+    fn seasons_hold_on_a_year_gone_by_and_do_not_jump_on_resuming() {
         let (c, _, _) = run_seasons(SeasonClock::default(), true, 4.0, 5.0);
         let held = c.phase;
-        let (c, went, _) = run_seasons(c, false, 4.0, 60.0);
+        // stopped where the bar shows a year and no month: the season stays where it is
+        let (c, went, _) = run_dated(c, false, 4.0, 60.0, false);
         assert_eq!(c.phase, held);
         assert_eq!(went, 0.0);
+        assert!(!c.follows);
         let (_, _, jump) = run_seasons(c, true, 0.5, 1.0);
         assert!(jump <= 1.0 / SEASON_ROUND_SECS / 30.0 + 1e-5, "resuming jumped {jump}");
+    }
+
+    #[test]
+    fn a_stopped_clock_that_shows_a_month_shows_its_season() {
+        // run fast, so the seasons are on their own round, then stop in the middle of a year
+        let (c, _, _) = run_seasons(SeasonClock::default(), true, 2.0, 7.3);
+        assert!(!c.follows);
+        // (run_dated's year clock begins at 10.0 and does not move while stopped: midwinter)
+        let (c, _, jump) = run_dated(c, false, 2.0, 3.0, true);
+        assert!(c.follows);
+        let off = ((c.phase + 0.5).rem_euclid(1.0) - 0.5).abs();
+        assert!(off < 0.005, "the season is {} off the date three seconds after stopping", off);
+        assert!(jump < 0.08, "eased with a jump of {jump}");
+    }
+
+    #[test]
+    fn the_two_slowest_speeds_keep_the_seasons_on_the_date() {
+        for s in clock::SPEEDS {
+            let (c, _, _) = run_seasons(SeasonClock { phase: 0.0, follows: true }, true, s.rate, 6.0);
+            // the year's clock began at 10.0 and has run for six seconds
+            let date = (s.rate * 6.0).fract();
+            let off = ((c.phase - date + 0.5).rem_euclid(1.0) - 0.5).abs();
+            if 1.0 / s.rate >= clock::FOLLOW_YEAR_SECS - 1e-3 {
+                assert!(c.follows, "{}", s.name);
+                assert!(off < 0.03, "{}: the season is {off} of a year off the date", s.name);
+            } else {
+                assert!(!c.follows, "{}", s.name);
+                assert!((c.phase - 6.0 / SEASON_ROUND_SECS).abs() < 0.01, "{}: the seasons' own round", s.name);
+            }
+        }
     }
 
     #[test]
@@ -2179,7 +2273,7 @@ mod tests {
                 for _ in 0..(SEASON_ROUND_SECS / dt).round() as usize {
                     let before = in_leaf(c.phase, group);
                     t += speed * dt;
-                    c.advance(true, speed, t, dt);
+                    c.advance(true, speed, t, dt, true);
                     let now = in_leaf(c.phase, group);
                     shed += (before && !now) as usize;
                     bud += (!before && now) as usize;
@@ -2190,8 +2284,9 @@ mod tests {
                 assert!(gold, "group {group} is never gold in leaf at {speed} years a second");
                 // paused in the depth of winter, the trees stay bare
                 let mut c = SeasonClock { phase: 0.02, follows: false };
+                // (on a year gone by, where the bar shows no month)
                 for _ in 0..300 {
-                    c.advance(false, speed, t, dt);
+                    c.advance(false, speed, t, dt, false);
                 }
                 assert!(!in_leaf(c.phase, group));
             }
@@ -2208,10 +2303,13 @@ mod tests {
         assert!((c.phase - 0.5).abs() < 0.01, "the season is {} at midsummer", c.phase);
         // easing from high summer round to midwinter took no visible jump
         assert!(jump < 0.08, "eased with a jump of {jump}");
-        // paused, the name goes from the top bar and the season stays
-        let (p, went, _) = run_seasons(c, false, speed, 5.0);
-        assert!(!p.follows);
-        assert_eq!(went, 0.0);
+        // stopped there (the year's clock at 10.5), the season stays on the date
+        let mut p = c;
+        for _ in 0..150 {
+            p.advance(false, speed, 10.5, 1.0 / 30.0, true);
+        }
+        assert!(p.follows);
+        assert!((p.phase - c.phase).abs() < 0.01, "the season moved from {} to {} while the clock was stopped on its date", c.phase, p.phase);
     }
 
     #[test]
@@ -2235,10 +2333,11 @@ mod tests {
     fn toasts_keep_their_words_when_the_news_is_sorted_again() {
         let mut events = vec![news(1759.9, 0.9, "An old thing"), news(1760.7, 0.7, "Coke smelting"), news(1760.8, 0.3, "A small thing"), news(1760.95, 0.6, "A works opens")];
         // the year's major news, and nothing minor or from another year
-        let shown = year_toasts(&events, 1760, 5.0);
+        let shown = news_toasts(&events, 1760.0, 1761.0, events.len(), 5.0);
         let titles: Vec<&str> = shown.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(titles, ["Coke smelting", "A works opens"]);
-        assert!(shown.iter().all(|t| t.year == 1760 && t.since == 5.0));
+        assert!(shown.iter().all(|t| t.since == 5.0));
+        assert_eq!((shown[0].when.as_str(), shown[1].when.as_str()), ("September 1760", "December 1760"));
         // a live game adds news dated before what is there and sorts the list, as live::apply_year does
         events.push(news(1760.1, 0.9, "News that came late"));
         events.sort_by(|a, b| a.year.total_cmp(&b.year));
@@ -2246,6 +2345,31 @@ mod tests {
         assert_eq!(events[1].title, "News that came late");
         assert_eq!(shown[0].title, "Coke smelting");
         assert_eq!(shown[1].title, "A works opens");
+    }
+
+    #[test]
+    fn news_goes_up_in_its_month_or_when_it_comes_if_that_is_later() {
+        let mut events = vec![news(1784.21, 0.9, "A line opens"), news(1784.55, 0.9, "A poor harvest"), news(1784.9, 0.9, "A town founded")];
+        for (i, e) in events.iter_mut().enumerate() {
+            e.seq = i;
+        }
+        let titles = |from: f32, to: f32, known: usize| news_toasts(&events, from, to, known, 0.0).iter().map(|t| t.title.clone()).collect::<Vec<_>>();
+        // a year gone by, played again: each item as the clock passes its date
+        assert_eq!(titles(1784.0, 1784.17, 3), Vec::<String>::new());
+        assert_eq!(titles(1784.17, 1784.25, 3), ["A line opens"]);
+        assert_eq!(titles(1784.25, 1784.5, 3), Vec::<String>::new());
+        assert_eq!(titles(1784.5, 1784.58, 3), ["A poor harvest"]);
+        // a live game: the line opened in March and was told then; the harvest and the town
+        // are only known at the year's end, and go up when they come, dated as they are
+        assert_eq!(titles(1784.17, 1784.25, 0), ["A line opens"]);
+        let late = news_toasts(&events, 1784.99, 1784.999, 1, 0.0);
+        assert_eq!(late.iter().map(|t| t.when.as_str()).collect::<Vec<_>>(), ["July 1784", "November 1784"]);
+        // news that has come while the clock is still short of its date waits for the clock
+        assert_eq!(titles(1784.4, 1784.5, 1), Vec::<String>::new());
+        assert_eq!(titles(1784.5, 1784.6, 3), ["A poor harvest"]);
+        assert_eq!(titles(1784.7, 1784.95, 3), ["A town founded"]);
+        // and nothing goes up twice: what was known and is past stays down
+        assert_eq!(titles(1784.95, 1784.999, 3), Vec::<String>::new());
     }
 
     fn args(line: &str) -> Result<Args, String> {

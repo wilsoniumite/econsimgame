@@ -15,13 +15,15 @@
 //!     decide:N        click option N of the open decision, counting from 0
 //!     wait:SECONDS    let the game run
 //!     frames:N        let N frames pass
-//!     settle          wait until no year is being worked out, no order is out
+//!     settle          wait until nothing is being worked out, no order is out
 //!                     and the scenery shows the year on the clock
 //!     sample:SECONDS  let the game run and count, frame by frame, where the
-//!                     clock stood and how far the season moved
+//!                     clock stood, how far the season moved and how long the
+//!                     frames' work took (those a month or a year came in apart)
 //!     run:SECONDS     the same, keeping the years going: a decision that opens
 //!                     is given its default and the clock is started again
-//!     print[:NOTE]    print the clock, the cards and the order panel
+//!     print[:NOTE]    print the clock and its date, the cards, the orders that
+//!                     wait for the year's end and the order panel
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none)
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
@@ -95,10 +97,16 @@ struct Tally {
     frames: u32,
     /// frames with the clock running
     playing: u32,
-    /// of those, frames in which an order given now would land in the year on screen
+    /// of those, frames in which the simulation stood at a year's turn, so an
+    /// order given then would be carried out at once
     can_act: u32,
-    /// frames with the next year being worked out
+    /// frames with a month or a year's end being worked out
     stepping: u32,
+    /// of those, frames in which the clock stood still waiting for it
+    waited: u32,
+    last_t: f32,
+    /// where the clock stood when the counting began
+    t0: f32,
     /// how far round the year the season went, forwards and backwards
     season_fwd: f32,
     season_back: f32,
@@ -108,11 +116,13 @@ struct Tally {
     dates: Vec<String>,
     k0: usize,
     /// how long the main world's work took in each frame, in milliseconds, with
-    /// what came in during it: a year from the simulation, a year's scenery
-    work: Vec<(f32, bool, bool)>,
-    /// the years worked out and the scenery's year when the last frame was counted
+    /// what came in during it: a year from the simulation, a year's scenery, a month
+    work: Vec<(f32, bool, bool, bool)>,
+    /// the years worked out, the scenery's year and the months that had come
+    /// when the last frame was counted
     last_filled: usize,
     last_built: Option<usize>,
+    last_months: u64,
     /// decisions answered for the player
     answered: u32,
     /// start the clock again once the decision's card has gone
@@ -337,21 +347,51 @@ fn date_text(world: &mut World) -> String {
 }
 
 fn stepping(world: &World) -> bool {
-    world.get_resource::<Live>().is_some_and(|l| l.stepping)
+    world.get_resource::<Live>().is_some_and(|l| l.stepping())
+}
+
+/// The line under the date.
+fn note_text(world: &mut World) -> String {
+    let mut q = world.query_filtered::<&Text, With<ui::StepNote>>();
+    q.iter(world).next().map(|t| t.0.clone()).unwrap_or_default()
 }
 
 fn print_state(world: &mut World, note: &str) {
     let date = date_text(world);
+    let under = note_text(world);
     let (k, latest) = clock_year(world);
     let (tl, data) = (world.resource::<Timeline>(), world.resource::<Data>());
     let y0 = data.r.y0;
-    let clock = format!("clock {:.2} ({}), {} at {} years a second", tl.t, y0 + k as i32, if tl.playing { "playing" } else { "paused" }, tl.speed);
-    let sim = format!("newest year {}{}", y0 + latest as i32, if stepping(world) { ", working out the next" } else { "" });
+    let d = crate::clock::date(y0, tl.t);
+    let speed = crate::clock::speed_at(tl.speed).map_or(format!("{} years a second", tl.speed), |s| format!("{} ({})", s.name, s.pace));
+    let clock = format!("clock {:.3} ({} {}, {:.0}% through; the map is of {}), {} at {}", tl.t, crate::clock::MONTHS[d.month], d.year, d.part * 100.0, y0 + k as i32, if tl.playing { "playing" } else { "paused" }, speed);
+    let live = world.get_resource::<Live>();
+    let sim = format!(
+        "newest year {}, {} of the next year's months worked out{}",
+        y0 + latest as i32,
+        live.map_or(0, |l| l.months),
+        match live {
+            Some(l) if l.turning() => ", the year's end on its way",
+            Some(l) if l.stepping() => ", a month on its way",
+            _ => "",
+        }
+    );
     let cards = world.resource::<Game>().summary();
     let fam = world.get_resource::<FamilyView>().and_then(|f| f.player()).map(|p| format!("cash {}, {} works, {} squares", ui::money(p.cash), p.works, p.land)).unwrap_or_default();
     let ph = season(world);
     println!("script: {}{}; {}; date \"{}\"; season {:.3}", if note.is_empty() { String::new() } else { format!("[{note}] ") }, clock, sim, date, ph);
     println!("script:   {cards}; {fam}");
+    // what waits for the year's end, as the Family panel lists it
+    if let Some(l) = live {
+        let rep = world.get_resource::<FamilyView>().and_then(|f| f.player()).map(|p| &p.rep);
+        let lines: Vec<String> = l.standing.waiting.iter().map(|o| crate::live::order_words(o, &data.r, rep)).collect();
+        println!(
+            "script:   under the date: \"{under}\"; waiting for the year's end: {}; {} promised; pegs on {} squares",
+            if lines.is_empty() { "nothing".to_string() } else { lines.join(" | ") },
+            ui::money(l.standing.promised as f32),
+            l.standing.pegs.len()
+        );
+    }
     // the order panel under the inspector: what it says and what can be pressed
     let mut q = world.query_filtered::<Entity, With<InspectActions>>();
     let panel: Vec<Entity> = q.iter(world).collect();
@@ -412,20 +452,24 @@ fn find_marked<C: Component>(world: &mut World, what: &str, want: impl Fn(&C) ->
 fn sample(world: &mut World, t: &mut Tally) {
     let (k, latest) = clock_year(world);
     // the frame before this one: how long its work took, and whether a year or its scenery came in during it
-    let (filled, built) = (world.resource::<Data>().r.filled, world.resource::<Timeline>().built);
+    let (filled, built, months) = (world.resource::<Data>().r.filled, world.resource::<Timeline>().built, world.resource::<UiState>().months);
+    let now_t = world.resource::<Timeline>().t;
     if t.frames == 0 {
         t.k0 = k;
+        t.t0 = now_t;
     } else {
-        t.work.push((world.resource::<FrameWork>().ms, filled != t.last_filled, built != t.last_built && built.is_some()));
+        t.work.push((world.resource::<FrameWork>().ms, filled != t.last_filled, built != t.last_built && built.is_some(), months != t.last_months));
     }
-    (t.last_filled, t.last_built) = (filled, built);
+    (t.last_filled, t.last_built, t.last_months) = (filled, built, months);
     t.frames += 1;
     let step = stepping(world);
     if world.resource::<Timeline>().playing {
         t.playing += 1;
         t.stepping += step as u32;
-        t.can_act += (k >= latest && !step) as u32;
+        t.waited += (step && t.frames > 1 && now_t == t.last_t) as u32;
+        t.can_act += (k >= latest && world.get_resource::<Live>().is_some_and(|l| l.at_turn())) as u32;
     }
+    t.last_t = now_t;
     let ph = season(world);
     if let Some(last) = t.last_phase {
         // the short way round
@@ -475,13 +519,15 @@ fn print_tally(world: &World, t: &Tally, secs: f32) {
     let (k, _) = clock_year(world);
     let pc = |n: u32| 100.0 * n as f32 / t.playing.max(1) as f32;
     println!(
-        "script: sampled {secs} s, {} frames, {} years, {} decisions answered; the clock ran in {} frames: in {:.0}% of them an order would land in the year on screen, in {:.0}% the next year was being worked out",
+        "script: sampled {secs} s, {} frames, {} years' turns, {:.1} months on the clock, {} decisions answered; the clock ran in {} frames: in {:.0}% of them the simulation stood at a year's turn (an order would be carried out at once), in {:.0}% a month or the year's end was being worked out, in {:.1}% the clock stood waiting for it",
         t.frames,
         k.saturating_sub(t.k0),
+        (world.resource::<Timeline>().t - t.t0) * 12.0,
         t.answered,
         t.playing,
         pc(t.can_act),
-        pc(t.stepping)
+        pc(t.stepping),
+        pc(t.waited)
     );
     println!(
         "script:   the season went {:.2} of a year forwards and {:.2} back, {:.3} at most between two frames; the date read {} different things: {}",
@@ -489,7 +535,7 @@ fn print_tally(world: &World, t: &Tally, secs: f32) {
         t.season_back,
         t.season_jump,
         t.dates.len(),
-        t.dates.iter().take(6).cloned().collect::<Vec<_>>().join(", ") + if t.dates.len() > 6 { ", \u{2026}" } else { "" }
+        t.dates.iter().take(14).cloned().collect::<Vec<_>>().join(", ") + if t.dates.len() > 14 { ", \u{2026}" } else { "" }
     );
     print_work(t);
 }
@@ -505,13 +551,16 @@ fn spread(ms: &mut [f32]) -> Option<(f32, f32, f32)> {
 }
 
 /// What a `sample` step says of the frames' work: of them all, and of those a
-/// year arrived in or a year's scenery went up in, which are the ones that can hitch.
+/// month or a year arrived in or a year's scenery went up in, which are the
+/// ones that can hitch.
 fn print_work(t: &Tally) {
     let line = |what: &str, mut ms: Vec<f32>| match spread(&mut ms) {
         Some((mid, p99, max)) => println!("script:   frame work, {what}: {} frames, middle {mid:.1} ms, 99th in a hundred {p99:.1} ms, longest {max:.1} ms", ms.len()),
         None => println!("script:   frame work, {what}: no frames"),
     };
     line("all", t.work.iter().map(|w| w.0).collect());
+    line("neither a month nor a year coming in", t.work.iter().filter(|w| !w.1 && !w.2 && !w.3).map(|w| w.0).collect());
+    line("a month arriving", t.work.iter().filter(|w| w.3 && !w.1).map(|w| w.0).collect());
     line("a year arriving", t.work.iter().filter(|w| w.1).map(|w| w.0).collect());
     line("a year's scenery going up", t.work.iter().filter(|w| w.2).map(|w| w.0).collect());
 }
@@ -617,7 +666,8 @@ fn step(world: &mut World, sc: &mut Script) {
                     sc.begun = true;
                     sc.until = now + 120.0;
                 }
-                let quiet = !stepping(world) && !world.resource::<Game>().busy && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
+                let game = world.resource::<Game>();
+                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
                 if !quiet && now >= sc.until {
                     fail("the game did not settle in two minutes");
                 }

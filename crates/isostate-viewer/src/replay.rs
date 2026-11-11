@@ -316,6 +316,21 @@ pub fn yearly(r: &Replay, name: &str) -> Vec<f32> {
         .collect()
 }
 
+/// `n` months of a named series from month `first` of the run (0 is the first
+/// January), for a chart: NaN where there is no figure (a month a game has not
+/// reached), and empty if the run has no such series.
+pub fn monthly(r: &Replay, name: &str, first: usize, n: usize) -> Vec<f32> {
+    let Some(i) = r.series_names.iter().position(|s| s == name) else { return Vec::new() };
+    let row = &r.series[i * r.series_len..(i + 1) * r.series_len];
+    (first..first + n).map(|t| row.get(t).copied().unwrap_or(f32::NAN)).collect()
+}
+
+/// One month of a named series, if the run has it and has got that far.
+pub fn month(r: &Replay, name: &str, t: usize) -> Option<f32> {
+    let i = r.series_names.iter().position(|s| s == name)?;
+    r.series.get(i * r.series_len + t).copied().filter(|v| t < r.series_len && v.is_finite())
+}
+
 /// Annual mean of a named monthly series, or None if the run does not have it.
 pub fn annual(r: &Replay, name: &str, k: usize) -> Option<f32> {
     let i = r.series_names.iter().position(|s| s == name)?;

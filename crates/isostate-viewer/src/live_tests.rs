@@ -1,6 +1,6 @@
 //! The saved game end to end, without a window: a game is played through the
 //! simulation thread as the interface plays it (orders over the channel, a
-//! year at a time), the thread's own save is loaded as `--load` loads it, and
+//! month at a time), the thread's own save is loaded as `--load` loads it, and
 //! everything the viewer holds of the two is compared.
 
 use super::*;
@@ -16,12 +16,16 @@ struct Table {
     /// orders the simulation carried out, by kind
     carried: std::collections::BTreeMap<&'static str, usize>,
     refused: usize,
+    /// what the thread last said of an order
+    said: String,
+    /// what became, at the last year's end, of the orders that waited for it
+    turned: Vec<(bool, String)>,
 }
 
 impl Table {
     fn open(o: &Opening) -> Table {
         let (r, live, view) = start(o).expect("the game starts");
-        Table { r, live, view, carried: Default::default(), refused: 0 }
+        Table { r, live, view, carried: Default::default(), refused: 0, said: String::new(), turned: Vec::new() }
     }
 
     fn wait(&self) -> Msg {
@@ -35,23 +39,49 @@ impl Table {
         }
     }
 
-    fn step(&mut self) {
-        self.live.send(Cmd::Step);
-        match self.wait() {
-            Msg::Year(y, prospects) => {
-                apply_year(&mut self.r, &y);
-                crate::game::year_families(&mut self.view, &y.families, y.year as i32);
-                self.view.prospects = prospects;
+    /// Ask for the next month, as `game::drive` does, and take in what comes
+    /// as `game::pump` does. True when the year turned with it.
+    fn month(&mut self) -> bool {
+        self.live.step();
+        loop {
+            match self.wait() {
+                Msg::Month(m) => {
+                    apply_month(&mut self.r, &m);
+                    crate::game::month_cash(&mut self.view, &m.cash);
+                    self.live.month_came();
+                    if self.live.months < 12 {
+                        return false;
+                    }
+                }
+                Msg::Year(end) => {
+                    apply_year(&mut self.r, &end.year);
+                    crate::game::year_families(&mut self.view, &end.year.families, end.year.year as i32);
+                    if let Some(rep) = &end.family {
+                        crate::game::player_family(&mut self.view, rep);
+                    }
+                    self.view.prospects = end.prospects.clone();
+                    self.live.year_came();
+                    self.live.standing = end.standing.clone();
+                    self.turned = end.carried.clone();
+                    return true;
+                }
+                Msg::Failed(e) => panic!("the month failed: {e}"),
+                _ => panic!("a month was asked for"),
             }
-            Msg::Failed(e) => panic!("the year failed: {e}"),
-            _ => panic!("a year was asked for"),
         }
+    }
+
+    /// Play on to the year's turn.
+    fn step(&mut self) {
+        while !self.month() {}
     }
 
     fn order(&mut self, kind: &'static str, c: Cmd) -> bool {
         self.live.send(c);
         match self.wait() {
-            Msg::Done { ok, family, .. } => {
+            Msg::Done { ok, family, text, standing } => {
+                self.said = text;
+                self.live.standing = standing;
                 if let Some(rep) = family {
                     crate::game::player_family(&mut self.view, &rep);
                 }
@@ -221,7 +251,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
 
     // loaded as --load loads it; nothing is written, so the first game's file stays as it is
     let mut b = Table::open(&Opening { load: Some(name.clone()), shots: true, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
     assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
     let on_order: Vec<usize> = saved.orders.iter().filter(|g| g.year == 1779).filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None }).collect();
@@ -266,7 +296,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     let mut odd = saved.clone();
     let bought = odd.orders.iter().position(|g| matches!(g.order, Order::BuyLand { .. })).unwrap();
     odd.orders.remove(bought);
-    odd.orders.insert(0, isostate_core::save::Given { year: 1750, order: Order::Found { method: "a_works_of_the_future".into(), cell: 100 } });
+    odd.orders.insert(0, isostate_core::save::Given { year: 1750, month: 0, order: Order::Found { method: "a_works_of_the_future".into(), cell: 100 } });
     let odd_file = dir.join("odd.json");
     std::fs::write(&odd_file, odd.to_text()).unwrap();
     let c = Table::open(&Opening { load: Some(odd_file.to_string_lossy().into_owned()), shots: true, ..default() });
@@ -279,9 +309,117 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The cheapest square by the seat that the family could buy.
+fn a_square_to_buy(t: &Table) -> usize {
+    let me = t.me();
+    let k = t.r.filled - 1;
+    // the squares that trade in the seat's market and are not the family's, a few dozen of them
+    (0..t.r.n)
+        .filter(|&c| t.r.catch[k * t.r.n + c] as usize == me.seat + 1 && t.r.terrain[c] > 0 && t.r.owner[k * t.r.n + c] != PLAYER as i8)
+        .take(60)
+        .map(|c| t.site(c))
+        .filter(|s| s.owner != Some(PLAYER) && s.land_allowed.is_ok() && s.land_price < 0.5 * me.cash as f64)
+        .min_by(|a, b| a.land_price.total_cmp(&b.land_price))
+        .expect("a square the family could buy")
+        .cell
+}
+
+#[test]
+fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
+    let dir = std::env::temp_dir().join(format!("isostate-midyear-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let file = dir.join("game.json");
+    let name = file.to_string_lossy().into_owned();
+
+    // four years, the first trade chosen at the first turn; then into the fifth, to the end of May
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, save: Some(name.clone()), ..default() });
+    a.play_year();
+    for _ in 0..3 {
+        a.step();
+        a.play_year();
+    }
+    assert_eq!((a.year(), a.live.months, a.live.at_turn()), (1753, 0, true));
+    let before = saves::read(&file).unwrap();
+    for m in 1..=5 {
+        assert!(!a.month());
+        assert_eq!((a.live.months, a.live.at_turn()), (m, false));
+    }
+    assert_eq!(a.year(), 1753, "the year in progress is not a year played");
+    // the months came with their own figures: the price of grain is not the same every month of 1754
+    let grain = replay::monthly(&a.r, "price_grain", 4 * 12, 12);
+    assert!(grain[..5].iter().all(|v| v.is_finite()) && grain[5..].iter().all(|v| v.is_nan()), "{grain:?}");
+    assert!(grain[..5].windows(2).any(|w| w[0] != w[1]), "{grain:?}");
+
+    // orders given in June: land and a move of the seat. They wait, and the thread says until when
+    let square = a_square_to_buy(&a);
+    let me = a.me();
+    let other = (0..a.r.n_towns).find(|&t| t != me.seat && a.r.town_active[3 * a.r.n_towns + t] != 0).unwrap();
+    assert!(a.order("buy_land", Cmd::BuyLand(square)));
+    assert!(a.said.contains("at the year's turn, in January 1755"), "{}", a.said);
+    assert!(a.order("stance", Cmd::Stance { group: me.rep.branches[0].group, town: me.rep.branches[0].town, stance: Stance::Hold }));
+    assert!(a.said.contains("from the end of 1754"), "{}", a.said);
+    assert!(a.order("move_seat", Cmd::MoveSeat(other)));
+    assert!(a.order("move_seat", Cmd::MoveSeat(me.seat)), "the move is thought better of");
+    assert_eq!(a.live.standing.waiting.len(), 4);
+    // the last of them is taken back; the square is not the family's yet, and its price is promised
+    assert!(a.order("cancel", Cmd::Cancel(3)));
+    assert!(!a.order("cancel", Cmd::Cancel(3)));
+    let stands = a.live.standing.clone();
+    assert_eq!(stands.waiting.len(), 3);
+    assert!(stands.promised > 0.0 && stands.pegs.is_empty());
+    let me = a.me();
+    assert!(!me.rep.cells.contains(&square), "what the family owns is what it owns now");
+    assert_eq!(me.rep.next_seat, Some(other), "what it has been told shows as told");
+    assert_eq!(me.rep.branches[0].stance, Stance::Hold);
+    assert_eq!(crate::live::order_words(&stands.waiting[2], &a.r, Some(&me.rep)), format!("Move the seat to {}", a.r.header.towns[other].name));
+
+    // the save was written with the last order: the month, and what waits
+    let saved = saves::read(&file).unwrap();
+    assert_eq!((saved.format, saved.year, saved.month, saved.waiting.len()), (2, 1753, 5, 3));
+    assert_eq!(saved.orders, before.orders, "nothing has been carried out since the turn");
+    // two more months, and the game is left: the thread saves them on its way out
+    assert!(!a.month() && !a.month());
+
+    // gone on with: the same month, the same orders waiting, the same island
+    let mut b = Table::open(&Opening { load: Some(name.clone()), shots: true, ..default() });
+    // (the first game is still open: its months since the last order are not in the file yet)
+    assert_eq!(b.live.resumed.as_ref().map(|r| (r.year, r.month, r.date())), Some((1753, 5, "June 1754".to_string())));
+    assert_eq!((b.live.months, b.live.asked), (5, 5));
+    assert_eq!(b.live.standing, stands);
+    assert!(!b.month() && !b.month());
+    // (what each trade would earn is worked out when a year arrives or a game is opened: for the one in January, for the other in June)
+    b.view.prospects = a.view.prospects.clone();
+    same(&a, &b, "seven months into 1754");
+
+    // the year's end: the branch holds and the seat moves with the books; then the land is bought.
+    // The seat has gone from beside the square, so the land is refused, and the family is told why
+    for t in [&mut a, &mut b] {
+        t.step();
+        assert_eq!(t.year(), 1754);
+        assert_eq!(t.turned.len(), 3, "{:?}", t.turned);
+        assert!(t.turned[0].0 && t.turned[1].0 && !t.turned[2].0, "{:?}", t.turned);
+        assert!(t.turned[2].1.contains("not done, because land is bought directly only around the seat"), "{:?}", t.turned);
+        assert!(t.live.standing.waiting.is_empty() && t.live.standing.promised == 0.0);
+        assert_eq!(t.me().seat, other);
+    }
+    same(&a, &b, "at the turn of 1755");
+    drop(b);
+
+    // left with the clock in the middle of a year and nothing ordered since the turn: the months are kept all the same
+    assert!(!a.month() && !a.month() && !a.month());
+    drop(a);
+    let left = saves::read(&file).unwrap();
+    assert_eq!((left.year, left.month, left.waiting.len()), (1754, 3, 0));
+    let c = Table::open(&Opening { load: Some(name), shots: true, ..default() });
+    assert_eq!(c.live.resumed.as_ref().unwrap().date(), "April 1755");
+    assert!(!c.live.resumed.as_ref().unwrap().drifted);
+    drop(c);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn the_card_says_what_could_not_be_brought_back() {
-    let back = |refused, drifted| Resumed { year: 1779, orders: 41 - refused, refused, drifted, passed_over: 0 };
+    let back = |refused, drifted| Resumed { year: 1779, month: 0, orders: 41 - refused, refused, drifted, passed_over: 0 };
     assert_eq!(crate::game::resumed_note(&back(0, false)), None);
     assert_eq!(
         crate::game::resumed_note(&back(0, true)).unwrap(),
@@ -291,8 +429,8 @@ fn the_card_says_what_could_not_be_brought_back() {
         crate::game::resumed_note(&back(3, true)).unwrap(),
         "The island's rules have changed since this game was saved. Three of your 41 orders could not be given again, so some things stand differently."
     );
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, orders: 0, refused: 1, drifted: false, passed_over: 0 }).unwrap().contains(" Your one order could not"));
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, orders: 0, refused: 4, drifted: true, passed_over: 0 }).unwrap().contains(" All four of your orders could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 1, drifted: false, passed_over: 0 }).unwrap().contains(" Your one order could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 4, drifted: true, passed_over: 0 }).unwrap().contains(" All four of your orders could not"));
     // an earlier save than the last, with or without the rules having changed
     assert_eq!(
         crate::game::resumed_note(&Resumed { passed_over: 1, ..back(0, false) }).unwrap(),
@@ -324,7 +462,7 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
 
     // a plain start goes on with it
     let b = Table::open(&Opening { seed: 7, families: 3, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, orders, refused: 0, drifted: false, passed_over: 0 }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, month: 0, orders, refused: 0, drifted: false, passed_over: 0 }));
     assert!(b.live.kept);
     assert_eq!(b.year(), 1752);
     drop(b);
