@@ -113,7 +113,9 @@ market can only grow at the room's pace.
 method it already runs in that town, the capacity is ordered at its largest
 works there that has room, paid from family cash at the same price
 (`works::family_extension`, `works::extend_for_family`); the player hears of
-it. A branch founds a new works only where it has none, or none with room.
+it, at once or, with the chronicle, in the year's summary of what the
+branches did. A branch founds a new works only where it has none, or none
+with room.
 
 The size of a works the player founds, and of the site sums the player sees,
 is `works::entry_K` or, where the family's cash does not reach that far, the
@@ -358,11 +360,12 @@ instead of seven hundred. The richest rival in 1900 stays in the same range
   investment side of the cobweb. It was tuned here without the price rule, at
   the point where a wider room starts buying idle capacity; with steadier
   prices a wider room (0.2 to 0.3) may give more output for the same
-  steadiness. That wants one sweep of `works.year_room` once both are merged,
-  read with six families and with the hard spells beside the means, because
-  the tools famines below are half made of slow prices (in the worst one
-  seen, tools stayed above ten times their usual price for four years after
-  the stock had begun to pile up).
+  steadiness. That wanted one sweep of `works.year_room` once both were
+  merged, read with six families and with the hard spells beside the means,
+  because the tools famines below are half made of slow prices (in the worst
+  one seen, tools stayed above ten times their usual price for four years
+  after the stock had begun to pile up). The sweep has been run (the next
+  section): 0.15 stands.
 - **Kept town ground** (`dx-towns.md`) can read `works::land_take` for the
   land any works needs and `works::land_held` for what a standing works
   holds; `cell_K_share` is the sum of the second over a cell's works and
@@ -378,8 +381,188 @@ instead of seven hundred. The richest rival in 1900 stays in the same range
   hands walking there is less of that, so the island has one or two towns
   fewer in 1900 and founds them later (the last around 1830 instead of 1800).
 
+## In company with the rest of the game
+
+Everything above was measured on the port with the life cycle alone. When it
+was merged into the game's rules the merchants' prices (`prices.md`), the
+Engel curve (`engel.md`), the machines (`machines.md`), the harvests
+(`harvest.md`) and the chronicle (`chronicle.md`) were already there, so the
+whole was run together: seeds 1 to 6 and then 7 to 12, six families, to
+1900, the game's rules before the life cycle and with it
+(`core-steps/works-before`, `works-after`, `works-s7-12-before` and
+`works-s7-12` under `.claude/night/reports/`). No run failed. Seeds 1 to 6,
+the tally seed for seed (a star where every island with the life cycle
+stands clear of every island without), and beside it what the life cycle did
+alone, with six families on seeds 1 to 8:
+
+| six families | the game before | with the life cycle | tally | alone (port, then works) |
+|---|---|---|---|---|
+| works standing 1800 / 1850 / 1900 | 1,983 / 4,313 / 6,858 | 282 / 565 / 711 | 0/6* | 2,131 / 4,156 / 6,973, then 318 / 624 / 668 |
+| size in 1900: median, ninth tenth, largest | 0.53, 1.9, 3.7 | 5.5, 36, 121 | 6/0* | 0.46, 2.5, 3.7, then 6.6, 42, 116 |
+| works founded, closed in a run | 12,288, 5,990 | 2,141, 1,668 | 0/6* | 11,879, 5,472, then 1,963, 1,576 |
+| median life of a works that closed | 17.2 | 10.8 | 0/6* | 13.1, then 10.0 |
+| utilisation in 1900, mean over works | 0.89 | 0.78 | 0/6* | 0.84, then 0.76 |
+| industry cells 1800 / 1850 / 1900 | 350 / 656 / 992 | 22 / 106 / 236 | 0/6* | 359 / 601 / 981, then 18 / 69 / 132 |
+| town cells 1900 | 124 | 130 | 6/0 | |
+| works' share of labour, towns' share of people, 1900 | 0.493, 0.432 | 0.524, 0.453 | 6/0*, 6/0* | |
+| towns in 1900, the last founded | 19.2, 1809 | 16.8, 1839 | 1/4, 5/1 | 19.8, 1802, then 17.5, 1831 |
+| real wage 1800 / 1850 / 1900 (1750 = 1) | 1.42 / 1.84 / 2.45 | 1.56 / 2.51 / 2.80 | 5/1, 6/0, 6/0 | 1.31 / 1.35 / 1.35, then 1.50 / 1.35 / 1.57 |
+| the same, chained | 1.56 / 2.18 / 3.29 | 1.82 / 3.49 / 4.35 | 6/0, 6/0, 6/0* | |
+| output per head 1800 / 1850 / 1900 | 1.43 / 1.97 / 2.57 | 1.63 / 2.49 / 2.65 | 6/0, 6/0, 5/1 | 1.39 / 1.55 / 1.50, then 1.63 / 1.59 / 1.63 |
+| the year output per head peaks | 1892 | 1877 | 0/6 | |
+| railway km 1850, 1900 | 1,033, 1,039 | 925, 971 | 2/4, 2/4 | |
+| converter's share of steel, 1880 | 0.98 | 1.00 | 3/0 | never built, either way |
+| steel rails' share of rails, 1890 | 0.99 | 0.26 [0 .. 1] | 0/5 | none, either way |
+| price swings: grain, iron, rails, cloth | 0.099, 0.126, 0.137, 0.027 | 0.106, 0.176, 0.172, 0.037 | 6/0, 6/0, 5/1, 6/0* | 0.090, 0.202, 0.200, 0.084, then 0.096, 0.238, 0.232, 0.106 |
+| the real wage: its yearly swing, its worst year | 0.030, 7% down | 0.062, 17% down | 6/0*, 0/6* | |
+| famine years in a run | 3.7 | 2.2 | 1/5 | |
+| alarms, closures in the news | 8.2, 53 | 16.3, 201 | 6/0, 6/0* | closures 45, then 151 |
+| seconds a run, six at a time | 18 | 13 | 0/6* | |
+
+Seeds 7 to 12 say the same: the wage 1.56, 2.10 and 2.92 for 1.45, 1.78 and
+2.43; output per head 1.59, 2.12 and 2.67 for 1.48, 1.93 and 2.55; 725 works
+for 6,907, the median one 5.5 usual sizes; 1,538 closures for 5,906; industry
+on 233 cells for 1,006; 16.8 towns for 20.2; 1,017 km of railway for 1,121;
+the real wage's yearly swing 0.065 for 0.033 and its worst year 16 per cent
+down for 8; steel rails 0.10 of rails in 1890 for 0.98.
+
+What they say:
+
+- **In company the life cycle does what it does alone.** A tenth of the
+  works, ten times the size, three quarters of the ground given back, three
+  closures where there were ten. The island now has half its hands in works
+  where the port has a quarter, so the works take 236 cells where alone they
+  took 132: the same rule on twice the hands.
+- **The wage is higher at every mark and on every island**, most of all in
+  the middle of the century (2.51 for 1.84 in 1850). Works that can grow
+  make more of what the machines are made of, sooner: in the 1840s 1,370
+  units of machinery a month at 52 for 810 at 70, and 13,200 of iron at 4.8
+  for 6,800 at 8.7. By decade the real wage stands an eighth above the game
+  before from the 1780s to the 1820s, 28 per cent above in the 1840s and 39
+  in the 1850s, and then the gap closes: 30, 22, 16 and 11 per cent in the
+  four decades after. From the 1850s the wage with the life cycle hardly
+  moves (2.68, 2.73, 2.82, 2.83 and 2.75 by decade, where the game before
+  goes on from 1.93 to 2.47), output per head peaks fifteen years sooner,
+  and in the 1890s it is a little under the game before (7.9 for 8.1 on the
+  model's measure). The growth has moved into the first hundred years. The
+  machines' page feared the pair would cost a fifth of the wage of 1900
+  (2.05 for 2.50 in its trial); with the merchants' prices and the reviewed
+  life cycle it does not.
+- **Its numbers hold.** The year's room was tuned without the price rule,
+  and this page asked for it to be swept again once both were in. On seeds 1
+  to 8 with six families (`core-steps/works-x-room`) a room of 0.10, 0.15,
+  0.20 and 0.30 gives a real wage in 1850 of 2.15, 2.48, 2.43 and 2.41 and
+  in 1900 of 2.83, 2.88, 2.59 and 2.54, with closures rising all the way
+  (1,330, 1,640, 1,716, 1,935): 0.15 is still the place to stand. With the
+  room and the sized entry both off (`works-x-noD`) the wage of 1900 is 2.04
+  and its deepest fall from an earlier peak 49 per cent on average: the room
+  is what keeps the rest in order. `built_share` from 0.01 to 0.2 changes
+  nothing that shows (`works-x-built`); the merchants' markup of 0.5 is still
+  the best of 0.3, 0.5 and 0.8 (`works-x-markup`); and each part switched off
+  alone does in company what it did alone (`works-x-walk0`, `-nospread`,
+  `-entry0`, `-noextend`, `-built0`, `-hands0`): without A or B the thousands
+  of small works come back, 2,100 and 3,000 of them standing in 1900.
+- **With the life cycle switched off** (`--set works.enabled=false` under
+  the game's rules) the merged code gives every fact of every seed as the
+  code before the merge gave it (`core-steps/works-off`), two counts of news
+  aside: a district's closures are now a story at five works, not ten
+  (`chronicle.md`, "Beside the life cycle for works").
+- **The scripted players** (`examples/bots.rs`, seeds 1, 2, 3 and 7, the
+  whole game; `core-steps/works-probe/bots-game.txt`) end with 19 to 48
+  million. The landlord is first in every seed, and the founder founds 120
+  to 148 works and has 25 to 32 standing, as alone.
+
+What is new in company, and not good:
+
+- **A building cycle, which the merchants' prices now show.** The textile
+  mills of a town order the whole of a year's room in one year (14 to 16 per
+  cent of their capacity), are then overbuilt, order next to nothing for two
+  or three years, and start again; the brickworks follow a year behind. The
+  need on trend is about 7 per cent a year (people, incomes and wear), and a
+  works that earns the hurdle asks for a fifth more (the port's rule in
+  `firms::review`), so the room is taken whole or hardly at all. A mill is
+  built of timber, and an order asks each month for a quarter of what is
+  still outstanding: a wave year's orders are ten to twenty months of the
+  island's ordinary timber sales, most of it wanted in the first quarter.
+  Alone this was there and hardly showed (seed 2: the mills ordering 15 per
+  cent in 1876-77, 1883 and 1891, timber between 2.4 and 4.3 and never more
+  than a quarter dearer than the year before).
+  With merchants who mark the price on their stock, timber trebles for a
+  year every three or four (seed 2 at each year's end from 1884: 1.5, 3.0,
+  2.0, 1.5, 1.6, 4.1, 1.7, 1.6, 1.6, 4.7), and timber is in every
+  household's warmth and shelter. Over seeds 1 to 6 after 1800 the yearly
+  swing of timber's price is 0.24 for 0.05, of the cost of living 0.07 for
+  0.02 and of the real wage 0.07 for 0.03; the real wage's worst year is 17
+  per cent down for 7; output falls by more than 4 per cent in 14 years of a
+  run for 2 (`core-steps/works-probe`); and the news has twice the alarms
+  and seven slumps a history keeps where it had three. The level is higher
+  all the while: the lowest five years after 1800 stand at 1.61 times 1750's
+  wage for 1.44.
+  It is an honest cycle (lumpy building, a wood that answers a year late),
+  and a game may want one, but it is now the largest swing on the island
+  and nobody chose its size. Two cures were tried and neither is in the
+  code. A smaller room (0.10) takes a tenth off the swing and a seventh off
+  the wage of 1850. Asking for an order more slowly, a tenth or a twentieth
+  of what is outstanding each month where the port asks a quarter (a trial
+  build, `works-x-hack-rate10` and `-rate05`), brings the real wage's swing
+  to 0.047 and 0.038 and its worst year to 12 and 10 per cent down; but a
+  works then counts as building for longer, so there are 930 and 1,470 works
+  in 1900 for 710, the median one 4.2 and 2.4 usual sizes for 5.5, and the
+  wage of 1850 is 2.17 and 2.06 for 2.51. The cure is more likely in how
+  much a works asks for when it grows (what its trade is short of, not a
+  fifth at a time) than in how fast the builders are supplied. That is a
+  change to the review and wants its own sweep on sixteen seeds.
+- **The tools famines are milder and still there.** Tools' dearest year is
+  5.8 times their median year (6.6 alone; 1.6 in the game before), with nine
+  years of a run above three medians, and the real wage's deepest fall from
+  an earlier five-year peak is 16 per cent on average and 22 in the worst
+  seed (25 and 52 alone; 4 and 5 in the game before). The merchants' prices
+  take the worst off, as this page hoped, and do not cure it.
+- **After a loss of capacity the rebuilding overshoots and rings.** The
+  price rule's shock (30 per cent of iron capacity lost at the end of 1815;
+  `examples/prices_probe.rs --shock`, in `core-steps/works-probe`): capacity
+  is back a year sooner than without the life cycle and real output loses a
+  quarter as much, but capacity then stands 18 per cent over where it would
+  have been (9 without), 13 to 18 per cent under eleven to thirteen years on
+  and 12 over again at seventeen, with the price of iron two fifths lower
+  and then two thirds higher at the turns. The price rule's worry, that the
+  room would
+  ration the rebuilding, did not come true. The echo is the lumpiness of the
+  building cycle again.
+- **The steel rail does not carry over, and the converter comes too soon.**
+  Steel rails are a quarter of rails in 1890 (all of them in one seed, under
+  three tenths in the rest) where they were all of them, and a tenth on
+  seeds 7 to 12. Iron is half
+  the price it was, the furnaces being large, so an iron rail is cheap and
+  the steel mill has little to offer. The converter still makes all the
+  steel by 1880, but in three seeds of six it is found between 1816 and 1830
+  (1840 to 1861 before): crucible works that can grow pour steel sooner,
+  and the converter's place among the inventions is counted in steel poured.
+  The machines' page says the converter's numbers and the quality curve want
+  tuning again under the life cycle. They do, for the dates more than for
+  the wage; `machines.inherit = 0`, its safe setting, gives a wage of 2.98
+  in 1900 for 2.80 on these seeds and no converter at all
+  (`core-steps/works-x-inherit0`).
+- **Closures in the news**: 201 a run for 53, none of them kept by the
+  chronicle. The threshold in `sim::notable_closures` was the worry alone
+  and is the same worry here (`chronicle.md` has the count).
+- **The railway is a tenth shorter** on both sets of seeds (971 km for 1,039
+  and 1,017 for 1,121 in 1900, four islands of six down each time), and
+  there are two or three towns fewer, founded later, as alone.
+
+Two things were mended at the merge, both where the life cycle meets the
+chronicle, and `chronicle.md` has the account: a branch's extensions (part
+E) were an item each for the player, 240 in a game, and now go into the
+chronicle's one summary a year; and a district's round of closures, which
+ten works shutting in a year had made a story, is one at five now that a
+district has forty works and not four hundred.
+
 ## What worries me
 
+- **The building cycle in company** (the section above): mills that order
+  a year's room at once and then nothing for three years, timber trebling
+  when they do, the real wage's worst year 17 per cent down where it was 7.
+  It is the largest swing in the game now, and nobody chose its size.
 - **A trade far too small for its market grows only at the room's pace.**
   The room is 15 per cent a year of what the town sold, so however dear the
   good, its works and any newcomer can together add about a sixth a year. It
@@ -430,7 +613,8 @@ instead of seven hundred. The richest rival in 1900 stays in the same range
 - **Closures are in the news three times as often** (131 to 153 items a run
   against 46). `sim::notable_closures` calls a works of over one and a half
   usual sizes notable, which was a large works under the port and is an
-  ordinary one here. The threshold wants setting by whoever shapes the news.
+  ordinary one here. The threshold wants setting by whoever shapes the news
+  (in company: 201 a run for 53, none of them kept by the chronicle).
 - **Utilisation is lower** (the mean over works 0.76 to 0.78 against 0.81 to
   0.86 without families, 0.71 to 0.76 against 0.84 to 0.87 with): the small
   fringe stands half idle before it closes.

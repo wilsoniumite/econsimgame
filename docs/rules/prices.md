@@ -446,6 +446,12 @@ runs of the whole game: five with the port's rule, nine with this one.
   against +.10), which is the signal to rebuild; if the room then rations the
   rebuilding, the shortage could last longer than either alone. The shock
   test in `prices_probe` (`--shock`) is the thing to run on the merged rules.
+  It was run when the two were merged (`works.md`, "In company with the rest
+  of the game"): the shortage is no longer, capacity is back a year sooner,
+  but the rebuilding overshoots twice as far (18 per cent for 9) and rings
+  for twenty years. The pair also shows a building cycle that neither has
+  alone: mills ordering a year's room at once, and the price of timber,
+  marked on a stock those orders empty, trebling every three or four years.
 - **Rails and machinery** still swing by 0.15 to 0.2 a year. That is a real
   capacity cycle, and for rails the lumpiness of railway building; this
   mechanism does not touch either.

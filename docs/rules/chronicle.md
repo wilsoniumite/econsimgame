@@ -38,7 +38,11 @@ player's items in a mean game, all of them "major". With the chronicle:
   return);
 - everything else the branches opened in the year is one item at the year's
   end ("The Fairfax branches open five works", with the towns and trades), at
-  0.45, which keeps it in the family's news and out of the major feed;
+  0.45, which keeps it in the family's news and out of the major feed. With
+  the life cycle for works (`works.md`) a branch extends a works it has
+  before it opens another, and what the branches extended is in the same
+  item ("The Fairfax branches open two works and extend three", or "The
+  Fairfax branch at Melbourne extends a works"), with what it cost;
 - the family's everyday news (births, a child turning fourteen, trainings,
   sales, burials) weighs 0.5; its great moments (a new trade, a new head)
   0.7. A head's death and the succession used to be two items of the same
@@ -107,7 +111,7 @@ from the same prices and incomes that drove it:
 | X in decline (0.68) | X and its district are `decline_fall` (10%) below a peak at least `decline_years` (8) old | where this year's leavers went and how much further an income goes there (what `people::migration` weighs), or that incomes no longer keep a family |
 | X overtakes Y as the island's first (0.8) or second (0.7) town | X has been `overtake_margin` (5%) ahead of Y for `overtake_years` (3) running | each town's growth over ten years and what X supplies most of |
 | X is the fastest-growing town of the decade (0.62) | at the decade's end, if X outgrew the island by `fastest_margin` (10 points) | how much of the growth moved in from other towns, and what X supplies |
-| N works close around X (0.66) | at least `closures_min` (10) works of a district shut in a year and they are `closures_share` (10%) of those that stood, shops and trades aside | what most of them made, and its price a year or three years back, or the price of what they work up, or wages; the largest is named |
+| N works close around X (0.66) | at least `closures_min` (5) works of a district shut in a year and they are `closures_share` (10%) of those that stood, shops and trades aside | what most of them made, and its price a year or three years back, or the price of what they work up, or wages; the largest is named |
 | N new towns in the decade (kind `town`, 0.65) | `new_towns_min` (3) or more founded in a decade | which, when, and the largest |
 
 Towns are ranked with their districts (`st.pop`), not by the people inside
@@ -160,7 +164,7 @@ one hit hardest leads and the others are named in its last sentence.
 | `decline_years`, `decline_fall` | 8, 0.1 | town in decline |
 | `overtake_years`, `overtake_margin` | 3, 0.05 | one town overtaking another |
 | `fastest_margin` | 0.1 | fastest-growing town of a decade |
-| `closures_min`, `closures_share` | 10, 0.1 | a district's works closing together |
+| `closures_min`, `closures_share` | 5, 0.1 | a district's works closing together (ten before the life cycle for works; "Beside the life cycle for works", below) |
 | `new_towns_min` | 3 | a decade of new towns |
 | `min_people`, `quiet_years` | 5,000, 15 | no stories of smaller towns; years before a story repeats |
 
@@ -327,6 +331,74 @@ Three things were different in company, and were mended in a few lines each.
 The viewer and the example label the two kinds "Harvest" and "Dearth" (they
 were "News", in grey), and the example takes `--set`, which is how the
 numbers above were had.
+
+### Beside the life cycle for works
+
+The life cycle for works (`works.md`) was merged after the chronicle, and it
+changes what there is to tell: a tenth as many works, each ten times the
+size, and a family that holds a few dozen of them. Seeds 1 to 12, six
+families, `--example chronicle -- --seeds 1-12` with it and with `--set
+works.enabled=false`:
+
+| per run | the game before | with the life cycle |
+|---|---|---|
+| all items | 763 [680 .. 805] | 888 [827 .. 926] |
+| the major feed | 55.8 [52 .. 58] | 57.5 [54 .. 59] |
+| the major feed in a decade | 3.0 to 4.0, never under 2 or over 4 | 3.5 to 4.0, never under 2 or over 4 |
+| the player's own items | 246 [227 .. 262] | 226 [200 .. 248] |
+| of them major | 11.6 | 12.1 |
+| closures told (weight 0.4, none kept) | 56 | 204 |
+| alarms; slumps and depressions dated, and kept | 8; 8, 3 | 17; 16, 7 |
+| regional stories told | 45.2 | 42.4 |
+| of them rounds of closures, told and kept | 10.0, 1.0 | 13.2, 1.8 |
+| declines of towns, told and kept | 16.5, 3.2 | 10.8, 1.8 |
+
+(The first column's rounds of closures are at the line of ten works it was
+measured with; at five the game without the life cycle tells 18.)
+
+The feed a history keeps is the length it was, with seven dated slumps in
+it where there were three: the life cycle brings a building cycle
+(`works.md`, "In company with the rest of the game"). Two things were
+mended, and one is left.
+
+- **A branch's extensions were the flood over again.** With the life cycle
+  a growing branch extends a works it has before it founds another, and
+  `works::extend_for_family` told the player of each: 240 items in seed 7's
+  game, in 102 of its years, up to eight in a year. They are the branch's own
+  doing, as a works it opens is, so they now wait for the year's summary
+  (`chronicle::works_extended`, `branch_summary`), which says what was opened
+  and what was extended, where, and for how much. With the chronicle off the
+  works' own item is made as it was.
+- **Rounds of closures had gone, and the line was lowered from ten works to
+  five.** A district had some four hundred works and has forty, so ten of
+  them shutting in one year hardly ever happens: the story was told once in
+  seed 7's game and never in seed 3's, where it had been told 8 and 13
+  times. At five (and a tenth of those that stood, as before) it is told 12
+  to 15 times a run on seeds 1, 3, 5 and 7, and 13 times on seeds 1 to 12.
+  Like the coal boom's line the number is in the struct's defaults, so the
+  game with `--set works.enabled=false` reads five too.
+- **Left: single closures.** `sim::notable_closures` tells of a works that
+  shuts at over one and a half times its trade's usual size, two a year at
+  most. That was a large works; the median works is now five or six usual
+  sizes, so nearly every year has its two, 204 in a run for 55. They weigh
+  0.4 and none is kept, so the major feed does not see them, but the "All"
+  list does. What makes a closure worth telling under the life cycle (its
+  hands, its place among the works of its kind) is a choice about the news
+  and was not made here.
+
+`tests/chronicle.rs` said three things of seed 7's game that are no longer
+so, and says them of the game as it is. The family's branches opened about
+a thousand works; they now open some fifty and extend them 240 times, so
+their doings are counted in the same game with the chronicle off (294 items)
+and the news of them must still be a fraction of that. The decade of new
+towns was the 1750s and was kept; with hands walking to work the towns come
+later, three of them in the 1760s, and the digest is told once with its
+years and is kept unless the decade's four places go to heavier things (they
+do: two inventions, a coal boom and the family's new trade). And "less news
+with the chronicle than without" is held over the whole game (849 items for
+975 on seed 7), and over the first forty years for the player's own news,
+since there is no longer a flood in every stretch of years to outweigh the
+stories the chronicle adds.
 
 ## What worries me
 
