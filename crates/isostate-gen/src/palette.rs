@@ -424,8 +424,6 @@ impl Palette {
         } = &mut self.ground;
         mark(
             &mut [
-                road_gravel,
-                lane_dust,
                 farm_lane,
                 street_earth,
                 market_paving,
@@ -459,9 +457,6 @@ impl Palette {
         mark(&mut [&mut f.hedge, &mut f.vegetables, &mut w.river_bank, &mut self.bridges.causeway], FROST);
         mark(
             &mut [
-                &mut r.ballast,
-                &mut r.rails,
-                &mut r.earthworks,
                 &mut r.bank_top,
                 &mut r.bank_grass,
                 &mut r.bank_grass_shade,
@@ -478,9 +473,16 @@ impl Palette {
         // fires, and what is hot over one: a smouldering clamp, the top of a bank of coke ovens,
         // the mouth of a flue and the top of a house's stack, the iron plate of a furnace's shell,
         // a stove, a boiler or a converter (pig iron in the stack is drawn in the same plate, and
-        // goes without its snow for that); and the dark of a tunnel or under an arch
+        // goes without its snow for that); the dark of a tunnel or under an arch; and what is
+        // trodden and run over every day, the roads and the railway's track, which keep clear
+        // and so stay as easy to follow in winter as in summer
         mark(
             &mut [
+                road_gravel,
+                lane_dust,
+                &mut r.ballast,
+                &mut r.rails,
+                &mut r.earthworks,
                 charcoal_clamp,
                 charcoal_clamp_top,
                 &mut self.roofs.coke_ovens,
@@ -538,12 +540,16 @@ mod tests {
             assert_eq!(c[3], SNOW);
         }
         // the ground round a house, its garden and what grows in it take frost, as the land does
-        for c in [pal.ground.garden, pal.ground.garden_bed, pal.ground.back_yard, pal.ground.road_gravel, pal.foliage.hedge, pal.foliage.vegetables, pal.rail.bank_grass] {
+        for c in [pal.ground.garden, pal.ground.garden_bed, pal.ground.back_yard, pal.ground.farm_lane, pal.ground.yard_cinders, pal.foliage.hedge, pal.foliage.vegetables, pal.rail.bank_grass] {
             assert_eq!(c[3], FROST);
         }
         assert_eq!(pal.water.river[3], ICE);
-        // and nothing settles on a fire, a flue's mouth or a house's stack
-        for c in [pal.iron.glow, pal.smoke.soot, pal.smoke.stack_top, pal.roofs.coke_ovens, pal.ground.charcoal_clamp] {
+        // and nothing settles on a fire, a flue's mouth, a house's stack or hot iron
+        for c in [pal.iron.glow, pal.iron.plate, pal.smoke.soot, pal.smoke.stack_top, pal.roofs.coke_ovens, pal.ground.charcoal_clamp] {
+            assert_eq!(c[3], NOTHING);
+        }
+        // nor on a road or the railway's track, which are trodden clear
+        for c in [pal.ground.road_gravel, pal.ground.lane_dust, pal.rail.ballast, pal.rail.rails] {
             assert_eq!(c[3], NOTHING);
         }
         // smoke is drawn thin by its alpha, which is not a mark

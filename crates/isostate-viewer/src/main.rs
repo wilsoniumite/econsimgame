@@ -1003,7 +1003,6 @@ fn setup_world(
 
     // year meshes start empty; rebuild_year fills them
     let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
-    let flat = vertex_coloured(&mut materials, lk, lk.surfaces.paths);
     let handles = Handles {
         year_cells,
         trees: (0..LEAF_GROUPS).map(|_| [(); 3].map(|_| meshes.add(placeholder_mesh()))).collect(),
@@ -1029,9 +1028,12 @@ fn setup_world(
     // material that winter lies on; the trains keep the plain one, an engine being warm
     let phase = season_phase(&SeasonClock::default(), forced.0);
     let built_mat = built_mats.add(built::material(lk, phase, lk.surfaces.buildings));
-    // and so is what lies flat round them (the yards of the works, their ponds, the farm
-    // lanes): frost on the yards, ice on a mill pond. The roads and the railway keep the
-    // plain material: they are trodden clear, and must stay easy to follow
+    // and so is what lies flat on the ground (the yards of the works, their ponds, the farm
+    // lanes, the roads and the railway's track): frost on the yards, ice on a mill pond.
+    // The roads and the track are marked as trodden clear, so winter leaves them as easy
+    // to follow as summer does; they are in this material all the same, because where a
+    // lane meets a road the two lie at one height, and which of two materials is drawn
+    // over the other there is not the same from one run of the program to the next
     let yards_mat = built_mats.add(built::material(lk, phase, lk.surfaces.paths));
     let smoke_mat = materials.add(smoke_material(lk));
     commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
@@ -1039,8 +1041,8 @@ fn setup_world(
     commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(built_mat)));
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(yards_mat.clone()), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(yards_mat.clone()), bevy::light::NotShadowCaster));
     commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(yards_mat), bevy::light::NotShadowCaster));
     commands.insert_resource(handles);
 

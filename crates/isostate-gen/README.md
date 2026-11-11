@@ -67,10 +67,13 @@ what one thing looks like.
   `lerp` carry them along, and a solid mesh has no other use for alpha):
   snow on anything unmarked (a roof, a wall's top, a stack of goods); frost,
   and its green gone dull or to bare earth, on the `[ground]` tokens and what
-  grows on them (`foliage.hedge`, `foliage.vegetables`) and on a railway's own
-  ground; ice on `water.river`; and nothing on a fire or what is hot over one
-  (`iron.glow`, `iron.plate`, `iron.converter`, `smoke.soot`,
-  `smoke.stack_top`, `roofs.coke_ovens`, the charcoal clamp). So a furnace's
+  grows on them (`foliage.hedge`, `foliage.vegetables`) and on a railway's
+  banks and cuttings; ice on `water.river`; and nothing on a fire or what is
+  hot over one (`iron.glow`, `iron.plate`, `iron.converter`, `smoke.soot`,
+  `smoke.stack_top`, `roofs.coke_ovens`, the charcoal clamp), nor on what is
+  trodden clear every day (`ground.road_gravel`, `ground.lane_dust`, the
+  railway's ballast and rails), so a bridge's roadway keeps its colour between
+  parapets that carry snow. So a furnace's
   throat drawn in soot keeps clear of snow and one drawn in a roof's slate
   would not. A new `[ground]` token must be named in `mark_for_winter` or the
   crate does not build; a new token for something hot or wet must be added
