@@ -85,14 +85,6 @@ impl Model {
         self.parts().into_iter().all(|b| b.is_empty())
     }
 
-    /// Append another model's triangles, each kind to its own.
-    pub fn append(&mut self, other: Model) {
-        self.solid.append(other.solid);
-        self.smoke.append(other.smoke);
-        self.green.append(other.green);
-        self.flat.append(other.flat);
-    }
-
     /// Append a copy of another model's triangles, moved by `by`.
     pub fn merge_at(&mut self, other: &Model, by: Vec3) {
         for (mine, theirs) in [(&mut self.solid, &other.solid), (&mut self.smoke, &other.smoke), (&mut self.green, &other.green), (&mut self.flat, &other.flat)] {

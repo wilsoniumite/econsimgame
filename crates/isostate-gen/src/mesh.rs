@@ -236,19 +236,6 @@ impl MeshBuf {
         }
     }
 
-    /// Move everything in the buffer.
-    pub fn translate(&mut self, by: Vec3) {
-        for p in &mut self.pos {
-            *p = (Vec3::from_array(*p) + by).to_array();
-        }
-    }
-
-    /// The same buffer, moved.
-    pub fn translated(mut self, by: Vec3) -> MeshBuf {
-        self.translate(by);
-        self
-    }
-
     /// The least and greatest corner of the box round everything, if there is anything.
     pub fn bounds(&self) -> Option<(Vec3, Vec3)> {
         let mut it = self.pos.iter().map(|p| Vec3::from_array(*p));
@@ -324,8 +311,11 @@ mod tests {
         let n = Vec3::from_array(b.nrm[0]);
         assert!((n - Vec3::Z).length() < 1e-5, "{n}");
         assert!((Vec3::from_array(b.pos[1]) - Vec3::new(0.0, 4.0, 0.0)).length() < 1e-5);
-        let c = b.clone().translated(Vec3::X);
+        // a plain move leaves the normals alone
+        let mut c = b.clone();
+        c.transform(Affine3A::from_translation(Vec3::X));
         assert_eq!(c.bounds().unwrap().0.x, b.bounds().unwrap().0.x + 1.0);
+        assert_eq!(c.nrm, b.nrm);
     }
 
     #[test]
