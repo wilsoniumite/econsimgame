@@ -64,7 +64,8 @@ fn off_under_the_port_and_on_in_the_game() {
 #[test]
 #[allow(non_snake_case)]
 fn the_weather_reaches_farms_and_pastures_after_the_hands_are_hired() {
-    let P = params(4, 1751, Some(HarvestParams { district_sd: 0.1, ..HarvestParams::game() }));
+    // as a pure surprise first (`foreseen` 0), then with the crop seen standing
+    let P = params(4, 1751, Some(HarvestParams { district_sd: 0.1, foreseen: 0.0, ..HarvestParams::game() }));
     let s = sim::start(&P, default_content());
     let (st, C) = (&s.st, &s.content);
     let (N, NS) = (st.N, C.NS);
@@ -95,8 +96,8 @@ fn the_weather_reaches_farms_and_pastures_after_the_hands_are_hired() {
     assert!(tmax / tmin > 1.02, "districts differ: towns run from {tmin} to {tmax}");
     assert!((0..st.T_max).filter(|&t| !st.town_active[t]).all(|t| st.harvest_town_now[t] == 1.0));
 
-    // one month with the weather and one without, from the same state: the same
-    // hands at the same wage, and each unit's crop scaled by its cell's factor
+    // one month with the weather and one without, from the same state: unseen,
+    // the same hands at the same wage, and each unit's crop scaled by its cell's factor
     let mut wet = s.st.clone();
     let mut dry = s.st.clone();
     dry.harvest_mult = Mat::default();
@@ -185,6 +186,23 @@ fn harvests_are_recorded_and_the_news_is_sparse() {
     assert!((mean - 1.0).abs() < 0.03, "the mean harvest of {years} years is {mean}");
     assert!(rec.harvest.iter().any(|&v| v < 0.95) && rec.harvest.iter().any(|&v| v > 1.05));
     assert!((0..years).any(|k| (rec.town_harvest[k * T] - rec.town_harvest[k * T + 1]).abs() > 0.02));
+
+    // a good year brings in more grain and sells it cheaper, a bad one the reverse:
+    // over the sixty years the harvest goes with the year's change in grain
+    // output and against the change in its price
+    let y0 = r.content.start_year;
+    let against_harvest = |name: &str| -> f64 {
+        let v: Vec<f64> = (0..years).map(|k| isostate_core::observer::annual(r.state.series.get(name), y0, y0 + k as i64)).collect();
+        let h: Vec<f64> = (1..years).map(|k| (rec.harvest[k] as f64).ln()).collect();
+        let d: Vec<f64> = (1..years).map(|k| (v[k] / v[k - 1]).ln()).collect();
+        let (mh, md) = (h.iter().sum::<f64>() / h.len() as f64, d.iter().sum::<f64>() / d.len() as f64);
+        let cov: f64 = h.iter().zip(&d).map(|(a, b)| (a - mh) * (b - md)).sum();
+        let (vh, vd): (f64, f64) = (h.iter().map(|a| (a - mh) * (a - mh)).sum(), d.iter().map(|b| (b - md) * (b - md)).sum());
+        cov / (vh * vd).sqrt()
+    };
+    let (with_output, with_price) = (against_harvest("out_grain"), against_harvest("price_grain"));
+    assert!(with_output > 0.2, "harvest and the change in grain output: correlation {with_output}");
+    assert!(with_price < -0.2, "harvest and the change in the grain price: correlation {with_price}");
 
     let news = harvest_news(&r);
     assert!(!news.is_empty(), "sixty years and no harvest worth a line");

@@ -6,11 +6,16 @@
 //! they make a multiplier on what every farm, and more faintly every pasture,
 //! yields that year. The multiplier is applied in `econ::step_month` after the
 //! hands are hired and the machines asked for, so the weather is a surprise:
-//! the wage bill is the same, the crop is not, and the landlord, who takes what
-//! is left, carries the difference. Land bids, works and investors go on
-//! planning for an average year. The rest follows through the markets that were
-//! already there: stocks of grain run down, its price rises, the real wage
-//! falls, and in the worst years `people::growth` finds towns short of food.
+//! the crop is not what the wage bill was laid out for, and the landlord, who
+//! takes what is left, carries the difference. Half of it, that is. About half
+//! a farm's year is ploughing and sowing, done before anyone knows, and half is
+//! reaping and threshing, done when the crop can be seen standing; so half the
+//! weather (`foreseen`) is known when the hands are hired, a thin crop wants
+//! fewer of them, and the wage feels a bad year too. Land bids, works and
+//! investors go on planning for an average year. The rest follows through the
+//! markets that were already there: stocks of grain run down, its price rises,
+//! the real wage falls, and in the worst years `people::growth` finds towns
+//! short of food.
 //!
 //! The draws come from a stream of their own (`Rngs::harvest`, stream 7), and
 //! nothing here runs, draws or is stored while `P.harvest.enabled` is off.
@@ -52,8 +57,11 @@ pub struct HarvestParams {
     pub woods: f64,
     /// Share of the year's weather that the land's masters can see when they
     /// hire. At 0 it is a pure surprise: the hands are taken on for an average
-    /// year. At 1 a thin crop is seen standing and fewer are taken on to bring
-    /// it in, so the wage feels the harvest as well as the rent.
+    /// year, the rent alone feels the harvest, and the real wage does not fall
+    /// in a bad year (measured: docs/rules/harvest.md). At 1 the crop is seen
+    /// standing all year and fewer hands are taken on to bring a thin one in.
+    /// The game's half is the half of a farm's year that comes after the crop
+    /// shows: reaping, threshing and carting.
     pub foreseen: f64,
     /// The country's harvest is news when it is this many `island_sd` from an
     /// average year, either way.
@@ -76,10 +84,10 @@ impl Default for HarvestParams {
             reach: 30.0,
             pasture: 0.4,
             woods: 0.0,
-            foreseen: 0.0,
+            foreseen: 0.5,
             news_z: 1.8,
             news_local_z: 2.3,
-            dearth_rise: 0.2,
+            dearth_rise: 0.12,
         }
     }
 }
@@ -192,7 +200,7 @@ fn draw(st: &mut State, C: &Content, P: &Params, rng: &mut Rng) {
 
 /// What the land's masters can see of the year when they hire: each unit's
 /// worth of a hand (`Cc` in `econ::step_month`) is scaled by its cell's
-/// multiplier to the power `foreseen`. Nothing at 0, the surprise the game plays.
+/// multiplier to the power `foreseen`. Nothing at 0, the pure surprise.
 pub fn foreseen(st: &State, P: &Params, Cc: &mut [f64]) {
     let share = P.harvest.foreseen;
     if !P.harvest.enabled || share == 0.0 || st.harvest_mult.data.is_empty() {
@@ -208,7 +216,7 @@ pub fn foreseen(st: &State, P: &Params, Cc: &mut [f64]) {
 
 /// The crop actually brought in. `Y` is what each land unit would yield in an
 /// average year with the hands it has hired; farms and pastures get the year's
-/// multiplier. Called from `econ::step_month` once labour and machine requests
+/// multiplier (all of it: what was foreseen only changed how many were hired). Called from `econ::step_month` once labour and machine requests
 /// are settled, so everything after it (sales, rents, stocks) is the real crop.
 pub fn brought_in(st: &mut State, C: &Content, P: &Params, Y: Vec<f64>) -> Vec<f64> {
     if !P.harvest.enabled || st.harvest_mult.data.is_empty() {
@@ -240,8 +248,11 @@ pub fn brought_in(st: &mut State, C: &Content, P: &Params, Y: Vec<f64>) -> Vec<f
     Y
 }
 
-/// The rent a cell would have paid last year had the harvest been average,
-/// given the rent it did pay. Unchanged while the mechanism is off.
+/// The rent a cell would have paid last year had the hands it hired brought in
+/// an average crop, given the rent it did pay. Unchanged while the mechanism is
+/// off. (With `foreseen` above 0 the hands hired were themselves fewer or more
+/// than in an average year, which this does not undo: it is near enough for
+/// pricing land, and exact at 0.)
 pub fn average_rent(st: &State, cell: usize, paid: f64) -> f64 {
     match st.harvest_rent_gap_year.get(cell) {
         Some(gap) => paid + gap,
