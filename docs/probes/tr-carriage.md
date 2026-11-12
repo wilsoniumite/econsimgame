@@ -7,7 +7,7 @@ Branch `night/o-trace-carriage`. One of four traces with the books of account (p
 - (c) How much coal and timber is raised into stocks that sit for years, since the brake on a glut is on works alone (R81, C10), and what it costs the island in hands.
 - (d) Why famine years fell from 2.2 a run to 0.4 when canals came in (README, "Where it stands"; `docs/rules/canals.md`).
 
-Everything is under the game's rules with six families, at `main` 295a379, on seeds 1 to 16 where a question turns on a count and 1 to 8 where it does not. No rule was changed; nothing under `crates/isostate-core/src` differs from `main`. The measuring is one example, `crates/isostate-core/examples/trace_carriage.rs`, which plays each island month by month so that it can read each town's food before the year's end clears it, keeps the books, and prints twenty-year means (decades for the carting bill, half-centuries for hunger) for every setting given with `--set`, with each setting set beside the first seed for seed. `--out DIR` writes the rows behind the tables. Three cures were tried in the worktree and not committed; each is described where it belongs. The numbers, the commands and every run's output are in `.claude/night/reports/opus/trace-carriage/` (outside the repository).
+Everything is under the game's rules with six families, at `main` 295a379 (the code is the same at e388c8c), on seeds 1 to 16 where a question turns on a count and 1 to 8 where it does not. No rule was changed; nothing under `crates/isostate-core/src` differs from `main`. The measuring is one example, `crates/isostate-core/examples/trace_carriage.rs`, which plays each island month by month so that it can read each town's food before the year's end clears it, keeps the books, and prints twenty-year means (decades for the carting bill, half-centuries for hunger) for every setting given with `--set`, with each setting set beside the first seed for seed. `--out DIR` writes the rows behind the tables. Three cures were tried in the worktree and not committed; each is described where it belongs. The numbers, the commands and every run's output are in `.claude/night/reports/opus/trace-carriage/` (outside the repository).
 
 ## In short
 
@@ -84,7 +84,7 @@ Sure of the direction and of the split: sixteen islands of sixteen for output an
 
 ### What it means for the pass over the rules
 
-- R21 and C86 can close as asked: under the game's rules the gain does reach the wage. `carting.md`'s "What the sweeps showed" is true of the port and should say so where it says "the real wage does not rise".
+- R21 and C86 can close as asked: under the game's rules the gain does reach the wage. `carting.md`'s "What the sweeps showed" now says at its head that it is the port with carting alone; its bullet "The real wage does not rise with output", which says it did not trace where the gain goes, could point here: under the port merchants and works' owners take four parts in five, and under the game the wage gets it.
 - Landlords get a third of a railway's gain and rents of town houses rise by a quarter: the railway is a rent-raiser in towns. Whoever designs railway companies and fares (C86's other half, `railways.md`) should know that today a third of a line's value goes to the rents of land and of town houses, two thirds to work, and none of it to whoever paid for the line, since nobody collects its fares (`railways.md`).
 - If the works' life cycle is ever retuned, watch this: it is what keeps cheaper carriage from becoming works' profit.
 
