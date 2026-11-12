@@ -42,11 +42,29 @@ that have no aim.
   nought on the right side. Every aim stated so far is "at least" or "at most".
 - **Met** means the mean misses by no more than one tolerance.
 - **Islands** counts the seeds whose own value is on the right side of the
-  aim. PLAN.md asks some things of "most seeds", and this is that.
+  aim, out of every island that finished: one with no value (coke iron
+  found and never reaching half) has not met it. PLAN.md asks some things
+  of "most seeds", and this is that.
+- **A run that failed** is not read, since it has no facts, so the card says
+  so on its setting's first lines, by seed, and a setting whose every run
+  failed is named at the top. Read the card of a setting that lost islands
+  with care: it is scored on the islands it kept.
+- **One island** has no spread, so every tolerance is the floor and the loss
+  is many times larger than a sweep of many would give; the card says so.
+  Give it `--spread-from` a sweep of many islands.
 - **The loss** is the sum, over the aims marked in the loss, of the miss in
   tolerances, squared. An aim with no value at all (a run too short to have
   its fact) counts as missed by ten tolerances, so that a setting is never
   better for losing a fact.
+
+The card is for runs from 1750 to 1900, the century the aims were stated
+for, and some facts it reads are named by that century's years. A run to
+another year has no `urban_share_1881_1900` (its twenty-year spans run
+1871-1890, 1891-1910 and so on), so the card prints `-`, says there is no
+such fact, and counts the aim as missed by ten; its swings and its zigzag
+are over a longer run. A loss from such a sweep is not to be set against
+one from a run to 1900. (Eight islands to 1960: the loss reads 120, of which
+100 is the missing towns' share.)
 
 The card asks for sixteen islands and says so when it has fewer: a run differs
 from its neighbour by more than most changes to the rules move it, and for
@@ -269,7 +287,10 @@ has been flat since about 1880.
   between two threads, a slower clock when it is hot, and caches shared with
   other work all lengthen it: on the quiet machine main's runs took 17 to 19
   seconds on the clock, and on the crowded evening above 25 to 29 of
-  processor. It is steadier within a sweep, not a constant across days.
+  processor. It is steadier within a sweep, not a constant across days: the
+  same sixteen islands, run again later that night on a busier machine, took
+  48.5 seconds of processor a run where they had taken 31.9, and 172 on the
+  clock where they had taken 39.
 - **Only some of the new facts are worked out a second way.**
   `parity/check_facts.py` (plain Python, no packages) now also works out the
   tools facts, the twenty-year means of the towns' share, the wage, output

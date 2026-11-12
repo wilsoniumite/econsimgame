@@ -240,6 +240,24 @@ fn kinds(dir: &Path) -> HashMap<String, Kind> {
         .collect()
 }
 
+/// The seeds of the runs that failed, by setting, in the order the sweep wrote
+/// them. `read_then` reads finished runs only, so without this a setting would be
+/// scored on the islands it survived and look no worse for those it lost.
+fn failed(dir: &Path) -> Vec<(String, Vec<u64>)> {
+    let text = std::fs::read_to_string(dir.join("facts.json")).unwrap_or_default();
+    let doc: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let mut out: Vec<(String, Vec<u64>)> = Vec::new();
+    for run in doc["runs"].as_array().into_iter().flatten().filter(|r| r["ok"].as_bool() != Some(true)) {
+        let label = run["setting"].as_str().unwrap_or("").to_string();
+        let seed = run["seed"].as_u64().unwrap_or(0);
+        match out.iter_mut().find(|(l, _)| *l == label) {
+            Some((_, seeds)) => seeds.push(seed),
+            None => out.push((label, vec![seed])),
+        }
+    }
+    out
+}
+
 /// The card of the sweep in `dir`, every setting of it, with tolerances from the
 /// sweep in `spread_from` (its setting of the same name, or its first) if given.
 pub fn card(dir: &Path, spread_from: Option<&Path>) -> Result<String, String> {
@@ -251,14 +269,34 @@ pub fn card(dir: &Path, spread_from: Option<&Path>) -> Result<String, String> {
     let kinds = kinds(dir);
     let kind = |name: &str| kinds.get(name).copied().unwrap_or(Kind::Real);
     let show = |name: &str, v: f64| if v.is_finite() { fmt_fact(kind(name), v) } else { "-".to_string() };
+    let failed = failed(dir);
     let mut out = String::new();
+    // a setting whose every run failed has no card, and says so first
+    for (label, seeds) in failed.iter().filter(|(l, _)| !now.iter().any(|t| t.label == *l)) {
+        let _ = writeln!(out, "Scorecard: {label}: every run failed (seeds {}), so there is nothing to score\n", seeds.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" "));
+    }
     for setting in &now {
         let refset: Option<&Then> = reference.as_ref().map(|r| r.iter().find(|t| t.label == setting.label).unwrap_or(&r[0]));
         let judged = judge(&setting.values, refset.map(|t| &t.values));
         let mut seeds = setting.seeds.clone();
         seeds.sort();
-        let _ = writeln!(out, "Scorecard: {}, {} run{} (seeds {}) in {}", setting.label, seeds.len(), if seeds.len() == 1 { "" } else { "s" },
+        let _ = writeln!(out, "Scorecard: {}, {} run{} (seed{} {}) in {}", setting.label, seeds.len(), if seeds.len() == 1 { "" } else { "s" },
+            if seeds.len() == 1 { "" } else { "s" },
             seeds.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" "), dir.display());
+        if let Some((_, lost)) = failed.iter().find(|(l, _)| *l == setting.label) {
+            let _ = writeln!(
+                out,
+                "  ({} run{} FAILED and {} not read: seed{} {}. The card reads only the islands that finished, which may flatter this setting)",
+                lost.len(),
+                if lost.len() == 1 { "" } else { "s" },
+                if lost.len() == 1 { "is" } else { "are" },
+                if lost.len() == 1 { "" } else { "s" },
+                lost.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" ")
+            );
+        }
+        if seeds.len() < 2 && refset.is_none() {
+            let _ = writeln!(out, "  (one island has no spread: every tolerance is the floor and the loss means little; give --spread-from a sweep of many)");
+        }
         if seeds.len() < SEEDS_WANTED {
             let _ = writeln!(out, "  (fewer than {SEEDS_WANTED} islands: wages, swings and hard spells want {SEEDS_WANTED}, docs/rules/works.md)");
         }
@@ -283,14 +321,15 @@ pub fn card(dir: &Path, spread_from: Option<&Path>) -> Result<String, String> {
                 Some(s) => (fmt_fact(k, s.mean), format!("[{} .. {}]", fmt_fact(k, s.least), fmt_fact(k, s.greatest))),
                 None => ("-".to_string(), String::new()),
             };
-            let tol = format!("{}{}", fmt_tol(j.tolerance), if j.floored { " (floor)" } else { "" });
+            let tol = if j.spread.is_none() { "-".to_string() } else { format!("{}{}", fmt_tol(j.tolerance), if j.floored { " (floor)" } else { "" }) };
             let by = if j.misses_by.is_finite() { format!("{:.2}", j.misses_by) } else { "-".to_string() };
             let met = match (j.spread.is_some(), j.met) {
                 (false, _) => "-",
                 (true, true) => "yes",
                 (true, false) => "no",
             };
-            let n = j.spread.map_or(0, |s| s.n);
+            // of every island that finished: one with no value has not met the aim
+            let n = setting.seeds.len();
             let name = if j.aim.in_loss { j.aim.fact.to_string() } else { format!("{} (not in the loss)", j.aim.fact) };
             rows.push([name, mean, range, j.aim.test.text(k), tol, by, met.to_string(), format!("{}/{n}", j.seeds_met)]);
         }
@@ -310,6 +349,9 @@ pub fn card(dir: &Path, spread_from: Option<&Path>) -> Result<String, String> {
         out.push_str(&line(&head.map(String::from)));
         for (j, row) in judged.iter().zip(&rows) {
             out.push_str(&line(row));
+            if j.spread.is_none() {
+                let _ = writeln!(out, "      no island has a value: the sweep has no fact of this name (an older sweep, or runs that do not end in 1900), or no run reached it");
+            }
             if !j.aim.beside.is_empty() {
                 let b = setting.values.get(j.aim.beside).and_then(|v| spread(v));
                 let _ = writeln!(out, "      beside it, {}: {}", j.aim.beside, b.map_or("-".to_string(), |s| format!(
@@ -426,6 +468,47 @@ mod tests {
         let j2 = judge(&v, Some(&wide));
         let u2 = j2.iter().find(|x| x.aim.fact == "urban_share_1881_1900").unwrap();
         assert!(u2.tolerance > 3.0 * u.tolerance &&u2.misses_by < u.misses_by && u2.spread == u.spread, "{u2:?}");
+    }
+
+    /// A sweep's facts.json made by hand: (setting, seed, facts or None for a failed run).
+    fn sweep_dir(name: &str, runs: &[(&str, u64, Option<Value>)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("isostate-scorecard-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let runs: Vec<Value> = runs
+            .iter()
+            .map(|(label, seed, facts)| match facts {
+                Some(f) => serde_json::json!({"setting": label, "seed": seed, "ok": true, "facts": f}),
+                None => serde_json::json!({"setting": label, "seed": seed, "ok": false, "error": "made up"}),
+            })
+            .collect();
+        std::fs::write(dir.join("facts.json"), serde_json::json!({"facts": [], "runs": runs}).to_string()).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_failed_run_a_lone_island_and_a_missing_fact_are_said_out_loud() {
+        let f = |urban: f64, coke: Option<f64>| serde_json::json!({"urban_share_1881_1900": urban, "years_to_half_coke_furnace": coke});
+        let dir = sweep_dir("cases", &[
+            ("a", 1, Some(f(0.40, Some(8.0)))),
+            ("a", 2, None),
+            ("a", 3, Some(f(0.42, None))),
+            ("b", 1, None),
+            ("b", 2, None),
+            ("c", 4, Some(f(0.41, Some(9.0)))),
+        ]);
+        let card = card(&dir, None).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        // a setting that never finished is named, not left out
+        assert!(card.contains("Scorecard: b: every run failed (seeds 1 2)"), "{card}");
+        // a failed run is named on its setting's card
+        assert!(card.contains("(1 run FAILED and is not read: seed 2."), "{card}");
+        // an island with no value has not met the aim: of two that finished, one meets it
+        let coke = card.lines().find(|l| l.trim_start().starts_with("years_to_half_coke_furnace")).unwrap();
+        assert!(coke.trim_end().ends_with("1/2"), "{coke}");
+        // a lone island has no spread, and the card says so
+        assert!(card.contains("Scorecard: c, 1 run (seed 4)") && card.contains("one island has no spread"), "{card}");
+        // a fact no island has
+        assert!(card.contains("cpu_seconds (not in the loss)") && card.contains("no island has a value"), "{card}");
     }
 
     #[test]

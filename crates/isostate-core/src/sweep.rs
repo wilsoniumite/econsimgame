@@ -376,8 +376,9 @@ pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
 /// together), where the platform says: on Windows. None elsewhere, for now.
 ///
 /// A run is one thread from start to finish, so the difference across a run is
-/// the time the processor spent on it, which other work on the machine hardly
-/// touches. `seconds` is the time on the clock, which it does (R6).
+/// the time the processor spent on it, which other work on the machine moves
+/// much less than it moves `seconds`, the time on the clock (R6), but still moves:
+/// threads that share a core, and a slower clock when the machine is hot.
 #[cfg(windows)]
 pub fn thread_cpu_seconds() -> Option<f64> {
     #[repr(C)]
@@ -699,7 +700,8 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
          \nSpeed: seconds is each run's time on the clock, with the others of the sweep running beside it and\n\
          whatever else the machine was doing, so it says as much about the machine that day as about the\n\
          code. cpu_seconds is the time the processor spent on the run's own thread, which other work\n\
-         hardly touches (Windows only; empty elsewhere).\n\
+         moves much less but still moves: the same sixteen islands read 32 s and 48 s of it a run with\n\
+         the machine busy and busier (39 s and 172 s on the clock) (Windows only; empty elsewhere).\n\
          \nWhat each fact means is in docs/rules/README.md and at the top of crates/isostate-core/src/facts.rs.\n",
     );
     s
