@@ -49,7 +49,7 @@ at 859b680 (12 November 2026):
   (`examples/land_view_probe.rs`) and a probe to the viewer (`src/landview.rs`, behind
   `ISOSTATE_LAND_VIEW`) that draws the core's ground, rivers and lakes with today's code.
 
-Two pages of 12 November measure the game's rules as they stood at a6ff0ec, with six
+Three pages of 12 November measure the game's rules as they stood at a6ff0ec, with six
 families, and change nothing:
 
 - `news-read.md`: a century of the news on eight islands, read item by item as a player
@@ -59,3 +59,6 @@ families, and change nothing:
   settings, each moved to about three quarters and four thirds of its value on eight
   islands (sixteen for those that mattered). `engel.y_ref` matters most. It is one of the
   tables of sensitivity for the pass over all the rules.
+- `sens-machines.md`: the same for the machines and the harvests. The ceiling on a
+  machine's quality is the strongest number in either, and most of why growth stops:
+  with no ceiling within reach output per head peaks in 1895 and not 1879.
