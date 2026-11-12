@@ -726,6 +726,25 @@ mod tests {
     }
 
     #[test]
+    fn every_corner_of_what_is_built_carries_a_mark_for_winter() {
+        // (winter, task D) the alpha of a corner in `solid` and `flat` says what winter does
+        // there, and comes with the palette's token: a generator that mixed two colours by
+        // hand, or wrote an alpha of its own, would have something between the marks, and
+        // the viewer would frost a roof or freeze a wall
+        use crate::colour::settles::{FROST, ICE, NOTHING, SNOW};
+        let pal = Palette::standard();
+        for sheet in SHEETS {
+            for cell in (sheet.build)(&pal).into_iter().flatten() {
+                for (name, b) in [("solid", &cell.model.solid), ("flat", &cell.model.flat)] {
+                    if let Some(c) = b.col.iter().find(|c| ![SNOW, FROST, ICE, NOTHING].contains(&c[3])) {
+                        panic!("{}: {} has a corner in `{name}` whose alpha is {}, which is no mark for winter", sheet.name, cell.label, c[3]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_cell_fits_the_closest_view() {
         // the camera at its closest sees about 1.2 by 0.9 of a map cell; a cell
         // wider or deeper than that would be cut off in the close picture
