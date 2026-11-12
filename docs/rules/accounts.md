@@ -222,8 +222,10 @@ unless the books are kept). The eight headline series are in
 `acct_works_years`, `acct_land_years`, `acct_ownership_years` (group
 "distribution"). They are monthly series like the rest, but each holds the
 year's figure in all twelve of its months, written when the year's books
-close; the months of the year now running are NaN. The yearly message stays
-small; for the rest the viewer asks:
+close; the months of the year now running are NaN. A viewer that takes the
+months as they are played is told the twelve again with the year
+(`LiveYear::year_series`; see "In a game played by the month" below). The
+yearly message stays small; for the rest the viewer asks:
 
 ```rust
 // one town's books for a year (None: the last complete year)
@@ -260,6 +262,95 @@ with `accounts.works` off it comes back with no `years`.
 A game that is loaded from a save (`save.rs`) has its books again: a save is
 the orders, loading plays the years over, and the books are kept as they
 were the first time.
+
+### In a game played by the month
+
+The live game steps a month at a time (`save::Game::month`: `sim::run_month`,
+and after December `sim::end_year`, which closes the books), and a save may
+be made in the middle of a year. What the books do then:
+
+- **Of the year in progress they say nothing.** Its sums are being added up
+  in tables nothing outside `accounts.rs` can read. `town_books(.., None)`,
+  `island_year` and the months kept are still the last complete year's, and
+  the eight series hold NaN for every month of the open year. That is so
+  however the game got to that month: played straight through, or loaded
+  from a save and played again. A game saved in June and loaded has the
+  books it had, running sums and all, and closes the year with the same
+  books to the last bit (`tests/accounts.rs`,
+  `a_game_left_in_the_middle_of_a_year_goes_on_with_the_same_books`).
+- **The year's message brings the series' twelve months.** Every other
+  series has a month's figure when the month has been played, and
+  `live::live_month` sends it then. The books' series have none until the
+  year closes, so January to November go out without one. (December too,
+  for a caller that takes it before `sim::end_year`; `save::Game::month`
+  ends the year inside December's call, so the game's thread takes December
+  after it.) `LiveYear::year_series` is the list of `(place in
+  LiveStatic::series, the year's figure)` for them, from
+  `accounts::year_series(st, year)`, and the viewer's `apply_year` writes
+  each into the year's twelve months. Without that a game that was played
+  held eleven months of nothing a year in these series, and the same game
+  loaded from its save (whose months are read after their year closed) held
+  the figure: the two were not the same game to the interface, and the
+  charts of a played game drew one point a year. `tests/accounts.rs`
+  (`a_viewer_that_takes_the_months_as_they_come_is_told_the_years_figures`)
+  and the viewer's `live_tests.rs` hold it.
+- **A save does not know about the books.** `save::check`, the fingerprint
+  a save carries of the island as it stood, leaves the books' series out
+  (`accounts::own_series`): they are worked out from the history and are no
+  part of it. So a game saved before there were books, or with them off,
+  loads with them and is not said to have drifted, which it has not. (The
+  rules' fingerprint, `save::rules_id`, does change with `accounts.enabled`,
+  as it does with any parameter; that only prints a line when the game is
+  loaded.)
+- **The books' months and the interface's months are the same months.**
+  The books keep, for the last complete year, each month's closing price,
+  make, sales and stock by town and good. The price is the one the month
+  ended at, after prices responded, which is what `LiveMonth::price` sends
+  and the Markets panel's month shows; the test above holds the two equal
+  for January to November. December's `LiveMonth` in a game is taken after
+  the year has ended, so its prices and wages are those the next January
+  opens at: where a district changed market at the year's end and took its
+  prices with it (`peopling::move_with_cells`) they differ from December's
+  close, in the fourth digit on island 3. The books' December is the close.
+
+What it costs (island 7, six families, the game's rules, release build;
+`cargo run --release -p isostate-core --example books_by_month`, which plays
+the island with the books off and on, turn about, and checks they were the
+same island):
+
+| | without the books | with them | the books' own clock |
+|---|---|---|---|
+| a month's step, mean over 1750 to 1900 | 2.3 to 2.4 ms | 2.5 ms | 0.16 ms (0.10 before 1800, 0.21 after 1850) |
+| the year's end, after December | 70 to 71 ms | 71 to 72 ms | 0.21 to 0.24 ms |
+| the month's message (`live_month`) | 2 to 3 millionths of a second | the same | |
+| the year's message (`live_year`) | 0.8 ms | 0.8 ms | |
+| a copy of the island in 1900 | 3.8 to 4.2 ms | 8.7 to 9.3 ms | |
+
+Stepping by the month costs the books nothing they did not cost before:
+their work is in the month's hooks, a fifteenth of a month's step, and
+closing a year is a quarter of a millisecond of the seventy the year's end
+takes. Two passes on a quiet machine put a year of months and its end at 101
+and 102 ms with the books against 99 and 98 without (2 and 4 per cent); a
+third, with other work running, had the books 9 per cent faster, so that is
+the size of the noise.
+
+The copy is the one cost that is new. An order given in the middle of a year
+is tried on a copy of the island (`save::Game::give`), and the interface asks
+for the family as it will stand, which copies it twice more
+(`save::Game::foreseen`): the books' history goes with every copy, 33 MB of
+it by 1900, and doubles what the copy takes. That is 27 ms for an order in
+1900 where it was 12, on the simulation's thread, once for each order.
+
+In the viewer itself (`--advance 119 --script
+"settle;key:Escape;frames:3;key:Space;run:25;key:Up;frames:2;key:Up;frames:2;run:25;print"`,
+with and without `ISOSTATE_NO_BOOKS=1`, which starts the same game with no
+books for this purpose) the frames' work shows no cost: at a month a second
+the frames a month arrived in took 6.1 ms in the middle with the books and
+7.6 without in one pair of runs, 8.4 and 8.2 in the next; at a year a second
+7.3 against 4.5, and then 6.3 against 9.9. The machine was doing other
+people's work at the time and moved those figures more than the books
+could. The books touch the frame only through `apply_year`, which writes
+ninety-six numbers.
 
 **In a recorded run.** `run.bin` gets these arrays, only when the books were
 kept. `n` is the number of years; every float is float32. `T` here is the
@@ -683,7 +774,19 @@ Kept town ground needed nothing: a works' rent is still its `f_rent`.
 - **Only complete years can be read.** The year now running is being added
   up and has no books yet, so a player who founds a works in March sees its
   books the next January. The last complete year's months are kept, for
-  prices, make, sales and stock only.
+  prices, make, sales and stock only. Now that the game is played by the
+  month this is felt more: the months of the open year are in the books
+  (January to the month just played) and are not handed out, while the
+  viewer keeps each town's prices and wages by the month only for the months
+  it watched, so a game gone on with in June has no map of May's prices.
+  Handing out the open year's months (`town_books` with the months so far)
+  would give it one; it would have to say the same thing however the game
+  got to June, which the test of a game left in the middle of a year is
+  there to hold.
+- **An order in the middle of a year copies the books' history** (see "In a
+  game played by the month"). It doubles a copy that is made three times an
+  order. Leaving the history out of the copy, or sharing it, would take it
+  back to what it was.
 - **The merchants' share is cash, not profit.** It is what the merchants
   took in less what they paid out. In a year they build stock it is low, in
   a year they run it down it is high; `stock_value` is kept beside it so the

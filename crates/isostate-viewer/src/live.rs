@@ -512,7 +512,17 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         }
         None => {
             eprintln!("making island {} with {} families\u{2026}", o.seed, o.families);
-            Game::new(o.seed, o.families, saves::now())
+            let mut game = Game::new(o.seed, o.families, saves::now());
+            // For measuring what the books of account cost a game (docs/rules/accounts.md):
+            // the same game without them. They only watch, so it is the same island
+            // month for month, and a save of it is one the game with books goes on with.
+            if std::env::var_os("ISOSTATE_NO_BOOKS").is_some() {
+                let mut without = game.sim.params.clone();
+                without.accounts.enabled = false;
+                game.sim = iso::sim::start(&without, game.rules.content());
+                eprintln!("  (ISOSTATE_NO_BOOKS: no books of account are kept in this game)");
+            }
+            game
         }
     };
     let mut board = board.unwrap_or_else(|| Board::new(&game.sim));
