@@ -40,8 +40,9 @@ that year's openings, closures and purchases, so "at the year's end" means as
 the next January begins.
 
 Everything is kept for every complete year in single precision
-(`Books::hist`, flat tables with the years one after another, in the run
-file's layout; `Books::year(k)` gives one year's as a `YearRec` of slices).
+(`Books::hist`, flat tables with the years one after another, as the run
+file has them but with a row for every one of the `T_max` town slots;
+`Books::year(k)` gives one year's as a `YearRec` of slices).
 The year now running is added up in double precision and is not visible
 until it closes.
 
@@ -265,8 +266,8 @@ kept. `n` is the number of years; every float is float32. `T` here is the
 number of towns there are as the run ends (the header's `towns` list, and
 `accounts.towns`), not the `T_max` slots of the file's other town arrays:
 slots are filled in order, the rest would be nothing but zeros, and they were
-two thirds of these tables. A town founded late has rows of zeros for the
-years before it.
+a fifth of a game's whole file. A town founded late has rows of zeros for
+the years before it.
 
 | array | shape | |
 |---|---|---|
@@ -494,7 +495,13 @@ What I would say from them, and no more:
 
 Nothing here falls the way the labour work expects the twentieth century to:
 there is no machine yet that takes work's share for good. But the gauges
-exist now, and the run to 2050 can be read with them.
+exist now, and the run to 2050 can be read with them. Two islands run that
+far under the game's rules (`--seeds 1,2 --end-year 2050`; the books balance
+to the last year) give work's share as 0.70 in 1900, 0.65 in 1950, 0.66 in
+2000 and 0.58 in 2050, the share of household income that is pay as 0.89,
+0.85, 0.86 and 0.78, the works as 1.1, 1.6, 1.6 and 2.1 years of the wage
+bill, and the families' part of them as 0.51 rising to 0.65. Two islands
+are a hint and no more.
 
 ## A worked example
 
@@ -621,9 +628,12 @@ found. The books now ask the allocator for nothing month by month: the
 dense tables of every year are reserved when the books open, the sparse
 ones grow by doubling, and the month's scratch is reused.
 
-In the run file the books add what they keep in memory, 26 to 34 MB for a
-game with six families. Two thirds of the dense tables are zeros (48 town
-slots, a dozen to twenty towns).
+The run file of a game with six families grows from 24 MB to 44 MB with the
+books in it (seed 1; it would be 55 MB if every town slot were written, not
+only the towns there are). Most of what is left is the towns' goods and
+methods, a row for every town, good or method and year whether or not the
+town makes the thing; keeping only the rows with something in them would
+be the next saving. A `lite` pack leaves the works out.
 
 ## When another mechanism moves goods or money
 
@@ -695,5 +705,15 @@ Kept town ground needed nothing: a works' rent is still its `f_rent`.
   rounding, on every run so far.
 - **A works' inputs by good are kept for the last year only**; for earlier
   years there is its method's use of each good in its town.
+- **Railways and canals share their columns** (`projects` among a good's
+  buyers, `pay_projects` and `projects` among a town's figures). A chart that
+  wants to tell a canal's bricks from a railway's rails can do it by the
+  good, not by the buyer.
+- **A town's hands do not quite add up to its supply.** `supply` is the
+  hands for hire once carters, navvies and sinkers are taken out, and
+  `hands_land` counts the sinkers, as the mines do; so in a year a working
+  is sunk, land and works together can stand above `supply` by its forty
+  sinkers.
+- **A recorded game's file nearly doubles** (above).
 - **Nothing draws any of this yet.** The viewer's flow chart is another
   helper's work; this page is what it reads.

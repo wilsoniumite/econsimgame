@@ -74,7 +74,7 @@ pub const GOODS_FIELDS: [&str; 22] = [
     "works_fuel",   // burnt by works
     "land",         // bought by farms, pits and mines (machinery, rails)
     "building",     // bought by works being built or enlarged
-    "projects",     // bought by railways under construction
+    "projects",     // bought by railways and canals under construction
     "sent",         // carried to other towns
     "received",     // arrived from other towns
     "spoiled",      // lost in store
@@ -201,7 +201,7 @@ pub const TOWN_FIELDS: [&str; 33] = [
     "spend_landlords",  // on goods, the landlords' own
     "spend_families",   // on goods, families seated here
     "invest",           // works' purchases of capital goods
-    "projects",         // railways' outlay: materials and navvies
+    "projects",         // railways' and canals' outlay: materials and navvies
     // merchants and money
     "merchants_net",    // the merchants' takings less what they paid out, before their dividend
     "stock_value",      // their stock at the year's end, at that month's prices
@@ -325,7 +325,7 @@ pub struct IslandYear {
     // ---- paid for work
     pub pay_works: f64,
     pub pay_land: f64,
-    /// Navvies on the railways.
+    /// Navvies on the railways and canals.
     pub pay_projects: f64,
     /// Carters' pay: produce to market, works' materials and output, trade between towns.
     pub carting: f64,
@@ -376,7 +376,7 @@ pub struct IslandYear {
     pub need_landlords: Vec<f64>,
     /// Works' purchases of capital goods.
     pub invest: f64,
-    /// Railways' outlay: materials and navvies.
+    /// Railways' and canals' outlay: materials and navvies.
     pub projects: f64,
     // ---- the headlines
     /// Everything earned: pay, profits (works' and merchants') and rents.
@@ -471,9 +471,10 @@ pub struct YearRec<'a> {
     pub works: &'a [f32],
 }
 
-/// Every complete year's books, in the layout of the run file: one flat table
-/// of each kind with the years one after another, and for the sparse ones the
-/// row each year starts at. The dense tables are reserved for the whole run
+/// Every complete year's books, in the layout of the run file (which leaves
+/// out the town slots not in use, `tables`): one flat table of each kind with
+/// the years one after another, and for the sparse ones the row each year
+/// starts at. The dense tables are reserved for the whole run
 /// when the books open and the rest grow by doubling, so putting a year away
 /// asks the allocator for nothing. That matters more than it looks: see "What
 /// they cost" in the page.
@@ -1836,7 +1837,7 @@ pub fn tables(st: &State, lite: bool) -> Vec<Table> {
     let n = h.n;
     let ints = |v: &[u32]| v.iter().map(|&x| x as i32).collect::<Vec<i32>>();
     // only the town slots in use go into the file: they are filled in order, and
-    // the rest of the T_max would be nothing but zeros (two thirds of these tables)
+    // the rest of the T_max would be nothing but zeros (a fifth of a game's whole file)
     let towns = st.town_name.len().min(T);
     let used = |table: &[f32], row: usize| table.chunks(T * row).flat_map(|year| &year[..towns * row]).copied().collect::<Vec<f32>>();
     out.push(Table::F32("acct_goods".into(), vec![n, towns, G, KG], used(&h.goods, G * KG)));

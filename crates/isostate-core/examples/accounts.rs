@@ -222,7 +222,7 @@ fn main() {
     println!("  came with districts        {:14.1}", gb.moved);
     println!("  sold though not in store   {:14.1}", gb.oversold);
     println!("  bought                     {:14.1}", gb.bought);
-    for (label, v) in [("households", gb.households), ("landlords", gb.landlords), ("families", gb.families), ("works, as material", gb.works_inputs), ("works, as fuel", gb.works_fuel), ("farms, pits and mines", gb.land), ("works being built", gb.building), ("railways being built", gb.projects)] {
+    for (label, v) in [("households", gb.households), ("landlords", gb.landlords), ("families", gb.families), ("works, as material", gb.works_inputs), ("works, as fuel", gb.works_fuel), ("farms, pits and mines", gb.land), ("works being built", gb.building), ("railways and canals being built", gb.projects)] {
         if v != 0.0 {
             println!("    by {:<20} {:12.1}", label, v);
         }
