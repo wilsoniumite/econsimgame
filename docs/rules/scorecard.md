@@ -4,7 +4,7 @@ A way to read one sweep against the aims the project's documents state, and
 the facts it reads. Not in the Python, and not a mechanism: nothing here
 changes a run. The code is `scorecard.rs`, some additions to `facts.rs` and
 `sweep.rs`, one word in `peopling.rs`, and the `scorecard` command in
-`cli.rs`. It is the first step of "Ready next 5" in the backlog (piece 11 of
+`cli.rs`. It is the first step of "Ready next 10" in the backlog (piece 11 of
 `docs/backlog/found-along-the-way.md`): every choice of a number in the coming
 pass over the rules waits on being able to read a sweep.
 
