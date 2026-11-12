@@ -395,9 +395,11 @@ the allocator for nothing (`tests/accounts.rs`,
 `a_copy_of_the_island_shares_the_years_put_away`).
 
 In the viewer itself (`--advance 119 --script
-"settle;key:Escape;frames:3;key:Space;run:25;key:Up;frames:2;key:Up;frames:2;run:25;print"`,
+"settle;key:Escape;frames:10;key:Space;run:25;key:Up;frames:2;key:Up;frames:2;run:25;print"`,
 with and without `ISOSTATE_NO_BOOKS=1`, which starts the same game with no
-books for this purpose) the frames' work shows no cost: at a month a second
+books for this purpose; the runs were made with `frames:3` after the
+Escape, which on a busy machine can leave the clock stopped, so ten frames
+are given here) the frames' work shows no cost: at a month a second
 the frames a month arrived in took 6.1 ms in the middle with the books and
 7.6 without in one pair of runs, 8.4 and 8.2 in the next; at a year a second
 7.3 against 4.5, and then 6.3 against 9.9. The machine was doing other
