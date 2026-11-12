@@ -283,7 +283,7 @@ fn one(seed: u64, end_year: Option<i64>, keep: bool) -> Run {
     P.end_year = end_year;
     let mut s = sim::start(&P, Rules::Game.content());
     let C = s.content.clone();
-    let (N, T, G, NS) = (s.st.N, s.st.T_max, C.G, C.NS);
+    let (N, NS) = (s.st.N, C.NS);
     let names = [
         "mix4", "mix12", "rent16", "dist16", "res16", "built16", "traffic16", "boats16", "owner8", "owner_rows", "owner_moves", "works12",
         "works_month", "machines", "harvest_cells", "town_y", "traffic_month",
@@ -579,7 +579,6 @@ fn one(seed: u64, end_year: Option<i64>, keep: bool) -> Run {
             |b| b.iter().map(|&v| v as f64 / 128.0).sum(),
         );
         cands[ix("town_y")].year(keep, || st.y_ratio.iter().flat_map(|&y| (y as f32).to_le_bytes()).collect(), |b| b.chunks_exact(4).map(|p| f32::from_le_bytes([p[0], p[1], p[2], p[3]]) as f64).sum());
-        let _ = (T, G);
         clip.push(cl);
     }
     let sim_ms = sim_ns as f64 / 1e6;
