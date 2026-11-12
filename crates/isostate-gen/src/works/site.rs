@@ -732,9 +732,11 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         let (lw, ld) = (0.03 * g, 0.021 * g);
         [1.0f32, -1.0].into_iter().map(|side| (gx + side * (cy.0 * 0.5 + 0.003 + lw * 0.5), bz1 - WALL - ld * 0.5, lw, ld)).find(|o| field.free(o.0 - o.2 * 0.5, o.1 - o.3 * 0.5, o.0 + o.2 * 0.5, o.1 + o.3 * 0.5, 0.0))
     };
-    if let Some(o) = office_ground {
+    // (which of the boxes taken is the office's: the wall goes round it once it is built)
+    let office_box = office_ground.map(|o| {
         field.take(o.0, o.1, o.2, o.3);
-    }
+        field.taken.len() - 1
+    });
     // a lane on into a works with ground enough for buildings either side of it
     let lane = (pw >= 0.3 && pd >= 0.2).then(|| {
         let (lw, len) = (0.012, pd * 0.5);
@@ -965,7 +967,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
 
     // ---- the ground taken in so far: the box round all of it, with a little room, within the plot
     let office_built = parts.iter().any(|p| p.role == Role::Office);
-    let b = field.taken.iter().enumerate().filter(|(k, _)| *k == 0 || *k >= reserved || (office_built && *k + 1 == reserved)).fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, (_, t)| (b.0.min(t.0), b.1.max(t.2), b.2.min(t.1), b.3.max(t.3)));
+    let b = field.taken.iter().enumerate().filter(|(k, _)| *k == 0 || *k >= reserved || (office_built && Some(*k) == office_box)).fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, (_, t)| (b.0.min(t.0), b.1.max(t.2), b.2.min(t.1), b.3.max(t.3)));
     let m = WALL + 0.006;
     let mut outline = plot.outline.clone();
     for (nx, nz, lim) in [(1.0f32, 0.0f32, b.1 + m), (-1.0, 0.0, -(b.0 - m)), (0.0, -1.0, -(b.2 - m))] {

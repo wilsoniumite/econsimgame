@@ -161,6 +161,35 @@ fn everything_stands_on_the_plot_and_nothing_on_anything_else() {
 }
 
 #[test]
+fn every_building_stands_on_the_ground_the_works_has_taken_in() {
+    // the counting house of a big works among them: the wall goes round it, and the yard's ground lies under it
+    let mut offices = 0;
+    all(|plan, now| {
+        let (x0, x1, z0, z1) = plan.enclosed.bounds();
+        for p in &plan.parts {
+            offices += (p.role == Role::Office && plan.lane.is_some()) as usize;
+            assert!(p.x - p.w * 0.5 >= x0 - 1e-4 && p.x + p.w * 0.5 <= x1 + 1e-4 && p.z - p.d * 0.5 >= z0 - 1e-4 && p.z + p.d * 0.5 <= z1 + 1e-4, "{:?} at {} founded {}: its {:?} at {}, {} ({} by {}) is off the ground it has taken in, {x0} to {x1} by {z0} to {z1}", plan.kind, now.size, plan.stages[0].year, p.role, p.x, p.z, p.w, p.d);
+        }
+    });
+    assert!(offices > 20, "only {offices} works with a lane had a counting house to look at");
+    // and a works that has just come to want a clerk, on ground set aside for a much greater one
+    // (the office then stands furthest along the front of anything it has: the wall once ran
+    // short of it)
+    let pal = Palette::standard();
+    for kind in Kind::ALL {
+        for seed in 0..8 {
+            let (w, d) = ground(kind, 60.0);
+            let p = plan(kind, &Process::of(kind), &[Stage { year: 1800, size: 1.6 }], &Plot::rect(w, d), 1810, Seed::of(seed), &pal);
+            let (x0, x1, z0, z1) = p.enclosed.bounds();
+            assert!(p.lane.is_some() && p.parts.iter().any(|part| part.role == Role::Office), "{kind:?}: no counting house on a plot {w} by {d}");
+            for part in &p.parts {
+                assert!(part.x - part.w * 0.5 >= x0 - 1e-4 && part.x + part.w * 0.5 <= x1 + 1e-4 && part.z - part.d * 0.5 >= z0 - 1e-4 && part.z + part.d * 0.5 <= z1 + 1e-4, "{kind:?} with seed {seed}: its {:?} is off the ground it has taken in", part.role);
+            }
+        }
+    }
+}
+
+#[test]
 fn nothing_that_stands_moves_when_a_works_is_enlarged_or_the_railway_comes() {
     let pal = Palette::standard();
     for kind in Kind::ALL {
