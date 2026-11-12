@@ -346,7 +346,10 @@ added since (below the table) are in neither check.
 | News | `news_KIND`, the number of news items of each kind, and `news_total` |
 | Speed | `seconds` of wall time for the run, with the others running beside it |
 
-Those are the facts the sweep began with, which every run has. Each mechanism
+Those are the facts the sweep began with, which every run has. One more is
+there only when it happens: `works_table_full`, the year the works' table
+filled (all `F_max` of its places taken; no works can be founded after, and
+the summary says so in a line beginning `FULL run`). Each mechanism
 of the game's rules has since added facts of its own, under the same headings
 and one more, Canals; what each means is on the mechanism's page and at the
 top of `facts.rs`. Some have a value under the port too (the workings, the
