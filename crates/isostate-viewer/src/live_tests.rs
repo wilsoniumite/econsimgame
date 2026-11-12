@@ -13,6 +13,8 @@ struct Table {
     r: Replay,
     live: Live,
     view: FamilyView,
+    /// each town's prices and wages by the month, for the price and wage maps
+    months: Months,
     /// orders the simulation carried out, by kind
     carried: std::collections::BTreeMap<&'static str, usize>,
     refused: usize,
@@ -24,8 +26,10 @@ struct Table {
 
 impl Table {
     fn open(o: &Opening) -> Table {
-        let (r, live, view) = start(o).expect("the game starts");
-        Table { r, live, view, carried: Default::default(), refused: 0, said: String::new(), turned: Vec::new() }
+        let (r, mut live, view) = start(o).expect("the game starts");
+        // (`game::pump` takes the months the books kept on its first call)
+        let months = live.months_kept.take().expect("the months the books kept, for the maps");
+        Table { r, live, view, months, carried: Default::default(), refused: 0, said: String::new(), turned: Vec::new() }
     }
 
     fn wait(&self) -> Msg {
@@ -46,6 +50,7 @@ impl Table {
         loop {
             match self.wait() {
                 Msg::Month(m) => {
+                    self.months.add(&m);
                     apply_month(&mut self.r, &m);
                     crate::game::month_cash(&mut self.view, &m.cash);
                     self.live.month_came();
@@ -175,6 +180,19 @@ fn bits(v: &[f32]) -> Vec<u32> {
     v.iter().map(|x| x.to_bits()).collect()
 }
 
+/// Both viewers hold months `ts` for the price and wage maps, with the same
+/// prices and wages to the last bit.
+fn same_months(a: &Table, b: &Table, ts: impl Iterator<Item = usize>, when: &str) {
+    let (x, y) = (&a.months, &b.months);
+    assert_eq!((x.nt, x.ng), (y.nt, y.ng), "{when}: towns and goods in a month");
+    let (nt, ng) = (x.nt, x.ng);
+    for t in ts {
+        let (Some(i), Some(j)) = (x.row(t), y.row(t)) else { panic!("{when}: month {t} is not held by both ({} from {}, {} from {})", x.wage.len() / nt.max(1), x.first, y.wage.len() / nt.max(1), y.first) };
+        assert_eq!(bits(&x.wage[i * nt..(i + 1) * nt]), bits(&y.wage[j * nt..(j + 1) * nt]), "{when}: the wages of month {t}");
+        assert_eq!(bits(&x.price[i * nt * ng..(i + 1) * nt * ng]), bits(&y.price[j * nt * ng..(j + 1) * nt * ng]), "{when}: the prices of month {t}");
+    }
+}
+
 /// Everything the viewer holds of two games is the same, to the last digit.
 fn same(a: &Table, b: &Table, when: &str) {
     let (ra, rb) = (&a.r, &b.r);
@@ -266,6 +284,9 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
     assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
+    // the last year's months for the maps, as the books kept them
+    assert_eq!(b.months.first, 29 * 12);
+    same_months(&a, &b, (29 * 12..30 * 12).filter(|t| t % 12 != 11), "after loading");
     let on_order: Vec<usize> = saved.orders.iter().filter(|g| g.year == 1779).filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None }).collect();
     assert_eq!(b.live.ordered, on_order, "works ordered in the last year keep their pegs");
 
@@ -279,6 +300,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
         }
     }
     same(&a, &b, "three years on");
+    same_months(&a, &b, (30 * 12..33 * 12).filter(|t| t % 12 != 11), "three years on");
     assert!(!b.carried.is_empty(), "orders were given after loading");
     assert_eq!(a.carried, b.carried, "the same orders were carried out in both");
     assert_eq!(saves::read(&file).unwrap().year, 1782);
@@ -405,7 +427,13 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     assert_eq!(b.live.resumed.as_ref().map(|r| (r.year, r.month, r.date(false))), Some((1753, 5, "June 1754".to_string())));
     assert_eq!((b.live.months, b.live.asked), (5, 5));
     assert_eq!(b.live.standing, stands);
+    // the price and wage maps have the months the loaded game played before it was opened, 1753's and
+    // 1754's (the books kept them), as the game that was watched has them. (December goes out once its
+    // year has ended, so it is compared once that is mended.)
+    assert_eq!(b.months.first, 3 * 12);
+    same_months(&a, &b, (3 * 12..4 * 12 + 5).filter(|t| t % 12 != 11), "loaded in June 1754");
     assert!(!b.month() && !b.month());
+    same_months(&a, &b, 4 * 12..4 * 12 + 7, "seven months into 1754");
     // (what each trade would earn is worked out when a year arrives or a game is opened: for the one in January, for the other in June)
     b.view.prospects = a.view.prospects.clone();
     same(&a, &b, "seven months into 1754");

@@ -515,6 +515,10 @@ struct Acc {
     works_in: Vec<f64>,
     /// `[month][T][G][KMO]`
     months: Vec<f64>,
+    /// `[month][T]`: each town's wage as the month ended (0 for a slot with no town)
+    wages: Vec<f64>,
+    /// `[month][family]`: each family's cash as the month ended
+    cash: Vec<f64>,
     month: usize,
     fam: Vec<FamilyIncome>,
     rent_sector: Vec<f64>,
@@ -564,6 +568,10 @@ pub struct Books {
     /// works' materials, fuel and their cost by good `[firm][G][3]`.
     pub last_months: Vec<f32>,
     pub last_works_in: Vec<f32>,
+    /// The last complete year only: each town's wage as each month ended
+    /// `[12][T]`, and each family's cash `[12][family]` (`month_end`).
+    pub last_wages: Vec<f32>,
+    pub last_cash: Vec<f64>,
     /// Seconds spent keeping the books (wall time; nothing reads it but the report).
     pub seconds: f64,
 }
@@ -675,6 +683,8 @@ fn new_acc(dims: (usize, usize, usize, usize, usize), F: usize, n_fam: usize, wo
         works: if works { vec![0.0; F * KW] } else { Vec::new() },
         works_in: if works { vec![0.0; F * G * 3] } else { Vec::new() },
         months: vec![0.0; 12 * T * G * KMO],
+        wages: vec![0.0; 12 * T],
+        cash: vec![0.0; 12 * n_fam],
         month: 0,
         fam: vec![FamilyIncome::default(); n_fam],
         rent_sector: vec![0.0; NS],
@@ -714,6 +724,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         hist: std::sync::Arc::new(hist),
         years: Vec::with_capacity(n),
         last_months: vec![0.0; 12 * T * G * KMO],
+        last_wages: vec![0.0; 12 * T],
+        last_cash: vec![0.0; 12 * st.families.len()],
         stock: st.inv.clone(),
         mk: vec![0.0; st.T_max * HH_KINDS.clone().count()],
         ml: vec![0.0; st.T_max * C.NS * 5],
@@ -728,7 +740,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
 /// first `F` rows of the works' tables are all that can have been written.
 fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam: usize) {
     let (T, G, ..) = dims;
-    for v in [&mut a.goods, &mut a.land, &mut a.methods, &mut a.towns, &mut a.needs, &mut a.trade, &mut a.uses, &mut a.months, &mut a.rent_sector] {
+    for v in [&mut a.goods, &mut a.land, &mut a.methods, &mut a.towns, &mut a.needs, &mut a.trade, &mut a.uses, &mut a.months, &mut a.wages, &mut a.cash, &mut a.rent_sector] {
         v.fill(0.0);
     }
     for k in 0..T * G {
@@ -740,6 +752,7 @@ fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam
     a.works_in[..rows * G * 3].fill(0.0);
     a.fam.clear();
     a.fam.resize(n_fam, FamilyIncome::default());
+    a.cash.resize(12 * n_fam, 0.0);
     a.month = 0;
     (a.fund_in, a.lords_in, a.hh_in, a.fund_div, a.issue, a.income_err) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 }
@@ -1023,6 +1036,8 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         a.towns[kt + T_RENT_TOWN] += m.urban_pay[t];
         rents += m.urban_pay[t];
         a.towns[kt + T_WAGE] += m.w[t];
+        // (the wage the month ends at: `econ::step_month` makes this the town's wage)
+        a.wages[a.month.min(11) * T + t] = m.w[t];
         a.towns[kt + T_SUPPLY] += m.supply[t];
         if st.carters.len() == T {
             a.towns[kt + T_CARTERS] += st.carters[t];
@@ -1156,6 +1171,11 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
         err = err.max((sum - hh_inc[t]).abs() / hh_inc[t].abs().max(1.0));
         a.hh_in += hh_inc[t];
         a.towns[t * KT + T_MERCH_NET] += merch[t];
+        // the month's closing price, of every slot: one with no town yet stands at
+        // the price it will open at, and that is what the month's message says too
+        for g in 0..G {
+            a.months[((a.month.min(11) * T + t) * G + g) * KMO] = st.price[(t, g)];
+        }
         if !st.town_active[t] {
             continue;
         }
@@ -1168,7 +1188,14 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
             if st.price_anchor.rows == T {
                 a.goods[k + G_ANCHOR] += st.price_anchor[(t, g)];
             }
-            a.months[((a.month.min(11) * T + t) * G + g) * KMO] = pr;
+        }
+    }
+    // each family's cash as the month ends (its income of the month is in its
+    // purse by now; nothing pays a family between here and the next month)
+    let nf = st.families.len();
+    if a.cash.len() == 12 * nf {
+        for (k, f) in st.families.iter().enumerate() {
+            a.cash[a.month.min(11) * nf + k] = f.cash;
         }
     }
     a.fund_div += fund_div;
@@ -1400,6 +1427,12 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     for (d, &v) in b.last_months.iter_mut().zip(&a.months) {
         *d = v as f32;
     }
+    for (d, &v) in b.last_wages.iter_mut().zip(&a.wages) {
+        *d = v as f32;
+    }
+    // (the same length every year unless the number of families changes)
+    b.last_cash.clear();
+    b.last_cash.extend_from_slice(&a.cash);
     b.years.push(y);
     // the same tables, wiped, for the year to come
     reset(&mut a, dims, st.F_count, st.families.len());
@@ -1844,6 +1877,57 @@ pub fn works_books(st: &State, C: &Content, firm: usize) -> Option<WorksBooks> {
 /// The island's account of the last complete year (None while the books are off or empty).
 pub fn island_year(st: &State) -> Option<IslandYear> {
     st.acct.years.last().cloned()
+}
+
+/// How a month ended, as the books kept it: what the month's message
+/// (`live::LiveMonth`) carries of the towns and the families, in its layout and
+/// its precision. `wage` by town slot (0 for a slot with no town), `price`
+/// `[town * G + good]` for every slot, `cash` by family.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct MonthEnd {
+    pub wage: Vec<f32>,
+    pub price: Vec<f32>,
+    pub cash: Vec<f64>,
+}
+
+/// The months whose ends the books hold, as places in the run (0 for the first
+/// January): the last complete year's twelve and the months of the year in
+/// progress played so far. Empty with the books off. They hold them however
+/// the game got there, so a game gone on with from a save has them as the game
+/// that was played had them (`live::months_kept`).
+pub fn month_ends(st: &State) -> std::ops::Range<usize> {
+    let b = &st.acct;
+    if !b.on {
+        return 0..0;
+    }
+    let open = b.hist.n * 12;
+    open.saturating_sub(12)..open + b.cur.month
+}
+
+/// How month `t` ended (None for a month the books do not hold: `month_ends`).
+pub fn month_end(st: &State, t: usize) -> Option<MonthEnd> {
+    if !month_ends(st).contains(&t) {
+        return None;
+    }
+    let b = &st.acct;
+    let (T, G, ..) = b.dims;
+    let nf = st.families.len();
+    let mo = t % 12;
+    let price = |c: usize| (mo * T * G + c) * KMO;
+    Some(if t >= b.hist.n * 12 {
+        let a = &b.cur;
+        MonthEnd {
+            wage: a.wages[mo * T..(mo + 1) * T].iter().map(|&w| w as f32).collect(),
+            price: (0..T * G).map(|c| a.months[price(c)] as f32).collect(),
+            cash: a.cash.get(mo * nf..(mo + 1) * nf).map_or_else(Vec::new, |c| c.to_vec()),
+        }
+    } else {
+        MonthEnd {
+            wage: b.last_wages[mo * T..(mo + 1) * T].to_vec(),
+            price: (0..T * G).map(|c| b.last_months[price(c)]).collect(),
+            cash: b.last_cash.get(mo * nf..(mo + 1) * nf).map_or_else(Vec::new, |c| c.to_vec()),
+        }
+    })
 }
 
 // ---------------------------------------------------------------- the run file

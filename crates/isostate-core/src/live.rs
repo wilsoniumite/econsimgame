@@ -354,6 +354,32 @@ pub fn live_month(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, 
     }
 }
 
+/// The months the books hold (`accounts::month_ends`: the last complete year's
+/// twelve, and the year in progress so far), as `live_month` sent them when
+/// they were played: for a viewer that was not watching then, such as one that
+/// goes on with a game from a save, which plays its months over before there is
+/// a window. Each has its series as they stand now (the books' own have the
+/// year's figure in a year that has closed, as `LiveYear::year_series` makes
+/// them in a viewer that watched) and no news (the next `live_month` or
+/// `live_year` brings it). Empty without the books.
+pub fn months_kept(st: &State, C: &Content) -> Vec<LiveMonth> {
+    crate::accounts::month_ends(st)
+        .filter_map(|t| {
+            let end = crate::accounts::month_end(st, t)?;
+            Some(LiveMonth {
+                year: C.start_year + (t / 12) as i64,
+                month: t % 12,
+                index: t,
+                series: month_series(st, t),
+                wage: end.wage,
+                price: end.price,
+                cash: end.cash,
+                events: Vec::new(),
+            })
+        })
+        .collect()
+}
+
 /// What the viewer has been sent so far.
 #[derive(Clone, Debug)]
 pub struct LiveCursor {
