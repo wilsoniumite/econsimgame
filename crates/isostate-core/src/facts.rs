@@ -696,6 +696,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let mut hungry: Vec<i64> = r.events.iter().filter(|e| e.kind == "famine").map(|e| e.year.floor() as i64).collect();
     hungry.dedup();
     b.num("famine_years".into(), Kind::Count, hungry.len() as f64);
+    // people (docs/rules/people.md): years in which a thousandth of the island took ship after
+    // a hungry year. Until 12 November 2026 these were filed as famine news and counted above.
+    let mut sailed: Vec<i64> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| e.year.floor() as i64).collect();
+    sailed.dedup();
+    b.num("emigration_years".into(), Kind::Count, sailed.len() as f64);
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
