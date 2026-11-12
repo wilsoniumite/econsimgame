@@ -898,6 +898,9 @@ fn main() {
             primary_window: Some(Window {
                 title: "Isolated State".into(),
                 resolution: WindowResolution::new(args.size.0, args.size.1),
+                // the narrowest window the panels are laid out for: under 1280 the bar across the top has
+                // no room for its tabs, and under 720 the side panel and a decision's options grow short
+                resize_constraints: bevy::window::WindowResizeConstraints { min_width: MIN_WINDOW.0, min_height: MIN_WINDOW.1, ..default() },
                 ..default()
             }),
             ..default()
@@ -1941,6 +1944,9 @@ fn apply_camera(
 }
 
 // ------------------------------------------------------------------ interface
+
+/// The smallest window the game opens, in logical pixels (pictures with no window may be any size).
+const MIN_WINDOW: (f32, f32) = (1280.0, 720.0);
 
 /// How far the news as it happens and the note on what was clicked stand from the window's right edge.
 const TOAST_RIGHT: f32 = 14.0;

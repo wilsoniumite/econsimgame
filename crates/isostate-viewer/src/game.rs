@@ -119,6 +119,10 @@ struct WelcomeHint;
 #[derive(Component)]
 struct DecisionCard;
 
+/// The options of a decision, which scroll when the window is too low for them all.
+#[derive(Component)]
+struct DecisionOptions;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Action {
     Buy(usize),
@@ -1259,14 +1263,25 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
             DecisionCard,
         ))
         .with_children(|wrap| {
+            // no taller than the window: in a low window the options scroll between the question and the foot
             wrap.spawn((
-                Node { flex_direction: FlexDirection::Column, width: Val::Px(500.0), padding: UiRect::axes(Val::Px(28.0), Val::Px(22.0)), row_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(20.0)), ..default() },
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    width: Val::Px(500.0),
+                    max_height: Val::Percent(96.0),
+                    padding: UiRect::new(Val::Px(28.0), Val::Px(28.0 - crate::ui::THUMB_ROOM), Val::Px(22.0), Val::Px(22.0)),
+                    row_gap: Val::Px(6.0),
+                    border_radius: BorderRadius::all(Val::Px(20.0)),
+                    ..default()
+                },
                 BackgroundColor(crate::ui::PAPER),
                 BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.28), Val::Px(0.0), Val::Px(6.0), Val::Px(0.0), Val::Px(22.0)),
                 Interaction::default(),
                 FocusPolicy::Block,
+                bevy::ui::RelativeCursorPosition::default(),
             ))
             .with_children(|c| {
+                let card = c.target_entity();
                 c.spawn(text(&f, &format!("{}  \u{00b7}  for the {} family", d.due - 1, rep.surname), 13.0, MUTED));
                 c.spawn(text(&f, &d.prompt, 23.0, INK));
                 // who and what it is about
@@ -1286,38 +1301,42 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                     }
                     _ => {}
                 }
-                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
-                for (i, o) in d.options.iter().enumerate() {
-                    let note = option_note(d, o.choice, &fam, me, r);
-                    let mut option = c.spawn((
-                        Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
-                        BackgroundColor(BTN),
-                        Interaction::default(),
-                        FocusPolicy::Block,
-                    ));
-                    if !turning {
-                        option.insert((crate::ui::Hoverable, DecideButton { id: d.id, option: i }));
-                    }
-                    option.with_children(|b| {
-                        b.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|head| {
-                            head.spawn(text(&f, &o.label, 15.5, if turning { MUTED } else { INK }));
-                            if i == d.default {
-                                head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(accent.with_alpha(0.15))))
-                                    .with_children(|t| {
-                                        t.spawn(text(&f, "default", 11.5, accent));
-                                    });
+                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(RULE)));
+                let list = Node { row_gap: Val::Px(6.0), padding: UiRect::right(Val::Px(crate::ui::THUMB_ROOM)), ..default() };
+                // (the options give up the room when the card is too tall for the window, the question and the foot keep theirs)
+                crate::ui::scroll_list(c, card, Node { flex_shrink: 100.0, ..default() }, list, DecisionOptions, |c| {
+                    for (i, o) in d.options.iter().enumerate() {
+                        let note = option_note(d, o.choice, &fam, me, r);
+                        let mut option = c.spawn((
+                            Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+                            BackgroundColor(BTN),
+                            Interaction::default(),
+                            FocusPolicy::Block,
+                        ));
+                        if !turning {
+                            option.insert((crate::ui::Hoverable, DecideButton { id: d.id, option: i }));
+                        }
+                        option.with_children(|b| {
+                            b.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|head| {
+                                head.spawn(text(&f, &o.label, 15.5, if turning { MUTED } else { INK }));
+                                if i == d.default {
+                                    head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(accent.with_alpha(0.15))))
+                                        .with_children(|t| {
+                                            t.spawn(text(&f, "default", 11.5, accent));
+                                        });
+                                }
+                            });
+                            // a trade's name no longer says what it makes (soap and gas are with coal, beer with the estates)
+                            if let Some(goods) = trade_of(o.choice).and_then(|g| goods_of_trade(&fam, r, g)) {
+                                b.spawn(text(&f, &goods, 12.0, INK));
+                            }
+                            if !note.is_empty() {
+                                b.spawn(text(&f, &note, 12.5, MUTED));
                             }
                         });
-                        // a trade's name no longer says what it makes (soap and gas are with coal, beer with the estates)
-                        if let Some(goods) = trade_of(o.choice).and_then(|g| goods_of_trade(&fam, r, g)) {
-                            b.spawn(text(&f, &goods, 12.0, INK));
-                        }
-                        if !note.is_empty() {
-                            b.spawn(text(&f, &note, 12.5, MUTED));
-                        }
-                    });
-                }
-                c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|row| {
+                    }
+                });
+                c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(8.0)), flex_shrink: 0.0, ..default() }).with_children(|row| {
                     let foot = if turning {
                         "The year is turning\u{2026}".to_string()
                     } else if live.at_turn() {
