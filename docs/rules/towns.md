@@ -12,7 +12,9 @@ at the edge is town one year and farm the next, and the player's own town
 goes from sixteen cells to eight while its people double. With kept ground a
 town keeps what it builds and grows outward from it: 69 cells of town in
 1750 and 185 in 1900 with the life cycle for works alone, 62 and 303 beside
-the rest of the game's rules, and a cell that joins a town stays.
+the rest of the game's rules when it was merged (64 and 328 in today's
+sweep of the game, with the mines and the canals; "In company, after the
+merge"), and a cell that joins a town stays.
 
 It is merged into the game's rules; what it does there, and the one number
 that moved at the merge, are under "In company, after the merge".
@@ -57,7 +59,9 @@ until they fit. Best is the port's score: the cheapest to reach from the
 centre, a little for being by the water, a little at random. Since a road
 makes a cell cheap to reach, towns grow in ribbons along roads and shores,
 not in rings. The sea and iron and coal pits are never taken, as under the
-port; a pit is grown round.
+port, and under the mines' rules ([mines.md](mines.md)) nor is any pit head
+at work, a quarry's or a clay pit's too; a pit is grown round. Next to means
+any of the eight cells round a cell of the town's ground.
 
 **Works on town ground.** A cell with works on it may be taken like any other,
 and the works stay. The cell then has less room for people: half the usual on
@@ -75,7 +79,10 @@ derelict.
 
 **Decline.** A town gives up its newest cell, one a year, only after fifteen
 years in a row (`decline_years`) with under three fifths (`empty`) of the most
-town people it has had (`State::town_peak`). The first version measured the
+town people it has had (`State::town_peak`), and goes on giving one up each
+year it stays so. Each cell given up takes its share off the peak (a town of
+ten cells that gives one up keeps nine tenths of it), so the ground that is
+left is judged against what it held. The first version measured the
 decline against the town's room, and a town that merely stood still was found
 wanting as its old ground went on filling in: on eight seeds seven cells a run
 left and came back. Against the peak it is one or two.
@@ -85,15 +92,17 @@ recorded year, they fit their people exactly (ground is let go as well as
 taken), and their cells are dated from the centre out: the centre a hundred
 years before the start, the newest cell sixty (`back_years`, `back_span`). So
 1750 opens on towns the size the port gives them (69 cells against 72 on
-eight seeds; 61 against 61 beside the game's other rules), on old ground. A
+eight seeds; 61 against 61 beside the game's other rules before the merge,
+and 64 in today's sweep of the game), on old ground. A
 town founded later starts on new ground at 300 a cell.
 
 **A cell that changes market** goes with its new town and keeps its year. One
 left with no market at all is given up.
 
 **The town's people** are the port's count (the town's people times a share
-that rises with the works' hands), smoothed: half last year's, half this
-year's (`smooth`). `State::urban_pop` is the smoothed count, so the share of
+that rises with the works' hands: 0.04 and four fifths of the works' hands
+over the town's working people, held between 0.06 and 0.95), smoothed: half
+last year's, half this year's (`smooth`). `State::urban_pop` is the smoothed count, so the share of
 people living in towns in the series is too. Residents are shared among the
 cells in proportion to room.
 
@@ -131,13 +140,15 @@ Three smaller things ride with it, each with its own switch.
   on town ground bids against the whole of it, houses or plough, whichever
   pays more. And outside the towns, a cell the works have taken three fifths
   of is given to no other use, so nothing was left there to set a price and
-  the rest of its ground came at a hundredth; it now costs what it would earn
+  the rest of its ground came at the least a works bids for a site, 0.01 a
+  month (`firms::evaluate_sites`); it now costs what it would earn
   as open land, pits included, since there a pit is what a works displaces
   (`towns::open_rent`, `towns::price_ground`). [works.md](works.md) asked
   for this.
 
 Nothing here moves money: no payment is added and none is taken away. Switched
-off, every function in `towns.rs` returns at once and the state's tables stay
+off, every hook in `towns.rs` returns at once (`towns::update_urban` is not
+called: `land::update_land_use` calls the port's) and the state's tables stay
 empty; `tests/golden.rs` holds the port to the byte.
 
 ## For the viewer
@@ -157,7 +168,16 @@ are `LiveLayers::built`, `res` and `works`, `None` unless the game keeps town
 ground, and `LiveStatic::layers` then names twelve layers. `use` is still 10
 on town ground and `inten` there is still residents over the year's ceiling.
 The mix layers still show a town cell as town alone, so the works on it are
-only in `works`. The viewer was not changed and does not read them yet.
+only in `works`. The viewer now reads them: under the game's rules it lays
+out each town's houses from `built` and `res`, one house to so many
+residents, built in the year the cell's people first called for it
+(`crates/isostate-viewer/src/scatter/towns/kept.rs`).
+
+Both bytes stop somewhere. `built` holds the years 1646 to 1900 (1645 and
+255), so in a run past 1900 every cell that joins later reads 1900. `res`
+holds 2,040 people, and the ceiling of room, 530 and 6 a year, passes that
+in 2002, so a full old cell is clipped from then on. Neither matters to
+1900.
 
 ## Before and after
 
@@ -360,7 +380,8 @@ times. It is 6 now, for the same five times: "In company, after the merge".)
 - **The Engel curve, the machines and the rest of the game** put two fifths
   of the people in towns by 1900 where the port has a quarter, and the towns
   take ground for them. The densities are now set for that (the table above):
-  61 cells in 1750 and 303 in 1900 on eight seeds with six families, no run
+  61 cells in 1750 and 303 in 1900 on eight seeds with six families before
+  the merge (64 and 328 in today's sweep), no run
   failed, wages and output inside the spread, farm land 3 per cent less. If
   the island should carry less town, `towns.d_old_growth` is the dial: 7 a
   year gave 4.7 times at a first ceiling of 600.
@@ -505,7 +526,9 @@ players in company. 126 runs in the sweeps, none failed.
 **The merge.** The four lists wanted both sides and nothing more, as "Merging
 it" says. In `sim::yearly` the order is: the year's roads, then the people
 rules' founding (which wants the roads), then `towns::new_town_year`, then
-the market areas. The new town's year has to be mended after the founding,
+the market areas. (The canals, merged since, count the year's traffic on
+the water between the roads and the founding; that changes nothing either
+reads.) The new town's year has to be mended after the founding,
 since there is no town before it, and before the market areas are worked out
 again, since the donor is read from last year's. Nothing else touches.
 
@@ -605,8 +628,9 @@ place is the player's, which `chronicle::rank` keeps for the family's own
 heaviest item whatever else happened; here that item is the lighter. The
 test now leaves the player's place out of "all heavier", which is the rule
 as the chronicle's page gives it. No other test moved, and the machines test
-that "Merging it" warns of passes: seed 5 founds no town in 1790 any more.
-It will fail again on a history that does.
+that "Merging it" warns of passed: seed 5 founded no town in 1790 any more.
+With the mines it does again, and the test now lets off a town founded in
+the run's last year, as "Merging it" asked.
 
 **The edges in company** (`towns-probe/edges-game.txt`, eighteen seeds; the
 example takes `--rules game` now): no town above its room, the fullest cell
@@ -625,6 +649,36 @@ was two, and the founder fourth on three where it was one (9.0 million for
 28.3 on seed 2, 19.7 for 25.2 on seed 3, 14.7 for 25.2 on seed 7). That is
 the direction the first sixteen games pointed, on other neighbours; it is
 still sixteen games, and still not shown to be the towns' doing.
+
+**Today.** All of the above was measured at the merge and is kept as it
+was. The mines and the canals have joined the game's rules since, with the
+books of account beside them. The game's sweep of seeds 1 to 8 with six
+families as it stands (`isostate-core sweep --seeds 1-8 --rules game
+--families 6`, in `.claude/night/reports/merged-game-f6-l`) reads, beside
+the merge's seeds 1 to 6:
+
+| | after the merge, seeds 1 to 6 | today, seeds 1 to 8 |
+|---|---|---|
+| town cells 1750 / 1800 / 1850 / 1900 | 62 / 96 / 182 / 303 | 64 / 106 / 188 / 328 (296 to 358 in 1900) |
+| of the cells that are town, not town ten years on | 0.004 | 0.002 |
+| industry cells 1800 / 1850 / 1900 | 12 / 50 / 164 | 18 / 68 / 199 |
+| people, thousands, 1800 / 1850 / 1900 | 203 / 373 / 694 | 212 / 393 / 732 |
+| share of people living in towns, 1750 / 1850 / 1900 | 0.211 / 0.335 / 0.408 | 0.218 / 0.344 / 0.419 |
+| towns 1800 / 1850 / 1900 | 13.3 / 18.3 / 18.7 | 12.6 / 16.9 / 17.8 |
+| real wage over 1750, in 1800 / 1850 / 1900 | 1.61 / 1.98 / 2.54 | 1.63 / 1.95 / 2.60 |
+| output per head over 1750, same years | 1.67 / 2.20 / 2.59 | 1.70 / 2.12 / 2.65 |
+| works 1800 / 1850 / 1900 | 236 / 522 / 699 | 237 / 532 / 738 |
+| median works' size, 1900 | 5.71 | 5.97 |
+| first engine works / first rolling mill | 1811 / 1811 | 1810 / 1815 |
+| railway km 1850 / 1870 / 1900 | 1,444 / 2,160 / 2,615 | 1,328 / 1,835 / 2,248 |
+| famine years a run | 1.5 | 0.4 |
+
+So the town ground still grows five times (5.2 by the means), the churn is
+still gone. There are a fifth more industry cells than at the merge; the
+mines and the canals both came between, and which of them it is was not
+traced for this page. The census, the edges, Melbourne and the
+scripted players were not run again for this page; their numbers above are
+the merge's.
 
 ## What worries me
 
@@ -695,16 +749,21 @@ still sixteen games, and still not shown to be the towns' doing.
   `back_years` and `back_span` are the probe's values or the first
   builder's. The review tried their extremes for breakage only.
 - **Residents are recorded to the nearest eight**, and the byte stops at
-  2,040. The fullest cell on sixteen seeds held 1,275. A town with nowhere
+  2,040. The fullest cell on sixteen seeds held 1,275 (1,426 in company,
+  eighteen seeds), and the ceiling of room passes 2,040 in 2002, so a run
+  to 2050 clips its old centres; the year a cell joined stops at 1900 the
+  same way ("For the viewer"). A town with nowhere
   to grow crowds the ground it has, its people then stand above the room of
   its cells and the byte stops at its top (there is a test).
 - **A pit is grown round, the sea is not.** A harbour town on a spit can run
   out of neighbours. On sixteen seeds no town's people ever stood above its
   room, so it has not happened yet.
-- **The viewer has not been looked at with these rules.** It builds. Towns
-  are three to five times the size on the map, `inten` on town ground is now
-  against a ceiling of 530 to 1,430 where it was 500 to 2,600, and the three
-  new layers are not read yet.
+- **The viewer was first built without these rules.** Towns are three to
+  five times the size on the map, and `inten` on town ground is against a
+  ceiling of 530 to 1,430 where it was 500 to 2,600. The viewer has since
+  learned to draw towns from the three layers ("For the viewer"); whatever
+  else on the map reads `inten` on town ground reads it against the new
+  ceiling.
 
 ## Measuring it
 
@@ -721,8 +780,8 @@ then the churn by decade, the cells with more than one spell as town ground,
 and one town by half-century (the player's seat, or `--town NAME`). With the
 works alone expect 67 to 72 town cells in 1750 and 170 to 200 in 1900, a
 ten-year churn under 0.01, fewer than four cells with a second spell, and
-two fifths of the works' hands on town ground. Under `--rules game`, about
-62 and 300.
+two fifths of the works' hands on town ground. Under `--rules game` with six
+families, about 62 and 300 at the merge, and 64 and 330 in today's sweep.
 
 `towns_edges` prints one line a seed of what the means hide: the dearest
 town-year (the rent bill over the town people's wages; expect 0.12 to 0.25
