@@ -26,7 +26,7 @@ The first build compiles Bevy and takes some minutes. Then the terminal says whi
 - Drag to pan, right-drag to turn and tilt, and use the wheel to zoom. **H** shows every key.
 - Click a square near your seat to see what could be built there, with its cost and the return it expects at today's prices. Click a town, a works or a field to ask about it.
 - Children are trained at fourteen, and an apprentice teaches the family a new trade. Grown members can be posted to run your trades in other towns, where their branches build on their own.
-- **1** to **4** open the Family, Holdings, Markets and News panels. **M** washes a map view over the ground: rent, market areas, the way to market, prices or wages.
+- **1** to **4** open the Family, Holdings, Markets and News panels. **M** washes a map view over the ground: rent, market areas, the way to market, prices, wages, when each square of a town joined it, or who lives there.
 - The game saves itself after every year and every order. Start it again and it offers to continue. `--new` starts afresh, and `--seed 11 --families 4` gives another island with fewer rivals.
 - In 1900 a card says where you stand among the families.
 
@@ -68,19 +68,19 @@ Each takes about a minute for eight islands, all eight running at once. It print
 ```text
 now: game rules, 6 families (8 runs); then: port rules, 6 families (8 runs) in runs/sweep-port
 seed for seed, on seeds 1 2 3 4 5 6 7 8
-of the 245 facts both have, the seconds aside, 240 differ and 137 of those are starred
+of the 257 facts both have, the seconds aside, 253 differ and 144 of those are starred
 ...
                                           now     then            change  up/down
-  urban_share_1900                      0.422    0.255            +0.167      8/0  *
-  real_wage_1900_vs_1750                 2.61     1.35             +1.26      8/0  *
-  rail_km_1900                          2,261    1,072  +1,189 (+110.9%)      8/0  *
-  works_1900                            747.2    6,973   -6,226 (-89.3%)      0/8  *
-  price_swing_iron                      0.168    0.202   -0.034 (-16.7%)      1/7
+  urban_share_1900                      0.419    0.255            +0.165      8/0  *
+  real_wage_1900_vs_1750                 2.60     1.35             +1.25      8/0  *
+  rail_km_1900                          2,248    1,072  +1,176 (+109.7%)      8/0  *
+  works_1900                            738.2    6,973   -6,234 (-89.4%)      0/8  *
+  price_swing_iron                      0.172    0.202   -0.030 (-14.9%)      1/7
 ```
 
 `up/down` counts the islands on which the fact is greater now and those on which it is less. A star means every island now stands clear of every island then. It also writes `annual.csv`, `facts.csv`, `facts.json`, `summary.txt` and a `README.txt` saying how they were made. `--set key=v1,v2` sweeps any parameter by name. [docs/rules/README.md](docs/rules/README.md) explains the table and each fact.
 
-**Pictures with no window.** The viewer can play a game and write pictures without opening a window. The picture at the top of this page was made with the first of these (and then saved as a JPEG); the second plays a whole game and writes twelve standard views of it (the island and the home town in 1750, 1800, 1850 and 1900, the town in winter, a street, the busiest works district) with an `index.html` to look at them in.
+**Pictures with no window.** The viewer can play a game and write pictures without opening a window. The picture at the top of this page was made with the first of these on 11 November (and then saved as a JPEG); the clock's buttons and the towns have changed since, so today it draws the same corner of Melbourne as the game now has it. The second plays a whole game and writes twelve standard views of it (the island and the home town in 1750, 1800, 1850 and 1900, the town in winter, a street, the busiest works district) with an `index.html` to look at them in.
 
 ```bash
 cargo run -p isostate-viewer -- --advance 110 --season 0.5 --view runs/melbourne-1860.png,,28.8,28.5,25,32,2.6,none
@@ -128,7 +128,7 @@ Two more switches are not mechanisms of the economy. The books of account (`acco
 
 Families are older than this convention. They are off under both sets of rules until a run says how many there are: the viewer asks for six, and `--families 6` does it on the command line ([crates/isostate-core/FAMILIES.md](crates/isostate-core/FAMILIES.md)).
 
-What the two give, as means over islands 1 to 8 with six families, from the two sweeps above as run on 12 November 2026:
+What the two give, as means over islands 1 to 8 with six families, from the two sweeps above as run on 12 November 2026 (the last row from the books' own example, `cargo run --release -p isostate-core --example accounts -- --rules port`, since the port's sweep keeps no books):
 
 | | the port | the game's rules |
 |---|---|---|
@@ -153,7 +153,7 @@ This is the model the two sets of rules share. Where the game's rules do somethi
 
 **Monthly.** Each town is a market. Households and landlords split their budgets across six needs (food, warmth, shelter, clothing, implements, comfort) with a linear expenditure system: subsistence first, then fixed shares of what is left. (The game's shares shift with income.) Each need can be met by any good that has the property, at that good's efficiency, chosen by a logit on price per unit of service. That is the "no hard walls" rule: a little steel is bought as a better tool long before anyone rolls steel rails, so new goods always have some market. Wages clear each town's labour market by bisection. Land produces with Cobb-Douglas technology on the cell's share of land; firms use fixed-coefficient methods with learning curves. Prices move with inventories and with the flow imbalance, merchants take a spread, goods move between towns where price gaps beat the carting cost, and the money stock is checked every month against what was issued. (In the game merchants set prices from the stock they hold, the harvest varies, and the men who do the carting are not there for other work.)
 
-**Yearly.** Every cell's land is shared between farming, grazing, forestry, quarrying, clay, iron and coal in proportion to each use's bid raised to `1/theta`, adjusting part of the way each year. Bids are what the land earns at its market after carting, which is where the von Thünen rings come from. (In the game the four kinds of digging do not bid for the surface. Each quarry, pit or mine is a working: a pit head with the lease of the deposit within 4 km of it, paying a royalty to whoever owns the land it works under.) Towns grow outward by path cost. (In the game a town keeps its ground and takes its best free neighbour when it is full.) Investors in each town price candidate sites for every method they know and build where the return clears a hurdle; each firm keeps the sums that justified it. (In the game a works that earns its keep grows where it stands, and each trade in each town has a year's room for new capacity.) Roads upgrade where traffic is heavy. After the locomotive is invented, promoters raise money for the busiest town pairs and buy rails as they build, then add mineral lines. (In the game they go on to branch lines, each priced on the carting it would save.) Population grows with real income and moves toward better wages; new towns appear where work grows up far from any market. (Under the port the growth sits at its cap in nearly every year; in the game it answers to income, crowding and dearth.)
+**Yearly.** Every cell's land is shared between farming, grazing, forestry, quarrying, clay, iron and coal in proportion to each use's bid raised to `1/theta`, adjusting part of the way each year. Bids are what the land earns at its market after carting, which is where the von Thünen rings come from. (In the game the four kinds of digging do not bid for the surface. Each quarry, pit or mine is a working: a pit head with the lease of the deposit within 4 km of it, paying a royalty to whoever owns the land it works under.) Towns grow outward by path cost. (In the game a town keeps its ground and takes its best free neighbour when it is full.) Investors in each town price candidate sites for every method they know and build where the return clears a hurdle; each firm keeps the sums that justified it. (In the game a works that earns its keep grows where it stands, and each trade in each town has a year's room for new capacity.) Roads upgrade where traffic is heavy. (In the game a canal age comes first: once enough coal and stone are dug, promoters dig canals where the carting saved pays for them, with navvies taken from the towns' hands.) After the locomotive is invented, promoters raise money for the busiest town pairs and buy rails as they build, then add mineral lines. (In the game they go on to branch lines, each priced on the carting it would save.) Population grows with real income and moves toward better wages; new towns appear where work grows up far from any market. (Under the port the growth sits at its cap in nearly every year; in the game it answers to income, crowding and dearth.)
 
 **Inventions.** No tech tree. Each method has thresholds in cumulative output of what it combines (coke smelting needs a lot of coal and iron handled; powered mills need machinery and cloth), expressed partly as multiples of 1750 output. Discovery is a hazard that rises steeply as the thresholds are approached, and the place it happens is drawn in proportion to how much of the ingredients each town handles. Know-how then diffuses along trade costs and productivity follows Wright's law.
 
@@ -198,6 +198,7 @@ crates/isostate-core/   the simulation, in Rust: a library and the isostate-core
   tests/                the golden test, the step-by-step parity tests, and tests for each mechanism
   examples/             scripted players (bots.rs), censuses of works, towns and mines, timing, probes
   parity/               Python scripts that dump the Python's state for the parity tests
+  README.md             what the crate is, how to run it, and where each part is explained
   FAMILIES.md           how families work, the live API, and what the scripted players found
   PORTING.md            the port: the mapping, every deviation, the parity tables, oddities in the Python
 crates/isostate-gen/    the generators: plain functions that turn what the simulation knows into
@@ -262,7 +263,7 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 - [docs/BACKLOG.md](docs/BACKLOG.md): what is waiting, what is being done and why in that order. The pages under `docs/backlog/` hold what helpers and reviewers found along the way and what waits on a decision.
 - [docs/rules/](docs/rules/README.md): the port and the game's rules, the golden test, the sweep and its facts, and a page for each mechanism with its numbers, what the sweeps showed and what worries us.
 - [docs/designs/](docs/designs/README.md): designs worked out and argued over but not yet built. Today, a deeper production tree.
-- [docs/probes/](docs/probes/README.md): diagnoses of the simulation, each measured on eight or more islands with a rough prototype of a cure. The game's first mechanisms were built from five of them; the sixth, on what a works holds and on combined works, waits in the backlog. Kept as written.
+- [docs/probes/](docs/probes/README.md): diagnoses of the simulation, each measured on eight or more islands with a rough prototype of a cure. The game's first mechanisms were built from five of them; the sixth, on what a works holds and on combined works, waits in the backlog; two more are of the viewer: where the frames stall, and what it takes to draw the second island generator's land; and three of 12 November read a century of the news as a player meets it and measure how far the merchants' prices, the Engel curve, the machines and the harvests answer their settings. Kept as written.
 - [docs/ART.md](docs/ART.md): the plan for the look: generators and not asset files, and change you can see happen.
 - [crates/isostate-viewer/README.md](crates/isostate-viewer/README.md): playing, the keys, every option, saved games, and how the picture is made.
 - [crates/isostate-gen/README.md](crates/isostate-gen/README.md): what a generator is, the kits the houses and works are built from, and how to add one.
@@ -273,7 +274,7 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 
 The numbers below are means over islands 1 to 8 with six families, from the sweeps above as run on 12 November 2026, unless a page is named.
 
-**What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, five map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. Canals, books of account and a second island generator with real rivers and lakes (switched off until the viewer can draw it) came in on 12 November. The work now in hand is listed in the backlog: a deeper production tree, works laid out by what they do, a view that stays smooth while the simulation works, and the drawing of mines, canals and the new land.
+**What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, seven map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. On 12 November came canals, books of account, a clock that tells the month, towns drawn from the ground they keep, works built from the houses' kit at one scale of detail, winter on what is built, saved games that a test start cannot lose, and a second island generator with real rivers and lakes (switched off until the viewer can draw it). The work now in hand is listed in the backlog: a deeper production tree, works laid out by what they do, a view that stays smooth while the simulation works, and the drawing of mines, canals and the new land.
 
 **The game.**
 
@@ -290,13 +291,13 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 - There is a building cycle nobody chose: a town's mills order a whole year's room for new capacity at once and then next to nothing for two or three years, and timber trebles when they do (`docs/rules/works.md`). The worst year for what a wage buys is 14 per cent down.
 - Tools run short when farm machinery arrives: in their dearest year they cost 5.8 times what they do in a middling one (`docs/rules/works.md`, six islands, before the mines).
 - There are 0.4 famine years in a run. There were 2.2 before the canals, and why they should do that is not traced (`docs/rules/canals.md`).
-- The steel rail hardly arrives: it is 3 per cent of rails in 1890, and on one island of eight it is never made. Cheaper ore since the mines has made it worse (`docs/rules/mines.md`).
+- The steel rail hardly arrives: it is a fifth of one per cent of rails in 1890 (1.2 per cent on the island that makes most), and on one island of eight it is never made. It was 3 per cent after the mines, whose cheaper ore made it worse (`docs/rules/mines.md`), and has fallen again since the canals came in.
 - The first line opens anywhere from 1809 to 1842, so in 1850 one island has 575 km of line and another 1,804. Nobody collects a railway's fares, and nobody pays for a road or a bridge.
 - Quarrymen are one hand in seven by 1900, and the island takes some twenty units of stone a head a year, which is far too much if a unit is about a ton. Households buy shelter as raw stone, because the masons, bricklayers and carpenters who belong between the quarry and the house are designed and not yet built (`docs/rules/mines.md`, "Why quarrying takes so many hands").
 - A mine can hire more hands than its town has. On one island of sixteen a town founded on a coalfield in 1750 pays 8.6 times its neighbours' wage the spring after; under the commons scenario the same founding sends the wage to its ceiling and leaves the common fund in debt for nine years (`docs/rules/mines.md`, "Under the commons").
 - Most of the mechanisms' numbers were set on a few islands and never searched. Eight islands is a small sample, and a single year's wage misleads: read twenty-year means before believing a row (`docs/rules/towns.md`).
 - No foreign trade and no government, and money grows at a fixed rate.
-- Run past 1900, the island goes Malthusian, because there is no demographic transition and no technology after steel. On island 7 with `--end-year 2050` the people grow from 740 thousand in 1900 to 4.3 million, and what a wage buys falls from 3.0 times 1750's to three quarters of what it bought in 1750.
+- Run past 1900, the island goes Malthusian, because there is no demographic transition and no technology after steel. On island 7 under the game's rules with six families and `--end-year 2050` the people grow from 740 thousand in 1900 to 4.3 million, and what a wage buys falls from 2.65 times 1750's to two thirds of what it bought in 1750.
 
 **The port's rules.** These are the Python model's own weaknesses. The port keeps them on purpose, and the game's rules are the answer to most. On eight islands without families (`docs/rules/README.md`, "What the port's baseline says"):
 
@@ -312,7 +313,7 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 
 **The picture and the interface.**
 
-- A town of 1900 is drawn as a wide pale ground with houses strung along some streets and dotted thinly elsewhere, and tall houses stand alone outside the middle. Towns drawn from the ground they keep are in hand.
+- Since 12 November a town is drawn from the ground it keeps, one house to twelve residents, and its frontages join before they rise. Still wrong: 3.5 houses in a thousand go each year, a third of them pushed out when an earlier plot frees, harbour towns draw three quarters of the houses their people ask for, the home town of 1900 at play distance is ribbons of houses among closes and not a mass, and the closes of hill towns are the lowland's green (`docs/DEVLOG.md`). A second pass at the towns is in hand.
 - A quarry, pit or mine is drawn as one small pit on its cell, a stand-in. Pit heads, spoil heaps to their size, and idle or abandoned workings are not drawn yet (`docs/rules/mines.md`, "What the viewer is given").
 - The roads and bridges are the viewer's own invention, so a road down a valley crosses its river again and again, and a cart can pass through a bridge.
 - The railways climb like railways since 12 November, and some of it is still wrong: on island 7 in 1900 four churches have the line hard against their yard, eighteen curves are tighter than a train should take, roads drape over the banks with no bridge or crossing, and sidings are plain ribbons (`docs/DEVLOG.md`).
