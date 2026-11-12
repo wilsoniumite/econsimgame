@@ -553,8 +553,13 @@ pub struct Books {
     m_fam_rents: f64,
     /// The island's account of every complete year.
     pub years: Vec<IslandYear>,
-    /// Every complete year's books (`Books::year` gives one year's).
-    pub hist: Hist,
+    /// Every complete year's books (`Books::year` gives one year's). Shared
+    /// between copies of the island: a game tries an order given in the
+    /// middle of a year on a copy (`save::Game::give`), and this is 33 MB by
+    /// 1900 that the copy has no use for. Only `close_year` writes to it, and
+    /// a copy that goes on to close a year while another still stands takes
+    /// its own then (without the room reserved for the rest of the run).
+    pub hist: std::sync::Arc<Hist>,
     /// The last complete year only: its months `[12][T][G][KMO]`, and each
     /// works' materials, fuel and their cost by good `[firm][G][3]`.
     pub last_months: Vec<f32>,
@@ -706,7 +711,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         start_year: C.start_year,
         dims,
         cur,
-        hist,
+        hist: std::sync::Arc::new(hist),
         years: Vec::with_capacity(n),
         last_months: vec![0.0; 12 * T * G * KMO],
         stock: st.inv.clone(),
@@ -1338,8 +1343,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         }
     }
 
-    // ---- put the year away
-    let h = &mut b.hist;
+    // ---- put the year away (in the run's own history, which no copy of the
+    // island holds while the run is stepped: `make_mut` copies nothing then)
+    let h = std::sync::Arc::make_mut(&mut b.hist);
     h.goods.extend(a.goods.iter().map(|&v| v as f32));
     h.land.extend(a.land.iter().map(|&v| v as f32));
     h.methods.extend(a.methods.iter().map(|&v| v as f32));

@@ -599,6 +599,59 @@ fn the_books_are_the_same_books_however_the_game_was_reached() {
 }
 
 #[test]
+fn a_copy_of_the_island_shares_the_years_put_away() {
+    // An order given in the middle of a year is tried on a copy of the island
+    // (`save::Game::give`), and the interface asks for two more. The years the
+    // books have put away (33 MB by 1900) are not copied with it: the copy
+    // and the game hold the same ones, and whichever closes a year first
+    // while the other still stands takes its own.
+    use std::sync::Arc;
+    let mut g = save::Game::new(3, 6, 0);
+    for _ in 0..2 * 12 + 5 {
+        if g.month().unwrap() {
+            g.turn();
+        }
+    }
+    // (the tables by town are reserved for the whole run; the works' grow by doubling, and may move)
+    let room = |s: &sim::Sim| (s.st.acct.hist.goods.as_ptr(), s.st.acct.hist.goods.capacity(), s.st.acct.hist.methods.as_ptr());
+    let before = room(&g.sim);
+    assert!(before.1 >= 151 * g.sim.st.T_max * g.sim.content.G * KG, "room for every year of the run");
+
+    // the copies an order makes come and go, and the game's history is where it was
+    let seat = g.sim.st.families[0].seat;
+    let other = (0..g.sim.st.T_max).find(|&t| t != seat && g.sim.st.town_active[t]).expect("another town");
+    assert_eq!(g.give(save::Order::MoveSeat { town: other }), Ok(save::Done::Waits));
+    assert!(g.foreseen().is_some());
+    assert_eq!(room(&g.sim), before);
+
+    // a copy that is kept: it shares the years put away, and has the same books
+    let mut copy = g.clone();
+    assert!(Arc::ptr_eq(&copy.sim.st.acct.hist, &g.sim.st.acct.hist));
+    same_whole(&g.sim, &copy.sim, "a copy");
+    let old = whole_books(&g.sim);
+    // the copy closes the year first, and takes its own history to write in: the game's is untouched
+    copy.year().unwrap();
+    assert!(!Arc::ptr_eq(&copy.sim.st.acct.hist, &g.sim.st.acct.hist));
+    assert_eq!((copy.sim.st.acct.hist.n, g.sim.st.acct.hist.n), (3, 2));
+    assert_eq!(whole_books(&g.sim), old, "what the copy did is not in the game's books");
+    assert_eq!(room(&g.sim), before);
+    // the game follows, in the history it always had, with no more room asked for; and the two agree
+    g.year().unwrap();
+    assert_eq!(room(&g.sim), before, "a year is put away where room was kept for it");
+    same_whole(&g.sim, &copy.sim, "the game and its copy, a year on");
+    // and a game that never was copied says the same
+    let mut alone = save::Game::new(3, 6, 0);
+    for _ in 0..2 * 12 + 5 {
+        if alone.month().unwrap() {
+            alone.turn();
+        }
+    }
+    alone.give(save::Order::MoveSeat { town: other }).unwrap();
+    alone.year().unwrap();
+    same_whole(&g.sim, &alone.sim, "a game that was copied and one that was not");
+}
+
+#[test]
 fn the_books_do_not_change_what_a_save_is_checked_by() {
     // the fingerprint a save carries is of the island's history, which the
     // books only read: with them or without, a year and three months in, it is
