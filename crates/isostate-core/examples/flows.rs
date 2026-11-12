@@ -7,7 +7,7 @@
 //!
 //!     cargo run --release -p isostate-core --example flows -- [--seed 7] [--rules game]
 //!         [--families 6] [--end-year 1880] [--years 1800,1880] [--survey]
-//!         [--towns NAME,NAME,...] [--good iron] [--works]
+//!         [--towns NAME,NAME,...] [--good iron] [--works] [--history] [--weigh]
 //!
 //! `--survey` lists every town in each year, to choose from. `--towns` prints
 //! each named town's books in each year. `--good` follows one good across the
@@ -16,7 +16,10 @@
 //! it made in the last year asked for; of those making `--good`, if it is given)
 //! in each of the towns named, with what it
 //! used good by good, which is kept for the last complete year of the run only:
-//! hence `--end-year`.
+//! hence `--end-year`. `--history` follows the merchants of each named town
+//! every fifth year, with the services they bring in (which spoil by half a
+//! month in store). `--weigh` says what the books of the last year weigh and
+//! what asking for them costs: what an inspector in the viewer would be handed.
 #![allow(non_snake_case)]
 use isostate_core::accounts::{self, TownBooks, TownFlow};
 use isostate_core::*;
@@ -36,7 +39,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (mut seed, mut rules, mut families, mut end_year) = (7u64, Rules::Game, 6usize, Some(1880i64));
     let (mut years, mut towns, mut good, mut survey, mut show_works) = (vec![1800i64, 1880], Vec::<String>::new(), None::<String>, false, false);
-    let mut history = false;
+    let (mut history, mut weigh) = (false, false);
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
@@ -51,9 +54,10 @@ fn main() {
             "--survey" => survey = true,
             "--works" => show_works = true,
             "--history" => history = true,
+            "--weigh" => weigh = true,
             other => panic!("unknown option {other}"),
         }
-        i += if matches!(args[i].as_str(), "--survey" | "--works" | "--history") { 1 } else { 2 };
+        i += if matches!(args[i].as_str(), "--survey" | "--works" | "--history" | "--weigh") { 1 } else { 2 };
     }
     let mut P = rules.params();
     P.seed = seed;
@@ -145,6 +149,11 @@ fn main() {
             flows.sort_by(|a, b| b.qty.total_cmp(&a.qty));
             let (n, q, v, c) = (flows.len(), flows.iter().map(|f| f.qty as f64).sum::<f64>(), flows.iter().map(|f| f.value as f64).sum::<f64>(), flows.iter().map(|f| f.carting as f64).sum::<f64>());
             println!("  {n} flows between towns, {q:.1} units worth {v:.0} where they left, carting {c:.0} ({:.3} a unit)", c / q.max(1e-9));
+            // how many lines a map of them would draw, at a few thresholds
+            for at in [100.0f32, 500.0, 1000.0] {
+                let big: Vec<_> = flows.iter().filter(|f| f.qty >= at).collect();
+                println!("    of {at} units or more: {} flows, {:.1} per cent of what was carried", big.len(), 100.0 * big.iter().map(|f| f.qty as f64).sum::<f64>() / q.max(1e-9));
+            }
             println!("  {:>12} -> {:<12} {:>9} {:>9} {:>9} {:>9}  {:>9} {:>9}", "from", "to", "qty", "price", "carting", "a unit", "delivered", "price");
             for f in flows.iter().take(15) {
                 let (a, b) = (f.from as usize, f.to as usize);
@@ -153,6 +162,58 @@ fn main() {
                 println!("  {:>12} -> {:<12} {:9.1} {:9.3} {:9.0} {:9.3}  {:9.3} {:9.3}", st.town_name[a], st.town_name[b], f.qty, up, f.carting, cu, up + cu, price_at(b, g));
             }
         }
+    }
+
+    if weigh {
+        // what the inspector would have to be handed, and what asking for it costs:
+        // one town's books, every works' books, and the whole of a year's tables
+        let k = st.acct.hist.n - 1;
+        let year = C.start_year + k as i64;
+        let rec = st.acct.year(k).expect("the last year's books");
+        let towns: Vec<usize> = (0..st.town_name.len()).filter(|&t| accounts::town_books(st, C, t, Some(year)).is_some_and(|tb| fig(&tb, "pop") > 0.0)).collect();
+        let t0 = std::time::Instant::now();
+        let books: Vec<TownBooks> = towns.iter().map(|&t| accounts::town_books(st, C, t, Some(year)).unwrap()).collect();
+        let took = t0.elapsed().as_secs_f64();
+        let sizes: Vec<usize> = books.iter().map(|tb| serde_json::to_string(tb).unwrap().len()).collect();
+        let flows: Vec<usize> = books.iter().map(|tb| tb.sent.len() + tb.received.len()).collect();
+        println!("\n==== what the books weigh, {year} ({} towns)", towns.len());
+        println!(
+            "  one town's books (town_books, the months of the last year with them): {:.2} ms a town to make; as JSON {:.0} to {:.0} kB, {} to {} flows",
+            1000.0 * took / towns.len() as f64,
+            *sizes.iter().min().unwrap() as f64 / 1e3,
+            *sizes.iter().max().unwrap() as f64 / 1e3,
+            flows.iter().min().unwrap(),
+            flows.iter().max().unwrap()
+        );
+        let t0 = std::time::Instant::now();
+        let mut n_works = 0;
+        let mut json = 0;
+        for &id in rec.works_id {
+            if let Some(wb) = accounts::works_books(st, C, id as usize) {
+                n_works += 1;
+                json += serde_json::to_string(&wb).unwrap().len();
+            }
+        }
+        let took = t0.elapsed().as_secs_f64();
+        println!("  every works' books (works_books, every year of its life): {n_works} works, {:.2} ms a works to make, {:.1} kB each as JSON on average", 1000.0 * took / n_works.max(1) as f64, json as f64 / n_works.max(1) as f64 / 1e3);
+        let floats = rec.goods.len() + rec.land.len() + rec.methods.len() + rec.towns.len() + rec.needs.len() + rec.works.len();
+        let dense = |v: &[f32]| v.iter().filter(|&&x| x != 0.0).count();
+        let nonzero = dense(rec.goods) + dense(rec.land) + dense(rec.methods) + dense(rec.towns) + dense(rec.needs) + dense(rec.works);
+        println!(
+            "  the whole year as kept: {} numbers in the dense tables ({:.1} MB in single precision; {} of them not nothing), {} flows and {} uses ({:.1} kB), {} works rows",
+            floats,
+            4.0 * floats as f64 / 1e6,
+            nonzero,
+            rec.trade.len(),
+            rec.uses.len(),
+            20.0 * (rec.trade.len() + rec.uses.len()) as f64 / 1e3,
+            rec.works_id.len()
+        );
+        let t0 = std::time::Instant::now();
+        let g = C.gi("iron");
+        let n = rec.trade.iter().filter(|f| f.good as usize == g).count();
+        println!("  one good's flows across the island (a pass over the year's {} flows): {n} flows, {:.3} ms", rec.trade.len(), 1000.0 * t0.elapsed().as_secs_f64());
+        println!("  the books' whole history: {} years, {:.1} MB", st.acct.hist.n, 4.0 * (st.acct.hist.goods.len() + st.acct.hist.land.len() + st.acct.hist.methods.len() + st.acct.hist.towns.len() + st.acct.hist.needs.len() + st.acct.hist.works.len()) as f64 / 1e6 + 20.0 * (st.acct.hist.trade.len() + st.acct.hist.uses.len()) as f64 / 1e6);
     }
 
     if history {
