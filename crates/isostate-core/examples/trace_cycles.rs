@@ -280,6 +280,15 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
     put("real_wage_worst_year", dlog(&late(&rw)).iter().copied().fold(f64::NAN, f64::min).exp_m1());
     put("real_wage_amp", sd(&late(&dev(&rw))));
     put("cpi_swing", sd(&dlog(&late(&cpi))));
+    // levels, as twenty-year means, so that a cure's cost can be read beside its gain
+    let gdp_pc = series("gdp_pc");
+    for (a, z) in [(1830i64, 1849i64), (1880, 1899)] {
+        let (ka, kz) = (((a - y0).max(0) as usize).min(n - 1), ((z - y0).max(0) as usize).min(n - 1));
+        put(&format!("level_real_wage_{a}_{z}"), mean(&rw[ka..=kz]));
+        put(&format!("level_output_per_head_{a}_{z}"), mean(&gdp_pc[ka..=kz]));
+    }
+    put("level_works_1900", st.f_alive.iter().filter(|&&a| a).count() as f64);
+    put("level_pop_1900", series("pop")[n - 1]);
     put("real_wage_vs_timber_dev_corr", corr(&late(&dev(&rw)), &late(&dev(&p_timber))));
     put("real_wage_vs_timber_change_corr", corr(&dlog(&late(&rw)), &dlog(&late(&p_timber))));
     // timber bought by works being built, as a share of all timber bought
@@ -448,6 +457,9 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
         put(&format!("good_{name}_period"), period(&late(&dev(&p))));
         put(&format!("good_{name}_ac1"), ac1(&d));
         put(&format!("good_{name}_dearest"), p[kfrom..].iter().copied().fold(f64::NAN, f64::max) / median(&p[kfrom..]));
+        // moving with iron's price, or with timber's, from year to year
+        put(&format!("good_{name}_with_iron_corr"), corr(&d, &dlog(&late(&series("price_iron")))));
+        put(&format!("good_{name}_with_timber_corr"), corr(&d, &dlog(&late(&p_timber))));
         if h.len() == n {
             // the change of the price on the year's harvest (as a log)
             put(&format!("good_{name}_harvest_corr"), corr(&d, &h[k1800 + 1..]));
@@ -601,7 +613,14 @@ fn main() {
     }
     println!("game rules, {families} families, seeds {seeds:?}{}", if sets.is_empty() { String::new() } else { format!(", with {}", sets.iter().map(|(k, x)| format!("{k}={x}")).collect::<Vec<_>>().join(" ")) });
     let all = summary(&outs);
-    let other: Option<BTreeMap<String, Vec<f64>>> = compare.as_ref().map(|f| serde_json::from_str(&std::fs::read_to_string(f).expect("the file to compare")).expect("a json map"));
+    if let Some(f) = &json {
+        // a number that could not be had (NaN) is written as null
+        std::fs::write(f, serde_json::to_string(&all).unwrap()).expect("write the json");
+    }
+    let other: Option<BTreeMap<String, Vec<f64>>> = compare.as_ref().map(|f| {
+        let read: BTreeMap<String, Vec<Option<f64>>> = serde_json::from_str(&std::fs::read_to_string(f).expect("the file to compare")).expect("a json map");
+        read.into_iter().map(|(k, v)| (k, v.into_iter().map(|x| x.unwrap_or(f64::NAN)).collect())).collect()
+    });
     println!("{:44} {:>9} {:>20}{}", "", "mean", "[least .. greatest]", if other.is_some() { "      then  [least .. greatest]" } else { "" });
     for (k, v) in &all {
         let (m, lo, hi) = range(v);
@@ -620,8 +639,5 @@ fn main() {
                 println!("{l}");
             }
         }
-    }
-    if let Some(f) = json {
-        std::fs::write(&f, serde_json::to_string(&all).unwrap()).expect("write the json");
     }
 }
