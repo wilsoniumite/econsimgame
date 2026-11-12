@@ -177,7 +177,7 @@ On the command line it is `--regime commons`, in the Python and the Rust alike. 
 cargo run -p isostate-core --release -- sweep --seeds 1-8 --rules game --families 6 --set rent_regime=landlords,commons --out runs/sweep-regimes
 ```
 
-As run on 12 November 2026, all sixteen runs finish. The commons islands end the century with more people (830 thousand against 720 thousand), fewer famine years (1.1 a run against 2.2), a lower wage (2.45 times 1750's against 2.61, though a commons household also has its dividend, which the wage does not count) and much less railway (1,040 km against 2,261). Nobody has yet traced why, so take these as what the model does and not as findings.
+As run on 12 November 2026, all sixteen runs finish. The commons islands end the century with more people (833 thousand against 732 thousand), a lower wage (2.46 times 1750's against 2.60, though a commons household also has its dividend, which the wage does not count), half the railway (1,148 km against 2,248) and two thirds of the canal (600 km against 892). Famine years are the same, 0.4 a run. Nobody has yet traced why, so take these as what the model does and not as findings.
 
 One rule of the commons differs under the game's rules. When the common fund is in debt (a mine's bad year can put it there) it pays no dividend until its rents have repaid the debt. In the Python and the port it charges the debt to every household by head, and on island 3 that emptied every purse and stopped the run in 1762 (`docs/rules/mines.md`, "Under the commons").
 

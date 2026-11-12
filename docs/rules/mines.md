@@ -914,6 +914,15 @@ and what a wage buys stays between 0.98 and 1.11 of 1750's from 1752 to
   to 141 in three months, and the fund owed 2.8 million. No town's
   households hold less than nothing in any month of any of the sixteen.
 
+- **With the canals in.** The canals reached main while this was being
+  done, and the branch took them in. On that build (`merged-*`): sixteen
+  seeds under both regimes, with six families and with none, 64 runs and
+  none failed; under the landlords eight seeds give the same `annual.csv`
+  byte for byte and the same 420 facts with the mend and without; without
+  the mend seed 3 under the commons stops as it did, to the digit; and
+  under the commons neither the game's rules without the canals nor the
+  canals alone over the port fail on sixteen seeds.
+
 What this does not mend is the bad year itself, which happens under both
 regimes (the second worry below).
 
@@ -962,8 +971,9 @@ regimes (the second worry below).
   on two. But the levy is a hazard of the commons, not of the mines. Every
   other mechanism was tried under the commons on sixteen seeds with six
   families, once taken out of the game's rules and once switched on alone
-  over the port (`commons-game-without-*`, `commons-port-with-*`, and
-  `commons-port-alone`: 368 runs). One failed: the machines alone over the
+  over the port (`commons-game-without-*`, `commons-port-with-*`,
+  `commons-port-alone`, and for the canals `merged-commons-*`: 400 runs).
+  One failed: the machines alone over the
   port, seed 3, "drift 1.061708e-6 in 1837-9". It is the same illness with
   the port's own mines. A town is founded at the end of 1752 with 1,840
   hands for hire, its collieries have 7,105 in January, the wage is 500 by
