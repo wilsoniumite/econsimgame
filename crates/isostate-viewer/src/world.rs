@@ -1049,10 +1049,9 @@ fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]]) -> Vec<u8> {
 /// up whole have plots for about 120 houses. At twelve people to a house
 /// the fullest ground of 1900 (1,430 people) is 119 houses, which with their
 /// yards and streets take the whole of the cell, and the newest ground (300
-/// people) is 25 houses along the way out of town. (The first helper on the
-/// task had eight, the unit the record keeps residents in. That asks 179
-/// houses of the fullest ground, and four fifths of the houses asked for
-/// were drawn; at ten it was nine tenths.)
+/// people) is 25 houses along the way out of town. (Eight, the unit the
+/// record keeps residents in, asks 179 houses of the fullest ground, and
+/// four fifths of the houses asked for were drawn; at ten it was nine tenths.)
 pub const PEOPLE_TO_A_HOUSE: f32 = 12.0;
 /// The ground a drawn house takes with its yard, the streets and the room
 /// left about it, in square cells, where the plots are as few as a cell's
@@ -1310,9 +1309,9 @@ const OFF_THE_ROAD: f32 = 3.0;
 /// The same in the cell of a town's market place: there the way across the
 /// ground counts for hardly more than the way along a road, so the closes
 /// come in rings round the market place and the old middle of a town is a
-/// knot of streets, built up behind its roads as far as along them. (The
-/// second helper had 1.6, and the town of 1750 was houses strung along its
-/// roads to the edge of the cell with nothing behind them.)
+/// knot of streets, built up behind its roads as far as along them. (At
+/// 1.6 the town of 1750 was houses strung along its roads to the edge of
+/// the cell with nothing behind them.)
 const OFF_THE_ROAD_AT_MARKET: f32 = 1.08;
 
 /// The order in which the closes of cell `c`'s town ground (its `parcels`)
@@ -1385,11 +1384,11 @@ fn town_order(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize, pa
 /// water are never counted.
 ///
 /// The works are not counted for. The record says how much of a cell is
-/// under works, and the first helper on the task built up that share of the
-/// cell's closes as well; but a works is drawn in a yard of its own size
-/// where `scatter.rs` stands it, the houses keep out of the yards as drawn,
-/// and the middle of a town, which the record has wholly under works, was a
-/// pale plain with a few yards on it.
+/// under works; but a works is drawn in a yard of its own size where
+/// `scatter.rs` stands it and the houses keep out of the yards as drawn,
+/// and with that share of the cell's closes built up as well the middle of
+/// a town, which the record has wholly under works, was a pale plain with a
+/// few yards on it.
 pub fn closes_built(order: &[(u32, u8, f32)], houses: usize) -> (usize, usize) {
     let count = |ground: f32, edge: usize| {
         let want = houses as f32 * ground;

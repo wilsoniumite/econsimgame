@@ -194,7 +194,7 @@ const MULBERRY: [u32; 5] = [0xf2ebe6, 0xdccbd2, 0xbfa3b8, 0x9a7b9b, 0x6f557c];
 /// (task A) Town ground by the year it joined, from the oldest (dark brick)
 /// to the newest (straw), and its residents from few (pale) to many (indigo).
 const BRICK: [u32; 5] = [0x5e2f2b, 0x9c4a3a, 0xcf7b4c, 0xe6ae5e, 0xf2d98a];
-const INDIGO: [u32; 5] = [0xd6def0, 0xaebde0, 0x8497c9, 0x5a6dab, 0x333f7d];
+const INDIGO: [u32; 5] = [0xc9d4ee, 0xaebde0, 0x8497c9, 0x5a6dab, 0x333f7d];
 /// (task A) The low end of the scale of when town ground joined: the middles
 /// of the first towns are dated a century before the record opens.
 const OLDEST_GROUND: f32 = 1650.0;
@@ -507,9 +507,10 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
             // both scales are the same in every year, so a square keeps its tint for as long
             // as its figure stands: from the oldest ground the record dates to the run's last
             // year, and from the people ground holds the year it joins to what the oldest
-            // ground of 1900 comes to hold
+            // ground of 1900 comes to hold (by ratio, as rent is: for most of the century
+            // the towns' ground holds 400 to 700, and on an even scale it was all one pale tint)
             let last = r.y0 + r.ny as i32 - 1;
-            let sc = if growth { Scale { lo: OLDEST_GROUND, hi: last as f32, log: false } } else { Scale { lo: 300.0, hi: 1400.0, log: false } };
+            let sc = if growth { Scale { lo: OLDEST_GROUND, hi: last as f32, log: false } } else { Scale { lo: 300.0, hi: 1400.0, log: true } };
             let stops = if growth { &BRICK } else { &INDIGO };
             let (mut squares, mut people) = (0usize, 0.0f32);
             for c in lands {

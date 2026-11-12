@@ -38,79 +38,53 @@
 //! A run under the port's rules has no such record and is laid out as before
 //! (`houses_port`).
 //!
-//! **Taken over.** The first helper on this task was cut off and left no
-//! account of its decisions. Read back from its code, they were these, and
-//! the second helper kept every one of them unless a line below says not:
+//! The rules, each with its reason where it is named:
 //!
-//! 1. Eight people to a drawn house (`world::PEOPLE_TO_A_HOUSE`): the unit
-//!    the record keeps residents in, and as many houses as the fullest
-//!    ground of 1900 has room for at the size houses are drawn.
+//! 1. Twelve people to a drawn house (`world::PEOPLE_TO_A_HOUSE`).
 //! 2. A parcel of town ground is cut three times more, into eight closes
 //!    (some eighty to a cell), and a close is built up or open.
 //! 3. The order a cell's closes are built up in is fixed the year the cell
 //!    joins (`world::town_order`): by the way to the market place along the
-//!    roads of that year, ground off the road counting three times.
-//! 4. As many closes are built up as the cell's houses need at
-//!    `world::HOUSE_GROUND` each, and its works for their share of the cell.
+//!    roads of that year, ground off the road counting three times. A
+//!    town's first cell is built up in rings round its market place
+//!    (`world::OFF_THE_ROAD_AT_MARKET`).
+//! 4. A cell has two counts of closes (`world::closes_built`): those painted
+//!    as built-up ground, at `world::BUILT_GROUND` a house, and the wider
+//!    count its houses' plots may stand on, at `world::HOUSE_GROUND` a house
+//!    (`TownCell::built`, `TownCell::reach`). Between the two the houses
+//!    stand among the closes of the town's edge. The works' share of the
+//!    cell is not counted in: a works has a yard of its own where
+//!    `scatter.rs` stands it, and the houses keep out of the yards as drawn.
 //! 5. Houses outlast a fall of a quarter in their cell's residents
 //!    (`world::HOUSES_KEEP`).
-//! 6. A plot's turn is its close's place in that order plus up to five
-//!    closes of its own (`world::EDGE_CLOSES`), and the cell's houses stand
-//!    on the plots whose turn comes first. CHANGED: as left, the plots were
-//!    those of the streets laid on this year's built-up ground, so each
-//!    close that was built up could bring plots whose turn came before
-//!    houses already standing, which then lost their place. Now the streets and plots
-//!    are laid over all of a cell's town ground, a plot may be built on only
-//!    once its turn is under the count of built-up closes, and a row's turn
-//!    is its last plot's, so the order never changes (`lay_out`).
-//! 7. A house's year is the year the record first shows its cell with that
+//! 6. The streets and plots are laid over all of a cell's town ground,
+//!    built up or not. A plot's turn is its close's place in the cell's
+//!    order plus up to five closes of its own (`world::EDGE_CLOSES`); it may
+//!    be built on once its turn is under the count of closes the houses
+//!    reach; and a row's turn is its last plot's. So the order never changes
+//!    as the ground grows (`lay_out`).
+//! 7. A lane behind a way stops where another way is nearer
+//!    (`Laying::gives_way`), so the lanes of ways that meet make rings round
+//!    a market place and do not run through one another's plots. The lanes
+//!    of a town's old middle are built house by house, not a row at a time
+//!    (`OLD_MIDDLE`).
+//! 8. A house's year is the year the record first shows its cell with that
 //!    many houses; ground older than the record is dated back by the rule
-//!    the simulation fills it by.
-//! 8. Cottages of one storey, then two; townhouses on roads and market
+//!    the simulation fills it by (`Story::year_of`).
+//! 9. Cottages of one storey, then two; townhouses on roads and market
 //!    places only where a neighbour stands; a third storey only between two
 //!    neighbours; terraces on rows from 1815; villas on lanes of ground with
-//!    little works.
-//! 9. The open closes are painted by the ground shader as paddocks,
-//!    orchards, garden ground and greens within hedges (`town_edge` in
-//!    terrain.wesl).
-//!
-//! **Taken over again.** The second helper was cut off in its turn, with
-//! three changes in its tree that no commit message tells of. A third helper
-//! read them back from the code and the pictures and kept all three:
-//!
-//! 10. Twelve people to a drawn house, not eight (item 1; the reason is at
-//!     `world::PEOPLE_TO_A_HOUSE`): the streets of a cell built up whole
-//!     have plots for about 120 houses, and the fullest ground of 1900 holds
-//!     1,430 people.
-//! 11. The works' share of a cell is no longer counted into its built-up
-//!     closes (item 4): a works is drawn in a yard of its own size where
-//!     `scatter.rs` stands it and the houses keep out of the yards as drawn,
-//!     so counting the record's share as well left the middle of a town a
-//!     pale plain (`world::closes_built`).
-//! 12. Two counts of closes to a cell where there was one: those painted as
-//!     built-up ground, at `world::BUILT_GROUND` a house, and the wider
-//!     count the houses' plots may stand on, at `world::HOUSE_GROUND` a
-//!     house (`TownCell::built`, `TownCell::reach`). Between the two the
-//!     houses stand among the closes of the town's edge.
-//!
-//! The rule that frontages join before they rise (item 8) stands as the
-//! second helper left it. What the third changed, each where it says why:
-//!
-//! 13. A lane behind a way stops where another way is nearer
-//!     (`Laying::gives_way`), so the lanes of ways that meet make rings round
-//!     a market place and no longer run through one another's plots.
-//! 14. The closes of a town's first cell come in rings round its market
-//!     place, not along its roads (item 3; `world::OFF_THE_ROAD_AT_MARKET`),
-//!     and the lanes of that old middle are built house by house
-//!     (`OLD_MIDDLE`). Every other cell is built up along its roads, as before.
-//! 15. For the houses to stay where they are built: the plots round a market
+//!    little works (`one_house`).
+//! 10. For the houses to stay where they are built: the plots round a market
 //!     place stand where it comes to at its widest (`MARKET_RING`); a plot
 //!     fronts a street that runs whether or not the ground the street is on
 //!     is yet town ground (`Laying::runs`); and a way's plots are the same
 //!     while it is a lane and once it is a road, clear of the widest a road
 //!     comes to be (`WIDEST_WAY`).
-//! 16. From across the island the built-up closes take the colour of their
-//!     roofs (terrain.wesl, `town_roofs_far`).
+//! 11. The ground shader paints the open closes as paddocks, orchards,
+//!     garden ground and greens within hedges (`town_edge` in terrain.wesl),
+//!     and from across the island gives a town the tone of its roofs by how
+//!     full each cell is (`town_roofs_far`).
 //!
 //! `ISOSTATE_TOWNS=1` prints a year's count of houses against residents,
 //! `=towns` the same town by town, `=cells` the cells that are short of
@@ -543,7 +517,7 @@ impl Laying<'_> {
     /// to ground that lies nearer another way: there it stops, and the other
     /// way's lanes take the ground. So where ways meet, at a market place
     /// above all, the lanes behind them make rings of streets round it and do
-    /// not run across one another. (As the second helper left it every way
+    /// not run across one another. (When every way
     /// laid its lanes the whole of its length, those of ways that met crossed
     /// in the angle between them, and of the plots there whose turn came six
     /// in ten were lost to a street that ran through them: the middle of a
@@ -774,9 +748,9 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         // streets differ: the width of their plots and how far their houses stand back are the street's own
         let (h1, h2) = (world::hash2(s.id, 5, 31), world::hash2(s.id, 6, 31));
         // (a way's plots are the same whether it is yet a road or still a lane, and
-        // whatever the road's width: as taken over a lane had wider plots, set further
-        // back, with later turns, and the year the road came, or was widened, the whole
-        // of its frontage was laid out again and its houses moved or went)
+        // whatever the road's width: were a lane's plots wider, set further back or
+        // later in their turns, the year the road came, or was widened, the whole of
+        // its frontage would be laid out again and its houses move or go)
         let spacing = match s.kind {
             0 => 0.05 + 0.012 * h1,
             1 => houses::BACK_PLOT_WIDTH,
