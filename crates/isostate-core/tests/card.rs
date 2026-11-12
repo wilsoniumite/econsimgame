@@ -162,8 +162,8 @@ fn the_cards_facts_are_what_they_say() {
     assert!((get("works_hands_within_2_of_market_1790") - near / hands).abs() < 1e-12);
 
     // the people and the towns' share
-    assert_eq!(get("pop_last_vs_first"), at("pop", 1790) / at("pop", 1750));
-    assert!((get("urban_share_last20_gain") - (get("urban_share_1771_1790") - get("urban_share_1751_1770"))).abs() < 1e-12);
+    assert_eq!(get("pop_1790_vs_1750"), at("pop", 1790) / at("pop", 1750));
+    assert!((get("urban_share_1771_1790_less_1751_1770") - (get("urban_share_1771_1790") - get("urban_share_1751_1770"))).abs() < 1e-12);
 
     // spending a head over the chained cost of living: decades as their years' means, and the
     // last over the one twenty years before is the two against the first set against each other

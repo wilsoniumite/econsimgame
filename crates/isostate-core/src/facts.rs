@@ -590,12 +590,15 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.again(&last_span, "urban_share_last20");
     b.again(&format!("towns_{y1}"), "towns_last");
     // the pass over the rules (docs/designs/rules-pass.md, aims 1 and 4): how many times the
-    // first year's people the last year has, and whether the towns' share is still rising
-    // at the end: the last twenty years' mean less the twenty years' before them
-    b.num("pop_last_vs_first".into(), Kind::Ratio, at("pop", y1) / at("pop", y0));
+    // first year's people each mark has, and whether the towns' share is still rising at the
+    // end: the last twenty years' mean less the twenty years' before them
+    // (urban_share_1881_1900_less_1861_1880)
+    for &y in &marks[1..] {
+        b.num(format!("pop_{y}_vs_{y0}"), Kind::Ratio, at("pop", y) / at("pop", y0));
+    }
     if let Some((a, z)) = last20.filter(|&(a, _)| a - SPAN > y0) {
         let u = series("urban_share");
-        b.num("urban_share_last20_gain".into(), Kind::Real, span_mean(u, y0, a, z) - span_mean(u, y0, a - SPAN, z - SPAN));
+        b.num(format!("urban_share_{a}_{z}_less_{}_{}", a - SPAN, z - SPAN), Kind::Real, span_mean(u, y0, a, z) - span_mean(u, y0, a - SPAN, z - SPAN));
     }
     let last_town = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] >= y0).map(|t| st.town_founded[t]).max();
     b.year("last_town_founded".into(), last_town);
