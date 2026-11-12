@@ -526,8 +526,9 @@ pub fn game_params() -> Params {
     P.mines = crate::mines::MineParams::game();
     P.canals = crate::canals::CanalParams::game();
     // land (docs/rules/land.md) is not switched on yet: the viewer cannot draw
-    // it, and a test or three of other mechanisms are written to the port's
-    // island. When it is, the line is `P.land = crate::landform::LandParams::game();`.
+    // it. It stands beside the mines and the canals, and every test passes
+    // with it thrown ("On the integration branch" in its page). When it is,
+    // the line is `P.land = crate::landform::LandParams::game();`.
     P
 }
 
