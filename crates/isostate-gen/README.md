@@ -36,8 +36,8 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
 ```
 
 The viewer decides where things stand and which stand this year
-(`isostate-viewer/src/scatter.rs`, `scatter/towns.rs` and `scatter/towns/kept.rs`); a generator decides
-what one thing looks like.
+(`isostate-viewer/src/scatter.rs`, `scatter/towns.rs` and
+`scatter/towns/kept.rs`); a generator decides what one thing looks like.
 
 ## The rules
 
