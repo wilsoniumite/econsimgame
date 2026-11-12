@@ -172,9 +172,10 @@ smaller (0.275 for 0.298). (All of this on the port with the curve.)
 
 Under today's game rules the island starts poorer, not richer: 1.56 bundles a
 head in 1750 (1.51 to 1.60; `real_income_1750` in today's sweep). So 1750 is
-still the port's rule in every town, and the curve begins to turn only when an
-island's income first passes 2, which on today's eight islands is between 1761
-and 1782. Nothing has been retuned for it; see the worry about `y_ref` below.
+the port's rule in nearly every town, and the curve turns in a town only once
+its income has passed 2; the island's income as a whole first passes it
+between 1761 and 1782 on today's eight islands. Nothing has been retuned for
+it; see the worry about `y_ref` below.
 
 `--set engel.enabled=true` measures the mechanism alone, and
 `--set engel.enabled=true --set engel.strength=0` gives the port with the new
@@ -541,10 +542,9 @@ what a game now plays. This is what the curve's own facts read today: the
 sweep of the merged game, seeds 1 to 8 with six families, at the code of
 `340f263` (`isostate-core sweep --seeds 1-8 --rules game --families 6`, its
 `summary.txt` and `annual.csv` under `.claude/night/reports/merged-game-f6-l/`).
-Each number is
-one year's mean over its twelve months, averaged over the eight seeds; no
-flat-curve run was made beside it, so it says where the game stands and not
-what the curve does in it.
+Each number is one year's mean over its twelve months, averaged over the eight
+seeds; no flat-curve run was made beside it, so it says where the game stands
+and not what the curve does in it.
 
 | | 1750 | 1800 | 1850 | 1900 |
 |---|---|---|---|---|
@@ -565,8 +565,8 @@ Three things in it bear on this page. The island of 1750 is poorer than the
 one the curve was tuned on (1.56 bundles a head against 1.83), and further
 below `y_ref`; the life cycle for works took it from 1.87 to 1.68 and the
 merge of the railways, carting and the people to 1.49 (the merged sweeps
-`merged-game-f6-c`, `-d` and `-e`
-in the same folder), and it has been 1.56 since. Incomes then rise far past
+`merged-game-f6-c`, `-d` and `-e` in the same folder), and it has been 1.56
+since. Incomes then rise far past
 anything the port reached, so by 1900 nearly every further shilling is split
 by the richer set and food is down to 15 per cent of budgets. And the gap
 between the two indices is wider than the port's: the cost of living in 1900
@@ -616,7 +616,8 @@ time (it lists them as not checked).
   1750 is no longer the port's. On the richer islands above (real income 2.25
   and 2.55 in the early 1750s) the towns of 1750 are one and two points larger.
   What has happened since is the other way: today's game starts at 1.56, so
-  the curve waits until the 1760s or 1770s to begin ("In today's game"). The
+  the island's income as a whole does not pass the reference until somewhere
+  between 1761 and 1782 ("In today's game"). The
   strengths and the reference were chosen on an island that started at 1.83,
   and have not been looked at again on this one.
 - **The news and the viewer still read the 1750 basket.** "The real wage

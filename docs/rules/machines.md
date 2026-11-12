@@ -52,7 +52,7 @@ its farms (or pits, each counted by what it makes with no machine) whose
 machines are standing. At the end of every month it moves one part in
 `life_months` towards the share that keeps its machines up (at the prices then
 expected for the next month) and was supplied that month (the share of the
-town's order for machinery, or for rails, that the market filled). What a
+town's demand for machinery, or for rails, that its market filled). What a
 machine adds comes from the machines standing; what is bought comes from who
 keeps theirs up. Counted in machines the two are one account: if an equipped
 farm's machines are `input * life_months` for each unit it grows a month,
@@ -94,11 +94,13 @@ its own.
   (0.3) of the port's. The port's converter needs 150 bricks and 2 machinery
   for each unit of monthly capacity: 410 at the content's base prices, which
   is 1.6 times a rolling mill (100 bricks and 1 machinery, 250) and nearly
-  seven times a crucible steel works (30 bricks and 15 clay, 60). The first
-  helper put it at about a thousand at the prices of their runs, which at the
-  hurdle rate (12 per cent a year, on 85 per cent of capacity) is 12 a unit of
-  steel in capital alone where crucible steel carries 2: the converter against
-  the crucible, not against the rolling mill as this page used to say. Cut to
+  seven times a crucible steel works (30 bricks and 15 clay, 60). This page
+  used to say about a thousand, five times a rolling mill. The thousand must
+  be at the dearer prices of the first helper's runs (it was not recorded
+  which); at the hurdle rate (12 per cent a year, on 85 per cent of capacity)
+  it is 12 a unit of steel in capital alone where crucible steel carries 2,
+  which is the converter against the crucible: against the rolling mill it is
+  never more than twice, at any prices. Cut to
   three tenths, the converter's plant is 123 at base prices and the steel rail
   mill's 96 (from 321); the engine works' (466), the rolling mill's and the
   coke furnace's (147) are all dearer.
@@ -613,7 +615,9 @@ works rules on, now covers the steel rail as well.
   (the land under mines in 1750 is 3 per cent larger in every seed).
 - **Steel still has no use of its own.** It matters here because the engine
   builders learn from it. Households already take nine tenths of their
-  implements as steel in 1840. A steel that goes into the machines themselves
+  implements as steel in 1840 (0.87 on today's eight islands, from
+  `share_implements_steel` in the sweep's `annual.csv`, but 0.03 on seed 3,
+  which pours the least steel). A steel that goes into the machines themselves
   would be a change to the engine works' recipe, which is content for another
   night.
 - **A steel rail mill in 1815.** In one run of thirty-two (seed 6 with
