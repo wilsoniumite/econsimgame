@@ -81,7 +81,8 @@ cycle alone. Under the game's rules kept town ground puts a price on such a
 cell (`rent_floor`, `towns::price_ground`; `towns.md`): it costs what it
 would earn as open land, and a cell of the town itself costs what the
 housing a works displaces would pay. `works::ordered` reads the same price,
-so there the floor binds less often. Under the port a works' rent is fixed
+so the ground a works grows onto there has a price of its own; how often the
+floor still binds has not been measured. Under the port a works' rent is fixed
 for life at what it bid when it was a tenth of the size. Rent is a small cost
 either way: 3 to 5 per cent of the works' wage bill (seed 7). The seed 7
 numbers in this paragraph were measured with the life cycle alone and have
@@ -152,8 +153,10 @@ Every payment here is one the port already makes, between purses
 `econ::money_total` counts: an order is paid from the works' cash, its backers'
 or its family's, and rent goes to the land's owner. A concern that cannot pay
 for an extension is found out before anybody's money is drawn. Switched off,
-every function in `works.rs` returns the port's number and the two state
-tables stay empty; `tests/golden.rs` holds the port to the byte.
+every function in `works.rs` that the port reaches returns the port's number
+(`year_budget` and `town_trade` are not switched, but are only asked for by
+functions that are) and the two state tables stay empty; `tests/golden.rs`
+holds the port to the byte.
 
 ## What was tried and left out
 
@@ -212,8 +215,9 @@ The port against the port with `works.enabled=true`, without families and
 with six. These are the port's rules with the life cycle alone, as the review
 measured them; a sweep of today's game cannot give them and they were not
 measured again (the game as it stands is under "In company"). Means over
-eight seeds, with the least and greatest seed in brackets where it matters. The first table is seeds 1 to 8, the seeds the mechanism was
-built on; the second is seeds 9 to 16, which nobody had run before the review.
+eight seeds, with the least and greatest seed in brackets where it matters.
+The first table is seeds 1 to 8, the seeds the mechanism was built on; the
+second is seeds 9 to 16, which nobody had run before the review.
 The sweeps are `sweep-works-review-base`, `-base-f6`, `-base-s9`,
 `-base-f6-s9`, `-v4-s16` and `-v4-f6-s16` under `.claude/night/reports/`.
 
@@ -486,7 +490,8 @@ size, a little fewer founded and closed. The middle of the century has moved
 most. The wage of 1850 reads 1.95 where it read 2.51, most likely because
 carting puts off the machines' rise by about ten years (`carting.md`, "In
 company"; nobody has taken today's numbers apart). The wages of 1800 and
-1900 are close to the merge's, so what is said below of the middle decades
+1900 are nearer the merge's (1.63 for 1.56, 2.60 for 2.80), so what is said
+below of the middle decades
 should be read as of the merge, not of today.
 
 What they say (at the merge):
@@ -654,12 +659,14 @@ district has forty works and not four hundred.
 - **The converter is not built**, with the life cycle alone on the port's
   content. (The game's content makes the converter cheaper, `machines.md`,
   and under the game's rules it is built: in the game as it is played now it
-  makes 0.86 of the steel in 1880, the mean of eight seeds.) Under the port
-  with the life cycle it is built on one seed of thirty-two (the port alone
-  builds it in 10 of 32, late in the century in all but one, and it never
-  makes half the steel). The cause is the price of steel. Crucible works
-  that can grow to twenty usual sizes make steel at 17 to 22 from the 1830s where the port's small ones need 28 to 39,
-  and at that price the converter loses money at any size: on seed 7 its best
+  is built on every seed of eight, between 1825 and 1888, and makes 0.86 of
+  the steel in 1880, the mean of the eight.) Under the port with the life
+  cycle it is built on one seed of thirty-two (the port alone builds it in 10
+  of 32, late in the century in all but one, and it never makes half the
+  steel). The cause is the price of steel. Crucible works that can grow to
+  twenty usual sizes make steel at 17 to 22 from the 1830s where the port's
+  small ones need 28 to 39, and at that price the converter loses money at
+  any size: on seed 7 its best
   site promises between minus 5 and minus 20 per cent a year from 1850 to
   1900 against a hurdle of 12, where under the port steel at 52 gives it 12.5
   in 1895. The converter's numbers (half productivity to begin with, 150
@@ -724,5 +731,6 @@ second line) expect 540 to 770 works in 1900, a median size of 5 to 9, 110 to
 145 industry cells, a real wage 1.3 to 1.8 times 1750's from 1850 on (a seed
 in a tools famine falls below that for a few years) and under 2,300 works
 founded in a run. For the game as it is played (the last line; 12 November
-2026) expect 680 to 800 works in 1900, a median size of 5.6 to 6.2, 180 to
-240 industry cells and 1,700 to 2,200 works founded in a run.
+2026) expect 680 to 800 works in 1900, a median size of 5.6 to 6.3, 180 to
+240 industry cells and 1,650 to 2,250 works founded in a run (the least and
+greatest of the eight seeds, rounded outward).
