@@ -46,3 +46,7 @@ Part of the [backlog](../BACKLOG.md). Things only she can settle, gathered on th
   - *How much a line wanders on low ground* to follow the contour, and how tight a winding may be (`rails-review/after/coast.png`).
   - *Forty inclines and banks on one island,* each with its shed where there is room.
   - *Churches and the railway.* The line passes a little to one side of a town's middle, where churches stand, and four churches in 1900 have it against their yard. The church's place already asks where the railway is, so the railway cannot ask where the church is: one of the two has to give way by rule.
+  - *Winter at every turn.* A clock stopped at a year's turn stands at January, so the opening card, every decision card and every moment an order is carried out sit over a winter island. The alternative is to ease to high summer wherever the bar shows a plain year, as the stills do.
+  - *Pausing at the two fastest speeds lands on the next January,* since at those speeds the year's end is asked for half a year ahead. At the three slower speeds it happens only in the last weeks of December.
+  - *Word to the family given in the middle of a year takes effect after December,* before the books close. A seat moved in May gives the same game as one moved at the turn before; a branch's stance set in May is not in force until the year's end, where one set at a turn is in force for that year.
+  - *The speeds' names* (Slow, Steady, Brisk, Fast, Fastest), *a game starting at Steady,* and *a game opening on "January 1751"* are the builder's choices.
