@@ -563,7 +563,7 @@ fn wet_ground(g: Grid, z: &[f64], sea: &[bool], rt: &Routing, lake_id: &[u16], f
         if lake_id[c] > 0 {
             continue;
         }
-        let slope = (rt.fill[c] - if sea[r] { 0.0 } else { rt.fill[r] }) / g.dx();
+        let slope = (rt.fill[c] - if sea[r] { 0.0 } else { rt.fill[r] }) / g.step_m(c, r);
         if hand[c] <= 0.9 && slope <= 0.002 && (z[c] < 6.0 || still[c] || (floor[c] && slope < 0.0004)) {
             wet[c] = WET_MARSH;
         } else if floor[c] || (hand[c] <= 3.0 && !still[c]) {
@@ -604,7 +604,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
             let c = c as usize;
             let r = rt.rcv[c] as usize;
             let a = rt.area[c] * node_km2;
-            if a < 25.0 || rt.fill[c] - zp[c] > 0.25 || (rt.fill[c] - if sea[r] { 0.0 } else { rt.fill[r] }) / dx > 0.006 {
+            if a < 25.0 || rt.fill[c] - zp[c] > 0.25 || (rt.fill[c] - if sea[r] { 0.0 } else { rt.fill[r] }) / g.step_m(c, r) > 0.006 {
                 continue;
             }
             let half = (250.0 * (a / 50.0).powf(0.4) * (relief.khard[c] as f64).sqrt()).min(2500.0);
@@ -922,5 +922,24 @@ mod tests {
         assert_eq!(small[bank], WET_PLAIN);
         let (_, big) = wet_ground(g, &z, &sea, &rt, &lake, &stream(g, 150.0), &floor);
         assert_eq!(big, small, "a river of 150 cubic metres a second makes marsh where one of 50 makes flood plain");
+    }
+
+    #[test]
+    fn a_fall_on_the_diagonal_is_read_over_the_diagonal() {
+        let g = Grid { w: 16, h: 16, k: 4 };
+        assert_eq!(g.step_m(17, 18), 500.0);
+        assert_eq!(g.step_m(17, 33), 500.0);
+        assert!((g.step_m(17, 34) - 500.0 * std::f64::consts::SQRT_2).abs() < 1e-9);
+        // a planed floor 0.25 m above its stream, draining to it on the
+        // diagonal: 0.25 m over 707 m is a fall of 3.5 in 10,000, slack enough
+        // for a fen (less than 4); read over 500 m it was 5, and flood plain
+        let (g, z, sea, rt) = valley(0.1, 0.15);
+        let bank = 5 * g.w + 7;
+        assert_eq!(rt.rcv[bank] as usize, 6 * g.w + 8, "the bank drains on the diagonal to the stream");
+        let mut floor = vec![false; g.n()];
+        floor[bank] = true;
+        let (hand, wet) = wet_ground(g, &z, &sea, &rt, &vec![0u16; g.n()], &stream(g, 50.0), &floor);
+        assert!((hand[bank] - 0.25).abs() < 1e-4, "the bank stands {} m above its stream", hand[bank]);
+        assert_eq!(wet[bank], WET_MARSH);
     }
 }

@@ -169,6 +169,25 @@ pub fn generate_land(seed: u64, W: usize, H: usize, n_towns: usize, P: &LandPara
     make_world(&d, P, &relief, &water, &mut rng, n_towns)
 }
 
+/// How steeply a cell's stream falls, metres a metre: from node `m`, its
+/// largest, over the fine steps that take it out of the cell (or to the tide
+/// inside it), `fine` of them at most, each as long as it really is (a diagonal
+/// step is 1.41 node spacings).
+fn stream_fall(g: Grid, rt: &crate::landform::Routing, sea: &[bool], m: usize) -> f64 {
+    let cell = g.cell(m);
+    let (mut cur, mut run, mut fall) = (m, 0.0, 0.0);
+    for _ in 0..g.k {
+        let r = rt.rcv[cur] as usize;
+        run += g.step_m(cur, r);
+        fall = (rt.fill[m] - if sea[r] { 0.0 } else { rt.fill[r] }) / run;
+        if sea[r] || g.cell(r) != cell {
+            break;
+        }
+        cur = r;
+    }
+    fall
+}
+
 /// Reduce the fine land and its water to cells.
 pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: &mut Rng, n_towns: usize) -> World {
     let (W, H) = (d.W, d.H);
@@ -481,14 +500,10 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
         lf.discharge[c] = wt.flow[m] as f32;
         lf.stream[c] = joins[m];
         mouth_of.push(mouth[m]);
+        gradient[c] = stream_fall(g, rt, &wt.sea, m);
         let mut cur = m;
-        let mut steps = 0;
         loop {
             let r = rt.rcv[cur] as usize;
-            if steps < g.k {
-                gradient[c] = (rt.fill[m] - if wt.sea[r] { 0.0 } else { rt.fill[r] }) / ((steps + 1) as f64 * dx);
-                steps += 1;
-            }
             if wt.sea[r] && g.cell(r) == c {
                 // the stream reaches the tide in its own cell: it runs to the
                 // nearest cell of open sea, as the port's coastal cells do, or,
@@ -856,4 +871,26 @@ pub fn static_header(lf: &Landform) -> serde_json::Value {
         "wet_names": ["dry", "flood plain", "marsh"],
         "site_names": SITE_NAMES,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::landform::{Routing, shore_nodes};
+
+    #[test]
+    fn a_stream_s_fall_on_the_diagonal_is_read_over_the_diagonal() {
+        // ground falling a metre a node spacing towards one corner, so every
+        // stream runs on the diagonal: from the first node of cell (1, 1) four
+        // diagonal steps take it out of the cell, 4 m down over 4 x 707 m
+        let g = Grid { w: 16, h: 16, k: 4 };
+        let sea: Vec<bool> = (0..g.n()).map(|c| c % g.w < 2 || c / g.w < 2 || c % g.w > 13 || c / g.w > 13).collect();
+        let z: Vec<f64> = (0..g.n()).map(|c| if sea[c] { -5.0 } else { 50.0 - 0.5 * ((c % g.w) + (c / g.w)) as f64 }).collect();
+        let mut rt = Routing::default();
+        rt.route(g, &z, &sea, &shore_nodes(g, &sea));
+        let m = 4 * g.w + 4;
+        assert_eq!(rt.rcv[m] as usize, 5 * g.w + 5, "the stream runs on the diagonal");
+        let fall = stream_fall(g, &rt, &sea, m);
+        assert!((fall - 1.0 / (500.0 * std::f64::consts::SQRT_2)).abs() < 1e-9, "a fall of {fall} a metre where it is 1 m in 707");
+    }
 }
