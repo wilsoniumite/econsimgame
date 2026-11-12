@@ -1656,6 +1656,8 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
     let mut news_items: Vec<Option<Event>> = Vec::new();
     let mut raises: Vec<(String, usize)> = Vec::new();
     let mut head_died = false;
+    // chronicle: the head's burial, as facts the succession tells (chronicle::succession)
+    let mut burial: Option<crate::chronicle::Burial> = None;
     {
         let fam = &mut st.families[k];
         // ageing and deaths
@@ -1673,6 +1675,10 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
                 m.post = Post::Unposted;
                 m.next = None;
                 let ai = if was_head { Some(0.3) } else { None };
+                if was_head {
+                    let (who, place) = (format!("{} {}", m.first, surname), st.town_name[m.town].clone());
+                    burial = Some(crate::chronicle::Burial { item: news_items.len(), who, age: m.age, place, at_seat: m.town == seat });
+                }
                 news_items.push(news_at(P, k, ai, year, format!("{} {} dies at {}", m.first, surname, m.age), format!("{} {},{} is buried at {}.", m.first, surname, ran, st.town_name[m.town]), m.town));
             }
         }
@@ -1786,7 +1792,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
             let first = st.families[k].members[eldest].first.clone();
             news_items.push(news_at(P, k, Some(0.3), year, format!("{first} {surname} heads the family"), format!("The {surname}s are led from {}.", st.town_name[seat]), seat));
             // chronicle: the player's succession is one great item, which says whom the new head follows
-            crate::chronicle::succession(P, k, &mut news_items);
+            crate::chronicle::succession(P, k, &mut news_items, &first, burial.as_ref());
             if k == 0 && cands.len() > 1 {
                 let fam = &st.families[k];
                 let options: Vec<DecisionOption> = cands
