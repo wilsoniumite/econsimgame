@@ -313,6 +313,12 @@ fn pump(
                     tl.t = to;
                 }
                 ui.months += 1;
+                // a month stepped on with the clock stopped: the panels that say what the family has
+                // in hand are drawn again (while the clock runs they wait for the year, or for it to stop)
+                if !tl.playing {
+                    game.version += 1;
+                    ui.dirty += 1;
+                }
             }
             Msg::Year(end) => {
                 let y = &end.year;
@@ -435,8 +441,10 @@ fn now(tl: &Timeline, data: &Data, live: &Live) -> Now {
 /// the clock moves on to it: the simulation cannot go back, so the present is
 /// there, and that is where orders can be given. (The player who steps back a
 /// year on purpose is in the past and stays there.) And a clock that has just
-/// stopped has the months played so far saved.
-fn settle(mut live: ResMut<Live>, mut tl: ResMut<Timeline>, data: Res<Data>, mut was_playing: Local<bool>) {
+/// stopped has the months played so far saved, and the panels drawn again
+/// with what the family has in hand now (its cash came month by month while
+/// the clock ran, and only the top bar followed it).
+fn settle(mut live: ResMut<Live>, mut tl: ResMut<Timeline>, data: Res<Data>, mut game: ResMut<Game>, mut ui: ResMut<UiState>, mut was_playing: Local<bool>) {
     if !tl.playing && now(&tl, &data, &live) == Now::Turning {
         tl.t = data.latest() as f32;
     }
@@ -446,6 +454,8 @@ fn settle(mut live: ResMut<Live>, mut tl: ResMut<Timeline>, data: Res<Data>, mut
     }
     if *was_playing && !tl.playing {
         live.send(Cmd::Keep);
+        game.version += 1;
+        ui.dirty += 1;
     }
     *was_playing = tl.playing;
 }
