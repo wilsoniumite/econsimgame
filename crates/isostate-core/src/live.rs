@@ -109,6 +109,10 @@ pub struct LiveStatic {
     pub series: Vec<LiveSeries>,
     /// The industry groups, in `Group::index` order.
     pub groups: Vec<LiveGroup>,
+    /// land: the fine grid, the rivers' lines, the lakes and the water's cell
+    /// fields of an island the mechanism made (None on the port's island).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub land: Option<Box<crate::landcells::Landform>>,
 }
 
 /// The static half. Call after `sim::start` (the series registry exists from then).
@@ -160,6 +164,7 @@ pub fn live_static(st: &State, C: &Content) -> LiveStatic {
             .map(|(n, m)| LiveSeries { name: n.clone(), label: m.label.clone(), group: m.group.clone(), unit: m.unit.clone() })
             .collect(),
         groups: Group::ALL.iter().map(|g| LiveGroup { name: g.name().to_string(), label: g.label().to_string() }).collect(),
+        land: w.landform.clone(),
     }
 }
 

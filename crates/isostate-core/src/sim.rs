@@ -34,7 +34,12 @@ pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
 
 /// `init_state` with the random streams given (the parity tests replay numpy's draws).
 pub fn init_state_with(P: &Params, C: &Content, mut rng: Rngs) -> (State, Rngs) {
-    let world = generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58);
+    // land: an island made by water, from its own stream, in place of the port's
+    let world = if P.land.enabled {
+        crate::landcells::generate_land(P.seed, P.W, P.H, P.n_towns, &P.land)
+    } else {
+        generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58)
+    };
     let (mut st, pbar, wbar) = init_before_firms(P, C, world, &mut rng);
     seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
     (st, rng)
@@ -96,6 +101,12 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     st.urban = vec![false; N];
     st.urban_res = vec![0.0; N];
     st.water = (0..N).map(|c| world.coast[c] || world.river[c]).collect();
+    // land: a lake's shore is by the water too
+    if let Some(lf) = &world.landform {
+        for c in 0..N {
+            st.water[c] = st.water[c] || lf.shore[c];
+        }
+    }
     st.world = world;
 
     // firms

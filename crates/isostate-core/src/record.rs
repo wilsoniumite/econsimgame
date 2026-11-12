@@ -519,6 +519,13 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         arrays.push(f32_array("mine_surface", vec![n], &reals(&|w| w.surface)));
         arrays.push(f32_array("mine_royalty", vec![n], &reals(&|w| w.royalty)));
     }
+    // land: the fine grid, the rivers' lines and the water's cell fields, only
+    // for an island the mechanism made (`landcells::static_arrays` lists them)
+    if let (Some(lf), false) = (&world.landform, lite) {
+        for (name, dtype, shape, bytes) in crate::landcells::static_arrays(lf, W, H) {
+            arrays.push(Array { name, dtype, shape, bytes });
+        }
+    }
 
     let towns: Vec<Value> = (0..st.town_name.len())
         .map(|i| json!({"name": st.town_name[i], "node": st.town_node[i], "founded": st.town_founded[i]}))
@@ -594,6 +601,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
             "wharf": P.canals.wharf,
             "links": serde_json::to_value(crate::canals::links_out(st)).unwrap(),
         });
+    }
+    // land: the lakes, the sea outlets and the fine grid's size
+    if let Some(lf) = &world.landform {
+        header["land"] = crate::landcells::static_header(lf);
     }
     clean(&mut header);
     let hjson = ensure_ascii(&serde_json::to_string(&header).unwrap()).into_bytes();

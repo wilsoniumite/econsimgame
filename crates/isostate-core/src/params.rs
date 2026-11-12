@@ -290,6 +290,10 @@ pub struct Params {
     /// see docs/rules/canals.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub canals: crate::canals::CanalParams,
+    /// Land (not in the Python; see docs/rules/land.md): an island made by
+    /// uplift and erosion, with its water, in place of the port's.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub land: crate::landform::LandParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -492,6 +496,7 @@ pub fn default_params() -> Params {
         towns: TownsParams::default(),
         mines: crate::mines::MineParams::default(),
         canals: crate::canals::CanalParams::default(),
+        land: crate::landform::LandParams::default(),
     }
 }
 
@@ -520,6 +525,9 @@ pub fn game_params() -> Params {
     P.towns = TownsParams::game();
     P.mines = crate::mines::MineParams::game();
     P.canals = crate::canals::CanalParams::game();
+    // land (docs/rules/land.md) is not switched on yet: the viewer cannot draw
+    // it, and a test or three of other mechanisms are written to the port's
+    // island. When it is, the line is `P.land = crate::landform::LandParams::game();`.
     P
 }
 
