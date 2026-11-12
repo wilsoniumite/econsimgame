@@ -395,3 +395,9 @@ The span means and the parts of the gain were read from the sweeps' `annual.csv`
 - **(c)** What in the works' life cycle and the people rules together closes the merchants' margin was not traced; taking both away brings back half of the port's figure, not all. The extra deaths with railways were reasoned from the rule and switched, not counted town by town.
 - **(d)** The new and lost kinds are three town-years in 32 islands and were read, not tried apart. Buying from the month's own arrivals was proposed, not tried.
 - The viewer was neither built nor shot: nothing it uses has changed.
+
+## 8. What was checked
+
+- `cargo test -p isostate-core --release --no-fail-fast`: 214 tests in 23 groups pass, the golden test among them. A first run lost `live_api_reports_every_year_once`, a test of how long a live year takes (109 ms), on a machine running a dozen other helpers' sweeps; it passed when run again.
+- `isostate-core sweep --seeds 1-8 --rules game --families 6 --compare .claude/night/reports/merged-game-f6-l`: "of the 446 facts both have, the seconds aside, 0 differ". The branch adds four examples and this page and nothing else.
+- The machine was shared throughout, so no timing on this page means more than "a few minutes".
