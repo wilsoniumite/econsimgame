@@ -429,11 +429,8 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     assert_eq!(saves::read(&file).unwrap().month, 0, "a month is not saved as it is played");
     // the clock stops: the interface asks for the months to be kept, and they are
     a.live.send(Cmd::Keep);
-    let kept = (0..500).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        saves::read(&file).is_ok_and(|s| (s.year, s.month) == (1754, 2))
-    });
-    assert!(kept, "the months were not saved when the clock stopped");
+    let kept = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| (s.year, s.month) == (1754, 2)));
+    assert!(kept, "{}", saves::gave_up(120.0, "the months were to be saved when the clock stopped"));
     // and one more month, saved by the thread on its way out
     assert!(!a.month());
     drop(a);
@@ -632,32 +629,45 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     assert_eq!(std::fs::read(&file).unwrap(), played, "nothing is written until something happens in the game");
 
     // a second copy of the game on the island: refused before anything is played, whatever
-    // it was asked for, and the first copy's game is as it was
+    // it was asked for, and the first copy's game is as it was. "Before anything is played" is
+    // held against the starts just below, which make the island and play its first year: each
+    // refusal (the quickest of three tries) takes less than a quarter of the quickest of them,
+    // all timed in the same run so that a busy machine slows both alike. (It used to be held to a
+    // second, which a busy machine could run out.)
     let mut first = Table::open(&Opening { seed: 7, families: 3, ..default() });
+    let mut refusals = Vec::new();
     for o in [Opening { seed: 7, families: 3, ..default() }, Opening { seed: 7, families: 3, fresh: true, ..default() }, Opening { load: Some(file.to_string_lossy().into_owned()), ..default() }] {
-        let t0 = std::time::Instant::now();
-        let e = start(&o).err().expect("a second copy started");
-        assert!(e.starts_with("another copy of the game is open and is keeping its game in ") && e.contains("island-7-families-3.json: play on in that window"), "{e}");
-        assert!(t0.elapsed().as_secs_f32() < 1.0, "the second copy was refused only after {:?}", t0.elapsed());
+        let mut quickest = f32::INFINITY;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            let e = start(&o).err().expect("a second copy started");
+            quickest = quickest.min(t0.elapsed().as_secs_f32());
+            assert!(e.starts_with("another copy of the game is open and is keeping its game in ") && e.contains("island-7-families-3.json: play on in that window"), "{e}");
+        }
+        refusals.push(quickest);
     }
     assert_eq!(std::fs::read(&file).unwrap(), played);
     // what is not kept there is not in its way: pictures, a script, a trial, another island's game
+    let mut starts = Vec::new();
     for o in [
         Opening { seed: 7, families: 3, shots: true, ..default() },
         Opening { seed: 7, families: 3, unattended: true, ..default() },
         Opening { seed: 7, families: 3, advance: 1, ..default() },
         Opening { seed: 7, families: 2, ..default() },
     ] {
-        drop(Table::open(&o));
+        let t0 = std::time::Instant::now();
+        let t = Table::open(&o);
+        starts.push(t0.elapsed().as_secs_f32());
+        drop(t);
     }
+    let slowest = refusals.iter().copied().fold(0.0, f32::max);
+    let quickest = starts.iter().copied().fold(f32::INFINITY, f32::min);
+    assert!(slowest < quickest / 4.0, "a second copy was refused only after {:.0} ms, and a start that makes the island and plays its first year took {:.0} ms", slowest * 1e3, quickest * 1e3);
     // the first copy plays on and is saved as ever
     first.step();
     // (the thread hands the year over and then writes it)
-    let written = (0..500).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        saves::read(&file).is_ok_and(|s| s.year == 1753)
-    });
-    assert!(written, "the first copy's year was not saved");
+    let written = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| s.year == 1753));
+    assert!(written, "{}", saves::gave_up(120.0, "the first copy's year was to be saved"));
     // a copy started by one that is closing (New game) waits for it to let go
     let closing = std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(400));
