@@ -20,7 +20,8 @@ use isostate_gen::bridge::{road_bridge, RoadBridge};
 use isostate_gen::farm::{farmstead, Farmstead};
 use isostate_gen::houses::Detail;
 use isostate_gen::trees::{bush, hedge_tree, leaf_group, tree, Greenery, Species, Tree, LEAF_GROUPS};
-use isostate_gen::works::{self, pit, works, Kind, Pit, PitKind, State, Works};
+use isostate_gen::works::site::{self, Edge, Plot};
+use isostate_gen::works::{self, pit, Kind, Pit, PitKind, State};
 use isostate_gen::{Seed, Site};
 
 use crate::look::Look;
@@ -58,6 +59,9 @@ pub struct Slots {
     pub firm_cap: Vec<f32>,
     /// a river runs by the works
     pub firm_water: Vec<bool>,
+    /// the ground of each works in its own frame (x along its front, z out to
+    /// its gate): its outline, and what each side of it faces and since when
+    pub firm_plot: Vec<Plot>,
     /// the rung of the size each works' ground was set aside for
     firm_rung: Vec<i32>,
     /// the churchyards the works' ground was taken clear of (`towns::Churchyard::mark`, together)
@@ -118,10 +122,16 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
 // another, the market place, a churchyard (in any year the church stands
 // there: `towns::churchyards`), the roads, the railway or the river. So the
 // ground of a cell is handed out: each works, in the order they were founded,
-// is given the first free spot (of a fixed, shuffled list) that holds the
-// yard it will need at the largest size it reaches in the record. A works
-// that has closed gives its ground up to those founded after. Nothing moves
-// from year to year. In a live game the future is not known: when a works
+// is given the free spot it likes best that holds the plot it will need at
+// the largest size it reaches in the record (`site::ground`). What it likes:
+// to stand by what it was founded for (the stream, if a wheel is to turn it;
+// the railway, if the line was there and its stuff is heavy; otherwise the
+// road), and by the works already there, nearest of all one that makes what
+// it uses or uses what it makes. So the works of a cell gather into a
+// district along its road, with lanes between them, and a chain of trades
+// stands wall to wall. Its gate faces the road. A works that has closed
+// gives its ground up to those founded after. Nothing moves from year to
+// year, and a works founded later never moves one that stands. In a live game the future is not known: when a works
 // outgrows the ground set aside for it, its cell is laid out again, and its
 // younger neighbours may move.
 //
@@ -272,8 +282,9 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
     // the churchyards that reach into this cell, or near it
     let yards: Vec<&towns::Churchyard> = yards.iter().filter(|y| y.meets_box(cx + 0.5, cy + 0.5, 0.55, 0.55)).collect();
     let town = r.header.towns.iter().any(|t| t.node == cell).then(|| cen[cell]);
-    // the spots a yard may be centred on: a 9 x 9 grid on dry land, shuffled
-    const N: usize = 9;
+    // the spots a yard may be centred on: a 14 x 14 grid on dry land (in a shuffled order,
+    // which settles a choice between spots a works likes equally)
+    const N: usize = 14;
     let mut spots: Vec<(f32, f32, usize, f32, f32)> = Vec::new();
     for j in 0..N {
         for i in 0..N {
@@ -285,6 +296,20 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         }
     }
     spots.sort_by(|a, b| a.4.total_cmp(&b.4));
+    // how far each spot is from a road, from the railway and from water
+    let off = |x: f32, z: f32, rail: bool| ways.iter().filter(|w| (w.3 > 0.0) == rail).map(|w| (w.0 - x).hypot(w.1 - z)).fold(f32::MAX, f32::min);
+    let near: Vec<(f32, f32, f32)> = spots.iter().map(|s| (off(s.0, s.1, false), off(s.0, s.1, true), world::water_dist(g, s.0, s.1))).collect();
+    let stream = near.iter().any(|n| n.2 < 0.16);
+    // the year the railway came to the cell, if it has
+    let railed = (0..r.ny.min(r.filled.max(1))).find(|&k| r.trans[k * r.n + cell] & 4 != 0);
+    let process: Vec<site::Process> = firms.iter().map(|&f| site::Process::standard(&r.header.methods[r.header.firms[f].method].name).unwrap_or_else(|| site::Process::of(Kind::Other))).collect();
+    let process_of = |f: usize| &process[firms.iter().position(|&o| o == f).unwrap()];
+    // one works makes what another uses
+    let chained = |a: usize, b: usize| {
+        let (pa, pb) = (process_of(a), process_of(b));
+        pb.inputs.iter().any(|(good, _)| good.name == pa.output.name) || pa.inputs.iter().any(|(good, _)| good.name == pb.output.name)
+    };
+    let mut placed: Vec<usize> = Vec::new();
     // where the land is nearly all shore, river or road, the smallest works make do with less:
     // a finer grid of spots, highest first, nearer the water and with no care for the roads
     // (`Room::Tight`), and at the last anywhere above the tide (`Room::Any`)
@@ -306,6 +331,30 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         let kind = firm_kind(r, f);
         let (from, to, _) = lives[f];
         let quarter = (world::hash2(f as i32, 9, 3) * 4.0).floor() as i32;
+        // what it was founded for (a STAND-IN: the record's reason gives the sums that chose the
+        // cell, not what within the cell drew it): the stream, the railway or the road
+        let p = process_of(f);
+        let heavy = p.inputs.iter().any(|(good, _)| good.weight >= 1.5) || p.output.weight >= 1.2;
+        let wheel = stream && r.header.firms[f].born < 1790 && matches!(kind, Kind::TextileMill | Kind::ForgeRails | Kind::CharcoalFurnace | Kind::Bloomery | Kind::Millwright);
+        let by_rail = heavy && railed.map_or(false, |k| k <= from);
+        // the spots in the order it likes them: by what it was founded for, and by the works already there
+        let mut order: Vec<(f32, usize)> = (0..spots.len())
+            .map(|i| {
+                let (s, n) = (&spots[i], near[i]);
+                let drawn = if wheel { n.2.max(0.05) } else if by_rail { n.1.min(1.0) } else { n.0.min(1.0) };
+                let by = lots.iter().zip(&placed).filter(|(l, _)| from < l.to && l.from < to).map(|(l, &o)| (((l.x - s.0).abs() - l.hx).max(0.0).hypot(((l.z - s.1).abs() - l.hz).max(0.0))) * if chained(f, o) { 0.6 } else { 1.0 }).fold(f32::MAX, f32::min);
+                (drawn + if by < f32::MAX { 0.8 * by } else { 0.0 } + 0.01 * s.4, i)
+            })
+            .collect();
+        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // its gate faces the nearest road (or, with none, where its own number says)
+        let facing = |x: f32, z: f32| -> i32 {
+            let to = ways.iter().filter(|w| w.3 == 0.0).map(|w| (w.0 - x, w.1 - z)).min_by(|a, b| a.0.hypot(a.1).total_cmp(&b.0.hypot(b.1)));
+            match to {
+                Some((dx, dz)) if dx.hypot(dz) < 0.6 => (0..4).max_by(|&a, &b| { let f = |q: i32| { let (s, c) = (q as f32 * std::f32::consts::FRAC_PI_2).sin_cos(); s * dx + c * dz }; f(a).total_cmp(&f(b)) }).unwrap_or(quarter),
+                _ => quarter,
+            }
+        };
         let own = works::rung_size(rungs[f], firm_phase(f));
         // does a yard with these half sizes fit at this spot?
         let fits = |x: f32, z: f32, hx: f32, hz: f32, lots: &[Lot], room: Room| -> bool {
@@ -357,14 +406,16 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         let mut size = own;
         let mut found: Option<(f32, f32, i32)> = None;
         'search: loop {
-            let (w, d) = works::footprint(kind, size);
+            let (w, d) = site::ground(kind, size);
             for pass in 0..=liked.len() {
-                for q in [quarter, quarter + 1] {
-                    let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
-                    for &(x, z, wc, sub, _) in &spots {
-                        if pass < liked.len() && world::pick_class(r, year, wc, sub) != liked[pass] {
-                            continue;
-                        }
+                for &(_, i) in &order {
+                    let (x, z, wc, sub, _) = spots[i];
+                    if pass < liked.len() && world::pick_class(r, year, wc, sub) != liked[pass] {
+                        continue;
+                    }
+                    let q0 = facing(x, z);
+                    for q in [q0, q0 + 1] {
+                        let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
                         if fits(x, z, hx, hz, &lots, Room::Proper) {
                             found = Some((x, z, q));
                             break 'search;
@@ -375,10 +426,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
             if size <= 0.4 {
                 break;
             }
-            size = (size * 0.5).max(0.4);
+            // (task B2: by smaller steps than halves, so that a works is drawn as near its size as its cell has room for)
+            size = (size * 0.7).max(0.4);
         }
         if found.is_none() {
-            let (w, d) = works::footprint(kind, size);
+            let (w, d) = site::ground(kind, size);
             'tight: for room in [Room::Tight, Room::Any] {
                 for q in [quarter, quarter + 1] {
                     let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
@@ -394,7 +446,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         if found.is_some() && size < own {
             squeezed += 1;
         }
-        let (w, d) = works::footprint(kind, size);
+        let (w, d) = site::ground(kind, size);
         let (x, z, q) = found.unwrap_or_else(|| {
             homeless += 1;
             // no ground at all: it overlaps its neighbours, as little as may be. Of the spots
@@ -414,7 +466,37 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         slots.firm_pos[f] = (x, z, q as f32 * std::f32::consts::FRAC_PI_2 + askew);
         slots.firm_cap[f] = if size < own { size } else { f32::MAX };
         slots.firm_water[f] = world::water_dist(g, x, z) < hx.hypot(hz) + 0.09;
+        slots.firm_plot[f] = plot_of(r, g, ways, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f], railed.map(|k| r.y0 + k as i32));
         lots.push(Lot { x, z, hx, hz, from, to });
+        placed.push(f);
+    }
+    // the works that stand together: where one makes what its neighbour uses and their plots
+    // lie side by side, each has the other over its wall from the year both stand
+    for (i, &a) in placed.iter().enumerate() {
+        for (j, &b) in placed.iter().enumerate() {
+            let (la, lb) = (&lots[i], &lots[j]);
+            if i == j || !(la.from < lb.to && lb.from < la.to) || !process_of(b).inputs.iter().any(|(good, _)| good.name == process_of(a).output.name) {
+                continue;
+            }
+            let (dx, dz) = (lb.x - la.x, lb.z - la.z);
+            let (gx, gz) = (dx.abs() - la.hx - lb.hx, dz.abs() - la.hz - lb.hz);
+            // side by side: a lane's width apart one way, and overlapping the other
+            if !((gx < 0.05 && gz < -0.02) || (gz < 0.05 && gx < -0.02)) {
+                continue;
+            }
+            let since = r.y0 + la.from.max(lb.from) as i32;
+            for (f, edge, to) in [(a, Edge::Feeds, (dx, dz)), (b, Edge::Fed, (-dx, -dz))] {
+                // in the works' own frame
+                let (sin, cos) = slots.firm_pos[f].2.sin_cos();
+                let own = (to.0 * cos - to.1 * sin, to.0 * sin + to.1 * cos);
+                let plot = &mut slots.firm_plot[f];
+                let side = plot.side_toward(own);
+                if side != 0 && plot.edges[side] == Edge::Wall {
+                    plot.edges[side] = edge;
+                    plot.since[side] = since;
+                }
+            }
+        }
     }
     if homeless > 0 && std::env::var_os("ISOSTATE_PLOTS").is_some() {
         let most = (0..r.ny).map(|k| lots.iter().filter(|l| l.from <= k && k < l.to).count()).max().unwrap_or(0);
@@ -423,9 +505,133 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
     (squeezed, homeless)
 }
 
+/// The plot of a works whose yard's middle, facing and size are settled: a
+/// rectangle with one of its far corners cut off where a road, the railway
+/// or water presses on it, and what each side faces. `rail` is the year the
+/// railway came to the cell.
+fn plot_of(r: &Replay, g: &Ground, ways: &[Way], (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool, rail: Option<i32>) -> Plot {
+    let _ = r;
+    let (hw, hd) = (w * 0.5, d * 0.5);
+    let (sin, cos) = yaw.sin_cos();
+    // a point of the works' own frame on the map, and a map direction in the works' frame
+    let map = |px: f32, pz: f32| (x + px * cos + pz * sin, z - px * sin + pz * cos);
+    let own = |dx: f32, dz: f32| (dx * cos - dz * sin, dx * sin + dz * cos);
+    // how hard the land presses on a far corner: how near a road, the railway or water comes to it
+    let press = |px: f32, pz: f32| {
+        let (mx, mz) = map(px, pz);
+        let way = ways.iter().map(|w| (w.0 - mx).hypot(w.1 - mz) - w.2).fold(f32::MAX, f32::min);
+        way.min(world::water_dist(g, mx, mz) - 0.045)
+    };
+    let (left, right) = (press(-hw, -hd), press(hw, -hd));
+    let cut = |p: f32| (0.42 - p * 5.0).clamp(0.0, 0.4);
+    let mut plot = if left <= right && cut(left) >= 0.12 {
+        let k = cut(left);
+        Plot::new(vec![(-hw, hd), (hw, hd), (hw, -hd), (-hw + w * k, -hd), (-hw, -hd + d * k)])
+    } else if cut(right) >= 0.12 {
+        let k = cut(right);
+        Plot::new(vec![(-hw, hd), (hw, hd), (hw, -hd + d * k), (hw - w * k, -hd), (-hw, -hd)])
+    } else {
+        Plot::rect(w, d)
+    };
+    // the side nearest the railway, where the line runs within reach of the plot
+    if let Some(year) = rail {
+        let to = ways.iter().filter(|w| w.3 > 0.0).map(|w| (w.0 - x, w.1 - z)).min_by(|a, b| a.0.hypot(a.1).total_cmp(&b.0.hypot(b.1)));
+        if let Some((dx, dz)) = to.filter(|t| t.0.hypot(t.1) < hw.hypot(hd) + 0.3) {
+            let side = plot.side_toward(own(dx, dz));
+            if side != 0 {
+                plot = plot.facing_from(side, Edge::Rail, year);
+            }
+        }
+    }
+    // the side nearest the water: a stream, or a river broad enough to carry boats
+    if water {
+        let step = hw.hypot(hd) + 0.03;
+        let to = (0..8).map(|i| { let a = i as f32 * std::f32::consts::FRAC_PI_4; (a.cos(), a.sin()) }).min_by(|a, b| world::water_dist(g, x + a.0 * step, z + a.1 * step).total_cmp(&world::water_dist(g, x + b.0 * step, z + b.1 * step)));
+        if let Some((dx, dz)) = to {
+            let side = plot.side_toward(own(dx, dz));
+            let broad = g.rivers.iter().flat_map(|rv| rv.pts.iter().zip(&rv.half)).map(|(p, half)| ((p.x - x).hypot(p.y - z), *half)).min_by(|a, b| a.0.total_cmp(&b.0)).map_or(false, |(_, half)| half >= 0.03);
+            if side != 0 && plot.edges[side] == Edge::Wall {
+                plot = plot.facing(side, Edge::Water { navigable: broad });
+            }
+        }
+    }
+    plot
+}
+
+/// A works as the planner takes it in year `k`: its plan, and how it stands that year.
+pub struct FirmSite {
+    pub plan: std::sync::Arc<site::Plan>,
+    pub now: site::Now,
+}
+
+/// The plans already made, by firm and the mark of what each was made from (its plot, the
+/// stages of its growth so far, what its plot's sides face that year): a plan depends on a
+/// works' whole history, so it is made once and kept, and a year looked at again finds it.
+static PLANS: std::sync::Mutex<Option<std::collections::HashMap<(usize, u64), std::sync::Arc<site::Plan>>>> = std::sync::Mutex::new(None);
+
+/// The works of firm `f` as the planner takes it in year `k`, if it stands
+/// then (`works::site`). THE FACTS, and where each comes from:
+/// - its kind and process: the method (`site::Process::standard`, the shipped content);
+/// - the stages of its growth: its capacity in every year so far, on its size ladder;
+/// - its plot: `Slots::firm_plot`, with what each side faces and since when;
+/// - its state: going up in its first year; a stage built this year is under
+///   scaffolding; stages it has shrunk out of stand idle, then derelict;
+/// - how busy it is and what it holds: STAND-INS, as the record keeps neither.
+///   Busy: 0.9 in a year its capacity rose, 0.45 in one it fell, else 0.75.
+///   Stock: between a third full and nearly full, by a number of the works'
+///   own that changes every third year.
+pub fn firm_site(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look) -> Option<FirmSite> {
+    let kk = replay::firm_k(r, f, k);
+    if kk <= 0.0 {
+        return None;
+    }
+    let firm = &r.header.firms[f];
+    let (phase, cap) = (firm_phase(f), slots.firm_cap.get(f).copied().unwrap_or(f32::MAX));
+    let size_of = |kk: f32| works::rung_size(works::rung(firm_ratio(r, f, kk), phase), phase).min(cap);
+    // its size in every year it has stood so far
+    let first = r.firm_first.get(f).copied().unwrap_or(0).max(0) as usize;
+    let history: Vec<(i32, f32)> = (first..=k).filter_map(|i| { let kk = replay::firm_k(r, f, i); (kk > 0.0).then(|| (r.y0 + i as i32, size_of(kk))) }).collect();
+    let stages = site::stages(&history);
+    let year = r.y0 + k as i32;
+    let plot = slots.firm_plot.get(f)?;
+    // the mark of what the plan is made from
+    let mark = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for s in &stages {
+            (s.year, s.size.to_bits()).hash(&mut h);
+        }
+        for p in &plot.outline {
+            (p.0.to_bits(), p.1.to_bits()).hash(&mut h);
+        }
+        for (i, e) in plot.edges.iter().enumerate() {
+            (format!("{e:?}"), plot.since[i] <= year).hash(&mut h);
+        }
+        (firm.method, r.header.meta.seed).hash(&mut h);
+        h.finish()
+    };
+    let kept = PLANS.lock().unwrap().get_or_insert_with(Default::default).get(&(f, mark)).cloned();
+    let plan = kept.unwrap_or_else(|| {
+        let kind = firm_kind(r, f);
+        let process = site::Process::standard(&r.header.methods[firm.method].name).unwrap_or_else(|| site::Process::of(Kind::Other));
+        let plan = std::sync::Arc::new(site::plan(kind, &process, &stages, plot, year, firm_seed(f), lk));
+        PLANS.lock().unwrap().get_or_insert_with(Default::default).insert((f, mark), plan.clone());
+        plan
+    });
+    let size = history.last().map_or(0.4, |h| h.1);
+    let top = history.iter().map(|h| h.1).fold(0.0f32, f32::max);
+    let shrunk_for = history.iter().rev().take_while(|h| h.1 < top * 0.8).count() as i32;
+    let before = if k > 0 { replay::firm_k(r, f, k - 1) } else { kk };
+    let state = if before <= 0.0 && firm.born > r.y0 { State::GoingUp } else { State::Working };
+    let busy = if kk > before * 1.02 { 0.9 } else if kk < before * 0.98 { 0.45 } else { 0.75 };
+    let own = |n: i32| world::hash2(f as i32, year / 3 + n, 53);
+    Some(FirmSite { plan, now: site::Now { year, size, state, busy, stock_in: 0.35 + 0.6 * own(1), stock_out: 0.25 + 0.6 * own(2), shrunk_for, detail: Detail::Near } })
+}
+
 /// The works of firm `f` as it is drawn in year `k`, if it stands then: the
 /// size from its ladder, the state from what the year did to it.
-pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Works> {
+#[allow(dead_code)]
+pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<works::Works> {
     let kk = replay::firm_k(r, f, k);
     if kk <= 0.0 {
         return None;
@@ -442,7 +648,7 @@ pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Works
     } else {
         State::Working
     };
-    Some(Works {
+    Some(works::Works {
         kind: firm_kind(r, f),
         size: works::rung_size(rung, phase).min(slots.firm_cap.get(f).copied().unwrap_or(f32::MAX)),
         founded: firm.born,
@@ -459,19 +665,21 @@ pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Works
 /// the place it was found for. Finding one builds the whole works, so a year
 /// asks only for those that changed.
 #[derive(Default)]
-pub struct Flags(std::collections::HashMap<usize, ((u32, State, [u32; 3]), Vec3)>);
+pub struct Flags(std::collections::HashMap<usize, ((usize, u32, State, i32, [u32; 3]), Vec3)>);
 
 /// Where the family's flag flies on the works of firm `f` in year `k`: the
 /// top of its highest gable.
 pub fn firm_flag(r: &Replay, g: &Ground, slots: &Slots, f: usize, k: usize, lk: &Look, known: &mut Flags) -> Option<Vec3> {
-    let w = firm_works(r, slots, f, k)?;
+    let fs = firm_site(r, slots, f, k, lk)?;
     let &(x, z, yaw) = slots.firm_pos.get(f)?;
-    let key = (w.size.to_bits(), w.state, [x.to_bits(), z.to_bits(), yaw.to_bits()]);
+    // (what its height hangs on: its parts, its size, what it is doing and how long it has stood shrunk)
+    let newest = fs.plan.stages.last().map_or(0, |s| s.year);
+    let key = (fs.plan.parts.len() + if newest == fs.now.year { 1000 } else { 0 }, fs.now.size.to_bits(), fs.now.state, fs.now.shrunk_for.min(8), [x.to_bits(), z.to_bits(), yaw.to_bits()]);
     if let Some(&(_, at)) = known.0.get(&f).filter(|(was, _)| *was == key) {
         return Some(at);
     }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let at = works::flag_point(&Site::on(ground(g, x, z), yaw, &height), &w, lk);
+    let at = site::flag_point(&Site::on(ground(g, x, z), yaw, &height), &fs.plan, &fs.now, lk);
     known.0.insert(f, (key, at));
     Some(at)
 }
@@ -487,6 +695,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     slots.firm_pos.resize(n, (0.0, 0.0, 0.0));
     slots.firm_cap.resize(n, f32::MAX);
     slots.firm_water.resize(n, false);
+    slots.firm_plot.resize(n, Plot::rect(0.1, 0.08));
     let cen = crate::network::centres(r);
     // the churchyards of every year so far. When one is new (a town founded, a church rebuilt
     // bigger, or moved by a road or the railway), the cells it reaches are laid out again,
@@ -522,7 +731,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
         let in_churchyard = (0..n)
             .filter(|&f| {
                 let ((x, z, yaw), (from, to, _)) = (slots.firm_pos[f], lives[f]);
-                let (w, d) = works::footprint(firm_kind(r, f), works::rung_size(rungs[f], firm_phase(f)).min(slots.firm_cap[f]));
+                let (w, d) = site::ground(firm_kind(r, f), works::rung_size(rungs[f], firm_phase(f)).min(slots.firm_cap[f]));
                 let (hx, hz) = if (yaw / std::f32::consts::FRAC_PI_2).round() as i32 % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
                 yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(x, z, hx, hz))
             })
@@ -533,6 +742,25 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
             }
         }
         eprintln!("works laid out in {} cells: {} of {} drawn smaller than they are for want of room, {} with no ground of their own, {} on the ground of a church ({} churchyards over the years)", dirty.len(), squeezed, n, homeless, in_churchyard, yards.len());
+    }
+    if std::env::var_os("ISOSTATE_PLOTS").is_some() {
+        // the cells with the most works at the end, and what stands in each, for pointing a camera
+        let last = r.filled.clamp(1, r.ny) - 1;
+        let mut cells: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
+        for f in (0..n).filter(|&f| replay::firm_k(r, f, last) > 0.0) {
+            cells.entry(r.header.firms[f].cell).or_default().push(f);
+        }
+        let mut busiest: Vec<(usize, Vec<usize>)> = cells.into_iter().collect();
+        busiest.sort_by_key(|c| std::cmp::Reverse(c.1.len()));
+        for (cell, firms) in busiest.iter().take(24) {
+            let mut kinds: std::collections::BTreeMap<&str, (usize, f32, i32)> = Default::default();
+            for &f in firms {
+                let e = kinds.entry(firm_kind(r, f).label()).or_insert((0, 0.0, i32::MAX));
+                *e = (e.0 + 1, e.1.max(firm_ratio(r, f, replay::firm_k(r, f, last))), e.2.min(r.header.firms[f].born));
+            }
+            let (x, z, _) = slots.firm_pos[firms[0]];
+            eprintln!("works in cell {},{} (one at {:.2},{:.2}): {}", cell % r.w, cell / r.w, x, z, kinds.iter().map(|(k, v)| format!("{} {k} (to size {:.1}, from {})", v.0, v.1, v.2)).collect::<Vec<_>>().join("; "));
+        }
     }
     slots.firm_rung = rungs;
 }
@@ -550,6 +778,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
         firm_pos: Vec::new(),
         firm_cap: Vec::new(),
         firm_water: Vec::new(),
+        firm_plot: Vec::new(),
         firm_rung: Vec::new(),
         churchyards: 0,
         hedge: Vec::new(),
@@ -789,18 +1018,26 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // the works of the year, each in its own yard; houses, trees and farms keep clear of the yards
     let mut lanes = Builder::default();
     let mut plots: std::collections::HashMap<usize, Vec<(f32, f32, f32, f32)>> = Default::default();
+    {
+        // the plans this year needs that are not yet made, on every core
+        use rayon::prelude::*;
+        (0..r.header.firms.len()).into_par_iter().for_each(|f| {
+            firm_site(r, slots, f, k, lk);
+        });
+    }
     for (f, firm) in r.header.firms.iter().enumerate() {
-        let Some(w) = firm_works(r, slots, f, k) else { continue };
+        let Some(fs) = firm_site(r, slots, f, k, lk) else { continue };
         let p = slots.firm_pos[f];
-        let (fw, fd) = works::footprint(w.kind, w.size);
-        // the box round the yard as it lies on the map, and a little room
+        // the box round its plot as it lies on the map, and a little room
+        let (x0, x1, z0, z1) = fs.plan.plot.bounds();
+        let (fw, fd) = (x1 - x0, z1 - z0);
         let (sin, cos) = p.2.sin_cos();
         let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
         plots.entry(firm.cell).or_default().push((p.0, p.1, hx, hz));
-        let site = Site::on(ground(g, p.0, p.1), p.2, &height);
+        let site_ = Site::on(ground(g, p.0, p.1), p.2, &height);
         // as much of it as the camera can see, as for a house
-        let w = Works { detail: lod.at(p.0, p.1), ..w };
-        works(&mut works_b, &mut smoke, &mut lanes, &site, &w, lk);
+        let now = site::Now { detail: lod.at(p.0, p.1), ..fs.now };
+        site::site(&mut works_b, &mut smoke, &mut lanes, &site_, &fs.plan, &now, lk);
     }
     // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river

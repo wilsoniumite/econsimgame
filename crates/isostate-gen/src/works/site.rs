@@ -307,7 +307,7 @@ impl Plot {
     }
 
     /// The way out of the plot across side `i`, as a unit vector.
-    fn outward(&self, i: usize) -> (f32, f32) {
+    pub fn outward(&self, i: usize) -> (f32, f32) {
         let (a, b) = self.side(i);
         let (dx, dz) = (b.0 - a.0, b.1 - a.1);
         let len = dx.hypot(dz).max(1e-6);
@@ -320,6 +320,11 @@ impl Plot {
     fn along(&self, i: usize, t: f32, back: f32) -> (f32, f32) {
         let ((a, b), n) = (self.side(i), self.outward(i));
         (a.0 + (b.0 - a.0) * t - n.0 * back, a.1 + (b.1 - a.1) * t - n.1 * back)
+    }
+
+    /// The side whose way out lies nearest a direction (it need not be a unit vector).
+    pub fn side_toward(&self, dir: (f32, f32)) -> usize {
+        (0..self.outline.len()).max_by(|&a, &b| { let (oa, ob) = (self.outward(a), self.outward(b)); (oa.0 * dir.0 + oa.1 * dir.1).total_cmp(&(ob.0 * dir.0 + ob.1 * dir.1)) }).unwrap_or(0)
     }
 
     /// The first side that faces what is wanted in `year`.
