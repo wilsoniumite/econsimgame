@@ -104,6 +104,15 @@ them are those of a5ea2ea.
   a district changes market, villages at pit heads, and wharves and stations as places with a
   charge. Only the page is on `main`; the prototype, its test and its example `new_towns.rs` are
   on `night/o-dx-new-towns-check`.
+- `dx-harvest-month.md` (a probe, of the game's rules at 11dbe7d, 12 November 2026, eight
+  islands with six families): a harvest that comes in a month. Today the farms' year is flat
+  and grain saws for a year after a bad harvest; a prototype behind `season.enabled`, off under
+  both sets of rules, brings the crop into store in August and September, and of its five forms
+  the four that failed show that the price rule, written for grain that arrives every month,
+  reads a store wrongly. The last form ends the saw and puts the dearth in the months it belongs
+  in, but takes famine years from 0.4 a run to 4.2, nearly all in July. Its verdict is to build a
+  harvest month with a price rule written for stores. Only the page is on `main`; the prototype,
+  its test and its example are on `night/o-dx-harvest-month-check`.
 - `dx-roads.md` (a probe, of the game's rules at a6ff0ec, 12 November 2026, eight islands with
   six families and sixteen for the sweep): who pays for the roads and bridges and who is paid a
   railway's fares. Today nobody: a road is worn into being by traffic alone, a river that is not
