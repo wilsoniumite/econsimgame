@@ -52,10 +52,10 @@ pub struct PriceParams {
     pub markup: f64,
     /// Merchants take all a works makes while the town's stock of its good is
     /// under this many months of sales and shipments. 0: they always take all.
-    /// It has to stand above [`brake_floor`], which two numbers of the port's
-    /// set, and a setting that does not is refused where it is read ([`check`]).
     pub glut_months: f64,
     /// At this many months they take only `glut_floor` of the works' capacity.
+    /// It has to stand above [`brake_floor`], which two numbers of the port's
+    /// set, and a setting that does not is refused where it is read ([`check`]).
     pub glut_stop_months: f64,
     /// The least share of a works' capacity merchants go on taking in the worst glut.
     pub glut_floor: f64,
@@ -210,16 +210,18 @@ pub fn anchor_follows(st: &mut State, C: &Content, P: &Params, t: usize, g: usiz
     st.price_anchor[(t, g)] = (st.price_anchor[(t, g)] * st.price[(t, g)] / was).clamp(lo, hi);
 }
 
-/// The least stock, in months of sales and shipments, at which the brake on a
-/// glut may start. It leans on two numbers the brake does not own. Merchants
-/// mean to hold `price_target_months` of a good (2), so a brake at or under it
-/// falls on every trade: at half a month every works is on short time for
-/// ever (docs/rules/prices.md). And a town may ship at most `trade_cap` of its
-/// stock a month (0.3), so a town that only ships a good never holds less than
-/// `1 / trade_cap` months of it (3.3), and a brake under that falls on the
-/// exporters. The game's `glut_months` of 4 stands above both; whoever moves
-/// either number moves this floor with it, and [`check`] refuses a brake that
-/// is left under it.
+/// The stock, in months of sales and shipments, at or under which the brake on
+/// a glut must not yet be fully on. It leans on two numbers the brake does not
+/// own. Merchants mean to hold `price_target_months` of a good (2), so a brake
+/// that is full on by then falls on every trade: from 0.5 to 0.6 months every
+/// works is on short time for ever (docs/rules/prices.md). And a town may ship
+/// at most `trade_cap` of its stock a month (0.3), so a town that only ships a
+/// good never holds less than `1 / trade_cap` months of it (3.3), and a brake
+/// full on by then falls on every exporter. The brake may start below the floor,
+/// as long as it is still easing off there: from 0.5 to 40 months, and from 2
+/// to 8, measure as well as the game's 4 to 8 (docs/rules/prices.md,
+/// docs/probes/sens-prices.md). Whoever moves either number moves this floor
+/// with it, and [`check`] refuses a `glut_stop_months` left at or under it.
 pub fn brake_floor(P: &Params) -> f64 {
     let ships = if P.trade_cap > 0.0 { 1.0 / P.trade_cap } else { 0.0 };
     P.price_target_months.max(ships)
@@ -236,19 +238,20 @@ pub fn check(P: &Params) -> Result<(), String> {
         return Ok(());
     }
     let floor = brake_floor(P);
-    if !(pp.glut_months > floor) {
+    if !(pp.glut_stop_months > floor) {
         return Err(format!(
-            "prices.glut_months is {}, and the brake on a glut has to start above {} months of stock, the larger of price_target_months ({}) and the stock a town that only ships holds at a trade_cap of {} (1 / trade_cap): move glut_months and glut_stop_months with them",
-            short(pp.glut_months),
+            "prices.glut_stop_months is {}, and the brake on a glut must still be easing off above {} months of stock, the larger of price_target_months ({}) and the stock a town that only ships holds at a trade_cap of {} (1 / trade_cap): raise glut_stop_months with them",
+            pp.glut_stop_months,
             short(floor),
-            short(P.price_target_months),
-            short(P.trade_cap)
+            P.price_target_months,
+            P.trade_cap
         ));
     }
     Ok(())
 }
 
-/// A setting as a person would write it: at most two decimals, none trailing.
+/// A number worked out, as a person would write it: at most two decimals, none
+/// trailing. (Settings are written as they were given.)
 fn short(x: f64) -> String {
     let s = format!("{x:.2}");
     if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }

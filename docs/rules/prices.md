@@ -128,16 +128,16 @@ at once), a `glut_floor` outside 0 to 1, and any of the four that is not a
 number, whether the switch is on or off (`PriceSettings` in `prices.rs`; a
 `nan` or `inf` in a file is refused before it gets there, as "invalid type:
 null", since a file is read by way of JSON, which has no such numbers).
-The brake has to stand well above `price_target_months` (2), the
+The brake must not be full on by `price_target_months` (2), the
 stock merchants mean to hold: with `glut_months` 0.5 and `glut_stop_months`
 0.6 every works is on short time for ever (utilisation 0.11, no railway, 439
 thousand people in 1900), and with 0.5 and 2 the wage of 1900 is 1.08 times
 1750's. A brake that starts at 0.5 and stops at 40, or one that drops from all
-to nothing at 4 months, measures like the game's. (Those runs were made before
-a brake at or under the floor was refused; see "The brake leans on two
-numbers" under What worries me. A brake starting at 0.5 is refused from a
-file; the sweep's `--set` does not check it yet, and a test can build one in
-code, as `tests/prices.rs` does.)
+to nothing at 4 months, measures like the game's. So what matters is where the
+brake is full on, not where it starts, and that is what is refused: a
+`glut_stop_months` at or under the floor (see "The brake leans on two numbers"
+under What worries me). The first two brakes here are refused from a file
+today; the last two are read.
 
 ## The wage still finds its root
 
@@ -516,15 +516,21 @@ with people switched off.
   because merchants aim at 2 (`price_target_months`) and a town that only
   ships holds 3.3 (`1 / trade_cap`). The code now holds this:
   `prices::brake_floor` is the larger of the two, and a parameters file or
-  override that leaves `glut_months` at or under it is refused in a sentence
-  that names the three settings (`prices::check`, called by every reader in
-  `params.rs`; `tests/prices.rs`,
-  `the_brake_moves_with_the_two_numbers_it_leans_on`). So a `trade_cap` of
-  0.2 alone is refused under the game's rules, and goes through with
-  `glut_months` 6 beside it. Two roads are not checked: a `Params` built in
-  code (on purpose, so a test can try a harsher brake) and the sweep's
-  `--set`, which reads each setting by its own route (`sweep::set_field`)
-  and does not call `Params::check` yet.
+  override that leaves the brake full on at or under it (`glut_stop_months`)
+  is refused in a sentence that names the three settings (`prices::check`,
+  called by every reader in `params.rs`; `tests/prices.rs`,
+  `the_brake_moves_with_the_two_numbers_it_leans_on`). It is where the brake
+  is full on that is held, not where it starts, because brakes that start
+  under the floor and still ease off above it measured as well as the game's
+  (0.5 to 40 above; 2 to 8 and 2 to 4.5 in docs/probes/sens-prices.md, which
+  found that a brake from 2 months steadies iron's price on all sixteen
+  islands and asks for a search downward). So a `trade_cap`
+  of 0.125 alone is refused under the game's rules (a town that only ships
+  holds 8 months, where the game's brake is full on), and goes through with
+  `glut_stop_months` 12 beside it. Two roads are not checked: a `Params`
+  built in code (on purpose, so a test can try a harsher brake) and the
+  sweep's `--set`, which reads each setting by its own route
+  (`sweep::set_field`) and does not call `Params::check` yet.
 - **Famines.** Without families there are more: 2.0 a run under the port and
   3.2 with prices over sixteen seeds, up in eleven and down in three. With six
   families there are not (1.6 and 1.7). In the one run opened (seed 13) they
