@@ -53,7 +53,7 @@ each good's units; a price is "a unit". Outputs are on the machine, under
    shows, says which figures are means, and gives no advice.
 6. **The viewer needs nothing from the record for a live game** (section 3). One town's books
    take 0.02 ms to make on the simulation's thread and are some 60 kB as JSON (less as the
-   struct itself); a works' 0.13 ms and 20 to 24 kB. They can be asked for on a click, as a
+   struct itself); a works' about a tenth of a millisecond and 20 to 24 kB. They can be asked for on a click, as a
    square's prospects are today. The smallest useful piece is the card's three lines, then the
    sheet. Only a recorded run, and the map's lines of traffic, need more.
 
@@ -65,7 +65,7 @@ makes in 1800 and 60 in 1880, wool, grain and stone, and cloth from its mills by
 in 1880, and 2.44 million units of coal that year); and **the largest**: Glenbrook
 in 1800 (28,402 people) and Stratbank in 1880 (72,934), which was itself a farm-and-coal town
 of 11,465 in 1800. `flows --survey` lists every town in both years; `flows --towns
-Cardale,Garside,Glenbrook,Stratbank --works` prints all that follows, and more (3,477 lines).
+Cardale,Garside,Glenbrook,Stratbank --works` prints all that follows, and more (3,408 lines).
 
 How to read the tables. *Made* is valued at the town's price in the month it was made, added
 up over the year; the merchants pay the maker 94 per cent of that. *Came in* is valued where
@@ -75,6 +75,13 @@ flows' value over their quantity; *carting* is carting over quantity; *the price
 receiving town's mean. *Went out* is the same from the other end; where *the price there* is
 a range, it is of the towns that took the eight largest flows, which `flows` lists for each
 good.
+
+The tables do not show every good. What was made shows the larger goods, mostly the largest
+by value, and puts the rest in one line, so that the column adds up to "all of it". What came
+in and what went out show five goods each, the five largest by value except in three tables,
+where a smaller good stands in for the fifth: iron for tools in what came into Cardale in 1800,
+steel for wool in what went out of Glenbrook in 1800, iron for wool in what went out of
+Garside in 1880. `flows` lists them all.
 
 ### 1.1 Cardale, the farm town
 
@@ -89,6 +96,7 @@ carting.
 | services | 1,822 | 17,885 | 2 shops, 291 hands |
 | timber | 16,766 | 13,642 | woods, 170 hands (543 of it from clearing) |
 | cloth | 1,389 | 7,536 | 1 mill, 8 hands |
+| 5 more goods | | 16,016 | coal, steel, machinery, iron, iron ore |
 | all of it | | 180,235 | |
 
 | came in | units | from | chiefly | a unit there | carting | the price here |
@@ -121,6 +129,7 @@ goes out at 0.59, to dearer towns again.
 | machinery | 952 | 36,174 | 3 engine works, 125 hands |
 | coal | 94,424 | 34,283 | pits, 243 hands |
 | iron | 8,543 | 29,394 | 3 coke furnaces, 75 hands |
+| 6 more goods | | 84,868 | bricks, steel, timber, tools, iron ore, rails |
 | all of it | | 805,348 | |
 
 | came in | units | from | chiefly | a unit there | carting | the price here |
@@ -155,6 +164,7 @@ fetch where they go, as wool did eighty years before.
 | services | 5,590 | 61,365 | shops, 644 hands |
 | bricks | 17,292 | 45,001 | 3 brickworks, 226 hands |
 | iron | 7,548 | 26,030 | 4 coke furnaces, 71 hands, at full capacity |
+| 8 more goods | | 157,886 | timber, cloth, machinery, rails, steel, tools, clay, iron ore |
 | all of it | | 711,805 | |
 
 | came in | units | from | chiefly | a unit there | carting | the price here |
@@ -188,6 +198,7 @@ year was 1.63 on the mean.
 | cloth | 94,923 | 537,868 | 5 mills, 315 hands |
 | steel | 79,189 | 429,754 | 10 converters, 926 hands |
 | iron | 83,882 | 305,752 | 5 coke furnaces, 614 hands |
+| 9 more goods | | 1,039,777 | wool, grain, machinery, bricks and five more |
 | all of it | | 5,988,580 | |
 
 | came in | units | from | chiefly | a unit there | carting | the price here |
@@ -223,6 +234,7 @@ carting.
 | wool | 88,437 | 207,408 | pasture, 1,637 hands |
 | stone | 145,319 | 170,782 | quarries, 1,518 hands |
 | clay | 76,211 | 34,997 | pits, 478 hands, at a rent of -5,709 |
+| 6 more goods | | 268,857 | timber, steel, tools, iron, machinery, iron ore |
 | all of it | | 1,689,988 | |
 
 | came in | units | from | chiefly | a unit there | carting | the price here |
@@ -256,6 +268,7 @@ carting.
 | grain | 2,605,633 | 848,890 | farms, 3,746 hands |
 | coal | 3,380,631 | 773,270 | pits, 3,240 hands |
 | wool | 88,071 | 562,612 | pasture, 2,444 hands |
+| 9 more goods | | 1,056,863 | steel, iron, bricks, machinery and five more |
 | all of it | | 7,698,770 | |
 
 | came in | units | from | chiefly | a unit there | carting | the price here |
@@ -295,7 +308,7 @@ From the town's own figures (`TOWN_FIELDS`) and its methods' books, in money of 
 | **rent**: of farms, woods, pits | 30,484 | 97,556 | 94,997 | 444,828 | 191,344 | 673,951 |
 | of works' ground | 128 | 1,897 | 1,130 | 39,042 | 11,080 | 53,326 |
 | of town houses | 2,421 | 16,370 | 15,265 | 289,549 | 59,137 | 405,526 |
-| of those, to families | 2,555 | 9,444 | 9,765 | 78,552 | 83,804 | 0 |
+| of the three rents, to families | 2,555 | 9,444 | 9,765 | 78,552 | 83,804 | 0 |
 | **the works' profit**, after managers | 10,328 | 84,504 | 70,356 | 433,085 | 267,003 | 445,008 |
 | **the merchants**: took in less paid out | 14,979 | -134,458 | 3,502 | 117,778 | 107,184 | 141,754 |
 | their cash at the year's end | 34,658 | -2,191,248 | 101,065 | 994,632 | 331,897 | 1,275,741 |
@@ -309,7 +322,10 @@ goes on (Garside 0.30 in 1800 and 0.13 in 1880; Glenbrook 0.37 in 1800).
 ### 1.5 What balances and what does not
 
 `flows` holds every figure it prints against the others. In all eight town-years (the four towns
-in both years) these hold to single precision, 5 parts in a hundred million or better:
+in both years) these hold to single precision, less than a part in ten million (the worst is 7.4
+parts in a hundred million, Cardale's pay in works in 1880; a method that made nothing, as
+Glenbrook's steel rail mill in 1880, prints a share of 2e-3 of a difference that is itself
+nought):
 
 - for every good, made, received, moved and oversold against bought, sent, spoiled and the
   change in stock (the worst left over is 0.127 units of coal of 3.59 million through Stratbank
@@ -350,9 +366,9 @@ What does not, and why:
    only when the gap between the two towns' prices that month beats the carting (`econ.rs`,
    the trade block). The inspector has to show a flow at its own price, and call the means
    means.
-5. **Flows of nothing.** The books keep every flow above zero, so a town-year has 2 to 15 flows
+5. **Flows of nothing.** The books keep every flow above zero, so a town-year has 2 to 18 flows
    of less than a twentieth of a unit (charcoal to eight towns from Cardale in 1800, at 0.000
-   units). They are true and say nothing; the inspector should leave them out and count them.
+   units; Glenbrook brought in fifteen such in 1800). They are true and say nothing; the inspector should leave them out and count them.
 6. **Nothing here came with districts or was sold out of thin air.** `moved` is 0 and
    `oversold` 1e-13 or less of what was bought, in all eight.
 
@@ -428,13 +444,18 @@ bands, each band as wide as its value; the goods are rows; hovering a band names
                                   ┗┻━━▶   9 more goods 1.04 M        ━━━┻┻┻┛
    carried in for                 99 k                                     carried out for        157 k
 
-   Who was paid                households 4.43 M · rents 0.77 M · the works' owners 0.43 M · merchants 0.12 M
+   Who was paid      wages 3.57 M · carting 0.36 M · rent of land and works' ground 0.48 M
+                     the works' profit 0.43 M · the merchants' takings less what they paid 0.12 M
 ```
 
 The bands are a sketch of the idea, not of the drawing: what came in and what was made meet in
 the town's store, and from it go what was used, bought and sent. What it holds is section
-1.2's tables, drawn. The "who was paid" line opens to section 1.4's
-column for the town, as a list with the same words. Under it, small and muted, a line says how
+1.2's tables, drawn. The "who was paid" line names five payments that do not overlap: the
+households' dividends come out of the works' profit and the merchants' takings, and the rent of
+town houses out of what the households received, so the line leaves those out rather than count
+them twice (the
+households' 4.43 M of section 1.4 holds 0.45 M of dividends). It opens to section 1.4's column
+for the town, as a list with the same words. Under it, small and muted, a line says how
 many flows were too small to draw ("2 flows of less than a twentieth of a unit are not drawn").
 
 ### On a click: a good in the town
@@ -556,7 +577,7 @@ stays on the simulation's thread inside `save::Game`.
 | for | what | how | weight (`flows --weigh`, the run to 1880, then to 1900) |
 |---|---|---|---|
 | a town's card and sheet, a good in the town | `accounts::town_books(st, C, town, Some(year))` | a request and a reply on the game thread's channel, as a square's prospects are asked for (`Cmd::Site` and `Msg::Site`) | 0.02 ms to make; 59 to 65 kB as JSON with names repeated in every row (the struct is less); 282 to 340 flows |
-| a works' card | `accounts::works_books(st, C, firm)` | the same | 0.13 to 0.14 ms; 20 to 24 kB as JSON |
+| a works' card | `accounts::works_books(st, C, firm)` | the same | 0.07 to 0.14 ms (three runs on a shared machine); 20 to 24 kB as JSON |
 | one good across the island | every town's row for that good and the year's flows of it | `town_books` for each of the 19 towns, or a small new function in the core that returns one good's rows and flows | 19 x 0.02 ms; the year's flows are 2,946 to 2,999, of which 187 to 314 are iron's, a pass of 0.01 ms |
 | the same in a recorded run | the books' arrays in `run.bin` (`acct_goods`, `acct_trade_*`, `acct_works*` and the rest) | read when the run is loaded; the header names every column | 47,322 to 48,204 numbers a year in the dense tables (0.19 MB, more than half of them nothing), 70 kB of flows and uses; 27 to 32 MB for the whole run; a `lite` pack has no works |
 
