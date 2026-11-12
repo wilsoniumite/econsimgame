@@ -186,7 +186,7 @@ fn a_family_founds_the_works_it_can_pay_for() {
     let C = s.content.clone();
     // the player's first decision, its trade (any will do)
     let first = families::pending(&s.st, 0);
-    families::decide(&mut s.st, &C, 0, first[0].id, 0).expect("the first trade");
+    families::decide(&mut s.st, &C, &s.params, 0, first[0].id, 0, &mut s.events).expect("the first trade");
     let seat = s.st.families[0].seat;
     let option = |st: &State, cell: usize, m: usize| families::site_options(st, &C, &P, 0, cell).unwrap().swap_remove(m);
     // an empty cell at the seat and a trade the family may found there
@@ -454,4 +454,48 @@ fn a_family_extends_the_works_it_has() {
     let told: Vec<&Event> = new.events.iter().filter(|e| e.family == Some(0) && e.title.contains(" family extends ")).collect();
     assert!(!told.is_empty() && told.iter().all(|e| e.kind == "family" && e.firm.is_some() && e.town.is_some()), "{} extensions told", told.len());
     assert!(old.events.iter().all(|e| !e.title.contains(" extends ")), "and the port has none to tell");
+}
+
+#[test]
+fn a_works_is_numbered_among_the_works_of_its_own_name() {
+    // The port numbers a works by counting every name that starts with its own,
+    // so a family's "Ashby Mill" was numbered on from the town's "Ashby Mills".
+    // Under the life cycle only the works of that very name count, closed ones
+    // among them, so that no name is given twice in a run.
+    let P = params(3, 6, 1752);
+    let mut s = sim::start(&P, default_content());
+    let C = s.content.clone();
+    // the family takes up a trade and learns it for a year
+    let d = pending(&s.st, 0);
+    let textiles = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, textiles, &mut s.events).unwrap();
+    sim::run_year(&mut s).unwrap();
+    // cash from nowhere, so no order fails for want of it (the money check is off from here)
+    s.check_money = false;
+    s.st.families[0].cash += 1e7;
+    let seat = s.st.families[0].seat;
+    let sites: Vec<(usize, usize)> = (0..s.st.N)
+        .filter(|&c| s.st.catch[c] == seat as i64)
+        .filter_map(|c| site_options(&s.st, &C, &s.params, 0, c).ok()?.into_iter().find(|o| o.allowed.is_ok()).map(|o| (c, o.method)))
+        .collect();
+    let method = sites.first().expect("the player can build at the seat").1;
+    let cells: Vec<usize> = sites.iter().filter(|&&(_, m)| m == method).map(|&(c, _)| c).collect();
+    assert!(cells.len() >= 3, "three cells at the seat for one method");
+    let found = |s: &mut Sim, c: usize| -> String {
+        let f = found_works(&mut s.st, &C, &s.params, 0, method, c, s.year, &mut s.events).unwrap();
+        s.st.f_name[f].clone()
+    };
+    let first = found(&mut s, cells[0]);
+    assert!(!first.contains(" No. "), "{first}");
+    // another works' name begins with the same words: it is not one of them
+    let f0 = (0..s.st.F_count).find(|&f| s.st.f_name[f] == first).unwrap();
+    s.st.f_name[f0] = format!("{first}s");
+    assert_eq!(found(&mut s, cells[1]), first, "a name of its own");
+    // a closed works still counts, so the next is the second of the name
+    let f1 = (0..s.st.F_count).rev().find(|&f| s.st.f_name[f] == first).unwrap();
+    s.st.f_alive[f1] = false;
+    assert_eq!(found(&mut s, cells[2]), format!("{first} No. 2"));
+    // and the port's count, which is the Python's, takes the other in
+    let both = [format!("{first}s"), first.clone()];
+    assert_eq!((names::works_of_name(&both, &first), both.iter().filter(|n| n.starts_with(&first)).count()), (1, 2));
 }
