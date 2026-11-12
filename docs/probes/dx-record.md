@@ -258,7 +258,7 @@ Stage 1, in one branch: the record's test first (the golden hashes of the port's
 ## 5. What this probe did not do
 
 - It changed nothing but the example. No layout table, switch, test or row was written; the numbers above are of encodings made inside the example, not of a record that has them.
-- Two islands. The sizes scale with cells and years and hardly with the island; the counts (rent's clipped cells, the works) will differ by island.
+- Two islands. The sizes scale with cells and years and hardly with the island; the counts (rent's clipped cells, the works) will differ by island. The check of this probe ran island 5 as well, with the same command: `run.bin` 46.59 MB (books 47.6 per cent), the ground outside two classes 0.20 to 0.235, rent at the byte's top in 196 cells in 1900 (the dearest £2,680 a month), no cell past the way to market's byte or the residents' (fullest 1,412), 0 to 5 works going up as December ends against 58 to 200 after the turn, 63,524 works-years, and stage 1's four columns 0.32 MB raw and 0.18 MB gzipped. Islands 7 and 3 came out again to the byte, every file and every hash of the port's record.
 - The viewer's own reading was not timed: the example reads the run back as the viewer does in outline, without its fallbacks and checks. Neither was the drawing of anything proposed here.
 - The intensity byte (`inten`, on farmed land clipped at 45 hands a cell) was not counted, nor whether `catch` can pass 254 towns (`T_max` is 48 today).
 - The workings' table repeats every working ever opened in every year after (69,413 rows on island 7, 2.57 MB, 37 bytes each); a table of workings with their years and a row a year only while at work would be smaller. Noticed, not measured further.
