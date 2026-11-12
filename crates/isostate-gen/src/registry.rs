@@ -468,6 +468,27 @@ mod tests {
         }
     }
 
+    /// Prints how long every entry's specimens take to build at every level, and how
+    /// long that is for each thousand triangles: a generator that is slow for what it
+    /// draws shows here (`cargo test -p isostate-gen timings -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn timings() {
+        let pal = Palette::standard();
+        for e in REGISTRY {
+            for detail in Detail::ALL {
+                const ROUNDS: u32 = 20;
+                let tris: usize = (e.build)(detail, &pal).iter().map(|s| s.model.triangles()).sum();
+                let t0 = std::time::Instant::now();
+                for _ in 0..ROUNDS {
+                    std::hint::black_box((e.build)(detail, &pal));
+                }
+                let ms = t0.elapsed().as_secs_f64() * 1000.0 / ROUNDS as f64;
+                println!("timing {:<24} {:<5} {:>8.3} ms for {:>6} triangles, {:>6.3} ms a thousand", e.name, detail.label(), ms, tris, ms * 1000.0 / tris.max(1) as f64);
+            }
+        }
+    }
+
     /// Prints what every specimen measures at every level
     /// (`cargo test -p isostate-gen measures -- --ignored --nocapture`).
     #[test]

@@ -860,6 +860,13 @@ impl<'a, 's> Ctx<'a, 's> {
             let neck = h - 0.002;
             self.solid.block(p, w, d, neck, s.yaw, col, None, SINK);
             self.solid.block(p + Vec3::Y * neck, w + 0.0014, d + 0.0014, 0.002, s.yaw, shade(col, 0.9), Some(soot), 0.0);
+            if !self.derelict() {
+                // the iron straps that hold the brickwork against the heat, above the shed's roof
+                let iron = shade(*self.pal.iron.plate, 0.9);
+                for k in [0.62, 0.84] {
+                    self.solid.block(p + Vec3::Y * (h * k), w + 0.0008, d + 0.0008, 0.0016, s.yaw, iron, None, 0.0);
+                }
+            }
         } else {
             self.solid.block(p, w, d, h, s.yaw, col, Some(soot), SINK);
         }
