@@ -1012,7 +1012,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                     }
                 }
                 // (the year from which a works' yard has held neither the plot nor its length of lane)
-                let freed = lay.clear_since(p).max(lay.clear_since_at(si, t_of(i)));
+                let freed = lay.clear_since(p).max(lay.clear_since(p + n * side * (depth * 0.5 + houses::BACK_ROOM))).max(lay.clear_since_at(si, t_of(i)));
                 let v = family.map_or(pv, |f| (f + 0.3 * (pv - 0.5)).clamp(0.0, 0.999));
                 let pl = Plot { p, yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 }, run: (id, j), row: in_row.then_some(row), high: s.kind == 0, index: i, width: spacing, depth, need: 0.0, u: pu, v };
                 side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined).max(freed), street: (0, 0.0), family: told }, t_of(i), freed));
@@ -1072,7 +1072,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             let Some((c, _, _)) = lay.town_at(p) else { continue };
             // the market place is the first of a town to be built round (but for ground a
             // works' yard held: that comes into the order when the yard is given up)
-            let (joined, freed) = (lay.joined[&c], lay.clear_since(p));
+            let (joined, freed) = (lay.joined[&c], lay.clear_since(p).max(lay.clear_since(p + dirv * (houses::PLOT.1 * 0.5 + houses::BACK_ROOM))));
             let mut turn = -2.0 + pu;
             if freed > joined && freed <= k as u32 {
                 let was = *built_before.entry((c, freed)).or_insert_with(|| {
@@ -1140,7 +1140,10 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             note(lot.cell, lot.kind, 7);
             continue;
         }
-        if near_plot(p.x, p.y) {
+        // (its yard or garden runs back from the house as far again as the plot is deep:
+        // the back of it is asked too, so that no garden ends in a works' yard or the water)
+        let back = p - Vec2::new(lot.pl.yaw.sin(), lot.pl.yaw.cos()) * (lot.pl.depth * 0.5 + houses::BACK_ROOM);
+        if near_plot(p.x, p.y) || near_plot(back.x, back.y) {
             tell(lot.pl.run, lot.pl.index, 3);
             note(lot.cell, lot.kind, 3);
             continue;
@@ -1151,7 +1154,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             continue;
         }
         // in a way, or in a lane that is no younger than the plot (a later lane runs round the plots it finds)
-        if lay.in_street(p, if lot.kind == 9 { 0.03 } else { 0.02 }, Some(lot.age), |o| !o.lane() || o.way.since <= lot.age) {
+        if lay.in_street(p, if lot.kind == 9 { 0.03 } else { 0.02 }, Some(lot.age), |o| !o.lane() || o.way.since <= lot.age) || lay.in_street(back, 0.0, Some(lot.age), |o| !o.lane() || o.way.since <= lot.age) {
             tell(lot.pl.run, lot.pl.index, 5);
             note(lot.cell, lot.kind, 5);
             continue;
@@ -1177,13 +1180,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         note(lot.cell, lot.kind, 0);
         standing.push(Stood { lot, before, year, roof, neighbours: (false, false) });
     }
-    // street by street, and which houses have a neighbour on the next plot along
-    standing.sort_by_key(|s| (s.lot.pl.run, s.lot.pl.index));
-    for i in 0..standing.len() {
-        let next_to = |j: usize| standing[j].lot.pl.run == standing[i].lot.pl.run && (standing[j].lot.pl.index - standing[i].lot.pl.index).abs() == 1;
-        let (before, after) = (i > 0 && next_to(i - 1), i + 1 < standing.len() && next_to(i + 1));
-        standing[i].neighbours = if standing[i].lot.pl.run.1 == 1 { (after, before) } else { (before, after) };
-    }
+    find_neighbours(&mut standing);
 
     // the lanes, where houses front them: a lane is drawn along each group of houses it has,
     // a cross street from where it starts to its last house (or to the lane it reaches, if
@@ -1265,6 +1262,28 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     let stories: HashMap<u32, Story> = stories.into_iter().map(|(c, (story, _))| (c, story)).collect();
     let whats = what_stands(r, k, &sq, &standing, &stories);
     Layout { lanes, standing, whats, stories, ms: [ms(t0, t1), ms(t1, t2), ms(t2, t3)], why }
+}
+
+/// Put the houses in order, street by street and along each, and say of each
+/// whether a house stands on the next plot to its left and to its right.
+fn find_neighbours(standing: &mut [Stood]) {
+    standing.sort_by_key(|s| (s.lot.pl.run, s.lot.pl.index));
+    for i in 0..standing.len() {
+        let next_to = |j: usize| standing[j].lot.pl.run == standing[i].lot.pl.run && (standing[j].lot.pl.index - standing[i].lot.pl.index).abs() == 1;
+        let (before, after) = (i > 0 && next_to(i - 1), i + 1 < standing.len() && next_to(i + 1));
+        standing[i].neighbours = if standing[i].lot.pl.run.1 == 1 { (after, before) } else { (before, after) };
+    }
+    // round a market place the last plot's neighbour is the first: the ring closes on itself
+    let ring = RING_PLOTS - 1;
+    for i in 0..standing.len() {
+        if standing[i].lot.kind == 9 && standing[i].lot.pl.index == 0 {
+            let run = standing[i].lot.pl.run;
+            if let Some(j) = (i + 1..standing.len()).take_while(|&j| standing[j].lot.pl.run == run).find(|&j| standing[j].lot.pl.index == ring) {
+                standing[i].neighbours.0 = true;
+                standing[j].neighbours.1 = true;
+            }
+        }
+    }
 }
 
 /// What stands on a plot: its kind, how tall it is, and what else its
@@ -1664,6 +1683,102 @@ mod tests {
                 assert_eq!(now, was, "the house on plot {plot:?}");
             }
         }
+    }
+
+    /// The made-up town laid out for year `k`, with `near_plot` for its works' yards and its water.
+    fn laid(r: &Replay, g: &Ground, k: usize, near_plot: &dyn Fn(f32, f32) -> bool) -> Layout {
+        lay_out(r, g, &crate::network::centres(r), k, &[], near_plot, None, &world::year_land(r, g, k))
+    }
+
+    #[test]
+    fn a_house_s_kind_and_height_hold_from_year_to_year_once_built() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        let mut before: Option<std::collections::BTreeMap<((i32, u8), i32), What>> = None;
+        let (mut rebuilt, mut raised) = (0, 0);
+        // the people grow every year to the sixth, and in the seventh a fifth of them are gone
+        for k in 0..r.ny {
+            let l = laid(&r, &g, k, &|_, _| false);
+            let now: std::collections::BTreeMap<_, _> = l.standing.iter().zip(&l.whats).map(|(s, w)| ((s.lot.pl.run, s.lot.pl.index), *w)).collect();
+            assert_eq!(now.len(), l.standing.len());
+            if let Some(was) = &before {
+                for (plot, a) in was {
+                    let b = now.get(plot).unwrap_or_else(|| panic!("year {k}: the house on plot {plot:?} is gone"));
+                    // a cottage may be rebuilt as a townhouse: nothing else changes a house's kind
+                    assert!(a.kind() == b.kind() || (a.kind() == 0 && b.kind() == 1), "year {k}, plot {plot:?}: {a:?}, then {b:?}");
+                    assert!(b.storeys() >= a.storeys(), "year {k}, plot {plot:?}: {a:?}, then {b:?}");
+                    rebuilt += (a.kind() != b.kind()) as usize;
+                    raised += (b.storeys() > a.storeys()) as usize;
+                    // what was told of it then is told of it now: the age it was raised in, and its front's
+                    match (a, b) {
+                        (What::Cottage { storeys: 2, raised: then }, What::Cottage { raised: now, .. }) => assert_eq!(then, now, "year {k}, plot {plot:?}"),
+                        (What::Townhouse { era: then, fronted: Some(front), .. }, What::Townhouse { era: now, fronted, .. }) => assert_eq!((then, Some(*front)), (now, *fronted), "year {k}, plot {plot:?}"),
+                        _ => {}
+                    }
+                }
+            }
+            before = Some(now);
+        }
+        assert!(rebuilt > 10 && raised > 10, "{rebuilt} cottages rebuilt as townhouses and {raised} houses raised in six years");
+    }
+
+    #[test]
+    fn no_back_yard_runs_into_a_works_yard_a_lane_or_the_water() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        let cen = crate::network::centres(&r);
+        let node = Vec2::new(cen[5 * r.w + 5].0, cen[5 * r.w + 5].1);
+        // a works' yard across a strip of the town's middle, and a pond beside it (the
+        // layout is told of the water as it is of a yard)
+        let yard = |x: f32, z: f32| (x - node.x - 0.2).abs() < 0.12 && (z - node.y).abs() < 0.3 || Vec2::new(x, z).distance(node + Vec2::new(-0.25, 0.2)) < 0.1;
+        for k in [0, 3, 5] {
+            let l = laid(&r, &g, k, &yard);
+            assert!(l.standing.len() > 60, "year {k}: {} houses", l.standing.len());
+            for s in &l.standing {
+                let pl = &s.lot.pl;
+                // from the middle of its plot back to the end of its yard or garden
+                let back = pl.p - Vec2::new(pl.yaw.sin(), pl.yaw.cos()) * (pl.depth * 0.5 + houses::BACK_ROOM);
+                assert!(!yard(pl.p.x, pl.p.y) && !yard(back.x, back.y), "year {k}: the house on plot {:?} at {}, or the end of its garden at {back}, is in a works' yard or the water", (pl.run, pl.index), pl.p);
+                // nor does a lane that is drawn run through the house or across the end of its
+                // garden, unless the lane is younger than the house and was laid round it
+                for (line, width) in &l.lanes {
+                    for w in line.windows(2) {
+                        assert!(off_line(pl.p, w[0], w[1]) >= width * 0.5 + 0.012, "year {k}: a lane runs through the house on plot {:?}", (pl.run, pl.index));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_houses_round_a_market_place_know_their_neighbour_across_the_ring_s_seam() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        let mut seams = 0;
+        for k in 0..r.ny {
+            let mut standing = laid(&r, &g, k, &|_, _| false).standing;
+            // the plots round the market place are numbered from the east, where the made-up
+            // town's road comes in and no house stands: so that the seam is tried, turn the
+            // numbers round the ring by every count in turn (which houses stand side by side
+            // is the same however the ring is numbered)
+            for turn in 0..RING_PLOTS {
+                for s in standing.iter_mut().filter(|s| s.lot.kind == 9) {
+                    s.lot.pl.index = (s.lot.pl.index + 1).rem_euclid(RING_PLOTS);
+                    s.neighbours = (false, false);
+                }
+                find_neighbours(&mut standing);
+                let ring: Vec<&Stood> = standing.iter().filter(|s| s.lot.kind == 9).collect();
+                let stands = |i: i32| ring.iter().any(|s| s.lot.pl.index == i.rem_euclid(RING_PLOTS));
+                assert!(ring.len() >= 4, "year {k}: {} houses round the market place", ring.len());
+                for s in &ring {
+                    // the plot before it round the ring and the plot after, the last plot's being the first
+                    let i = s.lot.pl.index;
+                    assert_eq!(s.neighbours, (stands(i - 1), stands(i + 1)), "year {k}, turned {turn}: the house on plot {i} of {RING_PLOTS} round the market place");
+                    seams += ((i == 0 && stands(-1)) || (i == RING_PLOTS - 1 && stands(0))) as usize;
+                }
+            }
+        }
+        assert!(seams >= 2 * r.ny, "{seams} houses stood beside the ring's seam");
     }
 
     #[test]

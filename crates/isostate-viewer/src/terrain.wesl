@@ -191,6 +191,9 @@ const BLOCK: f32 = 0.9;
 const TURN_C: f32 = 0.9460423;
 const TURN_S: f32 = 0.3240436;
 const PARCEL_LEVEL: u32 = 3u;
+// The cuts from this level on are the plots of a town's built-up ground
+// (`town`): deeper than any field or close is cut (fields::MAX_DEPTH).
+const PLOT_LEVEL: u32 = 7u;
 // half the width of a hedge, in cells
 const HEDGE: f32 = 0.0072;
 const TAU: f32 = 6.2831853;
@@ -347,7 +350,11 @@ fn cut(bl: Block, start: Cut, level: u32, depth: u32) -> Cut {
         let ey = (c.hi.y - c.lo.y) * lv;
         let k = hash3(bi, bj + c.id * 7919u, 160u + lvl);
         var along_u = ex >= ey;
-        if (strips && lvl >= PARCEL_LEVEL) {
+        if (lvl >= PLOT_LEVEL) {
+            // the plots a town's built-up ground is cut into: always across the
+            // longer side, so that a strip of a strip block is cut into plots
+            // along it and not into slivers
+        } else if (strips && lvl >= PARCEL_LEVEL) {
             along_u = strip_u;
         } else if (k < 0.12) {
             along_u = !along_u;
