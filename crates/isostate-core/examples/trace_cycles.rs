@@ -297,6 +297,16 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
     put("timber_building_share_max", tb_share[k1800..].iter().copied().fold(f64::NAN, f64::max));
     let tb_q: Vec<f64> = (0..n).map(|k| island(k, timber, gcol("building"))).collect();
     put("timber_price_vs_building_dev_corr", corr(&late(&dev(&p_timber)), &late(&dev(&tb_q))));
+    // where timber comes from: the woods' own cutting, or woodland cleared at the year's end
+    let t_made: Vec<f64> = (0..n).map(|k| island(k, timber, gcol("made"))).collect();
+    let t_clear: Vec<f64> = (0..n).map(|k| island(k, timber, gcol("cleared"))).collect();
+    put("timber_cleared_share", (k1800..n).map(|k| t_clear[k]).sum::<f64>() / (k1800..n).map(|k| t_made[k]).sum::<f64>().max(1e-9));
+    put("timber_made_swing", sd(&dlog(&late(&t_made))));
+    put("timber_made_vs_price_dev_corr", corr(&late(&dev(&t_made)), &late(&dev(&p_timber))));
+    put("timber_made_vs_price_before_dev_corr", corr(&dev(&t_made)[k1800 + 1..], &dev(&p_timber)[k1800..n - 1]));
+    let t_hh: Vec<f64> = (0..n).map(|k| island(k, timber, gcol("households")) + island(k, timber, gcol("landlords")) + island(k, timber, gcol("families"))).collect();
+    put("timber_households_share", (k1800..n).map(|k| t_hh[k]).sum::<f64>() / (k1800..n).map(|k| bought(k, timber)).sum::<f64>().max(1e-9));
+    put("timber_households_swing", sd(&dlog(&late(&t_hh))));
     let t_unmet: Vec<f64> = (0..n).map(|k| 1.0 - bought(k, timber) / island(k, timber, gcol("asked")).max(1e-9)).collect();
     put("timber_unmet", mean(&t_unmet[k1800..]));
     put("timber_unmet_worst", t_unmet[k1800..].iter().copied().fold(f64::NAN, f64::max));
