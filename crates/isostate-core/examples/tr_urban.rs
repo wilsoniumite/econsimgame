@@ -349,6 +349,20 @@ fn main() {
             let w: Vec<f64> = outs.iter().map(|o| stats(&o.island.iter().filter(|r| r.year >= a && r.year <= b).map(|r| r.works / r.labour).collect::<Vec<_>>()).0).collect();
             println!("  {a}-{b}: {:>24} {:>24}", cell(&u, 3), cell(&w, 3));
         }
+        // how far along the Engel curve the households are: their real income, which
+        // the curve reads against `engel.y_ref`
+        print!("\n  real income a head (y, the year's mean, by people) at the marks:");
+        for &y in &marks {
+            let v: Vec<f64> = outs
+                .iter()
+                .map(|o| {
+                    let ys: Vec<&TownYear> = o.towns.iter().filter(|r| r.year == y).collect();
+                    ys.iter().map(|r| r.y * r.before).sum::<f64>() / ys.iter().map(|r| r.before).sum::<f64>().max(1.0)
+                })
+                .collect();
+            print!("  {y}: {}", cell(&v, 2));
+        }
+        println!("  (engel.y_ref {})", P.engel.y_ref);
     }
 
     if part == "b" || part == "all" {
@@ -407,21 +421,36 @@ fn main() {
             d += 10;
         }
         println!("  (best saving: the median over the decade's island-years of the best site's carting saved over its district's wages; the rule asks {:.3})", pp.found_saving);
-        println!("\n  sites that fail on saving alone, and the saving they offer, by decade (median)");
+        // the sites that pass every test but the saving: what they offer as is and at
+        // 1750's money wage, and in how many island-years one of them would pass the
+        // saving test at 1750's money wage (so would be founded, but for the real area)
+        println!("\n  sites that fail on saving alone, and the saving they offer, by decade (median): as is, at 1750's money wage; island-years with one that passes at 1750's money wage");
         let mut d = (y0 / 10) * 10;
         while d <= y1 {
-            let mut v = Vec::new();
-            for o in &outs {
+            let (mut v, mut v_real, mut years, mut real_pass) = (Vec::new(), Vec::new(), 0.0f64, 0.0f64);
+            for (o, &w1750) in outs.iter().zip(&w0) {
                 for cy in o.cands.iter().filter(|c| c.year >= d && c.year < d + 10) {
+                    years += 1.0;
+                    let mut any = false;
                     for c in &cy.cands {
-                        if c.ratio < pp.found_saving && c.cells >= pp.found_cells && c.people >= pp.found_people && c.donor <= pp.donor_max {
+                        if c.ratio < pp.found_saving && c.cells >= pp.found_cells && c.people >= pp.found_people && c.donor <= pp.donor_max && c.rest {
                             v.push(c.ratio);
+                            v_real.push(c.ratio * cy.wage / w1750);
+                            any |= c.ratio * cy.wage / w1750 >= pp.found_saving;
                         }
                     }
+                    real_pass += any as u8 as f64;
                 }
             }
             if !v.is_empty() {
-                println!("  {d}s: {:5} sites a decade on eight islands, saving {:.3}", v.len(), median(v));
+                println!(
+                    "  {d}s: {:5} sites a decade on {} islands, saving {:.3}, at 1750's money wage {:.3}; island-years with one passing at 1750's money wage {:.2}",
+                    v.len(),
+                    outs.len(),
+                    median(v),
+                    median(v_real),
+                    real_pass / years.max(1.0)
+                );
             }
             d += 10;
         }
@@ -519,6 +548,32 @@ fn main() {
             stats(&col(11)).0,
             stats(&col(12)).0
         );
+        // the mean of the parts leans on a few towns whose market area jumped: the
+        // medians, the share of decades led by each part, and the decades before and after 1850
+        println!(
+            "  the same, median: births less deaths {:.4}; migration {:.4}; with cells {:.4}",
+            median(col(4)),
+            median(col(5)),
+            median(col(6))
+        );
+        let mut led = [0usize; 3];
+        for r in &rows {
+            let parts = [r.4, r.5, r.6];
+            led[(0..3).fold(0, |b, k| if parts[k] > parts[b] { k } else { b })] += 1;
+        }
+        println!("  decades in which each part is the largest: births less deaths {}, migration {}, with cells {}", led[0], led[1], led[2]);
+        for (label, early) in [("beginning before 1850", true), ("beginning in 1850 or after", false)] {
+            let v: Vec<_> = rows.iter().filter(|r| (r.2 < 1850) == early).collect();
+            let n = v.len().max(1) as f64;
+            println!(
+                "  {} decades {label}: growth {:.4}; births less deaths {:.4}; migration {:.4}; with cells {:.4} (means)",
+                v.len(),
+                v.iter().map(|r| r.3).sum::<f64>() / n,
+                v.iter().map(|r| r.4).sum::<f64>() / n,
+                v.iter().map(|r| r.5).sum::<f64>() / n,
+                v.iter().map(|r| r.6).sum::<f64>() / n
+            );
+        }
         println!("  every town-decade from the tenth year, 3,000 people or more: {} of them, growth a year median {:.4}, ninetieth {:.4}", all.len(), median(all.clone()), {
             let mut v = all.clone();
             v.sort_by(f64::total_cmp);
