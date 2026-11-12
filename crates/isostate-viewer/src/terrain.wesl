@@ -414,7 +414,12 @@ fn edge_fray(p: vec2<f32>) -> f32 {
 // The height at which the snow that lies all summer begins at a spot
 // (world::summer_snow_line).
 fn summer_snow_line(p: vec2<f32>) -> f32 {
-    return 1.75 - 0.12 * vnoise(p.x * 1.7, p.y * 1.7, 31);
+    return snow_line_of(vnoise(p.x * 1.7, p.y * 1.7, 31));
+}
+
+// The same from the noise there, which the fragment has to hand.
+fn snow_line_of(n: f32) -> f32 {
+    return 1.75 - 0.12 * n;
 }
 
 // How wooded a spot is, 0 to 1, from the wood's field there: a wood deepens
@@ -1253,7 +1258,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     var walled = false;
     let snow_n = vnoise(p.x * 1.7, p.y * 1.7, 31);
     // how far above the summer snow line
-    let above = h - summer_snow_line(p);
+    let above = h - snow_line_of(snow_n);
     if (own_cls >= FARM && own_cls <= HEATH) {
         if (above > 0.0) {
             cls = HEATH;
