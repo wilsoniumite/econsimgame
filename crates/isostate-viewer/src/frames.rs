@@ -58,9 +58,11 @@
 //! which waits for the render thread to finish with the first. The summary
 //! adds long frames that follow one another up as freezes, so the two agree.
 //!
-//! Unset, what is left in the app: the strip's card (three hidden nodes of the
-//! interface and a texture of 46 kB), one system in `Last` that looks for F3,
-//! and one load of a flag in each of the hooked systems. Set, six small
+//! Unset, what is left in the app: one system in `Last` that looks for F3
+//! (the strip's card, three nodes of the interface and a texture of 46 kB,
+//! is made the first time F3 is pressed, so that the standard pictures are
+//! the same to the pixel with the recorder in the app as without it), and one
+//! load of a flag in each of the hooked systems. Set, six small
 //! schedules run between the engine's own on the main thread and nine stamps
 //! in the render schedule, each taking a lock nobody else wants. A scripted
 //! run (and `ISOSTATE_TIMING`) keeps the main thread's half of it as a meter:
@@ -448,7 +450,7 @@ pub fn add(app: &mut App, meter: bool) {
     // (`ISOSTATE_FRAMES_STRIP=off` leaves the strip out altogether: what the recorder costs
     // when it is off is measured against that)
     if std::env::var("ISOSTATE_FRAMES_STRIP").as_deref() != Ok("off") {
-        app.init_resource::<Strip>().add_systems(Startup, strip_setup.after(crate::setup_ui)).add_systems(Last, strip_draw);
+        app.init_resource::<Strip>().add_systems(Last, strip_draw);
     }
     let plan = std::env::var("ISOSTATE_FRAMES_PLAN").ok().filter(|s| !s.is_empty());
     if let Some(steps) = &plan {
@@ -1478,6 +1480,8 @@ const STRIP_MS: f32 = 50.0;
 #[derive(Resource, Default)]
 struct Strip {
     on: bool,
+    /// the card, once it has been asked for: nothing of it is made before then
+    card: bool,
     image: Handle<Image>,
     /// each frame's milliseconds, whether a year arrived in it, and whether a mesh was handed over
     bars: std::collections::VecDeque<(f32, bool, bool)>,
@@ -1491,37 +1495,51 @@ struct StripCard;
 #[derive(Component)]
 struct StripText;
 
-fn strip_setup(mut commands: Commands, mut strip: ResMut<Strip>, mut images: ResMut<Assets<Image>>, font: Res<crate::UiFont>) {
+/// The strip's card, made the first time it is asked for. It is not made
+/// before then, hidden: a card in the interface, even a hidden one with no
+/// words, moved a few pixels of every standard picture by a shade (its text's
+/// size, it seems, changes how the interface's letters are packed), and the
+/// standard pictures must be the same with the recorder in the app as without.
+fn strip_card(commands: &mut Commands, images: &mut Assets<Image>, font: &crate::UiFont) -> Handle<Image> {
     let size = Extent3d { width: STRIP_W as u32, height: STRIP_H as u32, depth_or_array_layers: 1 };
-    strip.image = images.add(Image::new(size, TextureDimension::D2, vec![0; STRIP_W * STRIP_H * 4], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default()));
-    strip.on = std::env::var_os("ISOSTATE_FRAMES_STRIP").is_some();
+    let image = images.add(Image::new(size, TextureDimension::D2, vec![0; STRIP_W * STRIP_H * 4], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default()));
     commands
         .spawn((
             Node { position_type: PositionType::Absolute, left: Val::Px(14.0), bottom: Val::Px(70.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::all(Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
             BackgroundColor(crate::ui::PAPER),
             GlobalZIndex(20),
-            if strip.on { Visibility::Inherited } else { Visibility::Hidden },
             StripCard,
         ))
         .with_children(|p| {
-            p.spawn((ImageNode::new(strip.image.clone()), Node { width: Val::Px(STRIP_W as f32), height: Val::Px(STRIP_H as f32), ..default() }));
+            p.spawn((ImageNode::new(image.clone()), Node { width: Val::Px(STRIP_W as f32), height: Val::Px(STRIP_H as f32), ..default() }));
             p.spawn((crate::ui::text(&font.0, "", 12.0, crate::ui::INK), StripText));
         });
+    image
 }
 
+#[allow(clippy::too_many_arguments)]
 fn strip_draw(
+    mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     data: Res<Data>,
     hand: Res<HandOver>,
+    font: Res<crate::UiFont>,
     mut strip: ResMut<Strip>,
     mut images: ResMut<Assets<Image>>,
     mut card: Query<&mut Visibility, With<StripCard>>,
     mut words: Query<&mut Text, With<StripText>>,
+    mut looked: Local<bool>,
 ) {
-    if keys.just_pressed(KeyCode::F3) {
+    // F3, or ISOSTATE_FRAMES_STRIP=1 in the first frame
+    let asked = !std::mem::replace(&mut *looked, true) && std::env::var_os("ISOSTATE_FRAMES_STRIP").is_some();
+    if keys.just_pressed(KeyCode::F3) || asked {
         strip.on = !strip.on;
         strip.bars.clear();
         strip.last = None;
+        if !strip.card {
+            strip.card = true;
+            strip.image = strip_card(&mut commands, &mut images, &font);
+        }
         for mut v in &mut card {
             *v = if strip.on { Visibility::Inherited } else { Visibility::Hidden };
         }
