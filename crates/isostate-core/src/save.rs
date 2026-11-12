@@ -49,6 +49,23 @@ pub const FORMAT: u32 = 2;
 /// The player's family is always the first.
 pub const PLAYER: usize = 0;
 
+/// The most families a game may have. Every family then has a surname of its
+/// own (`names::FAMILY_SURNAMES`; past that they are told apart by a numeral),
+/// and since each begins with three hundredths of the island's rent, thirty
+/// begin with nine tenths of it and no more could be given their share.
+pub const MAX_FAMILIES: usize = crate::names::FAMILY_SURNAMES.len();
+
+/// Whether a game may have this many families: at least the player's, and
+/// no more than `MAX_FAMILIES`. Said as a clause, for a sentence that goes on
+/// to say where the number came from.
+pub fn families_allowed(n: usize) -> Result<(), String> {
+    if (1..=MAX_FAMILIES).contains(&n) {
+        Ok(())
+    } else {
+        Err(format!("a game has from 1 to {MAX_FAMILIES} families, not {n}"))
+    }
+}
+
 /// Something the player told the family to do. Everything that changes the
 /// simulation from outside is one of these.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -459,7 +476,42 @@ impl Save {
             }
             Some(_) => {}
         }
-        serde_json::from_value(value).map_err(|e| format!("not a saved game: {e}"))
+        let save: Save = serde_json::from_value(value).map_err(|e| format!("not a saved game: {e}"))?;
+        save.sound()?;
+        Ok(save)
+    }
+
+    /// Whether the file says only what a game could have written: a number of
+    /// families a game may have, a year among the island's years, a month
+    /// that is a month. A file that says otherwise was not written by the
+    /// game, or was changed afterwards, and it is refused before anything is
+    /// played: a save doctored to the year 5000 was once taken at its word.
+    /// (An order that names a square off the map, a town that is not there or
+    /// a method nobody knows is another matter: the simulation refuses it
+    /// when it comes to it, and the rest of the game is played.)
+    pub fn sound(&self) -> Result<(), String> {
+        if self.format == 0 {
+            return Err("not a saved game the game wrote: it says it is in layout 0, and the first layout was 1".to_string());
+        }
+        if let Err(why) = families_allowed(self.families) {
+            return Err(format!("not a saved game the game wrote: it names {} families, and {why}", self.families));
+        }
+        let C = self.played_under().content();
+        // (a game saved before its first year was played says the year before the first)
+        if self.year < C.start_year - 1 || self.year > C.end_year {
+            return Err(format!(
+                "not a saved game the game wrote: it says the game had reached the year {}, and the island's years are {} to {}",
+                self.year, C.start_year, C.end_year
+            ));
+        }
+        if self.month > 11 {
+            return Err(format!("not a saved game the game wrote: it says {} months of a year had been played, and a save is made before the twelfth", self.month));
+        }
+        // (twelve is word to the family carried out after December, before the books were closed)
+        if let Some(given) = self.orders.iter().find(|g| g.month > 12) {
+            return Err(format!("not a saved game the game wrote: it has an order dated {} months into {}, and a year has twelve", given.month, given.year + 1));
+        }
+        Ok(())
     }
 
     /// The rules it was played under. A name this version does not know is
@@ -497,6 +549,8 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     if save.format > FORMAT {
         return Err(format!("saved by a later version of the game (layout {}; this one reads up to {FORMAT})", save.format));
     }
+    // a save made in memory has not been through `from_text`
+    save.sound()?;
     let mut game = Game::under(save.played_under(), save.seed, save.families, save.started);
     let mut refused = Vec::new();
     let mut next = 0;

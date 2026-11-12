@@ -282,6 +282,26 @@ pub struct Opening {
     pub fresh: bool,
     /// only pictures are being taken: nothing is saved unless a place is named
     pub shots: bool,
+    /// nobody is at the game (it takes pictures, or a script plays it): it is
+    /// kept only where `save` says, whatever else was asked for
+    pub unattended: bool,
+    /// this copy was started by one that is closing (New game), which may
+    /// still hold the place the game is kept in: wait a little for it
+    pub restarted: bool,
+}
+
+/// Where a game is kept as it is played.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Keeping {
+    /// in a file that was named (`--save`)
+    Named(std::path::PathBuf),
+    /// in its island's autosave: a game somebody is playing
+    Autosave,
+    /// in its island's trial file, apart from the game played there: somebody
+    /// is at it, but the start was not plain play. With the option that says so.
+    Trial(&'static str),
+    /// nowhere: nobody is at it
+    Nowhere,
 }
 
 impl Opening {
@@ -290,6 +310,84 @@ impl Opening {
     /// of a certain shape or kept in a certain place, get a new one.
     pub fn plain(&self) -> bool {
         !self.fresh && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+    }
+
+    /// Where the game is kept. Only play writes where a played game is kept:
+    /// a start that nobody is at (pictures, a script) keeps nothing, and one
+    /// that is not plain play (years played before it opens, the demo's
+    /// orders) keeps its game among the trials, so that neither can set a
+    /// played game aside. A place that was named is the place, whatever the start.
+    pub fn keeping(&self) -> Keeping {
+        match &self.save {
+            Some(file) => Keeping::Named(file.into()),
+            None if self.shots || self.unattended => Keeping::Nowhere,
+            None if self.advance > 0 => Keeping::Trial("--advance"),
+            None if self.demo => Keeping::Trial("--demo"),
+            None => Keeping::Autosave,
+        }
+    }
+}
+
+/// How long a game started by New game waits for the one that started it to
+/// close and let go of the place the game is kept in.
+const RESTART_PATIENCE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Take the place the game is to be kept in, before a year of it is played.
+/// With the saver comes why the game cannot be saved, if its place could not
+/// be written to at all. A second copy of a game somebody is playing is
+/// refused: the first copy's game is the one in the file, and a second
+/// writing there would put its own in that game's place. A trial that finds
+/// another copy keeping one is played without being kept, and says so.
+fn take_place(o: &Opening, seed: u64, families: usize) -> Result<(Option<Saver>, Option<String>), String> {
+    let claim = |path: std::path::PathBuf| if o.restarted { Saver::claim_within(path, RESTART_PATIENCE) } else { Saver::claim(path) };
+    let second = |path: &std::path::Path| {
+        format!(
+            "another copy of the game is open and is keeping its game in {}: play on in that window, or close it and start this one again (--save FILE keeps a second game in a file of its own)",
+            path.display()
+        )
+    };
+    match o.keeping() {
+        Keeping::Named(path) => match claim(path.clone()) {
+            Ok(saver) => Ok((Some(saver), None)),
+            Err(saves::Held::ByAnother) => Err(second(&path)),
+            Err(saves::Held::Unwritable(why)) => Err(format!("a game cannot be kept in {} ({why}): name a file in a folder that can be written", path.display())),
+        },
+        Keeping::Autosave => {
+            let path = saves::autosave(seed, families);
+            match claim(path.clone()) {
+                Ok(saver) => Ok((Some(saver), None)),
+                Err(saves::Held::ByAnother) => Err(second(&path)),
+                // the player's own folder cannot be written in: the game is played, and the note under the date says it is not saved
+                Err(saves::Held::Unwritable(why)) => {
+                    eprintln!("the game cannot be saved: {why}");
+                    Ok((Some(Saver::new(path)), Some(why)))
+                }
+            }
+        }
+        Keeping::Trial(by) => {
+            let path = saves::trial(seed, families);
+            match claim(path.clone()) {
+                Ok(saver) => {
+                    eprintln!(
+                        "started with {by}, so this is a trial and not the island's own game: it is kept apart, in {} (--load FILE goes on with it, --save FILE keeps it elsewhere)",
+                        path.display()
+                    );
+                    Ok((Some(saver), None))
+                }
+                Err(saves::Held::ByAnother) => {
+                    eprintln!("started with {by}, so this is a trial and not the island's own game: another copy of the game is keeping a trial in {}, so this one is not kept (--save FILE keeps it)", path.display());
+                    Ok((None, None))
+                }
+                Err(saves::Held::Unwritable(why)) => {
+                    eprintln!("started with {by}, so this is a trial and not the island's own game: it is not kept, because its place cannot be written ({why})");
+                    Ok((None, None))
+                }
+            }
+        }
+        Keeping::Nowhere => {
+            eprintln!("nobody is at this game (it takes pictures or is played by a script), so it is not kept and no saved game is written over (--save FILE keeps it)");
+            Ok((None, None))
+        }
     }
 }
 
@@ -449,12 +547,28 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     if let Some(file) = &o.save {
         saves::may_keep(std::path::Path::new(file))?;
     }
+    // a save that was named is read first: it says which island's game this is
+    let named = match &o.load {
+        Some(file) => {
+            let path = std::path::PathBuf::from(file);
+            let save = saves::read(&path).map_err(|e| format!("{e}; name another saved game after --load, or leave --load out to play the island's own"))?;
+            Some((save, path))
+        }
+        None => {
+            iso::save::families_allowed(o.families).map_err(|why| format!("{why}: give --families a number in that range"))?;
+            None
+        }
+    };
+    // the place the game is kept in is taken before a year is played, and before
+    // the island's own save is read: a second copy does not get as far as either
+    let (seed, families) = named.as_ref().map_or((o.seed, o.families), |(save, _)| (save.seed, save.families));
+    let (mut saver, cannot_save) = take_place(o, seed, families)?;
     let mut passed_over = 0;
-    let from = match &o.load {
-        Some(file) => Some((saves::read(std::path::Path::new(file))?, std::path::PathBuf::from(file))),
+    let from = match named {
+        Some(found) => Some(found),
         None if o.plain() => {
-            // a game has at least one family, and its autosave is named for the families it has
-            saves::read_latest(&saves::autosave(o.seed, o.families.max(1))).map(|(save, file, passed)| {
+            // (its autosave is named for the families it has)
+            saves::read_latest(&saves::autosave(o.seed, o.families)).map(|(save, file, passed)| {
                 for e in &passed {
                     eprintln!("the latest save could not be read ({e}); going back to the one before it");
                 }
@@ -551,33 +665,29 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let ordered = stands.pegs.clone();
     view.prospects = all_prospects(&game.sim);
 
-    // where the game is kept: a place that was named, or the island's autosave
-    // (which a run that only takes pictures leaves alone, and so does the
-    // demo's game, made to be looked at: it would set the player's own aside)
-    let mut saver = match &o.save {
-        Some(file) => Some(Saver::new(file.into())),
-        None if o.shots || (o.demo && o.load.is_none()) => None,
-        None => Some(Saver::new(saves::autosave(game.sim.params.seed, game.sim.params.n_families))),
-    };
-    match (&mut saver, &o.save) {
-        (Some(s), Some(_)) => {
+    // where the game is kept (`Opening::keeping`): the place was taken before a year was played
+    match (&mut saver, o.keeping()) {
+        (Some(s), Keeping::Named(_)) => {
             // a place that was named is written at once, to say now if it cannot be
             s.write(&game.save(saves::now()), true)?;
             eprintln!("saved in {}: {}", game.last_year(), s.path.display());
         }
         // the autosave is first written when something happens in the game
-        (Some(s), None) => eprintln!("the game is kept in {}", s.path.display()),
-        (None, _) => {}
+        (Some(s), Keeping::Autosave) => eprintln!("the game is kept in {}", s.path.display()),
+        // (a trial has said where it is kept, and a game that is not kept that it is not)
+        _ => {}
     }
 
     let kept = saver.is_some();
+    // a place that could not be written from the start: the thread says so once it can be
+    let saved = cannot_save.is_none();
     let months = game.month;
 
     let (tx_cmd, rx_cmd) = mpsc::channel::<Cmd>();
     let (tx_msg, rx_msg) = mpsc::channel::<Msg>();
     let thread = std::thread::Builder::new()
         .name("isostate-sim".into())
-        .spawn(move || run_thread(game, cursor, saver, begun, rx_cmd, tx_msg))
+        .spawn(move || run_thread(game, cursor, saver, saved, begun, rx_cmd, tx_msg))
         .map_err(|e| format!("cannot start the simulation thread: {e}"))?;
     let live = Live {
         tx: Some(tx_cmd),
@@ -596,7 +706,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         gone: std::sync::atomic::AtomicBool::new(false),
         resumed,
         ordered,
-        unsaved: None,
+        unsaved: cannot_save,
         kept,
     };
     Ok((r, live, view))
@@ -736,9 +846,10 @@ fn write_save(game: &Game, saver: &mut Option<Saver>, saved: &mut bool, year_end
     true
 }
 
-fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, mut begun: Vec<usize>, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
-    // whether the last save was written, so a failure is told once and not every year
-    let mut saved = true;
+/// `saved`: whether the last save was written (or, at the start, whether the
+/// game's place could be written at all), so a failure is told once and not
+/// every year.
+fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, mut saved: bool, mut begun: Vec<usize>, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
     // months have been played since the last save
     let mut unkept = false;
     while let Ok(cmd) = rx.recv() {

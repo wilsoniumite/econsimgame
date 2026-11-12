@@ -1629,7 +1629,8 @@ fn new_game_clicks(
         exit.write(AppExit::Success);
         return;
     }
-    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(args).spawn());
+    // (this copy holds the place the game is kept in until it has closed: the new one is told to wait for it)
+    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(args).env("ISOSTATE_RESTARTED", "1").spawn());
     match started {
         Ok(_) => {
             eprintln!("starting again on a new game");
