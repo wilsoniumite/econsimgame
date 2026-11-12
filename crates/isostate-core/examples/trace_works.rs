@@ -493,9 +493,10 @@ fn growth(runs: &[Run], C: &Content) {
     let mut order: Vec<usize> = (0..r.town_name.len()).collect();
     let kl = r.n - 1;
     order.sort_by(|&a, &b| r.town_pop[kl][b].total_cmp(&r.town_pop[kl][a]));
-    println!("  seed {}: the five largest towns of 1900, value made per head over 1870s' (towns' own prices)", r.seed);
+    println!("  seed {}: the five largest towns of 1900, value made per head over 1870s' (towns' own prices, over the chained cost of living)", r.seed);
     for &t in order.iter().take(5) {
-        let f = |rr: &Run, k: usize| rr.town_made[k][t].iter().sum::<f64>() / rr.town_pop[k][t] / rr.ann["cpi"][k];
+        // the chained index, not the 1750 basket, which turns a stall into a fall (docs/probes/tr-works.md)
+        let f = |rr: &Run, k: usize| rr.town_made[k][t].iter().sum::<f64>() / rr.town_pop[k][t] / rr.ann["cpi_chained"][k];
         let base = dec_mean(std::slice::from_ref(r), d70, f);
         let v: Vec<f64> = late.iter().map(|&d| dec_mean(std::slice::from_ref(r), d, f) / base).collect();
         print!("    {:<16} founded {:>5}, {:>7.0} people in 1900:", r.town_name[t], r.town_founded[t], r.town_pop[kl][t]);
@@ -532,7 +533,8 @@ fn life(runs: &[Run], C: &Content) {
     show("every works that closed from 1750 on", closed.iter().map(|x| x.1).collect());
     show("  of them founded before 1750 (the warm-up)", closed.iter().filter(|x| x.1.born < y0).map(|x| x.1).collect());
     show("  founded 1750 or later", closed.iter().filter(|x| x.1.born >= y0).map(|x| x.1).collect());
-    // why: the review's four reasons, as the state leaves them (firms::review)
+    // why: the review's four reasons, as the state leaves them (firms::review); the review closes on
+    // any of them, so a works that met two (in debt and three losing years, say) counts under the first here
     let why = |w: &Works| -> &'static str {
         if w.size <= 0.0 {
             "never built (stale)"
