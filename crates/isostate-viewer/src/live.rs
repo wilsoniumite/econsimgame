@@ -1105,7 +1105,19 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
     // in order of date; nothing may keep a place in this list across years (the toasts keep copies)
     r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
 
-    // (the monthly series came month by month: `apply_series`)
+    // The monthly series came month by month (`apply_series`), all but the
+    // books': their figure is the year's, and was not known when January to
+    // November were sent. It goes into the year's twelve months now, as the
+    // simulation itself wrote it, so a game that was played holds what one
+    // that is loaded (whose months are read after their year closed) holds
+    for &(i, v) in &y.year_series {
+        if i < r.series_names.len() {
+            let row = i * r.series_len;
+            for t in (k * 12..(k + 1) * 12).filter(|&t| t < r.series_len) {
+                r.series[row + t] = v as f32;
+            }
+        }
+    }
 
     // the year's quarries, pits and mines, where the rules keep them as workings
     if !y.workings.is_empty() {

@@ -1417,9 +1417,34 @@ fn headline(y: &IslandYear) -> [(&'static str, f64); 8] {
     ]
 }
 
+/// The headline series' figures for `year`, each with its place in the series
+/// registry: what `close_year` wrote into all twelve of the year's months.
+/// Empty while the books are off or the year is still open.
+///
+/// Every other series has a month's figure when the month has been played.
+/// These have none until the year's books close (a month of a year in
+/// progress holds NaN, however the game got there), and then all twelve at
+/// once. So whoever copies the months out as they are played (`live::live_month`)
+/// has to be told the twelve again with the year, and `live::live_year` hands
+/// them this (`LiveYear::year_series`).
+pub fn year_series(st: &State, year: i64) -> Vec<(usize, f64)> {
+    let b = &st.acct;
+    let Some(y) = usize::try_from(year - b.start_year).ok().and_then(|k| b.years.get(k)) else { return Vec::new() };
+    headline(y).iter().filter_map(|&(name, v)| st.series.index.get(name).map(|&s| (s, v))).collect()
+}
+
+/// Whether a series is one of the books' own (`add_series`). They are worked
+/// out from the run and add nothing to it, so what fingerprints a run
+/// (`save::check`) leaves them out: a game saved before there were books, or
+/// with them off, is the same game.
+pub fn own_series(name: &str) -> bool {
+    name.starts_with("acct_")
+}
+
 /// The headline series, added after everyone else's so those keep their places
 /// (`observer::init`, only when the mechanism is on). Each holds the year's
-/// figure in all twelve of its months, written when the year's books close.
+/// figure in all twelve of its months, written when the year's books close;
+/// until then a month of the year holds no figure (NaN).
 pub fn add_series(reg: &mut Series, n_months: usize) {
     reg.add("acct_share_work", "Work's share of income", "distribution", "share", n_months);
     reg.add("acct_share_works", "Works' owners' share of income", "distribution", "share", n_months);
