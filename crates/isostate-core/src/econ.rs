@@ -1016,7 +1016,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.merch_cash[t] -= mdiv[t];
     }
     let pop_total = pairwise_sum(&st.pop).max(1.0);
-    let fund_div = 0.9 * st.fund_cash;
+    // mines: a common fund in debt pays no dividend, and asks nobody for one
+    let fund_div = 0.9 * crate::mines::fund_to_share(st, P);
     st.fund_cash -= fund_div;
     let m_tot = money_total(st);
     let issue = P.money_growth / 12.0 * m_tot;

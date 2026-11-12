@@ -500,7 +500,12 @@ on the three together.
   small (`prices.md`, "In company with the machines" and its first worry).
   The machines raise the stakes, because the land's output and prices now move
   far from where they were, and anything that still remembers an old price
-  can ask for a great many hands.
+  can ask for a great many hands. Under the commons scenario a wild year
+  can be the end of an island: the loss goes to the common fund, and the
+  port's fund charges it to every household by head. The game's rules are
+  mended for that (`mines.md`, "Under the commons"); the machines alone over
+  the port are not, and seed 3 of sixteen stops there in 1837, ruined since
+  the wild year of 1753.
 - **A new town's first year of land use is still read off 1750.** The yearly
   land step bids for a new town's cells with that town's average prices and
   wage over the year before it existed (`pbar`, `wbar` in `sim::yearly`): the

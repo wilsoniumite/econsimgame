@@ -177,7 +177,9 @@ On the command line it is `--regime commons`, in the Python and the Rust alike. 
 cargo run -p isostate-core --release -- sweep --seeds 1-8 --rules game --families 6 --set rent_regime=landlords,commons --out runs/sweep-regimes
 ```
 
-As run on 12 November 2026, one of its sixteen runs fails: island 3 under the commons stops in 1762, when the monthly check finds that money is not conserved. The sweep says so, finishes the other fifteen and ends with an error. The fault came in with the mines (the same run passes with `--set mines.enabled=false`) and is not mended yet. On the seven islands that finished under both, the commons islands end the century with more people (830 thousand against 719 thousand), fewer famine years (0.9 a run against 2.0), a lower wage (2.25 times 1750's against 2.65, though a commons household also has its dividend, which the wage does not count) and much less railway (1,310 km against 2,278). Nobody has yet traced why, so take these as what the model does and not as findings.
+As run on 12 November 2026, all sixteen runs finish. The commons islands end the century with more people (833 thousand against 732 thousand), a lower wage (2.46 times 1750's against 2.60, though a commons household also has its dividend, which the wage does not count), half the railway (1,148 km against 2,248) and two thirds of the canal (600 km against 892). Famine years are the same, 0.4 a run. Nobody has yet traced why, so take these as what the model does and not as findings.
+
+One rule of the commons differs under the game's rules. When the common fund is in debt (a mine's bad year can put it there) it pays no dividend until its rents have repaid the debt. In the Python and the port it charges the debt to every household by head, and on island 3 that emptied every purse and stopped the run in 1762 (`docs/rules/mines.md`, "Under the commons").
 
 ## Layout
 
@@ -282,11 +284,11 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 - The share of people in towns reaches 0.42 by 1900. The plan asks for a half.
 - There is a building cycle nobody chose: a town's mills order a whole year's room for new capacity at once and then next to nothing for two or three years, and timber trebles when they do (`docs/rules/works.md`). The worst year for what a wage buys is 15 per cent down.
 - Tools run short when farm machinery arrives: in their dearest year they cost 5.8 times what they do in a middling one (`docs/rules/works.md`, six islands, before the mines).
-- There are 2.2 famine years in a run.
+- There are 0.4 famine years in a run. There were 2.2 before the canals, and why they should do that is not traced (`docs/rules/canals.md`).
 - The steel rail hardly arrives: it is 3 per cent of rails in 1890, and on one island of eight it is never made. Cheaper ore since the mines has made it worse (`docs/rules/mines.md`).
 - The railway age begins anywhere from 1805 to 1850, so in 1850 one island has 25 km of line and another 1,834. Nobody collects a railway's fares, and nobody pays for a road or a bridge.
 - Quarrymen are one hand in seven by 1900, and the island takes some twenty units of stone a head a year, which is far too much if a unit is about a ton. Households buy shelter as raw stone, because the masons, bricklayers and carpenters who belong between the quarry and the house are designed and not yet built (`docs/rules/mines.md`, "Why quarrying takes so many hands").
-- Under the commons scenario one island of eight fails the monthly money check in 1762, since the mines came in (see Scenarios).
+- A mine can hire more hands than its town has. On one island of sixteen a town founded on a coalfield in 1750 pays 8.6 times its neighbours' wage the spring after; under the commons scenario the same founding sends the wage to its ceiling and leaves the common fund in debt for nine years (`docs/rules/mines.md`, "Under the commons").
 - Most of the mechanisms' numbers were set on a few islands and never searched. Eight islands is a small sample, and a single year's wage misleads: read twenty-year means before believing a row (`docs/rules/towns.md`).
 - No foreign trade and no government, and money grows at a fixed rate.
 - Run past 1900, the island goes Malthusian, because there is no demographic transition and no technology after steel. On island 7 with `--end-year 2050` the people grow from 740 thousand in 1900 to 4.3 million, and what a wage buys falls from 3.0 times 1750's to three quarters of what it bought in 1750.
