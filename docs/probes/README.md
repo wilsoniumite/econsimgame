@@ -94,6 +94,16 @@ them are those of a5ea2ea.
   inspector with those figures (a town's card and sheet, a good in a town, one good across the
   island, one works), what the viewer must be handed (nothing from the record for a live game),
   and the order to build it. Its example, `examples/flows.rs`, prints every table.
+- `dx-new-towns.md` (a probe, of the game's rules at 11dbe7d, 12 November 2026, sixteen islands
+  with six families): where and when towns are founded (11.2 a seed, 4.6 of them from 1800,
+  half of those quarry towns), why sites at wharves and junctions fail the founding test (carriage
+  there is already cheap), and what a district's founding saves the island rather than its own
+  producers (every town founded costs the island more carting than it saves). A prototype that
+  founds by the island's saving behind `newtowns.enabled` founds nothing at the model's one
+  freight rate; its verdict is not to build it as it stands, and to build first a margin before
+  a district changes market, villages at pit heads, and wharves and stations as places with a
+  charge. Only the page is on `main`; the prototype, its test and its example `new_towns.rs` are
+  on `night/o-dx-new-towns-check`.
 
 ## The traces with the books (12 November 2026)
 
