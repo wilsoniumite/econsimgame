@@ -77,23 +77,34 @@ pub fn parse(word: &str, r: &Replay) -> Option<(Option<Overlay>, Option<usize>)>
         "residents" => Some(Overlay::Residents),
         _ => return None,
     };
-    let good = tail.and_then(|t| r.header.goods.iter().position(|g| g.name.eq_ignore_ascii_case(t) || g.label.eq_ignore_ascii_case(t)));
+    let good = tail.and_then(|t| find_good(&r.header.goods, t));
     Some((kind, good))
+}
+
+/// The good a word names, by its name or its label, whatever its case.
+fn find_good(goods: &[replay::Good], t: &str) -> Option<usize> {
+    goods.iter().position(|g| g.name.eq_ignore_ascii_case(t) || g.label.eq_ignore_ascii_case(t))
 }
 
 /// What is wrong with a word given for an overlay on the command line, if
 /// anything: a name that is no overlay, or a good the run does not have. Such
 /// a word is otherwise passed over (the plain map, or the good as it was).
 pub fn complaint(word: &str, r: &Replay) -> Option<String> {
-    match parse(word, r) {
-        None => Some(format!("\"{word}\" is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain")),
-        Some((_, None)) => {
-            let good = word.split_once(':')?.1;
-            let names: Vec<&str> = r.header.goods.iter().map(|g| g.name.as_str()).collect();
-            Some(format!("\"{good}\" is not a good of this run: use one of {}", names.join(", ")))
-        }
-        Some(_) => None,
+    complaint_among(word, &r.header.goods)
+}
+
+/// `complaint`, for a run whose goods are these: a game's are known from the
+/// rules it is played under before its island is made.
+pub fn complaint_among(word: &str, goods: &[replay::Good]) -> Option<String> {
+    if !is_word(word) {
+        return Some(format!("\"{word}\" is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain"));
     }
+    let good = word.split_once(':')?.1;
+    if find_good(goods, good).is_some() {
+        return None;
+    }
+    let names: Vec<&str> = goods.iter().map(|g| g.name.as_str()).collect();
+    Some(format!("\"{good}\" is not a good of this run: use one of {}", names.join(", ")))
 }
 
 /// Whether a word of a `--view` names an overlay (before the run is loaded).

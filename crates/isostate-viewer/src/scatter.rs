@@ -561,13 +561,22 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.place.parcel as usize]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
-    crate::plan::maybe_areas(r, g);
-    crate::rails::maybe_check(r, g);
-    crate::plan::maybe_write(r, g, &slots);
-    // (task A) ISOSTATE_TOWNS=years: every year's towns laid out in turn and counted
-    towns::maybe_years(r, g, &slots);
-    crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
+}
+
+/// The measuring tools that environment variables ask for, in this order:
+/// ISOSTATE_AREAS (plan.rs), ISOSTATE_RAIL_CHECK (rails.rs), ISOSTATE_PLAN
+/// (plan.rs), ISOSTATE_TOWNS=years and ISOSTATE_BENCH (plan.rs). The first one asked for does its
+/// work and prints what it found, and the answer is whether one did, for the
+/// program to stop. Called where the options are read, and not from
+/// `make_slots`, so that nothing else that makes the slots can end the program.
+pub fn measure(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) -> bool {
+    if crate::plan::maybe_areas(r, g) || crate::rails::maybe_check(r, g) || crate::plan::maybe_write(r, g, slots) {
+        return true;
+    }
+    // (task A) ISOSTATE_TOWNS=years: every year's towns laid out in turn and counted (it stops the program itself)
+    towns::maybe_years(r, g, slots);
+    crate::plan::maybe_bench(r, g, slots, cen)
 }
 
 /// Spots on the hedges: a grid of candidates in every land cell, each moved

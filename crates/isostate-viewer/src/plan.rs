@@ -67,9 +67,9 @@ fn seconds() -> f64 {
 /// another: `close` (as near as the camera goes), `far` (half way out to the
 /// whole island), or `near`, `play` or `shells` for every house of the island
 /// at one level.
-pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
+pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) -> bool {
     if std::env::var_os("ISOSTATE_BENCH").is_none() {
-        return;
+        return false;
     }
     let years: Vec<usize> = [1760, 1800, 1850, 1870, 1900].iter().map(|y| ((y - r.y0).max(0) as usize).min(r.ny - 1)).collect();
     let lk = crate::look::Look::standard();
@@ -114,7 +114,7 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
         }
     }
     eprintln!("bench: {:.0} ms per year on average, by the clock on the wall", total / n as f64 * 1000.0);
-    std::process::exit(0);
+    true
 }
 
 /// With ISOSTATE_AREAS set, measure how well the drawn land keeps the areas
@@ -124,9 +124,9 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
 /// what the record says (the cells' mixes), what `world::year_land` draws (the
 /// dry area of the parcels of each class), and what the patchwork rule cell
 /// by cell (`world::pick_class`) would draw, to compare.
-pub fn maybe_areas(r: &Replay, g: &Ground) {
+pub fn maybe_areas(r: &Replay, g: &Ground) -> bool {
     if std::env::var_os("ISOSTATE_AREAS").is_none() {
-        return;
+        return false;
     }
     const D: usize = 6;
     // ISOSTATE_AREAS_SHIFT=3 moves the districts by so many squares east and south: a mend
@@ -284,11 +284,11 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         eprintln!("  as painted, over the same districts: out by {:.1} points on average and {:.1} at worst; by class {}", mean[2] / nn, worst[2],
             (0..4).map(|t| format!("{} {:.1}", names[t], by_class[2][t] / nn)).collect::<Vec<_>>().join(", "));
     }
-    std::process::exit(0);
+    true
 }
 
-pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) {
-    let Ok(path) = std::env::var("ISOSTATE_PLAN") else { return };
+pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) -> bool {
+    let Ok(path) = std::env::var("ISOSTATE_PLAN") else { return false };
     let view: Vec<f32> = std::env::var("ISOSTATE_PLAN_VIEW")
         .unwrap_or_default()
         .split(',')
@@ -401,5 +401,5 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) {
         Ok(()) => eprintln!("wrote the plan to {path}"),
         Err(e) => eprintln!("cannot write {path}: {e}"),
     }
-    std::process::exit(0);
+    true
 }
