@@ -649,20 +649,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // house half up cannot. `fill` is then the day's trade's and `fill_plant`
     // the orders'; without the rule both are the port's one number.
     let fill_plant = match &R_now {
-        Some(now) => {
-            let mut later = Mat::zeros(T, G);
-            for t in 0..T {
-                for g in 0..G {
-                    let (first, all) = (now[(t, g)], R[(t, g)]);
-                    let have = st.inv[(t, g)];
-                    fill[(t, g)] = if first > 1e-12 { (have / first.max(1e-12)).min(1.0) } else { 1.0 };
-                    let left = (have - fill[(t, g)] * first).max(0.0);
-                    let asked = all - first;
-                    later[(t, g)] = if asked > 1e-12 { (left / asked.max(1e-12)).min(1.0) } else { 1.0 };
-                }
-            }
-            later
-        }
+        Some(now) => crate::tree::plant_waits(&st.inv, now, &R, &mut fill),
         None => fill.clone(),
     };
 

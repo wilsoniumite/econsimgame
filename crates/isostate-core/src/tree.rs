@@ -515,6 +515,30 @@ pub fn delivered_goods(C: &Content) -> Vec<bool> {
     (0..C.G).map(|g| C.stage == 0 || C.heat[g] > 0.0 || (0..C.M).any(|m| C.m_in[(m, g)] > 0.0)).collect()
 }
 
+/// Plant waits, in one market: `have` is the stock, `first` what households and
+/// the works at work asked for, `all` that and the orders for new plant and for
+/// railway materials. The day's trade is served first and the orders share
+/// what is left. Returns the share of what it asked for that each is given:
+/// the day's trade, then the orders. Nobody is given more than the market has.
+pub fn served_first(have: f64, first: f64, all: f64) -> (f64, f64) {
+    let fill = if first > 1e-12 { (have / first).min(1.0) } else { 1.0 };
+    let left = (have - fill * first).max(0.0);
+    let asked = all - first;
+    let fill_plant = if asked > 1e-12 { (left / asked).min(1.0) } else { 1.0 };
+    (fill, fill_plant)
+}
+
+/// Plant waits in every town's market (`econ::step_month`): `inv` is the stock,
+/// `first` and `all` the requests as in `served_first`. `fill` becomes the
+/// day's trade's and the orders' is returned.
+pub fn plant_waits(inv: &Mat, first: &Mat, all: &Mat, fill: &mut Mat) -> Mat {
+    let mut fill_plant = Mat::zeros(fill.rows, fill.cols);
+    for k in 0..fill.data.len() {
+        (fill.data[k], fill_plant.data[k]) = served_first(inv.data[k], first.data[k], all.data[k]);
+    }
+    fill_plant
+}
+
 /// The 1750 trades of the goods the port does not have. `need` is what each
 /// town's households want of every good a month (and, for the port's goods,
 /// what its own plan adds); this adds what the seeded works will themselves
@@ -632,6 +656,34 @@ mod tests {
             C.good_index.clear();
             back.good_index.clear();
             assert_eq!(format!("{C:?}"), format!("{back:?}"));
+        }
+    }
+
+    #[test]
+    fn the_days_trade_is_served_before_the_orders_for_plant() {
+        // plenty: everyone has what was asked
+        assert_eq!(served_first(100.0, 30.0, 50.0), (1.0, 1.0));
+        // enough for the day's trade and half of the orders
+        assert_eq!(served_first(40.0, 30.0, 50.0), (1.0, 0.5));
+        // short of the day's trade: it shares what there is and the orders wait
+        assert_eq!(served_first(15.0, 30.0, 50.0), (0.5, 0.0));
+        // an empty market, and one nobody asks anything of
+        assert_eq!(served_first(0.0, 30.0, 50.0), (0.0, 0.0));
+        assert_eq!(served_first(0.0, 0.0, 20.0), (1.0, 0.0));
+        assert_eq!(served_first(7.0, 0.0, 0.0), (1.0, 1.0));
+        // only orders: they share the stock as the port would share it
+        assert_eq!(served_first(5.0, 0.0, 20.0), (1.0, 0.25));
+        // whatever is asked, no more leaves the market than it has
+        for have in [0.0, 1e-9, 0.3, 7.0, 1e6] {
+            for first in [0.0, 1e-13, 0.2, 9.0] {
+                for plant in [0.0, 1e-13, 0.5, 40.0] {
+                    let (a, b) = served_first(have, first, first + plant);
+                    assert!((0.0..=1.0).contains(&a) && (0.0..=1.0).contains(&b));
+                    assert!(a * first + b * plant <= have + 1e-9, "{have} {first} {plant}");
+                    // and the orders are given nothing (a rounding aside) while the day's trade goes short
+                    assert!(a == 1.0 || b < 1e-9 || plant <= 1e-12, "{have} {first} {plant}");
+                }
+            }
         }
     }
 

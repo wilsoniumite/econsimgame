@@ -309,3 +309,23 @@ fn plant_waits_and_the_bricklayers_are_served() {
     assert!(shared < 0.95, "sharing alike, the market has {shared:.3} of the bricks asked for");
     assert!(served > shared + 0.03, "with plant waiting the day's trade has {served:.3} of its bricks; sharing alike, {shared:.3}");
 }
+
+#[test]
+fn without_a_stage_plant_waiting_does_nothing() {
+    // the game without the tree is `tree.stage = 0` and nothing more: the
+    // switch for plant waiting stays where the game's rules put it, and the
+    // run is the same run to the last bit with it thrown either way
+    let mut with = game(4, 6, 1775);
+    with.tree.stage = 0;
+    assert!(with.tree.plant_waits);
+    let mut without = with.clone();
+    without.tree.plant_waits = false;
+    let (a, b) = (run(&with), run(&without));
+    assert_eq!(a.content.G, 16);
+    assert_eq!(a.state.series.names, b.state.series.names);
+    for (k, name) in a.state.series.names.iter().enumerate() {
+        let (x, y) = (&a.state.series.data[k], &b.state.series.data[k]);
+        assert!(x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits()), "series {name} differs");
+    }
+    assert_eq!(a.events.len(), b.events.len());
+}
