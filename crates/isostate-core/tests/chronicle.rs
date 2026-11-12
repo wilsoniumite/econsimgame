@@ -267,7 +267,7 @@ fn a_works_ordered_by_hand_is_told_as_it_was() {
     let C = s.content.clone();
     let d = pending(&s.st, 0);
     let textiles = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
-    decide(&mut s.st, &C, 0, d[0].id, textiles).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, textiles, &mut s.events).unwrap();
     sim::run_year(&mut s).unwrap();
     // cash from nowhere, so the order cannot fail for want of it (the money check is off from here)
     s.check_money = false;
@@ -395,6 +395,91 @@ fn ranking_a_decade() {
     let mut off = vec![item(1761.5, "discovery", 0.9, "a")];
     chronicle::rank(&mut off, &default_params(), 1750, 1900, 1900);
     assert_eq!(off[0].kept, None);
+}
+
+/// The succession is told from the facts the families hand over, not read back
+/// out of the burial's sentence: a burial worded any way at all still gives
+/// way to the succession, which says whom the new head follows.
+#[test]
+fn a_succession_holds_to_the_facts_not_to_the_burials_wording() {
+    let P = game_params();
+    let own = |title: &str, text: &str| -> Option<Event> {
+        let mut e = item(1801.95, "family", P.chronicle.own_great, title);
+        e.text = text.to_string();
+        e.family = Some(0);
+        Some(e)
+    };
+    let year = |place: &str| -> Vec<Option<Event>> {
+        vec![
+            own("Anne Ashby is born to the Ashby family", "A child at Fenmere."),
+            own("Henry Ashby passes away aged 71", &format!("Laid to rest in {place}, as he wished.")),
+            own("Mary Ashby heads the family", "The Ashbys are led from Fenmere."),
+        ]
+    };
+    let burial = |place: &str, at_seat: bool| chronicle::Burial { item: 1, who: "Henry Ashby".into(), age: 71, place: place.into(), at_seat };
+    // buried at the seat
+    let mut items = year("Fenmere");
+    chronicle::succession(&P, 0, &mut items, "Mary", Some(&burial("Fenmere", true)));
+    assert_eq!(items[2].as_ref().unwrap().text, "Mary follows Henry Ashby, who died at 71 and is buried at Fenmere, the family's seat.");
+    assert_eq!(items[1].as_ref().unwrap().weight, P.chronicle.own_small, "the burial is everyday news");
+    assert_eq!(items[0].as_ref().unwrap().weight, P.chronicle.own_great, "nothing else is touched");
+    // buried elsewhere: the new head's own sentence follows
+    let mut items = year("Kirkby");
+    chronicle::succession(&P, 0, &mut items, "Mary", Some(&burial("Kirkby", false)));
+    assert_eq!(items[2].as_ref().unwrap().text, "Mary follows Henry Ashby, who died at 71 and is buried at Kirkby. The Ashbys are led from Fenmere.");
+    // a rival's, the chronicle off, or nobody buried: as filed
+    for (P, family, b) in [(game_params(), 2, Some(burial("Fenmere", true))), (default_params(), 0, Some(burial("Fenmere", true))), (game_params(), 0, None)] {
+        let mut items = year("Fenmere");
+        chronicle::succession(&P, family, &mut items, "Mary", b.as_ref());
+        assert_eq!(items[2].as_ref().unwrap().text, "The Ashbys are led from Fenmere.");
+        assert_eq!(items[1].as_ref().unwrap().weight, game_params().chronicle.own_great);
+    }
+}
+
+/// The decades are the calendar's whatever year a run starts in: from 1755 the
+/// first decade is 1755 to 1759, and the 1760s are a decade of their own.
+#[test]
+fn a_run_from_1755_ranks_by_the_calendars_decades() {
+    let P = game_params();
+    let kinds = ["crossing", "steep", "milestone", "town", "region"];
+    // five heavy items of five kinds in the late 1750s, and five of the same kinds in the early 1760s
+    let mut ev: Vec<Event> = kinds.iter().enumerate().map(|(i, k)| item(1755.5 + 0.8 * i as f64, k, 0.9 - 0.01 * i as f64, &format!("{k} in the 1750s"))).collect();
+    ev.extend(kinds.iter().enumerate().map(|(i, k)| item(1760.5 + 0.6 * i as f64, k, 0.9 - 0.01 * i as f64, &format!("{k} in the 1760s"))));
+    chronicle::rank(&mut ev, &P, 1755, 1900, 1900);
+    let kept = kept_titles(&ev);
+    assert_eq!(kept.iter().filter(|t| t.ends_with("1750s")).count(), P.chronicle.per_decade, "{kept:?}");
+    assert_eq!(kept.iter().filter(|t| t.ends_with("1760s")).count(), P.chronicle.per_decade, "{kept:?}");
+    // the short first decade is over at the end of 1759, not five years later
+    let mut thin = vec![item(1756.6, "famine", 0.5, "hunger"), item(1757.9, "first", 0.5, "first")];
+    chronicle::rank(&mut thin, &P, 1755, 1900, 1758);
+    assert!(kept_titles(&thin).is_empty());
+    chronicle::rank(&mut thin, &P, 1755, 1900, 1759);
+    assert_eq!(kept_titles(&thin), ["hunger", "first"]);
+    // and from 1750 nothing has moved: 1900 still goes with the 1890s
+    let mut last = vec![item(1895.5, "discovery", 0.9, "a"), item(1900.5, "discovery", 0.9, "b"), item(1900.6, "discovery", 0.9, "c")];
+    chronicle::rank(&mut last, &P, 1755, 1900, 1900);
+    assert_eq!(kept_titles(&last), ["a", "b"]);
+}
+
+/// The same for the items a decade's end writes: told at the end of a calendar
+/// decade, named for it, and counting from the first year recorded.
+#[test]
+fn a_run_from_1755_tells_its_decades_by_the_calendar() {
+    let mut C = game_content();
+    C.start_year = 1755;
+    let r = sim::run_with(&game(0, 1790), C, false, true).expect("money is conserved every month");
+    let of_decade: Vec<&Event> = r.events.iter().filter(|e| e.title.contains("fastest-growing town of the") || e.title.contains(" new towns in the ")).collect();
+    assert!(!of_decade.is_empty(), "no decade's end was told in 1755 to 1790");
+    for e in &of_decade {
+        let year = e.year.floor() as i64;
+        assert_eq!(year % 10, 9, "{} is told in {year}", e.title);
+        assert!(e.title.ends_with(&format!("{}s", year / 10 * 10)), "{} is told in {year}", e.title);
+        if e.kind == "town" {
+            let from = (year / 10 * 10).max(1755);
+            let note = &e.why.as_ref().expect("why it is news").note;
+            assert!(note.contains(&format!("founded from {from} to {year}")), "{note}");
+        }
+    }
 }
 
 #[test]

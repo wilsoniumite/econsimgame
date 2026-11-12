@@ -64,6 +64,7 @@ fn setup(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<Assets<M
 
 /// Put boats off the harbours that are towns this year.
 fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Option<Res<BoatAssets>>, old: Query<Entity, With<Boat>>, mut last: Local<Option<usize>>) {
+    let _frames = crate::frames::span(crate::frames::Sys::Traffic);
     let Some(assets) = assets else { return };
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
