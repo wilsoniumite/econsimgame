@@ -335,7 +335,10 @@ Worth trying together in a pass over the rules, and not run here:
    of the century, and at 0.05 it barely grows; between them the two pages put the useful range
    at about 0.1 to 0.2. Its effect on the money level
    of the late century (both wages and prices a sixth lower at 0.1125, the real wage unchanged) is
-   unexplained and should be understood before anything is read off a money price.
+   unexplained and should be understood before anything is read off a money price. tr-urban.md,
+   landed since, gives one reason: the founding of towns is tested in money, so a lower money
+   wage keeps it going, and at 0.1125 there are a few more late towns (5.0 for 4.0, thirteen
+   islands of sixteen; at 0.2, 3.4, ten of sixteen), weakly but the way that page would expect.
 3. **`carting.labor` for the early targets.** The early economy answers to it steadily, about in
    proportion to the carters it takes off the road, and 1900 does not, so it can be set to meet
    the plan's early targets without moving the end of the century.
