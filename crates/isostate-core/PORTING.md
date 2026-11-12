@@ -82,6 +82,17 @@ Other scripts in `parity/`: `compare_runs.py` (the statistical table below),
 (world generator checks, with the `world_stats`, `world_dump` and `noise_dump`
 examples).
 
+The `world_dump` and `noise_dump` examples write their files, and
+`replay_world.py` and `replay_noise.py` read them, in the directory named by
+`ISOSTATE_WORLD_DIR`. With it unset they use `/tmp/worldcmp`, a Unix path: on
+Windows that is `\tmp\worldcmp` on the current drive, so set the variable
+there. The examples make the directory if it is missing.
+
+```text
+ISOSTATE_WORLD_DIR=out/worldcmp cargo run -p isostate-core --release --example world_dump -- 1
+ISOSTATE_WORLD_DIR=out/worldcmp python3 crates/isostate-core/parity/replay_world.py
+```
+
 ## How parity is tested
 
 `dump_state.py` runs the Python simulation unchanged and, by wrapping module
