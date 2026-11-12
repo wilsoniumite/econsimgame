@@ -277,7 +277,14 @@ be made in the middle of a year. What the books do then:
   from a save and played again. A game saved in June and loaded has the
   books it had, running sums and all, and closes the year with the same
   books to the last bit (`tests/accounts.rs`,
-  `a_game_left_in_the_middle_of_a_year_goes_on_with_the_same_books`).
+  `a_game_left_in_the_middle_of_a_year_goes_on_with_the_same_books`). The
+  running sums themselves are held to that too, not only what comes of them
+  at the year's end: `the_books_are_the_same_books_however_the_game_was_reached`
+  compares the whole of the books as text, the open year's tables and the
+  month's scratch with the rest, in one game reached five ways (played by
+  the month; saved at a turn, in May, and in June with orders waiting;
+  loaded twice), and in a game stepped by the month against a run stepped
+  by the year.
 - **The year's message brings the series' twelve months.** Every other
   series has a month's figure when the month has been played, and
   `live::live_month` sends it then. The books' series have none until the
@@ -324,7 +331,7 @@ same island):
 | the year's end, after December | 70 to 71 ms | 71 to 72 ms | 0.21 to 0.24 ms |
 | the month's message (`live_month`) | 2 to 3 millionths of a second | the same | |
 | the year's message (`live_year`) | 0.8 ms | 0.8 ms | |
-| a copy of the island in 1900 | 3.8 to 4.2 ms | 8.7 to 9.3 ms | |
+| a copy of the island in 1900 | 3.6 to 4.6 ms | 5.5 to 5.7 ms (8.7 to 9.3 before the history was shared) | |
 
 Stepping by the month costs the books nothing they did not cost before:
 their work is in the month's hooks, a fifteenth of a month's step, and
@@ -337,9 +344,21 @@ the size of the noise.
 The copy is the one cost that is new. An order given in the middle of a year
 is tried on a copy of the island (`save::Game::give`), and the interface asks
 for the family as it will stand, which copies it twice more
-(`save::Game::foreseen`): the books' history goes with every copy, 33 MB of
-it by 1900, and doubles what the copy takes. That is 27 ms for an order in
-1900 where it was 12, on the simulation's thread, once for each order.
+(`save::Game::foreseen`). When the books first met the clock their history
+went with every copy, 33 MB of it by 1900, and doubled what the copy took:
+27 ms for an order in 1900 where it was 12. The copy has no use for the
+years put away, so they are now shared between the island and its copies
+(`Books::hist` is behind an `Arc`; only `close_year` writes to it, and a
+copy that closes a year while another still stands takes its own first).
+What goes with a copy is the year in progress, some thirteen megabytes in
+1775 as in 1900 (most of it the works' rows, which are sized for the twenty
+thousand works there is room for): a copy takes 5.5 to 5.7 ms in 1900
+against 3.6 to 4.6 without the books, and 4.5 against 2.1 to 3.7 in 1775;
+some 16 ms for an order in 1900 where it was 12, on the simulation's
+thread, once for each order. A game that is only stepped never
+has a copy standing when a year closes, so putting the year away still asks
+the allocator for nothing (`tests/accounts.rs`,
+`a_copy_of_the_island_shares_the_years_put_away`).
 
 In the viewer itself (`--advance 119 --script
 "settle;key:Escape;frames:3;key:Space;run:25;key:Up;frames:2;key:Up;frames:2;run:25;print"`,
@@ -350,7 +369,10 @@ the frames a month arrived in took 6.1 ms in the middle with the books and
 7.3 against 4.5, and then 6.3 against 9.9. The machine was doing other
 people's work at the time and moved those figures more than the books
 could. The books touch the frame only through `apply_year`, which writes
-ninety-six numbers.
+ninety-six numbers. (Taken against the frames of the same run in which
+nothing arrived, which moves with the machine and not with the books, a
+month's arrival costs its frame 3.0 ms without the books and 3.1 and 3.2
+with them, in three runs of `sample:20` from 1870.)
 
 **In a recorded run.** `run.bin` gets these arrays, only when the books were
 kept. `n` is the number of years; every float is float32. `T` here is the
@@ -705,6 +727,16 @@ tables crowding the economy's own data out of the processor's cache; I did
 not measure that. The port keeps no books unless it is asked to, so this is
 the price of asking.
 
+A steadier figure for the game's rules came when the books were checked
+beside the clock: one sweep with the books off and on in it
+(`--set accounts.enabled=false,true`, eight seeds, six families, sixteen
+islands at a time, so both settings share the hour and the machine). Every
+fact of every seed is the same with the books as without (3,376 values, and
+the 122,008 yearly figures of the 101 series both have), and every island is
+a little slower with them: 0.3 to 0.9 s of 35 to 40 in one sweep, 0.2 to 1.2
+of 42 to 49 in another, 1.7 and 1.9 per cent in the mean, which is what the
+hooks' own clock says.
+
 One thing cost far more than all of that until it was found, and whoever
 adds the next observer should know of it. The first version copied the
 month's dividends into a fresh vector every month and built each year's
@@ -786,10 +818,12 @@ draw it): with it thrown the books balance and change nothing
   would give it one; it would have to say the same thing however the game
   got to June, which the test of a game left in the middle of a year is
   there to hold.
-- **An order in the middle of a year copies the books' history** (see "In a
-  game played by the month"). It doubles a copy that is made three times an
-  order. Leaving the history out of the copy, or sharing it, would take it
-  back to what it was.
+- **An order in the middle of a year copies the books' year in progress**
+  (see "In a game played by the month"): the tables of the open year, a
+  third again on a copy that is made three times an order. The years put
+  away are shared and no longer go with it. The open year's tables are
+  sized for every works there is room for (`F_max`, twenty thousand); a
+  table that grew with the works there are would make that small too.
 - **The merchants' share is cash, not profit.** It is what the merchants
   took in less what they paid out. In a year they build stock it is low, in
   a year they run it down it is high; `stock_value` is kept beside it so the
