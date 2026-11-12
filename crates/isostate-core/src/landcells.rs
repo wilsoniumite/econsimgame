@@ -617,8 +617,9 @@ pub fn make_world(d: &Design, P: &LandParams, relief: &Relief, wt: &Water, rng: 
             - 0.5 * smoothstep(420.0, 800.0, zc)
             - 0.2 * ma;
         world.pasture[c] = (p * grain(c, 2)).clamp(0.0, 1.0);
-        // woodland: rain and height; none above the tree line, little in the fens
-        let t = 0.56 + 0.22 * smoothstep(550.0, 1200.0, rain) + 0.14 * smoothstep(40.0, 250.0, zc) - 0.62 * smoothstep(380.0, 760.0, zc) - 0.3 * ma;
+        // woodland: rain and height, thinning from 380 m to none at the tree
+        // line, 760 m; little in the fens
+        let t = (0.56 + 0.22 * smoothstep(550.0, 1200.0, rain) + 0.14 * smoothstep(40.0, 250.0, zc)) * (1.0 - smoothstep(380.0, 760.0, zc)) - 0.3 * ma;
         world.forest_pot[c] = (t * grain(c, 3)).clamp(0.0, 1.0);
         world.rock[c] = (2.2 * stone[c] / nd * grain(c, 4)).clamp(0.0, 1.0);
         world.clay[c] = (0.95 * clay[c] / nd * grain(c, 5)).clamp(0.0, 1.0);

@@ -84,6 +84,12 @@ fn the_world_is_whole() {
         let sum = |f: &[f64]| f.iter().sum::<f64>();
         assert!(sum(&w.fertility) > 2000.0 && sum(&w.coal) > 40.0 && sum(&w.ore) > 40.0, "seed {seed}: a poor island");
         assert!(w.navigable.iter().filter(|&&n| n).count() > 30, "seed {seed}: no navigable water");
+        // no wood above the tree line, 760 m
+        let tops: Vec<usize> = (0..N).filter(|&c| w.land[c] && w.h[c] * lf.h_ref >= 760.0).collect();
+        assert!(!tops.is_empty(), "seed {seed}: nothing 760 m up to look at");
+        for &c in &tops {
+            assert_eq!(w.forest_pot[c], 0.0, "seed {seed}: wood at {:.0} m in cell {c}", w.h[c] * lf.h_ref);
+        }
     }
 }
 
