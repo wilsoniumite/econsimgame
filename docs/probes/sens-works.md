@@ -207,7 +207,12 @@ It is the same few islands (seed 6 six times, seed 3 twice) and nearly always in
 fifteen years or a town's first year or two, under settings of both mechanisms and in both
 directions, so it is not these mechanisms' doing: these islands sit near an edge in the labour
 market and any small push can tip them over. (Carting is not needed for it: one of the ten is
-with carting switched off.) The nearest relative is carting's "wage that flipped", which the damper `adjust` ended;
+with carting switched off.) It is not new. harvest.md, among its worries, describes the same
+thing under the port: a small new town whose land wants far more hands than it has people, its
+wage doubling every month towards the ceiling, sitting "on a knife's edge" so that any change to
+the island moves which seed has it, rarer with the merchants' prices and still there. These runs
+say it is still there in the whole game, at about one run in forty-three once any of these
+numbers is moved, and that it is not always a new town (Sunhaven, seed 4, was founded in 1749). The nearest relative is carting's "wage that flipped", which the damper `adjust` ended;
 this one is not a flip but a run in one direction. It is for whoever looks after the wage's
 monthly limit and the hiring that runs ahead of it (`wage_watch`'s "overworked town-months": 7
 and 3 on seeds 3 and 4 with the small room, none at the game's values).
@@ -261,8 +266,9 @@ Worth trying together in a pass over the rules, and not run here:
 1. **The runaway town wages.** Ten runs of 432, nearly all early in the century on the same few
    islands, a town's wage doubling for four or five months and, on seed 4, the island's money
    level shifting for good after it. It is the one result here that looks like a fault rather
-   than a setting, and it will colour every other table of sensitivity, because any setting that
-   tips one island over moves the means of eight. The seeds and settings are in the table above.
+   than a setting (harvest.md saw it under the port), and it will colour every other table of
+   sensitivity, because any setting that tips one island over moves the means of eight. The seeds
+   and settings are in the table above.
 2. **`works.year_room` as the dial for the building cycle.** It is the only number of the life
    cycle that moves how rough the ride is, and it does so without moving the level of the wage. If
    the building cycle (works.md, "in company") is too large for the game, the room is where to
