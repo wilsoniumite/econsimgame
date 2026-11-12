@@ -74,7 +74,9 @@
 //! 9. Cottages of one storey, then two; townhouses on roads and market
 //!    places only where a neighbour stands; a third storey only between two
 //!    neighbours; terraces on rows from 1815; villas on lanes of ground with
-//!    little works (`one_house`).
+//!    little works the year they went up (`what_stands`). What a house grows
+//!    into is read from the most houses its cell has had (`Story::most`), so
+//!    a house raised or rebuilt stays so when its cell loses people.
 //! 10. For the houses to stay where they are built: the plots round a market
 //!     place stand where it comes to at its widest (`MARKET_RING`); a plot
 //!     fronts a street that runs whether or not the ground the street is on
@@ -85,6 +87,17 @@
 //!     garden ground and greens within hedges (`town_edge` in terrain.wesl),
 //!     and from across the island gives a town the tone of its roofs by how
 //!     full each cell is (`town_roofs_far`).
+//! 12. The one thing a town remembers is the works' yards of earlier years
+//!     (`Yards`): ground a yard gave up takes its turn after all that was
+//!     built by then, so no standing house is pulled down for it. The back
+//!     of a plot is asked as its middle is, so that no garden runs into a
+//!     yard, a churchyard, the railway or a lane (down to the water's edge it
+//!     need only be dry).
+//! 13. Each house is told its street (`family_of`, from the street's own
+//!     number), the age a cottage was raised in and the age a townhouse was
+//!     given a new front in; from these the generators make a street's
+//!     family of walls and roofs and its habits (`houses::Street`). A house
+//!     told none of them is the house it was before they were told.
 //!
 //! `ISOSTATE_TOWNS=1` prints a year's count of houses against residents,
 //! `=towns` the same town by town, `=cells` the cells that are short of
@@ -1721,6 +1734,44 @@ mod tests {
         assert!(rebuilt > 10 && raised > 10, "{rebuilt} cottages rebuilt as townhouses and {raised} houses raised in six years");
     }
 
+    /// The same when a cell loses more people than its houses outlast
+    /// (`world::HOUSES_KEEP`): the last-built houses go, and those left stand as
+    /// they were, not as the smaller count would have built them.
+    #[test]
+    fn the_houses_left_when_a_cell_loses_people_keep_their_kind_and_height() {
+        let mut r = made_up(true);
+        // in the last year every cell of the town loses two in five of its people
+        let (n, last) = (r.n, r.ny - 1);
+        for c in 0..n {
+            let (was, now) = ((last - 1) * n + c, last * n + c);
+            r.res[now] = (r.res[was] as f32 * 0.6).round() as u8;
+        }
+        let g = world::build_ground(&r);
+        let at = |k: usize| -> std::collections::BTreeMap<((i32, u8), i32), What> {
+            let l = laid(&r, &g, k, &|_, _| false);
+            l.standing.iter().zip(&l.whats).map(|(s, w)| ((s.lot.pl.run, s.lot.pl.index), *w)).collect()
+        };
+        let (was, now) = (at(last - 1), at(last));
+        let (mut kept, mut tall, mut lone) = (0, 0, 0);
+        for (plot, b) in &now {
+            let Some(a) = was.get(plot) else { continue };
+            kept += 1;
+            tall += (a.kind() == 1 || a.storeys() >= 2) as usize;
+            // (the one change left: a townhouse is a townhouse only where a neighbour stands,
+            // and that is read from this year's houses, so one whose neighbours were the
+            // last-built and went is a cottage again. Two of the made-up town's do so; reading
+            // the cell's count from this year, as before the second pass, made 92 houses change)
+            if matches!((a, b), (What::Townhouse { .. }, What::Cottage { .. })) {
+                lone += 1;
+                continue;
+            }
+            assert!(a == b, "plot {plot:?}: {a:?}, then {b:?} when its cell lost people");
+        }
+        // the fall took houses, and left many, the grown ones among them
+        assert!(now.len() < was.len() * 9 / 10 && kept > 60 && tall > 20, "{} houses, then {}: {kept} kept, {tall} of them grown", was.len(), now.len());
+        assert!(lone <= 2, "{lone} townhouses that lost their neighbours are cottages again");
+    }
+
     #[test]
     fn no_back_yard_runs_into_a_works_yard_a_lane_or_the_water() {
         let r = made_up(true);
@@ -1745,6 +1796,7 @@ mod tests {
                 for (line, width) in &l.lanes {
                     for w in line.windows(2) {
                         assert!(off_line(pl.p, w[0], w[1]) >= width * 0.5 + 0.012, "year {k}: a lane runs through the house on plot {:?}", (pl.run, pl.index));
+                        assert!(off_line(back, w[0], w[1]) >= width * 0.5, "year {k}: a lane runs across the end of the garden of plot {:?}", (pl.run, pl.index));
                     }
                 }
             }
