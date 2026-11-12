@@ -21,7 +21,7 @@ Started before this file existed, and left to finish. The usage limit cut every 
 
 **Paused at 11:40 on 12 November.** The week's allowance for the model the helpers run on stood at 88 per cent, and at the morning's pace the rest would have gone in under half an hour with every piece cut off in mid-task. Five pieces that could not finish in that time were stopped, each with its work committed on its branch, and are marked paused below; they carry on from those commits when there is allowance again. Three that were nearly done were left to finish, and landed that afternoon: saved games, the mines under the commons regime, and the books of account. By noon the allowance stood at 92 per cent, so nothing new is started until it comes back (19 November) or Stella says otherwise. The paused pieces have the first call on it, in this order: the tree's panels, the works' site planner's review, the smooth hand-over's first stage, the towns' second pass; at most five helpers at once, with the allowance read every half hour.
 
-**Opus workers, from 12:45 on 12 November.** Stella has a reset of the allowance in hand, and asked for workers on Opus 5.5 to take easier pieces until both allowances are used, so that the reset is spent on the hard ones. Twelve pieces went out, each done by one worker and checked by a second, on branches named `night/o-...`, none of them in the ground of the paused pieces. They are the last rows of the table. Nothing of theirs reaches `main` until it has passed the same trial merge, tests, sweep and pictures as every other piece.
+**Opus workers, from 12:45 on 12 November.** Stella has a reset of the allowance in hand, and asked for workers on Opus 5.5 to take easier pieces until both allowances are used, so that the reset is spent on the hard ones. Twelve pieces went out, each done by one worker and checked by a second, on branches named `night/o-...`, none of them in the ground of the paused pieces. They are the last rows of the table. Nothing of theirs reaches `main` until it has passed the same trial merge, tests, sweep and pictures as every other piece. At 13:05, with the first dozen using about eight points of the all-models allowance an hour, a second dozen went out, none of which changes a rule: three more traces, six tables of what each mechanism's numbers move, two probes and a reading of the news.
 
 | Piece | Notes | Branch | State |
 |---|---|---|---|
@@ -36,6 +36,11 @@ Started before this file existed, and left to finish. The usage limit cut every 
 | The books and the clock: a resumed game's earlier months, December's figures, a lighter copy of the island | 13 | `night/o-live-months` | Opus: being built |
 | Small repairs in the viewer (warnings, options that are not checked, a start that waits 45 seconds) and the land's checks (the picture against the record, the trees' cost, a guard on the field system written twice) (Smaller things) | none | `night/o-viewer-housekeeping`, `night/o-land-checks` | Opus: being built |
 | The front documents: every command run again and every number checked | none | `night/o-docs-run` | Opus: being done |
+| Three more traces: why the towns stop at four people in ten; the steel rail and when inventions come; the building cycle and the famine of tools | none | `night/o-trace-urban`, `-steel`, `-cycles` | Opus: being written; pages under `docs/probes/` |
+| Six tables of sensitivity for the pass over the rules: what each mechanism's numbers move on eight islands (F18) | none | `night/o-sens-prices`, `-machines`, `-works`, `-ways`, `-people`, `-mines` | Opus: being measured; pages under `docs/probes/` |
+| A probe: roads and bridges that somebody pays for, and a railway's fares that somebody collects, prototyped behind a switch (F15, F16) | 20, 21 | `night/o-dx-roads` | Opus: being probed; not for merging until Stella has read it |
+| A probe: a saved game that holds the island as it stands (F10) | none | `night/o-dx-save-state` | Opus: being measured and designed |
+| The news of eight islands read as a reader would (F25, in part) | none | `night/o-news-read` | Opus: being read; a page of faults, no code |
 
 ## Ready next, in order
 
