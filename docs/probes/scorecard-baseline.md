@@ -467,7 +467,10 @@ Reading it:
 - **The tree's numbers are from a scratch merge**, not from a branch that
   will land. Its integration may settle things differently (the fifth mend
   above, or whatever else changes before it lands), and its card should be
-  run again then. The tree also changes the 1750 island, so every comparison
+  run again then. (Later the same evening `night/o-finish-tree-ui-check`
+  took `main` too, at `547b1a5`, with the same five mends; the check of
+  this page swept its sixteen islands and found every fact the same as
+  `be02ef8`'s.) The tree also changes the 1750 island, so every comparison
   with it has the start in it as well as the run.
 - **The times on the cards are the machine's.** The 176 runs shared the
   machine with other work, so `seconds` here is three to eight times what a
