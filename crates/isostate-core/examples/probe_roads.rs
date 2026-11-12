@@ -44,6 +44,17 @@ struct Year {
     tolls: f64,
     trusts: f64,
     menders: f64,
+    rates: f64,
+    lent: f64,
+    dividends: f64,
+    bridges: f64,
+    bridge_m: f64,
+    works_open: f64,   // road works (not repairs) open at the year's end
+    works_oldest: f64, // years the oldest of them has been open
+    // at the run's end, each trust's yield to its lenders: paid over capital over its years,
+    // and the trusts left with no cells of road
+    trust_yield: Vec<f64>,
+    trusts_idle: f64,
     pop: f64,
     real_wage: f64,
 }
@@ -121,11 +132,32 @@ fn island(P: Params, C: Content) -> (Vec<Year>, f64) {
             y.tolls = n.tolls;
             y.trusts = n.trusts as f64;
             y.menders = n.menders;
+            y.rates = n.rates;
+            y.lent = n.lent;
+            y.dividends = n.dividends;
+            y.bridges = n.bridges as f64;
+            y.bridge_m = n.bridge_m;
+        }
+        let works = st.projects.iter().filter(|pr| pr.way == ways::ROAD && pr.serves != roads::REPAIRS);
+        for pr in works {
+            y.works_open += 1.0;
+            y.works_oldest = y.works_oldest.max((year - pr.start) as f64);
         }
         out.push(y);
         prev_road = st.road.clone();
     }
     let st = &sim.st;
+    if let Some(last) = out.last_mut() {
+        for tr in st.rd.trusts.iter().flatten() {
+            let years = (last.year - tr.formed + 1).max(1) as f64;
+            if tr.capital > 0.0 {
+                last.trust_yield.push(tr.paid / tr.capital / years);
+            }
+            if !st.rd.cell_trust.iter().any(|&t| t == tr.town as i32) {
+                last.trusts_idle += 1.0;
+            }
+        }
+    }
     let y0 = sim.content.start_year;
     let series = |name: &str| st.series.index.get(name).map_or(&[][..], |&k| &st.series.data[k][..]);
     for y in out.iter_mut() {
@@ -341,6 +373,44 @@ fn main() {
                 spread(&decade(y, &|x: &Year| x.menders))
             );
         }
+        println!("\n## Roads paid for: raised by rates and lent to trusts, and paid to lenders, a year over output (mean of the ten years)");
+        println!("{:>5}  {:>22} {:>22} {:>22}", "year", "rates / output", "lent / output", "to lenders / output");
+        for &y in &years[1..] {
+            println!(
+                "{y:>5}  {:>22} {:>22} {:>22}",
+                spread(&decade(y, &|x: &Year| x.rates / x.gdp)),
+                spread(&decade(y, &|x: &Year| x.lent / x.gdp)),
+                spread(&decade(y, &|x: &Year| x.dividends / x.gdp))
+            );
+        }
+        println!("\n## Bridges built (a year, mean of the ten years), and road works open at the year's end");
+        println!("{:>5}  {:>22} {:>22} {:>22} {:>22}", "year", "bridges", "metres of river", "works open", "oldest open (years)");
+        for &y in &years[1..] {
+            println!(
+                "{y:>5}  {:>22} {:>22} {:>22} {:>22}",
+                spread(&decade(y, &|x: &Year| x.bridges)),
+                spread(&decade(y, &|x: &Year| x.bridge_m)),
+                spread(&get(y, &|x: &Year| x.works_open)),
+                spread(&get(y, &|x: &Year| x.works_oldest))
+            );
+        }
+        let built = |f: &dyn Fn(&Year) -> f64| -> Vec<f64> { runs.iter().map(|(r, _)| r.iter().map(f).sum::<f64>()).collect() };
+        println!(
+            "\nbridges built in a run: {}, metres of river {}",
+            spread(&built(&|x: &Year| x.bridges)),
+            spread(&built(&|x: &Year| x.bridge_m))
+        );
+        let mut yields: Vec<f64> = runs.iter().filter_map(|(r, _)| r.last()).flat_map(|x| x.trust_yield.clone()).collect();
+        let n = yields.len();
+        let none = yields.iter().filter(|&&v| v <= 0.0).count();
+        let under = yields.iter().filter(|&&v| v < 0.05).count();
+        println!(
+            "trusts' yield to their lenders over their lives (paid / capital / years), pooled: {n} trusts, median {:.3}, 10th centile {:.3}, 90th {:.3}; {none} paid nothing, {under} under 5 per cent; trusts with no road left at the end, an island: {}",
+            quant(&mut yields, 0.5),
+            quant(&mut yields, 0.1),
+            quant(&mut yields, 0.9),
+            spread(&runs.iter().filter_map(|(r, _)| r.last()).map(|x| x.trusts_idle).collect::<Vec<_>>())
+        );
     }
 
     let ratios: Vec<f64> = runs.iter().map(|r| r.1).filter(|r| r.is_finite()).collect();
