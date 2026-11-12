@@ -582,12 +582,23 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
    `under_the_commons_a_fund_in_debt_levies_nobody` wants island 3's bad
    mining year, which put the common fund in debt ("0 months in debt"); its
    own comment says to find another island when a rule spares island 3. So
-   the comment above the switch in `params.rs`, that every test passes, is
+   the comment above the switch in `params.rs`, that every test passes, was
    two tests out. Neither is a fault of the land's code; each wants
    re-anchoring when the switch is thrown. The same day, eight islands under
    the game's rules with six families, under landlords and under the commons
    with the land on, gave sixteen runs, none failed, every month's money
    counted.
+
+   Made once more after the mends of that night ("Mended on 12 November")
+   and with the tests main had gained since: 232 of 236 pass, and four
+   fail, the two above and two more of the same kind. `tests/chronicle.rs`
+   `towns_and_districts_have_stories` wants seed 8 to found a decade of
+   towns before 1800 ("seed 8 has a decade of new towns before 1800"); it
+   did on the new land before the mends, and the mends move seed 8's island
+   enough that it no longer does. `tests/people.rs`
+   `a_sailing_is_news_of_its_own_kind` wants somebody to take ship on island
+   2 by 1827 ("the case is gone"), which nobody does on the new land, mends
+   or none. The sixteen runs, made again, all passed the money check.
 3. **It had not been run beside the mines and the canals**, which were tuned
    on the old island. It has now ("On the integration branch"): it stands,
    and what it does to each is written there. The water industry and the
@@ -601,7 +612,7 @@ on the old (the thoughtful player ends first of six on all four seeds on
 either island, with 57 to 127 million against 40 to 105).
 
 To switch it on: `P.land = crate::landform::LandParams::game();` in
-`game_params()`, run the tests (re-anchor the two above, and any of the
+`game_params()`, run the tests (re-anchor the four above, and any of the
 others named that fails again), and run the sweeps again.
 
 ## How it was checked
@@ -646,7 +657,9 @@ draining on the diagonal is fen, and a stream running on the diagonal falls
 and breaks none of the rules above (run again on 12 November: so it
 still is, with no lake cell beside the sea on any of the forty, and, after
 the night's mends, one island, every river where it says and every lake
-behind its lip on all forty). With one
+behind its lip on all forty; and on seeds 41 to 80, which none of the
+mends was made on, it found wood above the tree line on all forty and a
+lake below its lip on six before them, and nothing after). With one
 number at a time set to
 something silly on seeds 1 and 2 (`fine` 1, 3, 8 and 100; `land_fraction`
 0.2, 0.9 and 1; `relief` 0 and 3,000; no erosion steps; `erodibility` 0 and
@@ -683,10 +696,14 @@ an island):
   an island, on every island), the flood plain shrinks by 7 square km (1,759
   to 1,752), 12 more cells are navigable over the forty islands (on ten of
   them), and one island's first towns stand where they did but are ranked in
-  another order. Lakes, heights, land and towns do not move. What it is
-  seen in is a meandering river that runs on the diagonal: its slack bed was
-  flood plain where the same river's straight reaches above and below were
-  fen, and now it is fen like them.
+  another order. The lakes, the land, the hills and mountains and the towns
+  do not move. What it is seen in is a meandering river that runs on the
+  diagonal: its slack bed was flood plain where the same river's straight
+  reaches above and below were fen, and now it is fen like them; and a big
+  river on the diagonal whose cells were too steep for boats, a gap in a
+  navigable chain, is navigable through (seed 66). On seed 2 the
+  meandering river's line is the same as before to the pixel; its loops
+  only look smaller in the `wet` picture, where they now cross dark fen.
 - **Thin wood stood above the tree line**: 0.08 to 0.30 of full woodland
   before the grain, up to 0.33 after it, on every cell 760 m up, where the
   comment said none. The thinning from 380 m now takes all that rain and
