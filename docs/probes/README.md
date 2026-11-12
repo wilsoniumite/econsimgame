@@ -7,7 +7,8 @@ their own pages under `docs/rules/`. They are of four kinds:
 
 - **A probe** (`dx-...`) diagnoses something and designs a cure, with a rough prototype or a
   measuring example. The probe branches named in each (`night/dx-...` and `night/o-dx-...`)
-  hold the measuring code and are not for merging, unless the page says otherwise.
+  hold the measuring code and are not for merging; where a probe's example came onto `main`
+  with its page, it is named below.
 - **A trace with the books** (`tr-...`) follows something the sweeps had measured and nobody
   had explained through the books of account (`docs/rules/accounts.md`), by switching the
   suspected cause off and on. These are piece 12 of `docs/backlog/found-along-the-way.md`.
@@ -109,8 +110,9 @@ an answer was leaned on.
 - `tr-carriage.md` (at 295a379): carriage, stocks and famine. Under the game's rules the
   railway's gain reaches the wage (output a head and the real wage both 8 per cent higher, through
   prices; about seven parts in ten to work, its usual share, and to the owners of land and
-  houses twice theirs, with next to nothing to works' owners or merchants); the handling charge is a tenth to a seventh of the carting bill and a hand in a
-  hundred; coal is never held long and timber hardly; and the famines the canals took away were
+  houses twice theirs, with next to nothing to works' owners or merchants); the handling
+  charge is a tenth to a seventh of the carting bill and a hand in a hundred; coal is never
+  held long and timber hardly; and the famines the canals took away were
   the railway's: small towns handed districts larger than themselves, whose merchants' shelves
   stayed behind (`peopling::move_with_cells`). Example `examples/trace_carriage.rs`.
 - `tr-money.md` (at 295a379): the issue of money (it grows about 1.77 per cent a year where the
