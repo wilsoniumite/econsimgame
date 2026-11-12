@@ -9,8 +9,10 @@ stream 11); the port's `generate_world` is not touched.
 
 It is **not yet switched on in the game's rules**. The economy stands on the
 new land (the sweeps below, and "On the integration branch" for how it
-stands beside the mines and the canals), but the viewer cannot draw it yet.
-"Why it is off" says what is needed.
+stands beside the mines and the canals), and the viewer draws its ground,
+its rivers and its lakes (`isostate-viewer --new-land` starts a game on it to
+look at), but not yet its roads, railways and harbours as the real ground
+wants them. "Why it is off" says what is needed.
 
 ## What was wrong
 
@@ -324,8 +326,13 @@ drops the arrays.
 
 **In the live API**, `LiveStatic::land` is the same `Landform`, or `None`.
 
-The old arrays (`elev`, `terrain`, `river`, `nav`, `down`) are filled as ever,
-so the viewer as it stands draws the island from them.
+The old arrays (`elev`, `terrain`, `river`, `nav`, `down`) are filled as ever.
+The viewer reads the land's arrays where a run has them (its
+`src/newland.rs`), and draws the ground, the rivers and the lakes from them
+and no longer from `elev` and `river`; `terrain` and `down` it reads as
+before. A game is started on the new land before the switch is thrown with
+`save::Game::on_new_land`, which the viewer's `--new-land` calls; a save of
+such a game says `"land": true` and is played again on the same land.
 
 ## Seeing it
 
@@ -519,18 +526,22 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
 
 `game_params()` does not set it. What is missing:
 
-1. **The viewer cannot draw it.** It reads the old arrays, so a game does
-   start and play (`--shots` of a run made with `land = { enabled = true }`
-   are in `.claude/night/shots/land/game`): the coast, the big lowland lake
-   and the navigable rivers are there. But it draws its relief from `elev`,
-   which on the port's island fills 0 to 1 and here is metres over 1,500, so
-   the mountains hardly show; its meanders are still its own; a lake cell
-   is drawn as sea, which for an upland lake is a pit down to sea level; and
-   it knows nothing of a tideway, so a town at an estuary's head is a port
-   with no sea in sight. Teaching it `land_height`, the river lines, the
-   lakes and the tideways is the next helper's work; the viewer still reads
-   none of it on 12 November, and `docs/probes/dx-land-view.md` measures
-   what it would take and lays the work out in stages.
+1. **The viewer cannot draw all of it.** Since 12 November it reads the
+   land's arrays and draws the ground from `land_height` at three times
+   relief, the rivers from the river lines at their own widths and levels,
+   a sheet of water on each lake and the tideways as arms of the sea, with
+   each cell's roads meeting on dry and level ground, so that a town at an
+   estuary's head stands on the bank of its tideway
+   (`docs/probes/dx-land-view.md`, "What was built: stages 0 and 1", and the
+   viewer's README, "The new land"). What it cannot do yet is what keeps
+   the switch off: its railways keep to the cells' middles and so stand on
+   viaducts over the real relief; its roads run straight between the
+   meeting places, over tideways and lakes on causeways and across a river
+   wherever they meet it; a tideway one node wide breaks into pools; a
+   harbour is still a town beside a sea cell, so a port on a tideway has no
+   quay and a town on a lake has the sea's lighthouse; and the heights its
+   rules are written in are still its own units, not metres. Those are the
+   design's later stages.
 2. **Tests of other mechanisms are written to the port's island under the
    game's rules.** With the switch thrown for a trial on the island as it
    now is, one fails and the rest pass: `tests/chronicle.rs`
