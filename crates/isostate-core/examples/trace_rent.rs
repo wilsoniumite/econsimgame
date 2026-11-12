@@ -109,6 +109,8 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
     let mut rent = Vec::new();
     // part (d): every town's month: people, food in store, food's price, food got over need, households' cash a head
     let mut months: Vec<Vec<[f64; 5]>> = Vec::new();
+    // (year, month, town, way, cash in hand the month before it opened)
+    let mut opened: Vec<(i64, usize, usize, u8, f64)> = Vec::new();
     while sim.year <= sim.end_year {
         let year = sim.year;
         let k = (year - C.start_year) as usize;
@@ -133,8 +135,18 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
         };
         for month in 0..12 {
             let before = sim.st.lord_cash.clone();
+            // part (d): lines and canals that open this month, and what is left in their purse
+            let building: Vec<(usize, usize, usize, i64, u8, usize, f64)> =
+                sim.st.projects.iter().map(|p| (p.a, p.b, p.target, p.start, p.way, p.town, p.cash)).collect();
             sim::run_month(&mut sim, month).expect("money is conserved");
             let st = &sim.st;
+            if parts.contains('d') {
+                for &(a, b, target, start, way, town, cash) in &building {
+                    if !st.projects.iter().any(|p| (p.a, p.b, p.target, p.start, p.way) == (a, b, target, start, way)) {
+                        opened.push((year, month, town, way, cash));
+                    }
+                }
+            }
             for t in 0..T {
                 // the month's rents, as they were credited (`econ::step_month` keeps them in lord_income_prev)
                 let _ = before[t];
@@ -318,6 +330,19 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                         r[3],
                         r[4]
                     );
+                }
+                for &(y, m, town, way, cash) in &opened {
+                    let when = (y - C.start_year) as usize * 12 + m;
+                    if town == t && when + 3 >= at && when <= at {
+                        let _ = writeln!(
+                            text,
+                            "      {}-{:02}: a {} of this town's opened with {:.0} in its purse the month before (what is left goes to the households)",
+                            y,
+                            m + 1,
+                            if way == isostate_core::ways::PORT { "line of the port's" } else { "line or canal" },
+                            cash
+                        );
+                    }
                 }
                 if k > 0 {
                     if let Some(p) = st.acct.year(k - 1) {
