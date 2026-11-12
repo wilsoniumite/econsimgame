@@ -114,18 +114,21 @@ strong markup makes a swing of its own:
 So 0.5 sits in the middle of a window that runs from about 0.3 to 0.8, with a
 factor of two to spare before it turns on itself. A negative markup (dearer
 as the shelves fill) is nonsense and wrecks the island: industry goes within
-fifty years, and so it is refused where the settings are read, by every road
-(a file, an override, the sweep's `--set`), in one sentence
-that names it. So are a negative `glut_months`, a `glut_stop_months` under
-`glut_months` (equal is allowed: a brake that drops at once) and a
-`glut_floor` outside 0 to 1, whether the switch is on or off
-(`PriceSettings` in `prices.rs`). (Two of its four runs then stop at the money check in the 1880s.
+fifty years. (Two of its four runs then stop at the money check in the 1880s.
 Nothing leaks: `econ::step_month` issues new money as a share of the money it
 counts while the month's wages are between purses, on that island the count
 is below zero, so the stock shrinks until it is negative, and `sim::run_month`
 allows a drift of a millionth of the stock or of 1, whichever is larger,
 which for a negative stock is a millionth of a coin in forty million. That is
-the port's, not this mechanism's.) The brake has to stand well above `price_target_months` (2), the
+the port's, not this mechanism's.) So a negative markup is refused where the
+settings are read, by every road (a file, an override, the sweep's `--set`),
+in one sentence that names it, and so are a negative `glut_months`, a
+`glut_stop_months` under `glut_months` (equal is allowed: a brake that drops
+at once), a `glut_floor` outside 0 to 1, and any of the four that is not a
+number, whether the switch is on or off (`PriceSettings` in `prices.rs`; a
+`nan` or `inf` in a file is refused before it gets there, as "invalid type:
+null", since a file is read by way of JSON, which has no such numbers).
+The brake has to stand well above `price_target_months` (2), the
 stock merchants mean to hold: with `glut_months` 0.5 and `glut_stop_months`
 0.6 every works is on short time for ever (utilisation 0.11, no railway, 439
 thousand people in 1900), and with 0.5 and 2 the wage of 1900 is 1.08 times

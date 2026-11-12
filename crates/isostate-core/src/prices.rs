@@ -102,14 +102,18 @@ impl TryFrom<PriceSettings> for PriceParams {
     /// file that says a nonsense number has a mistake in it either way.
     fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
         let PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor } = s;
-        // (each written so that a number that is not a number fails it too)
-        if !(markup >= 0.0 && markup.is_finite()) {
+        for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months), ("glut_floor", glut_floor)] {
+            if !x.is_finite() {
+                return Err(format!("prices.{name} is {x}, and it has to be an ordinary number"));
+            }
+        }
+        if markup < 0.0 {
             return Err(format!("prices.markup is {markup}, and a negative markup asks more as the shelves fill, which wrecks the island: give 0 (the port's rule) or more, 0.3 to 0.8 being where it steadies prices"));
         }
-        if !(glut_months >= 0.0 && glut_months.is_finite()) {
+        if glut_months < 0.0 {
             return Err(format!("prices.glut_months is {glut_months}, and it has to be a number of months of stock, or 0 for merchants who always take all"));
         }
-        if glut_months > 0.0 && !(glut_stop_months >= glut_months && glut_stop_months.is_finite()) {
+        if glut_months > 0.0 && glut_stop_months < glut_months {
             return Err(format!("prices.glut_stop_months is {glut_stop_months}, under glut_months ({glut_months}), and merchants cannot stop taking before they start to take less: give it glut_months or more (the same is a brake that drops from all to glut_floor at once)"));
         }
         if !(0.0..=1.0).contains(&glut_floor) {
@@ -343,10 +347,14 @@ mod tests {
             assert_eq!(err.matches(". ").count(), 0, "{text}: more than one sentence: {err}");
         }
         // nonsense is nonsense with the switch off too, and a number that is
-        // not one (TOML can write it; it reaches the struct read straight from the file)
+        // not one (TOML can write it; it reaches the struct only when TOML is read
+        // straight into the parameters, as here: a --params file goes by way of
+        // JSON, which has no such numbers, and is refused there as "invalid type: null")
         assert!(crate::default_params().with_json_overrides(r#"{"prices": {"markup": -1}}"#).is_err());
         let err = crate::Params::from_toml_str("[prices]\nmarkup = nan\n").expect_err("a markup that is not a number");
-        assert!(err.contains("prices.markup is NaN"), "{err}");
+        assert!(err.contains("prices.markup is NaN, and it has to be an ordinary number"), "{err}");
+        let err = crate::Params::from_toml_str("[prices]\nglut_stop_months = inf\n").expect_err("a brake that never stops");
+        assert!(err.contains("prices.glut_stop_months is inf, and it has to be an ordinary number"), "{err}");
         // the sweep's own reader meets the same refusal
         let err = crate::sweep::set_field(&crate::game_params(), "prices.markup", &serde_json::json!(-1.0)).expect_err("a negative markup by --set");
         assert!(err.contains("prices.markup is -1"), "{err}");
