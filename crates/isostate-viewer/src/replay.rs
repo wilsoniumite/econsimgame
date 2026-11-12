@@ -482,10 +482,16 @@ fn newest_filled(series: &[f32], len: usize, t: usize) -> usize {
 /// town gas before the first gasworks, whose price in the record is one
 /// nothing was sold at. A run that does not hold what is made says yes.
 pub fn made_by(r: &Replay, good: &str, t: usize) -> bool {
+    first_made(r, good).is_some_and(|m| m <= t)
+}
+
+/// The first month of the run (0 is the first January) in which any of a good
+/// was made, or None if none has been. A run that does not hold what is made
+/// says the first month.
+pub fn first_made(r: &Replay, good: &str) -> Option<usize> {
     let name = format!("out_{good}");
-    let Some(i) = r.series_names.iter().position(|s| *s == name) else { return true };
-    let row = &r.series[i * r.series_len..(i + 1) * r.series_len];
-    row[..(t + 1).min(row.len())].iter().any(|v| v.is_finite() && *v > 0.0)
+    let Some(i) = r.series_names.iter().position(|s| *s == name) else { return Some(0) };
+    r.series[i * r.series_len..(i + 1) * r.series_len].iter().position(|v| v.is_finite() && *v > 0.0)
 }
 
 /// Annual mean of a named monthly series, or None if the run does not have it.
