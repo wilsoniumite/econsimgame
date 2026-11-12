@@ -37,9 +37,10 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 /// starting from a few cells picked by hash and turning by hash at junctions.
 /// The rounds keep to the main roads as they are drawn (`network::road_segments`),
 /// and each runs along its road's surface (`network::driven`): the ribbon,
-/// and over a river the bridge. Two kinds of link are left out, where the
+/// and over a river the bridge. Three kinds of link are left out, where the
 /// map shows no way a cart could go and a carter turns back: one whose road
-/// goes under a river's water with nothing to carry it, and one that ends in
+/// goes under a river's water with nothing to carry it, one where a bridge's
+/// ramp ends in a step above the road (`steps`), and one that ends in
 /// a cell whose middle, where the roads meet, has a bridge's roadway standing
 /// above the road there (a river running through the middle of the cell, so
 /// that the other roads come out from under the bridge, and a cart going on
@@ -71,7 +72,10 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
         }
         *dry.entry((lo, hi)).or_insert_with(|| {
             let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
-            !waters.near(a, b) || !waters.drowns(g, surface(ways, g, cen, lo, hi))
+            !waters.near(a, b) || {
+                let way = surface(ways, g, cen, lo, hi);
+                !waters.drowns(g, way) && !steps(way)
+            }
         })
     };
     let mut rounds = Vec::new();
@@ -118,6 +122,15 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
         }
     }
     out
+}
+
+/// Whether a road's line from `network::driven` has a step in it taller than
+/// the ribbon's lift: the foot of a bridge's ramp standing that far above the
+/// road it comes down to (where the river's level is well above the bank's
+/// ground; up to 0.09 of a cell on island 7), which a cart could not go down
+/// and so turns back at, as at a drowned road.
+fn steps(pts: &[Vec3]) -> bool {
+    pts.windows(2).any(|w| (w[1].y - w[0].y).abs() > network::ROAD_LIFT && bevy::math::Vec2::new(w[1].x - w[0].x, w[1].z - w[0].z).length() < 1e-3)
 }
 
 /// What the carters' rounds need to know of the roads that is the same in

@@ -143,9 +143,13 @@ pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool) -> Vec<Vec3>
 /// The top of several surfaces along a road, each given as heights at points
 /// along it (0 to 1) and straight between them, and nothing outside its first
 /// and last: the height of the highest at every point where one of them
-/// bends, begins or ends, or two of them cross, from 0 to 1.
+/// bends, begins or ends, or two of them cross, from 0 to 1. Where one begins
+/// or ends standing above the rest (the foot of a bridge's ramp where the
+/// river's level stands above the bank), the top steps there, within `STEP`
+/// of the way along, rather than sloping across what lies below.
 fn envelope(layers: &[Vec<(f32, f32)>]) -> Vec<(f32, f32)> {
     const EPS: f32 = 1e-6;
+    const STEP: f32 = 1e-4;
     let at = |l: &[(f32, f32)], t: f32| -> Option<f32> {
         let (first, last) = (l.first()?, l.last()?);
         if t < first.0 - EPS || t > last.0 + EPS {
@@ -158,7 +162,9 @@ fn envelope(layers: &[Vec<(f32, f32)>]) -> Vec<(f32, f32)> {
         let ((t0, h0), (t1, h1)) = (l[i - 1], l[i]);
         Some(if t1 - t0 > EPS { h0 + (h1 - h0) * ((t - t0) / (t1 - t0)).clamp(0.0, 1.0) } else { h1 })
     };
-    let mut ts: Vec<f32> = layers.iter().flatten().map(|p| p.0).filter(|t| (0.0..=1.0).contains(t)).collect();
+    // (and just outside where each begins and ends, for the step)
+    let edges = layers.iter().filter_map(|l| Some([l.first()?.0 - STEP, l.last()?.0 + STEP])).flatten();
+    let mut ts: Vec<f32> = layers.iter().flatten().map(|p| p.0).chain(edges).filter(|t| (0.0..=1.0).contains(t)).collect();
     ts.extend([0.0, 1.0]);
     ts.sort_by(f32::total_cmp);
     ts.dedup_by(|x, y| (*x - *y).abs() < EPS);
@@ -356,4 +362,32 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
         roads.ribbon(&road_line(g, cen[c], cen[m]), road_width(lv), if lv == 3 { main } else { lane });
     }
     Nets { roads, rails }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_top_of_a_road_steps_where_a_ramp_ends_above_it_and_bends_where_two_cross() {
+        // a road falling from 0.1 to 0 along its length; a ramp from 0.2 to 0.4 that begins 0.01
+        // above it and rises to 0.12; a deck from 0.4 to 0.6 at 0.05, under the road at first
+        let road = vec![(0.0, 0.1), (1.0, 0.0)];
+        let ramp = vec![(0.2, 0.09), (0.4, 0.12)];
+        let deck = vec![(0.4, 0.05), (0.6, 0.05)];
+        let top = envelope(&[road, ramp, deck]);
+        let at = |t: f32| {
+            let i = top.partition_point(|p| p.0 < t).clamp(1, top.len() - 1);
+            let ((t0, h0), (t1, h1)) = (top[i - 1], top[i]);
+            h0 + (h1 - h0) * ((t - t0) / (t1 - t0)).clamp(0.0, 1.0)
+        };
+        // the road, and up onto the ramp at once where it begins, not sloping up to it
+        assert!((at(0.1) - 0.09).abs() < 1e-5 && (at(0.199) - 0.0801).abs() < 1e-4, "{top:?}");
+        assert!((at(0.2) - 0.09).abs() < 1e-5 && (at(0.3) - 0.105).abs() < 1e-5, "{top:?}");
+        // down to the road at once where the ramp ends, the deck being under the road there
+        assert!((at(0.401) - 0.0599).abs() < 1e-4 && (at(0.45) - 0.055).abs() < 1e-5, "{top:?}");
+        // the road goes under the deck at 0.5, and the top bends there
+        assert!(top.iter().any(|p| (p.0 - 0.5).abs() < 1e-5), "{top:?}");
+        assert!((at(0.55) - 0.05).abs() < 1e-5 && (at(0.7) - 0.03).abs() < 1e-5, "{top:?}");
+    }
 }

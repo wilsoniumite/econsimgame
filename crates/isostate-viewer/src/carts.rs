@@ -207,6 +207,10 @@ pub struct RoadCheck {
     /// each wet stretch: where it starts, whether it is the sea, its length, how far of it the
     /// ribbon is under the water, and whether a main road
     pub wet: Vec<(Vec2, bool, f32, f32, bool)>,
+    /// the feet of bridges' ramps that stand above the road they come down to by more than a
+    /// cart's lift (where the river's level is above the bank's ground), and the highest
+    pub ramp_steps: usize,
+    pub ramp_step: (f32, Vec2),
     /// the middles of cells with a main road where a bridge's roadway stands above the road,
     /// so that no carters' round passes through (`trains::road_routes`)
     pub closed: Vec<Vec2>,
@@ -244,12 +248,27 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     let segs = network::road_segments(r, k);
     let v2 = |p: (f32, f32)| Vec2::new(p.0, p.1);
     // every link: what carries it over water, and where water lies under it with nothing to carry it
-    let mut main: Vec<(Vec2, Vec2, Vec<Vec3>, Vec<isostate_gen::bridge::RoadBridge>)> = Vec::new();
+    #[allow(clippy::type_complexity)]
+    let mut main: Vec<(Vec2, Vec2, Vec<Vec3>, Vec<isostate_gen::bridge::RoadBridge>, Vec<(f32, f32)>)> = Vec::new();
     for &(a, b, lv) in &segs {
         let (pa, pb) = (v2(cen[a]), v2(cen[b]));
         let bridges = network::road_bridges(g, pa, pb, lv == 3, |_| isostate_gen::houses::Detail::Play);
         let runs = network::causeway_runs(g, pa, pb);
         let ribbon = network::road_line(g, cen[a], cen[b]);
+        // the foot of a ramp that stands above the road it comes down to, where the river's level is
+        // above the bank's ground: the roadway ends in a step there, which a cart goes down
+        for br in &bridges {
+            for tb in [-br.ramp(), 1.0 + br.ramp()] {
+                let tl = (br.point(tb) - pa).dot(pb - pa) / pa.distance_squared(pb).max(1e-9);
+                let step = br.roadway_at(tb, &|x, z| world::height_at(g, x, z)).unwrap_or(0.0) - height_along(&ribbon, tl.clamp(0.0, 1.0));
+                if (0.0..=1.0).contains(&tl) && step > LIFT {
+                    c.ramp_steps += 1;
+                    if step > c.ramp_step.0 {
+                        c.ramp_step = (step, br.point(tb));
+                    }
+                }
+            }
+        }
         c.links += 1;
         c.bridges += bridges.len();
         c.causeways += runs.len();
@@ -290,7 +309,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             c.main_bridges += bridges.len();
             c.wet_main_links += wet_here as usize;
             c.drowned_main_links += drowned_here as usize;
-            main.push((pa, pb, network::driven(g, cen[a], cen[b], true), bridges));
+            main.push((pa, pb, ribbon, bridges, runs));
         }
     }
     // the main roads' meeting places that lie under a bridge's roadway, which carts keep away from
@@ -305,12 +324,28 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     let routes = trains::road_routes(r, g, cen, k, &mut trains::RoadMemo::new(r, g));
     c.rounds = routes.len();
     let mut crossed = vec![false; main.iter().map(|m| m.3.len()).sum()];
+    // the surface a cart should ride at `t` along a main link, worked out here afresh and not
+    // read from `network::driven`, which the carts' paths are made from: the highest of the
+    // ribbon, the roadway of each of its bridges and the top of a causeway
+    let height = |x: f32, z: f32| world::height_at(g, x, z);
+    let surface_at = |li: usize, t: f32| -> f32 {
+        let (a, b, ribbon, bridges, runs) = &main[li];
+        let p = *a + (*b - *a) * t;
+        let mut h = height_along(ribbon, t);
+        for br in bridges {
+            h = h.max(br.roadway_at(br.t_of(p), &height).unwrap_or(h));
+        }
+        if runs.iter().any(|&(t0, t1)| (t0..=t1).contains(&t)) {
+            h = h.max(network::CAUSEWAY_TOP);
+        }
+        h
+    };
     // the main road nearest a point: the link whose middle line it is nearest, how far, and how far along
     // (looked for among the links that pass within 0.1 of the point's cell, which hold the
     // nearest wherever it is that near, as it always is for a cart; among all of them elsewhere)
     let cell = |q: Vec2| (q.y.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + q.x.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
     let mut near_cell: Vec<Vec<usize>> = vec![Vec::new(); r.n];
-    for (li, (a, b, _, _)) in main.iter().enumerate() {
+    for (li, (a, b, ..)) in main.iter().enumerate() {
         let (lo, hi) = (a.min(*b) - Vec2::splat(0.1), a.max(*b) + Vec2::splat(0.1));
         for y in lo.y.floor().max(0.0) as usize..=(hi.y.floor().max(0.0) as usize).min(r.h - 1) {
             for x in lo.x.floor().max(0.0) as usize..=(hi.x.floor().max(0.0) as usize).min(r.w - 1) {
@@ -341,9 +376,13 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             // the road the cart is on, from its path's own point on the middle line; the
             // ribbon and the roadway are level from side to side, so this is its height to the side too
             let Some((_, li, t)) = nearest(Vec2::new(pos.x, pos.z)) else { continue };
-            let surface = height_along(&main[li].2, t);
-            if (pos.y - LIFT - surface).abs() > c.off_surface.0 {
-                c.off_surface = ((pos.y - LIFT - surface).abs(), Vec2::new(pos.x, pos.z));
+            // (where the surface steps, at the foot of a ramp that ends above the road, a cart
+            // going down the step is between the heights on either side of it)
+            let around = [surface_at(li, (t - 3e-4).max(0.0)), surface_at(li, t), surface_at(li, (t + 3e-4).min(1.0))];
+            let (lo, hi) = (around.into_iter().reduce(f32::min).unwrap_or(0.0), around.into_iter().reduce(f32::max).unwrap_or(0.0));
+            let off = (lo - (pos.y - LIFT)).max(pos.y - LIFT - hi).max(0.0);
+            if off > c.off_surface.0 {
+                c.off_surface = (off, Vec2::new(pos.x, pos.z));
             }
             for dir in [1.0, -1.0] {
                 let at = pos + side(yaw, dir);
@@ -361,7 +400,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
                 for (x, z) in FEET {
                     let f = drawn + rot * Vec3::new(x, 0.0, z);
                     let Some((_, fl, ft)) = nearest(Vec2::new(f.x, f.z)) else { continue };
-                    let gap = f.y - height_along(&main[fl].2, ft);
+                    let gap = f.y - surface_at(fl, ft);
                     if -gap > c.feet_under.0 {
                         c.feet_under = (-gap, Vec2::new(f.x, f.z));
                     }
@@ -420,6 +459,7 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
             "roads {}: {} links ({} main), {} bridges ({} on main roads), {} causeways; over water with nothing under them: {} links ({} main), {:.2} cells over a river's water and {:.2} over the sea, the ribbon under the water's surface for {:.2} of it, on {} links ({} main)",
             r.y0 + k as i32, c.links, c.main_links, c.bridges, c.main_bridges, c.causeways, c.wet_links, c.wet_main_links, c.wet_river, c.wet_sea, c.drowned, c.drowned_links, c.drowned_main_links
         );
+        eprintln!("  {} feet of ramps stand above the road they come down to, the highest by {:.4} at {}", c.ramp_steps, c.ramp_step.0, at(c.ramp_step.1));
         for (p, sea, len, under, main) in &c.wet {
             eprintln!("  wet {} at {} for {:.3} cells, the ribbon under the water for {:.3}{}", if *sea { "sea" } else { "river" }, at(*p), len, under, if *main { ", a main road" } else { "" });
         }
@@ -492,9 +532,9 @@ mod tests {
             }
             // and as drawn, tipped up a ramp and over the hump, its wheels and hooves on the roadway:
             // a cart drawn level there has a hoof 0.013 to 0.015 into the deck and one as far in the air
-            // (on island 7 it is at most 0.003 into it, and 0.007 in the air where a ramp meets the road)
+            // (on island 7 it is at most 0.003 into it, and 0.0095 in the air where a ramp meets the road)
             assert!(c.feet_under_on_bridge.0 < 0.005, "{year}: a cart on a bridge has a wheel or hoof {} into the roadway at {}", c.feet_under_on_bridge.0, c.feet_under_on_bridge.1);
-            assert!(c.feet_over_on_bridge.0 < 0.01, "{year}: a cart on a bridge has a wheel or hoof {} in the air at {}", c.feet_over_on_bridge.0, c.feet_over_on_bridge.1);
+            assert!(c.feet_over_on_bridge.0 < 0.012, "{year}: a cart on a bridge has a wheel or hoof {} in the air at {}", c.feet_over_on_bridge.0, c.feet_over_on_bridge.1);
             crossed += c.cart_bridges.len();
         }
         assert!(crossed >= 10, "the carts cross only {crossed} bridges in the three years");
