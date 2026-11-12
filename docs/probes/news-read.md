@@ -155,7 +155,9 @@ whose verdict never comes, as five runs of eight do.
   their carting costs them." "Millwrights go back to mending." Keep the
   voice.
 - **The succession.** "Henry follows Anne Fairfax, who died at 77 and is
-  buried at Melbourne, the family's seat" is one item where there were two.
+  buried at Melbourne, the family's seat" tells the death and the new head in
+  one item, and it is the one the major feed keeps. (The burial is still told
+  just before it in "All": see fault 21.)
 - **Provenance.** Every item that is news because a number passed a line says
   which number and which line, so checking an item takes a minute.
 
@@ -175,10 +177,10 @@ the eight runs unless an island is named.
 | | fault | how often | where |
 |---|---|---|---|
 | 1 | an overtaking names a town that was not in the place it lost, and the real changes of leader are never told | 4 of 26 wrong; 3 of 4 overtakings on island 7 | `chronicle.rs` 851–889 |
-| 2 | a coal boom names the year of the latest line to a town, as "the railway that reached" it | 6 of 9 | `chronicle.rs` 709–711, `railways.rs` 171–177 |
-| 3 | an invention's headline says a works opens, years before the first works of its kind | 24 of 55 five or more years later, up to 45 | `data/content.toml` (headlines), `observer.rs` 615–616 |
+| 2 | a coal boom names the year of the latest line to a town, as "the railway that reached" it | 6 of 9 (8 of 9 not the year the railway first came) | `chronicle.rs` 709–711, `railways.rs` 171–177 |
+| 3 | an invention's headline says a works opens, years before the first works of its kind | 24 of 55 five or more years later, up to 45 (12 of the 16 whose headline names a works) | `data/content.toml` (headlines), `observer.rs` 615–616 |
 | 4 | turning points in the first years that are the island's starting state | 7 of 8 islands, 1751 to 1755 | `observer.rs` 53 (the crossing) |
-| 5 | a grain glut after lean years blamed on "new capacity" | 11 of 24 gluts | `observer.rs` 495 |
+| 5 | a grain glut after lean years blamed on "new capacity", and a shortage after a bumper year on failed supply | 11 of 24 gluts; 6 shortages | `observer.rs` 495–496 |
 | 6 | the same works closes twice; one name for many works | 19 told twice in a year; 121 names told more than once | `sim.rs` 490–510 |
 | 7 | a new works "expects to return 1288 per cent a year" | 131 at 100 per cent or more, up to 1,920 | `families.rs` 1164, `chronicle.rs` 302 |
 | 8 | sums of money with no £, in two styles | every founding and extension | `families.rs` 1164, `chronicle.rs` 302, 393, 402 |
@@ -194,7 +196,7 @@ the eight runs unless an island is named.
 | 18 | titles that start with a figure: "3 branch lines open" | 423 | `ways.rs` 784, `peopling.rs` 220, `observer.rs` 538 |
 | 19 | "the country" and "the island" for the same place | 125 and 277 | `observer.rs` 38, 422, 455, 616; `chronicle.rs` 481 |
 | 20 | "The slump of 1764–1765 ... Historians will call this a recession." | 112 of 139 verdicts | `observer.rs` 585–588 |
-| 21 | small things: "Extended, for 3,307 in all:", "11th" after "tenth", months that mean nothing, a works told twice on its first day, rivals' deaths told twice, "Coal, Machinery, Rails and Charcoal" | see below | various |
+| 21 | small things: "Extended, for 3,307 in all:", "11th" after "tenth", months that mean nothing, a works told twice on its first day, deaths told twice, "Coal, Machinery, Rails and Charcoal" | see below | various |
 | 22 | floods in the "All" list: family items 41%, closures 19% | every run | `families.rs`, `sim.rs`, `chronicle.rs` |
 
 ### 1. Overtakings that name the wrong town
@@ -202,7 +204,7 @@ the eight runs unless an island is named.
 > Town and country · November 1858 — **Kelside overtakes Melbourne as the island's first town.** Kelside and its district have 47,471 people to Melbourne's 43,542. In ten years Kelside has grown by 21% and Melbourne has shrunk by 11%. Kelside supplies 27% of the island's rails.
 
 Island 7. Kelside is first, but Melbourne is fourth: Stratbank has 46,046 and
-Glenbrook 45,196, and Melbourne had been third or lower since 1856. Three
+Glenbrook 45,196, and Melbourne had been third or lower since 1855. Three
 years later:
 
 > Town and country · November 1861 — **Stratbank overtakes Melbourne as the island's second town.**
@@ -213,11 +215,13 @@ when Melbourne had already fallen to fourth behind Sandmere and Glenbrook. On
 island 5, "Brackbourne overtakes Ivelwater as the island's second town" (1851)
 names a town that was third. Leaving the newcomer aside, the town said to lose
 first or second place was not in it, in the year or three years before, in 4
-of 26 overtakings; in five more it had slipped to third by the time the story
+of 26 overtakings; in six more it had slipped to third by the time the story
 was told. And the changes that mattered most on island 7 are not told at all:
-Glenbrook led the island from about 1780 to 1800, and Melbourne, the player's
-own seat, from about 1804 to 1852. A player reads "Brambridge first" in 1754
-and next hears of the first place in 1858, as Melbourne loses it.
+Glenbrook led the island from 1763 to 1802, and Melbourne, the player's own
+seat, from 1803 to 1853. A player reads "Brambridge first" in 1754 and next
+hears of the first place in 1858, as Melbourne loses it. (Glenbrook's turn
+began the year Garside was founded and cut Brambridge's district from 30,108
+people in 1761 to 24,247 in 1764.)
 
 Why: the chronicle keeps the two places "as last announced" and compares each
 holder only with the largest challenger (`chronicle.rs` 866–870). A holder
@@ -247,9 +251,19 @@ since the boom's base year. `railways::line_for_coal` (`railways.rs` 172) walks
 the promoters' book from the end and returns the latest line that touches the
 town; `chronicle.rs` 711 calls it "the railway that reached".
 
-*Suggested wording.* Take the earliest line since the base year, or keep the
-latest and say what it is: "The railway reached Garside in 1827, and a second
-line, from Sandmere, in 1829; they carry it away."
+It is worse than that, because the search only looks back to the boom's base
+year. Island 7's boom around Stratbank (1838) says "The railway that reached
+Stratbank in 1835 carries it away"; the island's first railway of all, Kelside
+to Stratbank, opened there in July 1823, and the 1835 line is the one from
+Glenbrook. Island 5's boom around Calmouth (1850) says 1845; its first line
+opened in 1838. Counting lines between two towns, eight of the nine give a
+year that is not when the railway first reached the town.
+
+*Suggested wording.* Say which line it is: "The railway reached Garside in
+1827, and a second line, from Sandmere, in 1829; they carry it away", or "The
+line from Glenbrook, opened in 1835, carries it away". Taking the earliest line
+since the base year would mend Garside and leave Stratbank false; "reached" is
+right only for the town's first line.
 
 ### 3. An invention's headline says a works opens, decades before one does
 
@@ -261,7 +275,12 @@ Island 1: forty-five years and another town apart. On the same island "Rails
 rolled at Ulford" (1789) is followed by the first rolling mill near Oakbridge
 in 1830. Of the 55 inventions on the eight islands whose kind was ever built,
 24 have their first works five or more years later and 20 in another town;
-island 3's steel rails (1891) are never built at all. The two items cannot
+island 3's steel rails (1891) are never built at all. Strictly, only two of
+the seven headlines name a works ("Engine works opens at", "First powered mill
+at"), and 12 of their 16 inventions come five or more years before the first
+works; the other five say what was done ("Rails rolled at", "Crucible steel
+cast at"), but their stories ("gets rails by the yard") read as a going
+concern just the same. The two items cannot
 both be true as a reader takes them: the headline says a works opened, the
 later item says this is the first. (The invention is a discovery of how; the
 first works is the first business built to do it at a profit. The model is
@@ -302,11 +321,20 @@ not grow; the weather came back. Eleven of 24 grain gluts follow a short
 harvest or a dearth within two years. This is R24 in the backlog, seen from
 the reader's side. `observer.rs` 495.
 
+It fails the other way too:
+
+> Markets · November 1818 — **Grain shortage.** Grain output fell 21% this year against a trend of +3% a year, while prices rose 16%: supply has failed while buyers still want it.
+
+Island 4, kept, the year after "A bumper harvest" (10 per cent above an
+ordinary year); the harvest of 1818 was 0.975 of an ordinary one. Six grain
+shortages in the eight runs come the year after a bumper harvest, and three of
+them are kept (`observer.rs` 496).
+
 *Suggested rule.* As the chronicle page proposes: no steep item on a good in a
 year its harvest was news, and for grain after a short crop, "The harvest
 comes back: grain output is up 28% on the lean year before."
 
-### 6. The same works closes twice
+### 6. The same works closes twice, and one name serves many works
 
 > Closure · November 1764 — **Crowther's Forge closes.** The smithy near Mallowwick, open since 1749, can no longer cover its costs.
 >
@@ -320,9 +348,17 @@ Oakbridge". Over the eight runs 19 closures repeat a title already told that
 year and 121 names are told closing more than once. In the record more than
 half of all works share their name with another (1,188 of 2,223 on island 1),
 and 156 on island 1 and 190 on island 7 are exact twins (same cell, method,
-year opened and year closed), most of them works the island starts with. One round of closures names five works it counts among six
-brickworks: they are all "Mallowwick Brickworks", standing near Sandmere.
-`sim.rs` 490–510 writes the item; the names come from the works' naming.
+year opened and year closed), most of them works the island starts with.
+Some of the 19 repeats are two works of one name in different towns: "Varley
+& Co. closes" near Blackness and again near Glenby (island 4, November 1899).
+And the names point at the wrong town: one round of closures on island 7
+(1757) counts six brickworks among seven works shut around Sandmere, and in
+the record five of the six are called "Mallowwick Brickworks"; island 4 tells
+"Sunhaven Colliers' Wood closes. The charcoal burning near Penmere" twice in
+1771 and once more in 1787 (a works of 1749 keeps the name of the town whose
+district it stood in, `names.rs` 47, and Penmere was founded round it in
+1766). `sim.rs` 490–510 writes the item; the names come from the works'
+naming.
 
 *Suggested rule.* In the news, a works whose name another standing works
 shares takes its place or its number: "Crowther's Forge, the larger of two of
@@ -404,7 +440,7 @@ head is 6% lower than in 1880, after three slumps."
 ### 11. The mines tell nothing
 
 `mines.rs` writes no news. In eight runs the only mention of a mine is a branch
-line "to the iron mines near Cranbourne" (island 6, 1830). A pit head opening,
+line to "the iron mines near Cranbourne" (island 6, 1830). A pit head opening,
 a royalty paid to a family, a mine hiring more hands than its town has (the
 README's town that paid 8.6 times its neighbours' wage): none reaches the
 reader. The coal booms are told from the districts' coal, not the workings.
@@ -421,6 +457,16 @@ after it: on island 3 the major feed of the 1830s and 1840s, when the network
 grew from 577 to 1,638 km, holds no railway item at all. The milestones
 ("The railway network passes 1,000 km") weigh 0.65 and compete with every
 other milestone. A history of those decades would lead with the railways.
+
+The same cap of one a kind empties other decades in other ways. On island 4
+in the 1840s "More hands in workshops and mills than on the land" (0.95) takes
+the turning points' one place, so "Rolling mills overtake the rail forges"
+(1843) and "Converter steel overtakes crucible steel" (1849), both 0.85, are
+dropped while "Coal glut" (0.80) is kept. In its 1890s the verdict on the
+depression of 1884–1890 takes the one place that alarms and verdicts share
+(`chronicle.rs` 1170–1181), so "Output falls 10.0%" in 1895, which no verdict
+ever dates, is kept nowhere, and the major feed of the decade is that verdict,
+"Wolfbrook is the fastest-growing town of the 1890s" and a succession.
 
 *Suggested rule.* A decade digest for the railways as for new towns, kept like
 one: "The railway decade: 11 lines open, from 329 to 1,061 km. Every town but
@@ -483,9 +529,10 @@ wording:* "Calloway's Brickfield No. 2 closes" with the family in the text, or
 ### 18. Titles that start with a figure
 
 "3 branch lines open" (`ways.rs` 784), "427 people leave the island"
-(`peopling.rs` 220), "Shortages in 4 industries" (`observer.rs` 538): 423
-titles. *Suggested wording:* the number in words below a hundred, as the
-regional stories already do ("Seven works close around Sandmere"); "Three
+(`peopling.rs` 220): 423 titles start with a figure. "Shortages in 4
+industries" (`observer.rs` 538) does not start with one but has the same
+figure where a word belongs. *Suggested wording:* the number in words below a
+hundred, as the regional stories already do ("Seven works close around Sandmere"); "Three
 branch lines open".
 
 ### 19. The country and the island
@@ -528,10 +575,23 @@ each depth: "The recession of 1764–1765", or keep "slump" in both places.
   Granness" and, a month later, "The Beaumont family opens its first powered
   mill at Granness. Beaumont Mill is built for 9098" (island 7, 1784): four in
   the eight runs. One item, the family's, saying it is the first on the island.
-- **Rivals' deaths told twice.** "Thomas Neville dies at 72 / Thomas Neville,
+- **Deaths told twice.** "Thomas Neville dies at 72 / Thomas Neville,
   head of the family, is buried at Brambridge" and then "Georgiana Neville
-  heads the family / The Nevilles are led from Brambridge": 469 such pairs.
-  The chronicle joins the player's; the rivals' could be joined the same way.
+  heads the family / The Nevilles are led from Brambridge": 469 such pairs
+  among the rivals. The player's own are told twice as well, and more plainly
+  so, since the chronicle's rewritten succession repeats the burial word for
+  word: "Anne Fairfax dies at 77 / Anne Fairfax, head of the family, is buried
+  at Melbourne", then "Henry Fairfax heads the family / Henry follows Anne
+  Fairfax, who died at 77 and is buried at Melbourne, the family's seat"
+  (island 7, December 1791). `chronicle::succession` (`chronicle.rs` 412–434)
+  only lowers the burial's weight; it could drop it, and the rivals' pairs
+  could be joined the same way.
+- **Charcoal counted as coal.** "The Ashby family takes up coal and mining",
+  and then "The Ashby family sets up in coal and mining at Larkbourne. Ashby's
+  Charcoal is the first works the family has had in that trade there" (island
+  4, 1775): charcoal burning is in the coal and mining trade
+  (`families.rs` 85), which a reader of the 1770s, when charcoal and coal are
+  rivals, will not expect. "Fuel" would cover both.
 - **Capitals mid-sentence.** "Coal, Machinery, Rails and Charcoal all moved far
   outside their trend this year" (`observer.rs` 525–538 joins the goods'
   labels).
@@ -595,6 +655,19 @@ the monthly series; the works' records; the railway and canal books).
 | island 1: Uldale in decline, 1855 | 13,637 in 1847, 37% fewer | 13,637 to 8,626 | right |
 | island 1: Wilmere Bloomery closes twice, 1750 | | two works of that name, cells 2587 and 2467; a third told in 1773 | right (fault 6) |
 | island 1: Ulford Brickworks closes, 1852 | the third time | five works of that name, all near Oakbridge | right (fault 6) |
+
+A check of this page, on runs made again from the same code (the news and the
+monthly series of every island came out byte for byte the same), read island 4
+whole and put sixteen more of its items to the same test: a town in decline
+and where its people went (1758, 1845), a coal boom's price (1765), the
+fastest-growing towns of the 1770s and 1840s, Sunhaven passing 10,000 (1781),
+two overtakings (1801, 1880), a poor harvest and its worst district (1815), a
+dearth and what a wage then buys (1850), the first railway (1842), the network
+passing 250 km (1848), the depression of 1856–1858, the family's mill closing
+(1889), mills' share of cloth (1809) and the hands in industry (1846). All
+sixteen are right in every figure, and both overtakings name the right town as
+the one displaced. That reading found what is added above to faults 2, 5, 6,
+12 and 21, and corrected the years Glenbrook and Melbourne led island 7.
 
 ## What I did not do
 
