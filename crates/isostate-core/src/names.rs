@@ -96,6 +96,16 @@ pub fn firm_name(rng: &mut Rng, method_name: &str, town: &str) -> String {
     pat.replace("{S2}", &s2).replace("{S}", &s1).replace("{T}", town)
 }
 
+/// How many works have borne `base` as their name or as the first part of a
+/// numbered one ("Ashby Mill", "Ashby Mill No. 2"), closed works among them, so
+/// that the next takes the number after and no name is given twice in a run.
+/// Not in the Python, which counts every name that starts with the base and so
+/// numbers "Ashby Mill" on from the town's "Ashby Mills" too (`firms::spawn_sister`
+/// keeps that count under the port).
+pub fn works_of_name(names: &[String], base: &str) -> usize {
+    names.iter().filter(|n| n.strip_prefix(base).is_some_and(|rest| rest.is_empty() || rest.starts_with(" No. "))).count()
+}
+
 // ---------------------------------------------------------------- families (not in the Python)
 
 /// Surnames of the families who own works and estates.

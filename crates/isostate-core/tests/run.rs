@@ -37,6 +37,34 @@ fn money_is_conserved_and_runs_are_deterministic() {
 }
 
 #[test]
+fn money_below_nothing_stops_the_run_and_says_so() {
+    // Island 3 under the commons once took its money below nothing (the month's
+    // issue is a share of the money counted before the wages reach the
+    // households: docs/rules/mines.md, "What worries me"), and the check then
+    // stopped it with "money not conserved", reading the rounding of purses of
+    // billions against an allowance of a millionth of one unit. Here the same
+    // state is made by hand: twice the island's money is taken from the
+    // households and from the money the run started with, so that the purses
+    // still sum to what was issued and the money is below nothing.
+    let mut s = sim::start(&short_params(3, 1752), default_content());
+    sim::run_month(&mut s, 0).expect("an ordinary month passes the check");
+    let take = 2.0 * money_total(&s.st);
+    let people: f64 = s.st.pop.iter().sum();
+    for t in 0..s.st.T_max {
+        s.st.hh_cash[t] -= take * s.st.pop[t] / people;
+    }
+    s.st.money_start -= take;
+    assert!(money_total(&s.st) < 0.0);
+    let mut off = s.clone();
+    let e = sim::run_month(&mut s, 1).expect_err("a run with its money below nothing goes no further");
+    assert!(e.starts_with("the island's money went below nothing in 1750-1 ("), "{e}");
+    // the check for leaks is as it was, and with the check off (examples/purses.rs)
+    // the month is played so that the purses can be read
+    off.check_money = false;
+    sim::run_month(&mut off, 1).expect("with the check off the month is played");
+}
+
+#[test]
 #[allow(non_snake_case)]
 fn invariants_hold_every_year() {
     let P = short_params(5, 1765);
