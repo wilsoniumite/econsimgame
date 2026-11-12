@@ -1,6 +1,6 @@
 # tr-works: growth that stops, kept town ground, the works' lives and the wage's worst year
 
-One of four traces with the books of account (piece 12 of `docs/backlog/found-along-the-way.md`): things the sweeps had measured and nobody had explained. Branch `night/o-trace-works`, cut from `main` at 295a379, on 12 November 2026. Nothing under `crates/isostate-core/src` was changed; one example was added to measure with, `crates/isostate-core/examples/trace_works.rs`. Everything is under the game's rules with six families. The raw output (every sweep, every table the example printed, and a file of notes with each command in order) is under `.claude/night/reports/opus/trace-works/`, which is not in the repository.
+One of four traces with the books of account (piece 12 of `docs/backlog/found-along-the-way.md`): things the sweeps had measured and nobody had explained. Branch `night/o-trace-works`, cut from `main` at 295a379, on 12 November 2026. Nothing under `crates/isostate-core/src` was changed; one example was added to measure with, `crates/isostate-core/examples/trace_works.rs`. Everything is under the game's rules with six families. The raw output (every sweep, every table the example printed, and a file of notes with each command in order) is under `.claude/night/reports/opus/trace-works/`, which is not in the repository. The page was then checked (branch `night/o-trace-works-check`, output under `trace-works/check/`): its numbers were run again, the cause in section 1 was taken away on sixteen islands and eight more, and section 2's answer was found not to hold and rewritten. Where the first version said something the check overturned, the page says so.
 
 The example steps each island a year at a time with the books kept and prints three sections, each the mean over the islands it is given unless it says otherwise:
 
@@ -16,7 +16,7 @@ cargo run --release -p isostate-core --example trace_works -- [--rules port|game
 1. **Growth stops because the machines stop getting better.** Output per head does not fall after 1879 in any measure of quantities; it stops rising. What fall there is in the observer's figure is its price index: it deflates by the cost of the basket of 1750, which is heavy in timber, wool and grain, and those grow dearer once nothing more is gained on the land. What stops is the farms, quarries, clay pits and mines, all of which take their gains from one curve, the machines' quality, which comes within one per cent of its ceiling of 4 (`machines.quality_cap`) in about 1870 on the median island. Lift the ceiling to 8 and growth in the last two decades goes from 4 per cent to 17, on every island of sixteen and of eight more, and the year output per head peaks moves from 1879 to 1895; lower it to 3 and the stall comes a decade sooner. Two and a half times the people, the money rule, and a readier willingness to invest each change the level or the timing, not the stall.
 2. **Kept town ground still costs 2 to 5 per cent of the wage in some part of the century, and one works in thirty.** With six families it costs 3 per cent of the real wage and of output per head from 1840 to 1859 and under one per cent after 1860; with no families, as `towns.md` first measured it, 2 to 4 per cent from 1860 to 1900. (The first version of this page read only the 1870s to the 1890s with six families and found the cost gone; the check of the page found it was not.) The two suspected small causes, the new town's first year reckoned at its donor's wage and the floor under town ground's rent, are not the cause of the fewer works, and nor is the room a works on town ground leaves for houses: switching any of them leaves the works as few or fewer. Nor do the two switches reliably carry the wage cost: with both off it goes with six families and stays with none. What is left is the ground the towns take, which no switch takes away alone.
 3. **A works that closes dies younger than under the port because it stops being "building" within a year.** Under the port a works with anything on order cannot be counted idle, and an order is never quite delivered, so a works is sheltered from the three-losing-years rule for five to seven years. Under the life cycle it is out of that shelter in its first year. At ages 3 to 5 the game's works close at 4.8 per cent a year where the port's close at 0.9. Put the shelter back (`works.built_share=0`) and the median life goes from 11.7 years to 21.5.
-4. **The worst year is a building wave buying the whole year's timber, with an ordinary harvest after a good one.** On fourteen islands of sixteen it falls between 1874 and 1899, the money wage hardly moves, and the cost of living rises 14 to 24 per cent, three fifths of it timber. In that year works being built buy as much timber as the island makes, households are priced out of it, and the price jumps by two thirds. Grain and wool, from a harvest that is middling after a good one, add about a quarter. With harvests off the worst year is 12 per cent down instead of 15; with woods that regrow twice as fast, 13. The "worse at a merge" of C134 was this same year landing on a deeper wave on six islands of eight; it was back where it had been by the next merge.
+4. **The worst year is a building wave buying the whole year's timber, with an ordinary harvest after a good one.** On fourteen islands of sixteen it falls between 1874 and 1899, the money wage hardly moves, and the cost of living rises 14 to 24 per cent, three fifths of it timber. In that year works being built buy as much timber as the island makes, households are priced out of it, and the price jumps by two thirds. Grain and wool, from a harvest that is middling after a good one, add about a quarter. With harvests off the worst year is 12 per cent down instead of 15; with woods that regrow twice as fast, 13. The "worse at a merge" of C134 was mostly this same year landing on a deeper wave on six islands of eight, though the five worst years deepened a little with it; both are back where they had been on today's main, and kept ground on against off today makes no difference to either.
 
 ## 1. Growth that stops
 
@@ -220,7 +220,7 @@ Switched (sixteen islands, the mean of each island's worst year):
 
 The trial was one line in `firms::review`: a works that earns the hurdle asks for at most a quarter of its capacity, a tenth for each hurdle it earns, where today it asks for half and a fifth. It was built, swept on sixteen islands and taken out again. It took a tenth off the yearly swing of the real wage (0.052 for 0.056) and 0.9 points off the worst year; the room is still taken whole, now by several works at once. So the worst year is the building wave first and the harvest second, and neither alone makes it.
 
-**C134.** At merge `e` (before kept ground) and merge `f` (after) every island's worst year fell between 1872 and 1899, with timber up 43 to 105 per cent in it. The mean went from 14.6 to 16.3 per cent down because six islands of eight landed on a different and deeper wave; at merge `l` (today) the same eight read 14.3. Kept ground on against off today, on sixteen islands: 15.3 and 15.0, deeper on seven islands and shallower on nine. The worst of 140 yearly changes is a noisy fact, and C134 was its noise.
+**C134.** At merge `e` (before kept ground) and merge `f` (after) every island's worst year fell between 1872 and 1899, with timber up 43 to 105 per cent in it. The mean went from 14.6 to 16.3 per cent down because the worst year was deeper on six islands of eight, five of them on a different wave; at merge `l` (today) the same eight read 14.3. Kept ground on against off today, on sixteen islands: 15.3 and 15.0, deeper on seven islands and shallower on nine. The worst of 140 yearly changes is a noisy fact. But not all of C134 was that noise: the mean of each island's five worst years, a steadier reading of the same tail, also deepened at `f`, from 12.0 to 13.5 per cent, and was back at 12.0 by `l`; today it reads 12.0 with kept ground and 12.2 without. So at merge `f` the whole tail did deepen a little, kept ground is not what deepens it today, and whatever did it at `f` has since been undone by later merges; which one was not traced.
 
 **How sure.** Sure of what the worst year is made of (sixteen islands, the same story in fourteen, and two switches that each take off the part they should). Not sure of the split between building and harvest: the two coincide, the harvest being middling after a good one is when the year's room is full, and I did not trace why.
 
@@ -231,7 +231,7 @@ The trial was one line in `firms::review`: a works that earns the hurdle asks fo
 - **`machines.quality_cap` ends the century's growth.** It is the only source of growth left on the land after about 1870, and the land is where the island's productivity came from in the middle of the century. Whatever is to grow after 1880, or after 1900 on the way to 2050, needs a curve that goes on.
 - **`gdp_pc` deflated by the 1750 basket turns a stall into a fall**, and moves the peak year about a decade early. Deflate output per head by the chained index, or report output at fixed prices, before reading `output_per_head_peak_year` again.
 - **Money is not neutral** here: a point more of new money a year makes the island 7 or 8 per cent richer by the 1850s (a fifth, from none to one) and gets it to the ceiling sooner. Mending K39 will move real numbers, not only prices.
-- **R102 can close**; if the 3 per cent fewer works matters, sweep `towns.works_room`.
+- **R102 stays open.** Kept ground still costs 2 to 5 per cent of the wage over some twenty years, and neither the two small switches nor the room beside works is the cause of that or of the 3 to 4 per cent fewer works; the farmland under town cells is what is left, and testing it needs `towns.md`'s mend.
 - **C140 is the life cycle working as designed**; swap `works_closed_median_life` for closures by age.
 - **The worst year is the building cycle meeting a shrinking timber supply.** Look at how a works asks to grow and at the woods together; replace the single worst year with something steadier before ranking rules by it.
 
@@ -251,26 +251,38 @@ All from the repository's root, `cargo build --release -p isostate-core --exampl
 ./target/release/isostate-core sweep --seeds 1-8 --rules game --families 6 --set machines.quality_cap=8 --set people.growth_top=0.008,0.016 --out DIR/a-people-q8 --quiet
 ./target/release/isostate-core sweep --seeds 1-8 --rules game --families 6 --set money_growth=0,0.01,0.02,0.03 --out DIR/a-money --quiet
 ./target/release/isostate-core sweep --seeds 1-8 --rules game --families 6 --set hurdle=0.08,0.12 --set works.year_room=0.15,0.25 --out DIR/a-invest --quiet
+# (a), added by the check of this page
+./target/release/isostate-core sweep --seeds 1-16 --rules game --families 6 --set machines.quality_cap=3,4,8,1000 --out DIR/a-cap16 --quiet
+./target/release/isostate-core sweep --seeds 17-24 --rules game --families 6 --set machines.quality_cap=4,8 --out DIR/a-cap-s17-24 --quiet
+./target/release/examples/trace_works --only growth --set '{"money_growth":0.0}' 1 2 3 4 5 6 7 8
 # (b)
 ./target/release/isostate-core sweep --seeds 1-16 --rules game --families 6 --set towns.enabled=false --out DIR/b-off --quiet
 ./target/release/isostate-core sweep --seeds 1-16 --rules game --families 6 --set towns.donor_wage=false,true --set towns.rent_floor=false,true --out DIR/b-parts --quiet
+# (b), added by the check of this page
+./target/release/isostate-core sweep --seeds 1-16 --rules game --families 0 --set towns.enabled=false,true --out DIR/b-f0 --quiet
+./target/release/isostate-core sweep --seeds 1-16 --rules game --families 0 --set towns.donor_wage=false --set towns.rent_floor=false --out DIR/b-f0-parts --quiet
+./target/release/isostate-core sweep --seeds 1-16 --rules game --families 6 --set towns.works_room=0.25,1.0 --out DIR/b-room --quiet
 # (c)
 ./target/release/examples/trace_works --rules port --families 6 --only life 1 2 3 4 5 6 7 8
 ./target/release/examples/trace_works --only life --set '{"works":{"built_share":0.0}}' 1 2 3 4 5 6 7 8
 ./target/release/isostate-core sweep --seeds 1-8 --rules game --families 6 --set works.built_share=0,0.01 --out DIR/c-built-low --quiet
 ./target/release/isostate-core sweep --seeds 1-8 --rules game --families 6 --set works.built_share=0.05,0.25,0.5 --out DIR/c-built --quiet
+# (c), two islands more, added by the check of this page
+./target/release/examples/trace_works --only life 17 18
+./target/release/examples/trace_works --rules port --only life 17 18
+./target/release/examples/trace_works --only life --set '{"works":{"built_share":0.0}}' 17 18
 # (d)
 ./target/release/examples/trace_works --only worst 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
 ./target/release/isostate-core sweep --seeds 1-16 --rules game --families 6 --set harvest.enabled=false --out DIR/d-noharvest --quiet
 ./target/release/isostate-core sweep --seeds 1-16 --rules game --families 6 --set forest_regrow=0.24 --out DIR/d-forest --quiet
 ```
 
-The decade means of the switches are each island's decade mean of a series in `annual.csv` over its own 1750s, averaged over islands; "spending per head over the chained cost of living" is `gdp_nom / pop / cpi_chained` from the same file.
+The decade means of the switches are each island's decade mean of a series in `annual.csv` over its own 1750s, averaged over islands; "spending per head over the chained cost of living" is `gdp_nom / pop / cpi_chained` from the same file. The twenty-year spans of section 2 are read the same way, over 1790 to 1810, 1840 to 1859, 1860 to 1879 and 1880 to 1900. "The mean of each island's five worst years" in section 4 is the mean over islands of the five largest yearly falls of `real_wage` from 1760 on, in the same file.
 
 ## Not done
 
 - The land was not switched on its own: there is no single number for the land's productivity under the game's rules. The people test, with the machines' ceiling lifted, bounds what the land can be doing to a few per cent.
-- `towns.works_room` was not swept for the 3 per cent fewer works.
+- The farmland under town cells was not switched on its own; there is no switch for it, and `towns.md`'s mend needs code.
 - The trial of smaller growth steps is the only mend tried for the worst year. Asking for orders more slowly was tried by `works.md` and not again here.
 - Why an ordinary harvest after a good one comes with a building wave was not traced.
 - The fixed-price measure weights the goods by their own prices of 1860 to 1879; another span of years would give another index, though every one I looked at (the chained index too) says the same: a stall, not a fall.
