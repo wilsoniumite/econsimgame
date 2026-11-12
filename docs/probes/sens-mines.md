@@ -7,8 +7,8 @@ the chronicle's own thresholds (`docs/rules/chronicle.md`). Branch `night/o-sens
 a6ff0ec (12 November 2026). No rule and no fact was changed: this page is the only thing on the branch.
 
 Every run is the game's rules with six families, from 1740 to 1900. Each of the mines' ten numbers was
-run at about three quarters and four thirds of its value on islands 1 to 8, under both regimes, and the
-two that matter most again on islands 9 to 16. Each of the chronicle's twenty-two thresholds was run the
+run at about three quarters and four thirds of its value on islands 1 to 8, under both regimes, and three
+of them again on islands 9 to 16. Each of the chronicle's twenty-two thresholds was run the
 same way on islands 1 to 8. The sweeps and the scripts that read them are under
 `.claude/night/reports/opus/sens-mines/` (the scripts in `scripts/`); none of it is tracked.
 
@@ -18,7 +18,7 @@ same way on islands 1 to 8. The sweeps and the scripts that read them are under
   20,000,000 to 20,000,001) sends every island down another history, and by 1900 the histories of one island
   differ as much as the islands differ from each other: baskets a head by 3 per cent, the real wage against
   1750 by 4, the railway by 5 (39 under the commons), the price of coal by 17. In 1750 they differ by a
-  tenth of a per cent. So nothing in the late century can be read from one baseline on eight islands, and
+  tenth of a per cent to one per cent. So nothing in the late century can be read from one baseline on eight islands, and
   the usual "7/1" of a sweep's `--compare` is a weak test there. This changed how the rest was read (next
   section), and it is the first thing I would carry into the pass over the rules.
 - **`reach` is the mines' strongest number.** From 1.5 cells to 2.7 there are 41 per cent fewer workings at
@@ -29,7 +29,7 @@ same way on islands 1 to 8. The sweeps and the scripts that read them are under
 - **`sink` and `payback` are one number.** A site opens when its royalty would repay `sink / payback` wages
   a month. Moving either moves the count of workings by a ninth and the stone of 1750 by 5 or 6 per cent,
   in mirror image; moving both so that the ratio stays put moves nothing the noise does not.
-- **`cell_limit` does nothing** at these sizes: on 27 of the 32 runs the record is byte for byte today's.
+- **`cell_limit` does nothing** at these sizes: on 27 of the 32 runs every fact is today's to the last digit.
   `hands_per_cell` moves only the land under the diggings, as 1/x. `memory` and `year_room` are at the
   noise floor. `reserve` does what its page says, a little more coal and fewer colliers late. `idle_years`
   shapes the workings the warm-up gives up and nothing after.
@@ -38,7 +38,11 @@ same way on islands 1 to 8. The sweeps and the scripts that read them are under
   pays 84.5 times the middle town's wage for a month in 1782): the bad year that `mines.md` already owns up
   to is there at today's values, about one history in sixty-four, and no setting here clearly changes how
   often.
-- The chronicle: (filled in below).
+- **The chronicle's feed is two numbers**, `per_decade` and `floor`; the player's share of it is the `own_*`
+  weights against `floor`; the regional thresholds change what is told and hardly what is kept, and only
+  `closures_min` moves even that by more than chance moves it from one history to the next. Three of its
+  twenty-two numbers (`at_least`, `fill_floor`, `base_years`) do nothing at a third either way, and the
+  two of the overtakings next to nothing.
 
 ## How the runs were read, and why not against one baseline
 
@@ -100,7 +104,7 @@ sixteen. "1750" facts are where a setting shows cleanly; "late" is what beats th
 | `year_room` | 0.15 | 0.1125, 0.2 | quarries 1750 +1.2% (7/0); clay over the wage 1881-1900 +17% (7/1). Real income 1881-1900 -3.6% but 3/5 | 12 |
 | `reserve` | 20,000,000 | 15,000,000, 26,700,000 | coal a head 1881-1900 +7.2% (8/0); colliers' share 1900 -11% (0/8); ore a head 1841-60 -15% (0/8) | 9 |
 | `hands_per_cell` | 8,000 | 6,000, 10,667 | (sixteen) land under the diggings -58% of today's in every year (0/16): 1/x, as built. Baskets a head 1900 +4.4% (10/6): chance, see below | 15; 12 on sixteen |
-| `cell_limit` | 0.5 | 0.375, 0.667 | nothing: 13 of 16 runs byte for byte today's | 0 |
+| `cell_limit` | 0.5 | 0.375, 0.667 | nothing: on 13 of 16 runs every fact is today's | 0 |
 | (null) | | `sink` 40.0001, 40.0002 | | 3 |
 
 ## The mines under the commons
@@ -116,7 +120,7 @@ sixteen. "1750" facts are where a setting shows cleanly; "late" is what beats th
 | `year_room` | 0.15 | 0.1125, 0.2 | collieries 1900 -11% (1/7); works 1850 -14% (0/8, z -3.4) | 8 |
 | `reserve` | 20,000,000 | 15,000,000, 26,700,000 | clay a head 1900 -13% (1/7) | 1 |
 | `hands_per_cell` | 8,000 | 6,000, 10,667 | (sixteen) land under the diggings -55 to -59% of today's in every year (0/16). Nothing else | 12; 11 on sixteen |
-| `cell_limit` | 0.5 | 0.375, 0.667 | nothing: 14 of 16 runs byte for byte today's | 0 |
+| `cell_limit` | 0.5 | 0.375, 0.667 | nothing: on 14 of 16 runs every fact is today's | 0 |
 | (null) | | `sink` 40.0001, 40.0002 | | 3 |
 
 The two regimes answer the mines' numbers alike in 1750, where the two are one island until the first
@@ -152,7 +156,60 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
 
 ## The chronicle's thresholds
 
-(to come)
+The chronicle reads the economy and never changes it, so an island's history is the same at every
+threshold and each difference below is exact: there is no noise to beat, and "8/0" means every island told
+more. Today's values on islands 1 to 8: 1,002 items in a run, 59.0 in the major feed (58 to 60), 44 regional
+stories told of which 7.0 are kept, 12.2 of the player's own items kept. For scale, chance in the economy
+moves an island's regional stories by about 5 and its items by 23 to 36 from one history to the next (the
+null histories of the mines).
+
+"Told" is every item of the kind; "kept" is what a history of its decade keeps, the major feed. Low value
+first, then high.
+
+| setting | today | tried | what moved most, low; high | islands |
+|---|---|---|---|---|
+| `per_decade` | 4 | 3, 5 | the feed -14.0 of 59; +11.6. Regional stories kept -3.5; +4.5, markets -3.3; +2.0, milestones -2.1; +1.8 | 8 of 8 each way |
+| `at_least` | 2 | 1, 3 | nothing: no decade is thinner than four places allow | 0 |
+| `per_kind` | 1 | 2 | dated slumps kept +2.3, turning points +1.4, the player's +1.0; declines -1.0, markets -0.9; the feed +1.0 | 8/0, 7/0, 6/0; 0/6, 0/6; 5/0 |
+| `inventions` | 2 | 1, 3 | inventions kept -3.1 of 10, their places to regional stories (+1.3) and markets (+0.6); +0.8, from markets (-0.6) | 0/8, 7/0; 5/0, 0/5 |
+| `floor` | 0.6 | 0.45, 0.8 | the player's kept +2.8 (everyday news at 0.5 gets in); the feed -22.4, the player's -10.6 of 12.2, regional stories -5.8, and 13 decades of 15 short of four (none under two) | 7/0; 0/8 |
+| `fill_floor` | 0.45 | 0.34, 0.6 | nothing | 0 |
+| `own_great` | 0.7 | 0.525, 0.93 | the player's kept -4.5 of 12.2, regional stories +1.3; nothing | 0/8, 7/0; 0 |
+| `own_small` | 0.5 | 0.375, 0.667 | nothing; the player's kept +2.8 (births and sales pass the floor) | 0; 7/0 |
+| `own_summary` | 0.45 | 0.34, 0.6 | nothing; the player's kept +2.0 (the branches' yearly summary passes it) | 0; 7/0 |
+| `base_years` | 5 | 4, 7 | one milestone on one island | 1 |
+| `boom_years` | 5 | 4, 7 | coal booms told -0.9 of 5.5; +0.5 | 2/5; 4/2 |
+| `boom_growth` | 1.5 | 1.375, 1.667 | coal booms told +1.8, kept +0.9 of 1.0; told -1.1, kept -0.4 | 7/1, 5/0; 0/5, 0/3 |
+| `boom_share` | 0.15 | 0.1125, 0.2 | coal booms told +1.5, kept +0.4; -1.4 | 7/0, 3/0; 0/7 |
+| `decline_years` | 8 | 6, 11 | declines told +2.0 of 11.5; -1.1 | 6/0; 1/5 |
+| `decline_fall` | 0.1 | 0.075, 0.133 | declines told +1.1; -2.5, kept -0.6 of 2.6 | 7/0; 0/8, 0/3 |
+| `overtake_years` | 3 | 2, 4 | overtakings +0.3 of 3.2; -0.4 (told and kept) | 2/0; 0/3 |
+| `overtake_margin` | 0.05 | 0.0375, 0.0667 | overtakings +0.1; -0.5 | 1/0; 0/3 |
+| `fastest_margin` | 0.1 | 0.075, 0.133 | fastest-growing towns told +0.4 of 11.9; -1.0 | 2/0; 0/5 |
+| `closures_min` | 5 | 4, 7 | rounds of closures told +8.5 of 11.9; -7.8. Kept +0.1; -0.4 | 8/0; 0/8 |
+| `closures_share` | 0.1 | 0.075, 0.133 | rounds of closures told +0.5; -1.5 | 4/1; 0/7 |
+| `new_towns_min` | 3 | 2, 4 | items on new towns +2.3 of 12.2, kept +0.3; -0.5 | 8/0, 2/0; 0/4 |
+| `min_people` | 5,000 | 3,750, 6,667 | declines told +2.1, kept +0.4; -2.4 | 8/0, 3/0; 0/8 |
+| `quiet_years` | 15 | 11, 20 | regional stories told +1.1 (coal booms +0.9); -0.8 | 6/0; 0/5 |
+
+What it comes to:
+
+- **The feed's length is two numbers, `per_decade` and `floor`.** Nothing else moves it by more than one
+  item in 59. `per_decade` 3 gives the sparer history the chronicle's page wondered about: two or three
+  items in every decade, and it is regional stories, markets and milestones that go, not inventions or the
+  player. `floor` 0.8 is too high, and shows a dependence the page does not state: the player's place is
+  kept at `floor`, so a floor above `own_great` empties it.
+- **The player's own news is the `own_*` weights against `floor`.** Each moves the player's kept items by 2
+  to 4.5 when it crosses the floor and by nothing when it does not; lowering `own_great` below the floor
+  hands four of the player's places a run to regional stories.
+- **The regional thresholds move what is told, hardly what is kept.** One of a kind a decade caps the kept
+  stories, so a third either way moves the kept count by under one item a run for every threshold. What is
+  told moves by 0.1 to 2.5 stories a run, less than chance moves an island's regional stories from one
+  history to the next (about 5), with one exception: `closures_min`. At 4 the rounds of closures told
+  nearly double (11.9 to 20.4), at 7 they are a third (4.2): the line of five works sits on a steep part of
+  the distribution, as its page found when it was moved from ten.
+- **Nothing at all**: `at_least`, `fill_floor`, `base_years`, the `own_*` weights on the side away from the
+  floor, and the overtakings' two numbers (under half a story a run).
 
 ## The settings that matter most
 
@@ -161,7 +218,10 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
    under the landlords).
 2. **`mines.sink / mines.payback`**, as one number: the count of workings by a ninth either way and 1750's
    stone by 5 or 6 per cent. Nothing late.
-3. CHRONICLE
+3. **`chronicle.per_decade` and `chronicle.floor`**, which between them are the length of the major feed
+   (±12 to 22 items of 59), and `floor` also decides whether the player has a place at all.
+4. **`chronicle.closures_min`**, the one regional threshold whose story count is steep: 20 rounds of
+   closures told at 4, 12 at 5, 4 at 7.
 
 ## The settings that do nothing at these sizes
 
@@ -172,7 +232,10 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
 - **`mines.hands_per_cell`** does what it says, the land under the diggings, and nothing else.
 - **`mines.haul`**, **`mines.idle_years`** and **`mines.reserve`** act on 1750 or on one good, by a few per
   cent; nothing they do reaches the standard of living.
-- CHRONICLE
+- **`chronicle.at_least`, `fill_floor` and `base_years`**: no decade is thin enough for the first two to
+  act, and the doubling's baseline moves one milestone on one island. The `own_*` weights do nothing on the
+  side of the floor they already sit, and `overtake_years` and `overtake_margin` move under half a story a
+  run.
 
 ## Values at which a run breaks
 
@@ -210,7 +273,13 @@ island has a bad year in every history, and the settings only move it a little.
   side; it is the pair that can ring.
 - **`hands_per_cell` with `cell_limit`**: the limit can only bind when the hands fill cells quickly, so a
   small `hands_per_cell` is the only place it could be tested.
-- CHRONICLE
+- **`chronicle.floor` with `own_great`**: the player's place is kept at `floor`, so the two have to move
+  together or the player vanishes from the feed (`floor` 0.8 keeps 1.6 of the player's items a run for 12.2).
+- **`chronicle.per_decade` with `per_kind`**: `per_decade` 3 takes out regional stories and markets, and
+  `per_kind` 2 lets slumps and turning points take two places; together they say what kind of history the
+  feed is.
+- **`chronicle.boom_growth` with `boom_share`**: each moves the coal booms told by about a third either
+  way, and both are tied to how the mines open, which `reach` and `sink / payback` move.
 
 ## What I would look at first in the pass over the rules
 
@@ -231,7 +300,11 @@ island has a bad year in every history, and the settings only move it a little.
    describes (a working that hires no more than its town has to spare) would take that noise out of every
    table of this pass.
 5. **`cell_limit` could go**, or stay as a guard that never fires.
-6. CHRONICLE
+6. **The chronicle's `floor` and the player's place.** The page says the player's place is kept at 0.6;
+   the code keeps it at `floor`. Either the page or the code should say which is meant.
+7. **`closures_min`** was lowered from ten to five when the life cycle for works came in, on counts from
+   four islands and then twelve; it is the chronicle's one steep threshold, so it wants another look
+   whenever the works' sizes move.
 
 ## How it was run
 
@@ -257,7 +330,7 @@ cargo run --release -p isostate-core --example chronicle -- --seed N --counts [-
 
 The scripts that read them (Python, not tracked; in `scripts/` beside the sweeps): `slope.py` (high
 against low against the null histories), `panel.py` (the headline facts), `noise.py` (chance against the
-islands), `same.py` (which runs are today's to the last digit), `extremes.py` (failures, worst years,
-famine), `chron_queue.py` and `chron_read.py` (the chronicle). The values tried were three quarters and
+islands), `same.py` (which runs are today's to the last digit), `extremes.py` and `badyears.py` (failures, worst
+years, famine), `worstyear.py` (the years round a run's worst), `chron_queue.py` and `chron_read.py` (the chronicle). The values tried were three quarters and
 four thirds of today's, rounded where a setting is a whole number (`idle_years` 8 and 13) and, for
 `reach`, chosen so that the lease changes: 1.5 cells is a lease of 9 cells, 2.0 of 13, 2.7 of 21.
