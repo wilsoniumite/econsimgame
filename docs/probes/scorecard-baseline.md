@@ -64,8 +64,8 @@ seeds 1 to 8) one fact of 446 differs, `news_famine`, which that landing
 moved on purpose; so `main-game` is the scorecard page's own sweep, sixteen
 islands wide.
 
-**The tree.** The deeper production tree ([tree.md](../rules/tree.md) on
-its branch) is on `night/int-tree`, a day behind `main`. The two branches
+**The tree.** The deeper production tree (`docs/rules/tree.md` on its
+branch, not yet on `main`) is on `night/int-tree`, a day behind `main`. The two branches
 that carry it forward, `night/o-finish-tree-ui` and its `-check`, contain the
 tree but not today's `main` (they lack the scorecard itself, among some 150
 commits), so I merged `main` into a scratch branch of my own:
@@ -373,8 +373,9 @@ Reading it:
 
 - **The tree's gain in the towns' share is mostly a higher start.** In 1750
   the towns hold 0.293 of the people under the tree against 0.217 on `main`,
-  because the trades it seeds in 1750 are town trades. Over the run the
-  towns' share rises by 0.171 under the tree and 0.204 on `main`. PLAN.md's
+  because the trades it seeds in 1750 are town trades. From 1750 to the
+  mean of 1881-1900 the towns' share rises by 0.171 under the tree and
+  0.204 on `main`. PLAN.md's
   test is a rise "from about 0.25 to 0.5"; the tree starts nearer the half
   and climbs less. A pass that judges the towns on the twenty-year mean of
   1881-1900 alone will credit the tree with what it did in 1750.
