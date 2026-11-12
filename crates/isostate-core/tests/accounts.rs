@@ -295,7 +295,7 @@ fn the_books_follow_what_a_player_does_between_years() {
     let mut s = sim::start(&P, Rules::Game.content());
     let C = s.content.clone();
     let d = pending(&s.st, 0);
-    decide(&mut s.st, &C, 0, d[0].id, 0).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, 0, &mut s.events).unwrap();
     // (the year it happened in, the works, the family's rents the year before)
     let mut done: Option<(i64, usize, f64)> = None;
     while s.year <= s.end_year {
@@ -598,6 +598,129 @@ fn the_books_are_the_same_books_however_the_game_was_reached() {
     same_whole(&by_month.sim, &by_year, "at the turn of 1753, by the month and by the year");
 }
 
+/// Two months as a viewer would hold them: the same month, wage, price and
+/// cash to the last bit, and every series but the books' own (whose figure for
+/// a month of a closed year is the year's, written when it closed; for a month
+/// of an open year both are NaN, and that is compared too).
+fn same_month(sent: &LiveMonth, kept: &LiveMonth, own: &[usize], when: &str) {
+    let f32bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!((sent.year, sent.month, sent.index), (kept.year, kept.month, kept.index), "{when}");
+    assert_eq!(f32bits(&sent.wage), f32bits(&kept.wage), "{when}: the wages, {}-{}", kept.year, kept.month);
+    assert_eq!(f32bits(&sent.price), f32bits(&kept.price), "{when}: the prices, {}-{}", kept.year, kept.month);
+    assert_eq!(bits(&sent.cash), bits(&kept.cash), "{when}: the families' cash, {}-{}", kept.year, kept.month);
+    let open = own.iter().all(|&i| kept.series[i].is_nan());
+    for i in (0..sent.series.len()).filter(|i| open || !own.contains(i)) {
+        assert_eq!(sent.series[i].to_bits(), kept.series[i].to_bits(), "{when}: series {i}, {}-{}", kept.year, kept.month);
+    }
+}
+
+#[test]
+fn a_game_gone_on_with_has_the_months_it_did_not_watch() {
+    // The game's thread sends every month as it is played (`live_month`), and
+    // a viewer keeps each town's prices and wages by the month from them for
+    // its price and wage maps. A game gone on with from a save plays its months
+    // over before there is a viewer to send them to; the books have kept the
+    // last complete year's and the open year's, and `live::months_kept` hands
+    // them out. Here they are the months a played game sent, to the last bit:
+    // after every month of three years, from the game as it is played; and from
+    // the same game saved in June and loaded, at a turn and loaded, and loaded
+    // twice. December too: a game sends it once the year has ended, and it is
+    // told as it ended, not as the next January opens.
+    let mut g = save::Game::new(3, 6, 0);
+    let (C, P) = (g.sim.content.clone(), g.sim.params.clone());
+    let stat = live::live_static(&g.sim.st, &C);
+    let own: Vec<usize> = (0..stat.series.len()).filter(|&i| accounts::own_series(&stat.series[i].name)).collect();
+    let mut cursor = live::LiveCursor::new(&C);
+    let mut sent: Vec<LiveMonth> = Vec::new();
+    let again = |g: &save::Game| {
+        let loaded = save::load(&save::Save::from_text(&g.save(0).to_text()).unwrap(), |_| {}).unwrap();
+        assert!(!loaded.drifted && loaded.refused.is_empty(), "{:?}", loaded.refused);
+        loaded.game
+    };
+    let d = pending(&g.sim.st, 0);
+    g.give(save::Order::decide(&g.sim, d[0].id, 0).unwrap()).unwrap();
+    let mut at_turn = None;
+    // Decembers whose close the year's end moved, in prices or wages, and in the families' cash
+    let (mut moved, mut spent) = (0, 0);
+    while g.sim.t < 2 * 12 + 5 {
+        // land bought at the turn of 1752, as a player's purchase moves the family's cash between years
+        if (g.last_year(), g.month) == (1751, 0) {
+            at_turn = Some(again(&g));
+            let seat = g.sim.st.families[0].seat as i64;
+            let cell = (0..g.sim.st.N).find(|&c| g.sim.st.catch[c] == seat && may_buy_land(&g.sim.st, 0, c).is_ok()).expect("some land to buy at the seat");
+            g.give(save::Order::BuyLand { cell }).expect("the land is bought");
+        }
+        let turned = g.month().unwrap();
+        let m = live::live_month(&mut cursor, &g.sim.st, &C, &P, &g.sim.events, g.sim.t - 1);
+        // the month just played is the books' newest, and it is the month sent
+        let kept = live::months_kept(&g.sim.st, &C);
+        assert_eq!(kept.len(), if g.sim.t <= 12 { g.sim.t } else { 12 + g.sim.t % 12 });
+        same_month(&m, kept.last().unwrap(), &own, "as it is played");
+        if turned {
+            // what the island stands at once the year has ended: the next January's opening
+            let st = &g.sim.st;
+            let opens: Vec<f32> = st.price.data.iter().map(|&p| p as f32).collect();
+            let wages: Vec<f32> = (0..st.T_max).map(|i| if st.town_active[i] { st.wage[i] as f32 } else { 0.0 }).collect();
+            moved += (opens != m.price || wages != m.wage) as usize;
+            spent += st.families.iter().zip(&m.cash).any(|(f, &c)| f.cash != c) as usize;
+        }
+        sent.push(m);
+        if turned {
+            let _ = live::live_year(&mut cursor, &g.sim.st, &C, &P, &g.sim.events);
+            g.turn();
+        }
+    }
+    assert_eq!((g.last_year(), g.month), (1751, 5));
+    // (both Decembers would have been told otherwise as January opened: so the books' close is what was sent)
+    assert_eq!((moved, spent), (2, 2), "Decembers whose prices or wages, and whose cash, the year's end moved");
+    // a game that is loaded in June has 1751's twelve months and 1752's five, and so has the game that was played
+    let in_june = again(&g);
+    let twice = again(&in_june);
+    let kept = live::months_kept(&in_june.sim.st, &C);
+    assert_eq!(kept.iter().map(|m| m.index).collect::<Vec<_>>(), (12..29).collect::<Vec<_>>());
+    for (how, other) in [("played", &g), ("loaded twice", &twice)] {
+        assert_eq!(format!("{:?}", live::months_kept(&other.sim.st, &C)), format!("{kept:?}"), "{how}");
+    }
+    for m in kept.iter().filter(|m| m.month != 11) {
+        same_month(&sent[m.index], m, &own, "loaded in June");
+    }
+    // one loaded at the turn of 1752, before the land was bought, has 1751's twelve
+    let kept = live::months_kept(&at_turn.unwrap().sim.st, &C);
+    assert_eq!(kept.iter().map(|m| m.index).collect::<Vec<_>>(), (12..24).collect::<Vec<_>>());
+    for m in kept.iter().filter(|m| m.month != 11) {
+        same_month(&sent[m.index], m, &own, "loaded at a turn");
+    }
+    // without the books there is nothing to hand out
+    let mut s = sim::start(&params(Rules::Game, 3, 6, 1751, false), Rules::Game.content());
+    sim::run_month(&mut s, 0).unwrap();
+    assert!(live::months_kept(&s.st, &s.content).is_empty());
+}
+
+#[test]
+fn a_works_founded_at_the_years_end_is_in_that_years_books() {
+    // The year in progress has a row for each works there is, and grows when
+    // works are founded (`fit_works`). Works founded in the year's end, after
+    // December's month and before the books close, have their row in the
+    // year's books, with the year's end's capacity and cash, as they had when
+    // the rows were for every works there was room for.
+    let P = params(Rules::Game, 3, 6, 1760, true);
+    let mut s = sim::start(&P, Rules::Game.content());
+    let mut founded = 0;
+    while s.year <= s.end_year {
+        for month in 0..12 {
+            sim::run_month(&mut s, month).unwrap();
+        }
+        let before = s.st.F_count;
+        sim::end_year(&mut s);
+        let rec = s.st.acct.year(s.st.acct.hist.n - 1).unwrap();
+        for f in (0..s.st.F_count).filter(|&f| s.st.f_alive[f]) {
+            assert!(rec.works_id.binary_search(&(f as u32)).is_ok(), "works {f}, standing at the end of {}, has no row in its books", s.year - 1);
+        }
+        founded += s.st.F_count - before;
+    }
+    assert!(founded > 0, "some works were founded at a year's end");
+}
+
 #[test]
 fn a_copy_of_the_island_shares_the_years_put_away() {
     // An order given in the middle of a year is tried on a copy of the island
@@ -616,6 +739,10 @@ fn a_copy_of_the_island_shares_the_years_put_away() {
     let room = |s: &sim::Sim| (s.st.acct.hist.goods.as_ptr(), s.st.acct.hist.goods.capacity(), s.st.acct.hist.methods.as_ptr());
     let before = room(&g.sim);
     assert!(before.1 >= 151 * g.sim.st.T_max * g.sim.content.G * KG, "room for every year of the run");
+    // what does go with a copy is the year in progress, whose works' rows are for the works there are
+    // (a few hundred here), not for the twenty thousand there is room for, which were 11 MB of nothing
+    let copied = g.sim.st.acct.copied_bytes();
+    assert!(copied < 3_000_000, "a copy takes {copied} bytes of the books");
 
     // the copies an order makes come and go, and the game's history is where it was
     let seat = g.sim.st.families[0].seat;
@@ -723,16 +850,15 @@ fn a_viewer_that_takes_the_months_as_they_come_is_told_the_years_figures() {
     // The months the books keep of the last complete year and the months a
     // viewer was sent say the same price, the one each month ended at, for
     // every town that stood all year. (The books' is single precision, as the
-    // message's is.) January to November, that is: a game's December is sent
-    // once the year has ended (`save::Game::month` ends it), so its prices are
-    // those the next January opens at, after districts that changed market
-    // took their prices with them (`peopling::move_with_cells`), while the
-    // books' December is the price December's trade ended at.
+    // message's is.) December too: a game sends it once the year has ended
+    // (`save::Game::month` ends it), when districts that changed market have
+    // taken their prices with them (`peopling::move_with_cells`), and it is
+    // told from the books, at the price December's trade ended at.
     let st = &g.sim.st;
     assert_eq!(sent_prices.len(), 12);
     for t in (0..st.town_name.len()).filter(|&t| st.town_founded[t] < 1752) {
         let months = accounts::town_books(st, &C, t, None).unwrap().months.expect("the last year's months");
-        for (mo, sent) in sent_prices.iter().enumerate().take(11) {
+        for (mo, sent) in sent_prices.iter().enumerate() {
             for good in 0..C.G {
                 assert_eq!((months[mo][good][0] as f32).to_bits(), sent[t * C.G + good].to_bits(), "town {t}, month {mo}, {}", C.good_name[good]);
             }

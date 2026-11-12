@@ -80,12 +80,12 @@ fn the_player_chooses_from_short_lists() {
     assert_eq!(d.len(), 1);
     assert_eq!(d[0].options.len(), 6);
     let textiles = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
-    decide(&mut s.st, &C, 0, d[0].id, textiles).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, textiles, &mut s.events).unwrap();
     assert!(pending(&s.st, 0).is_empty());
     let r = report(&s, 0);
     assert_eq!(r.known, vec![Group::Textiles]);
     assert_eq!(r.first_trade, Group::Textiles);
-    assert!(decide(&mut s.st, &C, 0, d[0].id, 0).is_err(), "a decision is answered once");
+    assert!(decide(&mut s.st, &C, &s.params, 0, d[0].id, 0, &mut s.events).is_err(), "a decision is answered once");
     sim::run_year(&mut s).unwrap();
 
     // works are chosen directly only at the seat, only in a known trade
@@ -333,7 +333,7 @@ fn the_first_decision_waits_for_the_player() {
     assert!(r.firms.is_empty() && r.cells.len() == cells0, "nothing is founded or bought before it is answered");
     // answered between years, on the state the viewer sees after 1750
     let g = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
-    decide(&mut s.st, &C, 0, d[0].id, g).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, g, &mut s.events).unwrap();
     let r = report(&s, 0);
     assert_eq!(r.known, vec![Group::Textiles]);
     assert!(r.members.iter().all(|m| !matches!(m.post, Post::Learning { path: Path::Apprentice { group, .. }, .. } if group != Group::Textiles)));
@@ -345,4 +345,40 @@ fn the_first_decision_waits_for_the_player() {
     sim::run_year(&mut t).unwrap();
     sim::run_year(&mut t).unwrap();
     assert!(pending(&t.st, 0).iter().all(|d| d.member.is_some()), "the default was taken at the end of 1751");
+}
+
+#[test]
+fn a_head_the_player_chooses_is_news() {
+    // The head dies in 1750 with grown children about him: the eldest heads the
+    // family at the year's end, which is news, and the player is asked who
+    // should. Choosing another is news too (it used to be made and thrown away).
+    let P = params(3, 1760);
+    let mut s = sim::start(&P, default_content());
+    let C = s.content.clone();
+    let fam = &mut s.st.families[0];
+    let head = families::head(fam).unwrap();
+    for (j, m) in fam.members.iter_mut().enumerate() {
+        if j != head {
+            (m.age, m.post) = (30 + j as i64, Post::Unposted);
+        }
+    }
+    fam.members[head].alive = false;
+    sim::run_year(&mut s).unwrap();
+    let d = pending(&s.st, 0).into_iter().find(|d| d.prompt.starts_with("Who heads")).expect("the player is asked who heads the family");
+    let fam = &s.st.families[0];
+    let eldest = families::head(fam).unwrap();
+    assert!(d.options.len() > 1 && d.options[0].choice == Choice::Head { member: eldest });
+    let Choice::Head { member: other } = d.options[1].choice else { panic!("{:?}", d.options[1]) };
+    let (was, now) = (fam.members[eldest].first.clone(), fam.members[other].first.clone());
+    let told = s.events.len();
+    // the eldest again is no change and no news
+    let mut same = s.clone();
+    decide(&mut same.st, &C, &same.params, 0, d.id, 0, &mut same.events).unwrap();
+    assert_eq!(same.events.len(), told);
+    decide(&mut s.st, &C, &s.params, 0, d.id, 1, &mut s.events).unwrap();
+    assert_eq!(families::head(&s.st.families[0]), Some(other));
+    assert_eq!(s.events.len(), told + 1, "the new head is news");
+    let e = s.events.last().unwrap();
+    assert!(e.title.starts_with(&format!("{now} ")) && e.title.ends_with(" heads the family") && e.text.contains(&format!("in place of {was}")), "{e:?}");
+    assert!(e.family == Some(0) && e.kind == "family" && e.year == 1750.95, "{e:?}");
 }
