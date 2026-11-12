@@ -575,6 +575,18 @@ tables are in `.claude/night/reports/treerev-m-market-stage1.txt` and
 are a tenth shorter on average and level by 1870, in eleven seeds of
 sixteen: inside the spread, and worth watching.
 
+**Time.** On the final build a simulated year, one run at a time on seeds 3,
+5 and 7, twice each: 0.102 and 0.104 s without the tree, 0.108 and 0.112 s
+with it. Seven per cent more: the twelve months 0.033 s for 0.030, the
+yearly step 0.075 s for 0.071. (The quarter measured before was two
+readings on a busy machine that disagreed with each other.)
+
+**On the new land.** With `land.enabled = true` (the island made by uplift
+and erosion, off in the game) four seeds run at both stages with no run
+failed, and the tree does there what it does here: quarry hands 0.039
+against 0.145 in 1900, 0.454 against 0.409 living in towns, seven per cent
+fewer people. Its thresholds were not fitted to that island.
+
 **The thresholds stand.** The fitter, read on this sweep without writing,
 reckons every invention within three years of its aim but the two whose
 thresholds it is told to keep: the shops, six years late, and the edge-tool
