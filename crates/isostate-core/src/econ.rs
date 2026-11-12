@@ -422,6 +422,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::carting::take_carters(st, P, &mut supply);
     // mines (docs/rules/mines.md): nor are the hands sinking new workings
     crate::mines::take_crews(st, P, &mut supply);
+    // canals (docs/rules/canals.md): nor are the navvies digging a canal. They come
+    // last of the three: each caps itself on the hands still left, the carters and
+    // the sinkers are at work the town already lives by, and a canal can wait
+    crate::canals::take_navvies(st, P, &mut supply);
     let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
     // so a price blip does not empty the fields in a month.
@@ -813,7 +817,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut proj_spend = 0.0;
     for (pr, got) in st.projects.iter_mut().zip(&proj_got) {
         let pay = pairwise_sum_by(G, |g| got[g] * st.price[(pr.town, g)]);
-        let wages = 0.3 * pay;
+        // canals (docs/rules/canals.md): a way says what its navvies are paid on each
+        // shilling of materials; the port's and the railways' three tenths otherwise
+        let wages = crate::ways::navvy_share(pr) * pay;
+        pr.navvy_pay = wages;
         pr.cash -= pay + wages;
         for g in 0..G {
             pr.order[g] = (pr.order[g] - got[g]).max(0.0);
@@ -941,6 +948,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             // carting: and the trade the town sends out
             crate::carting::add_bill_town(st, P, ti, tc_out);
         }
+        // canals (docs/rules/canals.md): what the month's trade put on the water, good by good
+        crate::canals::note_trade(st, C, P, &A_idx, &qt);
         st.m_trade_value = pairwise_sum(&pay.data);
     } else {
         st.m_trade_value = 0.0;
@@ -1095,6 +1104,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_to(&mut employment, &bincount(&ft, &labor_f, T));
     // carting: carters are at work too
     crate::carting::count_carters(st, P, &mut employment);
+    // canals: and so are the navvies
+    crate::canals::count_navvies(st, P, &mut employment);
     let mut heat_use = vec![0.0; NF];
     for i in 0..NFI {
         for k in 0..NF {

@@ -23,6 +23,7 @@
 //!   stylised facts each run is reduced to (`isostate-core sweep`).
 #![allow(non_snake_case)]
 
+pub mod canals;
 pub mod carting;
 pub mod chronicle;
 pub mod cli;
