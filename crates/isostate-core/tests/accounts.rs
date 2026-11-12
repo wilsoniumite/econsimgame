@@ -470,8 +470,21 @@ fn the_books_repeat_and_go_into_the_run_file_and_the_live_view() {
     assert!(blob == record::pack(&b.state, &b.content, &b.params, &b.events, &b.rec, "a", false), "identical runs pack to different bytes");
 
     // the run file: the tables with their shapes, their columns and the island's years
+    // (of the town slots only those in use are written: the rest would be zeros)
     let h = header(&blob);
-    let (n, T, G) = (13, a.state.T_max, a.content.G);
+    let (n, T, G) = (13, a.state.town_name.len(), a.content.G);
+    assert!(T < a.state.T_max && h["accounts"]["towns"] == T);
+    for table in accounts::tables(&a.state, false) {
+        match table {
+            accounts::Table::F32(name, shape, data) if name == "acct_towns" => {
+                assert_eq!(shape, vec![13, T, KT]);
+                for k in 0..13 {
+                    assert_eq!(f32bits(&data[k * T * KT..(k + 1) * T * KT]), f32bits(&a.state.acct.year(k).unwrap().towns[..T * KT]), "year {k}");
+                }
+            }
+            _ => {}
+        }
+    }
     let shape = |name: &str| -> Vec<u64> {
         let arr = h["arrays"].as_array().unwrap().iter().find(|x| x["name"] == name).unwrap_or_else(|| panic!("no array {name}"));
         arr["shape"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect()

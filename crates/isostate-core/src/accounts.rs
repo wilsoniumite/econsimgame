@@ -1758,8 +1758,8 @@ pub struct WorksBooks {
     pub inputs: Vec<WorksInput>,
 }
 
-/// One works' books. None when the books (or the works' part of them) are off
-/// or there is no such works.
+/// One works' books. None when the books are off or there is no such works;
+/// with the works' part of them off (`accounts.works`), its years are empty.
 pub fn works_books(st: &State, C: &Content, firm: usize) -> Option<WorksBooks> {
     let b = &st.acct;
     if !b.on || firm >= st.F_count {
@@ -1823,7 +1823,8 @@ pub enum Table {
 }
 
 /// The books' arrays for the run file (`record::pack`): empty unless the run
-/// kept books. `lite` leaves the works out.
+/// kept books. `lite` leaves the works out. The tables by town hold the towns
+/// there are as the run ends, not every slot there is room for.
 pub fn tables(st: &State, lite: bool) -> Vec<Table> {
     let b = &st.acct;
     let mut out = Vec::new();
@@ -1834,11 +1835,15 @@ pub fn tables(st: &State, lite: bool) -> Vec<Table> {
     let (T, G, NS, M, S) = b.dims;
     let n = h.n;
     let ints = |v: &[u32]| v.iter().map(|&x| x as i32).collect::<Vec<i32>>();
-    out.push(Table::F32("acct_goods".into(), vec![n, T, G, KG], h.goods.clone()));
-    out.push(Table::F32("acct_land".into(), vec![n, T, NS, KL], h.land.clone()));
-    out.push(Table::F32("acct_methods".into(), vec![n, T, M, KM], h.methods.clone()));
-    out.push(Table::F32("acct_towns".into(), vec![n, T, KT], h.towns.clone()));
-    out.push(Table::F32("acct_needs".into(), vec![n, T, S, 2], h.needs.clone()));
+    // only the town slots in use go into the file: they are filled in order, and
+    // the rest of the T_max would be nothing but zeros (two thirds of these tables)
+    let towns = st.town_name.len().min(T);
+    let used = |table: &[f32], row: usize| table.chunks(T * row).flat_map(|year| &year[..towns * row]).copied().collect::<Vec<f32>>();
+    out.push(Table::F32("acct_goods".into(), vec![n, towns, G, KG], used(&h.goods, G * KG)));
+    out.push(Table::F32("acct_land".into(), vec![n, towns, NS, KL], used(&h.land, NS * KL)));
+    out.push(Table::F32("acct_methods".into(), vec![n, towns, M, KM], used(&h.methods, M * KM)));
+    out.push(Table::F32("acct_towns".into(), vec![n, towns, KT], used(&h.towns, KT)));
+    out.push(Table::F32("acct_needs".into(), vec![n, towns, S, 2], used(&h.needs, S * 2)));
     // the flows of each year are rows off[year]..off[year + 1]
     out.push(Table::I32("acct_trade_off".into(), vec![n + 1], ints(&h.trade_off)));
     out.push(Table::I32("acct_trade_key".into(), vec![h.trade.len(), 3], h.trade.iter().flat_map(|f| [f.from as i32, f.to as i32, f.good as i32]).collect()));
@@ -1863,6 +1868,8 @@ pub fn header(st: &State) -> Option<Value> {
     }
     Some(json!({
         "start_year": b.start_year,
+        // the town slots the dense tables hold (`tables`)
+        "towns": st.town_name.len().min(b.dims.0),
         "goods_fields": GOODS_FIELDS,
         "land_fields": LAND_FIELDS,
         "method_fields": METHOD_FIELDS,
