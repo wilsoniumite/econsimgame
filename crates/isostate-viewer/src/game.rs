@@ -1466,7 +1466,9 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: 
                 c.spawn(text(&f, &format!("The {} family of {}", me.name, me.seat_name), 26.0, me.colour));
                 let living = me.rep.members.iter().filter(|m| m.alive).count();
                 if let Some(back) = &live.resumed {
-                    welcome_back(c, &f, me, living, back, over, data.r.y0);
+                    // (a game with no order of the player's in it is not set aside by a new one: `saves::holds_orders`)
+                    let hint = new_game_hint(data.r.y0, back.orders + back.refused > 0 || !live.standing.waiting.is_empty());
+                    welcome_back(c, &f, me, living, back, over, &hint);
                     return;
                 }
                 c.spawn(text(
@@ -1533,9 +1535,20 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
     }
 }
 
+/// What the opening card says under New game: what becomes of the game on
+/// the table. One with orders in it is set aside whole; one that nobody gave
+/// an order in is not kept, since the same island makes it again.
+pub fn new_game_hint(first_year: i32, has_orders: bool) -> String {
+    if has_orders {
+        format!("A new game begins again in {first_year} and leaves this one saved beside it.")
+    } else {
+        format!("A new game begins again in {first_year}. No order was given in this one, so it is not kept beside the new game: the same island makes it again.")
+    }
+}
+
 /// The rest of the opening card for a game gone on with: how the family
 /// stands, what could not be brought back, and the two ways on.
-fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, living: usize, back: &live::Resumed, over: bool, first_year: i32) {
+fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, living: usize, back: &live::Resumed, over: bool, hint: &str) {
     c.spawn(text(
         f,
         &format!("Welcome back. {} of the family, with {} in hand and worth {} in all.", family::capitalised(&family::number_word(living)), money(me.cash), money(me.net_worth)),
@@ -1576,7 +1589,7 @@ fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, 
         });
     });
     c.spawn((
-        text(f, &format!("A new game begins again in {first_year} and leaves this one saved beside it."), 13.0, MUTED),
+        text(f, hint, 13.0, MUTED),
         Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
         WelcomeHint,
     ));

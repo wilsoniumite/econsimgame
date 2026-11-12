@@ -446,6 +446,9 @@ fn the_card_says_what_could_not_be_brought_back() {
         crate::game::resumed_note(&Resumed { passed_over: 1, ..back(0, false) }).unwrap(),
         "The last save could not be read, so this is an earlier one, from 1779."
     );
+    // what New game leaves behind: a game with orders in it, set aside; one without, nothing
+    assert_eq!(crate::game::new_game_hint(1750, true), "A new game begins again in 1750 and leaves this one saved beside it.");
+    assert_eq!(crate::game::new_game_hint(1750, false), "A new game begins again in 1750. No order was given in this one, so it is not kept beside the new game: the same island makes it again.");
     let both = crate::game::resumed_note(&Resumed { passed_over: 2, ..back(0, true) }).unwrap();
     assert!(both.starts_with("The last save could not be read, so this is an earlier one, from 1779. The island's rules have changed"), "{both}");
 }

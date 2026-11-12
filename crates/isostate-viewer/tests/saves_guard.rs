@@ -386,6 +386,7 @@ fn a_file_that_cannot_be_read_is_set_aside_and_the_card_says_when_an_earlier_sav
     assert!(says.contains(" | Welcome back. "), "{says}");
     assert!(says.contains(" | The last save could not be read, so this is an earlier one, from 1751. | "), "{says}");
     assert!(says.contains(" | Continue from January 1752 | New game | "), "{says}");
+    assert!(says.ends_with(" | A new game begins again in 1750 and leaves this one saved beside it."), "{says}");
     assert!(ran.printed("card").contains("the welcome card is up") && !ran.printed("on").contains("the welcome card is up"), "{}", ran.out);
     // (a black frame of this size is 26 kilobytes; the island with the card over it some hundreds)
     assert!(std::fs::metadata(&card).is_ok_and(|m| m.len() > 150_000), "no picture of the card was taken, or a black one: {:?}", std::fs::metadata(&card).map(|m| m.len()));
