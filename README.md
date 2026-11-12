@@ -272,7 +272,7 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 
 - The core loop is not fun yet, and it is set aside for thinking of its own. Scripted players show the shape of it: buying land beats building works on all four islands they were tried on, a family that takes every default ends fourth of six on three islands of four, and a player who founds a works every year loses most of them (FAMILIES.md, `docs/rules/works.md`, `docs/rules/towns.md`).
 - A saved game is its orders played again, so it does not survive a change to the simulation, and loading a whole century takes about 23 seconds before the window opens.
-- The clock tells the month since 12 November, and a game starts at a month a second, but the game is still played by the year: an order given in the middle of a year waits for its end, and the decisions come at a year's turn, so their cards sit over the island in January.
+- The clock tells the month since 12 November, and a game starts at a month a second, but the game is still played by the year: an order given in the middle of a year waits for its end, and decisions come only at a year's turn, so their cards always sit over a winter island.
 - There is no title screen and no sound.
 - The politics half of the game is not started.
 

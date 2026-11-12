@@ -52,7 +52,7 @@ The simulation runs a month at a time, and the top bar shows the month and the y
 
 Those are the times if nothing stops the clock and the simulation keeps up; a decision stops it. When a game starts, the terminal prints each speed with how long the years still to come would take.
 
-Space starts and stops the clock, and a speed's button starts it at that speed. In a game, **Next month** plays one month and stops, and **To January** runs on to the year's turn and stops there. The line under the date says what the clock is doing: its pace while it runs ("a month a second"), and when it is stopped "the year's turn", "orders wait for January 1785", "looking back", "the year is turning…" or "the last year is over".
+Space starts and stops the clock, and a speed's button starts it at that speed. In a game, **Next month** plays one month and stops, and **To January** runs on to the year's turn and stops there; looking back, the two step through the months already played. The line under the date says what the clock is doing: its pace while it runs ("a month a second"), and when it is stopped "the year's turn", "orders wait for January 1785", "looking back", "the year is turning…" or "the last year is over".
 
 - **Decisions** come as cards and stop the clock: the family's first trade, what each child learns at fourteen (an apprenticeship in a trade, which the family then knows, or university), who heads the family when a head dies. Each option says what it would mean, the default is marked, and Decide later leaves it for the badge that hangs under the clock ("A decision is waiting"). Unanswered, the default is taken at the end of the next year.
 - **The seat** is where the head lives. Only there do you build works yourself (click a square in the present to see what could be built, with its cost, its expected return at today's prices and how deep its market is) and buy land. The head runs every trade the family knows at the seat. Click another town to move the seat there at the year end; its square flies your flag.
@@ -97,7 +97,7 @@ The Markets panel (key **3**) has two halves, chosen by chips at the top:
 
 Each chart labels its first and last year and its low and high value and marks the year on screen; when you look back at an earlier year the years after it are drawn fainter.
 
-Two more chips, **By year** and **By month**, set how both halves count. By month shows five calendar years of months, the year of the month on the clock and the four before it, with a rule at each January, and the goods list gives the last finished month's price against 1750 and against twelve months before. The marker and the figures are that month's, and the panel follows the clock as the months go by.
+Two more chips, **By year** and **By month**, set how both halves count. By month shows five calendar years of months, the year of the last finished month and the four before it, with a rule at each January, and the goods list gives that month's price against 1750 and against twelve months before. The marker and the figures are that month's, and the panel follows the clock as the months go by.
 
 ### Saved games
 
@@ -175,11 +175,11 @@ cargo run -p isostate-viewer -- --compare-shots out/before out/after            
 cargo run -p isostate-viewer -- --advance 30 --script "key:Space;key:Escape;settle;click:Fast;run:10;print;key:M;map;shot:out/after.png"
 ```
 
-That one starts a game thirty years in, closes the opening card, puts off a decision if one is open, runs the clock at Fast for ten seconds (about nine years in the dev build), prints where the clock stands, turns on the rent map and saves a picture. Steps are separated by semicolons:
+That one starts a game thirty years in, closes the opening card, puts off a decision if one is open, runs the clock at Fast for ten seconds, in which nine or ten years go by, prints where the clock stands, turns on the rent map and saves a picture. Steps are separated by semicolons:
 
 | Step | Does |
 |---|---|
-| `key:NAME` | press a key for one frame: Space, Left, Right, Up, Down, PageUp, PageDown, Escape, a letter or a digit; `key:Shift+M` holds Shift |
+| `key:NAME` | press a key for one frame: Space, Left, Right, Up, Down, PageUp, PageDown, Escape, a digit from 1 to 4 or a letter that is one of the game's keys; `key:Shift+M` holds Shift |
 | `click:LABEL` | click the button with that text, such as `click:Next month` or `click:To January` (a card open over it stops the click) |
 | `decide:N` | click option N of the open decision, counting from 0 |
 | `wait:SECONDS`, `frames:N` | let the game run |
