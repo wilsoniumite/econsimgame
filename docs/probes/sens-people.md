@@ -110,7 +110,7 @@ value against the three-quarters value. People are thousands.
 | `ease` | 2.1 | 1.575, 2.8 | People of 1800 +28, of 1900 +192; town cells +32%, works +20%; output per head 1880s -9%, real wage -6% | 16/0*, 16/0*, 16/0*, 15/1, 0/16, 1/15 (16) | strong |
 | `town_deaths` | 0.012 | 0.009, 0.016 | People of 1900 -116 (z -4.7); town cells -14%, works -11%; output per head 1880s +4%, urban share 1880s +2% | 0/16*, 0/16, 1/15, 14/2, 15/1 (16) | real, about three fifths of what `ease` does to people |
 | `town_size` | 10,000 | 7,500, 13,333 | People of 1900 +47 (z 3.1); output per head 1880s -4% | 8/0*, 1/7 | real for people, a lean for the rest |
-| `dearth_from` | 1.0 | 0.8, 1.1 | Works of 1900 -7% (z -1.2); urban share 1880s -2% | 0/8, 2/6 | a lean; 1.1 calls ordinary years lean |
+| `dearth_from` | 1.0 | 0.8, 1.1 | Works of 1900 -7% (z -1.2); urban share 1880s -2%. 16: works -5% (z -0.8) | 0/8, 2/6; 3/12 | a lean that fades on sixteen; 1.1 calls ordinary years lean |
 | `dearth_full` | 0.6 | 0.45, 0.8 | nothing | | nothing |
 | `dearth` | 0.03 | 0.0225, 0.04 | nothing: no fact at 7/1 or better with z 0.5 | | nothing |
 | `emigration` | 0.02 | 0.015, 0.0267 | nothing; some 130 people a run sail | | nothing |
@@ -150,7 +150,7 @@ pass) and `found_spacing`.
 | `d_new` | 300 | 225, 400 | Town cells of 1900 -10%, of 1750 -4% | 0/7, 0/8 | a little ground |
 | `d_old` | 530 | 400, 707 | Town cells of 1750 -40% (z -27), of 1800 -32%, of 1900 -15% | 0/8* each | the first towns' size, fading by 1900 |
 | `d_old_growth` | 6 | 4.5, 8 | Town cells of 1900 -27% (z -4.2, starred), farm land +2%, works +6%; wage and output nothing | 0/16*, 15/1, 12/4 (16) | the dial for town ground, and only that |
-| `tau` | 30 | 22.5, 40 | Town cells of 1900 +18% (starred), of 1750 +5% | 8/0*, 8/0 | ground, as `d_old_growth` but weaker |
+| `tau` | 30 | 22.5, 40 | Town cells of 1900 +18% (starred), of 1750 +5%. 16: the same, +18% and +5% | 8/0*, 8/0; 16/0, 16/0 | ground, as `d_old_growth` but weaker |
 | `works_room` | 0.5 | 0.375, 0.667 | Town cells of 1850 -9% (z -0.9) | 1/7 | nothing to speak of |
 | `smooth` | 0.5 | 0.375, 0.667 | Urban share 1880s -2% (z -1.1), works of 1900 +7%. Against today, 16: 0.375 works -6% | 0/16, 14/2 (16); 1/15 | the count of town people, and a lean on works |
 | `empty` | 0.6 | 0.45, 0.8 | The ten-year churn of town ground, which is near nothing either way (0.0006 to 0.007) | 8/0* | nothing else |
@@ -215,9 +215,10 @@ and no visible cost elsewhere.
   `donor_max`, cut the towns when tightened and do little when loosened.
 - **Leans that faded on sixteen islands**: `rent_floor` off (the real wage of
   1900 +3.4 per cent on eight islands, +1.5 per cent on sixteen), `mean_hands`
-  off (works -8 per cent in the 1880s on eight, -4 per cent on sixteen), and
+  off (works -8 per cent in the 1880s on eight, -4 per cent on sixteen),
   `migration_dist` (+6 per cent on 1900's wage on eight, +1 per cent on
-  sixteen).
+  sixteen), and `dearth_from` at 1.1 against 0.8 (works of 1900 -7 per cent
+  on eight, all eight down; -5 per cent on sixteen, twelve down and three up).
 
 ## Where a run breaks
 
