@@ -167,6 +167,7 @@ struct LandPaint {
     orchard: vec4<f32>,
     orchard_blossom: vec4<f32>,
     town_roofs_far: vec4<f32>,
+    town_roofs_far_hills: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
@@ -1070,14 +1071,19 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         case WORKS: { c = works_yard(sp); }
         case URBAN: {
             // (task A) built-up ground, or the open closes of the town's edge
+            // From across the island the houses are a pixel or less, and the
+            // ground stands for them as a map-maker draws a town, as a mass:
+            // the roofs of the built-up closes run together, the more of them
+            // the fuller the cell, and the gardens between take their tone by
+            // how full the cell is, so an old middle is one mass and the young
+            // ground at a town's edge is closes with a thread of roofs through
+            // them. A town in the hills is slate over stone.
+            let roofs = select(paint.town_roofs_far.rgb, paint.town_roofs_far_hills.rgb, sp.terr >= 2u);
+            let mass = ground.town_kept * sp.far;
             if (sp.town_open) {
-                c = town_edge(sp);
+                c = mix(town_edge(sp), roofs, mass * 0.9 * sp.dense);
             } else {
-                c = town(sp);
-                // from across the island the houses are a pixel or less, and
-                // the ground stands for them: the roofs of the built-up
-                // closes run together, the more of them the fuller the cell
-                c = mix(c, paint.town_roofs_far.rgb, ground.town_kept * sp.far * (0.42 + 0.45 * sp.dense));
+                c = mix(town(sp), roofs, mass * (0.42 + 0.45 * sp.dense));
             }
         }
         case DERELICT: { c = derelict(sp); }
