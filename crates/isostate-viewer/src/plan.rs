@@ -257,6 +257,20 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
                 }
             }
         }
+        // ISOSTATE_AREAS=districts: every district, class by class, the record against the
+        // parcels and the paint, so that the worst can be found and looked at
+        if std::env::var("ISOSTATE_AREAS").is_ok_and(|v| v == "districts") {
+            eprintln!("  district (squares x, z)   open  {}", names.map(|t| format!("{t:>7} rec/parcels/painted")).join(" "));
+            for (d, s) in sums.iter().enumerate() {
+                if cells[d] < D * D * 3 / 4 || s[0].iter().sum::<f64>() < 4.0 {
+                    continue;
+                }
+                let (rec, drawn, painted) = (share(&s[0]), share(&s[1]), share(&s[3]));
+                let out = (0..4).map(|t| (painted[t] - rec[t]).abs()).fold(0.0, f64::max);
+                eprintln!("  {:>2}-{:<2} {:>2}-{:<2} out {:4.1} {:6.1}  {}", (d % dw) * D, (d % dw) * D + D, (d / dw) * D, (d / dw) * D + D, out, s[0].iter().sum::<f64>(),
+                    (0..4).map(|t| format!("{:5.1} /{:5.1} /{:5.1}", rec[t], drawn[t], painted[t])).collect::<Vec<_>>().join("   "));
+            }
+        }
         let nn = (n as f64).max(1.0);
         eprintln!("  over {n} districts of {D} by {D} squares, a class's share is out by {:.1} points on average and {:.1} at worst (the cell rule: {:.1} and {:.1})", mean[0] / nn, worst[0], mean[1] / nn, worst[1]);
         eprintln!("  by class, on average: {} (the cell rule: {})",
