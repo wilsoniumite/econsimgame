@@ -10,7 +10,8 @@
 //! wooded each parcel is this year), `ley`, `soil`, `depth` (how finely a
 //! parcel is cut into fields) or `open` (the open fields). ISOSTATE_AREAS=1
 //! measures how well the drawn land keeps the areas the record gives, and stops
-//! (`maybe_areas`).
+//! (`maybe_areas`); ISOSTATE_AREAS=districts lists every district, and
+//! ISOSTATE_AREAS_SHIFT moves the districts by a few squares.
 
 use rayon::prelude::*;
 
@@ -128,8 +129,11 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         return;
     }
     const D: usize = 6;
-    let (dw, dh) = (r.w.div_ceil(D), r.h.div_ceil(D));
-    let district = |x: f32, y: f32| ((y.max(0.0) as usize).min(r.h - 1) / D) * dw + (x.max(0.0) as usize).min(r.w - 1) / D;
+    // ISOSTATE_AREAS_SHIFT=3 moves the districts by so many squares east and south: a mend
+    // that only fits the districts it is measured on shows up as no better on the moved ones
+    let sh: usize = std::env::var("ISOSTATE_AREAS_SHIFT").ok().and_then(|v| v.parse().ok()).unwrap_or(0) % D;
+    let (dw, dh) = ((r.w + sh).div_ceil(D), (r.h + sh).div_ceil(D));
+    let district = |x: f32, y: f32| (((y.max(0.0) as usize).min(r.h - 1) + sh) / D) * dw + ((x.max(0.0) as usize).min(r.w - 1) + sh) / D;
     let l = &g.land;
     let names = ["arable", "pasture", "wood", "heath"];
     for year in [1750, 1800, 1850, 1900] {
@@ -142,7 +146,7 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
             if r.terrain[c] == 0 {
                 continue;
             }
-            let d = (c / r.w / D) * dw + (c % r.w) / D;
+            let d = ((c / r.w + sh) / D) * dw + (c % r.w + sh) / D;
             cells[d] += 1;
             for (t, s) in world::open_shares(r, k, c).iter().enumerate() {
                 sums[d][0][t] += *s as f64;
@@ -267,7 +271,8 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
                 }
                 let (rec, drawn, painted) = (share(&s[0]), share(&s[1]), share(&s[3]));
                 let out = (0..4).map(|t| (painted[t] - rec[t]).abs()).fold(0.0, f64::max);
-                eprintln!("  {:>2}-{:<2} {:>2}-{:<2} out {:4.1} {:6.1}  {}", (d % dw) * D, (d % dw) * D + D, (d / dw) * D, (d / dw) * D + D, out, s[0].iter().sum::<f64>(),
+                let (x0, z0) = (((d % dw) * D).saturating_sub(sh), ((d / dw) * D).saturating_sub(sh));
+                eprintln!("  {:>2}-{:<2} {:>2}-{:<2} out {:4.1} {:6.1}  {}", x0, (d % dw) * D + D - sh, z0, (d / dw) * D + D - sh, out, s[0].iter().sum::<f64>(),
                     (0..4).map(|t| format!("{:5.1} /{:5.1} /{:5.1}", rec[t], drawn[t], painted[t])).collect::<Vec<_>>().join("   "));
             }
         }
