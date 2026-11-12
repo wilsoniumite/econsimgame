@@ -328,12 +328,23 @@ fn a_bad_setting_is_refused_before_anything_runs() {
     assert!(e.contains("1700") && e.contains("before the start year"), "{e}");
     assert!(!dir.exists(), "nothing is written when the command line is wrong");
 
-    // a place that cannot be written to is found out before the runs, not after them
-    std::fs::write(&dir, "a file where the directory should go").unwrap();
+    // a place that cannot be written to is found out before the runs, not after them: the refusal,
+    // the quickest of three tries, takes less than a sweep of one island for one year, timed here in
+    // the same run so that a busy machine slows both alike (it used to be held to five seconds)
+    let one = scratch("bad-one");
     let t0 = std::time::Instant::now();
-    let e = sweep(&["--seeds", "1-8", "--out", out, "--quiet"]).unwrap_err();
-    assert!(e.contains("--out"), "{e}");
-    assert!(t0.elapsed().as_secs_f64() < 5.0, "eight whole runs were made before --out was found to be a file");
+    sweep(&["--seeds", "1", "--end-year", "1750", "--out", one.to_str().unwrap(), "--quiet"]).expect("a sweep of one year runs");
+    let one_year = t0.elapsed().as_secs_f64();
+    let _ = std::fs::remove_dir_all(&one);
+    std::fs::write(&dir, "a file where the directory should go").unwrap();
+    let mut quickest = f64::INFINITY;
+    for _ in 0..3 {
+        let t0 = std::time::Instant::now();
+        let e = sweep(&["--seeds", "1-8", "--out", out, "--quiet"]).unwrap_err();
+        quickest = quickest.min(t0.elapsed().as_secs_f64());
+        assert!(e.contains("--out"), "{e}");
+    }
+    assert!(quickest < one_year, "eight whole runs were made before --out was found to be a file: the refusal took {:.0} ms, and one island's year {:.0} ms", quickest * 1e3, one_year * 1e3);
     let _ = std::fs::remove_file(&dir);
 }
 

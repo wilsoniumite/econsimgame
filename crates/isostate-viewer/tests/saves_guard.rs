@@ -14,12 +14,34 @@
 //! folder with `ISOSTATE_SAVES`, under `ISOSTATE_TEST_DIR` if that is set and
 //! the system's folder for temporary files if not: none can reach the
 //! player's own saved games.
+//!
+//! No test here is timed. A copy of the game is waited for until it ends, or
+//! until it has said or written what is looked for; the limits on those waits
+//! only stop a game that hangs, are many times what a quiet machine needs, and
+//! when one runs out the test says it timed out, which is not a wrong answer.
+//! On a machine too busy even for them, `ISOSTATE_TEST_PATIENCE=3` makes every
+//! wait three times as long.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use isostate_core::save::Save;
+
+/// How long a wait may go on, in seconds: `secs` times `ISOSTATE_TEST_PATIENCE`
+/// if that is set. (On 12 November a whole century that takes 45 s alone was
+/// still being played after the two minutes it was then given, with two dozen
+/// builds running beside it.)
+fn patience(secs: f32) -> f32 {
+    secs * std::env::var("ISOSTATE_TEST_PATIENCE").ok().and_then(|v| v.trim().parse::<f32>().ok()).filter(|t| t.is_finite() && *t > 0.0).unwrap_or(1.0)
+}
+
+/// Stop the test because a wait ran out, saying so.
+fn timed_out(secs: f32, what: &str, said: &str) -> ! {
+    panic!(
+        "timed out after {secs:.0} s waiting: {what}. No wrong answer was seen; a machine busy enough can run a wait out, and ISOSTATE_TEST_PATIENCE=3 waits three times as long. The game had said:\n{said}"
+    )
+}
 
 /// A folder of this test's own, empty.
 fn scratch(name: &str) -> PathBuf {
@@ -55,7 +77,6 @@ struct Ran {
     out: String,
     /// what it told the terminal
     err: String,
-    secs: f32,
 }
 
 impl Ran {
@@ -113,21 +134,23 @@ impl Started {
         String::from_utf8_lossy(&std::fs::read(&self.err).unwrap_or_default()).into_owned()
     }
 
-    /// Wait for it to end; one that runs past `limit` seconds is stopped and the test fails.
+    /// Wait for it to end; one still running after `patience(limit)` seconds
+    /// is stopped, and the test stops saying it timed out.
     fn end(mut self, limit: f32) -> Ran {
+        let limit = patience(limit);
         let code = loop {
             match self.child.try_wait().unwrap() {
                 Some(status) => break status.code(),
                 None if self.began.elapsed().as_secs_f32() > limit => {
                     let _ = self.child.kill();
                     let _ = self.child.wait();
-                    panic!("the game was still running after {limit} s; it had said:\n{}", self.said_so_far());
+                    timed_out(limit, "for the game to end", &self.said_so_far());
                 }
                 None => std::thread::sleep(Duration::from_millis(50)),
             }
         };
         let read = |p: &Path| String::from_utf8_lossy(&std::fs::read(p).unwrap_or_default()).into_owned();
-        Ran { code, out: read(&self.out), err: read(&self.err), secs: self.began.elapsed().as_secs_f32() }
+        Ran { code, out: read(&self.out), err: read(&self.err) }
     }
 
     /// Stop it dead, as a crash or the task manager would.
@@ -138,14 +161,20 @@ impl Started {
 }
 
 /// Run the game to its end. A run with no script ends by itself in seconds
-/// (`--describe` prints and stops before a window is thought of); a scripted
-/// one gets five minutes.
+/// (`--describe` prints and stops before a window is thought of), or in a
+/// minute if it plays a century; a scripted one in a few minutes at most.
+/// Each is given ten times that before it is taken to have hung.
 fn game(saves: &Path, args: &[&str]) -> Ran {
-    start(saves, args).end(if args.contains(&"--script") { 290.0 } else { 120.0 })
+    start(saves, args).end(if args.contains(&"--script") { 1800.0 } else { 600.0 })
 }
 
 /// A refusal: the game did not start, said why in one sentence that begins
-/// as given and ends by saying what to do, and made no island first.
+/// as given and ends by saying what to do, and made no island first. That the
+/// refusal is the first thing it said, and that nothing of an island made or a
+/// year played is said at all, is what shows it came before anything was
+/// made, since the game says that it is making an island, or playing years
+/// again, as it begins to. (Three of these used to be timed as well, which a
+/// busy machine could fail.)
 fn refused(ran: &Ran, code: i32, begins: &str, ends: &str) -> String {
     let said = ran.said();
     let first = said.first().copied().unwrap_or_default().to_string();
@@ -233,7 +262,6 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
         }
         let ran = game(&saves, &["--load", &text(&file), "--advance", "150", "--describe", "30,30"]);
         let said = refused(&ran, 1, &format!("the game could not start: {}: ", file.display()), what_to_do);
-        assert!(ran.secs < 20.0, "refused after {} s", ran.secs);
         if let Some(c) = &contents {
             assert_eq!(&std::fs::read_to_string(&file).unwrap(), c, "the file that was refused was changed");
         }
@@ -313,7 +341,6 @@ fn a_place_to_save_in_that_cannot_be_written_is_refused_before_anything_is_playe
     let inside = notes.join("game.json");
     let ran = game(&saves, &["--new", "--advance", "100", "--save", &text(&inside), "--describe", "30,30"]);
     refused(&ran, 1, &format!("the game could not start: a game cannot be kept in {}, because nothing can be written in {} (", inside.display(), notes.display()), "): name a file in a folder that can be written");
-    assert!(ran.secs < 20.0, "refused after {} s", ran.secs);
     // somebody's file is not written over, and a folder is not a file
     let ran = game(&saves, &["--new", "--save", &text(&notes), "--describe", "30,30"]);
     refused(&ran, 1, &format!("the game could not start: {}: not a saved game: ", notes.display()), ", and --save writes only where nothing is or over a saved game it can read: name another file");
@@ -340,10 +367,14 @@ fn a_second_copy_is_refused_and_a_copy_that_crashed_keeps_nobody_out() {
 
     // the first copy: it keeps its game in the island's autosave, and is busy for half a minute
     // playing a century and a half before it would open
-    let first = start(&saves, &["--new", "--advance", "150", "--keep", "--describe", "30,30"]);
+    let mut first = start(&saves, &["--new", "--advance", "150", "--keep", "--describe", "30,30"]);
     let t0 = Instant::now();
     while !first.said_so_far().contains("making island") {
-        assert!(t0.elapsed().as_secs() < 60, "the first copy did not start: {}", first.said_so_far());
+        assert!(first.child.try_wait().unwrap().is_none(), "the first copy ended before it made its island: {}", first.said_so_far());
+        if t0.elapsed().as_secs_f32() > patience(300.0) {
+            let _ = first.child.kill();
+            timed_out(patience(300.0), "for the first copy to begin making its island", &first.said_so_far());
+        }
         std::thread::sleep(Duration::from_millis(50));
     }
     // a second copy that would keep its game in the same place, however it is started
@@ -352,7 +383,6 @@ fn a_second_copy_is_refused_and_a_copy_that_crashed_keeps_nobody_out() {
     for args in [&["--keep", "--describe", "30,30"][..], &["--new", "--keep", "--describe", "30,30"], &["--load", &text(&file), "--keep", "--describe", "30,30"], &["--keep", "--script", "print"]] {
         let ran = game(&saves, args);
         refused(&ran, 1, second, what_to_do);
-        assert!(ran.secs < 20.0, "refused after {} s", ran.secs);
     }
     // what is not kept there is not in its way
     let ran = game(&saves, &["--advance", "1", "--describe", "30,30"]);
@@ -364,8 +394,10 @@ fn a_second_copy_is_refused_and_a_copy_that_crashed_keeps_nobody_out() {
     assert_eq!(files(&saves), beside);
 
     // the first copy dies where it stands. Its lock goes with it; the lock's file stays and means nothing
-    let mut first = first;
-    assert!(first.child.try_wait().unwrap().is_none(), "the first copy had ended before the second was tried: nothing was shown");
+    assert!(
+        first.child.try_wait().unwrap().is_none(),
+        "the first copy had played its 150 years and ended before the checks above were done, so they showed nothing: the test was outrun, which is not a wrong answer"
+    );
     first.crash();
     assert!(saves.join("island-7-families-6.json.lock").exists());
     let ran = game(&saves, &["--keep", "--describe", "30,30"]);
@@ -636,7 +668,7 @@ fn runs_that_take_pictures_leave_the_played_game_alone() {
         (&["--new", "--advance", "2", "--view", &view], three.clone()),
         (&["--shots", &text(&sheet)], sheet.join("index.html")),
     ] {
-        let ran = start(&saves, args).end(280.0);
+        let ran = start(&saves, args).end(1800.0);
         assert_eq!(ran.code, Some(0), "{args:?}\n{}", ran.err);
         assert!(ran.err.contains("nobody is at this game (it takes pictures or is played by a script), so it is not kept and no saved game is written over (--save FILE keeps it)"), "{args:?}\n{}", ran.err);
         assert!(!ran.err.contains("going on with"), "{args:?}: a run that takes pictures went on with the played game\n{}", ran.err);
@@ -659,7 +691,7 @@ fn new_game_hands_the_place_over_to_the_copy_it_starts() {
     // the program again and leaves. The copy it starts says what it does in the same place as this one.
     let first = start_told(&saves, &["--load", &text(&file), "--keep", "--shot", &text(&picture)], Some("new"));
     let err = first.err.clone();
-    let ran = first.end(120.0);
+    let ran = first.end(600.0);
     assert_eq!(ran.code, Some(0), "{}", ran.err);
     assert!(ran.err.contains("the game is kept in ") && ran.err.contains("pressing the card's button, as ISOSTATE_WELCOME asks") && ran.err.contains("starting again on a new game"), "{}", ran.err);
     // the new copy waited for the old one to let go of the place and took it: it is not refused as a second copy
@@ -668,14 +700,18 @@ fn new_game_hands_the_place_over_to_the_copy_it_starts() {
     let t0 = Instant::now();
     while !new_copy(&said()).contains("the game is kept in ") {
         assert!(!said().contains("another copy of the game is open"), "the new game was kept out by the copy that started it:\n{}", said());
-        assert!(t0.elapsed().as_secs() < 60, "the new game did not start:\n{}", said());
+        if t0.elapsed().as_secs_f32() > patience(600.0) {
+            timed_out(patience(600.0), "for the new game to start", &said());
+        }
         std::thread::sleep(Duration::from_millis(100));
     }
     assert!(new_copy(&said()).contains("making island 7 with 6 families"), "{}", said());
     // it takes its picture and ends, and lets go of the place in its turn (a lock that is held cannot be read)
     let lock = saves.join("island-7-families-6.json.lock");
     while !picture.exists() || std::fs::read(&lock).is_err() {
-        assert!(t0.elapsed().as_secs() < 240, "the new game did not end:\n{}", said());
+        if t0.elapsed().as_secs_f32() > patience(1800.0) {
+            timed_out(patience(1800.0), "for the new game to take its picture and end", &said());
+        }
         std::thread::sleep(Duration::from_millis(200));
     }
     // nothing has happened in the new game, so nothing is written yet: the played game is as it was
@@ -708,7 +744,10 @@ fn a_game_killed_a_dozen_times_as_it_plays_is_gone_on_with_each_time() {
             }
             let said = copy.said_so_far();
             assert!(!said.contains("another copy of the game is open"), "round {round}: the copy killed before this one kept it out:\n{said}");
-            assert!(t0.elapsed().as_secs() < 200, "round {round}: the game did not get going:\n{said}");
+            if t0.elapsed().as_secs_f32() > patience(1200.0) {
+                copy.crash();
+                timed_out(patience(1200.0), &format!("round {round}: for the game to get going and save"), &said);
+            }
             std::thread::sleep(Duration::from_millis(20));
         }
         // some way into a year, or into its turn, or into the save of it: a different moment each round
