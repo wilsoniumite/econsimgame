@@ -10,20 +10,23 @@ Measured on 12 November 2026 at a6ff0ec, the game's rules with six families.
 
 ## In short
 
-1. **No run broke.** 848 runs, at every value tried: no panic, no failure of the
+1. **No run broke.** 912 runs, at every value tried: no panic, no failure of the
    monthly money check, no town lost, no year in which the island's people fell
    by as much as 3 per cent. The most famine years in any run was four.
 2. **Within the range tried, no setting of either mechanism moves output per
-   head or the real wage** by anything that can be told from chance, on sixteen
-   islands, in any of the three twenty-year windows. The economy feels the
-   railways and the canals through the two switches, not through their dials.
-   Switching the game's railways off costs 3.0 per cent of output a head in
+   head or the real wage by much.** As means of twenty years, no change between
+   a setting's two values is more than 3 per cent, none is as large as a fifth
+   of the spread between islands, and only one runs the same way on 14 islands
+   of 16 or more: dearer railway lines (`cost_mult` 6.67 against 3.75) leave
+   output a head in 1831 to 1850 0.9 per cent lower and the real wage 1.5 per
+   cent lower. The economy feels the railways and the canals through the two
+   switches, not through their dials. Switching the game's railways off costs 3.0 per cent of output a head in
    1881 to 1900 (14 islands of 16) and 3.7 per cent of the real wage (13 of 16);
    switching the canals off puts 1.4 more points of the island's hands to carting
    in 1800 (all 16) and gives a run 1.4 famine years where it had 0.4 (9 islands
    more, 3 fewer).
-3. **The railway's size is set by the branch planner's dials**, not by its
-   money: `districts`, `branch_gap`, `cool_years`, `cost_mult` and the hurdle
+3. **The railway's size is set by the branch planner's dials** more than by
+   the money its towns can raise: `districts`, `branch_gap`, `cool_years`, `cost_mult` and the hurdle
    each move the railway of 1900 by 250 to 470 km between their two values, on
    15 or 16 islands of 16. `branch_gap` is not monotone: 3, the value in use,
    gives more line than either 2 or 4.
@@ -49,8 +52,8 @@ isostate-core sweep --seeds 1-8 --rules game --families 6 --set railways.distric
 
 The baseline is the same command with no `--set`. On seeds 1 to 8 it gives every
 one of 446 facts as `merged-game-f6-l` (today's main) gives it. Thirty-six
-sweeps on seeds 1 to 8 (544 runs); the fourteen settings that moved anything, or
-whose result I would stake something on, again on seeds 9 to 16 (192 runs, and
+sweeps on seeds 1 to 8 (544 runs); the eighteen settings that moved anything, or
+whose result I would stake something on, again on seeds 9 to 16 (256 runs, and
 the baseline's 8); and three pairs of settings together on seeds 1 to 8 (96
 runs). No run failed. The folders, the scripts that read them and the readings
 they printed are under `.claude/night/reports/opus/sens-ways/`.
@@ -162,15 +165,15 @@ hands in 1800.
 | `enabled` | on | off | carters in 1800: 0.119 to 0.133 of all hands; carting 0.080 to 0.092 of output in 1800; famine years 0.38 to 1.38; output a head 1781 to 1800 down 1.2 per cent; the merchants' share of income in 1800 down a quarter; nothing in 1850 or 1900 | 16; 16; 9 up, 3 down; 15; 16 (16) |
 | `cost` | 0.13 | 0.0975, 0.173 | canal of 1800: 728 to 600 km, of 1900: 941 to 793; first canal 4.4 years later; boats' weight-km in 1800 362 to 225 million; carters in 1800 up 0.012; towns in 1900 up 1.7; railway of 1850 up 145 km | 16; 15; 9 of 9 that moved; 16; 16; 12; 12 (16) |
 | `wharf` | 0.4 | 0.3, 0.533 | boats' haul in 1820: 41 to 53 km; canal cells carrying anything in 1900: 0.39 to 0.23; carters in 1800 up 0.006; canal of 1900 41 km shorter; first canal 3 years later | 16; 16; 16; 13; 5 of 5 that moved (16) |
-| `stone` | 150 | 112.5, 200 | nothing clear | (8) |
-| `bricks` | 80 | 60, 107 | canal of 1900 86 km shorter; network's cost 0.016 more years of output | 8; 7 (8) |
-| `timber` | 60 | 45, 80 | nothing clear | (8) |
+| `stone` | 150 | 112.5, 200 | nothing clear (output a head in 1831 to 1850 was 3 per cent higher on all of seeds 1 to 8; on sixteen it is 1 per cent, on 10 of 16) | (16) |
+| `bricks` | 80 | 60, 107 | fares over capital in 1800 0.53 to 0.42; canal of 1900 70 km shorter; network's cost 0.020 more years of output; first canal 2 years later | 16; 12; 13; 6 of 6 that moved (16) |
+| `timber` | 60 | 45, 80 | nothing clear | (16) |
 | `clay` | 200 | 150, 267 | nothing clear | (8) |
 | `lock_cells` | 80 | 60, 107 | network's cost 0.125 to 0.156 years of output; boats' haul in 1900 17 to 12 km | 8; 7 (8) |
 | `wages` | 2 | 1.5, 2.67 | canal of 1800: 718 to 627 km, of 1900: 933 to 821; network's cost 0.127 to 0.155 years of output; first canal 3 years later | 15; 14; 15; 6 of 6 that moved (16) |
 | `navvies` | on | off | only the count of navvies; nothing in carting, output, the wage or the towns | (16) |
 | `navvy_max_share` | 0.2 | 0.15, 0.267 | nothing clear in the canals | (8) |
-| `navvy_adjust` | 0.25 | 0.1875, 0.333 | nothing clear in the canals | (8) |
+| `navvy_adjust` | 0.25 | 0.1875, 0.333 | nothing clear (baskets a head in 1900 down 3 per cent on 7 of seeds 1 to 8; not on 16) | (16) |
 | `build_months` | 36 | 27, 48 | slowest canal 4.1 to 5.8 years; first canal 1.3 years later; most navvies at once 1,410 to 1,070; canal of 1790 60 km shorter | 8; 8; 7; 8 (8) |
 | `hurdle` | 0.1 | 0.075, 0.133 | canal of 1790: 652 to 513 km, of 1800: 744 to 644; first canal 4.8 years later; network's cost 0.158 to 0.131 years of output; railway of 1880 up 5 per cent | 16; 15; 9 of 9 that moved; 15; 14 (16) |
 | `induced` | 1 | 0.75, 1.33 | the hurdle's own results the other way about | (8) |
@@ -214,11 +217,13 @@ or later, and the rush is over by 1800 in every row.
   `induced`), `wages` and `wharf`, in that order: each moves the network of 1800
   by 30 to 130 km and the first canal by 2 to 5 years, on 15 or 16 islands of
   16 for the network.
-- **For the island:** only the two switches. Canals on take a point and a half
-  of the hands out of carting in 1800 on every island; canal `cost` and `wharf`
-  move that by a third of a point either way, on all sixteen. Nothing else in
-  either mechanism moved carting, output a head, the real wage or the towns'
-  people on sixteen islands.
+- **For the island:** mostly the two switches. Canals on take a point and a
+  half of the hands out of carting in 1800 on every island; canal `cost` moves
+  that by six tenths of a point either way and the wharf by two to four tenths,
+  on 13 to 16 islands of 16. A cheaper canal also leaves the island with fewer
+  towns in 1900 (1.7 fewer at a `cost` of 0.0975 than at 0.173, on 12 of 16),
+  as the canals page found of the canals themselves. Output a head and the real
+  wage hardly move for any dial (In short, 2).
 
 ## Settings that do nothing at these sizes
 
@@ -229,12 +234,13 @@ or later, and the rush is over by 1800 in every row.
 on an island of 200,000), `railways.district_spacing`, and the canals' own
 `districts`, `branch_gap`, `district_spacing` and `cool_years` (the canals are
 nearly all trunks, so the branch planner's dials have little to work on). The
-canals' four materials matter only as the canal's cost: each alone moves too
-little to tell apart from path noise on eight islands, and bricks the most.
+canals' four materials matter only as the canal's cost: stone, timber and clay
+alone move too little to tell apart from path noise, and bricks take some 70 km
+off the canal of 1900 on twelve islands of sixteen.
 
 ## Where a run breaks
 
-Nowhere in the range tried. All 848 runs finished, the money check held every
+Nowhere in the range tried. All 912 runs finished, the money check held every
 month, no town was lost from one year to the next, the island's people never
 fell by 3 per cent in a year, and the most famine years in any run was four
 (canals off on seeds 1 and 3; `canals.bricks` 107 on seed 6). The extremes the
@@ -291,19 +297,25 @@ Worth trying next, none run:
    grain that can go by boat or rail in a bad year is the obvious guess.
 5. **The dials can be tuned for the map and the calendar without fear for the
    economy.** Within a third either way none of them moves output a head or the
-   wage on sixteen islands, so the scorecard of piece 18 can set them by how the
-   network looks and when it comes.
-6. **Read against both values, and on sixteen islands.** The baseline's own
-   luck reached the towns, the railway of 1850 and the famines on seeds 1 to 8
-   (`build_months` 32 took 70 km off the railway of 1850 on all eight; on
-   sixteen it is 43 km on 12 of 16 and nothing between its two values).
+   wage by more than a few per cent, a fifth of the spread between islands, so
+   the scorecard of piece 18 can set them by how the network looks and when it
+   comes. That holds for the island as these rules have it, where nobody owns a
+   line or a canal; fares that somebody collected would change it.
+6. **Read against both values, and on sixteen islands.** On seeds 1 to 8 the
+   baseline's own luck reached the towns of 1900, and three "all eight islands"
+   results did not survive seeds 9 to 16: `build_months` 32 took 70 km off the
+   railway of 1850 on all eight, and on sixteen it is 43 km on 12; canal `cost`
+   took 3.6 per cent off output a head in 1831 to 1850 on all eight, and on
+   sixteen 1.3 per cent on 12; canal `stone` added 3 per cent to the same, and
+   on sixteen 1 per cent on 10. A scorecard built on eight islands would have
+   kept all three.
 
 ## Files
 
 Under `.claude/night/reports/opus/sens-ways/`: `game` and `game-s9` (the
 baselines), `s8/NAME` and `s9/NAME` (one sweep a setting), `pairs/`,
 `readings/` (what the scripts printed: `table8.txt` and `table16.txt` against
-the baseline, `hilo_r8.txt`, `hilo_c8.txt` and `hilo16.txt` low value against
+the baseline, `hilo_r8.txt`, `hilo_c8.txt`, `hilo16.txt` and `hilo16b.txt` low value against
 high, `analyse8.txt` every key fact, `noise_materials.txt`, `pairs.txt`), and
 `scripts/` (the Python that reads them, and the shell that ran them). `build.md`
 there has every command and decision.
