@@ -520,3 +520,11 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **commons**: under the commons the common fund in debt pays no dividend
+  until its rents repay it, and charges nobody, where the port shares out its
+  debt as a levy on every household. Under the landlords it does nothing.
+  [commons.md](commons.md), `commons.carry_debt`.
+- **roads** (off under both sets of rules: a probe's prototype): roads,
+  turnpikes and bridges that somebody pays for, a parish out of its rate and
+  a turnpike trust out of its tolls. [dx-roads.md](../probes/dx-roads.md),
+  `roads.enabled`.

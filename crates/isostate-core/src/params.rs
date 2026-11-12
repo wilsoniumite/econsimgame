@@ -303,8 +303,8 @@ pub struct Params {
     #[serde(default, skip_serializing_if = "is_default")]
     pub roads: crate::roads::RoadParams,
     /// A common fund in debt that charges nobody and pays no dividend until its
-    /// rents repay it (not in the Python; see docs/rules/mines.md, "Under the
-    /// commons"). Under the landlords the fund never holds a penny.
+    /// rents repay it (not in the Python; see docs/rules/commons.md). Under the
+    /// landlords the fund never holds a penny.
     #[serde(default, skip_serializing_if = "is_default")]
     pub commons: crate::commons::CommonsParams,
 }
