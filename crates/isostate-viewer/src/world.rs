@@ -389,6 +389,7 @@ struct Fields<'a> {
 /// The parcels of the field system (fields.rs), eight to a block, and what does
 /// not change about each. A parcel's number is its block's place in the grid
 /// of blocks that covers the map times eight, plus its number in the block.
+#[derive(Default)]
 pub struct Land {
     /// the first block along each axis, and how many there are
     pub bi0: i32,
@@ -1709,9 +1710,14 @@ impl YearLand {
     /// slowly from the edge (it is smoothed), so it is steepened: a wood is
     /// at its full depth a few hundred metres in.
     pub fn wooded(&self, pl: Place) -> f32 {
-        let w = self.fields(pl).0;
-        (if w > 0.5 { 0.5 + WOOD_DEPTH * (w - 0.5) } else { w }).clamp(0.0, 1.0)
+        wood_depth(self.fields(pl).0)
     }
+}
+
+/// How wooded a spot is, 0 to 1, from the wood's field there (`YearLand::wooded`;
+/// `wood_depth` in terrain.wesl).
+pub fn wood_depth(w: f32) -> f32 {
+    (if w > 0.5 { 0.5 + WOOD_DEPTH * (w - 0.5) } else { w }).clamp(0.0, 1.0)
 }
 
 /// How open a wood is at a spot, 0 under the trees to 1 in a glade or a ride,
