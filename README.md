@@ -308,7 +308,7 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 - The roads and bridges are the viewer's own invention, so a road down a valley crosses its river again and again, and a cart can pass through a bridge.
 - The railways climb like railways since 12 November, and some of it is still wrong: on island 7 in 1900 four churches have the line hard against their yard, eighteen curves are tighter than a train should take, roads drape over the banks with no bridge or crossing, and sidings are plain ribbons (`docs/DEVLOG.md`).
 - A works that closes vanishes at once. Small works of different kinds are hard to tell apart from the distance the game is played at.
-- A year's scenery is rebuilt whole, off the main thread, and handed over in one go. Whether that stalls the picture is being measured.
+- A year's scenery is rebuilt whole, off the main thread, and handed over in one go. Where that stalls the picture has been measured and a smoother hand-over designed; it is not built.
 - A recorded run of a game replays without its owners, so with no pennants or fences.
 
 **The code and its tests.**
