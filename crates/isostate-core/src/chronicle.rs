@@ -1175,7 +1175,7 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
     }
     let (&g, &ng) = by_good.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).expect("some closed");
     let good = C.good_label[g].to_lowercase();
-    let makers = if ng == n { format!("all of them makers of {good}") } else { format!("{} of them makers of {good}", number(ng)) };
+    let makers = makers(ng, n, &good);
     let k = ch.prices.len() - 1;
     let mut reason = " They could no longer cover their costs.".to_string();
     if k >= 3 {
@@ -1531,6 +1531,16 @@ fn number(n: usize) -> String {
     WORDS.get(n).map_or_else(|| n.to_string(), |w| w.to_string())
 }
 
+/// "all of them makers of bricks", "three of them makers of iron", "one of
+/// them a maker of cloth": `of` of the `all` works that closed made the good.
+fn makers(of: usize, all: usize, good: &str) -> String {
+    match of {
+        _ if of == all => format!("all of them makers of {good}"),
+        1 => format!("one of them a maker of {good}"),
+        _ => format!("{} of them makers of {good}", number(of)),
+    }
+}
+
 /// "a year", "two years", "15 years".
 fn years(n: usize) -> String {
     if n == 1 { "a year".to_string() } else { format!("{} years", number(n)) }
@@ -1758,5 +1768,8 @@ mod tests {
     fn counts_of_one_are_singular() {
         assert_eq!(years(1), "a year");
         assert_eq!(years(10), "ten years");
+        assert_eq!(makers(1, 5, "cloth"), "one of them a maker of cloth");
+        assert_eq!(makers(3, 5, "iron"), "three of them makers of iron");
+        assert_eq!(makers(5, 5, "bricks"), "all of them makers of bricks");
     }
 }
