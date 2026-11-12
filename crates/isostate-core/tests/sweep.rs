@@ -117,6 +117,11 @@ fn a_tiny_sweep_writes_finite_facts() {
     let facts_csv = std::fs::read_to_string(dir.join("facts.csv")).unwrap();
     assert_eq!(facts_csv.lines().count(), 3);
     assert!(facts_csv.lines().nth(1).unwrap().starts_with("0,1,ok,,135000,"));
+    // the scorecard is written beside them, and says which aims a run to 1760 cannot be read on
+    let card = std::fs::read_to_string(dir.join("scorecard.txt")).unwrap();
+    assert!(card.contains("Scorecard: port rules, 2 runs (seeds 1 2)") && card.contains("fewer than 16 islands"), "{card}");
+    assert!(card.contains("urban_share_1881_1900") && card.contains("PLAN.md 1.2") && card.contains("\nloss: "), "{card}");
+    assert_eq!(isostate_core::scorecard::card(&dir, None).unwrap(), card, "the command prints what the sweep wrote");
     for name in ["summary.txt", "README.txt"] {
         assert!(std::fs::metadata(dir.join(name)).unwrap().len() > 0, "{name} is empty");
     }

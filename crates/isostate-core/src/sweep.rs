@@ -16,6 +16,8 @@
 //! - `facts.csv` and `facts.json`: one row or object per run;
 //! - `summary.txt`: the table it prints, each fact's mean and range across seeds,
 //!   one column per setting;
+//! - `scorecard.txt`: each setting read against the aims the documents state
+//!   (`scorecard.rs`, `docs/rules/scorecard.md`);
 //! - `README.txt`: the command line and what was run.
 //!
 //! `--set` takes any field of `Params` by name, and a dotted path into a
@@ -692,6 +694,8 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
          \x20            railway was never built), and the methods never built\n\
          facts.json   the same, one object per run under \"runs\"; what --compare reads\n\
          summary.txt  the table the sweep printed: each fact's mean and [least .. greatest] across seeds\n\
+         scorecard.txt  the aims the documents state, each against its fact's mean, with a tolerance from\n\
+         \x20            the spread across seeds and a loss (isostate-core scorecard DIR prints it again)\n\
          \nSpeed: seconds is each run's time on the clock, with the others of the sweep running beside it and\n\
          whatever else the machine was doing, so it says as much about the machine that day as about the\n\
          code. cpu_seconds is the time the processor spent on the run's own thread, which other work\n\
@@ -710,7 +714,13 @@ pub fn write_outputs(sw: &Sweep, o: &Options, summary: &str) -> Result<(), Strin
     put("facts.csv", facts_csv(sw))?;
     put("facts.json", serde_json::to_string_pretty(&facts_json(sw, &o.command, code.as_deref())).map_err(|e| e.to_string())? + "\n")?;
     put("summary.txt", summary.to_string())?;
-    put("README.txt", readme(sw, o, code.as_deref()))
+    put("README.txt", readme(sw, o, code.as_deref()))?;
+    // the scorecard (docs/rules/scorecard.md), read back from the facts.json just written;
+    // written and not printed, so the table and the comparison stay the last thing said
+    if sw.runs.iter().any(|r| r.outcome.is_ok()) {
+        put("scorecard.txt", crate::scorecard::card(dir, None)?)?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------- the table

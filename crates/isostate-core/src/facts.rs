@@ -656,7 +656,15 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let first = out.iter().position(|&v| v > 0.0);
         b.year(format!("first_output_{name}"), first.map(|k| years[k]));
         let tot = good_total(j);
-        b.year(format!("half_of_output_{name}"), (0..out.len()).find(|&k| tot[k] > 0.0 && out[k] >= 0.5 * tot[k]).map(|k| years[k]));
+        let half = (0..out.len()).find(|&k| tot[k] > 0.0 && out[k] >= 0.5 * tot[k]).map(|k| years[k]);
+        b.year(format!("half_of_output_{name}"), half);
+        // how long from its discovery to half its good's output (the prices page asks that
+        // coke iron take no more than ten years; docs/rules/scorecard.md)
+        let found = Some(st.tech_year[j]).filter(|&y| y >= y0);
+        b.num(format!("years_to_half_{name}"), Kind::Real, match (found, half) {
+            (Some(d), Some(h)) => (h - d) as f64,
+            _ => f64::NAN,
+        });
         if first.is_none() {
             never_built.push(name.clone());
         }
