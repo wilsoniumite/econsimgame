@@ -20,21 +20,28 @@ fn off_by_default_and_on_in_the_game() {
     assert!(!j.contains("shelves_go"), "the port's parameters name the switch");
 }
 
-/// An island of the game's in 1760, and two towns that stood before it whose
-/// market areas touch: the first gives the second the cells along their border
-/// that are not its own seat. Returns the island with `prev_catch` set to the
-/// areas before and `catch` to the areas after, and the two towns.
-fn a_redraw() -> (State, Content, Params, usize, usize) {
+/// An island of the game's in 1760 on island 3, its market areas as they stand
+/// in both `prev_catch` and `catch`, so that a test can redraw them by hand.
+fn island() -> (State, Content, Params) {
     let mut P = game_params();
     P.seed = 3;
     P.n_families = 6;
     P.end_year = Some(1760);
     let r = sim::run_with(&P, game_content(), false, true).expect("the run finishes");
     let mut st = r.state;
-    let C = r.content;
+    st.prev_catch = st.catch.clone();
+    assert!(st.town_new.iter().all(|&v| !v), "no town is new");
+    (st, r.content, P)
+}
+
+/// A town that stood before 1760 and has over a thousand people.
+fn old(st: &State, t: usize) -> bool {
+    st.town_active[t] && st.town_founded[t] < 1760 && st.pop[t] > 1000.0
+}
+
+/// The length of the border between each pair of market areas, in cell sides.
+fn borders(st: &State) -> std::collections::HashMap<(usize, usize), usize> {
     let (W, N) = (st.world.W, st.N);
-    // the pair of old towns with the longest common border
-    let mut best = (0usize, 0usize, 0usize);
     let mut border = std::collections::HashMap::new();
     for c in 0..N {
         let a = st.catch[c];
@@ -51,19 +58,16 @@ fn a_redraw() -> (State, Content, Params, usize, usize) {
             }
         }
     }
-    for (&(a, b), &n) in &border {
-        let old = |t: usize| st.town_active[t] && st.town_founded[t] < 1760 && st.pop[t] > 1000.0;
-        if old(a) && old(b) && n > best.2 {
-            best = (a, b, n);
-        }
-    }
-    let (a, b, n) = best;
-    assert!(n > 0, "no two old towns touch");
-    st.prev_catch = st.catch.clone();
-    // every cell of a's within six cells of b's area goes to b (six rings, each
-    // the cells that touch the last), but never a's own seat
+    border
+}
+
+/// Gives town `b` every cell of town `a`'s within `rings` cells of `b`'s area
+/// (each ring the cells that touch the last), never `a`'s own seat, on
+/// `st.catch`; returns how many cells went.
+fn give(st: &mut State, a: usize, b: usize, rings: usize) -> usize {
+    let (W, N) = (st.world.W, st.N);
     let mut gave = 0;
-    for _ in 0..6 {
+    for _ in 0..rings {
         let now = st.catch.clone();
         for c in 0..N {
             if now[c] != a as i64 || c == st.town_node[a] {
@@ -80,9 +84,50 @@ fn a_redraw() -> (State, Content, Params, usize, usize) {
             }
         }
     }
-    assert!(gave > 0);
-    assert!(st.town_new.iter().all(|&v| !v), "neither town is new");
+    gave
+}
+
+/// An island of the game's in 1760, and two towns that stood before it whose
+/// market areas touch: the first gives the second the cells along their border
+/// that are not its own seat. Returns the island with `prev_catch` set to the
+/// areas before and `catch` to the areas after, and the two towns.
+fn a_redraw() -> (State, Content, Params, usize, usize) {
+    let (mut st, C, P) = island();
+    // the pair of old towns with the longest common border
+    let mut best = (0usize, 0usize, 0usize);
+    for (&(a, b), &n) in &borders(&st) {
+        if old(&st, a) && old(&st, b) && n > best.2 {
+            best = (a, b, n);
+        }
+    }
+    let (a, b, n) = best;
+    assert!(n > 0, "no two old towns touch");
+    // every cell of a's within six cells of b's area goes to b
+    assert!(give(&mut st, a, b, 6) > 0);
     (st, C, P, a, b)
+}
+
+/// Nothing is made or lost across a redraw: each good's stock and measure of
+/// sales to a part in a million million of the island's total, money and each
+/// purse to the penny, people to a part in a million million, and no shelf goes
+/// below nothing.
+fn nothing_made_or_lost(before: &State, after: &State, C: &Content) {
+    for g in 0..C.G {
+        for (m1, m0, what) in [(&after.inv, &before.inv, "stock"), (&after.outflow, &before.outflow, "sales")] {
+            let (now, was) = (sum_col(m1, g), sum_col(m0, g));
+            assert!((now - was).abs() <= 1e-12 * was.abs().max(1.0), "{what} of {}: {was} before, {now} after", C.good_name[g]);
+            for t in 0..m0.rows {
+                assert!(m1[(t, g)] >= 0.0 || m0[(t, g)] < 0.0, "{what} of {} in {} went below nothing", C.good_name[g], before.town_name[t]);
+            }
+        }
+    }
+    let (m0, m1) = (econ::money_total(before), econ::money_total(after));
+    assert!((m1 - m0).abs() < 0.01, "money {m0} before the redraw, {m1} after");
+    let s = |v: &[f64]| v.iter().sum::<f64>();
+    for (v1, v0, what) in [(&after.merch_cash, &before.merch_cash, "merchants"), (&after.hh_cash, &before.hh_cash, "households"), (&after.lord_cash, &before.lord_cash, "landlords")] {
+        assert!((s(v1) - s(v0)).abs() < 0.01, "the {what}' cash: {} before, {} after", s(v0), s(v1));
+    }
+    assert!((s(&after.pop) - s(&before.pop)).abs() <= 1e-12 * s(&before.pop), "people: {} before, {} after", s(&before.pop), s(&after.pop));
 }
 
 fn sum_col(m: &Mat, g: usize) -> f64 {
@@ -171,6 +216,87 @@ fn a_debt_stays_with_the_merchants_who_owe_it() {
     // and the stock goes all the same
     let grain = C.gi("grain");
     assert!(on.inv[(b, grain)] > before.inv[(b, grain)]);
+}
+
+/// A town that gives away every cell but its own seat keeps a twentieth of its
+/// people at least (`move_with_cells` never takes more than 0.95 of a town), and
+/// keeps the same share of its stock and its measure of sales: nothing more
+/// leaves it than the people who go, and nothing is made or lost.
+#[test]
+fn a_town_that_gives_away_its_last_district() {
+    let (mut before, C, P, a, b) = a_redraw();
+    for c in 0..before.N {
+        if before.catch[c] == a as i64 && c != before.town_node[a] {
+            before.catch[c] = b as i64;
+        }
+    }
+    let mut on = before.clone();
+    peopling::move_with_cells(&mut on, &C, &P);
+    nothing_made_or_lost(&before, &on, &C);
+    let kept = on.pop[a] / before.pop[a];
+    println!("{} keeps {kept:.3} of its people", before.town_name[a]);
+    assert!(kept >= 0.05 - 1e-12 && kept < 0.5, "{} keeps {kept:.3} of its people", before.town_name[a]);
+    for g in 0..C.G {
+        for (m1, m0, what) in [(&on.inv, &before.inv, "stock"), (&on.outflow, &before.outflow, "sales")] {
+            let want = kept * m0[(a, g)];
+            assert!((m1[(a, g)] - want).abs() <= 1e-12 * m0[(a, g)].abs().max(1e-9), "{what} of {}: kept {} for {want}", C.good_name[g], m1[(a, g)]);
+        }
+    }
+}
+
+/// A town that takes a district from each of three neighbours in one year gets
+/// each one's share of its shelves, and the island loses nothing.
+#[test]
+fn a_town_that_takes_three_districts_in_one_year() {
+    let (mut before, C, P) = island();
+    // the old town with the most old neighbours
+    let border = borders(&before);
+    let T = before.T_max;
+    let near = |b: usize| -> Vec<usize> { (0..T).filter(|&a| a != b && old(&before, a) && border.get(&(a, b)).or(border.get(&(b, a))).is_some()).collect() };
+    let b = (0..T).filter(|&b| old(&before, b)).max_by_key(|&b| near(b).len()).unwrap();
+    let givers: Vec<usize> = near(b).into_iter().take(3).collect();
+    assert_eq!(givers.len(), 3, "{} has fewer than three old neighbours", before.town_name[b]);
+    for &a in &givers {
+        assert!(give(&mut before, a, b, 2) > 0);
+    }
+    let mut on = before.clone();
+    peopling::move_with_cells(&mut on, &C, &P);
+    nothing_made_or_lost(&before, &on, &C);
+    let went: Vec<f64> = givers.iter().map(|&a| 1.0 - on.pop[a] / before.pop[a]).collect();
+    println!("{} takes {went:.3?} of the people of {:?}", before.town_name[b], givers.iter().map(|&a| &before.town_name[a]).collect::<Vec<_>>());
+    assert!(went.iter().all(|&w| w > 0.0));
+    for g in 0..C.G {
+        for (m1, m0, what) in [(&on.inv, &before.inv, "stock"), (&on.outflow, &before.outflow, "sales")] {
+            let want = m0[(b, g)] + givers.iter().zip(&went).map(|(&a, &w)| w * m0[(a, g)]).sum::<f64>();
+            assert!((m1[(b, g)] - want).abs() <= 1e-12 * want.abs().max(1e-9), "{what} of {} in {}: {} for {want}", C.good_name[g], before.town_name[b], m1[(b, g)]);
+        }
+    }
+}
+
+/// A district that goes to another town and comes back the next year: nothing
+/// is made or lost on the way there or on the way back.
+#[test]
+fn a_district_that_goes_and_comes_back() {
+    let (before, C, P, a, b) = a_redraw();
+    let mut st = before.clone();
+    peopling::move_with_cells(&mut st, &C, &P);
+    let there = st.clone();
+    let grain = C.gi("grain");
+    assert!(there.inv[(b, grain)] > before.inv[(b, grain)], "the shelves went with the district");
+    st.prev_catch = st.catch.clone();
+    st.catch = before.prev_catch.clone();
+    peopling::move_with_cells(&mut st, &C, &P);
+    nothing_made_or_lost(&before, &there, &C);
+    nothing_made_or_lost(&there, &st, &C);
+    nothing_made_or_lost(&before, &st, &C);
+    assert!(st.inv[(a, grain)] > there.inv[(a, grain)], "the shelves came back with the district");
+    println!(
+        "{}'s grain {:.0}, {:.0} while the district was away, {:.0} when it came back",
+        before.town_name[a],
+        before.inv[(a, grain)],
+        there.inv[(a, grain)],
+        st.inv[(a, grain)]
+    );
 }
 
 /// The January the rule was made for. On island 14 under the game's rules
