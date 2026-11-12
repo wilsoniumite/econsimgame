@@ -1274,7 +1274,6 @@ fn orbit_transform(o: &Orbit) -> Transform {
 
 // ------------------------------------------------------------------ the year
 
-#[allow(clippy::too_many_arguments)]
 /// A year's scenery: the ground's land mix, the meshes and the railway paths.
 struct Scenery {
     k: usize,
@@ -2439,14 +2438,14 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
             let good = r.header.goods.get(m.out).map(|g| g.label.to_lowercase()).unwrap_or_default();
             let kk = replay::firm_k(r, f, k);
             let size = kk / m.k0.max(1e-6);
-            let since = if firm.born < r.y0 { "working before 1750".to_string() } else { format!("since {}", firm.born) };
+            let since = if firm.born < r.y0 { format!("working before {}", r.y0) } else { format!("since {}", firm.born) };
             let mut s = format!("{}\n{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, since, kk, good, size);
             if let Some(rs) = &firm.reason {
                 let num = |key: &str| rs.get(key).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
                 let town = rs.get("town").and_then(|v| v.as_i64()).and_then(|t| r.header.towns.get(t as usize)).map(|t| t.name.clone()).unwrap_or_else(|| "a nearby town".into());
                 let kind = rs.get("kind").and_then(|v| v.as_str()).unwrap_or("new");
                 let lead = match kind {
-                    "old" => format!("Already at work in 1750; built new, it would return about {:.0}% a year.", num("roi") * 100.0),
+                    "old" => format!("Already at work in {}; built new, it would return about {:.0}% a year.", r.y0, num("roi") * 100.0),
                     "expansion" => format!("A second site, opened in {} when the first ran out of room; about {:.0}% a year expected.", num("year") as i64, num("roi") * 100.0),
                     _ => format!("Built in {} with money from {}. The best of {} sites priced: about {:.0}% a year on the capital.", num("year") as i64, town, num("n_cand") as i64, num("roi") * 100.0),
                 };
@@ -2475,7 +2474,7 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
         Pick::Town(t) => {
             let town = &r.header.towns[t];
             let i = k * r.n_towns + t;
-            let since = if town.founded < r.y0 { "a market town before 1750".to_string() } else { format!("founded {}", town.founded) };
+            let since = if town.founded < r.y0 { format!("a market town before {}", r.y0) } else { format!("founded {}", town.founded) };
             format!("{}\n{}\n{} people in its market area, {} in the town, in {}.", town.name, since, fmt_pop(r.town_pop[i]), fmt_pop(r.town_urban[i]), year)
         }
         Pick::Cell(c) => {
@@ -2965,6 +2964,15 @@ mod tests {
             }
             assert!(tree_part_shown(TreePart::Leaves(group), 0.5, false) && tree_part_shown(TreePart::BareLimbs(group), 0.0, false));
         }
+    }
+
+    #[test]
+    fn a_town_older_than_the_run_is_dated_by_the_run_s_first_year() {
+        // Ashby was founded in 1700; a run that begins in 1800 says so, and not 1750
+        let r = replay::tiny(1800);
+        let said = describe(&r, Pick::Town(0), 0);
+        assert!(said.starts_with("Ashby\na market town before 1800\n"), "{said}");
+        assert!(describe(&replay::tiny(1750), Pick::Town(0), 0).contains("a market town before 1750"));
     }
 
     #[test]

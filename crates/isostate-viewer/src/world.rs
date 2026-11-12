@@ -327,7 +327,8 @@ fn build_ground_inner(r: &Replay) -> Ground {
             samples.push(sub_raw(i as f32 / 512.0 * w as f32, j as f32 / 512.0 * h as f32));
         }
     }
-    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // (total_cmp: a NaN, which the noise should never give, would stop the program with partial_cmp)
+    samples.sort_by(|a, b| a.total_cmp(b));
     let quant: Vec<f32> = (0..=256).map(|q| samples[(q * (samples.len() - 1)) / 256]).collect();
     let land = timed("land", || build_land(r, &Fields { hgt: &hgt, flood: &floodplain, gw, gh, water: &water }, &quant, &cen));
     Ground { w, h, gw, gh, hgt, quant, land, rivers, water, floodplain }

@@ -512,6 +512,13 @@ pub fn annual(r: &Replay, name: &str, k: usize) -> Option<f32> {
     }
 }
 
+/// A very small run (two squares, one year, the town of Ashby founded in
+/// 1700) that begins in `start_year`, for tests of what is said about a run.
+#[cfg(test)]
+pub(crate) fn tiny(start_year: i32) -> Replay {
+    parse("tiny.bin", &tests::with_header(|v| v["meta"]["start_year"] = serde_json::json!(start_year))).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -671,7 +678,7 @@ mod tests {
     }
 
     /// The tiny run with its header changed by `edit`, the arrays where they were.
-    fn with_header(edit: impl Fn(&mut serde_json::Value)) -> Vec<u8> {
+    pub(super) fn with_header(edit: impl Fn(&mut serde_json::Value)) -> Vec<u8> {
         let whole = tiny_run();
         let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
         let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
