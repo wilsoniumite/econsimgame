@@ -310,6 +310,7 @@ pub struct Surfaces {
 #[serde(deny_unknown_fields)]
 pub struct Winter {
     pub snow: Colour,
+    pub snow_bright: f32,
     pub snow_cover: f32,
     pub frost: Colour,
     pub frost_cover: f32,
@@ -442,6 +443,9 @@ impl Look {
         let w = &self.winter;
         if !(0.0..=1.0).contains(&w.snow_cover) || !(0.0..=1.0).contains(&w.frost_cover) {
             return Err("`winter.snow_cover` and `winter.frost_cover` each run from 0 to 1".into());
+        }
+        if !(1.0..=3.0).contains(&w.snow_bright) {
+            return Err("`winter.snow_bright` runs from 1 (as bright as a paint of its colour) to 3".into());
         }
         // a plume is 0.85 solid where it leaves the flue, and more than solid is not a colour
         if !(0.0..=0.17).contains(&w.smoke_fuller) {

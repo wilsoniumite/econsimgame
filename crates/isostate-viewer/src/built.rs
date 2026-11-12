@@ -71,7 +71,8 @@ pub fn params(lk: &Look, phase: f32) -> WinterParams {
     let lin = |c: crate::look::Colour| Vec4::new(c[0], c[1], c[2], 1.0);
     WinterParams {
         amounts: Vec4::new(snow, frost, w.snow_cover, w.frost_cover),
-        snow: lin(w.snow),
+        // snow is drawn brighter than a paint of its colour would be: see `winter.snow_bright`
+        snow: lin(w.snow) * Vec4::new(w.snow_bright, w.snow_bright, w.snow_bright, 1.0),
         frost: lin(w.frost),
         ice: lin(w.ice),
         bare_earth: lin(w.bare_earth),
@@ -134,6 +135,20 @@ mod tests {
         for cut in ["0.75", "0.375", "0.125"] {
             assert!(src.contains(cut), "built.wesl sorts the marks at {cut}");
         }
+    }
+
+    #[test]
+    fn snow_is_drawn_brighter_than_a_paint_of_its_colour_and_brighter_than_frost() {
+        let lk = Look::standard();
+        let p = params(&lk, 0.0);
+        assert!(lk.winter.snow_bright > 1.0);
+        for i in 0..3 {
+            assert!((p.snow[i] - lk.winter.snow[i] * lk.winter.snow_bright).abs() < 1e-6);
+            assert!(p.snow[i] > p.frost[i], "snow is no brighter than frost in channel {i}");
+        }
+        // and it is a cold white: the low sun of winter is warm, and a plain white under it
+        // comes out the cream of the walls
+        assert!(p.snow.z > p.snow.x);
     }
 
     #[test]

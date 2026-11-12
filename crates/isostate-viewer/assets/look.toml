@@ -152,9 +152,16 @@ foam = "#f4f6f2"
 # Winter on what is built: houses, works, churches, farm buildings, bridges
 # (src/built.wesl). The land's own snow and frost are in [land] above.
 
-# snow lying on a roof, the top of a wall, a stack of goods, and how much of
-# such a surface it covers in midwinter (the rest shows the roof through)
-snow = "#f1f4f5"
+# snow lying on a roof, the top of a wall, a stack of goods: its colour (a
+# little blue, since the low sun of winter is warm and would turn a plain
+# white to the cream of the walls and the town's ground); how much brighter
+# than a paint of that colour it is drawn (a roof looks up at a sun that
+# stands low, so painted white it comes out duller than the wall under it;
+# snow scatters light and is the brightest thing in a winter picture); and
+# how much of such a surface it covers in midwinter (the rest shows the roof
+# through)
+snow = "#e6effa"
+snow_bright = 1.7
 snow_cover = 0.9
 # hoar frost on the ground round a house, its yard and its garden, and how
 # strongly it lies
