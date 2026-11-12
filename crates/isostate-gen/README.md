@@ -129,6 +129,7 @@ what one thing looks like.
 | `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit` |
 | `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the barn, a cart shed, a rick |
 | `town/` | `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
+| `rail.rs` | what stands by a railway where the ground was too steep for an ordinary line: `winding_house` (the stationary engine at the head of an inclined plane, before 1850), `banker_shed` (the banking engine's shed at the foot of a steep bank, after), and `buffer_stop`; `WINDING_HOUSE` and `BANKER_SHED` are the ground each keeps, and `TRACK_CLEAR` how far before its front the track runs |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
 | `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
 | `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
@@ -282,6 +283,17 @@ size, then make every count come from what fits (`c.fit`, `c.spread`), so
 that it fills its yard at 100 and still fits at 0.4: the tests build every
 kind at every size, founding year and state and check that the footprint
 holds it.
+
+The railway's banks, viaducts, girder bridges and tunnel mouths are not
+generators: they are made along a line from the difference between its level
+and the ground, in the viewer (`isostate-viewer/src/rails.rs`). What stands
+beside the line is here (`rail.rs`, and the station in `town/`), and the
+`railway` sheet shows each by a length of track. Each stands with its front
+(+z) to the track; the viewer hands it a level site at the height of the
+rails, on ground that lies within a little of that height and clear of every
+line (and builds a stone footing under it where the ground falls away), so a
+winding house or a shed must keep to the ground its constant says: the
+viewer sets that aside and nothing more.
 
 The sheets: `works-kinds` (every kind at size 3), `works-small` and
 `works-standard` (at 0.4 and 1, built early and late), `works-great` (at
