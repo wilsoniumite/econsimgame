@@ -315,8 +315,9 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
     rec.projects.push(
         st.projects
             .iter()
-            // canals: a canal being dug is not on the list of railways building
-            .filter(|pr| pr.way != crate::ways::CANAL)
+            // canals: a canal being dug is not on the list of railways building;
+            // roads (docs/probes/dx-roads.md): nor is a road works
+            .filter(|pr| pr.way != crate::ways::CANAL && pr.way != crate::ways::ROAD)
             .map(|pr| {
                 let order: f64 = crate::util::pairwise_sum(&pr.order);
                 let need: f64 = crate::util::pairwise_sum(&pr.need);
