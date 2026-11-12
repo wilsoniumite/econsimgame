@@ -739,6 +739,10 @@ fn main() {
     let g = world::build_ground(&r);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
+    // a measuring tool asked for by an environment variable (plan.rs, rails.rs) does its work, and that is all
+    if scatter::measure(&r, &g, &slots, &cen) {
+        std::process::exit(0);
+    }
     eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
     // (a game whose last year is played has none left to take any time)
