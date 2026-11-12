@@ -148,9 +148,8 @@ What the railway's dials do, then, is size the network, and mostly its
 branches: the first line's date does not move by more than two years for any of
 them (it belongs to the discovery, as the railways page says), and the railway
 of 1850 moves much less than that of 1900 for all but `cost_mult`, `districts`
-and `branch_gap`. The money does not pace the lines either: `max_projects` never
-binds above 30, and dearer lines (`cost_mult`) mean a smaller network more than
-a slower one. The order book is what keeps the promoters' estimates honest:
+and `branch_gap`. The cap on lines building at once does not pace anything:
+`max_projects` never binds above 30. The order book is what keeps the promoters' estimates honest:
 without it the lines cost 1.23 times what was expected, where with it they come
 in under (0.78), on every island.
 
@@ -215,8 +214,9 @@ or later, and the rush is over by 1800 in every row.
   `build_months`.
 - **For the canals' size and date:** `canals.cost`, the canal `hurdle` (with
   `induced`), `wages` and `wharf`, in that order: each moves the network of 1800
-  by 30 to 130 km and the first canal by 2 to 5 years, on 15 or 16 islands of
-  16 for the network.
+  by 30 to 130 km and the first canal by 2 to 5 years. The network moves the
+  same way on 15 or 16 islands of 16 for the first three, and for the wharf on
+  13 (in 1900) and no more.
 - **For the island:** mostly the two switches. Canals on take a point and a
   half of the hands out of carting in 1800 on every island; canal `cost` moves
   that by six tenths of a point either way and the wharf by two to four tenths,
@@ -243,10 +243,12 @@ off the canal of 1900 on twelve islands of sixteen.
 Nowhere in the range tried. All 912 runs finished, the money check held every
 month, no town was lost from one year to the next, the island's people never
 fell by 3 per cent in a year, and the most famine years in any run was four
-(canals off on seeds 1 and 3; `canals.bricks` 107 on seed 6). The extremes the
-canals page tried (nought and absurd) also ran. The famine count is the one
-number that moved with a switch: canals off gives 1.38 famine years a run on
-sixteen islands, railways off 1.06, against 0.38.
+(canals off on seeds 1 and 3; `canals.bricks` 107 on seed 6). The canals
+page's own trials at nought and at absurd values ran too ("What the review
+checked" there); nobody has tried the railways' numbers at their extremes in
+company. The one sign of strain comes with the switches, not the dials: canals
+off gives 1.38 famine years a run on sixteen islands, railways off 1.06,
+against 0.38.
 
 ## Pairs tried, and pairs worth trying
 
@@ -256,9 +258,9 @@ of the other (`readings/pairs.txt`).
 - **`railways.districts` with `branch_gap`: they run out together.** At a gap of
   2 more districts add 382 km to the railway of 1900 (1,522 to 1,904); at a gap
   of 4 they add nothing (2,026 to 2,027), and the difference runs the same way
-  on all eight islands. Far enough from
-  track there are not eleven districts worth a look, so the gap is the binding
-  dial and `districts` matters only when the gap is small. All four corners
+  on all eight islands. Far enough from track there are not eleven districts
+  worth a look, so the gap is the binding dial and `districts` matters only
+  when the gap is small. All four corners
   give less line than the baseline's 8 and 3.
 - **`cost_mult` with `rail_hurdle`: they add.** Each takes some 280 km off the
   railway of 1900 and together they take 560, with no interaction to speak of.
