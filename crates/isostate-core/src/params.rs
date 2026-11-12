@@ -298,6 +298,15 @@ pub struct Params {
     /// see docs/rules/accounts.md). An observer: the economy never reads them.
     #[serde(default, skip_serializing_if = "is_default")]
     pub accounts: crate::accounts::AccountsParams,
+    /// Roads and bridges that somebody pays for (a probe, not in the Python; see
+    /// docs/probes/dx-roads.md). Off under both sets of rules.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub roads: crate::roads::RoadParams,
+    /// A common fund in debt that charges nobody and pays no dividend until its
+    /// rents repay it (not in the Python; see docs/rules/mines.md, "Under the
+    /// commons"). Under the landlords the fund never holds a penny.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub commons: crate::commons::CommonsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -502,6 +511,8 @@ pub fn default_params() -> Params {
         canals: crate::canals::CanalParams::default(),
         land: crate::landform::LandParams::default(),
         accounts: crate::accounts::AccountsParams::default(),
+        roads: crate::roads::RoadParams::default(),
+        commons: crate::commons::CommonsParams::default(),
     }
 }
 
@@ -535,6 +546,7 @@ pub fn game_params() -> Params {
     // with it thrown ("On the integration branch" in its page). When it is,
     // the line is `P.land = crate::landform::LandParams::game();`.
     P.accounts = crate::accounts::AccountsParams::game();
+    P.commons = crate::commons::CommonsParams::game();
     P
 }
 

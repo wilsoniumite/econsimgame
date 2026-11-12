@@ -848,6 +848,7 @@ fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (Wi
 
 /// News ticks along the timeline, redrawn as a live game adds news.
 fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<(usize, usize)>>) {
+    let _frames = crate::frames::span(crate::frames::Sys::Hud);
     let r = &data.r;
     // chronicle: the marks of news already drawn can change, so the count of major items is part of the key
     let n = (r.header.events.len(), r.header.events.iter().filter(|e| e.major()).count());
@@ -1003,6 +1004,7 @@ fn panel_rebuild(
     mut last_list: Local<Option<(Tab, NewsShow)>>,
     time: Res<Time>,
 ) {
+    let _frames = crate::frames::span(crate::frames::Sys::Panel);
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // what in the panel goes by the month: the Markets panel month by month follows the
     // clock's month, and the news is listed again when more of it has come
