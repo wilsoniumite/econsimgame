@@ -704,6 +704,7 @@ fn paint(
     mut mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    let _frames = crate::frames::span(crate::frames::Sys::MapView);
     let Some(sm) = sm else { return };
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
@@ -765,6 +766,7 @@ fn legend_card(
     sheet: Option<Res<crate::shots::Sheet>>,
     mut card: Query<(Entity, Option<&Children>, &mut Visibility), With<LegendCard>>,
 ) {
+    let _frames = crate::frames::span(crate::frames::Sys::MapView);
     if ov.card == Some(ov.version) {
         return;
     }

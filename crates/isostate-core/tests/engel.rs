@@ -324,20 +324,26 @@ fn the_curve_conserves_money_and_runs_are_deterministic() {
         assert_eq!(bits(&a.state.series.data[k]), bits(&b.state.series.data[k]), "series {name} differs between identical runs");
     }
     assert_eq!(a.events, b.events);
-    // the new series are there, after the port's, and every month has a number
+    // the curve's series are there, found by name wherever they stand (another
+    // mechanism switched on beside it may add its own before or after them),
+    // the port's are all still there, and every month has a number
     let port = sim::start(&{ let mut P = default_params(); P.end_year = Some(1750); P }, default_content());
-    let n = port.st.series.names.len();
-    assert_eq!(a.state.series.names[..n], port.st.series.names[..]);
-    let new = &a.state.series.names[n..];
-    assert_eq!(new[..3], ["cpi_chained", "real_wage_chained", "real_income"]);
-    assert_eq!(new[3..], ["budget_food", "budget_warmth", "budget_shelter", "budget_clothing", "budget_implements", "budget_comfort"]);
-    for name in new {
+    let names = &a.state.series.names;
+    for name in &port.st.series.names {
+        assert!(names.contains(name), "the port's series {name} is gone");
+    }
+    let budgets: Vec<String> = default_content().service_name.iter().map(|s| format!("budget_{s}")).collect();
+    assert_eq!(budgets, ["budget_food", "budget_warmth", "budget_shelter", "budget_clothing", "budget_implements", "budget_comfort"]);
+    let indices = ["cpi_chained", "real_wage_chained", "real_income"].map(String::from);
+    for name in indices.iter().chain(&budgets) {
+        assert!(names.contains(name), "the curve's series {name} is missing");
+        assert!(!port.st.series.names.contains(name), "{name} is the port's, not the curve's");
         assert!(a.state.series.get(name).iter().all(|v| v.is_finite() && *v >= 0.0), "{name} has a month without a number");
     }
     // the budget shares are shares of one budget
     let months = a.state.series.get("budget_food").len();
     for t in (0..months).step_by(7) {
-        let sum: f64 = new[3..].iter().map(|name| a.state.series.get(name)[t]).sum();
+        let sum: f64 = budgets.iter().map(|name| a.state.series.get(name)[t]).sum();
         assert!((sum - 1.0).abs() < 1e-9, "month {t}: the budget shares add up to {sum}");
     }
 }
@@ -356,9 +362,9 @@ fn six_families_and_the_curve_conserve_money() {
 fn a_curve_of_no_strength_is_the_port_with_more_series() {
     let flat = run_to(&engel_params(5, 0.0), 1757);
     let port = run_to(&{ let mut P = default_params(); P.seed = 5; P }, 1757);
+    // each of the port's series, found by name, is the port's to the bit
     for (k, name) in port.state.series.names.iter().enumerate() {
-        assert_eq!(&flat.state.series.names[k], name);
-        assert_eq!(bits(&flat.state.series.data[k]), bits(&port.state.series.data[k]), "series {name} differs from the port's");
+        assert_eq!(bits(flat.state.series.get(name)), bits(&port.state.series.data[k]), "series {name} differs from the port's");
     }
     assert_eq!(flat.events, port.events);
     assert!(flat.state.series.names.len() > port.state.series.names.len());

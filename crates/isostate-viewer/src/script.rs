@@ -131,6 +131,9 @@ struct Tally {
     /// how long the main world's work took in each frame, in milliseconds, with
     /// what came in during it: a year from the simulation, a year's scenery, a month
     work: Vec<(f32, bool, bool, bool, bool)>,
+    /// how long the extract after each of those frames took, in milliseconds: the main
+    /// world held still while the renderer takes what changed
+    extract: Vec<f32>,
     /// the years worked out, the scenery's year and the months that had come
     /// when the last frame was counted
     last_filled: usize,
@@ -266,6 +269,10 @@ pub fn check(script: &str) -> Result<(), String> {
 /// Add the scripted run to the app, or say what is wrong with the script.
 pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> {
     let steps = parse(script)?;
+    // a script that checks what is on screen has each year's build take its meshes' fingerprints
+    if steps.iter().any(|s| matches!(s, Step::Scenery(_))) {
+        crate::PRINT_YEAR_MESHES.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     app.insert_resource(Script { steps, at: 0, begun: false, until: 0.0, frames: 0, keys: Vec::new(), clicked: None, tally: Tally::default(), image: Handle::default(), closing: None })
         .add_systems(PostStartup, move |mut commands: Commands, mut images: ResMut<Assets<Image>>, mut sc: ResMut<Script>, cams: Query<Entity, With<MainCam>>| {
             // with no window, the camera draws into a picture the shot step can save
@@ -277,16 +284,9 @@ pub fn add(app: &mut App, script: &str, size: (u32, u32)) -> Result<(), String> 
             }
         })
         // after the interface has read the (absent) pointer and keyboard, so a press made here lasts the frame
-        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems))
-        .insert_resource(FrameWork { started: std::time::Instant::now(), ms: 0.0, marks: [0.0; 2], parts: [0.0; 3] })
-        .add_systems(First, |mut w: ResMut<FrameWork>| w.started = std::time::Instant::now())
-        // between the schedules, to say which of them a long frame was long in
-        .add_systems(StateTransition, |mut w: ResMut<FrameWork>| w.marks[0] = w.started.elapsed().as_secs_f32() * 1e3)
-        .add_systems(SpawnScene, |mut w: ResMut<FrameWork>| w.marks[1] = w.started.elapsed().as_secs_f32() * 1e3)
-        .add_systems(Last, |mut w: ResMut<FrameWork>| {
-            w.ms = w.started.elapsed().as_secs_f32() * 1e3;
-            w.parts = [w.marks[0], w.marks[1] - w.marks[0], w.ms - w.marks[1]];
-        });
+        .add_systems(PreUpdate, run.after(UiSystems::Focus).after(bevy::input::InputSystems));
+    // (what the frames cost is the frame recorder's to say, which a scripted run keeps on
+    // as a meter: frames.rs, `last_work`)
     Ok(())
 }
 
@@ -498,7 +498,12 @@ fn sample(world: &mut World, t: &mut Tally) {
         t.k0 = k;
         t.t0 = now_t;
     } else {
-        let (ms, parts) = (world.resource::<FrameWork>().ms, world.resource::<FrameWork>().parts);
+        // from the frame recorder, the one measure of a frame there is: the main world's
+        // schedules, from the start of `First` to the end of `Last` (the work a hitch would
+        // show in), and the extract that follows them
+        let work = crate::frames::last_work(world);
+        let (ms, parts) = work.as_ref().map_or((0.0, [0.0; 3]), |w| (w.ms, w.parts));
+        t.extract.push(work.map_or(0.0, |w| w.extract_ms));
         t.work.push((ms, filled != t.last_filled, built != t.last_built && built.is_some(), months != t.last_months, season_step != t.last_season));
         // a frame long enough to see is told as it happens: where the clock stood, what came in, and where the time went
         if ms > 100.0 {
@@ -617,21 +622,11 @@ fn print_work(t: &Tally) {
     line("a month arriving", t.work.iter().filter(|w| w.3 && !w.1).map(|w| w.0).collect());
     line("a year arriving", t.work.iter().filter(|w| w.1).map(|w| w.0).collect());
     line("a year's scenery going up", t.work.iter().filter(|w| w.2).map(|w| w.0).collect());
-}
-
-/// How long the main world's schedules took in the last frame, from the start
-/// of `First` to the end of `Last`: the work a hitch would show in. (Drawing is
-/// the renderer's, in its own world, and is not counted.)
-#[derive(Resource)]
-struct FrameWork {
-    started: std::time::Instant,
-    ms: f32,
-    /// when the schedules before `Update`, and `Update` itself, were done
-    marks: [f32; 2],
-    /// how long went before `Update` (input, the interface's pointer), in
-    /// `Update` (the game's own systems), and after it (laying out the
-    /// interface and its text, transforms, what is in view)
-    parts: [f32; 3],
+    // (the frame work above is the main world's schedules; the renderer's taking of what
+    // changed comes after them, with both worlds held still)
+    if let Some((mid, p99, max)) = spread(&mut t.extract.clone()) {
+        println!("script:   the extract after them: middle {mid:.1} ms, 99th in a hundred {p99:.1} ms, longest {max:.1} ms");
+    }
 }
 
 fn fail(why: &str) -> ! {

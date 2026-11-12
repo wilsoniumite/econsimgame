@@ -332,7 +332,8 @@ fn canal_opened(st: &mut State, pr: &Project, when: f64) {
 /// The railways being laid, put on the canal promoters' copy of the cost graph:
 /// a canal is not dug for carting that a line already building will take.
 fn railways_building(st: &State, _P: &Params, g: &mut tr::Graph) {
-    let new: Vec<usize> = st.projects.iter().filter(|pr| pr.way != ways::CANAL).flat_map(|pr| pr.new.iter().copied()).collect();
+    // (roads, docs/probes/dx-roads.md: a road works is not a line being laid)
+    let new: Vec<usize> = st.projects.iter().filter(|pr| pr.way != ways::CANAL && pr.way != ways::ROAD).flat_map(|pr| pr.new.iter().copied()).collect();
     if new.is_empty() {
         return;
     }
