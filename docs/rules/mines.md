@@ -1082,13 +1082,17 @@ is under `.claude/night/reports/opus/core-guards-b/`):
 | one working alone over its town | never | never |
 
 Almost all of it is one town on one island: Brambank, founded on island 3's
-coalfield at the end of 1750, whose collieries in January 1751 had 4,724 at
-work of 3,211 people of working age under the landlords and 14,286 under the
-commons (its largest single working 565 and 2,863 hands). Under the commons
-seed 9 adds a second case, the iron mines of Iveldelf in January 1879, 1.30
-times; the rest are a per cent or two over, for a month. No single working
-was ever larger than its town: it is the town's workings and works together
-that run past it.
+coalfield at the end of 1750, which in January 1751 had 4,724 at work, most
+of them in its collieries, of 3,211 people of working age under the
+landlords, and 14,286 under the commons (its largest single working 565 and
+2,863 hands). Under the commons seed 9 adds a second case, the iron mines of
+Iveldelf in January 1879, 1.30 times; the rest are a per cent or two over,
+for a month. No single working was ever larger than its town: it is the
+town's workings and works together that run past it. Brambank is not one
+island's accident: on islands 17 and 18, run when this was checked
+(`overhire -- [commons] 6 17 18`), the landlords never reach the limit, but
+under the commons island 17 has a town founded on a coalfield in 1750,
+Hartbrook, with 2,311 at work of 2,005 in January 1752 (1.15 times).
 
 **What a mend would be.** Hiring limited to what the town can spare: when
 the wage is at the top of its range and more hands are still wanted than the
@@ -1096,7 +1100,7 @@ town has for hire, every working and works in the town is given its share
 of the hands there are, in proportion to what it asked for. I tried exactly
 that in my worktree and did not commit it (about twenty lines in
 `econ::step_month`, after the clearing wage is found; the patch is
-`.claude/night/tmp/opus/core-guards-b/trial-ration.patch`). With it no town
+`.claude/night/reports/opus/core-guards-b/trial-ration.patch`). With it no town
 on the sixteen islands has more at work than its people in any month, under
 either regime.
 
