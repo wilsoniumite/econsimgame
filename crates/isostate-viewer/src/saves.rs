@@ -973,7 +973,12 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(300));
             drop(first);
         });
-        let second = Saver::claim_within(path.clone(), patience(120.0)).unwrap_or_else(|e| panic!("{} ({e:?})", gave_up(120.0, "for the place the first copy let go of")));
+        // (only a place still held by another runs the wait out: any other refusal comes at once, and is wrong)
+        let second = match Saver::claim_within(path.clone(), patience(120.0)) {
+            Ok(s) => s,
+            Err(Held::ByAnother) => panic!("{}", gave_up(120.0, "for the place the first copy let go of")),
+            Err(e) => panic!("the place was refused, and not because the first copy held it: {e:?}"),
+        };
         closing.join().unwrap();
         assert!(second.locked());
         // the lock's file is left behind when a game ends, as a crash leaves it; it keeps nobody out
