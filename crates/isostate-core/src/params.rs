@@ -307,6 +307,10 @@ pub struct Params {
     /// commons"). Under the landlords the fund never holds a penny.
     #[serde(default, skip_serializing_if = "is_default")]
     pub commons: crate::commons::CommonsParams,
+    /// New money issued on the island's true total, at the rate it has had (not
+    /// in the Python; see docs/rules/money.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub money: crate::money::MoneyParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -513,6 +517,7 @@ pub fn default_params() -> Params {
         accounts: crate::accounts::AccountsParams::default(),
         roads: crate::roads::RoadParams::default(),
         commons: crate::commons::CommonsParams::default(),
+        money: crate::money::MoneyParams::default(),
     }
 }
 
@@ -547,6 +552,7 @@ pub fn game_params() -> Params {
     // the line is `P.land = crate::landform::LandParams::game();`.
     P.accounts = crate::accounts::AccountsParams::game();
     P.commons = crate::commons::CommonsParams::game();
+    P.money = crate::money::MoneyParams::game();
     P
 }
 
