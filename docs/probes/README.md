@@ -33,3 +33,11 @@ One probe is of the viewer, not the simulation, as it stood at cd9b41c (11 Novem
   viewer (`src/frames.rs`) that is meant to be merged. A critic ran it again and rewrote
   its stages on `night/smooth-probe-review` (section 11): the first stage is now the
   year's meshes handed over one a frame, half a day's work, with a brief to build from.
+  As of 12 November that stage, with the frame recorder, was begun on `night/smooth-1`
+  and paused part-way with its work committed, so neither is on `main` yet
+  (`docs/BACKLOG.md`).
+
+A probe of how the viewer should draw the second island generator's land
+(`docs/rules/land.md`) is measured and designed on its own branch,
+`night/dx-land-view`, and its critic was paused on 12 November; its page comes here
+when it lands.
