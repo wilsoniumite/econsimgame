@@ -293,6 +293,10 @@ pub(crate) fn pump(
     shots: Option<Res<crate::ShotPlanArgs>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Pump);
+    // the months the books kept from before the window opened, ahead of any that come
+    if let Some(kept) = live.months_kept.take() {
+        *months = kept;
+    }
     // months that waited for a scenery build to let go of the run
     if !game.held.is_empty() && std::sync::Arc::strong_count(&data.r) == 1 {
         months_into_run(&mut game, &mut data, &mut ui);

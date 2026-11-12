@@ -271,7 +271,12 @@ question of pacing for Stella, so `labor` stays at 1 as it was reviewed.
 It is the dial: at 0.5 (`railways-x-labor05`, seeds 1 to 6) carters are 7.6 per
 cent of hands in 1800 and 3.3 in 1900, and the baskets of 1750, 1850 and
 1900 are 1.54, 6.08 and 8.61, where 1 gives 1.48, 4.86 and 8.50 and no
-carting 1.65, 7.30 and 8.94: half the gap of 1850 closes.
+carting 1.65, 7.30 and 8.94: half the gap of 1850 closes on those six
+islands. It does not hold on more: on sixteen islands of today's game
+(`docs/probes/sens-works.md`) a `labor` of 0.5 gives back about half of what
+carting costs the island before 1800 and does not move 1900, but what it
+gives back of the gap of 1850 could be anything from none of it to a third,
+inside the spread between islands.
 
 Because a run with carting starts lower, the ratios to a run's own 1750 hide
 all of this (at the merge the real wage of 1900 was 2.77 times 1750's, and

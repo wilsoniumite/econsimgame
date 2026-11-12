@@ -49,11 +49,14 @@ pub struct ChronicleParams {
     pub per_decade: usize,
     /// A finished decade keeps at least this many, if it has them above `fill_floor`.
     pub at_least: usize,
-    /// At most this many of one kind in a decade (slumps called and dated count
-    /// as one kind, as do railways planned and opened).
+    /// At most this many of one kind in a decade (railways planned and opened
+    /// count as one kind, as do a harvest and its dearth).
     pub per_kind: usize,
     /// Inventions are what the period is remembered for: they may have more.
     pub inventions: usize,
+    /// And so are the turning points: the 1840s that saw more hands in workshops
+    /// than on the land also saw rolling mills overtake the rail forges.
+    pub turning_points: usize,
     /// An item lighter than this is kept only to fill a thin decade.
     pub floor: f64,
     /// And one lighter than this is never kept.
@@ -114,6 +117,7 @@ impl Default for ChronicleParams {
             at_least: 2,
             per_kind: 1,
             inventions: 2,
+            turning_points: 2,
             floor: 0.6,
             fill_floor: 0.45,
             own_great: 0.7,
@@ -214,9 +218,16 @@ pub struct ChronicleState {
     pub decline_told: Vec<bool>,
     /// The island's first and second towns as last announced.
     pub leaders: [Option<usize>; 2],
-    /// Who has led each place since, and for how many years running.
+    /// The town that truly holds each place and is not the one announced, and
+    /// for how many years running it has held it clear of the town below.
     pub challenger: [Option<usize>; 2],
     pub lead_years: [i64; 2],
+    /// Each place as it truly stands: who holds it, since when, who held it
+    /// before, and whether the holder came down to it from the place above.
+    pub held: [Option<usize>; 2],
+    pub held_since: [i64; 2],
+    pub ousted: [Option<usize>; 2],
+    pub fell: [bool; 2],
     /// (story, town) -> the year it was last told.
     pub told: BTreeMap<(String, usize), i64>,
     /// For each town, the last year a founding redrew its district (its own, or
@@ -292,18 +303,22 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     }
     if new_here {
         let surname = &st.families[family].surname;
-        let trade = group.map_or("a new trade".to_string(), |g| g.label().to_lowercase());
+        let trade = trade_of(C, m).unwrap_or_else(|| "a new trade".to_string());
         let mut e = Event::new(
             year as f64 + 0.95,
             "family",
             0.6,
             format!("The {surname} family sets up in {trade} at {}", st.town_name[i]),
-            format!(
-                "{} is the first works the family has had in that trade there. It is built for {} and expects to return {:.0} per cent a year.",
-                st.f_name[fid],
-                fmt_thousands_f0(cost),
-                100.0 * roi
-            ),
+            if return_told(P, roi) {
+                format!(
+                    "{} is the first works the family has had in that trade there. It is built for {} and expects to return {:.0} per cent a year.",
+                    st.f_name[fid],
+                    fmt_thousands_f0(cost),
+                    100.0 * roi
+                )
+            } else {
+                format!("{} is the first works the family has had in that trade there. It is built for {}.", st.f_name[fid], fmt_thousands_f0(cost))
+            },
         );
         e.town = Some(i);
         e.cell = Some(st.f_cell[fid]);
@@ -313,6 +328,28 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     }
     st.chron.branch_opened.push((fid, new_here));
     true
+}
+
+/// The trade a works of method `m` is told under in the chronicle's own
+/// sentences: its group's ("iron and steel"), except that charcoal burning,
+/// which the families count in coal and mining, is called what it is. In the
+/// 1770s charcoal and coal are rivals, and "sets up in coal and mining ...
+/// Ashby's Charcoal" reads as a mistake (docs/probes/news-read.md, fault 21).
+/// Among the families' works it is the only one of that group (pits and
+/// mines are their land, not works), so "the first works in that trade" holds.
+fn trade_of(C: &Content, m: usize) -> Option<String> {
+    let group = Group::of_method(C, m)?;
+    Some(if C.method_name[m] == "charcoal_burning" { "charcoal burning".to_string() } else { group.label().to_lowercase() })
+}
+
+/// Whether a new works' expected return is told. The port always tells it;
+/// the chronicle leaves out a return of a hundred per cent a year or more. It
+/// is the investor's own sum for a small works and true to the model, but "a
+/// forge that expects to return 1288 per cent a year" reads as a mistake
+/// (docs/probes/news-read.md, fault 7; its checker would leave the figure out
+/// rather than put it into words).
+pub fn return_told(P: &Params, roi: f64) -> bool {
+    !P.chronicle.enabled || (100.0 * roi).round() < 100.0
 }
 
 /// A branch of a family has ordered more capacity for a works it has
@@ -346,7 +383,7 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
         return;
     }
     let surname = &st.families[family].surname;
-    let trade = |f: usize| Group::of_method(C, st.f_method[f]).map_or("other trades".to_string(), |g| g.label().to_lowercase());
+    let trade = |f: usize| trade_of(C, st.f_method[f]).unwrap_or_else(|| "other trades".to_string());
     // "at Melbourne two in iron and steel and one in textiles; at Granness one in
     // engineering": towns in the order the branches ran, trades in the order they built
     let by_town = |works: &[usize]| -> String {
@@ -380,9 +417,14 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
     let (title, text) = match (opened.len(), grown.len()) {
         (1, 0) => {
             let f = opened[0];
+            let roi = st.f_reason[f].roi;
             (
                 format!("The {surname} branch at {} opens a works", st.town_name[st.f_town[f]]),
-                format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * st.f_reason[f].roi),
+                if return_told(P, roi) {
+                    format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * roi)
+                } else {
+                    format!("It is {}, in {}.", st.f_name[f], trade(f))
+                },
             )
         }
         (n, 0) => (format!("The {surname} branches open {} works", number(n)), format!("{}.", capital(&by_town(&opened)))),
@@ -469,6 +511,48 @@ pub fn baseline(P: &Params, series: &[f64], y0: i64, year: i64, when: i64, v0: f
     }
     let label = if n == 1 { when.to_string() } else { format!("{when}\u{2013}{:02}", (when + n - 1) % 100) };
     Some((label, pairwise_sum(&v) / v.len() as f64))
+}
+
+/// The reason a market item on grain gives when the weather is the reason
+/// (`observer::yearly`'s steepness detector, under the harvest's rules). The
+/// detector reads a year's output against its trend and the price, and says
+/// "supply has failed while buyers still want it" of a fall in output, or "new
+/// capacity is flooding the market" of a rise. For grain the fall can be last
+/// year's bumper harvest not coming again, and the rise the harvest coming back
+/// after a short one; neither is a failure of supply or new capacity
+/// (docs/probes/news-read.md, fault 5). `rose` is whether output rose. The
+/// harvests are this year's and last year's (`harvest::yearly` runs first); a
+/// bumper or a poor one is one the harvest's news would tell (`news_z` of its
+/// usual spread), and "short" last year is a spread or more below an ordinary
+/// year. The harvest must have moved the same way as output, by a spread or
+/// more; if it did and none of those is so, the harvest is simply better or
+/// poorer than last year's, which is still the weather and not new capacity or
+/// a failure of supply (island 3, 1772: the harvest went from 0.97 of an
+/// ordinary year to 1.09, and output rose 18%). Otherwise the detector's own
+/// reason stands.
+pub fn grain_reason(st: &State, P: &Params, good: &str, rose: bool) -> Option<&'static str> {
+    let H = &P.harvest;
+    if !P.chronicle.enabled || !H.enabled || good != "grain" || H.island_sd <= 0.0 {
+        return None;
+    }
+    let past = &st.harvest_past;
+    let [.., last, now] = past[..] else { return None };
+    if !(now > 0.0 && last > 0.0) {
+        return None;
+    }
+    let (now, last) = (now.ln(), last.ln());
+    let (sd, news) = (H.island_sd, H.news_z * H.island_sd);
+    let moved = now - last;
+    match rose {
+        true if moved < sd => None,
+        false if moved > -sd => None,
+        true if now > news => Some("the harvest is a bumper one"),
+        true if last < -sd => Some("the harvest has come back after a short one"),
+        false if now < -news => Some("the harvest has come in short"),
+        false if last > news => Some("last year's harvest was a bumper one, and this year's is not"),
+        true => Some("the harvest is better than last year's"),
+        false => Some("the harvest is poorer than last year's"),
+    }
 }
 
 /// Cities passing round numbers, for every town and not only the first
@@ -589,20 +673,14 @@ fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
     ch.redrawn.resize(T, year);
     // a new town takes people and pits from the districts it is cut out of, so
     // nothing about it or about them is compared across its founding: their
-    // peaks start again, and so do the island's places if one of them held or
-    // was about to take one. The towns it did not touch keep their stories.
+    // peaks start again. The towns it did not touch keep their stories. (The
+    // island's places are not seated afresh: a town that comes first because a
+    // founding cut its rival's district is told as being first, not as having
+    // overtaken; see `overtakings`.)
     let cut = redrawn_towns(st, year);
     for t in (0..T).filter(|&t| cut[t]) {
         ch.redrawn[t] = year;
         ch.peak[t] = (year, 0.0);
-    }
-    if cut.iter().any(|&c| c) {
-        let mut order: Vec<usize> = (0..T).filter(|&t| st.town_active[t]).collect();
-        order.sort_by(|&a, &b| st.pop[b].total_cmp(&st.pop[a]).then(a.cmp(&b)));
-        let placed = ch.leaders.iter().chain(&ch.challenger).flatten().any(|&t| cut[t]);
-        if placed || order.iter().take(2).any(|&t| cut[t]) {
-            ch.leaders = [None; 2];
-        }
     }
     for t in 0..T {
         if st.town_active[t] && st.pop[t] > ch.peak[t].1 {
@@ -735,18 +813,9 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         // the game's railways (docs/rules/railways.md): a line with no second town
         // may be a branch to farms, woods or works as well as to pits, or the town's
         // own first line, so the promoters' book is asked what the line was for
-        match crate::railways::line_for_coal(st, t, was as f64) {
-            Some((opened, true)) => format!(" A branch line to the collieries, opened in {}, brings it down from the pits.", opened.floor()),
-            Some((opened, false)) => format!(" The railway that reached {name} in {} carries it away.", opened.floor()),
-            None => String::new(),
-        }
+        carried_by(name, was, crate::railways::line_for_coal(st, t, was as f64), "A branch line to the collieries", &st.town_name)
     } else {
-        let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
-        match line {
-            Some(r) if r.b < 0 => format!(" A mineral line opened in {} brings it down from the pits.", r.year.floor()),
-            Some(r) => format!(" The railway that reached {name} in {} carries it away.", r.year.floor()),
-            None => String::new(),
-        }
+        carried_by(name, was, port_line_for_coal(st, t, was as f64), "A mineral line", &st.town_name)
     };
     // and what the price says about why
     let (p1, p0) = (ch.prices[k][(t, coal)], ch.prices[k - back][(t, coal)]);
@@ -789,6 +858,54 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         format!("{now:.0} against {then:.0} in {was} (it needs {} times as much), and {} of the island's (it needs {})", Q.boom_growth, fmt_pct(now / total, 0), fmt_pct(Q.boom_share, 0)),
     );
     events.push(ev);
+}
+
+/// `railways::line_for_coal` for the port's railways (`State::rail_opened`):
+/// a mineral spur has no second town, and every other line runs between two.
+fn port_line_for_coal(st: &State, t: usize, since: f64) -> Option<crate::railways::CoalLine> {
+    let reaches = |r: &crate::state::RailOpened| r.b >= 0 && (r.a == t || r.b == t as i64);
+    let lines = &st.rail_opened;
+    let k = lines.iter().rposition(|r| r.year >= since && (r.a == t || r.b == t as i64))?;
+    let r = &lines[k];
+    if r.b < 0 {
+        return Some(crate::railways::CoalLine { opened: r.year, colliery: true, from: None, nth: 0, first: r.year });
+    }
+    let to_town: Vec<f64> = lines[..=k].iter().filter(|m| reaches(m)).map(|m| m.year).collect();
+    let other = if r.a == t { r.b as usize } else { r.a };
+    Some(crate::railways::CoalLine { opened: r.year, colliery: false, from: (other != t).then_some(other), nth: to_town.len(), first: to_town[0] })
+}
+
+/// What a coal boom says carries the coal away: a branch to the pits, or a
+/// line to the town. "The railway that reached" a town is said only of its
+/// first line; a later one is named by where it comes from, with the first
+/// beside it if that too came since `was` (docs/probes/news-read.md, fault 2).
+fn carried_by(name: &str, was: i64, line: Option<crate::railways::CoalLine>, branch: &str, towns: &[String]) -> String {
+    let Some(l) = line else { return String::new() };
+    let (opened, first) = (l.opened.floor(), l.first.floor());
+    let from = l.from.and_then(|b| towns.get(b));
+    if l.colliery {
+        format!(" {branch}, opened in {opened}, brings it down from the pits.")
+    } else if l.nth <= 1 {
+        format!(" The railway that reached {name} in {opened} carries it away.")
+    } else if l.first >= was as f64 {
+        let same = opened == first;
+        let more = match (l.nth, from) {
+            (2, Some(b)) => format!("a second line, from {b}, {}", if same { "the same year".to_string() } else { format!("in {opened}") }),
+            (2, None) => format!("a second line {}", if same { "the same year".to_string() } else { format!("in {opened}") }),
+            (n, from) => format!(
+                "{} more lines {}{}",
+                number(n - 1),
+                if same { "the same year".to_string() } else { format!("by {opened}") },
+                from.map_or(String::new(), |b| format!(", the last from {b}"))
+            ),
+        };
+        format!(" The railway reached {name} in {first}, and {more}; they carry it away.")
+    } else {
+        match from {
+            Some(b) => format!(" The line from {b}, opened in {opened}, carries it away."),
+            None => format!(" A {} line to {name}, opened in {opened}, carries it away.", ordinal(l.nth)),
+        }
+    }
 }
 
 /// A town in decline: well below a peak it reached years ago. One story a
@@ -874,91 +991,193 @@ fn declines(st: &State, P: &Params, ch: &mut ChronicleState, year: i64, events: 
     events.push(ev);
 }
 
-/// One town overtaking another to become the island's first or second, by
-/// the people of the town and its district: only once it has been clear of the
-/// other by `overtake_margin` for `overtake_years` running.
-fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: i64, events: &mut Vec<Event>) {
-    let Q = &P.chronicle;
-    let mut order: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
-    order.sort_by(|&a, &b| st.pop[b].total_cmp(&st.pop[a]).then(a.cmp(&b)));
+/// A change of the island's first or second place, to be told.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Change {
+    place: usize,
+    town: usize,
+    /// The town it took the place from, if that town is now below it.
+    from: Option<usize>,
+    /// Whether it grew past that town, with neither district redrawn since it
+    /// took the place ("overtakes"), or not ("is now").
+    overtook: bool,
+}
+
+/// The towns in their true order, by the people of the town and its district.
+fn town_order(pop: &[f64], active: &[bool]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..active.len().min(pop.len())).filter(|&t| active[t]).collect();
+    order.sort_by(|&a, &b| pop[b].total_cmp(&pop[a]).then(a.cmp(&b)));
+    order
+}
+
+/// The island's first and second places, a year at a time: which change, if
+/// any, is news this year. A place changes hands when, for `years` running, the
+/// town that truly holds it is not the town last announced there and is
+/// `margin` clear of that town (or of the town below, if none is announced).
+/// It is told as taken from the town last announced there, which truly held
+/// the place when it was announced, or with none announced from the town that
+/// truly held it before; and the story says where that town now stands when it
+/// is not just below (docs/probes/news-read.md, fault 1: "Kelside overtakes
+/// Melbourne as the island's first town" was told when Melbourne was fourth,
+/// and read as if it were second). The first year seats the two as they stand,
+/// and so does a seat whose town is gone.
+fn places(ch: &mut ChronicleState, pop: &[f64], active: &[bool], year: i64, margin: f64, years: i64) -> Option<Change> {
+    let order = town_order(pop, active);
     if order.len() < 3 {
-        return;
+        return None;
     }
-    let (Some(first), Some(second)) = (ch.leaders[0], ch.leaders[1]) else {
-        // the first year, or a founding has just redrawn a leading town's district: nothing to compare with
+    // each place as it truly stands
+    let was = ch.held;
+    for p in 0..2 {
+        if ch.held[p] != Some(order[p]) {
+            ch.ousted[p] = ch.held[p];
+            ch.held[p] = Some(order[p]);
+            ch.held_since[p] = year;
+            ch.fell[p] = p > 0 && was[p - 1] == Some(order[p]);
+        }
+    }
+    let gone = |t: Option<usize>| t.is_some_and(|t| !active.get(t).copied().unwrap_or(false));
+    if ch.leaders[0].is_none() || gone(ch.leaders[0]) {
         ch.leaders = [Some(order[0]), Some(order[1])];
         ch.challenger = [None; 2];
         ch.lead_years = [0; 2];
-        return;
-    };
-    let k = ch.pop.len() - 1;
-    for place in 0..2 {
-        let holder = if place == 0 { first } else { ch.leaders[1].unwrap_or(second) };
-        // the largest town not already at this place or above it
-        let rival = order.iter().copied().find(|&t| t != holder && (place == 0 || Some(t) != ch.leaders[0]));
-        let ahead = rival.filter(|&t| st.pop[t] >= (1.0 + Q.overtake_margin) * st.pop[holder]);
-        if ahead.is_none() || ahead != ch.challenger[place] {
-            ch.challenger[place] = ahead;
-            ch.lead_years[place] = 0;
-        }
-        let Some(now) = ahead else { continue };
-        ch.lead_years[place] += 1;
-        if ch.lead_years[place] < Q.overtake_years {
+        return None;
+    }
+    if gone(ch.leaders[1]) {
+        ch.leaders[1] = None;
+    }
+    for p in 0..2 {
+        let c = order[p];
+        // announced already; or the announced first, now truly second, whose
+        // fall is the first place's story
+        if ch.leaders[p] == Some(c) || (p == 1 && ch.leaders[0] == Some(c)) {
+            ch.challenger[p] = None;
+            ch.lead_years[p] = 0;
             continue;
         }
-        ch.challenger[place] = None;
-        ch.lead_years[place] = 0;
-        if place == 0 {
-            // the old first town is now the second: the same story, told once
-            ch.leaders = [Some(now), Some(holder)];
+        // a town come down from first, once another is told as first, is second
+        // without a story of its own
+        if p == 1 && ch.fell[1] {
+            ch.leaders[1] = Some(c);
             ch.challenger[1] = None;
             ch.lead_years[1] = 0;
-        } else {
-            ch.leaders[1] = Some(now);
+            continue;
         }
-        let (a, b) = (&st.town_name[now], &st.town_name[holder]);
-        // how each has done in ten years, or since a founding last redrew either's district
-        let back = ((year - ch.redrawn[now].max(ch.redrawn[holder])).max(0) as usize).min(10).min(k);
-        let then = &ch.pop[k - back];
-        let grown = |t: usize| -> String { if then[t] > 0.0 { changed(st.pop[t] / then[t] - 1.0) } else { "grown from nothing".to_string() } };
-        // "first", not "largest": the towns are ranked with their districts, and
-        // the town itself may be the smaller of the two (the city milestones
-        // count the people inside the town)
-        let (title, weight) = if place == 0 {
-            (format!("{a} overtakes {b} as the island's first town"), 0.8)
-        } else {
-            (format!("{a} overtakes {b} as the island's second town"), 0.7)
-        };
-        let since = if back > 0 { format!(" In {} years {a} has {} and {b} has {}.", number(back), grown(now), grown(holder)) } else { String::new() };
-        let mut ev = Event::new(
-            year as f64 + 0.9,
-            "region",
-            weight,
-            title,
-            format!(
-                "{a} and its district have {} people to {b}'s {}.{since}{}",
-                fmt_thousands_f0(st.pop[now]),
-                fmt_thousands_f0(st.pop[holder]),
-                known_for(st, C, now)
-            ),
-        );
-        ev.town = Some(now);
-        ev.cell = Some(st.town_node[now]);
-        ev.cell2 = Some(st.town_node[holder]);
-        ev.why = why(
-            P,
-            "one town's people against another's",
-            &format!("people in {a} and its district"),
-            st.pop[now],
-            (1.0 + Q.overtake_margin) * st.pop[holder],
-            Some(st.pop[holder]),
-            format!("{a} has been at least {} ahead of {b} for {} years running (it needs {})", fmt_pct(Q.overtake_margin, 0), Q.overtake_years, Q.overtake_years),
-        );
-        events.push(ev);
-        if place == 0 {
-            break;
+        // the place is lost to the reader's holder once the town that truly holds
+        // it is clear of that holder (or of the town below, with no holder told),
+        // whichever town holds it from year to year: two rivals that pass and
+        // repass each other above the old holder do not keep it seated for ever
+        ch.challenger[p] = Some(c);
+        let rival = ch.leaders[p].unwrap_or(order[p + 1]);
+        if pop[c] < (1.0 + margin) * pop[rival] {
+            ch.lead_years[p] = 0;
+            continue;
         }
+        ch.lead_years[p] += 1;
+        if ch.lead_years[p] < years {
+            continue;
+        }
+        ch.challenger[p] = None;
+        ch.lead_years[p] = 0;
+        // the town the reader takes to hold the place, which truly held it when it
+        // was told and is now below; or, with none told, the town that truly held
+        // it before this one
+        let below = |y: usize| y != c && active.get(y).copied().unwrap_or(false) && pop[y] < pop[c];
+        let from = ch.leaders[p].filter(|&y| below(y)).or(ch.ousted[p].filter(|&y| below(y)));
+        let since = ch.held_since[p];
+        let redrawn = |t: usize| ch.redrawn.get(t).copied().unwrap_or(i64::MIN);
+        let overtook = from.is_some_and(|y| redrawn(c) < since && redrawn(y) < since);
+        ch.leaders[p] = Some(c);
+        if p == 0 && from.is_some() && from == order.get(1).copied() {
+            // the story names the town it took first place from just below, so
+            // the reader takes that town to be second (the same story, told
+            // once), whichever town was told of there before (island 4, 1760:
+            // "Sunhaven is now the island's first town ... to Mallowbourne's
+            // 23,875", and then in 1768 "Mallowbourne is now the island's
+            // second town")
+            if ch.leaders[1] != from {
+                ch.leaders[1] = from;
+                ch.challenger[1] = None;
+                ch.lead_years[1] = 0;
+            }
+        } else if p == 0 && ch.leaders[1] == Some(c) {
+            // otherwise the second place waits for a story of its own
+            ch.leaders[1] = None;
+        }
+        return Some(Change { place: p, town: c, from, overtook });
     }
+    None
+}
+
+/// One town overtaking another to become the island's first or second, by
+/// the people of the town and its district (`places` says when), or taking the
+/// place when a founding redrew a district or the town before it moved up.
+fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: i64, events: &mut Vec<Event>) {
+    let Q = &P.chronicle;
+    let active: Vec<bool> = (0..st.T_max).map(|t| st.town_active[t]).collect();
+    let seats = ch.leaders;
+    let Some(Change { place, town: now, from, overtook }) = places(ch, &st.pop, &active, year, Q.overtake_margin, Q.overtake_years) else { return };
+    let order = town_order(&st.pop, &active);
+    // the town it had to be clear of: the one the reader took to hold the place, or the town below
+    let next = seats[place].unwrap_or(order[place + 1]);
+    let k = ch.pop.len() - 1;
+    let a = &st.town_name[now];
+    let which = if place == 0 { "first" } else { "second" };
+    // "first", not "largest": the towns are ranked with their districts, and
+    // the town itself may be the smaller of the two (the city milestones
+    // count the people inside the town)
+    let (title, weight) = match from {
+        Some(b) if overtook => (format!("{a} overtakes {} as the island's {which} town", st.town_name[b]), if place == 0 { 0.8 } else { 0.7 }),
+        _ => (format!("{a} is now the island's {which} town"), if place == 0 { 0.8 } else { 0.7 }),
+    };
+    let compared = match from {
+        // and where the town that lost the place now stands, if it is not just below
+        Some(b) if order.get(place + 1) != Some(&b) => {
+            let rank = order.iter().position(|&t| t == b).map_or(String::new(), |r| format!("; {} is now the island's {} town", st.town_name[b], ordinal(r + 1)));
+            format!(" to {}'s {}{rank}", st.town_name[b], fmt_thousands_f0(st.pop[b]))
+        }
+        Some(b) => format!(" to {}'s {}", st.town_name[b], fmt_thousands_f0(st.pop[b])),
+        None if place == 0 => ", more than any other town".to_string(),
+        None => format!(", second only to {}'s {}", st.town_name[order[0]], fmt_thousands_f0(st.pop[order[0]])),
+    };
+    // how each has done in ten years, or since a founding last redrew either's district
+    let redrawn = from.map_or(ch.redrawn[now], |b| ch.redrawn[now].max(ch.redrawn[b]));
+    let back = ((year - redrawn).max(0) as usize).min(10).min(k);
+    let then = &ch.pop[k - back];
+    let grown = |t: usize| -> String { if then[t] > 0.0 { changed(st.pop[t] / then[t] - 1.0) } else { "grown from nothing".to_string() } };
+    // (the town that lost the place is compared only when it was grown past: a
+    // district cut by a founding "grew by 1%" since, which reads as nonsense)
+    let since = match from {
+        _ if back == 0 => String::new(),
+        Some(b) if overtook => format!(" In {} {a} has {} and {} has {}.", years(back), grown(now), st.town_name[b], grown(b)),
+        _ => format!(" In {} {a} has {}.", years(back), grown(now)),
+    };
+    let mut ev = Event::new(
+        year as f64 + 0.9,
+        "region",
+        weight,
+        title,
+        format!("{a} and its district have {} people{compared}.{since}{}", fmt_thousands_f0(st.pop[now]), known_for(st, C, now)),
+    );
+    ev.town = Some(now);
+    ev.cell = Some(st.town_node[now]);
+    ev.cell2 = from.map(|b| st.town_node[b]);
+    ev.why = why(
+        P,
+        "one town's people against another's",
+        &format!("people in {a} and its district"),
+        st.pop[now],
+        (1.0 + Q.overtake_margin) * st.pop[next],
+        Some(st.pop[next]),
+        format!(
+            "for {} years running the town in the {which} place has been at least {} clear of {}, the town last told of there or the town below (it needs {})",
+            Q.overtake_years,
+            fmt_pct(Q.overtake_margin, 0),
+            st.town_name[next],
+            Q.overtake_years
+        ),
+    );
+    events.push(ev);
 }
 
 /// A district whose works close together: many in one year, and a good share
@@ -995,7 +1214,7 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
     }
     let (&g, &ng) = by_good.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).expect("some closed");
     let good = C.good_label[g].to_lowercase();
-    let makers = if ng == n { format!("all of them makers of {good}") } else { format!("{} of them makers of {good}", number(ng)) };
+    let makers = makers(ng, n, &good);
     let k = ch.prices.len() - 1;
     let mut reason = " They could no longer cover their costs.".to_string();
     if k >= 3 {
@@ -1022,7 +1241,7 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
         }
     }
     let biggest = closed[t].iter().copied().max_by(|&a, &b| st.f_K[a].total_cmp(&st.f_K[b]).then(b.cmp(&a))).expect("some closed");
-    let named = format!(" The largest was {}, open since {}.", st.f_name[biggest], st.f_born[biggest]);
+    let named = format!(" The largest was {}, open since {}{}.", st.f_name[biggest], st.f_born[biggest], named_when(st, C, P, biggest, t));
     let mut ev = Event::new(
         year as f64 + 0.9,
         "region",
@@ -1179,6 +1398,36 @@ pub fn famine_provenance(st: &State, P: &Params, year: i64, events: &mut [Event]
     }
 }
 
+/// The town a works' name points at, if it was named after a town: works are
+/// named for the town whose district they were built in ("Mallowwick
+/// Brickworks"), and keep the name when a road or a new town puts their ground
+/// in another's district. A family's works are named for the family.
+fn named_for(st: &State, C: &Content, f: usize) -> Option<usize> {
+    let name = &st.f_name[f];
+    // "Ulford Brickworks No. 3" is the third of that name
+    let base = match name.rfind(" No. ") {
+        Some(i) if !name[i + 5..].is_empty() && name[i + 5..].bytes().all(|b| b.is_ascii_digit()) => &name[..i],
+        _ => name.as_str(),
+    };
+    let patterns = crate::names::firm_patterns(&C.method_name[st.f_method[f]]);
+    let town = |t: &String| !t.is_empty() && patterns.iter().any(|p| p.contains("{T}") && !p.contains("{S") && p.replace("{T}", t) == base);
+    st.town_name.iter().position(town)
+}
+
+/// " and named when its ground was Mallowwick's" for a works near `town`
+/// whose name points at another town, or nothing (and nothing while the
+/// chronicle is off). Without it "Mallowwick Brickworks closes. The brickworks
+/// near Sandmere ..." reads as a mistake (docs/probes/news-read.md, fault 6).
+pub fn named_when(st: &State, C: &Content, P: &Params, f: usize, town: usize) -> String {
+    if !P.chronicle.enabled {
+        return String::new();
+    }
+    match named_for(st, C, f) {
+        Some(t) if t != town => format!(" and named when its ground was {}'s", st.town_name[t]),
+        _ => String::new(),
+    }
+}
+
 /// The year's large closures (`sim::notable_closures`) say how large.
 fn closure_provenance(st: &State, C: &Content, P: &Params, year: i64, events: &mut [Event]) {
     for e in events.iter_mut().filter(|e| e.kind == "closure" && e.why.is_none() && e.year.floor() as i64 == year) {
@@ -1198,10 +1447,13 @@ fn closure_provenance(st: &State, C: &Content, P: &Params, year: i64, events: &m
 
 // ---------------------------------------------------------------- ranking
 
-/// The kinds that count as one when a decade's places are shared out.
+/// The kinds that count as one when a decade's places are shared out. An alarm
+/// and a verdict are not one kind: the verdict that dates an alarm's slump
+/// takes its place anyway (`rank`), so all that sharing a kind did was drop a
+/// fall still running when an earlier slump was dated in the same decade
+/// ("Output falls 10.0%" in 1895, beside the depression of 1884–1890).
 fn class(e: &Event) -> &str {
     match e.kind.as_str() {
-        "alarm" | "verdict" => "cycle",
         "railway" | "rail_plan" => "railway",
         // canals (docs/rules/canals.md): planned and opened are one kind too
         "canal" | "canal_plan" => "canal",
@@ -1229,7 +1481,8 @@ fn standing(e: &Event) -> f64 {
 /// Mark the items a history would keep (`Event::kept`), decade by decade.
 ///
 /// Within a decade the heaviest go first, with at most `per_kind` of a kind
-/// (`inventions` for discoveries) and `per_decade` in all, and nothing lighter
+/// (`inventions` for discoveries, `turning_points` for crossings) and
+/// `per_decade` in all, and nothing lighter
 /// than `floor`. One place is the player's: the heaviest of the family's own
 /// items at `floor` or above is kept whatever else happened. A decade that is
 /// over and still has fewer than `at_least` takes the best of what is left
@@ -1276,7 +1529,11 @@ pub fn rank(events: &mut [Event], P: &Params, start_year: i64, end_year: i64, up
         let mut of_class: BTreeMap<String, usize> = BTreeMap::new();
         let mut keep = |i: usize, kept: &mut Vec<usize>, events: &[Event]| -> bool {
             let c = class(&events[i]);
-            let cap = if c == "discovery" { Q.inventions } else { Q.per_kind };
+            let cap = match c {
+                "discovery" => Q.inventions,
+                "crossing" => Q.turning_points,
+                _ => Q.per_kind,
+            };
             let n = of_class.entry(c.to_string()).or_insert(0);
             if kept.len() >= Q.per_decade || *n >= cap || kept.contains(&i) {
                 return false;
@@ -1314,6 +1571,21 @@ fn number(n: usize) -> String {
     WORDS.get(n).map_or_else(|| n.to_string(), |w| w.to_string())
 }
 
+/// "all of them makers of bricks", "three of them makers of iron", "one of
+/// them a maker of cloth": `of` of the `all` works that closed made the good.
+fn makers(of: usize, all: usize, good: &str) -> String {
+    match of {
+        _ if of == all => format!("all of them makers of {good}"),
+        1 => format!("one of them a maker of {good}"),
+        _ => format!("{} of them makers of {good}", number(of)),
+    }
+}
+
+/// "a year", "two years", "15 years".
+fn years(n: usize) -> String {
+    if n == 1 { "a year".to_string() } else { format!("{} years", number(n)) }
+}
+
 /// "third", or "11th", "21st", "22nd" past tenth.
 fn ordinal(n: usize) -> String {
     const WORDS: [&str; 11] = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -1341,5 +1613,233 @@ fn and_list(items: &[String]) -> String {
         0 => String::new(),
         1 => items[0].clone(),
         n => format!("{} and {}", items[..n - 1].join(", "), items[n - 1]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::railways::CoalLine;
+
+    #[test]
+    fn a_coal_boom_says_the_railway_reached_a_town_only_of_its_first_line() {
+        let towns: Vec<String> = ["Brambridge", "Garside", "Sandmere", "Glenbrook"].iter().map(|s| s.to_string()).collect();
+        let line = |opened: f64, from: Option<usize>, nth: usize, first: f64| Some(CoalLine { opened, colliery: false, from, nth, first });
+        let branch = "A branch line to the collieries";
+        // the town's first line, since the year the boom looks back to
+        assert_eq!(carried_by("Garside", 1827, line(1827.6, Some(0), 1, 1827.6), branch, &towns), " The railway that reached Garside in 1827 carries it away.");
+        // island 7's Garside: the line from Brambridge came in 1827, the one from Sandmere in 1829
+        assert_eq!(
+            carried_by("Garside", 1827, line(1829.3, Some(2), 2, 1827.6), branch, &towns),
+            " The railway reached Garside in 1827, and a second line, from Sandmere, in 1829; they carry it away."
+        );
+        // island 3's Greybourne and island 8's Eastdelf: more lines, or the second the same year
+        assert_eq!(
+            carried_by("Greybourne", 1821, line(1826.4, Some(1), 5, 1824.2), branch, &towns),
+            " The railway reached Greybourne in 1824, and four more lines by 1826, the last from Garside; they carry it away."
+        );
+        assert_eq!(
+            carried_by("Eastdelf", 1825, line(1826.8, Some(2), 2, 1826.1), branch, &towns),
+            " The railway reached Eastdelf in 1826, and a second line, from Sandmere, the same year; they carry it away."
+        );
+        // island 7's Stratbank: its first line came in 1823, long before the boom's base year
+        assert_eq!(carried_by("Stratbank", 1833, line(1835.2, Some(3), 2, 1823.5), branch, &towns), " The line from Glenbrook, opened in 1835, carries it away.");
+        assert_eq!(carried_by("Stratbank", 1833, line(1835.2, None, 3, 1823.5), branch, &towns), " A third line to Stratbank, opened in 1835, carries it away.");
+        // a branch to the pits, and nothing at all
+        let pits = Some(CoalLine { opened: 1838.9, colliery: true, from: None, nth: 0, first: 1838.9 });
+        assert_eq!(carried_by("Garside", 1835, pits, branch, &towns), " A branch line to the collieries, opened in 1838, brings it down from the pits.");
+        assert_eq!(carried_by("Garside", 1835, None, branch, &towns), "");
+    }
+
+    /// Runs `places` over a list of years' people (four towns, all standing),
+    /// and returns the changes told, by year.
+    fn told(years: &[(i64, [f64; 4])], redrawn: &[(i64, usize)]) -> Vec<(i64, Change)> {
+        let mut ch = ChronicleState { redrawn: vec![1700; 4], ..ChronicleState::default() };
+        let mut out = Vec::new();
+        for &(year, pop) in years {
+            for &(when, t) in redrawn.iter().filter(|&&(when, _)| when == year) {
+                ch.redrawn[t] = when;
+            }
+            if let Some(c) = places(&mut ch, &pop, &[true; 4], year, 0.05, 3) {
+                out.push((year, c));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_place_is_told_as_taken_from_the_town_that_truly_held_it() {
+        let (m, k, s, g) = (0, 1, 2, 3);
+        // Melbourne first and Stratbank second; Melbourne sinks below Stratbank
+        // and Glenbrook while Kelside, from fourth, pulls clear of them all
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, [43.0, 50.0, 46.0, 45.0])));
+        let got = told(&years, &[]);
+        // Melbourne held first until Kelside took it: the story is of Melbourne, told once
+        assert_eq!(got, vec![(1853, Change { place: 0, town: k, from: Some(m), overtook: true })]);
+
+        // the old fault: Stratbank, announced second, sinks to fourth with no story;
+        // Glenbrook truly second since 1851 is clear of the third, and it was
+        // Stratbank it displaced, not a town the reader was never told of
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, [55.0, 44.0, 40.0, 47.0])));
+        let got = told(&years, &[]);
+        assert_eq!(got, vec![(1853, Change { place: 1, town: g, from: Some(s), overtook: true })]);
+
+        // a founding cuts Melbourne's district in 1851 and Glenbrook comes first:
+        // it is the first town now, but it did not grow past Melbourne
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, [36.0, 40.0, 42.0, 45.0])));
+        let got = told(&years, &[(1851, m)]);
+        assert_eq!(got[0], (1853, Change { place: 0, town: g, from: Some(m), overtook: false }));
+
+        // the first town falls to second as another passes it: one story, and the
+        // fallen town is seated second without a story of its own
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1860).map(|y| (y, [50.0, 40.0, 56.0, 45.0])));
+        let got = told(&years, &[]);
+        assert_eq!(got, vec![(1853, Change { place: 0, town: s, from: Some(m), overtook: true })]);
+
+        // island 7 in the 1850s: Kelside and Stratbank pass and repass each other
+        // well above Melbourne, the first told of; Melbourne's place is lost all
+        // the same, and told of the town that holds it when it is told
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, if y % 2 == 1 { [43.0, 48.0, 47.0, 30.0] } else { [43.0, 47.0, 48.0, 30.0] })));
+        let got = told(&years, &[]);
+        assert_eq!(got[0], (1853, Change { place: 0, town: k, from: Some(m), overtook: true }));
+
+        // Kelside takes first place from Melbourne, which the story names just
+        // below; Stratbank, told second, had passed Melbourne for a year in
+        // between. Melbourne is second in the reader's eyes from that story on,
+        // and is not told again as overtaking Stratbank (island 4, 1760 and 1768)
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0]), (1851, [44.0, 50.0, 43.0, 30.0]), (1852, [43.0, 50.0, 44.0, 30.0])];
+        years.extend((1853..=1860).map(|y| (y, [44.0, 50.0, 40.0, 30.0])));
+        let got = told(&years, &[]);
+        assert_eq!(got, vec![(1853, Change { place: 0, town: k, from: Some(m), overtook: true })]);
+
+        // within the margin nothing is told, however long it lasts
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1870).map(|y| (y, [45.0, 40.0, 46.0, 44.9])));
+        assert!(told(&years, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_return_of_a_hundred_per_cent_or_more_is_left_out_of_the_game_news() {
+        let (port, game) = (crate::params::default_params(), crate::params::game_params());
+        // the port tells every return, as it did
+        assert!(return_told(&port, 0.13) && return_told(&port, 12.88));
+        // the game tells 13 and 99 per cent, and not what would print as 100 or 1288
+        assert!(return_told(&game, 0.13) && return_told(&game, 0.994));
+        assert!(!return_told(&game, 0.996) && !return_told(&game, 12.88));
+    }
+
+    #[test]
+    fn grain_that_moved_with_the_weather_says_so() {
+        let game = crate::params::game_params();
+        assert!(game.harvest.enabled && game.chronicle.enabled);
+        let st = |past: &[f64]| State { harvest_past: past.to_vec(), ..State::default() };
+        // island 4, 1818: a fall in output the year after a bumper harvest of 10 per cent
+        assert_eq!(grain_reason(&st(&[1.0, 1.10, 0.975]), &game, "grain", false), Some("last year's harvest was a bumper one, and this year's is not"));
+        // island 7, 1831: a rise after the third lean year, 14 per cent short
+        assert_eq!(grain_reason(&st(&[0.97, 0.96, 0.86, 1.03]), &game, "grain", true), Some("the harvest has come back after a short one"));
+        assert_eq!(grain_reason(&st(&[1.0, 1.12]), &game, "grain", true), Some("the harvest is a bumper one"));
+        assert_eq!(grain_reason(&st(&[1.0, 0.88]), &game, "grain", false), Some("the harvest has come in short"));
+        // a harvest a good deal better or poorer than last year's, neither bumper nor short:
+        // island 3, 1772 (0.967 to 1.085) and island 6, 1778 (1.077 to 0.916)
+        assert_eq!(grain_reason(&st(&[0.967, 1.085]), &game, "grain", true), Some("the harvest is better than last year's"));
+        assert_eq!(grain_reason(&st(&[1.077, 0.916]), &game, "grain", false), Some("the harvest is poorer than last year's"));
+        // output against the weather, or a harvest that hardly moved: the detector's own reason
+        assert_eq!(grain_reason(&st(&[1.10, 0.975]), &game, "grain", true), None);
+        assert_eq!(grain_reason(&st(&[1.0, 1.02]), &game, "grain", true), None);
+        // other goods, the port, and a first year with nothing to compare
+        assert_eq!(grain_reason(&st(&[1.10, 0.975]), &game, "coal", false), None);
+        assert_eq!(grain_reason(&st(&[1.10, 0.975]), &crate::params::default_params(), "grain", false), None);
+        assert_eq!(grain_reason(&st(&[0.9]), &game, "grain", false), None);
+    }
+
+    #[test]
+    fn a_works_named_after_another_town_says_why_and_charcoal_is_not_coal() {
+        let C = crate::content::default_content();
+        let (game, port) = (crate::params::game_params(), crate::params::default_params());
+        let method = |name: &str| C.method_name.iter().position(|m| m == name).expect("a method of that name");
+        let (bricks, charcoal) = (method("brickworks"), method("charcoal_burning"));
+        let towns = ["Mallowwick", "Sandmere", "Garside", "Penmere"];
+        let works = [
+            ("Mallowwick Brickworks", bricks),
+            ("Mallowwick Brickworks No. 3", bricks),
+            ("Garside's Brickfield", bricks),
+            ("Sandmere Brickworks", bricks),
+            ("Sandmere Colliers' Wood", charcoal),
+        ];
+        let st = State {
+            town_name: towns.iter().map(|s| s.to_string()).collect(),
+            f_name: works.iter().map(|w| w.0.to_string()).collect(),
+            f_method: works.iter().map(|w| w.1).collect(),
+            ..State::default()
+        };
+        let (mallowwick, sandmere, penmere) = (0, 1, 3);
+        // island 7, 1757: works called Mallowwick Brickworks, near Sandmere
+        assert_eq!(named_when(&st, &C, &game, 0, sandmere), " and named when its ground was Mallowwick's");
+        assert_eq!(named_when(&st, &C, &game, 1, sandmere), " and named when its ground was Mallowwick's");
+        // named for the town it stands near, or for a person (Garside is a surname and a town)
+        assert_eq!(named_when(&st, &C, &game, 0, mallowwick), "");
+        assert_eq!(named_when(&st, &C, &game, 2, sandmere), "");
+        assert_eq!(named_when(&st, &C, &game, 3, sandmere), "");
+        // as island 4's Sunhaven Colliers' Wood near Penmere (1771), a town founded round it later
+        assert_eq!(named_when(&st, &C, &game, 4, penmere), " and named when its ground was Sandmere's");
+        // and the port says nothing
+        assert_eq!(named_when(&st, &C, &port, 0, sandmere), "");
+
+        // charcoal burning is told as what it is; the other trades by their group
+        assert_eq!(trade_of(&C, charcoal).as_deref(), Some("charcoal burning"));
+        assert_eq!(trade_of(&C, bricks).as_deref(), Some("building materials"));
+    }
+
+    #[test]
+    fn a_decade_keeps_two_turning_points_and_a_fall_beside_an_earlier_slump_dated() {
+        let game = crate::params::game_params();
+        let item = |year: f64, kind: &str, weight: f64, title: &str| Event::new(year, kind, weight, title.to_string(), String::new());
+        // island 4's 1840s and 1890s, as they were told
+        let mut verdict = item(1891.95, "verdict", 0.75, "The depression of 1884–1890");
+        verdict.span = Some([1884.0, 1890.0]);
+        let mut events = vec![
+            item(1841.95, "verdict", 0.75, "The slump of 1838–1839"),
+            item(1842.85, "steep", 0.80, "Coal glut"),
+            item(1843.8, "crossing", 0.85, "Rolling mills overtake the rail forges"),
+            item(1846.8, "crossing", 0.95, "More hands in workshops and mills than on the land"),
+            item(1849.8, "crossing", 0.85, "Converter steel overtakes crucible steel"),
+            verdict,
+            item(1895.85, "alarm", 0.80, "Output falls 10.0%"),
+            item(1899.9, "region", 0.62, "Wolfbrook is the fastest-growing town of the 1890s"),
+        ];
+        rank(&mut events, &game, 1750, 1900, 1900);
+        let kept: Vec<&str> = events.iter().filter(|e| e.kept == Some(true)).map(|e| e.title.as_str()).collect();
+        assert_eq!(
+            kept,
+            [
+                "The slump of 1838–1839",
+                "Coal glut",
+                "Rolling mills overtake the rail forges",
+                "More hands in workshops and mills than on the land",
+                "The depression of 1884–1890",
+                "Output falls 10.0%",
+                "Wolfbrook is the fastest-growing town of the 1890s"
+            ]
+        );
+        // an alarm its verdict has dated still gives way to it
+        let mut verdict = item(1767.95, "verdict", 0.75, "The slump of 1764–1765");
+        verdict.span = Some([1764.0, 1765.0]);
+        let mut events = vec![item(1765.85, "alarm", 0.8, "Output falls 3.2%"), verdict];
+        rank(&mut events, &game, 1750, 1900, 1900);
+        assert_eq!(events.iter().map(|e| e.kept).collect::<Vec<_>>(), [Some(false), Some(true)]);
+    }
+
+    #[test]
+    fn counts_of_one_are_singular() {
+        assert_eq!(years(1), "a year");
+        assert_eq!(years(10), "ten years");
+        assert_eq!(makers(1, 5, "cloth"), "one of them a maker of cloth");
+        assert_eq!(makers(3, 5, "iron"), "three of them makers of iron");
+        assert_eq!(makers(5, 5, "bricks"), "all of them makers of bricks");
     }
 }
