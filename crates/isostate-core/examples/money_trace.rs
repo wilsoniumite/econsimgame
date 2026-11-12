@@ -13,8 +13,9 @@
 //! counted. The books (on here; they change nothing) say what households were
 //! paid in the year, by kind, and the left-out part should be all of it but
 //! the issue. Then, by decade and pooled over the islands: the growth of the
-//! money a year, the left-out part as a share of the money and what it was
-//! made of, and the money in purses below nothing.
+//! money a year, the left-out part as a share of the money and of the purses
+//! above nothing, what it was made of, and the money in purses below nothing
+//! (as a share of the money and of the year's wage bill, and by whose purse).
 //!
 //! `--set` takes a JSON object of parameters over the rules (more than one is
 //! applied in turn). `--no-check` turns the money check off and reports, for
@@ -36,6 +37,7 @@ struct Year {
     counted: f64,
     left_out: f64,
     left_out_share: f64, // mean over the twelve months of left_out / money before the month
+    left_out_pos: f64,   // the same over the purses above nothing before the month
     below: f64,          // money in purses below nothing, at the year's end
     below_kind: [f64; 6],
     gross: f64,          // all purses without their signs, at the year's end
@@ -101,6 +103,8 @@ fn run(P: &Params, rules: Rules, check: bool, months: Option<(i64, i64)>) -> (Ve
         let mut y = Year { year, ..Default::default() };
         for month in 0..12 {
             let m0 = econ::money_total(&sim.st);
+            let (_, gross0, _) = purses(&sim.st);
+            let pos0 = 0.5 * (gross0 + m0);
             if month == 0 {
                 y.m_jan = m0;
             }
@@ -119,6 +123,7 @@ fn run(P: &Params, rules: Rules, check: bool, months: Option<(i64, i64)>) -> (Ve
             y.counted += counted;
             y.left_out += m0 - counted;
             y.left_out_share += (m0 - counted) / m0 / 12.0;
+            y.left_out_pos += (m0 - counted) / pos0 / 12.0;
             y.drift = y.drift.max(own.abs());
             if issue < 0.0 {
                 neg_issue_months += 1;
@@ -164,10 +169,6 @@ fn run(P: &Params, rules: Rules, check: bool, months: Option<(i64, i64)>) -> (Ve
         y.gross = gross;
         y.books = accounts::island_year(&sim.st);
         years.push(y);
-    }
-    if let Some(f) = &mut fail {
-        f.neg_issue_months = neg_issue_months;
-        f.first_neg_money = first_neg_money;
     }
     (years, fail, log)
 }
@@ -261,19 +262,20 @@ fn main() {
     println!();
     println!("by decade, the islands pooled (sums first, then the ratio); [least .. greatest island] for the growth");
     println!(
-        "{:>9} {:>14} {:>22} {:>9} {:>9} | of the left-out part: {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} | {:>9} {:>9}",
-        "years", "money a year", "[lo .. hi]", "left out", "issue/M", "pay", "cart", "navvy", "mgrs", "divW", "divM", "fund", "below/M", "booksgap"
+        "{:>9} {:>14} {:>22} {:>9} {:>9} {:>9} | of the left-out part: {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} | {:>9} {:>9} {:>8} | below nothing, by purse:",
+        "years", "money a year", "[lo .. hi]", "left out", "of M>0", "issue/M", "pay", "cart", "navvy", "mgrs", "divW", "divM", "fund", "below/M", "booksgap", "below/WB"
     );
-    println!("{:>150} below nothing, by purse: households, landlords, merchants, works, families, fund and projects", "");
+    println!("{:>162} households, landlords, merchants, works, families, fund and projects", "");
     let mut k = 0;
     while k < n {
         let k1 = (k + 10).min(n);
         let span = (k1 - k) as f64;
         let mut growth: Vec<f64> = Vec::new();
-        let (mut m_start, mut m_end, mut lo_share, mut cnt, mut issue) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        let (mut m_start, mut m_end, mut lo_share, mut cnt, mut issue, mut lo_pos) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         let mut parts = [0.0f64; 7];
         let (mut below, mut money_dec, mut gap, mut m_sum) = (0.0, 0.0, 0.0f64, 0.0);
         let mut bk = [0.0f64; 6];
+        let mut wage_bill = 0.0;
         for v in &ys {
             let a = v[k].m_jan;
             let b = v[k1 - 1].m_dec;
@@ -282,6 +284,7 @@ fn main() {
             m_end += b;
             for y in &v[k..k1] {
                 lo_share += y.left_out_share;
+                lo_pos += y.left_out_pos;
                 cnt += 1.0;
                 issue += y.issue;
                 below += y.below;
@@ -296,6 +299,7 @@ fn main() {
                         *q += x;
                     }
                     let hh = b.to_households - b.issue;
+                    wage_bill += b.wage_bill;
                     gap = gap.max((y.left_out - hh).abs() / hh.abs().max(1e-300));
                 }
             }
@@ -305,19 +309,20 @@ fn main() {
         let hi = growth.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let tot: f64 = parts.iter().sum();
         print!(
-            "{:>4}-{:>4} {:>13.3}% [{:>7.3}% .. {:>7.3}%] {:>9.4} {:>8.3}% |                       ",
+            "{:>4}-{:>4} {:>13.3}% [{:>7.3}% .. {:>7.3}%] {:>9.4} {:>9.4} {:>8.3}% |                       ",
             ys[0][k].year,
             ys[0][k1 - 1].year,
             100.0 * pooled,
             100.0 * lo,
             100.0 * hi,
             lo_share / cnt,
+            lo_pos / cnt,
             100.0 * 12.0 * issue / m_sum.max(1e-300),
         );
         for q in parts {
             print!("{:>6.3} ", q / tot.max(1e-300));
         }
-        print!("| {:>9.4} {:>9.1e} |", below / money_dec.max(1e-300), gap);
+        print!("| {:>9.4} {:>9.1e} {:>8.4} |", below / money_dec.max(1e-300), gap, below / wage_bill.max(1e-300));
         for q in bk {
             print!(" {:>5.2}", q / below.min(-1e-300));
         }
