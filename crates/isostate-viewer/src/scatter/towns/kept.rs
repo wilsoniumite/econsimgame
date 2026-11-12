@@ -268,6 +268,13 @@ struct Lot {
 /// street's plots.
 const OLDER_STREET: f32 = 0.055;
 
+/// The widest a road comes to be (`ways`, a road of the third level).
+const WIDEST_WAY: f32 = 0.034;
+
+/// How far from the middle of a market place the houses round it stand: clear
+/// of the widest a market place comes to be (`squares`).
+const MARKET_RING: f32 = 0.09 + 0.03;
+
 /// The old middle of a town: this many closes, the first of its first cell's
 /// order (about 500 m round the market place). Its lanes were built up house
 /// by house, not a row at a time, so a plot there takes its own turn and the
@@ -442,7 +449,8 @@ struct Street {
     len: f32,
     /// it is walked in this many steps of about 60 m
     steps: usize,
-    /// at each step: 0 not asked yet, 1 not laid there, 2 laid, 3 laid on built-up ground
+    /// at each step: 0 not asked yet, 1 not laid there, 2 laid, 3 laid on
+    /// built-up ground, 4 not laid only because the ground is not town ground
     state: Vec<std::cell::Cell<u8>>,
 }
 
@@ -539,21 +547,42 @@ impl Laying<'_> {
     /// and to their plots; and any lane gives way where another way is nearer
     /// (`gives_way`).
     fn laid(&self, i: usize, step: usize) -> bool {
+        matches!(self.asked(i, step), 2 | 3)
+    }
+
+    /// Whether street `i` runs at one of its steps: it is laid there, or
+    /// would be if the ground were town ground. A plot fronts a street that
+    /// runs, and keeps out of one: where a street comes to the edge of its
+    /// town the ground beyond is not town ground until the town takes it, and
+    /// plots that waited for that came into their cell's order late, before
+    /// houses already standing, which then counted as built years after they
+    /// were (and the last of them went).
+    fn runs(&self, i: usize, step: usize) -> bool {
+        self.asked(i, step) >= 2
+    }
+
+    /// What street `i` is at one of its steps (`Street::state`).
+    fn asked(&self, i: usize, step: usize) -> u8 {
         let s = &self.streets[i];
         match s.state[step].get() {
             0 => {}
-            asked => return asked >= 2,
+            asked => return asked,
         }
         let p = s.at(step);
         let at = self.town_at(p);
-        let ok = at.is_some_and(|a| {
-            s.way.road
+        let dry = at.is_some() || world::height_at(self.g, p.x, p.y) >= 0.05;
+        let ok = dry
+            && (s.way.road
                 || (!(self.near_plot)(p.x, p.y)
                     && !self.in_square(p)
-                    && !(s.lane() && (self.gives_way(s, p) || s.way.since > self.joined[&a.0] && self.in_street(p, OLDER_STREET, |o| o.way.since < s.way.since))))
-        });
-        s.state[step].set(if !ok { 1 } else if at.is_some_and(|a| a.2) { 3 } else { 2 });
-        ok
+                    && !(s.lane() && (self.gives_way(s, p) || at.is_some_and(|a| s.way.since > self.joined[&a.0]) && self.in_street(p, OLDER_STREET, |o| o.way.since < s.way.since)))));
+        let state = match (ok, at) {
+            (false, _) => 1,
+            (true, None) => 4,
+            (true, Some(a)) => 2 + a.2 as u8,
+        };
+        s.state[step].set(state);
+        state
     }
 
     /// Whether a spot is within `clear` of the edge of a laid street, among those that `counts` passes.
@@ -566,14 +595,16 @@ impl Laying<'_> {
             }
             let along = s.way.b - s.way.a;
             let t = ((p - s.way.a).dot(along) / (s.len * s.len)).clamp(0.0, 1.0);
-            p.distance(s.way.a + along * t) < s.way.width * 0.5 + clear && self.laid(j as usize, (t * s.steps as f32).round() as usize)
+            // (a way counts at the widest a road comes to be, so that one widened takes no plot)
+            let half = if s.way.kind == 0 { WIDEST_WAY * 0.5 } else { s.way.width * 0.5 };
+            p.distance(s.way.a + along * t) < half + clear && self.runs(j as usize, (t * s.steps as f32).round() as usize)
         })
     }
 
-    /// Whether street `i` is laid at share `t` of its length: at the steps on either side.
-    fn laid_at(&self, i: usize, t: f32) -> bool {
+    /// Whether street `i` runs at share `t` of its length: at the steps on either side.
+    fn runs_at(&self, i: usize, t: f32) -> bool {
         let x = t.clamp(0.0, 1.0) * self.streets[i].steps as f32;
-        self.laid(i, x.floor() as usize) && self.laid(i, x.ceil() as usize)
+        self.runs(i, x.floor() as usize) && self.runs(i, x.ceil() as usize)
     }
 
     /// The lengths of street `i` within a span of it that are laid (and, if
@@ -717,16 +748,21 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         let n = Vec2::new(-u.y, u.x);
         // streets differ: the width of their plots and how far their houses stand back are the street's own
         let (h1, h2) = (world::hash2(s.id, 5, 31), world::hash2(s.id, 6, 31));
+        // (a way's plots are the same whether it is yet a road or still a lane, and
+        // whatever the road's width: as taken over a lane had wider plots, set further
+        // back, with later turns, and the year the road came, or was widened, the whole
+        // of its frontage was laid out again and its houses moved or went)
         let spacing = match s.kind {
-            0 if s.road => 0.048 + 0.012 * h1,
-            0 => 0.056 + 0.012 * h1,
+            0 => 0.05 + 0.012 * h1,
             1 => houses::BACK_PLOT_WIDTH,
             3 => 0.056 + 0.01 * h1,
             _ => houses::BACK_PLOT_WIDTH + 0.006 * h1,
         };
         let depth = houses::PLOT.1;
-        let back = if s.kind == 0 && !s.road || s.kind == 3 { 0.005 * h2 } else { 0.0 };
-        let set_back = s.width * 0.5 + depth * 0.5 + houses::SET_BACK + back;
+        let back = if s.kind == 0 { 0.003 * h2 } else if s.kind == 3 { 0.005 * h2 } else { 0.0 };
+        // a way's frontage stands clear of the widest road it may come to be
+        let half = if s.kind == 0 { WIDEST_WAY * 0.5 } else { s.width * 0.5 };
+        let set_back = half + depth * 0.5 + houses::SET_BACK + back;
         let yaw_along = (-u.y).atan2(u.x);
         let count = (len / spacing).floor() as i32;
         let t_of = |i: i32| (i as f32 + 0.5) * spacing / len;
@@ -746,7 +782,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 let p = s.a + along * t_of(i) + n * side * set_back;
                 // (its close is looked up where the plot would stand on a road of middling
                 // width, so that a road widened does not move its plots to another close)
-                let Some((c, rank, _)) = lay.close_at(p + n * side * (0.011 - s.width * 0.5)) else { continue };
+                let Some((c, rank, _)) = lay.close_at(p + n * side * (0.011 - half)) else { continue };
                 // a plot on a lane is one of a row, but for those of a town's old middle
                 let in_row = s.kind != 0 && !(rank < OLD_MIDDLE && nodes.contains(&c));
                 if rank as f32 >= built_of(c) {
@@ -759,13 +795,9 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                     continue;
                 }
                 let (pu, pv) = (world::hash2(id, i, 24), world::hash2(id, i, 25));
-                // the frontage of the way itself fills before the lanes behind it, and closest
-                // where it is a road: a high street is built up whole from its town's end
-                let own = match (s.kind, s.road) {
-                    (0, true) => 0.3 * pu,
-                    (0, false) => 0.6 * pu,
-                    _ => 0.25 + 0.75 * pu,
-                };
+                // the frontage of the way itself fills before the lanes behind it: a high
+                // street is built up whole from its town's end
+                let own = if s.kind == 0 { 0.3 * pu } else { 0.25 + 0.75 * pu };
                 let mut turn = rank as f32 + world::EDGE_CLOSES * own;
                 // a way that came to the cell after it was town ground: its plots take their
                 // turn after all the ground that was built up before it came
@@ -798,7 +830,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 // a plot may be built on once its turn is under the count of its cell's built-up closes
                 if lot.turn >= built_of(lot.cell) || lot.pl.row.is_some_and(|ri| dead.contains(&(ri, lot.cell))) {
                     tell(lot.pl.run, lot.pl.index, 1);
-                note(lot.cell, lot.kind, 1);
+                    note(lot.cell, lot.kind, 1);
                 } else {
                     // (whether its street is laid there is asked when its turn comes, if its
                     // cell still has houses to build: most plots are never asked)
@@ -808,11 +840,14 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         }
     }
     for s in &sq {
-        let count = ((std::f32::consts::TAU * (s.radius + 0.03)) / 0.05).floor() as i32;
+        // (the plots stand where the market place comes to at its widest, whatever its
+        // width this year: it widens as its town grows, and at the year's own width the
+        // houses round it shuffled outward every year the town grew)
+        let count = ((std::f32::consts::TAU * MARKET_RING) / 0.05).floor() as i32;
         for i in 0..count {
             let a = i as f32 / count as f32 * std::f32::consts::TAU;
             let dirv = Vec2::new(a.cos(), a.sin());
-            let p = s.at + dirv * (s.radius + 0.03);
+            let p = s.at + dirv * MARKET_RING;
             let id = -1000 - s.town as i32;
             let pu = world::hash2(id, i, 26);
             let Some((c, _, _)) = lay.town_at(p) else { continue };
@@ -871,31 +906,31 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             }
             _ => {}
         }
-        if lot.kind != 9 && (!lay.laid_at(lot.street.0 as usize, lot.street.1) || lay.town_at(p).is_none()) {
+        if lot.kind != 9 && (!lay.runs_at(lot.street.0 as usize, lot.street.1) || lay.town_at(p).is_none()) {
             tell(lot.pl.run, lot.pl.index, 7);
-                note(lot.cell, lot.kind, 7);
+            note(lot.cell, lot.kind, 7);
             continue;
         }
         if near_plot(p.x, p.y) {
             tell(lot.pl.run, lot.pl.index, 3);
-                note(lot.cell, lot.kind, 3);
+            note(lot.cell, lot.kind, 3);
             continue;
         }
         if lay.in_square(p) {
             tell(lot.pl.run, lot.pl.index, 4);
-                note(lot.cell, lot.kind, 4);
+            note(lot.cell, lot.kind, 4);
             continue;
         }
         // in a way, or in a lane that is no younger than the plot (a later lane runs round the plots it finds)
         if lay.in_street(p, if lot.kind == 9 { 0.03 } else { 0.02 }, |o| !o.lane() || o.way.since <= lot.age) {
             tell(lot.pl.run, lot.pl.index, 5);
-                note(lot.cell, lot.kind, 5);
+            note(lot.cell, lot.kind, 5);
             continue;
         }
         let c = bucket(p);
         if (-1..=1).any(|dy| (-1..=1).any(|dx| taken.get(&(c.0 + dx, c.1 + dy)).is_some_and(|v| v.iter().any(|q| q.distance(p) < 0.042)))) {
             tell(lot.pl.run, lot.pl.index, 6);
-                note(lot.cell, lot.kind, 6);
+            note(lot.cell, lot.kind, 6);
             continue;
         }
         if let Some(key) = row {
@@ -1211,5 +1246,133 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
         houses::cottage(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &c, lk);
         census.cottages += 1;
         census.storeys[storeys as usize - 1] += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::made_up;
+    use super::*;
+
+    /// A house of a year's layout: its plot (the street and side, and the
+    /// place along it), its cell, where it stands, and the year it went up.
+    type House = (((i32, u8), i32), u32, [u32; 2], i32);
+
+    /// The made-up town's houses in year `k`, in the order of their plots, and its land.
+    fn year(r: &Replay, g: &Ground, k: usize) -> (Vec<House>, world::YearLand) {
+        let cen = crate::network::centres(r);
+        let land = world::year_land(r, g, k);
+        let layout = lay_out(r, g, &cen, k, &[], &|_, _| false, &land);
+        let mut houses: Vec<House> = layout.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), s.lot.cell, [s.lot.pl.p.x.to_bits(), s.lot.pl.p.y.to_bits()], s.year)).collect();
+        houses.sort();
+        (houses, land)
+    }
+
+    /// The houses a cell's residents ask for at `PEOPLE_TO_A_HOUSE` each, over the town.
+    fn asked(r: &Replay, k: usize) -> usize {
+        (0..r.n).map(|c| (r.residents(k, c) / world::PEOPLE_TO_A_HOUSE).round() as usize).sum()
+    }
+
+    #[test]
+    fn the_layout_is_the_same_however_it_is_come_by() {
+        let r = made_up(true);
+        assert!(r.kept());
+        let g = world::build_ground(&r);
+        let forward: Vec<Vec<House>> = (0..r.ny).map(|k| year(&r, &g, k).0).collect();
+        assert!(forward[0].len() > 80, "{} houses in the first year", forward[0].len());
+        // again on the same ground, which remembers the closes and their order
+        for (k, was) in forward.iter().enumerate() {
+            assert_eq!(&year(&r, &g, k).0, was, "year {k} laid out a second time");
+        }
+        // and on ground made anew, the last year first: a year's towns do not hang on the
+        // years laid out before it
+        let g = world::build_ground(&r);
+        for k in (0..r.ny).rev() {
+            assert_eq!(year(&r, &g, k).0, forward[k], "year {k} laid out on new ground, the years backwards");
+        }
+    }
+
+    #[test]
+    fn built_up_ground_and_houses_only_grow_while_the_people_do() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        let mut before: Option<(Vec<House>, world::YearLand)> = None;
+        // the people grow every year to the sixth
+        for k in 0..6 {
+            let now = year(&r, &g, k);
+            if let Some(was) = &before {
+                for (i, (&a, &b)) in was.1.town.built.iter().zip(&now.1.town.built).enumerate() {
+                    assert_eq!(a & !b, 0, "year {k}: a close of parcel {i} was built up and is not");
+                }
+                for (i, (&a, &b)) in was.1.town.rank.iter().zip(&now.1.town.rank).enumerate() {
+                    assert!(a == u16::MAX || a == b, "year {k}: close {i} has changed its place in its cell's order");
+                }
+                // every house stands where it stood, and is as old as it was
+                for h in &was.0 {
+                    assert!(now.0.binary_search(h).is_ok(), "year {k}: the house {h:?} is gone, or moved, or built again: {:?}", now.0.iter().find(|n| n.0 == h.0));
+                }
+                assert!(now.0.len() > was.0.len(), "year {k}: {} houses, {} the year before", now.0.len(), was.0.len());
+                let built = |l: &world::YearLand| l.town.built.iter().map(|m| m.count_ones()).sum::<u32>();
+                assert!(built(&now.1) > built(&was.1), "year {k}: no more ground built up");
+            }
+            before = Some(now);
+        }
+        // in the seventh a fifth of the people are gone: the houses outlast it, every one
+        let (was, last) = (before.unwrap(), year(&r, &g, 6));
+        assert_eq!(last.0, was.0);
+        assert_eq!(last.1.town.built, was.1.town.built);
+    }
+
+    #[test]
+    fn the_houses_drawn_follow_the_people() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        for k in 0..6 {
+            let (houses, land) = year(&r, &g, k);
+            let (asked, people) = (asked(&r, k), (0..r.n).map(|c| r.residents(k, c)).sum::<f32>());
+            assert_eq!(land.town.cells.values().map(|c| c.houses as usize).sum::<usize>(), asked);
+            // on level dry ground with no works on it, nineteen in twenty of the houses asked
+            // for find a plot, and the town is a twelfth out at the most
+            assert!(houses.len() * 20 >= asked * 19, "year {k}: {} houses drawn for the {asked} that {people} people ask", houses.len());
+            let to_a_house = people / houses.len() as f32;
+            assert!((11.0..=13.0).contains(&to_a_house), "year {k}: {to_a_house} people to a drawn house");
+            // cell by cell too: four in five at the least, and over what its people ask
+            // for only by the end of a row, which goes up whole (six houses at the most)
+            for (&c, cell) in &land.town.cells {
+                let drawn = houses.iter().filter(|h| h.1 == c).count();
+                assert!(drawn <= cell.houses as usize + 5 && drawn * 10 >= cell.houses as usize * 8, "year {k}, cell {c}: {drawn} houses drawn of {} asked", cell.houses);
+            }
+        }
+    }
+
+    #[test]
+    fn frontages_join_before_they_rise_and_the_edge_is_cottages() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        let cen = crate::network::centres(&r);
+        let lk = Look::standard();
+        let lod = Lod::all(houses::Detail::Play);
+        let build = |k: usize| {
+            let land = world::year_land(&r, &g, k);
+            let (mut houses, mut smoke, mut trees) = (Builder::default(), Builder::default(), <[Greenery; LEAF_GROUPS]>::default());
+            let census = houses_kept(&r, &g, &cen, k, &lk, &[], &|_, _| false, &land, &mut Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod: &lod });
+            (census, houses.pos.len(), crate::mesh_sum(&houses))
+        };
+        let (first, _, sum) = build(0);
+        // the same year built twice is the same to the last vertex
+        assert_eq!(build(0).2, sum);
+        // a small town of 1750: cottages of one storey for the most part, nothing of three
+        assert_eq!(first.drawn, first.cottages + first.townhouses + first.terraced + first.villas);
+        assert!(first.storeys[0] * 2 > first.drawn, "{first:?}");
+        assert_eq!((first.storeys[2], first.terraced, first.villas), (0, 0, 0), "{first:?}");
+        // six years on it has three times the people: more houses, more of them joined into
+        // townhouses, and no house of three storeys without a neighbour on both sides
+        let (last, vertices, _) = build(5);
+        assert!(last.drawn > first.drawn * 2 && last.townhouses > first.townhouses, "{first:?} then {last:?}");
+        assert_eq!(last.tall_alone, 0, "{last:?}");
+        assert!(last.storeys[2] > 0 && last.storeys[2] * 4 < last.drawn, "{last:?}");
+        assert!(vertices > 0);
+        // the newest square, a year in the town: all cottages of one storey
+        assert!(last.storeys[0] >= 25, "{last:?}");
     }
 }

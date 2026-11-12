@@ -944,6 +944,150 @@ fn townhouse(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn
 mod tests {
     use super::*;
 
+    /// (task A) A made-up island of 14 squares by 12 for the towns' tests:
+    /// level farmland with sea round the rim, two roads that cross at 5,5,
+    /// and one town, Ashby, with its market place there. Seven years from
+    /// 1750. The town stands on three squares at first (the middle since
+    /// 1650, the squares west and east of it since 1690), takes the square to
+    /// the south in the third year and the one to the north in the fifth,
+    /// and its people grow every year but the last, when a fifth of them are
+    /// gone. With `kept` the record holds the three layers of town ground
+    /// that is kept (when each square joined, its residents, its works);
+    /// without, it is a run under the port's rules, with the same squares of
+    /// town and a density in place of the residents.
+    pub(in crate::scatter) fn made_up(kept: bool) -> Replay {
+        let (w, h, ny) = (14usize, 12usize, 7usize);
+        let n = w * h;
+        let node = 5 * w + 5;
+        let header: replay::Header = serde_json::from_str(&format!(
+            r#"{{"meta":{{"W":14,"H":12,"start_year":1750,"n_years":{ny}}},"goods":[],"methods":[],"towns":[{{"name":"Ashby","node":{node},"founded":1650}}],"firms":[],"events":[],"uses":[],"arrays":[]}}"#
+        ))
+        .unwrap();
+        let land = |c: usize| {
+            let (x, y) = (c % w, c / w);
+            x >= 1 && y >= 1 && x < w - 1 && y < h - 1
+        };
+        // the squares of the town: the year (counted from the start) each joined, the calendar
+        // year the record gives it, and its residents year by year
+        let squares: [(usize, usize, i32, [f32; 7]); 5] = [
+            (node, 0, 1650, [480.0, 640.0, 800.0, 1000.0, 1200.0, 1400.0, 1120.0]),
+            (node - 1, 0, 1690, [380.0, 460.0, 560.0, 700.0, 850.0, 1000.0, 800.0]),
+            (node + 1, 0, 1690, [380.0, 460.0, 560.0, 700.0, 850.0, 1000.0, 800.0]),
+            (node + w, 2, 1752, [0.0, 0.0, 300.0, 380.0, 480.0, 600.0, 480.0]),
+            (node - w, 4, 1754, [0.0, 0.0, 0.0, 0.0, 300.0, 380.0, 304.0]),
+        ];
+        let mut r = Replay {
+            header,
+            w,
+            h,
+            n,
+            ny,
+            y0: 1750,
+            n_towns: 1,
+            elev: (0..n).map(|c| if land(c) { 40 } else { 0 }).collect(),
+            terrain: (0..n).map(|c| land(c) as u8).collect(),
+            river: vec![0; n],
+            down: vec![-1; n],
+            use_: vec![0; ny * n],
+            inten: vec![0; ny * n],
+            trans: vec![0; ny * n],
+            catch: vec![0; ny * n],
+            rent: Vec::new(),
+            dist: Vec::new(),
+            mix_a: vec![world::SEA; ny * n],
+            mix_b: vec![world::SEA; ny * n],
+            mix_s: vec![255; ny * n],
+            town_active: vec![1; ny],
+            town_pop: vec![0.0; ny],
+            town_urban: vec![0.0; ny],
+            town_wage: Vec::new(),
+            town_price: Vec::new(),
+            firm_first: Vec::new(),
+            firm_len: Vec::new(),
+            firm_off: Vec::new(),
+            firm_k: Vec::new(),
+            series_names: Vec::new(),
+            series: Vec::new(),
+            series_len: 0,
+            filled: ny,
+            owner: Vec::new(),
+            built: if kept { vec![0; ny * n] } else { Vec::new() },
+            res: if kept { vec![0; ny * n] } else { Vec::new() },
+            works: if kept { vec![0; ny * n] } else { Vec::new() },
+        };
+        for k in 0..ny {
+            for c in (0..n).filter(|&c| land(c)) {
+                let o = k * n + c;
+                (r.mix_a[o], r.mix_b[o], r.mix_s[o]) = (world::FARM, world::PASTURE, 153);
+                r.catch[o] = 1;
+                if c % w == 5 || c / w == 5 {
+                    r.trans[o] = 2;
+                }
+            }
+            for &(c, since, year, people) in &squares {
+                if k < since {
+                    continue;
+                }
+                let o = k * n + c;
+                (r.use_[o], r.mix_a[o], r.mix_s[o]) = (10, world::URBAN, 255);
+                r.inten[o] = (people[k] / 1430.0 * 255.0) as u8;
+                if kept {
+                    r.built[o] = (year - replay::BUILT_YEAR0) as u8;
+                    r.res[o] = (people[k] / replay::RES_UNIT).round() as u8;
+                }
+                r.town_urban[k] += people[k];
+            }
+            r.town_pop[k] = r.town_urban[k] * 1.5;
+        }
+        r
+    }
+
+    /// (task A) The made-up town under the port's rules is drawn as it was
+    /// before the towns kept their ground: the figures are those of the same
+    /// town built from the code as it stood before the task (rust-3d at
+    /// 5dc0caa), where this test was run with the three layers left out of
+    /// `made_up`. Its ground is drawn as it was too: every parcel of town
+    /// built up whole, and the shader told nothing.
+    #[test]
+    fn a_run_under_the_port_s_rules_is_drawn_as_it_was() {
+        let r = made_up(false);
+        assert!(!r.kept());
+        let g = world::build_ground(&r);
+        let slots = make_slots(&r, &g);
+        let cen = crate::network::centres(&r);
+        let lod = Lod::all(Detail::Play);
+        let sums: Vec<(usize, usize, [i64; 3])> = [0usize, 5]
+            .iter()
+            .map(|&k| {
+                let ym = build_year(&r, &g, &slots, &cen, k, &Look::standard(), &lod);
+                let mut sum = [0.0f64; 3];
+                for p in &ym.houses.pos {
+                    for (s, v) in sum.iter_mut().zip(p) {
+                        *s += *v as f64;
+                    }
+                }
+                (ym.houses.pos.len(), ym.houses.idx.len(), sum.map(|v| v.round() as i64))
+            })
+            .collect();
+        eprintln!("the port's town: {sums:?}");
+        assert_eq!(sums, PORT_TOWN);
+        for k in [0, 5] {
+            let land = world::year_land(&r, &g, k);
+            assert!(land.town.cells.is_empty() && land.town.rank.is_empty());
+            for (i, &class) in land.class.iter().enumerate() {
+                assert_eq!(land.town.built[i], if class == world::URBAN { 255 } else { 0 });
+            }
+        }
+        assert_eq!(crate::terrain::patchwork_params(&r, &g, 0.5, false).town_kept, 0.0);
+        assert_eq!(crate::terrain::patchwork_params(&made_up(true), &g, 0.5, false).town_kept, 1.0);
+    }
+
+    /// The houses of the made-up town under the port's rules in its first
+    /// year and its sixth, as the code before the task builds them: vertices,
+    /// indices, and the sums of the vertices' three coordinates to the
+    /// nearest whole number.
+    const PORT_TOWN: [(usize, usize, [i64; 3]); 2] = [(43475, 62433, [306984, 11694, 260396]), (80980, 118980, [507079, 23231, 464379])];
+
     /// A small town's church off a market place at nought, out to the south-east.
     fn yard() -> (town::Church, Vec2, f32, Vec2) {
         let church = town::Church { big: false, spire: false, seed: Seed::new(0.3, 0.7) };
