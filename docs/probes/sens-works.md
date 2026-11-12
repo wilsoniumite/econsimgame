@@ -346,7 +346,9 @@ Worth trying together in a pass over the rules, and not run here:
    sixteen more islands at 0.5 and a trace of one island through the 1830s and 1840s with and
    without carting.
 5. **The numbers that set only the map** (`hands_per_cell`, `cell_limit`, `entry_share`,
-   `room_share`) can be chosen for the picture; nothing in the economy holds them where they are.
+   `room_share`) can be chosen for the picture; nothing in the economy holds them where they are,
+   within the ranges found above (the island starts to pay at 500 hands to a cell and at a
+   works' share of the room of 0.1).
 6. **Facts the pass will need and does not have:** the share of hands within two cells of their
    market (for the walk), the share of town-months in which a town's wage moved by half (for the
    damper), and `mine_share_Y` without the carters in it (it is one less the farm and industry
