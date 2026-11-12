@@ -1,7 +1,5 @@
 //! The brickworks.
 
-use glam::Vec3;
-
 use super::kit::{Ctx, Face};
 
 /// A brickworks: bottle kilns, more of them as it grows; open drying sheds;
@@ -22,16 +20,10 @@ pub fn brickworks(c: &mut Ctx) {
     let kilns = (if continuous { (wanted / 3).max(1) } else { wanted }).min(rows * per);
     for k in 0..kilns {
         let (x, z) = (-hw + 0.008 + pitch * ((k % per) as f32 + 0.5), -hd + 0.008 + r * 1.15 + (k / per) as f32 * pitch);
-        let p = c.at(x, z);
-        let whole = !c.going_up() && !c.derelict();
-        c.solid.frustum_turned(p, r, r * 1.15, 0.018 * g, 7, 0.0, 0.02, brick, None);
-        if !c.going_up() {
-            let (top, neck) = (if whole { 0.034 * g } else { 0.02 * g }, if whole { r * 0.38 } else { r * 0.7 });
-            c.solid.frustum_turned(p + Vec3::Y * 0.018 * g, r * 1.15, neck, top, 7, 0.0, 0.0, brick, Some(*pal.smoke.soot));
-            // they are fired in turn
-            if k % 2 == 0 {
-                c.plume(p + Vec3::Y * (0.018 * g + top), 0.6);
-            }
+        let top = c.bottle_kiln(x, z, r, !c.derelict(), brick);
+        // they are fired in turn
+        if !c.going_up() && k % 2 == 0 {
+            c.plume(top, 0.6);
         }
     }
     let mut front = -hd + 0.008 + rows as f32 * pitch;
@@ -45,7 +37,7 @@ pub fn brickworks(c: &mut Ctx) {
             for face in [Face::Front, Face::Back] {
                 for i in 0..wickets {
                     let cx = -len * 0.5 + len * (i as f32 + 0.5) / wickets as f32;
-                    c.panel(&s, face, cx - 0.003 * g, cx + 0.003 * g, 0.0, h * 0.55, true, *pal.smoke.soot);
+                    c.mouth(&s, face, cx - 0.003 * g, cx + 0.003 * g, 0.0, h * 0.55, true);
                 }
             }
         }

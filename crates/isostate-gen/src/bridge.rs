@@ -8,6 +8,7 @@
 use glam::{Vec2, Vec3};
 
 use crate::colour::{shade, Rgba};
+use crate::kit::Detail;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 
@@ -25,6 +26,11 @@ pub struct RoadBridge {
     pub level: f32,
     /// a main road, which is wider and built in paler stone, rather than a lane
     pub main: bool,
+    /// how much of it to draw: from far off the roadway on its arches, each
+    /// in three flat lengths; at the distance the game is played from its
+    /// parapets and cutwaters, the arches in six; close to a coping on the
+    /// parapets and a string course under them
+    pub detail: Detail,
 }
 
 impl RoadBridge {
@@ -52,8 +58,9 @@ impl RoadBridge {
 
 /// How high a parapet stands above the roadway, and how thick it is.
 const PARAPET: (f32, f32) = (0.007, 0.0035);
-/// How many flat lengths an arch is drawn in.
+/// How many flat lengths an arch is drawn in: from the play distance and nearer, and from far off.
 const ARC: usize = 6;
+const ARC_FAR: usize = 3;
 /// How far the ramp at each end runs back along the road from the bank.
 pub const APPROACH: f32 = 0.02;
 
@@ -99,6 +106,8 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
     // the bridge in lengths along it, each with the height of its underside at either end:
     // an abutment or half a pier, the arch in flat lengths, and half a pier or an abutment
     let arches = b.arches();
+    let (far, near) = (b.detail == Detail::Far, b.detail == Detail::Near);
+    let arc = if far { ARC_FAR } else { ARC };
     let bay = 1.0 / arches as f32;
     let reach = 0.4 * bay;
     let rise = |a: usize| (deck((a as f32 + 0.5) * bay) - 0.009 - spring).max(0.006);
@@ -110,8 +119,8 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
     for a in 0..arches {
         let mid = (a as f32 + 0.5) * bay;
         lengths.push((a as f32 * bay, foot, mid - reach, foot, false));
-        for k in 0..ARC {
-            let (u0, u1) = (k as f32 / ARC as f32 * std::f32::consts::PI, (k + 1) as f32 / ARC as f32 * std::f32::consts::PI);
+        for k in 0..arc {
+            let (u0, u1) = (k as f32 / arc as f32 * std::f32::consts::PI, (k + 1) as f32 / arc as f32 * std::f32::consts::PI);
             lengths.push((mid - reach * u0.cos(), spring + rise(a) * u0.sin(), mid - reach * u1.cos(), spring + rise(a) * u1.sin(), true));
         }
         lengths.push((mid + reach, foot, (a + 1) as f32 * bay, foot, false));
@@ -121,7 +130,7 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
     for &(t0, low0, t1, low1, arch) in &lengths {
         let (d0, d1) = (deck(t0), deck(t1));
         // the parapets run down to nothing at the foot of each ramp
-        let parapet = |t: f32| if (0.0..=1.0).contains(&t) { PARAPET.0 } else { 0.0 };
+        let parapet = |t: f32| if (0.0..=1.0).contains(&t) && !far { PARAPET.0 } else { 0.0 };
         let (top0, top1) = (d0 + parapet(t0), d1 + parapet(t1));
         // the roadway, in the road's own gravel or dust
         solid.quad(at(t0, inner, d0), at(t1, inner, d1), at(t1, -inner, d1), at(t0, -inner, d0), roadway);
@@ -130,10 +139,23 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
         let shaded = shade(stone, 0.94);
         solid.quad(at(t0, edge, low0), at(t1, edge, low1), at(t1, edge, top1), at(t0, edge, top0), lit);
         solid.quad(at(t1, -edge, low1), at(t0, -edge, low0), at(t0, -edge, top0), at(t1, -edge, top1), shaded);
-        solid.quad(at(t0, inner, top0), at(t0, edge, top0), at(t1, edge, top1), at(t1, inner, top1), shade(stone, 1.06));
-        solid.quad(at(t0, -edge, top0), at(t0, -inner, top0), at(t1, -inner, top1), at(t1, -edge, top1), shade(stone, 1.06));
-        upright(solid, at(t1, inner, d1), at(t0, inner, d0), at(t0, inner, top0), at(t1, inner, top1), shaded);
-        upright(solid, at(t0, -inner, d0), at(t1, -inner, d1), at(t1, -inner, top1), at(t0, -inner, top0), lit);
+        if !far {
+            solid.quad(at(t0, inner, top0), at(t0, edge, top0), at(t1, edge, top1), at(t1, inner, top1), shade(stone, 1.06));
+            solid.quad(at(t0, -edge, top0), at(t0, -inner, top0), at(t1, -inner, top1), at(t1, -edge, top1), shade(stone, 1.06));
+            upright(solid, at(t1, inner, d1), at(t0, inner, d0), at(t0, inner, top0), at(t1, inner, top1), shaded);
+            upright(solid, at(t0, -inner, d0), at(t1, -inner, d1), at(t1, -inner, top1), at(t0, -inner, top0), lit);
+        }
+        if near && (0.0..=1.0).contains(&t0) && (0.0..=1.0).contains(&t1) {
+            // the coping that oversails each parapet, and the string course at the roadway's height
+            let (lip, out) = (0.0009, edge + 0.0007);
+            let cope = shade(stone, 1.12);
+            solid.quad(at(t0, out, top0), at(t1, out, top1), at(t1, out, top1 + lip), at(t0, out, top0 + lip), shade(cope, 0.9));
+            solid.quad(at(t1, -out, top1), at(t0, -out, top0), at(t0, -out, top0 + lip), at(t1, -out, top1 + lip), shade(cope, 0.86));
+            solid.quad(at(t0, out, d0 - 0.0008), at(t1, out, d1 - 0.0008), at(t1, out, d1 + 0.0006), at(t0, out, d0 + 0.0006), shade(cope, 0.94));
+            solid.quad(at(t1, -out, d1 - 0.0008), at(t0, -out, d0 - 0.0008), at(t0, -out, d0 + 0.0006), at(t1, -out, d1 + 0.0006), shade(cope, 0.9));
+            solid.quad(at(t0, inner - 0.0006, top0 + lip), at(t0, out, top0 + lip), at(t1, out, top1 + lip), at(t1, inner - 0.0006, top1 + lip), cope);
+            solid.quad(at(t0, -out, top0 + lip), at(t0, -inner + 0.0006, top0 + lip), at(t1, -inner + 0.0006, top1 + lip), at(t1, -out, top1 + lip), cope);
+        }
         if arch {
             // the underside of the arch, in shadow
             solid.quad(at(t0, edge, low0), at(t0, -edge, low0), at(t1, -edge, low1), at(t1, edge, low1), under);
@@ -146,7 +168,7 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
     solid.quad(at(t1, edge, foot), at(t1, -edge, foot), at(t1, -edge, d1), at(t1, edge, d1), shade(stone, 0.9));
     // a cutwater on each face of every pier between two arches: a wedge of stone with a sloping top
     let nose = if b.main { 0.008 } else { 0.006 };
-    for a in 1..arches {
+    for a in 1..if far { 1 } else { arches } {
         let t = a as f32 * bay;
         let w = 0.085 * bay;
         let top = spring + 0.5 * rise(a).min(rise(a - 1));
@@ -176,9 +198,10 @@ fn upright(solid: &mut MeshBuf, low0: Vec3, low1: Vec3, high1: Vec3, high0: Vec3
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kit::Detail;
 
     fn bridge(half: f32, main: bool) -> RoadBridge {
-        RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.0, main }
+        RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.0, main, detail: Detail::Play }
     }
 
     fn build(half: f32, main: bool) -> MeshBuf {
@@ -283,15 +306,15 @@ mod tests {
         let pal = Palette::standard();
         let mut a = MeshBuf::default();
         let mut c = MeshBuf::default();
-        road_bridge(&mut a, &RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::X, half: 0.03, level: 0.1, main: false }, &|_, _| 0.12, &pal);
-        road_bridge(&mut c, &RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::Y, half: 0.03, level: 0.1, main: false }, &|_, _| 0.12, &pal);
+        road_bridge(&mut a, &RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::X, half: 0.03, level: 0.1, main: false, detail: Detail::Play }, &|_, _| 0.12, &pal);
+        road_bridge(&mut c, &RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::Y, half: 0.03, level: 0.1, main: false, detail: Detail::Play }, &|_, _| 0.12, &pal);
         let (la, ha) = a.bounds().unwrap();
         let (lc, hc) = c.bounds().unwrap();
         assert!(((ha.x - la.x) - (hc.z - lc.z)).abs() < 1e-5 && ((ha.z - la.z) - (hc.x - lc.x)).abs() < 1e-5);
         assert!((ha.y - hc.y).abs() < 1e-6 && la.y < 0.1 && ha.y > 0.13);
         // a higher bank lifts that end of the roadway, and the bridge climbs to it
         let mut high = MeshBuf::default();
-        road_bridge(&mut high, &RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::X, half: 0.03, level: 0.1, main: false }, &|x, _| if x > 3.0 { 0.2 } else { 0.12 }, &pal);
+        road_bridge(&mut high, &RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::X, half: 0.03, level: 0.1, main: false, detail: Detail::Play }, &|x, _| if x > 3.0 { 0.2 } else { 0.12 }, &pal);
         assert!(high.is_sound() && high.bounds().unwrap().1.y > ha.y + 0.05);
         let top_at = |x: f32| high.pos.iter().filter(|p| (p[0] - x).abs() < 1e-4).map(|p| p[1]).fold(f32::MIN, f32::max);
         assert!(top_at(3.0 - 0.0475) < 0.15 && top_at(3.0 + 0.0475) > 0.21);

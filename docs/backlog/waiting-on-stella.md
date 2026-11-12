@@ -50,3 +50,7 @@ Part of the [backlog](../BACKLOG.md). Things only she can settle, gathered on th
   - *Pausing at the two fastest speeds lands on the next January,* since at those speeds the year's end is asked for half a year ahead. At the three slower speeds it happens only in the last weeks of December.
   - *Word to the family given in the middle of a year takes effect after December,* before the books close. A seat moved in May gives the same game as one moved at the turn before; a branch's stance set in May is not in force until the year's end, where one set at a turn is in force for that year.
   - *The speeds' names* (Slow, Steady, Brisk, Fast, Fastest), *a game starting at Steady,* and *a game opening on "January 1751"* are the builder's choices.
+  - *How white the snow is.* The reviewer made it a colder white drawn brighter than its paint, because plain white under winter's low sun came out the cream of the walls (`winter.snow` and `winter.snow_bright` in `look.toml`; `winter-fixes-review/a/street-jan.png` against `final/street-jan.png`).
+  - *Whether a thaw has edges.* Patches of snow with an edge, as it is now, or a soft wash (`winter-fixes-review/b/street-thaw.png` against `d/street-thaw.png`).
+  - *White roofs among fields that only frost, and conifers that carry no snow* (`winter-fixes-review/final/works-jan.png`).
+  - *Stacked pig iron and rails carry no snow,* since iron plate is marked hot, and *a coal heap frosts to grey.*

@@ -96,7 +96,7 @@ pub struct Sheet {
     pub about: &'static str,
     pub land: Land,
     /// the rows of cells, top row first
-    pub build: fn(&Palette) -> Vec<Vec<Cell>>,
+    pub build: fn(&Palette, Detail) -> Vec<Vec<Cell>>,
 }
 
 /// Every sheet the lab knows. To add one, write its function and add a line here.
@@ -111,11 +111,11 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "house-backs", about: "What is behind a house: cottages, townhouses, a villa and terraces seen from their yards and gardens.", land: Land::Town, build: house_backs },
     Sheet { name: "house-levels", about: "The three levels a house is drawn at, as the camera's distance chooses: far, play and near across; a cottage, a townhouse, a villa, a terrace and a farmstead down the rows.", land: Land::Town, build: house_levels },
     Sheet { name: "roofs", about: "What a cottage is roofed with by when and where it was built (thatch, tile, stone slate, blue slate), and how it has weathered by the year it is seen: twelve seeds across.", land: Land::Town, build: roofs },
-    Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: as it stands in 1800, and in 1880. Every house in full, as the game draws them close to.", land: Land::Town, build: street },
-    Sheet { name: "street-play", about: "The same street with its houses at the level the game draws them from the distance it is played at: the play picture of this sheet is what the game shows.", land: Land::Town, build: street_play },
-    Sheet { name: "street-far", about: "The same street with its houses as the game draws them from far off: the far picture of this sheet is what the game shows.", land: Land::Town, build: street_far },
+    Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: as it stands in 1800, and in 1880. Each picture at the level the game draws from its distance.", land: Land::Town, build: street },
+    Sheet { name: "street-play", about: "The same street with its houses at the play level in every picture, to see that level close up.", land: Land::Town, build: street_play },
+    Sheet { name: "street-far", about: "The same street with its houses at the far level in every picture, to see that level close up.", land: Land::Town, build: street_far },
     Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up in 1780, and a big town fully in 1880.", land: Land::Town, build: market },
-    Sheet { name: "market-play", about: "The same market places with their houses at the level the game draws them from the distance it is played at.", land: Land::Town, build: market_play },
+    Sheet { name: "market-play", about: "The same market places at the play level in every picture, to see that level close up.", land: Land::Town, build: market_play },
     Sheet { name: "landmarks", about: "What marks a town out: its church in its churchyard (a small town's, with a spire, and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
     Sheet { name: "railway", about: "What stands by a railway: a town's station, the winding engine house at the head of an inclined plane (before 1850), the banking engine's shed at the foot of a steep bank (after), and the buffer stop at the end of a line; each beside a length of track.", land: Land::Pasture, build: railway },
     Sheet { name: "works-kinds", about: "Every kind of works at three times the standard size, built about 1820, side by side: to tell them apart by shape.", land: Land::Pasture, build: works_kinds },
@@ -148,6 +148,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "heath", about: "Two patches of heath, fifteen slots each: gorse and broom at about one slot in six (and a tree at one in thirty: none here).", land: Land::Heath, build: heath },
     Sheet { name: "fences", about: "A family's fence round a field, in four colours a family might have (the banners themselves are the interface's): timber rails stained toward the colour, and post caps painted in it.", land: Land::Pasture, build: fences },
     Sheet { name: "bridges", about: "A road bridge: a lane's and a main road's down the rows; wider rivers across (water drawn flat and matt here).", land: Land::Pasture, build: bridges },
+    Sheet { name: "scale", about: "One of every generator in the registry at each level of detail: far, play and near across. Under each: its triangles; its finest feature in thousandths of a unit; triangles to a bay of a storey of wall and to a bay by a bay of roof; its longest bare wall in bays.", land: Land::Pasture, build: scale },
 ];
 
 /// The sheet of this name, if there is one.
@@ -161,12 +162,12 @@ fn storeys(n: usize) -> String {
 
 // ------------------------------------------------------------------ houses
 
-fn cottages(pal: &Palette) -> Vec<Vec<Cell>> {
+fn cottages(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     grid(3, 10, |row, col| {
         // standing since before 1750 and seen in 1800: thatch and tile, part weathered; the oldest are framed
         let seed = Seed::of(col as u32);
         let built = roof::built_before(1750, seed);
-        let c = Cottage { era: Era::of(built), ..Cottage::new(PLOT.0, PLOT.1, row as u8 + 1, Roof::of(built, 1800, false, false, seed), seed) };
+        let c = Cottage { detail, era: Era::of(built), ..Cottage::new(PLOT.0, PLOT.1, row as u8 + 1, Roof::of(built, 1800, false, false, seed), seed) };
         Cell::new(format!("{}, {built}\nseed {col}", storeys(row + 1)), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
     })
 }
@@ -185,31 +186,31 @@ fn year_of(era: Era) -> i32 {
 const ERA_ROWS: [(Era, bool, &str); 6] =
     [(Era::Old, false, "before 1720"), (Era::Georgian, false, "1720 to 1815"), (Era::Brick, false, "1815 to 1860"), (Era::Late, false, "after 1860"), (Era::Georgian, true, "hills, to 1815"), (Era::Late, true, "hills, after 1860")];
 
-fn cottages_eras(pal: &Palette) -> Vec<Vec<Cell>> {
+fn cottages_eras(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     grid(ERA_ROWS.len(), 8, |row, col| {
         let (era, upland, name) = ERA_ROWS[row];
         let seed = Seed::of(60 + (row * 8 + col) as u32);
         let n = 1 + (col % 2) as u8;
-        let c = Cottage { era, upland, ..Cottage::new(PLOT.0, PLOT.1, n, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
+        let c = Cottage { detail, era, upland, ..Cottage::new(PLOT.0, PLOT.1, n, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
         Cell::new(format!("{name}\n{}", storeys(n as usize)), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
     })
 }
 
-fn townhouses(pal: &Palette) -> Vec<Vec<Cell>> {
+fn townhouses(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     grid(3, 10, |row, col| {
         // built in 1780 and seen in 1860
         let seed = Seed::of(col as u32);
-        let t = Townhouse::new(PLOT.0, PLOT.1, row as u8 + 2, Roof::of(1780, 1860, false, false, seed), seed);
+        let t = Townhouse { detail, ..Townhouse::new(PLOT.0, PLOT.1, row as u8 + 2, Roof::of(1780, 1860, false, false, seed), seed) };
         Cell::new(format!("{}\nseed {col}", storeys(row + 2)), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 
-fn townhouses_eras(pal: &Palette) -> Vec<Vec<Cell>> {
+fn townhouses_eras(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     grid(ERA_ROWS.len(), 8, |row, col| {
         let (era, upland, name) = ERA_ROWS[row];
         let seed = Seed::of(120 + (row * 8 + col) as u32);
         let shop = col % 2 == 1;
-        let t = Townhouse { era, upland, shop, ..Townhouse::new(PLOT.0, PLOT.1, 3, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
+        let t = Townhouse { detail, era, upland, shop, ..Townhouse::new(PLOT.0, PLOT.1, 3, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
         Cell::new(format!("{name}\n{}", if shop { "a shop" } else { "a house" }), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
@@ -219,35 +220,35 @@ fn row_of(houses: usize, n: u8, era: Era, upland: bool, seed: Seed) -> Terrace {
     Terrace { era, upland, ..Terrace::new(houses, Terrace::length_of(houses, BACK_PLOT_WIDTH), PLOT.1, n, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) }
 }
 
-fn terraces(pal: &Palette) -> Vec<Vec<Cell>> {
+fn terraces(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let rows = [(2, Era::Brick, false, "1840"), (3, Era::Brick, false, "1840"), (2, Era::Late, false, "1875"), (2, Era::Late, true, "the hills")];
     grid(4, 4, |row, col| {
         let (n, era, upland, name) = rows[row];
         let houses = col + 3;
         // a seed for each cell, so the sheet shows every brick and both roofs
         let seed = Seed::of((row * 4 + col) as u32);
-        let t = row_of(houses, n, era, upland, seed);
+        let t = Terrace { detail, ..row_of(houses, n, era, upland, seed) };
         Cell::new(format!("{houses} houses, {}\n{name}, seed {}", storeys(n as usize), row * 4 + col), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 
-fn terraces_slope(pal: &Palette) -> Vec<Vec<Cell>> {
+fn terraces_slope(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let falls = [(0.01, "nearly level"), (0.06, "a gentle hill"), (0.14, "a steep hill")];
     grid(3, 2, |row, col| {
         let (fall, name) = falls[row];
         let houses = [4, 6][col];
         let seed = Seed::of(30 + (row * 2 + col) as u32);
-        let t = row_of(houses, 2, Era::Brick, false, seed);
+        let t = Terrace { detail, ..row_of(houses, 2, Era::Brick, false, seed) };
         Cell::on_slope(format!("{houses} houses on {name}\nfalling {fall} to the unit"), 0.0, fall, t.length + 0.03, 0.09, *pal.ground.street_earth, |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 
-fn villas(pal: &Palette) -> Vec<Vec<Cell>> {
+fn villas(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let rows = [(Era::Georgian, false, "to 1815"), (Era::Brick, false, "1815 to 1860"), (Era::Late, false, "after 1860"), (Era::Late, true, "hills, after 1860")];
     grid(4, 6, |row, col| {
         let (era, upland, name) = rows[row];
         let seed = Seed::of(200 + (row * 6 + col) as u32);
-        let v = Villa { era, upland, ..Villa::new(PLOT.0, PLOT.1, Roof::of(year_of(era).max(1830), 1890, upland, true, seed), seed) };
+        let v = Villa { detail, era, upland, ..Villa::new(PLOT.0, PLOT.1, Roof::of(year_of(era).max(1830), 1890, upland, true, seed), seed) };
         Cell::new(format!("{name}\nseed {}", 200 + row * 6 + col), |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal))
     })
 }
@@ -270,7 +271,7 @@ fn one_of_each(detail: Detail, n: u32, pal: &Palette) -> [(&'static str, Model);
     out
 }
 
-fn house_levels(pal: &Palette) -> Vec<Vec<Cell>> {
+fn house_levels(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     let levels: Vec<[(&'static str, Model); 5]> = Detail::ALL.iter().map(|&d| one_of_each(d, 5, pal)).collect();
     (0..5)
         .map(|kind| {
@@ -286,7 +287,7 @@ fn house_levels(pal: &Palette) -> Vec<Vec<Cell>> {
         .collect()
 }
 
-fn house_backs(pal: &Palette) -> Vec<Vec<Cell>> {
+fn house_backs(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let back = std::f32::consts::PI;
     let mut rows: Vec<Vec<Cell>> = Vec::new();
     rows.push(
@@ -294,7 +295,7 @@ fn house_backs(pal: &Palette) -> Vec<Vec<Cell>> {
             .map(|col| {
                 let seed = Seed::of(col);
                 let built = roof::built_before(1750, seed);
-                let c = Cottage { era: Era::of(built), ..Cottage::new(PLOT.0, PLOT.1, 1 + (col % 2) as u8, Roof::of(built, 1800, false, false, seed), seed) };
+                let c = Cottage { detail, era: Era::of(built), ..Cottage::new(PLOT.0, PLOT.1, 1 + (col % 2) as u8, Roof::of(built, 1800, false, false, seed), seed) };
                 Cell::turned(format!("a cottage of {built}\nseed {col}"), back, |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
             })
             .collect(),
@@ -304,10 +305,10 @@ fn house_backs(pal: &Palette) -> Vec<Vec<Cell>> {
             .map(|col| {
                 let seed = Seed::of(col);
                 if col == 5 {
-                    let v = Villa { era: Era::Late, ..Villa::new(PLOT.0, PLOT.1, Roof::of(1875, 1890, false, true, seed), seed) };
+                    let v = Villa { detail, era: Era::Late, ..Villa::new(PLOT.0, PLOT.1, Roof::of(1875, 1890, false, true, seed), seed) };
                     return Cell::turned("a villa\nafter 1860", back, |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal));
                 }
-                let t = Townhouse { neighbours: (true, true), ..Townhouse::new(PLOT.0, PLOT.1, 2 + (col % 2) as u8, Roof::of(1780, 1860, false, false, seed), seed) };
+                let t = Townhouse { detail, neighbours: (true, true), ..Townhouse::new(PLOT.0, PLOT.1, 2 + (col % 2) as u8, Roof::of(1780, 1860, false, false, seed), seed) };
                 Cell::turned(format!("a townhouse\nseed {col}"), back, |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
             })
             .collect(),
@@ -317,7 +318,7 @@ fn house_backs(pal: &Palette) -> Vec<Vec<Cell>> {
             .into_iter()
             .enumerate()
             .map(|(i, (houses, n))| {
-                let t = row_of(houses, n, Era::Brick, false, Seed::of(i as u32 + 3));
+                let t = Terrace { detail, ..row_of(houses, n, Era::Brick, false, Seed::of(i as u32 + 3)) };
                 Cell::turned(format!("a terrace of {houses}\n{}", storeys(n as usize)), back, |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
             })
             .collect(),
@@ -326,7 +327,7 @@ fn house_backs(pal: &Palette) -> Vec<Vec<Cell>> {
 }
 
 /// What a house is roofed with by when and where it was built, and how the roof weathers.
-fn roofs(pal: &Palette) -> Vec<Vec<Cell>> {
+fn roofs(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     // (built, seen, in the hills, the railway had come)
     let rows = [
         (1740, 1750, false, false, "lowland, built 1740\nseen 1750"),
@@ -343,7 +344,7 @@ fn roofs(pal: &Palette) -> Vec<Vec<Cell>> {
                 .map(|col| {
                     // seeds of their own, so no column is all one covering; one storey, as a raised cottage loses its thatch
                     let seed = Seed::of(40 + col);
-                    let c = Cottage { era: Era::of(built), upland, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof::of(built, year, upland, by_rail, seed), seed) };
+                    let c = Cottage { detail, era: Era::of(built), upland, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof::of(built, year, upland, by_rail, seed), seed) };
                     Cell::new(if col == 0 { label.to_string() } else { format!("seed {}", 40 + col) }, |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
                 })
                 .collect()
@@ -361,15 +362,15 @@ fn street_at(detail: Detail, pal: &Palette) -> Vec<Vec<Cell>> {
         .collect()
 }
 
-fn street(pal: &Palette) -> Vec<Vec<Cell>> {
-    street_at(Detail::Near, pal)
+fn street(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    street_at(detail, pal)
 }
 
-fn street_play(pal: &Palette) -> Vec<Vec<Cell>> {
+fn street_play(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     street_at(Detail::Play, pal)
 }
 
-fn street_far(pal: &Palette) -> Vec<Vec<Cell>> {
+fn street_far(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     street_at(Detail::Far, pal)
 }
 
@@ -378,28 +379,28 @@ fn market_at(detail: Detail, pal: &Palette) -> Vec<Vec<Cell>> {
     vec![vec![cell(false, 0.5, 1780, "a small town in 1780, built up to 0.5"), cell(true, 1.0, 1880, "a big town in 1880, fully built up")]]
 }
 
-fn market(pal: &Palette) -> Vec<Vec<Cell>> {
-    market_at(Detail::Near, pal)
+fn market(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    market_at(detail, pal)
 }
 
-fn market_play(pal: &Palette) -> Vec<Vec<Cell>> {
+fn market_play(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     market_at(Detail::Play, pal)
 }
 
-fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {
+fn landmarks(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     // the churches are seen from the south, the tower and its gate to the left
     let church = |big: bool, spire: bool, label: &str| {
         let c = town::Church { big, spire, seed: Seed::of(big as u32 + 1) };
-        Cell::turned(label, -0.75, |m, site| town::church(&mut m.solid, site, &c, pal))
+        Cell::turned(label, -0.75, |m, site| town::church(&mut m.solid, site, &c, detail, pal))
     };
     vec![vec![
         church(false, false, "a small town's church"),
         church(false, true, "the same with a spire"),
         church(true, true, "a big town's church"),
-        Cell::new("station", |m, site| town::station(&mut m.solid, site, pal)),
-        Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, pal)),
-        Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, pal)),
-        Cell::new("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, pal)),
+        Cell::new("station", |m, site| town::station(&mut m.solid, site, detail, pal)),
+        Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, detail, pal)),
+        Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, detail, pal)),
+        Cell::new("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, detail, pal)),
     ]]
 }
 
@@ -410,25 +411,25 @@ fn track(m: &mut Model, site: &Site, pal: &Palette, half: f32, dz: f32) {
     m.flat.ribbon(&[a + Vec3::Y * 0.004, b + Vec3::Y * 0.004], 0.016, *pal.rail.rails);
 }
 
-fn railway(pal: &Palette) -> Vec<Vec<Cell>> {
+fn railway(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     use crate::rail;
     vec![vec![
         Cell::new("station", |m, site| {
-            town::station(&mut m.solid, site, pal);
+            town::station(&mut m.solid, site, detail, pal);
             track(m, site, pal, 0.1, 0.085);
         }),
         Cell::new("winding engine
 at an incline's head", |m, site| {
-            rail::winding_house(&mut m.solid, &mut m.smoke, site, pal);
+            rail::winding_house(&mut m.solid, &mut m.smoke, site, detail, pal);
             track(m, site, pal, 0.1, rail::WINDING_HOUSE.1 * 0.5 + rail::TRACK_CLEAR);
         }),
         Cell::new("banking engine's shed
 at a bank's foot", |m, site| {
-            rail::banker_shed(&mut m.solid, site, pal);
+            rail::banker_shed(&mut m.solid, site, detail, pal);
             track(m, site, pal, 0.1, rail::BANKER_SHED.1 * 0.5 + rail::TRACK_CLEAR);
         }),
         Cell::new("buffer stop", |m, site| {
-            rail::buffer_stop(&mut m.solid, site, pal);
+            rail::buffer_stop(&mut m.solid, site, detail, pal);
             let (a, b) = (site.at(0.0, 0.0) + Vec3::Y * 0.004, site.at(-0.1, 0.0) + Vec3::Y * 0.004);
             m.flat.ribbon(&[b, a], 0.04, *pal.rail.ballast);
             m.flat.ribbon(&[b + Vec3::Y * 0.004, a + Vec3::Y * 0.004], 0.016, *pal.rail.rails);
@@ -442,12 +443,13 @@ at a bank's foot", |m, site| {
 const SIZES: [f32; 6] = [0.4, 1.0, 3.0, 10.0, 30.0, 100.0];
 
 /// A works in a cell.
-fn works_cell(label: String, w: Works, pal: &Palette) -> Cell {
+fn works_cell(label: String, w: Works, detail: Detail, pal: &Palette) -> Cell {
+    let w = Works { detail, ..w };
     Cell::new(label, |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
 }
 
 /// One kind at every size: built early and by water, then built late and by rail.
-fn works_sizes(kind: Kind, pal: &Palette) -> Vec<Vec<Cell>> {
+fn works_sizes(kind: Kind, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     [(1760, true), (1870, false)]
         .into_iter()
         .map(|(founded, water)| {
@@ -456,155 +458,155 @@ fn works_sizes(kind: Kind, pal: &Palette) -> Vec<Vec<Cell>> {
                 .enumerate()
                 .map(|(i, &size)| {
                     let w = Works { founded, water, rail: !water, seed: Seed::of(kind as u32 * 16 + i as u32), ..Works::new(kind, size) };
-                    works_cell(format!("{}, {founded}\nsize {size}", kind.label()), w, pal)
+                    works_cell(format!("{}, {founded}\nsize {size}", kind.label()), w, detail, pal)
                 })
                 .collect()
         })
         .collect()
 }
 
-fn works_loom(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::HandLoom, pal)
+fn works_loom(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::HandLoom, pal, detail)
 }
 
-fn works_smithy(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Smithy, pal)
+fn works_smithy(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Smithy, pal, detail)
 }
 
-fn works_millwright(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Millwright, pal)
+fn works_millwright(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Millwright, pal, detail)
 }
 
-fn works_shops(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Shops, pal)
+fn works_shops(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Shops, pal, detail)
 }
 
-fn works_charcoal(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::CharcoalBurning, pal)
+fn works_charcoal(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CharcoalBurning, pal, detail)
 }
 
-fn works_bloomery(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Bloomery, pal)
+fn works_bloomery(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Bloomery, pal, detail)
 }
 
-fn works_charcoal_furnace(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::CharcoalFurnace, pal)
+fn works_charcoal_furnace(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CharcoalFurnace, pal, detail)
 }
 
-fn works_coke_furnace(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::CokeFurnace, pal)
+fn works_coke_furnace(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CokeFurnace, pal, detail)
 }
 
-fn works_forge(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::ForgeRails, pal)
+fn works_forge(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::ForgeRails, pal, detail)
 }
 
-fn works_rolling(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::RollingMill, pal)
+fn works_rolling(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::RollingMill, pal, detail)
 }
 
-fn works_rail_mill(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::SteelRolling, pal)
+fn works_rail_mill(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::SteelRolling, pal, detail)
 }
 
-fn works_crucible(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::CrucibleSteel, pal)
+fn works_crucible(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CrucibleSteel, pal, detail)
 }
 
-fn works_converter(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Bessemer, pal)
+fn works_converter(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Bessemer, pal, detail)
 }
 
-fn works_engine(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::EngineWorks, pal)
+fn works_engine(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::EngineWorks, pal, detail)
 }
 
-fn works_mill(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::TextileMill, pal)
+fn works_mill(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::TextileMill, pal, detail)
 }
 
-fn works_brick(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Brickworks, pal)
+fn works_brick(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Brickworks, pal, detail)
 }
 
-fn works_other(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_sizes(Kind::Other, pal)
+fn works_other(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Other, pal, detail)
 }
 
 /// Every kind at one size and one founding year, in rows of `across`.
-fn works_all(size: f32, founded: i32, across: usize, pal: &Palette) -> Vec<Vec<Cell>> {
+fn works_all(size: f32, founded: i32, across: usize, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     Kind::ALL
         .chunks(across)
         .enumerate()
-        .map(|(row, kinds)| kinds.iter().enumerate().map(|(col, &kind)| works_cell(kind.label().into(), Works { founded, seed: Seed::of((row * across + col) as u32), ..Works::new(kind, size) }, pal)).collect())
+        .map(|(row, kinds)| kinds.iter().enumerate().map(|(col, &kind)| works_cell(kind.label().into(), Works { founded, seed: Seed::of((row * across + col) as u32), ..Works::new(kind, size) }, detail, pal)).collect())
         .collect()
 }
 
-fn works_kinds(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_all(3.0, 1820, 6, pal)
+fn works_kinds(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_all(3.0, 1820, 6, pal, detail)
 }
 
-fn works_great(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_all(30.0, 1850, 3, pal)
+fn works_great(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_all(30.0, 1850, 3, pal, detail)
 }
 
 /// Every kind at one size, built early and then built late, in rows of nine.
-fn works_early_and_late(size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
+fn works_early_and_late(size: f32, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let mut rows = Vec::new();
     for founded in [1760, 1870] {
         for (row, kinds) in Kind::ALL.chunks(9).enumerate() {
-            rows.push(kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{founded}", kind.label()), Works { founded, seed: Seed::of((row * 9 + i) as u32), ..Works::new(kind, size) }, pal)).collect());
+            rows.push(kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{founded}", kind.label()), Works { founded, seed: Seed::of((row * 9 + i) as u32), ..Works::new(kind, size) }, detail, pal)).collect());
         }
     }
     rows
 }
 
-fn works_small(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_early_and_late(0.4, pal)
+fn works_small(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_early_and_late(0.4, pal, detail)
 }
 
-fn works_standard(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_early_and_late(1.0, pal)
+fn works_standard(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_early_and_late(1.0, pal, detail)
 }
 
 /// The states of a works down the rows, a kind in each column.
-fn works_in_states(kinds: &[Kind], size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
+fn works_in_states(kinds: &[Kind], size: f32, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     State::ALL
         .iter()
-        .map(|&state| kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{}", kind.label(), state.label()), Works { state, founded: 1840, seed: Seed::of(i as u32), ..Works::new(kind, size) }, pal)).collect())
+        .map(|&state| kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{}", kind.label(), state.label()), Works { state, founded: 1840, seed: Seed::of(i as u32), ..Works::new(kind, size) }, detail, pal)).collect())
         .collect()
 }
 
-fn works_states(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_in_states(&[Kind::Smithy, Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Brickworks, Kind::CrucibleSteel], 3.0, pal)
+fn works_states(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_in_states(&[Kind::Smithy, Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Brickworks, Kind::CrucibleSteel], 3.0, pal, detail)
 }
 
-fn works_states_great(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_in_states(&[Kind::TextileMill, Kind::CokeFurnace, Kind::EngineWorks], 30.0, pal)
+fn works_states_great(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_in_states(&[Kind::TextileMill, Kind::CokeFurnace, Kind::EngineWorks], 30.0, pal, detail)
 }
 
-fn pits(pal: &Palette) -> Vec<Vec<Cell>> {
+fn pits(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let kinds = [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")];
     grid(4, 3, |row, col| {
         let (kind, name) = kinds[row];
         let v = col as f32 * 0.5;
-        Cell::new(format!("{name}\nheap {v}"), |m, site| pit(&mut m.solid, site, &Pit { kind, v }, pal))
+        Cell::new(format!("{name}\nheap {v}"), |m, site| pit(&mut m.solid, site, &Pit { kind, v, detail }, pal))
     })
 }
 
 // ------------------------------------------------------------------ the country
 
-fn farmsteads(pal: &Palette) -> Vec<Vec<Cell>> {
+fn farmsteads(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let kinds = [(false, true, "lowland arable"), (false, false, "lowland pasture"), (true, true, "upland arable"), (true, false, "upland pasture")];
     grid(4, 6, |row, col| {
         let (upland, arable, name) = kinds[row];
-        let f = Farmstead { arable, upland, detail: Detail::Near, seed: Seed::of(col as u32) };
+        let f = Farmstead { arable, upland, detail, seed: Seed::of(col as u32) };
         // turned about, so the yard and the barn are on the camera's side of the house
         Cell::turned(format!("{name}\nseed {col}"), std::f32::consts::PI, |m, site| farmstead(&mut m.solid, &mut m.smoke, &mut m.green, site, &f, pal))
     })
 }
 
-fn trees(pal: &Palette) -> Vec<Vec<Cell>> {
+fn trees(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     let sizes = [0.6, 0.75, 0.9, 1.05, 1.25];
     let mut rows = Vec::new();
     for (species, name) in [(Species::Broadleaf, "broadleaf"), (Species::Conifer, "conifer")] {
@@ -628,7 +630,7 @@ fn trees(pal: &Palette) -> Vec<Vec<Cell>> {
     rows
 }
 
-fn woods(pal: &Palette) -> Vec<Vec<Cell>> {
+fn woods(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     [(Cover::LowlandWood, "a lowland wood"), (Cover::UplandWood, "an upland wood")]
         .into_iter()
         .enumerate()
@@ -636,12 +638,12 @@ fn woods(pal: &Palette) -> Vec<Vec<Cell>> {
         .collect()
 }
 
-fn heath(pal: &Palette) -> Vec<Vec<Cell>> {
+fn heath(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     // fifteen slots to a patch: two or three bushes, and a tree on one patch in two (neither of these)
     vec![[2, 7].into_iter().map(|id| Cell::new(format!("heath, patch {id}"), |m, site| scenes::cover(m, site, Cover::Heath, id, pal))).collect()]
 }
 
-fn fences(pal: &Palette) -> Vec<Vec<Cell>> {
+fn fences(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
     // stand-ins for the families' banners, which are the interface's colours and not in the palette
     let families = [(*pal.walls.lighthouse_red, "a red family's"), (*pal.vehicles.engine, "a green family's"), (*pal.slate.house, "a blue family's"), (*pal.marks.finial, "a gold family's")];
     vec![families
@@ -664,11 +666,37 @@ fn fences(pal: &Palette) -> Vec<Vec<Cell>> {
         .collect()]
 }
 
-fn bridges(pal: &Palette) -> Vec<Vec<Cell>> {
+/// One of every generator at each level, with what it measures against the scale.
+fn scale(pal: &Palette, _detail: Detail) -> Vec<Vec<Cell>> {
+    use crate::registry::{Class, REGISTRY};
+    REGISTRY
+        .iter()
+        .map(|e| {
+            Detail::ALL
+                .iter()
+                .map(|&d| {
+                    let s = (e.build)(d, pal).swap_remove(0);
+                    // what is built of it, or for a plant what is grown
+                    let mut b = s.model.solid.clone();
+                    if e.class == Class::Plant {
+                        for g in [&s.model.green.evergreen, &s.model.green.leaves, &s.model.green.bare] {
+                            b.merge(g);
+                        }
+                    }
+                    let m = crate::scale::measure(&b, &s.tally, pal);
+                    Cell { label: format!("{}, {}: {} triangles
+{}", e.name, d.label(), m.triangles, crate::scale::words(&m)), model: s.model }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn bridges(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let halves = [0.012, 0.025, 0.04, 0.06, 0.1];
     grid(2, 5, |row, col| {
         let (main, half) = (row == 1, halves[col]);
-        let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main };
+        let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main, detail };
         let label = format!("{}\nriver {} wide", if main { "main road" } else { "lane" }, half * 2.0);
         Cell::new(label, |m, _| {
             // the river under it and the road up to it, flat on the lab's level ground
@@ -692,7 +720,7 @@ mod tests {
     fn every_sheet_builds_and_every_cell_has_something_sound_in_it() {
         let pal = Palette::standard();
         for sheet in SHEETS {
-            let rows = (sheet.build)(&pal);
+            let rows = (sheet.build)(&pal, Detail::Near);
             assert!(!rows.is_empty(), "{} has no rows", sheet.name);
             for (r, row) in rows.iter().enumerate() {
                 assert!(!row.is_empty(), "{} row {r} is empty", sheet.name);
@@ -711,7 +739,7 @@ mod tests {
         // points meet, it has none, and is drawn unlit: a dark wedge on a pale thing
         let pal = Palette::standard();
         for sheet in SHEETS {
-            for cell in (sheet.build)(&pal).into_iter().flatten() {
+            for cell in (sheet.build)(&pal, Detail::Near).into_iter().flatten() {
                 let m = &cell.model;
                 for b in [&m.solid, &m.smoke, &m.green.evergreen, &m.green.leaves, &m.green.bare, &m.flat] {
                     for t in b.idx.chunks(3) {
@@ -726,12 +754,34 @@ mod tests {
     }
 
     #[test]
+    fn every_corner_of_what_is_built_carries_a_mark_for_winter() {
+        // (winter, task D) the alpha of a corner in `solid` and `flat` says what winter does
+        // there, and comes with the palette's token: a generator that mixed two colours by
+        // hand, or wrote an alpha of its own, would have something between the marks, and
+        // the viewer would frost a roof or freeze a wall
+        use crate::colour::settles::{FROST, ICE, NOTHING, SNOW};
+        let pal = Palette::standard();
+        // (at every level a building is drawn at, since each level builds its own corners)
+        for sheet in SHEETS {
+            for detail in Detail::ALL {
+                for cell in (sheet.build)(&pal, detail).into_iter().flatten() {
+                    for (name, b) in [("solid", &cell.model.solid), ("flat", &cell.model.flat)] {
+                        if let Some(c) = b.col.iter().find(|c| ![SNOW, FROST, ICE, NOTHING].contains(&c[3])) {
+                            panic!("{}: {} at {detail:?} has a corner in `{name}` whose alpha is {}, which is no mark for winter", sheet.name, cell.label, c[3]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_cell_fits_the_closest_view() {
         // the camera at its closest sees about 1.2 by 0.9 of a map cell; a cell
         // wider or deeper than that would be cut off in the close picture
         let pal = Palette::standard();
         for sheet in SHEETS {
-            for row in (sheet.build)(&pal) {
+            for row in (sheet.build)(&pal, Detail::Near) {
                 for cell in row {
                     let (lo, hi) = cell.model.bounds().unwrap();
                     assert!(hi.x - lo.x <= 1.15, "{}: {} is {} wide", sheet.name, cell.label, hi.x - lo.x);
@@ -755,11 +805,39 @@ mod tests {
         assert!(find("no such sheet").is_none());
     }
 
+    /// Prints a fingerprint of every cell of every sheet: run it before and after a change
+    /// that should leave some sheets as they were, and compare the lines
+    /// (`cargo test -p isostate-gen fingerprints -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn fingerprints() {
+        let pal = Palette::standard();
+        for sheet in SHEETS {
+            let mut h = 0xcbf2_9ce4_8422_2325u64;
+            let mut eat = |v: u32| {
+                for byte in v.to_le_bytes() {
+                    h = (h ^ byte as u64).wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            };
+            let mut tris = 0;
+            for cell in (sheet.build)(&pal, Detail::Near).into_iter().flatten() {
+                let m = &cell.model;
+                for b in [&m.solid, &m.smoke, &m.green.evergreen, &m.green.leaves, &m.green.bare, &m.flat] {
+                    tris += b.triangles();
+                    b.pos.iter().chain(&b.nrm).flatten().for_each(|v| eat(v.to_bits()));
+                    b.col.iter().flatten().for_each(|v| eat(v.to_bits()));
+                    b.idx.iter().for_each(|&i| eat(i));
+                }
+            }
+            println!("fingerprint {:<24} {h:016x} {tris} triangles", sheet.name);
+        }
+    }
+
     #[test]
     fn a_sheet_is_the_same_each_time_it_is_built() {
         let pal = Palette::standard();
         for sheet in SHEETS {
-            let (a, b) = ((sheet.build)(&pal), (sheet.build)(&pal));
+            let (a, b) = ((sheet.build)(&pal, Detail::Near), (sheet.build)(&pal, Detail::Near));
             assert!(a.iter().flatten().zip(b.iter().flatten()).all(|(x, y)| x.model == y.model && x.label == y.label), "{}", sheet.name);
         }
     }

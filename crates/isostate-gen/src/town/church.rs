@@ -2,6 +2,7 @@ use glam::{Vec2, Vec3};
 
 use crate::colour::{shade, Rgba};
 use crate::hash::{hash2, Seed};
+use crate::kit::{Detail, End, Kit, Open, Opening, Range, RoofSpec, Side, Wall};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::site::Site;
@@ -101,11 +102,19 @@ const YARD_SIDE: f32 = 0.022;
 /// The site is the middle of the churchyard. The church runs along the
 /// site's z with the tower and its door at the front (+z), where the gate
 /// is: a town stands it with its front to the market place.
-pub fn church(solid: &mut MeshBuf, site: &Site, c: &Church, pal: &Palette) {
+///
+/// Its walls, roofs and windows are the kit's, as a house's are. From far
+/// off it is the tower, the nave, the chancel and the aisles, the spire or
+/// the cap, on the yard's grass. At the distance the game is played from
+/// it has its lancets, its west door, the louvres of the belfry, the
+/// porch, the parapet and pinnacles, the yard's wall, the yews and the
+/// gravestones. Close to the windows are let into the stone with their
+/// mullions.
+pub fn church(solid: &mut MeshBuf, site: &Site, c: &Church, detail: Detail, pal: &Palette) {
     let k = c.scale();
     let yaw = site.yaw;
-    let along = yaw + std::f32::consts::FRAC_PI_2;
-    let (stone, lead, glass) = (*pal.stone.church, *pal.roofs.church_lead, *pal.glass.window);
+    let far = detail == Detail::Far;
+    let (stone, lead) = (*pal.stone.church, *pal.roofs.church_lead);
     let (yard_w, yard_d) = c.yard();
     // the church stands on a level floor at the height of the site's middle
     let floor = |dx: f32, dz: f32| {
@@ -126,108 +135,155 @@ pub fn church(solid: &mut MeshBuf, site: &Site, c: &Church, pal: &Palette) {
     let wall_stone = *pal.stone.churchyard_wall;
     let gate = 0.009;
     let (hw, hd) = (yard_w * 0.5, yard_d * 0.5);
-    let mut run = |from: (f32, f32), to: (f32, f32), parts: usize| {
-        for i in 0..parts {
-            let at = |t: f32| site.at(from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t);
-            wall(solid, at(i as f32 / parts as f32), at((i + 1) as f32 / parts as f32), 0.008, 0.0045, wall_stone);
+    if !far {
+        let mut run = |from: (f32, f32), to: (f32, f32), parts: usize| {
+            for i in 0..parts {
+                let at = |t: f32| site.at(from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t);
+                wall(solid, at(i as f32 / parts as f32), at((i + 1) as f32 / parts as f32), 0.008, 0.0045, wall_stone);
+            }
+        };
+        run((gate, hd), (hw, hd), 1);
+        run((hw, hd), (hw, -hd), nz);
+        run((hw, -hd), (-hw, -hd), nx);
+        run((-hw, -hd), (-hw, hd), nz);
+        run((-hw, hd), (-gate, hd), 1);
+        for side in [-1.0f32, 1.0] {
+            solid.block(site.at(side * gate, hd), 0.006, 0.006, 0.014, yaw, wall_stone, Some(shade(wall_stone, 1.06)), 0.012);
         }
-    };
-    run((gate, hd), (hw, hd), 1);
-    run((hw, hd), (hw, -hd), nz);
-    run((hw, -hd), (-hw, -hd), nx);
-    run((-hw, -hd), (-hw, hd), nz);
-    run((-hw, hd), (-gate, hd), 1);
-    for side in [-1.0f32, 1.0] {
-        solid.block(site.at(side * gate, hd), 0.006, 0.006, 0.014, yaw, wall_stone, Some(shade(wall_stone, 1.06)), 0.012);
+        // the path from the gate to the west door
+        let path = *pal.ground.market_paving;
+        let lift = Vec3::Y * 0.005;
+        solid.quad(site.at(-0.006, hd - YARD_FRONT - 0.001) + lift, site.at(-0.006, hd) + lift, site.at(0.006, hd) + lift, site.at(0.006, hd - YARD_FRONT - 0.001) + lift, path);
     }
-    // the path from the gate to the west door
-    let path = *pal.ground.market_paving;
-    let lift = Vec3::Y * 0.005;
-    solid.quad(site.at(-0.006, hd - YARD_FRONT - 0.001) + lift, site.at(-0.006, hd) + lift, site.at(0.006, hd) + lift, site.at(0.006, hd - YARD_FRONT - 0.001) + lift, path);
 
     // ---- the church: tower, nave and chancel in a line from the front to the back
     let tower_z = hd - YARD_FRONT - TOWER * k * 0.5;
     let nave_z = tower_z - (TOWER + NAVE_LENGTH) * k * 0.5;
     let chancel_z = nave_z - (NAVE_LENGTH + CHANCEL_LENGTH) * k * 0.5;
     let (nave_w, nave_len, nave_h, nave_rise) = (NAVE_WIDTH * k, NAVE_LENGTH * k, NAVE_WALL * k, NAVE_RISE * k);
-
-    // the nave, its ridge along the site's z
-    solid.block(floor(0.0, nave_z), nave_len, nave_w, nave_h, along, stone, None, 0.03);
-    solid.gable(floor(0.0, nave_z), nave_len, nave_w, nave_h, nave_rise, along, 0.003, lead, stone);
-    // the chancel: narrower and lower
-    let (ch_w, ch_len, ch_h) = (nave_w * 0.72, CHANCEL_LENGTH * k, nave_h * 0.78);
-    solid.block(floor(0.0, chancel_z), ch_len, ch_w, ch_h, along, stone, None, 0.03);
-    solid.gable(floor(0.0, chancel_z), ch_len, ch_w, ch_h, nave_rise * 0.72, along, 0.003, lead, stone);
-    // the east window: three lancets, the middle one the tallest
-    let east = chancel_z - ch_len * 0.5 - 0.0006;
-    for (x, top) in [(-0.29f32, 0.8), (0.0, 0.95), (0.29, 0.8)] {
-        pane(solid, site, ((x + 0.09) * ch_w, east), ((x - 0.09) * ch_w, east), ch_h * 0.34, ch_h * top, glass);
-    }
-
-    // a big town's church has a lean-to aisle either side, and the nave's windows are in its clerestory
     let aisle = AISLE_WIDTH * k;
     let outer = if c.big { nave_w * 0.5 + aisle } else { nave_w * 0.5 };
     let wall_h = if c.big { nave_h * 0.5 } else { nave_h };
-    if c.big {
-        for side in [-1.0f32, 1.0] {
-            let (x0, x1) = (side * nave_w * 0.5, side * outer);
-            let (z0, z1) = (nave_z - nave_len * 0.5, nave_z + nave_len * 0.5);
-            let at = |x: f32, y: f32, z: f32| floor(x, z) + Vec3::Y * y;
-            let (low, high) = (wall_h, nave_h * 0.74);
-            // the outer wall, the two ends and the roof up to the nave wall
-            face(solid, at(x1, -0.03, z0), at(x1, -0.03, z1), at(x1, low, z1), at(x1, low, z0), side, shade(stone, 0.96));
-            face(solid, at(x1, low, z0), at(x1, low, z1), at(x0, high, z1), at(x0, high, z0), side, lead);
-            for (z, turn) in [(z1, -side), (z0, side)] {
-                face(solid, at(x0, -0.03, z), at(x1, -0.03, z), at(x1, low, z), at(x0, high, z), turn, stone);
-            }
-        }
-    }
-    // tall windows down both sides, and a porch in place of one on the south side
     let bays = if c.big { 5 } else { 4 };
     let bay_z = |i: usize| nave_z - nave_len * 0.5 + nave_len * (i as f32 + 0.5) / bays as f32;
-    for side in [-1.0f32, 1.0] {
-        for i in 0..bays {
-            let z = bay_z(i);
-            let x = side * (outer + 0.0006);
-            if side > 0.0 && i == bays - 2 {
-                continue;
-            }
-            let (a, b) = if side > 0.0 { ((x, z + 0.003 * k), (x, z - 0.003 * k)) } else { ((x, z - 0.003 * k), (x, z + 0.003 * k)) };
-            pane(solid, site, a, b, wall_h * 0.3, wall_h * 0.88, glass);
-            if c.big {
-                // the clerestory, above the aisle roof
-                let x = side * (nave_w * 0.5 + 0.0006);
-                let (a, b) = if side > 0.0 { ((x, z + 0.003 * k), (x, z - 0.003 * k)) } else { ((x, z - 0.003 * k), (x, z + 0.003 * k)) };
-                pane(solid, site, a, b, nave_h * 0.8, nave_h * 0.96, glass);
-            }
-        }
-    }
-    let porch = floor(outer + 0.006 * k, bay_z(bays - 2));
-    solid.block(porch, 0.012 * k, 0.014 * k, 0.018 * k, yaw, stone, None, 0.03);
-    solid.gable(porch, 0.012 * k, 0.014 * k, 0.018 * k, 0.009 * k, yaw, 0.002, lead, stone);
-
-    // the tower, with its west door and window and a louvred opening for the bells on every side
     let (tw, th) = (TOWER * k, c.tower_height());
-    let tower = floor(0.0, tower_z);
-    solid.block(tower, tw, tw, th, yaw, stone, Some(lead), 0.03);
-    let front = tower_z + tw * 0.5 + 0.0006;
-    pane(solid, site, (-0.005 * k, front), (0.005 * k, front), 0.0, 0.02 * k, *pal.timber.door);
-    pane(solid, site, (-0.004 * k, front), (0.004 * k, front), 0.034 * k, 0.062 * k, glass);
-    let r = tw * 0.5 + 0.0006;
-    for (a, b) in [((-1.0f32, 1.0f32), (1.0f32, 1.0f32)), ((1.0, 1.0), (1.0, -1.0)), ((1.0, -1.0), (-1.0, -1.0)), ((-1.0, -1.0), (-1.0, 1.0))] {
-        // a pair of slim openings in the middle of each face
-        let (ax, az, bx, bz) = (a.0 * r, a.1 * r, b.0 * r, b.1 * r);
-        let along_face = |t: f32| (ax + (bx - ax) * t, tower_z + az + (bz - az) * t);
-        for t in [0.3, 0.56] {
-            pane(solid, site, along_face(t), along_face(t + 0.14), th - 0.032 * k, th - 0.01 * k, *pal.timber.belfry_louvre);
+    {
+        let mut kit = Kit::new(solid, site, pal, detail, 0.0);
+        let fabric = Wall { col: stone, plinth: None, frame: shade(stone, 1.08), sill: shade(stone, 1.04) };
+        // a lancet: a tall light under a pointed head, a mullion down it and a transom or two across
+        let lancet = |u: f32, y0: f32, y1: f32, w: f32| Opening { u, y: y0, w, h: y1 - y0, kind: Open::Paned { cols: 2, rows: (((y1 - y0) / 0.008).round() as u8).clamp(1, 6), round: true, lit: false } };
+        // where bay `i` is along the south (+x) and the north wall of the nave, as each is seen from outside
+        let south = |i: usize| nave_len * (bays as f32 - i as f32 - 0.5) / bays as f32;
+        let north = |i: usize| nave_len * (i as f32 + 0.5) / bays as f32;
+        let lw = 0.006 * k;
+
+        // the nave, its ridge along the site's z; its front end is the tower's
+        let nave = Range { cx: 0.0, cz: nave_z, len: nave_len, dep: nave_w, turn: 1 };
+        let (mut s_ops, mut n_ops) = (Vec::new(), Vec::new());
+        for i in 0..bays {
+            if c.big {
+                // the clerestory, above the aisle roofs
+                s_ops.push(lancet(south(i), nave_h * 0.8, nave_h * 0.96, lw));
+                n_ops.push(lancet(north(i), nave_h * 0.8, nave_h * 0.96, lw));
+            } else {
+                // tall windows down both sides, and the porch in place of one on the south side
+                if i != bays - 2 {
+                    s_ops.push(lancet(south(i), wall_h * 0.3, wall_h * 0.88, lw));
+                }
+                n_ops.push(lancet(north(i), wall_h * 0.3, wall_h * 0.88, lw));
+            }
         }
+        if c.big {
+            // (below the aisles' roofs the nave's side walls are within the aisles)
+            kit.walls(&nave, nave_h * 0.72, nave_h, &fabric, [Side::free(&s_ops), Side::NONE, Side::free(&n_ops), Side::NONE], false, true);
+            kit.walls(&nave, -kit.drop(&nave), nave_h, &fabric, [Side::NONE, Side::PLAIN, Side::NONE, Side::NONE], true, true);
+        } else {
+            kit.walls(&nave, -kit.drop(&nave), nave_h, &fabric, [Side::free(&s_ops), Side::PLAIN, Side::free(&n_ops), Side::NONE], true, true);
+        }
+        if !far {
+            // buttresses between the bays, against the outer walls
+            let pier = shade(stone, 0.93);
+            for (rg, side) in [(Range { cx: outer - 0.001, cz: nave_z, len: nave_len, dep: 0.002, turn: 1 }, 0usize), (Range { cx: -outer + 0.001, cz: nave_z, len: nave_len, dep: 0.002, turn: 1 }, 2)] {
+                for i in 0..=bays {
+                    let u = (nave_len * i as f32 / bays as f32).clamp(0.0014, nave_len - 0.0014);
+                    kit.strip(&rg, side, u - 0.0014, u + 0.0014, 0.0, wall_h * 0.8, 0.0012, pier);
+                }
+            }
+        }
+        kit.roof(&nave, &RoofSpec { h: nave_h, rise: nave_rise, eaves: 0.003, verge: 0.002, ends: [End::Gable, End::Party], col: lead, gable: stone, thick: 0.0012 });
+
+        // a big town's church has a lean-to aisle either side
+        if c.big {
+            let (low, high) = (wall_h, nave_h * 0.74);
+            for (turn, x, south_side) in [(1u8, nave_w * 0.5 + aisle * 0.5, true), (3, -(nave_w * 0.5 + aisle * 0.5), false)] {
+                let rg = Range { cx: x, cz: nave_z, len: nave_len, dep: aisle, turn };
+                let ops: Vec<Opening> = (0..bays).filter(|i| !(south_side && *i == bays - 2)).map(|i| lancet(if south_side { south(i) } else { north(i) }, low * 0.3, low * 0.88, lw)).collect();
+                kit.lean_to(&rg, low, high, &fabric, lead, 0.002, Side::free(&ops), [true, true]);
+            }
+        }
+
+        // the chancel: narrower and lower, the east window in its end: three lancets, the middle one the tallest
+        let (ch_w, ch_len, ch_h) = (nave_w * 0.72, CHANCEL_LENGTH * k, nave_h * 0.78);
+        let chancel = Range { cx: 0.0, cz: chancel_z, len: ch_len, dep: ch_w, turn: 1 };
+        let east: Vec<Opening> = [(-0.29f32, 0.8), (0.0, 0.95), (0.29, 0.8)].iter().map(|&(x, top)| lancet(ch_w * (0.5 - x), ch_h * 0.34, ch_h * top, 0.18 * ch_w)).collect();
+        // a light or two in each side of it
+        let lights = if ch_len > 0.03 { 2 } else { 1 };
+        let side: Vec<Opening> = (0..lights).map(|i| lancet(ch_len * (i as f32 + 0.5) / lights as f32, ch_h * 0.3, ch_h * 0.84, lw)).collect();
+        kit.walls(&chancel, -kit.drop(&chancel), ch_h, &fabric, [Side::free(&side), Side::free(&east), Side::free(&side), Side::NONE], true, true);
+        kit.roof(&chancel, &RoofSpec { h: ch_h, rise: nave_rise * 0.72, eaves: 0.003, verge: 0.002, ends: [End::Gable, End::Party], col: lead, gable: stone, thick: 0.0012 });
+
+        // the porch on the south side, its arch to the churchyard
+        if !far {
+            let (pl, pd, ph) = (0.012 * k, 0.014 * k, 0.018 * k);
+            let pz = bay_z(bays - 2);
+            let porch = Range::rect(outer, outer + pl, pz - pd * 0.5, pz + pd * 0.5);
+            let arch = [Opening { u: pd * 0.5, y: 0.0, w: 0.007 * k, h: 0.012 * k, kind: Open::Mouth { within: *pal.smoke.soot, round: true } }];
+            kit.walls(&porch, -kit.drop(&porch), ph, &fabric, [Side::PLAIN, Side::free(&arch), Side::PLAIN, Side::NONE], true, true);
+            kit.roof(&porch, &RoofSpec { h: ph, rise: 0.009 * k, eaves: 0.0016, verge: 0.0016, ends: [End::Gable, End::Party], col: lead, gable: stone, thick: 0.0012 });
+        }
+
+        // the tower, with its west door and window and a louvred opening for the bells on every side
+        let tower = Range::rect(-tw * 0.5, tw * 0.5, tower_z - tw * 0.5, tower_z + tw * 0.5);
+        let belfry = |ops: &mut Vec<Opening>| {
+            for t in [0.37, 0.63] {
+                ops.push(Opening { u: tw * t, y: th - 0.032 * k, w: tw * 0.14, h: 0.022 * k, kind: Open::Louvre });
+            }
+        };
+        let mut west = vec![
+            Opening { u: tw * 0.5, y: 0.0, w: 0.01 * k, h: 0.02 * k, kind: Open::Leaves { paint: *pal.timber.door, round: true } },
+            lancet(tw * 0.5, 0.034 * k, 0.062 * k, 0.008 * k),
+        ];
+        belfry(&mut west);
+        // the ringing chamber's light, half way up every face
+        let ringers = lancet(tw * 0.5, th * 0.46, th * 0.58, 0.0056 * k);
+        west.push(ringers);
+        let mut other = vec![ringers];
+        belfry(&mut other);
+        kit.walls(&tower, -kit.drop(&tower), th, &fabric, [Side::free(&west), Side::free(&other), Side::free(&other), Side::free(&other)], true, false);
+        if !far {
+            // the string courses between its stages, and the buttresses at its corners
+            let (course, pier) = (shade(stone, 1.05), shade(stone, 0.93));
+            for i in 0..4 {
+                for y in [0.0042, th * 0.38, th * 0.7, th - 0.0052 * k] {
+                    kit.strip(&tower, i, 0.0, tw, y - 0.0009, y + 0.0009, 0.0007, course);
+                }
+                for (u0, u1) in [(0.0, 0.0034 * k), (tw - 0.0034 * k, tw)] {
+                    kit.strip(&tower, i, u0, u1, 0.0, th * 0.7 - 0.0009, 0.0012, pier);
+                }
+            }
+        }
+        let (a, b) = (tw * 0.5, tower_z);
+        kit.quad([kit.pt(-a, th, b + a), kit.pt(a, th, b + a), kit.pt(a, th, b - a), kit.pt(-a, th, b - a)], lead, Vec3::Y);
     }
     // a parapet round the top
+    let tower = floor(0.0, tower_z);
     let top = tower + Vec3::Y * th;
-    let parapet = 0.006 * k;
-    for (dx, dz, w, d) in [(0.0, 1.0, tw, 0.004), (0.0, -1.0, tw, 0.004), (1.0, 0.0, 0.004, tw), (-1.0, 0.0, 0.004, tw)] {
-        let o = site.turn() * Vec3::new(dx * (tw * 0.5 - 0.002), 0.0, dz * (tw * 0.5 - 0.002));
-        solid.block(top + o, w, d, parapet, yaw, stone, Some(shade(stone, 1.04)), 0.0);
+    if !far {
+        let parapet = 0.006 * k;
+        for (dx, dz, w, d) in [(0.0, 1.0, tw, 0.004), (0.0, -1.0, tw, 0.004), (1.0, 0.0, 0.004, tw), (-1.0, 0.0, 0.004, tw)] {
+            let o = site.turn() * Vec3::new(dx * (tw * 0.5 - 0.002), 0.0, dz * (tw * 0.5 - 0.002));
+            solid.block(top + o, w, d, parapet, yaw, stone, Some(shade(stone, 1.04)), 0.0);
+        }
     }
     if c.spire {
         // an eight-sided spire, its flats square to the tower
@@ -235,10 +291,15 @@ pub fn church(solid: &mut MeshBuf, site: &Site, c: &Church, pal: &Palette) {
     } else {
         // a low cap, and a pinnacle at each corner
         cone(solid, top, tw * 0.6, 0.016 * k, 4, yaw + std::f32::consts::FRAC_PI_4, lead);
-        for (dx, dz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-            let o = site.turn() * Vec3::new(dx * (tw * 0.5 - 0.003), 0.0, dz * (tw * 0.5 - 0.003));
-            cone(solid, top + o, 0.0042 * k, 0.02 * k, 4, yaw + std::f32::consts::FRAC_PI_4, stone);
+        if !far {
+            for (dx, dz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
+                let o = site.turn() * Vec3::new(dx * (tw * 0.5 - 0.003), 0.0, dz * (tw * 0.5 - 0.003));
+                cone(solid, top + o, 0.0042 * k, 0.02 * k, 4, yaw + std::f32::consts::FRAC_PI_4, stone);
+            }
         }
+    }
+    if far {
+        return;
     }
 
     // ---- yews in the corners of the yard, and gravestones down the sides
@@ -278,27 +339,6 @@ fn wall(b: &mut MeshBuf, p0: Vec3, p1: Vec3, h: f32, t: f32, col: Rgba) {
     b.quad(p0 + n + up, p1 + n + up, p1 - n + up, p0 - n + up, shade(col, 1.06));
 }
 
-/// A flat four-sided face a-b-c-d, wound one way or the other by `side` so
-/// that the two sides of a church mirror each other.
-fn face(b: &mut MeshBuf, p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, side: f32, col: Rgba) {
-    if side > 0.0 {
-        b.quad(p1, p0, p3, p2, col);
-    } else {
-        b.quad(p0, p1, p2, p3, col);
-    }
-}
-
-/// An upright pane (a window, a door, a louvre) on a wall: from `a` to `b`
-/// in the site's own frame (x, z), left to right as seen from outside,
-/// between two heights above the floor.
-fn pane(b: &mut MeshBuf, site: &Site, a: (f32, f32), c: (f32, f32), y0: f32, y1: f32, col: Rgba) {
-    let at = |p: (f32, f32), y: f32| {
-        let q = site.at(p.0, p.1);
-        Vec3::new(q.x, site.origin.y + y, q.z)
-    };
-    b.quad(at(a, y0), at(c, y0), at(c, y1), at(a, y1), col);
-}
-
 /// A pyramid or spire of `seg` sides standing on `base`, turned by `turn`
 /// (a frustum's sides are fixed to the map; a tower's must follow the tower).
 fn cone(b: &mut MeshBuf, base: Vec3, r: f32, h: f32, seg: usize, turn: f32, col: Rgba) {
@@ -319,11 +359,11 @@ fn cone(b: &mut MeshBuf, base: Vec3, r: f32, h: f32, seg: usize, turn: f32, col:
 mod tests {
     use super::*;
     use crate::houses::PLOT;
-    use crate::parts::STOREY;
+    use crate::scale::STOREY;
 
     fn build(big: bool, spire: bool, n: u32) -> MeshBuf {
         let mut b = MeshBuf::default();
-        church(&mut b, &Site::level(Vec3::ZERO, 0.0), &Church { big, spire, seed: Seed::of(n) }, &Palette::standard());
+        church(&mut b, &Site::level(Vec3::ZERO, 0.0), &Church { big, spire, seed: Seed::of(n) }, Detail::Near, &Palette::standard());
         assert!(b.is_sound());
         b
     }

@@ -96,7 +96,8 @@ struct Job {
 
 #[derive(Resource)]
 struct Lab {
-    sheets: Vec<(&'static Sheet, Vec<Vec<Cell>>, Vec<Vec<Page>>)>,
+    /// each sheet with, for each of the three distances, its cells at the level the game draws from there and their pages
+    sheets: Vec<(&'static Sheet, Vec<Vec<Vec<Cell>>>, Vec<Vec<Page>>)>,
     jobs: Vec<Job>,
     index: usize,
     phase: Phase,
@@ -126,7 +127,9 @@ struct Kit {
     scene: Handle<Image>,
     picture: Handle<Image>,
     ui_camera: Entity,
-    solid: Handle<StandardMaterial>,
+    solid: Handle<crate::built::BuiltMaterial>,
+    /// what lies flat round a building: its yard, its lane, its pond
+    yards: Handle<crate::built::BuiltMaterial>,
     /// what is green all year, the leaves that turn, and the bare limbs of winter
     evergreen: Handle<StandardMaterial>,
     green: Handle<StandardMaterial>,
@@ -178,12 +181,16 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
     let mut sheets = Vec::new();
     let mut jobs = Vec::new();
     for (i, sheet) in chosen.into_iter().enumerate() {
-        let cells = cells_of(sheet, &look.palette, turn);
         // pictures of this sheet from an earlier run would be mistaken for this run's
         clear_pictures(&out, sheet.name);
         let mut by_shot = Vec::new();
+        let mut by_cells = Vec::new();
         for shot in Shot::ALL {
+            // the things as the game would draw them from this distance
+            let level = crate::scatter::Lod::of_camera((0.0, 0.0), shot.dist()).at(0.0, 0.0);
+            let cells = cells_of(sheet, &look.palette, turn, level);
             let pages = layout::pages(&cells, shot, args.size, args.loupe);
+            by_cells.push(cells);
             for (p, page) in pages.iter().enumerate() {
                 let name = if pages.len() > 1 && p > 0 { format!("{}-{}-{}.png", sheet.name, shot.name(), p + 1) } else { format!("{}-{}.png", sheet.name, shot.name()) };
                 if page.cut_off {
@@ -193,7 +200,7 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
             }
             by_shot.push(pages);
         }
-        sheets.push((sheet, cells, by_shot));
+        sheets.push((sheet, by_cells, by_shot));
     }
 
     let season = args.season.unwrap_or(HIGH_SUMMER).rem_euclid(1.0);
@@ -206,6 +213,8 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
         .insert_resource(Lab { sheets, jobs, index: 0, phase: Phase::Arrange, size: args.size, season, tilt: args.tilt, turn, out, started: std::time::Instant::now(), failed: 0 })
         .add_systems(Startup, setup)
         .add_systems(Update, step);
+    // (task D) the game's own material for what is built, so that `--season 0` shows a sheet under snow
+    crate::built::register(&mut app);
     let waiting = PipelinesWaiting::default();
     app.insert_resource(waiting.clone());
     if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
@@ -218,8 +227,8 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
 }
 
 /// A sheet's cells, each thing turned `turn` degrees about its own middle.
-pub(crate) fn cells_of(sheet: &Sheet, palette: &isostate_gen::Palette, turn: f32) -> Vec<Vec<Cell>> {
-    let mut cells = (sheet.build)(palette);
+pub(crate) fn cells_of(sheet: &Sheet, palette: &isostate_gen::Palette, turn: f32, detail: isostate_gen::houses::Detail) -> Vec<Vec<Cell>> {
+    let mut cells = (sheet.build)(palette, detail);
     for cell in cells.iter_mut().flatten() {
         cell.model.turn(turn.to_radians());
     }
@@ -254,7 +263,16 @@ fn pictures_of(dir: &Path, sheet: &str) -> Vec<(Shot, Vec<String>)> {
     out
 }
 
-fn setup(mut commands: Commands, look: Res<TheLook>, lab: Res<Lab>, mut images: ResMut<Assets<Image>>, mut materials: ResMut<Assets<StandardMaterial>>, mut fonts: ResMut<Assets<Font>>) {
+#[allow(clippy::too_many_arguments)]
+fn setup(
+    mut commands: Commands,
+    look: Res<TheLook>,
+    lab: Res<Lab>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut built: ResMut<Assets<crate::built::BuiltMaterial>>,
+    mut fonts: ResMut<Assets<Font>>,
+) {
     let lk: &Look = &look;
     commands.insert_resource(UiFont(fonts.add(Font::from_bytes(crate::FREDOKA.to_vec()))));
 
@@ -291,11 +309,14 @@ fn setup(mut commands: Commands, look: Res<TheLook>, lab: Res<Lab>, mut images: 
         scene,
         picture,
         ui_camera,
-        solid: crate::vertex_coloured(&mut materials, lk, lk.surfaces.buildings),
+        // (task D) what is built is drawn as the game draws it, in the sheet's season: under
+        // snow in winter, and its smoke a little fuller
+        solid: built.add(crate::built::material(lk, lab.season, lk.surfaces.buildings)),
+        yards: built.add(crate::built::material(lk, lab.season, lk.surfaces.paths)),
         evergreen: crate::vertex_coloured(&mut materials, lk, lk.surfaces.foliage),
         green: crate::vertex_coloured(&mut materials, lk, lk.surfaces.foliage),
         bare: materials.add(crate::bare_limb_material(lk)),
-        smoke: materials.add(crate::smoke_material(lk)),
+        smoke: materials.add(StandardMaterial { base_color: Color::WHITE.with_alpha(crate::built::smoke_fullness(lk, lab.season)), ..crate::smoke_material(lk) }),
         flat: crate::vertex_coloured(&mut materials, lk, lk.surfaces.paths),
         ground: materials.add(StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() }),
     });
@@ -365,9 +386,10 @@ fn step(
                 return;
             }
             let job = &lab.jobs[lab.index];
-            let (sheet, cells, by_shot) = &lab.sheets[job.sheet];
+            let (sheet, by_cells, by_shot) = &lab.sheets[job.sheet];
             let shot_index = Shot::ALL.iter().position(|s| *s == job.shot).unwrap_or(0);
             let page = &by_shot[shot_index][job.page];
+            let cells = &by_cells[shot_index];
             let view = page.view;
 
             // the season's light and leaves, and the ground's colour under this sheet
@@ -411,7 +433,13 @@ fn step(
             // the broadleaf trees as the season has them (a sheet's trees are all of the first group): in leaf, or bare
             let in_leaf = isostate_gen::trees::in_leaf(lab.season, 0);
             let (leaves, bare) = if in_leaf { (green.leaves, Builder::default()) } else { (Builder::default(), green.bare) };
-            for (b, mat, shadow) in [(solid, &kit.solid, true), (green.evergreen, &kit.evergreen, true), (leaves, &kit.green, true), (bare, &kit.bare, true), (smoke, &kit.smoke, false), (flat, &kit.flat, false)] {
+            if !solid.is_empty() {
+                commands.spawn((Mesh3d(meshes.add(meshkit::into_mesh(solid))), MeshMaterial3d(kit.solid.clone()), OfThePicture));
+            }
+            if !flat.is_empty() {
+                commands.spawn((Mesh3d(meshes.add(meshkit::into_mesh(flat))), MeshMaterial3d(kit.yards.clone()), bevy::light::NotShadowCaster, OfThePicture));
+            }
+            for (b, mat, shadow) in [(green.evergreen, &kit.evergreen, true), (leaves, &kit.green, true), (bare, &kit.bare, true), (smoke, &kit.smoke, false)] {
                 if b.is_empty() {
                     continue;
                 }
@@ -531,6 +559,9 @@ fn heading(sheet: &Sheet, job: &Job, view: &layout::View, season: f32, tilt: boo
     if tilt {
         how.push_str(" Tilt-shift on.");
     }
+    // what the game draws from this distance: the level its camera rule gives
+    let level = crate::scatter::Lod::of_camera((0.0, 0.0), job.shot.dist()).at(0.0, 0.0);
+    let _ = write!(how, " Drawn at the {} level, as the game draws from here.", level.label());
     (title, how)
 }
 

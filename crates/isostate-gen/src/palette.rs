@@ -269,6 +269,7 @@ pub struct Rail {
     pub bank_top: Colour,
     pub bank_grass: Colour,
     pub bank_grass_shade: Colour,
+    pub sea_wall: Colour,
     pub bank_scree: Colour,
     pub stone: Colour,
     pub viaduct_brick: Colour,
@@ -373,9 +374,122 @@ impl Palette {
                 mine.insert((*name).to_string(), t);
             }
         }
-        let palette: Palette = mine.try_into().map_err(|e| e.to_string())?;
+        let mut palette: Palette = mine.try_into().map_err(|e| e.to_string())?;
         palette.check()?;
+        palette.mark_for_winter();
         Ok(palette)
+    }
+
+    /// (Winter, task D.) Mark the tokens that winter does not simply lay snow
+    /// on (`colour::settles`): what is ground or grows on it takes frost,
+    /// standing water freezes, and nothing settles on a fire or the mouth of
+    /// a flue. Every other token is something snow lies on where it faces the
+    /// sky. The viewer's material for buildings reads the mark; a generator
+    /// has only to use each token for what it is named for.
+    fn mark_for_winter(&mut self) {
+        use crate::colour::settles::{FROST, ICE, NOTHING};
+        let mark = |list: &mut [&mut Colour], how: f32| list.iter_mut().for_each(|c| **c = c.settling(how));
+        // every token of the ground is named here, so that a new one cannot be left out
+        let Ground {
+            road_gravel,
+            lane_dust,
+            farm_lane,
+            street_earth,
+            market_paving,
+            farmyard,
+            farmyard_edge,
+            station_platform,
+            churchyard_grass,
+            spoil_coal,
+            spoil_ironstone,
+            spoil_stone,
+            spoil_clay,
+            charcoal_clamp,
+            charcoal_clamp_top,
+            yard_cinders,
+            yard_setts,
+            yard_earth,
+            shop_pavement,
+            charcoal_hearth,
+            yard_weeds,
+            clay_face,
+            clay_bottom,
+            slag,
+            furnace_bank,
+            garden,
+            garden_bed,
+            garden_path,
+            back_yard,
+        } = &mut self.ground;
+        mark(
+            &mut [
+                farm_lane,
+                street_earth,
+                market_paving,
+                farmyard,
+                farmyard_edge,
+                station_platform,
+                churchyard_grass,
+                spoil_coal,
+                spoil_ironstone,
+                spoil_stone,
+                spoil_clay,
+                yard_cinders,
+                yard_setts,
+                yard_earth,
+                shop_pavement,
+                charcoal_hearth,
+                yard_weeds,
+                clay_face,
+                clay_bottom,
+                slag,
+                furnace_bank,
+                garden,
+                garden_bed,
+                garden_path,
+                back_yard,
+            ],
+            FROST,
+        );
+        // what grows round a house, the wet bank of a river, and a railway's own ground
+        let (f, w) = (&mut self.foliage, &mut self.water);
+        mark(&mut [&mut f.hedge, &mut f.vegetables, &mut w.river_bank, &mut self.bridges.causeway], FROST);
+        // the railway's tokens are all named here too, as the ground's are: its banks (of
+        // grass, of scree on the fells, pitched with stone by the sea) take frost; its track
+        // is run over every day and keeps clear, with the rope of an inclined plane between
+        // the rails; and snow lies on what is built of stone, brick and iron along it
+        let Rail { ballast, rails, earthworks, bank_top, bank_grass, bank_grass_shade, sea_wall, bank_scree, stone: _, viaduct_brick: _, tunnel_mouth, girder: _, rope, buffer: _ } = &mut self.rail;
+        mark(&mut [bank_top, bank_grass, bank_grass_shade, sea_wall, bank_scree], FROST);
+        // a mill pond, a water butt
+        mark(&mut [&mut w.river], ICE);
+        // fires, and what is hot over one: a smouldering clamp, the top of a bank of coke ovens,
+        // the mouth of a flue and the top of a house's stack, the iron plate of a furnace's shell,
+        // a stove, a boiler or a converter (pig iron in the stack is drawn in the same plate, and
+        // goes without its snow for that); the dark of a tunnel or under an arch; and what is
+        // trodden and run over every day, the roads and the railway's track, which keep clear
+        // and so stay as easy to follow in winter as in summer
+        mark(
+            &mut [
+                road_gravel,
+                lane_dust,
+                ballast,
+                rails,
+                rope,
+                earthworks,
+                charcoal_clamp,
+                charcoal_clamp_top,
+                &mut self.roofs.coke_ovens,
+                &mut self.iron.glow,
+                &mut self.iron.plate,
+                &mut self.iron.converter,
+                &mut self.glass.lighthouse_lamp,
+                &mut self.smoke.soot,
+                &mut self.smoke.stack_top,
+                tunnel_mouth,
+                &mut self.bridges.arch_shadow,
+            ],
+            NOTHING,
+        );
     }
 
     /// What the types cannot say: a list of tints needs a tint in it.
@@ -408,6 +522,31 @@ mod tests {
         assert_eq!(pal.foliage.broadleaf.len(), 5);
         assert_eq!(pal.walls.town_house(0.0), *pal.walls.cream);
         assert_eq!(pal.walls.town_house(0.99), *pal.walls.cream);
+    }
+
+    #[test]
+    fn the_palette_says_what_winter_does_to_each_thing() {
+        use crate::colour::settles::{FROST, ICE, NOTHING, SNOW};
+        let pal = Palette::standard();
+        // snow lies on roofs, walls and goods
+        for c in [pal.roofs.tile_red, pal.slate.house, pal.thatch.cottage, pal.stone.yard_wall, pal.brick.red, pal.goods.coal, pal.timber.planks, pal.bridges.road_stone, pal.roofs.church_lead] {
+            assert_eq!(c[3], SNOW);
+        }
+        // the ground round a house, its garden and what grows in it take frost, as the land does
+        for c in [pal.ground.garden, pal.ground.garden_bed, pal.ground.back_yard, pal.ground.farm_lane, pal.ground.yard_cinders, pal.foliage.hedge, pal.foliage.vegetables, pal.rail.bank_grass, pal.rail.sea_wall] {
+            assert_eq!(c[3], FROST);
+        }
+        assert_eq!(pal.water.river[3], ICE);
+        // and nothing settles on a fire, a flue's mouth, a house's stack or hot iron
+        for c in [pal.iron.glow, pal.iron.plate, pal.smoke.soot, pal.smoke.stack_top, pal.roofs.coke_ovens, pal.ground.charcoal_clamp] {
+            assert_eq!(c[3], NOTHING);
+        }
+        // nor on a road or the railway's track, which are trodden clear
+        for c in [pal.ground.road_gravel, pal.ground.lane_dust, pal.rail.ballast, pal.rail.rails] {
+            assert_eq!(c[3], NOTHING);
+        }
+        // smoke is drawn thin by its alpha, which is not a mark
+        assert_eq!((pal.smoke.puff[3], pal.smoke.steam[3]), (1.0, 1.0));
     }
 
     #[test]
