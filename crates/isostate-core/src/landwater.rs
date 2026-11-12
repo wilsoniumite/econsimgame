@@ -147,6 +147,9 @@ fn carve_lakes(d: &Design, g: Grid, z: &mut [f64], rt: &Routing, sea: &[bool], r
     let node_km2 = dx * dx / 1e6;
     let z0 = z.to_vec();
     let mut cand: Vec<usize> = Vec::new();
+    // a site falls gently: under 2 in 100 over a node spacing, whichever way
+    // the step goes (unlike the slopes elsewhere, a diagonal step is not
+    // counted at its 707 m here; doing so re-draws every island's lakes)
     for &c in &rt.order {
         let c = c as usize;
         let a = rt.area[c] * node_km2;
