@@ -302,6 +302,10 @@ pub struct Opening {
     /// for a game begun some years in that is to be the island's own, and for
     /// checks of the saving itself, which name their own folder
     pub keep: bool,
+    /// a new game on the second island generator's land (`--new-land`), which
+    /// the game's rules do not switch on yet: a preview, kept only in a file
+    /// that is named
+    pub new_land: bool,
 }
 
 /// Where a game is kept as it is played.
@@ -323,7 +327,7 @@ impl Opening {
     /// one, is gone on with. Screenshots, and the switches that ask for a game
     /// of a certain shape or kept in a certain place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.new_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
@@ -355,6 +359,9 @@ impl Opening {
     }
 }
 
+/// What a game on the new land says when no file was named to keep it in.
+const NEW_LAND_NOT_KEPT: &str = "this game is on the new land, which is a preview the game's rules do not switch on yet: it is not kept, and the island's own saved game is left as it is (--save FILE keeps this game in a file of its own, and --load FILE --save FILE goes on with it there)";
+
 /// How long a game started by New game waits for the one that started it to
 /// close and let go of the place the game is kept in.
 const RESTART_PATIENCE: std::time::Duration = std::time::Duration::from_secs(15);
@@ -365,7 +372,18 @@ const RESTART_PATIENCE: std::time::Duration = std::time::Duration::from_secs(15)
 /// refused: the first copy's game is the one in the file, and a second
 /// writing there would put its own in that game's place. A trial that finds
 /// another copy keeping one is played without being kept, and says so.
-fn take_place(o: &Opening, seed: u64, families: usize) -> Result<(Option<Saver>, Option<String>), String> {
+///
+/// A game on the new land (`on_new_land`: started with `--new-land`, or gone
+/// on with from a save that says so) is a preview of land the game's rules do
+/// not switch on yet. It is never kept in the island's autosave or among its
+/// trials, where it would set aside or stand beside a game played on the old
+/// island under the same name: it is kept where `--save` names a file, and
+/// otherwise not at all, and says so.
+fn take_place(o: &Opening, seed: u64, families: usize, on_new_land: bool) -> Result<(Option<Saver>, Option<String>), String> {
+    if on_new_land && !matches!(o.keeping(), Keeping::Named(_) | Keeping::Nowhere) {
+        eprintln!("{}", NEW_LAND_NOT_KEPT);
+        return Ok((None, None));
+    }
     let claim = |path: std::path::PathBuf| if o.restarted { Saver::claim_within(path, RESTART_PATIENCE) } else { Saver::claim(path) };
     let second = |path: &std::path::Path| {
         format!(
@@ -589,7 +607,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     // the place the game is kept in is taken before a year is played, and before
     // the island's own save is read: a second copy does not get as far as either
     let (seed, families) = named.as_ref().map_or((o.seed, o.families), |(save, _)| (save.seed, save.families));
-    let (mut saver, cannot_save) = take_place(o, seed, families)?;
+    let on_new_land = o.new_land || named.as_ref().is_some_and(|(save, _)| save.land);
+    let (mut saver, cannot_save) = take_place(o, seed, families, on_new_land)?;
     let mut passed_over = 0;
     let from = match named {
         Some(found) => Some(found),
@@ -620,6 +639,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
                 save.year,
                 file.display()
             );
+            if save.land {
+                eprintln!("  it was begun on the new land, and is played again there");
+            }
             if !save.same_rules() {
                 eprintln!("  it was saved under other rules (version {}), so the years may play out differently", save.version);
             }
@@ -656,8 +678,10 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             loaded.game
         }
         None => {
-            eprintln!("making island {} with {}\u{2026}", o.seed, crate::families_words(o.families));
-            let mut game = Game::new(o.seed, o.families, saves::now());
+            eprintln!("making island {} with {}{}\u{2026}", o.seed, crate::families_words(o.families), if o.new_land { ", on the new land" } else { "" });
+            // the new land is switched off under the game's rules until the viewer can draw
+            // all of it (docs/rules/land.md): `--new-land` starts a game on it all the same
+            let mut game = if o.new_land { Game::on_new_land(iso::params::Rules::Game, o.seed, o.families, saves::now()) } else { Game::new(o.seed, o.families, saves::now()) };
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
             // month for month, and a save of it is one the game with books goes on with.
@@ -1073,6 +1097,8 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         uses: stat.uses.clone(),
         arrays: Vec::new(),
         series: Default::default(),
+        // (a recorded run's word of its land; a live game has the land itself, below)
+        land: None,
     };
     let series_len = ny * 12;
     Replay {
@@ -1115,6 +1141,8 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         res: Vec::new(),
         works: Vec::new(),
         workings: Vec::new(),
+        // the second island generator's land, in a game played on it (newland.rs)
+        land: stat.land.as_deref().map(|lf| std::sync::Arc::new(crate::newland::NewLand::from_core(lf, w, h))),
     }
 }
 

@@ -161,6 +161,10 @@ pub struct PatchworkParams {
     pub block_j0: i32,
     /// (task A) 1 in a run whose towns keep their ground (`Replay::kept`)
     pub town_kept: f32,
+    /// 1 on the new land, whose shore is the first third of a metre above the
+    /// tide stretched to a beach's height (`newland::units`): it is drawn far
+    /// steeper than it is, and is not turned to shingle for that
+    pub soft_shore: f32,
 }
 
 impl MaterialExtension for Patchwork {
@@ -250,7 +254,7 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::lo
 }
 
 pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> PatchworkParams {
-    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32 }
+    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32, soft_shore: g.laid.is_some() as u8 as f32 }
 }
 
 /// The year's land for every parcel, as the shader reads it: its class
