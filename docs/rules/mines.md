@@ -1051,6 +1051,74 @@ folder):
   at another date than the 1837 it did on the build the review used). With
   `commons.carry_debt=true` all sixteen islands run to 1900.
 
+## When a working hires more hands than its town has
+
+Measured on 12 November, before anyone mends it, because the mend changes
+the landlords' game and is a decision for the pass over all the rules.
+
+**How it happens.** Each month the labour market looks for a town's wage
+between half and twice last month's (and never above 500). When even twice
+last month's wage leaves more hands wanted than the town has for hire, the
+search stops at the top and every hand wanted at that wage is hired. So the
+town has more people at work than it has people, the wage has doubled, and
+next month it can double again. A working is where this bites, because its
+hands answer to the third or fourth power of its net price over the wage,
+and a new town at its pit head makes that price jump overnight.
+
+**How often, and how large.** `examples/overhire.rs` counts it, sixteen
+islands at a time, under the game's rules with six families (`cargo run -p
+isostate-core --release --example overhire -- [commons] 6 1 16`; the output
+is under `.claude/night/reports/opus/core-guards-b/`):
+
+| | under the landlords | under the commons |
+|---|---|---|
+| town-months, 1750 to 1900, sixteen islands | 400,704 | 462,792 |
+| the wage at the top of its month's range | 8 | 19 |
+| more at work than the town has people | 6 | 19 |
+| by a tenth or more / by half / twice | 3 / 0 / 0 | 11 / 7 / 6 |
+| hand-years at work beyond the people | 257 | 3,989 |
+| as a share of all hand-years at work | 6.4 in ten million | 8.8 in a million |
+| the worst town-month | Brambank, January 1751, 1.47 times its people | Brambank, January 1751, 4.31 times |
+| one working alone over its town | never | never |
+
+Almost all of it is one town on one island: Brambank, founded on island 3's
+coalfield at the end of 1750, whose collieries in January 1751 had 4,724 at
+work of 3,211 people of working age under the landlords and 14,286 under the
+commons (its largest single working 565 and 2,863 hands). Under the commons
+seed 9 adds a second case, the iron mines of Iveldelf in January 1879, 1.30
+times; the rest are a per cent or two over, for a month. No single working
+was ever larger than its town: it is the town's workings and works together
+that run past it.
+
+**What a mend would be.** Hiring limited to what the town can spare: when
+the wage is at the top of its range and more hands are still wanted than the
+town has for hire, every working and works in the town is given its share
+of the hands there are, in proportion to what it asked for. I tried exactly
+that in my worktree and did not commit it (about twenty lines in
+`econ::step_month`, after the clearing wage is found; the patch is
+`.claude/night/tmp/opus/core-guards-b/trial-ration.patch`). With it no town
+on the sixteen islands has more at work than its people in any month, under
+either regime.
+
+**What it would move.** Sixteen islands with six families, both regimes,
+against the same build without it (`trial-ration-f6` against
+`trial-before-f6`): none failed, and nothing moved clear of the spread
+between islands. But nearly everything moved a little: 436 of 446 facts under
+the landlords and 438 of 447 under the commons, on every island, including
+the eleven whose wage never reached its limit in the recorded years. So the
+mend acts in the ten years of warm-up too, when the first prices are
+guesses, and every run after it is another run. Under the landlords people
+in 1900 are 725,425 against 725,684 (7/9), the real wage of 1900 2.64 times
+1750's against 2.61 (10/6), the worst year for the real wage -0.146 against
+-0.153 (10/6), the railway 2,199 km against 2,254 (7/9). Under the commons
+people in 1900 are 824,721 against 829,900 (6/10), the real wage 2.39
+against 2.43 (7/9), the worst year -0.196 against -0.182 (7/9), towns in
+1900 20.1 against 22.1 (5/10), and years of famine 0.5 against 0.3 (5/2). The
+wage itself would still double in Brambank's bad months, since the search
+still stops at the top of its range; only the hands that do not exist are
+gone. A fuller mend would also let the wage rise further in a month when the
+town is short of hands, which moves more.
+
 ## What worries me
 
 - **Bad years.** Earlier builds of this mechanism had years in which a
@@ -1089,7 +1157,9 @@ folder):
   not real, and the households of the new town are paid millions for them.
   A mine that could hire no more than its town has to spare would mend it
   at the root. That changes the labour market for everyone, the landlords'
-  game included, so it was not done here.
+  game included, so it was not done here; how often it happens and what
+  the mend would move are measured above ("When a working hires more hands
+  than its town has").
 - **The fund's rule hung on the mines' switch.** It has its own now
   (above, "On a switch of its own"), so the machines alone over the port
   run on island 3 when it is put in beside them, and a sweep of the mines
