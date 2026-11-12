@@ -442,6 +442,10 @@ pub struct Land {
     /// `pick_class` reads
     pub wcell: Vec<u32>,
     pub sub: Vec<f32>,
+    /// On the new land: the parcel is dry shore in a cell the record calls
+    /// water, and `wcell` is the land cell nearest it, whose open land it is
+    /// drawn as (`build_land`). Empty on the old island.
+    pub shore: Vec<bool>,
     /// the four cells round its warped point and their weights, for the
     /// district's mix of open land there
     pub blend: Vec<[(u32, f32); 4]>,
@@ -535,8 +539,9 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
     // On the new land the coast and the lakes are where the heights put them, so a cell the
     // record calls water (most of it is) can hold dry ground: a lake's shore, the land behind
     // a tideway. A parcel with dry ground whose own cell is water is given the nearest land
-    // cell within two cells for its own, and so takes that cell's classes; else it would be
-    // painted as the sea's beach. On the old island no parcel's cell is ever changed.
+    // cell within two cells for its own, and so takes that cell's open land (`year_land`);
+    // else it would be painted as the sea's beach. On the old island no parcel's cell is
+    // ever changed.
     let land_cell_near = |wx: f32, wy: f32, c: usize| -> usize {
         if f.laid.is_none() || r.terrain[c] != 0 {
             return c;
@@ -787,6 +792,17 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
         bh,
         at: ones.iter().map(|o| o.at).collect(),
         area: ones.iter().map(|o| o.area).collect(),
+        // (the cell a parcel's warped point falls in is water, and the cell it was given is land)
+        shore: if f.laid.is_some() {
+            ones.iter()
+                .map(|o| {
+                    let (wx, wy) = warp_raw(o.at.x, o.at.y);
+                    r.terrain[cell_of(wx, wy)] == 0 && r.terrain[o.wcell as usize] != 0
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
         wcell: ones.iter().map(|o| o.wcell).collect(),
         sub: ones.iter().map(|o| o.sub).collect(),
         blend: ones.iter().map(|o| o.blend).collect(),
@@ -881,6 +897,9 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
             continue;
         }
         let first = pick_class(r, k, c, l.sub[i]);
+        // (the dry shore of a cell of water is drawn as the open land of the land cell beside
+        // it: that cell's town, works and diggings are its own ground and stay on it)
+        let first = if !(FARM..=HEATH).contains(&first) && l.shore.get(i).is_some_and(|&s| s) { PASTURE } else { first };
         under[i] = first;
         if !(FARM..=HEATH).contains(&first) {
             class[i] = first;

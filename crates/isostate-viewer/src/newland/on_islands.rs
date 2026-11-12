@@ -412,6 +412,25 @@ fn the_dry_shore_of_a_cell_of_water_takes_the_land_s_classes() {
         eprintln!("island {}: {shore} parcels of dry shore in cells of water take a land cell's classes; {bare} dry parcels ({:.2}% of the dry land) have no land cell within two cells and are left as the sea's", isl.seed, 100.0 * bare_area / dry_area);
         assert!(shore > 300, "island {}: {shore} parcels of dry shore", isl.seed);
         assert!(bare_area < 0.002 * dry_area, "island {}: {:.2}% of the dry land is painted as the sea's", isl.seed, 100.0 * bare_area / dry_area);
+        // It is the open land of the cell beside it that the shore takes, never its town or its
+        // works: with every land cell built over, the shore is grass and the town stays on its cells.
+        let mut built = r.clone();
+        for c in (0..r.n).filter(|&c| r.terrain[c] > 0) {
+            (built.mix_a[c], built.mix_b[c], built.mix_s[c]) = (world::URBAN, world::WORKS, 128);
+        }
+        let land = world::year_land(&built, g, 0);
+        assert_eq!(g.land.shore.len(), g.land.at.len());
+        let (mut grass, mut town) = (0usize, 0usize);
+        for i in (0..g.land.at.len()).filter(|&i| g.land.area[i] > 0.0) {
+            if g.land.shore[i] {
+                assert_eq!(land.class[i], PASTURE, "island {}: the shore parcel {i} is of class {}", isl.seed, land.class[i]);
+                grass += 1;
+            } else {
+                assert!(land.class[i] == world::URBAN || land.class[i] == world::WORKS, "island {}: the land parcel {i} is of class {}", isl.seed, land.class[i]);
+                town += 1;
+            }
+        }
+        assert!(grass > 300 && town > 50 * grass, "island {}: {grass} parcels of shore and {town} of land", isl.seed);
     }
 }
 
