@@ -165,6 +165,22 @@ pub fn candidate_cells(st: &State, C: &Content, P: &Params, i: usize, m: usize, 
     chosen.into_iter().collect()
 }
 
+/// The year the works' table filled, if it did. A place in it is never given back,
+/// so from then on nobody can found a works: `create_firm` and the checks before it
+/// refuse without a word, and the run says so instead (a fact, `works_table_full`;
+/// a line in the sweep's summary and at the end of `isostate-core run`).
+pub fn table_full(st: &State) -> Option<i64> {
+    (st.F_count > 0 && st.F_count >= st.f_alive.len()).then(|| st.f_born[st.F_count - 1])
+}
+
+/// What a run says when its works' table of `places` filled in `year`.
+pub fn table_full_message(year: i64, places: usize) -> String {
+    format!(
+        "the works' table was full in {year}: all {} of its places were taken, and no works could be founded after",
+        crate::util::fmt_thousands(places as i64)
+    )
+}
+
 /// Open firm slot `F_count` and order its capacity. Returns the firm id, or None when the table is full.
 #[allow(clippy::too_many_arguments)]
 pub fn create_firm(

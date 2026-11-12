@@ -582,6 +582,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("works_closed_median_life".into(), Kind::Real, quantile(&life, 0.5));
     let util: Vec<f64> = alive.iter().filter(|&&f| st.f_K[f] > 0.0).map(|&f| st.f_u[f]).collect();
     b.num(format!("works_utilisation_{y1}"), Kind::Share, mean(&util));
+    // a full table founds nothing more, and says so: a fact only when it filled
+    if let Some(y) = crate::firms::table_full(st) {
+        b.year("works_table_full".into(), Some(y));
+    }
     // by their place in the run (R7)
     for name in ["works", "works_ex_services", "works_per_1000_people", "works_size_median", "works_size_p90", "works_size_largest"] {
         b.again(&format!("{name}_{y1}"), &format!("{name}_last"));
