@@ -226,6 +226,47 @@ fn quantile(sorted: &[f64], q: f64) -> f64 {
     sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo as f64)
 }
 
+/// How many years before a year's own harvest still count as its weather in
+/// `farm_zigzag_beyond_weather`. The harvest page finds the farm hands answering a
+/// short crop for two to four years after it, each echo about half the last.
+pub const WEATHER_LAGS: usize = 4;
+
+/// Least squares with a constant: the coefficients `[constant, x0, x1, ...]` that
+/// fit `y` best from the rows of `x`. None when the columns do not tell the
+/// coefficients apart (a harvest the same every year).
+fn least_squares(x: &[Vec<f64>], y: &[f64]) -> Option<Vec<f64>> {
+    let p = x.first()?.len() + 1;
+    if x.len() < p {
+        return None;
+    }
+    // the normal equations, then elimination with the largest pivot
+    let mut a = vec![vec![0.0; p + 1]; p];
+    for (row, &target) in x.iter().zip(y) {
+        let full: Vec<f64> = std::iter::once(1.0).chain(row.iter().copied()).collect();
+        for i in 0..p {
+            for j in 0..p {
+                a[i][j] += full[i] * full[j];
+            }
+            a[i][p] += full[i] * target;
+        }
+    }
+    let scale = (0..p).map(|i| a[i][i].abs()).fold(0.0, f64::max);
+    for c in 0..p {
+        let pivot = (c..p).max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))?;
+        if a[pivot][c].abs() <= 1e-12 * scale {
+            return None;
+        }
+        a.swap(c, pivot);
+        for i in (0..p).filter(|&i| i != c) {
+            let f = a[i][c] / a[c][c];
+            for j in c..=p {
+                a[i][j] -= f * a[c][j];
+            }
+        }
+    }
+    Some((0..p).map(|i| a[i][p] / a[i][i]).collect())
+}
+
 fn mean(v: &[f64]) -> f64 {
     if v.is_empty() { f64::NAN } else { v.iter().sum::<f64>() / v.len() as f64 }
 }
@@ -639,6 +680,39 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let farm = series("ag_share");
     let zig: Vec<f64> = farm.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).filter(|v| v.is_finite()).collect();
     b.num("farm_zigzag".into(), Kind::Real, 100.0 * mean(&zig));
+    // harvest (C126): with the weather on, the zigzag is mostly the weather's, and no
+    // longer tells the false cycle the prices page cured from good years and bad. Here the
+    // year's second difference of the farm share is set against the log of the country's
+    // harvest in that year and the WEATHER_LAGS before it (least squares, with a
+    // constant), and what the harvests do not account for is measured as the zigzag
+    // is: farm_zigzag_beyond_weather. With no harvests there is nothing to take out, and
+    // it is the zigzag itself. farm_zigzag_weather_share is the share of the zigzag's
+    // variance the harvests account for.
+    let h: Vec<f64> = r.rec.harvest.iter().map(|&v| (v as f64).ln()).collect();
+    let (beyond, weather) = if h.len() == farm.len() && h.len() > 2 * (WEATHER_LAGS + 3) {
+        let (mut x, mut y) = (Vec::new(), Vec::new());
+        for k in WEATHER_LAGS.max(2)..farm.len() {
+            let d2 = farm[k] - 2.0 * farm[k - 1] + farm[k - 2];
+            if d2.is_finite() {
+                x.push((0..=WEATHER_LAGS).map(|lag| h[k - lag]).collect::<Vec<f64>>());
+                y.push(d2);
+            }
+        }
+        match least_squares(&x, &y) {
+            Some(fit) => {
+                let resid: Vec<f64> = x.iter().zip(&y).map(|(row, d)| d - fit[0] - row.iter().zip(&fit[1..]).map(|(a, c)| a * c).sum::<f64>()).collect();
+                let my = mean(&y);
+                let total: f64 = y.iter().map(|d| (d - my) * (d - my)).sum();
+                let left: f64 = resid.iter().map(|e| e * e).sum();
+                (100.0 * mean(&resid.iter().map(|e| e.abs()).collect::<Vec<_>>()), if total > 0.0 { 1.0 - left / total } else { f64::NAN })
+            }
+            None => (f64::NAN, f64::NAN),
+        }
+    } else {
+        (100.0 * mean(&zig), f64::NAN)
+    };
+    b.num("farm_zigzag_beyond_weather".into(), Kind::Real, beyond);
+    b.num("farm_zigzag_weather_share".into(), Kind::Share, weather);
     // harvest: how grain moves from year to year, and what the worst years do.
     // Yearly changes of the log, from PRICE_FROM as above. A lag-one correlation
     // near -0.5 is what independent yearly shocks to a level give; near zero or
@@ -733,5 +807,20 @@ mod tests {
         assert_eq!(span_mean(&v, 1750, 1751, 1753), 3.0);
         assert_eq!(span_mean(&v, 1750, 1750, 1754), 3.0);
         assert!(span_mean(&v, 1750, 1752, 1752).is_nan());
+    }
+
+    #[test]
+    fn least_squares_finds_a_line_it_was_given() {
+        // y = 0.5 + 2 x0 - 3 x1, exactly
+        let x: Vec<Vec<f64>> = (0..12).map(|k| vec![k as f64, ((k * 7) % 5) as f64]).collect();
+        let y: Vec<f64> = x.iter().map(|r| 0.5 + 2.0 * r[0] - 3.0 * r[1]).collect();
+        let fit = least_squares(&x, &y).unwrap();
+        for (got, want) in fit.iter().zip([0.5, 2.0, -3.0]) {
+            assert!((got - want).abs() < 1e-9, "{fit:?}");
+        }
+        // a column that never changes cannot be told from the constant
+        let flat: Vec<Vec<f64>> = (0..12).map(|k| vec![k as f64, 1.0]).collect();
+        assert!(least_squares(&flat, &y).is_none());
+        assert!(least_squares(&x[..2], &y[..2]).is_none(), "fewer rows than coefficients");
     }
 }
