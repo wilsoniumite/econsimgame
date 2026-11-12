@@ -53,8 +53,7 @@ year-on-year change of the series' logarithm over 1800 to 1899.
 How big a movement is, is said against the spread between islands: *d* is the change in the
 mean over the standard deviation of the fact across islands (that of the baseline and that of
 the setting, pooled), so a *d* of 1 is a movement as large as the difference between one island
-and the next. Beside it, the islands on which the fact rose
-and fell.
+and the next. Beside it, the islands on which the fact rose and fell.
 
 **What chance gives.** The model is chaotic in its details: move any number by a millionth and
 each island goes down another path. Two such placebos were run on all sixteen islands
@@ -71,9 +70,9 @@ late towns (5.1 a run) than most of the sweeps beside it (3 to 4.5 for most of t
 placebos included, so at first nearly every setting seemed to found fewer. The readings below
 are therefore against the mean, island by island, of the three runs at the game's own values
 (the baseline and the two placebos), with the spread between islands taken from the baseline
-(pooled with the setting's, as above). That alone took away one apparent gain (a cell limit of 1.0 seemed to raise goods per
-head in 1900 by 3.7 per cent on seven islands of eight; against the three runs it is 1.5 per
-cent on five).
+(pooled with the setting's, as above). That alone took away one apparent gain (a cell limit of
+1.0 seemed to raise goods per head in 1900 by 3.7 per cent on seven islands of eight; against
+the three runs it is 1.5 per cent on five).
 
 In the tables, "of 8" is how many of seeds 1 to 8 moved the way the mean did and "of 16" the
 same over all sixteen; where a row has two values tried the counts are for each in turn. The
@@ -178,14 +177,14 @@ trades cannot keep up with the people (0.1).
    0.1125) and calms the century after (a seventh off the real wage's yearly swing, a fifth off
    timber's and the cost of living's, an eighth fewer closures); a larger room the reverse. The
    level of the real wage, goods and baskets per head does not move at either end: the real wage
-   of 1880-99 is within 2 per cent of the game's at 0.1125 and at 0.2. works.md's sweep in company
+   of 1880-99 is within 2 per cent of the game's at 0.1125 and at 0.2 (+1.3 and -1.9). works.md's sweep in company
    (eight islands, 0.10 to 0.30) found 0.15 best for the wage of 1900, a tenth above 0.2; on
    sixteen islands, against three runs at 0.15, that does not show. So the choice is one of
    pacing and of how rough the ride is, not of how rich the island ends, and works.md's reason
    for 0.15 ("the steadier place") is the one that holds. What it does move besides is the split
    of the late century's income: at 0.1125 the works take 10.2 per cent of it for 8.7, on every
-   island of sixteen, and at 0.2 8.1 per cent. Two more things it moves that nobody had tied to it: the
-   steel rail (an eighth of rails in 1890 at 0.1125, almost none at 0.2: dearer iron makes steel
+   island of sixteen, and at 0.2 8.1 per cent. Two more things it moves that nobody had tied to
+   it: the steel rail (an eighth of rails in 1890 at 0.1125, almost none at 0.2: dearer iron makes steel
    worth rolling, which bears on R58), and the money level of the late century (the money wage
    and the cost of living both a sixth lower at 0.1125; not traced).
 2. **`carting.labor`**, the dial for the first fifty years. The first quarter off the share takes
