@@ -1029,6 +1029,7 @@ mod tests {
             res: if kept { vec![0; ny * n] } else { Vec::new() },
             works: if kept { vec![0; ny * n] } else { Vec::new() },
             workings: Vec::new(),
+            land: None,
         };
         for k in 0..ny {
             for c in (0..n).filter(|&c| land(c)) {

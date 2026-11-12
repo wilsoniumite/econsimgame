@@ -529,6 +529,7 @@ mod tests {
             seat: "Ashby".into(),
             worth: 0,
             check: String::new(),
+            land: false,
             orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 1 } }],
             waiting: Vec::new(),
         }

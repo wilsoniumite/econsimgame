@@ -1,6 +1,6 @@
 # dx-land-view: what it takes for the viewer to draw the new island
 
-Branch `night/dx-land-view` (from `night/core` at 859b680, 12 November 2026), gone over by a critic on `night/o-land-view-critic` the same day: the last section, "What the critic found", says what was run again, what was corrected (each correction is marked where it stands) and how the stages should change. It adds two pieces of measuring code and four small hooks, none of which changes a picture or a run unless it is asked for:
+Branch `night/dx-land-view` (from `night/core` at 859b680, 12 November 2026), gone over by a critic on `night/o-land-view-critic` the same day: the section "What the critic found" says what was run again, what was corrected (each correction is marked where it stands) and how the stages should change; and the last section, "What was built: stages 0 and 1", says what became of the first two stages on `night/map-01`. It adds two pieces of measuring code and four small hooks, none of which changes a picture or a run unless it is asked for:
 
 - `crates/isostate-core/examples/land_view_probe.rs`: makes islands with the land mechanism and prints what a picture would have to be made from (section 2).
 - `crates/isostate-viewer/src/landview.rs`: a probe that draws the core's land with today's ground. With `ISOSTATE_LAND_VIEW` set and a recorded run that carries the land, the heightfield is laid through the core's fine grid, the rivers are the core's lines at the core's widths, the valley floors are the core's wet nodes, and each lake has a sheet of water at its level. Everything else reads the ground as before. `ISOSTATE_LAND_REPORT=1` prints the heights and slopes as drawn, the ground's mesh, and how the year's roads cross the rivers, with or without the probe.
@@ -475,3 +475,77 @@ The probe is good work: its measurements hold to the digit, its first stage is t
 8. **Towns, works and harbours on the real ground**: market places on the flattest dry ground, streets along the contour, the quarry towns on the scarps; quays and boats on tideways and lakes. With whoever carries on from the towns' second pass.
 9. **The switch**, then the standard shots retaken.
 10. **Scarps and canyons** (stage 6), with the rock decided on the CPU and the walls painted by their own direction; pits at the foot of the slope where their rock comes out (her note 2).
+
+## What was built: stages 0 and 1
+
+Branch `night/map-01` (12 November 2026): items 1 and 2 of the verdict above. The code is `crates/isostate-viewer/src/newland.rs` and the three files under `src/newland/`, with small hooks in `replay.rs`, `live.rs`, `world.rs`, `network.rs`, `terrain.rs`, `terrain.wesl`, `scatter.rs` and `main.rs`, and in the core `save.rs`. The probe's `landview.rs`, its global and its environment switch did not come with it. The viewer's README ("The new land") says how to look. Measurements are on the machine only, with every command, in `.claude/night/reports/opus/map-01/build.md`; pictures under `.claude/night/shots/newland-stage0/`, `.claude/night/shots/newland-stage1/` and `.claude/night/shots/opus/map-01/`. The machine was shared with other helpers throughout, so timings are good to a tenth or so.
+
+### Built as written
+
+- **The land in an `Arc` of its own** (`Replay::land: Option<Arc<NewLand>>`), read in `replay.rs` all or nothing, each array held to the grid's size or the map's and refused by name when short, and filled in `live.rs` from `LiveStatic::land`. A copy of the run copies a pointer (tested in both).
+- **A lite pack** of a run made on the new land is refused, as every lite pack is, and now says that the land is not in it either. A full pack that speaks of the land and has none of its arrays is drawn as the old kind of island and says so in a sentence on the terminal.
+- **The core's constructor**, `save::Game::on_new_land`, beside `Game::under`, and the viewer's `--new-land`, with which `--shots`, `--land-shots`, `--view`, `--shot`, `--script` and `--describe` all work.
+- **The ground from the core's heights**, eight vertices to a cell, with no relief of the viewer's own added and none of its coast; the valley floors from the core's wet ground; the core's lines as `rivers::River`, bedded, drawn by today's ribbons; a sheet of water on each lake; the sea reading the same heights.
+- **The relief at three times**, a named constant (`newland::RELIEF`) with the critic's reasons beside it, not a setting of the look.
+- **The shore's stretch**, the probe's, in one function (`newland::units`) that the ground, the rivers' levels and the lakes all go through; and no shingle on the new land's shore.
+- **The cells' middles** moved in `network::centres` onto dry, level ground of their own cell.
+- **The lakes as water** to `Land::area`, to `water_dist` and to the dry tests, and the dry shore of the record's cells of water drawn as land.
+- **A gate on the new land**: two named sets of pictures a stage (the standard twelve and the far views, of island 7 with six families), each taken twice and found the same to the pixel.
+
+### Built differently, and why
+
+- **The save carries the land** where the design said such a game would be started with pictures only. `Save::land` (left out of every other save, which is written byte for byte as it was) is a few lines and a test, and with it no save can be continued on the wrong island. The viewer still keeps a game on the new land out of the island's autosave and trials, so that a look at the preview never sets the player's own game aside: it is kept where `--save FILE` names a file, and otherwise says that it is not kept.
+- **The river's bed is the squares of the mesh the water lies in** (250 to 500 m), not the probe's flat of 1.42 vertex steps a side with a slope of 0.6 beyond it. The probe's bed took a node off each wall of a canyon (the vertex 500 m from the river was cut from 300 m above the water to 26 m). This one lowers 5,598 of island 7's 646,753 vertices, by 14 m on average, and leaves every river point's ground at or under its water.
+- **The surface does not overshoot downwards.** Laid through the nodes it dug pits in valley floors between two nodes of the floor and could put a low shore under the sea; a spot is now never lower than the lowest of the nodes it lies between, and under the sea where all of them are. The test on the shore therefore asks for no overshoot at all.
+- **A lake is a height under nought to whoever asks**, not a mask at each test. The "dry enough" tests are some thirty comparisons of `world::height_at` with a threshold, in files the works' planner and the towns' second pass are rewriting. `height_at` tells the depth under a lake's sheet as a height under nought, as it tells the sea's bed, so every one of them keeps out of a lake unchanged, and so will those not yet written. The mesh and the sea's shader read the heightfield itself.
+- **The lake's sheet** is cut at the mesh's squares and reaches only to the middle of the dry nodes beside the lake, where the probe drew whole nodes; and it is lifted 0.0006 where the probe lifted 0.004, which drew the lowland lake (4.5 m) over ground up to 7 m.
+- **The dry shore takes the open land of the cell beside it**, not all its classes: a first cut painted a headland as the next cell's town. The check found the same wanted for a parcel all under a lake's sheet where it was looked at, whose shore comes up through the sheet between the spots: it too takes the land cell's open land, where it had been painted as the sea's sand (below).
+- **The middles weigh more than the critic listed**: ground under the building line (the first 1.4 m, and beside a river near the tide, whose bed brings the ground down to it) counts with the water, since a market place there has no houses.
+
+### What was measured
+
+Island 7 unless said; the tests on islands 2, 3 and 7 (`cargo test -p isostate-viewer newland -- --nocapture`).
+
+| | |
+|---|---|
+| the land as drawn (`ISOSTATE_LAND_REPORT=1`): heights, half below, 90% below, top | 0.108, 0.593, 1.413 (the probe's 0.11, 0.59, 1.41) |
+| slope as drawn: half below, 99% below; steeper than 1.15 | 0.059, 0.769; 0.30% (the probe's 0.06, 0.75; 0.31%) |
+| rivers drawn | 64, 42,747 points, 1,825 km, 6 to 83 m wide (islands 2 and 3: 77 and 75 rivers, 1,755 and 1,771 km) |
+| the ground: laying, bedding, the lakes, all of `build_ground` | 16 to 35 ms, 2.4 to 3.6 ms, 30 ms, 166 to 286 ms (the old island's 323 ms on the same loaded machine) |
+| a cell's mean height as drawn against the core's byte (5.9 m a step), three islands | at the middles of its dry nodes within one step in 98.9 to 99.0% of land cells and within two in 99.6 to 99.8%, 1.6 to 1.7 m out on average; at every vertex in those nodes within one step in 82 to 84% and within two in 92 to 93%, 3.6 to 3.8 m out on average |
+| the cells' middles | 2,108 of 5,824 moved, by 384 m on average and 1,413 m at the furthest: 124 off water, 143 off ground too low to build on, 6 back from the water's edge, 133 off marsh, 170 back from a river, 1,532 off steep ground. 17 are left on marsh or low ground, their cells having no better |
+| the first towns of three islands | all 18 market places on dry ground but Glenwick's, whose cell has none above 1.8 m (as drawn it stands on its bay's shore with its houses round it) |
+| island 7's towns founded later, the nine the critic found on 1 in 8 to 1 in 2.6 | now on 1 in 9 to 1 in 68 (Carford 1 in 10, Brackside 1 in 9, the rest 1 in 21 or gentler) |
+| lakes | 469 nodes of lake on island 7 (77 and 110 on islands 2 and 3); 261 parcels lie wholly in a lake and have no dry land; of 270 thousand tree slots, 22 thousand farm slots and 26 thousand hedge slots none is in a lake, and 1,518 stand within 500 m of one |
+| cells of water that hold dry shore | 117; 762 parcels of them drawn as land |
+| works drawn smaller for want of room (`ISOSTATE_TIMING=1`) | 836 of 2,122 (39%); the old island 521 of 2,320 (22%); none without ground of its own |
+| the railways of 1900 (`ISOSTATE_RAIL_CHECK=1`), the next stage's starting point | 205 viaducts over 129.4 cells, 43 tunnels, 51 inclines and banks, no step; a line stands 0.520 over "the ground" at its highest, which is the viaduct across a corner of Carford's lake (the critic's figures for the probe: 204 over 129.7, 47, 61, and 0.391; for the old island 92 over 45.5, 30, 29) |
+| a year's rebuild (`ISOSTATE_BENCH=1`, three takes each, turn about) | old island 1,071, 1,007 and 961 ms a year; new land 1,024, 1,104 and 1,082 ms: 6% more on average, with 10% more vertices in 1760 (11.1 against 10.1 million) and 2% fewer in 1900. The same time a vertex (88 against 86 ns in 1760). The index of water holds 1,825 km of river against 887 and does not show |
+| the shares of open land as drawn (`ISOSTATE_AREAS=1`, the game of island 7 recorded on each land, 1750, 1800, 1850 and 1900) | over the whole island each class is within 1.2 points of the record's on the new land (the worst is wood, 30.8 for 29.6 in 1850 and 13.1 for 12.0 in 1900) and within 0.8 on the old island; over districts of 12 km a class is out by 1.6, 1.8, 2.4 and 2.2 points on average on the new land and by 1.8, 1.9, 2.2 and 2.2 on the old. On the tests' made-up mixes (three islands) each class is within 1.8 points |
+| the two named sets, two takes each | all 24 pictures the same to the pixel at stage 0 and again at stage 1. The stage 1 sets were taken again by the check, with main's towns' second pass merged in and the lakes' shores mended, and are the gate for the next stage; the builder's are kept beside them as `newland-stage1-before-towns-2` |
+| the old island | its twelve standard pictures at 0 pixels against `merged-15-town-ground`; the sweep of eight islands at 0 facts differing; a run with no land has the jittered middles to the last bit (tested) |
+
+### The faults the critic foretold, each with its picture
+
+Under `.claude/night/shots/opus/map-01/views/` (island 7, the summer of 1850, each view at play distance and close).
+
+- **A market square in an estuary:** mended. Melness stands on the banks of its tideway, its church and market place on the west bank (`melness-close.png`).
+- **Trees in a tarn:** mended. The woods come down to the water and stop (`tarn-close.png`).
+- **Shingle banks on a tideway:** mended. The banks are wet and dry sand (`melness-close.png`).
+- **A lake's shore painted as beach:** mended. Fields, woods and a farmstead reach the water (`tarn-close.png`, `lake-close.png`). The check found patches of the sea's sand left on the shores of two upland lakes (`check/lake5-close.png`, `check/lake2-close.png`), where a parcel lay all under the sheet at the spots it was looked at, and mended them (`check/lake5-close-mended.png`).
+- **The old sine rivers on real valleys:** mended. The rivers are the core's, in their own valleys (`meanders-close.png`, `hills-play.png`).
+
+### What the pictures show that belongs to a later stage
+
+- **Railways on viaducts over real relief** (`belt-play.png`, `hills-close.png`, `canyon-play.png`), and at Carford across a corner of its lake (`carford-close.png`: a lake is water to the railway's profile as the sea is, and its course does not go round): the verdict's item 3, and the first thing anyone will see in the hills.
+- **Roads that cross rivers anywhere, and tideways and lakes on causeways** (`meanders-close.png`, `melness-close.png`): item 6. A road across a lake goes under the sheet and is not seen.
+- **Banks without edges, and no bars, oxbows or falls** (`meanders-close.png`): item 5.
+- **A tideway one node wide breaks into pools** (`melness-play.png`): item 5, the tideways' own lines.
+- **A lake's flat shore follows the mesh in steps of 250 m**, and its sheet is one flat colour (`lake-south.png`, `lake-far.png`): item 5, the lake's own mesh and material.
+- **The sea's lighthouse on a lake's shore** (`lake-close.png`, Sandmere): item 8.
+- **Towns on slopes** (`carford-close.png`, `brackside-close.png`): the market places are on the gentlest ground their cells have, 1 in 10 and 1 in 9, with the church beside them on a shelf, and the streets still take no notice of the contour: item 8.
+- **No summer snow, and winter snow only as frost**: the island's top is 1.41 as drawn and the snow line 1.75: item 7.
+
+### Checked
+
+Gone over on `night/map-01-check` the same night, with main merged in twice (the towns' second pass, then the news's mends). The builder's numbers came out again to the digit (the tests on islands 2, 3 and 7, both stage 1 sets at their head at 0 pixels), the old island's twelve are at 0 pixels against main's retaken reference, and the sweep differs from main in nothing. The tests that guard the lakes and the middles fail when what they guard is taken out. A game on the new land played by script and saved in a named file goes on again on the new land; nothing of it reaches the island's autosave, and an ordinary game started against the same folder is on the old island. Counted by the node under them, as the critic counted, the land cells' middles on tidewater, in a lake and on marsh went from 108, 3 and 103 to 2, 0 and 8 on island 2, from 80, 4 and 106 to 0, 0 and 3 on island 3, and from 101, 5 and 85 to 0, 0 and 7 on island 7 (`ISOSTATE_LAND_REPORT=1`); of the first towns of the three islands only Glenwick's market place is still on marsh, its cell having nothing higher. Two things were mended: the lakes' shores above (`world.rs`, one condition, on the new land only), and a recorded run whose nodes name a lake its header does not list is refused by name, where the ground would have stopped at an index out of range. The notes, with every command, are `.claude/night/reports/opus/map-01/check.md`.

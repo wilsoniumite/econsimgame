@@ -16,7 +16,7 @@ use bevy::math::Vec3;
 
 pub mod towns;
 
-use isostate_gen::bridge::{road_bridge, RoadBridge};
+use isostate_gen::bridge::road_bridge;
 use isostate_gen::farm::{farmstead, Farmstead};
 use isostate_gen::houses::Detail;
 use isostate_gen::trees::{bush, hedge_tree, leaf_group, tree, Greenery, Species, Tree, LEAF_GROUPS};
@@ -80,7 +80,8 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
         .into_par_iter()
         .flat_map_iter(|c| {
             let mut out = Vec::new();
-            if r.terrain[c] == 0 {
+            // (on the new land a cell of water may hold dry shore: `world::has_land`)
+            if !world::has_land(r, g, c) {
                 return out;
             }
             let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
@@ -571,7 +572,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
 /// program to stop. Called where the options are read, and not from
 /// `make_slots`, so that nothing else that makes the slots can end the program.
 pub fn measure(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) -> bool {
-    if crate::plan::maybe_areas(r, g) || crate::rails::maybe_check(r, g) || crate::plan::maybe_write(r, g, slots) {
+    if crate::plan::maybe_areas(r, g) || crate::rails::maybe_check(r, g) || crate::plan::maybe_write(r, g, slots) || crate::carts::maybe_check(r, g, cen) {
         return true;
     }
     // (task A) ISOSTATE_TOWNS=years: every year's towns laid out in turn and counted (it stops the program itself)
@@ -589,7 +590,7 @@ fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
         .into_par_iter()
         .flat_map_iter(|c| {
             let mut out = Vec::new();
-            if r.terrain[c] == 0 {
+            if !world::has_land(r, g, c) {
                 return out;
             }
             let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
@@ -645,8 +646,12 @@ fn farm_spot(g: &Ground, s: Slot) -> Slot {
     let f = world::field_at(g, s.x, s.z);
     let mut out = s;
     if f.edge > 0.045 {
-        out.x += f.toward.x * (f.edge - 0.04);
-        out.z += f.toward.y * (f.edge - 0.04);
+        let (x, z) = (s.x + f.toward.x * (f.edge - 0.04), s.z + f.toward.y * (f.edge - 0.04));
+        // on the new land a field's hedge may run along a tideway or a lake's shore, and the
+        // spot by it lie in the water: the farm then stays where its spot was found dry
+        if g.laid.is_none() || (world::height_at(g, x, z) >= 0.05 && world::water_dist(g, x, z) >= 0.03) {
+            (out.x, out.z) = (x, z);
+        }
     }
     // the house's back to the hedge, its front to the yard
     out.yaw = (-f.toward.y).atan2(f.toward.x) + std::f32::consts::FRAC_PI_2;
@@ -818,13 +823,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     let rail_year = crate::rails::year(r, g, cen, k);
     works_b.append(crate::rails::structures(&rail_year, g, lk));
     crate::rails::standing(&rail_year, lod, lk, &mut works_b, &mut smoke);
+    // (both found in network.rs, where a cart on the road reads them too)
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
-        let along = (b - a).normalize_or(bevy::math::Vec2::X);
-        for (at, river, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
-            // a road that crosses aslant has further to go from bank to bank (up to three times as far)
-            let half = half / along.perp_dot(river).abs().max(0.34);
-            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3, detail: lod.at(at.x, at.y) }, &height, lk);
+        for bridge in crate::network::road_bridges(g, a, b, lv == 3, |at| lod.at(at.x, at.y)) {
+            road_bridge(&mut works_b, &bridge, &height, lk);
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
@@ -1081,38 +1084,21 @@ impl TreeCensus {
 }
 
 /// A low causeway of stone wherever a road runs over water (the drowned mouth
-/// of a river, a creek), so the road does not lie on the sea.
+/// of a river, a creek), so the road does not lie on the sea. Where it runs
+/// is found in network.rs (`causeway_runs`).
 fn causeway(b: &mut Builder, lk: &Look, g: &Ground, a: bevy::math::Vec2, c: bevy::math::Vec2, main: bool) {
-    let len = a.distance(c);
-    let n = ((len / 0.02).ceil() as usize).max(2);
-    let wet = |t: f32| {
-        let p = a + (c - a) * t;
-        world::height_at(g, p.x, p.y) < 0.004
-    };
     let stone = *lk.bridges.causeway;
     let width = if main { 0.046 } else { 0.034 };
     let dir = (c - a).normalize_or(bevy::math::Vec2::X);
     let side = Vec3::new(-dir.y, 0.0, dir.x) * (width * 0.5);
-    let mut i = 0;
-    while i < n {
-        if !wet(i as f32 / n as f32) {
-            i += 1;
-            continue;
-        }
-        let mut j = i;
-        while j < n && wet(j as f32 / n as f32) {
-            j += 1;
-        }
-        // from one dry end to the other, a little past each
-        let (t0, t1) = (((i as f32 - 1.0) / n as f32).max(0.0), ((j as f32 + 0.5) / n as f32).min(1.0));
+    for (t0, t1) in crate::network::causeway_runs(g, a, c) {
         let (p0, p1) = (a + (c - a) * t0, a + (c - a) * t1);
-        let top = 0.016;
+        let top = crate::network::CAUSEWAY_TOP;
         let (q0, q1) = (Vec3::new(p0.x, top, p0.y), Vec3::new(p1.x, top, p1.y));
         let foot = Vec3::Y * (top + 0.03);
         b.quad(q0 + side, q1 + side, q1 - side, q0 - side, shade(stone, 1.06));
         b.quad(q0 + side - foot, q1 + side - foot, q1 + side, q0 + side, stone);
         b.quad(q1 - side - foot, q0 - side - foot, q0 - side, q1 - side, shade(stone, 0.85));
-        i = j;
     }
 }
 
