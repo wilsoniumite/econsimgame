@@ -703,6 +703,10 @@ fn towns_and_districts_have_stories() {
             let other = rest.split(" as the island's").next().unwrap();
             let o = r.state.town_name.iter().position(|n| n == other).expect("a town of that name");
             assert!(pop[o] < pop[t], "{}: {} has {} to {}", e.title, other, pop[o], pop[t]);
+            // and if it is not just below, the story says where it now stands
+            // (Melbourne was fourth in 1754 and 1858, and the reader took it as second)
+            let rank = order.iter().position(|&x| x == o).unwrap();
+            assert!(rank == place + 1 || e.text.contains(&format!("{other} is now the island's ")), "{} in {}: {other} is {}th, unsaid", e.title, e.year.floor(), rank + 1);
         }
         places += 1;
     }

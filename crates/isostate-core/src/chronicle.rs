@@ -525,7 +525,11 @@ pub fn baseline(P: &Params, series: &[f64], y0: i64, year: i64, when: i64, v0: f
 /// bumper or a poor one is one the harvest's news would tell (`news_z` of its
 /// usual spread), and "short" last year is a spread or more below an ordinary
 /// year. The harvest must have moved the same way as output, by a spread or
-/// more. Otherwise the detector's own reason stands.
+/// more; if it did and none of those is so, the harvest is simply better or
+/// poorer than last year's, which is still the weather and not new capacity or
+/// a failure of supply (island 3, 1772: the harvest went from 0.97 of an
+/// ordinary year to 1.09, and output rose 18%). Otherwise the detector's own
+/// reason stands.
 pub fn grain_reason(st: &State, P: &Params, good: &str, rose: bool) -> Option<&'static str> {
     let H = &P.harvest;
     if !P.chronicle.enabled || !H.enabled || good != "grain" || H.island_sd <= 0.0 {
@@ -546,7 +550,8 @@ pub fn grain_reason(st: &State, P: &Params, good: &str, rose: bool) -> Option<&'
         true if last < -sd => Some("the harvest has come back after a short one"),
         false if now < -news => Some("the harvest has come in short"),
         false if last > news => Some("last year's harvest was a bumper one, and this year's is not"),
-        _ => None,
+        true => Some("the harvest is better than last year's"),
+        false => Some("the harvest is poorer than last year's"),
     }
 }
 
@@ -1466,7 +1471,8 @@ fn standing(e: &Event) -> f64 {
 /// Mark the items a history would keep (`Event::kept`), decade by decade.
 ///
 /// Within a decade the heaviest go first, with at most `per_kind` of a kind
-/// (`inventions` for discoveries) and `per_decade` in all, and nothing lighter
+/// (`inventions` for discoveries, `turning_points` for crossings) and
+/// `per_decade` in all, and nothing lighter
 /// than `floor`. One place is the player's: the heaviest of the family's own
 /// items at `floor` or above is kept whatever else happened. A decade that is
 /// over and still has fewer than `at_least` takes the best of what is left
@@ -1719,6 +1725,10 @@ mod tests {
         assert_eq!(grain_reason(&st(&[0.97, 0.96, 0.86, 1.03]), &game, "grain", true), Some("the harvest has come back after a short one"));
         assert_eq!(grain_reason(&st(&[1.0, 1.12]), &game, "grain", true), Some("the harvest is a bumper one"));
         assert_eq!(grain_reason(&st(&[1.0, 0.88]), &game, "grain", false), Some("the harvest has come in short"));
+        // a harvest a good deal better or poorer than last year's, neither bumper nor short:
+        // island 3, 1772 (0.967 to 1.085) and island 6, 1778 (1.077 to 0.916)
+        assert_eq!(grain_reason(&st(&[0.967, 1.085]), &game, "grain", true), Some("the harvest is better than last year's"));
+        assert_eq!(grain_reason(&st(&[1.077, 0.916]), &game, "grain", false), Some("the harvest is poorer than last year's"));
         // output against the weather, or a harvest that hardly moved: the detector's own reason
         assert_eq!(grain_reason(&st(&[1.10, 0.975]), &game, "grain", true), None);
         assert_eq!(grain_reason(&st(&[1.0, 1.02]), &game, "grain", true), None);
