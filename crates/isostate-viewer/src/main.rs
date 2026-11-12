@@ -1276,7 +1276,9 @@ struct Builds {
 struct Shown {
     /// the camera its houses were built for
     lod: Option<scatter::Lod>,
-    /// how many times the run has changed under the viewer (a live game's new year)
+    /// how many years the run holds: what scenery is built from changes only when a year
+    /// arrives in a live game (the months between write their figures and their news into
+    /// the run, and nothing a year's scenery reads)
     run: u32,
     /// the year, and the state of the run, that everything on screen was last built from
     whole: Option<(usize, u32)>,
@@ -1358,9 +1360,11 @@ fn rebuild_year(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    if data.is_changed() {
-        shown.run = shown.run.wrapping_add(1);
-    }
+    // (task D) the state of the run that scenery is built from is the years it holds. It was
+    // counted by every change to the run, and since the clock tells the month a month's
+    // figures change it twelve times a year: a year built again for the camera then never
+    // counted as the camera's alone, and went on screen whole
+    shown.run = data.r.filled as u32;
     // what the last frame cost, for a scripted run to report: the renderer takes new meshes
     // in the frame after they are handed over
     let frame_ms = real.delta_secs() * 1e3;
