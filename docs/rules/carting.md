@@ -39,11 +39,11 @@ supply the wage clears is smaller again by those.
 
 The bill is added up where the carting money is already paid out, to the
 same town it is paid to, so the carters live where they are paid: a cell's
-produce on its way to market, a works' inputs and output, and the carriage
-on the trade a town sends to other towns, which the buying town's merchants
-pay to the sending town's households. That last part is the port's whole
-charge on trade, which is the carriage and a handling charge of 3 per cent
-of the goods' value (`handling`); both were income that cost nobody
+produce on its way to market, a works' inputs and output, and the charge on
+the trade a town sends to other towns, which the buying town's merchants
+pay to the sending town's households. That charge is the port's whole
+charge on trade: the carriage and a handling charge of 3 per cent of the
+goods' value at the sending town's price (`handling`); both were income that cost nobody
 anything, and both are now somebody's time, but only the carriage falls when
 a railway is built. The lag of a month is because the bill is only known
 once the month's goods have moved.
@@ -57,6 +57,11 @@ back, a quarter of the way each month.
 Carters are counted in each town's employment (they are at work), but they
 belong to no sector, so the farm and industry shares of employment are shares
 of a larger total.
+
+Carters are people, too. Under the game's rules, when cells and their people
+go to another town at a year's end, the same share of the town's carters goes
+with them (`peopling::move_with_cells`; `people.md`), so the new town's
+carters move on from those and do not start from none.
 
 ## The numbers
 
@@ -296,8 +301,8 @@ game as it is played now (seeds 1 to 8, six families,
 | real wage of 1900 over 1750's | 2.77 | 2.60 |
 
 So it is an eighth of all hands on the road before the railway now, not a
-seventh, and the bill is a little lighter in 1800; by 1900 the two stand
-where they stood. The slow middle of the century is still there: the
+seventh, and in 1800 the bill and the carters are both a sixth lighter
+(0.079 for 0.096, 0.118 for 0.142); by 1900 the two stand where they stood. The slow middle of the century is still there: the
 baskets of 1850 are 5.18, between seeds 3.69 and 7.33, where at the merge
 with carting off they were 6.54 (the level table above). Whether the delay is
 still ten years has not been measured again.
@@ -392,7 +397,7 @@ alone, to 1789).
   than in 1750, railway or no railway, and part of the fall in carters with
   no railways at all (0.133 of all hands in 1800, 0.110 in 1900) is this and
   not better roads. In the game as it is played now the wage rises much
-  more: from 4.3 in 1750 to 13.5 in 1900, three times and more (2.5 to 4.0
+  more: from 4.3 in 1750 to 13.5 in 1900, about three times (2.5 to 4.0
   times by seed; the people-weighted wage, `wage` in the `annual.csv` of
   `isostate-core sweep --seeds 1-8 --rules game --families 6`, 12 November
   2026). There the same cartload takes about two thirds fewer hands in 1900
