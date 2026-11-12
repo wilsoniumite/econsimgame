@@ -865,14 +865,18 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
         }
         done[id] = c.p;
     }
-    // the ground under a river's new course is cut down to its water
+    // the ground under a river's new course is cut down to its water, but not
+    // a lake's shore below the lake's water: a course smoothed round the corner
+    // by an outlet would cut a second, lower lip beside it
+    let off = g.offsets();
     for r in &rivers {
         for i in 0..r.x.len() {
             let (fi, fj) = ((r.x[i] as f64 * g.k as f64) as usize, (r.y[i] as f64 * g.k as f64) as usize);
             if fi < g.w && fj < g.h {
                 let c = fj * g.w + fi;
                 if !sea[c] && lake_id[c] == 0 && z[c] > r.level[i] as f64 {
-                    z[c] = r.level[i] as f64;
+                    let shore = off.iter().map(|&o| lake_id[(c as isize + o) as usize]).filter(|&id| id > 0).map(|id| lake_level[id as usize - 1]).fold(f64::NEG_INFINITY, f64::max);
+                    z[c] = z[c].min((r.level[i] as f64).max(shore));
                 }
             }
         }
