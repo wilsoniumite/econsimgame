@@ -10,7 +10,8 @@
 //! wooded each parcel is this year), `ley`, `soil`, `depth` (how finely a
 //! parcel is cut into fields) or `open` (the open fields). ISOSTATE_AREAS=1
 //! measures how well the drawn land keeps the areas the record gives, and stops
-//! (`maybe_areas`).
+//! (`maybe_areas`); ISOSTATE_AREAS=districts lists every district, and
+//! ISOSTATE_AREAS_SHIFT moves the districts by a few squares.
 
 use rayon::prelude::*;
 
@@ -66,9 +67,9 @@ fn seconds() -> f64 {
 /// another: `close` (as near as the camera goes), `far` (half way out to the
 /// whole island), or `near`, `play` or `shells` for every house of the island
 /// at one level.
-pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
+pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) -> bool {
     if std::env::var_os("ISOSTATE_BENCH").is_none() {
-        return;
+        return false;
     }
     let years: Vec<usize> = [1760, 1800, 1850, 1870, 1900].iter().map(|y| ((y - r.y0).max(0) as usize).min(r.ny - 1)).collect();
     let lk = crate::look::Look::standard();
@@ -113,7 +114,7 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
         }
     }
     eprintln!("bench: {:.0} ms per year on average, by the clock on the wall", total / n as f64 * 1000.0);
-    std::process::exit(0);
+    true
 }
 
 /// With ISOSTATE_AREAS set, measure how well the drawn land keeps the areas
@@ -123,13 +124,16 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) {
 /// what the record says (the cells' mixes), what `world::year_land` draws (the
 /// dry area of the parcels of each class), and what the patchwork rule cell
 /// by cell (`world::pick_class`) would draw, to compare.
-pub fn maybe_areas(r: &Replay, g: &Ground) {
+pub fn maybe_areas(r: &Replay, g: &Ground) -> bool {
     if std::env::var_os("ISOSTATE_AREAS").is_none() {
-        return;
+        return false;
     }
     const D: usize = 6;
-    let (dw, dh) = (r.w.div_ceil(D), r.h.div_ceil(D));
-    let district = |x: f32, y: f32| ((y.max(0.0) as usize).min(r.h - 1) / D) * dw + (x.max(0.0) as usize).min(r.w - 1) / D;
+    // ISOSTATE_AREAS_SHIFT=3 moves the districts by so many squares east and south: a mend
+    // that only fits the districts it is measured on shows up as no better on the moved ones
+    let sh: usize = std::env::var("ISOSTATE_AREAS_SHIFT").ok().and_then(|v| v.parse().ok()).unwrap_or(0) % D;
+    let (dw, dh) = ((r.w + sh).div_ceil(D), (r.h + sh).div_ceil(D));
+    let district = |x: f32, y: f32| (((y.max(0.0) as usize).min(r.h - 1) + sh) / D) * dw + ((x.max(0.0) as usize).min(r.w - 1) + sh) / D;
     let l = &g.land;
     let names = ["arable", "pasture", "wood", "heath"];
     for year in [1750, 1800, 1850, 1900] {
@@ -142,7 +146,7 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
             if r.terrain[c] == 0 {
                 continue;
             }
-            let d = (c / r.w / D) * dw + (c % r.w) / D;
+            let d = ((c / r.w + sh) / D) * dw + (c % r.w + sh) / D;
             cells[d] += 1;
             for (t, s) in world::open_shares(r, k, c).iter().enumerate() {
                 sums[d][0][t] += *s as f64;
@@ -257,6 +261,21 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
                 }
             }
         }
+        // ISOSTATE_AREAS=districts: every district, class by class, the record against the
+        // parcels and the paint, so that the worst can be found and looked at
+        if std::env::var("ISOSTATE_AREAS").is_ok_and(|v| v == "districts") {
+            eprintln!("  district (squares x, z)   open  {}", names.map(|t| format!("{t:>7} rec/parcels/painted")).join(" "));
+            for (d, s) in sums.iter().enumerate() {
+                if cells[d] < D * D * 3 / 4 || s[0].iter().sum::<f64>() < 4.0 {
+                    continue;
+                }
+                let (rec, drawn, painted) = (share(&s[0]), share(&s[1]), share(&s[3]));
+                let out = (0..4).map(|t| (painted[t] - rec[t]).abs()).fold(0.0, f64::max);
+                let (x0, z0) = (((d % dw) * D).saturating_sub(sh), ((d / dw) * D).saturating_sub(sh));
+                eprintln!("  {:>2}-{:<2} {:>2}-{:<2} out {:4.1} {:6.1}  {}", x0, (d % dw) * D + D - sh, z0, (d / dw) * D + D - sh, out, s[0].iter().sum::<f64>(),
+                    (0..4).map(|t| format!("{:5.1} /{:5.1} /{:5.1}", rec[t], drawn[t], painted[t])).collect::<Vec<_>>().join("   "));
+            }
+        }
         let nn = (n as f64).max(1.0);
         eprintln!("  over {n} districts of {D} by {D} squares, a class's share is out by {:.1} points on average and {:.1} at worst (the cell rule: {:.1} and {:.1})", mean[0] / nn, worst[0], mean[1] / nn, worst[1]);
         eprintln!("  by class, on average: {} (the cell rule: {})",
@@ -265,11 +284,11 @@ pub fn maybe_areas(r: &Replay, g: &Ground) {
         eprintln!("  as painted, over the same districts: out by {:.1} points on average and {:.1} at worst; by class {}", mean[2] / nn, worst[2],
             (0..4).map(|t| format!("{} {:.1}", names[t], by_class[2][t] / nn)).collect::<Vec<_>>().join(", "));
     }
-    std::process::exit(0);
+    true
 }
 
-pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) {
-    let Ok(path) = std::env::var("ISOSTATE_PLAN") else { return };
+pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) -> bool {
+    let Ok(path) = std::env::var("ISOSTATE_PLAN") else { return false };
     let view: Vec<f32> = std::env::var("ISOSTATE_PLAN_VIEW")
         .unwrap_or_default()
         .split(',')
@@ -382,5 +401,5 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) {
         Ok(()) => eprintln!("wrote the plan to {path}"),
         Err(e) => eprintln!("cannot write {path}: {e}"),
     }
-    std::process::exit(0);
+    true
 }
