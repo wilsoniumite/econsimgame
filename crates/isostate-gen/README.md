@@ -36,8 +36,8 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
 ```
 
 The viewer decides where things stand and which stand this year
-(`isostate-viewer/src/scatter.rs` and `scatter/towns.rs`); a generator decides
-what one thing looks like.
+(`isostate-viewer/src/scatter.rs`, `scatter/towns.rs` and
+`scatter/towns/kept.rs`); a generator decides what one thing looks like.
 
 ## The rules
 
@@ -183,8 +183,8 @@ roof.
 | near | 4 and nearer | openings let 0.0013 into the wall with jambs, sills and glazing bars; eaves with an edge; stacks with oversailing heads and pots; copings, piers, gates; what stands in the yard in full | 0.00035 to 0.001 | 4 to 24 | 0.1 to 8 |
 
 (The houses measure: far 0.1 to 0.9 and 0.1 to 1.9; play 0.9 to 2.5 and
-0.4 to 2.1; near 6.4 to 15.6 and 1.0 to 5.1. A cottage is 14, 70 and about
-350 triangles. The wall bands are the houses' with a margin either side.
+0.4 to 2.1; near 6.4 to 15.7 and 1.0 to 5.1. A cottage is 14, 70 and 200
+to 450 triangles. The wall bands are the houses' with a margin either side.
 The roof bands reach lower than the houses' because a roof's detail is at
 its edges, its ridge and what stands on it, and a works' roof is many
 times the size of a cottage's: a wide plain roof is right.) At the play
@@ -255,7 +255,11 @@ using the kit and not by copying numbers.
 The scenes follow the viewer's layout rules by hand (plot spacing, set-backs,
 the densities at which a plot is built). They are not what the game runs: a
 change to the layout in `scatter/towns.rs` is not seen in the lab until
-`scenes.rs` is changed to match. The same goes for the patch of wood: it is
+`scenes.rs` is changed to match. And they follow the older rule, by each
+cell's density, which only a run under the port's rules still uses: since
+12 November a game's towns are laid out from the ground they keep
+(`scatter/towns/kept.rs`), in closes and turns the scenes know nothing of.
+The same goes for the patch of wood: it is
 an even stand of trees, while a wood in the game is filled in by `scatter.rs`
 from the year's land (`isostate-viewer/src/world.rs`, "the lie of the land"),
 thick and tall in its depths, thinner toward its edge, with glades and rides,
@@ -268,13 +272,15 @@ views of the land have a set of their own, which is what to look at after a
 change to the land's rules or to the ground shader:
 
 ```bash
-isostate-viewer --land-shots out/land --shots-compare out/land-before
+./target/debug/isostate-viewer.exe --land-shots out/land --shots-compare out/land-before
 ```
 
 Five cameras chosen from the run (the whole island, wooded lowland from 8 km
 up, a hill margin, the country round the home town, the snow line), each in
 the summers of 1800 and 1900, in October 1800 and in midwinter 1900: twenty
-pictures in about 40 seconds, on the standard shots' machinery, so
+pictures at most, in about 40 seconds (island 7 as it stands on 12 November
+has no hill margin for the third camera to find, so it takes sixteen), on
+the standard shots' machinery, so
 `--shots-compare` and `--compare-shots` work on them. It prints where each
 camera looks, for pointing a `--view` at the same country. The pictures say
 whether the land looks right; `ISOSTATE_AREAS=1` says whether it is still the
@@ -332,7 +338,7 @@ What a house is handed, besides its plot, storeys, roof and seed:
 - **`detail`** (`Detail::Far`, `Play`, `Near`): how much of it to draw. Far:
   walls and roof (a cottage is 14 triangles). Play: openings as flat panels,
   stacks, wings, outshuts, the colour of the garden (about 70). Near:
-  everything (about 350). The viewer chooses by where the camera is
+  everything (200 to 450). The viewer chooses by where the camera is
   (`scatter::Lod`); the three must be the same house, and each kind's tests
   build all three. Only what goes into `solid` and `smoke` may follow the
   level: a garden's tree is the same tree at all three, because when the
@@ -348,7 +354,8 @@ To add a kind of house: a struct with the inputs above and a `new` that
 fills in the usual ones, a function that places parts (`cottage.rs` is the
 plainest to copy), the tests (it keeps to its plot at every level, era and
 seed; each level draws more than the last; far is a shell and a roof), a
-sheet, and a call from `scatter/towns.rs`. Take every choice the house
+sheet, and a call from `scatter/towns.rs` and from `scatter/towns/kept.rs`
+(the towns of a game). Take every choice the house
 makes for itself from `seed.pick(n)`, a different `n` for each.
 
 The sheets: `cottages`, `cottages-eras`, `townhouses`, `townhouses-eras`,
