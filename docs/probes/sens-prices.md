@@ -26,12 +26,18 @@ island's income of 1750, which has since moved).
   that `y_ref` = 2 was set beside. The engel page's own reasoning (set `y_ref` where the
   island starts) would now put it near 1.55. That would be a choice, not a repair; the
   numbers for it are below.
-- **The markup's window has moved and narrowed.** The farm zigzag is 2.0 on today's game,
-  not the 0.8 it was when the markup landed, and it is least near a markup of 0.67
-  (1.69, down on 13 islands of 16), not at 0.5. Below 0.5 it grows fast (2.98 at 0.375, up
-  on all 16). From 0.8 the markup starts a swing of its own: alarms of downturn up a fifth,
-  and famine years 1.1 a run at 0.8 and 1.8 at 1.0 (sixteen islands). At 1.5 and 2 the
-  island breaks, with 21 and 60 famine years a run.
+- **With the harvests, the markup's best is nearer 0.67 than 0.5, and its top is lower.**
+  The farm zigzag is 2.0 on today's game, not the 0.8 it was when the markup landed, and
+  it is least near a markup of 0.67 (1.69, down on 13 islands of 16). Below 0.5 it grows
+  fast (2.98 at 0.375, up on all 16). From 0.8 the famines rise: 1.1 famine years a run at
+  0.8 and 1.8 at 1.0 (sixteen islands), with alarms of downturn up a fifth. At 1.5 and 2 the
+  island breaks, with 21 and 60 famine years a run. **Most of this is the weather.** With
+  the harvests switched off (seeds 1 to 8) the zigzag is 1.12 at the game's markup, under
+  the prices page's bar of 1.2; it is no smaller at 0.67 (1.12), and the famines do not
+  rise at 0.8. What a stiffer merchant buys on today's island is farm hands that answer a
+  short harvest less, and what it costs is famine. The top of the window has come down
+  without the weather too: at 0.8 the weather-free zigzag is a quarter larger (7 islands
+  of 8), where on the port 0.8 measured like 0.5.
 - **`engel.strength` matters less than it did.** Incomes reach 8.9 bundles a head in the
   1880s and 1890s (the engel page measured 3.6), so the curve is all but fully turned by
   then whatever its strength. Between 2.25 and 4 the towns of the late century move by
@@ -121,11 +127,30 @@ The markup, step by step on sixteen islands (eight for 1.5 and 2):
 The prices page found the window at 0.3 to 0.8 on the port, with the zigzag at 0.76 and the
 best at 0.5. On today's game it starts higher and ends sooner: the zigzag is three times
 the size, least between 0.67 and 0.8, and the famines that a markup over 1 brought on the
-port already begin at 0.8. My reading, not measured further: the game's farm hands now
-come to a price later than the port's did (carting, people and towns each add a step
-between a price and the hands), and the markup's own over-correction starts where the lag
-is long enough. C3 said to try a lower markup first if the zigzag came back; on today's
-rules it is the other way about.
+port already begin at 0.8. C3 said to try a lower markup first if the zigzag came back; on
+today's rules it is the other way about.
+
+**What the harvests do to it** (a check of this page; seeds 1 to 8, six families, the
+game's rules with `--set harvest.enabled=false --set prices.markup=0.375,0.5,0.667,0.8`,
+32 runs, none failed; beside them the same eight islands with the harvests):
+
+| markup | zigzag, no harvests | zigzag, harvests | grain output swing, no harvests / harvests | grain price swing, no harvests | famine years, no harvests / harvests |
+|---|---|---|---|---|---|
+| 0.375 | 1.21 (7 up, 1 down) | 2.87 | 0.024 / 0.115 | 0.046 (7/1) | 0.25 / 0.62 |
+| **0.5** | **1.12** [0.77..1.56] | **2.08** | **0.022 / 0.096** | **0.039** | **0.25 / 0.38** |
+| 0.667 | 1.12 (5/3) | 1.75 | 0.021 / 0.079 | 0.038 (5/3) | 0.50 / 0.62 |
+| 0.8 | 1.42 (7/1) | 1.78 | 0.026 / 0.076 | 0.048 (8/0) | 0.38 / 1.25 |
+
+The weather is about half of today's zigzag: the false cycle the markup was built against
+is 1.12 at the game's markup, still under the prices page's bar of 1.2, which was set for an
+island without weather (the backlog's findings 126 and C57 say the same). Without the
+harvests 0.5 and 0.67 are as good as each other, so the gain at 0.67 is farm hands that
+answer a short harvest less, not a false cycle removed: the grain output swing falls by a
+sixth with the harvests and by a twentieth without. The famines that rise from 0.8 rise only
+with the harvests. What does not need the weather is the top of the window: without it, 0.8
+already swings harder than 0.5 (zigzag +27 per cent, grain's price swing +25 per cent, on
+seven and eight islands of eight). That fits a longer lag between a price and the hands than
+the port had (carting, people and towns each add a step); it is a reading, not measured.
 
 ## Engel's law
 
@@ -172,7 +197,8 @@ holds the towns of the 1890s now.
    calm and famines. The largest lever of the eight after the switches.
 2. **`prices.markup`**: the farm zigzag and grain's swings, and past 0.8 the famines.
    Asymmetric: 0.375 costs half as much zigzag again, 0.667 saves a sixth, 1.0 saves nothing
-   and brings famines.
+   and brings famines. With the harvests on, most of what it moves is how the farm hands
+   answer the weather.
 3. **`engel.strength`**: about a point of town, mostly in mid-century; grain output by
    five per cent.
 
@@ -208,9 +234,13 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
 - **`engel.y_ref` with the harvest's numbers** (not run): the curve's cost is a thinner margin
   over subsistence in a bad year, and the harvest decides how bad the years are. Any move
   of `y_ref` downward should be read beside `harvest` at its own settings.
+- **`prices.markup` with the harvest's numbers** (run in part, by switching the harvests
+  off; see "What the harvests do to it"). The zigzag's floor at about 0.67 and the famines
+  from 0.8 are both the harvests at work; the markup and the size of a bad year want
+  searching as one.
 - **`prices.markup` with whatever adds lag to farm hands** (`carting.adjust`, the people
-  rules' timing; not run). The zigzag's floor moved from 0.5 to about 0.67 as the game grew;
-  the markup and the lag want searching as one.
+  rules' timing; not run). Without the weather the top of the window has come down from
+  above 0.8 to under it, which a longer lag would explain.
 - **`prices.glut_months` with `price_target_months` and `trade_cap`** (not run): the brake is
   set by those two, and only matters if either moves.
 
@@ -220,9 +250,14 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
    page's rule (set it where the island starts) now says about 1.55, which gives two and a
    half to four points more town before 1850, one and a half by the 1890s, two per cent fewer people
    and a tenth more swing in grain. Settle it with the harvest in view, on sixteen islands.
-2. **Move the markup's test**: the prices page asks for a zigzag under 1.2; today's game is at
-   2.0 with the game's markup. Try 0.6 to 0.7 on sixteen islands with the shock test of
-   `examples/prices_probe.rs`, and watch the famine count, which is the first thing to rise.
+2. **Give the markup a test that tells weather from a false cycle** before moving it. The
+   prices page asks for a zigzag under 1.2; today's game is at 2.0, but 1.12 of that is left
+   with the harvests off, so the bar is still met where it was meant to be. Read with the
+   harvests on, the zigzag mostly measures how hard the farm hands answer the weather. A
+   markup of 0.6 to 0.7 steadies that answer by a sixth and costs famine years (0.69 a run
+   on sixteen islands against 0.38, which is near the noise); whether that is wanted is a
+   choice about the harvests, so settle it with them, on sixteen islands, with the shock
+   test of `examples/prices_probe.rs`.
 3. **Leave strength and the brake alone.** Strength's work is now mostly done by income; the
    brake's numbers do nothing measurable.
 4. **Re-measure the curve's ceiling.** The engel page's "just under four in ten" was measured
