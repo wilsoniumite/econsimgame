@@ -253,6 +253,22 @@ impl Builder {
     fn year(&mut self, name: String, y: Option<i64>) {
         self.facts.push(Fact { name, group: self.group, kind: Kind::Year, value: y.map(|y| y as f64) });
     }
+
+    /// A fact already made, again under a name that says its place in the run and
+    /// not its year (`pop_last` for `pop_1900`), under the current heading. Nothing
+    /// if there is no such fact (a run too short for a twenty-year mean).
+    fn again(&mut self, from: &str, name: &str) {
+        if let Some(f) = self.facts.iter().find(|f| f.name == from) {
+            let f = Fact { name: name.to_string(), group: self.group, ..f.clone() };
+            self.facts.push(f);
+        }
+    }
+}
+
+/// The middle year of a run, for the facts named `_mid`: 1825 for a run from 1750 to
+/// 1900, 1900 for a run to 2050.
+pub fn middle(y0: i64, y1: i64) -> i64 {
+    y0 + (y1 - y0) / 2
 }
 
 /// The stylised facts of a finished run. `seconds` is how long it took.
@@ -297,6 +313,23 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for &y in &marks {
         b.num(format!("towns_{y}"), Kind::Count, at("towns", y));
     }
+    // The same by their place in the run and not their year (R7): the first year, the
+    // middle, the last and the last twenty years, so that sweeps to different end years
+    // have names in common (docs/rules/scorecard.md says which to read when).
+    let mid = middle(y0, y1);
+    let last20 = spans(y0, y1).last().copied();
+    let placed = |name: &str| -> [String; 3] {
+        let (a, z) = last20.unwrap_or((y1, y1));
+        [format!("{name}_{y0}"), format!("{name}_{y1}"), if last20.is_some() { format!("{name}_{a}_{z}") } else { String::new() }]
+    };
+    b.again(&format!("pop_{y1}"), "pop_last");
+    b.num("pop_mid".into(), Kind::Count, at("pop", mid));
+    let [first, last, last_span] = placed("urban_share");
+    b.again(&first, "urban_share_first");
+    b.num("urban_share_mid".into(), Kind::Share, at("urban_share", mid));
+    b.again(&last, "urban_share_last");
+    b.again(&last_span, "urban_share_last20");
+    b.again(&format!("towns_{y1}"), "towns_last");
     let last_town = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] >= y0).map(|t| st.town_founded[t]).max();
     b.year("last_town_founded".into(), last_town);
     // people: the towns founded from 1800 on, by what their districts were known for
@@ -391,6 +424,25 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             b.num(format!("income_share_work_{a}_{z}"), Kind::Share, span_mean(series("acct_share_work"), y0, a, z));
         }
     }
+    // by their place in the run (R7), as for the towns above
+    for name in ["farm_share", "industry_share", "mine_share"] {
+        let [first, last, last_span] = placed(name);
+        b.again(&first, &format!("{name}_first"));
+        b.again(&last, &format!("{name}_last"));
+        b.again(&last_span, &format!("{name}_last20"));
+    }
+    for (label, name) in [("real_wage", "real_wage"), ("output_per_head", "gdp_pc"), ("real_wage_chained", "real_wage_chained")] {
+        if !st.series.index.contains_key(name) {
+            continue;
+        }
+        let [_, last, last_span] = placed(label);
+        if y1 > y0 {
+            b.num(format!("{label}_mid_vs_first"), Kind::Ratio, at(name, mid) / at(name, y0));
+        }
+        b.again(&format!("{last}_vs_{y0}"), &format!("{label}_last_vs_first"));
+        b.again(&format!("{last_span}_vs_{y0}"), &format!("{label}_last20_vs_first"));
+    }
+    b.again(&placed("income_share_work")[2], "income_share_work_last20");
 
     // ---- railways
     b.group = GROUPS[2];
@@ -409,6 +461,9 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let december = |k: usize| km.get(k * 12 + 11).copied().unwrap_or(0.0);
     let grew = (0..n).rev().find(|&k| december(k) > if k == 0 { 0.0 } else { december(k - 1) });
     b.year("rail_last_growth_year".into(), grew.map(|k| years[k]));
+    // by their place in the run (R7)
+    b.num("rail_km_mid".into(), Kind::Count, at("rail_km", mid));
+    b.again(&format!("rail_km_{y1}"), "rail_km_last");
     // railways (docs/rules/railways.md): the network by decade, what it serves and what it cost
     for (name, kind, v) in crate::railways::facts(r) {
         b.num(name, kind, v);
@@ -461,6 +516,12 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("works_closed_median_life".into(), Kind::Real, quantile(&life, 0.5));
     let util: Vec<f64> = alive.iter().filter(|&&f| st.f_K[f] > 0.0).map(|&f| st.f_u[f]).collect();
     b.num(format!("works_utilisation_{y1}"), Kind::Share, mean(&util));
+    // by their place in the run (R7)
+    for name in ["works", "works_ex_services", "works_per_1000_people", "works_size_median", "works_size_p90", "works_size_largest"] {
+        b.again(&format!("{name}_{y1}"), &format!("{name}_last"));
+    }
+    b.again(&format!("works_top_1pct_capacity_share_{y1}"), "works_top_1pct_capacity_share_last");
+    b.again(&format!("works_utilisation_{y1}"), "works_utilisation_last");
 
     // ---- land
     b.group = GROUPS[4];
@@ -473,6 +534,8 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             let cells = year_use((y - y0) as usize).iter().filter(|&&u| u == code).count();
             b.num(format!("cells_{name}_{y}"), Kind::Count, cells as f64);
         }
+        // by its place in the run (R7)
+        b.again(&format!("cells_{name}_{y1}"), &format!("cells_{name}_last"));
     }
     // the rest of the land is shared out within each cell, so it is counted by area: every
     // cell's share summed, in cells. (By main use a wood that is a third of every cell around

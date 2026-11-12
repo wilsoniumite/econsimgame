@@ -86,6 +86,15 @@ fn a_tiny_sweep_writes_finite_facts() {
         assert!(f("farm_share_1760") + f("industry_share_1760") <= 1.0 + 1e-9);
         assert!(f("works_ex_services_1760") <= f("works_1760"));
         assert!(f("works_size_median_1760") <= f("works_size_p90_1760") && f("works_size_p90_1760") <= f("works_size_largest_1760"));
+        // the facts named by their place in the run are the facts of those years, and a run of
+        // ten years has no twenty-year mean
+        for (place, year) in [("pop_last", "pop_1760"), ("pop_mid", "pop_1755"), ("urban_share_first", "urban_share_1750"), ("works_last", "works_1760"),
+            ("real_wage_last_vs_first", "real_wage_1760_vs_1750"), ("rail_km_last", "rail_km_1760"), ("works_size_p90_last", "works_size_p90_1760")]
+        {
+            let same = if year == "pop_1755" { facts.get(place).and_then(Value::as_f64).is_some() } else { facts.get(place) == facts.get(year) };
+            assert!(same, "{place} = {:?} against {year} = {:?}", facts.get(place), facts.get(year));
+        }
+        assert!(!facts.contains_key("urban_share_last20") && !facts.keys().any(|k| k.starts_with("urban_share_17") && k.len() > "urban_share_1750".len()),"{:?}", facts.keys());
         // nothing is invented in ten years that then has the time to be built everywhere
         assert!(run["never_built"].as_array().unwrap().iter().any(|m| m == "bessemer"));
         assert!(facts["discovered_railway"].is_null());
