@@ -177,15 +177,15 @@ trades cannot keep up with the people (0.1).
    0.1125) and calms the century after (a seventh off the real wage's yearly swing, a fifth off
    timber's and the cost of living's, an eighth fewer closures); a larger room the reverse. The
    level of the real wage, goods and baskets per head does not move at either end: the real wage
-   of 1880-99 is within 2 per cent of the game's at 0.1125 and at 0.2 (+1.3 and -1.9). works.md's sweep in company
-   (eight islands, 0.10 to 0.30) found 0.15 best for the wage of 1900, a tenth above 0.2; on
-   sixteen islands, against three runs at 0.15, that does not show. So the choice is one of
-   pacing and of how rough the ride is, not of how rich the island ends, and works.md's reason
-   for 0.15 ("the steadier place") is the one that holds. What it does move besides is the split
-   of the late century's income: at 0.1125 the works take 10.2 per cent of it for 8.7, on every
-   island of sixteen, and at 0.2 8.1 per cent. Two more things it moves that nobody had tied to
-   it: the steel rail (an eighth of rails in 1890 at 0.1125, almost none at 0.2: dearer iron makes steel
-   worth rolling, which bears on R58), and the money level of the late century (the money wage
+   of 1880-99 is within 2 per cent of the game's at 0.1125 and at 0.2 (+1.3 and -1.9).
+   works.md's sweep in company (eight islands, 0.10 to 0.30) found 0.15 best for the wage of
+   1900, a tenth above 0.2; on sixteen islands, against three runs at 0.15, that does not show.
+   So the choice is one of pacing and of how rough the ride is, not of how rich the island ends,
+   and works.md's reason for 0.15 ("the steadier place") is the one that holds. What it does
+   move besides is the split of the late century's income: at 0.1125 the works take 10.2 per
+   cent of it for 8.7, on every island of sixteen, and at 0.2 8.1 per cent. Two more things it
+   moves that nobody had tied to it: the steel rail (an eighth of rails in 1890 at 0.1125, almost
+   none at 0.2: dearer iron makes steel worth rolling, which bears on R58), and the money level of the late century (the money wage
    and the cost of living both a sixth lower at 0.1125; not traced).
 2. **`carting.labor`**, the dial for the first fifty years. The first quarter off the share takes
    a fifth of the carters off the road and gives back a sixth to a quarter of what carting costs
@@ -365,3 +365,28 @@ Under `.claude/night/reports/opus/sens-works/` on the machine they were run on (
 repository): `base16` and the placebos, `s8-KEY` (seeds 1 to 8) and `s9-KEY` (seeds 9 to 16) for
 each setting, `pair-*` for the pairs, and `readings-panel.txt` and `readings-top.txt` with every
 reading quoted here.
+
+## The check
+
+A second reader went over the page before it was merged (branch `night/o-sens-works-check`; its
+notes and runs under `.claude/night/reports/opus/sens-works/check.md` and `check-runs/`). The
+check sweep against today's main again gave 0 differing facts of 446, and the core's code is the
+same at a6ff0ec and on main after the merge, so every run here is today's game. 272 of the runs,
+chosen across the tables and including every row called important above (the year's room, the
+labour share, carting off, the hands to a cell, the cell's limit, both churn switches, the works'
+share of the room, carting's cap, the room and the works' share at their far ends, the room
+without carting), came out again identical value for value, every fact and every yearly figure.
+Read again with a reader of the checker's own, every count of facts at 14/16 and every figure in
+the two tables came out as given; five smaller figures did not and were mended (the count of
+seed 6 among the runaways, the foundings the churn switches bring back, the largest *d* and the
+late real wage under the other settings, the reference of the cell-limit pair). Three readings
+were softened or added: the labour share's early effects follow the carters taken off about one
+for one, not faster; its effect on the middle of the century cannot be told from chance; and the
+year's room moves the split of the late century's income, which the first draft left out.
+
+Three settings the page calls idle were tried twice as far out on sixteen islands
+(`carting.adjust=0.125,0.5`, `carting.max_share=0.25,0.833`, `works.built_share=0.025,0.0833`):
+none moved a single measure on fourteen islands, so they are idle. `works.built_share` at 0.5,
+which on eight islands moved more measures than chance (53 on seven of eight, where the three
+runs at the game's values give 26 to 37 against each other), was run on seeds 9 to 16 as well:
+on sixteen islands it moves none. None of the 104 new runs failed or had a runaway town wage.
