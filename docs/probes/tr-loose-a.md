@@ -184,6 +184,8 @@ At the turn the town's price of iron ore became 4.58, and the price it expects, 
 
 The labour market then does what it does. The wage is searched each month between half and twice last month's (`econ::step_month`, the labour market), and if demand at twice the wage still exceeds supply, the wage is twice, and every hand demanded is hired and paid, whether the town has him or not. The miners can only be let go at 15 per cent a month, so the floor stays above the hands for hire from February to October: no wage could clear it, and it doubles each month to the ceiling of 500. The town's works and farms are wiped out by the wage meanwhile (works' hands 172 to 1); the ore floods out and its price falls from 4.58 to 1.22 by December, which is what finally lets the wage down.
 
+The viewer's wage map of the recorded run shows the year whole (`.claude/night/shots/opus/trace-loose-a/runaway-wages-island9-1781.png` and `-1782.png`, not in the repository): in 1781 Iveldelf is the cheapest town on the island, £4.34 a month; in 1782 its year's average is £243 against £5.12 at Mardelf next door, and its market area has grown north towards Falhaven.
+
 The other three runs have the same shape, each in the January after a year's turn:
 
 | run | town | in January | hands for hire | the mine's hands | what jumped at the turn | worst |
