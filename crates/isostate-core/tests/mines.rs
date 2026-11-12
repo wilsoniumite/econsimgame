@@ -89,9 +89,12 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
     // whatever its sign, so every household on the island was charged by head,
     // whether it had the money or not. No town but the new one bought anything
     // for years, the quarries of a town where the wage had fallen to 0.11 then
-    // asked for ten million hands, and the purses grew so large that the
-    // monthly check read their rounding as money lost: in January 1762 with
-    // six families, in 1764 with none. Both are played past that year here.
+    // asked for ten million hands, and in the end the purses were billions
+    // each way and the money itself below nothing (the month's issue is a
+    // share of the money counted before the wages reach the households), where
+    // the monthly check allows a millionth of one unit and read the purses'
+    // rounding as money lost: in January 1762 with six families, in 1764 with
+    // none. Both are played past that year here.
     for (families, end_year) in [(6, 1763), (0, 1765)] {
         let P = commons(3, families, end_year);
         let mut s = sim::start(&P, game_content());
