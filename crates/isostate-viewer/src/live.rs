@@ -756,7 +756,9 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                             if !turned {
                                 Msg::Month(Box::new(month))
                             } else {
-                                // December first, then its year as it ended, before the turn's orders
+                                // December first, then its year as it ended, before the turn's orders.
+                                // (The year has ended by the time December is taken, so the month carries the
+                                // year's end's news as well as its own, and the year that follows has none to add.)
                                 if tx.send(Msg::Month(Box::new(month))).is_err() {
                                     return;
                                 }
