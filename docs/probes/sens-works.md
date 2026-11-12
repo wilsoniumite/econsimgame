@@ -58,18 +58,19 @@ each island goes down another path. Two such placebos were run on all sixteen is
 (`works.walk=0.0200001`, `carting.adjust=0.2500001`). On seeds 1 to 8 they moved 22 and 29 of
 some 560 facts and series with seven islands of eight agreeing, with *d* up to 1.4: the chained
 real wage of 1900 rose 4 per cent on seven islands of eight, and over all sixteen baskets per
-head in 1850 rose 7 per cent. On sixteen islands they moved 2 and 0 facts with fourteen of sixteen agreeing. So
-eight islands cannot tell a *d* of 1 from nothing, and every claim here is held to fourteen
-islands of sixteen.
+head in 1850 rose 7 per cent. On sixteen islands they moved 2 and 0 facts with fourteen of
+sixteen agreeing. So eight islands cannot tell a *d* of 1 from nothing, and every claim here is
+held to fourteen islands of sixteen.
 
 **The reference.** Since every setting is read against the same run at the game's values, that
 run's own luck shows up as the same movement under every setting. On seeds 1 to 8 it has more
 late towns (5.1 a run) than most of the sweeps beside it (3 to 4.5 for most of them), the
-placebos included, so at first nearly every setting seemed to found fewer. The readings below are therefore against the
-mean, island by island, of the three runs at the game's own values (the baseline and the two
-placebos), with the spread between islands read from the baseline alone. That alone took away one
-apparent gain (a cell limit of 1.0 seemed to raise goods per head in 1900 by 3.7 per cent on seven
-islands of eight; against the three runs it is 1.5 per cent on five).
+placebos included, so at first nearly every setting seemed to found fewer. The readings below
+are therefore against the mean, island by island, of the three runs at the game's own values
+(the baseline and the two placebos), with the spread between islands read from the baseline
+alone. That alone took away one apparent gain (a cell limit of 1.0 seemed to raise goods per
+head in 1900 by 3.7 per cent on seven islands of eight; against the three runs it is 1.5 per
+cent on five).
 
 In the tables, "of 8" is how many of seeds 1 to 8 moved the way the mean did and "of 16" the
 same over all sixteen; where a row has two values tried the counts are for each in turn. The
@@ -119,9 +120,10 @@ islands and `adjust` from 0.15 to 1 on two; `max_share` was never moved.
 
 `labor` can only come down (it is the share of the carting bill that is wages, and a share stays
 a share), so its values are three quarters and a half. The early effects grow a little faster
-than the share comes down: a `labor` of 0.75 moves the urban share of 1780-99 by 3 per cent, 0.5
-by 9 and switching carting off by 18. Not so in the middle of the century, where carting off is worth a
-fifth of the baskets of 1850 and half the carters a twentieth (and that not on most islands).
+than the share comes down: a `labor` of 0.75 moves the urban share of 1780-99 by 3 per cent,
+0.5 by 9 and switching carting off by 18. Not so in the middle of the century, where carting off
+is worth a fifth of the baskets of 1850 and half the carters a twentieth (and that not on most
+islands).
 carting.md found 0.5 closing half the gap of 1850 on seeds 1 to 6 in the game of then; on these
 sixteen islands it closes about an eighth.
 
@@ -184,18 +186,22 @@ trades cannot keep up with the people (0.1).
    the railway a tenth shorter. By 1900 it costs about 1 per cent of baskets and 3 of goods.
 4. **`works.hands_per_cell` and `works.cell_limit`** set the map: how many works stand, how large
    and on how many cells (industry on 140 to 283 cells in 1900 across the values tried). They are
-   free of the economy at these values, so they can be set for the picture.
+   free of the economy from 1,500 to 8,000 hands and from a cell limit of 0.3 to 1.0, so they
+   can be set for the picture; at 500 hands to a cell the island begins to pay (7 per cent of
+   goods per head in 1900).
 5. **`works.count_spread` and `works.family_extends`** set the churn: switched off, each brings
-   back 800 to 900 more foundings and 700 to 850 more closures a run, and the second the families' small
-   works of the first half century (twice the works in 1800). Neither moves output or the wage.
+   back 800 to 900 more foundings and 700 to 850 more closures a run, and the second the
+   families' small works of the first half century (twice the works in 1800). Neither moves
+   output or the wage.
 
 ## The settings that do nothing at these sizes
 
 `works.built_share` (also nothing from 0.01 to 0.2 in works.md, nor at 0.5), `works.walk` in the
 yearly facts, `works.entry_share` beyond the number of industry cells (also at 0.3),
 `works.room_share` beyond the number of works (between 0.255 and 1.0), `carting.max_share` (the
-cap binds in only a few town-months, even at 0.2) and `carting.adjust` in the yearly facts. Any of these could be left where it stands in a pass over the rules; `walk` and
-`adjust` because what they are for is not among the facts, the rest because nothing moves.
+cap binds in only a few town-months, even at 0.2) and `carting.adjust` in the yearly facts. Any
+of these could be left where it stands in a pass over the rules; `walk` and `adjust` because what
+they are for is not among the facts, the rest because nothing moves.
 
 ## Where a run breaks
 
