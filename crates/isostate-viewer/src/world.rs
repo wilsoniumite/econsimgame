@@ -90,8 +90,6 @@ pub struct Ground {
     pub gh: usize,
     /// vertex heights, row-major, gh rows of gw
     pub hgt: Vec<f32>,
-    /// distance from each sea cell to land, in cells (0 on land)
-    pub sea_dist: Vec<f32>,
     /// quantiles of the patch noise, for turning it into a uniform value
     pub quant: Vec<f32>,
     /// the parcels of the field system, and what does not change about each
@@ -292,6 +290,7 @@ pub fn build_ground(r: &Replay) -> Ground {
 fn build_ground_inner(r: &Replay) -> Ground {
     let (w, h) = (r.w, r.h);
     let land: Vec<bool> = r.terrain.iter().map(|&t| t > 0).collect();
+    // how far each sea cell is from land, in cells: wanted only for the depth of the sea bed here
     let sea_dist = chamfer(w, h, &land);
     // cell heights: land from elevation, sea floor deepening away from the coast
     let cell_h: Vec<f32> = (0..w * h)
@@ -328,10 +327,11 @@ fn build_ground_inner(r: &Replay) -> Ground {
             samples.push(sub_raw(i as f32 / 512.0 * w as f32, j as f32 / 512.0 * h as f32));
         }
     }
-    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // (total_cmp: a NaN, which the noise should never give, would stop the program with partial_cmp)
+    samples.sort_by(|a, b| a.total_cmp(b));
     let quant: Vec<f32> = (0..=256).map(|q| samples[(q * (samples.len() - 1)) / 256]).collect();
     let land = timed("land", || build_land(r, &Fields { hgt: &hgt, flood: &floodplain, gw, gh, water: &water }, &quant, &cen));
-    Ground { w, h, gw, gh, hgt, sea_dist, quant, land, rivers, water, floodplain }
+    Ground { w, h, gw, gh, hgt, quant, land, rivers, water, floodplain }
 }
 
 /// A value of a vertex grid at a map position (in cells), between its vertices.
