@@ -333,5 +333,8 @@ baselines), `s8/NAME` and `s9/NAME` (one sweep a setting), `pairs/`,
 `readings/` (what the scripts printed: `table8.txt` and `table16.txt` against
 the baseline, `hilo_r8.txt`, `hilo_c8.txt`, `hilo16.txt` and `hilo16b.txt` low value against
 high, `analyse8.txt` every key fact, `noise_materials.txt`, `pairs.txt`), and
-`scripts/` (the Python that reads them, and the shell that ran them). `build.md`
+`scripts/` (the Python that reads them, and the shell that ran them). To save
+space each one-setting sweep keeps its `facts.csv`, `summary.txt` and
+`README.txt` but not its `annual.csv`, which only the two baselines keep; the
+twenty-year means drawn from them are in the readings. `build.md`
 there has every command and decision.
