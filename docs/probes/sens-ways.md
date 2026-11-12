@@ -33,8 +33,15 @@ says, and not the promoters'.
    by as much as 3 per cent. The most famine years in any run was four.
 2. **Within the range tried, no setting of either mechanism moves output per
    head or the real wage by much.** As means of twenty years, no change between
-   a setting's two values is more than 3 per cent, none is as large as a fifth
-   of the spread between islands, and only one runs the same way on 14 islands
+   a setting's two values is more than about 3 per cent. The largest are the
+   navvies' `navvy_adjust` in 1881 to 1900 (output a head 2.7 per cent and the
+   real wage 3.0 per cent lower at 0.333 than at 0.1875, on 10 islands of 16)
+   and the canal `hurdle` in 1831 to 1850 (2.7 and 2.8 per cent higher at 0.133,
+   on 11 and 12). Those are a half or more of the spread between islands, so the
+   mean alone would make them look like something; but they are carried by a few
+   islands that swing a long way either way (under `navvy_adjust` single islands
+   move output a head in 1881 to 1900 by 0.3 to 0.6, where the path noise of the
+   median island is 0.13), and only one change runs the same way on 14 islands
    of 16 or more: dearer railway lines (`cost_mult` 6.67 against 3.75) leave
    output a head in 1831 to 1850 0.9 per cent lower and the real wage 1.5 per
    cent lower. The economy feels the railways and the canals through the two
@@ -262,6 +269,20 @@ canals' four materials matter only as the canal's cost: stone, timber and clay
 alone move too little to tell apart from path noise, and bricks take some 70 km
 off the canal of 1900 on twelve islands of sixteen.
 
+The review tried three of these twice as far out, on seeds 1 to 8. At 80,
+`railways.max_projects` gives every fact as the baseline does; at 20 it binds at
+last (the most lines building at once is 20 on every island, against 24 on
+average) and leaves 49 km less railway in 1900, on five of eight.
+`canals.discover_stone` at 1,500,000 and 6,000,000 moves two and three islands
+of eight at all, but where it does the first canal jumps by 5 to 14 years, and
+not in the direction the threshold would suggest: island 2's comes 14 years
+sooner at both values, island 5's 13 years later at the higher. It looks like
+the same long tail as the first railway's (above), a yearly draw that lands in
+another year once anything before it changes, rather than the stone; the review
+did not trace it. `rail_know` at 0.125 and 0.5 moves the first line on two
+islands (by 7 years on island 6) and the railway of 1850 or 1900 by up to 95 km,
+within the path noise. None of the three is a setting to search.
+
 ## Where a run breaks
 
 Nowhere in the range tried. All 912 runs finished, the money check held every
@@ -323,14 +344,16 @@ Worth trying next, none run:
    grain that can go by boat or rail in a bad year is the obvious guess.
 5. **The dials can be tuned for the map and the calendar without fear for the
    economy.** Within a third either way none of them moves output a head or the
-   wage by more than a few per cent, a fifth of the spread between islands, so
+   wage by more than about 3 per cent, and of those moves only `cost_mult`'s
+   runs the same way on most islands (In short, 2), so
    the scorecard of piece 18 can set them by how the network looks and when it
    comes. That holds for the island as these rules have it, where nobody owns a
    line or a canal; fares that somebody collected would change it.
 6. **Read against both values, and on sixteen islands.** On seeds 1 to 8 the
    baseline's own luck reached the towns of 1900, and three "all eight islands"
    results did not survive seeds 9 to 16: `build_months` 32 took 70 km off the
-   railway of 1850 on all eight, and on sixteen it is 43 km on 12; canal `cost`
+   railway of 1850 against the baseline on all eight, and on sixteen it is 43 km
+   on 12; canal `cost`
    took 3.6 per cent off output a head in 1831 to 1850 on all eight, and on
    sixteen 1.3 per cent on 12; canal `stone` added 3 per cent to the same, and
    on sixteen 1 per cent on 10. A scorecard built on eight islands would have
