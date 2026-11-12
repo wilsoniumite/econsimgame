@@ -13,9 +13,10 @@ The game's rules at a6ff0ec (12 November 2026), six families, 1750 to 1900, seed
 In short:
 
 - **Of the life cycle's nine settings only the year's room (`year_room`) moves the economy**, and
-  what it moves is the century's steadiness and its start, not the level of the wage. A smaller
-  room makes iron and tools scarce and dear before 1800 and the swings after it a seventh
-  smaller; a larger room the other way round.
+  within a third either way what it moves is the century's steadiness and its start, not the
+  level of the wage. A smaller room makes iron and tools scarce and dear before 1800 and the
+  swings after it a seventh smaller; a larger room the other way round. Further out it costs at
+  both ends: at 0.05 the island hardly industrialises, at 0.4 the late wage is an eighth lower.
 - **Carting's `labor` moves the level of the first fifty years** (half the carters gives back
   about half of what carting costs in 1800) and hardly anything after; the delay that carting
   puts into the middle of the century does not follow its size.
@@ -24,7 +25,7 @@ In short:
   works there are, how large and on how many cells; the merchant's spread at entry and the
   families' extensions set how many are founded and closed. The walk, `built_share`, carting's
   cap and its damper do nothing that sixteen islands can see.
-- **No run failed** in 488 runs, but in ten of them one town's wage ran away for a few months
+- **No run failed** in 584 runs, but in thirteen of them one town's wage ran away for a few months
   (to 47, 100 and 121 times the middle town's), nearly always early in the century and on the
   same few islands. It looks like the labour market's monthly limit, not these mechanisms; the
   seeds are below.
@@ -41,7 +42,8 @@ isostate-core sweep --seeds 1-8  --rules game --families 6 --set works.year_room
 isostate-core sweep --seeds 9-16 --rules game --families 6 --set works.year_room=0.1125,0.2 --out DIR/s9-works.year_room
 ```
 
-and so on for each key: 488 runs in all, with the pairs below and the check against main. Each run is set beside the same island at the game's
+and so on for each key: 584 runs in all, with the pairs, the far ends and the check against
+main. Each run is set beside the same island at the game's
 own values. One year misleads, so the yearly series (`annual.csv`) are read as twenty-year means,
 1780-99, 1830-49 and 1880-99, beside the sweep's facts; a swing is the standard deviation of the
 year-on-year change of the series' logarithm over 1800 to 1899.
@@ -128,6 +130,33 @@ measured again here; `tests/carting.rs` holds it. Nor is the walk's own measure 
 hands within two cells of their market), so the walk could be doing to the map what works.md
 says without a fact here seeing it.
 
+## Further out
+
+To find where things give way, each number was also taken well beyond the band above, on seeds 1
+to 8 (96 runs, against the same three-run reference; eight islands, so only the large movements
+are worth reading):
+
+| setting | game | tried | what happened, eight islands |
+|---|---|---|---|
+| `works.year_room` | 0.15 | 0.05 | the island hardly industrialises: industry's share of hands in 1880-99 0.17 for 0.49, the urban share of 1900 0.16 for 0.42, industry on 66 cells, goods per head in 1900 -29%, real income of 1880-99 -18%, the money wage of 1880-99 5.0 for 12.6, 8% more people (each on seven or all eight islands) |
+| | | 0.4 | works closed +50%, the real wage's swing +26%, the real wage of 1880-99 -13% and real income -10%; baskets per head in 1850 +35% (seven islands of eight), in 1900 -8% |
+| `works.room_share` | 0.34 | 0.1 | 1,214 works, the median 3.8 usual sizes; people in 1900 -9% (all eight), famine years 1.4 a run for 0.5, baskets per head in 1850 -23%, and three runaway town wages in eight islands |
+| | | 1.0 | 508 works; nothing else |
+| `works.hands_per_cell` | 2,000 | 500 | 1,520 works on 793 cells; goods and baskets per head in 1900 -7%, the real wage of 1880-99 -6% (all eight) |
+| | | 8,000 | 470 works on 26 cells, the median 10.4 usual sizes; nothing else |
+| `works.cell_limit` | 0.8 | 0.3 | 1,100 works, the median 2.7 usual sizes; nothing else |
+| `works.walk` | 0.02 | 0.1 | industry on 30% fewer cells, works a little smaller, closures +11%; goods per head in 1900 -3% (*d* 0.8) |
+| `works.entry_share` | 0.10 | 0.3 | nothing past chance |
+| `works.built_share` | 0.05 | 0.5 | nothing past chance |
+| `carting.labor` | 1.0 | 0.25 | carters 0.034 of hands in 1800; the urban share of 1780-99 +12% (it is +3, +9, +12 and +18% at 0.75, 0.5, 0.25 and none); people 1900 +3%, the urban share of 1900 0.435; 1900 otherwise level |
+| `carting.max_share` | 0.5 | 0.2 | nothing: carters 2.5% fewer in 1800, islands split, so the cap hardly binds even at 0.2 |
+
+So the game's year's room sits in a flat bottom: from about 0.11 to 0.2 the level of the
+economy does not move, and beyond it costs rise at both ends, steeply below. The life cycle's
+other numbers can go a long way before the economy notices; it starts to pay only when works are
+made land-hungry (500 hands to a cell) or a works' share of the room is cut so far that the
+trades cannot keep up with the people (0.1).
+
 ## The settings that matter most
 
 1. **`works.year_room`**, the one number of the life cycle that the economy answers to. It sets
@@ -162,21 +191,25 @@ says without a fact here seeing it.
 
 ## The settings that do nothing at these sizes
 
-`works.built_share` (also nothing from 0.01 to 0.2 in works.md), `works.walk` in the yearly facts,
-`works.entry_share` beyond the number of industry cells, `works.room_share` beyond the number of
-works, `carting.max_share` (the cap binds in only a few town-months) and `carting.adjust` in the
-yearly facts. Any of these could be left where it stands in a pass over the rules; `walk` and
+`works.built_share` (also nothing from 0.01 to 0.2 in works.md, nor at 0.5), `works.walk` in the
+yearly facts, `works.entry_share` beyond the number of industry cells (also at 0.3),
+`works.room_share` beyond the number of works (between 0.255 and 1.0), `carting.max_share` (the
+cap binds in only a few town-months, even at 0.2) and `carting.adjust` in the yearly facts. Any of these could be left where it stands in a pass over the rules; `walk` and
 `adjust` because what they are for is not among the facts, the rest because nothing moves.
 
 ## Where a run breaks
 
-No run failed: 440 runs in the sweeps and 48 in the pairs below, each with the monthly money
-check on, no panic, no failed check. No town emptied: the fewest towns in 1900 in any run is 12,
-which the game's own values give on seed 13. Famine years are at most 4 in a run, and one of the
-runs at the game's own values has 4 too (a placebo, seed 6).
+No run failed: 440 runs in the sweeps, 48 in the pairs below and 96 further out, each with the
+monthly money check on, no panic, no failed check. No town emptied: the fewest towns in 1900 in
+any run is 12, which the game's own values give on seed 13. Famine years are at most 4 in a run,
+and one of the runs at the game's own values has 4 too (a placebo, seed 6). Where the economy
+gives way rather than the code, it is at the far ends above: a year's room of 0.05, where the
+island stays on the land, and a works' share of the room of 0.1, where people fall short by a
+tenth and the famines treble.
 
-What did happen, in ten of the 432 runs at other values, is a runaway town wage. One town's wage
-doubles month after month (the most the labour market lets it move) while its works go on
+What did happen, in ten of the 432 runs at other values within the band and the pairs (and in
+three more of the 96 further out, all at `room_share` 0.1), is a runaway town wage. One town's
+wage doubles month after month (the most the labour market lets it move) while its works go on
 hiring, for four or five months, and comes down as fast. None of the 56 runs at the game's own
 values has one, but at one run in forty-three that is what chance would give a time in four, so
 it does not say the game's values are safer:
@@ -193,6 +226,7 @@ it does not say the game's values are safer:
 | `carting.labor=0.5`, `works.year_room=0.1125` | 6 | 1755 | 76.3, then 27.5 (3.7 the year before) | |
 | `works.cell_limit=1.0`, `works.hands_per_cell=2667` | 6 | 1759 | 15.2, then 8.1, as with 2,667 alone | |
 | `carting.enabled=false`, `works.year_room=0.1125` | 5 | 1763 | 7.3 (3.6 the year before) | |
+| `works.room_share=0.1` | 2, 5, 6 | 1777, 1779, 1795 | 11.6, 9.8 and 24.7 (about 5 the year before) | |
 
 The worst towns are from `examples/wage_watch.rs` (for example `wage_watch game 6 on 3 4
 works.year_room=0.1125`); at the game's values the same seeds give 8.6 times at most (Brambank,
@@ -203,17 +237,18 @@ for Sunhaven, "where a household's income goes more than eight times as far". Th
 1785 reads 4.0 times 1750's and that of 1786 is 71 per cent below it, which is the largest
 `real_wage_worst_year` of every run here.
 
-It is the same few islands (seed 6 six times, seed 3 twice) and nearly always in the first
-fifteen years or a town's first year or two, under settings of both mechanisms and in both
-directions, so it is not these mechanisms' doing: these islands sit near an edge in the labour
-market and any small push can tip them over. (Carting is not needed for it: one of the ten is
-with carting switched off.) It is not new. harvest.md, among its worries, describes the same
+It is the same few islands (seed 6 seven times of thirteen) and always before 1800, most often in
+the first fifteen years, under settings of both mechanisms and in both directions, so it is not
+these mechanisms' doing: these islands sit near an edge in the labour market and any small push
+can tip them over. (Carting is not needed for it: one of the thirteen is with carting switched
+off.) It is not new. harvest.md, among its worries, describes the same
 thing under the port: a small new town whose land wants far more hands than it has people, its
 wage doubling every month towards the ceiling, sitting "on a knife's edge" so that any change to
 the island moves which seed has it, rarer with the merchants' prices and still there. These runs
 say it is still there in the whole game, at about one run in forty-three once any of these
-numbers is moved, and that it is not always a new town (Sunhaven, seed 4, was founded in 1749). The nearest relative is carting's "wage that flipped", which the damper `adjust` ended;
-this one is not a flip but a run in one direction. It is for whoever looks after the wage's
+numbers is moved, and that it is not always a new town (Sunhaven, seed 4, was founded in 1749).
+The nearest relative is carting's "wage that flipped", which the damper `adjust` ended; this one
+is not a flip but a run in one direction. It is for whoever looks after the wage's
 monthly limit and the hiring that runs ahead of it (`wage_watch`'s "overworked town-months": 7
 and 3 on seeds 3 and 4 with the small room, none at the game's values).
 
@@ -263,8 +298,8 @@ Worth trying together in a pass over the rules, and not run here:
 
 ## What I would look at first in a pass over the rules
 
-1. **The runaway town wages.** Ten runs of 432, nearly all early in the century on the same few
-   islands, a town's wage doubling for four or five months and, on seed 4, the island's money
+1. **The runaway town wages.** Thirteen runs of 528, nearly all early in the century on the same
+   few islands, a town's wage doubling for four or five months and, on seed 4, the island's money
    level shifting for good after it. It is the one result here that looks like a fault rather
    than a setting (harvest.md saw it under the port), and it will colour every other table of
    sensitivity, because any setting that tips one island over moves the means of eight. The seeds
