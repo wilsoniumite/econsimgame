@@ -536,7 +536,9 @@ fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &m
 /// first stream of 1.5 cubic metres a second it meets), and its ground by the
 /// water: marsh where it is level and within 0.9 m of a lake or the sea, or low
 /// by the sea, or on a slack planed floor (`floor`); else flood plain on a
-/// planed floor or within 3 m of a stream.
+/// planed floor or within 3 m of a stream. Whether the water a node drains to
+/// is still is kept as a mark of its own: a stream is a stream however big it
+/// is, and the ground beside the largest river is judged as beside any other.
 fn wet_ground(g: Grid, z: &[f64], sea: &[bool], rt: &Routing, lake_id: &[u16], flow: &[f64], floor: &[bool]) -> (Vec<f32>, Vec<u8>) {
     let n = g.n();
     let mut hand = vec![0.0f32; n];
@@ -549,7 +551,7 @@ fn wet_ground(g: Grid, z: &[f64], sea: &[bool], rt: &Routing, lake_id: &[u16], f
         let r = rt.rcv[c] as usize;
         if lake_id[c] > 0 || flow[c] >= 1.5 {
             level[c] = rt.fill[c];
-            still[c] = lake_id[c] > 0 || flow[c] >= 99.0;
+            still[c] = lake_id[c] > 0;
         } else if sea[r] {
             level[c] = 0.0;
             still[c] = true;
@@ -874,4 +876,51 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
     }
 
     Water { k: g.k, w: g.w, h: g.h, z, sea, rt, lake_id, lakes, flow, hand, wet, owner, rivers, oxbows, rain, runoff, drowned }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A valley on a 16 by 16 grid of nodes (four cells by four), two nodes of
+    /// sea all round: a stream down column 8 falling `fall` metres a node to the
+    /// sea at the bottom, its banks rising `side` metres a node either side of
+    /// it, the whole of it 10 m and more above the sea. A bank node drains on
+    /// the diagonal to the stream one node down where `side` lies between 0.41
+    /// and 2.41 times `fall`.
+    fn valley(fall: f64, side: f64) -> (Grid, Vec<f64>, Vec<bool>, Routing) {
+        let g = Grid { w: 16, h: 16, k: 4 };
+        let sea: Vec<bool> = (0..g.n()).map(|c| c % g.w < 2 || c / g.w < 2 || c % g.w > 13 || c / g.w > 13).collect();
+        let z: Vec<f64> = (0..g.n())
+            .map(|c| {
+                let (x, y) = ((c % g.w) as f64, (c / g.w) as f64);
+                if sea[c] { -5.0 } else { 10.0 + fall * (13.0 - y) + side * (x - 8.0).abs() }
+            })
+            .collect();
+        let mut rt = Routing::default();
+        rt.route(g, &z, &sea, &shore_nodes(g, &sea));
+        (g, z, sea, rt)
+    }
+
+    /// A flow of `q` down the valley's stream and a trickle everywhere else.
+    fn stream(g: Grid, q: f64) -> Vec<f64> {
+        (0..g.n()).map(|c| if c % g.w == 8 { q } else { 0.1 }).collect()
+    }
+
+    #[test]
+    fn a_big_river_s_banks_are_judged_as_a_small_one_s() {
+        // a bank node 0.65 m above the stream it drains to, nearly level, 10 m
+        // and more above the sea: flood plain by a stream, and marsh only by a
+        // lake or the sea. A stream of 150 cubic metres a second is still a
+        // stream (the rule once marked "a lake or the sea" by a flow of 99).
+        let (g, z, sea, rt) = valley(0.25, 0.4);
+        let (lake, floor) = (vec![0u16; g.n()], vec![false; g.n()]);
+        let bank = 5 * g.w + 7;
+        assert_eq!(rt.rcv[bank] as usize, 6 * g.w + 8, "the bank drains on the diagonal to the stream");
+        let (hand, small) = wet_ground(g, &z, &sea, &rt, &lake, &stream(g, 50.0), &floor);
+        assert!((hand[bank] - 0.65).abs() < 1e-4, "the bank stands {} m above its stream", hand[bank]);
+        assert_eq!(small[bank], WET_PLAIN);
+        let (_, big) = wet_ground(g, &z, &sea, &rt, &lake, &stream(g, 150.0), &floor);
+        assert_eq!(big, small, "a river of 150 cubic metres a second makes marsh where one of 50 makes flood plain");
+    }
 }
