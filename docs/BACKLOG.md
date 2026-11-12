@@ -2,7 +2,7 @@
 
 What Stella notices while playing, in her words, and what becomes of each note. It is also where the order of work is decided. The diary of what was done is [DEVLOG.md](DEVLOG.md); this file is what is waiting, what is being done, and why in that order.
 
-Last gone through: the evening of 11 November 2026, when the probe of combined works came in.
+Last gone through: the morning of 12 November 2026, when the mines, the wood edges and the railways' profiles landed.
 
 ## How it is kept
 
@@ -17,23 +17,21 @@ Until the evening of 11 November her notes were taken up as they arrived, usuall
 
 ## In flight
 
-Started before this file existed, and left to finish. I went through them for work that another piece is about to make moot and found none worth stopping. What each branch is expected to answer of the helpers' findings is listed at the foot of the page of findings, to be checked when it lands.
+Started before this file existed, and left to finish. The usage limit cut every one of them off on the evening of the 11th; each was carried on the next morning from what it had committed. What each branch is expected to answer of the helpers' findings is listed at the foot of the page of findings, to be checked when it lands.
 
 | Piece | Notes | Branch | State |
 |---|---|---|---|
-| Mines that take little surface (core) | 2 | `night/mines-review` | in review |
-| Canals (core) | 9 | `night/canals-review` | in review |
-| A second island generator: erosion, real rivers, lakes (core) | 4, 6 | `night/land-review` | in review |
-| Books of account for towns, works and the island (core) | 13 | `night/accounts` | being built |
-| The production tree's first stage (core) | 8, in part | `night/tree` | being built |
-| Months that step, and slower speeds (viewer) | 10 | `night/calendar` | being built |
-| Railways with one continuous profile (viewer) | 12 | `night/rails-review` | in review |
-| Towns drawn from the ground they keep (viewer) | 14 | `night/town-ground` | being built; its first helper was cut off at 17:03 and a second carries on from the saved work |
-| Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | being built |
-| Wood and heath edges at mid distance (viewer) | 5 | `night/wood-edges` | being built |
-| Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | being built |
-| Where frames stall: a recorder, measurements and a design, no fix yet (viewer) | 17 | `night/smooth-probe` | measuring |
-| The run to 2050: a design to read, no code | 1 | documents only | being written |
+| Canals (core) | 9 | `night/canals-review` | reviewed; being merged on the integration branch |
+| A second island generator: erosion, real rivers, lakes (core) | 4, 6 | `night/land-review` | reviewed; merged on the integration branch after the canals. It stays switched off until the viewer can draw it |
+| Books of account for towns, works and the island (core) | 13 | `night/accounts` | built; in review |
+| The production tree's first stage (core) | 8, in part | `night/tree` | being built; a second helper carries on from the first's saved work |
+| Months that step, and slower speeds (viewer) | 10 | `night/calendar` | built; in review |
+| Towns drawn from the ground they keep (viewer) | 14 | `night/town-ground` | being built; cut off twice, and a third helper carries on from the saved work |
+| Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | built; in review |
+| Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | built; in review |
+| Where frames stall: a recorder, measurements and a design, no fix yet (viewer) | 17 | `night/smooth-probe` | measured and designed; with its critic |
+| The run to 2050: a design to read, no code | 1 | documents only | three designs made into one; with its critics, then a revision |
+| The documents a newcomer reads first: README, the plan's account of where we are (F23) | none | `night/docs-front` | written; being checked command by command |
 
 Queued behind one of these and already briefed: works laid out by what they do and hold (note 16), which starts on `night/works-detail` once that has been reviewed.
 
@@ -42,10 +40,10 @@ Queued behind one of these and already briefed: works laid out by what they do a
 Nothing here is started until its trigger is met and the backlog has been gone through again. Her notes and what helpers found are in one order.
 
 1. **A real game is not lost to a test start** (F1). A game started for a test can set the island's saved game aside, and four such starts can lose it; two copies of the game write the same autosave. *Trigger:* `night/calendar` is merged, since it changes the save. *Why first:* it is the one thing here that can cost her a game she is playing, and it is hours of work.
-2. **Draw what the core pieces add, each as it lands** (notes 2, 4, 6, 9; F7). Mines as small workings at the foot of the hill; canals; the new land's relief, rivers and lakes. *Trigger:* the piece is merged. *Why here:* these are her first notes, and until they are drawn the picture shows the old blobs and the old rivers.
+2. **Draw what the core pieces add, each as it lands** (notes 2, 4, 6, 9; F7). Mines as small workings at the foot of the hill; canals; the new land's relief, rivers and lakes. The mines are merged (12 November) and are drawn only as a stand-in, one of the old pits at each working: the grey blocks are gone and the mines are nearly invisible. *Trigger:* for the mines, `night/works-detail` and `night/town-ground` are merged, since they are rewriting the generators and the placement code the drawing would work in; for the canals and the new land, each is merged. *Why here:* these are her first notes.
 3. **Roads, bridges and carts laid again on the new rivers** (notes 19, 20; F3). The cart that sails over a river and clips through a bridge was already in a helper's notes: a cart's path is a straight line between cell centres at the height of the ground. The roads' links and every bridge are the viewer's own invention, which is why a road down a valley crosses its river again and again. Neither is mended on its own, because the rivers are about to be replaced. *Trigger:* the viewer draws the new land. *If the new land does not land,* mend both on today's rivers.
 4. **Map views and charts that say what is so** (F2; bears on note 13). One outlying town flattens the price map's scale; a price is shown for goods nobody makes yet; a wage chart that should read 1 in 1750 reads 1.04. *Trigger:* `night/calendar` and `night/town-ground` are merged, since both work in the map views.
-5. **A look at each viewer piece once it has landed:** towns (F5), railways (F6), works (F8). What reviewers could not judge until the piece was in. *Trigger:* each landing.
+5. **A look at each viewer piece once it has landed:** towns (F5), railways (F6), works (F8). What reviewers could not judge until the piece was in. The railways have landed, so F6 is ready: whether the whole network reads as too much on the map, the churches that now have a line against their yard, eighteen curves too tight for a train, roads that drape over the banks, sidings that are plain ribbons. *Trigger:* each landing; the railways' part now ranks below items 1 to 4.
 6. **What the record carries for the viewer, and a test that holds it** (F9; note 16). The record keeps two land classes a cell where the picture uses four, clips rent and distance, and carries no traffic; the golden test would not notice a change to any of it. With it goes a row for each works and year (capacity, what is on order, hands, how hard it runs, its state: twelve bytes), which the probe of combined works found to be true today and which the viewer's site planner needs in place of its stand-ins. *Trigger:* mines, canals, the new land and the books of account are merged, since each adds to the record. *Why here:* the inspector, ownership on the map and anything that follows traffic wait on it.
 7. **The inspector** (note 13): a market's industries as a flow, with prices, volumes and carting. *Trigger:* the books of account are merged, and item 6.
 8. **A hand-over that keeps the view smooth** (note 17; F14). *Trigger:* the probe's design is written and checked, and the monthly clock and the buildings' levels of detail are merged, since all three change the same code.
@@ -78,7 +76,9 @@ Not her notes: what helpers and reviewers reported and left open. On the evening
 ## Closed
 
 - **3, houses with too little detail:** answered by the house kit, merged 11 November. Her later notes 14 and 16 take it further.
-- **5, land that looks ruled:** answered from the whole-island view by the far view, merged 11 November. From mid distance it is still in flight (`night/wood-edges`), so the note stays open there.
+- **2, mines as big blobs:** answered in the simulation by the mines, merged 12 November: diggings take about 9 cells' worth of land in 1900 where they took 1,373. The picture still shows a working only as a stand-in, so the drawing stays open at Ready next 2.
+- **5, land that looks ruled:** answered from the whole-island view by the far view, merged 11 November, and from mid distance by the wood, heath and hill edges, merged 12 November.
+- **12, a railway like an aqueduct that then drops:** answered by the railways' profiles, merged 12 November: every cell of track has one level, a line winds or takes an incline where the ground is too steep, and the check finds no step anywhere. What is still wrong with them is at Ready next 5.
 - **11, "I really like a lot of the new looks":** nothing to do but keep going that way.
 - **15, examples of the generators:** five contact sheets sent; twelve are under `.claude/night/shots/lab-for-stella/` on her machine, and `isostate-viewer --lab list` names the rest.
 - **16, in part: what the simulation knows of a works.** Measured on 11 November: a works holds plant and cash and no goods; being on a railway is worth about 0.3 per cent of its output. So stock yards and sidings are drawn from stand-ins and from where the track runs, and the picture should not claim more. The rest of note 16 is in flight or at Ready next 6 and 11.

@@ -21,6 +21,7 @@ use crate::houses::roof::Roof;
 use crate::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
 use crate::works::{pit, works, Kind, Pit, PitKind, Works};
 use crate::palette::Palette;
+use crate::rail;
 use crate::scale::{take_tally, Tally};
 use crate::site::{Model, Site};
 use crate::town;
@@ -222,6 +223,18 @@ fn bridges(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     out
 }
 
+fn winding_houses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("winding engine house", |m, site| rail::winding_house(&mut m.solid, &mut m.smoke, site, detail, pal))]
+}
+
+fn banker_sheds(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("banking engine's shed", |m, site| rail::banker_shed(&mut m.solid, site, detail, pal))]
+}
+
+fn buffer_stops(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("buffer stop", |m, site| rail::buffer_stop(&mut m.solid, site, detail, pal))]
+}
+
 /// A family's fence round a field. (It is a mark of the game and the same at every level.)
 fn fences(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
     vec![specimen("a fence round a field", |m, site| {
@@ -299,6 +312,9 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "lighthouse", class: Class::Structure, covers: &["town/lighthouse::lighthouse"], build: lighthouses, levels: true },
     Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
     Entry { name: "road bridge", class: Class::Structure, covers: &["bridge::road_bridge"], build: bridges, levels: true },
+    Entry { name: "winding engine house", class: Class::Building, covers: &["rail::winding_house"], build: winding_houses, levels: true },
+    Entry { name: "banking engine's shed", class: Class::Building, covers: &["rail::banker_shed"], build: banker_sheds, levels: true },
+    Entry { name: "buffer stop", class: Class::Structure, covers: &["rail::buffer_stop"], build: buffer_stops, levels: true },
     Entry { name: "fence", class: Class::Structure, covers: &["fence::fence"], build: fences, levels: false },
     Entry { name: "tree", class: Class::Plant, covers: &["trees::tree"], build: trees, levels: false },
     Entry { name: "hedgerow tree", class: Class::Plant, covers: &["trees::hedge_tree"], build: hedge_trees, levels: false },
