@@ -12,8 +12,10 @@
 //! for every run and year) and `hunger.csv` (a row for every town and year in
 //! which a town that counts went hungry, with the grain it had), and
 //! `hunger_months.csv` (those towns month by month, from the January of the year
-//! before: months -11 to 0 are that year, 1 to 12 the hungry one) for reading
-//! further. The books are switched on whatever the rules say; they change
+//! before: months -11 to 0 are that year, 1 to 12 the hungry one), `town_years.csv`
+//! (every town that counts, every year: the share of its people moved with
+//! redrawn districts at the year's end before, its worst month's food) and
+//! `towns.csv` (the year each town was founded) for reading further. The books are switched on whatever the rules say; they change
 //! nothing in the run (docs/rules/accounts.md).
 #![allow(non_snake_case)]
 use isostate_core::accounts::{GOODS_FIELDS, KG, KL, KT, LAND_FIELDS, TOWN_FIELDS};
@@ -82,6 +84,12 @@ struct Run {
     seed: u64,
     rows: Vec<Vec<f64>>,
     hunger: Vec<Hunger>,
+    /// Every town that counts, every year: (year, town, the share of its people that came
+    /// or went with redrawn districts at the year's end before, its worst month's food,
+    /// its months under 0.82).
+    town_years: Vec<(i64, usize, f64, f64, usize)>,
+    /// Every town standing at the end, with the year it was founded.
+    founded: Vec<(usize, i64)>,
 }
 
 fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
@@ -91,6 +99,7 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
     let mut ends: Vec<(f64, f64)> = Vec::new();
     // every town's month, `MONTH_COLS`, kept so that a hungry year can be followed month by month
     let mut watch: Vec<Vec<[f64; MW]>> = Vec::new();
+    let mut moved: Vec<Vec<f64>> = Vec::new();
     while sim.year <= sim.end_year {
         let T = sim.st.T_max;
         let (mut worst, mut months) = (vec![9.0f64; T], vec![0usize; T]);
@@ -123,6 +132,9 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
         food.push((worst, months));
         watch.push(seen);
         sim::end_year(&mut sim);
+        // the share of each town's people that came or went with redrawn districts at the year's end
+        let T2 = sim.st.T_max;
+        moved.push((0..T2).map(|t| sim.st.pp_moved.get(t).copied().unwrap_or(0.0)).collect());
         // the canal open as the year ends, and the emigrants so far
         ends.push((2.0 * sim.st.canal.iter().filter(|&&c| c > 0).count() as f64, sim.st.pp_emigrants));
     }
@@ -140,6 +152,7 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
     let watched = [("grain", "farm"), ("coal", "coalmine"), ("timber", "forestry")];
     let mut rows = Vec::new();
     let mut hunger = Vec::new();
+    let mut town_years = Vec::new();
     for (k, y) in st.acct.years.iter().enumerate() {
         let year = y.year;
         let rec = st.acct.year(k).expect("a complete year");
@@ -250,6 +263,9 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
         set("news_hunger", news(false));
         set("news_sailing", news(true));
         rows.push(row);
+        for &t in &counts {
+            town_years.push((year, t, if k > 0 { moved[k - 1][t] } else { 0.0 }, worst[t], months[t]));
+        }
         let g = C.gi("grain");
         let island_price = rows.last().unwrap()[col("grain_price")];
         for &t in &hungry {
@@ -277,7 +293,8 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
             });
         }
     }
-    Run { setting, seed: Pr.seed, rows, hunger }
+    let founded = (0..st.T_max).filter(|&t| st.town_active[t]).map(|t| (t, st.town_founded[t])).collect();
+    Run { setting, seed: Pr.seed, rows, hunger, town_years, founded }
 }
 
 fn mean(v: &[f64]) -> f64 {
@@ -389,6 +406,20 @@ fn main() {
             }
         }
         std::fs::write(format!("{dir}/hunger_months.csv"), hm).unwrap();
+        let mut ty = String::from("setting,seed,year,town,moved_before,worst,months\n");
+        for r in &runs {
+            for &(year, t, mv, w, m) in &r.town_years {
+                let _ = writeln!(ty, "{},{},{year},{t},{mv:.5},{w:.4},{m}", r.setting, r.seed);
+            }
+        }
+        std::fs::write(format!("{dir}/town_years.csv"), ty).unwrap();
+        let mut tf = String::from("setting,seed,town,founded\n");
+        for r in &runs {
+            for &(t, y) in &r.founded {
+                let _ = writeln!(tf, "{},{},{t},{y}", r.setting, r.seed);
+            }
+        }
+        std::fs::write(format!("{dir}/towns.csv"), tf).unwrap();
         let mut names = String::new();
         for (k, (label, _)) in settings.iter().enumerate() {
             let _ = writeln!(names, "{k}: {label}");
