@@ -226,7 +226,8 @@ The test makes two runs of the game at once, which costs about one run's
 time on a machine with a core to spare. On 12 November 2026, with other
 helpers' builds running beside it, it took 52 seconds within `cargo test -p
 isostate-core --release` (the port's two golden runs took 49 beside it), 70
-seconds alone, and 174 seconds at the busiest hour. It is in the default run,
+seconds alone, and 174 seconds at the busiest hour; its check that evening
+saw 71 seconds within the suite and 24 to 128 alone. It is in the default run,
 like the port's, and not behind `#[ignore]`: the gate is the release run, and
 a guard that is skipped by default guards nothing. A debug build gives the same
 four hashes in about the same time (76 seconds, `cargo test -p isostate-core
