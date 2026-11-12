@@ -783,7 +783,7 @@ fn main() {
         let hit = Vec3::new(x, world::height_at(&g, x, z), z);
         match choose(&r, &slots, &cen, hit, k0) {
             Some(p) => {
-                println!("{}", describe(&r, p, k0));
+                println!("{}", describe(&r, p, k0, families.as_ref().map_or(&[][..], |f| f.method_group.as_slice())));
                 // with --overlay, what that overlay says of the spot, as the inspector would
                 if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
                     if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0), None) {
@@ -1942,6 +1942,11 @@ fn apply_camera(
 
 // ------------------------------------------------------------------ interface
 
+/// How far the news as it happens and the note on what was clicked stand from the window's right edge.
+const TOAST_RIGHT: f32 = 14.0;
+/// The width of the note on what was clicked.
+const INSPECT_W: f32 = 380.0;
+
 // Interaction is deprecated in Bevy 0.20; see the note at the top of ui.rs
 #[allow(deprecated)]
 fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
@@ -1950,7 +1955,7 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            right: Val::Px(14.0),
+            right: Val::Px(TOAST_RIGHT),
             top: Val::Px(86.0),
             width: Val::Px(340.0),
             flex_direction: FlexDirection::Column,
@@ -1968,10 +1973,10 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                right: Val::Px(14.0),
+                right: Val::Px(TOAST_RIGHT),
                 top: Val::Px(86.0),
                 bottom: Val::Px(70.0),
-                width: Val::Px(380.0),
+                width: Val::Px(INSPECT_W),
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::End,
                 ..default()
@@ -2105,11 +2110,18 @@ fn toasts(
     font: Res<UiFont>,
     ui: Res<UiState>,
     sheet: Option<Res<shots::Sheet>>,
-    mut boxq: Query<(Entity, Option<&Children>, &mut Visibility), With<ToastBox>>,
+    picked: Res<Picked>,
+    mut boxq: Query<(Entity, Option<&Children>, &mut Visibility, &mut Node), With<ToastBox>>,
 ) {
     // with the news open the panel says it all; the standard shots are of the island, not the news
-    for (_, _, mut v) in &mut boxq {
+    for (_, _, mut v, mut node) in &mut boxq {
         v.set_if_neq(if ui.tab == Some(ui::Tab::News) || sheet.is_some() { Visibility::Hidden } else { Visibility::Inherited });
+        // the note on what was clicked stands at the right and can grow to the top (a long Build list):
+        // while it is open the news stands to the left of it rather than under it
+        let right = Val::Px(if picked.what.is_some() { TOAST_RIGHT + INSPECT_W + 12.0 } else { TOAST_RIGHT });
+        if node.right != right {
+            node.right = right;
+        }
     }
     let r = &data.r;
     let now = time.elapsed_secs();
@@ -2141,7 +2153,7 @@ fn toasts(
     if !changed {
         return;
     }
-    let Ok((boxe, children, _)) = boxq.single() else { return };
+    let Ok((boxe, children, _, _)) = boxq.single() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
             commands.entity(c).despawn();
@@ -2456,7 +2468,10 @@ fn best_of(sites: i64) -> String {
 
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
 
-fn describe(r: &Replay, what: Pick, k: usize) -> String {
+/// What a click on a works, a town or a square shows. `trades` is the family
+/// trade of every method, where the game at hand says (a played game's
+/// `FamilyView::method_group`; empty for a recorded run).
+fn describe(r: &Replay, what: Pick, k: usize, trades: &[Option<isostate_core::families::Group>]) -> String {
     let year = r.y0 + k as i32;
     match what {
         Pick::Firm(f) => {
@@ -2466,7 +2481,9 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
             let kk = replay::firm_k(r, f, k);
             let size = kk / m.k0.max(1e-6);
             let since = if firm.born < r.y0 { "working before 1750".to_string() } else { format!("since {}", firm.born) };
-            let mut s = format!("{}\n{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, since, kk, good, size);
+            // the family trade it belongs to, which its name does not always say (a brewery is the estates')
+            let trade = trades.get(firm.method).copied().flatten().map_or(String::new(), |g| format!(" ({})", family::trade(g)));
+            let mut s = format!("{}\n{}{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, trade, since, kk, good, size);
             if let Some(rs) = &firm.reason {
                 let num = |key: &str| rs.get(key).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
                 let town = rs.get("town").and_then(|v| v.as_i64()).and_then(|t| r.header.towns.get(t as usize)).map(|t| t.name.clone()).unwrap_or_else(|| "a nearby town".into());
@@ -2539,6 +2556,7 @@ fn inspect_panel(
     data: Res<Data>,
     ov: Res<overlay::MapOverlay>,
     months: Res<live::Months>,
+    fam: Option<Res<family::FamilyView>>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
@@ -2561,7 +2579,7 @@ fn inspect_panel(
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
-        let mut s = describe(&data.r, w, k);
+        let mut s = describe(&data.r, w, k, fam.as_ref().map_or(&[][..], |f| f.method_group.as_slice()));
         // with a map overlay on, what it says of this square
         if let Some(line) = ov.said(&data.r, &months, k, pick_cell(&data.r, w)) {
             s.push_str("\n\n");
