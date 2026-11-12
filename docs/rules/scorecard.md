@@ -270,5 +270,12 @@ has been flat since about 1880.
   other work all lengthen it: on the quiet machine main's runs took 17 to 19
   seconds on the clock, and on the crowded evening above 25 to 29 of
   processor. It is steadier within a sweep, not a constant across days.
-- **`parity/check_facts.py` does not work out the new facts a second way.**
-  It runs here (it needs no packages) but was not extended in this pass.
+- **Only some of the new facts are worked out a second way.**
+  `parity/check_facts.py` (plain Python, no packages) now also works out the
+  tools facts, the twenty-year means of the towns' share, the wage, output
+  per head and the farm and industry shares, a few names by place, and the
+  median town's worst year, from the files `isostate-core run` writes. On
+  island 7 under the game's rules with six families 164 facts agree and none
+  differ; on island 3 under the port to 1835, 127. The zigzag beyond the
+  weather, the chained wage's and the books' means and most names by place
+  are not checked there.
