@@ -60,6 +60,7 @@ pub mod sweep;
 pub mod tech;
 pub mod towns;
 pub mod transport;
+pub mod tree;
 pub mod util;
 pub mod ways;
 pub mod works;

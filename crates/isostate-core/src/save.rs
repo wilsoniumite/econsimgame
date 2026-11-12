@@ -189,7 +189,8 @@ pub fn rules_id(rules: Rules) -> RulesId {
     h.bytes(serde_json::to_string(&rules.params()).unwrap_or_default().as_bytes());
     // the content has no serialised form, but it prints; its one table with
     // no order of its own (the goods by name) is left out
-    let mut content = rules.content();
+    // tree: with the overlay the rules lay over it, so a change to data/game.toml shows
+    let mut content = crate::tree::content(&rules.params(), rules.content()).unwrap_or_else(|_| rules.content());
     content.good_index.clear();
     h.bytes(format!("{content:?}").as_bytes());
     RulesId { name: rules.as_str().to_string(), fingerprint: h.hex() }

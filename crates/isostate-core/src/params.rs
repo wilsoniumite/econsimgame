@@ -294,6 +294,10 @@ pub struct Params {
     /// uplift and erosion, with its water, in place of the port's.
     #[serde(default, skip_serializing_if = "is_default")]
     pub land: crate::landform::LandParams,
+    /// A deeper production tree laid over the content (not in the Python; see
+    /// docs/rules/tree.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub tree: crate::tree::TreeParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -497,6 +501,7 @@ pub fn default_params() -> Params {
         mines: crate::mines::MineParams::default(),
         canals: crate::canals::CanalParams::default(),
         land: crate::landform::LandParams::default(),
+        tree: crate::tree::TreeParams::default(),
     }
 }
 
@@ -529,6 +534,7 @@ pub fn game_params() -> Params {
     // it. It stands beside the mines and the canals, and every test passes
     // with it thrown ("On the integration branch" in its page). When it is,
     // the line is `P.land = crate::landform::LandParams::game();`.
+    P.tree = crate::tree::TreeParams::game();
     P
 }
 

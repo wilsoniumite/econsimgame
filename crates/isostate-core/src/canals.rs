@@ -253,7 +253,9 @@ fn knowledge(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Ve
     if st.cn.found.is_none() {
         let req: Vec<(usize, f64)> = [("coal", P.canals.discover_coal), ("stone", P.canals.discover_stone)]
             .into_iter()
-            .filter_map(|(name, x)| C.good_index.get(name).map(|&g| (g, x.max(1e-9))))
+            // tree (docs/rules/tree.md, "In company with the canals"): with builders
+            // the island digs a third of the stone, and the stone asked for is cut to match
+            .filter_map(|(name, x)| C.good_index.get(name).map(|&g| (g, (x * crate::tree::canal_clock(C, P, name)).max(1e-9))))
             .collect();
         let progress = req.iter().map(|&(g, x)| st.cumprod[g] / x).fold(f64::INFINITY, f64::min).max(0.0);
         let p4 = if progress.is_finite() { progress.powf(4.0) } else { 0.0 };

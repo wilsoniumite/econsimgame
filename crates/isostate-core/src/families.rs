@@ -76,8 +76,20 @@ impl Group {
         }
     }
 
+    /// The group of this name, as the content's `group` key writes it.
+    pub fn from_name(name: &str) -> Option<Group> {
+        match name {
+            "coal" => Some(Group::CoalMining),
+            _ => Group::ALL.into_iter().find(|g| g.name() == name),
+        }
+    }
+
     /// The group a method's works belong to; shops and trades belong to none.
     pub fn of_method(C: &Content, m: usize) -> Option<Group> {
+        // tree: a method the port does not have says its own trade in the content
+        if let Some(g) = C.method_group.get(m).and_then(|g| Group::from_name(g)) {
+            return Some(g);
+        }
         match C.method_name[m].as_str() {
             "bloomery" | "charcoal_furnace" | "coke_furnace" | "crucible_steel" | "bessemer" | "forge_rails"
             | "rolling_mill" | "steel_rolling" => Some(Group::Iron),

@@ -38,8 +38,10 @@ pub fn pairwise_sum(a: &[f64]) -> f64 {
 
 /// Pairwise sum of `f(i)` for i in 0..n (a contiguous temporary in numpy).
 pub fn pairwise_sum_by(n: usize, f: impl Fn(usize) -> f64) -> f64 {
-    if n <= 16 {
-        let mut buf = [0.0f64; 16];
+    // tree: the terms stay on the stack for up to 64 (it was 16, the port's goods);
+    // the sum is the same sum either way
+    if n <= 64 {
+        let mut buf = [0.0f64; 64];
         for (i, b) in buf.iter_mut().enumerate().take(n) {
             *b = f(i);
         }
