@@ -49,8 +49,8 @@ pub struct PriceParams {
     pub markup: f64,
     /// Merchants take all a works makes while the town's stock of its good is
     /// under this many months of sales and shipments. 0: they always take all.
-    /// It has to stand well above `price_target_months`, the stock merchants
-    /// mean to hold: a brake that bites at the target chokes every trade.
+    /// It has to stand above [`brake_floor`], which two numbers of the port's
+    /// set, and a setting that does not is refused where it is read ([`check`]).
     pub glut_months: f64,
     /// At this many months they take only `glut_floor` of the works' capacity.
     pub glut_stop_months: f64,
@@ -157,6 +157,50 @@ pub fn anchor_follows(st: &mut State, C: &Content, P: &Params, t: usize, g: usiz
     ensure_anchor(st);
     let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
     st.price_anchor[(t, g)] = (st.price_anchor[(t, g)] * st.price[(t, g)] / was).clamp(lo, hi);
+}
+
+/// The least stock, in months of sales and shipments, at which the brake on a
+/// glut may start. It leans on two numbers the brake does not own. Merchants
+/// mean to hold `price_target_months` of a good (2), so a brake at or under it
+/// falls on every trade: at half a month every works is on short time for
+/// ever (docs/rules/prices.md). And a town may ship at most `trade_cap` of its
+/// stock a month (0.3), so a town that only ships a good never holds less than
+/// `1 / trade_cap` months of it (3.3), and a brake under that falls on the
+/// exporters. The game's `glut_months` of 4 stands above both; whoever moves
+/// either number moves this floor with it, and [`check`] refuses a brake that
+/// is left under it.
+pub fn brake_floor(P: &Params) -> f64 {
+    let ships = if P.trade_cap > 0.0 { 1.0 / P.trade_cap } else { 0.0 };
+    P.price_target_months.max(ships)
+}
+
+/// Settings of the merchants' prices that cannot be run with the rest of the
+/// parameters, refused in one sentence that names the setting. Called by
+/// `Params::check` wherever parameters are read from a file or an override; a
+/// `Params` built in code is not checked, so a test may still try a brake that
+/// bites where the game's never would.
+pub fn check(P: &Params) -> Result<(), String> {
+    let pp = &P.prices;
+    if !pp.enabled || pp.glut_months == 0.0 {
+        return Ok(());
+    }
+    let floor = brake_floor(P);
+    if !(pp.glut_months > floor) {
+        return Err(format!(
+            "prices.glut_months is {}, and the brake on a glut has to start above {} months of stock, the larger of price_target_months ({}) and the stock a town that only ships holds at a trade_cap of {} (1 / trade_cap): move glut_months and glut_stop_months with them",
+            short(pp.glut_months),
+            short(floor),
+            short(P.price_target_months),
+            short(P.trade_cap)
+        ));
+    }
+    Ok(())
+}
+
+/// A setting as a person would write it: at most two decimals, none trailing.
+fn short(x: f64) -> String {
+    let s = format!("{x:.2}");
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 /// The share of capacity merchants will take at a stock of `stock` against

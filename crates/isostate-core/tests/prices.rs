@@ -263,3 +263,37 @@ fn the_wage_shortcut_agrees_with_the_plain_bisection() {
         }
     }
 }
+
+/// The brake on a glut leans on two numbers it does not own: the stock
+/// merchants mean to hold (`price_target_months`) and the most a town may ship
+/// in a month (`trade_cap`), which sets the least stock a town that only ships
+/// holds. Moving either without the brake is refused where the settings are
+/// read, in a sentence that names them.
+#[test]
+fn the_brake_moves_with_the_two_numbers_it_leans_on() {
+    let game = isostate_core::game_params();
+    // the game's brake stands above both, with room to spare
+    assert!((prices::brake_floor(&game) - 1.0 / 0.3).abs() < 1e-12, "the floor is 1 / trade_cap at the game's numbers");
+    assert!(game.prices.glut_months > prices::brake_floor(&game));
+    assert_eq!(game.check(), Ok(()));
+    // a cap on shipments of a fifth means a town that only ships holds five months: refused
+    let err = game.with_json_overrides(r#"{"trade_cap": 0.2}"#).expect_err("a brake at 4 months under a floor of 5");
+    assert!(err.contains("prices.glut_months is 4") && err.contains("above 5 months") && err.contains("trade_cap of 0.2"), "{err}");
+    // and so is a stock target at the brake
+    let err = game.with_toml_overrides("price_target_months = 4.0\n").expect_err("a brake at the target stock");
+    assert!(err.contains("prices.glut_months") && err.contains("price_target_months (4)"), "{err}");
+    // moved together, it is read
+    let moved = game.with_json_overrides(r#"{"trade_cap": 0.2, "prices": {"glut_months": 6, "glut_stop_months": 10}}"#).expect("the brake moved with the cap");
+    assert!(moved.prices.glut_months > prices::brake_floor(&moved));
+    // with the brake off, or the merchants' prices off, there is nothing to hold
+    game.with_json_overrides(r#"{"trade_cap": 0.2, "prices": {"glut_months": 0}}"#).expect("no brake");
+    default_params().with_json_overrides(r#"{"trade_cap": 0.2}"#).expect("the port has no brake");
+    // a file says which file it was
+    let dir = std::env::temp_dir().join(format!("isostate-prices-brake-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("cap.toml");
+    std::fs::write(&file, "trade_cap = 0.2\n").unwrap();
+    let err = game.load_over(&file).expect_err("the file's cap is under the brake");
+    assert!(err.contains("cap.toml") && err.contains("prices.glut_months"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

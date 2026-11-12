@@ -600,12 +600,26 @@ fn merge_json(base: &mut serde_json::Value, over: &serde_json::Value) {
 impl Params {
     /// Defaults overridden by a partial TOML document, e.g. `seed = 3` and `land_theta = 2.5`.
     pub fn from_toml_str(text: &str) -> Result<Params, String> {
-        toml::from_str(text).map_err(|e| format!("params: {e}"))
+        toml::from_str(text).map_err(|e| format!("params: {e}")).and_then(Params::checked)
     }
 
     /// Defaults overridden by a partial JSON object, e.g. `{"seed": 3, "rent_regime": "commons"}`.
     pub fn from_json_str(text: &str) -> Result<Params, String> {
-        serde_json::from_str(text).map_err(|e| format!("params: {e}"))
+        serde_json::from_str(text).map_err(|e| format!("params: {e}")).and_then(Params::checked)
+    }
+
+    /// Settings that cannot be run together, refused in one sentence that names
+    /// the setting. A setting that is wrong on its own is refused as it is
+    /// read, by its mechanism's own struct; this is for the ones that lean on a
+    /// number somewhere else (`prices::check`: the brake on a glut and the
+    /// port's stock target and cap on shipments). Called by every reader in
+    /// this file. A `Params` built in code is not checked.
+    pub fn check(&self) -> Result<(), String> {
+        crate::prices::check(self).map_err(|e| format!("params: {e}"))
+    }
+
+    fn checked(self) -> Result<Params, String> {
+        self.check().map(|_| self)
     }
 
     /// These parameters overridden by a partial JSON object. A mechanism's
@@ -627,7 +641,7 @@ impl Params {
         }
         let mut base = serde_json::to_value(self).map_err(|e| format!("params: {e}"))?;
         merge_json(&mut base, over);
-        serde_json::from_value(base).map_err(|e| format!("params: {e}"))
+        serde_json::from_value(base).map_err(|e| format!("params: {e}")).and_then(Params::checked)
     }
 
     /// Load overrides from a `.toml` or `.json` file on top of the defaults.
