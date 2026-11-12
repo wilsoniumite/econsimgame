@@ -30,10 +30,12 @@ they are). The sweeps and the scripts that read them are under
   and 7 per cent less coal a head (5/11).
 - **`sink` and `payback` are one number.** A site opens when its royalty would repay `sink / payback` wages
   a month. Moving either moves the count of workings by a ninth and the stone of 1750 by 5 or 6 per cent,
-  in mirror image; moving both so that the ratio stays put moves nothing the noise does not.
-- **`cell_limit` does nothing** at these sizes: on 27 of the 32 runs every fact is today's to the last digit.
-  `hands_per_cell` moves only the land under the diggings, as 1/x. `memory` and `year_room` are at the
-  noise floor. `reserve` does what its page says, a little more coal and fewer colliers late. `idle_years`
+  in mirror image; moving both so that the ratio stays put moves nothing the noise does not. This holds
+  on sixteen islands (the check, below).
+- **`cell_limit` does nothing** at these sizes: on 27 of the 32 runs every fact is today's to the last digit,
+  and at 0.25 and 0.833 nothing beats the noise either. `hands_per_cell` moves only the land under the
+  diggings, as 1/x. `memory` and `year_room` are at the noise floor a third either side; `memory` begins to
+  act at a half (0.15 against 0.5). `reserve` does what its page says, a little more coal and fewer colliers late. `idle_years`
   shapes the workings the warm-up gives up and nothing after.
 - **Nothing breaks.** Every one of the 608 runs of the mines' sweeps finished and passed the monthly money check.
   The worst year for the real wage, -0.45, is a null history (island 9 under the landlords, where one town
@@ -140,7 +142,10 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
 - **`sink / payback`** is the price of opening: a lower threshold, more and smaller workings and cheaper
   stone in 1750. The wage bill of the sinkers, which is what `sink` alone would seem to be, does next to
   nothing: (`sink` 53, `payback` 5.33) against (30, 3), the same threshold with a third more sinking, beats
-  the noise in 5 and 4 facts, none of them a headline.
+  the noise in 5 and 4 facts, none of them a headline. The check ran the same four corners on islands 9
+  to 16: on sixteen islands either number alone moves the workings of 1900 by 10 to 14 per cent and 1750's
+  stone a head by 6 to 8 (16/0 or 0/16 under both regimes, but one 1/15), and the two together move the
+  workings by 1 per cent or less, with the islands split (6/10, 7/9, 8/8).
 - **`haul`** acts in 1750 through stone, a few per cent; after that it is lost in the noise.
 - **`idle_years`** decides how many of the warm-up's surplus workings are still standing to be given up
   in 1749; clay is 13 per cent more a head in 1750 with 13 years than with 8. Nothing after 1800 moves.
@@ -152,9 +157,16 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
   thousand cannot carry four per cent of anything, and no island-by-island agreement says otherwise. I read
   it as chance.
 - **`cell_limit`** binds only where one cell's workings would take more than half of it, which hardly
-  happens: the largest share any working takes in 1900 is about a fifth on the typical island.
+  happens: the largest share any working takes in 1900 is about a fifth on the typical island. The check
+  tried 0.25 and 0.833: at 0.25 the limit binds on eleven runs of sixteen, those islands go down another
+  history, and no fact beats the noise under either regime.
 - **`memory`** and **`year_room`** were chosen to steady the opening of pits from year to year; at a third
-  either side they do nothing a null change does not.
+  either side they do nothing a null change does not. The check tried each twice as far out. `year_room`
+  at 0.075 and 0.25 still does nothing (3 and 4 facts beat the noise, all but one of them in 1750).
+  `memory` at 0.15 and 0.5 begins to act: 10 facts beat the noise under the landlords and 12 under the
+  commons. Under the commons, with the adventurers following this year's prices more closely (0.5 against
+  0.15), coal raised a head in 1881-1900 is 9 per cent lower (1/7) and there are 6 per cent more workings
+  in 1850 (8/0). Eight islands only: weak, not dead.
 
 ## The chronicle's thresholds
 
@@ -218,10 +230,11 @@ What it comes to:
 ## The settings that matter most
 
 1. **`mines.reach`**, which sets how many workings there are and how large, from the first year to the
-   last, and the only number of the mines whose effect after 1800 holds on sixteen islands (the railway
-   under the landlords).
+   last, and of the numbers run on sixteen islands the only one whose effect after 1800 reaches beyond the
+   mines and their goods (the railway under the landlords). `reserve`, run on eight, moves the late coal
+   by 7 per cent on all of them, but coal alone.
 2. **`mines.sink / mines.payback`**, as one number: the count of workings by a ninth either way and 1750's
-   stone by 5 or 6 per cent. Nothing late.
+   stone by 5 or 6 per cent. Nothing late. Checked on sixteen islands.
 3. **`chronicle.per_decade` and `chronicle.floor`**, which between them are the length of the major feed
    (±12 to 22 items of 59), and `floor` also decides whether the player has a place at all.
 4. **`chronicle.closures_min`**, the one regional threshold whose story count is steep: 20 rounds of
@@ -230,9 +243,11 @@ What it comes to:
 ## The settings that do nothing at these sizes
 
 - **`mines.cell_limit`**: at 0.375 and 0.667 every fact is today's on 27 runs of 32; on the other five the
-  limit bound once and the island went down another history, with nothing that beats the noise.
+  limit bound once and the island went down another history, with nothing that beats the noise. At 0.25
+  and 0.833 it still does nothing.
 - **`mines.memory`** and **`mines.year_room`**: 3 to 12 facts beat the noise, against a floor of 3, and none
-  of them is a headline after 1750.
+  of them is a headline after 1750. `year_room` still does nothing at 0.075 and 0.25; `memory` at 0.15 and
+  0.5 moves 10 and 12 facts, some of them late, so it is weak rather than idle.
 - **`mines.hands_per_cell`** does what it says, the land under the diggings, and nothing else.
 - **`mines.haul`**, **`mines.idle_years`** and **`mines.reserve`** act on 1750 or on one good, by a few per
   cent; nothing they do reaches the standard of living.
