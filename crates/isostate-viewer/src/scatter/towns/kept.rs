@@ -93,9 +93,30 @@
 //!     house (`TownCell::built`, `TownCell::reach`). Between the two the
 //!     houses stand among the closes of the town's edge.
 //!
-//! The order a cell's closes are built up in (item 3) and the rule that
-//! frontages join before they rise (item 8) stand as the second helper left
-//! them; what the third changed says so where it is changed.
+//! The rule that frontages join before they rise (item 8) stands as the
+//! second helper left it. What the third changed, each where it says why:
+//!
+//! 13. A lane behind a way stops where another way is nearer
+//!     (`Laying::gives_way`), so the lanes of ways that meet make rings round
+//!     a market place and no longer run through one another's plots.
+//! 14. The closes of a town's first cell come in rings round its market
+//!     place, not along its roads (item 3; `world::OFF_THE_ROAD_AT_MARKET`),
+//!     and the lanes of that old middle are built house by house
+//!     (`OLD_MIDDLE`). Every other cell is built up along its roads, as before.
+//! 15. For the houses to stay where they are built: the plots round a market
+//!     place stand where it comes to at its widest (`MARKET_RING`); a plot
+//!     fronts a street that runs whether or not the ground the street is on
+//!     is yet town ground (`Laying::runs`); and a way's plots are the same
+//!     while it is a lane and once it is a road, clear of the widest a road
+//!     comes to be (`WIDEST_WAY`).
+//! 16. From across the island the built-up closes take the colour of their
+//!     roofs (terrain.wesl, `town_roofs_far`).
+//!
+//! `ISOSTATE_TOWNS=1` prints a year's count of houses against residents,
+//! `=towns` the same town by town, `=cells` the cells that are short of
+//! plots, and `=years` lays out every year in turn and says how many houses
+//! of the year before are gone and why; `ISOSTATE_TOWNS_CELL=X,Y` says what
+//! became of every plot of one cell.
 
 use super::*;
 

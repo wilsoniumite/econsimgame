@@ -764,9 +764,10 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
 // place first, and then outward from those roads (`town_order`). So a town
 // is built up along its roads out, the newer ground carrying on where the
 // older left off, and what lies between the roads stays open longest. A
-// cell no road ran near fills from its side nearest the market place. As
-// many closes are built up as the cell's houses and its works need ground
-// for.
+// cell no road ran near fills from its side nearest the market place, and a
+// town's first cell in rings round its market place. As many closes are
+// built up as the cell's houses need ground for (`closes_built`; the works
+// stand in yards of their own, which the houses keep out of).
 //
 // A run under the port's rules has none of this: all its town ground is
 // built up, and is drawn as it always was.
