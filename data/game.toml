@@ -31,9 +31,16 @@
 # labour (at a wage of 2.5) cost on the recipe as written, the margin, and the plant. Where a number
 # was changed after the tree was first run, the comment says "RUN:" and why.
 #
+# The thresholds (`discover`) are the exception: they are plain numbers of units, right for one
+# island and one set of rules, and they are not set by hand. crates/isostate-core/parity/tree_fit.py
+# fits them to a sweep so that each invention is found, on average, in the year its `target` says
+# (docs/rules/tree.md, "The fitter"). These were fitted in three passes after the mines were merged,
+# which made ore a third cheaper and brought everything on iron and steel some ten years early. When
+# the island or the rules change again (canals, another generator), fit them again.
+#
 # Steel stays at 3.0 as an implement: at 1.6 no steel is ever sold under the game's rules, the
 # converter is never found and the land's machines never improve. Raw shelter IS re-rated here, for
-# the game only (stone 0.3, bricks 0.6, timber 0.4): without it builders lose shelter back to heaped
+# the game only (stone 0.25, bricks 0.5, timber 0.4): without it builders lose shelter back to heaped
 # stone and kiln brick as wages rise.
 
 [meta]
@@ -113,22 +120,25 @@ stage = 1
 # market on the island and the one every later works waits on.
 # At base prices, with the change: sells 70.00; inputs 21.20, heat 0.75, labour 15.00; cost 36.95; margin
 # +33.05 (47%); plant 466.0, 6.7 months of output.
+# RUN: the draft had 8. Under the works' life cycle a first works is a tenth of its town's trade, one or
+# two units of machinery a month, and a works that far under its usual size pays a penalty in hands and
+# materials: at 8 the engine works was never built in three seeds of eight, at 4 in one.
 [[method]]
 name = "engine_works"
-K0 = 8.0
+K0 = 4.0
 stage = 1
 
 # Overrides the base entry: only these fields change.
 # The plant and the steel threshold are what the game's machines rule already gives it; they are written out
-# here so that the overlay is the one place the game's content is said. The machinery threshold is new (the
-# machines rule has 90,000): the machine-tool works triples the machinery made, and with 90,000 the
-# converter was found fifteen years early.
+# here so that the overlay is the one place the game's content is said. The thresholds are the fitter's (the
+# machines rule has 2,800,000 of steel and 90,000 of machinery): the machine-tool works triples the
+# machinery made, and with 90,000 the converter was found fifteen years early.
 # At base prices, with the change: sells 30.00; inputs 6.90, heat 0.23, labour 1.25; cost 8.38; margin
 # +21.62 (72%); plant 123.0, 4.1 months of output.
 [[method]]
 name = "bessemer"
 capital = { bricks = 45, machinery = 0.6 }
-discover = { steel = 2300000.0, machinery = 200000.0, iron = "x220" }   # RUN: were 2,800,000 and 250,000. With builders in, the quarries buy less machinery and households pour a little less steel by 1850, and in one seed of eight the converter waited until 1899
+discover = { steel = 3300000.0, machinery = 410000.0, iron = "x220" }
 target = 1856
 stage = 1
 
@@ -142,7 +152,7 @@ stage = 1
 name = "steel_rolling"
 inputs = { steel = 0.35 }
 capital = { bricks = 36, machinery = 0.45 }
-discover = { steel = 5000000.0, rails = 560000.0, machinery = 450000.0 }
+discover = { steel = 4500000.0, rails = 580000.0, machinery = 880000.0 }
 target = 1866
 stage = 1
 
@@ -234,7 +244,7 @@ known = false
 A0 = 1.0
 Q0 = 2000000.0
 b = 0.2
-discover = { building = 41000000.0, machinery = 410000.0 }
+discover = { building = 55000000.0, machinery = 660000.0 }
 target = 1862
 group = "building"
 stage = 1
@@ -278,7 +288,7 @@ known = false
 A0 = 0.85
 Q0 = 300000.0
 b = 0.2
-discover = { lumber = 5000000.0, machinery = 55000.0 }
+discover = { lumber = 7400000.0, machinery = 69000.0 }
 target = 1825
 group = "building"
 stage = 1
@@ -322,7 +332,7 @@ known = false
 A0 = 0.6
 Q0 = 1000000.0
 b = 0.2
-discover = { lime = 2800000.0, machinery = 185000.0 }   # RUN: machinery was 200,000, met in 1851 and found in 1856; at 160,000 it was found in 1842
+discover = { lime = 3800000.0, machinery = 270000.0 }
 target = 1850
 group = "building"
 stage = 1
@@ -365,7 +375,7 @@ known = false
 A0 = 0.6
 Q0 = 300000.0
 b = 0.2
-discover = { beer = 2600000.0, coal = 17000000.0 }   # RUN: were 2,100,000 and 13,000,000, both met by 1780 and found in 1777
+discover = { beer = 2700000.0, coal = 16000000.0 }
 target = 1785
 group = "estates"
 stage = 1
@@ -439,7 +449,7 @@ known = false
 A0 = 0.85
 Q0 = 150000.0
 b = 0.15
-discover = { iron = 1200000.0, coal = 47000000.0 }
+discover = { iron = 1600000.0, coal = 64000000.0 }
 target = 1815
 group = "coal"
 stage = 1
@@ -495,7 +505,7 @@ known = false
 A0 = 1.0
 Q0 = 300000.0
 b = 0.15
-discover = { steel = 4000000.0, machinery = 350000.0 }
+discover = { steel = 4200000.0, machinery = 760000.0 }
 target = 1864
 group = "engineering"
 stage = 1
@@ -524,7 +534,7 @@ known = false
 A0 = 1.0
 Q0 = 400000.0
 b = 0.3
-discover = { iron = 1720000.0, coal = 65000000.0, machinery = 70000.0 }
+discover = { iron = 2500000.0, coal = 95000000.0, machinery = 94000.0 }
 target = 1830
 group = "iron"
 stage = 1
@@ -552,7 +562,7 @@ known = false
 A0 = 1.0
 Q0 = 20000.0
 b = 0.2
-discover = { machinery = 80000.0, steel = 1300000.0 }   # RUN: machinery was 110,000, met in 1838 and found in 1842 to 1846 in three sweeps
+discover = { machinery = 150000.0, steel = 1700000.0 }
 target = 1838
 group = "engineering"
 stage = 1
@@ -580,8 +590,11 @@ known = false
 A0 = 1.0
 Q0 = 200000.0
 b = 0.15
-discover = { steel = 6000000.0, machinery = 750000.0 }   # RUN: were 7,500,000 and 1,000,000: found in 1886 and never built in four seeds of eight, for want of years
-target = 1876
+discover = { steel = 5800000.0, machinery = 1300000.0 }
+# RUN: the design aims it at 1876. A new works needs more than the going price until its know-how has
+# spread, so its first works comes ten years after it is found: aimed at 1876 it was never built in four
+# seeds of eight, aimed at 1870 in two (those that found it after 1880).
+target = 1870
 group = "engineering"
 stage = 1
 headline = "Engines built to gauge at {town}"
@@ -609,7 +622,7 @@ known = false
 A0 = 1.0
 Q0 = 2000000.0
 b = 0.15
-discover = { bricks = "x300", machinery = 300000.0 }
+discover = { bricks = "x300", machinery = 460000.0 }
 target = 1856
 group = "building"
 stage = 1
@@ -637,7 +650,7 @@ known = false
 A0 = 1.0
 Q0 = 5000000.0
 b = 0.1
-discover = { gas = 1000000.0, services = 21000000.0 }   # RUN: services was 32,000,000, met in 1873 and found in 1871; the island makes a third less services with two more needs to spend on
+discover = { gas = 1000000.0, services = 20000000.0 }
 target = 1860
 stage = 1
 headline = "Plate-glass shopfronts at {town}"
@@ -680,7 +693,7 @@ known = false
 A0 = 0.7
 Q0 = 60000.0
 b = 0.25
-discover = { chemicals = 340000.0, iron = 1000000.0 }
+discover = { chemicals = 450000.0, iron = 1400000.0 }
 target = 1815
 group = "coal"
 stage = 1
@@ -713,7 +726,7 @@ known = false
 A0 = 1.0
 Q0 = 800000.0
 b = 0.25
-discover = { chemicals = 4200000.0, steel = 4400000.0 }
+discover = { chemicals = 5600000.0, steel = 5300000.0 }
 target = 1872
 group = "coal"
 stage = 1
@@ -757,7 +770,7 @@ known = false
 A0 = 0.6
 Q0 = 40000.0
 b = 0.3
-discover = { glass = 250000.0, chemicals = 630000.0, iron = 2000000.0 }
+discover = { glass = 330000.0, chemicals = 890000.0, iron = 2700000.0 }
 target = 1835
 group = "building"
 stage = 1
@@ -787,8 +800,9 @@ known = false
 A0 = 1.0
 Q0 = 800000.0
 b = 0.2
-discover = { glass = 1400000.0, steel = 4400000.0 }
-target = 1874
+discover = { glass = 1500000.0, steel = 4900000.0 }
+# RUN: the design aims it at 1874; aimed there it was never built in two seeds of eight, at 1870 in one.
+target = 1870
 group = "building"
 stage = 1
 headline = "Glass melted without a pause at {town}"
@@ -833,7 +847,7 @@ known = false
 A0 = 0.6
 Q0 = 30000.0
 b = 0.3
-discover = { paper = 270000.0, machinery = 30000.0 }   # RUN: paper was 230,000: the hand mills' trade grows so slowly that the hazard found it seven years before the threshold was met
+discover = { paper = 260000.0, machinery = 42000.0 }
 target = 1815
 group = "building"
 stage = 1

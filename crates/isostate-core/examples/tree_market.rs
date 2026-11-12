@@ -21,7 +21,12 @@
 //! - for each need: the share of household spending on it, and the share of the
 //!   need each good serves;
 //! - hands by land sector and by trade (the works that make one good), as shares
-//!   of all hands at work.
+//!   of all hands at work;
+//! - for each good: how much of what was asked for the market had (1 is every
+//!   order filled), in the first quarter of the year, when the year's new plant
+//!   is ordered, and in the other three, by half-century; and for each trade
+//!   the share of the output its works wanted to make that their scarcest
+//!   input allowed.
 #![allow(non_snake_case)]
 
 use std::time::Instant;
@@ -57,6 +62,14 @@ struct Run {
     wage: Vec<f64>,
     real_wage: Vec<f64>,
     urban: Vec<f64>,
+    /// [period][season][good]: each month's fill of orders summed over towns,
+    /// weighted by what was asked, and the weights. The periods are 1750-99,
+    /// 1800-49 and 1850 on; the seasons January to March and the rest.
+    fill: Vec<[Vec<f64>; 2]>,
+    fill_w: Vec<[Vec<f64>; 2]>,
+    /// [period][method]: the works' own fill, weighted by capacity, and the weights
+    mfill: Vec<Vec<f64>>,
+    mfill_w: Vec<Vec<f64>>,
     /// [year][good]: everything made since 1750, at the end of each year
     made: Vec<Vec<f64>>,
     /// (NT, G): the thresholds as the run resolved them
@@ -76,7 +89,7 @@ fn run(P: &Params, C: Content, timed: bool) -> Run {
     marks.dedup();
     let mut r = Run {
         marks: marks.clone(),
-        found: vec![-1; C.M],
+        found: vec![-1; C.NT],
         first: vec![-1; C.M],
         works: Vec::new(),
         mout: Vec::new(),
@@ -94,6 +107,10 @@ fn run(P: &Params, C: Content, timed: bool) -> Run {
         wage: Vec::new(),
         real_wage: Vec::new(),
         urban: Vec::new(),
+        fill: (0..3).map(|_| [vec![0.0; C.G], vec![0.0; C.G]]).collect(),
+        fill_w: (0..3).map(|_| [vec![0.0; C.G], vec![0.0; C.G]]).collect(),
+        mfill: vec![vec![0.0; C.M]; 3],
+        mfill_w: vec![vec![0.0; C.M]; 3],
         made: Vec::new(),
         thresholds: sim.st.disc_X0.clone(),
         seconds_a_year: 0.0,
@@ -104,14 +121,33 @@ fn run(P: &Params, C: Content, timed: bool) -> Run {
     let t0 = Instant::now();
     while sim.year <= sim.end_year {
         let year = sim.year;
-        if timed {
-            // the same year as `sim::run_year`, taken apart to see where the time goes
-            let t = Instant::now();
-            for month in 0..12 {
-                sim::run_month(&mut sim, month).unwrap_or_else(|e| panic!("seed {}: {e}", P.seed));
+        // the same year as `sim::run_year`, taken apart to see where the time
+        // goes and to read each month's market
+        let period = if year < 1800 { 0 } else if year < 1850 { 1 } else { 2 };
+        let t = Instant::now();
+        for month in 0..12 {
+            sim::run_month(&mut sim, month).unwrap_or_else(|e| panic!("seed {}: {e}", P.seed));
+            if timed {
+                continue;
             }
-            r.seconds_months += t.elapsed().as_secs_f64();
-            let t = Instant::now();
+            let st = &sim.st;
+            let season = if month < 3 { 0 } else { 1 };
+            let asked = st.requests.rows == st.T_max && st.requests.cols == C.G;
+            for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+                for g in 0..C.G {
+                    let w = if asked { st.requests[(t, g)] } else { 1.0 };
+                    r.fill[period][season][g] += w * st.fill[(t, g)];
+                    r.fill_w[period][season][g] += w;
+                }
+            }
+            for f in (0..st.f_alive.len()).filter(|&f| st.f_alive[f] && st.f_K[f] > 0.0) {
+                r.mfill[period][st.f_method[f]] += st.f_K[f] * st.f_fill[f];
+                r.mfill_w[period][st.f_method[f]] += st.f_K[f];
+            }
+        }
+        r.seconds_months += t.elapsed().as_secs_f64();
+        let t = Instant::now();
+        {
             let sim::Sim { st, content: C, params: P, rngs, events, rec, .. } = &mut sim;
             sim::yearly(st, C, P, rngs, year, events, false);
             r.seconds_yearly += t.elapsed().as_secs_f64();
@@ -119,10 +155,9 @@ fn run(P: &Params, C: Content, timed: bool) -> Run {
             chronicle::yearly(st, C, P, year, events);
             record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
             harvest::snapshot(rec, st, P, (year - C.start_year) as usize);
-            sim.year += 1;
-        } else {
-            sim::run_year(&mut sim).unwrap_or_else(|e| panic!("seed {}: {e}", P.seed));
+            mines::snapshot(rec, st, P, (year - C.start_year) as usize);
         }
+        sim.year += 1;
         let st = &sim.st;
         let ms = &st.month_stats;
         r.made.push(st.cumprod.clone());
@@ -181,8 +216,8 @@ fn run(P: &Params, C: Content, timed: bool) -> Run {
         r.carters.push((hands - on_land - in_works).max(0.0));
     }
     r.seconds_a_year = t0.elapsed().as_secs_f64() / (y1 - y0 + 1).max(1) as f64;
-    for m in 0..C.M {
-        r.found[m] = if C.tech_known[m] { -1 } else { sim.st.tech_year[m] };
+    for t in 0..C.NT {
+        r.found[t] = if C.tech_known[t] { -1 } else { sim.st.tech_year[t] };
     }
     r
 }
@@ -293,7 +328,7 @@ fn main() {
     let y0 = C.start_year;
     for t in (0..C.NT).filter(|&t| !C.tech_known[t]) {
         // an invention with no aim is read at the year it was found
-        let (found, nf) = mean(all.iter().map(|r| if t < C.M && r.found[t] >= 0 { r.found[t] as f64 } else { f64::NAN }));
+        let (found, nf) = mean(all.iter().map(|r| if r.found[t] >= 0 { r.found[t] as f64 } else { f64::NAN }));
         let at = if C.tech_target[t] > 0 { C.tech_target[t] - 4 } else if nf > 0 { found as i64 } else { y0 };
         let k = (at - y0).max(0) as usize;
         let aim = if C.tech_target[t] > 0 { format!("aim {}", C.tech_target[t]) } else { format!("at {at} ") };
@@ -373,6 +408,37 @@ fn main() {
             line.push_str(&num(v, 9, if v.abs() >= 100.0 { 0 } else { 3 }));
         }
         println!("{line}");
+    }
+    if !time {
+        println!("\nFILL: how much of what was asked for the market had (1: every order filled), January to March and the rest of the year");
+        println!("{:<12}  Jan-Mar  1750-99  1800-49    1850-  Apr-Dec  1750-99  1800-49    1850-", "good");
+        for g in 0..C.G {
+            let mut line = format!("{:<12}", C.good_name[g]);
+            for season in 0..2 {
+                line.push_str("         ");
+                for k in 0..3 {
+                    line.push_str(&num(over(&|r| if r.fill_w[k][season][g] > 0.0 { r.fill[k][season][g] / r.fill_w[k][season][g] } else { f64::NAN }), 9, 3));
+                }
+            }
+            println!("{line}");
+        }
+        println!("\nWORKS' FILL: the share of the output each trade's works wanted to make that their scarcest input allowed");
+        println!("{:<12}           1750-99  1800-49    1850-", "trade");
+        for g in 0..C.G {
+            let ms: Vec<usize> = (0..C.M).filter(|&m| C.method_out[m] == g).collect();
+            if ms.is_empty() {
+                continue;
+            }
+            let mut line = format!("{:<12}         ", C.good_name[g]);
+            for k in 0..3 {
+                let v = over(&|r| {
+                    let w: f64 = ms.iter().map(|&m| r.mfill_w[k][m]).sum();
+                    if w > 0.0 { ms.iter().map(|&m| r.mfill[k][m]).sum::<f64>() / w } else { f64::NAN }
+                });
+                line.push_str(&num(v, 9, 3));
+            }
+            println!("{line}");
+        }
     }
     println!(
         "\na simulated year took {:.3} s on average{}",

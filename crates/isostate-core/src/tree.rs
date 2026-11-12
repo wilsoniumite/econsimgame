@@ -45,19 +45,26 @@ pub struct TreeParams {
     /// marks `seed = true`), as the port opens with its smiths and weavers.
     /// Without it they are founded during the warm-up decade, a works a year.
     pub seed_trades: bool,
+    /// Plant waits: where a market is short, households and the works at work
+    /// are served first and the orders for new plant and for railway materials
+    /// share what is left (`econ::step_month`). Under the port everyone is cut
+    /// alike, which is harmless while nothing that plant is built of is also a
+    /// works' daily input; with the tree bricks, sawn timber, lime and glass
+    /// are both, and each spring's orders for plant stopped the builders.
+    pub plant_waits: bool,
 }
 
 impl Default for TreeParams {
     /// Off: the port's content as it is.
     fn default() -> TreeParams {
-        TreeParams { stage: 0, file: String::new(), seed_trades: true }
+        TreeParams { stage: 0, file: String::new(), seed_trades: true, plant_waits: false }
     }
 }
 
 impl TreeParams {
     /// The game's tree: the highest stage that works.
     pub fn game() -> TreeParams {
-        TreeParams { stage: GAME_STAGE, ..TreeParams::default() }
+        TreeParams { stage: GAME_STAGE, plant_waits: true, ..TreeParams::default() }
     }
 }
 

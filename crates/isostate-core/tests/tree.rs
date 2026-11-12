@@ -267,3 +267,45 @@ fn the_tree_alone_runs_under_the_ports_rules() {
     assert_eq!(r.content.G, 25);
     assert!(year_mean(&r, "out_building", 1774) > 0.0);
 }
+
+/// Bricks, of what each town's households and works at work asked for, the
+/// share the market had: the mean over the months to `end_year`, each town
+/// counted by what was asked of its market. The orders for plant are placed as
+/// the year turns, so the shortage is the spring's and has to be read month
+/// by month: the year is `sim::run_year`'s, taken apart.
+fn bricks_for_the_days_trade(P: &Params) -> f64 {
+    let mut s = sim::start(P, game_content());
+    s.check_money = true;
+    let bricks = s.content.gi("bricks");
+    let (mut sum, mut n) = (0.0, 0.0);
+    while s.year <= s.end_year {
+        for month in 0..12 {
+            sim::run_month(&mut s, month).expect("money is conserved with plant waiting");
+            for t in (0..s.st.T_max).filter(|&t| s.st.town_active[t]) {
+                let asked = s.st.requests[(t, bricks)];
+                sum += asked * s.st.fill[(t, bricks)];
+                n += asked;
+            }
+        }
+        let year = s.year;
+        let sim::Sim { st, content: C, params: P, rngs, events, .. } = &mut s;
+        sim::yearly(st, C, P, rngs, year, events, false);
+        observer::yearly(st, C, P, year, events);
+        s.year += 1;
+    }
+    sum / n
+}
+
+#[test]
+fn plant_waits_and_the_bricklayers_are_served() {
+    assert!(!default_params().tree.plant_waits && game_params().tree.plant_waits);
+    // seventy years with six families founding works: the island is short of
+    // bricks, which every new works wants for its walls and the bricklayers
+    // want every day
+    let on = game(3, 6, 1820);
+    let mut off = on.clone();
+    off.tree.plant_waits = false;
+    let (served, shared) = (bricks_for_the_days_trade(&on), bricks_for_the_days_trade(&off));
+    assert!(shared < 0.95, "sharing alike, the market has {shared:.3} of the bricks asked for");
+    assert!(served > shared + 0.03, "with plant waiting the day's trade has {served:.3} of its bricks; sharing alike, {shared:.3}");
+}

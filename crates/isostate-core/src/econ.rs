@@ -610,6 +610,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             req_inv[(r, g)] = st.f_order[(i, g)] * 0.25;
         }
     }
+    // tree (docs/rules/tree.md, "Plant waits"): what households and the works
+    // at work ask for, before the orders for new plant and for railways are added
+    let R_now = P.tree.plant_waits.then(|| R.clone());
     add_by_town(&mut R, &ot, &req_inv);
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for pr in &st.projects {
@@ -637,6 +640,29 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             fill[(t, g)] = if r > 1e-12 { (st.inv[(t, g)] / r.max(1e-12)).min(1.0) } else { 1.0 };
         }
     }
+    // tree: plant waits. Where the market is short, the day's trade is served
+    // first (households, the works' own inputs and fuel, the land's machines)
+    // and the orders for plant and for railway materials share what is left. A
+    // works half built can wait a season for its bricks; a bricklayer with a
+    // house half up cannot. `fill` is then the day's trade's and `fill_plant`
+    // the orders'; without the rule both are the port's one number.
+    let fill_plant = match &R_now {
+        Some(now) => {
+            let mut later = Mat::zeros(T, G);
+            for t in 0..T {
+                for g in 0..G {
+                    let (first, all) = (now[(t, g)], R[(t, g)]);
+                    let have = st.inv[(t, g)];
+                    fill[(t, g)] = if first > 1e-12 { (have / first.max(1e-12)).min(1.0) } else { 1.0 };
+                    let left = (have - fill[(t, g)] * first).max(0.0);
+                    let asked = all - first;
+                    later[(t, g)] = if asked > 1e-12 { (left / asked.max(1e-12)).min(1.0) } else { 1.0 };
+                }
+            }
+            later
+        }
+        None => fill.clone(),
+    };
 
     // ---------------- execute: firms produce what their scarcest input allows
     let mut q = vec![0.0; NFI];
@@ -679,7 +705,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut inv_got = Mat::zeros(oi.len(), G);
     for r in 0..oi.len() {
         for g in 0..G {
-            inv_got[(r, g)] = req_inv[(r, g)] * fill[(ot[r], g)];
+            inv_got[(r, g)] = req_inv[(r, g)] * fill_plant[(ot[r], g)]; // tree: plant waits
         }
     }
     // per good: sold += bincount(ft, use_f[:, g]); sold += bincount(ot, inv_got[:, g])
@@ -693,7 +719,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
     let mut proj_got: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for (pr, rq) in st.projects.iter().zip(&proj_req) {
-        let got: Vec<f64> = (0..G).map(|g| rq[g] * fill[(pr.town, g)]).collect();
+        let got: Vec<f64> = (0..G).map(|g| rq[g] * fill_plant[(pr.town, g)]).collect(); // tree: plant waits
         for g in 0..G {
             sold[(pr.town, g)] += got[g];
         }
