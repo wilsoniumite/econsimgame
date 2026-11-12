@@ -520,3 +520,8 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **money**: the month's new money is reckoned on all the money there is
+  when the month begins, at 0.0175 a year, so that it grows 1.764 per cent a
+  year on every island, the rate today's islands had, where the port's count
+  left the month's incomes out and the rate wandered. [money.md](money.md),
+  `money.true_total`.
