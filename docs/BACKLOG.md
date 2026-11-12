@@ -30,7 +30,6 @@ Started before this file existed, and left to finish. The usage limit cut every 
 | Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | built; in review |
 | Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | built; in review |
 | Where frames stall: a recorder, measurements and a design, no fix yet (viewer) | 17 | `night/smooth-probe` | measured and designed; with its critic |
-| The run to 2050: a design to read, no code | 1 | documents only | three designs made into one; with its critics, then a revision |
 | The documents a newcomer reads first: README, the plan's account of where we are (F23) | none | `night/docs-front` | written; being checked command by command |
 
 Queued behind one of these and already briefed: works laid out by what they do and hold (note 16), which starts on `night/works-detail` once that has been reviewed.
@@ -65,7 +64,7 @@ One piece could go at once and was taken up the same evening, since the reposito
 In full, with where to look for each, on [backlog/waiting-on-stella.md](backlog/waiting-on-stella.md). None of it holds other work up: each has an answer assumed meanwhile, which is how the game stands today.
 
 - **The core loop** (what a family does from month to month, and why it is fun) is hers. Nothing here touches it. Helpers found nineteen things that belong to it and they wait with it: land beats works on every island, a family that takes every default ends fourth of six, a player who founds a works every year loses most of them.
-- **The 2050 design's questions,** once the design is written. It draws on her unpublished paper, so it is not committed to this repository without her say.
+- **The 2050 design, to read.** Written on 12 November by a panel (two digests, three designs, one made from them, two critics, a revision): what the island would live through in five acts, the mechanisms in an order of work whose first stage is a day, what it would show and what it would not. It is on her machine at `.claude/night/reports/design-2050/to-2050.md` and is not committed here until she says it may be, since it draws on work of hers that is not published. Its first page is written to be read in five minutes and ends with four questions that are hers; sixteen more are in its section 15, each with the answer assumed meanwhile. Nothing of it is built until she has read it (Ready next 17).
 - **Nine decisions about the rules** that reviewers left for her, among them: exports and the price rule (mending it rebalances the whole game); which price index the player is told (the wage of 1900 is 2.82 times 1750's on one and 2.08 on the other); how much of a harvest is foreseen and how hard a bad year should bite; a fixed freight rate while wages rise.
 - **About twenty matters of taste,** each with a picture: the hill towns' darker slates and limewash; the October gold of the far woods; shop fronts that follow how dense a street is and not the simulation's shops; garden trees as big as a cottage; one strong orange for every autumn tree; a hamlet's church as big as a market town's; whether a lower sun should be the standard light.
 
