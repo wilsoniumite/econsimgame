@@ -467,9 +467,11 @@ fn a_run_from_1755_ranks_by_the_calendars_decades() {
 fn a_run_from_1755_tells_its_decades_by_the_calendar() {
     let mut C = game_content();
     C.start_year = 1755;
-    let r = sim::run_with(&game(0, 1790), C, false, true).expect("money is conserved every month");
+    // (to 1800: with the hands rationed, docs/rules/hands.md, seed 7 has no
+    // decade's item to tell before the 1790s)
+    let r = sim::run_with(&game(0, 1800), C, false, true).expect("money is conserved every month");
     let of_decade: Vec<&Event> = r.events.iter().filter(|e| e.title.contains("fastest-growing town of the") || e.title.contains(" new towns in the ")).collect();
-    assert!(!of_decade.is_empty(), "no decade's end was told in 1755 to 1790");
+    assert!(!of_decade.is_empty(), "no decade's end was told in 1755 to 1800");
     for e in &of_decade {
         let year = e.year.floor() as i64;
         assert_eq!(year % 10, 9, "{} is told in {year}", e.title);
