@@ -80,7 +80,7 @@ struct Args {
     pitch: f32,
     dist: Option<f32>,
     frames: u32,
-    /// seconds to wait before the first screenshot (`--wait`)
+    /// the longest a picture waits for the renderer's shaders, in seconds (`--wait`)
     wait: Option<f32>,
     tilt: bool,
     views: Vec<ShotSpec>,
@@ -192,7 +192,7 @@ Pictures and checks with no window:
                        or open:GOOD for what the Markets panel shows (island:months and
                        open:GOOD:months for its charts month by month)
   --shot PATH          a picture of the opening view
-  --wait S             seconds before the first picture, for shaders to compile (45)
+  --wait S             the longest a picture waits for the renderer's shaders (45; 120 with --shots)
   --frames N           frames to let a picture settle (40)
   --ground-debug       draw the ground as flat class colours and nothing else
   --class-map          write the CPU's land class under every pixel of each view, and stop
@@ -315,7 +315,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         let opt = v[i].as_str();
         match opt {
             "--year" => { a.year = Some(number(opt, &next(i)?)?); i += 1; }
-            "--shot" => { a.shot = Some(next(i)?); i += 1; }
+            "--shot" => { a.shot = Some(named(opt, next(i)?, "the name of a picture")?); i += 1; }
             "--size" => {
                 a.size = pair(opt, &next(i)?, 'x')?;
                 if a.size.0 == 0 || a.size.1 == 0 {
@@ -329,8 +329,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
                 let s = next(i)?;
                 match s.split_once(',') {
                     Some((x, z)) if x.trim().parse::<f32>().is_ok() || z.trim().parse::<f32>().is_ok() => a.at = Some(pair(opt, &s, ',')?),
-                    _ if s.is_empty() => return Err(format!("{opt} needs the name of a look file")),
-                    _ => a.look_file = Some(s),
+                    _ => a.look_file = Some(named(opt, s, "the name of a look file")?),
                 }
                 i += 1;
             }
@@ -375,7 +374,15 @@ fn parse(v: &[String]) -> Result<Args, String> {
             // (task C, the land) the same machinery as --shots, with the far views of the land
             "--land-shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); a.land_shots = true; i += 1; }
             "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
-            "--shots-note" => { a.shots_note = next(i)?; i += 1; }
+            "--shots-note" => {
+                // a line of text and not a name, so its refusal does not offer ./ in front of it
+                let s = next(i)?;
+                if s.starts_with("--") {
+                    return Err(format!("{opt} needs a line of text after it, and {s} is another option: put the line between them"));
+                }
+                a.shots_note = named(opt, s, "a line of text")?;
+                i += 1;
+            }
             "--compare-shots" => {
                 match (v.get(i + 1), v.get(i + 2)) {
                     (Some(x), Some(y)) => a.compare_shots = Some((named(opt, x.clone(), "two directories")?, named(opt, y.clone(), "two directories")?)),
@@ -392,7 +399,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--view" => {
                 // path,year,x,z,yaw,pitch,dist[,season][,words]: a number after dist is a season; a word
                 // is a panel, a map overlay, or what the Markets panel shows
-                let p: Vec<String> = next(i)?.split(',').map(String::from).collect();
+                let p: Vec<String> = named(opt, next(i)?, "a picture's name and its view")?.split(',').map(String::from).collect();
                 // an empty value falls back; one that is not a number is refused
                 let num = |j: usize| -> Result<Option<f32>, String> {
                     match p.get(j).map(|s| s.trim()) {
@@ -401,6 +408,12 @@ fn parse(v: &[String]) -> Result<Args, String> {
                     }
                 };
                 let words: Vec<&String> = p.iter().skip(7).filter(|s| !s.is_empty() && s.parse::<f32>().is_err()).collect();
+                // a word that is none of these is refused, and not read as no panel: a mistyped map
+                // view would otherwise be taken of the plain map
+                let known = |s: &str| overlay::is_word(s) || ui::markets_word(s) || ui::Tab::parse(s).is_some() || s.eq_ignore_ascii_case("none");
+                if let Some(w) = words.iter().find(|s| !known(s)) {
+                    return Err(format!("{opt}: {w} is not a word a view takes: use a panel (family, holdings, markets, news or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"));
+                }
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
                     year: num(1)?.map(|y| y as i32),
@@ -512,7 +525,7 @@ struct ShotPlan {
     frames: u32,
     countdown: u32,
     capturing: u32,
-    start: std::time::Instant,
+    /// the longest a picture waits for the renderer's shaders, in seconds (`--wait`)
     wait: f32,
     default_dist: f32,
     default_look: (f32, f32),
@@ -697,6 +710,15 @@ fn main() {
         let code = lab::run(lab::LabArgs { sheet, out: args.out.clone(), size: args.size, season: args.season, tilt: args.lab_tilt, loupe: args.loupe, turn: args.lab_turn }, look);
         std::process::exit(code);
     }
+    // a map view whose good a game will not have is refused before its island is made: the
+    // goods are the rules' own (those of a saved game, or the game's for a new one). A recorded
+    // run's goods are known once it is read, which is quick, and are checked then.
+    if args.new {
+        let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
+        let c = rules.content();
+        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone() }).collect();
+        refuse_map_views(&args, |w| overlay::complaint_among(w, &goods));
+    }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
         // the standard shots are pictures too
@@ -748,6 +770,10 @@ fn main() {
     let g = world::build_ground(&r);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
+    // a measuring tool asked for by an environment variable (plan.rs, rails.rs) does its work, and that is all
+    if scatter::measure(&r, &g, &slots, &cen) {
+        std::process::exit(0);
+    }
     eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
     // (a game whose last year is played has none left to take any time)
@@ -771,14 +797,9 @@ fn main() {
             eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
         }
     }
-    // an overlay word that cannot be shown is refused, so a mistyped shot is not taken for the plain map
-    // (a word that is no map view was refused with the options; a good is known only with the run)
-    for w in args.overlay.iter().chain(args.views.iter().filter_map(|v| v.overlay.as_ref())) {
-        if let Some(why) = overlay::complaint(w, &r) {
-            eprintln!("--overlay: {why}");
-            std::process::exit(2);
-        }
-    }
+    // a recorded run's map views, now its goods are known (a game's were checked before its island
+    // was made, and are checked again against the goods it has)
+    refuse_map_views(&args, |w| overlay::complaint(w, &r));
     let latest = r.filled.clamp(1, r.ny) - 1;
     let k0 = match args.year {
         Some(y) => ((y - r.y0).max(0) as usize).min(latest),
@@ -873,7 +894,7 @@ fn main() {
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {
-            format!("Island {} with {} families, {} by {} pixels", args.seed, args.families, args.size.0, args.size.1)
+            format!("Island {} with {}, {} by {} pixels", args.seed, families_words(args.families), args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
@@ -960,9 +981,10 @@ fn main() {
             std::process::exit(2);
         }
     } else if headless {
-        // screenshots wait for the renderer's shaders by themselves (take_shot); the fixed wait
-        // is kept for software renderers, and the standard shots do without it
-        let wait = args.wait.unwrap_or(if args.shots.is_some() { 0.0 } else { 45.0 });
+        // a picture waits for what it needs, its year's scenery and the renderer's shaders, and then
+        // some frames for it to settle (take_shot); for the shaders no longer than this, which a busy
+        // machine taking the standard shots has been given more of (`--wait` says how long)
+        let wait = args.wait.unwrap_or(if args.shots.is_some() { 120.0 } else { 45.0 });
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait, default_dist: dist, default_look: look_at });
         app.add_systems(Update, take_shot.after(toasts));
         let waiting = PipelinesWaiting::default();
@@ -986,6 +1008,28 @@ fn main() {
 fn timing() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("ISOSTATE_TIMING").is_some())
+}
+
+/// Stop on a map view that cannot be shown, saying which option it came from,
+/// so that a mistyped picture is not taken of the plain map. A word that is no
+/// map view at all was refused with the options; whether a good is one the run
+/// has is for `complaint` to say, given the run's goods. The good a view's
+/// Markets panel opens on (open:GOOD) is asked about as its price.
+fn refuse_map_views(args: &Args, complaint: impl Fn(&str) -> Option<String>) {
+    let opened = |w: &String| {
+        let lower = w.to_ascii_lowercase();
+        let end = if lower.ends_with(":months") { w.len() - ":months".len() } else { w.len() };
+        lower[..end].starts_with("open:").then(|| format!("price:{}", &w["open:".len()..end]))
+    };
+    let words = args.overlay.iter().map(|w| ("--overlay", w.clone()))
+        .chain(args.views.iter().filter_map(|v| v.overlay.as_ref().map(|w| ("--view", w.clone()))))
+        .chain(args.views.iter().filter_map(|v| v.markets.as_ref().and_then(opened).map(|w| ("--view", w))));
+    for (opt, w) in words {
+        if let Some(why) = complaint(&w) {
+            eprintln!("{opt}: {why}");
+            std::process::exit(2);
+        }
+    }
 }
 
 #[derive(Resource)]
@@ -1203,7 +1247,6 @@ fn setup_world(
             frames: shot.frames,
             countdown: shot.frames,
             capturing: 0,
-            start: std::time::Instant::now(),
             wait: shot.wait,
             default_dist: shot.default_dist,
             default_look: shot.default_look,
@@ -1327,7 +1370,6 @@ fn orbit_transform(o: &Orbit) -> Transform {
 
 // ------------------------------------------------------------------ the year
 
-#[allow(clippy::too_many_arguments)]
 /// A year's scenery: the ground's land mix, the meshes and the railway paths.
 struct Scenery {
     k: usize,
@@ -2122,6 +2164,11 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     }
 }
 
+/// "1 family", "6 families": what the terminal and the sheet of pictures say of a game.
+fn families_words(n: usize) -> String {
+    if n == 1 { "1 family".to_string() } else { format!("{n} families") }
+}
+
 /// A number of people: whole, with a comma for the thousands, in millions from a million up.
 fn fmt_pop(p: f32) -> String {
     // round first, so that 12,999.6 is 13,000 and not 12,1000
@@ -2281,6 +2328,7 @@ fn take_shot(
     waiting: Res<PipelinesWaiting>,
     mut patience: Local<u32>,
     mut held: Local<Option<std::time::Instant>>,
+    mut gave_up: Local<Option<usize>>,
 ) {
     let Some(mut plan) = plan else { return };
     if plan.index >= plan.views.len() {
@@ -2338,27 +2386,30 @@ fn take_shot(
         }
         return;
     }
-    // the first view waits for shaders to compile on software renderers, and every view for its year's scenery
+    // what a picture needs: first its year's scenery on screen
     if !scenery_ready(&tl, &data) {
         return;
     }
-    let ready = plan.index > 0 || plan.start.elapsed().as_secs_f32() >= plan.wait;
-    // a pipeline still being put together means something in view is not drawn yet:
-    // hold the shot until it is there and has been drawn for a few frames (a busy
-    // machine can take many seconds over the ground's shader), but not for ever
-    if ready && waiting.0.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+    // then every shader it is drawn with: a pipeline still being put together means
+    // something in view is not drawn yet, so the shot is held until it is there and has
+    // been drawn for a few frames (a busy machine can take many seconds over the ground's
+    // shader, and the first frames of a run are black), but no longer than `--wait`
+    let pending = waiting.0.load(std::sync::atomic::Ordering::Relaxed);
+    if pending > 0 && *gave_up != Some(plan.index) {
         let since = *held.get_or_insert_with(std::time::Instant::now);
-        if since.elapsed().as_secs_f32() < 120.0 {
+        if since.elapsed().as_secs_f32() < plan.wait {
             plan.countdown = plan.countdown.max(4);
             return;
         }
+        eprintln!("{pending} of the renderer's shaders were still being put together after {:.0} s, so {} is taken without what they draw (--wait S gives them longer)", plan.wait, v.path);
+        *held = None;
+        *gave_up = Some(plan.index);
     } else if let Some(since) = held.take() {
         eprintln!("waited {:.1} s for the renderer's shaders", since.elapsed().as_secs_f32());
     }
+    // and some frames for it all to settle
     if plan.countdown > 0 {
-        if plan.countdown > 1 || ready {
-            plan.countdown -= 1;
-        }
+        plan.countdown -= 1;
         return;
     }
     commands.spawn(Screenshot::image(plan.image.clone())).observe(save_to_disk(v.path.clone()));
@@ -2554,14 +2605,14 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
             let good = r.header.goods.get(m.out).map(|g| g.label.to_lowercase()).unwrap_or_default();
             let kk = replay::firm_k(r, f, k);
             let size = kk / m.k0.max(1e-6);
-            let since = if firm.born < r.y0 { "working before 1750".to_string() } else { format!("since {}", firm.born) };
+            let since = if firm.born < r.y0 { format!("working before {}", r.y0) } else { format!("since {}", firm.born) };
             let mut s = format!("{}\n{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, since, kk, good, size);
             if let Some(rs) = &firm.reason {
                 let num = |key: &str| rs.get(key).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
                 let town = rs.get("town").and_then(|v| v.as_i64()).and_then(|t| r.header.towns.get(t as usize)).map(|t| t.name.clone()).unwrap_or_else(|| "a nearby town".into());
                 let kind = rs.get("kind").and_then(|v| v.as_str()).unwrap_or("new");
                 let lead = match kind {
-                    "old" => format!("Already at work in 1750; built new, it would return about {:.0}% a year.", num("roi") * 100.0),
+                    "old" => format!("Already at work in {}; built new, it would return about {:.0}% a year.", r.y0, num("roi") * 100.0),
                     "expansion" => format!("A second site, opened in {} when the first ran out of room; about {:.0}% a year expected.", num("year") as i64, num("roi") * 100.0),
                     _ => format!("Built in {} with money from {}. The best of {} sites priced: about {:.0}% a year on the capital.", num("year") as i64, town, num("n_cand") as i64, num("roi") * 100.0),
                 };
@@ -2590,7 +2641,7 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
         Pick::Town(t) => {
             let town = &r.header.towns[t];
             let i = k * r.n_towns + t;
-            let since = if town.founded < r.y0 { "a market town before 1750".to_string() } else { format!("founded {}", town.founded) };
+            let since = if town.founded < r.y0 { format!("a market town before {}", r.y0) } else { format!("founded {}", town.founded) };
             format!("{}\n{}\n{} people in its market area, {} in the town, in {}.", town.name, since, fmt_pop(r.town_pop[i]), fmt_pop(r.town_urban[i]), year)
         }
         Pick::Cell(c) => {
@@ -2853,6 +2904,11 @@ mod tests {
         assert_eq!(fmt_pop(f32::NAN), "0");
     }
 
+    #[test]
+    fn one_family_is_not_families() {
+        assert_eq!((families_words(1), families_words(6), families_words(30)), ("1 family".to_string(), "6 families".to_string(), "30 families".to_string()));
+    }
+
     fn news(year: f32, weight: f32, title: &str) -> replay::Event {
         replay::Event { year, kind: "family".into(), weight, title: title.into(), text: String::new(), cell: None, family: None, kept: None, seq: 0 }
     }
@@ -2992,7 +3048,7 @@ mod tests {
         assert_eq!(args("--shots").err().unwrap(), "--shots needs a value after it");
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
-        // map views (a good the run does not have is refused once the run is read)
+        // map views (a good the run does not have is refused before a game's island is made, or once a recorded run is read: tests/options.rs)
         assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain");
         assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
         // a script's steps are read with the options
@@ -3008,6 +3064,22 @@ mod tests {
         );
         assert!(args("--new --save --advance 3").err().unwrap().starts_with("--save needs the name of a file to keep the game in after it, and --advance is another option"));
         assert!(args("--shots --wait 3").err().unwrap().starts_with("--shots needs a directory after it, and --wait is another option"));
+        // nor after --shot, --look, --view or --shots-note: --shot --new once took --new for the picture's name
+        assert_eq!(
+            args("--shot --new").err().unwrap(),
+            "--shot needs the name of a picture after it, and --new is another option: put the name between them (a name that begins with dashes is written ./--new)"
+        );
+        assert!(args("--look --advance 3").err().unwrap().starts_with("--look needs the name of a look file after it, and --advance is another option"));
+        assert!(args("--view --shot x.png").err().unwrap().starts_with("--view needs a picture's name and its view after it, and --shot is another option"));
+        // (a note is a line of text, not a name: no ./ is offered for it)
+        assert_eq!(
+            args("--shots out --shots-note --shots-compare before").err().unwrap(),
+            "--shots-note needs a line of text after it, and --shots-compare is another option: put the line between them"
+        );
+        assert_eq!(args("--shots out --shots-note").err().unwrap(), "--shots-note needs a value after it");
+        let empty: Vec<String> = ["--shots", "out", "--shots-note", ""].map(String::from).to_vec();
+        assert_eq!(parse(&empty).err().unwrap(), "--shots-note needs a line of text after it");
+        assert_eq!(args("--shot ./--new.png").unwrap().shot.as_deref(), Some("./--new.png"));
         assert_eq!(args("--load ./--odd.json").unwrap().load.as_deref(), Some("./--odd.json"));
         assert_eq!(args("--load -odd.json").unwrap().load.as_deref(), Some("-odd.json"));
         // a number of families no game can have is refused with the options, before an island is made
@@ -3022,6 +3094,17 @@ mod tests {
         assert_eq!(args("--view a.png,l850").err().unwrap(), "--view: l850 is not a number it can take");
         assert_eq!(args("--view a.png,1850,markets").err().unwrap(), "--view: markets is not a number it can take");
         assert!(args("--view a.png,,,,,,").is_ok());
+        // a word in a view that is no panel, no map view and nothing the Markets panel shows is
+        // refused: "rents" was once read as no panel, and the picture taken of the plain map
+        assert_eq!(
+            args("--view a.png,1850,,,,,,rents").err().unwrap(),
+            "--view: rents is not a word a view takes: use a panel (family, holdings, markets, news or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"
+        );
+        assert!(args("--view a.png,1850,,,,,,wages,famly").err().unwrap().starts_with("--view: famly is not a word a view takes"));
+        assert!(args("--view a.png,1850,,,,,,open:months").err().unwrap().starts_with("--view: open:months is not a word a view takes"));
+        for words in ["none", "None", "Family,price:coal", "news,island:months", "open:Coal:months", "holdings,plain,0.5"] {
+            assert!(args(&format!("--view a.png,1850,,,,,,{words}")).is_ok(), "{words}");
+        }
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
@@ -3104,6 +3187,15 @@ mod tests {
             }
             assert!(tree_part_shown(TreePart::Leaves(group), 0.5, false) && tree_part_shown(TreePart::BareLimbs(group), 0.0, false));
         }
+    }
+
+    #[test]
+    fn a_town_older_than_the_run_is_dated_by_the_run_s_first_year() {
+        // Ashby was founded in 1700; a run that begins in 1800 says so, and not 1750
+        let r = replay::tiny(1800);
+        let said = describe(&r, Pick::Town(0), 0);
+        assert!(said.starts_with("Ashby\na market town before 1800\n"), "{said}");
+        assert!(describe(&replay::tiny(1750), Pick::Town(0), 0).contains("a market town before 1750"));
     }
 
     #[test]
