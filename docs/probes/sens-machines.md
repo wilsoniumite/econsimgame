@@ -119,7 +119,7 @@ the count is over all sixteen. A late wage is the mean of 1881 to 1900.
 | `quality_cap` | 4 | 3, 5.33 | a clean experiment: each run is the game's own until quality reaches the cap. 3: late wage 2.68 to 2.43 (2.76 to 2.52 on 9 to 16), chained wage of 1900 down 0.45 and 0.50, stone made down a quarter, grain down 8 per cent, towns' share down 0.011. 5.33: late wage 2.92 and 2.95, output per head of 1900 2.92 and 2.96, peak 7 and 10 years later | 16: lower on 16 of 16 at 3, higher on 15 of 16 at 5.33 (seed 3 never reaches 4) |
 | `quarry_reach` | 1 | 0.75, 1.33 | stone made 1881-1900 down 19 and up 24 per cent (up 28 on 9 to 16); stone's price in wages up 15 and down 13 per cent; machinery made down 6 and up 9 per cent; late wage down 0.08 and up 0.09 (down 0.14 and up 0.15 on 9 to 16) | 16: stone 16 of 16 each way; late wage 15 of 16 each way |
 | `quarry_input` | 0.001 | 0.00075, 0.00133 | machinery made 1881-1900 down 13 and up 17 per cent (up 13 on 9 to 16); at 0.00075 its price 54 to 64 (53 to 61). On islands 1 to 8 the wage of 1900 rose 0.20 at 0.00133, on 9 to 16 it did not move (4 up, 4 down): chance | 16: machinery 16 of 16 each way |
-| `inherit` | 0.5 | 0.375, 0.667 | steel rails' share of rails 1881-1900: 0.015 to 0.001 and 0.56 (0.071 to 0.002 and 0.69 on 9 to 16); in 1890 0.002 to 0 and 0.53, and 0.07 to 0 and 0.68; rails' price 1881-1900 down 14 per cent at 0.667. The converter's year and share untouched; the wage untouched | 16: 15 of 16 at 0.375 (one island had none to lose), 16 of 16 at 0.667 |
+| `inherit` | 0.5 | 0.375, 0.667 | steel rails' share of rails 1881-1900: 0.015 to 0.001 and 0.56 (0.071 to 0.002 and 0.69 on 9 to 16); in 1890 0.002 to 0.001 and 0.53, and 0.07 to 0 and 0.68; rails' price 1881-1900 down 14 per cent at 0.667 on 9 to 16 (8 of 8). The converter's year and share untouched; the wage untouched | 16: 15 of 16 at 0.375 (one island had none to lose), 16 of 16 at 0.667 |
 
 The content's numbers (`MACHINES_PLANT_SCALE`, `MACHINES_STEEL_RAIL_WORTH`
 and `MACHINES_THRESHOLDS` in `content.rs`) are constants, not settings, and
@@ -175,8 +175,8 @@ to double: 0.375 years a run with it, 0.25 without.
 
 ## The settings that matter most
 
-1. **`quality_cap`**, by a distance: a quarter of the late wage between 3 and
-   5.33, on every island, and the date when growth stops.
+1. **`quality_cap`**, by a distance: nearly a fifth of the late wage between
+   3 and 5.33, on every island, and the date when growth stops.
 2. **`adopt_wagonways`**, because it takes the railway away. It is a switch
    that is off for that reason, and should stay off until the collieries'
    first wagonways are paid for some other way.
@@ -200,9 +200,11 @@ and no fact moves clear of the floor with the islands agreeing, except the
 year of the peak at the larger `quality_Q0` and the zigzag at the larger
 `pasture`. The three news numbers (`news_z`, `news_local_z`, `dearth_rise`)
 change the counts of their own news and nothing else: the run is the same
-to the last digit. `adopt_span` was set to calm the machinery market; on
-today's island the merchants' prices already do that, and at 4.5 or 8 the
-market is as calm as at 6.
+to the last digit. `adopt_span` was set to calm the machinery market, and
+the merchants' prices now do much of that; at 4.5 or 8 machinery's
+twenty-year prices move no more than under the neutral settings. I did not
+measure the market's worst years, which is the page's own measure, so that
+is the thing to look at before moving it.
 
 ## Values at which a run breaks
 
@@ -224,7 +226,7 @@ wrong short of breaking:
   crucible steel on seed 3 never takes off: one to a hundred units a month in
   1840-59, where the game's own run of that island makes 724 and the other
   islands about ten thousand. Quality counts all the steel the island has
-  ever poured, so it stays near 1, and the late wage is 1.8 to 2.2 for the
+  ever poured, so it stays near 1, and the late wage is 1.8 to 2.3 for the
   game's 2.58. It happens under harvest settings as readily as machine ones
   (`foreseen` 0.667, `island_sd` 0.0375, `reach` 22 and 40, `woods` 0.25,
   `pasture` 0.533, `quality_b` 0.45, `quality_Q0` 750,000), so it is not any
@@ -255,17 +257,19 @@ wrong short of breaking:
 
 1. **The cap on machine quality.** It is set at 4 by analogy with the
    methods' `learn_cap`, and it is reached between 1863 and 1886 on fifteen
-   islands of sixteen; output per head peaks about a decade later. Lifting it is the single largest change in this table and answers
-   most of R121. Something has to stop machines improving for ever, but a
-   wall reached in 1880 makes the last twenty years of every game a slow
-   decline in output per head.
+   islands of sixteen; output per head peaks about a decade later. Lifting
+   it is the single largest change in this table and answers most of R121.
+   Something has to stop machines improving for ever, but a wall reached
+   about 1870 makes the last twenty years of most games a slow decline in
+   output per head.
 2. **Why seed 3's crucible steel can fail to start**, and whether the
    machines should learn from all metal-working and not from steel alone. One
    island in sixteen spending a century as the port is not a fair game.
 3. **`inherit` and the steel rail.** As it stands steel rail is a sliver of
-   the trade on most islands; a value near 0.6 would give it the place the
-   machines page meant it to have, and should be measured with the works'
-   life cycle on, as that page asks.
+   the trade on most islands; somewhere between 0.5 and 0.667 (not tried)
+   it would take the place the machines page meant it to have. The machines
+   page asks for it to be tuned with the converter's other numbers and the
+   quality curve, together.
 4. **Seed 6's machinery famine at a cap of 3.** Small, but it says the
    machinery market can still run away late in the century, which is what
    the machines were built to stop.
