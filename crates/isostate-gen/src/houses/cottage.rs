@@ -2,7 +2,7 @@ use crate::colour::shade;
 use crate::hash::Seed;
 use crate::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, Wall, FOOT};
 use crate::houses::roof::{Cover, Roof};
-use crate::houses::{door, door_at, garden_tree, hearth_smoke, timber_frame, window, window_at, Fabric, Street, BACK_ROOM, SET_BACK};
+use crate::houses::{door, door_at, garden_tree, hearth_smoke, timber_frame, timber_hint, window, window_at, Fabric, Street, BACK_ROOM, SET_BACK};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::kit::STOREY;
@@ -210,6 +210,9 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     } else {
         Build::Whole
     };
+    // from far off a raised house is one build, in the colour of the later work, which is
+    // most of what shows from above
+    let (how, wall) = if how == Build::Raised && k.far() { (Build::Whole, above) } else { (how, wall) };
     // rooms in the roof: the eaves stand at a storey and a half
     let half = n == 1 && !thatch && form != Form::Wing && r(46) < st.habit(0.2, 9);
     let h = STOREY * n as f32 * if thatch { 0.92 } else { 1.0 } + if half { STOREY * HALF_STOREY } else { 0.0 };
@@ -317,6 +320,11 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         timber_frame(&mut k, &body, 2, FOOT, top, &posts);
         timber_frame(&mut k, &body, 1, FOOT, top, &[d * 0.5]);
         timber_frame(&mut k, &body, 3, FOOT, top, &[d * 0.5]);
+        if st.family.is_some() {
+            // from the play distance, a hint of it on the front (from there a house is seen
+            // from above and before: its ends are slivers)
+            timber_hint(&mut k, &body, 0, FOOT, top, &posts);
+        }
     }
 
     let colour = roof.colour_in(pal, c.seed, &c.street);
@@ -326,8 +334,10 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     let verge = if form == Form::EndOn { lie.verge.max(0.0024) } else { lie.verge };
     let spec = RoofSpec { h, rise, eaves: lie.eaves, verge, ends: [end, end], col: colour, gable: gable_wall, thick: lie.thick };
     k.roof(&roofed, &spec);
-    if form == Form::Wing {
-        // the wing: its gable to the street, its ridge running back to meet the range's front slope
+    if form == Form::Wing && !k.far() {
+        // the wing: its gable to the street, its ridge running back to meet the range's front
+        // slope. (From far off the house is its range alone: a shell and a roof, as every
+        // cottage is from there, so that a street of wings costs the far view nothing.)
         let rg = Range::rect(wx0, wx1, zfm, zf);
         let mut wf = Faces::new();
         wf.ops[0] = wing_front;
@@ -376,7 +386,8 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     // which end the chimney is at, where the garden ends behind, and whether a tree stands in it.
     // The tree is drawn at every level, so that the island's trees are the same wherever the camera is
     let side = if u < 0.5 { 1.0 } else { -1.0 };
-    let tree = r(15) < 0.28;
+    // (a house end-on runs back to where the tree would stand)
+    let tree = r(15) < 0.28 && form != Form::EndOn;
     if tree {
         garden_tree(green, &k, site, -side * (pw * 0.5 - 0.009), rear + 0.007, 0.24 + 0.08 * r(16), c.seed, pal);
     }
@@ -423,7 +434,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
                     k.stack((x0 + x1) * 0.5, zm, 0.0042, 0.0054, h * 0.86 - 0.001, top, fabric.stack, 1)
                 } else {
                     let at = k.stack(side * (hw - 0.0046), zm, 0.0056, 0.0052, from, top, fabric.stack, if bays >= 3 { 2 } else { 1 });
-                    if bays >= 3 && c.era >= Era::Georgian && r(47) > 1.0 - st.habit(0.38, 12) {
+                    if bays >= 3 && c.era >= Era::Georgian && r(47) > 1.0 - st.habit(0.14, 12) {
                         k.stack(-side * (hw - 0.0046), zm, 0.0056, 0.0052, from, top, fabric.stack, 1);
                     }
                     at
@@ -587,10 +598,10 @@ mod tests {
                 let c = Cottage { street: st, era: Era::of(1700 + 5 * n as i32), ..Cottage::new(width, PLOT.1, 2, Roof::of(1750, 1850, false, false, seed), seed) };
                 let at = |detail: Detail| built(&Cottage { detail, ..c });
                 let (far, play, near) = (at(Detail::Far), at(Detail::Play), at(Detail::Near));
-                // four walls, two slopes and two gables or hips; with a cross-wing three walls
-                // more, its two slopes, their valleys and its gable
+                // four walls, two slopes and two gables or hips, however it stands and
+                // whatever its street's habits
                 let shell = 4 * 2 + 2 * 2 + 2;
-                assert_eq!(far.solid.triangles(), if c.form() == Form::Wing { shell + 3 * 2 + 2 * 2 + 2 + 1 } else { shell }, "seed {n} on {width}");
+                assert_eq!(far.solid.triangles(), shell, "seed {n} on {width}");
                 assert!(far.smoke.is_empty());
                 // the tree in its garden, if it has one, is the same tree at every level
                 assert!(far.green == play.green && play.green == near.green, "seed {n}");
@@ -736,5 +747,36 @@ mod tests {
         let (framed, raised) = (built(&c), built(&Cottage { raised: Some(Era::Brick), ..c }));
         assert!(frame_top(&framed) > STOREY * 1.8, "{}", frame_top(&framed));
         assert!(frame_top(&raised) > STOREY * 0.8 && frame_top(&raised) < STOREY, "{}", frame_top(&raised));
+    }
+
+    #[test]
+    fn a_framed_house_in_a_street_shows_a_hint_of_its_frame_from_the_play_distance() {
+        let pal = Palette::standard();
+        let oak = *pal.timber.house_frame;
+        // how many corners are of oak, in whatever light their side stands
+        let timbers = |m: &Model| m.solid.col.iter().filter(|col| col[0] <= oak[0] + 1e-4 && (col[0] / oak[0] - col[1] / oak[1]).abs() < 1e-3 && (col[0] / oak[0] - col[2] / oak[2]).abs() < 1e-3).count();
+        let mut seen = 0;
+        for n in 0..200 {
+            let seed = Seed::of(n);
+            for st in [Street::ALONE, street(n / 8)] {
+                if !Fabric::of(&pal, Era::Old, false, 0.0, 0.6, seed, &st).timber {
+                    continue;
+                }
+                let c = Cottage { era: Era::Old, street: st, ..Cottage::new(PLOT.0, PLOT.1, 1 + (n % 2) as u8, Roof::of(1700, 1800, false, false, seed), seed) };
+                let at = |detail: Detail| timbers(&built(&Cottage { detail, ..c }));
+                let (far, play, near) = (at(Detail::Far), at(Detail::Play), at(Detail::Near));
+                // close to, the whole frame; from far off, none of it
+                assert!(near >= 4 * 16 && far == 0, "seed {n}: {near} near, {far} far");
+                if st == Street::ALONE {
+                    // told nothing of its street it shows its frame only close to, as it always did
+                    assert_eq!(play, 0, "seed {n}");
+                } else {
+                    // in a street: the posts of the front and the rail at its floor, a handful of timbers
+                    assert!((3 * 4..=7 * 4).contains(&play), "seed {n}: {play} corners of oak at play");
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen > 20, "{seen} framed houses in streets");
     }
 }

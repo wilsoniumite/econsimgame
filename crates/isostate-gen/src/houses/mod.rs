@@ -267,6 +267,33 @@ fn timber_frame(k: &mut Kit, rg: &Range, side: usize, y0: f32, y1: f32, posts: &
     }
 }
 
+/// The same wall from the distance the game is played from, for a house
+/// told of its street: a hint of the black and white that reads from
+/// there. Only the timbers that carry at that distance are drawn, and
+/// stouter than they are, since a timber a hand's breadth wide is a third
+/// of a pixel from up there: the posts at the wall's ends and at `posts`
+/// along it, and the rail at each floor. (A house told nothing of its
+/// street shows its frame only close to, as every house once did.)
+fn timber_hint(k: &mut Kit, rg: &Range, side: usize, y0: f32, y1: f32, posts: &[f32]) {
+    if k.near() || k.far() {
+        return;
+    }
+    let oak = *k.pal.timber.house_frame;
+    let len = rg.face(side).len;
+    let (t, out) = (0.0022, 0.0005);
+    let y1 = y1 - 0.0012;
+    k.strip(rg, side, 0.0, t, y0, y1, out, oak);
+    k.strip(rg, side, len - t, len, y0, y1, out, oak);
+    for &u in posts {
+        k.strip(rg, side, u - t * 0.5, u + t * 0.5, y0, y1, out, oak);
+    }
+    let mut y = (y0 / STOREY).floor() * STOREY + STOREY;
+    while y < y1 - 0.004 {
+        k.strip(rg, side, t, len - t, y - t * 0.5, y + t * 0.5, out, oak);
+        y += STOREY;
+    }
+}
+
 /// A house fire's smoke, rising from the top of a stack.
 fn hearth_smoke(smoke: &mut MeshBuf, top: Vec3, seed: Seed, pal: &Palette) {
     crate::works::plume(smoke, top, 0.39, seed.pick(12) * 7.0, *pal.smoke.puff);

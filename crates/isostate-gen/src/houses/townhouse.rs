@@ -3,7 +3,7 @@ use crate::hash::Seed;
 use crate::houses::cottage::back_door;
 use crate::kit::{Detail, End, Era, Kit, Open, Opening, Range, RoofSpec, Side, Wall, FOOT};
 use crate::houses::roof::Roof;
-use crate::houses::{door, door_at, hearth_smoke, timber_frame, window, window_at, Fabric, Street, BACK_ROOM};
+use crate::houses::{door, door_at, hearth_smoke, timber_frame, timber_hint, window, window_at, Fabric, Street, BACK_ROOM};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::kit::STOREY;
@@ -48,12 +48,10 @@ impl Townhouse {
 }
 
 /// In a street of a family a townhouse on a plot narrower than this has two
-/// bays, and on one at least as wide as `WIDE_FRONT` three; between, and for
-/// a house told nothing of its street, it is the house's own choice. (The
-/// towns lay plots of 0.046 on their back lanes, of 0.05 to 0.062 on their
-/// ways and of 0.056 to 0.066 on their furthest lanes.)
+/// bays: the narrow fronts of a town's back lanes, where the towns lay
+/// plots of 0.046. On a wider plot, and for a house told nothing of its
+/// street, two bays or three is the house's own choice.
 pub const NARROW_FRONT: f32 = 0.047;
-pub const WIDE_FRONT: f32 = 0.056;
 
 /// A townhouse has two storeys, and a third once its ground is dense enough.
 pub fn storeys(density: f32, seed: Seed) -> u8 {
@@ -139,9 +137,9 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
 
     // openings by rule: two or three bays, a window in each on every floor, the door in an end bay
     // (in a street of a family the plot's width has its say: the narrow plots of the back
-    // lanes take two bays and the wide ones of the ways three)
+    // lanes take two bays)
     let told = t.street.family.is_some();
-    let bays = if told && pw < NARROW_FRONT { 2 } else if told && pw >= WIDE_FRONT || r(8) < 0.55 { 3 } else { 2 };
+    let bays = if told && pw < NARROW_FRONT { 2 } else if r(8) < 0.55 { 3 } else { 2 };
     let door_bay = if r(9) < 0.5 { 0 } else { bays - 1 };
     let glazing = window(t.era);
     // the front's windows and its door are the later age's where it has a later front
@@ -207,6 +205,10 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
         }
         if later.is_none() {
             timber_frame(&mut k, &body, 0, STOREY + 0.0008, h, &posts);
+            if told {
+                // from the play distance, a hint of it on the front
+                timber_hint(&mut k, &body, 0, FOOT, h, &posts);
+            }
         }
         timber_frame(&mut k, &body, 2, FOOT, h, &posts);
     }
