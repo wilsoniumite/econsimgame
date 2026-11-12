@@ -395,7 +395,8 @@ the first. How each fares under the game's rules was traced on 12 November
    It runs under both sets of rules (1.74 to 1.78 per cent a year under the
    game's), and under the game's the share left out also grows with what the
    merchants owe, since the count is of the money net. The pass over all the
-   rules mends it for the game alone (`docs/designs/rules-pass.md`, 4.3).
+   rules mends it for the game alone (`docs/designs/rules-pass.md`, 4.3):
+   `money.true_total`, `docs/rules/money.md`.
 3. **Spur proximity test.** `rail.plan_spurs` skips a mine near a finished spur
    with `abs(c - d) % W <= 3 and abs(c // W - d // W) <= 3`. The first part is
    not the column distance (`abs(c % W - d % W)` would be); it is true for cells
