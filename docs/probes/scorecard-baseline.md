@@ -263,11 +263,43 @@ What it says:
   19, 29 and 20 on their own (floor 10.5) and 21.4 to 23.4 on the first
   history's (floor 1.9).
 
+**Two more histories, made by the check of this page.** Moving
+`island_sd` three millionths either way (0.0499997 and 0.0500003) gives
+two more histories of `main`, and setting each beside the first as a change
+of rules would be read (`chance_floor main-game main-chance --against
+check-main-chance`), chance alone goes beyond the five-history floor on 6
+and on 9 facts of 55: about one fact in ten, which is what a nine-in-ten
+yardstick gives. Most go beyond by a little, but where one island can tip
+the floor of five is far too narrow: the towns' share of 1811-1830 moved by
+7.2 floors in one history, because islands 1 and 13 each grew a town a few
+years early, and mill cloth's share of 1830 and coke iron's of 1800 by 4.5
+and 2.5 floors, each from one island. Over seven histories the floor of
+`pop_1900` is 5,057 rather than 2,082, of the wage of 1831-1850 0.087 rather
+than 0.054, and of the iron price's swing 0.0046 rather than 0.0038; the
+towns' share of 1881-1900 keeps its 0.0032 and the loss on `main`'s
+tolerances its 10.5 (148 to 158). No verdict on an aim below changes.
+
+```bash
+isostate-core sweep --seeds 1-16 --rules game --families 6 \
+    --set harvest.island_sd=0.0499998,0.0499999,0.0500001,0.0500002,0.0499997,0.0500003 \
+    --out check-main-chance --quiet --jobs 12
+cargo run --release -p isostate-core --example chance_floor -- main-game main-chance --against check-main-chance
+cargo run --release -p isostate-core --example chance_floor -- main-game check-main-chance
+```
+
+(The first four settings of `check-main-chance` are `main-chance` again,
+the same to the last digit, so the last command reads seven histories.)
+
 A rule of thumb for the pass over the rules: read a change as the change's
 doing when the mean moves by more than the floors of both the rules it left
 and the rules it made, and most islands move the same way (twelve of sixteen
-or more). A change between one and one and a half floors with the islands
-split is chance until more histories say otherwise. The surest test is the
+or more). Expect that rule to be fooled by chance on a fact or two of the
+card's fifty-odd: in the two extra histories the iron price's swing fell by
+1.2 floors with twelve islands of sixteen down, and the towns' share of
+1751-1770 by 1.3 floors with twelve down, and nothing had changed. A change
+between one and one and a half floors is chance until more histories say
+otherwise, and so is a change in a fact that one island's early town or
+early method can carry. The surest test is the
 one used for the tree below: five histories on each side, and the five means
 of one not overlapping the five of the other. It costs five sweeps where one
 would do, about half an hour on this machine for both sides.
@@ -405,8 +437,11 @@ Reading it:
 
 - **The floor is from five histories.** The gap of five draws is a rough
   measure of their spread, uncertain by about a third, and some facts (the
-  zigzag under the tree, 0.021 against `main`'s 0.077) show it. Ten
-  histories would halve that; they were not run.
+  zigzag under the tree, 0.021 against `main`'s 0.077) show it. Two more
+  histories (above) widened ten floors of 55 by more than half, and one, the
+  towns' share of 1811-1830, nearly ninefold: chance here has long tails,
+  where one island founds a town or takes up a method years early. Ten
+  histories would do better; they were not run.
 - **One way of making chance.** Every history here moves `island_sd`, so its
   draws differ from the first harvest on. That is the way the earlier tables
   made their floors and it changes every draw that follows, but it is one
