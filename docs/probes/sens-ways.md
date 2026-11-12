@@ -8,6 +8,20 @@ setting, moves it to about three quarters and to about one and a third of its
 value, and asks what moves on the island. Nothing in the simulation was changed.
 Measured on 12 November 2026 at a6ff0ec, the game's rules with six families.
 
+The findings behind it are R94 and C83 (the promoters' hurdle and induced
+traffic are still the port's numbers, and the stricter promoter was never run
+again on the repaired build) and R89, C89, C135 and R16 (the date and size of the
+railway age vary widely between islands). On the first: the stricter promoter
+(`rail_hurdle` 0.08, which is `rail_induced` 1.875) gives 140 km less railway in
+1900 on 14 islands of 16 and leaves output a head and the wage where they were,
+as the railways page found before its repairs; the laxer one gives about as much
+more. On the second: no setting of either mechanism moves the first line by
+more than two years, and of the dials only `cost_mult`, `districts` and
+`branch_gap` move the railway of 1850 by nearly as much as it differs between
+islands (260 to 300 km between their two values, against a spread of 280), so the
+wandering date is the discovery's, as the railways page says, and not the
+promoters'.
+
 ## In short
 
 1. **No run broke.** 912 runs, at every value tried: no panic, no failure of the
