@@ -3,7 +3,7 @@ use crate::hash::Seed;
 use crate::houses::cottage::back_door;
 use crate::kit::{Detail, End, Era, Kit, Open, Over, Range, RoofSpec, Side, FOOT};
 use crate::houses::roof::Roof;
-use crate::houses::{door_at, garden_tree, hearth_smoke, window_at, Fabric, BACK_ROOM, SET_BACK};
+use crate::houses::{door_at, garden_tree, hearth_smoke, window_at, Fabric, Street, BACK_ROOM, SET_BACK};
 use crate::colour::pick;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
@@ -23,15 +23,18 @@ pub struct Villa {
     pub era: Era,
     /// it stands in the hills: stone
     pub upland: bool,
+    /// the family its street's brick and slate run in (a villa stands back
+    /// in its own garden, whatever the street's building line)
+    pub street: Street,
     /// how much of it to draw
     pub detail: Detail,
     pub seed: Seed,
 }
 
 impl Villa {
-    /// A villa of the railway years in the lowland, drawn in full.
+    /// A villa of the railway years in the lowland, told nothing of its street, drawn in full.
     pub fn new(plot_width: f32, plot_depth: f32, roof: Roof, seed: Seed) -> Villa {
-        Villa { plot_width, plot_depth, roof, era: Era::Brick, upland: false, detail: Detail::Near, seed }
+        Villa { plot_width, plot_depth, roof, era: Era::Brick, upland: false, street: Street::ALONE, detail: Detail::Near, seed }
     }
 }
 
@@ -54,7 +57,7 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
     let (pw, pd) = (t.plot_width, t.plot_depth);
     let n = 2usize;
     let h = STOREY * n as f32;
-    let mut fabric = Fabric::of(pal, t.era, t.upland, 0.0, 0.5, t.seed);
+    let mut fabric = Fabric::of(pal, t.era, t.upland, 0.0, 0.5, t.seed, &t.street);
     if !fabric.brick && !t.upland {
         // stucco, lined out as stone
         fabric.wall.col = if v < 0.5 { *pal.walls.cream } else { *pal.walls.limewash };
@@ -62,7 +65,7 @@ pub fn villa(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, sit
     }
     let wall = fabric.wall;
     let roof = t.roof.rebuilt();
-    let (colour, lie) = (roof.colour(pal, t.seed), roof.cover.lie());
+    let (colour, lie) = (roof.colour_in(pal, t.seed, &t.street), roof.cover.lie());
     let glazing = Open::Sash;
     let paint = pick(&pal.walls.door_paints, r(4));
     let front_door = Open::Door { paint, over: Over::Fanlight };
