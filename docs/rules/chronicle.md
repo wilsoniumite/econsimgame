@@ -512,8 +512,10 @@ after, read side by side:
   that is from year to year; the story names the town told of, says where it
   now stands if it is not just below ("Melbourne is now the island's fourth
   town"), and says "Glenbrook is now the island's first town" where a founding
-  or a road redrew either district since. Stories of first and second place
-  went from 26 to 50 on the eight islands, and every one names a town truly in
+  or a road redrew either district since. A story of first place that names
+  the old first just below has told the reader it is second, and it is seated
+  there. Stories of first and second place
+  went from 26 to 49 on the eight islands, and every one names a town truly in
   the place it names. Of the spells of five years or more at the top that a
   reader never heard of, eleven before, three are left, each a lead that never
   stood 5 per cent clear for three years running.
@@ -559,8 +561,8 @@ after, read side by side:
   written; they are now "In a year" and "one of them a maker of".
 
 Of the sweep's facts only `news_region` and `news_total` move, by the
-places stories: 352 to 376 regional stories on the eight islands (from one
-fewer to six more a run), 8,016 to 8,040 items in all.
+places stories: 352 to 375 regional stories on the eight islands (from one
+fewer to six more a run), 8,016 to 8,039 items in all.
 
 ## What worries me
 
