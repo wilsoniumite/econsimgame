@@ -171,8 +171,7 @@ fn main() {
     let (r, _) = &runs[0];
     let (st, C) = (&r.state, &r.content);
     if show_years {
-        println!("
-seed {}, year by year", seeds[0]);
+        println!("\nseed {}, year by year", seeds[0]);
         println!("year   work  works  merch   land  pay share  works yrs  land yrs     wage bill         rents  landlords' cash  towns");
         for (k, y) in st.acct.years.iter().enumerate() {
             let towns = (0..st.T_max).filter(|&t| st.acct.year(k).unwrap().towns[t * accounts::KT] > 0.0).count();
@@ -183,8 +182,7 @@ seed {}, year by year", seeds[0]);
         }
         // the year the land's owners did worst, town by town
         let y = st.acct.years.iter().min_by(|a, b| a.share_land.total_cmp(&b.share_land)).unwrap();
-        println!("
-{}, the year land's share was lowest ({:.3}), town by town", y.year, y.share_land);
+        println!("\n{}, the year land's share was lowest ({:.3}), town by town", y.year, y.share_land);
         println!("{:>14}  founded   people  mean wage  hands on land  wages on land  value of produce  rents of land", "");
         for t in 0..st.town_name.len() {
             let Some(tb) = accounts::town_books(st, C, t, Some(y.year)) else { continue };
@@ -206,7 +204,7 @@ seed {}, year by year", seeds[0]);
             (0..st.town_name.len()).max_by(|&a, &b| goods[(a * G + g) * accounts::KG].total_cmp(&goods[(b * G + g) * accounts::KG])).unwrap()
         }
     };
-    let tb =accounts::town_books(st, C, t, Some(year)).expect("the town's books");
+    let tb = accounts::town_books(st, C, t, Some(year)).expect("the town's books");
     let gb = &tb.goods[g];
     println!("\n{} in {}, {} (seed {}): the year's books", C.good_label[g], tb.name, year, seeds[0]);
     println!("  in store as the year began {:14.1}", gb.stock_open);
@@ -244,12 +242,14 @@ seed {}, year by year", seeds[0]);
     if show_works {
         // the largest works making the good in that town that year
         let rec = st.acct.year(k).unwrap();
+        let wcol = |name: &str| accounts::WORKS_FIELDS.iter().position(|&n| n == name).unwrap();
+        let (w_method, w_town, w_out) = (wcol("method"), wcol("town"), wcol("out"));
         let best = (0..rec.works_id.len())
             .filter(|&j| {
                 let w = &rec.works[j * accounts::KW..(j + 1) * accounts::KW];
-                w[2] as usize == t && C.method_out[w[1] as usize] == g
+                w[w_town] as usize == t && C.method_out[w[w_method] as usize] == g
             })
-            .max_by(|&a, &b| rec.works[a * accounts::KW + 4].total_cmp(&rec.works[b * accounts::KW + 4]));
+            .max_by(|&a, &b| rec.works[a * accounts::KW + w_out].total_cmp(&rec.works[b * accounts::KW + w_out]));
         match best.and_then(|j| accounts::works_books(st, C, rec.works_id[j] as usize)) {
             Some(wb) => {
                 println!("\n{} ({}), year by year", wb.name, C.method_label[wb.method]);
