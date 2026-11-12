@@ -470,6 +470,12 @@ and locks from the heights along the links, as map-viewer-ground suggests.
 - **One river, one canal.** A canal along a navigable river is allowed and
   is cheap to route (it is a river's valley). Nothing says a river made
   navigable is a different thing from a canal beside it.
+- **Canals found no towns, and cost the island half of one.** A new town is
+  founded where a market would save the most carting, so a canal that saves
+  it first leaves less to found a town for ("On the integration branch",
+  below). Britain's canals made towns, at their junctions and where they met
+  a river. A wharf does not count for anything in `people.md`'s rule, and it
+  might.
 - **The know-how is not on the viewer's knowledge map**, since it is not one
   of the content's inventions.
 - The viewer was built but not run. It does not draw canals.
@@ -518,6 +524,115 @@ A second helper went over the mechanism before it was merged.
   the page no longer says that canals hold the game's railway back and
   leave the island behind in 1850, which neither seeds 9 to 16 nor the
   merged build bear out.
+
+## On the integration branch
+
+`night/core`, the merge of 11 November, where the canals met the mines for
+the first time: everything above was measured on an island whose quarries
+and pits were still the port's. The sweeps are under
+`.claude/night/reports/core-steps/`, all with six families: `canals-before`
+and `canals-after` on seeds 1 to 6, `canals-s7-16-before` and `canals-s7-16`
+on seeds 7 to 16, `canals-x-on-off` and `canals-x-timing`. They were made a
+second time on the committed build (30e7ddf), which on seeds 1 to 6 gives
+every one of the 420 facts the merge gave before it was committed.
+
+**The merge.** Five blocks that the mines and the canals had each added at
+the same place (the end of `Params` and of its two constructors, of `State`
+and of `LiveYear`, the list in the README, and the labour supply in
+`econ::step_month`); both kept, the mines' first. The one with an order to
+it is the labour supply. The hands who are not for hire leave it as carters,
+then sinkers, then navvies. Each takes its share of what is still there, so
+whoever comes last is squeezed first, and that should be the canal: carting
+and sinking are work the town already lives by, and a canal can wait a
+month.
+
+**Off is the branch as it stood.** With `canals.enabled=false` seeds 1 to 6
+give all 323 facts of `canals-before`, to the last digit. The golden
+constants are untouched and no run failed (6, 6, 10, 10, 12 and 4 runs).
+
+**The canals are the page's canals, a little longer.** Sixteen seeds with
+the mines, and in brackets what "the game's rules, six families" gave above
+without them: the first opens in 1774 (1776), 261 km in 1780 (193), 592 in
+1790 (494), 695 in 1800 (615), 839 in 1830 (783), 900 in 1850 (847) and 903
+in 1900 (850), from 688 to 1,184. A run digs 24 canals between towns (13 to
+32), cuts five or six junctions (2 to 9) and runs branches to works (six),
+woods (one or two), quarries and collieries (one of each) and, on every
+other island, a farming district. It costs 0.14 of a year's output and comes
+in at 1.04 times what was expected.
+The boats carry 299 million weight-km a year by 1800 and 432 by 1820 on
+hauls of 46 km, coal 0.41 of it, grain 0.23, stone and clay 0.16; their best
+year is 1828 and by 1900 they carry 25. The first canal is 53 years ahead of
+the first railway (31 to 66). At most 1,300 navvies are at work (780 to
+2,100), nine or ten canals are digging at once (twelve, the cap, on some
+islands) and the slowest takes five years. So beside the mines there is a
+little more canal and it comes a little sooner. I did not trace why.
+
+**What it does in company is what the page says.** On for off, sixteen
+seeds, with the islands higher and lower:
+
+| | on for off | |
+|---|---|---|
+| carters among all hands, 1800 | 0.119 for 0.134 | 0/16 |
+| farm share of work, 1800 | 0.440 for 0.430 | 14/2 |
+| output per head, 1800 | 1.66 for 1.65 | 15/1 |
+| baskets a head, 1800 | 3.17 for 3.14 | 15/1 |
+| real wage, 1800, 1850, 1900 | 1.59 for 1.61, 1.99 for 2.03, 2.61 for 2.65 | 8/8, 6/10, 8/8 |
+| output per head, 1850, 1900 | 2.16 for 2.19, 2.67 for 2.70 | 7/9, 7/9 |
+| people in 1900, thousands | 726 for 719 | 13/3 |
+| towns, 1830, 1850, 1900 | 15.3 for 15.7, 16.6 for 17.3, 17.2 for 17.8 | 3/10, 4/11, 3/11 |
+| first railway | 1827 for 1828 | 5/9 |
+| km of railway, 1850, 1870, 1900 | 1,348 for 1,315, 1,829 for 1,863, 2,254 for 2,260 | 7/9, 6/10, 10/6 |
+| works, 1900 | 729 for 726 | 7/9 |
+| town cells and works' cells, 1900 | 324 for 320, 198 for 205 | 9/6, 6/10 |
+| workings, 1900 | 491 for 492 | 7/8 |
+| price swing: grain, iron, rails, cloth | 0.113 for 0.111, 0.174 for 0.173, 0.179 for 0.172, 0.039 for 0.038 | 9/7, 9/7, 11/5, 11/5 |
+| famine years in a run | 0.4 for 1.4 | 3/9 |
+
+The carters are one hand in seventy fewer in 1800 on every island, the hands
+go to the farms, and a head makes and buys one per cent more. After that
+nothing can be told from the spread between islands, the railway included.
+Famine years are fewer again (on nine islands of sixteen, more on three).
+With the two columns of "In company" that makes 27 runs against 10 on the
+same sixteen islands, and it is beginning to look like something: grain that
+can go by boat in a bad year. It is still not traced.
+
+**One thing is new: half a town fewer.** The islands have the same towns to
+1780. From 1790 the island with canals has founded fewer, and by 1850 it has
+16.6 where it had 17.3, fewer on eleven islands and more on four. That is
+`people.md`'s rule doing what it says: a town is founded where a market
+would save the most carting, and a canal has saved some of it already. The
+people are not lost (there are one per cent more of them in 1900) and the
+share of them in towns is 0.42 either way, a third of a point lower with
+canals. Seed 7 founds no town from 1772 to 1790 with canals where it had
+founded two, and that is why `tests/chronicle.rs` now watches fifty years
+of it for its five foundings and not forty: the same question asked of ten
+more years.
+
+**The canal's orders do not strain its materials.** Stone, bricks, timber
+and clay cost what they cost against the wage, decade by decade from the
+1770s to the 1820s, to within one or two per cent (in the 1780s stone is
+0.194 of the wage for 0.195 and bricks 0.454 for 0.456), and two per cent
+more stone is dug a head. No price sits at a floor or a ceiling.
+
+**Six seeds are not sixteen.** On seeds 1 to 6 alone 1850 looks like a
+gain (baskets a head 4.91 for 4.47, the real wage 1.89 for 1.83, both 4/2)
+and on seeds 7 to 16 like a loss (5.41 for 5.83, 3/7; 2.05 for 2.14, 2/8).
+It is neither, as the mines page found of the same year: these islands have
+their fastest years around 1850, and a few years either way moves the mark.
+
+**The time a run takes.** One at a time on seeds 3 and 5, 17.1 seconds for
+15.6; twelve at a time on seeds 1 to 6, 30.6 for 25.1. A tenth to a fifth
+more, as before.
+
+**The scripted players** play all sixteen games through beside the mines
+(`core-steps/canals-bots-game.txt`, seeds 1, 2, 3 and 7). The landlord and
+the thoughtful player finish richest of the six families on every seed, as
+they did; the passive player and the founder finish first to fourth.
+
+**The viewer** builds and its tests pass. It reads the `trans` layer by its
+bits (1 and 2 the road, 4 track, 8 track building), in the railways' new
+course and profiles too, so 16 and 32 disturb nothing, and it still draws no
+canal.
 
 ## Facts added to the sweep
 
