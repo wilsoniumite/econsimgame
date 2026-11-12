@@ -61,11 +61,10 @@ then still passes, being about the switch itself, and the other five fail.
   side of it;
 - the issue is never below nothing, on the case that went below it: island 7
   under the machines' extreme setting (`quality_b` 2, `quality_cap` 50,
-  `quality_Q0` 0), whose money grows every month to 1767 under the rule,
-  where the port's count takes it below nothing in 1766 and the run stops.
-  The case is held with `hands.ration` off: the mines' wages that make the
-  month's income many times the money run away only while a town may hire
-  hands it does not have, so with stage 2 on the port's count survives it;
+  `quality_Q0` 0), whose money grows every month to 1846 under the rule,
+  where the port's count takes it below nothing in November 1845 and the
+  run stops (in 1766 before stage 2's rationed hands, which slow that road
+  and do not close it);
 - what the player does makes no money: the family takes up a trade, and at
   the turn of each of its first three years founds the dearest works it can
   pay for at its seat and buys land, and the money of every month is still
@@ -149,14 +148,36 @@ as the adjust's null does to island 10 (found in 1837 for 1815) and the
 walk's to island 7 (1830 for 1816). That is the lottery of the dates of
 invention again, and not the money.
 
-The scorecard's loss falls from 151 to 42, which is not the island coming
-nearer its aims: the scorecard takes its tolerances from the spread between
-islands, and island 3 widens it (`scorecard.md`, "What worries me").
+The scorecard as it then stood gave a loss of 42 for today's 151, which was
+not the island coming nearer its aims: that scorecard took its tolerances
+from the spread between islands, and island 3 widened it. The card of stage
+1, with its tolerances held still, is read below.
+
+**Again, on top of stage 2, with the card.** Stage 1 (the card) and stage 2
+(hands that exist) landed while this stage was being checked, so the stage
+was read again on main as they leave it, the same four sweeps of sixteen
+islands. Today's money now grows 1.714 to 1.790 per cent a year; under the
+rule 1.764 on every island as before. Every aim of the card stays inside the
+three histories of today or just beyond them, the aims that could not be read
+before among them: the towns' gain at the end 0.013 (today and the nulls
+0.010 to 0.013), growth at the end 1.04 (1.03 to 1.05), the five worst years
+12.2 per cent down (12.0 to 13.0), timber's swing 0.202 (0.192 to 0.207),
+the tools' dear years 6.6 (6.9 to 8.1), no wild town-month anywhere, and the
+carters between towns 0.014 in 1750 and 0.034 in 1900 as today. The loss is
+29.2, where today's is 32.0 and the null pair's 34.5 and 38.8. Island by
+island, six facts move by a paired t over 3 where the nulls move none and
+two; six is what chance alone gives about 600 facts on sixteen islands, and
+none of the six moves the same way on islands 17 to 32 (the carters between
+towns of 1800, the largest, t -4.0 on the first sixteen and -1.1 on the
+next, and the walk's null has it at -2.5 too). On all 32 islands one fact of
+613 has a t over 3.
 
 **The money check's failures.** The machines' extreme setting
-(`quality_b` 2, `quality_cap` 50, `quality_Q0` 0), which stops islands 3 and
-7 today when their money goes below nothing, runs to 1900 on both with every
-month passing, the money 37.518 million in December 1900 as on any island.
+(`quality_b` 2, `quality_cap` 50, `quality_Q0` 0), which stops islands 3
+and 7 under the port's count when their money goes below nothing (in 1785
+and 1766 before stage 2, in October 1893 and November 1845 with it), runs
+to 1900 on both under the rule with every month passing, the money 37.518
+million in December 1900 as on any island, before stage 2 and after.
 The negative markup that also failed is now refused by the parameters' own
 check, so it cannot be run either way. Under the commons
 (`--set rent_regime=commons`), read only for failures as the design asks,

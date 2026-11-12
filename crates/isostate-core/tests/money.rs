@@ -137,27 +137,25 @@ fn twice_the_money_at_the_start_is_twice_the_money_in_every_month() {
 fn the_issue_is_never_below_nothing() {
     // money that only grows cannot go below nothing (tr-money.md, section 2):
     // every month's issue is a share of a positive total. The machines' extreme
-    // setting is the case: in March 1766 island 7's machines become fifty times
-    // better, the households' income for the month is many times the money, and
-    // the port's count issues less than nothing every month after, until in
-    // October the money is below nothing and the check stops the island. The
-    // mines' wages that make that income run away only while a town may hire
-    // hands it does not have, so the case is held with `hands.ration` off
-    // (docs/rules/hands.md closes it from the other side).
+    // setting is the case: once island 7's machines become fifty times better,
+    // a month's income for the households can be larger than the money, and
+    // the port's count then issues less than nothing; in November 1845 the
+    // money is below nothing and the check stops the island. (It was March to
+    // October 1766 before towns stopped hiring hands they do not have,
+    // docs/rules/hands.md, which slowed the road and did not close it.)
     fn extreme(true_total: bool) -> Params {
         let mut P = params(7, true_total, 6);
-        P.hands.ration = false;
         P.machines.quality_b = 2.0;
         P.machines.quality_cap = 50.0;
         P.machines.quality_Q0 = 0.0;
-        P.end_year = Some(1767);
+        P.end_year = Some(1846);
         P
     }
     let P = extreme(true);
-    let (_, money) = money_by_month(&P, 1767 - 1750 + 1, 1.0);
+    let (_, money) = money_by_month(&P, 1846 - 1750 + 1, 1.0);
     assert!(money.windows(2).all(|w| w[1] > w[0]), "the money grows every month");
     let port = sim::run_with(&extreme(false), game_content(), false, true);
-    assert!(port.is_err(), "the port's count takes island 7's money below nothing in 1766");
+    assert!(port.is_err(), "the port's count takes island 7's money below nothing in 1845");
 }
 
 #[test]
