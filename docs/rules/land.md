@@ -150,8 +150,9 @@ the fine grid:
   than a cell, so a river usually meets the tide a few cells inside what the
   cells call land (100 to 200 land cells an island, give or take, have
   tidewater in them and no cell of sea beside them: 82 to 234 on seeds 1
-  to 40, and 99 to 207 on 1 to 12). Left at that, no navigable river reached the coast on twelve
-  islands of sixteen, and the first towns had no port. So the cells follow
+  to 40, and 99 to 207 on 1 to 12). Left at that, no navigable river
+  reached the coast on twelve islands of sixteen, and the first towns had
+  no port. So the cells follow
   the tide: every cell with tidewater knows the neighbour its inlet runs on
   into (always one nearer the open sea, counted in fine steps over the
   water), and the flow that has come into the inlet from there up. Every
@@ -174,9 +175,10 @@ the fine grid:
   woodland from rain and height, thinning between 380 and 760 m to a
   third or less of full woodland above that (0.28 to 0.33 at most, on 1 to
   34 such cells an island, seeds 1 to 40; a tree line, but not a bare
-  one); stone where hard rock is laid bare (scarps, gorges, the belt); clay in the vales and on the
-  alluvium; coal in the coalfields, richer where the land has been worn down
-  nearly to the seam; ore in the belt, and ironstone with the coal.
+  one); stone where hard rock is laid bare (scarps, gorges, the belt);
+  clay in the vales and on the alluvium; coal in the coalfields, richer
+  where the land has been worn down nearly to the seam; ore in the belt,
+  and ironstone with the coal.
 - *The first towns* are chosen by the port's rule (a fertile country round
   about, navigable water, the coast, 17 cells apart) with the places towns
   really grew counted in: the head of an estuary (the innermost cell of a
@@ -204,9 +206,9 @@ water in a lake than in the sea is a lake cell, and water to the economy:
 no town stands on it and no railway crosses it, and boats cross it at the
 sea's rate. (So a lake cell may have well under half its ground under the
 lake: five nodes of sixteen will do, if the rest is dry ground and a little
-sea. Its `h` is the lake's level.) Its
-shore is not `coast`: that is tidewater, the sea's shore and the tideways,
-which emigrants and (when it comes) foreign trade leave from.
+sea. Its `h` is the lake's level.) Its shore is not `coast`: that is
+tidewater, the sea's shore and the tideways, which emigrants and (when it
+comes) foreign trade leave from.
 `Landform::lake` says which water cells are lake, `Landform::shore` which
 land cells are beside one, and `Landform::estuary` which land cells have a
 river's tideway through them. Three small hooks, each marked `land:` where
@@ -365,7 +367,8 @@ about the land.
 
 `land_stats`, seeds 1 to 12 (`cargo run --release -p isostate-core
 --example land_stats -- 1-12`; run again on 12 November against the code
-of that day, and every figure in both tables came back):
+of that day: every figure in both tables came back but two last digits,
+which are put right):
 
 | | least | mean | most |
 |---|---|---|---|
