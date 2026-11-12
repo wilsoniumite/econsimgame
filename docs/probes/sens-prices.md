@@ -42,14 +42,17 @@ island's income of 1750, which has since moved).
   1880s and 1890s (the engel page measured 3.6), so the curve is all but fully turned by
   then whatever its strength. Between 2.25 and 4 the towns of the late century move by
   under a point.
-- **The merchants' brake does nothing at these sizes.** `glut_months`, `glut_stop_months`
-  and `glut_floor` at three quarters and four thirds (and a floor of 0.1 or 0.25) move
-  nothing beyond what a null run moves.
+- **The merchants' brake does nothing at these sizes, but does further out.** `glut_months`,
+  `glut_stop_months` and `glut_floor` at three quarters and four thirds (and a floor of 0.1,
+  0.25 or 0.5) move nothing beyond what a null run moves. At half the game's value,
+  `glut_months` 2 takes 18 per cent off iron's price swing on all sixteen islands, under the
+  prices page's bar of 0.16, and moves nothing else beyond the null.
 - **Both switches still do what their pages say, and more.** With the curve off the towns of
   the 1890s hold 0.27 of the people, not 0.42: the curve now carries fourteen points of
   town where it carried six when it landed. With the merchants' prices off the farm zigzag
   is 6.0 and famine years 2.4 a run.
-- **No run failed** the monthly money check or panicked: 304 runs to 1900.
+- **No run failed** the monthly money check or panicked: 304 runs to 1900, and 168 more in
+  the check of this page.
 
 ## How it was measured
 
@@ -109,8 +112,11 @@ alarms of downturn a run.
 | | | 1.0 (16) | zigzag -3% (6/10); grain output swing -29% (0/16); cloth price swing +14% (14/2), iron +12% (13/3); alarms +22% (12/3); famine years 1.8 (6/2, z +3.0); emigrants x4 (12/4) | 12 to 16 of 16 |
 | | | 1.5, 2 (8) | broken: famine years 21 and 60 a run, emigrants 6,100 and 23,000, people 1881-1900 -4% and -12% (0/8), zigzag 3.2 and 4.9, every price swing up by half to threefold (8/0) | 8 of 8 |
 | `prices.glut_months` | 4 | 3, 5.33 (8) | nothing beyond the null; the largest, works standing 1881-1900 -5% at 3 (1/7, z -1.6) | chance |
+| | | 2 (16), 7 (8) (a check) | iron's price swing -18% at 2 (0/16), rails' -12% (2/14); +8% at 7 (7/1); nothing else beyond the null | 14 to 16 of 16 |
 | `prices.glut_stop_months` | 8 | 6, 10.67 (8) | nothing beyond the null (real wage 1881-1900 +3% at 6, 7/1, z +0.8) | chance |
+| | | 4.5, 16 (8) (a check) | at 4.5 works founded +12% and closed +16% (7/1); at 16 nothing real | chance |
 | `prices.glut_floor` | 0 | 0.1, 0.25 (8) | at 0.25 only: works standing 1881-1900 -6% (1/7, z -2.0), median works 6% larger (7/1, z +2.2), works founded -7% (3/5) | chance |
+| | | 0.5 (8) (a check) | nothing beyond the null (46 quantities with 7 or 8 of 8 agreeing, 5 with all 8); works standing 1881-1900 -3% (2/6) | chance |
 
 The markup, step by step on sixteen islands (eight for 1.5 and 2):
 
@@ -201,15 +207,30 @@ holds the towns of the 1890s now.
    answer the weather.
 3. **`engel.strength`**: about a point of town, mostly in mid-century; grain output by
    five per cent.
+4. **`prices.glut_months`**, but only taken well below the game's 4: at 2, iron's price
+   swing 18 per cent smaller on all sixteen islands (see below).
 
 ## The settings that do nothing at these sizes
 
 `prices.glut_months`, `prices.glut_stop_months` and `prices.glut_floor`, at three quarters,
 four thirds, 0.1 and 0.25. Nothing they move stands clear of the null on eight islands. This
 agrees with the prices page (the brake turns away a fraction of one per cent of the iron
-works' capacity), and it means the brake's numbers are not worth a search: it is a guard
-against a hole, not a tuning knob. The one hint, fewer and larger works with a floor of
-0.25, is a single quantity on eight islands.
+works' capacity). The one hint, fewer and larger works with a floor of 0.25, is a single
+quantity on eight islands, and it does not grow at a floor of 0.5.
+
+**But the brake is not dead further out** (a check of this page, twice as far from the
+game's values). With `glut_months` at 2 the merchants start to hold back at two months'
+stock, the stock they mean to hold, and iron's price swings less: 0.144 for 0.172 on seeds 1
+to 8 and 0.139 for 0.176 on seeds 9 to 16, lower on all sixteen islands; rails' swing falls
+by an eighth (lower on fourteen). Across the values tried iron's swing moves in a line: 0.144
+at 2, 0.167 at 3, 0.172 at 4, 0.179 at 5.33, 0.186 at 7. The prices page asks for an iron
+price swing under 0.16, which today's game misses and `glut_months` 2 meets. Nothing else
+moves past the null, people and wages included. With `glut_stop_months` 4.5 as well (seeds 9
+to 16 only) iron's swing is 0.119 (lower on all eight) and rails' 0.132, the real wage of
+1881-1900 3 per cent higher (6/2), and the works churn: a fifth more founded and over a
+quarter more closed (8/0 each). So the brake is a lever on the iron cycle that the
+three-quarters-and-four-thirds table cannot see, worth a search; what it does to unfilled
+orders and the iron stock, which the prices page also tests, was not measured.
 
 ## Where the run breaks
 
@@ -222,7 +243,8 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
   of towns tells nothing, since no rule ever removes a town.
 - `engel.y_ref` of 1.0: 2.5 famine years a run, a twentieth fewer people. The engel page
   saw this on two islands with a steep curve; it holds at the game's strength.
-- Nothing else tried breaks. Every one of the 304 runs passed the monthly money check.
+- Nothing else tried breaks. Every one of the 304 runs passed the monthly money check, and
+  so did the 168 of the check of this page (the harvests off, the brake further out).
 
 ## Pairs worth trying together
 
@@ -241,8 +263,10 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
 - **`prices.markup` with whatever adds lag to farm hands** (`carting.adjust`, the people
   rules' timing; not run). Without the weather the top of the window has come down from
   above 0.8 to under it, which a longer lag would explain.
-- **`prices.glut_months` with `price_target_months` and `trade_cap`** (not run): the brake is
-  set by those two, and only matters if either moves.
+- **`prices.glut_months` with `glut_stop_months`, `price_target_months` and `trade_cap`**
+  (the first pair run on eight islands, above; the others not): the brake is set against
+  those two, and at `glut_months` 2 it begins at the stock merchants mean to hold, which the
+  prices page warns can choke trade. It did not here, but a search downward wants all four.
 
 ## What I would look at first in a pass over the rules
 
@@ -258,8 +282,11 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
    on sixteen islands against 0.38, which is near the noise); whether that is wanted is a
    choice about the harvests, so settle it with them, on sixteen islands, with the shock
    test of `examples/prices_probe.rs`.
-3. **Leave strength and the brake alone.** Strength's work is now mostly done by income; the
-   brake's numbers do nothing measurable.
+3. **Leave strength alone, and search the brake downward.** Strength's work is now mostly
+   done by income. The brake's numbers do nothing measurable near the game's values, but
+   `glut_months` 2 (with `glut_stop_months` 4.5, more so) steadies iron's price on every
+   island; search it with the iron stock and unfilled orders in view, which the prices
+   page's test also asks about and which this page did not measure.
 4. **Re-measure the curve's ceiling.** The engel page's "just under four in ten" was measured
    on two richer islands of the port alone, at 5.3 and about 7 bundles (0.37 and 0.38); today's
    game, at 8.9 bundles and with the other mechanisms, has the towns at 0.42 and still rising. The richer set of shares
