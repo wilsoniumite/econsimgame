@@ -54,6 +54,105 @@ impl RoadBridge {
     pub fn width(&self) -> f32 {
         if self.main { 0.042 } else { 0.03 }
     }
+
+    /// Half the width of the roadway between the parapets' inner faces.
+    pub fn inner_half(&self) -> f32 {
+        self.width() * 0.5 - PARAPET.1
+    }
+
+    /// How far a ramp runs, as a share of the bridge's length bank to bank.
+    pub fn ramp(&self) -> f32 {
+        APPROACH / self.span()
+    }
+
+    /// The point of the map `t` of the way along the bridge's middle line: 0
+    /// at one bank and 1 at the other, below 0 and above 1 on the ramps.
+    pub fn point(&self, t: f32) -> Vec2 {
+        self.at + self.along * (self.span() * (t - 0.5))
+    }
+
+    /// How far along the bridge (as for `point`) a point of the map lies,
+    /// measured along its middle line.
+    pub fn t_of(&self, p: Vec2) -> f32 {
+        (p - self.at).dot(self.along) / self.span() + 0.5
+    }
+
+    /// The roadway as it is drawn, from the foot of one ramp to the foot of
+    /// the other: the points where its flat lengths meet, in order, each as
+    /// how far along the bridge it is (`point`) and the roadway's height
+    /// there. Between two of them the roadway is flat from side to side and
+    /// straight from one to the next. A cart on the bridge rides this.
+    pub fn roadway(&self, ground: &dyn Fn(f32, f32) -> f32) -> Vec<(f32, f32)> {
+        let deck = deck(self, ground);
+        let mut ts: Vec<f32> = lengths(self, &deck).iter().flat_map(|l| [l.0, l.2]).collect();
+        ts.sort_by(f32::total_cmp);
+        ts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+        ts.into_iter().map(|t| (t, deck(t))).collect()
+    }
+}
+
+/// The height of the roadway at `t` of the way along the bridge (as for
+/// `RoadBridge::point`): it meets the road on each bank, rises over the
+/// water in a hump, and comes down a ramp at each end to just under the
+/// road's own surface.
+fn deck<'a>(b: &'a RoadBridge, ground: &'a dyn Fn(f32, f32) -> f32) -> impl Fn(f32) -> f32 + 'a {
+    let (half, level, along) = (b.half, b.level, b.along);
+    let span = b.span();
+    let dir = Vec3::new(along.x, 0.0, along.y);
+    let centre = Vec3::new(b.at.x, 0.0, b.at.y);
+    // the roadway meets the road on each bank and rises over the water
+    let road = move |t: f32| {
+        let p = centre + dir * (span * (t - 0.5));
+        ground(p.x, p.z).max(level) + 0.012
+    };
+    let ends = (road(0.0).max(level + 0.02), road(1.0).max(level + 0.02));
+    let hump = 0.007 + 0.09 * half;
+    move |t: f32| {
+        if t < 0.0 {
+            // the foot of a ramp, just under the road's own surface
+            (road(t) - 0.006).min(ends.0)
+        } else if t > 1.0 {
+            (road(t) - 0.006).min(ends.1)
+        } else {
+            ends.0 + (ends.1 - ends.0) * t + hump * (std::f32::consts::PI * t).sin()
+        }
+    }
+}
+
+/// How high an arch rises over the water from its springing, given the roadway.
+fn rise(b: &RoadBridge, deck: &dyn Fn(f32) -> f32, a: usize) -> f32 {
+    let bay = 1.0 / b.arches() as f32;
+    let spring = b.level - 0.003;
+    (deck((a as f32 + 0.5) * bay) - 0.009 - spring).max(0.006)
+}
+
+/// The bridge in lengths along it, each with the height of its underside at
+/// either end and whether it is the underside of an arch: a short ramp on
+/// each bank, then for each arch an abutment or half a pier, the arch in flat
+/// lengths, and half a pier or an abutment. The roadway is drawn over the
+/// same lengths, so these are where it bends.
+fn lengths(b: &RoadBridge, deck: &dyn Fn(f32) -> f32) -> Vec<(f32, f32, f32, f32, bool)> {
+    // the stone goes down below the water, and the arches spring from just under its surface
+    let (foot, spring) = (b.level - 0.01, b.level - 0.003);
+    let arches = b.arches();
+    let arc = if b.detail == Detail::Far { ARC_FAR } else { ARC };
+    let bay = 1.0 / arches as f32;
+    let reach = 0.4 * bay;
+    let mut lengths: Vec<(f32, f32, f32, f32, bool)> = Vec::new();
+    // a short ramp on each bank brings the roadway down to the road
+    let ramp = b.ramp();
+    lengths.push((-ramp, foot, 0.0, foot, false));
+    lengths.push((1.0, foot, 1.0 + ramp, foot, false));
+    for a in 0..arches {
+        let mid = (a as f32 + 0.5) * bay;
+        lengths.push((a as f32 * bay, foot, mid - reach, foot, false));
+        for k in 0..arc {
+            let (u0, u1) = (k as f32 / arc as f32 * std::f32::consts::PI, (k + 1) as f32 / arc as f32 * std::f32::consts::PI);
+            lengths.push((mid - reach * u0.cos(), spring + rise(b, deck, a) * u0.sin(), mid - reach * u1.cos(), spring + rise(b, deck, a) * u1.sin(), true));
+        }
+        lengths.push((mid + reach, foot, (a + 1) as f32 * bay, foot, false));
+    }
+    lengths
 }
 
 /// How high a parapet stands above the roadway, and how thick it is.
@@ -70,7 +169,7 @@ pub const APPROACH: f32 = 0.02;
 /// more than one arch the piers between them have cutwaters. `ground` gives
 /// the height of the land at a map point (x, z).
 pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32) -> f32, pal: &Palette) {
-    let (half, level, along) = (b.half, b.level, b.along);
+    let (level, along) = (b.level, b.along);
     let stone = if b.main { *pal.bridges.road_stone } else { *pal.bridges.lane_stone };
     let under = *pal.bridges.arch_shadow;
     let roadway = if b.main { *pal.ground.road_gravel } else { *pal.ground.lane_dust };
@@ -83,50 +182,20 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
         let p = centre + dir * (span * (t - 0.5)) + side * out;
         Vec3::new(p.x, y, p.z)
     };
-    // the roadway meets the road on each bank and rises over the water
-    let road = |t: f32| {
-        let p = at(t, 0.0, 0.0);
-        ground(p.x, p.z).max(level) + 0.012
-    };
-    let ends = (road(0.0).max(level + 0.02), road(1.0).max(level + 0.02));
-    let hump = 0.007 + 0.09 * half;
-    let deck = |t: f32| {
-        if t < 0.0 {
-            // the foot of a ramp, just under the road's own surface
-            (road(t) - 0.006).min(ends.0)
-        } else if t > 1.0 {
-            (road(t) - 0.006).min(ends.1)
-        } else {
-            ends.0 + (ends.1 - ends.0) * t + hump * (std::f32::consts::PI * t).sin()
-        }
-    };
+    // the roadway's height along it (`deck`, which a cart on the bridge reads too)
+    let deck = deck(b, ground);
     // the stone goes down below the water, and the arches spring from just under its surface
     let (foot, spring) = (level - 0.01, level - 0.003);
 
-    // the bridge in lengths along it, each with the height of its underside at either end:
-    // an abutment or half a pier, the arch in flat lengths, and half a pier or an abutment
+    // the bridge in lengths along it, each with the height of its underside at either end (`lengths`)
     let arches = b.arches();
     let (far, near) = (b.detail == Detail::Far, b.detail == Detail::Near);
-    let arc = if far { ARC_FAR } else { ARC };
     let bay = 1.0 / arches as f32;
-    let reach = 0.4 * bay;
-    let rise = |a: usize| (deck((a as f32 + 0.5) * bay) - 0.009 - spring).max(0.006);
-    let mut lengths: Vec<(f32, f32, f32, f32, bool)> = Vec::new();
-    // a short ramp on each bank brings the roadway down to the road
-    let ramp = APPROACH / span;
-    lengths.push((-ramp, foot, 0.0, foot, false));
-    lengths.push((1.0, foot, 1.0 + ramp, foot, false));
-    for a in 0..arches {
-        let mid = (a as f32 + 0.5) * bay;
-        lengths.push((a as f32 * bay, foot, mid - reach, foot, false));
-        for k in 0..arc {
-            let (u0, u1) = (k as f32 / arc as f32 * std::f32::consts::PI, (k + 1) as f32 / arc as f32 * std::f32::consts::PI);
-            lengths.push((mid - reach * u0.cos(), spring + rise(a) * u0.sin(), mid - reach * u1.cos(), spring + rise(a) * u1.sin(), true));
-        }
-        lengths.push((mid + reach, foot, (a + 1) as f32 * bay, foot, false));
-    }
+    let rise = |a: usize| rise(b, &deck, a);
+    let lengths = lengths(b, &deck);
+    let ramp = b.ramp();
 
-    let (edge, inner) = (b.width() * 0.5, b.width() * 0.5 - PARAPET.1);
+    let (edge, inner) = (b.width() * 0.5, b.inner_half());
     for &(t0, low0, t1, low1, arch) in &lengths {
         let (d0, d1) = (deck(t0), deck(t1));
         // the parapets run down to nothing at the foot of each ramp
@@ -296,6 +365,42 @@ mod tests {
                 } else if p.z.abs() > b.width() * 0.5 - 1e-5 && n.z.abs() > 0.5 {
                     assert!(n.z * p.z > 0.0, "a face looks inward at {p}");
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn the_roadway_a_cart_reads_is_the_roadway_drawn() {
+        // over a flat bank and a sloping one, at each level of detail, every corner of the
+        // drawn roadway lies on the roadway the bridge gives out, between its parapets
+        let pal = Palette::standard();
+        let slope = |x: f32, _: f32| 0.1 + 0.08 * (x - 3.0).max(0.0);
+        for detail in [Detail::Far, Detail::Play, Detail::Near] {
+            for half in [0.012, 0.04, 0.1] {
+                let b = RoadBridge { at: Vec2::new(3.0, 4.0), along: Vec2::new(0.6, 0.8), half, level: 0.09, main: true, detail };
+                let mut m = MeshBuf::default();
+                road_bridge(&mut m, &b, &slope, &pal);
+                let way = b.roadway(&slope);
+                assert!(way.windows(2).all(|w| w[0].0 < w[1].0));
+                assert!((way[0].0 + b.ramp()).abs() < 1e-6 && (way[way.len() - 1].0 - 1.0 - b.ramp()).abs() < 1e-6);
+                let height = |t: f32| {
+                    let i = way.partition_point(|p| p.0 < t).clamp(1, way.len() - 1);
+                    let ((t0, h0), (t1, h1)) = (way[i - 1], way[i]);
+                    h0 + (h1 - h0) * ((t - t0) / (t1 - t0)).clamp(0.0, 1.0)
+                };
+                let mut corners = 0;
+                for (p, c) in m.pos.iter().zip(&m.col) {
+                    if *c != *pal.ground.road_gravel {
+                        continue;
+                    }
+                    let p = Vec3::from_array(*p);
+                    let t = b.t_of(Vec2::new(p.x, p.z));
+                    let out = (Vec2::new(p.x, p.z) - b.point(t)).length();
+                    assert!((p.y - height(t)).abs() < 1e-5, "{detail:?} over {half}: a corner of the roadway at {t} is at {} and the roadway gives {}", p.y, height(t));
+                    assert!((out - b.inner_half()).abs() < 1e-5);
+                    corners += 1;
+                }
+                assert!(corners >= 4 * (way.len() - 1));
             }
         }
     }
