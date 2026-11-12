@@ -243,11 +243,13 @@ mod tests {
             started,
             saved: String::new(),
             year,
+            month: 0,
             family: "Fairfax".into(),
             seat: "Ashby".into(),
             worth: 0,
             check: String::new(),
-            orders: vec![Given { year: 1750, order: Order::MoveSeat { town: 1 } }],
+            orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 1 } }],
+            waiting: Vec::new(),
         }
     }
 
@@ -376,7 +378,7 @@ mod tests {
         let dir = scratch("later");
         let path = dir.join("game.json");
         std::fs::create_dir_all(&dir).unwrap();
-        let later = save(1, 1790).to_text().replace("\"format\": 1,", "\"format\": 2,");
+        let later = save(1, 1790).to_text().replace("\"format\": 1,", "\"format\": 3,");
         std::fs::write(&path, &later).unwrap();
         assert!(read_latest(&path).is_none(), "this version cannot go on with it");
         // a new game is played on the island for longer than earlier years are kept
