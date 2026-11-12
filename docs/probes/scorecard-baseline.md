@@ -117,7 +117,7 @@ is the scorecard's tolerance. With five histories the largest gap is about
 chance nine times in ten. It is a rough yardstick: the gap of five draws is
 itself uncertain by about a third.
 
-The 224 runs took 25 minutes, sixteen at a time, on a machine shared with
+The 176 runs took 29 minutes, sixteen at a time, on a machine shared with
 other work, which is why the times on the cards are long and wander.
 
 ## The three cards
@@ -270,7 +270,7 @@ or more). A change between one and one and a half floors with the islands
 split is chance until more histories say otherwise. The surest test is the
 one used for the tree below: five histories on each side, and the five means
 of one not overlapping the five of the other. It costs five sweeps where one
-would do, about 25 minutes on this machine for both sides.
+would do, about half an hour on this machine for both sides.
 
 ## The aims: met, missed, or cannot be told
 
@@ -418,7 +418,7 @@ Reading it:
   above, or whatever else changes before it lands), and its card should be
   run again then. The tree also changes the 1750 island, so every comparison
   with it has the start in it as well as the run.
-- **The times on the cards are the machine's.** Two hundred runs shared the
+- **The times on the cards are the machine's.** The 176 runs shared the
   machine with other work, so `seconds` here is three to eight times what a
   quiet machine gives, and even `cpu_seconds` wanders by 6 seconds.
 
