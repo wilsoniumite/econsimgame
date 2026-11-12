@@ -652,7 +652,17 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         }
         None => {
             eprintln!("making island {} with {} families\u{2026}", o.seed, o.families);
-            Game::new(o.seed, o.families, saves::now())
+            let mut game = Game::new(o.seed, o.families, saves::now());
+            // For measuring what the books of account cost a game (docs/rules/accounts.md):
+            // the same game without them. They only watch, so it is the same island
+            // month for month, and a save of it is one the game with books goes on with.
+            if std::env::var_os("ISOSTATE_NO_BOOKS").is_some() {
+                let mut without = game.sim.params.clone();
+                without.accounts.enabled = false;
+                game.sim = iso::sim::start(&without, game.rules.content());
+                eprintln!("  (ISOSTATE_NO_BOOKS: no books of account are kept in this game)");
+            }
+            game
         }
     };
     let mut board = board.unwrap_or_else(|| Board::new(&game.sim));
@@ -1282,7 +1292,19 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
     // in order of date; nothing may keep a place in this list across years (the toasts keep copies)
     r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
 
-    // (the monthly series came month by month: `apply_series`)
+    // The monthly series came month by month (`apply_series`), all but the
+    // books': their figure is the year's, and was not known when January to
+    // November were sent. It goes into the year's twelve months now, as the
+    // simulation itself wrote it, so a game that was played holds what one
+    // that is loaded (whose months are read after their year closed) holds
+    for &(i, v) in &y.year_series {
+        if i < r.series_names.len() {
+            let row = i * r.series_len;
+            for t in (k * 12..(k + 1) * 12).filter(|&t| t < r.series_len) {
+                r.series[row + t] = v as f32;
+            }
+        }
+    }
 
     // the year's quarries, pits and mines, where the rules keep them as workings
     if !y.workings.is_empty() {

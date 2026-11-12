@@ -495,3 +495,8 @@ One line each as they arrive: the name, its page, its switch.
   every reach, river courses that meander and cut off, estuaries that carry
   boats to the sea, and resource fields that come from the land.
   [land.md](land.md), `land.enabled`.
+- **accounts**: books that say who makes, moves, buys and earns what: a
+  year's books for every town and every works, and the island's income
+  account (work's share, the owners' shares, ownership in years of wages).
+  They watch and never touch the economy. [accounts.md](accounts.md),
+  `accounts.enabled`.

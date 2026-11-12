@@ -636,6 +636,12 @@ fn sinking(st: &State, u: usize) -> bool {
     }
 }
 
+/// accounts (docs/rules/accounts.md): the sinkers at unit u this month, for the
+/// town's books. Nothing unless it is a working being sunk.
+pub fn crew(st: &State, u: usize) -> f64 {
+    if st.mine_crew_each.is_empty() || !sinking(st, u) { 0.0 } else { st.mine_crew_each[st.ex_town[u]] }
+}
+
 /// C. The sinkers are not for hire: they come out of each town's labour supply
 /// before the wage is sought. (Should a town's new workings ever ask for more
 /// than a tenth of its hands, the sinkers are thinned to that: a safety valve

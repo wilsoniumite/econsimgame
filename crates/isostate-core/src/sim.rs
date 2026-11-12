@@ -603,6 +603,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     families::init(&mut st, &C, P, &mut rngs.misc);
     // chronicle: what the families start with counts as held
     crate::chronicle::init(&mut st, &C, P);
+    // accounts: the books open on the warmed-up economy
+    crate::accounts::init(&mut st, &C, P);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
@@ -643,6 +645,8 @@ pub fn end_year(sim: &mut Sim) {
     let year = sim.year;
     let Sim { st, content: C, params: P, rngs, events, rec, .. } = sim;
     yearly(st, C, P, rngs, year, events, false);
+    // accounts: the year's books close on the year's prices, works and owners
+    crate::accounts::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);

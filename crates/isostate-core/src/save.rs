@@ -600,12 +600,18 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
 
 /// A fingerprint of a run so far: every month of every series, every family's
 /// cash and seat, and who owns each cell and each works. Two runs with the
-/// same fingerprint have had the same history, to the last digit.
+/// same fingerprint have had the same history, to the last digit. (The books'
+/// own series are left out, `accounts::own_series`: they are worked out from
+/// the history and are no part of it, so a game saved without books does not
+/// look like another island when it is played again with them.)
 pub fn check(sim: &Sim) -> String {
     let st = &sim.st;
     let mut h = Fnv::new();
     h.word(sim.year as u64);
-    for series in &st.series.data {
+    for (name, series) in st.series.names.iter().zip(&st.series.data) {
+        if crate::accounts::own_series(name) {
+            continue;
+        }
         for v in &series[..sim.t.min(series.len())] {
             // every NaN counts as the same one
             h.word(if v.is_nan() { u64::MAX } else { v.to_bits() });

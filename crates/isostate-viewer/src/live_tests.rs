@@ -192,6 +192,19 @@ fn same(a: &Table, b: &Table, when: &str) {
         assert!(x == y, "{when}: {name} differs");
     }
     assert!(ra.owner == rb.owner, "{when}: who owns each square differs");
+    // series by series first, so that a failure says which, when and by how much
+    assert_eq!((&ra.series_names, ra.series_len), (&rb.series_names, rb.series_len), "{when}: which series there are");
+    let mut differ = Vec::new();
+    for (i, name) in ra.series_names.iter().enumerate() {
+        let months = i * ra.series_len..(i + 1) * ra.series_len;
+        let (x, y) = (&ra.series[months.clone()], &rb.series[months]);
+        let at: Vec<usize> = (0..x.len()).filter(|&t| x[t].to_bits() != y[t].to_bits()).collect();
+        if let (Some(&first), Some(&last)) = (at.first(), at.last()) {
+            let date = |t: usize| format!("{}-{:02}", ra.y0 + (t / 12) as i32, t % 12 + 1);
+            differ.push(format!("{name}: {} months, {} to {}; in {} it is {} against {}", at.len(), date(first), date(last), date(first), x[first], y[first]));
+        }
+    }
+    assert!(differ.is_empty(), "{when}: the island's series: {} of {} differ\n  {}", differ.len(), ra.series_names.len(), differ.join("\n  "));
     assert_eq!(bits(&ra.series), bits(&rb.series), "{when}: the island's series");
     assert_eq!(bits(&ra.town_pop), bits(&rb.town_pop), "{when}: town populations");
     assert_eq!(bits(&ra.town_urban), bits(&rb.town_urban), "{when}: townspeople");
@@ -433,6 +446,55 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     assert!(!c.live.resumed.as_ref().unwrap().drifted);
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
+    // The books' series (the shares of income, ownership in years of wages)
+    // have one figure for a year, known when the year's books close: after
+    // January to November have gone to the interface. The year brings it, and
+    // a game played through the thread holds it in all twelve months of every
+    // year played, as the simulation does; of the year in progress it holds
+    // nothing yet. Three years and three months, with no orders given.
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, ..default() });
+    a.step();
+    a.step();
+    for _ in 0..3 {
+        assert!(!a.month());
+    }
+    assert_eq!((a.year(), a.live.months), (1752, 3));
+    // the same island played by the simulation alone
+    let mut g = isostate_core::save::Game::new(7, 6, 0);
+    for _ in 0..3 {
+        g.year().unwrap();
+        g.turn();
+    }
+    for _ in 0..3 {
+        g.month().unwrap();
+    }
+    let st = &g.sim.st;
+    let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n)).collect();
+    assert_eq!(own.len(), 8);
+    for name in own {
+        let held = replay::monthly(&a.r, name, 0, 48);
+        let there = st.series.get(name);
+        for t in 0..36 {
+            assert!(held[t].is_finite(), "{name} has no figure in month {t}");
+            assert_eq!(held[t].to_bits(), (there[t] as f32).to_bits(), "{name} in month {t}");
+        }
+        assert!(held[36..].iter().all(|v| v.is_nan()) && there[36..48].iter().all(|v| v.is_nan()), "{name}: the year in progress has no figure yet");
+        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && held[11] != held[12], "{name}: a year's figure, the same in its twelve months");
+    }
+    // which is the island's account of the year, and what a chart by the year shows
+    let shares: Vec<f32> = st.acct.years.iter().map(|y| y.share_work as f32).collect();
+    assert_eq!(shares.len(), 3);
+    for (k, share) in shares.iter().enumerate() {
+        assert_eq!(replay::month(&a.r, "acct_share_work", k * 12 + 4).map(f32::to_bits), Some(share.to_bits()));
+        assert!((replay::yearly(&a.r, "acct_share_work")[k] - share).abs() < 1e-6);
+    }
+    // every other series has the months of the year in progress as they came
+    let pop = replay::monthly(&a.r, "pop", 36, 12);
+    assert!(pop[..3].iter().all(|v| v.is_finite()) && pop[3..].iter().all(|v| v.is_nan()), "{pop:?}");
 }
 
 #[test]
