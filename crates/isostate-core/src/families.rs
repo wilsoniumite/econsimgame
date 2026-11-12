@@ -1161,7 +1161,12 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
         } else {
             format!("The {} family opens its first {} at {}", fam.surname, what, st.town_name[i])
         };
-        let text = format!("{} is built for {:.0} and expects to return {:.0} per cent a year.", st.f_name[fid], cost, 100.0 * ev.roi[0]);
+        // chronicle: a return of a hundred per cent a year or more is left out
+        let text = if crate::chronicle::return_told(P, ev.roi[0]) {
+            format!("{} is built for {:.0} and expects to return {:.0} per cent a year.", st.f_name[fid], cost, 100.0 * ev.roi[0])
+        } else {
+            format!("{} is built for {:.0}.", st.f_name[fid], cost)
+        };
         let mut e = Event::new(year as f64 + 0.95, "family", if family == 0 { 0.6 } else { 0.35 }, title, text);
         e.town = Some(i);
         e.cell = Some(cell);

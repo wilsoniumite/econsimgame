@@ -305,12 +305,16 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
             "family",
             0.6,
             format!("The {surname} family sets up in {trade} at {}", st.town_name[i]),
-            format!(
-                "{} is the first works the family has had in that trade there. It is built for {} and expects to return {:.0} per cent a year.",
-                st.f_name[fid],
-                fmt_thousands_f0(cost),
-                100.0 * roi
-            ),
+            if return_told(P, roi) {
+                format!(
+                    "{} is the first works the family has had in that trade there. It is built for {} and expects to return {:.0} per cent a year.",
+                    st.f_name[fid],
+                    fmt_thousands_f0(cost),
+                    100.0 * roi
+                )
+            } else {
+                format!("{} is the first works the family has had in that trade there. It is built for {}.", st.f_name[fid], fmt_thousands_f0(cost))
+            },
         );
         e.town = Some(i);
         e.cell = Some(st.f_cell[fid]);
@@ -320,6 +324,16 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     }
     st.chron.branch_opened.push((fid, new_here));
     true
+}
+
+/// Whether a new works' expected return is told. The port always tells it;
+/// the chronicle leaves out a return of a hundred per cent a year or more. It
+/// is the investor's own sum for a small works and true to the model, but "a
+/// forge that expects to return 1288 per cent a year" reads as a mistake
+/// (docs/probes/news-read.md, fault 7; its checker would leave the figure out
+/// rather than put it into words).
+pub fn return_told(P: &Params, roi: f64) -> bool {
+    !P.chronicle.enabled || (100.0 * roi).round() < 100.0
 }
 
 /// A branch of a family has ordered more capacity for a works it has
@@ -387,9 +401,14 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
     let (title, text) = match (opened.len(), grown.len()) {
         (1, 0) => {
             let f = opened[0];
+            let roi = st.f_reason[f].roi;
             (
                 format!("The {surname} branch at {} opens a works", st.town_name[st.f_town[f]]),
-                format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * st.f_reason[f].roi),
+                if return_told(P, roi) {
+                    format!("{}, in {}, expects to return {:.0} per cent a year.", st.f_name[f], trade(f), 100.0 * roi)
+                } else {
+                    format!("It is {}, in {}.", st.f_name[f], trade(f))
+                },
             )
         }
         (n, 0) => (format!("The {surname} branches open {} works", number(n)), format!("{}.", capital(&by_town(&opened)))),
@@ -1536,6 +1555,16 @@ mod tests {
         let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
         years.extend((1851..=1870).map(|y| (y, [45.0, 40.0, 46.0, 44.9])));
         assert!(told(&years, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_return_of_a_hundred_per_cent_or_more_is_left_out_of_the_game_news() {
+        let (port, game) = (crate::params::default_params(), crate::params::game_params());
+        // the port tells every return, as it did
+        assert!(return_told(&port, 0.13) && return_told(&port, 12.88));
+        // the game tells 13 and 99 per cent, and not what would print as 100 or 1288
+        assert!(return_told(&game, 0.13) && return_told(&game, 0.994));
+        assert!(!return_told(&game, 0.996) && !return_told(&game, 12.88));
     }
 
     #[test]
