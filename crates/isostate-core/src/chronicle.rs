@@ -214,9 +214,16 @@ pub struct ChronicleState {
     pub decline_told: Vec<bool>,
     /// The island's first and second towns as last announced.
     pub leaders: [Option<usize>; 2],
-    /// Who has led each place since, and for how many years running.
+    /// The town that truly holds each place and is not the one announced, and
+    /// for how many years running it has held it clear of the town below.
     pub challenger: [Option<usize>; 2],
     pub lead_years: [i64; 2],
+    /// Each place as it truly stands: who holds it, since when, who held it
+    /// before, and whether the holder came down to it from the place above.
+    pub held: [Option<usize>; 2],
+    pub held_since: [i64; 2],
+    pub ousted: [Option<usize>; 2],
+    pub fell: [bool; 2],
     /// (story, town) -> the year it was last told.
     pub told: BTreeMap<(String, usize), i64>,
     /// For each town, the last year a founding redrew its district (its own, or
@@ -589,20 +596,14 @@ fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
     ch.redrawn.resize(T, year);
     // a new town takes people and pits from the districts it is cut out of, so
     // nothing about it or about them is compared across its founding: their
-    // peaks start again, and so do the island's places if one of them held or
-    // was about to take one. The towns it did not touch keep their stories.
+    // peaks start again. The towns it did not touch keep their stories. (The
+    // island's places are not seated afresh: a town that comes first because a
+    // founding cut its rival's district is told as being first, not as having
+    // overtaken; see `overtakings`.)
     let cut = redrawn_towns(st, year);
     for t in (0..T).filter(|&t| cut[t]) {
         ch.redrawn[t] = year;
         ch.peak[t] = (year, 0.0);
-    }
-    if cut.iter().any(|&c| c) {
-        let mut order: Vec<usize> = (0..T).filter(|&t| st.town_active[t]).collect();
-        order.sort_by(|&a, &b| st.pop[b].total_cmp(&st.pop[a]).then(a.cmp(&b)));
-        let placed = ch.leaders.iter().chain(&ch.challenger).flatten().any(|&t| cut[t]);
-        if placed || order.iter().take(2).any(|&t| cut[t]) {
-            ch.leaders = [None; 2];
-        }
     }
     for t in 0..T {
         if st.town_active[t] && st.pop[t] > ch.peak[t].1 {
@@ -903,91 +904,169 @@ fn declines(st: &State, P: &Params, ch: &mut ChronicleState, year: i64, events: 
     events.push(ev);
 }
 
-/// One town overtaking another to become the island's first or second, by
-/// the people of the town and its district: only once it has been clear of the
-/// other by `overtake_margin` for `overtake_years` running.
-fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: i64, events: &mut Vec<Event>) {
-    let Q = &P.chronicle;
-    let mut order: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
-    order.sort_by(|&a, &b| st.pop[b].total_cmp(&st.pop[a]).then(a.cmp(&b)));
+/// A change of the island's first or second place, to be told.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Change {
+    place: usize,
+    town: usize,
+    /// The town that held the place before it did, if that town is now below it.
+    from: Option<usize>,
+    /// Whether it grew past that town, with neither district redrawn since it
+    /// took the place ("overtakes"), or not ("is now").
+    overtook: bool,
+}
+
+/// The towns in their true order, by the people of the town and its district.
+fn town_order(pop: &[f64], active: &[bool]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..active.len().min(pop.len())).filter(|&t| active[t]).collect();
+    order.sort_by(|&a, &b| pop[b].total_cmp(&pop[a]).then(a.cmp(&b)));
+    order
+}
+
+/// The island's first and second places, a year at a time: which change, if
+/// any, is news this year. A place changes hands when the town that truly holds
+/// it has held it, `margin` clear of the town below, for `years` running, and
+/// is not the town last announced there. It is told as taken from the town that
+/// truly held the place before it, not from the one last announced, which may
+/// have sunk lower long since (docs/probes/news-read.md, fault 1). The first
+/// year seats the two as they stand, and so does a seat whose town is gone.
+fn places(ch: &mut ChronicleState, pop: &[f64], active: &[bool], year: i64, margin: f64, years: i64) -> Option<Change> {
+    let order = town_order(pop, active);
     if order.len() < 3 {
-        return;
+        return None;
     }
-    let (Some(first), Some(second)) = (ch.leaders[0], ch.leaders[1]) else {
-        // the first year, or a founding has just redrawn a leading town's district: nothing to compare with
+    // each place as it truly stands
+    let was = ch.held;
+    for p in 0..2 {
+        if ch.held[p] != Some(order[p]) {
+            ch.ousted[p] = ch.held[p];
+            ch.held[p] = Some(order[p]);
+            ch.held_since[p] = year;
+            ch.fell[p] = p > 0 && was[p - 1] == Some(order[p]);
+        }
+    }
+    let gone = |t: Option<usize>| t.is_some_and(|t| !active.get(t).copied().unwrap_or(false));
+    if ch.leaders[0].is_none() || gone(ch.leaders[0]) {
         ch.leaders = [Some(order[0]), Some(order[1])];
         ch.challenger = [None; 2];
         ch.lead_years = [0; 2];
-        return;
-    };
-    let k = ch.pop.len() - 1;
-    for place in 0..2 {
-        let holder = if place == 0 { first } else { ch.leaders[1].unwrap_or(second) };
-        // the largest town not already at this place or above it
-        let rival = order.iter().copied().find(|&t| t != holder && (place == 0 || Some(t) != ch.leaders[0]));
-        let ahead = rival.filter(|&t| st.pop[t] >= (1.0 + Q.overtake_margin) * st.pop[holder]);
-        if ahead.is_none() || ahead != ch.challenger[place] {
-            ch.challenger[place] = ahead;
-            ch.lead_years[place] = 0;
-        }
-        let Some(now) = ahead else { continue };
-        ch.lead_years[place] += 1;
-        if ch.lead_years[place] < Q.overtake_years {
+        return None;
+    }
+    if gone(ch.leaders[1]) {
+        ch.leaders[1] = None;
+    }
+    for p in 0..2 {
+        let c = order[p];
+        // announced already; or the announced first, now truly second, whose
+        // fall is the first place's story
+        if ch.leaders[p] == Some(c) || (p == 1 && ch.leaders[0] == Some(c)) {
+            ch.challenger[p] = None;
+            ch.lead_years[p] = 0;
             continue;
         }
-        ch.challenger[place] = None;
-        ch.lead_years[place] = 0;
-        if place == 0 {
-            // the old first town is now the second: the same story, told once
-            ch.leaders = [Some(now), Some(holder)];
+        // a town come down from first, once another is told as first, is second
+        // without a story of its own
+        if p == 1 && ch.fell[1] {
+            ch.leaders[1] = Some(c);
             ch.challenger[1] = None;
             ch.lead_years[1] = 0;
-        } else {
-            ch.leaders[1] = Some(now);
+            continue;
         }
-        let (a, b) = (&st.town_name[now], &st.town_name[holder]);
-        // how each has done in ten years, or since a founding last redrew either's district
-        let back = ((year - ch.redrawn[now].max(ch.redrawn[holder])).max(0) as usize).min(10).min(k);
-        let then = &ch.pop[k - back];
-        let grown = |t: usize| -> String { if then[t] > 0.0 { changed(st.pop[t] / then[t] - 1.0) } else { "grown from nothing".to_string() } };
-        // "first", not "largest": the towns are ranked with their districts, and
-        // the town itself may be the smaller of the two (the city milestones
-        // count the people inside the town)
-        let (title, weight) = if place == 0 {
-            (format!("{a} overtakes {b} as the island's first town"), 0.8)
-        } else {
-            (format!("{a} overtakes {b} as the island's second town"), 0.7)
-        };
-        let since = if back > 0 { format!(" In {} years {a} has {} and {b} has {}.", number(back), grown(now), grown(holder)) } else { String::new() };
-        let mut ev = Event::new(
-            year as f64 + 0.9,
-            "region",
-            weight,
-            title,
-            format!(
-                "{a} and its district have {} people to {b}'s {}.{since}{}",
-                fmt_thousands_f0(st.pop[now]),
-                fmt_thousands_f0(st.pop[holder]),
-                known_for(st, C, now)
-            ),
-        );
-        ev.town = Some(now);
-        ev.cell = Some(st.town_node[now]);
-        ev.cell2 = Some(st.town_node[holder]);
-        ev.why = why(
-            P,
-            "one town's people against another's",
-            &format!("people in {a} and its district"),
-            st.pop[now],
-            (1.0 + Q.overtake_margin) * st.pop[holder],
-            Some(st.pop[holder]),
-            format!("{a} has been at least {} ahead of {b} for {} years running (it needs {})", fmt_pct(Q.overtake_margin, 0), Q.overtake_years, Q.overtake_years),
-        );
-        events.push(ev);
-        if place == 0 {
-            break;
+        if ch.challenger[p] != Some(c) {
+            ch.challenger[p] = Some(c);
+            ch.lead_years[p] = 0;
         }
+        if pop[c] < (1.0 + margin) * pop[order[p + 1]] {
+            ch.lead_years[p] = 0;
+            continue;
+        }
+        ch.lead_years[p] += 1;
+        if ch.lead_years[p] < years {
+            continue;
+        }
+        ch.challenger[p] = None;
+        ch.lead_years[p] = 0;
+        let from = ch.ousted[p].filter(|&y| y != c && active.get(y).copied().unwrap_or(false) && pop[y] < pop[c]);
+        let since = ch.held_since[p];
+        let redrawn = |t: usize| ch.redrawn.get(t).copied().unwrap_or(i64::MIN);
+        let overtook = from.is_some_and(|y| redrawn(c) < since && redrawn(y) < since);
+        let before = ch.leaders[p];
+        ch.leaders[p] = Some(c);
+        if p == 0 && ch.leaders[1] == Some(c) {
+            // the old first is now second if it truly is (the same story, told
+            // once); otherwise the second place waits for a story of its own
+            ch.leaders[1] = before.filter(|&b| b == order[1]);
+        }
+        return Some(Change { place: p, town: c, from, overtook });
     }
+    None
+}
+
+/// One town overtaking another to become the island's first or second, by
+/// the people of the town and its district (`places` says when), or taking the
+/// place when a founding redrew a district or the town before it moved up.
+fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: i64, events: &mut Vec<Event>) {
+    let Q = &P.chronicle;
+    let active: Vec<bool> = (0..st.T_max).map(|t| st.town_active[t]).collect();
+    let Some(Change { place, town: now, from, overtook }) = places(ch, &st.pop, &active, year, Q.overtake_margin, Q.overtake_years) else { return };
+    let order = town_order(&st.pop, &active);
+    let next = order[place + 1];
+    let k = ch.pop.len() - 1;
+    let a = &st.town_name[now];
+    let which = if place == 0 { "first" } else { "second" };
+    // "first", not "largest": the towns are ranked with their districts, and
+    // the town itself may be the smaller of the two (the city milestones
+    // count the people inside the town)
+    let (title, weight) = match from {
+        Some(b) if overtook => (format!("{a} overtakes {} as the island's {which} town", st.town_name[b]), if place == 0 { 0.8 } else { 0.7 }),
+        _ => (format!("{a} is now the island's {which} town"), if place == 0 { 0.8 } else { 0.7 }),
+    };
+    let compared = match from {
+        // and where the town that lost the place now stands, if it is not just below
+        Some(b) if order.get(place + 1) != Some(&b) => {
+            let rank = order.iter().position(|&t| t == b).map_or(String::new(), |r| format!("; {} is now the island's {} town", st.town_name[b], ordinal(r + 1)));
+            format!(" to {}'s {}{rank}", st.town_name[b], fmt_thousands_f0(st.pop[b]))
+        }
+        Some(b) => format!(" to {}'s {}", st.town_name[b], fmt_thousands_f0(st.pop[b])),
+        None if place == 0 => ", more than any other town".to_string(),
+        None => format!(", second only to {}'s {}", st.town_name[order[0]], fmt_thousands_f0(st.pop[order[0]])),
+    };
+    // how each has done in ten years, or since a founding last redrew either's district
+    let redrawn = from.map_or(ch.redrawn[now], |b| ch.redrawn[now].max(ch.redrawn[b]));
+    let back = ((year - redrawn).max(0) as usize).min(10).min(k);
+    let then = &ch.pop[k - back];
+    let grown = |t: usize| -> String { if then[t] > 0.0 { changed(st.pop[t] / then[t] - 1.0) } else { "grown from nothing".to_string() } };
+    let since = match from {
+        _ if back == 0 => String::new(),
+        Some(b) => format!(" In {} {a} has {} and {} has {}.", years(back), grown(now), st.town_name[b], grown(b)),
+        None => format!(" In {} {a} has {}.", years(back), grown(now)),
+    };
+    let mut ev = Event::new(
+        year as f64 + 0.9,
+        "region",
+        weight,
+        title,
+        format!("{a} and its district have {} people{compared}.{since}{}", fmt_thousands_f0(st.pop[now]), known_for(st, C, now)),
+    );
+    ev.town = Some(now);
+    ev.cell = Some(st.town_node[now]);
+    ev.cell2 = from.map(|b| st.town_node[b]);
+    ev.why = why(
+        P,
+        "the island's towns in order",
+        &format!("people in {a} and its district"),
+        st.pop[now],
+        (1.0 + Q.overtake_margin) * st.pop[next],
+        Some(st.pop[next]),
+        format!(
+            "{a} has held the {which} place at least {} clear of the town below, {}, for {} years running (it needs {})",
+            fmt_pct(Q.overtake_margin, 0),
+            st.town_name[next],
+            Q.overtake_years,
+            Q.overtake_years
+        ),
+    );
+    events.push(ev);
 }
 
 /// A district whose works close together: many in one year, and a good share
@@ -1343,6 +1422,11 @@ fn number(n: usize) -> String {
     WORDS.get(n).map_or_else(|| n.to_string(), |w| w.to_string())
 }
 
+/// "a year", "two years", "15 years".
+fn years(n: usize) -> String {
+    if n == 1 { "a year".to_string() } else { format!("{} years", number(n)) }
+}
+
 /// "third", or "11th", "21st", "22nd" past tenth.
 fn ordinal(n: usize) -> String {
     const WORDS: [&str; 11] = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -1397,5 +1481,66 @@ mod tests {
         let pits = Some(CoalLine { opened: 1838.9, colliery: true, from: None, nth: 0, first: 1838.9 });
         assert_eq!(carried_by("Garside", 1835, pits, branch, &towns), " A branch line to the collieries, opened in 1838, brings it down from the pits.");
         assert_eq!(carried_by("Garside", 1835, None, branch, &towns), "");
+    }
+
+    /// Runs `places` over a list of years' people (four towns, all standing),
+    /// and returns the changes told, by year.
+    fn told(years: &[(i64, [f64; 4])], redrawn: &[(i64, usize)]) -> Vec<(i64, Change)> {
+        let mut ch = ChronicleState { redrawn: vec![1700; 4], ..ChronicleState::default() };
+        let mut out = Vec::new();
+        for &(year, pop) in years {
+            for &(when, t) in redrawn.iter().filter(|&&(when, _)| when == year) {
+                ch.redrawn[t] = when;
+            }
+            if let Some(c) = places(&mut ch, &pop, &[true; 4], year, 0.05, 3) {
+                out.push((year, c));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_place_is_told_as_taken_from_the_town_that_truly_held_it() {
+        let (m, k, s, g) = (0, 1, 2, 3);
+        // Melbourne first and Stratbank second; Melbourne sinks below Stratbank
+        // and Glenbrook while Kelside, from fourth, pulls clear of them all
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, [43.0, 50.0, 46.0, 45.0])));
+        let got = told(&years, &[]);
+        // Melbourne held first until Kelside took it: the story is of Melbourne, told once
+        assert_eq!(got, vec![(1853, Change { place: 0, town: k, from: Some(m), overtook: true })]);
+
+        // the old fault: Stratbank, announced second, sinks to fourth with no story;
+        // Glenbrook truly second since 1851 is clear of the third, and it was
+        // Stratbank it displaced, not a town the reader was never told of
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, [55.0, 44.0, 40.0, 47.0])));
+        let got = told(&years, &[]);
+        assert_eq!(got, vec![(1853, Change { place: 1, town: g, from: Some(s), overtook: true })]);
+
+        // a founding cuts Melbourne's district in 1851 and Glenbrook comes first:
+        // it is the first town now, but it did not grow past Melbourne
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1856).map(|y| (y, [36.0, 40.0, 42.0, 45.0])));
+        let got = told(&years, &[(1851, m)]);
+        assert_eq!(got[0], (1853, Change { place: 0, town: g, from: Some(m), overtook: false }));
+
+        // the first town falls to second as another passes it: one story, and the
+        // fallen town is seated second without a story of its own
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1860).map(|y| (y, [50.0, 40.0, 56.0, 45.0])));
+        let got = told(&years, &[]);
+        assert_eq!(got, vec![(1853, Change { place: 0, town: s, from: Some(m), overtook: true })]);
+
+        // within the margin nothing is told, however long it lasts
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
+        years.extend((1851..=1870).map(|y| (y, [45.0, 40.0, 46.0, 44.9])));
+        assert!(told(&years, &[]).is_empty());
+    }
+
+    #[test]
+    fn counts_of_one_are_singular() {
+        assert_eq!(years(1), "a year");
+        assert_eq!(years(10), "ten years");
     }
 }
