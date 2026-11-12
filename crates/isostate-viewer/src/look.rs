@@ -167,6 +167,7 @@ shader_paint! {
         orchard_blossom,
         town_roofs_far,
         town_roofs_far_hills,
+        close_grass_hills,
     }
 }
 
