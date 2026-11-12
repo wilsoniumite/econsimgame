@@ -509,7 +509,10 @@ struct Acc {
     trade: Vec<f64>,
     /// `[(town * M + method) * G + good][3]`: used as material, burnt, cost at the works.
     uses: Vec<f64>,
-    /// `[firm][KW]`
+    /// Whether every works' books are kept (`accounts.works`).
+    keep_works: bool,
+    /// `[firm][KW]`, a row for every works there is (`State::F_count`), not for
+    /// every one there is room for: `fit_works`.
     works: Vec<f64>,
     /// `[firm][G][3]`: materials used, fuel burnt, and what both cost at the works.
     works_in: Vec<f64>,
@@ -641,6 +644,17 @@ pub struct Month<'a> {
 }
 
 impl Books {
+    /// About how many bytes a copy of the island copies of the books: the year
+    /// in progress, the last year's months and works' inputs, the month's
+    /// scratch and the island's accounts, everything but the years put away
+    /// (`hist`, which copies share). For measuring (`examples/books_by_month.rs`).
+    pub fn copied_bytes(&self) -> usize {
+        let a = &self.cur;
+        let f64s = [&a.goods, &a.land, &a.methods, &a.towns, &a.needs, &a.trade, &a.uses, &a.works, &a.works_in, &a.months, &a.wages, &a.cash, &a.rent_sector, &self.mk, &self.ml, &self.div, &self.last_cash];
+        let years: usize = self.years.iter().map(|y| std::mem::size_of::<IslandYear>() + 8 * (y.rent_by_sector.len() + y.need_households.len() + y.need_landlords.len()) + 16 * y.to_families.len()).sum();
+        8 * (f64s.iter().map(|v| v.len()).sum::<usize>() + self.stock.data.len()) + 4 * (self.last_months.len() + self.last_works_in.len() + self.last_wages.len()) + years
+    }
+
     /// The books of the k-th year of the run (None until it is complete).
     pub fn year(&self, k: usize) -> Option<YearRec<'_>> {
         let h = &self.hist;
@@ -680,6 +694,7 @@ fn new_acc(dims: (usize, usize, usize, usize, usize), F: usize, n_fam: usize, wo
         needs: vec![0.0; T * S * 2],
         trade: vec![0.0; T * T * G * 3],
         uses: vec![0.0; T * M * G * 3],
+        keep_works: works,
         works: if works { vec![0.0; F * KW] } else { Vec::new() },
         works_in: if works { vec![0.0; F * G * 3] } else { Vec::new() },
         months: vec![0.0; 12 * T * G * KMO],
@@ -699,7 +714,7 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         return;
     }
     let dims = (st.T_max, C.G, C.NS, C.M, C.S);
-    let mut cur = new_acc(dims, st.f_alive.len(), st.families.len(), P.accounts.works);
+    let mut cur = new_acc(dims, st.F_count, st.families.len(), P.accounts.works);
     open_stock(&mut cur, &st.inv);
     // room for every year of the run (`sim::start_from` has set the content's last year)
     let (T, G, NS, M, S) = dims;
@@ -755,6 +770,20 @@ fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam
     a.cash.resize(12 * n_fam, 0.0);
     a.month = 0;
     (a.fund_in, a.lords_in, a.hh_in, a.fund_div, a.issue, a.income_err) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+}
+
+/// The works' tables of the year in progress hold a row for each of the `F`
+/// works there are (`State::F_count`), and grow when works are founded. They
+/// were once sized for every works there is room for (`F_max`, twenty thousand),
+/// which was eleven megabytes of rows of nothing that went with every copy of
+/// the island an order makes. Works are founded at a year's end and at its
+/// turn, so this asks the allocator for something a few times a game, never
+/// month by month, and less often still as `Vec` doubles its room.
+fn fit_works(a: &mut Acc, F: usize, G: usize) {
+    if a.keep_works && a.works.len() < F * KW {
+        a.works.resize(F * KW, 0.0);
+        a.works_in.resize(F * G * 3, 0.0);
+    }
 }
 
 fn open_stock(a: &mut Acc, inv: &Mat) {
@@ -844,6 +873,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     let t0 = Instant::now();
     let mut b = std::mem::take(&mut st.acct);
     let (T, G, NS, M, S) = b.dims;
+    fit_works(&mut b.cur, st.F_count, G);
     let kinds = HH_KINDS.clone().count();
     let hk = |k: usize| k - T_PAY_WORKS;
     let p = &st.price;
@@ -909,7 +939,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     }
 
     // ---- the works
-    let keep_works = !a.works.is_empty();
+    let keep_works = a.keep_works;
     for i in 0..m.fi.len() {
         let (f, t, me, g_out) = (m.fi[i], m.ft[i], m.fm[i], m.out[i]);
         let gross = m.rev[i] - m.pay_in[i] - m.wages_f[i] - m.rent_f[i];
@@ -1136,6 +1166,7 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
     let kinds = HH_KINDS.clone().count();
     let hk = |k: usize| k - T_PAY_WORKS;
     let a = &mut b.cur;
+    fit_works(a, st.F_count, G);
 
     // dividends: a family's works pay the family, the rest their town's households
     let mut fam_div = 0.0;
@@ -1145,7 +1176,7 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
             continue;
         }
         a.methods[(ft[k] * M + fm[k]) * KM + M_DIV] += d;
-        if !a.works.is_empty() {
+        if a.keep_works {
             a.works[f * KW + W_DIV] += d;
         }
         if let Some(o) = families::owner_of_firm(st, f) {
@@ -1401,7 +1432,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             }
         }
     }
-    if !a.works.is_empty() {
+    // (works founded at the year's end have a row too, with the year's end's capacity and cash in it)
+    fit_works(&mut a, st.F_count, G);
+    if a.keep_works {
         for f in 0..st.F_count.min(a.works.len() / KW) {
             let w = &mut a.works[f * KW..(f + 1) * KW];
             if !(st.f_alive[f] || w[W_MONTHS] > 0.0 || w[W_INVEST] != 0.0) {

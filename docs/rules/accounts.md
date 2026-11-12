@@ -380,7 +380,7 @@ same island):
 | the year's end, after December | 70 to 71 ms | 71 to 72 ms | 0.21 to 0.24 ms |
 | the month's message (`live_month`) | 2 to 3 millionths of a second | the same | |
 | the year's message (`live_year`) | 0.8 ms | 0.8 ms | |
-| a copy of the island in 1900 | 3.6 to 4.6 ms | 5.5 to 5.7 ms (8.7 to 9.3 before the history was shared) | |
+| a copy of the island in 1900 | 3.6 to 4.6 ms | 5.5 to 5.7 ms (8.7 to 9.3 before the history was shared; see below for the year in progress, since made smaller) | |
 
 Stepping by the month costs the books nothing they did not cost before:
 their work is in the month's hooks, a fifteenth of a month's step, and
@@ -399,12 +399,25 @@ went with every copy, 33 MB of it by 1900, and doubled what the copy took:
 years put away, so they are now shared between the island and its copies
 (`Books::hist` is behind an `Arc`; only `close_year` writes to it, and a
 copy that closes a year while another still stands takes its own first).
-What goes with a copy is the year in progress, some thirteen megabytes in
-1775 as in 1900 (most of it the works' rows, which are sized for the twenty
-thousand works there is room for): a copy takes 5.5 to 5.7 ms in 1900
-against 3.6 to 4.6 without the books, and 4.5 against 2.1 to 3.7 in 1775;
-some 16 ms for an order in 1900 where it was 12, on the simulation's
-thread, once for each order. A game that is only stepped never
+What goes with a copy is the year in progress. Its works' rows were sized
+for the twenty thousand works there is room for, thirteen megabytes in 1775
+as in 1900, and a copy took 5.5 to 5.7 ms in 1900 against 3.6 to 4.6
+without the books; some 16 ms for an order in 1900 where it was 12. The
+rows are now for the works there are, and grow when works are founded
+(`fit_works`; at a year's end or its turn, never month by month), so what
+a copy takes of the books is 2.3 MB in 1775 (432 works) and 3.8 MB in 1900
+(2,320 works), against 13.1 and 13.5 MB with the rows as they were
+(`books_by_month`, island 7, which now prints it). Copying the books alone
+in 1900 took 4.7 and 5.3 ms with the old rows and 0.5 and 1.1 ms with the
+new, in two runs of each, turn about, on a machine so busy that a whole
+copy of the island took anywhere from 8 to 42 ms with or without the books;
+the whole copy's time could not be told apart in that noise, so the books'
+own is the figure to go by. The books are the same to the last bit
+(`tests/accounts.rs` compares the whole of them however a game was reached,
+and the eight islands' facts do not move). What is left is mostly the
+year's tables by town slot, which are for the 48 slots there is room for
+(trade between every two of them is 0.9 MB alone); a table for the towns
+there are would be the next saving. A game that is only stepped never
 has a copy standing when a year closes, so putting the year away still asks
 the allocator for nothing (`tests/accounts.rs`,
 `a_copy_of_the_island_shares_the_years_put_away`).
@@ -864,11 +877,10 @@ draw it): with it thrown the books balance and change nothing
   by the month are kept for it but handed out only once the year closes, in
   `TownBooks::months`.
 - **An order in the middle of a year copies the books' year in progress**
-  (see "In a game played by the month"): the tables of the open year, a
-  third again on a copy that is made three times an order. The years put
-  away are shared and no longer go with it. The open year's tables are
-  sized for every works there is room for (`F_max`, twenty thousand); a
-  table that grew with the works there are would make that small too.
+  (see "In a game played by the month"): the tables of the open year, on a
+  copy that is made three times an order. The years put away are shared and
+  no longer go with it, and the works' rows are for the works there are; what
+  is left, 2 to 4 MB, is mostly tables by town slot sized for 48 towns.
 - **The merchants' share is cash, not profit.** It is what the merchants
   took in less what they paid out. In a year they build stock it is low, in
   a year they run it down it is high; `stock_value` is kept beside it so the

@@ -714,6 +714,10 @@ fn a_copy_of_the_island_shares_the_years_put_away() {
     let room = |s: &sim::Sim| (s.st.acct.hist.goods.as_ptr(), s.st.acct.hist.goods.capacity(), s.st.acct.hist.methods.as_ptr());
     let before = room(&g.sim);
     assert!(before.1 >= 151 * g.sim.st.T_max * g.sim.content.G * KG, "room for every year of the run");
+    // what does go with a copy is the year in progress, whose works' rows are for the works there are
+    // (a few hundred here), not for the twenty thousand there is room for, which were 11 MB of nothing
+    let copied = g.sim.st.acct.copied_bytes();
+    assert!(copied < 3_000_000, "a copy takes {copied} bytes of the books");
 
     // the copies an order makes come and go, and the game's history is where it was
     let seat = g.sim.st.families[0].seat;
