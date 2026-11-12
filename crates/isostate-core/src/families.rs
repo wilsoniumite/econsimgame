@@ -1136,7 +1136,7 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
     if fam.cash < cost {
         return Err(format!("it costs {cost:.0} and the {} family has {:.0}", fam.surname, fam.cash.max(0.0)));
     }
-    let name = family_works_name(st, C, family, method, i);
+    let name = family_works_name(st, C, P, family, method, i);
     let first_of_kind = !(0..st.F_count).any(|f| st.f_owner[f] == family as i64 && st.f_method[f] == method);
     // chronicle: the first ever, not the first since the family sold its last one
     let first_of_kind = first_of_kind && crate::chronicle::first_of_kind(st, P, family, method);
@@ -1177,9 +1177,14 @@ fn article(word: &str) -> &'static str {
 }
 
 /// "Ashby Ironworks", or "Ashby Ironworks No. 2" if the family already has one.
-fn family_works_name(st: &State, C: &Content, family: usize, m: usize, i: usize) -> String {
+/// Under the life cycle for works (docs/rules/works.md) only the works of this
+/// very name are counted, so the family's "Ashby Mill" is not numbered on from
+/// the town's "Ashby Mills"; a closed works still counts, so no name is given
+/// twice. Without it every name that starts with the base is counted, as the
+/// port numbers its sister works.
+fn family_works_name(st: &State, C: &Content, P: &Params, family: usize, m: usize, i: usize) -> String {
     let base = names::family_firm_name(&C.method_name[m], &st.families[family].surname, &st.town_name[i]);
-    let count = st.f_name.iter().filter(|n| n.starts_with(&base)).count();
+    let count = if P.works.enabled { names::works_of_name(&st.f_name, &base) } else { st.f_name.iter().filter(|n| n.starts_with(&base)).count() };
     if count == 0 { base } else { format!("{base} No. {}", count + 1) }
 }
 
