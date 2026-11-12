@@ -791,8 +791,10 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, sites: &[Option<FirmSite>]) -
     let mut count = [0usize; 10];
     let mut places: [Vec<String>; 10] = Default::default();
     let mut all = 0;
-    // the capacity the works have, what their stages come to, and what of it is built
-    let (mut have, mut staged, mut built) = (0.0f32, 0.0f32, 0.0f32);
+    // the capacity the works have and what their stages come to; and the ground the process
+    // buildings of those stages want (`site::stage_size`) and what of it they were given
+    let (mut have, mut staged, mut wanted, mut built) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+    let ground = |size: f32| size.powf(0.64);
     for (f, fs) in sites.iter().enumerate() {
         let Some(fs) = fs else { continue };
         all += 1;
@@ -800,7 +802,8 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, sites: &[Option<FirmSite>]) -
         if !matches!(fs.now.state, State::Idle | State::Derelict) {
             have += fs.now.size;
             staged += plan.stages.last().map_or(0.0, |s| s.size);
-            built += plan.parts.iter().filter(|p| p.role == site::Role::Core).map(|p| p.size).sum::<f32>();
+            wanted += plan.stages.iter().enumerate().map(|(i, st)| ground(site::stage_size(st.size, if i == 0 { 0.0 } else { plan.stages[i - 1].size }))).sum::<f32>();
+            built += plan.parts.iter().filter(|p| p.role == site::Role::Core).map(|p| ground(p.size)).sum::<f32>();
         }
         let faces = |want: Edge| (0..plan.plot.edges.len()).any(|i| plan.plot.edge(i, year) == want);
         let top = plan.stages.last().map_or(0.0, |s| s.size);
@@ -813,7 +816,7 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, sites: &[Option<FirmSite>]) -
             }
         }
     }
-    let mut out = format!("works standing in {year}: {all}; {}; of the capacity of those at work {:.0}% is in the stages they were built in and {:.0}% stands as buildings", names.iter().zip(count).map(|(n, c)| format!("{c} with {n}")).collect::<Vec<_>>().join(", "), 100.0 * staged / have.max(1e-6), 100.0 * built / have.max(1e-6));
+    let mut out = format!("works standing in {year}: {all}; {}; of the capacity of those at work {:.0}% is in the stages they were built in, and the process buildings of those stages have {:.0}% of the ground they want", names.iter().zip(count).map(|(n, c)| format!("{c} with {n}")).collect::<Vec<_>>().join(", "), 100.0 * staged / have.max(1e-6), 100.0 * built / wanted.max(1e-6));
     if std::env::var_os("ISOSTATE_PLOTS").is_some() {
         for (n, p) in names.iter().zip(&places).filter(|(_, p)| !p.is_empty()) {
             out.push_str(&format!("\n  with {n}: {}", p.join("; ")));

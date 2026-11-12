@@ -16,7 +16,18 @@ fn show_a_plan() {
     let size = env("SIZE", 3.0);
     let j = env("PLOT", 0.0) as usize;
     let i = SIZES.iter().position(|s| *s == size).unwrap_or(0);
-    let (plan, _) = specimen(kind, env("FOUNDED", 1760.0) as i32, 1890, size, &plots(kind, size)[j], Seed::of(kind as u32 * 31 + i as u32 + j as u32), &pal);
+    let seed = Seed::of(std::env::var("SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(kind as u32 * 31 + i as u32 + j as u32));
+    // (STAGES=1790:0.8,1815:2.4 gives the stages of its growth outright, and YEAR the year it is planned for)
+    let plan = match std::env::var("STAGES") {
+        Ok(text) => {
+            let st: Vec<Stage> = text.split(',').filter_map(|s| s.split_once(':')).map(|(y, s)| Stage { year: y.trim().parse().unwrap(), size: s.trim().parse().unwrap() }).collect();
+            // (PLOT=9 is the plot of the lab's `site-history-iron`: its back aslant, the railway there from 1848)
+            let (w, d) = ground(kind, size);
+            let plot = if j == 9 { Plot::wedge(w, d, 0.25).facing_from(2, Edge::Rail, 1848) } else { plots(kind, size)[j].clone() };
+            plan(kind, &Process::of(kind), &st, &plot, env("YEAR", 1890.0) as i32, seed, &pal)
+        }
+        Err(_) => specimen(kind, env("FOUNDED", 1760.0) as i32, 1890, size, &plots(kind, size)[j], seed, &pal).0,
+    };
     println!("{kind:?} on {:?}\nstages {:?}\ncart yard {:?} lane {:?} siding {:?} wharf {:?}", plan.plot.outline, plan.stages, plan.cart_yard, plan.lane, plan.siding, plan.wharf);
     for p in &plan.parts {
         println!("{:?} of stage {} at {:.3}, {:.3}: {:.3} by {:.3}, turned {}, size {:.2}", p.role, p.stage, p.x, p.z, p.w, p.d, p.turn, p.size);
@@ -25,6 +36,50 @@ fn show_a_plan() {
         println!("{:?} at {:.3}, {:.3}: {:.3} by {:.3}", y.hold, y.x, y.z, y.w, y.d);
     }
     println!("{} dropped, {} squeezed, taken in {:?}", plan.dropped, plan.squeezed, plan.enclosed.outline);
+    println!("{}", map(&plan));
+}
+
+/// A plan as a map in letters, the road at the bottom: a stage's process
+/// buildings by its number, `s` a store, `w` the warehouse, `c` the counting
+/// house, `A` `B` `C` the yards of what comes in, `O` of what is made, `T`
+/// the tip, `=` the siding or the wharf, `:` the cart yard and the lane, `.`
+/// ground taken in and bare, a blank for what is outside the wall.
+fn map(plan: &Plan) -> String {
+    let (x0, x1, z0, z1) = plan.plot.bounds();
+    let cols = 72usize;
+    let step = (x1 - x0) / cols as f32;
+    let rows = ((z1 - z0) / (step * 2.0)).ceil() as usize;
+    let walled = Field::within(&plan.enclosed, 0.0);
+    let inside = |b: (f32, f32, f32, f32), x: f32, z: f32| (x - b.0).abs() <= b.2 * 0.5 && (z - b.1).abs() <= b.3 * 0.5;
+    let strip = |s: Option<(usize, f32, f32)>, back: f32, x: f32, z: f32| {
+        s.is_some_and(|(i, f0, f1)| {
+            let ((a, b), o) = (plan.plot.side(i), plan.plot.outward(i));
+            let along = ((x - a.0) * (b.0 - a.0) + (z - a.1) * (b.1 - a.1)) / ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2));
+            (a.0 - x) * o.0 + (a.1 - z) * o.1 <= back && along >= f0 && along <= f1
+        })
+    };
+    let mut out = String::new();
+    for j in 0..rows {
+        for i in 0..cols {
+            let (x, z) = (x0 + (i as f32 + 0.5) * step, z0 + (j as f32 + 0.5) * step * 2.0);
+            let part = plan.parts.iter().find(|p| inside((p.x, p.z, p.w, p.d), x, z)).map(|p| match p.role {
+                Role::Core => char::from_digit(p.stage as u32 % 10, 10).unwrap(),
+                Role::Store(_) => 's',
+                Role::Warehouse => 'w',
+                Role::Office => 'c',
+            });
+            let yard = plan.yards.iter().find(|y| inside((y.x, y.z, y.w, y.d), x, z)).map(|y| match y.hold {
+                Hold::In(n) => (b'A' + n as u8) as char,
+                Hold::Out => 'O',
+                Hold::Tip => 'T',
+            });
+            let way = (inside(plan.cart_yard, x, z) || plan.lane.is_some_and(|(a, b, w)| inside((a.0, (a.1 + b.1) * 0.5, w.max(step), (a.1 - b.1).abs()), x, z))).then_some(':');
+            let track = (strip(plan.siding, SIDING, x, z) || strip(plan.wharf, WHARF, x, z)).then_some('=');
+            out.push(part.or(yard).or(track).or(way).unwrap_or(if walled.room(x, z, x, z) >= 0.0 { '.' } else { ' ' }));
+        }
+        out.push('\n');
+    }
+    out
 }
 
 /// The plots the lab shows a works on: square, by a stream, aslant by a railway, a corner cut, on navigable water.
@@ -377,6 +432,79 @@ fn the_tip_is_as_big_as_what_the_process_leaves() {
 }
 
 #[test]
+fn the_buildings_of_all_its_stages_stand_on_the_ground_one_works_of_its_size_would() {
+    // however many stages a works grew by, their process buildings come to `CORE` of the ground
+    // of one works of its size (while no stage is so small that it is drawn at the least size)
+    let ground_of = |s: f32| s.powf(0.64);
+    for sizes in [vec![30.0f32], vec![2.0, 30.0], vec![1.0, 2.5, 7.0, 30.0], vec![3.0, 8.0, 20.0, 50.0, 120.0]] {
+        let mut before = 0.0;
+        let built: f32 = sizes.iter().map(|&s| { let part = ground_of(stage_size(s, before)); before = s; part }).sum();
+        let whole = CORE * ground_of(*sizes.last().unwrap());
+        assert!((built / whole - 1.0).abs() < 0.01, "{sizes:?}: the stages stand on {built}, one works of that size on {whole}");
+    }
+    // a works that only shrinks or stands builds nothing, and the least is a workshop
+    assert_eq!(stage_size(0.4, 0.0), 0.4);
+    assert_eq!(stage_size(5.0, 5.0), 0.4);
+    assert!(stage_size(100.0, 40.0) > stage_size(40.0, 16.0));
+}
+
+#[test]
+fn the_fire_trades_fill_their_ground_with_what_they_hold() {
+    // furnaces, forges and rolling mills once stood on bare yards: now a works of some size
+    // builds every stage at its size, keeps a yard for every heavy thing that comes in, for what
+    // it makes and for what it tips, and little of what it has walled in is left bare
+    let pal = Palette::standard();
+    for kind in [Kind::CokeFurnace, Kind::CharcoalFurnace, Kind::ForgeRails, Kind::RollingMill, Kind::SteelRolling] {
+        for size in [3.0f32, 10.0, 30.0] {
+            let (w, d) = ground(kind, size);
+            let (p, now) = specimen(kind, 1790, 1885, size, &Plot::rect(w, d), Seed::of(11), &pal);
+            let what = format!("{kind:?} at {size}");
+            assert_eq!((p.squeezed, p.dropped), (0, 0), "{what}: a stage found no room at its size");
+            let holds: Vec<Hold> = p.yards.iter().map(|y| y.hold).collect();
+            for (n, (good, _)) in p.incoming.iter().enumerate() {
+                assert!(Keep::of(good) == Keep::Cover || holds.contains(&Hold::In(n)), "{what}: no yard for its {}", good.name);
+            }
+            assert!(holds.contains(&Hold::Out) && holds.contains(&Hold::Tip), "{what}: {holds:?}");
+            // no scrap of a yard, and a tip in two banks at the most
+            let (fw, fd) = footprint(kind, size);
+            for y in &p.yards {
+                assert!(y.w * y.d >= 0.03 * STOCK_OUT * fw * fd, "{what}: a scrap of a yard, {} by {}", y.w, y.d);
+            }
+            assert!(holds.iter().filter(|h| **h == Hold::Tip).count() <= 2, "{what}");
+            // of the ground it has walled in, what its buildings, yards, cart yard, lane and tracks cover
+            let used: f32 = p.parts.iter().map(|x| x.w * x.d).sum::<f32>() + p.yards.iter().map(|y| y.w * y.d).sum::<f32>() + p.cart_yard.2 * p.cart_yard.3 + p.lane.map_or(0.0, |(a, b, lw)| lw * (a.1 - b.1).abs());
+            let share = used / p.enclosed.area();
+            assert!(share > 0.5, "{what}: {:.0}% of its ground is used", share * 100.0);
+            // and the yards are a good part of it: a third of the ground its buildings stand on, or more
+            let (built, stock) = (p.parts.iter().map(|x| x.w * x.d).sum::<f32>(), p.yards.iter().map(|y| y.w * y.d).sum::<f32>());
+            assert!(stock > 0.33 * built, "{what}: its yards come to {stock}, its buildings to {built}");
+            // every yard has its floor, whether it is full or empty
+            let floors = |full: f32| draw(&p, &Now { stock_in: full, stock_out: full, ..now }, 0.0).flat.triangles();
+            assert_eq!(floors(1.0), floors(0.0), "{what}");
+        }
+    }
+}
+
+#[test]
+fn a_planned_works_draws_no_stock_that_its_process_does_not_name() {
+    // the old arrangement of a coke furnace has limestone in its yard, which the simulation's
+    // coke furnace does not take; a planned one holds what its process says and no more
+    let pal = Palette::standard();
+    let lime = *pal.stone.limestone;
+    let has_lime = |m: &Model| m.solid.col.iter().any(|c| *c == lime || *c == shade(lime, 1.08));
+    let old = { let mut m = Model::default(); crate::works::works(&mut m.solid, &mut m.smoke, &mut m.flat, &Site::level(Vec3::ZERO, 0.0), &Works::new(Kind::CokeFurnace, 30.0), &pal); m };
+    assert!(has_lime(&old), "the test looks for the wrong colour");
+    for kind in [Kind::CokeFurnace, Kind::CharcoalFurnace] {
+        assert!(!Process::of(kind).inputs.iter().any(|(g, _)| g.name == "stone"), "{kind:?} takes stone now: draw it");
+        for size in [1.0f32, 10.0, 30.0, 100.0] {
+            let (w, d) = ground(kind, size);
+            let (p, now) = specimen(kind, 1790, 1885, size, &Plot::rect(w, d), Seed::of(3), &pal);
+            assert!(!has_lime(&draw(&p, &now, 0.0)), "{kind:?} at {size} has limestone about it");
+        }
+    }
+}
+
+#[test]
 fn a_works_of_a_kind_nobody_knows_is_planned_from_its_process() {
     let pal = Palette::standard();
     let glass = Process { inputs: vec![(Good::new("sand", 2.0, 0.3), 1.4), (Good::new("soda", 0.6, 4.0), 0.3)], heat: 1.8, labour: 0.6, capital: 120.0, output: Good::new("glass", 1.1, 9.0) };
@@ -386,7 +514,9 @@ fn a_works_of_a_kind_nobody_knows_is_planned_from_its_process() {
     // a store for the soda, a heap yard for the sand and one for its coal, a stack yard for the glass, a tip
     assert!(p.parts.iter().any(|x| matches!(x.role, Role::Store(_))));
     let holds: Vec<Hold> = p.yards.iter().map(|y| y.hold).collect();
-    assert!(holds.contains(&Hold::Out) && holds.contains(&Hold::Tip) && holds.iter().filter(|h| matches!(h, Hold::In(_))).count() == 2, "{holds:?}");
+    // (each in a piece or in several)
+    let goods_in: std::collections::BTreeSet<usize> = holds.iter().filter_map(|h| if let Hold::In(n) = h { Some(*n) } else { None }).collect();
+    assert!(holds.contains(&Hold::Out) && holds.contains(&Hold::Tip) && goods_in.len() == 2, "{holds:?}");
     let m = draw(&p, &Now::working(&p, 1885), 0.0);
     assert!(m.is_sound() && !m.smoke.is_empty());
     // and one that burns nothing and makes light goods has a warehouse, no yards and no smoke but its counting house's

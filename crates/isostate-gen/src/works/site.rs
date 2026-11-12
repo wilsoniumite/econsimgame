@@ -409,9 +409,23 @@ pub struct Stage {
 /// A works is enlarged, as the plan counts it, when it has grown to this many times the size of its last stage.
 pub const ENLARGED: f32 = 2.5;
 
-/// How big the process buildings of a stage are drawn, against the capacity
-/// the stage added: the rest of the ground goes to the stores and yards.
-const CORE: f32 = 0.85;
+/// How much of the ground a stage of growth added is its process buildings':
+/// the rest goes to the stores, the yards, the lanes and the siding.
+const CORE: f32 = 0.65;
+
+/// The size the process buildings of a stage are drawn at, for a works that
+/// grew from `before` to `size`: the size of a works that would stand on
+/// `CORE` of the ground the stage added. A works' ground goes by its size to
+/// the power 0.64 (`footprint`), so growing from `before` to `size` adds
+/// `size^0.64 - before^0.64` of its kind's standard ground. Reckoned so, the
+/// buildings of all a works' stages together stand on `CORE` of the ground
+/// one works of its size stands on, however many stages it grew by; reckoned
+/// by capacity alone they would want half as much ground again, and the last
+/// stage of an old works would find no room.
+pub fn stage_size(size: f32, before: f32) -> f32 {
+    let ground = |s: f32| if s <= 0.0 { 0.0 } else { s.clamp(0.4, 120.0).powf(0.64) };
+    (CORE * (ground(size) - ground(before)).max(0.0)).powf(1.0 / 0.64).max(0.4)
+}
 
 /// The stages of a works from its record: `history` is its size in each year
 /// it stood, in order. The first is its founding; each later one is the year
@@ -556,6 +570,9 @@ pub struct Plan {
     /// its buildings and yards stand on, which is what is walled and what
     /// its ground is laid over. It grows with the works toward the plot's edges.
     pub enclosed: Plot,
+    /// the size its stock yards are laid out for: as big as it can grow
+    /// before it must build again, or as big as its plot was set aside for
+    pub laid_for: f32,
 }
 
 /// The ground a siding takes along its side, a wharf along its, and the room a wall wants.
@@ -564,6 +581,15 @@ const WHARF: f32 = 0.018;
 const WALL: f32 = 0.005;
 /// How near its railway or its water a works must have built to have a siding or a wharf there.
 const REACH: f32 = 0.08;
+/// The ground a works keeps for stock, as shares of the ground a works of its
+/// kind and size stands on (`footprint`): for what comes in and lies in the
+/// open, for what it makes, and for its tip at the most; and the least ground
+/// worth calling a yard. These are the plan's rule, stated: the simulation
+/// keeps no stock at a works.
+const STOCK_IN: f32 = 0.26;
+const STOCK_OUT: f32 = 0.13;
+const TIP: f32 = 0.11;
+const YARD_LEAST: f32 = 0.00035;
 /// How far outside a side the lab's railway runs (`Plot::facing_from`).
 pub const LINE_OFF: f32 = 0.022;
 /// How near a side the line must run for a siding along that side to be led
@@ -794,8 +820,10 @@ fn core_cover(kind: Kind, process: &Process, size: f32, year: i32, water: bool, 
     let (mut solid, mut smoke, mut flat) = (MeshBuf::default(), MeshBuf::default(), MeshBuf::default());
     let site = Site::level(Vec3::ZERO, 0.0);
     let (fw, fd) = footprint(kind, size);
-    let w = Works { kind, size, founded: year, state: State::Working, water, rail: false, detail: Detail::Near, seed };
+    // (at the play level, which has every wall and stack where the near level has it, at a third of the work)
+    let w = Works { kind, size, founded: year, state: State::Working, water, rail: false, detail: Detail::Play, seed };
     let mut c = Ctx::part(&mut solid, &mut smoke, &mut flat, &site, &w, pal, fw * 0.5, fd * 0.5, 0.0);
+    c.stock_apart = true;
     if kind == Kind::Other { super::plain::process(&mut c, process) } else { super::raise(&mut c) }
     c.finish();
     let mut cover: Option<(f32, f32, f32, f32)> = None;
@@ -878,6 +906,13 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         field.take(gx, (a.1 + b.1) * 0.5, lw, len);
         (a, b, lw)
     });
+    // (the boxes taken so far are ground kept, not ground built on: the cart yard, the office's, the lane's)
+    let reserved = field.taken.len();
+    // the box round what stands so far (the cart yard and every building and yard), and how far
+    // a box would reach out of it: a works takes in new ground only when it has none left within
+    // its walls, so its buildings stand close and its yards lie in the bays between them
+    let built_box = |field: &Field| field.taken.iter().enumerate().filter(|(k, _)| *k == 0 || *k >= reserved).fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, (_, t)| (b.0.min(t.0), b.1.max(t.2), b.2.min(t.1), b.3.max(t.3)));
+    let out_of = |b: (f32, f32, f32, f32), x: f32, z: f32, w: f32, d: f32| (b.0 - (x - w * 0.5)).max(0.0) + ((x + w * 0.5) - b.1).max(0.0) + (b.2 - (z - d * 0.5)).max(0.0) + ((z + d * 0.5) - b.3).max(0.0);
 
     // where material comes in and where what is made goes out, in a year: over a neighbour's
     // wall, by the siding, at the wharf, or through the gate, in to its one side and out at its other
@@ -924,14 +959,18 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         // ---- the process buildings of the stage
         let wheel = i == 0 && st.year < 1790 && stream.is_some();
         let by_water = i == 0 && stream.is_some();
-        let wanted = ((st.size - before) * CORE).max(0.4);
-        let mut size = wanted;
-        let mut found: Option<Part> = None;
-        loop {
-            let cover = core_cover(kind, process, size, st.year, by_water, part_seed(seed, parts.len()), pal);
+        let wanted = stage_size(st.size, before);
+        // the best free place for a group of process buildings of a size, as the `n`th part of
+        // the works, by the group before it: the part if there is room, and its ground in its own frame
+        let try_core = |field: &Field, n: usize, size: f32, last_core: Option<(f32, f32)>| -> (Option<Part>, (f32, f32), (f32, f32)) {
+            let cover = core_cover(kind, process, size, st.year, by_water, part_seed(seed, n), pal);
             let (lw, ld) = (cover.1 - cover.0, cover.3 - cover.2);
             let off = ((cover.0 + cover.1) * 0.5, (cover.2 + cover.3) * 0.5);
             let mut best: Option<(f32, Part)> = None;
+            let standing = built_box(field);
+            // (a works enlarged once the line runs by it builds toward the line: how far a box is from that side)
+            let line_side = plot.find(st.year, |e| e == Edge::Rail);
+            let to_line = |x: f32, z: f32, w: f32, d: f32| line_side.map_or(0.0, |s| { let ((a, _), n) = (plot.side(s), plot.outward(s)); ((a.0 - x) * n.0 + (a.1 - z) * n.1 - (w * n.0.abs() + d * n.1.abs()) * 0.5 - SIDING).max(0.0) });
             for turn in 0..4u8 {
                 let (w, d) = if turn % 2 == 0 { (lw, ld) } else { (ld, lw) };
                 let part = |x: f32, z: f32| Part { role: Role::Core, x, z, w, d, turn, stage: i, size, off };
@@ -942,7 +981,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
                         (None, true) => 0.5 * dist((x, z), gate) + 1.2 * { let o = plot.outward(stream.unwrap()); let a = plot.side(stream.unwrap()).0; ((a.0 - x) * o.0 + (a.1 - z) * o.1).abs() },
                         (None, false) => dist((x, z), (gx - (cy.0 * 0.5 + 0.004 + w * 0.5), bz1 - WALL - d * 0.5)),
                         // an enlargement stands by what it enlarges, and no further from the gate than it need
-                        (Some(at), _) => dist((x, z), at) + 0.6 * dist((x, z), gate),
+                        (Some(at), _) => dist((x, z), at) + 0.6 * dist((x, z), gate) + 0.7 * out_of(standing, x, z, w, d) + 0.9 * to_line(x, z, w, d),
                     };
                     // its front to the gate's side of the yard, not to the wall behind it
                     c -= span * 0.05 * (front.0 * (gate.0 - x) + front.1 * (gate.1 + 0.02 - z)).signum().max(0.0);
@@ -959,34 +998,62 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
                     }
                 }
             }
-            if let Some((_, p)) = best {
-                found = Some(p);
+            (best.map(|b| b.1), (lw, ld), off)
+        };
+        // As one group where the ground has room for it. Where the ground that is left is
+        // broken up (an old works, its plot half built over), as two, three or four groups
+        // that come to the same capacity between them: an enlargement built as two ranges.
+        // And only then smaller than the stage was, by small steps, so that it is built as
+        // near its size as its ground has room for.
+        let mut groups: Vec<Part> = Vec::new();
+        for n in 1..=4usize {
+            let each = wanted / n as f32;
+            if n > 1 && each < 0.5 {
                 break;
             }
-            if size <= 0.4 {
-                // no room even for the smallest: the first works of a plot stands in the middle
-                // of it all the same, over its own cart yard
-                if i == 0 {
-                    let bare = Field::within(plot, 0.0005);
-                    let at = bare.place(lw, ld, 0.0, 1.0, |x, z| dist((x, z), gate)).unwrap_or(plot.middle());
-                    found = Some(Part { role: Role::Core, x: at.0, z: at.1, w: lw, d: ld, turn: 0, stage: i, size, off });
-                }
-                break;
-            }
-            // (by small steps, so that a stage is built as near the size it was as its ground has room for)
-            size = (size * 0.8).max(0.4);
-        }
-        match found {
-            Some(p) => {
-                if p.size < wanted * 0.99 {
-                    squeezed += 1;
-                }
+            let mark = field.taken.len();
+            let mut by = last_core;
+            for _ in 0..n {
+                let (Some(p), _, _) = try_core(&field, parts.len() + groups.len(), each, by) else { break };
                 field.take(p.x, p.z, p.w, p.d);
-                last_core = Some((p.x, p.z));
-                parts.push(p);
+                by = Some((p.x, p.z));
+                groups.push(p);
             }
+            if groups.len() == n {
+                break;
+            }
+            field.taken.truncate(mark);
+            groups.clear();
+        }
+        if groups.is_empty() {
+            let mut size = wanted;
+            loop {
+                size = (size * 0.8).max(0.4);
+                let (found, (lw, ld), off) = try_core(&field, parts.len(), size, last_core);
+                if let Some(p) = found {
+                    field.take(p.x, p.z, p.w, p.d);
+                    squeezed += (p.size < wanted * 0.99) as usize;
+                    groups.push(p);
+                    break;
+                }
+                if size <= 0.4 {
+                    // no room even for the smallest: the first works of a plot stands in the middle
+                    // of it all the same, over its own cart yard
+                    if i == 0 {
+                        let bare = Field::within(plot, 0.0005);
+                        let at = bare.place(lw, ld, 0.0, 1.0, |x, z| dist((x, z), gate)).unwrap_or(plot.middle());
+                        field.take(at.0, at.1, lw, ld);
+                        groups.push(Part { role: Role::Core, x: at.0, z: at.1, w: lw, d: ld, turn: 0, stage: i, size, off });
+                    }
+                    break;
+                }
+            }
+        }
+        match groups.last() {
+            Some(p) => last_core = Some((p.x, p.z)),
             None => dropped += 1,
         }
+        parts.extend(groups);
 
         let (receive, dispatch) = ways(st.year, &parts);
 
@@ -1008,13 +1075,14 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
             for (role, share, by) in wants {
                 let (mut lw, mut ld) = store_ground(kind, st.size - before * 0.5, share);
                 let mut placed = false;
+                let standing = built_box(&field);
                 for _ in 0..6 {
                     let mut best: Option<(f32, Part)> = None;
                     for turn in 0..4u8 {
                         let (w, d) = if turn % 2 == 0 { (lw, ld) } else { (ld, lw) };
                         let part = |x: f32, z: f32| Part { role, x, z, w, d, turn, stage: i, size: st.size, off: (0.0, 0.0) };
                         let front = part(0.0, 0.0).front();
-                        let cost = |x: f32, z: f32| dist((x, z), by) + 0.4 * dist((x, z), gate) - span * 0.05 * (front.0 * (gate.0 - x) + front.1 * (gate.1 - z)).signum().max(0.0);
+                        let cost = |x: f32, z: f32| dist((x, z), by) + 0.4 * dist((x, z), gate) + 0.7 * out_of(standing, x, z, w, d) - span * 0.05 * (front.0 * (gate.0 - x) + front.1 * (gate.1 - z)).signum().max(0.0);
                         if let Some((x, z)) = field.place(w, d, 0.003, 3.0, &cost) {
                             let c = cost(x, z);
                             if best.as_ref().map_or(true, |(b, _)| c < *b - 1e-6) {
@@ -1067,57 +1135,104 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     };
     let wharf = plot.find(year, |e| e == Edge::Water { navigable: true }).filter(|s| reaches(*s, &parts)).and_then(|i| field.stretch(plot, i, WHARF).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.03);
     let built = field.taken.len();
-    let reserved = 1 + lane.is_some() as usize + office_ground.is_some() as usize;
     let mut strips: Vec<(f32, f32, f32, f32)> = Vec::new();
     for (side, back) in [(siding, SIDING), (wharf, WHARF)] {
         if let Some((i, f0, f1)) = side {
-            // (the yards keep off them)
-            let (a, b) = (plot.along(i, f0, back * 0.5), plot.along(i, f1, back * 0.5));
-            strips.push(((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5, (a.0 - b.0).abs() + back, (a.1 - b.1).abs() + back));
+            // (the yards keep off them: length by length, so that a side that runs aslant keeps
+            // its strip and not the whole corner of the plot)
+            const N: usize = 8;
+            for k in 0..N {
+                let (a, b) = (plot.along(i, f0 + (f1 - f0) * k as f32 / N as f32, back * 0.5), plot.along(i, f0 + (f1 - f0) * (k + 1) as f32 / N as f32, back * 0.5));
+                strips.push(((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5, (a.0 - b.0).abs() + back, (a.1 - b.1).abs() + back));
+            }
         }
     }
 
     // ---- the open yards, in what ground the buildings left: stock by the way in, what is
     // made by the way out, the tip at the corner of the works furthest from the gate. (Stock
     // is not built, so a yard may be moved when the works is enlarged.)
+    //
+    // How much ground each is given is a RULE OF THE PLAN'S, not a fact of the simulation,
+    // which keeps no stock at a works: of the ground a works of its kind and size stands on
+    // (`footprint`), `STOCK_IN` for what comes in and lies in the open, shared among the goods
+    // by the bulk of each; `STOCK_OUT` for what is made; and for the tip up to `TIP`, by how
+    // much the process leaves. A yard lies in one piece where there is room for it and in up
+    // to four where there is not, in the bays between the buildings before any new ground.
+    //
+    // The size they are laid out for is the size the works can reach before it must build
+    // again (`ENLARGED` times its last stage), or the size its plot was set aside for if that
+    // is less. So a works that grows between two stages, which builds nothing, has its yards
+    // fuller year by year (`yard` draws as much of them in use as `Now::size` asks).
     let total = stages.last().unwrap().size;
     let (sw, sd) = kind.plot();
-    let standard = sw * sd * total.clamp(0.4, 120.0).powf(0.64);
+    let room = (whole.area() / (GROUND * GROUND * sw * sd)).powf(1.0 / 0.64);
+    let laid_for = (total * ENLARGED).min(room.max(total));
+    let standard = sw * sd * laid_for.clamp(0.4, 120.0).powf(0.64);
     let mut yards: Vec<Yard> = Vec::new();
-    let mut wants: Vec<(Hold, f32, (f32, f32))> = incoming.iter().enumerate().filter(|(_, (g, _))| matches!(Keep::of(g), Keep::Heap | Keep::Stack | Keep::Logs)).map(|(n, (_, share))| (Hold::In(n), 0.26 * standard * share.max(0.3), receive)).collect();
-    if matches!(Keep::of(&process.output), Keep::Heap | Keep::Stack | Keep::Logs) {
-        wants.push((Hold::Out, 0.13 * standard, dispatch));
-    }
+    let mut wants: Vec<(Hold, f32, (f32, f32))> = Vec::new();
+    // (the tip is given its ground first: the far corner is its own)
     if process.tips() && total >= 1.0 {
         // the corner of what is built so far that is furthest from the gate
         let b = field.taken[reserved.min(built - 1)..built].iter().fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, t| (b.0.min(t.0), b.1.max(t.2), b.2.min(t.1), b.3.max(t.3)));
         let far = [(b.0, b.2), (b.1, b.2), (b.0, b.3), (b.1, b.3)].into_iter().fold((gate, -1.0f32), |best, p| { let d = dist(p, gate); if d > best.1 { (p, d) } else { best } }).0;
         // (as big as what the process leaves: a furnace's slag bank, a mill's ash heap)
-        wants.push((Hold::Tip, 0.09 * standard * (process.waste(founded) / 3.0).clamp(0.15, 1.0), far));
+        wants.push((Hold::Tip, TIP * standard * (process.waste(founded) / 3.0).clamp(0.15, 1.0), far));
     }
+    // (then what is made, which is the less ground and says what the works is; then what comes in)
+    if matches!(Keep::of(&process.output), Keep::Heap | Keep::Stack | Keep::Logs) {
+        wants.push((Hold::Out, STOCK_OUT * standard, dispatch));
+    }
+    wants.extend(incoming.iter().enumerate().filter(|(_, (g, _))| matches!(Keep::of(g), Keep::Heap | Keep::Stack | Keep::Logs)).map(|(n, (_, share))| (Hold::In(n), STOCK_IN * standard * share.max(0.3), receive)));
     for (x, z, w, d) in strips {
         field.take(x, z, w, d);
     }
-    for (hold, area, by) in wants {
-        let mut area = area.max(0.00035);
-        for _ in 0..7 {
-            let mut best: Option<(f32, Yard)> = None;
-            for aspect in [1.0f32, 1.8, 0.55, 3.0, 0.33] {
-                let (w, d) = ((area * aspect).sqrt(), (area / aspect).sqrt());
-                let cost = |x: f32, z: f32| dist((x, z), by) + 0.3 * dist((x, z), gate);
-                if let Some((x, z)) = field.place(w, d, 0.003, 1.0, cost) {
-                    let c = cost(x, z) + (aspect.max(1.0 / aspect) - 1.0) * span * 0.08;
-                    if best.as_ref().map_or(true, |(b, _)| c < *b - 1e-6) {
-                        best = Some((c, Yard { hold, x, z, w, d }));
+    // Each yard in turn is given a piece: the most of what it still wants that finds room. So
+    // where ground is short every good has some, and none has it all. A tip is one bank, or
+    // two; a stock yard is in four pieces at the most, and no piece is less than a seventh of
+    // the yard (scraps of stock about a works are clutter).
+    let mut state: Vec<(f32, f32, usize, bool)> = wants.iter().map(|w| (w.1.max(YARD_LEAST), w.1.max(YARD_LEAST), 0, false)).collect();
+    while state.iter().any(|s| !s.3) {
+        for (k, &(hold, area, by)) in wants.iter().enumerate() {
+            let (mut left, mut piece, mut pieces, done) = state[k];
+            if done {
+                continue;
+            }
+            let area = area.max(YARD_LEAST);
+            let (most, least) = if hold == Hold::Tip { (2, area * 0.3) } else { (4, (area * 0.15).max(YARD_LEAST)) };
+            let standing = built_box(&field);
+            let mut found: Option<Yard> = None;
+            while found.is_none() && piece >= least {
+                let mut best: Option<(f32, Yard)> = None;
+                // (a tip is a bank along the wall, and is where the works ends; stock lies square, within it)
+                let aspects: &[f32] = if hold == Hold::Tip { &[3.0, 0.33, 1.8, 0.55, 1.0] } else { &[1.0, 1.8, 0.55, 3.0, 0.33] };
+                for &aspect in aspects {
+                    let (w, d) = ((piece * aspect).sqrt(), (piece / aspect).sqrt());
+                    // (the tip at the far corner of what stands, where the wall will go round it:
+                    // not off across ground the works has no other use for yet)
+                    let cost = |x: f32, z: f32| if hold == Hold::Tip { dist((x, z), by) } else { dist((x, z), by) + 0.3 * dist((x, z), gate) + 1.2 * out_of(standing, x, z, w, d) };
+                    if let Some((x, z)) = field.place(w, d, 0.003, 1.0, cost) {
+                        let c = cost(x, z) + if hold == Hold::Tip { 0.0 } else { (aspect.max(1.0 / aspect) - 1.0) * span * 0.08 };
+                        if best.as_ref().map_or(true, |(b, _)| c < *b - 1e-6) {
+                            best = Some((c, Yard { hold, x, z, w, d }));
+                        }
                     }
                 }
+                match best {
+                    Some((_, y)) => found = Some(y),
+                    None => piece *= 0.6,
+                }
             }
-            if let Some((_, y)) = best {
-                field.take(y.x, y.z, y.w, y.d);
-                yards.push(y);
-                break;
-            }
-            area *= 0.7;
+            state[k] = match found {
+                Some(y) => {
+                    field.take(y.x, y.z, y.w, y.d);
+                    yards.push(y);
+                    left -= piece;
+                    pieces += 1;
+                    // (what is left over of a yard is not worth a piece of its own below a fifth of it)
+                    (left, piece.min(left), pieces, pieces >= most || left < area * 0.2)
+                }
+                None => (left, piece, pieces, true),
+            };
         }
     }
 
@@ -1131,7 +1246,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     }
     let enclosed = enclose(whole, outline);
 
-    Plan { kind, process: process.clone(), plot: whole.clone(), stages, seed, parts, yards, gate: (gx, gw), cart_yard, lane, receive, dispatch, year, siding, wharf, spur, spur_at_start, incoming, squeezed, dropped, enclosed }
+    Plan { kind, process: process.clone(), plot: whole.clone(), stages, seed, parts, yards, gate: (gx, gw), cart_yard, lane, receive, dispatch, year, siding, wharf, spur, spur_at_start, incoming, squeezed, dropped, enclosed, laid_for }
 }
 
 /// The plot a works has taken in of its whole plot: `outline` is a part of
@@ -1267,6 +1382,8 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
         let mut c = Ctx::part(&mut *solid, &mut *smoke, &mut *flat, &psite, &w, pal, lw * 0.5, ld * 0.5, worn(st.year, now.year));
         match part.role {
             Role::Core => {
+                // (what lies loose about a planned works, its stock and its tip, is laid out by the plan)
+                c.stock_apart = true;
                 if plan.kind == Kind::Other {
                     super::plain::process(&mut c, &plan.process);
                 } else {
@@ -1299,7 +1416,7 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
     boundary(&mut c, plan, asked_wall);
     lanes(&mut c, plan, ground);
     for (n, y) in plan.yards.iter().enumerate() {
-        yard(&mut c, plan, now, y, n);
+        yard(&mut c, plan, now, y, n, ground);
     }
     if let Some(side) = plan.siding {
         siding(&mut c, plan, now, side);
@@ -1532,57 +1649,113 @@ fn lanes(c: &mut Ctx, plan: &Plan, ground: Rgba) {
             pair(c, on_lane(d), d);
             (lo, hi) = (lo.min(on_lane(d).1), hi.max(on_lane(d).1));
         }
+        // and to each yard of what comes in loose, where the way from the lane is clear of buildings
+        for y in &plan.yards {
+            if !matches!(y.hold, Hold::In(i) if Keep::of(&plan.incoming[i].0) == Keep::Heap) {
+                continue;
+            }
+            let from = on_lane((y.x, y.z));
+            let to = (from.0.clamp(y.x - y.w * 0.5, y.x + y.w * 0.5), y.z);
+            let (x0, x1) = (from.0.min(to.0), from.0.max(to.0));
+            if !plan.parts.iter().any(|p| x0 < p.x + p.w * 0.5 && x1 > p.x - p.w * 0.5 && (p.z - from.1).abs() < p.d * 0.5 + 0.003) {
+                pair(c, from, to);
+                (lo, hi) = (lo.min(from.1), hi.max(from.1));
+            }
+        }
         pair(c, (a.0, lo), (a.0, hi));
     }
 }
 
-/// What lies in an open yard, as full as the works' stock says.
-fn yard(c: &mut Ctx, plan: &Plan, now: &Now, y: &Yard, n: usize) {
+/// A rectangle of ground within the plot, a little above the yard's own: the floor of a stock yard.
+fn floor(c: &mut Ctx, (x0, z0, x1, z1): (f32, f32, f32, f32), col: Rgba) {
+    let up = Vec3::Y * (LIFT + 0.0006);
+    let (nx, nz) = if c.site.is_level() { (1, 1) } else { ((((x1 - x0) / GROUND_STEP).ceil() as usize).max(1), (((z1 - z0) / GROUND_STEP).ceil() as usize).max(1)) };
+    let (sx, sz) = ((x1 - x0) / nx as f32, (z1 - z0) / nz as f32);
+    for j in 0..nz {
+        for i in 0..nx {
+            let (ax, az) = (x0 + sx * i as f32, z0 + sz * j as f32);
+            c.flat.quad(c.at(ax, az + sz) + up, c.at(ax + sx, az + sz) + up, c.at(ax + sx, az) + up, c.at(ax, az) + up, col);
+        }
+    }
+}
+
+/// What lies in an open yard, as full as the works' stock says, on ground
+/// stained by it: ore-red, coal-black, the grey of slag. (The floor is the
+/// same at every level and in every state, so an empty yard still reads as
+/// the place where the ore lay.)
+fn yard(c: &mut Ctx, plan: &Plan, now: &Now, y: &Yard, n: usize, ground: Rgba) {
     let pal = c.pal;
     let (good, full) = match y.hold {
         Hold::In(i) => (Some(&plan.incoming[i].0), now.stock_in),
         Hold::Out => (Some(&plan.process.output), now.stock_out),
         Hold::Tip => (None, 1.0),
     };
-    let full = if c.w.state == State::GoingUp || c.derelict() { 0.0 } else { full.clamp(0.0, 1.0) };
+    // (as much of the yard in use as its size now asks, of the size the yard was laid out for)
+    let in_use = (now.size / plan.laid_for.max(0.4)).clamp(0.15, 1.0).powf(0.64);
+    let full = if c.w.state == State::GoingUp || c.derelict() { 0.0 } else { full.clamp(0.0, 1.0) * in_use };
+    let tip = if plan.process.inputs.iter().any(|(g, _)| g.name == "iron_ore") { *pal.ground.slag } else { *pal.ground.spoil_coal };
+    let stain = good.map_or(tip, |g| good_colour(g, pal));
+    floor(c, (y.x - y.w * 0.5, y.z - y.d * 0.5, y.x + y.w * 0.5, y.z + y.d * 0.5), lerp(ground, stain, 0.3));
     match (good.map(Keep::of), good) {
         (None, _) => {
-            // the tip grows with the years the works has stood, to the size of its ground
-            let age = ((now.year - plan.stages[0].year) as f32 / 40.0).clamp(0.15, 1.0);
-            let r = y.w.min(y.d) * 0.5 * (0.55 + 0.45 * age);
-            let col = c.tone(if plan.process.inputs.iter().any(|(g, _)| g.name == "iron_ore") { *pal.ground.slag } else { *pal.ground.spoil_coal });
-            c.heap(y.x, y.z, r, r * 0.6, col);
-            if y.w.max(y.d) > r * 3.2 {
-                // (a second, lower heap beside it, within the tip's ground)
-                let reach = (r * 1.6).min(y.w.max(y.d) * 0.5 - r * 0.62);
-                let (dx, dz) = if y.w > y.d { (reach, 0.0) } else { (0.0, reach) };
-                c.heap(y.x + dx, y.z + dz, r * 0.62, r * 0.36, col);
+            // the tip is a bank of heaps along its ground, one beside the next, and grows with
+            // the years the works has stood: more of them, and higher
+            let age = ((now.year - plan.stages[0].year) as f32 / 40.0).clamp(0.2, 1.0);
+            let (long, short, along_x) = if y.w >= y.d { (y.w, y.d, true) } else { (y.d, y.w, false) };
+            let r = short * 0.5;
+            let count = ((long / (r * 1.5)).round() as usize).clamp(1, 6);
+            let shown = ((count as f32 * age).ceil() as usize).clamp(1, count);
+            let col = c.tone(tip);
+            for k in 0..shown {
+                // (from end to end of its ground, and no heap over the end)
+                let t = if count == 1 { 0.0 } else { (long - 2.0 * r) * (k as f32 / (count - 1) as f32 - 0.5) };
+                let (x, z) = if along_x { (y.x + t, y.z) } else { (y.x, y.z + t) };
+                // (the newest of them is the one being tipped on)
+                let k_last = if k + 1 == shown && shown > 1 { 0.7 } else { 1.0 };
+                c.heap(x, z, r * (0.8 + 0.2 * age) * k_last, r * (0.42 + 0.3 * age) * k_last, col);
             }
         }
         (Some(Keep::Heap), Some(g)) => {
             let col = good_colour(g, pal);
-            let r = (y.w.min(y.d) * 0.5).min(0.02 * c.g);
-            let (cols, rows) = (((y.w / (2.0 * r)).floor() as usize).max(1), ((y.d / (2.0 * r)).floor() as usize).max(1));
+            // heaps shoulder to shoulder, in ridges: as many as the yard is full
+            let r = (y.w.min(y.d) * 0.5).min(0.026 * c.g);
+            let (cols, rows) = (((y.w / (1.7 * r)).floor() as usize).max(1), ((y.d / (1.7 * r)).floor() as usize).max(1));
             let shown = ((cols * rows) as f32 * full).ceil() as usize;
+            let reach = |n: usize, k: usize, span: f32| if n == 1 { 0.0 } else { (span - 2.0 * r) * (k as f32 / (n - 1) as f32 - 0.5) };
             for k in 0..(cols * rows).min(shown) {
                 let (i, j) = (k % cols, k / cols);
-                let (x, z) = (y.x - y.w * 0.5 + y.w * (i as f32 + 0.5) / cols as f32, y.z - y.d * 0.5 + y.d * (j as f32 + 0.5) / rows as f32);
+                let (x, z) = (y.x + reach(cols, i, y.w), y.z + reach(rows, j, y.d));
                 // the last heap is the one being drawn on
                 let k_last = if k + 1 == shown { 0.45 + 0.55 * (full * (cols * rows) as f32).fract().max(0.3) } else { 1.0 };
-                c.heap(x, z, r * 0.94 * k_last, r * 0.7 * k_last, col);
+                c.heap(x, z, r * 0.97 * k_last, r * 0.62 * k_last, col);
             }
         }
         (Some(keep), Some(g)) => {
+            // stacks in rows (timber in long piles): never more than seven to a row or six
+            // rows, so a great yard has greater stacks and not hundreds of them
             let col = good_colour(g, pal);
             let logs = keep == Keep::Logs;
             let (pw, pd, h) = if logs { (0.03f32, 0.008f32, 0.006f32) } else { (0.012, 0.0078, 0.0056) };
+            let (pw, pd) = (pw.max(y.w / 7.0 - 0.003), pd.max(y.d / 6.0 - 0.003));
             let (cols, rows) = (((y.w / (pw + 0.003)).floor() as usize).max(1), ((y.d / (pd + 0.003)).floor() as usize).max(1));
             let shown = ((cols * rows) as f32 * full).ceil() as usize;
-            for k in 0..(cols * rows).min(shown) {
-                let (i, j) = (k % cols, k / cols);
-                let (x, z) = (y.x - y.w * 0.5 + y.w * (i as f32 + 0.5) / cols as f32, y.z - y.d * 0.5 + y.d * (j as f32 + 0.5) / rows as f32);
-                let hh = h * (0.65 + 0.35 * hash2(k as i32, n as i32, (plan.seed.u * 9973.0) as i32));
-                c.pile(x, z, pw.min(y.w / cols as f32 - 0.002), pd.min(y.d / rows as f32 - 0.002), hh, false, col);
+            let (cw, rd) = (y.w / cols as f32, y.d / rows as f32);
+            let high = |k: usize| h * (pd / 0.0078).min(1.6) * (0.65 + 0.35 * hash2(k as i32, n as i32, (plan.seed.u * 9973.0) as i32));
+            if c.near() {
+                for k in 0..(cols * rows).min(shown) {
+                    let (i, j) = (k % cols, k / cols);
+                    let (x, z) = (y.x - y.w * 0.5 + cw * (i as f32 + 0.5), y.z - y.d * 0.5 + rd * (j as f32 + 0.5));
+                    c.pile(x, z, pw.min(cw - 0.002), pd.min(rd - 0.002), high(k), false, col);
+                }
+            } else {
+                // from the play distance a row of stacks is one long stack
+                for j in 0..rows {
+                    let in_row = shown.saturating_sub(j * cols).min(cols);
+                    if in_row > 0 {
+                        let len = cw * in_row as f32 - (cw - pw.min(cw - 0.002));
+                        c.pile(y.x - y.w * 0.5 + cw * in_row as f32 * 0.5, y.z - y.d * 0.5 + rd * (j as f32 + 0.5), len, pd.min(rd - 0.002), high(j * cols) * 0.9, false, col);
+                    }
+                }
             }
         }
         _ => {}
@@ -1741,7 +1914,8 @@ pub fn history(founded: i32, by: i32, size: f32) -> Vec<(i32, f32)> {
 pub fn specimen(kind: Kind, founded: i32, year: i32, size: f32, plot: &Plot, seed: Seed, pal: &Palette) -> (Plan, Now) {
     let record = history(founded, year, size);
     let plan = plan(kind, &Process::of(kind), &stages(&record), plot, year, seed, pal);
-    let now = Now { state: if year == founded { State::GoingUp } else { State::Working }, ..Now::working(&plan, year) };
+    // (at the size it has reached, which is more than its last stage's when it has grown since)
+    let now = Now { size: record.last().map_or(size, |h| h.1), state: if year == founded { State::GoingUp } else { State::Working }, ..Now::working(&plan, year) };
     (plan, now)
 }
 
