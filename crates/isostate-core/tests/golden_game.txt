@@ -11,11 +11,13 @@
 # paste the four lines it gives below, and say in the commit which moved and why
 # (docs/rules/README.md, "The game's golden test").
 #
-# Taken: on main at 5449ca7 with the test merged in. Since the first taking
-# (5d843c0), news and run.bin moved by the news's plain faults mended (9aaaf7f),
-# and run.bin again by the works' site planner, which writes each good's price
-# and each method's capital into its header (5449ca7).
-economy  0x15f8469932532a46
-books    0x7b10042d62fc42ac
-news     0x52ac822070b76fda
-run.bin  0x73858704e8a9fb50
+# Taken: on main at ca56cf2 with the test merged in. Since the first taking
+# (5d843c0), news and run.bin moved by the news's plain faults mended (9aaaf7f);
+# run.bin by the works' site planner, which writes each good's price and each
+# method's capital into its header (5449ca7); and all four by the rules pass's
+# stage 2, a town cannot hire hands it does not have (ca56cf2). With that
+# stage's switch off the hashes before it held.
+economy  0x1593e952999895f1
+books    0x07b856720f41e028
+news     0xc01bc094fde6e0f0
+run.bin  0x34af819d79f14fff
