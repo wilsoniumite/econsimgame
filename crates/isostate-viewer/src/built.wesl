@@ -61,6 +61,12 @@ fn vnoise(x: f32, y: f32, s: i32) -> f32 {
     return mix(mix(a, b, sx), mix(c, d, sx), sy);
 }
 
+// A noise from 0 to 1 gone to its average where its cells are no bigger than a
+// pixel: `cells` is how many of them a pixel spans.
+fn calm(n: f32, cells: f32) -> f32 {
+    return mix(n, 0.5, smoothstep(0.35, 1.0, cells));
+}
+
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input = pbr_input_from_standard_material(in, is_front);
@@ -73,10 +79,16 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         let p = in.world_position.xz;
         // how squarely the surface faces the sky: a roof's pitch holds snow, a spire's does not
         let up = smoothstep(0.28, 0.6, normalize(in.world_normal).y);
-        // snow and frost come and go in patches a few paces across, never all at once
-        let drift = 0.65 * vnoise(p.x * 55.0, p.y * 55.0, 5) + 0.35 * vnoise(p.x * 190.0, p.y * 190.0, 9);
+        // snow and frost come and go in patches a few paces across, never all at once. From
+        // far off, where a patch is smaller than a pixel, the patches go to their average, so
+        // that a town thawing in the distance fades and does not sparkle (as the ground's
+        // fine patterns are filtered to the size of a pixel)
+        let pixel = max(fwidth(p.x), fwidth(p.y));
+        let drift = 0.65 * calm(vnoise(p.x * 55.0, p.y * 55.0, 5), 55.0 * pixel) + 0.35 * calm(vnoise(p.x * 190.0, p.y * 190.0, 9), 190.0 * pixel);
         if (mark > 0.75) {
-            let lying = smoothstep(0.55 * drift, 0.55 * drift + 0.45, snow_k);
+            // (a patch has an edge: the roof is under snow or it is clear, as a thaw leaves it,
+            // and not a wash of one into the other)
+            let lying = smoothstep(0.82 * drift, 0.82 * drift + 0.18, snow_k);
             let cover = winter.amounts.z * up * lying;
             col = mix(col, winter.snow.rgb, cover);
             pbr_input.material.perceptual_roughness = mix(pbr_input.material.perceptual_roughness, 1.0, cover);
