@@ -37,10 +37,13 @@ higher than the other; one or two basins of soft rock; a coastal plain, wide
 in the lee of the island and narrow where the wind comes ashore; four
 coalfields on the belt's flanks and seven ore bodies in it; and the lowland's
 strata running in bands, hard ridge and soft vale by turns. The wind is
-westerly, from the south-west round to the north-west.
+westerly, from within forty degrees of due west: south-west round to
+north-west, give or take.
 
 **2. Uplift and erosion** (`landform::Eroder`). Each step lifts the land (fast
-under the belt, slowly elsewhere, not at all in the basins and on the plain),
+under the belt, slowly elsewhere, and hardly at all in the middle of a basin
+or at the shore of the coastal plain, which get a tenth and a twentieth of
+what the same ground would get elsewhere),
 routes the water over it, and lets every river cut down:
 
     dz/dt = U - K sqrt(A) S
@@ -66,15 +69,23 @@ knows which layer is at the surface.
 **3. Water** (`landwater::make_water`).
 
 - *Lakes* are scooped where ice would have left them: two to five stretches
-  of upland valley deepened along the stream, the floor below the lip at the
-  lower end so that the water stands the whole length (4 to 11 km long, 5 to
-  10 square km), and on some islands a broad hollow in a lowland basin, its
-  shore drawn in lobes and bays (85 to 225 square km). The chance drawn for
-  that is `lowland_lake`, 0.35, but a hollow scooped beside the coast is
-  taken by the sea and is a bay: ten of forty seeds have the lake. Every
-  hollow is then filled to its spill point; one of 0.75 square km or more is
-  kept as a lake with its level, depth, outlet and outflow (the flow of the
-  lake's nodes that drain out of it), and smaller ones silt up.
+  of upland valley deepened along the stream (in valleys draining 12 to 150
+  square km, 100 to 520 m up and falling gently, no two within 28 km), the
+  floor below the lip at the lower end so that the water stands the whole
+  length, and on some islands a broad hollow in a lowland basin, its shore
+  drawn in lobes and bays (86 to 223 square km on seeds 1 to 23). A trough
+  is drawn 4 to 11 km long, but stops short where the valley comes down to
+  60 m or has fallen 60 m, and is not dug at all if that leaves less than
+  2 km. The upland lakes come out mostly 4 to 10 square km, with a few of 1
+  to 3 and of 10 to 16 (seeds 1 to 23; some of the smallest are hollows
+  the erosion left, not troughs). The chance drawn for the lowland lake is
+  `lowland_lake`, 0.35, but a hollow scooped beside the coast is taken by
+  the sea and is a bay: ten of forty seeds have the lake. These are the
+  first things done to the finished land; the sea then rises and the big
+  rivers plane their floors (below), and only after that is every hollow
+  filled to its spill point. One of 0.75 square km or more is kept as a
+  lake with its level, depth, outlet and outflow (the flow of the lake's
+  nodes that drain out of it), and smaller ones silt up.
 - *The sea rises* at the end until `land_fraction` (0.58, the port's) of the
   cells are land. The lower valleys drown into estuaries, which is how real
   ones were made.
@@ -83,16 +94,22 @@ knows which layer is at the surface.
 - *Rain* comes in with the wind off the sea, falls more as the air is pushed
   up over high ground, and less beyond it: `rain` (900 mm) on the windward
   coast, most on the windward slopes of the belt, least in the rain shadow
-  (on every island tested the wettest cell has more than twice the rain of
-  the driest).
+  (the wettest land cell has four to six times the rain of the driest, 3.98
+  to 6.14 times on seeds 1 to 23, the driest 350 to 500 mm a year and the
+  wettest 1,950 to 2,250; the test asks for more than twice).
 - *Runoff* is a monthly water balance in each cell: winter is wetter, summer
   takes more back, the soil holds 100 mm, and what is over runs off at once
   or seeps out slowly. It is kept by cell and month.
 - *Flow*: the year's runoff gathered down the drainage gives every node a
   mean flow in cubic metres a second.
 - *Marsh and flood plain*: every node knows its height above the water it
-  drains to. Level ground within a metre of a lake, the sea or a slack river
-  is marsh or fen; a planed valley floor is flood plain.
+  drains to (a lake, the sea, or the first stream of 1.5 cubic metres a
+  second it meets). Level ground, falling no more than 2 in 1,000, within
+  0.9 m of that water is marsh or fen where the water is a lake or the sea,
+  where the ground is less than 6 m above the sea, or where it is a planed
+  valley floor beside a slack river (one falling less than 4 in 10,000).
+  The rest of a planed floor, and any ground within 3 m of a stream, is
+  flood plain.
 
 **4. River courses** (`landwater::meander`). Every stream of `stream_flow`
 (0.3 cubic metres a second) or more is traced as a line from its source to
@@ -102,13 +119,15 @@ rate set by the curvature of the bend there and, more strongly, by the bends
 just upstream, so bends grow, travel down the valley, and at last meet and
 cut themselves off, leaving an oxbow. A reach steeper than 4 in 1,000, or a
 stream of less than 1 cubic metre a second, stays where the erosion put it;
-a bend cannot climb the valley side (the ground must lie within a few metres
-of the water); a reach on gravel too steep to hold one channel is marked
-braided. The biggest rivers are moved first, and a tributary is led to where
-its river now runs. Each point of a line has a width, a flow and a water
-level that never rises on the way down. A river's width is 11 times the
-square root of its flow in metres, about two and a half times the textbook's,
-so that a river and its bends can be seen on a map of 2 km cells.
+a bend cannot climb the valley side (it moves freely where the ground is
+within 3 m of the water and not at all where it is 8 m above); a reach on
+gravel too steep to hold one channel is marked braided. The biggest rivers
+are moved first, and a tributary is led to where its river now runs. Each
+point of a line has a width, a flow and a water level that never rises on
+the way down. A river's width is 11 times the square root of its flow in
+metres, about two and a half times the textbook's, so that a river and its
+bends can be seen on a map of 2 km cells; a braided reach is given 2.2
+times that.
 
 **5. Cells** (`landcells::make_world`). The economy's `World` is filled from
 the fine grid:
@@ -128,22 +147,33 @@ the fine grid:
   1,000, and where a quarter of the cell is under a lake.
 - *Tideways*. The sea's rise drowned the lower valleys into inlets narrower
   than a cell, so a river usually meets the tide a few cells inside what the
-  cells call land (100 to 200 land cells an island have tidewater in them
-  and no cell of sea beside them). Left at that, no navigable river reached
-  the coast on twelve islands of sixteen, and the first towns had no port.
-  So the cells follow the tide: every cell with tidewater knows the
-  neighbour its inlet runs on into (always one nearer the open sea, counted
-  in fine steps over the water), and the flow that has come into the inlet
-  from there up. Where that is a river's flow or more the cell is an
-  `estuary` cell: it is a `river`, its `down` goes with the tide, and its
-  `discharge` and `acc` are the tideway's. Where it is a navigable river's
-  flow the cell is `navigable` (tidewater is level) and it is `coast`: ships
-  come up it. Each island has 20 to 60 such cells, and with them nine tenths
-  of its navigable water is joined to the open sea.
+  cells call land (100 to 200 land cells an island, give or take, have
+  tidewater in them and no cell of sea beside them: 99 to 207 on seeds 1
+  to 23). Left at that, no navigable river reached the coast on twelve
+  islands of sixteen, and the first towns had no port. So the cells follow
+  the tide: every cell with tidewater knows the neighbour its inlet runs on
+  into (always one nearer the open sea, counted in fine steps over the
+  water), and the flow that has come into the inlet from there up. Every
+  such cell takes the larger of its own largest stream and that tideway
+  for its `discharge` and `acc`, and its `down` goes with the tide unless
+  its own stream is the bigger and leaves the cell by another way. Where the
+  tideway is a river's flow or more the cell is an `estuary` cell, and so a
+  `river`; each island has 20 to 60 of them (21 to 59 on seeds 1 to 40).
+  Where it is a navigable river's flow the cell is `navigable` (tidewater is
+  level) and it is `coast`: ships come up it. Fewer cells are that, 15 to
+  40 an island (15 to 39 on seeds 1 to 23, counting the estuary cells that
+  are both navigable and coast, which may take in a few made navigable by
+  their own river). With them nine tenths of an island's navigable water is
+  joined to the open sea by navigable water: 0.90 of it on seeds 1 to 12
+  taken together and 0.93 on 1 to 40, though island by island it runs from
+  0.74 (seed 11; seed 7 has 0.75) to 0.97.
 - *The resource fields come from the land*: corn land from height, slope,
   rain and the rock's soil, best on the flood plain's silt where it is not
   marsh; grass where it is wet, cool or steep and on the water meadows;
-  woodland from rain and height, none above the tree line; stone where hard
+  woodland from rain and height, thinning between 380 and 760 m to a
+  third or less of full woodland above that (0.30 to 0.32 at most on the
+  first eight seeds, on 1 to 29 such cells an island; a tree line, but not
+  a bare one); stone where hard
   rock is laid bare (scarps, gorges, the belt); clay in the vales and on the
   alluvium; coal in the coalfields, richer where the land has been worn down
   nearly to the seam; ore in the belt, and ironstone with the coal.
@@ -151,18 +181,26 @@ the fine grid:
   about, navigable water, the coast, 17 cells apart) with the places towns
   really grew counted in: the head of an estuary (the innermost cell of a
   river's tideway, which is the lowest place it can be bridged and as far
-  as a ship can come), a confluence on navigable water, a lake's outlet, a
-  gap through the hills. Of the first six towns on twelve islands, 30 stand
+  as a ship can come, or the last cell of a river that runs straight out
+  into the open sea), a confluence on navigable water, the outlet of a lake
+  of 3 square km or more, a gap through the hills. Each adds 0.4 times its
+  strength to the port's score: 0.1 to 0.3 for an estuary's head, by the
+  size of its river, 0.5 for a confluence or a gap, 0.8 for a lake's
+  outlet. Of the first six towns on twelve islands, 30 stand
   at an estuary's head, 27 at a confluence, 7 at a lake's outlet and 8 on
-  plain ground; none took a gap, though each island has 4 to 24 cells that
-  count as one. The first town of all is nearly always at the head of a
+  plain ground; none took a gap, though each island has 5 to 24 cells that
+  count as one (4 to 24 on forty seeds). The first town of all is nearly always at the head of a
   large estuary.
 
 ### A lake cell is water
 
-A cell more than half under a lake is water to the economy: `land` is false
-and `terrain` is `SEA`, so nothing is grown or built there, no town stands on
-it and no railway crosses it, and boats cross it at the sea's rate. Its
+A cell that is not land (less than half of it dry) and has more of its
+water in a lake than in the sea is a lake cell, and water to the economy:
+`land` is false and `terrain` is `SEA`, so nothing is grown or built there,
+no town stands on it and no railway crosses it, and boats cross it at the
+sea's rate. (So a lake cell may have well under half its ground under the
+lake: five nodes of sixteen will do, if the rest is dry ground and a little
+sea. Its `h` is the lake's level.) Its
 shore is not `coast`: that is tidewater, the sea's shore and the tideways,
 which emigrants and (when it comes) foreign trade leave from.
 `Landform::lake` says which water cells are lake, `Landform::shore` which
@@ -178,8 +216,10 @@ it stands:
   (0.6) and not a beach's (4). And a lake is not an arm of the sea: where a
   lake cell and a sea cell lie side by side (none does on forty seeds, but
   nothing forbids it) the load is carried over the bar at a beach's cost.
-- `sim::init_before_firms`: a lake's shore counts as being by the water,
-  which works like.
+- `sim::init_before_firms`: a lake's shore counts as being by the water, as
+  the coast and a river cell do, which makes a town's cell there two and a
+  half times as likely to be looked at as the site of a new works
+  (`firms::candidate_cells`).
 
 A ribbon lake a kilometre wide never fills half a cell, so most upland lakes
 are not water cells: they are a share of their cells (`lake_share`), and
@@ -246,8 +286,10 @@ or month whose runoff is `mult[c]` times the average in each cell (the
 harvest's wet and dry years, by district): flow is runoff gathered
 downstream, so a dry district upstream lowers the river all the way to the
 sea. `discharge_month(&world, m)` gives the average year's flow in month m.
-On seed 1 the largest river runs more than 1.3 times higher in January than
-in July.
+The largest navigable river runs six to eight times as high in January as
+in July on seeds 1 to 8 (5.7 to 8.7 times on 1 to 23), since summer's
+runoff is little more than what seeps out of the ground; the test asks only
+for 1.3 times, on seeds 1 and 6.
 
 **In `run.bin`**, only when the mechanism is on (`landcells::static_arrays`
 is the list, with shapes): `land_height`, `land_flow` (float32) and
@@ -307,9 +349,19 @@ nothing of the land runs after the island is made. A sweep's runs take 3.5
 to 6 seconds longer on the new island than on the old (20 to 22 against
 17), which is eight islands being made at once.
 
+These times were taken when the page was written and the machine was quiet
+or nearly so; they cannot be had again on a busy night. On 12 November,
+with some thirty other builds and sweeps running, `land_stats` on seeds 1
+to 12 took 3.4 to 4 seconds an island (1.7 for the relief, 2.5 for the
+water, 0.04 for the cells, and one island 11 s), and seed 7 took 21 s at
+`fine = 6` and 14 s at 8, which says more about the machine that night than
+about the land.
+
 ## Twelve islands in numbers
 
-`land_stats`, seeds 1 to 12:
+`land_stats`, seeds 1 to 12 (`cargo run --release -p isostate-core
+--example land_stats -- 1-12`; run again on 12 November against the code
+of that day, and every figure in both tables came back):
 
 | | least | mean | most |
 |---|---|---|---|
@@ -330,10 +382,10 @@ Against the port's generator, the same seeds (sums over land cells):
 | hill cells | 1,825 | 1,501 | 0.82 |
 | mountain cells | 680 | 620 | 0.91 |
 | fertility | 3,185 | 3,182 | 1.00 |
-| cells with fertility over 0.5 | 3,393 | 4,178 | 1.23 |
+| cells with fertility over 0.5 | 3,393 | 4,179 | 1.23 |
 | pasture | 3,055 | 3,023 | 0.99 |
 | woodland potential | 3,940 | 3,909 | 0.99 |
-| stone | 1,600 | 1,635 | 1.02 |
+| stone | 1,600 | 1,634 | 1.02 |
 | clay | 1,486 | 1,491 | 1.00 |
 | coal | 210 | 197 | 0.94 |
 | cells with coal | 475 | 412 | 0.87 |
@@ -358,6 +410,17 @@ the water: nearly all on a navigable river or tideway and most of them
 ports, where the port's island has two or three of each.
 
 ## What the sweeps showed
+
+*Measured under older rules.* Everything in this section and the next was
+measured on the game's rules of the day it was written, and none of it can
+be read from today's sweeps: with the switch off under both sets of rules,
+their eight islands are the port's. The rules round the land have moved
+since. For scale only, today's sweep of seeds 1 to 8 with six families
+(`merged-game-f6-l`, 12 November, the land off) has 732 thousand people in
+1900, 17.8 towns, a real wage 2.60 times 1750's and 2,248 km of railway,
+where the "1-8, six" column below began from 641 thousand, 17.0 towns, 2.72
+and 2,522 km on the port's island. What moved together then is a guide to
+what the land does; the levels are not today's.
 
 Sixteen seeds under the game's rules, the new land against the old, without
 families and with six: seeds 1 to 8, which the land was tuned beside, and 9
@@ -447,7 +510,9 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
    is drawn as sea, which for an upland lake is a pit down to sea level; and
    it knows nothing of a tideway, so a town at an estuary's head is a port
    with no sea in sight. Teaching it `land_height`, the river lines, the
-   lakes and the tideways is the next helper's work.
+   lakes and the tideways is the next helper's work; the viewer still reads
+   none of it on 12 November, and `docs/probes/dx-land-view.md` measures
+   what it would take and lays the work out in stages.
 2. **Tests of other mechanisms are written to the port's island under the
    game's rules.** With the switch thrown for a trial on the island as it
    now is, one fails and the rest pass: `tests/chronicle.rs`
@@ -465,7 +530,10 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
    chronicle's test had been given fifty years to find its five foundings
    in place of forty when the canals came, and on the new land it finds
    them. That is luck as much as soundness, and the next change to the land
-   may undo it.
+   may undo it. The trial has not been made again since the saved games,
+   the mines under the commons and the books of account came in, so it is
+   not known whether every test passes with the switch thrown today (the
+   comment above the switch in `params.rs` says they do, from that trial).
 3. **It had not been run beside the mines and the canals**, which were tuned
    on the old island. It has now ("On the integration branch"): it stands,
    and what it does to each is written there. The water industry and the
@@ -503,12 +571,15 @@ a navigable tideway is crossed at a port's cost with no town there, every
 other shore at a beach's, and a lake cell set beside a sea cell is not one
 water with it; and thirty years under the game's rules with six families
 on the new land conserve money every month, come out the same twice, and
-write the land into `run.bin`. The golden test passes untouched, and a port
-run of seed 3, with and without families, writes the files it wrote before
-the land was added (`series_monthly.csv`, `events.json`, `params.json`).
+write the land into `run.bin`. The golden test passes untouched. When the
+land was added, a port run of seed 3, with and without families, was seen
+to write the files it wrote before (`series_monthly.csv`, `events.json`,
+`params.json`); that was a check made once by hand, not a test.
 
 `examples/land_check.rs` on seeds 1 to 40: every island has its six towns
-and breaks none of the rules above. With one number at a time set to
+and breaks none of the rules above (run again on 12 November: so it
+still is, with no lake cell beside the sea on any of the forty). With one
+number at a time set to
 something silly on seeds 1 and 2 (`fine` 1, 3, 8 and 100; `land_fraction`
 0.2, 0.9 and 1; `relief` 0 and 3,000; no erosion steps; `erodibility` 0 and
 5; `deposition` 0 and 3; `creep` 0 and 1; `max_slope` 0; `upland_lakes` 0
@@ -569,6 +640,15 @@ families: `land-before` and `land-after` (seeds 1 to 6, the switch off),
 each on and off, 48 runs), `land-x-timing` and `land-x-timing6`.
 `examples/land_canals.rs` says where the canals of a run lie with respect to
 the island's water.
+
+The saved games, the mines under the commons and the books of account came
+in after this, and the new land has not been run again since. The port's
+side of the table below is still close to today's: the sweep of 12 November
+on seeds 1 to 8 (`merged-game-f6-l`, the land off) has 732 thousand people
+in 1900 for the table's 726, 17.8 towns for 17.2, a real wage of 2.60 for
+2.61, 2,248 km of railway for 2,254, 892 km of canal for 903, 0.125 of all
+hands carting in 1750 for 0.127 and 0.4 famine years for 0.4; those are
+eight seeds against sixteen. The new land's side cannot be read from it.
 
 **The merge.** Four places where the land and the mechanisms merged since
 had each added lines at the same spot: the end of `Params` and of its two
@@ -777,7 +857,8 @@ one; the passive player and the founder first to fourth, as on the port's.
   down, however narrow the inlet.
 - **Sixteen nodes are few** for a cell's slope, relief and shares. The
   thresholds are tuned to `fine = 4` and move with it.
-- **Platform maths.** The plan uses `exp`, `sin` and `powf`, so another
+- **Platform maths.** The plan and the water use `exp`, `sin`, `cos`,
+  `atan2`, `powf` and `ln`, so another
   machine may round a last digit the other way and grow a different island
   from the same seed, as the golden test's page already warns of the port.
 - **The old viewer's `river` byte** is 1 plus 20 times log2 of `acc`, and
