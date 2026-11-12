@@ -3,7 +3,7 @@
 //! asked a field laid over it as a colour ramp.
 //!
 //!     cargo run --release -p isostate-core --example land_picture -- --seeds 1-12 --out DIR
-//!         [--field rain|flow|fertility|pasture|forest|rock|clay|coal|ore|wetness|power|terrain|geology|basin]
+//!         [--field rain|flow|fertility|pasture|forest|rock|clay|coal|ore|wetness|power|terrain|geology|basin|wet|navigable]
 //!         [--zoom X,Y,WIDTH]   a window WIDTH cells wide about cell (X, Y)
 //!         [--px N]             picture width in pixels (960)
 //!         [--set NAME=VALUE]   any of the land's numbers, as often as wanted
@@ -158,6 +158,24 @@ fn field_colour(w: &World, lf: &Landform, name: &str, c: usize, node: usize) -> 
         "coal" => ramp(&heat, w.coal[c]),
         "ore" => ramp(&heat, w.ore[c]),
         "terrain" => [[0.0, 0.0, 0.0], [150.0, 200.0, 120.0], [215.0, 190.0, 120.0], [150.0, 120.0, 110.0]][w.terrain[c] as usize],
+        // the fine grid's wet ground: flood plain pale, marsh dark; dry ground as it is
+        "wet" => match lf.wet[node] {
+            1 => [215.0, 225.0, 150.0],
+            2 => [50.0, 140.0, 130.0],
+            _ => return None,
+        },
+        // the cells boats use: a tideway's, a navigable river's, and a river too small for them
+        "navigable" => {
+            if lf.estuary[c] && w.navigable[c] {
+                [150.0, 60.0, 160.0]
+            } else if w.navigable[c] {
+                [40.0, 80.0, 200.0]
+            } else if w.river[c] {
+                [140.0, 190.0, 235.0]
+            } else {
+                return None;
+            }
+        }
         "geology" => [
             [150.0, 110.0, 130.0],
             [235.0, 205.0, 120.0],
