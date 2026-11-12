@@ -1,7 +1,7 @@
 # dx-towns: town ground, churn, the urban share, and a kept urban layer
 
 
-Worktree `C:/Users/wilso/Documents/GitHub/econsimgame/.claude/worktrees/wf_b38216ce-d6f-9`, branch `night/dx-towns`, commit `7677f96` (measuring only, not for merging). Line numbers are those of unmodified `rust-3d`. Seeds 3, 7, 11, 21 unless "8 seeds" (adds 1, 5, 13, 17). All runs without families unless stated; a check with six families on seeds 3 and 7 gave the same picture.
+Measured in a helper's worktree, branch `night/dx-towns`, commit `7677f96` (measuring only, not for merging). Line numbers are those of unmodified `rust-3d`. Seeds 3, 7, 11, 21 unless "8 seeds" (adds 1, 5, 13, 17). All runs without families unless stated; a check with six families on seeds 3 and 7 gave the same picture.
 
 Probes: `crates/isostate-core/examples/probe_towns.rs` (one CSV row a year per seed; `probe_towns OUT_DIR SEEDS "k=v;k=v"`), `probe_fabric.rs`, `probe_cell.rs`; helpers in `probe_tools/` (`run_variants.py`, `cmp.py`, `decades.py`, `summ.py`); outputs in `probe_out/` (uncommitted). Every switch is a field of `Params::hack` (`params.rs`), off by default. With all off, the probe CSVs are identical to those from the unpatched code and `cargo test --release -p isostate-core` passes.
 

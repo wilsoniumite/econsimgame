@@ -2,14 +2,17 @@
 // any zoom, while Bevy's lighting, shadows, ambient occlusion and fog work as
 // for any StandardMaterial.
 //
-// Each 2 km cell has a mix of two land classes for the year: mix_a, mix_b and
-// mix_s, the share of mix_a in 255ths. The land is divided into fields by the
-// field system of fields.rs, and every parcel of fields takes one class by the
-// rule of world.rs: the same integer hash, value noise, warp and quantile table,
-// looked up at the parcel's own point, with the lower class number always taking
-// the low noise values. The trees and houses that scatter.rs places with that
-// rule therefore stand on matching ground, and land classes change only at
-// hedge lines.
+// The land is divided into fields by the field system of fields.rs, repeated
+// here, and every parcel of fields has one class for the year, which world.rs
+// decides (year_land) and hands over in a texture with a texel for each
+// parcel. So the trees and houses that scatter.rs places by the same table
+// stand on matching ground. What is finer than a parcel is worked out here
+// and repeated on the CPU: the edges of wood and heath, which lean to and fro
+// across a parcel's side, and the glades in the woods.
+//
+// From far off the ground is drawn as a map-maker would draw it: the woods by
+// their canopy, the relief shaded, the rivers as threads that keep a pixel or
+// two of width, the shore ruled with sand.
 //
 // Colours are mixed in sRGB, as the old CPU painter did, and turned linear at
 // the end.
@@ -39,20 +42,30 @@ struct PatchworkParams {
     overlay_soft: f32,
     // 1 draws an ink line where the overlay's regions meet
     overlay_lines: f32,
-    // the 257 quantiles of the patch noise, four to a vector
-    quant: array<vec4<f32>, 65>,
+    // the first block of the parcel textures along each axis (world.rs Land)
+    block_i0: i32,
+    block_j0: i32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
-// per cell, this year: mix_a, mix_b, mix_s, town density
-@group(constants::MATERIAL_BIND_GROUP) @binding(101) var year_cells: texture_2d<f32>;
-// per cell, fixed: terrain class (0 sea, 1 lowland, 2 hills, 3 mountains), how
-// many times its parcels are cut into fields, and the year its open fields are
-// enclosed, less 1750 (0 if they never were open)
-@group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_cells: texture_2d<f32>;
+// per parcel (eight texels in a row for each block of the field system), this
+// year: its class, how wooded it is (128 and up inside a wood, deeper as it
+// rises; below that, other open land as it comes near to being wood), and the
+// town density of its cell
+@group(constants::MATERIAL_BIND_GROUP) @binding(101) var year_parcels: texture_2d<f32>;
+// per parcel, fixed: how many times it is cut into fields (the low four bits)
+// and its terrain class (0 sea, 1 lowland, 2 hills, 3 mountains; the high
+// four); the year its open fields are enclosed, less 1750 (0 if they never
+// were open); how much of its arable is under grass; the tone of its soil
+@group(constants::MATERIAL_BIND_GROUP) @binding(102) var fixed_parcels: texture_2d<f32>;
 // per cell, the map overlay (overlay.rs): a tint, and in alpha the region the
 // cell belongs to, 0 for none (the sea, which is left alone)
 @group(constants::MATERIAL_BIND_GROUP) @binding(104) var overlay_cells: texture_2d<f32>;
+// the rivers for the far view, sixteen texels to a cell: how far the spot is
+// from the nearest river's middle (in quarter cells) and how wide that river
+// is (its half width over 0.06 of a cell)
+@group(constants::MATERIAL_BIND_GROUP) @binding(105) var river_far: texture_2d<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(106) var river_far_sampler: sampler;
 
 // The land's colours, from the look file (look.rs Land, in the same order), in
 // sRGB as they are mixed here.
@@ -125,6 +138,13 @@ struct LandPaint {
     beach_wet: vec4<f32>,
     beach: vec4<f32>,
     shingle: vec4<f32>,
+    soil_light: vec4<f32>,
+    soil_red: vec4<f32>,
+    rough_grass: vec4<f32>,
+    wood_canopy: vec4<f32>,
+    river_thread: vec4<f32>,
+    shore_far: vec4<f32>,
+    wood_canopy_autumn: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
@@ -155,8 +175,8 @@ const TAU: f32 = 6.2831853;
 const SUN_XZ: vec2<f32> = vec2<f32>(-0.682, 0.731);
 
 // ------------------------------------------------------------------ the CPU rule
-// hash2, hash3, vnoise, warp_raw, sub_raw and the field system are world.rs
-// and fields.rs line for line; keep them in step. WGSL u32 arithmetic wraps like
+// hash2, hash3, vnoise and the field system are world.rs and fields.rs line
+// for line; keep them in step. WGSL u32 arithmetic wraps like
 // Rust's wrapping_mul, so the hashes match bit for bit.
 
 fn hash2(x: i32, y: i32, s: i32) -> f32 {
@@ -189,20 +209,6 @@ fn vnoise(x: f32, y: f32, s: i32) -> f32 {
     let c = hash2(ix, iy + 1, s);
     let d = hash2(ix + 1, iy + 1, s);
     return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2.0 - 1.0;
-}
-
-fn warp_raw(p: vec2<f32>) -> vec2<f32> {
-    let wx = p.x + 0.40 * vnoise(p.x * 0.7, p.y * 0.7, 5) + 0.15 * vnoise(p.x * 2.3, p.y * 2.3, 9);
-    let wy = p.y + 0.40 * vnoise(p.x * 0.7 + 31.7, p.y * 0.7 + 17.3, 7) + 0.15 * vnoise(p.x * 2.3 + 5.1, p.y * 2.3 + 9.7, 13);
-    return vec2<f32>(wx, wy);
-}
-
-fn sub_raw(p: vec2<f32>) -> f32 {
-    return vnoise(p.x * 1.7, p.y * 1.7, 31) + 0.45 * vnoise(p.x * 3.9, p.y * 3.9, 37);
-}
-
-fn quantile(i: u32) -> f32 {
-    return ground.quant[i >> 2u][i & 3u];
 }
 
 // --- the field system (fields.rs)
@@ -359,6 +365,30 @@ fn field_key(bl: Block, c: Cut) -> u32 {
     return (bitcast<u32>(bl.i) * 73856093u) ^ (bitcast<u32>(bl.j) * 19349663u) ^ (c.id * 83492791u);
 }
 
+// Where parcel `id` (8 to 15) of block (i, j) lies in the parcel textures
+// (world::Land::index).
+fn parcel_texel(i: i32, j: i32, id: u32) -> vec2<i32> {
+    let lim = vec2<i32>(textureDimensions(year_parcels)) - vec2<i32>(1);
+    return clamp(vec2<i32>(8 * (i - ground.block_i0) + i32(id) - 8, j - ground.block_j0), vec2<i32>(0), lim);
+}
+
+// How far a wood or heath may lean across a parcel's side, in cells, and the
+// step across a side in the block's (u, v) that finds the parcel beyond
+// (fields::FRINGE, fields::across).
+const FRINGE: f32 = 0.085;
+const ACROSS: f32 = 0.004;
+
+// Which way the line between wild land and its neighbour leans at a spot,
+// -1 to 1 (world::fringe).
+fn fringe(p: vec2<f32>) -> f32 {
+    return 0.65 * vnoise(p.x * 4.3, p.y * 4.3, 421) + 0.35 * vnoise(p.x * 10.7, p.y * 10.7, 423);
+}
+
+// Wood outranks heath, and heath the fields (world::YearLand::at).
+fn wildness(cls: u32) -> u32 {
+    return select(select(0u, 1u, cls == HEATH), 2u, cls == WOOD);
+}
+
 // ------------------------------------------------------------------ helpers
 
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
@@ -449,6 +479,17 @@ struct Spot {
     size: f32,
     // an open field, not yet enclosed: strips and no hedges
     open: bool,
+    // the ground's height
+    h: f32,
+    // how much of the parcel's arable is under grass and green crops, and the
+    // tone of its soil, both 0..1
+    ley: f32,
+    soil: f32,
+    // how wooded the parcel is: 0.5 and up inside a wood, deeper as it rises
+    wood: f32,
+    // 0 near, rising to 1 as the view draws so far off that trees and fields
+    // are too small to see one by one
+    far: f32,
 }
 
 // ------------------------------------------------------------------ fields
@@ -462,8 +503,11 @@ struct Look {
 // A field of `crop` (the ten-way choice of the old painter: wheat, wheat,
 // barley, barley, oats, green crop, green crop, hay, fallow, wheat) at phase ph
 // of its own year; k is the field's own random number.
-fn crop_look(crop: u32, ph: f32, k: f32) -> Look {
-    let soil = mix(paint.soil.rgb, paint.soil_winter.rgb, 0.6 * winter(ph));
+fn crop_look(crop: u32, ph: f32, k: f32, tone: f32) -> Look {
+    // the soil of the district: pale on the light lands, red on the marls
+    var earth = mix(paint.soil.rgb, paint.soil_light.rgb, 0.7 * smoothstep(0.55, 0.9, tone));
+    earth = mix(earth, paint.soil_red.rgb, 0.7 * smoothstep(0.45, 0.1, tone));
+    let soil = mix(earth, paint.soil_winter.rgb, 0.6 * winter(ph));
     let stubble = paint.stubble.rgb;
     var canopy = paint.corn_green.rgb;
     var cover = 0.0;
@@ -555,28 +599,42 @@ fn meadow_look(m: u32, ph: f32) -> Look {
     return Look(grass_season(c, ph), 0.0);
 }
 
-// The look of field number `key`: its crop chosen by hash as the old painter
-// did, its own calendar a week or so either way, and its own shade.
-fn field_look(key: u32, pasture: bool, ph: f32) -> Look {
-    let f = u32(hash3(key, 41u, 0u) * 255.0);
+// The look of field number `key`: its crop chosen by hash, grass and green
+// crops as often as the district's share of them (`ley`: grass country and
+// corn country) and corn, with a fallow now and then, for the rest; its own
+// calendar a week or so either way, and its own shade. Pasture is deeper on
+// heavy land and paler on light.
+fn field_look(key: u32, pasture: bool, ph: f32, ley: f32, tone: f32) -> Look {
+    let u = hash3(key, 41u, 0u);
+    let v = hash3(key, 43u, 0u);
     let k = hash3(key, 53u, 0u);
     var look: Look;
     if (pasture) {
-        look = meadow_look(f % 4u, ph);
+        look = meadow_look(u32(u * 4.0) % 4u, ph);
+        look.col *= vec3<f32>(0.94 + 0.12 * tone, 0.95 + 0.1 * tone, 0.97 + 0.04 * tone);
     } else {
-        look = crop_look(f % 10u, fract(ph + 0.06 * (k - 0.5)), k);
+        var crop = 0u;
+        if (u < ley) {
+            // roots, clover, hay
+            crop = select(select(5u, 6u, v > 0.33), 7u, v > 0.6);
+        } else {
+            // wheat, barley, oats, fallow
+            crop = select(select(select(0u, 2u, v > 0.45), 4u, v > 0.73), 8u, v > 0.85);
+        }
+        look = crop_look(crop, fract(ph + 0.06 * (k - 0.5)), k, tone);
     }
     look.col *= 0.955 + 0.09 * fract(k * 7.31);
     return look;
 }
 
 // What a crowd of fields too small to see one by one averages out to.
-fn fields_far(pasture: bool, ph: f32) -> vec3<f32> {
+fn fields_far(pasture: bool, ph: f32, ley: f32, tone: f32) -> vec3<f32> {
     if (pasture) {
-        return 0.5 * (meadow_look(0u, ph).col + meadow_look(2u, ph).col);
+        return 0.5 * (meadow_look(0u, ph).col + meadow_look(2u, ph).col) * vec3<f32>(0.94 + 0.12 * tone, 0.95 + 0.1 * tone, 0.97 + 0.04 * tone);
     }
-    return 0.35 * crop_look(0u, ph, 0.5).col + 0.25 * crop_look(2u, ph, 0.5).col
-        + 0.2 * crop_look(5u, ph, 0.5).col + 0.1 * crop_look(7u, ph, 0.5).col + 0.1 * crop_look(8u, ph, 0.5).col;
+    let grass = 0.6 * crop_look(5u, ph, 0.5, tone).col + 0.4 * crop_look(7u, ph, 0.5, tone).col;
+    let corn = 0.45 * crop_look(0u, ph, 0.5, tone).col + 0.4 * crop_look(2u, ph, 0.5, tone).col + 0.15 * crop_look(8u, ph, 0.5, tone).col;
+    return mix(corn, grass, ley);
 }
 
 // An open field before its parish is enclosed: each furlong ploughed in long
@@ -605,7 +663,7 @@ fn open_field(sp: Spot, pasture: bool) -> vec3<f32> {
         let strip = 0.026;
         let si = floor(x / strip);
         let skey = sp.key * 31u + bitcast<u32>(i32(si)) * 2654435761u;
-        let look = field_look(skey, false, sp.ph);
+        let look = field_look(skey, false, sp.ph, sp.ley, sp.soil);
         c = look.col;
         let fx = fract(x / strip);
         let ridges = cos(TAU * fx * 3.0) * (1.0 - smoothstep(0.25, 0.5, sp.foot * 3.0 / strip));
@@ -613,7 +671,7 @@ fn open_field(sp: Spot, pasture: bool) -> vec3<f32> {
         let balk = band(min(fx, 1.0 - fx) * strip, 0.0018, sp.foot);
         c = mix(c, paint.balk.rgb, 0.8 * balk);
         let lod = smoothstep(1.5, 4.0, strip / max(sp.foot, 1e-5));
-        c = mix(fields_far(false, sp.ph), c, lod);
+        c = mix(fields_far(false, sp.ph, sp.ley, sp.soil), c, lod);
     }
     // the headland round the furlong
     let headland = band(sp.edge, 0.005, sp.foot);
@@ -630,7 +688,7 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
     if (sp.open) {
         return open_field(sp, pasture);
     }
-    let look = field_look(sp.key, pasture, sp.ph);
+    let look = field_look(sp.key, pasture, sp.ph, sp.ley, sp.soil);
     var c = look.col;
     // rows across the field, along one side, fading before they are finer than a pixel
     let r = hash3(sp.key, 47u, 0u);
@@ -650,10 +708,12 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
     c *= 1.0 + look.rows * wave;
     // far away the fields blend into their average
     let lod = smoothstep(1.5, 4.0, sp.size / max(sp.foot, 1e-5));
-    c = mix(fields_far(pasture, sp.ph) * 1.0, c, lod);
+    c = mix(fields_far(pasture, sp.ph, sp.ley, sp.soil), c, lod);
     if (pasture) {
-        // tussocks and wetter hollows
+        // tussocks and wetter hollows; and the higher a pasture lies the rougher
+        // and paler its grass, until it is hard to tell from the moor above it
         c *= 1.0 + 0.06 * vnoise(sp.p.x * 11.0, sp.p.y * 11.0, 83) * detail(11.0, sp.foot);
+        c = mix(c, paint.heath_hill.rgb, 0.42 * smoothstep(0.3, 0.8, sp.h + 0.08 * vnoise(sp.p.x * 1.9, sp.p.y * 1.9, 445)));
     }
     // water meadows on the valley floors: greener, with darker rushes
     c = mix(c, paint.water_meadow.rgb * (1.0 + 0.08 * vnoise(sp.p.x * 9.0, sp.p.y * 9.0, 87)), 0.5 * sp.flood);
@@ -687,6 +747,26 @@ fn fields(sp: Spot, pasture: bool) -> vec3<f32> {
 
 // ------------------------------------------------------------------ other ground
 
+// How open a wood is at a spot, 0 under the trees to 1 in a glade or a ride,
+// for a wood of depth `deep` (0 at its edge to 1 far inside): scatter.rs
+// thins the trees by the same measure (world::glade). Glades are many and
+// wide near a wood's edge and few inside; rides are narrow lanes.
+fn glade(p: vec2<f32>, deep: f32) -> f32 {
+    let q = p + 0.12 * vec2<f32>(vnoise(p.x * 2.1 + 3.3, p.y * 2.1 + 7.1, 431), vnoise(p.x * 2.1 + 9.2, p.y * 2.1 + 1.4, 433));
+    let n = 0.5 + 0.5 * (0.7 * vnoise(q.x * 3.7, q.y * 3.7, 435) + 0.3 * vnoise(q.x * 9.1, q.y * 9.1, 437));
+    let open = smoothstep(0.0, 0.07, n - mix(0.66, 0.8, deep));
+    let ride = 1.0 - smoothstep(0.012, 0.03, abs(vnoise(q.x * 1.3 + 5.5, q.y * 1.3 + 2.5, 439)));
+    return max(open, ride * deep);
+}
+
+// Rough grass and scrub: a glade, a ride, the margin of a wood or a heath.
+fn rough(sp: Spot) -> vec3<f32> {
+    var c = grass_season(paint.rough_grass.rgb, sp.ph);
+    let n = vnoise(sp.p.x * 21.0, sp.p.y * 21.0, 441);
+    let scrub = spots(n, 0.3, 21.0 * sp.foot, detail(21.0, sp.foot), 0.2);
+    return mix(c, paint.wood_shade.rgb, 0.45 * scrub);
+}
+
 fn wood_floor(sp: Spot) -> vec3<f32> {
     let n = vnoise(sp.p.x * 12.0, sp.p.y * 12.0, 81);
     let shade = spots(n, 0.125, 12.0 * sp.foot, detail(12.0, sp.foot), 0.4);
@@ -694,16 +774,30 @@ fn wood_floor(sp: Spot) -> vec3<f32> {
     c = mix(c, paint.wood_spring.rgb, 0.35 * bell(sp.ph, 0.33, 0.12));
     c = mix(c, paint.wood_autumn.rgb, 0.45 * bell(sp.ph, 0.83, 0.12));
     c = mix(c, paint.wood_winter.rgb, 0.5 * winter(sp.ph));
-    return c;
+    let deep = clamp(sp.wood * 2.0 - 1.0, 0.0, 1.0);
+    // from far off the trees are too small to tell apart and the wood reads
+    // by its canopy: darker in its depths, with a slow swell of taller and
+    // lower stands (the stands scatter.rs grows the trees in)
+    let stand = 0.5 + 0.5 * vnoise(sp.p.x * 2.9 + 3.1, sp.p.y * 2.9 + 8.7, 457);
+    var canopy = mix(paint.wood_canopy.rgb, paint.wood_shade.rgb, 0.25 + 0.45 * deep * stand);
+    // in October the broadleaf woods of the low ground are gold, as their
+    // trees are, so that the far view is one tone and not gold specks on
+    // green; the conifers of the high ground keep their colour
+    let broadleaf = 1.0 - 0.75 * smoothstep(0.34, 0.8, sp.h);
+    canopy = mix(canopy, paint.wood_canopy_autumn.rgb, 0.8 * broadleaf * bell(sp.ph, 0.83, 0.12));
+    canopy = mix(canopy, paint.wood_winter.rgb, 0.55 * winter(sp.ph));
+    c = mix(c, canopy, sp.far);
+    // glades and rides, which the trees keep out of
+    let open = glade(sp.p, deep) * (1.0 - smoothstep(0.03, 0.08, sp.foot));
+    return mix(c, rough(sp), open);
 }
 
 fn heath(sp: Spot) -> vec3<f32> {
-    var base = paint.heath.rgb;
-    if (sp.terr == 2u) {
-        base = paint.heath_hill.rgb;
-    } else if (sp.terr == 3u) {
-        base = paint.heath_mountain.rgb;
-    }
+    // lowland heath, the hills' rough grass and the mountains' bare moor, by
+    // the height of the ground and not by the square it lies in
+    let hh = sp.h + 0.08 * vnoise(sp.p.x * 1.9, sp.p.y * 1.9, 445);
+    var base = mix(paint.heath.rgb, paint.heath_hill.rgb, smoothstep(0.32, 0.6, hh));
+    base = mix(base, paint.heath_mountain.rgb, smoothstep(0.9, 1.45, hh));
     // heather flowers in late summer, gorse in spring; brown in autumn and winter
     let bloom = smoothstep(0.52, 0.6, sp.ph) * (1.0 - smoothstep(0.72, 0.8, sp.ph));
     let flower = bell(sp.ph, 0.34, 0.09);
@@ -782,8 +876,11 @@ fn derelict(sp: Spot) -> vec3<f32> {
     return mix(paint.derelict.rgb, paint.derelict_weeds.rgb, 0.6 * weeds);
 }
 
-fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
+fn class_colour(cls0: u32, sp: Spot, margin: bool) -> vec3<f32> {
     var c: vec3<f32>;
+    // the margin a wood or a heath leaves to the fields beside it: no class of
+    // its own (255 falls to the rough grass below)
+    let cls = select(cls0, 255u, margin);
     switch cls {
         case FARM: { c = fields(sp, false); }
         case PASTURE: { c = fields(sp, true); }
@@ -796,8 +893,11 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         case WORKS: { c = works_yard(sp); }
         case URBAN: { c = town(sp); }
         case DERELICT: { c = derelict(sp); }
-        // land that lies in a sea cell: rough coastal grass
-        default: { c = paint.heath.rgb; }
+        case SEA: {
+            // land that lies in a sea cell: rough coastal grass
+            c = paint.heath.rgb;
+        }
+        default: { c = rough(sp); }
     }
     var frost = sp.frost;
     if (cls == URBAN || cls == WORKS) {
@@ -899,61 +999,99 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let foot = max(length(dpdx(p)), length(dpdy(p)));
     let hf = max(fwidth(h), 1e-5);
 
-    // the parcel here, and the point that stands for it (fields::parcel)
+    // the parcel here (fields::parcel)
     let bl = locate(to_block(p));
-    let pc = cut(bl, Cut(vec2<f32>(0.0), vec2<f32>(1.0), 1u), 0u, PARCEL_LEVEL);
-    let centre = from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (pc.lo + pc.hi) * 0.5));
-    // its warped cell decides the mix, as in world::class_at
-    let w = warp_raw(centre);
-    let lim = vec2<i32>(i32(ground.width) - 1, i32(ground.height) - 1);
-    let cell = clamp(vec2<i32>(floor(w)), vec2<i32>(0), lim);
-    let yc = textureLoad(year_cells, cell, 0);
-    let fc = textureLoad(fixed_cells, cell, 0);
-    let ca = u32(round(yc.x * 255.0));
-    let cb = u32(round(yc.y * 255.0));
-    let s = u32(round(yc.z * 255.0));
-    let terr = u32(round(fc.x * 255.0));
-    var lo = min(ca, cb);
-    var hi = max(ca, cb);
-    if (terr == 0u) {
-        lo = SEA;
-        hi = SEA;
-    }
-    // world::pick_class: the lower class takes the low noise values, and it
-    // holds where sub_uniform * 255 < t, its share in 255ths. With the
-    // quantile table that is the same as sub_raw <= quant[t].
-    let t = select(255u - s, s, ca < cb);
-    var cls = lo;
-    if (lo != hi && t < 255u && (t == 0u || sub_raw(centre) > quantile(t))) {
-        cls = hi;
-    }
-
-    if (ground.debug != 0u) {
-        // the exact rule, unlit, for checking against world::class_at
-        var dbg: FragmentOutput;
-        dbg.color = vec4<f32>(srgb_to_linear(debug_colour(cls)), 1.0);
-        return dbg;
-    }
-
-    // the field: the parcel cut as finely as its cell asks (world::field_at)
-    let own = clamp(vec2<i32>(floor(centre)), vec2<i32>(0), lim);
-    let fown = textureLoad(fixed_cells, own, 0);
-    let depth = max(u32(round(fown.y * 255.0)), PARCEL_LEVEL);
-    let open_code = round(fown.z * 255.0);
-    let open = open_code > 0.0 && ground.year < 1750.0 + open_code;
-    let leaf = cut(bl, pc, PARCEL_LEVEL, depth);
-    // distance to its nearest side, through the Jacobian of the block (fields::field)
+    let whole = Cut(vec2<f32>(0.0), vec2<f32>(1.0), 1u);
+    let pc = cut(bl, whole, 0u, PARCEL_LEVEL);
+    // its class this year and what does not change about it, from the parcel
+    // textures (world::Land::index): the CPU decides the class of every
+    // parcel (world::year_land) and the shader only looks it up
+    let pt = parcel_texel(bl.i, bl.j, pc.id);
+    let yp = textureLoad(year_parcels, pt, 0);
+    let fp = textureLoad(fixed_parcels, pt, 0);
+    let own_cls = u32(round(yp.x * 255.0));
+    let fixed_bits = u32(round(fp.x * 255.0));
+    let terr = fixed_bits >> 4u;
+    // the block's Jacobian at the spot, for distances to the sides of its pieces
     let g = bl.a - bl.b + bl.c - bl.d;
     let ju = (bl.b - bl.a) + g * bl.uv.y;
     let jv = (bl.d - bl.a) + g * bl.uv.x;
     let jdet = cross2(ju, jv);
     let det = max(abs(jdet), 1e-6);
+    let su = det / max(length(jv), 1e-6);
+    let sv = det / max(length(ju), 1e-6);
+
+    // Wood and heath do not stop at a parcel's straight side: where one meets
+    // other open land, the line between them leans to and fro about the side
+    // (world::place_at, YearLand::at). The wilder of the two takes the
+    // neighbour's ground where the lean is its way and gives up its own where
+    // it is not, so neither gains. What a wood or heath gives up to a field is
+    // its margin, rough grass and scrub.
+    var cls = own_cls;
+    var margin = false;
+    var wooded = yp.y;
+    if (own_cls >= FARM && own_cls <= HEATH) {
+        let pu0 = bl.uv.x - pc.lo.x;
+        let pu1 = pc.hi.x - bl.uv.x;
+        let pv0 = bl.uv.y - pc.lo.y;
+        let pv1 = pc.hi.y - bl.uv.y;
+        let peu = min(pu0, pu1) * su;
+        let pev = min(pv0, pv1) * sv;
+        let side = min(peu, pev) * BLOCK;
+        if (side < FRINGE) {
+            // the parcel across the nearest side (fields::across)
+            var nuv = bl.uv;
+            if (peu < pev) {
+                nuv.x = select(pc.hi.x + ACROSS, pc.lo.x - ACROSS, pu0 < pu1);
+            } else {
+                nuv.y = select(pc.hi.y + ACROSS, pc.lo.y - ACROSS, pv0 < pv1);
+            }
+            var ni = bl.i;
+            var nj = bl.j;
+            if (nuv.x < 0.0) { ni -= 1; nuv.x = 1.0 - ACROSS; } else if (nuv.x >= 1.0) { ni += 1; nuv.x = ACROSS; }
+            if (nuv.y < 0.0) { nj -= 1; nuv.y = 1.0 - ACROSS; } else if (nuv.y >= 1.0) { nj += 1; nuv.y = ACROSS; }
+            var nb = bl;
+            if (ni != bl.i || nj != bl.j) {
+                nb = Block(ni, nj, nuv, corner(ni, nj), corner(ni + 1, nj), corner(ni + 1, nj + 1), corner(ni, nj + 1));
+            }
+            nb.uv = nuv;
+            let npc = cut(nb, whole, 0u, PARCEL_LEVEL);
+            let ncls = u32(round(textureLoad(year_parcels, parcel_texel(ni, nj, npc.id), 0).x * 255.0));
+            if (ncls != own_cls && ncls >= FARM && ncls <= HEATH && (own_cls >= WOOD || ncls >= WOOD)) {
+                let lean = fringe(p);
+                if (wildness(ncls) > wildness(own_cls)) {
+                    if (side < FRINGE * lean) {
+                        cls = ncls;
+                        wooded = 0.5;
+                    }
+                } else if (side < -FRINGE * lean) {
+                    if (ncls >= WOOD) {
+                        cls = ncls;
+                    } else {
+                        margin = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (ground.debug != 0u) {
+        // the class alone, unlit, for checking against world::class_at
+        var dbg: FragmentOutput;
+        dbg.color = vec4<f32>(srgb_to_linear(debug_colour(cls)), 1.0);
+        return dbg;
+    }
+
+    // the field: the parcel cut as finely as it asks (world::field_at)
+    let depth = max(fixed_bits & 15u, PARCEL_LEVEL);
+    let open_code = round(fp.y * 255.0);
+    let open = open_code > 0.0 && ground.year < 1750.0 + open_code;
+    let leaf = cut(bl, pc, PARCEL_LEVEL, depth);
+    // distance to its nearest side, through the Jacobian of the block (fields::field)
     let du0 = bl.uv.x - leaf.lo.x;
     let du1 = leaf.hi.x - bl.uv.x;
     let dv0 = bl.uv.y - leaf.lo.y;
     let dv1 = leaf.hi.y - bl.uv.y;
-    let su = det / max(length(jv), 1e-6);
-    let sv = det / max(length(ju), 1e-6);
     let eu = min(du0, du1) * su;
     let ev = min(dv0, dv1) * sv;
     let gu = vec2<f32>(jv.y, -jv.x) / jdet;
@@ -987,6 +1125,9 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     );
     let nrm = normalize(in.world_normal);
     let slope = length(nrm.xz) / max(nrm.y, 0.05);
+    // how far off the view is: 0 at play distance, 1 from where the whole
+    // island is seen
+    let far = smoothstep(0.012, 0.05, foot);
     if (wetk < 1.0) {
         // dry sand, darker where the sea has just been; shingle and rock on a steep shore
         var top = mix(paint.beach_wet.rgb, paint.beach.rgb, smoothstep(0.0, 0.012, h));
@@ -998,7 +1139,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             sp.foot = foot;
             sp.ph = ph;
             sp.terr = terr;
-            sp.dense = yc.w;
+            sp.dense = yp.z;
             sp.rock = clamp((slope - 1.15 + 0.3 * n2) / 1.1, 0.0, 1.0);
             // the snow line comes down the hills in winter
             sp.snow = clamp((h - 1.75 + 0.55 * winter_k + 0.12 * vnoise(p.x * 1.7, p.y * 1.7, 31)) / 0.45, 0.0, 1.0) * (1.0 - 0.5 * sp.rock);
@@ -1011,7 +1152,12 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             sp.toward = toward;
             sp.size = size;
             sp.open = open;
-            let lc = class_colour(cls, sp);
+            sp.h = h;
+            sp.ley = fp.z;
+            sp.soil = fp.w;
+            sp.wood = wooded;
+            sp.far = far;
+            let lc = class_colour(cls, sp, margin);
             top = mix(top, lc, landk);
         }
         col = mix(top, col, wetk);
@@ -1028,6 +1174,22 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     col *= 1.0 - 0.15 * contour * landk * open_ground;
     // fine grain, gone before it gets smaller than a pixel
     col *= 1.0 + 0.025 * vnoise(p.x * 23.0, p.y * 23.0, 77) * detail(23.0, foot);
+    // The far view, drawn as a map-maker would. Relief is shaded more
+    // strongly the further off it is seen, so that the uplands do not go
+    // flat: slopes that face the sun lighter, those turned from it darker.
+    let dry = landk * (1.0 - wetk);
+    let facing = clamp(2.4 * dot(nrm.xz, SUN_XZ), -1.0, 1.0);
+    col *= 1.0 + 0.2 * far * facing * dry;
+    // A river keeps its line to the sea as a thread that is never thinner
+    // than a pixel or two, wider for a great river than for a stream; up
+    // close the river's own water is all there is.
+    let rv = textureSampleLevel(river_far, river_far_sampler, p / vec2<f32>(ground.width, ground.height), 0.0);
+    let thread_w = foot * (0.25 + 0.9 * rv.g);
+    let thread = (1.0 - smoothstep(thread_w, thread_w + foot, rv.r * 0.25)) * smoothstep(0.02, 0.045, foot);
+    col = mix(col, paint.river_thread.rgb, 0.85 * thread * dry);
+    // And the shore is ruled with a pale line of sand that holds its width.
+    let shore = (1.0 - smoothstep(0.7, 1.7, abs(h - 0.014) / hf)) * far;
+    col = mix(col, paint.shore_far.rgb, 0.6 * shore);
     // a map overlay, when one is chosen; without one nothing here runs
     if (ground.overlay > 0.0) {
         col = overlay_wash(col, p, foot, landk * (1.0 - wetk));

@@ -169,6 +169,34 @@ pub struct Replay {
     pub filled: usize,
     /// owning family of every cell by year, `[year, cell]`, -1 for none (empty without families)
     pub owner: Vec<i8>,
+    /// the quarries, pits and mines of each year, where the run keeps them as
+    /// workings (the core's docs/rules/mines.md); empty for a run that does not,
+    /// whose pits are read off the land mix as before
+    pub workings: Vec<Vec<Working>>,
+}
+
+/// One working in one year: a pit head on a cell, with what the core says of it.
+#[derive(Clone, Debug)]
+pub struct Working {
+    pub cell: u32,
+    /// its display class (`world::QUARRY` .. `world::COALMINE`)
+    pub class: u8,
+    /// the year it was opened; 0 for one that lies abandoned
+    pub opened: i32,
+    /// mean hands over the year
+    pub hands: f32,
+    /// what it raised over the year, and everything raised there so far (its spoil heap)
+    pub out: f32,
+    pub heap: f32,
+    /// the share of its cell its pit head, yards and spoil take
+    pub surface: f32,
+}
+
+/// The display class of one of the core's sectors: the sectors come in the
+/// order of the display classes, after sea and before heath (farm, pasture and
+/// wood are 1 to 3, the four kinds of diggings 5 to 8).
+pub fn sector_class(sector: usize) -> u8 {
+    if sector < 3 { sector as u8 + 1 } else { sector as u8 + 2 }
 }
 
 /// The bytes of one array, or an error if the file ends before the array does.
@@ -246,6 +274,37 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     if use_.len() != ny * w * h {
         return Err(format!("{path}: its land use has {} values, where {ny} years of {w} by {h} cells need {}", use_.len(), ny * w * h));
     }
+    // the workings, where the run keeps its quarries, pits and mines as such: year k's
+    // are rows mine_first[k] .. mine_first[k + 1] of the other arrays. A run without
+    // them (the port, an older recording) has none, and its pits are read off the mix.
+    let mut workings: Vec<Vec<Working>> = Vec::new();
+    if has("mine_first") {
+        let first = i32s("mine_first")?;
+        let (cell, sector, opened) = (i32s("mine_cell")?, u8s("mine_sector")?, i32s("mine_opened")?);
+        let (hands, out, heap, surface) = (f32s("mine_hands")?, f32s("mine_out")?, f32s("mine_heap")?, f32s("mine_surface")?);
+        // every row has a value in every column, or a row would be read past a column's end
+        let rows = cell.len();
+        if [sector.len(), opened.len(), hands.len(), out.len(), heap.len(), surface.len()].iter().any(|&l| l != rows) {
+            return Err(format!("{path}: the columns of its table of workings are not all {rows} rows long"));
+        }
+        for k in 0..first.len().saturating_sub(1) {
+            let a = (first[k].max(0) as usize).min(rows);
+            let b = (first[k + 1].max(0) as usize).min(rows).max(a);
+            workings.push(
+                (a..b)
+                    .map(|i| Working {
+                        cell: cell[i] as u32,
+                        class: sector_class(sector[i] as usize),
+                        opened: opened[i],
+                        hands: hands[i],
+                        out: out[i],
+                        heap: heap[i],
+                        surface: surface[i],
+                    })
+                    .collect(),
+            );
+        }
+    }
     Ok(Replay {
         w,
         h,
@@ -281,6 +340,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         header,
         filled: ny,
         owner: Vec::new(),
+        workings,
     })
 }
 

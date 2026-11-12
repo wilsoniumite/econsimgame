@@ -20,6 +20,30 @@ pub enum Cover {
     Slate,
 }
 
+/// How a covering lies on a house: thatch steep and deep at the eaves, tile
+/// steep, the heavy stone slates of the hills and the thin blue slate low.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lie {
+    /// how high the ridge stands above the eaves, as a share of the house's depth
+    pub rise: f32,
+    /// how far it oversails the walls at the eaves and at the gable ends
+    pub eaves: f32,
+    pub verge: f32,
+    /// how thick its edge is
+    pub thick: f32,
+}
+
+impl Cover {
+    pub fn lie(self) -> Lie {
+        match self {
+            Cover::Thatch => Lie { rise: 0.72, eaves: 0.0042, verge: 0.003, thick: 0.0034 },
+            Cover::Tile => Lie { rise: 0.58, eaves: 0.003, verge: 0.0022, thick: 0.0012 },
+            Cover::StoneSlate => Lie { rise: 0.46, eaves: 0.0026, verge: 0.0016, thick: 0.0018 },
+            Cover::Slate => Lie { rise: 0.48, eaves: 0.0028, verge: 0.002, thick: 0.0009 },
+        }
+    }
+}
+
 /// A house's roof: what it is covered with and how weathered it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Roof {

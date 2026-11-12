@@ -10,13 +10,14 @@
 //! enclosed country. Some blocks are laid out in long strips.
 //!
 //! The first `PARCEL_LEVEL` cuts make parcels, and a whole parcel takes one land
-//! class: the class rule in world.rs looks up the patch noise and the warped
-//! cell at the parcel's centre, so every boundary between farm, pasture, wood
-//! and town runs along a hedge line. How much further a parcel is cut depends on
-//! the ground (`Ground::field_depth`): small closes round the towns, larger
-//! fields in the lowland and large enclosures on the hills.
+//! class, decided in world.rs (`year_land`) for the parcel's own point, so the
+//! boundaries between arable, pasture and town run along hedge lines; a wood
+//! or a heath leans a little way across a parcel's side (`across`, `FRINGE`).
+//! How much further a parcel is cut is the parcel's own (`Land::depth`): small
+//! crooked closes in old-enclosed country, on the hill margins and round the
+//! towns, large straight fields on the late-enclosed plains and the hills.
 //!
-//! terrain.wesl repeats all of this line for line, in the same order of
+//! terrain.wesl repeats the cutting line for line, in the same order of
 //! operations, so the ground it paints agrees with the trees and houses placed
 //! here. Change one side and you must change the other.
 
@@ -32,7 +33,7 @@ const TURN_S: f32 = 0.324_043_6;
 /// Cuts that make a parcel, the unit that takes one land class.
 pub const PARCEL_LEVEL: u32 = 3;
 /// The most cuts a field can have.
-pub const MAX_DEPTH: u32 = 5;
+pub const MAX_DEPTH: u32 = 6;
 
 pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
@@ -199,6 +200,84 @@ pub fn parcel(p: Vec2) -> (Block, Cut, Vec2) {
     let pc = cut(&bl, Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 }, 0, PARCEL_LEVEL);
     let centre = from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (pc.lo + pc.hi) * 0.5));
     (bl, pc, centre)
+}
+
+/// The block (i, j) with no point chosen in it.
+pub fn block(i: i32, j: i32) -> Block {
+    Block { i, j, uv: Vec2::ZERO, a: corner(i, j), b: corner(i + 1, j), c: corner(i + 1, j + 1), d: corner(i, j + 1) }
+}
+
+/// The eight parcels of a block, in the order of their numbers (8 to 15), each
+/// with the fixed point that stands for it (the same point `parcel` gives) and
+/// its area in square cells.
+pub fn parcels_of(bl: &Block) -> [(Cut, Vec2, f32); 8] {
+    std::array::from_fn(|n| {
+        let mut b = *bl;
+        let mut c = Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 };
+        for lvl in 0..PARCEL_LEVEL {
+            // a point in the corner of the half that is wanted
+            let upper = (n as u32 >> (PARCEL_LEVEL - 1 - lvl)) & 1 == 1;
+            b.uv = if upper { c.hi - Vec2::splat(1e-5) } else { c.lo };
+            c = cut(&b, c, lvl, lvl + 1);
+        }
+        let at = |u: f32, v: f32| bilinear(bl.a, bl.b, bl.c, bl.d, Vec2::new(u, v));
+        let q = [at(c.lo.x, c.lo.y), at(c.hi.x, c.lo.y), at(c.hi.x, c.hi.y), at(c.lo.x, c.hi.y)];
+        let area = 0.5 * (0..4).map(|k| cross(q[k], q[(k + 1) % 4])).sum::<f32>().abs() * BLOCK * BLOCK;
+        (c, from_block(bilinear(bl.a, bl.b, bl.c, bl.d, (c.lo + c.hi) * 0.5)), area)
+    })
+}
+
+/// How far a wood or heath may lean across a parcel's side, in cells
+/// (`world::place_at`; terrain.wesl has the same number).
+pub const FRINGE: f32 = 0.085;
+
+/// How far the block's point is from the nearest side of its parcel `pc`, in
+/// cells, and the parcel across that side with its block. terrain.wesl does
+/// the same in its fragment, step for step.
+pub fn across(bl: &Block, pc: Cut) -> (f32, Block, Cut) {
+    const ACROSS: f32 = 0.004;
+    let g = bl.a - bl.b + bl.c - bl.d;
+    let ju = (bl.b - bl.a) + g * bl.uv.y;
+    let jv = (bl.d - bl.a) + g * bl.uv.x;
+    let det = cross(ju, jv).abs().max(1e-6);
+    let su = det / jv.length().max(1e-6);
+    let sv = det / ju.length().max(1e-6);
+    let (pu0, pu1) = (bl.uv.x - pc.lo.x, pc.hi.x - bl.uv.x);
+    let (pv0, pv1) = (bl.uv.y - pc.lo.y, pc.hi.y - bl.uv.y);
+    let (peu, pev) = (pu0.min(pu1) * su, pv0.min(pv1) * sv);
+    let mut uv = bl.uv;
+    if peu < pev {
+        uv.x = if pu0 < pu1 { pc.lo.x - ACROSS } else { pc.hi.x + ACROSS };
+    } else {
+        uv.y = if pv0 < pv1 { pc.lo.y - ACROSS } else { pc.hi.y + ACROSS };
+    }
+    let (mut ni, mut nj) = (bl.i, bl.j);
+    if uv.x < 0.0 {
+        ni -= 1;
+        uv.x = 1.0 - ACROSS;
+    } else if uv.x >= 1.0 {
+        ni += 1;
+        uv.x = ACROSS;
+    }
+    if uv.y < 0.0 {
+        nj -= 1;
+        uv.y = 1.0 - ACROSS;
+    } else if uv.y >= 1.0 {
+        nj += 1;
+        uv.y = ACROSS;
+    }
+    let mut nb = if ni != bl.i || nj != bl.j { block(ni, nj) } else { *bl };
+    nb.uv = uv;
+    let npc = cut(&nb, Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 }, 0, PARCEL_LEVEL);
+    (peu.min(pev) * BLOCK, nb, npc)
+}
+
+/// How old the enclosures of the country round a spot are, 0 to 1: old ones
+/// bend and are small, planned ones run straight and are large. It is the
+/// measure `to_block` bends the hedges by.
+pub fn old_country(p: Vec2) -> f32 {
+    let q = Vec2::new(TURN_C * p.x + TURN_S * p.y, -TURN_S * p.x + TURN_C * p.y) / BLOCK;
+    smoothstep(-0.3, 0.5, vnoise(q.x * 0.21 + 3.7, q.y * 0.21 + 1.3, 141))
 }
 
 /// A field, with how far the spot is from its nearest edge (in cells) and which
