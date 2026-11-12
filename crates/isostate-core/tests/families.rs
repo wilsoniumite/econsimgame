@@ -279,12 +279,15 @@ fn live_api_reports_every_year_once() {
     let mut firms_seen = BTreeSet::new();
     let mut towns_seen = BTreeSet::new();
     let mut n_events = 0;
-    let mut slowest = 0.0f64;
+    // what each year took to simulate, and what live_year then took to report it
+    let (mut years, mut reports) = (Vec::new(), Vec::new());
     while s.year <= s.end_year {
+        let t = std::time::Instant::now();
         sim::run_year(&mut s).unwrap();
+        years.push(t.elapsed().as_secs_f64());
         let t = std::time::Instant::now();
         let y = live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
-        slowest = slowest.max(t.elapsed().as_secs_f64());
+        reports.push(t.elapsed().as_secs_f64());
         assert_eq!(y.year, s.year - 1);
         assert_eq!(y.index as i64, y.year - s.content.start_year);
         for l in [&y.layers.land_use, &y.layers.mix_a, &y.layers.mix_s, &y.layers.rent, &y.layers.catch] {
@@ -302,7 +305,16 @@ fn live_api_reports_every_year_once() {
     }
     assert_eq!(firms_seen.len(), s.st.F_count);
     assert_eq!(n_events, s.events.len(), "each event is sent once");
-    assert!(slowest < 0.1, "live_year took {:.1} ms", slowest * 1e3);
+    // live_year costs less than a quarter of the year it reports (about a hundredth on a quiet
+    // machine: 1.1 ms against 120). Set against the year measured beside it, so that a busy machine
+    // slows both alike (it used to be held to 100 ms, and took 633 with two dozen builds running),
+    // and the middle year of each, so that one year that was interrupted does not decide it
+    let middle = |v: &mut Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v[v.len() / 2]
+    };
+    let (year, report) = (middle(&mut years), middle(&mut reports));
+    assert!(report < year / 4.0, "live_year took {:.1} ms to report a year that took {:.1} ms to simulate (the middle of {} years)", report * 1e3, year * 1e3, years.len());
     assert!(s.events.iter().filter(|e| e.family == Some(0)).all(|e| e.weight >= 0.6), "the player's own news weighs at least 0.6");
 }
 
