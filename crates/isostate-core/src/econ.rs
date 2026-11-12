@@ -280,6 +280,79 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
     }
 }
 
+/// One month of the economy: demand, the labour market, requests to each town's
+/// market, production, money, stocks, trade, prices, dividends and the issue of
+/// money, then the month's bookkeeping.
+///
+/// The order of what follows is part of the result, and nothing but the order
+/// says so. A read moved across a write below makes a different island without
+/// failing any rule's own test; the game's golden test (`tests/golden_game.rs`)
+/// is what sees it, and the port's (`tests/golden.rs`) only where the port is
+/// touched.
+///
+/// Last month's numbers. These are read before this month writes them, and are
+/// meant to be last month's:
+/// - `st.wage`, until it is replaced near the end. The labour market's bracket
+///   for each town's wage is half to twice it (kept within 0.02 and 500), and
+///   the carters, the navvies and the menders are last month's money divided
+///   by it, each only where it is above nothing (`carting::take_carters`,
+///   `canals::take_navvies`, `roads::take_menders`).
+/// - `st.fill`, until it is replaced beside the wage: the inputs that lift the
+///   land's output (`sector_tfp`) are counted at last month's fill.
+/// - `st.hh_income_prev` and `st.lord_income_prev`, which set this month's
+///   budgets and are written only once this month's incomes are paid.
+/// - `st.f_fill` (`phi_prev`), each works' smoothed fill, read before execution
+///   writes this month's into it.
+/// - `st.cart_bill`, read and emptied by `take_carters` at the start of the
+///   labour market and filled again after it by the works', the land's and the
+///   trade's carting; and each project's `navvy_pay`, set when the project pays
+///   this month and read by the navvies and menders next month.
+///
+/// The labour market. The four takers of hands come in this order before the
+/// wage is sought: carters, sinkers (`mines::take_crews`), navvies, menders.
+/// The order is part of the result, since each of the last three caps itself
+/// on the hands the ones before it left. The merchants' take
+/// (`prices::merchants_take`) is fixed before the wage is sought and does not
+/// depend on it. `st.ex_Lprev` is written as soon as the wage is found.
+///
+/// Within the month:
+/// - Prices are read all month and move only in "prices respond", after trade
+///   and after the books have taken the month: everything bought is paid at the
+///   prices the month began with, and `st.pexp` follows the new price.
+/// - The fill is the stock at the start of the month against all that was
+///   asked of it, so `st.requests` is copied only once every request is in
+///   (households, landlords, works, the land's machines and rails, orders for
+///   capacity, projects). Production joins the stocks after the sales leave
+///   and decay is taken, and trade moves the stocks after that.
+/// - The harvest is half foreseen before the hands are hired
+///   (`harvest::foreseen`) and felt after the machines and rails are asked for
+///   on an average year's yield (`harvest::brought_in`); from there on `Y` is
+///   the crop brought in.
+/// - The sinkers are paid before the royalty is worked out (`mines::pay_crews`)
+///   and counted as hands after `st.ex_labor` is written (`mines::add_crews`).
+/// - The issue of new money is a share of `money_total` counted after the
+///   works', the merchants' and the common fund's dividends have left their
+///   purses and before the households' income is credited (see the money check
+///   in `sim::run_month`).
+/// - `towns::month` reads `st.f_labor` after it is written; `machines::end_month`
+///   comes last because it reads this month's `st.fill` and `st.pexp`.
+/// - The books only watch. `accounts::open_month` opens them before anything
+///   moves, and every other call into `accounts` comes before what it reads is
+///   changed: the trade inside the trade, the month before prices move, the
+///   dividends before the families take theirs out of the list, the incomes
+///   before the purses are credited.
+/// - The families' hooks stand inside the port's own steps (the budgets, the
+///   land's yield, the works' inputs, rents, spending, hired managers,
+///   dividends), each where the port's arithmetic it shares out stands, and
+///   `families::end_month` comes after the purses are credited.
+///
+/// Chance. The month draws no random number and is handed no stream. What
+/// chance it feels was drawn in the year (`sim::yearly`), from the streams of
+/// `rng.rs`: the harvest's weather is drawn by `harvest::yearly` from its own
+/// stream and read here from `st.harvest_mult`. A rule that wants chance in
+/// the month draws it there and keeps it in the state, as the harvest does; a
+/// draw made here, or moved within the year, would change every draw after it
+/// on that stream.
 pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let T = st.T_max;
     let G = C.G;
