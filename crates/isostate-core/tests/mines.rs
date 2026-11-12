@@ -386,6 +386,13 @@ fn a_working_left_idle_is_abandoned_and_one_at_work_is_not() {
     let idle = |r: &RunResult| (0..r.state.mine_opened.len()).filter(|&k| r.state.mine_opened[k] != 0 && r.state.mine_idle[k] > 0).count();
     assert!(open(&hasty) < open(&patient), "{} workings against {}", open(&hasty), open(&patient));
     assert!(idle(&patient) > 0 && idle(&hasty) == 0, "{} standing idle against {}", idle(&patient), idle(&hasty));
+    // none is taken as one: the review counts the year just ended before it
+    // asks, and none read literally would give up the workings at work too
+    // (docs/rules/mines.md, "The numbers")
+    P.mines.idle_years = 0;
+    let none = run(&P);
+    assert_eq!((&none.state.mine_opened, &none.state.mine_left), (&hasty.state.mine_opened, &hasty.state.mine_left));
+    assert_eq!(bits(&none.state.mine_dug.data), bits(&hasty.state.mine_dug.data));
     // nothing with hands was given up: every working that left has an empty year behind it
     let st = &patient.state;
     for k in 0..st.mine_opened.len() {

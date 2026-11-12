@@ -76,7 +76,11 @@ pub struct MineParams {
     /// sinking in this many years (so: `sink / payback` wages a month or more).
     pub payback: f64,
     /// D. A working is abandoned when it has stood idle (under one hand, on a
-    /// year's average) this many years running.
+    /// year's average) this many years running. A year's review counts the
+    /// year just ended before it asks, so 1 gives up a working at the end of
+    /// its first idle year, and 0 is taken as 1: read literally it would give
+    /// up every working at every review, those at work too. The count is
+    /// kept in a byte and stops at 255, so 256 or more is never.
     pub idle_years: u32,
     /// D. How much of this year's promise goes into what a site is believed to
     /// pay (the rest is what was believed last year). 1: this year's prices alone.
