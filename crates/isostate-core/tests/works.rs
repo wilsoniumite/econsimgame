@@ -186,7 +186,7 @@ fn a_family_founds_the_works_it_can_pay_for() {
     let C = s.content.clone();
     // the player's first decision, its trade (any will do)
     let first = families::pending(&s.st, 0);
-    families::decide(&mut s.st, &C, 0, first[0].id, 0).expect("the first trade");
+    families::decide(&mut s.st, &C, &s.params, 0, first[0].id, 0, &mut s.events).expect("the first trade");
     let seat = s.st.families[0].seat;
     let option = |st: &State, cell: usize, m: usize| families::site_options(st, &C, &P, 0, cell).unwrap().swap_remove(m);
     // an empty cell at the seat and a trade the family may found there
