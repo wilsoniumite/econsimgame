@@ -254,6 +254,27 @@ fn the_books_keep_up_with_the_mines_and_the_canals() {
 }
 
 #[test]
+fn the_books_are_ready_for_the_island_made_by_water() {
+    // land (docs/rules/land.md) is off in the game until the viewer can draw
+    // it. With it thrown, thirty years with six families: the books balance,
+    // and the run is the run it is without them.
+    let mut P = params(Rules::Game, 3, 6, 1779, true);
+    P.land = landform::LandParams::game();
+    let on = run(Rules::Game, &P);
+    assert!(on.state.world.landform.is_some(), "the island was made by the land mechanism");
+    assert_eq!(on.state.acct.years.len(), 30);
+    for y in &on.state.acct.years {
+        assert!(y.balance_goods < 1e-9 && y.balance_income < 1e-9 && y.balance_spending < 1e-9, "{}: {} {} {}", y.year, y.balance_goods, y.balance_income, y.balance_spending);
+    }
+    P.accounts.enabled = false;
+    let off = run(Rules::Game, &P);
+    for (k, name) in off.state.series.names.iter().enumerate() {
+        assert_eq!(bits(&off.state.series.data[k]), bits(on.state.series.get(name)), "series {name} moved");
+    }
+    assert_eq!(serde_json::to_string(&off.events).unwrap(), serde_json::to_string(&on.events).unwrap());
+}
+
+#[test]
 fn the_books_balance_under_the_commons() {
     // rents go to the common fund and out again as a dividend to every household
     let mut P = params(Rules::Port, 2, 0, 1760, true);
