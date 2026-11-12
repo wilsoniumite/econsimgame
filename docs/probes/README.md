@@ -151,8 +151,7 @@ an answer was leaned on.
 
 ## The tables of sensitivity (12 November 2026)
 
-Five of the six tables for the pass over all the rules; the sixth, for the works' life cycle
-and carting, is still on its branch. Each on the game's rules at a6ff0ec, with six families,
+The six tables for the pass over all the rules. Each on the game's rules at a6ff0ec, with six families,
 on eight islands and sixteen where a result is leaned on. A run is chaotic: by 1900 a change too
 small to matter moves an island as far as the islands differ from one another
 (`sens-mines.md`), so each table reads a setting's two values against each other, island for
@@ -184,6 +183,13 @@ island, and not against one baseline.
   town ground, its works and output per head late in the century; `found_saving` and the
   donors' limits decide how many towns; `d_old_growth` how much ground they keep. Kept ground no
   longer costs the real wage of 1900 on sixteen islands. Nothing breaks in 864 runs.
+- `sens-works.md`: the works' life cycle and carting, every setting on sixteen islands and
+  taken to its far ends on eight, with two placebos to say what chance gives (584 runs, none
+  failed). Only the year's room (`works.year_room`) moves the economy: how rough the ride is,
+  the early iron and the works' share of late income, not the level of the real wage; carting's
+  `labor` moves the first fifty years about in proportion and not 1900; the rest set the map or
+  the churn. Thirteen runs had one town's wage run away for a few months, early in the century
+  and on the same few islands.
 
 ## A reading (12 November 2026)
 
