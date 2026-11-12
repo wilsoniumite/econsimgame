@@ -784,7 +784,7 @@ fn main() {
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
     // a measuring tool asked for by an environment variable (newland.rs, plan.rs, rails.rs) does its work, and that is all
-    if newland::maybe_report(&r, &cen) || scatter::measure(&r, &g, &slots, &cen) {
+    if newland::maybe_report(&r, &g, &cen) || scatter::measure(&r, &g, &slots, &cen) {
         std::process::exit(0);
     }
     eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());

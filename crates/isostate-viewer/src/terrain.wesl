@@ -53,6 +53,11 @@ struct PatchworkParams {
     // ground then reads as roofs from far off (0 leaves a town's ground
     // exactly as it was drawn before)
     town_kept: f32,
+    // 1 on the new land (newland/ground.rs): its shore is the first third of
+    // a metre above the tide, drawn far steeper than it lies, and a steep
+    // shore there is mud and sand, not shingle (0 leaves every shore exactly
+    // as it was drawn before)
+    soft_shore: f32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
@@ -1346,7 +1351,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     if (wetk < 1.0) {
         // dry sand, darker where the sea has just been; shingle and rock on a steep shore
         var top = mix(paint.beach_wet.rgb, paint.beach.rgb, smoothstep(0.0, 0.012, h));
-        top = mix(top, paint.shingle.rgb, smoothstep(0.5, 1.2, slope));
+        top = mix(top, paint.shingle.rgb, smoothstep(0.5, 1.2, slope) * (1.0 - ground.soft_shore));
         if (landk > 0.0) {
             let winter_k = winter(ph);
             var sp: Spot;

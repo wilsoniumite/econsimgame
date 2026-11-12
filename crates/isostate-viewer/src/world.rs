@@ -100,6 +100,11 @@ pub struct Ground {
     pub water: WaterIndex,
     /// per vertex: 1 on a river's valley floor, falling to 0 off it
     pub floodplain: Vec<f32>,
+    /// On the new land, what the ground has besides: its lakes, the metres
+    /// and the marsh at each vertex, the cells of water that hold dry shore
+    /// (newland/ground.rs). None on the old island, where the three things
+    /// above are the viewer's own invention and there is no more to say.
+    pub laid: Option<crate::newland::Laid>,
 }
 
 /// Land height in world units (one unit = one 2 km cell) from the stored elevation byte.
@@ -288,6 +293,12 @@ pub fn build_ground(r: &Replay) -> Ground {
 }
 
 fn build_ground_inner(r: &Replay) -> Ground {
+    // a run made on the new land has its ground from the core's heights, rivers and lakes
+    // (newland/ground.rs); every other run has it as it always did, below
+    if let Some(land) = &r.land {
+        let made = crate::newland::ground(land, &r.terrain);
+        return finish_ground(r, made.hgt, made.rivers, made.floodplain, Some(made.laid));
+    }
     let (w, h) = (r.w, r.h);
     let land: Vec<bool> = r.terrain.iter().map(|&t| t > 0).collect();
     // how far each sea cell is from land, in cells: wanted only for the depth of the sea bed here
@@ -319,6 +330,16 @@ fn build_ground_inner(r: &Replay) -> Ground {
     let cen = crate::network::centres(r);
     let rivers = rivers::build(r, &cen, &HeightGrid { hgt: &hgt, gw, gh, res });
     let floodplain = rivers::carve(&rivers, &mut hgt, gw, gh, res);
+    finish_ground(r, hgt, rivers, floodplain, None)
+}
+
+/// The ground from its heights, its rivers and its valley floors, however
+/// those were made: the index of water, the patch noise's quantiles and the
+/// lie of the land, which read the finished ground and nothing of its making.
+fn finish_ground(r: &Replay, hgt: Vec<f32>, rivers: Vec<River>, floodplain: Vec<f32>, laid: Option<crate::newland::Laid>) -> Ground {
+    let (w, h) = (r.w, r.h);
+    let (gw, gh) = (w * VRES + 1, h * VRES + 1);
+    let cen = crate::network::centres(r);
     let water = WaterIndex::new(&rivers, w, h);
     // quantiles of the patch noise
     let mut samples: Vec<f32> = Vec::with_capacity(512 * 512);
@@ -330,12 +351,12 @@ fn build_ground_inner(r: &Replay) -> Ground {
     // (total_cmp: a NaN, which the noise should never give, would stop the program with partial_cmp)
     samples.sort_by(|a, b| a.total_cmp(b));
     let quant: Vec<f32> = (0..=256).map(|q| samples[(q * (samples.len() - 1)) / 256]).collect();
-    let land = timed("land", || build_land(r, &Fields { hgt: &hgt, flood: &floodplain, gw, gh, water: &water }, &quant, &cen));
-    Ground { w, h, gw, gh, hgt, quant, land, rivers, water, floodplain }
+    let land = timed("land", || build_land(r, &Fields { hgt: &hgt, flood: &floodplain, gw, gh, water: &water, laid: laid.as_ref() }, &quant, &cen));
+    Ground { w, h, gw, gh, hgt, quant, land, rivers, water, floodplain, laid }
 }
 
 /// A value of a vertex grid at a map position (in cells), between its vertices.
-fn grid_at(a: &[f32], gw: usize, gh: usize, x: f32, z: f32) -> f32 {
+pub(crate) fn grid_at(a: &[f32], gw: usize, gh: usize, x: f32, z: f32) -> f32 {
     let gx = (x * VRES as f32).clamp(0.0, (gw - 1) as f32 - 0.001);
     let gy = (z * VRES as f32).clamp(0.0, (gh - 1) as f32 - 0.001);
     let (i, j) = (gx.floor() as usize, gy.floor() as usize);
@@ -344,9 +365,24 @@ fn grid_at(a: &[f32], gw: usize, gh: usize, x: f32, z: f32) -> f32 {
     (a[k] * (1.0 - tx) + a[k + 1] * tx) * (1.0 - ty) + (a[k + gw] * (1.0 - tx) + a[k + gw + 1] * tx) * ty
 }
 
-/// Terrain height at a map position (in cells).
+/// Terrain height at a map position (in cells). Under a lake of the new land
+/// it is the depth below the lake's water, as a height under nought
+/// (`newland::Laid::asked`): a lake is water to whoever asks, as the sea is,
+/// and the lake's bed is under its sheet where nobody sees it.
 pub fn height_at(g: &Ground, x: f32, z: f32) -> f32 {
-    grid_at(&g.hgt, g.gw, g.gh, x, z)
+    let h = grid_at(&g.hgt, g.gw, g.gh, x, z);
+    match &g.laid {
+        Some(laid) => laid.asked(h, x, z),
+        None => h,
+    }
+}
+
+/// Whether cell `c` has land in it for trees, hedges and farms to stand on:
+/// a land cell of the record, or on the new land a cell of water that holds
+/// dry shore (a lake's, or the land behind a tideway), whose parcels are
+/// given the classes of the land beside them (`build_land`).
+pub fn has_land(r: &Replay, g: &Ground, c: usize) -> bool {
+    r.terrain[c] != 0 || g.laid.as_ref().is_some_and(|l| l.shore_cell[c])
 }
 
 /// How much a spot lies on a river's valley floor, 0..1.
@@ -384,6 +420,8 @@ struct Fields<'a> {
     gw: usize,
     gh: usize,
     water: &'a WaterIndex,
+    /// on the new land, its lakes and its cells of water that hold dry shore
+    laid: Option<&'a crate::newland::Laid>,
 }
 
 /// The parcels of the field system (fields.rs), eight to a block, and what does
@@ -478,7 +516,48 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
     let (bi0, bj0) = (lo.x.floor() as i32 - 2, lo.y.floor() as i32 - 2);
     let (bw, bh) = ((hi.x.ceil() as i32 + 2 - bi0) as usize, (hi.y.ceil() as i32 + 2 - bj0) as usize);
     let n = bw * bh * 8;
-    let height = |x: f32, z: f32| grid_at(f.hgt, f.gw, f.gh, x, z);
+    // the ground's height as `height_at` tells it, and the nearest water as `water_dist` does:
+    // on the new land a lake is water to both
+    let height = |x: f32, z: f32| {
+        let h = grid_at(f.hgt, f.gw, f.gh, x, z);
+        match f.laid {
+            Some(laid) => laid.asked(h, x, z),
+            None => h,
+        }
+    };
+    let water_off = |at: Vec2| {
+        let d = f.water.dist(at);
+        match f.laid {
+            Some(laid) => d.min(laid.lake_dist_at(at.x, at.y)),
+            None => d,
+        }
+    };
+    // On the new land the coast and the lakes are where the heights put them, so a cell the
+    // record calls water (most of it is) can hold dry ground: a lake's shore, the land behind
+    // a tideway. A parcel with dry ground whose own cell is water is given the nearest land
+    // cell within two cells for its own, and so takes that cell's classes; else it would be
+    // painted as the sea's beach. On the old island no parcel's cell is ever changed.
+    let land_cell_near = |wx: f32, wy: f32, c: usize| -> usize {
+        if f.laid.is_none() || r.terrain[c] != 0 {
+            return c;
+        }
+        let (cx, cy) = (wx.floor() as isize, wy.floor() as isize);
+        let mut best = (f32::MAX, c);
+        for y in (cy - 2).max(0)..=(cy + 2).min(h as isize - 1) {
+            for x in (cx - 2).max(0)..=(cx + 2).min(w as isize - 1) {
+                let m = y as usize * w + x as usize;
+                if r.terrain[m] != 0 {
+                    // how far the cell's square is from the spot
+                    let (dx, dy) = ((x as f32 - wx).max(wx - x as f32 - 1.0).max(0.0), (y as f32 - wy).max(wy - y as f32 - 1.0).max(0.0));
+                    let d = dx * dx + dy * dy;
+                    if d < best.0 {
+                        best = (d, m);
+                    }
+                }
+            }
+        }
+        best.1
+    };
     // heights smoothed over a square and a half each way, to tell tops from hollows
     let mut smooth = f.hgt.to_vec();
     box_blur(&mut smooth, f.gw, f.gh, VRES * 3 / 2);
@@ -530,11 +609,14 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
                 let hs = [height(x, y), height(x - e, y - e), height(x + e, y - e), height(x + e, y + e), height(x - e, y + e)];
                 let dry = hs.iter().filter(|&&v| v > 0.02).count() as f32 / 5.0;
                 one.area = quad * dry;
+                if dry > 0.0 {
+                    one.wcell = land_cell_near(wx, wy, wcell) as u32;
+                }
                 let hm = hs.iter().sum::<f32>() / 5.0;
                 let steep = ((height(x + e, y) - height(x - e, y)).hypot(height(x, y + e) - height(x, y - e)) / (2.0 * e)).min(1.6);
                 let top = ((hs[0] - grid_at(&smooth, f.gw, f.gh, x, y)) / 0.12).clamp(-1.5, 1.5);
                 let flood = grid_at(f.flood, f.gw, f.gh, x, y);
-                let stream = (1.0 - fields::smoothstep(0.02, 0.14, f.water.dist(at))) * (1.0 - flood);
+                let stream = (1.0 - fields::smoothstep(0.02, 0.14, water_off(at))) * (1.0 - flood);
                 one.raw = [
                     1.5 * steep + 0.8 * hm + 0.25 * top - 0.7 * flood + 0.35 * stream + 0.42 * country(x, y, 201),
                     1.3 * hm + 0.55 * top - 0.8 * steep - 0.5 * stream - 0.6 * flood + 0.4 * country(x, y, 221),
@@ -1615,9 +1697,14 @@ pub fn above_tree_line(x: f32, z: f32, h: f32) -> f32 {
 }
 
 /// How far a spot is from the water of a river (negative in it); about 0.25 or
-/// more means nowhere near.
+/// more means nowhere near. On the new land a lake's water counts with the
+/// rivers' (`newland::Laid::lake_dist_at`).
 pub fn water_dist(g: &Ground, x: f32, z: f32) -> f32 {
-    g.water.dist(Vec2::new(x, z))
+    let d = g.water.dist(Vec2::new(x, z));
+    match &g.laid {
+        Some(laid) => d.min(laid.lake_dist_at(x, z)),
+        None => d,
+    }
 }
 
 /// The point that stands for the parcel at (fx, fy): its warped cell and its

@@ -8,8 +8,16 @@ use crate::meshkit::Builder;
 use crate::replay::Replay;
 use crate::world::{self, Ground};
 
-/// Cell centres with a little jitter, shared by every line on the map.
+/// Cell centres with a little jitter, shared by every line on the map: where
+/// a cell's roads meet, its town has its market square and its railway
+/// passes. On the new land a land cell's is moved onto the nearest dry and
+/// level spot of the cell (newland/middles.rs): the water there is where the
+/// core put it, and the old island's middle is as often as not in it. On the
+/// old island they are where they always were.
 pub fn centres(r: &Replay) -> Vec<(f32, f32)> {
+    if let Some(land) = &r.land {
+        return land.middles(&r.terrain).to_vec();
+    }
     (0..r.n)
         .map(|c| {
             let (x, y) = ((c % r.w) as f32, (c / r.w) as f32);
@@ -40,9 +48,16 @@ fn drape(g: &Ground, pts2: &[(f32, f32)], lift: f32) -> Vec<Vec3> {
     out
 }
 
-/// The rivers: water and wet banks, lying on each river's own level (see rivers.rs).
+/// The rivers: water and wet banks, lying on each river's own level (see
+/// rivers.rs). On the new land the lakes are with them, each a sheet of the
+/// rivers' water at its level (newland/ground.rs), so that a lake goes to
+/// steel in the depth of winter with the rivers that feed it.
 pub fn rivers(g: &Ground, lk: &Look) -> Builder {
-    crate::rivers::ribbons(&g.rivers, lk)
+    let mut b = crate::rivers::ribbons(&g.rivers, lk);
+    if let Some(laid) = &g.laid {
+        laid.sheets(&mut b, *lk.water.river);
+    }
+    b
 }
 
 pub struct Nets {

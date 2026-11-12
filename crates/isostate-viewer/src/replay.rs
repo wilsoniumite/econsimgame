@@ -474,6 +474,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
                 lake_cell: cell_flag("land_lakecell")?,
                 shore: cell_flag("land_shore")?,
                 estuary: cell_flag("land_estuary")?,
+                middles: Default::default(),
             }))
         }
         Some(_) => {

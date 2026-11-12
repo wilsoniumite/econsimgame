@@ -80,7 +80,8 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
         .into_par_iter()
         .flat_map_iter(|c| {
             let mut out = Vec::new();
-            if r.terrain[c] == 0 {
+            // (on the new land a cell of water may hold dry shore: `world::has_land`)
+            if !world::has_land(r, g, c) {
                 return out;
             }
             let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
@@ -589,7 +590,7 @@ fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
         .into_par_iter()
         .flat_map_iter(|c| {
             let mut out = Vec::new();
-            if r.terrain[c] == 0 {
+            if !world::has_land(r, g, c) {
                 return out;
             }
             let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
@@ -645,8 +646,12 @@ fn farm_spot(g: &Ground, s: Slot) -> Slot {
     let f = world::field_at(g, s.x, s.z);
     let mut out = s;
     if f.edge > 0.045 {
-        out.x += f.toward.x * (f.edge - 0.04);
-        out.z += f.toward.y * (f.edge - 0.04);
+        let (x, z) = (s.x + f.toward.x * (f.edge - 0.04), s.z + f.toward.y * (f.edge - 0.04));
+        // on the new land a field's hedge may run along a tideway or a lake's shore, and the
+        // spot by it lie in the water: the farm then stays where its spot was found dry
+        if g.laid.is_none() || (world::height_at(g, x, z) >= 0.05 && world::water_dist(g, x, z) >= 0.03) {
+            (out.x, out.z) = (x, z);
+        }
     }
     // the house's back to the hedge, its front to the yard
     out.yaw = (-f.toward.y).atan2(f.toward.x) + std::f32::consts::FRAC_PI_2;

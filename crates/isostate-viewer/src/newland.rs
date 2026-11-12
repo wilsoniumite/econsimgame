@@ -12,6 +12,17 @@
 //! Words: a **node** is a point of the core's fine grid, 500 m apart at four
 //! to a cell's side; node (i, j) has its centre at ((i + 0.5) / fine,
 //! (j + 0.5) / fine) in cells. Heights and levels are in metres above the sea.
+//!
+//! What is drawn from it so far (docs/probes/dx-land-view.md, stages 0 and
+//! 1): the ground, its rivers and its lakes (`ground`), and each cell's
+//! meeting place on dry and level ground (`middles`).
+
+mod ground;
+mod middles;
+#[cfg(test)]
+mod on_islands;
+
+pub use ground::{ground, metres, Laid, RELIEF};
 
 use bevy::math::Vec2;
 
@@ -131,6 +142,8 @@ pub struct NewLand {
     pub lake_cell: Vec<bool>,
     pub shore: Vec<bool>,
     pub estuary: Vec<bool>,
+    /// where each cell's roads meet (`NewLand::middles`), worked out the first time it is asked for
+    pub middles: std::sync::OnceLock<Vec<(f32, f32)>>,
 }
 
 /// The core's code for marsh in `NewLand::wet` (`landwater::WET_MARSH`).
@@ -250,7 +263,17 @@ impl NewLand {
             lake_cell: lf.lake.clone(),
             shore: lf.shore.clone(),
             estuary: lf.estuary.clone(),
+            middles: Default::default(),
         }
+    }
+
+    /// Where each cell's roads meet: for a land cell the nearest dry and
+    /// level spot of the cell to where the old island would put it, off
+    /// tidewater, lakes and marsh and back from a river (middles.rs).
+    /// `terrain` is the record's class of each cell, 0 for water. It is
+    /// worked out once, and is the same however often it is asked for.
+    pub fn middles(&self, terrain: &[u8]) -> &[(f32, f32)] {
+        self.middles.get_or_init(|| middles::place(self, terrain))
     }
 
     /// The node a spot in cells lies in.
@@ -283,17 +306,19 @@ impl NewLand {
     }
 }
 
-/// `ISOSTATE_LAND_REPORT=1`: say what the run's land holds and where its
-/// lakes, tablelands, heights and towns are (for pointing a camera at them),
-/// and stop. True if it was asked for.
-pub fn maybe_report(r: &crate::replay::Replay, cen: &[(f32, f32)]) -> bool {
+/// `ISOSTATE_LAND_REPORT=1`: say what the run's land holds, what the ground
+/// drawn from it came to, and where its lakes, tablelands, heights and towns
+/// are (for pointing a camera at them), and stop. True if it was asked for.
+pub fn maybe_report(r: &crate::replay::Replay, g: &crate::world::Ground, cen: &[(f32, f32)]) -> bool {
     if std::env::var_os("ISOSTATE_LAND_REPORT").is_none_or(|v| v.is_empty()) {
         return false;
     }
-    let Some(l) = r.land.as_deref() else {
+    let (Some(l), Some(laid)) = (r.land.as_deref(), g.laid.as_ref()) else {
         println!("land report: this run was made on the old island and has none of the new land's arrays");
         return true;
     };
+    report_ground(g, laid);
+    report_middles(r, l, cen);
     let nodes = l.fw * l.fh;
     let dry: Vec<usize> = (0..nodes).filter(|&n| l.height[n] > 0.0 && l.lake[n] == 0).collect();
     let share = |count: usize| 100.0 * count as f32 / dry.len().max(1) as f32;
@@ -366,10 +391,116 @@ pub fn maybe_report(r: &crate::replay::Replay, cen: &[(f32, f32)]) -> bool {
     }
     let count = |v: &[bool]| v.iter().filter(|&&b| b).count();
     println!("land report: cells: {} are a lake to the record, {} have a lake's shore, {} a river's tideway", count(&l.lake_cell), count(&l.shore), count(&l.estuary));
-    // where each town's roads meet, and what that spot stands on
+    true
+}
+
+/// The ground as drawn: its heights and slopes, the rivers and their beds, the lakes, the marsh.
+fn report_ground(g: &crate::world::Ground, laid: &Laid) {
+    let pct = |v: &mut Vec<f32>, q: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(|a, b| a.total_cmp(b));
+        v[((v.len() - 1) as f32 * q).round() as usize]
+    };
+    let step = 1.0 / crate::world::VRES as f32;
+    let (mut hs, mut ss) = (Vec::new(), Vec::new());
+    // how far the rivers' beds lowered the ground, in metres, where they did
+    let (mut bedded, mut sum, mut most) = (0usize, 0.0f64, 0.0f32);
+    let (mut dry, mut marsh) = (0usize, 0.0f32);
+    for j in 1..g.gh - 1 {
+        for i in 1..g.gw - 1 {
+            let k = j * g.gw + i;
+            if g.hgt[k] > 0.022 {
+                hs.push(g.hgt[k]);
+                ss.push((g.hgt[k + 1] - g.hgt[k - 1]).hypot(g.hgt[k + g.gw] - g.hgt[k - g.gw]) / (2.0 * step));
+                dry += 1;
+                marsh += laid.marsh[k];
+            }
+            let cut = laid.metres[k] - metres(g.hgt[k]);
+            if cut > 0.05 {
+                bedded += 1;
+                sum += cut as f64;
+                most = most.max(cut);
+            }
+        }
+    }
+    println!(
+        "land report: the land as drawn, relief {RELIEF} times: heights in cells, 10% below {:.3}, half {:.3}, 90% {:.3}, 99% {:.3}, top {:.3} (which is {:.0} m); slope as drawn, half below {:.3}, 90% {:.3}, 99% {:.3}, steepest {:.2}; steeper than 1.15, where the shader paints rock, {:.2}%",
+        pct(&mut hs, 0.1),
+        pct(&mut hs, 0.5),
+        pct(&mut hs, 0.9),
+        pct(&mut hs, 0.99),
+        pct(&mut hs, 1.0),
+        metres(pct(&mut hs, 1.0)),
+        pct(&mut ss, 0.5),
+        pct(&mut ss, 0.9),
+        pct(&mut ss, 0.99),
+        pct(&mut ss, 1.0),
+        100.0 * ss.iter().filter(|&&s| s > 1.15).count() as f32 / ss.len().max(1) as f32
+    );
+    let km: f32 = g.rivers.iter().map(|rv| rv.pts.windows(2).map(|p| p[0].distance(p[1])).sum::<f32>()).sum::<f32>() * 2.0;
+    println!(
+        "land report: {} rivers drawn (from {} cubic m a second), {} points, {km:.0} km, the widest {:.0} m; their beds lowered {bedded} vertices of {}, by {:.1} m on average and {:.0} m at the most",
+        g.rivers.len(),
+        ground::MIN_FLOW,
+        g.rivers.iter().map(|rv| rv.pts.len()).sum::<usize>(),
+        g.rivers.iter().flat_map(|rv| rv.half.iter().copied()).fold(0.0, f32::max) * 2.0 * ground::CELL_M,
+        g.gw * g.gh,
+        sum / bedded.max(1) as f64,
+        most
+    );
+    println!(
+        "land report: the lakes' sheets lie over {} squares of the mesh ({:.1} square km); marsh is {:.1}% of the dry vertices; {} cells the record calls water hold dry shore",
+        laid.sheet.iter().filter(|&&s| s > 0).count(),
+        laid.sheet.iter().filter(|&&s| s > 0).count() as f32 * (2.0 * step) * (2.0 * step),
+        100.0 * marsh / dry.max(1) as f32,
+        laid.shore_cell.iter().filter(|&&s| s).count()
+    );
+}
+
+/// The cells' meeting places: how many were moved off where the old island
+/// would have put them, why and how far; and each town's, before and after.
+fn report_middles(r: &crate::replay::Replay, l: &NewLand, cen: &[(f32, f32)]) {
+    let rivers = middles::Rivers::of(l);
+    let words = |f: &middles::Footing| format!("{} falling 1 in {:.0}", f.words(), 1.0 / f.slope.max(1e-4));
+    let (mut land, mut moved, mut far, mut furthest) = (0usize, 0usize, 0.0f32, 0.0f32);
+    // what was wrong with where the old island would have put them, by its kind (`Footing::tier`;
+    // nothing wrong in kind is ground too steep), and what is still wrong with where they are
+    let (mut why, mut left) = ([0usize; 6], [0usize; 6]);
+    for c in 0..r.n {
+        if r.terrain[c] == 0 {
+            continue;
+        }
+        land += 1;
+        let (old, new) = (middles::jittered(c, r.w), cen[c]);
+        left[middles::footing(l, &rivers, new.0, new.1).tier() as usize] += 1;
+        if old != new {
+            moved += 1;
+            let d = Vec2::new(old.0, old.1).distance(Vec2::new(new.0, new.1));
+            far += d;
+            furthest = furthest.max(d);
+            why[middles::footing(l, &rivers, old.0, old.1).tier() as usize] += 1;
+        }
+    }
+    println!(
+        "land report: of {land} land cells' meeting places {moved} were moved: {} off water, {} off ground too low to build on, {} back from the water's edge, {} off marsh, {} back from a river, {} off steep ground; {:.0} m on average and {:.0} m at the furthest",
+        why[5],
+        why[4],
+        why[3],
+        why[2],
+        why[1],
+        why[0],
+        far / moved.max(1) as f32 * ground::CELL_M,
+        furthest * ground::CELL_M
+    );
+    println!(
+        "land report: where they stand now: {} on dry ground back from the water, {} by a river, {} on marsh, {} at the water's edge, {} on ground too low to build on, {} on water (their cells having no better)",
+        left[0], left[1], left[2], left[3], left[4], left[5]
+    );
     for t in &r.header.towns {
         let c = t.node.min(r.n - 1);
-        let (x, y) = cen[c];
+        let (old, new) = (middles::jittered(c, r.w), cen[c]);
         let mut marks = Vec::new();
         if l.estuary[c] {
             marks.push("at a tideway");
@@ -377,9 +508,22 @@ pub fn maybe_report(r: &crate::replay::Replay, cen: &[(f32, f32)]) -> bool {
         if l.shore[c] {
             marks.push("on a lake's shore");
         }
-        println!("land report: town {} (founded {}), cell {},{}: its middle at {x:.2},{y:.2} stands on {}{}", t.name, t.founded, c % r.w, c / r.w, l.stands_on(x, y), if marks.is_empty() { String::new() } else { format!(", {}", marks.join(" and ")) });
+        println!(
+            "land report: town {} (founded {}), cell {},{}{}: its middle at {:.2},{:.2} stands on {} ({}); the old island would have put it at {:.2},{:.2}, on {}",
+            t.name,
+            t.founded,
+            c % r.w,
+            c / r.w,
+            if marks.is_empty() { String::new() } else { format!(", {}", marks.join(" and ")) },
+            new.0,
+            new.1,
+            words(&middles::footing(l, &rivers, new.0, new.1)),
+            l.stands_on(new.0, new.1),
+            old.0,
+            old.1,
+            words(&middles::footing(l, &rivers, old.0, old.1))
+        );
     }
-    true
 }
 
 #[cfg(test)]
