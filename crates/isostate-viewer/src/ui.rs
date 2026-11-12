@@ -1534,13 +1534,9 @@ fn good_row_node() -> Node {
 /// A good's name in its column: on one line whatever its length, cut at the column's edge if it is longer than the column.
 fn good_name(row: &mut ChildSpawnerCommands, f: &Handle<Font>, label: &str, colour: Color) {
     row.spawn(Node { width: Val::Px(GOOD_NAME_W), flex_shrink: 0.0, overflow: Overflow::clip_x(), ..default() }).with_children(|col| {
-        col.spawn((text(f, label, GOOD_NAME_SIZE, colour), TextLayout::default().with_no_wrap(), GoodName));
+        col.spawn((text(f, label, GOOD_NAME_SIZE, colour), TextLayout::default().with_no_wrap()));
     });
 }
-
-/// The text of a good's name in the Markets panel (for the tests to measure).
-#[derive(Component)]
-pub struct GoodName;
 
 /// The goods in the groups the Markets panel lists them under.
 struct GoodGroup {

@@ -957,7 +957,7 @@ fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView,
                 let pr = fam.prospect(t, g).map(|p| family::earnings(p, g, &name)).unwrap_or_else(|| "nothing new would pay here".into());
                 p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|col| {
                     col.spawn(text(f, &format!("{} \u{00b7} {}", short_group(g), pr), 13.0, INK));
-                    if let Some(goods) = goods_of_trade(fam, r, g) {
+                    if let Some(goods) = goods_of_trade(fam, &r.header.goods, g) {
                         col.spawn(text(f, &goods, 12.0, MUTED));
                     }
                     if !free.is_empty() {
@@ -1194,10 +1194,11 @@ fn trade_of(choice: Choice) -> Option<Group> {
 }
 
 /// What a trade makes, by the content's labels: "Coal · Town gas · Soap and
-/// chemicals". None where the game at hand does not say (a recorded run).
-fn goods_of_trade(fam: &FamilyView, r: &Replay, g: Group) -> Option<String> {
+/// chemicals", from `all`, the run's goods. None where the game at hand does
+/// not say (a recorded run).
+fn goods_of_trade(fam: &FamilyView, all: &[crate::replay::Good], g: Group) -> Option<String> {
     let goods = fam.trade_goods.get(g.index())?;
-    let labels: Vec<&str> = goods.iter().filter_map(|&i| r.header.goods.get(i)).map(|good| good.label.as_str()).collect();
+    let labels: Vec<&str> = goods.iter().filter_map(|&i| all.get(i)).map(|good| good.label.as_str()).collect();
     (!labels.is_empty()).then(|| labels.join(" \u{00b7} "))
 }
 
@@ -1327,7 +1328,7 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                                 }
                             });
                             // a trade's name no longer says what it makes (soap and gas are with coal, beer with the estates)
-                            if let Some(goods) = trade_of(o.choice).and_then(|g| goods_of_trade(&fam, r, g)) {
+                            if let Some(goods) = trade_of(o.choice).and_then(|g| goods_of_trade(&fam, &r.header.goods, g)) {
                                 b.spawn(text(&f, &goods, 12.0, INK));
                             }
                             if !note.is_empty() {
@@ -1983,5 +1984,40 @@ mod tests {
         let list = build_list(&opts[..6], &known, "Ashby", |_| true);
         assert_eq!(list.offered.len(), 6);
         assert!(list.notes.is_empty());
+    }
+
+    #[test]
+    fn each_trade_names_the_goods_its_works_and_its_land_make_in_the_game_as_laid() {
+        // the content a new game is played on: the port's with the tree laid to the game's stage
+        let c = isostate_core::tree::game_content_at(isostate_core::game_params().tree.stage);
+        let goods = crate::live::trade_goods(&c);
+        let names = |g: Group| goods[g.index()].iter().map(|&i| c.good_name[i].as_str()).collect::<Vec<_>>();
+        // the trades whose names no longer say all they make: gas and soap are with coal, beer with the estates
+        assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals"]);
+        assert!(names(Group::Estates).contains(&"beer"), "{:?}", names(Group::Estates));
+        assert_eq!(names(Group::Iron), ["iron", "steel", "rails"]);
+        // every good is some one trade's, but what the shops sell, which no family trade makes
+        let mut owners = vec![0; c.G];
+        for list in &goods {
+            for &g in list {
+                owners[g] += 1;
+            }
+        }
+        let none: Vec<&str> = (0..c.G).filter(|&g| owners[g] == 0).map(|g| c.good_name[g].as_str()).collect();
+        assert_eq!(none, ["services"]);
+        assert!(owners.iter().all(|&n| n <= 1), "a good under two trades: {owners:?}");
+        // and the line a decision shows is the content's labels, in the content's order
+        let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None }).collect();
+        let fam = FamilyView { trade_goods: goods.clone(), ..default() };
+        assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals"));
+        // a recorded run, which does not say what each trade makes, shows no line
+        assert_eq!(goods_of_trade(&FamilyView::default(), &all, Group::CoalMining), None);
+        // the Markets panel's three heads, where the content leaves no doubt (charcoal it does: see live::good_kinds)
+        use crate::replay::GoodKind::*;
+        let kinds = crate::live::good_kinds(&c);
+        let kind = |name: &str| kinds[c.good_index[name]];
+        assert_eq!([kind("grain"), kind("coal"), kind("stone")], [Land; 3]);
+        assert_eq!([kind("iron"), kind("tools"), kind("machinery"), kind("bricks")], [Works; 4]);
+        assert_eq!([kind("beer"), kind("cloth"), kind("gas")], [Household; 3]);
     }
 }
