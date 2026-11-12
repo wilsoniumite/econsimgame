@@ -19,13 +19,12 @@ they are). The sweeps and the scripts that read them are under
   20,000,000 to 20,000,001) sends every island down another history, and by 1900 the histories of one island
   differ as much as the islands differ from each other: baskets a head by 3 per cent, the real wage against
   1750 by 4, the railway by 5 (39 under the commons), the price of coal by 17. In 1750 they differ by a
-  tenth of a per cent to one per cent. So nothing in the late century can be read from one baseline on eight islands, and
-  the usual "7/1" of a sweep's `--compare` is a weak test there. This changed how the rest was read (next
+  tenth of a per cent to one per cent. So nothing in the late century can be read from one baseline on
+  eight islands, and the usual "7/1" of a sweep's `--compare` is a weak test there. This changed how the rest was read (next
   section), and it is the first thing I would carry into the pass over the rules.
 - **`reach` is the mines' strongest number.** From 1.5 cells to 2.7 there are a third fewer workings in
   1750 and two fifths fewer by 1900 (0/16 under both regimes at every date), each taking 45 per cent more of
-  its cell; stone raised a head in
-  1750 is a tenth higher and 5 per cent cheaper (16/0, 0/16). Under the landlords the island of 1900 has 9.5
+  its cell; stone raised a head in 1750 is a tenth higher and 5 per cent cheaper (16/0, 0/16). Under the landlords the island of 1900 has 9.5
   per cent less railway (1/15) and, on most islands though not all, 5 per cent fewer baskets a head (3/13)
   and 7 per cent less coal a head (5/11).
 - **`sink` and `payback` are one number.** A site opens when its royalty would repay `sink / payback` wages
@@ -35,9 +34,10 @@ they are). The sweeps and the scripts that read them are under
 - **`cell_limit` does nothing** at these sizes: on 27 of the 32 runs every fact is today's to the last digit,
   and at 0.25 and 0.833 nothing beats the noise either. `hands_per_cell` moves only the land under the
   diggings, as 1/x. `memory` and `year_room` are at the noise floor a third either side; `memory` begins to
-  act at a half (0.15 against 0.5). `reserve` does what its page says, a little more coal and fewer colliers late. `idle_years`
-  shapes the workings the warm-up gives up and nothing after.
-- **Nothing breaks.** Every one of the 608 runs of the mines' sweeps finished and passed the monthly money check.
+  act at a half (0.15 against 0.5). `reserve` does what its page says, a little more coal and fewer
+  colliers late. `idle_years` shapes the workings the warm-up gives up and nothing after.
+- **Nothing breaks.** Every one of the 608 runs of the mines' sweeps finished and passed the monthly money
+  check.
   The worst year for the real wage, -0.45, is a null history (island 9 under the landlords, where one town
   pays 84.5 times the middle town's wage for a month in 1782): the bad year that `mines.md` already owns up
   to is there at today's values, about one history in sixty-four, and no setting here clearly changes how
@@ -350,7 +350,31 @@ cargo run --release -p isostate-core --example chronicle -- --seed N --counts [-
 
 The scripts that read them (Python, not tracked; in `scripts/` beside the sweeps): `slope.py` (high
 against low against the null histories), `panel.py` (the headline facts), `noise.py` (chance against the
-islands), `same.py` (which runs are today's to the last digit), `extremes.py` and `badyears.py` (failures, worst
-years, famine), `worstyear.py` (the years round a run's worst), `chron_queue.py` and `chron_read.py` (the chronicle). The values tried were three quarters and
-four thirds of today's, rounded where a setting is a whole number (`idle_years` 8 and 13) and, for
+islands), `same.py` (which runs are today's to the last digit), `extremes.py` and `badyears.py`
+(failures, worst years, famine), `worstyear.py` (the years round a run's worst), `chron_queue.py` and
+`chron_read.py` (the chronicle). The values tried were three quarters and four thirds of today's, rounded where a setting is a whole number (`idle_years` 8 and 13) and, for
 `reach`, chosen so that the lease changes: 1.5 cells is a lease of 9 cells, 2.0 of 13, 2.7 of 21.
+
+## The check
+
+A second reader went over the page before it was merged (branch `night/o-sens-mines-check`; its notes and
+sweeps under `.claude/night/reports/opus/sens-mines/check/`). The baseline sweep against today's main
+again gave 0 differing facts of 446; the `reach` sweep, rerun, is the first one byte for byte (`--compare`
+against it: 0 differ in every setting); twelve rows of the chronicle's table, rerun, gave files identical to
+the first; and the other mines rows, read again from the sweeps with a script of the reader's own, came
+out as the tables say, but for the corrections made since (the workings under `reach` by date, two counts of
+facts, the count of runs). Beyond the first pass, on the same eight islands unless it says otherwise:
+
+```bash
+isostate-core sweep --seeds 9-16 --rules game --families 6 --set rent_regime=landlords,commons \
+    --set mines.sink=30,53 --set mines.payback=3,5.33 --out p-sink-payback-16 --quiet   # sixteen with p-sink-payback
+isostate-core sweep ... --set mines.cell_limit=0.25,0.833 --out x-cell_limit           # twice as far out
+isostate-core sweep ... --set mines.memory=0.15,0.5 --out x-memory
+isostate-core sweep ... --set mines.year_room=0.075,0.25 --out x-year_room
+```
+
+`sink / payback` holds as one threshold on sixteen islands; `cell_limit` and `year_room` still do nothing
+twice as far out; `memory` begins to act there (10 and 12 facts beat the noise, against 6 and 3 at a third
+either side, some of them late), so it is weak rather than idle. Of the chronicle, `at_least` 0 moves
+nothing and 4 fills the one thin decade a run on five islands (the feed +1.0, 5/0), and `base_years` 3
+and 9 move a quarter of a milestone at most: both still do nothing worth a setting.
