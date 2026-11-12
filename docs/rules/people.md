@@ -105,7 +105,7 @@ down together to fit. A small place with one good year can no longer double.
 Once a year, after the year's roads are known, the rule asks where a market
 is most missed. Every cell pays to cart its year's tonnage to the town it
 trades through. For the half dozen spots where that bill is heaviest (summed
-over the seven by seven cells round each, the spots at least five cells
+over the seven by seven cells round each, the spots more than five cells
 apart), each settled on the best ground within two cells of it, it works out
 the district a market there would serve (every cell nearer to it than to its
 present market), what the district's people would save in carting in a year,

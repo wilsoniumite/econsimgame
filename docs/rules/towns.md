@@ -173,8 +173,9 @@ out each town's houses from `built` and `res`, one house to so many
 residents, built in the year the cell's people first called for it
 (`crates/isostate-viewer/src/scatter/towns/kept.rs`).
 
-Both bytes stop somewhere. `built` holds the years 1646 to 1900 (1645 and
-255), so in a run past 1900 every cell that joins later reads 1900. `res`
+Both bytes stop somewhere. `built` counts from 1645 up to 255 years, so it
+holds 1646 to 1900, and in a run past 1900 every cell that joins later reads
+1900. `res`
 holds 2,040 people, and the ceiling of room, 530 and 6 a year, passes that
 in 2002, so a full old cell is clipped from then on. Neither matters to
 1900.
@@ -673,8 +674,8 @@ the merge's seeds 1 to 6:
 | railway km 1850 / 1870 / 1900 | 1,444 / 2,160 / 2,615 | 1,328 / 1,835 / 2,248 |
 | famine years a run | 1.5 | 0.4 |
 
-So the town ground still grows five times (5.2 by the means), the churn is
-still gone. There are a fifth more industry cells than at the merge; the
+So the town ground still grows five times (5.2 by the means) and the churn
+is still gone. There are a fifth more industry cells than at the merge; the
 mines and the canals both came between, and which of them it is was not
 traced for this page. The census, the edges, Melbourne and the
 scripted players were not run again for this page; their numbers above are
