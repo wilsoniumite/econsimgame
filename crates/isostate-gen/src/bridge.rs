@@ -77,6 +77,25 @@ impl RoadBridge {
         (p - self.at).dot(self.along) / self.span() + 0.5
     }
 
+    /// Whether a point of the map lies under the bridge or its ramps, seen from above.
+    pub fn holds(&self, p: Vec2) -> bool {
+        let t = self.t_of(p);
+        (-self.ramp()..=1.0 + self.ramp()).contains(&t) && (p - self.point(t)).length() <= self.width() * 0.5
+    }
+
+    /// The height of the roadway as drawn at `t` of the way along the bridge
+    /// (`roadway`, straight between its points), or none off its ends.
+    pub fn roadway_at(&self, t: f32, ground: &dyn Fn(f32, f32) -> f32) -> Option<f32> {
+        let way = self.roadway(ground);
+        let (first, last) = (way.first()?, way.last()?);
+        if t < first.0 || t > last.0 {
+            return None;
+        }
+        let i = way.partition_point(|p| p.0 < t).clamp(1, way.len() - 1);
+        let ((t0, h0), (t1, h1)) = (way[i - 1], way[i]);
+        Some(h0 + (h1 - h0) * ((t - t0) / (t1 - t0).max(1e-9)).clamp(0.0, 1.0))
+    }
+
     /// The roadway as it is drawn, from the foot of one ramp to the foot of
     /// the other: the points where its flat lengths meet, in order, each as
     /// how far along the bridge it is (`point`) and the roadway's height
