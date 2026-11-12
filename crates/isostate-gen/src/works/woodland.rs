@@ -2,7 +2,7 @@
 
 use glam::Vec3;
 
-use super::kit::{Ctx, Face};
+use super::kit::{Ctx, Face, Fill};
 
 /// Charcoal burning: turf-covered clamps breathing thin smoke in a clearing,
 /// one being built of cordwood and one raked out, the burners' hut and the
@@ -97,8 +97,10 @@ pub fn bloomery(c: &mut Ctx) {
             c.flue(x, zs, 0.036 * g, 0.0095 * g, 0.0065 * g, stone, c.throat(), 0.5);
         }
         let shelter = c.lean_to(x0, zs + 0.008 * g + dep * 0.5, len, dep, 0.013 * g, 0.027 * g, false, c.tone(*pal.timber.boards), roof);
+        c.stands_free(&shelter);
+        c.fill(&shelter, Fill::Posts);
         if !c.going_up() {
-            c.panel(&shelter, Face::Front, -len * 0.4, len * 0.4, 0.0, 0.01 * g, false, *pal.smoke.soot);
+            c.mouth(&shelter, Face::Front, -len * 0.4, len * 0.4, 0.0, 0.01 * g, false);
         }
         front = zs + 0.008 * g + dep;
     }
@@ -112,7 +114,7 @@ pub fn bloomery(c: &mut Ctx) {
             c.race((hw - 0.004, wz), (hx - r, wz), 0.006 * g);
             c.wheel(hx, wz, r, 0.005 * g, false, c.tone(*pal.timber.waterwheel));
         } else if !c.going_up() {
-            c.panel(&s, Face::Front, -hl * 0.2, hl * 0.2, 0.0, hh * 0.7, true, *pal.smoke.soot);
+            c.mouth(&s, Face::Front, -hl * 0.2, hl * 0.2, 0.0, hh * 0.7, true);
         }
     }
     // charcoal and ore to hand, cinder tipped by the gate, blooms in a row

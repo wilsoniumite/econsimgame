@@ -142,8 +142,8 @@ pub struct RailYear {
     pub stops: HashMap<usize, Stop>,
     /// what stands by the line: winding engine houses, banking engines' sheds, buffer stops
     pub stands: Vec<Stand>,
-    /// the solid works and their smoke, made once, the first time they are asked for
-    works: OnceLock<(Builder, Builder)>,
+    /// the solid works along the line, made once, the first time they are asked for
+    works: OnceLock<Builder>,
     /// the ground the railway takes
     room: OnceLock<Room>,
 }
@@ -1172,12 +1172,29 @@ fn side_of(a: Vec3, b: Vec3) -> Vec3 {
     Vec3::new(-d.z, 0.0, d.x)
 }
 
-/// The solid works: banks, viaducts and bridges, the portals of the tunnels
-/// and what stands by the line; and the smoke of the winding engines. They
-/// are kept with the lines, in the look they were first asked for in: the
-/// look does not change in a run.
-pub fn structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) {
+/// The solid works along the line: banks, viaducts and bridges, the portals
+/// of the tunnels and the footings of what stands by the line. They are kept
+/// with the lines, in the look they were first asked for in: the look does
+/// not change in a run.
+pub fn structures(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
     ry.works.get_or_init(|| world::timed("year rail works", || build_structures(ry, g, lk))).clone()
+}
+
+/// What stands by the line (the winding engine houses, the banking engines'
+/// sheds, the buffer stops), and the smoke of the winding engines.
+// (task B, one scale of detail: these are buildings of the generators' kit and take their
+// level from the camera as every building does, so they are built with the year's scenery
+// and not kept with the line's own works)
+pub fn standing(ry: &RailYear, lod: &crate::scatter::Lod, lk: &Look, solid: &mut Builder, smoke: &mut Builder) {
+    use isostate_gen::{rail, Site};
+    for st in &ry.stands {
+        let (site, detail) = (Site::level(st.at, st.yaw), lod.at(st.at.x, st.at.z));
+        match st.what {
+            Standing::WindingHouse => rail::winding_house(solid, smoke, &site, detail, lk),
+            Standing::BankerShed => rail::banker_shed(solid, &site, detail, lk),
+            Standing::BufferStop => rail::buffer_stop(solid, &site, detail, lk),
+        }
+    }
 }
 
 /// The runs of points along a line that `pick` holds for.
@@ -1199,9 +1216,8 @@ fn runs_of(n: usize, pick: impl Fn(usize) -> bool) -> Vec<(usize, usize)> {
     out
 }
 
-fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) {
+fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
     let mut b = Builder::default();
-    let mut smoke = Builder::default();
     let grass = *lk.rail.bank_grass;
     let grass_dark = *lk.rail.bank_grass_shade;
     let stone = *lk.rail.stone;
@@ -1321,24 +1337,15 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> (Builder, Builder) 
             }
         }
     }
-    // what stands by the line
-    for st in &ry.stands {
-        use isostate_gen::{rail, Site};
-        // an engine house or a shed on ground that falls away stands on a stone footing
-        if st.what != Standing::BufferStop {
-            let (w, d) = stand_size(st.what);
-            let low = stand_ground(g, st).0;
-            if st.at.y - low > 0.004 {
-                b.block(Vec3::new(st.at.x, low - 0.01, st.at.z), w + 0.006, d + 0.006, st.at.y - low + 0.01, st.yaw, shade(stone, 0.92), Some(*lk.rail.bank_top), 0.0);
-            }
-        }
-        match st.what {
-            Standing::WindingHouse => rail::winding_house(&mut b, &mut smoke, &Site::level(st.at, st.yaw), lk),
-            Standing::BankerShed => rail::banker_shed(&mut b, &Site::level(st.at, st.yaw), lk),
-            Standing::BufferStop => rail::buffer_stop(&mut b, &Site::level(st.at, st.yaw), lk),
+    // an engine house or a shed by the line, on ground that falls away, stands on a stone footing
+    for st in ry.stands.iter().filter(|st| st.what != Standing::BufferStop) {
+        let (w, d) = stand_size(st.what);
+        let low = stand_ground(g, st).0;
+        if st.at.y - low > 0.004 {
+            b.block(Vec3::new(st.at.x, low - 0.01, st.at.z), w + 0.006, d + 0.006, st.at.y - low + 0.01, st.yaw, shade(stone, 0.92), Some(*lk.rail.bank_top), 0.0);
         }
     }
-    (b, smoke)
+    b
 }
 
 /// A run of arches carrying the line from point i to point j, with an

@@ -109,6 +109,18 @@ pub fn canal_stream(seed: u64) -> Rng {
     Rng::from_seed(bytes)
 }
 
+/// Stream 11, for `landform` (not in the Python): the island made by water draws
+/// every number it needs from here, made from the seed and its own number as the
+/// others are, so the port's world stream is never touched.
+pub fn land_stream(seed: u64) -> Rng {
+    let mut x = seed ^ 12u64.wrapping_mul(0xD1B5_4A32_D192_ED03);
+    let mut bytes = [0u8; 32];
+    for chunk in bytes.chunks_exact_mut(8) {
+        chunk.copy_from_slice(&splitmix64(&mut x).to_le_bytes());
+    }
+    Rng::from_seed(bytes)
+}
+
 /// `rng.random()`: uniform on [0, 1) with 53 random bits, as numpy.
 pub fn random(rng: &mut Rng) -> f64 {
     match rng.next_replayed() {

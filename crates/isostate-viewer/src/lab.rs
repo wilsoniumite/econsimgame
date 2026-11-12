@@ -96,7 +96,8 @@ struct Job {
 
 #[derive(Resource)]
 struct Lab {
-    sheets: Vec<(&'static Sheet, Vec<Vec<Cell>>, Vec<Vec<Page>>)>,
+    /// each sheet with, for each of the three distances, its cells at the level the game draws from there and their pages
+    sheets: Vec<(&'static Sheet, Vec<Vec<Vec<Cell>>>, Vec<Vec<Page>>)>,
     jobs: Vec<Job>,
     index: usize,
     phase: Phase,
@@ -180,12 +181,16 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
     let mut sheets = Vec::new();
     let mut jobs = Vec::new();
     for (i, sheet) in chosen.into_iter().enumerate() {
-        let cells = cells_of(sheet, &look.palette, turn);
         // pictures of this sheet from an earlier run would be mistaken for this run's
         clear_pictures(&out, sheet.name);
         let mut by_shot = Vec::new();
+        let mut by_cells = Vec::new();
         for shot in Shot::ALL {
+            // the things as the game would draw them from this distance
+            let level = crate::scatter::Lod::of_camera((0.0, 0.0), shot.dist()).at(0.0, 0.0);
+            let cells = cells_of(sheet, &look.palette, turn, level);
             let pages = layout::pages(&cells, shot, args.size, args.loupe);
+            by_cells.push(cells);
             for (p, page) in pages.iter().enumerate() {
                 let name = if pages.len() > 1 && p > 0 { format!("{}-{}-{}.png", sheet.name, shot.name(), p + 1) } else { format!("{}-{}.png", sheet.name, shot.name()) };
                 if page.cut_off {
@@ -195,7 +200,7 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
             }
             by_shot.push(pages);
         }
-        sheets.push((sheet, cells, by_shot));
+        sheets.push((sheet, by_cells, by_shot));
     }
 
     let season = args.season.unwrap_or(HIGH_SUMMER).rem_euclid(1.0);
@@ -222,8 +227,8 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
 }
 
 /// A sheet's cells, each thing turned `turn` degrees about its own middle.
-pub(crate) fn cells_of(sheet: &Sheet, palette: &isostate_gen::Palette, turn: f32) -> Vec<Vec<Cell>> {
-    let mut cells = (sheet.build)(palette);
+pub(crate) fn cells_of(sheet: &Sheet, palette: &isostate_gen::Palette, turn: f32, detail: isostate_gen::houses::Detail) -> Vec<Vec<Cell>> {
+    let mut cells = (sheet.build)(palette, detail);
     for cell in cells.iter_mut().flatten() {
         cell.model.turn(turn.to_radians());
     }
@@ -381,9 +386,10 @@ fn step(
                 return;
             }
             let job = &lab.jobs[lab.index];
-            let (sheet, cells, by_shot) = &lab.sheets[job.sheet];
+            let (sheet, by_cells, by_shot) = &lab.sheets[job.sheet];
             let shot_index = Shot::ALL.iter().position(|s| *s == job.shot).unwrap_or(0);
             let page = &by_shot[shot_index][job.page];
+            let cells = &by_cells[shot_index];
             let view = page.view;
 
             // the season's light and leaves, and the ground's colour under this sheet
@@ -553,6 +559,9 @@ fn heading(sheet: &Sheet, job: &Job, view: &layout::View, season: f32, tilt: boo
     if tilt {
         how.push_str(" Tilt-shift on.");
     }
+    // what the game draws from this distance: the level its camera rule gives
+    let level = crate::scatter::Lod::of_camera((0.0, 0.0), job.shot.dist()).at(0.0, 0.0);
+    let _ = write!(how, " Drawn at the {} level, as the game draws from here.", level.label());
     (title, how)
 }
 
