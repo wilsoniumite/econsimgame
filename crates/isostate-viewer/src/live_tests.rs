@@ -449,6 +449,8 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
         assert_eq!(t.me().seat, other);
     }
     same(&a, &b, "at the turn of 1755");
+    // and the maps by the month, across the turn the orders waited for: 1753's and 1754's, December as it ended
+    same_months(&a, &b, 3 * 12..5 * 12, "at the turn of 1755");
     drop(b);
 
     // left with the clock in the middle of a year and nothing ordered since the turn: the months are kept all the same
