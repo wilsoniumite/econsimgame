@@ -37,6 +37,11 @@ const COLS: &[&str] = &[
     "grain_made", "grain_bought", "grain_sent", "grain_spoiled", "grain_stock", "grain_over4", "grain_long12", "grain_hands", "grain_out", "grain_price",
     "coal_made", "coal_bought", "coal_sent", "coal_spoiled", "coal_stock", "coal_over4", "coal_long12", "coal_hands", "coal_out", "coal_price",
     "timber_made", "timber_bought", "timber_sent", "timber_spoiled", "timber_stock", "timber_over4", "timber_long12", "timber_hands", "timber_out", "timber_price",
+    // timber from woodland cleared at the year's end (a town's new ground, a works' or
+    // a working's), all of it and in the towns whose stock ended beyond four months
+    "timber_cleared", "timber_cleared_over4",
+    // grain carried between towns: units, their worth where they left, the carting paid
+    "grain_trade_qty", "grain_trade_value", "grain_trade_cart",
     // hunger: towns that count (founded more than two years before) whose worst
     // month's food was under 0.82 of need; town-months under it; the year's worst
     // town; the news items of kind "famine", told apart
@@ -47,8 +52,13 @@ fn col(name: &str) -> usize {
     COLS.iter().position(|&c| c == name).unwrap_or_else(|| panic!("no column {name}"))
 }
 
+/// What is kept of every town's month, for following a hungry year.
+const MONTH_COLS: [&str; 9] = ["food", "wage", "grain_price", "grain_stock", "pop", "hh_cash", "hh_income_prev", "carters", "supply"];
+const MW: usize = MONTH_COLS.len();
+
 /// One town's hunger in one year, with the grain it had.
 struct Hunger {
+    months_seen: Vec<[f64; MW]>,
     year: i64,
     town: usize,
     name: String,
@@ -77,13 +87,29 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
     // the hunger rule's measure, month by month, before people::growth clears it
     let mut food: Vec<(Vec<f64>, Vec<usize>)> = Vec::new();
     let mut ends: Vec<(f64, f64)> = Vec::new();
+    // every town's month, `MONTH_COLS`, kept so that a hungry year can be followed month by month
+    let mut watch: Vec<Vec<[f64; MW]>> = Vec::new();
     while sim.year <= sim.end_year {
         let T = sim.st.T_max;
         let (mut worst, mut months) = (vec![9.0f64; T], vec![0usize; T]);
+        let mut seen = vec![[0.0f64; MW]; T * 12];
+        let grain = sim.content.gi("grain");
         for m in 0..12 {
             sim::run_month(&mut sim, m).expect("money is conserved every month");
             for t in 0..T {
                 if sim.st.town_active[t] {
+                    let s = &sim.st;
+                    seen[t * 12 + m] = [
+                        s.food_ratio[t],
+                        s.wage[t],
+                        s.price[(t, grain)],
+                        s.inv[(t, grain)],
+                        s.pop[t],
+                        s.hh_cash[t],
+                        s.hh_income_prev[t],
+                        s.carters.get(t).copied().unwrap_or(0.0),
+                        s.month_stats.supply.get(t).copied().unwrap_or(0.0),
+                    ];
                     let fr = sim.st.food_ratio[t];
                     worst[t] = worst[t].min(fr);
                     if fr < 0.82 {
@@ -93,6 +119,7 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
             }
         }
         food.push((worst, months));
+        watch.push(seen);
         sim::end_year(&mut sim);
         // the canal open as the year ends, and the emigrants so far
         ends.push((2.0 * sim.st.canal.iter().filter(|&&c| c > 0).count() as f64, sim.st.pp_emigrants));
@@ -151,6 +178,11 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
         set("trade_value", trade_value);
         set("trade_carting", rec.trade.iter().map(|f| f.carting as f64).sum());
         set("handling", Pr.handling * trade_value);
+        let grain_g = C.gi("grain") as u16;
+        let gf = || rec.trade.iter().filter(|f| f.good == grain_g);
+        set("grain_trade_qty", gf().map(|f| f.qty as f64).sum());
+        set("grain_trade_value", gf().map(|f| f.value as f64).sum());
+        set("grain_trade_cart", gf().map(|f| f.carting as f64).sum());
         let (mut hh_value, mut hh_base) = (0.0, 0.0);
         for t in 0..T {
             for g in 0..G {
@@ -165,6 +197,7 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
             let g = C.gi(good);
             let s = C.sector_name.iter().position(|n| n == sector).unwrap();
             let (mut made, mut bought, mut sent, mut spoiled, mut stock, mut over4, mut long12, mut pv, mut pw) = (0.0f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+            let (mut cleared, mut cleared_over4) = (0.0f64, 0.0);
             for t in 0..T {
                 let v = &rec.goods[(t * G + g) * KG..][..KG];
                 let b: f64 = bought_cols.iter().map(|&c| v[c] as f64).sum();
@@ -182,6 +215,17 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
                 let tp = rec.towns[t * KT + tc("pop")] as f64;
                 pv += v[gc("price")] as f64 * tp;
                 pw += tp;
+                if good == "timber" {
+                    let cl = v[gc("cleared")] as f64;
+                    cleared += cl;
+                    if s_end > 4.0 * out / 12.0 {
+                        cleared_over4 += cl;
+                    }
+                }
+            }
+            if good == "timber" {
+                set("timber_cleared", cleared);
+                set("timber_cleared_over4", cleared_over4);
             }
             let (mut hands, mut out) = (0.0, 0.0);
             for t in 0..T {
@@ -209,6 +253,7 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
         for &t in &hungry {
             let v = &rec.goods[(t * G + g) * KG..][..KG];
             hunger.push(Hunger {
+                months_seen: watch[k][t * 12..(t + 1) * 12].to_vec(),
                 year,
                 town: t,
                 name: st.town_name[t].clone(),
@@ -325,6 +370,19 @@ fn main() {
             }
         }
         std::fs::write(format!("{dir}/hunger.csv"), h).unwrap();
+        let mut hm = format!("setting,seed,year,town,month,{}\n", MONTH_COLS.join(","));
+        for r in &runs {
+            for x in &r.hunger {
+                for (m, v) in x.months_seen.iter().enumerate() {
+                    let _ = write!(hm, "{},{},{},{},{}", r.setting, r.seed, x.year, x.town, m + 1);
+                    for c in v {
+                        let _ = write!(hm, ",{c:.6}");
+                    }
+                    hm.push('\n');
+                }
+            }
+        }
+        std::fs::write(format!("{dir}/hunger_months.csv"), hm).unwrap();
         let mut names = String::new();
         for (k, (label, _)) in settings.iter().enumerate() {
             let _ = writeln!(names, "{k}: {label}");
@@ -422,6 +480,8 @@ fn main() {
         ("timber: stock beyond four months, in months of the island's sales", |v| v("timber_over4") / ((v("timber_bought") + v("timber_sent")) / 12.0)),
         ("timber: spoiled over made", |v| v("timber_spoiled") / v("timber_made")),
         ("timber: hands raising what spoiled, over all hands", |v| v("timber_spoiled") * v("timber_hands") / v("timber_out").max(1e-9) / (v("carters") + v("supply") + v("navvies"))),
+        ("timber: cleared woodland over all timber made", |v| v("timber_cleared") / v("timber_made")),
+        ("timber: of the cleared, the share landing in towns that end the year beyond four months", |v| v("timber_cleared_over4") / v("timber_cleared").max(1e-9)),
         ("timber: woods' hands over all hands", |v| v("timber_hands") / (v("carters") + v("supply") + v("navvies"))),
         ("timber: price", |v| v("timber_price")),
         ("grain: island stock in months of sales and shipments", |v| v("grain_stock") / ((v("grain_bought") + v("grain_sent")) / 12.0)),
@@ -444,6 +504,8 @@ fn main() {
         ("households' food over their spending", |v| v("food_households") / v("spend_households")),
         ("households' warmth over their spending", |v| v("warmth_households") / v("spend_households")),
         ("grain sent between towns over grain made", |v| v("grain_sent") / v("grain_made")),
+        ("grain's carting between towns, a unit", |v| v("grain_trade_cart") / v("grain_trade_qty")),
+        ("  the same over the grain's worth where it left", |v| v("grain_trade_cart") / v("grain_trade_value")),
     ];
     let halves: Vec<(i64, i64)> = vec![(1751, 1800), (1801, 1850), (1851, 1900), (1751, 1900)];
     table("(d) hunger (counts are yearly means: multiply by the span's years for a run's count)", &halves, d);
