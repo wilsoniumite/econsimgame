@@ -531,7 +531,12 @@ after, read side by side:
   or more (`chronicle::grain_reason`): "last year's harvest was a bumper one,
   and this year's is not" (all six such shortages), "the harvest has come back
   after a short one" (fourteen gluts of 24), "the harvest is a bumper one"
-  (three) and "the harvest has come in short" (one).
+  (three) and "the harvest has come in short" (one); and where the harvest
+  moved that much but was neither bumper nor short, "the harvest is better
+  than last year's" (four gluts) or "the harvest is poorer than last year's"
+  (seven shortages), as on island 6 in 1778, when it went from 1.08 of an
+  ordinary year to 0.92. Three gluts, in years the harvest hardly moved, keep
+  the detector's own reason.
 - **Works named after another town.** Works are named for the town whose
   district they were built in and keep the name when a road or a new town
   moves their ground: "Mallowwick Brickworks closes. The brickworks near
