@@ -79,17 +79,20 @@ the line above that.
 
 **Ranking.** Each event carries `kept`: whether a history of its decade would
 keep it. Within a decade the heaviest go first, with at most four in all
-(`per_decade`), one of a kind (`per_kind`; slumps called and slumps dated are
-one kind, as are railway schemes and openings, and a harvest and the dearth
-that is its price) and two inventions
-(`inventions`), and nothing lighter than 0.6 (`floor`). One place is the
+(`per_decade`), one of a kind (`per_kind`; railway schemes and openings are
+one kind, and so are a harvest and the dearth that is its price), two
+inventions (`inventions`) and two turning points (`turning_points`), and
+nothing lighter than 0.6 (`floor`). One place is the
 player's: the heaviest of the family's own items at 0.6 or more is kept
 whatever else happened. A decade that is over and still has fewer than two
 (`at_least`) takes the best of what is left above 0.45. A dated slump is
 ranked by its weight and its depth, since the observer weighs a slump of 5 per
 cent and a depression of 20 the same. An alarm ("Output falls: is this a
 slump?") is kept while it is the latest word and gives way to the verdict
-that later dates its slump: called live, dated later.
+that later dates its slump: called live, dated later. (Alarms and verdicts
+were one kind until the news was read whole; that only ever dropped a fall
+still running beside the verdict on an earlier slump. See "The news read as a
+reader would", below.)
 
 The whole list is ranked afresh at each year's end (`chronicle::yearly`) and
 once more on the sorted list in `sim::finish`, so a live game ends with the
@@ -107,9 +110,9 @@ from the same prices and incomes that drove it:
 
 | story | when | the reason it gives |
 |---|---|---|
-| Coal boom around X (0.72) | the pits of X's district raise `boom_growth` (1.5) times the coal of `boom_years` (5) years before, and `boom_share` (15%) of the island's | a railway or mineral line opened since (under the game's railways: the line that reached the town, or a branch to its collieries), and what the local price of coal did: dearer (buyers want more than the pits raise), cheaper (the pits outran their buyers) or steady |
+| Coal boom around X (0.72) | the pits of X's district raise `boom_growth` (1.5) times the coal of `boom_years` (5) years before, and `boom_share` (15%) of the island's | a railway or mineral line opened since (under the game's railways: a line to the town, or a branch to its collieries; "the railway that reached" the town only of its first line, and a later one by where it comes from), and what the local price of coal did: dearer (buyers want more than the pits raise), cheaper (the pits outran their buyers) or steady |
 | X in decline (0.68) | X and its district are `decline_fall` (10%) below a peak at least `decline_years` (8) old | where this year's leavers went and how much further an income goes there (what `people::migration` weighs), or that incomes no longer keep a family |
-| X overtakes Y as the island's first (0.8) or second (0.7) town | X has been `overtake_margin` (5%) ahead of Y for `overtake_years` (3) running | each town's growth over ten years and what X supplies most of |
+| X overtakes Y as the island's first (0.8) or second (0.7) town, or X is now the island's first or second town | for `overtake_years` (3) running the town truly in the place is not Y, the town last told of there, and is `overtake_margin` (5%) clear of it (or of the town below, if none is told), whichever town that is from year to year; X is the one in the place when it is told, and the story says "is now" when X did not grow past Y (a founding or a road redrew either's district since X took the place) or when no town is left to name | each town's growth over ten years, where Y now stands if it is not just below, and what X supplies most of |
 | X is the fastest-growing town of the decade (0.62) | at the decade's end, if X outgrew the island by `fastest_margin` (10 points) | how much of the growth moved in from other towns, and what X supplies |
 | N works close around X (0.66) | at least `closures_min` (5) works of a district shut in a year and they are `closures_share` (10%) of those that stood, shops and trades aside | what most of them made, and its price a year or three years back, or the price of what they work up, or wages; the largest is named |
 | N new towns in the decade (kind `town`, 0.65) | `new_towns_min` (3) or more founded in a decade | which, when, and the largest |
@@ -121,9 +124,11 @@ says "X and its district". A new town takes people and pits from the
 districts it is cut out of (`people::resettle_new_towns`), so nothing about
 it, or about the towns that held its ground the year before, is compared
 across its founding: their peaks start again that year, their coal and their
-decade's growth are not set against what they were, and the island's first
-and second places are seated afresh, without a story, if one of those towns
-held a place or was about to take one. The towns a founding did not touch
+decade's growth are not set against what they were, and a town that comes
+first or second because a founding cut its rival's district is told as being
+first or second, not as having overtaken. (Until the news was read whole the
+places were seated afresh without a story, and a town could lead the island
+for forty years untold.) The towns a founding did not touch
 keep their stories, so an island where towns go on being founded all century
 still has them (with `found_activity` raised until the last town is founded
 around 1850 or later, a run still tells 20 to 33 regional stories). A town
@@ -156,7 +161,7 @@ one hit hardest leads and the others are named in its last sentence.
 |---|---|---|
 | `enabled` | false (true in a game) | |
 | `per_decade`, `at_least` | 4, 2 | most and fewest kept in a decade |
-| `per_kind`, `inventions` | 1, 2 | most of one kind; of inventions |
+| `per_kind`, `inventions`, `turning_points` | 1, 2, 2 | most of one kind; of inventions; of turning points |
 | `floor`, `fill_floor` | 0.6, 0.45 | lightest item kept; lightest kept to fill a thin decade |
 | `own_great`, `own_small`, `own_summary` | 0.7, 0.5, 0.45 | weights of the player's own news |
 | `base_years` | 5 | years a doubling's baseline is the mean of |
@@ -477,7 +482,95 @@ sailed from. `peopling::growth` now gives the item its own reason (how many
 left, against one in a thousand of the island), and the hunger's is only
 written where there is none.
 
+### The news read as a reader would
+
+In November a century of the game's news on eight islands was read item by
+item, the way a player meets it (`docs/probes/news-read.md`), and checked
+against the record. Its plain faults, the ones that tell a reader something
+false or that looks like a mistake, are mended here, all under the switch: the
+port's news is the same to the letter (the golden test). Seeds 1 to 8 with six
+families, `isostate-core run --seed N --rules game --families 6`, before and
+after, read side by side:
+
+- **The coal booms' railway.** "The railway that reached Garside in 1829"
+  named the latest line to the town since the boom's base year; Garside's
+  first line came in 1827. `railways::line_for_coal` now also says which line
+  to the town it was and when the first came, and "reached" is said only of
+  the first: "The railway reached Garside in 1827, and a second line, from
+  Sandmere, in 1829; they carry it away", or, where the first came before the
+  base year, "The line from Glenbrook, opened in 1835, carries it away". All
+  eleven coal booms that name a line now agree with the railway items told at
+  the time (eight of nine named a wrong year before).
+- **The island's first and second towns.** The chronicle compared the town
+  last announced in a place with the largest town not in it, and kept that
+  town seated while it sank; when a founding cut a leading district it seated
+  the places afresh without a word. So "Kelside overtakes Melbourne as the
+  island's first town" (island 7, 1858) read as if Melbourne were second when
+  it was fourth, and Glenbrook led island 7 for forty years untold. Now
+  (`chronicle::places`) a place is lost once, for three years running, the
+  town truly in it is 5 per cent clear of the town last told of there, whoever
+  that is from year to year; the story names the town told of, says where it
+  now stands if it is not just below ("Melbourne is now the island's fourth
+  town"), and says "Glenbrook is now the island's first town" where a founding
+  or a road redrew either district since. Stories of first and second place
+  went from 26 to 50 on the eight islands, and every one names a town truly in
+  the place it names. Of the spells of five years or more at the top that a
+  reader never heard of, eleven before, three are left, each a lead that never
+  stood 5 per cent clear for three years running.
+- **Returns of a hundred per cent and more.** "Built for 31 and expects to
+  return 1288 per cent a year" is the investor's own sum for a tiny works and
+  true to the model, but reads as a mistake. A return of 100 per cent or more
+  is now left out of the item (`chronicle::return_told`): 131 items on the
+  eight islands. The page proposed "should pay for itself within a month"; its
+  checker would rather leave the figure out, and the checker's way is taken.
+- **Grain that moved with the weather.** The observer's market items said
+  "supply has failed while buyers still want it" of grain the year after a
+  bumper harvest, and "new capacity is flooding the market" of grain coming
+  back after a short one. For grain under the harvest's rules the reason is
+  now the weather's when the harvest moved the same way as output, by a spread
+  or more (`chronicle::grain_reason`): "last year's harvest was a bumper one,
+  and this year's is not" (all six such shortages), "the harvest has come back
+  after a short one" (fourteen gluts of 24), "the harvest is a bumper one"
+  (three) and "the harvest has come in short" (one).
+- **Works named after another town.** Works are named for the town whose
+  district they were built in and keep the name when a road or a new town
+  moves their ground: "Mallowwick Brickworks closes. The brickworks near
+  Sandmere ..." Such a works now says it: "open since 1749 and named when its
+  ground was Mallowwick's" (`chronicle::named_when`; 45 items).
+- **Charcoal is not coal.** "The Ashby family sets up in coal and mining at
+  Larkbourne. Ashby's Charcoal is the first works ...": the families count
+  charcoal burning in the coal and mining trade, which a reader of the 1770s
+  will not expect. The chronicle's own sentences now call it charcoal burning
+  (`chronicle::trade_of`); the trade keeps its name everywhere else.
+- **The cap of one a kind.** Turning points now have two places a decade
+  (`turning_points`), so the 1840s that saw more hands in workshops than on
+  the land can also keep "Rolling mills overtake the rail forges"; and alarms
+  and verdicts are no longer one kind, which only ever dropped a fall still
+  running ("Output falls 10.0%", island 4, 1895) beside the verdict on an
+  earlier slump. Turning points kept go from 49 to 60 on the eight islands,
+  alarms from 1 to 5; markets items kept from 47 to 42, milestones from 31 to
+  27.
+- **Counts of one.** "In one years" and "one of them makers of" could be
+  written; they are now "In a year" and "one of them a maker of".
+
+Of the sweep's facts only `news_region` and `news_total` move, by the
+places stories: 352 to 376 regional stories on the eight islands (from one
+fewer to six more a run), 8,016 to 8,040 items in all.
+
 ## What worries me
+
+- **Two turning points a decade keep the island's starting state twice.**
+  "Coal fires most of industry" in 1751 is the share wandering about the line
+  it starts on (the news reading's fault 4), and with two places a decade
+  island 7 now keeps "Coal now heats more homes than wood" (1753) beside it.
+  The mend for that is in the observer's crossing (no turning point for a
+  share that was in the band in the first year), not here.
+- **"Is now the island's first town" is told years late.** A lead must stand
+  5 per cent clear for three years, so Glenbrook, first from 1763 when
+  Garside's founding cut Brambridge's district, is told as first in 1766, and
+  Brambridge, first from 1751, in 1754. The margin keeps two towns of a size
+  from trading the title every year; a reader may still wonder why the news
+  is late.
 
 - **Grain is seven of the 56 items a history keeps.** In company 7.4 of a
   run's kept items are about the crop (seeds 1 to 12): 2.2 dearths, 1.4
