@@ -206,6 +206,85 @@ fn the_facts_no_file_holds_agree_with_the_record() {
     assert!(shared > 0.5 * land && shared <= land + 1e-6, "{shared} cells' worth shared out on an island of {land}");
 }
 
+/// Every fact a run under the game's rules had on 12 November 2026 (main at 295a379), for a
+/// run to 1760 with six families, the news aside (its kinds come and go with the run).
+const FACTS_OF_MAIN: &str = "
+    pop_1750 pop_1760 growth_capped_years growth_capped_people town_growth_pct_p10 town_growth_pct_p50
+    town_growth_pct_p90 town_growth_near_old_cap urban_share_1750 urban_share_1760 towns_1750 towns_1760
+    last_town_founded late_towns late_towns_coal late_towns_iron late_towns_stone late_towns_works
+    late_towns_farm late_towns_port late_towns_rail late_town_people_median late_town_people_largest emigrants
+    farm_share_1750 farm_share_1760 industry_share_1750 industry_share_1760 real_wage_1760_vs_1750
+    output_per_head_1760_vs_1750 output_per_head_peak_year mine_share_1750 mine_share_1760
+    grain_output_1760_vs_1750 real_wage_chained_1760_vs_1750 real_income_1750 real_income_1760 budget_food_1750
+    budget_food_1760 budget_warmth_1750 budget_warmth_1760 budget_shelter_1750 budget_shelter_1760
+    budget_clothing_1750 budget_clothing_1760 budget_implements_1750 budget_implements_1760 budget_comfort_1750
+    budget_comfort_1760 baskets_per_head_1750 baskets_per_head_1760 goods_per_head_1750 goods_per_head_1760
+    carting_share_of_output_1750 carters_share_of_hands_1750 carting_share_of_output_1760
+    carters_share_of_hands_1760 income_share_work_1750 income_share_work_1760 income_share_works_1750
+    income_share_works_1760 income_share_merchants_1750 income_share_merchants_1760 income_share_land_1750
+    income_share_land_1760 income_pay_share_1750 income_pay_share_1760 income_ownership_years_1750
+    income_ownership_years_1760 books_goods_worst books_income_worst rail_first_year rail_km_1760
+    rail_last_growth_year rail_towns_with_track_1760 rail_traffic_near_track_1760 rail_cost_in_years_of_output
+    rail_most_lines_building rail_slowest_line_years rail_lines_stuck_at_end rail_fares_over_capital_1760
+    rail_spent_over_expected rail_worst_overrun rail_lines_trunk rail_lines_to_towns rail_lines_to_farms
+    rail_lines_to_pastures rail_lines_to_quarries rail_lines_to_mines rail_lines_to_works rail_lines_to_woods
+    rail_km_share_branches works_1750 works_1760 works_ex_services_1750 works_ex_services_1760
+    works_per_1000_people_1760 works_size_median_1760 works_size_p90_1760 works_size_largest_1760
+    works_top_1pct_capacity_share_1760 works_founded works_closed works_closed_median_life works_utilisation_1760
+    cells_urban_1750 cells_urban_1760 cells_industry_1750 cells_industry_1760 cells_derelict_1750
+    cells_derelict_1760 area_farm_1750 area_farm_1760 area_pasture_1750 area_pasture_1760 area_forestry_1750
+    area_forestry_1760 area_mines_1750 area_mines_1760 area_wild_1750 area_wild_1760 workings_1750
+    workings_quarry_1750 workings_claypit_1750 workings_ironmine_1750 workings_coalmine_1750
+    workings_share_of_cell_1750 workings_most_of_cell_1750 hands_quarry_1750 hands_claypit_1750
+    hands_ironmine_1750 hands_coalmine_1750 out_stone_per_head_1750 price_stone_in_wages_1750
+    out_clay_per_head_1750 price_clay_in_wages_1750 out_iron_ore_per_head_1750 price_iron_ore_in_wages_1750
+    out_coal_per_head_1750 price_coal_in_wages_1750 royalties_share_of_output_1750 workings_1760
+    workings_quarry_1760 workings_claypit_1760 workings_ironmine_1760 workings_coalmine_1760
+    workings_share_of_cell_1760 workings_most_of_cell_1760 hands_quarry_1760 hands_claypit_1760
+    hands_ironmine_1760 hands_coalmine_1760 out_stone_per_head_1760 price_stone_in_wages_1760
+    out_clay_per_head_1760 price_clay_in_wages_1760 out_iron_ore_per_head_1760 price_iron_ore_in_wages_1760
+    out_coal_per_head_1760 price_coal_in_wages_1760 royalties_share_of_output_1760 urban_churn_10y
+    discovered_coke_furnace first_output_coke_furnace half_of_output_coke_furnace discovered_textile_mill
+    first_output_textile_mill half_of_output_textile_mill discovered_engine_works first_output_engine_works
+    half_of_output_engine_works discovered_crucible_steel first_output_crucible_steel
+    half_of_output_crucible_steel discovered_bessemer first_output_bessemer half_of_output_bessemer
+    discovered_rolling_mill first_output_rolling_mill half_of_output_rolling_mill discovered_steel_rolling
+    first_output_steel_rolling half_of_output_steel_rolling discovered_railway discovered_improved_husbandry
+    discovered_farm_machinery price_swing_grain price_swing_iron price_swing_rails price_swing_cloth farm_zigzag
+    output_swing_grain price_ac1_grain output_ac1_grain real_wage_worst_year real_wage_swing harvest_sd
+    grain_output_on_harvest grain_price_on_harvest real_wage_on_harvest grain_price_year_after_harvest
+    real_wage_year_after_harvest famine_years seconds canal_first_year canal_first_begun canal_km_1760
+    canal_last_begun canal_before_railway canal_years_before_railway canal_mton_km_1760 canal_haul_km_1760
+    canal_cells_in_use_1760 canal_carries_coal_1760 canal_carries_stone_clay_1760 canal_carries_grain_1760
+    canal_carries_timber_1760 canal_carries_iron_ore_1760 canal_carries_works_goods_1760 canal_traffic_peak_year
+    canal_traffic_end_vs_peak canal_works_near_1760 canal_land_near canal_km_beside_track_1760 canal_lines_trunk
+    canal_junctions_cut canal_lines_to_collieries canal_lines_to_quarries canal_lines_to_iron_mines
+    canal_lines_to_farms canal_lines_to_woods canal_lines_to_works canal_cost_in_years_of_output
+    canal_spent_over_expected canal_slowest_years canal_most_digging canal_most_navvies
+    canal_fares_over_capital_1760";
+
+/// Facts are added and never renamed (docs/rules/scorecard.md): a fact a sweep had
+/// yesterday is one today's sweep can be compared on. A run to 1760 is enough to see
+/// a name, since the names of years are made the same way whatever the end year.
+#[test]
+#[allow(non_snake_case)]
+fn no_fact_main_had_is_lost_or_renamed() {
+    let rules = isostate_core::params::Rules::Game;
+    let mut P = rules.params();
+    P.seed = 1;
+    P.n_families = 6;
+    P.end_year = Some(1760);
+    let mut s = sim::start(&P, rules.content());
+    let mut gathered = facts::Gathered::default();
+    while s.year <= s.end_year {
+        sim::run_year(&mut s).expect("money is conserved");
+        facts::gather_year(&mut gathered, &s);
+    }
+    let f = facts::stylised_facts(&sim::finish(s), &gathered, 0.0);
+    let missing: Vec<&str> = FACTS_OF_MAIN.split_whitespace().filter(|&name| !f.facts.iter().any(|x| x.name == name)).collect();
+    assert!(missing.is_empty(), "facts main had and this code does not give: {missing:?}");
+}
+
 #[test]
 fn a_bad_setting_is_refused_before_anything_runs() {
     let dir = scratch("bad");
