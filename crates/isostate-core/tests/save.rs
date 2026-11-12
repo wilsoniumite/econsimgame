@@ -503,6 +503,65 @@ fn a_file_that_says_what_no_game_could_have_written_is_refused() {
 }
 
 #[test]
+fn orders_that_name_anything_at_all_are_refused_or_carried_out_and_the_game_goes_on() {
+    use isostate_core::families::{Choice, Group, Stance};
+    let mut g = Game::new(7, 3, 5);
+    play(&mut g, 3);
+    let good = g.save(0);
+    // every number an order can hold, at its ends, just inside them and just outside: squares, towns,
+    // members of the family, decisions
+    let numbers = [0usize, 1, 2, 3, 7, 63, 64, 65, 255, 9_999, 10_000, 10_001, 1 << 20, 1 << 32, usize::MAX / 2, usize::MAX - 1, usize::MAX];
+    let methods: Vec<String> = g.sim.content.method_name.iter().take(4).cloned().chain(["a works nobody knows".to_string(), String::new()]).collect();
+    let mut wild: Vec<Order> = Vec::new();
+    for (i, &x) in numbers.iter().enumerate() {
+        let y = numbers[(i * 7 + 3) % numbers.len()];
+        let group = Group::ALL[i % Group::ALL.len()];
+        let stance = [Stance::Grow, Stance::Hold, Stance::WindDown][i % 3];
+        wild.push(Order::BuyLand { cell: x });
+        wild.push(Order::MoveSeat { town: x });
+        wild.push(Order::Found { method: methods[i % methods.len()].clone(), cell: x });
+        wild.push(Order::Found { method: methods[0].clone(), cell: x });
+        wild.push(Order::Stance { group, town: x, stance });
+        wild.push(Order::Post { member: x, posting: Posting::Manager { group, town: y } });
+        wild.push(Order::Post { member: y, posting: Posting::Unposted });
+        wild.push(Order::Decide { id: x as u64, choice: Choice::Apprentice { group, town: y } });
+        wild.push(Order::Decide { id: y as u64, choice: Choice::Head { member: x } });
+        wild.push(Order::Decide { id: x as u64, choice: Choice::Trade { group } });
+        wild.push(Order::Decide { id: x as u64, choice: Choice::University });
+    }
+    // dated at every turn of the game, at each year's end (twelve months in) and, as no game dates
+    // an order, in the middle of a year; in any order; and left waiting
+    let mut doctored = good.clone();
+    doctored.orders = wild.iter().enumerate().map(|(i, o)| save::Given { year: 1749 + (i as i64 * 5) % 4, month: [0, 12, 5, 0, 11, 1][i % 6], order: o.clone() }).collect();
+    doctored.orders.push(save::Given { year: i64::MIN, month: 0, order: Order::MoveSeat { town: 1 } });
+    doctored.orders.push(save::Given { year: i64::MAX, month: 12, order: Order::MoveSeat { town: 1 } });
+    doctored.month = 7;
+    doctored.waiting = wild.clone();
+    doctored.seed = u64::MAX;
+    doctored.started = u64::MAX;
+    doctored.rules.name = "rules nobody knows".to_string();
+    let text = doctored.to_text();
+    // the file is read and played: what cannot be done is refused, an order at a time, and nothing stops the program
+    let played = std::panic::catch_unwind(|| {
+        let mut back = save::load(&Save::from_text(&text).expect("it is a saved game by its layout"), |_| {}).expect("it loads");
+        let refused = back.refused.len();
+        let carried = back.game.orders.len();
+        // and it goes on: the orders that wait are tried at the year's end and its turn, and two more years are played
+        for _ in 0..2 {
+            back.game.year().expect("the year is played");
+            back.game.turn();
+        }
+        let again = save::load(&Save::from_text(&back.game.save(0).to_text()).unwrap(), |_| {}).expect("what it saves loads");
+        (refused, carried, again.refused.len(), again.drifted)
+    });
+    let (refused, carried, refused_again, drifted) = played.unwrap_or_else(|_| panic!("an order in a file stopped the program"));
+    assert!(refused > 100, "{refused} of {} orders were refused", doctored.orders.len());
+    assert_eq!(refused + carried, doctored.orders.len());
+    // what was carried out is a game like any other: saved and loaded, it comes back as it was
+    assert_eq!((refused_again, drifted), (0, false));
+}
+
+#[test]
 fn a_game_with_as_many_families_as_there_are_names_starts_and_plays() {
     let mut g = Game::new(7, save::MAX_FAMILIES, 0);
     assert_eq!(g.sim.st.families.len(), 30);
