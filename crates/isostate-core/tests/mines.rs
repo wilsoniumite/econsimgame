@@ -136,6 +136,56 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
 }
 
 #[test]
+fn a_fund_in_debt_is_repaid_by_its_rents_alone() {
+    // The rule on an island that has no bad year of its own, so that it is held
+    // whatever becomes of island 3: a year in, the fund is put half a million
+    // in debt by hand, the money going to the households by head, as the wages
+    // of a working that sold nothing would. The total is as it was, so the
+    // monthly check goes on holding.
+    let P = commons(7, 0, 1752);
+    let mut s = sim::start(&P, game_content());
+    for month in 0..12 {
+        sim::run_month(&mut s, month).unwrap();
+    }
+    sim::end_year(&mut s);
+    assert!(s.st.fund_cash > 0.0, "an island in an ordinary year: the fund holds {}", s.st.fund_cash);
+    let debt = 5.0e5;
+    let people: f64 = s.st.pop.iter().sum();
+    for t in 0..s.st.T_max {
+        s.st.hh_cash[t] += debt * s.st.pop[t] / people;
+    }
+    s.st.fund_cash -= debt;
+    let (mut months, mut clear) = (0, false);
+    while s.year <= s.end_year {
+        for month in 0..12 {
+            let before = s.st.fund_cash;
+            let cash = s.st.hh_cash.clone();
+            sim::run_month(&mut s, month).unwrap();
+            let st = &s.st;
+            if before < 0.0 && st.fund_cash < 0.0 {
+                // nothing went out of it and nothing but the month's rents came in
+                months += 1;
+                assert!((st.fund_cash - (before + st.m_rent)).abs() < 1e-6, "{}-{month}: {before} and rents of {} left {}", s.year, st.m_rent, st.fund_cash);
+                assert!(st.m_rent > 0.0);
+            } else if before < 0.0 {
+                // the month the debt is cleared: nine tenths of what is over are shared out
+                clear = true;
+                assert!((st.fund_cash - 0.1 * (before + st.m_rent)).abs() < 1e-6, "{}-{month}: {before} and rents of {} left {}", s.year, st.m_rent, st.fund_cash);
+            } else if clear {
+                // and from then on it is the port's fund again
+                assert!((st.fund_cash - 0.1 * (before + st.m_rent)).abs() < 1e-6);
+            }
+            for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+                assert!(st.hh_cash[t] >= 0.0, "{}-{month}: the households of {} held {} and hold {}", s.year, st.town_name[t], cash[t], st.hh_cash[t]);
+            }
+        }
+        sim::end_year(&mut s);
+    }
+    // rents of about a hundred thousand a month repay half a million in a few months
+    assert!(clear && (2..=12).contains(&months), "in debt for {months} months, clear: {clear}");
+}
+
+#[test]
 fn the_workings_give_the_surface_back() {
     let (off, on) = (run(&port(3, 0, 1770)), run(&params(3, 0, 1770)));
     let C = &on.content;
