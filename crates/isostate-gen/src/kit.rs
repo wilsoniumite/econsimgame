@@ -764,12 +764,19 @@ impl<'a, 's> Kit<'a, 's> {
                 }
             }
             Open::Mouth { within, round } => {
-                let depth = 0.004;
                 let dark = *self.pal.smoke.soot;
+                // an empty opening is deep; a fire stands close behind its arch, where the
+                // wall over it hides little of it from the game's camera
+                let depth = if within == dark { 0.004 } else { 0.0016 };
                 jambs(self, depth, shade(w.col, k * 0.6));
-                // a fire is brightest low down; an empty opening is dark all the way
-                self.panel(f, u0, u1, y0, y1, -depth, within, shade(within, 0.7));
-                self.quad([self.fp(f, u0, y0, 0.0), self.fp(f, u1, y0, 0.0), self.fp(f, u1, y0, -depth), self.fp(f, u0, y0, -depth)], shade(dark, 1.7), Vec3::Y);
+                // a fire is brightest low down (and only a little less so above, or its glow goes
+                // to the colour of the brick round it); an empty opening is dark all the way
+                self.panel(f, u0, u1, y0, y1, -depth, within, shade(within, 0.9));
+                // the floor within is much of what shows of the opening from above: in shadow
+                // under an empty one, and lit by the fire where there is one, so that a
+                // casting house's arch is as bright close to as it is from further off
+                let floor = if within == dark { shade(dark, 1.7) } else { shade(within, 0.95) };
+                self.quad([self.fp(f, u0, y0, 0.0), self.fp(f, u1, y0, 0.0), self.fp(f, u1, y0, -depth), self.fp(f, u0, y0, -depth)], floor, Vec3::Y);
                 if round {
                     self.haunches(f, u0, u1, y1, shade(w.col, k));
                 } else {
