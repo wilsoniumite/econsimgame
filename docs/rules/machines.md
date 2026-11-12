@@ -299,8 +299,11 @@ usual throughout; the number of engine works rises from 287 to 670, 32 a
 year, which is two per town; capacity per works stays between 1.4 and 1.6;
 and 97 to 100 per cent of them count as building in every one of those years.
 
-The works mechanism (`night/works`) changes the first line: a works has
-finished building when under a twentieth of its capacity is still on order.
+The works mechanism (`night/works`, now in the game's rules) changes the first
+line: a works has finished building when under a twentieth of its capacity is
+still on order. It changes the second too: a new works is sized to its town's
+market and comes one at a time, never two a year in one town and method, nor
+doubled (`works.md`).
 See the first worry below.
 
 ## In company with the works mechanism
