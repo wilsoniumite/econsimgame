@@ -175,8 +175,7 @@ head in 1750 (1.51 to 1.60; `real_income_1750` in today's sweep). So in 1750
 the curve turns only in the towns already past 2, if there are any (the sweep
 does not keep a town's income, and nobody has counted them), and the island's
 income as a whole first passes 2 between 1761 and 1782 on today's eight
-islands. Nothing has been retuned for
-it; see the worry about `y_ref` below.
+islands. Nothing has been retuned for it; see the worry about `y_ref` below.
 
 `--set engel.enabled=true` measures the mechanism alone, and
 `--set engel.enabled=true --set engel.strength=0` gives the port with the new
@@ -569,9 +568,9 @@ below `y_ref`; the life cycle for works took it from 1.87 to 1.68, the
 merge of the railways, carting and the people to 1.49, and the mines' merge
 back up to 1.56, where it has stood since (the merged sweeps
 `merged-game-f6-c`, `-d`, `-e`, `-f` and `-g` in the same folder). Incomes
-then rise far past
-anything the port reached, so by 1900 nearly every further shilling is split
-by the richer set and food is down to 15 per cent of budgets. And the gap
+then rise far past anything the port reached, so by 1900 nearly every further
+shilling is split by the richer set and food is down to 15 per cent of
+budgets. And the gap
 between the two indices is wider than the port's: the cost of living in 1900
 is 1.20 on the 1750 basket and 0.73 chained, so the chained real wage is 4.24
 where the basket's is 2.60.
