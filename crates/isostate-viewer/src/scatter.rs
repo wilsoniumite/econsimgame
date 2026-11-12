@@ -252,6 +252,42 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collection
     out
 }
 
+/// A length of the railway in the open, for leading a works' siding out to:
+/// its points on the map, each with how high the line stands above the
+/// ground there, and the box round them.
+struct Track {
+    pts: Vec<(f32, f32, f32)>,
+    lo: (f32, f32),
+    hi: (f32, f32),
+}
+
+/// The railway of year `k` where it runs in the open, as lengths of track (a tunnel parts a line in two).
+fn tracks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<Track> {
+    let rails = crate::rails::year(r, g, cen, k);
+    let mut out: Vec<Track> = Vec::new();
+    for line in &rails.lines {
+        let mut run: Vec<(f32, f32, f32)> = Vec::new();
+        for (i, p) in line.pts.iter().enumerate() {
+            if line.kind[i] != crate::rails::Kind::Tunnel {
+                run.push((p.x, p.z, p.y - line.ground[i]));
+            }
+            if (line.kind[i] == crate::rails::Kind::Tunnel || i + 1 == line.pts.len()) && !run.is_empty() {
+                let pts = std::mem::take(&mut run);
+                if pts.len() >= 2 {
+                    let (lo, hi) = pts.iter().fold(((f32::MAX, f32::MAX), (f32::MIN, f32::MIN)), |b, p| ((b.0 .0.min(p.0), b.0 .1.min(p.1)), (b.1 .0.max(p.0), b.1 .1.max(p.1))));
+                    out.push(Track { pts, lo, hi });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A siding is led out to the line only where the line stands no higher
+/// than this above the ground (24 m as the relief is drawn): none climbs a
+/// bank or joins a viaduct.
+const LEVEL_WITH: f32 = 0.012;
+
 /// How much room a yard is given when a spot is tried for it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Room {
@@ -296,7 +332,7 @@ struct Lot {
 /// Lay out the works of one cell: `firms` in the order they were founded.
 /// It gives back how many found no room at their own size, and how many none at all.
 #[allow(clippy::too_many_arguments)]
-fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
+fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], tracks: &[Track], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
     let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
     // the churchyards that reach into this cell, or near it
     let yards: Vec<&towns::Churchyard> = yards.iter().filter(|y| y.meets_box(cx + 0.5, cy + 0.5, 0.55, 0.55)).collect();
@@ -320,7 +356,10 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
     let near: Vec<(f32, f32, f32)> = spots.iter().map(|s| (off(s.0, s.1, false), off(s.0, s.1, true), world::water_dist(g, s.0, s.1))).collect();
     let stream = near.iter().any(|n| n.2 < 0.16);
     // the year the railway came to the cell, if it has
-    let railed = (0..r.ny.min(r.filled.max(1))).find(|&k| r.trans[k * r.n + cell] & 4 != 0);
+    let railed_at = |cell: usize| (0..r.ny.min(r.filled.max(1))).find(|&k| r.trans[k * r.n + cell] & 4 != 0);
+    let railed = railed_at(cell);
+    // the year the line that runs through a point of the map was laid there
+    let rail_year = |x: f32, z: f32| railed_at((z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1)).map(|k| r.y0 + k as i32);
     let process: Vec<site::Process> = firms.iter().map(|&f| site::Process::standard(&r.header.methods[r.header.firms[f].method].name).unwrap_or_else(|| site::Process::of(Kind::Other))).collect();
     let process_of = |f: usize| &process[firms.iter().position(|&o| o == f).unwrap()];
     // one works makes what another uses
@@ -488,7 +527,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         slots.firm_pos[f] = (x, z, q as f32 * std::f32::consts::FRAC_PI_2 + askew);
         slots.firm_cap[f] = if size < own { size } else { f32::MAX };
         slots.firm_water[f] = world::water_dist(g, x, z) < hx.hypot(hz) + 0.09;
-        slots.firm_plot[f] = plot_of(g, ways, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f], railed.map(|k| r.y0 + k as i32));
+        slots.firm_plot[f] = plot_of(g, ways, tracks, &rail_year, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f]);
         lots.push(Lot { x, z, hx, hz, from, to });
         placed.push(f);
     }
@@ -520,6 +559,29 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
             }
         }
     }
+    // a siding's way out to the line does not lie across a neighbour's ground: where the way
+    // from the side that faces the railway to the line crosses the plot of another works that
+    // stands in any of the same years, that side is a wall and the works carts to the station
+    for (i, &f) in placed.iter().enumerate() {
+        let plot = &slots.firm_plot[f];
+        let Some(side) = (0..plot.edges.len()).find(|&s| plot.edges[s] == Edge::Rail) else { continue };
+        let (px, pz, yaw) = slots.firm_pos[f];
+        let (sin, cos) = yaw.sin_cos();
+        let (a, b) = (plot.outline[side], plot.outline[(side + 1) % plot.outline.len()]);
+        let mid = ((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5);
+        let Some(to) = plot.line.iter().copied().min_by(|p, q| (p.0 - mid.0).hypot(p.1 - mid.1).total_cmp(&(q.0 - mid.0).hypot(q.1 - mid.1))) else { continue };
+        let crossed = (1..=10).any(|s| {
+            let t = s as f32 / 10.0;
+            let (ox, oz) = (mid.0 + (to.0 - mid.0) * t, mid.1 + (to.1 - mid.1) * t);
+            let (mx, mz) = (px + ox * cos + oz * sin, pz - ox * sin + oz * cos);
+            lots.iter().enumerate().any(|(j, l)| j != i && lots[i].from < l.to && l.from < lots[i].to && (l.x - mx).abs() < l.hx + 0.006 && (l.z - mz).abs() < l.hz + 0.006)
+        });
+        if crossed {
+            let plot = &mut slots.firm_plot[f];
+            plot.edges[side] = Edge::Wall;
+            plot.line.clear();
+        }
+    }
     if homeless > 0 && std::env::var_os("ISOSTATE_PLOTS").is_some() {
         let most = (0..r.ny).map(|k| lots.iter().filter(|l| l.from <= k && k < l.to).count()).max().unwrap_or(0);
         eprintln!("cell {cell}: {} works over the years, {most} at once at most, {} spots, town {}, {} points of road and rail, {homeless} with no ground", firms.len(), spots.len(), town.is_some(), ways.len());
@@ -529,9 +591,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
 
 /// The plot of a works whose yard's middle, facing and size are settled: a
 /// rectangle with one of its far corners cut off where a road, the railway
-/// or water presses on it, and what each side faces. `rail` is the year the
-/// railway came to the cell.
-fn plot_of(g: &Ground, ways: &[Way], (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool, rail: Option<i32>) -> Plot {
+/// or water presses on it, and what each side faces. `tracks` is the railway
+/// where it runs in the open, and `rail_year` the year the line through a
+/// point of the map was laid there.
+#[allow(clippy::too_many_arguments)]
+fn plot_of(g: &Ground, ways: &[Way], tracks: &[Track], rail_year: &dyn Fn(f32, f32) -> Option<i32>, (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool) -> Plot {
     let (hw, hd) = (w * 0.5, d * 0.5);
     let (sin, cos) = yaw.sin_cos();
     // a point of the works' own frame on the map, and a map direction in the works' frame
@@ -554,14 +618,35 @@ fn plot_of(g: &Ground, ways: &[Way], (x, z, yaw): (f32, f32, f32), (w, d): (f32,
     } else {
         Plot::rect(w, d)
     };
-    // the side nearest the railway, where the line runs within reach of the plot
-    if let Some(year) = rail {
-        let to = ways.iter().filter(|w| w.3 > 0.0).map(|w| (w.0 - x, w.1 - z)).min_by(|a, b| a.0.hypot(a.1).total_cmp(&b.0.hypot(b.1)));
-        if let Some((dx, dz)) = to.filter(|t| t.0.hypot(t.1) < hw.hypot(hd) + 0.3) {
-            let side = plot.side_toward(own(dx, dz));
-            if side != 0 {
-                plot = plot.facing_from(side, Edge::Rail, year);
+    // the side nearest the railway, with the line as it runs by the plot: the planner lays a
+    // siding only where it can lead it out to that line (`site::JOIN`). The line is taken where
+    // it runs at the level of the ground (`LEVEL_WITH`), from the year it was laid there
+    let reach = hw.hypot(hd) + 0.3;
+    let mut nearest: Option<(f32, usize, usize)> = None;
+    for (ti, t) in tracks.iter().enumerate() {
+        if x < t.lo.0 - reach || x > t.hi.0 + reach || z < t.lo.1 - reach || z > t.hi.1 + reach {
+            continue;
+        }
+        for (pi, p) in t.pts.iter().enumerate() {
+            let away = (p.0 - x).hypot(p.1 - z);
+            if p.2.abs() <= LEVEL_WITH && away < nearest.map_or(reach, |n| n.0) {
+                nearest = Some((away, ti, pi));
             }
+        }
+    }
+    if let Some((_, ti, pi)) = nearest {
+        let pts = &tracks[ti].pts;
+        let level = |p: &(f32, f32, f32)| p.2.abs() <= LEVEL_WITH && (p.0 - x).hypot(p.1 - z) < reach;
+        let (mut a, mut b) = (pi, pi);
+        while a > 0 && level(&pts[a - 1]) {
+            a -= 1;
+        }
+        while b + 1 < pts.len() && level(&pts[b + 1]) {
+            b += 1;
+        }
+        let side = plot.side_toward(own(pts[pi].0 - x, pts[pi].1 - z));
+        if let (true, Some(year)) = (b > a && side != 0, rail_year(pts[pi].0, pts[pi].1)) {
+            plot = plot.with_line(pts[a..=b].iter().map(|p| own(p.0 - x, p.1 - z)).collect()).facing_from(side, Edge::Rail, year);
         }
     }
     // the side nearest the water: a stream, or a river broad enough to carry boats
@@ -685,6 +770,9 @@ fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
         for i in 0..plot.edges.len() {
             plot.edge(i, year).hash(&mut h);
         }
+        for p in &plot.line {
+            (p.0.to_bits(), p.1.to_bits()).hash(&mut h);
+        }
         (r.header.firms[f].method, r.header.meta.seed).hash(&mut h);
         h.finish()
     };
@@ -692,15 +780,16 @@ fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
 }
 
 /// What the plans of year `k` hold, in a line, for ISOSTATE_TIMING: how many
-/// works have a siding, a wharf, a neighbour over the wall, parts out of use,
+/// works have the railway running by their plot (and of those, how many
+/// a siding that is led out to it), a wharf, a neighbour over the wall, parts out of use,
 /// and how many were built smaller than they are for want of room on their
 /// plot. With ISOSTATE_PLOTS, where the first few of each stand, for pointing
 /// a camera at them.
 fn plans_said(r: &Replay, slots: &Slots, k: usize, sites: &[Option<FirmSite>]) -> String {
     let year = r.y0 + k as i32;
-    let names = ["a siding", "a wharf", "a works that feeds it over the wall", "one it feeds", "parts out of use", "a stage built smaller for want of room", "a stage that found no room at all", "its gate shut", "its roofs falling in"];
-    let mut count = [0usize; 9];
-    let mut places: [Vec<String>; 9] = Default::default();
+    let names = ["the line by its plot", "a siding", "a wharf", "a works that feeds it over the wall", "one it feeds", "parts out of use", "a stage built smaller for want of room", "a stage that found no room at all", "its gate shut", "its roofs falling in"];
+    let mut count = [0usize; 10];
+    let mut places: [Vec<String>; 10] = Default::default();
     let mut all = 0;
     // the capacity the works have, what their stages come to, and what of it is built
     let (mut have, mut staged, mut built) = (0.0f32, 0.0f32, 0.0f32);
@@ -715,7 +804,7 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, sites: &[Option<FirmSite>]) -
         }
         let faces = |want: Edge| (0..plan.plot.edges.len()).any(|i| plan.plot.edge(i, year) == want);
         let top = plan.stages.last().map_or(0.0, |s| s.size);
-        let has = [plan.siding.is_some(), plan.wharf.is_some(), faces(Edge::Fed), faces(Edge::Feeds), fs.now.shrunk_for > 0 && plan.stages.len() > 1 && fs.now.size < top, plan.squeezed > 0, plan.dropped > 0, fs.now.state == State::Idle, fs.now.state == State::Derelict];
+        let has = [faces(Edge::Rail), plan.siding.is_some(), plan.wharf.is_some(), faces(Edge::Fed), faces(Edge::Feeds), fs.now.shrunk_for > 0 && plan.stages.len() > 1 && fs.now.size < top, plan.squeezed > 0, plan.dropped > 0, fs.now.state == State::Idle, fs.now.state == State::Derelict];
         for (i, _) in has.iter().enumerate().filter(|(_, h)| **h) {
             count[i] += 1;
             if places[i].len() < 6 {
@@ -817,6 +906,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
         return;
     }
     let ways = ways(r, g, &cen, r.filled.clamp(1, r.ny) - 1);
+    let tracks = tracks(r, g, &cen, r.filled.clamp(1, r.ny) - 1);
     let mut by_cell: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
     for f in 0..n {
         if dirty.contains(&r.header.firms[f].cell) {
@@ -826,7 +916,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     let (mut squeezed, mut homeless) = (0, 0);
     for (cell, mut firms) in by_cell {
         firms.sort_by_key(|&f| (r.header.firms[f].born, f));
-        let (a, b) = lay_out(r, g, &cen, ways.get(&cell).map_or(&[][..], |v| v), &yards, cell, &firms, &lives, &rungs, slots);
+        let (a, b) = lay_out(r, g, &cen, ways.get(&cell).map_or(&[][..], |v| v), &tracks, &yards, cell, &firms, &lives, &rungs, slots);
         squeezed += a;
         homeless += b;
     }
@@ -1174,6 +1264,19 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let (sin, cos) = p.2.sin_cos();
         let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
         plots.entry(firm.cell).or_default().push((p.0 + mx * cos + mz * sin, p.1 - mx * sin + mz * cos, hx, hz));
+        // and the track that leads its siding out to the line, length by length, in whichever
+        // cells it lies: no house or tree stands on it
+        for s in fs.plan.spur.windows(2) {
+            let on_map = |q: (f32, f32)| (p.0 + q.0 * cos + q.1 * sin, p.1 - q.0 * sin + q.1 * cos);
+            let (a, b) = (on_map(s[0]), on_map(s[1]));
+            let lot = ((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5, (a.0 - b.0).abs() * 0.5 + 0.012, (a.1 - b.1).abs() * 0.5 + 0.012);
+            let cell_at = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
+            let (c0, c1) = (cell_at(lot.0 - lot.2, lot.1 - lot.3), cell_at(lot.0 + lot.2, lot.1 + lot.3));
+            plots.entry(c0).or_default().push(lot);
+            if c1 != c0 {
+                plots.entry(c1).or_default().push(lot);
+            }
+        }
         let site_ = Site::on(ground(g, p.0, p.1), p.2, &height);
         // as much of it as the camera can see, as for a house
         let now = site::Now { detail: lod.at(p.0, p.1), ..fs.now };

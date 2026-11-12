@@ -238,11 +238,18 @@ pub enum Edge {
 /// `since` is the year for each side, and before it the side is a wall. The
 /// plan places what each stage built by what its sides faced that year, so
 /// a railway's coming moves nothing that stood before it.
+///
+/// A side that faces the railway has a siding only if the siding can be led
+/// out to the line: `line` is where the line runs by the plot, as points
+/// along it in the plot's frame. A side marked `Rail` with no line within
+/// `JOIN` of it is a wall to the plan, and no siding is drawn that does not
+/// meet the line.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Plot {
     pub outline: Vec<(f32, f32)>,
     pub edges: Vec<Edge>,
     pub since: Vec<i32>,
+    pub line: Vec<(f32, f32)>,
 }
 
 impl Plot {
@@ -253,7 +260,21 @@ impl Plot {
         if n > 0 {
             edges[0] = Edge::Road;
         }
-        Plot { outline, edges, since: vec![i32::MIN; n] }
+        Plot { outline, edges, since: vec![i32::MIN; n], line: Vec::new() }
+    }
+
+    /// The same plot with the railway running by it along `line` (points in the plot's frame).
+    pub fn with_line(mut self, line: Vec<(f32, f32)>) -> Plot {
+        self.line = line;
+        self
+    }
+
+    /// A line that runs straight along side `i`, `off` outside it and `past` beyond each of its ends.
+    pub fn line_along(&self, i: usize, off: f32, past: f32) -> Vec<(f32, f32)> {
+        let ((a, b), o) = (self.side(i), self.outward(i));
+        let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-6);
+        let d = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+        vec![(a.0 + o.0 * off - d.0 * past, a.1 + o.1 * off - d.1 * past), (b.0 + o.0 * off + d.0 * past, b.1 + o.1 * off + d.1 * past)]
     }
 
     /// A rectangle, `w` along its front and `d` deep, the road before it and walls round the rest.
@@ -279,11 +300,17 @@ impl Plot {
         self.facing_from(i, edge, i32::MIN)
     }
 
-    /// The same plot with side `i` facing something else from `year` on.
+    /// The same plot with side `i` facing something else from `year` on. (A
+    /// side set to face the railway, on a plot that has not been told where
+    /// the line runs, has it run straight along that side, `LINE_OFF` out:
+    /// the lab's plots and the tests'.)
     pub fn facing_from(mut self, i: usize, edge: Edge, year: i32) -> Plot {
         if i < self.edges.len() {
             self.edges[i] = edge;
             self.since[i] = year;
+            if edge == Edge::Rail && self.line.is_empty() {
+                self.line = self.line_along(i, LINE_OFF, 0.05);
+            }
         }
         self
     }
@@ -513,6 +540,13 @@ pub struct Plan {
     /// stood there before the railway came is left standing
     pub siding: Option<(usize, f32, f32)>,
     pub wharf: Option<(usize, f32, f32)>,
+    /// the track that leads the siding out to the line: points in the plot's
+    /// frame, the first where it leaves the siding and the last on the line
+    /// (a works has no siding that cannot be led out), and whether it leaves
+    /// from the start of the siding's stretch or from its end (the buffer
+    /// stop stands at the other)
+    pub spur: Vec<(f32, f32)>,
+    pub spur_at_start: bool,
     /// the goods that come in (fuel among them), each with its share of the bulk
     pub incoming: Vec<(Good, f32)>,
     /// how many parts found no room at their own size (and were built smaller, or a store not at all), and how many stages' process buildings found none
@@ -530,6 +564,91 @@ const WHARF: f32 = 0.018;
 const WALL: f32 = 0.005;
 /// How near its railway or its water a works must have built to have a siding or a wharf there.
 const REACH: f32 = 0.08;
+/// How far outside a side the lab's railway runs (`Plot::facing_from`).
+pub const LINE_OFF: f32 = 0.022;
+/// How near a side the line must run for a siding along that side to be led
+/// out to it (320 m), and the longest run a spur makes from the siding's end
+/// to the line.
+pub const JOIN: f32 = 0.16;
+const SPUR: f32 = 0.36;
+/// How far in from the end of its stretch a siding's track stops where the
+/// spur leaves it, so that the spur has room to curve out across the open
+/// side and not through the wall at the corner.
+const SPUR_ROOM: f32 = 0.03;
+
+/// Points along a line of points, no further apart than `step`, each with the way the line runs there.
+fn along_line(line: &[(f32, f32)], step: f32) -> Vec<((f32, f32), (f32, f32))> {
+    let mut out = Vec::new();
+    for w in line.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let len = (b.0 - a.0).hypot(b.1 - a.1);
+        if len < 1e-6 {
+            continue;
+        }
+        let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+        let n = ((len / step).ceil() as usize).max(1);
+        for i in 0..=n {
+            let t = i as f32 / n as f32;
+            out.push(((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t), dir));
+        }
+    }
+    out
+}
+
+/// How far a point is from a line of points.
+fn off_line(line: &[(f32, f32)], p: (f32, f32)) -> f32 {
+    line.windows(2)
+        .map(|w| {
+            let (a, b) = (w[0], w[1]);
+            let (abx, abz) = (b.0 - a.0, b.1 - a.1);
+            let t = (((p.0 - a.0) * abx + (p.1 - a.1) * abz) / (abx * abx + abz * abz).max(1e-9)).clamp(0.0, 1.0);
+            (a.0 + abx * t - p.0).hypot(a.1 + abz * t - p.1)
+        })
+        .fold(f32::MAX, f32::min)
+}
+
+/// The two ends of a siding's track along the stretch `f0` to `f1` of a
+/// side: the end the spur leaves from first, the end with the stop second.
+fn siding_track(plot: &Plot, side: usize, f0: f32, f1: f32, at_start: bool) -> ((f32, f32), (f32, f32)) {
+    let (a, b) = (plot.along(side, f0 + 0.03 * (f1 - f0), 0.008), plot.along(side, f1 - 0.03 * (f1 - f0), 0.008));
+    let (out, stop) = if at_start { (a, b) } else { (b, a) };
+    let len = (stop.0 - out.0).hypot(stop.1 - out.1).max(1e-6);
+    let room = SPUR_ROOM.min(len * 0.4);
+    ((out.0 + (stop.0 - out.0) / len * room, out.1 + (stop.1 - out.1) / len * room), stop)
+}
+
+/// The track that leads a siding out to the line: from the siding's end
+/// `from`, where it runs the way `dir`, in a curve to the nearest place
+/// ahead on the line that it can reach at a gentle angle, where it runs in
+/// with the line. Nothing if the line is not there to be met.
+fn spur_to(line: &[(f32, f32)], from: (f32, f32), dir: (f32, f32)) -> Option<Vec<(f32, f32)>> {
+    let mut best: Option<(f32, (f32, f32), (f32, f32))> = None;
+    for (p, t) in along_line(line, 0.006) {
+        let (dx, dz) = (p.0 - from.0, p.1 - from.1);
+        let (along, across) = (dx * dir.0 + dz * dir.1, (dx * dir.1 - dz * dir.0).abs());
+        let t = if t.0 * dir.0 + t.1 * dir.1 >= 0.0 { t } else { (-t.0, -t.1) };
+        // ahead, at a turnout's angle or less, and where the line runs much the way the siding does
+        if along < 0.025 || along > SPUR || across > 0.5 * along || t.0 * dir.0 + t.1 * dir.1 < 0.7 {
+            continue;
+        }
+        if best.map_or(true, |b| along < b.0) {
+            best = Some((along, p, t));
+        }
+    }
+    let (_, to, t) = best?;
+    let reach = (to.0 - from.0).hypot(to.1 - from.1) * 0.4;
+    let (p1, p2) = ((from.0 + dir.0 * reach, from.1 + dir.1 * reach), (to.0 - t.0 * reach, to.1 - t.1 * reach));
+    const N: usize = 8;
+    Some(
+        (0..=N)
+            .map(|i| {
+                let s = i as f32 / N as f32;
+                let (a, b, c, d) = ((1.0 - s).powi(3), 3.0 * (1.0 - s).powi(2) * s, 3.0 * (1.0 - s) * s * s, s.powi(3));
+                (a * from.0 + b * p1.0 + c * p2.0 + d * to.0, a * from.1 + b * p1.1 + c * p2.1 + d * to.1)
+            })
+            .collect(),
+    )
+}
 
 /// The free ground of a plot while it is being laid out.
 struct Field {
@@ -706,7 +825,22 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     let whole = plot;
     // a workshop's plot has no room for a siding or a quay: its railway and its water are walls to it
     let small = { let b = plot.bounds(); (b.1 - b.0).min(b.3 - b.2) < 0.12 };
-    let demoted = Plot { edges: plot.edges.iter().map(|&e| if small && matches!(e, Edge::Rail | Edge::Water { navigable: true }) { if e == Edge::Rail { Edge::Wall } else { Edge::Water { navigable: false } } } else { e }).collect(), ..plot.clone() };
+    // and a side faces the railway only where a siding can be led out to the line: where the
+    // line runs within `JOIN` of some point of it
+    let joins = |i: usize| plot.line.len() >= 2 && [0.1f32, 0.3, 0.5, 0.7, 0.9].into_iter().any(|t| off_line(&plot.line, plot.along(i, t, 0.0)) <= JOIN);
+    let demoted = Plot {
+        edges: plot
+            .edges
+            .iter()
+            .enumerate()
+            .map(|(i, &e)| match e {
+                Edge::Rail if small || !joins(i) => Edge::Wall,
+                Edge::Water { navigable: true } if small => Edge::Water { navigable: false },
+                e => e,
+            })
+            .collect(),
+        ..plot.clone()
+    };
     let plot = &demoted;
     let stages: Vec<Stage> = if stages.is_empty() { vec![Stage { year: 1800, size: 1.0 }] } else { stages.to_vec() };
     let founded = stages[0].year;
@@ -908,7 +1042,29 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     set_back(&mut field, year);
     let (receive, dispatch) = ways(year, &parts);
     let run = |s: &(usize, f32, f32)| { let (a, b) = plot.side(s.0); (s.2 - s.1) * (b.0 - a.0).hypot(b.1 - a.1) };
-    let siding = plot.find(year, |e| e == Edge::Rail).filter(|s| reaches(*s, &parts)).and_then(|i| field.stretch(plot, i, SIDING).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.04);
+    let siding = plot.find(year, |e| e == Edge::Rail).filter(|s| reaches(*s, &parts)).and_then(|i| field.stretch(plot, i, SIDING).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.06);
+    // the siding is led out to the line from whichever of its ends has the shorter way, and a
+    // siding that cannot be led out is not laid
+    let spur = siding.and_then(|(i, f0, f1)| {
+        [true, false]
+            .into_iter()
+            .filter_map(|at_start| {
+                let (out, stop) = siding_track(plot, i, f0, f1, at_start);
+                let len = (out.0 - stop.0).hypot(out.1 - stop.1).max(1e-6);
+                spur_to(&plot.line, out, ((out.0 - stop.0) / len, (out.1 - stop.1) / len)).map(|pts| (pts, at_start))
+            })
+            .min_by(|a, b| { let run = |p: &Vec<(f32, f32)>| (p[0].0 - p[p.len() - 1].0).hypot(p[0].1 - p[p.len() - 1].1); run(&a.0).total_cmp(&run(&b.0)) })
+    });
+    let siding = siding.filter(|_| spur.is_some());
+    let (spur, spur_at_start) = spur.unwrap_or((Vec::new(), true));
+    // (with no siding after all, what comes and goes does so by the gate)
+    let (receive, dispatch) = if siding.is_none() && plot.find(year, |e| e == Edge::Rail).is_some_and(|s| reaches(s, &parts)) {
+        let (fed, feeds) = (plot.find(year, |e| e == Edge::Fed), plot.find(year, |e| e == Edge::Feeds));
+        let wharf = plot.find(year, |e| e == Edge::Water { navigable: true }).filter(|s| reaches(*s, &parts));
+        (fed.map(|s| by(s, 0.5, WALL)).or(wharf.map(|s| by(s, 0.35, WHARF))).unwrap_or((gx - aside, bz1 - 0.02)), feeds.map(|s| by(s, 0.5, WALL)).or(wharf.map(|s| by(s, 0.7, WHARF))).unwrap_or((gx + aside, bz1 - 0.02)))
+    } else {
+        (receive, dispatch)
+    };
     let wharf = plot.find(year, |e| e == Edge::Water { navigable: true }).filter(|s| reaches(*s, &parts)).and_then(|i| field.stretch(plot, i, WHARF).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.03);
     let built = field.taken.len();
     let reserved = 1 + lane.is_some() as usize + office_ground.is_some() as usize;
@@ -975,7 +1131,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     }
     let enclosed = enclose(whole, outline);
 
-    Plan { kind, process: process.clone(), plot: whole.clone(), stages, seed, parts, yards, gate: (gx, gw), cart_yard, lane, receive, dispatch, year, siding, wharf, incoming, squeezed, dropped, enclosed }
+    Plan { kind, process: process.clone(), plot: whole.clone(), stages, seed, parts, yards, gate: (gx, gw), cart_yard, lane, receive, dispatch, year, siding, wharf, spur, spur_at_start, incoming, squeezed, dropped, enclosed }
 }
 
 /// The plot a works has taken in of its whole plot: `outline` is a part of
@@ -999,7 +1155,7 @@ fn enclose(plot: &Plot, outline: Vec<(f32, f32)>) -> Plot {
     let z1 = pts.iter().map(|p| p.1).fold(f32::MIN, f32::max);
     let Some(first) = (0..n).find(|&i| (pts[i].1 - z1).abs() < 1e-4 && (pts[(i + 1) % n].1 - z1).abs() < 1e-4) else { return plot.clone() };
     pts.rotate_left(first);
-    let mut out = Plot::new(pts);
+    let mut out = Plot::new(pts).with_line(plot.line.clone());
     for i in 0..n {
         let (a, b) = out.side(i);
         for j in 0..plot.outline.len() {
@@ -1464,7 +1620,8 @@ fn wagon(c: &mut Ctx, at: (f32, f32), dir: (f32, f32), body: Rgba, load: Option<
 fn siding(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32)) {
     let pal = c.pal;
     let plot = &plan.plot;
-    let (a, b) = (plot.along(side, f0 + 0.03 * (f1 - f0), 0.008), plot.along(side, f1 - 0.03 * (f1 - f0), 0.008));
+    // from the end the spur leaves by to the end with the stop
+    let (a, b) = siding_track(plot, side, f0, f1, plan.spur_at_start);
     let len = (b.0 - a.0).hypot(b.1 - a.1);
     if len < 0.03 {
         return;
@@ -1478,6 +1635,22 @@ fn siding(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32)
     for off in [-0.0034f32, 0.0034] {
         let rail = line(c, off, 0.0024);
         c.flat.ribbon(&rail, 0.0013, *pal.rail.rails);
+    }
+    // the spur that leads it out to the line: the same track, in its curve
+    if plan.spur.len() >= 2 {
+        let at = |c: &Ctx, p: (f32, f32), lift: f32| c.at(p.0, p.1) + Vec3::Y * (LIFT + lift);
+        let bed: Vec<Vec3> = plan.spur.iter().map(|&p| at(c, p, 0.0012)).collect();
+        c.flat.ribbon(&bed, 0.013, *pal.rail.ballast);
+        for off in [-0.0034f32, 0.0034] {
+            let rail: Vec<Vec3> = (0..plan.spur.len())
+                .map(|i| {
+                    let (p, q) = (plan.spur[i.saturating_sub(1)], plan.spur[(i + 1).min(plan.spur.len() - 1)]);
+                    let l = (q.0 - p.0).hypot(q.1 - p.1).max(1e-6);
+                    at(c, (plan.spur[i].0 - (q.1 - p.1) / l * off, plan.spur[i].1 + (q.0 - p.0) / l * off), 0.0024)
+                })
+                .collect();
+            c.flat.ribbon(&rail, 0.0013, *pal.rail.rails);
+        }
     }
     if c.going_up() {
         return;

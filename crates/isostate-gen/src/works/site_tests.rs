@@ -148,6 +148,8 @@ fn everything_stands_on_the_plot_and_nothing_on_anything_else() {
         let (x0, x1, z0, z1) = plan.enclosed.bounds();
         let (px0, px1, pz0, pz1) = plan.plot.bounds();
         assert!(x0 >= px0 - 1e-4 && x1 <= px1 + 1e-4 && z0 >= pz0 - 1e-4 && z1 <= pz1 + 1e-4, "{what}");
+        // (but for the spur that leads its siding out to the line, which lies on the ground between)
+        let (x0, x1, z0, z1) = plan.spur.iter().fold((x0, x1, z0, z1), |b, p| (b.0.min(p.0 - 0.004), b.1.max(p.0 + 0.004), b.2.min(p.1 - 0.004), b.3.max(p.1 + 0.004)));
         for state in [State::Working, State::GoingUp, State::Derelict] {
             let m = draw(plan, &Now { state, ..now }, 0.0);
             for b in [&m.solid, &m.flat] {
@@ -296,6 +298,46 @@ fn the_ways_in_and_out_follow_what_the_plot_faces() {
     // fed over one wall and feeding over another: the stock comes in at the one and goes out at the other
     let chain = of(Plot::rect(w, d).facing(3, Edge::Fed).facing(1, Edge::Feeds), 1885);
     assert!(chain.receive.0 < -w * 0.4 && chain.dispatch.0 > w * 0.4);
+}
+
+#[test]
+fn a_siding_runs_out_to_the_line_it_serves_or_is_not_laid() {
+    let pal = Palette::standard();
+    let (w, d) = ground(Kind::RollingMill, 10.0);
+    let of = |plot: Plot| specimen(Kind::RollingMill, 1800, 1885, 10.0, &plot, Seed::of(2), &pal).0;
+    let ballast = *pal.rail.ballast;
+    let track = |p: &Plan| draw(p, &Now::working(p, 1885), 0.0).flat.col.iter().filter(|c| **c == ballast).count();
+    // the line a little way off the back: the siding is led out to it, and its last point lies on the line
+    for off in [0.03f32, 0.06, 0.1, 0.15] {
+        let plot = Plot::rect(w, d);
+        let line = plot.line_along(2, off, 0.3);
+        let p = of(plot.with_line(line.clone()).facing(2, Edge::Rail));
+        assert!(p.siding.is_some() && p.spur.len() >= 2, "no siding with the line {off} off");
+        let (first, last) = (p.spur[0], p.spur[p.spur.len() - 1]);
+        assert!(off_line(&line, last) < 1e-3, "the spur stops {} short of the line", off_line(&line, last));
+        // it leaves the siding's own track where that ends, in the way the track runs
+        let (out, stop) = siding_track(&p.plot, 2, p.siding.unwrap().1, p.siding.unwrap().2, p.spur_at_start);
+        assert!((first.0 - out.0).hypot(first.1 - out.1) < 1e-4);
+        let (next, len) = (p.spur[1], (out.0 - stop.0).hypot(out.1 - stop.1));
+        let turn = ((next.0 - first.0) * (out.0 - stop.0) + (next.1 - first.1) * (out.1 - stop.1)) / (len * (next.0 - first.0).hypot(next.1 - first.1));
+        assert!(turn > 0.97, "the spur leaves the siding at a kink ({turn})");
+        // and no step of it turns sharply
+        for s in p.spur.windows(3) {
+            let (u, v) = ((s[1].0 - s[0].0, s[1].1 - s[0].1), (s[2].0 - s[1].0, s[2].1 - s[1].1));
+            assert!((u.0 * v.0 + u.1 * v.1) / (u.0.hypot(u.1) * v.0.hypot(v.1)) > 0.93);
+        }
+        assert!(track(&p) > 0);
+    }
+    // the line five hundred metres off, or nowhere that anyone has said, or running away
+    // square to the side: no siding, no track, and the stuff comes and goes by the gate
+    let far = Plot::rect(w, d);
+    let line = far.line_along(2, 0.25, 0.3);
+    let square = vec![(0.0, -d * 0.5 - 0.03), (0.0, -d * 0.5 - 0.4)];
+    for plot in [far.with_line(line).facing(2, Edge::Rail), Plot { edges: vec![Edge::Road, Edge::Wall, Edge::Rail, Edge::Wall], ..Plot::rect(w, d) }, Plot::rect(w, d).with_line(square).facing(2, Edge::Rail)] {
+        let p = of(plot);
+        assert!(p.siding.is_none() && p.spur.is_empty() && track(&p) == 0, "a siding that meets no line: {:?}", p.plot.line);
+        assert!(p.receive.0 < p.gate.0 && p.dispatch.0 > p.gate.0 && p.receive.1 > 0.0);
+    }
 }
 
 #[test]

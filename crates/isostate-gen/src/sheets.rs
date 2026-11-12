@@ -628,13 +628,15 @@ fn beside(m: &mut Model, s: &Site, plot: &Plot, year: i32, pal: &Palette) {
         let line = |off: f32, lift: f32| [s.at(a.0 + o.0 * off - dx / len * 0.02, a.1 + o.1 * off - dz / len * 0.02) + Vec3::Y * lift, s.at(b.0 + o.0 * off + dx / len * 0.02, b.1 + o.1 * off + dz / len * 0.02) + Vec3::Y * lift];
         match plot.edge(i, year) {
             Edge::Road => m.flat.ribbon(&line(0.016, 0.003), 0.026, *pal.ground.road_gravel),
-            Edge::Rail => {
-                m.flat.ribbon(&line(0.02, 0.003), 0.03, *pal.rail.ballast);
-                m.flat.ribbon(&line(0.02, 0.005), 0.012, *pal.rail.rails);
-            }
             Edge::Water { navigable } => m.flat.ribbon(&line(if navigable { 0.04 } else { 0.014 }, 0.003), if navigable { 0.075 } else { 0.022 }, *pal.water.river),
             _ => {}
         }
+    }
+    // the railway where the plot says it runs, once it has come: a siding is led out to it
+    if (0..n).any(|i| plot.edge(i, year) == Edge::Rail) && plot.line.len() >= 2 {
+        let along = |lift: f32| -> Vec<Vec3> { plot.line.iter().map(|p| s.at(p.0, p.1) + Vec3::Y * lift).collect() };
+        m.flat.ribbon(&along(0.003), 0.03, *pal.rail.ballast);
+        m.flat.ribbon(&along(0.005), 0.012, *pal.rail.rails);
     }
 }
 
@@ -801,7 +803,9 @@ fn district(year: i32, detail: Detail, pal: &Palette) -> Cell {
             if founded > year {
                 continue;
             }
-            let mut plot = Plot::rect(w, depth).facing_from(2, Edge::Rail, 1845);
+            // (the district's one line, as it runs by this plot: every siding is led out to it)
+            let line = vec![(-cx - 0.01, -depth * 0.5 - site::LINE_OFF), (total - cx + 0.01, -depth * 0.5 - site::LINE_OFF)];
+            let mut plot = Plot::rect(w, depth).with_line(line).facing_from(2, Edge::Rail, 1845);
             // the chain: the furnaces feed the forge on their right, the forge the rolling mill
             if n < 2 {
                 plot = plot.facing_from(1, Edge::Feeds, works[n + 1].1);
@@ -818,7 +822,7 @@ fn district(year: i32, detail: Detail, pal: &Palette) -> Cell {
         let (a, b) = (s.at(-total * 0.5 - 0.01, depth * 0.5 + 0.018) + Vec3::Y * 0.003, s.at(total * 0.5 + 0.01, depth * 0.5 + 0.018) + Vec3::Y * 0.003);
         m.flat.ribbon(&[a, b], 0.028, *pal.ground.road_gravel);
         if year >= 1845 {
-            let (a, b) = (s.at(-total * 0.5 - 0.01, -depth * 0.5 - 0.02) + Vec3::Y * 0.003, s.at(total * 0.5 + 0.01, -depth * 0.5 - 0.02) + Vec3::Y * 0.003);
+            let (a, b) = (s.at(-total * 0.5 - 0.01, -depth * 0.5 - site::LINE_OFF) + Vec3::Y * 0.003, s.at(total * 0.5 + 0.01, -depth * 0.5 - site::LINE_OFF) + Vec3::Y * 0.003);
             m.flat.ribbon(&[a, b], 0.03, *pal.rail.ballast);
             m.flat.ribbon(&[a + Vec3::Y * 0.002, b + Vec3::Y * 0.002], 0.012, *pal.rail.rails);
         }
