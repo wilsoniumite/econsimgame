@@ -745,35 +745,37 @@ mod tests {
         // a year at the clock's fastest is half a second, and the simulation's thread writes the save
         // after it has handed the year over: what the writing costs (a file written and put on the
         // disk, the latest copied aside and put on the disk, four renames) must stay a small part of that
-        let dir = scratch("timed");
-        let path = dir.join("game.json");
-        let game = busy(1, 8000);
-        let size = game.to_text().len();
-        assert!(size > 300_000, "{size}");
-        let mut s = Saver::new(path.clone());
-        s.write(&game, true).unwrap();
-        let (mut year_ends, mut orders) = (Vec::new(), Vec::new());
-        for n in 0..40 {
+        // a game with an order every other year, and one busier than any will be (the largest a save gets)
+        for first in [75, 8000] {
+            let dir = scratch("timed");
+            let path = dir.join("game.json");
+            let size = busy(1, first).to_text().len();
+            assert!(size > if first == 8000 { 300_000 } else { 3_000 }, "{size}");
+            let mut s = Saver::new(path.clone());
+            s.write(&busy(1, first), true).unwrap();
+            let (mut year_ends, mut orders) = (Vec::new(), Vec::new());
+            for n in 1..=40 {
+                let t0 = std::time::Instant::now();
+                s.write(&busy(1, first + n), true).unwrap();
+                year_ends.push(t0.elapsed().as_secs_f32() * 1000.0);
+                let t0 = std::time::Instant::now();
+                s.write(&busy(1, first + n), false).unwrap();
+                orders.push(t0.elapsed().as_secs_f32() * 1000.0);
+            }
+            // and reading one, which a start does once and a save's first write once more
             let t0 = std::time::Instant::now();
-            s.write(&busy(1, 8001 + n), true).unwrap();
-            year_ends.push(t0.elapsed().as_secs_f32() * 1000.0);
-            let t0 = std::time::Instant::now();
-            s.write(&busy(1, 8001 + n), false).unwrap();
-            orders.push(t0.elapsed().as_secs_f32() * 1000.0);
+            read(&path).unwrap();
+            let reading = t0.elapsed().as_secs_f32() * 1000.0;
+            let middle = |v: &mut Vec<f32>| {
+                v.sort_by(|a, b| a.total_cmp(b));
+                (v[v.len() / 2], v[v.len() - 1])
+            };
+            let (year_end, year_end_worst) = middle(&mut year_ends);
+            let (order, order_worst) = middle(&mut orders);
+            println!("a save of {} kilobytes: at a year's end {year_end:.1} ms (the slowest {year_end_worst:.1}), after an order {order:.1} ms (the slowest {order_worst:.1}), read in {reading:.1} ms", size / 1000);
+            assert!(year_end < 100.0 && order < 100.0, "a save takes {year_end:.0} ms at a year's end and {order:.0} ms after an order");
+            let _ = std::fs::remove_dir_all(&dir);
         }
-        // and reading one, which a start does once and a save's first write once more
-        let t0 = std::time::Instant::now();
-        read(&path).unwrap();
-        let reading = t0.elapsed().as_secs_f32() * 1000.0;
-        let middle = |v: &mut Vec<f32>| {
-            v.sort_by(|a, b| a.total_cmp(b));
-            (v[v.len() / 2], v[v.len() - 1])
-        };
-        let (year_end, year_end_worst) = middle(&mut year_ends);
-        let (order, order_worst) = middle(&mut orders);
-        println!("a save of {} kilobytes: at a year's end {year_end:.1} ms (the slowest {year_end_worst:.1}), after an order {order:.1} ms (the slowest {order_worst:.1}), read in {reading:.1} ms", size / 1000);
-        assert!(year_end < 100.0 && order < 100.0, "a save takes {year_end:.0} ms at a year's end and {order:.0} ms after an order");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
