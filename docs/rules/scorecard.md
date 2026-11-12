@@ -446,6 +446,10 @@ worst years (7) are missed by 1.2. So another sixteen histories of the same
 island could read six aims met, or nine, and a stage that moves the count by
 one or two has not shown it until its null pair moves less (the design,
 section 3). The loss is no firmer: those four aims are 12 per cent of it.
+`docs/probes/scorecard-baseline.md` measured the same thing directly, with
+five histories of today's sixteen islands that differ only in their draws:
+iron's swing reads 0.170 to 0.174 in them, inside this card's tolerance in
+every one and met by two islands of sixteen.
 
 ## What worries me
 
