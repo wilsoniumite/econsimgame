@@ -1,16 +1,22 @@
 //! Prints, for docs/probes/tr-steel.md, when each invention is found on each island and why then (how near its threshold the island stood, which ingredient held it back, and which town drew it), and what a steel rail mill would earn beside an iron rolling mill in the town that would do best by it, year by year, with the books of every rail and steel trade beside it.
 //!
 //!     cargo run --release -p isostate-core --example steel_trace -- [--seeds 1-8] [--families 6] [--end-year Y]
-//!         [--set JSON] [--worth W] [--plant S] [--csv DIR] [--quiet]
+//!         [--set JSON] [--worth W] [--plant S] [--method NAME.FIELD=V ...] [--disc TECH.GOOD=X ...] [--csv DIR] [--quiet] [--works]
 //!
 //! The game's rules. `--set` lays a JSON object over the game's parameters
 //! (`{"machines":{"inherit":0}}`, `{"discovery_rate":0.5}`). `--worth W` enters a
 //! ton of steel rail as W iron rails where the game says 3 (the steel rail
 //! mill's steel a rail is the port's over W); `--plant S` gives the converter
-//! and the steel rail mill S of the port's plant where the game gives 0.3. Both
-//! change the content in this program only. `--csv DIR` writes `disc.csv` (a
-//! row for every invention and island) and `years.csv` (a row for every island
-//! and year) for reading elsewhere; `--quiet` prints only the summary tables.
+//! and the steel rail mill S of the port's plant where the game gives 0.3.
+//! `--method` sets one number of one method, after those two: FIELD is `labor`,
+//! `K0`, `A0`, `Q0` or `b` (`--method steel_rolling.K0=40`); `--disc` sets one
+//! discovery threshold as the content file writes it (`--disc bessemer.steel=1400000`,
+//! `--disc railway.machinery=x20`). Both may be given more than once. All four
+//! change the content in this program only. `--csv
+//! DIR` writes `disc.csv` (a row for every invention and island) and
+//! `years.csv` (a row for every island and year) for reading elsewhere;
+//! `--quiet` prints only the summary tables; `--works` adds, for each island,
+//! the books of the steel rail mill that made the most in its life.
 //!
 //! The site sums are `firms::evaluate_sites`, the sums entry makes, taken after
 //! each year's end on that year's mean prices and wage, for a new works sized
@@ -107,6 +113,8 @@ struct Trace {
     /// distinct towns that found something, and the most any one town found
     disc_towns: usize,
     disc_most: usize,
+    /// the books of the steel rail mill that made the most, as lines to print
+    mill: String,
 }
 
 struct Opts {
@@ -116,8 +124,11 @@ struct Opts {
     set: Option<String>,
     worth: f64,
     plant: f64,
+    methods: Vec<String>,
+    disc: Vec<String>,
     csv: Option<String>,
     quiet: bool,
+    works: bool,
 }
 
 fn content(o: &Opts) -> Content {
@@ -134,6 +145,31 @@ fn content(o: &Opts) -> Content {
     }
     if o.worth != MACHINES_STEEL_RAIL_WORTH {
         c.m_in[(steel_rolling, steel)] *= MACHINES_STEEL_RAIL_WORTH / o.worth;
+    }
+    for s in &o.methods {
+        let (key, v) = s.split_once('=').expect("NAME.FIELD=V");
+        let (name, field) = key.split_once('.').expect("NAME.FIELD=V");
+        let m = c.method_name.iter().position(|n| n == name).unwrap_or_else(|| panic!("no method {name}"));
+        let v: f64 = v.parse().expect("a number");
+        match field {
+            "labor" => c.m_labor[m] = v,
+            "K0" => c.m_K0[m] = v,
+            "A0" => c.m_A0[m] = v,
+            "Q0" => c.m_Q0[m] = v,
+            "b" => c.m_b[m] = v,
+            other => panic!("no field {other}: labor, K0, A0, Q0 or b"),
+        }
+    }
+    for s in &o.disc {
+        let (key, v) = s.split_once('=').expect("TECH.GOOD=X");
+        let (name, good) = key.split_once('.').expect("TECH.GOOD=X");
+        let t = c.tech_name.iter().position(|n| n == name).unwrap_or_else(|| panic!("no invention {name}"));
+        let g = c.gi(good);
+        // as in the content file: a plain number is cumulative output, "x30" thirty years of 1750's
+        c.tech_disc[(t, g)] = match v.strip_prefix('x') {
+            Some(x) => -x.parse::<f64>().expect("a number"),
+            None => v.parse().expect("a number"),
+        };
     }
     c
 }
@@ -305,7 +341,45 @@ fn trace(seed: u64, P: &Params, C: Content) -> Trace {
             *per_town.entry(t).or_insert(0usize) += 1;
         }
     }
-    Trace { seed, found, years, disc_towns: per_town.len(), disc_most: per_town.values().copied().max().unwrap_or(0) }
+    // the steel rail mill that made the most in its life, year by year
+    let st = &s.st;
+    let mut mill = String::new();
+    let biggest = (0..st.F_count)
+        .filter(|&f| st.f_method[f] == steel_rolling)
+        .filter_map(|f| accounts::works_books(st, &C, f))
+        .max_by(|a, b| a.years.iter().map(|y| y.out).sum::<f64>().total_cmp(&b.years.iter().map(|y| y.out).sum::<f64>()));
+    let mills = (0..st.F_count).filter(|&f| st.f_method[f] == steel_rolling).count();
+    match biggest {
+        Some(wb) => {
+            let f = wb.firm;
+            writeln!(mill, "seed {seed}: {mills} steel rail mills in the run; the one that made most, {} at {} (founded {}, {}), year by year", wb.name, st.town_name[st.f_town[f]], st.f_born[f], if st.f_died[f] >= 0 { format!("closed {}", st.f_died[f]) } else { "standing in the end".into() }).unwrap();
+            writeln!(mill, "  year  owner  capacity      out   util  revenue  inputs    fuel   hands    wages    rent   profit   profit/plant   cash").unwrap();
+            for y in &wb.years {
+                let plant = y.capacity * (0..C.G).map(|g| C.m_cap[(steel_rolling, g)] * s.st.pbar[(st.f_town[f], g)]).sum::<f64>();
+                writeln!(
+                    mill,
+                    "  {}  {:>5}  {:8.1} {:8.1}  {:5.2} {:8.0} {:7.0} {:7.0} {:7.1} {:8.0} {:7.0} {:8.0}   {:12.3} {:6.0}",
+                    y.year,
+                    y.owner.map_or("-".to_string(), |o| o.to_string()),
+                    y.capacity,
+                    y.out,
+                    y.util,
+                    y.revenue,
+                    y.inputs,
+                    y.fuel,
+                    y.hands,
+                    y.wages,
+                    y.rent,
+                    y.profit,
+                    y.profit / plant.max(1e-9),
+                    y.cash
+                )
+                .unwrap();
+            }
+        }
+        None => writeln!(mill, "seed {seed}: no steel rail mill in the run").unwrap(),
+    }
+    Trace { seed, found, years, disc_towns: per_town.len(), disc_most: per_town.values().copied().max().unwrap_or(0), mill }
 }
 
 fn mean(v: &[f64]) -> f64 {
@@ -318,12 +392,14 @@ fn range(v: &[f64]) -> String {
     }
     let lo = v.iter().cloned().fold(f64::INFINITY, f64::min);
     let hi = v.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    format!("{:.0} [{:.0} .. {:.0}]", mean(v), lo, hi)
+    let m = mean(v);
+    let sd = (v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / v.len() as f64).sqrt();
+    format!("{:.0} [{:.0} .. {:.0}] sd {:.1}", m, lo, hi, sd)
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut o = Opts { seeds: (1..=8).collect(), families: 6, end_year: None, set: None, worth: MACHINES_STEEL_RAIL_WORTH, plant: MACHINES_PLANT_SCALE, csv: None, quiet: false };
+    let mut o = Opts { seeds: (1..=8).collect(), families: 6, end_year: None, set: None, worth: MACHINES_STEEL_RAIL_WORTH, plant: MACHINES_PLANT_SCALE, methods: Vec::new(), disc: Vec::new(), csv: None, quiet: false, works: false };
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
@@ -334,9 +410,15 @@ fn main() {
             "--set" => o.set = Some(next()),
             "--worth" => o.worth = next().parse().unwrap(),
             "--plant" => o.plant = next().parse().unwrap(),
+            "--method" => o.methods.push(next()),
+            "--disc" => o.disc.push(next()),
             "--csv" => o.csv = Some(next()),
-            "--quiet" => {
-                o.quiet = true;
+            "--quiet" | "--works" => {
+                if args[i] == "--quiet" {
+                    o.quiet = true;
+                } else {
+                    o.works = true;
+                }
                 i += 1;
                 continue;
             }
@@ -363,20 +445,21 @@ fn main() {
     let mi = |name: &str| C.method_name.iter().position(|n| n == name).unwrap();
     let col = |name: &str| METHOD_FIELDS.iter().position(|&n| n == name).unwrap();
     println!(
-        "the game's rules, {} families, seeds {:?}{}; a ton of steel rail is {} iron rails, the converter's and the steel rail mill's plant {} of the port's",
+        "the game's rules, {} families, seeds {:?}{}; a ton of steel rail is {} iron rails, the converter's and the steel rail mill's plant {} of the port's{}",
         o.families,
         o.seeds,
         o.set.as_ref().map_or(String::new(), |s| format!(", with {s}")),
         o.worth,
-        o.plant
+        o.plant,
+        if o.methods.is_empty() && o.disc.is_empty() { String::new() } else { format!("; {}", o.methods.iter().chain(&o.disc).cloned().collect::<Vec<_>>().join(", ")) }
     );
 
     // ---- 1. when each invention came
-    println!("\n1. When each invention came, mean [least .. greatest] over the islands");
+    println!("\n1. When each invention came, mean [least .. greatest] and standard deviation over the islands");
     println!("   found: the year; whole: the year cumulative output first reached every threshold (progress 1); found - whole: years from that to the find");
     println!("   at find: progress in the year found; early: islands found before progress reached a half; fluke odds: the chance, summed over the years before the threshold, that the draw came early");
     println!("   town: the share of finds in the town the draw weighted most, in the town with the most hands in works, in the most populous; the drawn town's weight, mean");
-    println!("{:>20} {:>20} {:>20} {:>14} {:>9} {:>6} {:>10} {:>18} {:>7}  {}", "", "found", "whole", "found - whole", "at find", "early", "fluke odds", "top w / ind / pop", "weight", "held back by (islands)");
+    println!("{:>20} {:>32} {:>26} {:>20} {:>9} {:>6} {:>10} {:>18} {:>7}  {}", "", "found", "whole", "found - whole", "at find", "early", "fluke odds", "top w / ind / pop", "weight", "held back by (islands)");
     for (k, f0) in traces[0].found.iter().enumerate() {
         let t = f0.tech;
         let fs: Vec<&Found> = traces.iter().map(|tr| &tr.found[k]).collect();
@@ -394,7 +477,7 @@ fn main() {
         }
         let held: Vec<String> = held.into_iter().map(|(g, c)| format!("{g} {c}")).collect();
         println!(
-            "{:>20} {:>20} {:>20} {:>14} {:>9.2} {:>6} {:>10.3} {:>18} {:>7.2}  {}",
+            "{:>20} {:>32} {:>26} {:>20} {:>9.2} {:>6} {:>10.3} {:>18} {:>7.2}  {}",
             C.tech_name[t],
             format!("{} ({}/{})", range(&yrs), yrs.len(), fs.len()),
             range(&whole),
@@ -519,6 +602,12 @@ fn main() {
         y += 5;
     }
     println!("   (the hurdle is {:.2}; a town with as many works of the method as 2 + people/40,000 asks three times it)", P.hurdle);
+    if o.works {
+        println!("\n4. The steel rail mill that made the most on each island: its books (profit/plant: plant at the last year's prices in its town)");
+        for tr in &traces {
+            print!("{}", tr.mill);
+        }
+    }
 
     // ---- the CSVs
     if let Some(dir) = &o.csv {
