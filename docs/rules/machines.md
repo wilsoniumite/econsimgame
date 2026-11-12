@@ -33,7 +33,10 @@ followed (`dx-growth.md`, `dx-cycles.md` section 7):
 **1. A machine is bought where it pays.** For a farm, the machine's gain on a
 unit of grain is the grain's price times the share of that grain the machine
 is owed, `boost / (1 + all boosts)`; its cost is the machinery that unit
-takes, at today's price in that town. Farms differ (the size of a field, the
+takes. Both are reckoned at the prices the town's farms hire on, the prices
+they expect for the month (`pexp`), not the month's market price; when the
+year's land is let the same sum is done on the year's average prices. Farms
+differ (the size of a field, the
 lie of the land), so they do not all cross from "does not pay" to "pays" at
 once: none take the machine where it only earns its cost, all of those who
 know how take it where it earns its cost `1 + adopt_span` times over, and a
@@ -46,8 +49,10 @@ clears instead of running to the ceiling.
 
 **2. A machine stands for years.** Each town keeps, for each use, the share of
 its farms (or pits, each counted by what it makes with no machine) whose
-machines are standing. Every month it moves one part in `life_months` towards
-the share that keeps its machines up and was supplied that month. What a
+machines are standing. At the end of every month it moves one part in
+`life_months` towards the share that keeps its machines up (at the prices then
+expected for the next month) and was supplied that month (the share of the
+town's demand for machinery, or for rails, that its market filled). What a
 machine adds comes from the machines standing; what is bought comes from who
 keeps theirs up. Counted in machines the two are one account: if an equipped
 farm's machines are `input * life_months` for each unit it grows a month,
@@ -72,26 +77,43 @@ there; by 1850 they are worth having in most quarries. Bought by the rule of
 point 1.
 
 **5. A new method starts from what the trade knows.** A learned method (one
-that starts clumsy and climbs a curve) of making a good the island already
-makes by an earlier learned method starts from `inherit` of that method's
-skill, if that is more than its own (and never from more than the whole of
-it). On this island that is the converter after crucible steel and the steel
-rail mill after the rolling mill. It is a floor, not a gift: once the new
-method's own curve passes it, the method is on its own.
+that starts clumsy and climbs a curve) of making a good for which an earlier
+learned method was found before it (in the same year, the one the content
+lists first) has `inherit` of that method's skill, if that is more than its
+own (and never more than the whole of it). The rule asks only that the earlier
+method was found, not that anyone still works it. On this island that is the
+converter after crucible steel and the steel rail mill after the rolling mill.
+It is a floor, not a gift, and it is worked out again every time the methods'
+skills are (`firms::update_productivity`), from the earlier method's skill as
+it then stands: once the new method's own curve passes it, the method is on
+its own.
 
 **6. Content** (`machines_content`, applied in `game_content`):
 
 - The converter's and the steel rail mill's plant cost `MACHINES_PLANT_SCALE`
-  (0.3) of the port's. The port's converter needs about a thousand in money
-  per unit of monthly capacity, five times a rolling mill; at the hurdle rate
-  that is 12 a unit of steel in capital alone where crucible steel carries 2.
+  (0.3) of the port's. The port's converter needs 150 bricks and 2 machinery
+  for each unit of monthly capacity: 410 at the content's base prices. That
+  is 1.6 times a rolling mill (100 bricks and 1 machinery, 250), and never
+  more than twice one at any prices, but nearly seven times a crucible steel
+  works (30 bricks and 15 clay, 60). This page used to say about a thousand,
+  five times a rolling mill. A thousand is what it costs with bricks at about
+  three times their base price and machinery a third above its own, and at
+  the hurdle rate (12 per cent a year, on 85 per cent of capacity) that is 12
+  a unit of steel in capital alone, where crucible steel at the same prices
+  carries 2; the "five times" fits no prices. Cut to three tenths, the converter's plant is 123 at base prices
+  and the steel rail mill's 96 (from 321); the engine works' (466), the
+  rolling mill's and the coke furnace's (147) are all dearer.
 - A steel rail outlasts iron ones several times over. There is one good,
   "rails", counted in iron rails, so a ton of steel rail is entered as the
   three iron rails it stands in for (`MACHINES_STEEL_RAIL_WORTH`): the mill
   takes a third of the steel per rail.
 - Discovery thresholds (`MACHINES_THRESHOLDS`): converter at 2.8 million of
-  steel and 90,000 of machinery; steel rail mill at 3.3 million of steel,
-  350,000 of rails and 150,000 of machinery.
+  steel and 90,000 of machinery (the port's had 30,000 and 170,000); steel
+  rail mill at 3.3 million of steel, 350,000 of rails and 150,000 of
+  machinery (2.5 million, 400,000 and 300,000). The converter's third
+  threshold, 220 years of the iron the island made a year in its warm-up, is
+  the port's and is left as it is; discovery waits on the least advanced of
+  the three (`tech::discovery`).
 
 The mines' pumps and wagonways are still bought as the port buys them, on
 purpose (see "Decisions").
@@ -117,9 +139,14 @@ the port's content file: `--rules game --content data/content.toml`
 
 Sixteen seeds to 1900, mean and range over seeds, from
 `cargo run --release -p isostate-core --example machines -- --seeds 1-16 --rules port|game [--families 6]`.
-Real wages are five-year means over 1750-52, on the model's own index (the
-1750 basket, what the sweep's `real_wage` is) and on a chained index of what
-was actually bought.
+"Game" in this section and under "Decisions" is the game's rules as they were
+then, the port with the machines and their content and nothing else; these
+numbers are the record of how the machines were built and cannot be read
+from today's sweep, which is under "In today's game" at the end.
+Real wages are five-year means (1800 is 1798 to 1802, 1900 is 1896 to 1900)
+over the mean of 1750 to 1752, on the model's own index (the 1750 basket,
+what the sweep's `real_wage` is) and on a chained index of what was actually
+bought, which the example links year by year itself.
 
 | | port | game | port, six families | game, six families |
 |---|---|---|---|---|
@@ -259,9 +286,10 @@ times the usual price. The cause is in two lines of the port:
 - A works with anything on order counts as building (`firms::review`), and a
   building works may not grow. An order asks each month for a quarter of what
   is still outstanding (`econ::step_month`, `f_order * 0.25`), so it shrinks
-  geometrically and is only struck off below a billionth of a unit: about 70
-  months even when every delivery is filled. A works can therefore grow once
-  in six or seven years, by half at most.
+  geometrically and is only struck off when the goods still on order are
+  below a millionth of a unit (or the capacity below a billionth): about 70
+  months for an engine works' bricks even when every delivery is filled. A
+  works can therefore grow once in six or seven years, by half at most.
 - So capacity comes from new works, and entry allows one a year per town and
   method, two when the return is above 0.8, each of 0.4 or 0.8 of the usual
   size. An engine works' usual size is 3 units a month.
@@ -271,8 +299,11 @@ usual throughout; the number of engine works rises from 287 to 670, 32 a
 year, which is two per town; capacity per works stays between 1.4 and 1.6;
 and 97 to 100 per cent of them count as building in every one of those years.
 
-The works mechanism (`night/works`) changes the first line: a works has
-finished building when under a twentieth of its capacity is still on order.
+The works mechanism (`night/works`, now in the game's rules) changes the first
+line: a works has finished building when under a twentieth of its capacity is
+still on order. It changes the second too: a new works is sized to its town's
+market and comes one at a time, never two a year in one town and method, nor
+doubled (`works.md`).
 See the first worry below.
 
 ## In company with the works mechanism
@@ -355,7 +386,9 @@ were all of them, iron being half the price it was; and growth has moved
 forward, the wage hardly rising after the 1850s. `inherit = 0` gives 2.98 in
 1900 for 2.80 on seeds 1 to 6 and no converter; it was left at 0.5, since a
 game without a converter is the poorer for it and the wage is not in
-danger. The tuning asked for above is still to do.
+danger. The tuning asked for above is still to do, and the steel rail has
+gone further the same way since: in today's game it is two thousandths of
+the rails of 1890 ("In today's game", below).
 
 ## In company with the merchants' prices and the curve
 
@@ -490,6 +523,61 @@ hair of the table, seed 6's last decade aside.
 Not done here: the scripted players and the prices probe's shock were not run
 on the three together.
 
+## In today's game
+
+Every table above was measured on rules that are no longer the game's: since
+the three were run together the harvests, the life cycle for works, the
+railways, carting, the people, the towns, the mines, the canals and the books
+of account have joined them. This is where the machines' own measures stand
+today, read from the sweep of the merged game, seeds 1 to 8 with six
+families, on the simulation as main has it since the books of account joined
+(`752ad67`; `isostate-core sweep --seeds 1-8 --rules game --families 6`,
+under `.claude/night/reports/merged-game-f6-l/`). The facts are the sweep's
+own; the rest were worked out from its `annual.csv` by the definitions of
+`examples/machines.rs` (five-year means over the mean of 1750 to 1752,
+machinery's highest yearly price after 1850 over the median of 1836 to 1850),
+without running the example. Two differ from the example's: the chained wage
+is the observer's `real_wage_chained`, not the example's own chain, and
+quality is reckoned from the yearly output of steel, which the sweep keeps,
+not read from the machines.
+
+| six families, seeds 1 to 8 | today |
+|---|---|
+| real wage 1800 / 1850 / 1900, 1750 basket | 1.63 / 2.01 / 2.58 |
+| lowest five-year mean, 1855-85 | 2.22 [1.84 .. 2.51] |
+| 1890s over 1850 | 1.32 [1.03 .. 1.57] |
+| real wage 1800 / 1850 / 1900, chained | 1.91 / 2.91 / 4.25 |
+| the same, 1890s over 1850 | 1.48 [1.23 .. 1.76] |
+| machinery's peak after 1850 over usual | 2.1 [1.0 .. 2.5] |
+| years above three times usual | 0 in every seed |
+| quality of machines 1850, 1900 (reckoned) | 2.47 [1.02 .. 2.93], 3.93 [3.47 .. 4.00] |
+| quality reaches the cap of 4 | 1864 to 1883 on seven seeds; never on seed 3 |
+| farm machinery found | 1837 [1827 .. 1850] |
+| converter found, first built | 1846 [1822 .. 1886], 1848 [1825 .. 1888] |
+| converter's share of steel, 1880 | 0.86 [0.00 .. 1.00] |
+| steel rail mill found | 1845 [1816 .. 1891] |
+| steel rail mill first built | 1831 to 1860 on seven seeds; never on seed 3 |
+| steel rails' share of rails, 1890 and 1900 | 0.002 [0 .. 0.012], 0.007 [0 .. 0.041] |
+| steel a month, 1898-1900 | 55,300 [31,100 .. 67,400] |
+
+Output per worker on the farms, in the quarries and in the collieries, and the
+share of farms worked by machine, are not in the sweep and were not measured
+again; the numbers for them above are of their own rules.
+
+What it says. The machinery famine stays gone: machinery's dearest year after
+1850 is at most two and a half times its usual price, and never three. The
+wage of the 1890s still stands a third above 1850's, and the chained index
+puts the century's gain at 4.25 where the 1750 basket says 2.58. The
+converter comes as it did in company, making all the steel by 1880 on six
+islands of eight; on one (seed 3, which pours the least steel) it is not
+built until 1888, quality is still 1.02 in 1850 and never reaches the cap.
+The steel rail is the change: the mill is found on every island (on seed 3
+only in 1891) and built on seven of the eight, but rolls almost nothing,
+where with the machines alone it rolled nearly all the rails of 1890, and a quarter of them once the life cycle for
+works had joined. The worry above about the
+converter's numbers and the quality curve wanting tuning together, with the
+works rules on, now covers the steel rail as well.
+
 ## What worries me
 
 - **A town can still hire more hands than it has.** The mend above stops the
@@ -531,7 +619,9 @@ on the three together.
   (the land under mines in 1750 is 3 per cent larger in every seed).
 - **Steel still has no use of its own.** It matters here because the engine
   builders learn from it. Households already take nine tenths of their
-  implements as steel in 1840. A steel that goes into the machines themselves
+  implements as steel in 1840 (0.87 on today's eight islands, from
+  `share_implements_steel` in the sweep's `annual.csv`, but 0.02 on seed 3,
+  which pours the least steel). A steel that goes into the machines themselves
   would be a change to the engine works' recipe, which is content for another
   night.
 - **A steel rail mill in 1815.** In one run of thirty-two (seed 6 with
@@ -540,7 +630,9 @@ on the three together.
   rule allows such flukes for every method; this one reads oddly.
 - **The model's own index understates all of this.** It prices the 1750
   basket, heavy in firewood and wool. On the chained index the game's 1900
-  wage is 2.82, not 2.08.
+  wage was 2.82, not 2.08, when the machines stood alone; in today's game it
+  is 4.24, not 2.60 (the sweep's `real_wage_chained_1900_vs_1750` and
+  `real_wage_1900_vs_1750`).
 - **Farms are never all mechanised** (0.83 of farms in 1900): with
   `adopt_span` 6 the last farms wait until the machine earns seven times its
   cost. That is the price of a calm machinery market while the engine works
@@ -553,8 +645,9 @@ on the three together.
   would make demand for machinery lumpier, which is the thing this mechanism
   set out to calm. While a town's machines are still building, its farms pay
   for more than is standing: at the worst (none standing yet) machinery can
-  take `boost / (1 + adopt_span)` of the price of what they grow, a quarter
-  to a half at the game's numbers. With `adopt_pumps` on and quality near the cap
+  take `boost / (1 + adopt_span)` of the price of what they grow, from a
+  ninth with the machines of 1750 (a boost of 0.8) to nearly a half at the
+  cap (3.2) at the game's numbers. With `adopt_pumps` on and quality near the cap
   a pump's boost is 8 and that share could pass the whole price; the switch
   is off, and wants this looked at before it is turned on.
 - **One wild year in the 1750s, somewhere.** In one seed of sixteen the real
