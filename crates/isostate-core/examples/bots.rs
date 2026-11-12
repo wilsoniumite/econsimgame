@@ -249,7 +249,8 @@ fn play(seed: u64, bot: Bot, rules: Rules) -> Outcome {
         }
     }
     let st = &s.st;
-    let ours: Vec<usize> = (0..st.F_count).filter(|&f| st.f_owner[f] == 0 && st.f_reason[f].kind == "family").collect();
+    eprintln!("TEMP books: goods {:.2e} income {:.2e} spending {:.2e} years {}", st.acct.years.iter().map(|y| y.balance_goods).fold(0.0, f64::max), st.acct.years.iter().map(|y| y.balance_income).fold(0.0, f64::max), st.acct.years.iter().map(|y| y.balance_spending).fold(0.0, f64::max), st.acct.years.len());
+    let ours: Vec<usize> =(0..st.F_count).filter(|&f| st.f_owner[f] == 0 && st.f_reason[f].kind == "family").collect();
     out.founded = ours.len();
     out.standing = ours.iter().filter(|&&f| st.f_alive[f]).count();
     let r = family_report(st, &s.content, &s.params, 0).unwrap();

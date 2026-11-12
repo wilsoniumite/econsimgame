@@ -182,7 +182,7 @@ seed {}, year by year", seeds[0]);
             );
         }
         // the year the land's owners did worst, town by town
-        let (k, y) = st.acct.years.iter().enumerate().min_by(|a, b| a.1.share_land.total_cmp(&b.1.share_land)).unwrap();
+        let y = st.acct.years.iter().min_by(|a, b| a.share_land.total_cmp(&b.share_land)).unwrap();
         println!("
 {}, the year land's share was lowest ({:.3}), town by town", y.year, y.share_land);
         println!("{:>14}  founded   people  mean wage  hands on land  wages on land  value of produce  rents of land", "");
@@ -194,12 +194,11 @@ seed {}, year by year", seeds[0]);
                 println!("{:>14}  {:7}  {:7.0}  {:9.2}  {:13.0}  {:13.0}  {:15.0}  {:13.0}", tb.name, st.town_founded[t], fig("pop"), fig("wage"), fig("hands_land"), fig("pay_land"), value, fig("rent_land"));
             }
         }
-        let _ = k;
     }
     let g = C.gi(&good);
     let year = year.clamp(y0, y1);
     let k = (year - y0) as usize;
-    let (T, G) = (st.T_max, C.G);
+    let G = C.G;
     let t = match &town {
         Some(name) => name.parse().unwrap_or_else(|_| st.town_name.iter().position(|n| n == name).expect("no town of that name")),
         None => {
@@ -207,8 +206,7 @@ seed {}, year by year", seeds[0]);
             (0..st.town_name.len()).max_by(|&a, &b| goods[(a * G + g) * accounts::KG].total_cmp(&goods[(b * G + g) * accounts::KG])).unwrap()
         }
     };
-    let _ = T;
-    let tb = accounts::town_books(st, C, t, Some(year)).expect("the town's books");
+    let tb =accounts::town_books(st, C, t, Some(year)).expect("the town's books");
     let gb = &tb.goods[g];
     println!("\n{} in {}, {} (seed {}): the year's books", C.good_label[g], tb.name, year, seeds[0]);
     println!("  in store as the year began {:14.1}", gb.stock_open);
