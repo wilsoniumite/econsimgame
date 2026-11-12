@@ -697,6 +697,19 @@ fn size_table(seed: u64, label: &str, sim: &Sim) -> Vec<Part> {
         kb(rec_unused)
     );
     println!("   so trimmed to what is used, the raw picture would be about {}", kb(raw - firm_unused as usize - series_unused - rec_unused));
+    // the books split by their public fields: the history of complete years
+    // (behind the `Arc`), the island's yearly accounts, the last year's months,
+    // and what is left, which is the open year's private tables
+    let a = &st.acct;
+    let (hist, years, last) = (weigh(&*a.hist), weigh(&a.years), weigh(&a.last_months) + weigh(&a.last_works_in));
+    let open = weigh(a).saturating_sub(years + last);
+    println!(
+        "   the books: {} in the history of complete years (`hist`), {} in the yearly accounts (`years`), {} in the last year's months (`last_months`, `last_works_in`), {} in the open year's tables",
+        kb(hist),
+        kb(years),
+        kb(last),
+        kb(open)
+    );
     ps
 }
 
