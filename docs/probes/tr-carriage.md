@@ -14,7 +14,7 @@ Everything is under the game's rules with six families, at `main` 295a379, on se
 1. **The railway's gain reaches the wage now.** Under the game's rules on sixteen islands, railways against none, 1880 to 1899: output a head 8.3 per cent higher and the real wage 8.3 per cent higher, both on every island. The cost of living is 11 per cent lower and the money wage 3 per cent lower: the gain comes through prices. Of the extra income, work gets about seven parts in ten, which is its share of income with or without railways, and the owners of land and houses a third, twice theirs; works' owners and merchants get nothing. The freed carters (a third of them, 3.6 points of all hands) go to the land and the works, and none stand idle. The "real wage flat" of `carting.md` is true of the port with carting, where it was measured (0.8 per cent, merchants and works' owners taking four parts in five of the gain), and not of the game.
 2. **The handling charge is a tenth to a seventh of the carting bill once the railways run**, 3 per cent of it in the 1750s, 6 per cent in 1800, 12 per cent in the 1840s and 15 per cent in the 1890s; a fifth of the carting on trade before the railway and a third after. It is half a per cent to seven tenths of a per cent of income and about one hand in a hundred. Taking it away altogether frees four tenths of a point of the hands and moves no fact outside the spread between islands. What a better way could still save is the rest of the bill, and half of that, at the end of the century, is the farms' and woods' carting to their own market, which no line between towns touches.
 3. **Coal is not raised into long stocks, and timber hardly.** The merchants hold 1.1 to 1.2 months of coal from 1780 on; under a three-hundredth of it is in towns holding a year's worth; 0.15 to 0.2 per cent of what is dug spoils, and the hands that dug it are a ten-thousandth of all hands. Timber's stock grows from 2.1 months in 1800 to 3.6 in the 1880s and 1890s, a sixteenth of it in towns holding a year's, and 1.2 per cent of it spoils: two hands in ten thousand. Part of the long timber is woodland cleared at the year's end, which nobody chose to raise. A brake on the woods and pits like the works' was tried and changes nothing outside the spread, because there is next to nothing for it to brake.
-4. **The famines the canals took away were the railway's, and they are a month's empty shelf in a town that has just been handed a district larger than itself.** Of 30 hungry town-years on sixteen islands with and without canals, 23 come in the year after the town at least doubled its people when the catchments were redrawn at the year's end, and more than half of the hungry months are Januaries. `peopling::move_with_cells` sends the people, their cash and last month's income with their cells, but the merchants' stock and their record of sales only to a market that is new; an old town that doubles keeps the shelves of the town it was. Without canals the first railways do this 45 times in the 1830s and 1840s (sixteen runs together); with canals the catchments were redrawn earlier and by less, and it happens 14 times in those decades. With neither canals nor railways it happens 8 times in the whole century and the famines fall to 0.19 a run. Sending the stock with the people (a trial, not committed) ends every hunger that followed a doubling, with canals and without. Grain carried more cheaply between towns, cheaper coal and fewer people are none of it.
+4. **The famines the canals took away were the railway's, and they are a month's empty shelf in a town that has just been handed a district larger than itself.** Of 30 hungry town-years on sixteen islands with and without canals, 23 come in the year after the town at least doubled its people when the catchments were redrawn at the year's end, and more than half of the hungry months are Januaries. `peopling::move_with_cells` sends the people, their cash and last month's income with their cells, but the merchants' stock and their record of sales only to a market that is new; an old town that doubles keeps the shelves of the town it was. Without canals the first railways do this 45 times in the 1830s and 1840s (sixteen runs together); with canals the catchments were redrawn earlier and by less, and it happens 14 times in those decades. With neither canals nor railways it happens 8 times in the whole century and the famines fall to 0.19 a run; with canals and no railway they are 0.19 too, so the canals make no difference to famine but through the railway. Sending the stock with the people (a trial, not committed) ends every hunger that followed a doubling, with canals and without. Cheaper coal and fewer people are none of it. Grain carried more cheaply between towns is not what the canals do either: making it dear again on an island with canals brings no hunger back. (On an island without canals, carrying grain a quarter cheaper on its own takes off some hunger, seven islands of sixteen lower and four higher, which is inside the spread.)
 
 ## (a) Where the railway's gain goes
 
@@ -65,6 +65,7 @@ The real wage is flat where `carting.md` said, and only there. With each mechani
 | | output a head | real wage | money wage | cost of living | to work | to land and houses | to works' owners | to merchants |
 |---|---|---|---|---|---|---|---|---|
 | the game, sixteen islands | +8.3% 16/0 | +8.3% 16/0 | -3.3% | -10.7% | 69% | 33% | 0% | -1% |
+| the game, the eight islands of the rows below | +7.9% 8/0 | +7.5% 8/0 | -6.0% | -12.6% | 66% | 32% | 1% | 1% |
 | the port with carting, no families | +6.9% 8/0 | +0.8% 6/2 | -8.0% | -8.9% | 8% | 13% | 38% | 40% |
 | the game, the port's promoters | +5.3% 7/1 | +4.5% 7/1 | -2.1% | -6.3% | 60% | 33% | -1% | 7% |
 | the game less the works' life cycle | +7.1% 8/0 | +5.1% 8/0 | -10.1% | -14.6% | 45% | 30% | 24% | 1% |
@@ -73,7 +74,7 @@ The real wage is flat where `carting.md` said, and only there. With each mechani
 | the game less people | +6.6% 8/0 | +5.9% 8/0 | -10.6% | -15.5% | 63% | 36% | -6% | 7% |
 | the game less the Engel curve | +12.1% 8/0 | +11.4% 8/0 | -0.5% | -10.9% | 63% | 30% | 2% | 6% |
 
-("To work" is pay and carting together; the parts can pass 100 per cent because some are below nothing.)
+("To work" is pay and carting together; the parts can pass 100 per cent because some are below nothing. The rows of eight islands are seeds 1 to 8, and the second row is the game on those same eight, from the run that switched the merchants' prices, so that each variant can be read against its own islands.)
 
 Under the port the money wage falls as far as prices do and the gain goes to the merchants and the works' owners, whose dividends are paid to the households of their towns, so the people get it, but as dividends and not as a wage. Under the game no single mechanism taken away brings that back. Taking away the works' life cycle sends a quarter of the gain to the works' owners (works that cannot grow where they stand keep the margin the cheaper carriage gives them, where under the life cycle the year's room for new capacity competes it away); that is the largest single move. The network is not it: the port's trunks under the game's other rules give merchants 7 per cent, not 40. What makes the port's merchants take two fifths I did not find; it would take the opposite sweep, the port with carting and each of the game's mechanisms added one at a time.
 
@@ -84,7 +85,7 @@ Sure of the direction and of the split: sixteen islands of sixteen for output an
 ### What it means for the pass over the rules
 
 - R21 and C86 can close as asked: under the game's rules the gain does reach the wage. `carting.md`'s "What the sweeps showed" is true of the port and should say so where it says "the real wage does not rise".
-- Landlords get a third of a railway's gain and rents of town houses rise by a quarter: the railway is a rent-raiser in towns. Whoever designs railway companies and fares (C86's other half, `railways.md`) should know that today a line's value is captured by the rents of land and of town houses, and none of it by whoever paid for the line.
+- Landlords get a third of a railway's gain and rents of town houses rise by a quarter: the railway is a rent-raiser in towns. Whoever designs railway companies and fares (C86's other half, `railways.md`) should know that today a third of a line's value goes to the rents of land and of town houses, two thirds to work, and none of it to whoever paid for the line, since nobody collects its fares (`railways.md`).
 - If the works' life cycle is ever retuned, watch this: it is what keeps cheaper carriage from becoming works' profit.
 
 ## (b) How much of the carting bill is handling
@@ -181,7 +182,7 @@ Then the suspected causes one at a time. Grain moved to where it is short: a tri
 
 ### What it shows
 
-Canals on and off, sixteen islands, 1801 to 1850:
+Canals on and off, sixteen islands, 1801 to 1850, with the islands on which the run with canals is higher and lower than the same island without:
 
 | | canals | none | |
 |---|---|---|---|
@@ -221,6 +222,22 @@ At the year's end the catchments were redrawn and Uldale, a town of three thousa
 
 A town that more than trebles goes hungry two times in five either way. What the canals change is how many towns do it, and when: 39 doublings over sixteen runs with canals, spread from the 1770s to the 1840s; 64 without, 45 of them in the 1830s and 1840s, when the first railways open; and with neither canals nor railways, 8 (and 0.19 hunger years a run). A railway that comes to a canal-less island moves whole districts at once to the small towns on the line; a canal comes earlier and moves fewer cells, and when the railway follows, the districts have already been drawn to the canal towns.
 
+The check of this (run when the page was reviewed) is canals with no railway ever, on the same sixteen islands:
+
+```bash
+./target/release/examples/trace_carriage --seeds 1-16 --set canals.enabled=true,false --set rail_know=99 --out DIR
+```
+
+| no railway | canals | none |
+|---|---|---|
+| hunger years in a run | 0.19 | 0.19 |
+| hungry town-years, sixteen runs | 3 | 3 |
+| towns that at least doubled | 31 | 8 |
+| of them, the town more than trebles | 5 | 1 |
+| hungry after a doubling | 1 | 1 |
+
+Without the railway the canals make no difference to the famines at all, though they redraw the catchments four times as often as nothing does: their redraws come early (most of them from the 1760s to the 1820s), are mostly under a trebling, and leave one town of 31 hungry. So the railway adds 8 doublings to an island with canals (39 against 31) and 56 to one without (64 against 8), and that is where the canals' famines went.
+
 Why a doubling empties the shelves is one condition in `peopling::move_with_cells`. When cells change market the people go with them, and so do their cash, last month's income, the carters among them and (by `prices_go_with_trade`) the price; but the merchants' stock, their cash and their smoothed sales (`inv`, `merch_cash`, `outflow`) go only when the receiving market is new (`if st.town_new[j]`). An old town that takes a district keeps the stock and the sales record of the town it was, so its merchants mark their price, order their trade and ration their shelves for the smaller town for a month or two.
 
 The trial of the cure sent the stock, the merchants' cash and the sales record with the people to every market, not only a new one (`ISOSTATE_TRY_SHELVES_GO`, the diff `trial-shelves.diff`), sixteen islands with canals and without:
@@ -239,7 +256,7 @@ The trial of the cure sent the stock, the merchants' cash and the sales record w
 
 ### How sure, and what would change my mind
 
-Sure of the cause: 23 of 30 hungry town-years follow a doubling, 20 of those 23 go hungry in the January straight after (one in February, two later in the year), and sending the shelves with the people takes every one of those hungers away on thirty-two islands. Sure that grain's carriage, coal and the number of people are not the cause: each was measured, and the first was switched both ways. Less sure of the canals' part in it, which rests on counts of doublings by decade (39 against 64, 14 against 45 in the 1830s and 1840s) and on the run with neither canals nor railways; I did not follow a single district from the canal to the railway to show it was drawn to the canal town first. The count of famine years is small (six hungry town-years in sixteen runs with canals, 24 without) and each run's history differs after the first canal, so the ratio between them is rough; the continuous measure and the table by size of redraw are what to read. What would change my mind: islands where the doublings come as often with canals as without and the famines still fall.
+Sure of the cause: 23 of 30 hungry town-years follow a doubling, 20 of those 23 go hungry in the January straight after (one in February, two later in the year), and sending the shelves with the people takes every one of those hungers away on thirty-two islands. Sure that grain's carriage, coal and the number of people are not what the canals do: each was measured, and the first was switched both ways (cheaper grain carriage alone may take off a little hunger on an island without canals, but making it dear again on one with them puts none back). Less sure of the canals' part in it, which rests on counts of doublings by decade (39 against 64, 14 against 45 in the 1830s and 1840s) and on the run with neither canals nor railways; I did not follow a single district from the canal to the railway to show it was drawn to the canal town first. The run with canals and no railway, made in review, makes it surer: with no railway the canals leave the famines where they were (0.19 a run either way), so what they take away is the railway's. The count of famine years is small (six hungry town-years in sixteen runs with canals, 24 without) and each run's history differs after the first canal, so the ratio between them is rough; the continuous measure and the table by size of redraw are what to read. What would change my mind: islands where the doublings come as often with canals as without and the famines still fall.
 
 ### What it means for the pass over the rules
 
@@ -259,6 +276,7 @@ cargo build --release -p isostate-core --example trace_carriage
 ./target/release/examples/trace_carriage --seeds 1-8 --set handling=0.03,0 --out DIR             # (b)
 ./target/release/examples/trace_carriage --seeds 1-16 --set canals.enabled=true,false --out DIR  # (c), (d)
 ./target/release/examples/trace_carriage --seeds 1-16 --set canals.enabled=false --set rail_know=99 --out DIR
+./target/release/examples/trace_carriage --seeds 1-16 --set canals.enabled=true,false --set rail_know=99 --out DIR   # (d), the review's check
 ```
 
 A run of sixteen islands with two settings takes six to fifteen minutes with twelve threads, by the machine's load. The trials of cures are in the notes as diffs and were never committed.

@@ -15,8 +15,13 @@
 //! before: months -11 to 0 are that year, 1 to 12 the hungry one), `town_years.csv`
 //! (every town that counts, every year: the share of its people moved with
 //! redrawn districts at the year's end before, its worst month's food) and
-//! `towns.csv` (the year each town was founded) for reading further. The books are switched on whatever the rules say; they change
-//! nothing in the run (docs/rules/accounts.md).
+//! `towns.csv` (the year each town was founded) for reading further.
+//!
+//! The books are switched on whatever the rules say; they change nothing in the
+//! run (docs/rules/accounts.md). "All hands" here is carters, the supply and the
+//! navvies: the sinkers of new workings are taken out of the supply and counted
+//! in the land's hands, so they are missing from all hands and the hands for hire
+//! not at work come out low by as many (how many is not printed here).
 #![allow(non_snake_case)]
 use isostate_core::accounts::{GOODS_FIELDS, KG, KL, KT, LAND_FIELDS, TOWN_FIELDS};
 use isostate_core::*;
@@ -437,7 +442,8 @@ fn main() {
         let v: Vec<f64> = r.rows.iter().filter(|row| (a..=b).contains(&(row[0] as i64))).map(|row| f(&|n: &str| row[col(n)])).collect();
         mean(&v)
     };
-    // and of a ratio of two sums over the span (shares of a bill, months of stock)
+    // a table of such measures by span, one column for each setting; every measure, a
+    // ratio too (a share of the bill, months of stock), is the mean of its yearly values
     let table = |title: &str, spans: &[(i64, i64)], measures: &[Measure]| {
         println!("\n{title}");
         for &(name, f) in measures {
