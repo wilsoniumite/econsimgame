@@ -627,7 +627,53 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     assert_eq!((back.year, back.passed_over, back.refused, back.drifted), (1751, 1, 0, false));
     assert_eq!(f.year(), 1751);
     assert!(crate::game::resumed_note(&back).unwrap().contains("could not be read"));
+    assert_eq!(f.live.unread, None, "there was a save to go on with");
     drop(f);
+
+    // it is gone on with from there and played two years, with orders; and its latest save is spoiled again
+    let mut on = Table::open(&Opening { seed: 7, families: 3, ..default() });
+    for _ in 0..2 {
+        on.play_year();
+        on.step();
+    }
+    drop(on);
+    let first_half = whole[..whole.len() / 2].to_string();
+    assert_eq!(std::fs::read_to_string(saves::unread(&file)).unwrap(), first_half);
+    let whole = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, &whole[..whole.len() / 2]).unwrap();
+    // New game from the card that offers the year before: the spoiled latest is set aside as unread, and
+    // the game that was offered whole as the game before, where the new game's years cannot push it out
+    let earlier_one = saves::read(&saves::earlier(&file, 1)).unwrap();
+    assert!(saves::holds_orders(&earlier_one) && earlier_one.year == 1752, "{earlier_one:?}");
+    let mut g = Table::open(&Opening { seed: 7, families: 3, fresh: true, ..default() });
+    assert_eq!(g.live.unread.as_deref(), Some("island-7-families-3.unread.json"), "a new game over a file that cannot be read says so");
+    for _ in 0..5 {
+        g.play_year();
+        g.step();
+    }
+    drop(g);
+    assert_eq!(saves::read(&saves::previous(&file)).unwrap(), earlier_one, "the played game is not beside the new one");
+    assert_eq!(std::fs::read_to_string(saves::unread(&file)).unwrap(), whole[..whole.len() / 2]);
+
+    // nothing left that can be read: a plain start is a new game, and its card is owed a word about the file
+    for n in 0..=saves::KEPT {
+        std::fs::write(if n == 0 { file.clone() } else { saves::earlier(&file, n) }, "{\"format\": 9}").unwrap();
+    }
+    let mut h = Table::open(&Opening { seed: 7, families: 3, ..default() });
+    assert!(h.live.resumed.is_none());
+    assert_eq!(h.live.unread.as_deref(), Some("island-7-families-3.unread.json"));
+    assert!(crate::game::unread_note("island-7-families-3.unread.json").starts_with("The saved game that was here could not be read, so this is a new one. That file is not written over: it is set aside as island-7-families-3.unread.json "));
+    h.play_year();
+    h.step();
+    drop(h);
+    assert_eq!(std::fs::read_to_string(saves::unread(&file)).unwrap(), "{\"format\": 9}");
+    assert_eq!(std::fs::read_to_string(saves::unread_before(&file, 2)).unwrap(), whole[..whole.len() / 2]);
+    assert_eq!(std::fs::read_to_string(saves::unread_before(&file, 3)).unwrap(), first_half);
+    assert_eq!(saves::read(&saves::previous(&file)).unwrap(), earlier_one);
+    // and a new game where nothing was, or where a game that can be read is, says nothing of the kind
+    let i = Table::open(&Opening { seed: 7, families: 3, fresh: true, ..default() });
+    assert_eq!(i.live.unread, None);
+    drop(i);
 
     unsafe { std::env::remove_var("ISOSTATE_SAVES") };
     let _ = std::fs::remove_dir_all(&dir);

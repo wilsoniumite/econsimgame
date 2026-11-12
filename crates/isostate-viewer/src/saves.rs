@@ -142,7 +142,14 @@ pub fn read(path: &Path) -> Result<Save, String> {
     if let Some(len) = std::fs::metadata(path).ok().map(|m| m.len()).filter(|&len| len > MOST_BYTES) {
         return Err(format!("{}: not a saved game: it is {} megabytes, and a saved game is a few hundred kilobytes at the most", path.display(), len >> 20));
     }
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path.display(), plainly(&e)))?;
+    // (the system says of a folder only that access is denied, and of a picture that a stream was not valid)
+    if path.is_dir() {
+        return Err(format!("{}: not a saved game: it is a folder, and a saved game is a file in one", path.display()));
+    }
+    let text = std::fs::read_to_string(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::InvalidData => format!("{}: not a saved game: it is not a file of text", path.display()),
+        _ => format!("{}: {}", path.display(), plainly(&e)),
+    })?;
     Save::from_text(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -1074,6 +1081,11 @@ mod tests {
         let run = folder.join("run.bin");
         assert!(may_keep(&run).unwrap_err().contains("not a saved game"));
         assert!(may_keep(&folder).is_err());
+        // what is read as a saved game and is a folder, or is no text at all, is said to be that, in the game's words
+        assert!(read(&folder).unwrap_err().ends_with("runs: not a saved game: it is a folder, and a saved game is a file in one"));
+        std::fs::write(folder.join("picture.png"), [0x89, b'P', b'N', b'G', 0xff, 0xfe, 0x00]).unwrap();
+        assert!(read(&folder.join("picture.png")).unwrap_err().ends_with("picture.png: not a saved game: it is not a file of text"));
+        std::fs::remove_file(folder.join("picture.png")).unwrap();
         assert!(may_keep(Path::new("")).unwrap_err().contains("needs the name"));
         assert!(may_keep(&folder.join("new.json")).is_ok());
         let mine = folder.join("mine.json");

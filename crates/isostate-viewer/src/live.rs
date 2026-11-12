@@ -138,6 +138,11 @@ pub struct Live {
     pub unsaved: Option<String>,
     /// the game is being saved as it is played (a run that only takes pictures is not)
     pub kept: bool,
+    /// a file was found in the place this new game is kept in that could not
+    /// be read, so that nothing could be gone on with: the name it is set
+    /// aside under when the game is first saved (`saves::unread`), for the
+    /// opening card to say
+    pub unread: Option<String>,
 }
 
 /// How going on with a saved game went.
@@ -649,7 +654,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let mut board = board.unwrap_or_else(|| Board::new(&game.sim));
     // a new game opens with its first year played
     let new = game.sim.year == game.sim.content.start_year;
-    for i in 0..o.advance + new as usize {
+    // (as many years as can be counted is the whole game, not one more than can be: `--advance 18446744073709551615`)
+    for i in 0..o.advance.saturating_add(new as usize) {
         if game.over() {
             break;
         }
@@ -681,6 +687,30 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let stands = standing(&game, &begun);
     let ordered = stands.pegs.clone();
     view.prospects = all_prospects(&game.sim);
+
+    // what is in the place this game is kept in, if it is not this game: said now, before anything is
+    // written, and done when the game is first saved (`Saver::write`)
+    let mut unread = None;
+    if let Some(s) = saver.as_ref().filter(|s| s.path.exists()) {
+        match saves::read(&s.path) {
+            Ok(there) if there.started != game.started || there.seed != game.sim.params.seed || there.families != game.sim.params.n_families => {
+                let whose = format!("the {} family's, which had reached {} with {} order{}", there.family, there.year, there.orders.len() + there.waiting.len(), if there.orders.len() + there.waiting.len() == 1 { "" } else { "s" });
+                if saves::holds_orders(&there) {
+                    eprintln!(
+                        "another game is kept there ({whose}): it is not written over, but set aside whole as {} when this game is first saved (--load FILE goes on with it)",
+                        saves::previous(&s.path).display()
+                    );
+                } else {
+                    eprintln!("another game is kept there ({whose}): nobody gave an order in it, so it is written over when this game is first saved, and the same island makes it again");
+                }
+            }
+            Ok(_) => {}
+            // a new game where a file is that could not be gone on with: the card says so
+            Err(_) if from.is_none() => unread = saves::unread(&s.path).file_name().map(|n| n.to_string_lossy().into_owned()),
+            // (gone on with from an earlier save: the card says that)
+            Err(_) => {}
+        }
+    }
 
     // where the game is kept (`Opening::keeping`): the place was taken before a year was played
     match (&mut saver, o.keeping()) {
@@ -725,6 +755,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         ordered,
         unsaved: cannot_save,
         kept,
+        unread,
     };
     Ok((r, live, view))
 }

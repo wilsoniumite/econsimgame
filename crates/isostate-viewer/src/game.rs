@@ -1511,6 +1511,10 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: 
                         row.spawn(text(&f, line, 14.5, INK));
                     });
                 }
+                // a saved game was here and could not be gone on with: why this is a new one, and that the file is kept
+                if let Some(name) = &live.unread {
+                    c.spawn((text(&f, &unread_note(name), 13.0, INK), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
+                }
                 // only said of a game that is being saved
                 let begin = if live.kept { "Click anywhere to begin. The game saves itself as you play." } else { "Click anywhere to begin." };
                 c.spawn((text(&f, begin, 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
@@ -1548,6 +1552,14 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
         (Some(a), Some(b)) => Some(format!("{a} {b}")),
         (a, b) => a.or(b),
     }
+}
+
+/// What a new game's opening card says when a file was in the saved game's
+/// place and nothing in it could be gone on with (a save cut short, one from
+/// a later version of the game, some other file): that this is why the game
+/// is new, and that the file is kept, under `name`.
+pub fn unread_note(name: &str) -> String {
+    format!("The saved game that was here could not be read, so this is a new one. That file is not written over: it is set aside as {name} when this game is first saved, and the terminal says what is wrong with it.")
 }
 
 /// What the opening card says under New game: what becomes of the game on
