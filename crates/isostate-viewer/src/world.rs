@@ -614,7 +614,12 @@ fn build_land(r: &Replay, f: &Fields, quant: &[f32], cen: &[(f32, f32)]) -> Land
                 let hs = [height(x, y), height(x - e, y - e), height(x + e, y - e), height(x + e, y + e), height(x - e, y + e)];
                 let dry = hs.iter().filter(|&&v| v > 0.02).count() as f32 / 5.0;
                 one.area = quad * dry;
-                if dry > 0.0 {
+                // On the new land a parcel whose spots are all under a lake's sheet may still have
+                // its shore come up through the sheet between them: it is given a land cell as dry
+                // shore is, so that what shows of it is the shore's land and not the sea's beach
+                // (the rest lies under the sheet, and its area stays nought)
+                let under_lake = f.laid.is_some() && dry == 0.0 && [(x, y), (x - e, y - e), (x + e, y - e), (x + e, y + e), (x - e, y + e)].iter().any(|&(px, py)| grid_at(f.hgt, f.gw, f.gh, px, py) > 0.02);
+                if dry > 0.0 || under_lake {
                     one.wcell = land_cell_near(wx, wy, wcell) as u32;
                 }
                 let hm = hs.iter().sum::<f32>() / 5.0;

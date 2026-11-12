@@ -412,6 +412,21 @@ fn the_dry_shore_of_a_cell_of_water_takes_the_land_s_classes() {
         eprintln!("island {}: {shore} parcels of dry shore in cells of water take a land cell's classes; {bare} dry parcels ({:.2}% of the dry land) have no land cell within two cells and are left as the sea's", isl.seed, 100.0 * bare_area / dry_area);
         assert!(shore > 300, "island {}: {shore} parcels of dry shore", isl.seed);
         assert!(bare_area < 0.002 * dry_area, "island {}: {:.2}% of the dry land is painted as the sea's", isl.seed, 100.0 * bare_area / dry_area);
+        // and no lake's shore is the sea's beach: a parcel all under a lake's sheet where it was
+        // looked at, and with its ground above the beach there, is given a land cell too, since
+        // its shore may come up through the sheet between the spots
+        let laid = g.laid.as_ref().unwrap();
+        let spots = [(0.0, 0.0), (-0.08, -0.08), (0.08, -0.08), (0.08, 0.08), (-0.08, 0.08)];
+        let mut beach = 0;
+        for i in (0..g.land.at.len()).filter(|&i| land.class[i] == SEA) {
+            let p = g.land.at[i];
+            beach += spots.iter().any(|&(dx, dy)| {
+                let (x, y) = (p.x + dx, p.y + dy);
+                let b = isl.bare(x, y);
+                b > 0.02 && laid.in_lake(b, x, y)
+            }) as usize;
+        }
+        assert_eq!(beach, 0, "island {}: {beach} parcels under a lake, with ground above the beach in them, are painted as the sea's", isl.seed);
         // It is the open land of the cell beside it that the shore takes, never its town or its
         // works: with every land cell built over, the shore is grass and the town stays on its cells.
         let mut built = r.clone();
