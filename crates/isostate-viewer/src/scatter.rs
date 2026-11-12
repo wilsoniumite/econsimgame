@@ -696,7 +696,7 @@ fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
 /// and how many were built smaller than they are for want of room on their
 /// plot. With ISOSTATE_PLOTS, where the first few of each stand, for pointing
 /// a camera at them.
-fn plans_said(r: &Replay, slots: &Slots, k: usize, lk: &Look) -> String {
+fn plans_said(r: &Replay, slots: &Slots, k: usize, sites: &[Option<FirmSite>]) -> String {
     let year = r.y0 + k as i32;
     let names = ["a siding", "a wharf", "a works that feeds it over the wall", "one it feeds", "parts out of use", "a stage built smaller for want of room", "a stage that found no room at all", "its gate shut", "its roofs falling in"];
     let mut count = [0usize; 9];
@@ -704,8 +704,8 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, lk: &Look) -> String {
     let mut all = 0;
     // the capacity the works have, what their stages come to, and what of it is built
     let (mut have, mut staged, mut built) = (0.0f32, 0.0f32, 0.0f32);
-    for f in 0..r.header.firms.len() {
-        let Some(fs) = firm_site(r, slots, f, k, lk) else { continue };
+    for (f, fs) in sites.iter().enumerate() {
+        let Some(fs) = fs else { continue };
         all += 1;
         let plan = &fs.plan;
         if !matches!(fs.now.state, State::Idle | State::Derelict) {
@@ -1171,7 +1171,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     if std::env::var_os("ISOSTATE_TIMING").is_some() || std::env::var_os("ISOSTATE_BENCH").is_some() {
         eprintln!("timing year works: {:.1} ms for {} vertices of works and {} of their ground", begun.elapsed().as_secs_f64() * 1000.0, works_b.pos.len(), lanes.pos.len());
         if !old {
-            eprintln!("{}", plans_said(r, slots, k, lk));
+            eprintln!("{}", plans_said(r, slots, k, &sites));
         }
     }
     // the railway's banks, viaducts, portals and bridges and what stands by it, and a
