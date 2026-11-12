@@ -169,9 +169,9 @@ trades cannot keep up with the people (0.1).
    level of the real wage, goods and baskets per head does not move at either end: the real wage
    of 1880-99 is within 2 per cent of the game's at 0.1125 and at 0.2. works.md's sweep in company
    (eight islands, 0.10 to 0.30) found 0.15 best for the wage of 1900, a tenth above 0.2; on
-   sixteen islands, against three runs at 0.15, that does not show. So the choice is one of pacing and of
-   how rough the ride is, not of how rich the island ends, and works.md's reason for 0.15 ("the
-   steadier place") is the one that holds. Two things it moves that nobody had tied to it: the
+   sixteen islands, against three runs at 0.15, that does not show. So the choice is one of
+   pacing and of how rough the ride is, not of how rich the island ends, and works.md's reason
+   for 0.15 ("the steadier place") is the one that holds. Two things it moves that nobody had tied to it: the
    steel rail (an eighth of rails in 1890 at 0.1125, almost none at 0.2: dearer iron makes steel
    worth rolling, which bears on R58), and the money level of the late century (the money wage
    and the cost of living both a sixth lower at 0.1125; not traced).
