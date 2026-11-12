@@ -498,6 +498,38 @@ fn report_middles(r: &crate::replay::Replay, l: &NewLand, cen: &[(f32, f32)]) {
         "land report: where they stand now: {} on dry ground back from the water, {} by a river, {} on marsh, {} at the water's edge, {} on ground too low to build on, {} on water (their cells having no better)",
         left[0], left[1], left[2], left[3], left[4], left[5]
     );
+    // the same counted as the land's critic counted it, by the node under the middle alone:
+    // tidewater, a lake, marsh, flood plain; where the old island would put it and where it is
+    let under = |p: (f32, f32)| {
+        let n = l.node_at(p.0, p.1);
+        if l.lake[n] > 0 {
+            1
+        } else if l.height[n] <= 0.0 {
+            0
+        } else if l.wet[n] == WET_MARSH {
+            2
+        } else if l.wet[n] > 0 {
+            3
+        } else {
+            4
+        }
+    };
+    let (mut was, mut now, mut towns_was, mut towns_now) = ([0usize; 5], [0usize; 5], [0usize; 5], [0usize; 5]);
+    for c in (0..r.n).filter(|&c| r.terrain[c] != 0) {
+        was[under(middles::jittered(c, r.w))] += 1;
+        now[under(cen[c])] += 1;
+    }
+    for t in r.header.towns.iter().filter(|t| t.founded <= r.y0) {
+        let c = t.node.min(r.n - 1);
+        towns_was[under(middles::jittered(c, r.w))] += 1;
+        towns_now[under(cen[c])] += 1;
+    }
+    for (what, a, b) in [("land cells' middles", was, now), ("first towns' market places", towns_was, towns_now)] {
+        println!(
+            "land report: by the node under them, the {what} (where the old island would put them / where they are): tidewater {} / {}, a lake {} / {}, marsh {} / {}, flood plain {} / {}, dry ground {} / {}",
+            a[0], b[0], a[1], b[1], a[2], b[2], a[3], b[3], a[4], b[4]
+        );
+    }
     for t in &r.header.towns {
         let c = t.node.min(r.n - 1);
         let (old, new) = (middles::jittered(c, r.w), cen[c]);
