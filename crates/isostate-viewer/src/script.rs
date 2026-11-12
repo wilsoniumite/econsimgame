@@ -234,7 +234,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "scroll" => Step::Scroll(num("the pixels")?),
             "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
             "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') => Step::Chip(arg.to_ascii_lowercase()),
-            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, wages, plain and pill")),
+            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill")),
             "good" => match arg.to_ascii_lowercase().as_str() {
                 "next" => Step::Good(1),
                 "back" => Step::Good(-1),
@@ -894,8 +894,8 @@ mod tests {
         assert_eq!(parse("key:Nope").err().unwrap(), "key:Nope: no key called Nope");
         assert_eq!(parse("key:Shift+Nope").err().unwrap(), "key:Shift+Nope: no key called Nope");
         assert_eq!(parse("wait:long").err().unwrap(), "wait:long: the seconds must be a number");
-        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, plain and pill");
-        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, plain and pill");
+        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
+        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
         assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island or half:goods");
         // steps are parted by semicolons: commas belong to pick and look
