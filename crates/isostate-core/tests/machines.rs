@@ -254,38 +254,66 @@ fn the_game_content_changes_only_the_converter_and_the_steel_rail_mill() {
     }
 }
 
-fn run(seed: u64, end_year: i64) -> RunResult {
-    // run_with checks every month that money only changed by what was issued
-    sim::run_with(&game(seed, end_year), game_content(), false, true).expect("money conserved with machines on")
+/// What `machines::end_month` promises of the machines standing, held after
+/// every month and every year's end of a run: a town that has had a month has
+/// a share between 0 and 1 in every column, and a town that has not (a slot
+/// never founded, or a town founded as the last year closed) is marked -1, so
+/// that its first month starts from what its settlers keep up.
+fn machines_stand_as_promised(s: &Sim, had_a_month: &[bool], when: &str) {
+    let st = &s.st;
+    assert_eq!((st.machine_stock.rows, st.machine_stock.cols), (st.T_max, s.content.NS * machines::SLOTS));
+    for t in 0..st.T_max {
+        for k in 0..st.machine_stock.cols {
+            let v = st.machine_stock[(t, k)];
+            if had_a_month[t] {
+                assert!((0.0..=1.0 + 1e-9).contains(&v), "{when}, town {t} column {k}: {v}");
+            } else {
+                assert_eq!(v, -1.0, "{when}, town {t}: a town that has not had a month has no machines");
+            }
+        }
+    }
+}
+
+/// A run under the game's rules, played a month at a time with the money
+/// checked as `sim::run_with` checks it, and the machines held to their promise
+/// at every step. Returns the run and how many towns it saw founded.
+fn run(seed: u64, end_year: i64) -> (RunResult, usize) {
+    let mut s = sim::start(&game(seed, end_year), game_content());
+    let mut had_a_month = vec![false; s.st.T_max];
+    let mut founded = 0;
+    while s.year <= s.end_year {
+        for month in 0..12 {
+            sim::run_month(&mut s, month).expect("money conserved with machines on");
+            // towns are founded only at a year's end, so the towns active now are
+            // the ones `end_month` saw this month
+            for t in 0..s.st.T_max {
+                if s.st.town_active[t] && !had_a_month[t] {
+                    founded += (s.year > s.content.start_year || month > 0) as usize;
+                    had_a_month[t] = true;
+                }
+            }
+            machines_stand_as_promised(&s, &had_a_month, &format!("{}-{month}", s.year));
+        }
+        let year = s.year;
+        sim::end_year(&mut s);
+        machines_stand_as_promised(&s, &had_a_month, &format!("the end of {year}"));
+    }
+    (sim::finish(s), founded)
 }
 
 #[test]
 fn money_is_conserved_and_runs_are_deterministic_with_machines_on() {
-    // forty years: pumps and wagonways arrive, steel is poured, machines improve
-    let (a, b) = (run(5, 1790), run(5, 1790));
+    // forty years: pumps and wagonways arrive, steel is poured, machines improve,
+    // and towns are founded, whose machines must start where the rule says
+    let ((a, founded), (b, _)) = (run(5, 1790), run(5, 1790));
+    assert!(founded > 0, "forty years and no town founded: the rule for a new town's machines went untried");
     for (k, name) in a.state.series.names.iter().enumerate() {
         let (x, y) = (&a.state.series.data[k], &b.state.series.data[k]);
         assert!(x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits()), "series {name} differs between identical runs");
     }
     assert_eq!(a.state.machine_stock, b.state.machine_stock);
     let (st, C) = (&a.state, &a.content);
-    assert_eq!((st.machine_stock.rows, st.machine_stock.cols), (st.T_max, C.NS * machines::SLOTS));
-    let mut pumped = 0.0f64;
-    for t in 0..st.T_max {
-        for k in 0..st.machine_stock.cols {
-            let v = st.machine_stock[(t, k)];
-            // (a town founded as the last year closed has not had a month yet: with
-            // the mines as workings, docs/rules/mines.md, seed 5 founds one in 1790)
-            if st.town_active[t] && st.town_founded[t] < 1790 {
-                assert!((0.0..=1.0 + 1e-9).contains(&v), "town {t} column {k}: {v}");
-            } else {
-                assert_eq!(v, -1.0, "a town not yet founded has no machines");
-            }
-        }
-        if st.town_active[t] {
-            pumped = pumped.max(st.machine_stock[(t, sector(C, "coalmine") * machines::SLOTS)]);
-        }
-    }
+    let pumped = (0..st.T_max).filter(|&t| st.town_active[t]).map(|t| st.machine_stock[(t, sector(C, "coalmine") * machines::SLOTS)]).fold(0.0f64, f64::max);
     assert!(pumped > 0.5, "by 1790 some town's collieries are pumped: {pumped}");
     assert!(machines::quality(st, C, &a.params) > 1.0, "forty years of steel have taught the engine builders something");
 }

@@ -1629,8 +1629,8 @@ pub fn check(ry: &RailYear, g: &Ground) -> Checked {
 /// last) and say how well the railway holds together (`check`). Then stop.
 /// ISOSTATE_RAIL_CHECK=list also names the inclines, the viaducts and the
 /// tunnels of the last year, for pointing a camera at them.
-pub fn maybe_check(r: &Replay, g: &Ground) {
-    let Some(how) = std::env::var_os("ISOSTATE_RAIL_CHECK") else { return };
+pub fn maybe_check(r: &Replay, g: &Ground) -> bool {
+    let Some(how) = std::env::var_os("ISOSTATE_RAIL_CHECK") else { return false };
     let cen = crate::network::centres(r);
     let last = r.filled.clamp(1, r.ny) - 1;
     let mut years: Vec<usize> = (0..=last).filter(|k| (r.y0 + *k as i32) % 10 == 0).collect();
@@ -1683,7 +1683,7 @@ pub fn maybe_check(r: &Replay, g: &Ground) {
             }
         }
     }
-    std::process::exit(0);
+    true
 }
 
 #[cfg(test)]

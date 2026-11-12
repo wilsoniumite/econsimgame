@@ -214,11 +214,11 @@ into a sister works it already has, on the family's cash.
 
 **What it comes to.** A family ends the century with a few dozen works of
 some size, where under the port it had several hundred small ones. On seed 7
-under the game's rules, with every default taken, the player has 24 works in
-1900, and the six families hold 6, 48, 42 and 39 per cent of the works'
+under the game's rules, with every default taken, the player has 27 works in
+1900, and the six families hold 6, 45, 33 and 41 per cent of the works'
 capital in 1750, 1800, 1850 and 1900, 13 to 19 per cent of the rent and 2 to
-11 per cent of the money (`examples/live.rs`, run on 12 November 2026, with
-the mines in).
+10 per cent of the money (`cargo run -p isostate-core --release --example
+live`, run on 12 November 2026 with the mines and the canals in).
 
 The tables and the worries in the rest of this page were measured under the
 port's rules, before the game's rules existed. `examples/bots.rs` and
@@ -227,10 +227,11 @@ scripted players under the game's rules are in `docs/rules/works.md` ("The
 scripted players" and "In company with the rest of the game"),
 `docs/rules/towns.md` ("In company, after the merge") and
 `docs/rules/mines.md` ("What it does in company"). Played again on 12
-November 2026 with the mines in, on seeds 1, 2, 3 and 7: the landlord still
-comes first on every island, the founder founds 94 to 145 works and has 30
-to 41 standing, and the player who takes every default ends fourth of six on
-three islands of four and first on the other.
+November 2026 with the mines and the canals in, on seeds 1, 2, 3 and 7
+(`cargo run -p isostate-core --release --example bots -- 1 2 3 7`): the
+landlord still comes first on every island, the founder founds 102 to 159
+works and has 29 to 37 standing, and the player who takes every default ends
+fourth of six on three islands of four and first on the other.
 
 ## The API
 

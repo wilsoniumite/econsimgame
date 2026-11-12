@@ -200,7 +200,11 @@ const SUN_XZ: vec2<f32> = vec2<f32>(-0.682, 0.731);
 // ------------------------------------------------------------------ the CPU rule
 // hash2, hash3, vnoise and the field system are world.rs and fields.rs line
 // for line; keep them in step. WGSL u32 arithmetic wraps like
-// Rust's wrapping_mul, so the hashes match bit for bit.
+// Rust's wrapping_mul, so the hashes match bit for bit. The tests of
+// shader_twin.rs read this file, run these functions on the CPU (the field
+// system, edge_warp, edge_fray, summer_snow_line, wood_depth, glade,
+// parcel_texel and the constants) and fail when they and the Rust disagree;
+// what is written inline in the fragment below is not checked by them.
 
 fn hash2(x: i32, y: i32, s: i32) -> f32 {
     var h = (bitcast<u32>(x) * 374761393u) ^ (bitcast<u32>(y) * 668265263u) ^ (bitcast<u32>(s) * 1442695041u);
@@ -405,6 +409,23 @@ fn edge_warp(p: vec2<f32>) -> vec2<f32> {
 // What is added to both fields at a spot, to fray their edges (world::edge_fray).
 fn edge_fray(p: vec2<f32>) -> f32 {
     return 0.09 * vnoise(p.x * 3.7, p.y * 3.7, 465) + 0.055 * vnoise(p.x * 8.9, p.y * 8.9, 467) + 0.028 * vnoise(p.x * 21.0, p.y * 21.0, 469);
+}
+
+// The height at which the snow that lies all summer begins at a spot
+// (world::summer_snow_line).
+fn summer_snow_line(p: vec2<f32>) -> f32 {
+    return snow_line_of(vnoise(p.x * 1.7, p.y * 1.7, 31));
+}
+
+// The same from the noise there, which the fragment has to hand.
+fn snow_line_of(n: f32) -> f32 {
+    return 1.75 - 0.12 * n;
+}
+
+// How wooded a spot is, 0 to 1, from the wood's field there: a wood deepens
+// inward faster than its field (world::wood_depth, WOOD_DEPTH).
+fn wood_depth(w: f32) -> f32 {
+    return clamp(select(w, 0.5 + 1.8 * (w - 0.5), w > 0.5), 0.0, 1.0);
 }
 
 // ------------------------------------------------------------------ helpers
@@ -1236,8 +1257,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     var heathy = 0.0;
     var walled = false;
     let snow_n = vnoise(p.x * 1.7, p.y * 1.7, 31);
-    // how far above the summer snow line (world::summer_snow_line)
-    let above = h - (1.75 - 0.12 * snow_n);
+    // how far above the summer snow line
+    let above = h - snow_line_of(snow_n);
     if (own_cls >= FARM && own_cls <= HEATH) {
         if (above > 0.0) {
             cls = HEATH;
@@ -1247,8 +1268,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             heathy = 0.5 + 0.5 * smoothstep(0.0, 0.12, above);
         } else {
             let f = textureSampleLevel(land_field, land_field_sampler, edge_warp(p) / vec2<f32>(ground.width, ground.height), 0.0).rg + vec2<f32>(edge_fray(p));
-            // a wood deepens inward faster than its field (world::WOOD_DEPTH)
-            wooded = clamp(select(f.x, 0.5 + 1.8 * (f.x - 0.5), f.x > 0.5), 0.0, 1.0);
+            wooded = wood_depth(f.x);
             heathy = clamp(f.y, 0.0, 1.0);
             let under = u32(round(yp.w * 255.0));
             // the parcel's walls and hedges stand, whatever grows over its grass

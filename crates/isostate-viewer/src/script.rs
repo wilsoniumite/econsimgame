@@ -222,7 +222,9 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             },
             "print" => Step::Print(arg.to_string()),
             "scenery" => Step::Scenery(arg.to_string()),
-            "tab" => Step::Tab(ui::Tab::parse(arg)),
+            // a panel that is none of these is refused, and not taken for closing the panel
+            "tab" if ui::Tab::parse(arg).is_some() || arg.eq_ignore_ascii_case("none") => Step::Tab(ui::Tab::parse(arg)),
+            "tab" => return Err(format!("{part}: the panels are family, holdings, markets, news and none")),
             "pick" => match nums()?.as_slice() {
                 [x, z] => Step::Pick(*x, *z),
                 _ => return Err(format!("{part}: pick takes x,z")),
@@ -898,6 +900,10 @@ mod tests {
         assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
         assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island or half:goods");
+        // a panel that is no panel was once taken for closing the panel
+        assert_eq!(parse("tab:famly").err().unwrap(), "tab:famly: the panels are family, holdings, markets, news and none");
+        assert_eq!(parse("tab").err().unwrap(), "tab: the panels are family, holdings, markets, news and none");
+        assert_eq!(parse("tab:none;tab:None;tab:Holdings").unwrap(), [Step::Tab(None), Step::Tab(None), Step::Tab(Some(ui::Tab::Holdings))]);
         // steps are parted by semicolons: commas belong to pick and look
         assert!(parse("key:M,key:M").is_err());
     }

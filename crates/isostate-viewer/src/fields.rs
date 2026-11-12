@@ -20,7 +20,9 @@
 //!
 //! terrain.wesl repeats the cutting line for line, in the same order of
 //! operations, so the ground it paints agrees with the trees and houses placed
-//! here. Change one side and you must change the other.
+//! here. Change one side and you must change the other: the tests of
+//! `shader_twin` run the shader's own source on the CPU and fail when the two
+//! drift apart.
 
 use bevy::math::Vec2;
 
@@ -29,8 +31,8 @@ use crate::world::{hash2, vnoise};
 /// Size of a block, in cells.
 pub const BLOCK: f32 = 0.9;
 /// The block grid is turned by 0.33 radians against the cells.
-const TURN_C: f32 = 0.946_042_3;
-const TURN_S: f32 = 0.324_043_6;
+pub const TURN_C: f32 = 0.946_042_3;
+pub const TURN_S: f32 = 0.324_043_6;
 /// Cuts that make a parcel, the unit that takes one land class.
 pub const PARCEL_LEVEL: u32 = 3;
 /// The most cuts a field can have.
@@ -278,3 +280,7 @@ pub fn field(bl: &Block, pc: Cut, depth: u32) -> Field {
     let toward = Vec2::new(TURN_C * dir.x - TURN_S * dir.y, TURN_S * dir.x + TURN_C * dir.y);
     Field { block: *bl, cut: c, edge: edge * BLOCK, toward }
 }
+
+#[cfg(test)]
+#[path = "shader_twin.rs"]
+mod shader_twin;

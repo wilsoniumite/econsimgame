@@ -409,28 +409,45 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
     events.push(e);
 }
 
+/// The head of a family who died this year, as `families::people` knew him
+/// when it wrote his burial: which of the year's items is the burial, and the
+/// facts the succession tells of him. Handed over as facts, so that the
+/// succession need not read them back out of the burial's sentence, and the
+/// burial's wording can change without the succession going quiet.
+pub struct Burial {
+    /// The burial's place among the year's items.
+    pub item: usize,
+    /// His first name and surname.
+    pub who: String,
+    pub age: i64,
+    /// The town he is buried at.
+    pub place: String,
+    /// Whether that town is the family's seat.
+    pub at_seat: bool,
+}
+
 /// A head of the player's family has died and another has taken over
 /// (`families::people`, with the year's family news before it is filed). The
 /// port files two items of the same weight, and a decade's place for the
 /// family went to the burial every time. Here the succession is the item a
-/// history keeps, and says whom the new head follows; the burial stays in the
-/// family's own news. The last item is the succession; the burial is found by
-/// the port's wording, and if that is ever changed nothing is done.
-pub fn succession(P: &Params, family: usize, items: &mut [Option<Event>]) {
+/// history keeps, and says whom the new head (`first`, by first name) follows;
+/// the burial stays in the family's own news. The last item is the
+/// succession; `burial` says which item is the burial and what to tell of
+/// him. Without one (a cousin who takes the name on when nobody is left buries
+/// nobody) nothing is done.
+pub fn succession(P: &Params, family: usize, items: &mut [Option<Event>], first: &str, burial: Option<&Burial>) {
     if !P.chronicle.enabled || family != 0 {
         return;
     }
+    let Some(Burial { item, who, age, place, at_seat }) = burial else { return };
     let Some((Some(heads), before)) = items.split_last_mut() else { return };
-    let Some(burial) = before.iter_mut().flatten().find(|e| e.text.contains(" head of the family, is buried at ")) else { return };
-    let (Some((who, age)), Some((_, place))) = (burial.title.split_once(" dies at "), burial.text.split_once(" is buried at ")) else { return };
-    let first = heads.title.split(' ').next().unwrap_or("The new head");
-    let place = place.trim_end_matches('.');
-    heads.text = if heads.text.ends_with(&format!(" are led from {place}.")) {
+    let Some(Some(buried)) = before.get_mut(*item) else { return };
+    heads.text = if *at_seat {
         format!("{first} follows {who}, who died at {age} and is buried at {place}, the family's seat.")
     } else {
         format!("{first} follows {who}, who died at {age} and is buried at {place}. {}", heads.text)
     };
-    burial.weight = P.chronicle.own_small;
+    buried.weight = P.chronicle.own_small;
 }
 
 // ---------------------------------------------------------------- the observer's faults
@@ -522,14 +539,26 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
     declines(st, P, &mut ch, year, events);
     overtakings(st, C, P, &mut ch, year, events);
     closures(st, C, P, &mut ch, year, events);
-    if (year - C.start_year) % 10 == 9 {
+    // the decades are the calendar's, whatever year the run starts in: a run
+    // from 1755 has a short first decade, 1755 to 1759, and then the 1760s
+    if decade_ends(year) {
         fastest_of_decade(st, C, P, &ch, year, events);
-        new_towns_of_decade(st, P, year, events);
+        new_towns_of_decade(st, P, year, C.start_year, events);
     }
     st.chron = ch;
     note_holdings(st, C);
     closure_provenance(st, C, P, year, events);
     rank(events, P, C.start_year, C.end_year, year);
+}
+
+/// The calendar decade a year falls in, by its first year: 1750 for 1750 to 1759.
+fn decade_of(year: i64) -> i64 {
+    year.div_euclid(10) * 10
+}
+
+/// Whether a calendar decade ends with this year (1759, 1769, ...).
+fn decade_ends(year: i64) -> bool {
+    year.rem_euclid(10) == 9
 }
 
 fn note_year(st: &State, C: &Content, ch: &mut ChronicleState, year: i64) {
@@ -1061,7 +1090,7 @@ fn fastest_of_decade(st: &State, C: &Content, P: &Params, ch: &ChronicleState, y
     } else {
         " Nearly all of it is the town's own families growing."
     };
-    let decade = year / 10 * 10;
+    let decade = decade_of(year);
     let mut ev = Event::new(
         year as f64 + 0.9,
         "region",
@@ -1091,9 +1120,12 @@ fn fastest_of_decade(st: &State, C: &Content, P: &Params, ch: &ChronicleState, y
 }
 
 /// A decade in which several towns were founded gets one item for them all.
-fn new_towns_of_decade(st: &State, P: &Params, year: i64, events: &mut Vec<Event>) {
-    let decade = year / 10 * 10;
-    let mut towns: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t] && (decade..=year).contains(&st.town_founded[t])).collect();
+/// The first decade counts from the first year recorded (`start_year`), so a
+/// town the warm-up founded is never news.
+fn new_towns_of_decade(st: &State, P: &Params, year: i64, start_year: i64, events: &mut Vec<Event>) {
+    let decade = decade_of(year);
+    let from = decade.max(start_year);
+    let mut towns: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t] && (from..=year).contains(&st.town_founded[t])).collect();
     if towns.len() < P.chronicle.new_towns_min.max(1) {
         return;
     }
@@ -1121,7 +1153,7 @@ fn new_towns_of_decade(st: &State, P: &Params, year: i64, events: &mut Vec<Event
         towns.len() as f64,
         P.chronicle.new_towns_min as f64,
         None,
-        format!("{} towns were founded from {decade} to {year} (it needs {})", towns.len(), P.chronicle.new_towns_min),
+        format!("{} towns were founded from {from} to {year} (it needs {})", towns.len(), P.chronicle.new_towns_min),
     );
     events.push(ev);
 }
@@ -1215,9 +1247,12 @@ pub fn rank(events: &mut [Event], P: &Params, start_year: i64, end_year: i64, up
     for e in events.iter_mut() {
         e.kept = Some(false);
     }
-    // the last decade takes in a final odd year (1900 goes with the 1890s)
-    let last = (end_year - start_year - 1).max(0) / 10;
-    let decade = |e: &Event| ((e.year.floor() as i64 - start_year).max(0) / 10).min(last);
+    // decades by the calendar (a run from 1755 has a short first one), counted
+    // by their first year over ten; anything before the start goes with the
+    // first, and the last takes in a final odd year (1900 goes with the 1890s)
+    let first = start_year.div_euclid(10);
+    let last = (end_year - 1).div_euclid(10).max(first);
+    let decade = |e: &Event| (e.year.floor() as i64).div_euclid(10).clamp(first, last);
     // alarms that a verdict has since dated
     let mut dated = vec![false; events.len()];
     for v in events.iter().filter(|e| e.kind == "verdict") {
@@ -1236,7 +1271,7 @@ pub fn rank(events: &mut [Event], P: &Params, start_year: i64, end_year: i64, up
     }
     for (d, mut items) in by_decade {
         items.sort_by(|&a, &b| standing(&events[b]).total_cmp(&standing(&events[a])).then(events[a].year.total_cmp(&events[b].year)).then(a.cmp(&b)));
-        let over = upto >= if d == last { end_year } else { start_year + 10 * d + 9 };
+        let over = upto >= if d == last { end_year } else { 10 * d + 9 };
         let mut kept: Vec<usize> = Vec::new();
         let mut of_class: BTreeMap<String, usize> = BTreeMap::new();
         let mut keep = |i: usize, kept: &mut Vec<usize>, events: &[Event]| -> bool {

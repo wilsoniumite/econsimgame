@@ -68,13 +68,19 @@ numbers), kind `harvest` unless said:
 | A bumper harvest | the same above | 0.3 to 0.5 |
 | Three lean years | the third year running at least half a deviation short; it takes the place of that year's poor harvest | 0.45 to 0.75, by what the three years lost together |
 | The harvest fails around TOWN | one town's farms are `news_local_z` (2.3) district deviations below the country's and below an ordinary year, in a year when the country's harvest is not itself news | 0.35 to 0.55 |
-| A dearth of grain (kind `dearth`) | the year's grain price stands `dearth_rise` (15 per cent) above its trend: the mean of the five years before, carried forward at the drift of the last twenty. At most once in three years | 0.55 to 0.8 |
+| A dearth of grain (kind `dearth`) | the year's grain price stands `dearth_rise` (15 per cent) above its trend: the mean of the five years before, carried forward at the drift of the last twenty. At most once in three years, and only with the merchants' prices on (`prices.enabled`) | 0.55 to 0.8 |
 
 The viewer's "major" feed shows weights from 0.6, so it gets the dearths, the
 worst harvests and the worst runs of lean years; bumper years and one
 district's failure stay in the full feed. With prices on that is 17 harvest
 items and 6 dearths in 150 years, three every two decades; under the port's
 own price rule, whose false swing keeps tripping the dearth line, 16 and 15.
+That is why a dearth is now told only beside the merchants' prices: the
+dearth reads the price of grain and nothing else, and on the port's rule
+that price trips the line with no weather behind it (five times in sixty
+years on seed 3 with both sizes at 0; `tests/harvest.rs`,
+`no_weather_and_the_ports_prices_tell_no_dearth`). Every count of dearths
+under the port's price rule on this page was taken before that.
 (Those counts, and every count of dearths in the tables below, were taken
 with the line at 12 per cent, where it stood until harvests were set beside
 the game's other rules; "In company" says why it moved and what the count is
@@ -261,7 +267,8 @@ price rules) failed the monthly money check.
 **Pushed to its edges** (seeds 3 and 7 to 1900, `sweep-harvest-review-x-*`).
 Both sizes at 0 with the switch on is the port's run byte for byte (seed 3
 with six families: the same monthly series and the same news, with fifteen
-dearths added, since the dearth line reads only the price). Shocks of 0.2 and
+dearths added, since the dearth line reads only the price; those dearths are
+no longer told, see "The news"). Shocks of 0.2 and
 0.4 for the island, or 0.3 for the districts, break nothing: famine comes in
 21 to 71 of the 150 years, the people of 1900 number between 640 and 360
 thousand, and money holds. `reach`
@@ -498,7 +505,16 @@ to 1900 under the four mechanisms together.
 - **Harvests alone are not ready to play.** They were built for an island
   whose prices have been steadied. Under the port's price rule they work and
   conserve money, but they feed the false swing. If `prices` were ever
-  switched off, switch this off with it.
+  switched off, switch this off with it. Part of this is now a rule: the
+  dearth, the one item of the harvest's news that reads the price and not
+  the weather, is told only while `prices.enabled`. The harvest itself still
+  runs on the port's price rule. I chose that over refusing the harvest
+  without the prices because the refusal could only be made where a file is
+  read, and the sweep's `--set prices.enabled=false` goes round that reader,
+  so it would have held on one road and not the other; because a harvest
+  that quietly did nothing would leave a `params.json` saying harvests were
+  on; and because the tables above under the port's price rule, which are
+  the case for harvests belonging with `prices`, can still be run again.
 - **A bad year is mild.** No more famines, no worse a worst year, no one
   fewer in 1900. The first two are the merchants doing their job and the size
   of the shock; the third is the port's population rule, which does not look
