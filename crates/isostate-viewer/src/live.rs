@@ -934,6 +934,10 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         series_len,
         filled: 0,
         owner: Vec::new(),
+        // made on the first year that brings them (`apply_year`)
+        built: Vec::new(),
+        res: Vec::new(),
+        works: Vec::new(),
         workings: Vec::new(),
     }
 }
@@ -1047,6 +1051,16 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         (&mut r.mix_s, &l.mix_s),
     ] {
         dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
+    }
+
+    // town ground that is kept: three more layers, in a game whose towns keep their ground
+    for (dst, src) in [(&mut r.built, &l.built), (&mut r.res, &l.res), (&mut r.works, &l.works)] {
+        if let Some(src) = src {
+            if dst.is_empty() {
+                *dst = vec![0; ny * n];
+            }
+            dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
+        }
     }
 
     // towns: the slots are fixed for the run, so the arrays are made on the first year
