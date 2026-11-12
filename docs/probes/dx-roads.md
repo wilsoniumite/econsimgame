@@ -33,7 +33,7 @@ A cell is 2 km. Mean over the eight islands, and the least and greatest:
 | 1850 | 3,803 | 1,616 | 1,207 [874 .. 1,632] | 1,340 | 888 |
 | 1900 | 2,751 | 2,415 | 1,480 [1,312 .. 1,710] | 2,255 | 892 |
 
-So a turnpike is a seventh of the island's roads in 1750 and a fifth in 1900, which is about England's share in the 1830s (some 22,000 miles of trust road of about 120,000). On the second island generator (`--land`) the kilometres are within a tenth of these.
+So a turnpike is a seventh of the island's roads in 1750 and a fifth in 1900, which is about England's share in the 1830s (some 22,000 miles of trust road of about 120,000). On the second island generator (`--land`) 1750 is within a tenth of this (3,954, 1,189 and 945 km), and 1900 keeps a third more track and a tenth less turnpike (3,598, 2,600 and 1,337 km).
 
 Cells improved in a year, the mean of the decade to the date:
 
