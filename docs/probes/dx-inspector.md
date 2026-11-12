@@ -94,7 +94,7 @@ carting.
 | grain | 71,161 | 41,544 | farms, 561 hands |
 | stone | 73,202 | 38,826 | quarries, 460 hands |
 | services | 1,822 | 17,885 | 2 shops, 291 hands |
-| timber | 16,766 | 13,642 | woods, 170 hands (543 of it from clearing) |
+| timber | 16,766 | 13,642 | woods, 170 hands (543 of it from clearing, which the value leaves out) |
 | cloth | 1,389 | 7,536 | 1 mill, 8 hands |
 | 5 more goods | | 16,016 | coal, steel, machinery, iron, iron ore |
 | all of it | | 180,235 | |
