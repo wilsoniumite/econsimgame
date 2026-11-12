@@ -343,7 +343,10 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
                 let (s, n) = (&spots[i], near[i]);
                 let drawn = if wheel { n.2.max(0.05) } else if by_rail { n.1.min(1.0) } else { n.0.min(1.0) };
                 let by = lots.iter().zip(&placed).filter(|(l, _)| from < l.to && l.from < to).map(|(l, &o)| (((l.x - s.0).abs() - l.hx).max(0.0).hypot(((l.z - s.1).abs() - l.hz).max(0.0))) * if chained(f, o) { 0.6 } else { 1.0 }).fold(f32::MAX, f32::min);
-                (drawn + if by < f32::MAX { 0.8 * by } else { 0.0 } + 0.01 * s.4, i)
+                // the fire trades and the mills keep out past the edge of the town: it is the
+                // town's own trades that stand among its houses
+                let in_town = if matches!(kind, Kind::HandLoom | Kind::Smithy | Kind::Millwright | Kind::Shops) { 0.0 } else { town.map_or(0.0, |(tx, tz)| (0.34 - (tx - s.0).hypot(tz - s.1)).max(0.0) * 2.5) };
+                (drawn + in_town + if by < f32::MAX { 0.8 * by } else { 0.0 } + 0.01 * s.4, i)
             })
             .collect();
         order.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -630,7 +633,6 @@ pub fn firm_site(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look) -> Op
 
 /// The works of firm `f` as it is drawn in year `k`, if it stands then: the
 /// size from its ladder, the state from what the year did to it.
-#[allow(dead_code)]
 pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<works::Works> {
     let kk = replay::firm_k(r, f, k);
     if kk <= 0.0 {
@@ -1018,26 +1020,49 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // the works of the year, each in its own yard; houses, trees and farms keep clear of the yards
     let mut lanes = Builder::default();
     let mut plots: std::collections::HashMap<usize, Vec<(f32, f32, f32, f32)>> = Default::default();
-    {
-        // the plans this year needs that are not yet made, on every core
+    // ISOSTATE_WORKS=old draws every works the way it was drawn before the planner (one fixed
+    // arrangement for its kind in the middle of its plot), to set the two side by side and to
+    // time one against the other on the same machine in the same minute
+    let old = std::env::var("ISOSTATE_WORKS").map_or(false, |v| v == "old");
+    let begun = std::time::Instant::now();
+    // where few plans are made yet (a game just opened, a replay opened on a late year), the
+    // plans this year needs are made on every core; after that a year needs a handful, and
+    // they are made as the works are drawn
+    let made = PLANS.lock().unwrap().as_ref().map_or(0, |p| p.len());
+    if !old && made * 2 < r.header.firms.iter().enumerate().filter(|(f, _)| replay::firm_k(r, *f, k) > 0.0).count() {
         use rayon::prelude::*;
         (0..r.header.firms.len()).into_par_iter().for_each(|f| {
             firm_site(r, slots, f, k, lk);
         });
     }
     for (f, firm) in r.header.firms.iter().enumerate() {
+        if old {
+            let Some(w) = firm_works(r, slots, f, k) else { continue };
+            let p = slots.firm_pos[f];
+            let (fw, fd) = works::footprint(w.kind, w.size);
+            let (sin, cos) = p.2.sin_cos();
+            let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
+            plots.entry(firm.cell).or_default().push((p.0, p.1, hx, hz));
+            let w = works::Works { detail: lod.at(p.0, p.1), ..w };
+            works::works(&mut works_b, &mut smoke, &mut lanes, &Site::on(ground(g, p.0, p.1), p.2, &height), &w, lk);
+            continue;
+        }
         let Some(fs) = firm_site(r, slots, f, k, lk) else { continue };
         let p = slots.firm_pos[f];
-        // the box round its plot as it lies on the map, and a little room
-        let (x0, x1, z0, z1) = fs.plan.plot.bounds();
-        let (fw, fd) = (x1 - x0, z1 - z0);
+        // the box round the ground it has taken in so far as it lies on the map, and a little
+        // room (the rest of its plot is kept for it, and is field or wood until it is wanted)
+        let (x0, x1, z0, z1) = fs.plan.enclosed.bounds();
+        let (fw, fd, mx, mz) = (x1 - x0, z1 - z0, (x0 + x1) * 0.5, (z0 + z1) * 0.5);
         let (sin, cos) = p.2.sin_cos();
         let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
-        plots.entry(firm.cell).or_default().push((p.0, p.1, hx, hz));
+        plots.entry(firm.cell).or_default().push((p.0 + mx * cos + mz * sin, p.1 - mx * sin + mz * cos, hx, hz));
         let site_ = Site::on(ground(g, p.0, p.1), p.2, &height);
         // as much of it as the camera can see, as for a house
         let now = site::Now { detail: lod.at(p.0, p.1), ..fs.now };
         site::site(&mut works_b, &mut smoke, &mut lanes, &site_, &fs.plan, &now, lk);
+    }
+    if std::env::var_os("ISOSTATE_TIMING").is_some() || std::env::var_os("ISOSTATE_BENCH").is_some() {
+        eprintln!("timing year works: {:.1} ms for {} vertices of works and {} of their ground", begun.elapsed().as_secs_f64() * 1000.0, works_b.pos.len(), lanes.pos.len());
     }
     // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river

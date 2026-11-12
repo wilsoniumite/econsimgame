@@ -1131,7 +1131,7 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
     // weeds round the parts that have fallen out of use
     if now.state != State::Derelict {
         for p in plan.parts.iter().filter(|p| matches!(part_state(plan, now, p.stage), State::Idle | State::Derelict)) {
-            c.patch(p.x, p.z, p.w * 0.62, p.d * 0.62, 7, 0, *pal.ground.yard_weeds);
+            c.patch(p.x, p.z, p.w * 0.5, p.d * 0.5, 7, 0, lerp(ground, *pal.ground.yard_weeds, 0.7));
         }
     }
     c.finish();
