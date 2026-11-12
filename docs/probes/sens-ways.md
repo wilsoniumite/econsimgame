@@ -37,8 +37,9 @@ says, and not the promoters'.
    navvies' `navvy_adjust` in 1881 to 1900 (output a head 2.7 per cent and the
    real wage 3.0 per cent lower at 0.333 than at 0.1875, on 10 islands of 16)
    and the canal `hurdle` in 1831 to 1850 (2.7 and 2.8 per cent higher at 0.133,
-   on 11 and 12). Those are a half or more of the spread between islands, so the
-   mean alone would make them look like something; but they are carried by a few
+   on 11 and 12). Those are a third to four fifths of the spread between
+   islands, so the mean alone would make them look like something; but they are
+   carried by a few
    islands that swing a long way either way (under `navvy_adjust` single islands
    move output a head in 1881 to 1900 by 0.3 to 0.6, where the path noise of the
    median island is 0.13), and only one change runs the same way on 14 islands
@@ -353,11 +354,27 @@ Worth trying next, none run:
    baseline's own luck reached the towns of 1900, and three "all eight islands"
    results did not survive seeds 9 to 16: `build_months` 32 took 70 km off the
    railway of 1850 against the baseline on all eight, and on sixteen it is 43 km
-   on 12; canal `cost`
-   took 3.6 per cent off output a head in 1831 to 1850 on all eight, and on
-   sixteen 1.3 per cent on 12; canal `stone` added 3 per cent to the same, and
-   on sixteen 1 per cent on 10. A scorecard built on eight islands would have
-   kept all three.
+   on 12; canal `cost` took 3.6 per cent off output a head in 1831 to 1850 on
+   all eight, and on sixteen 1.3 per cent on 12; canal `stone` added 3 per cent
+   to the same, and on sixteen 1 per cent on 10. A scorecard built on eight
+   islands would have kept all three.
+
+## What the review checked
+
+A second helper ran fifteen of the sweeps again with its own build of the same
+code: ten of the thirty-six on seeds 1 to 8, from both tables and every row the
+page leans on (the two switches, `cost_mult`, `branch_gap`, `order_book`,
+`rail_induced`, canal `cost`, `hurdle`, `navvy_adjust` and `hearsay`), and five
+on seeds 9 to 16. Every fact of every run came back to the last digit, and the
+baseline gives all 446 facts as today's main does. It read the tables again
+from the kept `facts.csv` with a reader of its own, and they stand. What it
+mended: the first railway does move under the canals' dials, through a few
+islands (the second paragraph); the economy's largest moves are a third to four
+fifths of the spread between islands, not under a fifth, and are set aside
+because they do not agree from island to island (In short, 2); switching the
+railways off leaves less of the canal of 1900 open by 1800 (In short, 5); and
+three settings were tried twice as far out ("Settings that do nothing"). Its
+notes are `check.md` beside `build.md`, and its runs are under `check/`.
 
 ## Files
 
