@@ -313,6 +313,22 @@ pub struct Surfaces {
     pub bare_limb_translucence: f32,
 }
 
+/// Winter on what is built (`built.rs`, built.wesl); the land's own snow and
+/// frost are among its paints.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Winter {
+    pub snow: Colour,
+    pub snow_bright: f32,
+    pub snow_cover: f32,
+    pub frost: Colour,
+    pub frost_cover: f32,
+    pub ice: Colour,
+    pub bare_earth: Colour,
+    pub winter_grass: Colour,
+    pub smoke_fuller: f32,
+}
+
 // ------------------------------------------------------------------ the whole look
 
 /// The whole look. The scenery's named colours are the palette, which the
@@ -323,6 +339,7 @@ pub struct Look {
     pub palette: Palette,
     pub land: Land,
     pub sea: Sea,
+    pub winter: Winter,
     pub sun: Sun,
     pub shadows: Shadows,
     pub sky: Sky,
@@ -347,6 +364,7 @@ impl std::ops::Deref for Look {
 struct ViewerHalf {
     land: Land,
     sea: Sea,
+    winter: Winter,
     sun: Sun,
     shadows: Shadows,
     sky: Sky,
@@ -395,6 +413,7 @@ impl Look {
             palette,
             land: v.land,
             sea: v.sea,
+            winter: v.winter,
             sun: v.sun,
             shadows: v.shadows,
             sky: v.sky,
@@ -429,6 +448,17 @@ impl Look {
         }
         if self.ambient_occlusion.radius <= 0.0 {
             return Err("`ambient_occlusion.radius` must be more than 0".into());
+        }
+        let w = &self.winter;
+        if !(0.0..=1.0).contains(&w.snow_cover) || !(0.0..=1.0).contains(&w.frost_cover) {
+            return Err("`winter.snow_cover` and `winter.frost_cover` each run from 0 to 1".into());
+        }
+        if !(1.0..=3.0).contains(&w.snow_bright) {
+            return Err("`winter.snow_bright` runs from 1 (as bright as a paint of its colour) to 3".into());
+        }
+        // a plume is 0.85 solid where it leaves the flue, and more than solid is not a colour
+        if !(0.0..=0.17).contains(&w.smoke_fuller) {
+            return Err("`winter.smoke_fuller` runs from 0 to 0.17".into());
         }
         Ok(())
     }

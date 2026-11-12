@@ -930,17 +930,22 @@ fn town(sp: Spot) -> vec3<f32> {
     let k = hash3(field_key(sp.bl, plot), 91u, 0u);
     let garden_share = max(0.42 - 0.38 * sp.dense, 0.04);
     var c = paint.town_earth.rgb;
+    // (task D, winter) a garden is dug over from November to March: its green
+    // goes to the winter soil of the fields, and the frost lies on that
+    let bare = winter(sp.ph);
+    let garden = mix(paint.garden.rgb, paint.soil_winter.rgb, 0.72 * bare);
     if (k < garden_share) {
         // a garden: beds of green and dug earth
         let rows = 0.5 + 0.5 * cos(TAU * dot(sp.p, vec2<f32>(0.6, 0.8)) / 0.011);
-        c = mix(paint.garden.rgb, paint.garden_dug.rgb, rows * detail(90.0, sp.foot));
+        let dug = mix(paint.garden_dug.rgb, paint.soil_winter.rgb * 0.93, 0.85 * bare);
+        c = mix(garden, dug, rows * detail(90.0, sp.foot));
     } else if (k < garden_share + 0.3) {
         // cobbles
         c = paint.cobbles.rgb * (1.0 + 0.06 * vnoise(sp.p.x * 120.0, sp.p.y * 120.0, 97) * detail(120.0, sp.foot));
     }
     // far away the plots blend into the town's average ground
     let lod = detail(18.0, sp.foot);
-    let avg = mix(paint.town_far.rgb, paint.garden.rgb, garden_share * 0.8);
+    let avg = mix(paint.town_far.rgb, garden, garden_share * 0.8);
     c = mix(avg, c, lod);
     let edge = band(cut_edge(sp.bl, plot), 0.0016, sp.foot);
     c = mix(c, c * 0.84, edge * lod);

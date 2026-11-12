@@ -173,6 +173,34 @@ open = "#2c5f86"
 # the foam at the water's edge and on the surf
 foam = "#f4f6f2"
 
+[winter]
+# Winter on what is built: houses, works, churches, farm buildings, bridges
+# (src/built.wesl). The land's own snow and frost are in [land] above.
+
+# snow lying on a roof, the top of a wall, a stack of goods: its colour (a
+# little blue, since the low sun of winter is warm and would turn a plain
+# white to the cream of the walls and the town's ground); how much brighter
+# than a paint of that colour it is drawn (a roof looks up at a sun that
+# stands low, so painted white it comes out duller than the wall under it;
+# snow scatters light and is the brightest thing in a winter picture); and
+# how much of such a surface it covers in midwinter (the rest shows the roof
+# through)
+snow = "#e6effa"
+snow_bright = 1.7
+snow_cover = 0.9
+# hoar frost on the ground round a house, its yard and its garden, and how
+# strongly it lies
+frost = "#dfe5e8"
+frost_cover = 0.3
+# a mill pond frozen over
+ice = "#cbdbe1"
+# what the green round a house goes to: a bed or a hedge to bare earth and
+# twigs, a lawn to the dull grass of winter
+bare_earth = "#8a7658"
+winter_grass = "#8f9672"
+# how much more solid smoke stands in cold air: 0.15 is 15% more at midwinter
+smoke_fuller = 0.15
+
 [ground]
 # What lies on the land.
 # roads between the towns: gravel on the main roads, dust on the lesser ones
@@ -426,11 +454,13 @@ rails = "#3d3633"
 # the dashed earthworks of a line being laid
 earthworks = "#a3967f"
 # an embankment: its top under the ballast, its grass sides (one in shade),
-# and stone where it meets the sea; the same stone builds viaducts, tunnel
-# portals and the abutments of girder bridges
+# and the stone it is pitched with where it meets the sea (a bank like the
+# grass ones, so winter frosts it and lays no snow on it); the same stone
+# builds viaducts, tunnel portals and the abutments of girder bridges
 bank_top = "#9a8f78"
 bank_grass = "#7f9a52"
 bank_grass_shade = "#6c8546"
+sea_wall = "#b9ad97"
 # a bank on the high fells, of broken rock
 bank_scree = "#b3ab9e"
 stone = "#b9ad97"

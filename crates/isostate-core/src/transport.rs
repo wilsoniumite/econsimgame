@@ -125,10 +125,29 @@ pub fn build_graph(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], 
             }
             if both_sea {
                 cost = SEA_COST * step;
+                // land: a lake is not an arm of the sea. Where a lake cell and
+                // a sea cell lie side by side there is a bar of land between
+                // them, and a boat's load is carried over it as over a beach
+                if let Some(lf) = &world.landform {
+                    if lf.lake[a] != lf.lake[b] {
+                        cost = BEACH_COST;
+                    }
+                }
             }
             if !both_land && !both_sea {
                 let landside = if world.land[a] { a } else { b };
                 cost = if port_mask[landside] { PORT_COST } else { BEACH_COST };
+                // land: a boat on a navigable river goes on into the lake the
+                // river runs through, and out of it again; and the mouth of a
+                // tideway is a harbour without a town's having to make one
+                if let Some(lf) = &world.landform {
+                    let waterside = if world.land[a] { b } else { a };
+                    if lf.lake[waterside] && world.navigable[landside] {
+                        cost = cost.min(RIVER_COST * step);
+                    } else if !lf.lake[waterside] && lf.estuary[landside] && world.navigable[landside] {
+                        cost = cost.min(PORT_COST);
+                    }
+                }
             }
             w[a * 8 + k] = cost.max(1e-3);
             railed[a * 8 + k] = on_rail;

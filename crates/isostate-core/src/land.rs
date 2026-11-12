@@ -37,6 +37,10 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
         if st.town_active[i] {
             let n = st.town_node[i];
             port[n] = st.world.coast[n];
+            // land: a town on a lake's shore has a harbour on the lake
+            if let Some(lf) = &st.world.landform {
+                port[n] = port[n] || lf.shore[n];
+            }
         }
     }
     let mut graph = tr::build_graph(&st.world, &st.road, &st.rail, &port, &st.cover);
