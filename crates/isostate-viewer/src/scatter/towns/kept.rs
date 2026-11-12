@@ -136,6 +136,109 @@ impl std::hash::Hasher for Quick {
 /// The maps of this file use it.
 type HashMap<K, V> = std::collections::HashMap<K, V, std::hash::BuildHasherDefault<Quick>>;
 
+/// The works' yards of the years before this one, so that the layout knows
+/// when ground that a yard held came free. It is the one thing a town must
+/// remember for its houses to stay: a works' yard is the only thing that
+/// keeps plots out and then gives them back (a church, a station, the
+/// railway and a market place only ever take ground). Without it, a plot
+/// that a yard gave up took its old place in its cell's order, before
+/// houses built since, and the last of those was pulled down for it though
+/// nobody had left: a third of all the houses that went in a century and a
+/// half went so. With it, such a plot comes into the order when the yard is
+/// given up, after everything built up by then (`lay_out`).
+///
+/// Nothing is kept from year to year: the yards of a cell are worked out
+/// from the record when a plot of the cell first asks, the same whichever
+/// year is laid out and however it was come by. A yard is taken as
+/// `scatter::build_year_inner` lays it: the works' footprint for its kind
+/// and size that year, turned as it stands, and a little room.
+pub(in crate::scatter) struct Yards<'a> {
+    r: &'a Replay,
+    slots: &'a Slots,
+    k: usize,
+    /// the firms of each cell
+    firms: HashMap<u32, Vec<u32>>,
+    /// for each cell asked about, its yards: where each stands, and the spans
+    /// of years (first, last, half its width, half its depth as it lies on
+    /// the map) it was each size
+    known: std::cell::RefCell<HashMap<u32, std::rc::Rc<Vec<Yard>>>>,
+}
+
+type Yard = (f32, f32, Vec<(u32, u32, f32, f32)>);
+
+impl<'a> Yards<'a> {
+    pub(in crate::scatter) fn new(r: &'a Replay, slots: &'a Slots, k: usize) -> Yards<'a> {
+        let mut firms: HashMap<u32, Vec<u32>> = HashMap::default();
+        for (f, firm) in r.header.firms.iter().enumerate() {
+            if firm.born <= r.y0 + k as i32 && f < slots.firm_pos.len() {
+                firms.entry(firm.cell as u32).or_default().push(f as u32);
+            }
+        }
+        Yards { r, slots, k, firms, known: Default::default() }
+    }
+
+    fn of_cell(&self, c: u32) -> std::rc::Rc<Vec<Yard>> {
+        if let Some(known) = self.known.borrow().get(&c) {
+            return known.clone();
+        }
+        let mut yards: Vec<Yard> = Vec::new();
+        for &f in self.firms.get(&c).map_or(&[][..], |v| &v[..]) {
+            let (x, z, yaw) = self.slots.firm_pos[f as usize];
+            let (sin, cos) = yaw.sin_cos();
+            let mut spans: Vec<(u32, u32, f32, f32)> = Vec::new();
+            let first = (self.r.header.firms[f as usize].born - self.r.y0).max(0) as usize;
+            for y in first..=self.k {
+                let Some(w) = crate::scatter::firm_works(self.r, self.slots, f as usize, y) else { continue };
+                let (fw, fd) = isostate_gen::works::footprint(w.kind, w.size);
+                let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
+                match spans.last_mut() {
+                    Some(last) if last.1 + 1 == y as u32 && last.2 == hx && last.3 == hz => last.1 = y as u32,
+                    _ => spans.push((y as u32, y as u32, hx, hz)),
+                }
+            }
+            if !spans.is_empty() {
+                yards.push((x, z, spans));
+            }
+        }
+        let yards = std::rc::Rc::new(yards);
+        self.known.borrow_mut().insert(c, yards.clone());
+        yards
+    }
+
+    /// The first year from `from` on (counted from the start) in which no
+    /// works' yard held a spot: next year, if one has held it from then to now.
+    fn first_clear(&self, p: Vec2, from: u32) -> u32 {
+        let c = ((p.y.floor().max(0.0) as usize).min(self.r.h - 1) * self.r.w + (p.x.floor().max(0.0) as usize).min(self.r.w - 1)) as u32;
+        if !self.firms.contains_key(&c) {
+            return from;
+        }
+        let yards = self.of_cell(c);
+        let mut y = from;
+        while let Some(span) = yards.iter().filter(|(x, z, _)| (x - p.x).abs() < 0.5 && (z - p.y).abs() < 0.5).flat_map(|(x, z, spans)| spans.iter().map(move |s| (x, z, s))).find(|(x, z, s)| s.0 <= y && y <= s.1 && (*x - p.x).abs() < s.2 && (*z - p.y).abs() < s.3) {
+            y = span.2 .1 + 1;
+        }
+        y
+    }
+
+    /// The year (counted from the start) from which a spot has been clear of
+    /// the works' yards: the year after the last in which one held it, or 0
+    /// if none ever did; next year, if one holds it now.
+    fn clear_since(&self, p: Vec2) -> u32 {
+        let c = ((p.y.floor().max(0.0) as usize).min(self.r.h - 1) * self.r.w + (p.x.floor().max(0.0) as usize).min(self.r.w - 1)) as u32;
+        if !self.firms.contains_key(&c) {
+            return 0;
+        }
+        let mut since = 0;
+        for (x, z, spans) in self.of_cell(c).iter() {
+            let (dx, dz) = ((x - p.x).abs(), (z - p.y).abs());
+            if let Some(span) = spans.iter().rev().find(|s| dx < s.2 && dz < s.3) {
+                since = since.max(span.1 + 1);
+            }
+        }
+        since
+    }
+}
+
 /// A third ring of lanes, for cells that fill.
 const FAR_LANE: f32 = 0.39;
 
@@ -189,8 +292,6 @@ struct Story {
     since: usize,
     /// the calendar year it joined
     joined: i32,
-    /// the share of it under works
-    works: f32,
     /// a town's first cell, with its market place
     node: bool,
     /// for each close of the cell's order, how many houses the cell must
@@ -223,10 +324,17 @@ impl Story {
             steps,
             since,
             joined: r.joined(k, c).unwrap_or(r.y0),
-            works: r.works_share(k, c),
             node: r.header.towns.iter().any(|t| t.node == c),
             reached_at,
         }
+    }
+
+    /// The most houses the cell has had since it joined. What a house grows
+    /// into is read from this and not from the houses of the year, so that a
+    /// house raised a storey or rebuilt as a townhouse stays so when its
+    /// cell loses people.
+    fn most(&self) -> usize {
+        self.steps.last().map_or(self.houses, |s| s.0.max(self.houses))
     }
 
     /// How many houses the cell had when the turn of a plot came: when its
@@ -305,6 +413,9 @@ const WIDEST_WAY: f32 = 0.034;
 /// How far from the middle of a market place the houses round it stand: clear
 /// of the widest a market place comes to be (`squares`).
 const MARKET_RING: f32 = 0.09 + 0.03;
+
+/// How many plots stand round a market place: one to every 0.05 of the ring.
+const RING_PLOTS: i32 = (std::f32::consts::TAU * MARKET_RING / 0.05) as i32;
 
 /// The old middle of a town: this many closes, the first of its first cell's
 /// order (about 500 m round the market place). Its lanes were built up house
@@ -452,11 +563,12 @@ fn joined_in(r: &Replay, k: usize, c: usize) -> u32 {
 //// What was laid out for a year: the market places, the lanes to draw, the
 /// houses that stand and the story of each cell that has any.
 pub(super) struct Layout {
-    sq: Vec<Square>,
     /// the lengths of lane to draw, each a line of points and a width
     lanes: Vec<(Vec<Vec2>, f32)>,
     /// the houses, street by street and in order along each
     standing: Vec<Stood>,
+    /// what stands on the plot of each of them (`what_stands`)
+    whats: Vec<What>,
     stories: HashMap<u32, Story>,
     /// how long the streets, the plots and the turns took, in milliseconds
     ms: [f64; 3],
@@ -475,8 +587,12 @@ struct Street {
     /// it is walked in this many steps of about 60 m
     steps: usize,
     /// at each step: 0 not asked yet, 1 not laid there, 2 laid, 3 laid on
-    /// built-up ground, 4 not laid only because the ground is not town ground
+    /// built-up ground, 4 not laid only because the ground is not town
+    /// ground, 5 not laid only because a works' yard lies across it
     state: Vec<std::cell::Cell<u8>>,
+    /// at each step, the first year since its way came in which no works'
+    /// yard lay across it (`Yards::first_clear`), once asked; `u32::MAX` until then
+    clear: Vec<std::cell::Cell<u32>>,
 }
 
 impl Street {
@@ -497,6 +613,10 @@ struct Laying<'a> {
     g: &'a Ground,
     town: &'a world::TownGround,
     near_plot: &'a dyn Fn(f32, f32) -> bool,
+    /// the works' yards of this year and of those before, where the run has works that are drawn
+    yards: Option<&'a Yards<'a>>,
+    /// the year, counted from the start
+    k: u32,
     sq: &'a [Square],
     /// the stations of the towns the railway has come to (`station_at`)
     stations: Vec<Vec2>,
@@ -544,6 +664,34 @@ impl Laying<'_> {
             && (self.sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012) || self.stations.iter().any(|st| p.distance(*st) < 0.08) || self.parishes.iter().any(|c| c.crowded_by(p)))
     }
 
+    /// The year from which a spot has been clear of the works' yards.
+    fn clear_since(&self, p: Vec2) -> u32 {
+        self.yards.map_or(0, |y| y.clear_since(p))
+    }
+
+    /// The year street `i` first ran at one of its steps, as far as the
+    /// works' yards go: the first year since its way came in which none lay
+    /// across it there.
+    fn step_first_ran(&self, i: usize, step: usize) -> u32 {
+        let s = &self.streets[i];
+        match s.clear[step].get() {
+            u32::MAX => {
+                let first = self.yards.map_or(s.way.since, |y| y.first_clear(s.at(step), s.way.since));
+                s.clear[step].set(first);
+                first
+            }
+            first => first,
+        }
+    }
+
+    /// The year from which street `i` has been clear of the works' yards at
+    /// share `t` of its length: at the steps on either side.
+    fn clear_since_at(&self, i: usize, t: f32) -> u32 {
+        let s = &self.streets[i];
+        let x = t.clamp(0.0, 1.0) * s.steps as f32;
+        self.clear_since(s.at(x.floor() as usize)).max(self.clear_since(s.at(x.ceil() as usize)))
+    }
+
     /// Whether a lane behind a way, or a cross street off it, has come at `p`
     /// to ground that lies nearer another way: there it stops, and the other
     /// way's lanes take the ground. So where ways meet, at a market place
@@ -585,7 +733,7 @@ impl Laying<'_> {
     /// houses already standing, which then counted as built years after they
     /// were (and the last of them went).
     fn runs(&self, i: usize, step: usize) -> bool {
-        self.asked(i, step) >= 2
+        matches!(self.asked(i, step), 2..=4)
     }
 
     /// What street `i` is at one of its steps (`Street::state`).
@@ -598,22 +746,30 @@ impl Laying<'_> {
         let p = s.at(step);
         let at = self.town_at(p);
         let dry = at.is_some() || world::height_at(self.g, p.x, p.y) >= 0.05;
-        let ok = dry
-            && (s.way.road
-                || (!(self.near_plot)(p.x, p.y)
-                    && !self.in_square(p)
-                    && !(s.lane() && (self.gives_way(s, p) || at.is_some_and(|a| s.way.since > self.joined[&a.0]) && self.in_street(p, OLDER_STREET, |o| o.way.since < s.way.since)))));
-        let state = match (ok, at) {
-            (false, _) => 1,
-            (true, None) => 4,
-            (true, Some(a)) => 2 + a.2 as u8,
+        // what never changes: the ground is dry, and the lane does not give way to another
+        let lies = dry && (s.way.road || !(s.lane() && (self.gives_way(s, p) || at.is_some_and(|a| s.way.since > self.joined[&a.0]) && self.in_street(p, OLDER_STREET, None, |o| o.way.since < s.way.since))));
+        // what may: a works' yard, a churchyard, the railway, a market place or a station across it
+        let held = lies && !s.way.road && ((self.near_plot)(p.x, p.y) || self.in_square(p));
+        let state = match (lies, held, at) {
+            (false, ..) => 1,
+            // (5: only a works' yard keeps it out, and a yard may be given up)
+            (_, true, _) => if self.clear_since(p) > self.k { 5 } else { 1 },
+            (_, _, None) => 4,
+            (_, _, Some(a)) => 2 + a.2 as u8,
         };
         s.state[step].set(state);
         state
     }
 
-    /// Whether a spot is within `clear` of the edge of a laid street, among those that `counts` passes.
-    fn in_street(&self, p: Vec2, clear: f32, counts: impl Fn(&Street) -> bool) -> bool {
+    /// Whether a spot is within `clear` of the edge of a laid street, among
+    /// those that `counts` passes. With `age`, the year a plot was first
+    /// there to build on, a length of lane counts if it first ran by then,
+    /// whether or not a works' yard lies across it this year: a lane first
+    /// laid later, when a yard was given up, was laid round what stood; and
+    /// a lane that a yard has since closed still keeps out the plots it
+    /// always kept out, or they would be built on the day the yard came and
+    /// the last houses of the cell pulled down for them.
+    fn in_street(&self, p: Vec2, clear: f32, age: Option<u32>, counts: impl Fn(&Street) -> bool) -> bool {
         let Some(near) = self.by_cell.get(&((p.x * NEAR).floor() as i32, (p.y * NEAR).floor() as i32)) else { return false };
         near.iter().any(|&j| {
             let s = &self.streets[j as usize];
@@ -624,7 +780,12 @@ impl Laying<'_> {
             let t = ((p - s.way.a).dot(along) / (s.len * s.len)).clamp(0.0, 1.0);
             // (a way counts at the widest a road comes to be, so that one widened takes no plot)
             let half = if s.way.kind == 0 { WIDEST_WAY * 0.5 } else { s.way.width * 0.5 };
-            p.distance(s.way.a + along * t) < half + clear && self.runs(j as usize, (t * s.steps as f32).round() as usize)
+            let step = (t * s.steps as f32).round() as usize;
+            p.distance(s.way.a + along * t) < half + clear
+                && match age {
+                    None => self.runs(j as usize, step),
+                    Some(age) => self.asked(j as usize, step) >= 2 && (!s.lane() || self.step_first_ran(j as usize, step) <= age),
+                }
         })
     }
 
@@ -673,7 +834,8 @@ const LANE_GAP: f32 = 0.2;
 /// (What can still move one: a works that takes its ground or gives it up, a
 /// road laid where none ran, the market place widening as its town grows,
 /// and a fall of more than a quarter in its cell's residents.)
-pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, land: &world::YearLand) -> Layout {
+#[allow(clippy::too_many_arguments)]
+pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, yards: Option<&Yards>, land: &world::YearLand) -> Layout {
     let town = &land.town;
     let sq = squares(r, cen, k);
     let t0 = std::time::Instant::now();
@@ -689,6 +851,8 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         g,
         town,
         near_plot,
+        yards,
+        k: k as u32,
         sq: &sq,
         stations: stations.iter().flatten().copied().collect(),
         parishes,
@@ -729,7 +893,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             lay.main_at.insert(way.id, lay.mains.len() as u32);
             lay.mains.push((way.a, way.b, way.id, way.since));
         }
-        lay.streets.push(Street { way, len, steps, state: vec![std::cell::Cell::new(0); steps + 1] });
+        lay.streets.push(Street { way, len, steps, state: vec![std::cell::Cell::new(0); steps + 1], clear: vec![std::cell::Cell::new(u32::MAX); steps + 1] });
     }
     let lay = lay;
     // (the closes its houses reach: they are built up closely on the first of them, and stand
@@ -766,7 +930,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     // how many closes of a cell were built up the year before a way came to it
     let mut built_before: HashMap<(u32, u32), f32> = HashMap::default();
     // one side of a street: its plots on town ground, each with the row it is in and its turn
-    let mut side_lots: Vec<(Lot, f32)> = Vec::new();
+    let mut side_lots: Vec<(Lot, f32, u32)> = Vec::new();
     for (si, st) in lay.streets.iter().enumerate() {
         let s = &st.way;
         if s.kind == 5 {
@@ -847,9 +1011,11 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                         turn = was + turn * 1e-3;
                     }
                 }
+                // (the year from which a works' yard has held neither the plot nor its length of lane)
+                let freed = lay.clear_since(p).max(lay.clear_since_at(si, t_of(i)));
                 let v = family.map_or(pv, |f| (f + 0.3 * (pv - 0.5)).clamp(0.0, 0.999));
                 let pl = Plot { p, yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 }, run: (id, j), row: in_row.then_some(row), high: s.kind == 0, index: i, width: spacing, depth, need: 0.0, u: pu, v };
-                side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined), street: (0, 0.0), family: told }, t_of(i)));
+                side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined).max(freed), street: (0, 0.0), family: told }, t_of(i), freed));
             }
             // a row goes up together: its turn is that of the last of its plots in the cell
             // (a row that runs over a cell's edge is two, one to each cell)
@@ -858,11 +1024,28 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                     let cell = side_lots[a].0.cell;
                     // (a row is six plots at most, and its plots follow one another)
                     let near = &side_lots[a.saturating_sub(6)..(a + 7).min(side_lots.len())];
-                    let last = near.iter().filter(|(l, _)| l.pl.row == Some(ri) && l.cell == cell).map(|(l, _)| l.turn).fold(f32::MIN, f32::max);
+                    let last = near.iter().filter(|(l, ..)| l.pl.row == Some(ri) && l.cell == cell).map(|(l, ..)| l.turn).fold(f32::MIN, f32::max);
                     side_lots[a].0.turn = side_lots[a].0.turn.max(last);
                 }
             }
-            for (lot, t) in side_lots.drain(..) {
+            // ground that a works' yard held, or a plot whose length of lane a yard lay
+            // across: it comes into the order the year the yard is given up, after all the
+            // ground built up by then, so that no house standing then is pulled down to make
+            // way for a plot that came free behind it (`Yards`). It comes in by itself: the
+            // rest of its row keep their turn, and the houses that stand on them.
+            for (lot, _, freed) in side_lots.iter_mut() {
+                let (c, freed) = (lot.cell, *freed);
+                // (a yard that holds it this year keeps it out this year, as it always did)
+                if freed > lay.joined[&c] && freed <= k as u32 {
+                    let was = *built_before.entry((c, freed)).or_insert_with(|| {
+                        town.cells.get(&c).map_or(0.0, |cell| world::closes_built(&cell.order, world::town_houses(r, freed as usize - 1, c as usize)).1 as f32)
+                    });
+                    if lot.turn < was {
+                        lot.turn = was + lot.turn * 1e-3;
+                    }
+                }
+            }
+            for (lot, t, _) in side_lots.drain(..) {
                 // a plot may be built on once its turn is under the count of its cell's built-up closes
                 if lot.turn >= built_of(lot.cell) || lot.pl.row.is_some_and(|ri| dead.contains(&(ri, lot.cell))) {
                     tell(lot.pl.run, lot.pl.index, 1);
@@ -879,7 +1062,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         // (the plots stand where the market place comes to at its widest, whatever its
         // width this year: it widens as its town grows, and at the year's own width the
         // houses round it shuffled outward every year the town grew)
-        let count = ((std::f32::consts::TAU * MARKET_RING) / 0.05).floor() as i32;
+        let count = RING_PLOTS;
         for i in 0..count {
             let a = i as f32 / count as f32 * std::f32::consts::TAU;
             let dirv = Vec2::new(a.cos(), a.sin());
@@ -887,14 +1070,23 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             let id = -1000 - s.town as i32;
             let pu = world::hash2(id, i, 26);
             let Some((c, _, _)) = lay.town_at(p) else { continue };
-            // the market place is the first of a town to be built round
+            // the market place is the first of a town to be built round (but for ground a
+            // works' yard held: that comes into the order when the yard is given up)
+            let (joined, freed) = (lay.joined[&c], lay.clear_since(p));
+            let mut turn = -2.0 + pu;
+            if freed > joined && freed <= k as u32 {
+                let was = *built_before.entry((c, freed)).or_insert_with(|| {
+                    town.cells.get(&c).map_or(0.0, |cell| world::closes_built(&cell.order, world::town_houses(r, freed as usize - 1, c as usize)).1 as f32)
+                });
+                turn = was + pu * 1e-3;
+            }
             cands.push(Lot {
                 pl: Plot { p, yaw: (dirv.y).atan2(-dirv.x) + std::f32::consts::FRAC_PI_2, run: (id, 0), row: None, high: true, index: i, width: 0.05, depth: houses::PLOT.1, need: 0.0, u: pu, v: world::hash2(id, i, 27) },
                 cell: c,
-                turn: -2.0 + pu,
+                turn,
                 kind: 9,
                 road: true,
-                age: lay.joined[&c],
+                age: joined.max(freed),
                 street: (0, 0.0),
                 family: family_of(id),
             });
@@ -959,7 +1151,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             continue;
         }
         // in a way, or in a lane that is no younger than the plot (a later lane runs round the plots it finds)
-        if lay.in_street(p, if lot.kind == 9 { 0.03 } else { 0.02 }, |o| !o.lane() || o.way.since <= lot.age) {
+        if lay.in_street(p, if lot.kind == 9 { 0.03 } else { 0.02 }, Some(lot.age), |o| !o.lane() || o.way.since <= lot.age) {
             tell(lot.pl.run, lot.pl.index, 5);
             note(lot.cell, lot.kind, 5);
             continue;
@@ -1070,16 +1262,122 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     let t3 = std::time::Instant::now();
     let ms = |a: std::time::Instant, b: std::time::Instant| (b - a).as_secs_f64() * 1000.0;
     drop(lay);
-    Layout { sq, lanes, standing, stories: stories.into_iter().map(|(c, (story, _))| (c, story)).collect(), ms: [ms(t0, t1), ms(t1, t2), ms(t2, t3)], why }
+    let stories: HashMap<u32, Story> = stories.into_iter().map(|(c, (story, _))| (c, story)).collect();
+    let whats = what_stands(r, k, &sq, &standing, &stories);
+    Layout { lanes, standing, whats, stories, ms: [ms(t0, t1), ms(t1, t2), ms(t2, t3)], why }
+}
+
+/// What stands on a plot: its kind, how tall it is, and what else its
+/// generator is told that the plot alone does not say.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum What {
+    /// a cottage, and the age its second storey went on in
+    Cottage { storeys: u8, raised: Option<Era> },
+    /// a townhouse in the manner of an age, perhaps a shop, perhaps given a new front in a later age
+    Townhouse { storeys: u8, era: Era, shop: bool, fronted: Option<Era> },
+    Villa,
+    /// one of a brick row: `row` is how many houses the row has, for the first of them, and 0 for the rest
+    Terraced { storeys: u8, row: u8 },
+}
+
+impl What {
+    /// 0 a cottage, 1 a townhouse, 2 a villa, 3 one of a row.
+    fn kind(&self) -> u8 {
+        match self {
+            What::Cottage { .. } => 0,
+            What::Townhouse { .. } => 1,
+            What::Villa => 2,
+            What::Terraced { .. } => 3,
+        }
+    }
+
+    fn storeys(&self) -> u8 {
+        match *self {
+            What::Cottage { storeys, .. } | What::Townhouse { storeys, .. } | What::Terraced { storeys, .. } => storeys,
+            What::Villa => 2,
+        }
+    }
+}
+
+/// What stands on each plot of `standing` (rule 9). Everything a house grows
+/// into is read from the most houses its cell has had (`Story::most`) and
+/// from the year it was built, so that it holds from year to year: a house
+/// raised stays raised, a townhouse is not a cottage again, and a villa is a
+/// villa by the works its cell had the year it went up, not this year's.
+fn what_stands(r: &Replay, k: usize, sq: &[Square], standing: &[Stood], stories: &HashMap<u32, Story>) -> Vec<What> {
+    let mut whats = Vec::with_capacity(standing.len());
+    let mut i = 0;
+    while i < standing.len() {
+        let first = &standing[i];
+        let story = &stories[&first.lot.cell];
+        let mut j = i + 1;
+        if first.lot.pl.row.is_some() && first.year >= TERRACE_ERA {
+            while j < standing.len() && standing[j].lot.pl.run == first.lot.pl.run && standing[j].lot.pl.row == first.lot.pl.row && standing[j].lot.cell == first.lot.cell && standing[j].lot.pl.index == standing[j - 1].lot.pl.index + 1 {
+                j += 1;
+            }
+        }
+        if j - i >= 2 {
+            // a brick terrace: two storeys, and a third only in a cell that has filled long since
+            let storeys = 2 + (story.most() >= first.before + 96 + (32.0 * first.lot.pl.u) as usize) as u8;
+            whats.push(What::Terraced { storeys, row: (j - i) as u8 });
+            whats.extend((i + 1..j).map(|_| What::Terraced { storeys, row: 0 }));
+        } else {
+            let s = first;
+            let pl = &s.lot.pl;
+            let seed = Seed::new(pl.u, pl.v);
+            let most = story.most();
+            let both = s.neighbours.0 && s.neighbours.1;
+            // villas: on the lanes and the ways out, on ground that had little works on it
+            // the year the house went up, and never in a row
+            let villa = pl.row.is_none() && s.lot.kind != 9 && !story.node && houses::villa_plot(s.year, seed) && r.works_share((s.year - r.y0).clamp(0, k as i32) as usize, s.lot.cell as usize) < 0.15;
+            // rebuilt as a townhouse, the full width of its plot, once the cell has this many houses:
+            // soon on a road through the town or round its market place, later on the old back
+            // streets (those of the brick years are terraces from the first). By then the plots
+            // beside it have had their turn, so a frontage joins as it is rebuilt. (It was only
+            // rebuilt where a neighbour stood that year, and a townhouse whose neighbour a
+            // works' yard took was a cottage again the year after: a thousand houses in a
+            // century and a half went back so.)
+            let rebuilt = s.before + if s.lot.road { 10 + (38.0 * pl.v) as usize } else { 28 + (56.0 * pl.v) as usize };
+            whats.push(if villa {
+                What::Villa
+            } else if most >= rebuilt && (s.lot.road || s.year < TERRACE_ERA) {
+                // a third storey on a road where the frontage is whole and the cell has grown as much
+                // again; a fourth only round the market place of a great town
+                let great = s.lot.kind == 9 && sq.iter().any(|q| q.big && q.at.distance(pl.p) < 0.2);
+                let raised = rebuilt + 36 + (56.0 * pl.u) as usize;
+                let third = s.lot.road && both && most >= raised;
+                let fourth = third && great && most >= rebuilt + 120;
+                // one in two of the houses given a third storey were given a new front with it, in
+                // the manner of the year the cell had the houses for it (the generator shows it only
+                // where that is a later age than the house's own)
+                let fronted = (third && seed.pick(50) < 0.5).then(|| Era::of(story.year_of(r, k, raised, pl.u).max(s.year)));
+                What::Townhouse {
+                    storeys: 2 + third as u8 + fourth as u8,
+                    era: Era::of(story.year_of(r, k, rebuilt, pl.u).max(s.year)),
+                    shop: s.lot.road && houses::shop_at(((most - s.before) as f32 / 84.0).min(1.0), seed),
+                    fronted,
+                }
+            } else {
+                // a cottage: one storey, and a second once the cell has grown well past it,
+                // raised in the year the cell first had the houses for it: the later work shows
+                // above the old where that is a later age than the cottage's own
+                let second = s.before + 36 + (88.0 * pl.v) as usize;
+                let storeys = 1 + (most >= second) as u8;
+                What::Cottage { storeys, raised: (storeys == 2).then(|| Era::of(story.year_of(r, k, second, pl.u).max(s.year))) }
+            });
+        }
+        i = j;
+    }
+    whats
 }
 
 /// The houses of the kept towns for year `k`, built into `into`.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, land: &world::YearLand, into: &mut Into) -> Census {
+pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, yards: Option<&Yards>, land: &world::YearLand, into: &mut Into) -> Census {
     let town = &land.town;
-    let layout = lay_out(r, g, cen, k, parishes, near_plot, land);
+    let layout = lay_out(r, g, cen, k, parishes, near_plot, yards, land);
     steadiness(r, k, &layout);
-    let Layout { sq, lanes, standing, stories, ms: laying, .. } = layout;
+    let Layout { lanes, standing, whats, ms: laying, .. } = layout;
     let t3 = std::time::Instant::now();
     let colour = *lk.ground.street_earth;
     for (line, width) in &lanes {
@@ -1119,43 +1417,45 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         }
     }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let mut i = 0;
-    while i < standing.len() {
-        let first = &standing[i];
-        let story = &stories[&first.lot.cell];
-        let mut j = i + 1;
-        if first.lot.pl.row.is_some() && first.year >= TERRACE_ERA {
-            while j < standing.len() && standing[j].lot.pl.run == first.lot.pl.run && standing[j].lot.pl.row == first.lot.pl.row && standing[j].lot.cell == first.lot.cell && standing[j].lot.pl.index == standing[j - 1].lot.pl.index + 1 {
-                j += 1;
+    for (i, (s, what)) in standing.iter().zip(&whats).enumerate() {
+        let pl = &s.lot.pl;
+        let seed = Seed::new(pl.u, pl.v);
+        let upland = r.terrain[s.lot.cell as usize] >= 2;
+        let street = houses::Street::of(s.lot.family);
+        let storeys = what.storeys();
+        match *what {
+            What::Terraced { row: 0, .. } => continue,
+            What::Terraced { row, .. } => {
+                let (a, b) = (pl.p, standing[i + row as usize - 1].lot.pl.p);
+                let mid = (a + b) * 0.5;
+                let t = Terrace { houses: row as usize, length: a.distance(b) + pl.width * 0.96, depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, street, detail: into.lod.at(mid.x, mid.y), seed };
+                houses::terrace(into.houses, into.smoke, &Site::on(ground(g, mid.x, mid.y), pl.yaw, &height), &t, lk);
+                census.terraced += row as usize;
+                census.storeys[(storeys as usize - 1).min(2)] += row as usize;
+            }
+            What::Villa => {
+                let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, &height);
+                let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, street, detail: into.lod.at(pl.p.x, pl.p.y), seed };
+                houses::villa(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &v, lk);
+                census.villas += 1;
+                census.storeys[1] += 1;
+            }
+            What::Townhouse { era, shop, fronted, .. } => {
+                let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, &height);
+                let t = Townhouse { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era, upland, shop, neighbours: s.neighbours, street, fronted, detail: into.lod.at(pl.p.x, pl.p.y), seed };
+                houses::townhouse(into.houses, into.smoke, &site, &t, lk);
+                census.townhouses += 1;
+                census.storeys[(storeys as usize - 1).min(2)] += 1;
+                census.tall_alone += (storeys >= 3 && !(s.neighbours.0 && s.neighbours.1)) as usize;
+            }
+            What::Cottage { raised, .. } => {
+                let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, &height);
+                let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, street, raised, detail: into.lod.at(pl.p.x, pl.p.y), seed };
+                houses::cottage(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &c, lk);
+                census.cottages += 1;
+                census.storeys[storeys as usize - 1] += 1;
             }
         }
-        if j - i >= 2 {
-            // a brick terrace: two storeys, and a third only in a cell that has filled long since
-            let (a, b) = (first.lot.pl.p, standing[j - 1].lot.pl.p);
-            let mid = (a + b) * 0.5;
-            let seed = Seed::new(first.lot.pl.u, first.lot.pl.v);
-            let storeys = 2 + (story.houses >= first.before + 96 + (32.0 * seed.u) as usize) as u8;
-            let t = Terrace {
-                houses: j - i,
-                length: a.distance(b) + first.lot.pl.width * 0.96,
-                depth: first.lot.pl.depth,
-                storeys,
-                roof: first.roof,
-                era: Era::of(first.year),
-                upland: r.terrain[first.lot.cell as usize] >= 2,
-                street: houses::Street::of(first.lot.family),
-                detail: into.lod.at(mid.x, mid.y),
-                seed,
-            };
-            houses::terrace(into.houses, into.smoke, &Site::on(ground(g, mid.x, mid.y), first.lot.pl.yaw, &height), &t, lk);
-            census.terraced += j - i;
-            census.storeys[(storeys as usize - 1).min(2)] += j - i;
-        } else {
-            for s in &standing[i..j] {
-                one_house(into, r, k, lk, g, &height, s, &stories[&s.lot.cell], sq.iter().any(|q| q.big && s.lot.kind == 9 && q.at.distance(s.lot.pl.p) < 0.2), &mut census);
-            }
-        }
-        i = j;
     }
     census.drawn = standing.len();
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
@@ -1198,17 +1498,34 @@ fn by_town(r: &Replay, k: usize, town: &world::TownGround, on_cell: &HashMap<u32
 /// those stood on cells that lost no houses (which a works taking their
 /// ground, a new road or a widened market place may do; nothing else should).
 fn steadiness(r: &Replay, k: usize, layout: &Layout) {
-    // by plot: the cell, and the year the house on it went up
-    type Plots = std::collections::HashMap<((i32, u8), i32), (u32, i32)>;
+    // by plot: the cell, the year the house on it went up, its kind and its storeys
+    type Plots = std::collections::HashMap<((i32, u8), i32), (u32, i32, u8, u8)>;
     static LAST: std::sync::Mutex<Option<(usize, Plots, HashMap<u32, usize>)>> = std::sync::Mutex::new(None);
     if std::env::var_os("ISOSTATE_TOWNS").is_none() {
         return;
     }
-    let now: Plots = layout.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), (s.lot.cell, s.year))).collect();
+    let now: Plots = layout.standing.iter().zip(&layout.whats).map(|(s, w)| ((s.lot.pl.run, s.lot.pl.index), (s.lot.cell, s.year, w.kind(), w.storeys()))).collect();
     let houses: HashMap<u32, usize> = layout.stories.iter().map(|(&c, s)| (c, s.houses)).collect();
     let mut last = LAST.lock().unwrap();
     if let Some((_, before, had)) = last.as_ref().filter(|l| l.0 + 1 == k) {
-        let gone: Vec<u32> = before.iter().filter(|(plot, _)| !now.contains_key(plot)).map(|(_, &(c, _))| c).collect();
+        let gone: Vec<u32> = before.iter().filter(|(plot, _)| !now.contains_key(plot)).map(|(_, &(c, ..))| c).collect();
+        // the houses that stand where they stood and are another kind of house, those of
+        // them that were cottages (a cottage rebuilt as a townhouse is the town growing;
+        // any other change is a house that did not stay as it was built), and those that
+        // have lost a storey
+        let both: Vec<((u8, u8), (u8, u8))> = before.iter().filter_map(|(plot, was)| now.get(plot).map(|n| ((was.2, was.3), (n.2, n.3)))).collect();
+        let (rekinded, rebuilt, lower) = (both.iter().filter(|(a, b)| a.0 != b.0).count(), both.iter().filter(|(a, b)| a.0 == 0 && b.0 == 1).count(), both.iter().filter(|(a, b)| b.1 < a.1).count());
+        eprintln!("towns {}: {} houses that stand where they stood are another kind of house, {} of them cottages rebuilt as townhouses; {} have lost a storey", r.y0 + k as i32, rekinded, rebuilt, lower);
+        if rekinded > rebuilt || lower > 0 {
+            let names = ["cottage", "townhouse", "villa", "terraced"];
+            let mut pairs: std::collections::BTreeMap<(u8, u8), usize> = Default::default();
+            for (a, b) in both.iter().filter(|(a, b)| a.0 != b.0 && !(a.0 == 0 && b.0 == 1)) {
+                *pairs.entry((a.0, b.0)).or_default() += 1;
+            }
+            let pairs: Vec<String> = pairs.iter().map(|(&(a, b), n)| format!("{n} {} to {}", names[a as usize], names[b as usize])).collect();
+            let same_kind_lower = both.iter().filter(|(a, b)| a.0 == b.0 && b.1 < a.1).count();
+            eprintln!("towns {}: not as built: {}; {} lost a storey and kept their kind", r.y0 + k as i32, pairs.join(", "), same_kind_lower);
+        }
         let unasked = gone.iter().filter(|c| houses.get(c).copied().unwrap_or(0) >= had.get(c).copied().unwrap_or(0)).count();
         // the houses that stand where they stood but count as built in another year (a
         // house's year is its place in its cell's count), and those of them whose year
@@ -1229,71 +1546,6 @@ fn steadiness(r: &Replay, k: usize, layout: &Layout) {
     *last = Some((k, now, houses));
 }
 
-/// A house on its own plot: a cottage, a villa, or on a road through the town
-/// or its market place, once the cell has grown past it, a townhouse.
-#[allow(clippy::too_many_arguments)]
-fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, height: &dyn Fn(f32, f32) -> f32, s: &Stood, story: &Story, great: bool, census: &mut Census) {
-    let pl = &s.lot.pl;
-    let seed = Seed::new(pl.u, pl.v);
-    let upland = r.terrain[s.lot.cell as usize] >= 2;
-    let detail = into.lod.at(pl.p.x, pl.p.y);
-    let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, height);
-    let (joined, both) = (s.neighbours.0 || s.neighbours.1, s.neighbours.0 && s.neighbours.1);
-    let street = houses::Street::of(s.lot.family);
-    // villas: on the lanes and the ways out, on ground with little works on it, and never in a row
-    let villa = pl.row.is_none() && s.lot.kind != 9 && !story.node && story.works < 0.15 && houses::villa_plot(s.year, seed);
-    // rebuilt as a townhouse, the full width of its plot, once the cell has this many houses:
-    // soon on a road through the town or round its market place, later on the old back
-    // streets (those of the brick years are terraces from the first)
-    let rebuilt = s.before + if s.lot.road { 10 + (38.0 * pl.v) as usize } else { 28 + (56.0 * pl.v) as usize };
-    if villa {
-        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, street, detail, seed };
-        houses::villa(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &v, lk);
-        census.villas += 1;
-        census.storeys[1] += 1;
-    } else if joined && story.houses >= rebuilt && (s.lot.road || s.year < TERRACE_ERA) {
-        // a third storey on a road where the frontage is whole and the cell has grown as much
-        // again; a fourth only round the market place of a great town
-        let raised = rebuilt + 36 + (56.0 * pl.u) as usize;
-        let third = s.lot.road && both && story.houses >= raised;
-        // one in two of the houses given a third storey were given a new front with it, in
-        // the manner of the year the cell had the houses for it (the generator shows it only
-        // where that is a later age than the house's own)
-        let fronted = (third && seed.pick(50) < 0.5).then(|| Era::of(story.year_of(r, k, raised, pl.u).max(s.year)));
-        let fourth = third && great && story.houses >= rebuilt + 120;
-        let storeys = 2 + third as u8 + fourth as u8;
-        let t = Townhouse {
-            plot_width: pl.width,
-            plot_depth: pl.depth,
-            storeys,
-            roof: s.roof,
-            era: Era::of(story.year_of(r, k, rebuilt, pl.u).max(s.year)),
-            upland,
-            shop: s.lot.road && houses::shop_at(((story.houses - s.before) as f32 / 84.0).min(1.0), seed),
-            neighbours: s.neighbours,
-            street,
-            fronted,
-            detail,
-            seed,
-        };
-        houses::townhouse(into.houses, into.smoke, &site, &t, lk);
-        census.townhouses += 1;
-        census.storeys[(storeys as usize - 1).min(2)] += 1;
-        census.tall_alone += (storeys >= 3 && !both) as usize;
-    } else {
-        // a cottage: one storey, and a second once the cell has grown well past it
-        let second = s.before + 36 + (88.0 * pl.v) as usize;
-        let storeys = 1 + (story.houses >= second) as u8;
-        // raised in the year the cell first had the houses for it: the later work shows
-        // above the old where that is a later age than the cottage's own
-        let raised = (storeys == 2).then(|| Era::of(story.year_of(r, k, second, pl.u).max(s.year)));
-        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, street, raised, detail, seed };
-        houses::cottage(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &c, lk);
-        census.cottages += 1;
-        census.storeys[storeys as usize - 1] += 1;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::tests::made_up;
@@ -1307,7 +1559,7 @@ mod tests {
     fn year(r: &Replay, g: &Ground, k: usize) -> (Vec<House>, world::YearLand) {
         let cen = crate::network::centres(r);
         let land = world::year_land(r, g, k);
-        let layout = lay_out(r, g, &cen, k, &[], &|_, _| false, &land);
+        let layout = lay_out(r, g, &cen, k, &[], &|_, _| false, None, &land);
         let mut houses: Vec<House> = layout.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), s.lot.cell, [s.lot.pl.p.x.to_bits(), s.lot.pl.p.y.to_bits()], s.year)).collect();
         houses.sort();
         (houses, land)
@@ -1398,8 +1650,8 @@ mod tests {
         let land = world::year_land(&r, &g, 5);
         // the town as it stands, and with a works' yard on a strip of its middle
         let node = Vec2::new(cen[5 * r.w + 5].0, cen[5 * r.w + 5].1);
-        let free = lay_out(&r, &g, &cen, 5, &[], &|_, _| false, &land);
-        let yard = lay_out(&r, &g, &cen, 5, &[], &|x, z| (x - node.x - 0.2).abs() < 0.12 && (z - node.y).abs() < 0.3, &land);
+        let free = lay_out(&r, &g, &cen, 5, &[], &|_, _| false, None, &land);
+        let yard = lay_out(&r, &g, &cen, 5, &[], &|x, z| (x - node.x - 0.2).abs() < 0.12 && (z - node.y).abs() < 0.3, None, &land);
         let years = |l: &Layout| -> std::collections::BTreeMap<((i32, u8), i32), (usize, i32)> { l.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), (s.before, s.year))).collect() };
         let (free, yard) = (years(&free), years(&yard));
         // the yard takes houses, and others go up elsewhere in their place
@@ -1424,7 +1676,7 @@ mod tests {
         let build = |k: usize| {
             let land = world::year_land(&r, &g, k);
             let (mut houses, mut smoke, mut trees) = (Builder::default(), Builder::default(), <[Greenery; LEAF_GROUPS]>::default());
-            let census = houses_kept(&r, &g, &cen, k, &lk, &[], &|_, _| false, &land, &mut Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod: &lod });
+            let census = houses_kept(&r, &g, &cen, k, &lk, &[], &|_, _| false, None, &land, &mut Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod: &lod });
             (census, houses.pos.len(), crate::mesh_sum(&houses))
         };
         let (first, _, sum) = build(0);

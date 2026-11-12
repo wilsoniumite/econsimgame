@@ -641,7 +641,7 @@ pub(super) struct Into<'a> {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, land: &world::YearLand, into: &mut Into) -> Option<Census> {
     if r.kept() {
-        return Some(kept::houses_kept(r, g, cen, k, lk, parishes, near_plot, land, into));
+        return Some(kept::houses_kept(r, g, cen, k, lk, parishes, near_plot, Some(&kept::Yards::new(r, slots, k)), land, into));
     }
     houses_port(r, g, slots, cen, k, lk, parishes, near_plot, into);
     None
