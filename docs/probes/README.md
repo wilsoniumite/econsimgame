@@ -33,3 +33,15 @@ One probe is of the viewer, not the simulation, as it stood at cd9b41c (11 Novem
   viewer (`src/frames.rs`) that is meant to be merged. A critic ran it again and rewrote
   its stages on `night/smooth-probe-review` (section 11): the first stage is now the
   year's meshes handed over one a frame, half a day's work, with a brief to build from.
+
+One probe is of the viewer against the core's second island, as both stood on `night/core`
+at 859b680 (12 November 2026):
+
+- `dx-land-view.md`: what it takes for the viewer to draw the land made by water
+  (`docs/rules/land.md`). What the core hands over (a grid of heights every 500 m, river
+  lines with width, level and flow, lakes, wet ground), how wrong today's picture is on it,
+  what the viewer invents that becomes untrue, and a design in seven stages from "the land
+  reaches the viewer" to "scarps and canyons made to read", with roads and bridges on real
+  rivers between. Its branch, `night/dx-land-view`, adds a measuring example to the core
+  (`examples/land_view_probe.rs`) and a probe to the viewer (`src/landview.rs`, behind
+  `ISOSTATE_LAND_VIEW`) that draws the core's ground, rivers and lakes with today's code.
