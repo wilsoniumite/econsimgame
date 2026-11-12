@@ -232,6 +232,10 @@ pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
         }
     }
     for pr in &st.projects {
+        // roads (docs/probes/dx-roads.md): a road works is not a railway building
+        if pr.way == crate::ways::ROAD {
+            continue;
+        }
         let bit = if pr.way == crate::ways::CANAL { 32 } else { 8 };
         for &c in &pr.new {
             trans[c] |= bit;
