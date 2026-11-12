@@ -868,7 +868,7 @@ fn main() {
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {
-            format!("Island {} with {} families, {} by {} pixels", args.seed, args.families, args.size.0, args.size.1)
+            format!("Island {} with {}, {} by {} pixels", args.seed, families_words(args.families), args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
@@ -2012,6 +2012,11 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     }
 }
 
+/// "1 family", "6 families": what the terminal and the sheet of pictures say of a game.
+fn families_words(n: usize) -> String {
+    if n == 1 { "1 family".to_string() } else { format!("{n} families") }
+}
+
 /// A number of people: whole, with a comma for the thousands, in millions from a million up.
 fn fmt_pop(p: f32) -> String {
     // round first, so that 12,999.6 is 13,000 and not 12,1000
@@ -2715,6 +2720,11 @@ mod tests {
         assert_eq!(fmt_pop(999_999.7), "1.00 million");
         assert_eq!(fmt_pop(1_251_000.0), "1.25 million");
         assert_eq!(fmt_pop(f32::NAN), "0");
+    }
+
+    #[test]
+    fn one_family_is_not_families() {
+        assert_eq!((families_words(1), families_words(6), families_words(30)), ("1 family".to_string(), "6 families".to_string(), "30 families".to_string()));
     }
 
     fn news(year: f32, weight: f32, title: &str) -> replay::Event {

@@ -607,10 +607,10 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         Some((save, file)) => {
             let years = (save.year - save.played_under().content().start_year + 1).max(0);
             eprintln!(
-                "going on with the {} family's game on island {} ({} families), saved {} in {}: {}",
+                "going on with the {} family's game on island {} ({}), saved {} in {}: {}",
                 save.family,
                 save.seed,
-                save.families,
+                crate::families_words(save.families),
                 save.saved,
                 save.year,
                 file.display()
@@ -651,7 +651,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             loaded.game
         }
         None => {
-            eprintln!("making island {} with {} families\u{2026}", o.seed, o.families);
+            eprintln!("making island {} with {}\u{2026}", o.seed, crate::families_words(o.families));
             let mut game = Game::new(o.seed, o.families, saves::now());
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
