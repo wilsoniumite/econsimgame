@@ -345,7 +345,13 @@ be made in the middle of a year. What the books do then:
   are the ones December ended at, the same as the books' December and as
   `live::months_kept` gives a loaded game. On island 3 both Decembers of the
   test moved in prices or wages and in cash, so the difference was real
-  every year, not only in the fourth digit. Without the books (the port, or
+  every year, not only in the fourth digit. Over whole games of the eight
+  islands of the sweep, stepped as the game's thread steps them, the year's
+  end moved December's prices in 145 to 149 of the 151 years, and on every
+  island each of the 1,812 months, as the books handed it out in its own
+  year and in the year after, was the month sent, to the last bit (a check
+  made once by hand, not kept as a test: it takes six
+  minutes). Without the books (the port, or
   `ISOSTATE_NO_BOOKS`) December is still read as the next January opens. The
   Markets panel by the month was never touched by this: its months are the
   island's own series, which are written as each month ends. Nothing else
@@ -412,7 +418,10 @@ in 1900 took 4.7 and 5.3 ms with the old rows and 0.5 and 1.1 ms with the
 new, in two runs of each, turn about, on a machine so busy that a whole
 copy of the island took anywhere from 8 to 42 ms with or without the books;
 the whole copy's time could not be told apart in that noise, so the books'
-own is the figure to go by. The books are the same to the last bit
+own is the figure to go by. (Timed again by the check, two more runs of
+each turn about on a machine as busy: 2.4 and 3.3 ms with the old rows,
+0.2 and 1.3 ms with the new; the sizes came out the same to the hundredth
+of a megabyte.) The books are the same to the last bit
 (`tests/accounts.rs` compares the whole of them however a game was reached,
 and the eight islands' facts do not move). What is left is mostly the
 year's tables by town slot, which are for the 48 slots there is room for
