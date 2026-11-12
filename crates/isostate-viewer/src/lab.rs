@@ -127,7 +127,9 @@ struct Kit {
     scene: Handle<Image>,
     picture: Handle<Image>,
     ui_camera: Entity,
-    solid: Handle<StandardMaterial>,
+    solid: Handle<crate::built::BuiltMaterial>,
+    /// what lies flat round a building: its yard, its lane, its pond
+    yards: Handle<crate::built::BuiltMaterial>,
     /// what is green all year, the leaves that turn, and the bare limbs of winter
     evergreen: Handle<StandardMaterial>,
     green: Handle<StandardMaterial>,
@@ -211,6 +213,8 @@ pub fn run(args: LabArgs, look: Arc<Look>) -> i32 {
         .insert_resource(Lab { sheets, jobs, index: 0, phase: Phase::Arrange, size: args.size, season, tilt: args.tilt, turn, out, started: std::time::Instant::now(), failed: 0 })
         .add_systems(Startup, setup)
         .add_systems(Update, step);
+    // (task D) the game's own material for what is built, so that `--season 0` shows a sheet under snow
+    crate::built::register(&mut app);
     let waiting = PipelinesWaiting::default();
     app.insert_resource(waiting.clone());
     if let Some(render) = app.get_sub_app_mut(bevy::render::RenderApp) {
@@ -259,7 +263,16 @@ fn pictures_of(dir: &Path, sheet: &str) -> Vec<(Shot, Vec<String>)> {
     out
 }
 
-fn setup(mut commands: Commands, look: Res<TheLook>, lab: Res<Lab>, mut images: ResMut<Assets<Image>>, mut materials: ResMut<Assets<StandardMaterial>>, mut fonts: ResMut<Assets<Font>>) {
+#[allow(clippy::too_many_arguments)]
+fn setup(
+    mut commands: Commands,
+    look: Res<TheLook>,
+    lab: Res<Lab>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut built: ResMut<Assets<crate::built::BuiltMaterial>>,
+    mut fonts: ResMut<Assets<Font>>,
+) {
     let lk: &Look = &look;
     commands.insert_resource(UiFont(fonts.add(Font::from_bytes(crate::FREDOKA.to_vec()))));
 
@@ -296,11 +309,14 @@ fn setup(mut commands: Commands, look: Res<TheLook>, lab: Res<Lab>, mut images: 
         scene,
         picture,
         ui_camera,
-        solid: crate::vertex_coloured(&mut materials, lk, lk.surfaces.buildings),
+        // (task D) what is built is drawn as the game draws it, in the sheet's season: under
+        // snow in winter, and its smoke a little fuller
+        solid: built.add(crate::built::material(lk, lab.season, lk.surfaces.buildings)),
+        yards: built.add(crate::built::material(lk, lab.season, lk.surfaces.paths)),
         evergreen: crate::vertex_coloured(&mut materials, lk, lk.surfaces.foliage),
         green: crate::vertex_coloured(&mut materials, lk, lk.surfaces.foliage),
         bare: materials.add(crate::bare_limb_material(lk)),
-        smoke: materials.add(crate::smoke_material(lk)),
+        smoke: materials.add(StandardMaterial { base_color: Color::WHITE.with_alpha(crate::built::smoke_fullness(lk, lab.season)), ..crate::smoke_material(lk) }),
         flat: crate::vertex_coloured(&mut materials, lk, lk.surfaces.paths),
         ground: materials.add(StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() }),
     });
@@ -417,7 +433,13 @@ fn step(
             // the broadleaf trees as the season has them (a sheet's trees are all of the first group): in leaf, or bare
             let in_leaf = isostate_gen::trees::in_leaf(lab.season, 0);
             let (leaves, bare) = if in_leaf { (green.leaves, Builder::default()) } else { (Builder::default(), green.bare) };
-            for (b, mat, shadow) in [(solid, &kit.solid, true), (green.evergreen, &kit.evergreen, true), (leaves, &kit.green, true), (bare, &kit.bare, true), (smoke, &kit.smoke, false), (flat, &kit.flat, false)] {
+            if !solid.is_empty() {
+                commands.spawn((Mesh3d(meshes.add(meshkit::into_mesh(solid))), MeshMaterial3d(kit.solid.clone()), OfThePicture));
+            }
+            if !flat.is_empty() {
+                commands.spawn((Mesh3d(meshes.add(meshkit::into_mesh(flat))), MeshMaterial3d(kit.yards.clone()), bevy::light::NotShadowCaster, OfThePicture));
+            }
+            for (b, mat, shadow) in [(green.evergreen, &kit.evergreen, true), (leaves, &kit.green, true), (bare, &kit.bare, true), (smoke, &kit.smoke, false)] {
                 if b.is_empty() {
                     continue;
                 }

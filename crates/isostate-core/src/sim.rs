@@ -34,7 +34,12 @@ pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
 
 /// `init_state` with the random streams given (the parity tests replay numpy's draws).
 pub fn init_state_with(P: &Params, C: &Content, mut rng: Rngs) -> (State, Rngs) {
-    let world = generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58);
+    // land: an island made by water, from its own stream, in place of the port's
+    let world = if P.land.enabled {
+        crate::landcells::generate_land(P.seed, P.W, P.H, P.n_towns, &P.land)
+    } else {
+        generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58)
+    };
     let (mut st, pbar, wbar) = init_before_firms(P, C, world, &mut rng);
     seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
     (st, rng)
@@ -96,6 +101,12 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     st.urban = vec![false; N];
     st.urban_res = vec![0.0; N];
     st.water = (0..N).map(|c| world.coast[c] || world.river[c]).collect();
+    // land: a lake's shore is by the water too
+    if let Some(lf) = &world.landform {
+        for c in 0..N {
+            st.water[c] = st.water[c] || lf.shore[c];
+        }
+    }
     st.world = world;
 
     // firms
@@ -430,6 +441,9 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     tech::diffusion(st, C, P);
     st.cell_flow_year = st.cell_flow.clone();
     update_roads(st, C, P);
+    // canals (docs/rules/canals.md): what the year's goods put on the water, on the
+    // paths they took (before the paths are worked out again)
+    crate::canals::year_traffic(st, C, P, year, warm);
     if !warm && P.people.enabled {
         founded = crate::peopling::found_towns(st, C, P, year, events);
         // people: what each cell paid to reach its market, before the paths are worked out again
@@ -464,6 +478,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     if !warm {
         rail::plan(st, C, P, &mut rng.rail, year, &pbar, events);
         rail::plan_spurs(st, C, P, &mut rng.rail, year, &pbar, events);
+        // canals (docs/rules/canals.md): their promoters look round too
+        crate::canals::plan(st, C, P, year, &pbar, events);
         notable_closures(st, C, P, &closed, year, events);
         // the families (if any) act last, on the year's prices; they draw from the
         // misc stream, which the Python never uses
@@ -597,6 +613,8 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     let Sim { st, content: C, params: P, events, .. } = sim;
     econ::step_month(st, C, P);
     rail::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
+    // canals (docs/rules/canals.md): canals that are dug open
+    crate::canals::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
         let drift = st.money_now - (st.money_start + st.issued);

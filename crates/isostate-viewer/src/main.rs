@@ -10,6 +10,7 @@
 //! sheets of the scenery's generators and stops (lab.rs).
 
 mod boats;
+mod built;
 mod carts;
 mod chart;
 mod clock;
@@ -547,12 +548,20 @@ struct Leaves(usize);
 #[derive(Component)]
 struct BareLimbs(usize);
 
+/// What is green all year of the trees and bushes: conifers, gorse, yews.
+#[derive(Component)]
+struct Evergreen;
+
 /// Materials that change with the seasons.
 #[derive(Resource)]
 struct SeasonMats {
     terrain: Handle<terrain::GroundMaterial>,
     trees: Handle<StandardMaterial>,
     rivers: Handle<StandardMaterial>,
+    /// what houses and works are drawn in, and the yards and ponds that lie flat round
+    /// them: winter lies on both (`built.rs`)
+    built: [Handle<built::BuiltMaterial>; 2],
+    smoke: Handle<StandardMaterial>,
     /// fixed phase of the year for stills (0 = midwinter, 0.5 = midsummer)
     forced: Option<f32>,
 }
@@ -865,12 +874,14 @@ fn main() {
         }));
     }
     terrain::register(&mut app);
+    built::register(&mut app);
     let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
     app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
         .init_resource::<Builds>()
+        .init_resource::<Shown>()
         .insert_resource(Timeline { t: t0, built: None, playing: false, speed: speed0 })
         .insert_resource(orbit)
         .insert_resource(Tilt(args.tilt && look.tilt_shift.on))
@@ -892,6 +903,8 @@ fn main() {
         .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
     // the seasons' clock is read by the ground, the trees, the sun and the date alike
     app.add_systems(Update, season_clock.after(advance_time).before(seasons));
+    // which of the trees' meshes show is settled in one place, by the season and the map view together
+    app.add_systems(Update, show_trees.after(seasons));
     if let Some(l) = live {
         app.insert_resource(l);
     }
@@ -902,6 +915,7 @@ fn main() {
         app.add_systems(Update, hide_all_but_ground.after(rebuild_year));
     }
     if let Some(s) = &args.script {
+        KEEP_YEAR_MESHES.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Err(e) = script::add(&mut app, s, args.size) {
             eprintln!("--script: {e}");
             std::process::exit(2);
@@ -964,8 +978,27 @@ fn placeholder_mesh() -> Mesh {
     meshkit::into_mesh(b)
 }
 
+/// Whether the year's meshes keep a copy of themselves on the main thread
+/// once the renderer has taken them. Nothing in the game reads one back, and
+/// a year is some ten million corners (400 MB), so they do not: the renderer
+/// then takes the mesh itself and not a copy of it, which is a sixth off the
+/// time a new year holds a frame up, and the old year's buffers are not
+/// freed on the main thread (13 ms). A scripted run keeps them, to check
+/// what is on screen against the year built afresh (`check_scenery`).
+static KEEP_YEAR_MESHES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A year's mesh of one kind, for the renderer.
 fn non_empty(b: meshkit::Builder) -> Mesh {
-    if b.is_empty() { placeholder_mesh() } else { meshkit::into_mesh(b) }
+    let mut m = if b.is_empty() { placeholder_mesh() } else { meshkit::into_mesh(b) };
+    if !KEEP_YEAR_MESHES.load(std::sync::atomic::Ordering::Relaxed) {
+        m.asset_usage = bevy::asset::RenderAssetUsages::RENDER_WORLD;
+    }
+    m
+}
+
+/// Whether the trains of two years run on the same lines.
+fn same_lines(a: &[trains::TrainPath], b: &[trains::TrainPath]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.pts == b.pts)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -982,6 +1015,7 @@ fn setup_world(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
+    mut built_mats: ResMut<Assets<built::BuiltMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut fonts: ResMut<Assets<Font>>,
 ) {
@@ -1026,7 +1060,6 @@ fn setup_world(
 
     // year meshes start empty; rebuild_year fills them
     let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
-    let flat = vertex_coloured(&mut materials, lk, lk.surfaces.paths);
     let handles = Handles {
         year_cells,
         year_field,
@@ -1045,19 +1078,30 @@ fn setup_world(
     let tree_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
     let bare_mat = materials.add(bare_limb_material(lk));
     for (group, [evergreen, leaves, bare]) in handles.trees.iter().enumerate() {
-        commands.spawn((Mesh3d(evergreen.clone()), MeshMaterial3d(evergreen_mat.clone())));
+        commands.spawn((Mesh3d(evergreen.clone()), MeshMaterial3d(evergreen_mat.clone()), Evergreen));
         commands.spawn((Mesh3d(leaves.clone()), MeshMaterial3d(tree_mat.clone()), Leaves(group)));
         commands.spawn((Mesh3d(bare.clone()), MeshMaterial3d(bare_mat.clone()), BareLimbs(group), Visibility::Hidden));
     }
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, forced: forced.0 });
-    commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(vc.clone())));
-    commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(vc.clone())));
-    commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
+    // houses and works (churches, farm buildings and bridges among them) are drawn in a
+    // material that winter lies on; the trains keep the plain one, an engine being warm
+    let phase = season_phase(&SeasonClock::default(), forced.0);
+    let built_mat = built_mats.add(built::material(lk, phase, lk.surfaces.buildings));
+    // and so is what lies flat on the ground (the yards of the works, their ponds, the farm
+    // lanes, the roads and the railway's track): frost on the yards, ice on a mill pond.
+    // The roads and the track are marked as trodden clear, so winter leaves them as easy
+    // to follow as summer does; they are in this material all the same, because where a
+    // lane meets a road the two lie at one height, and which of two materials is drawn
+    // over the other there is not the same from one run of the program to the next
+    let yards_mat = built_mats.add(built::material(lk, phase, lk.surfaces.paths));
     let smoke_mat = materials.add(smoke_material(lk));
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
+    commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(built_mat.clone())));
+    commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(built_mat)));
+    commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
     commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(flat.clone()), bevy::light::NotShadowCaster));
-    commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(flat), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(yards_mat.clone()), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(yards_mat.clone()), bevy::light::NotShadowCaster));
+    commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(yards_mat), bevy::light::NotShadowCaster));
     commands.insert_resource(handles);
 
     // a warm low sun from the south-west, and soft sky light; the seasons
@@ -1226,15 +1270,31 @@ struct Builds {
     task: Option<(usize, u32, Task<Scenery>)>,
 }
 
-/// What `rebuild_year` remembers of the scenery on screen.
-#[derive(Default)]
+/// What `rebuild_year` remembers of the scenery on screen (a resource, so
+/// that a scripted run can say what was put on screen and what it cost).
+#[derive(Resource, Default)]
 struct Shown {
     /// the camera its houses were built for
     lod: Option<scatter::Lod>,
-    /// how many times the run has changed under the viewer (a live game's new year)
+    /// how many years the run holds: what scenery is built from changes only when a year
+    /// arrives in a live game (the months between write their figures and their news into
+    /// the run, and nothing a year's scenery reads)
     run: u32,
     /// the year, and the state of the run, that everything on screen was last built from
     whole: Option<(usize, u32)>,
+    /// how many times a whole year went on screen, and how many times the houses and
+    /// their smoke alone, for the camera
+    swaps: (u32, u32),
+    /// the last time scenery went on screen: whether it was the houses alone, how many
+    /// corners were handed to the renderer, and how long the handing over took on the
+    /// main thread, in ms
+    last: Option<(bool, usize, f32)>,
+    /// how long the longest of the three frames after it took, in ms (the renderer takes
+    /// the new meshes then)
+    frame_after: Option<f32>,
+    /// the longest frame since the last scripted `print`, in ms
+    longest_frame: f32,
+    frames_to_watch: u8,
 }
 
 fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
@@ -1294,13 +1354,29 @@ fn rebuild_year(
     mut rails: ResMut<Rails>,
     mut builds: ResMut<Builds>,
     orbit: Res<Orbit>,
-    mut shown: Local<Shown>,
+    mut shown: ResMut<Shown>,
+    real: Res<Time<Real>>,
     old_trains: Query<Entity, With<Train>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    if data.is_changed() {
-        shown.run = shown.run.wrapping_add(1);
+    // (task D) the state of the run that scenery is built from is the years it holds. It was
+    // counted by every change to the run, and since the clock tells the month a month's
+    // figures change it twelve times a year: a year built again for the camera then never
+    // counted as the camera's alone, and went on screen whole
+    shown.run = data.r.filled as u32;
+    // what the last frame cost, for a scripted run to report: the renderer takes new meshes
+    // in the frame after they are handed over
+    let frame_ms = real.delta_secs() * 1e3;
+    shown.longest_frame = shown.longest_frame.max(frame_ms);
+    if shown.frames_to_watch > 0 {
+        // the renderer runs a frame behind: it takes the meshes at the end of the frame they
+        // were handed over in, works on them beside the next, and holds up the one after
+        shown.frames_to_watch -= 1;
+        shown.frame_after = Some(shown.frame_after.map_or(frame_ms, |f| f.max(frame_ms)));
+        if shown.frames_to_watch == 0 && std::env::var_os("ISOSTATE_TIMING").is_some() {
+            eprintln!("  the longest of the three frames after took {:.0} ms", shown.frame_after.unwrap_or(0.0));
+        }
     }
     // the houses are built with as much as the camera can see of them: when it has moved or
     // zoomed past what the scenery on screen was built for, the year is built again
@@ -1311,6 +1387,7 @@ fn rebuild_year(
     // a finished build goes on screen
     if let Some((run, sc)) = builds.task.as_mut().and_then(|(_, run, t)| check_ready(t).map(|sc| (*run, sc))) {
         builds.task = None;
+        let began = std::time::Instant::now();
         shown.lod = Some(sc.lod);
         // a year built again for the camera alone, from the run as it was, differs only in its
         // houses and their smoke (a garden's tree is drawn at every level): the rest stays as
@@ -1319,6 +1396,10 @@ fn rebuild_year(
         let for_camera = shown.whole == Some((sc.k, run));
         shown.whole = Some((sc.k, run));
         let (ym, nets) = (sc.ym, sc.nets);
+        let mut corners = ym.houses.pos.len() + ym.smoke.pos.len();
+        if !for_camera {
+            corners += ym.works.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len() + ym.trees.iter().flat_map(|t| t.parts()).map(|b| b.pos.len()).sum::<usize>();
+        }
         if !for_camera {
             if let Some(mut img) = images.get_mut(&handles.year_cells) {
                 img.data = Some(sc.cells);
@@ -1326,23 +1407,30 @@ fn rebuild_year(
             if let Some(mut img) = images.get_mut(&handles.year_field) {
                 img.data = Some(sc.field);
             }
-            // trains: one for every eight units of line, up to three, spread along it
-            for e in &old_trains {
-                commands.entity(e).despawn();
-            }
-            rails.0 = sc.rails;
-            for (pi, p) in rails.0.iter().enumerate() {
-                let count = (1 + (p.len / 8.0) as usize).min(3);
-                for i in 0..count {
-                    let s = p.len * (i as f32 + 0.5) / count as f32;
-                    let (pos, yaw) = p.at(s);
-                    let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
-                    commands.spawn((
-                        Mesh3d(ta.mesh.clone()),
-                        MeshMaterial3d(ta.mat.clone()),
-                        Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
-                        Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
-                    ));
+            // trains: one for every eight units of line, up to three, spread along it. While
+            // the lines are as they were the trains run on from where they are: a new year
+            // does not send every train back to where it started, nor does a year built
+            // again for the camera after the run has moved on (in a live game the next year
+            // arrives a little before the clock reaches it, and a camera build begun in that
+            // while is not the camera's alone: the works may have been laid out again)
+            if !same_lines(&rails.0, &sc.rails) {
+                for e in &old_trains {
+                    commands.entity(e).despawn();
+                }
+                rails.0 = sc.rails;
+                for (pi, p) in rails.0.iter().enumerate() {
+                    let count = (1 + (p.len / 8.0) as usize).min(3);
+                    for i in 0..count {
+                        let s = p.len * (i as f32 + 0.5) / count as f32;
+                        let (pos, yaw) = p.at(s);
+                        let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
+                        commands.spawn((
+                            Mesh3d(ta.mesh.clone()),
+                            MeshMaterial3d(ta.mat.clone()),
+                            Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
+                            Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
+                        ));
+                    }
                 }
             }
             for (h, b) in [(&handles.roads, nets.roads), (&handles.rails, nets.rails), (&handles.lanes, ym.lanes)] {
@@ -1367,6 +1455,14 @@ fn rebuild_year(
             }
         }
         tl.built = Some(sc.k);
+        let ms = began.elapsed().as_secs_f32() * 1e3;
+        if for_camera { shown.swaps.1 += 1 } else { shown.swaps.0 += 1 }
+        shown.last = Some((for_camera, corners, ms));
+        shown.frames_to_watch = 3;
+        shown.frame_after = None;
+        if std::env::var_os("ISOSTATE_TIMING").is_some() {
+            eprintln!("year {} on screen: {} ({corners} corners) handed over in {ms:.1} ms on the main thread", data.r.y0 + sc.k as i32, if for_camera { "its houses and smoke alone, for the camera" } else { "the whole year" });
+        }
     }
     // the year on screen, if it is neither shown nor being built; a build for
     // another year (the clock moved on) finishes first and is shown on the way
@@ -1381,6 +1477,86 @@ fn rebuild_year(
 /// The scenery shows the year on the clock (screenshots wait for it).
 fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
     tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
+}
+
+/// For a scripted run's `print`: what scenery is on screen, how it got there
+/// and what the last change of it cost. The longest frame is counted from the
+/// last time this was asked.
+fn scenery_line(world: &mut World) -> String {
+    let orbit = world.resource::<Orbit>();
+    let cam = scatter::Lod::of_camera((orbit.target.x, orbit.target.z), orbit.dist);
+    let y0 = world.resource::<Data>().r.y0;
+    let built = world.resource::<Timeline>().built;
+    let mut shown = world.resource_mut::<Shown>();
+    let longest = std::mem::take(&mut shown.longest_frame);
+    let year = built.map_or("none".to_string(), |k| (y0 + k as i32).to_string());
+    let houses = match shown.lod {
+        Some(lod) => format!("houses for a camera {:.1} off at {:.1},{:.1}{}", lod.dist, lod.focus.0, lod.focus.1, if lod.stale(&cam) { ", which the camera has left" } else { "" }),
+        None => "no houses yet".to_string(),
+    };
+    let last = match (shown.last, shown.frame_after) {
+        (Some((for_camera, corners, ms)), after) => format!(
+            "the last was {} of {corners} corners, handed over in {ms:.1} ms{}",
+            if for_camera { "houses alone" } else { "a whole year" },
+            after.map_or(String::new(), |a| format!(", and the longest of the three frames after took {a:.0} ms"))
+        ),
+        (None, _) => "nothing yet".to_string(),
+    };
+    format!("scenery of {year}, {houses}; put on screen {} times whole and {} times as houses alone; {last}; longest frame since last asked {longest:.0} ms", shown.swaps.0, shown.swaps.1)
+}
+
+/// For a scripted run's `scenery`: build the year on the clock afresh, from
+/// the run as it stands and for the camera the houses on screen were built
+/// for, and say whether every mesh on screen is that build's. A swap that
+/// left something behind (the works of last year under this year's houses,
+/// say) shows here. Err names the meshes that differ.
+fn check_scenery(world: &mut World) -> Result<String, String> {
+    fn print_of(m: &Mesh) -> (usize, u64) {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        for attr in [Mesh::ATTRIBUTE_POSITION, Mesh::ATTRIBUTE_COLOR] {
+            for &byte in m.attribute(attr).map_or(&[][..], |a| a.get_bytes()) {
+                h = (h ^ byte as u64).wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        (m.count_vertices(), h)
+    }
+    let Some(lod) = world.resource::<Shown>().lod else { return Err("no scenery has been built yet".into()) };
+    let (data, tl, look) = (world.resource::<Data>(), world.resource::<Timeline>(), world.resource::<TheLook>());
+    let k = (tl.t.floor() as usize).min(data.r.ny - 1);
+    if tl.built != Some(k) {
+        return Err(format!("the scenery on screen is of {:?}, not of the year on the clock ({k}): settle first", tl.built));
+    }
+    let year = data.r.y0 + k as i32;
+    let fresh = build_scenery(&data.r, &data.g, &data.slots, &data.cen, k, &look.0, lod);
+    let (handles, meshes) = (world.resource::<Handles>(), world.resource::<Assets<Mesh>>());
+    let mut pairs = vec![
+        ("houses".to_string(), &handles.houses, fresh.ym.houses),
+        ("smoke".to_string(), &handles.smoke, fresh.ym.smoke),
+        ("works".to_string(), &handles.works, fresh.ym.works),
+        ("yards and lanes".to_string(), &handles.lanes, fresh.ym.lanes),
+        ("roads".to_string(), &handles.roads, fresh.nets.roads),
+        ("railway".to_string(), &handles.rails, fresh.nets.rails),
+    ];
+    for (group, (hs, t)) in handles.trees.iter().zip(fresh.ym.trees).enumerate() {
+        for ((h, b), part) in hs.iter().zip([t.evergreen, t.leaves, t.bare]).zip(["evergreen", "leaves", "bare limbs"]) {
+            pairs.push((format!("trees {group} {part}"), h, b));
+        }
+    }
+    let mut corners = 0;
+    let mut wrong = Vec::new();
+    for (name, h, b) in pairs {
+        let want = print_of(&non_empty(b));
+        let have = meshes.get(h).map(print_of);
+        corners += want.0;
+        if have != Some(want) {
+            wrong.push(format!("{name} ({} corners on screen, {} in the year's own)", have.map_or(0, |p| p.0), want.0));
+        }
+    }
+    if wrong.is_empty() {
+        Ok(format!("all {corners} corners on screen are {year}'s own, built afresh for the same camera"))
+    } else {
+        Err(format!("on screen for {year} but not that year's own: {}", wrong.join(", ")))
+    }
 }
 
 /// One round of the seasons' own clock takes this many seconds, however fast
@@ -1475,9 +1651,8 @@ fn seasons(
     look: Res<TheLook>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ground_mats: ResMut<Assets<terrain::GroundMaterial>>,
+    mut built_mats: ResMut<Assets<built::BuiltMaterial>>,
     mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
-    mut leaves: Query<(&Leaves, &mut Visibility), Without<BareLimbs>>,
-    mut bare: Query<(&BareLimbs, &mut Visibility), Without<Leaves>>,
     mut last: Local<Option<i32>>,
 ) {
     let ph = season_phase(&clock, sm.forced);
@@ -1491,10 +1666,30 @@ fn seasons(
     if let Some(mut m) = ground_mats.get_mut(&sm.terrain) {
         m.extension.params.season = ph;
     }
+    // snow lies on what is built in the depth of winter, frost on the ground round it, and
+    // its gardens are bare: the buildings' material is told the season and does the rest
+    // per pixel (built.wesl), so winter rebuilds no mesh. Outside the winter (seven months
+    // in twelve) its numbers do not change and it is left alone
+    let winter = built::params(&look, ph);
+    for h in &sm.built {
+        if built_mats.get(h).is_some_and(|m| m.extension.params.amounts != winter.amounts) {
+            if let Some(mut m) = built_mats.get_mut(h) {
+                m.extension.params = winter;
+            }
+        }
+    }
+    // and smoke stands a little fuller in the cold
+    let full = built::smoke_fullness(&look, ph);
+    if materials.get(&sm.smoke).is_some_and(|m| m.base_color.alpha() != full) {
+        if let Some(mut m) = materials.get_mut(&sm.smoke) {
+            m.base_color = Color::WHITE.with_alpha(full);
+        }
+    }
     // the leaves turn: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn; and each group of
     // broadleaf trees is in leaf from spring to autumn and shows its bare limbs through the
-    // winter. They go by the seasons' clock, as the ground and the sun do, so a wood is gold,
-    // bare and green again once a round at any speed of the years, and holds while paused
+    // winter (`show_trees`). They go by the seasons' clock, as the ground and the sun do, so
+    // a wood is gold, bare and green again once a round at any speed of the years, and holds
+    // while paused
     if let Some(mut m) = materials.get_mut(&sm.trees) {
         m.base_color = leaf_tint(&look, ph);
     }
@@ -1503,19 +1698,66 @@ fn seasons(
         let t = look.water.river_tint(ph);
         m.base_color = Color::srgb(t[0], t[1], t[2]);
     }
-    let shown = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
-    for (group, mut vis) in &mut leaves {
-        vis.set_if_neq(shown(in_leaf(ph, group.0)));
-    }
-    for (group, mut vis) in &mut bare {
-        vis.set_if_neq(shown(!in_leaf(ph, group.0)));
-    }
     let (strength, colour, stands) = sun_at(&look, ph);
     for (mut light, mut tf) in &mut sun {
         light.illuminance = strength;
         light.color = colour;
         *tf = stands;
     }
+}
+
+/// One of the three meshes a group of trees is drawn as.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TreePart {
+    Evergreen,
+    Leaves(usize),
+    BareLimbs(usize),
+}
+
+/// Whether a part of the trees shows at a phase of the year. Under a map view
+/// (`aside`) none does: the woods would hide the wash under their leaves, and
+/// bare limbs and conifers would speckle it. Otherwise a group of broadleaves
+/// shows its leaves while it is in leaf and its bare limbs while it is not,
+/// and what is evergreen always shows.
+fn tree_part_shown(part: TreePart, phase: f32, aside: bool) -> bool {
+    !aside
+        && match part {
+            TreePart::Evergreen => true,
+            TreePart::Leaves(group) => in_leaf(phase, group),
+            TreePart::BareLimbs(group) => !in_leaf(phase, group),
+        }
+}
+
+/// Show and hide the trees' meshes. This is the one place that does: the
+/// season and the map view both bear on it, and when each of them set the
+/// trees' visibility for itself, the season put back the leaves a map view
+/// had hidden (and the conifers and bare limbs were never hidden at all).
+/// It runs every frame over a dozen entities and writes only what changes.
+#[allow(clippy::type_complexity)]
+fn show_trees(
+    clock: Res<SeasonClock>,
+    sm: Option<Res<SeasonMats>>,
+    ov: Res<overlay::MapOverlay>,
+    debug: Res<GroundDebug>,
+    mut trees: Query<(Option<&Leaves>, Option<&BareLimbs>, &mut Visibility), Or<(With<Leaves>, With<BareLimbs>, With<Evergreen>)>>,
+) {
+    let ph = season_phase(&clock, sm.and_then(|sm| sm.forced));
+    // `--ground-debug` shows the ground alone
+    let aside = ov.kind.is_some() || debug.0;
+    for (leaves, bare, mut vis) in &mut trees {
+        let part = match (leaves, bare) {
+            (Some(l), _) => TreePart::Leaves(l.0),
+            (None, Some(b)) => TreePart::BareLimbs(b.0),
+            (None, None) => TreePart::Evergreen,
+        };
+        vis.set_if_neq(if tree_part_shown(part, ph, aside) { Visibility::Inherited } else { Visibility::Hidden });
+    }
+}
+
+/// How many of the trees' meshes are set to show, of how many (for `--script`'s `map`).
+fn trees_showing(world: &mut World) -> (usize, usize) {
+    let mut q = world.query_filtered::<&Visibility, Or<(With<Leaves>, With<BareLimbs>, With<Evergreen>)>>();
+    q.iter(world).fold((0, 0), |(shown, all), v| (shown + (*v != Visibility::Hidden) as usize, all + 1))
 }
 
 /// What the leaves are multiplied by at a phase of the year.
@@ -2605,6 +2847,82 @@ mod tests {
         // the list names every option the reader knows
         for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
+        }
+    }
+
+    #[test]
+    fn the_trees_stand_aside_for_a_map_view_whatever_the_season_does() {
+        // the three meshes of each group of trees, as setup_world spawns them, and the two
+        // things that bear on which of them show
+        let mut app = App::new();
+        app.insert_resource(SeasonClock { phase: 0.5, follows: false, coarse: false })
+            .insert_resource(SeasonMats { terrain: Handle::default(), trees: Handle::default(), rivers: Handle::default(), built: [Handle::default(), Handle::default()], smoke: Handle::default(), forced: None })
+            .insert_resource(overlay::MapOverlay::new(None, 0))
+            .insert_resource(GroundDebug(false))
+            .add_systems(Update, show_trees);
+        for group in 0..LEAF_GROUPS {
+            app.world_mut().spawn((Evergreen, Visibility::default()));
+            app.world_mut().spawn((Leaves(group), Visibility::default()));
+            app.world_mut().spawn((BareLimbs(group), Visibility::Hidden));
+        }
+        let showing = |app: &mut App| trees_showing(app.world_mut());
+        let all = 3 * LEAF_GROUPS;
+        // high summer on the plain map: what is evergreen and every group's leaves
+        app.update();
+        assert_eq!(showing(&mut app), (2 * LEAF_GROUPS, all));
+        // a map view goes on: every mesh of the trees is hidden, the conifers and the bare limbs too
+        app.world_mut().resource_mut::<overlay::MapOverlay>().set(Some(overlay::Overlay::Rent));
+        app.update();
+        assert_eq!(showing(&mut app), (0, all), "trees show under a map view");
+        // the season moves on under the view, right round the year: they stay hidden (the
+        // seasons used to put each group's leaves or limbs back as it turned)
+        for step in 0..=48 {
+            app.world_mut().resource_mut::<SeasonClock>().phase = (0.5 + step as f32 / 48.0).rem_euclid(1.0);
+            app.update();
+            assert_eq!(showing(&mut app), (0, all), "trees came back under a map view when the season reached {}", step as f32 / 48.0);
+        }
+        // a season held for a picture does not bring them back either
+        app.world_mut().resource_mut::<SeasonMats>().forced = Some(0.0);
+        app.update();
+        assert_eq!(showing(&mut app), (0, all));
+        // the plain map again, in the midwinter the picture holds: evergreens and bare limbs
+        app.world_mut().resource_mut::<overlay::MapOverlay>().set(None);
+        app.update();
+        assert_eq!(showing(&mut app), (2 * LEAF_GROUPS, all));
+        let mut leaves = app.world_mut().query::<(&Leaves, &Visibility)>();
+        assert!(leaves.iter(app.world()).all(|(_, v)| *v == Visibility::Hidden), "no tree is in leaf at midwinter");
+        // and `--ground-debug` shows the ground alone
+        app.world_mut().resource_mut::<GroundDebug>().0 = true;
+        app.update();
+        assert_eq!(showing(&mut app), (0, all));
+    }
+
+    #[test]
+    fn the_trains_keep_running_while_their_lines_are_as_they_were() {
+        let line = |pts: &[(f32, f32)]| trains::TrainPath { pts: pts.iter().map(|&(x, z)| Vec3::new(x, 0.0, z)).collect(), cum: vec![0.0; pts.len()], len: 1.0 };
+        let old = [line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 6.0)])];
+        // the same lines built again (another year, or the same year for another camera)
+        assert!(same_lines(&old, &[line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 6.0)])]));
+        // a line more, a line fewer, a line laid elsewhere
+        assert!(!same_lines(&old, &old[..1]));
+        assert!(!same_lines(&old[..1], &old));
+        assert!(!same_lines(&old, &[line(&[(0.0, 0.0), (4.0, 0.0)]), line(&[(4.0, 0.0), (4.0, 7.0)])]));
+        assert!(same_lines(&[], &[]));
+    }
+
+    #[test]
+    fn each_part_of_a_tree_shows_in_its_season() {
+        for group in 0..LEAF_GROUPS {
+            for i in 0..96 {
+                let ph = i as f32 / 96.0;
+                // one or the other of a group's leaves and limbs, never both and never neither
+                assert_ne!(tree_part_shown(TreePart::Leaves(group), ph, false), tree_part_shown(TreePart::BareLimbs(group), ph, false));
+                assert!(tree_part_shown(TreePart::Evergreen, ph, false));
+                for part in [TreePart::Evergreen, TreePart::Leaves(group), TreePart::BareLimbs(group)] {
+                    assert!(!tree_part_shown(part, ph, true));
+                }
+            }
+            assert!(tree_part_shown(TreePart::Leaves(group), 0.5, false) && tree_part_shown(TreePart::BareLimbs(group), 0.0, false));
         }
     }
 

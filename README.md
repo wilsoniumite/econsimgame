@@ -21,7 +21,9 @@ cargo run -p isostate-viewer
 The first build compiles Bevy and takes some minutes. Then the terminal says which island is being made and where the game is kept, and a few seconds later a window opens over your home town with a card. On island 7, the one you get unless you ask for another, you are the Fairfax family of Melbourne: seven people, £18k in hand and 104 squares of land, with five other great families already at work across the island.
 
 - Click to begin. The first decision is waiting: the family's trade. Every choice in the game is from a short list that says what each option would mean. There are no sliders.
-- **Next year** plays one year and stops. **Space** keeps the years going, and Up and Down change the speed. Drag to pan, right-drag to turn and tilt, and use the wheel to zoom. **H** shows every key.
+- The top bar shows the month and the year, "January 1751" to begin with, over a thin bar that fills as the month goes by. **Next month** plays one month and stops, and **To January** runs on to the year's turn. **Space** starts and stops the clock, and Up and Down change its speed, from Slow to Fastest. A game starts at Steady, a month a second, and at that the 150 years take half an hour of running; at Fastest they take 75 seconds.
+- What you order at a year's turn happens at once. Later in the year it waits for the year's end, and the Family panel lists what waits.
+- Drag to pan, right-drag to turn and tilt, and use the wheel to zoom. **H** shows every key.
 - Click a square near your seat to see what could be built there, with its cost and the return it expects at today's prices. Click a town, a works or a field to ask about it.
 - Children are trained at fourteen, and an apprentice teaches the family a new trade. Grown members can be posted to run your trades in other towns, where their branches build on their own.
 - **1** to **4** open the Family, Holdings, Markets and News panels. **M** washes a map view over the ground: rent, market areas, the way to market, prices or wages.
@@ -30,7 +32,7 @@ The first build compiles Bevy and takes some minutes. Then the terminal says whi
 
 ![A game in 1790: the Family panel with the Fairfax family's worth over forty years, last year's accounts and a member with nothing to run, and the note on Melbourne, the family's seat, listing its branches there](docs/shots/game-family-1790.jpg)
 
-That command builds in Cargo's dev profile, in which this workspace still optimises Bevy and the simulation (see `Cargo.toml`). Adding `--release` gives a fully optimised build and takes longer to compile. The keys, the panels, the map views, saved games and every option are in [crates/isostate-viewer/README.md](crates/isostate-viewer/README.md).
+That command builds in Cargo's dev profile, in which this workspace still optimises Bevy and the simulation (see `Cargo.toml`). Adding `--release` gives a fully optimised build and takes longer to compile. The keys, the clock and its speeds, the panels, the map views, saved games and every option are in [crates/isostate-viewer/README.md](crates/isostate-viewer/README.md).
 
 ## Other things to run
 
@@ -264,13 +266,13 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 
 The numbers below are means over islands 1 to 8 with six families, from the sweeps above as run on 12 November 2026, unless a page is named.
 
-**What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, five map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. The work now in hand is listed in the backlog: canals, a second island generator with real rivers and lakes, books of account, a deeper production tree, a clock that shows months, and towns and works drawn better.
+**What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, five map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. The work now in hand is listed in the backlog: canals, a second island generator with real rivers and lakes, books of account, a deeper production tree, and towns and works drawn better.
 
 **The game.**
 
 - The core loop is not fun yet, and it is set aside for thinking of its own. Scripted players show the shape of it: buying land beats building works on all four islands they were tried on, a family that takes every default ends fourth of six on three islands of four, and a player who founds a works every year loses most of them (FAMILIES.md, `docs/rules/works.md`, `docs/rules/towns.md`).
 - A saved game is its orders played again, so it does not survive a change to the simulation, and loading a whole century takes about 23 seconds before the window opens.
-- At its slowest a year passes in two seconds, which feels too fast. A clock that steps and shows months is in hand.
+- The clock tells the month since 12 November, and a game starts at a month a second, but the game is still played by the year: an order given in the middle of a year waits for its end, and decisions come only at a year's turn, so their cards always sit over a winter island.
 - There is no title screen and no sound.
 - The politics half of the game is not started.
 

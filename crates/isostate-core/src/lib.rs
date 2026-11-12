@@ -23,6 +23,7 @@
 //!   stylised facts each run is reduced to (`isostate-core sweep`).
 #![allow(non_snake_case)]
 
+pub mod canals;
 pub mod carting;
 pub mod chronicle;
 pub mod cli;
@@ -34,6 +35,9 @@ pub mod families;
 pub mod firms;
 pub mod harvest;
 pub mod land;
+pub mod landcells;
+pub mod landform;
+pub mod landwater;
 pub mod live;
 pub mod machines;
 pub mod mat;

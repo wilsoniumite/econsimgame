@@ -112,6 +112,10 @@ pub struct LiveStatic {
     pub series: Vec<LiveSeries>,
     /// The industry groups, in `Group::index` order.
     pub groups: Vec<LiveGroup>,
+    /// land: the fine grid, the rivers' lines, the lakes and the water's cell
+    /// fields of an island the mechanism made (None on the port's island).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub land: Option<Box<crate::landcells::Landform>>,
 }
 
 /// The static half. Call after `sim::start` (the series registry exists from then).
@@ -163,6 +167,7 @@ pub fn live_static(st: &State, C: &Content) -> LiveStatic {
             .map(|(n, m)| LiveSeries { name: n.clone(), label: m.label.clone(), group: m.group.clone(), unit: m.unit.clone() })
             .collect(),
         groups: Group::ALL.iter().map(|g| LiveGroup { name: g.name().to_string(), label: g.label().to_string() }).collect(),
+        land: w.landform.clone(),
     }
 }
 
@@ -275,6 +280,11 @@ pub struct LiveYear {
     /// mines: every working there is or has been, as the year ends (empty
     /// unless the mechanism is on; docs/rules/mines.md).
     pub workings: Vec<crate::mines::Working>,
+    /// canals (docs/rules/canals.md): every link of canal so far, from cell to
+    /// cell, with the year its canal was begun and the moment it opened (absent
+    /// while it is being dug). Empty unless the mechanism is on. The `trans`
+    /// layer marks the same cells with 16 (open) and 32 (digging).
+    pub canals: Vec<crate::canals::LinkOut>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -421,6 +431,8 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
     let projects = st
         .projects
         .iter()
+        // canals: a canal being dug is not on the list of railways building
+        .filter(|pr| pr.way != crate::ways::CANAL)
         .map(|pr| {
             let order: f64 = crate::util::pairwise_sum(&pr.order);
             let need: f64 = crate::util::pairwise_sum(&pr.need);
@@ -446,5 +458,6 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         harvest_town: st.harvest_town.iter().map(|&v| v as f32).collect(),
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
         workings: crate::mines::workings(st),
+        canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
     }
 }

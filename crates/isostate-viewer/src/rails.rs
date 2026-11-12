@@ -1265,13 +1265,16 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
                 any = true;
                 let t0 = p0 + s0 * (HALF * side);
                 let t1 = p1 + s1 * (HALF * side);
-                // by the sea the bank is faced with stone
+                // by the sea the bank is faced with stone (task D: in a token of its own, which
+                // winter frosts as it does the grass banks; in the viaducts' stone it took snow,
+                // a white slab along the shore)
                 let sea_wall = g0.y < 0.03;
+                let pitching = *lk.rail.sea_wall;
                 // and on the high fells it is of broken rock, where no grass grows
                 let high = ((p0.y - 1.2) / 0.5).clamp(0.0, 1.0);
                 let lit = (side > 0.0) == ((s0.x - s0.z) > 0.0);
                 let col = if sea_wall {
-                    if side > 0.0 { stone } else { shade(stone, 0.85) }
+                    if side > 0.0 { pitching } else { shade(pitching, 0.85) }
                 } else {
                     crate::meshkit::lerp(if lit { grass } else { grass_dark }, if lit { *lk.rail.bank_scree } else { shade(*lk.rail.bank_scree, 0.86) }, high)
                 };
