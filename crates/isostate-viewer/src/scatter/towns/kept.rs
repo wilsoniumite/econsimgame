@@ -3,12 +3,15 @@
 //! when it joined, how many live on it and how much of it is works
 //! (docs/rules/towns.md). The towns of such a run are laid out from that:
 //!
-//! - **How many houses.** One to every eight residents of the cell
+//! - **How many houses.** One to every twelve residents of the cell
 //!   (`world::PEOPLE_TO_A_HOUSE`, where the reason is), so the houses on the
 //!   map follow the people from year to year and from town to town.
-//! - **Where.** Only on the cell's built-up closes (`world::town_ground`),
-//!   which gather from the side of the town's older ground and along the way
-//!   out of it. Streets are laid there and nowhere else: the roads, a lane
+//! - **Where.** Only on the closes the cell's houses reach
+//!   (`world::town_ground`, `TownCell::reach`), which gather from the side of
+//!   the town's older ground and along the way out of it; the first of them
+//!   are painted as built-up ground and the last are the gardens and paddocks
+//!   of the town's edge, with houses among them. Streets are laid there and
+//!   nowhere else: the roads, a lane
 //!   where no road yet runs between a cell and the older cell it grew from,
 //!   and back lanes and cross streets behind them. Plots stand at fixed
 //!   places along the streets, and each has a turn (`Plot::turn`): the place
@@ -70,6 +73,29 @@
 //! 9. The open closes are painted by the ground shader as paddocks,
 //!    orchards, garden ground and greens within hedges (`town_edge` in
 //!    terrain.wesl).
+//!
+//! **Taken over again.** The second helper was cut off in its turn, with
+//! three changes in its tree that no commit message tells of. A third helper
+//! read them back from the code and the pictures and kept all three:
+//!
+//! 10. Twelve people to a drawn house, not eight (item 1; the reason is at
+//!     `world::PEOPLE_TO_A_HOUSE`): the streets of a cell built up whole
+//!     have plots for about 120 houses, and the fullest ground of 1900 holds
+//!     1,430 people.
+//! 11. The works' share of a cell is no longer counted into its built-up
+//!     closes (item 4): a works is drawn in a yard of its own size where
+//!     `scatter.rs` stands it and the houses keep out of the yards as drawn,
+//!     so counting the record's share as well left the middle of a town a
+//!     pale plain (`world::closes_built`).
+//! 12. Two counts of closes to a cell where there was one: those painted as
+//!     built-up ground, at `world::BUILT_GROUND` a house, and the wider
+//!     count the houses' plots may stand on, at `world::HOUSE_GROUND` a
+//!     house (`TownCell::built`, `TownCell::reach`). Between the two the
+//!     houses stand among the closes of the town's edge.
+//!
+//! The order a cell's closes are built up in (item 3) and the rule that
+//! frontages join before they rise (item 8) stand as the second helper left
+//! them; what the third changed says so where it is changed.
 
 use super::*;
 

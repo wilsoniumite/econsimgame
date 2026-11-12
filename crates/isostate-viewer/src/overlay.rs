@@ -454,6 +454,10 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
             let growth = kind == Overlay::Growth;
             let title = if growth { format!("Town ground in {year}, by when it joined") } else { format!("Residents of town ground in {year}") };
             if !r.kept() {
+                // (the land is left blank, each square with its market, as on any other view)
+                for c in lands {
+                    put(c, rgb(BLANK));
+                }
                 return Wash { cells, legend: none(title, "This record does not hold the towns' ground: under its rules a town does not keep the ground it builds on.".into()), soft: 0.06, lines: false };
             }
             // both scales are the same in every year, so a square keeps its tint for as long
@@ -898,16 +902,16 @@ mod tests {
     fn the_key_steps_through_every_overlay_and_back_to_the_plain_map() {
         let mut ov = MapOverlay::new(None, 0);
         let mut seen = Vec::new();
-        for _ in 0..6 {
+        for _ in 0..8 {
             ov.step(false);
             seen.push(ov.kind);
         }
         assert_eq!(seen, vec![Some(Overlay::Rent), Some(Overlay::Areas), Some(Overlay::Reach), Some(Overlay::Price), Some(Overlay::Wages), Some(Overlay::Growth), Some(Overlay::Residents), None]);
         // backwards from the plain map is the last of them, and the pill remembers it
         ov.step(true);
-        assert_eq!(ov.kind, Some(Overlay::Wages));
+        assert_eq!(ov.kind, Some(Overlay::Residents));
         ov.set(None);
-        assert_eq!(ov.last, Overlay::Wages);
+        assert_eq!(ov.last, Overlay::Residents);
     }
 
     #[test]
