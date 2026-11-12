@@ -217,7 +217,10 @@ merchants' dividends to the town's households, which today rise a head after
 a giving (the merchants keep the cash and the trade of a larger town and pay
 it out to fewer people) and with the rule fall a little (the cash above
 nothing went with the trade). Nothing here asks for the debt to go with the
-district, so the design's rule stands as it was written.
+district, so the design's rule stands as it was written. Where the debts come
+from is traced in `docs/probes/tr-loose-a.md` (section 1): they are the
+losses of a few towns that bring their services in and let a glut of them
+spoil, which is a fault of its own and not a district's to carry away.
 
 ## Tests
 
