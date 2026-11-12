@@ -2,7 +2,7 @@
 
 What Stella notices while playing, in her words, and what becomes of each note. It is also where the order of work is decided. The diary of what was done is [DEVLOG.md](DEVLOG.md); this file is what is waiting, what is being done, and why in that order.
 
-Last gone through: the morning of 12 November 2026, when winter and the works' detail landed.
+Last gone through: the morning of 12 November 2026, when the new island generator landed, switched off.
 
 ## How it is kept
 
@@ -21,7 +21,7 @@ Started before this file existed, and left to finish. The usage limit cut every 
 
 | Piece | Notes | Branch | State |
 |---|---|---|---|
-| A second island generator: erosion, real rivers, lakes (core) | 4, 6 | `night/land-review` | reviewed; being merged on the integration branch, beside the mines and the canals. It stays switched off until the viewer can draw it |
+| How the viewer should draw the new island: measuring and a design in stages, no change to the picture yet (viewer) | 4, 6, 19, 20 | `night/dx-land-view` | measuring |
 | Books of account for towns, works and the island (core) | 13 | `night/int-accounts` | reviewed; being merged onto `main`. The books move no fact and no picture, but beside the monthly clock a saved game does not come back with the same series, and a helper is finding why before it goes in |
 | The production tree's first stage (core) | 8, in part | `night/tree` | being built; a second helper carries on from the first's saved work |
 | Saved games that cannot be lost to a test start, a second copy of the game or a crash (F1) | none | `night/saves-guard` | being built: Ready next 1, taken up when the clock landed, since the clock changed the save |
@@ -35,7 +35,7 @@ Started before this file existed, and left to finish. The usage limit cut every 
 Nothing here is started until its trigger is met and the backlog has been gone through again. Her notes and what helpers found are in one order.
 
 1. **A real game is not lost to a test start** (F1). Taken up on 12 November, when the clock landed: see In flight.
-2. **Draw what the core pieces add, each as it lands** (notes 2, 4, 6, 9; F7). Mines as small workings at the foot of the hill; canals; the new land's relief, rivers and lakes. The mines and the canals are merged (12 November). A working is drawn only as a stand-in, one of the old pits; a canal is not drawn at all. *Trigger:* for the mines and the canals, `night/town-ground` and `night/works-sites` are merged, since they are rewriting the placement code the drawing would work in (the buildings' kit and the railways' course and profile, which the drawing will use, landed on 12 November); for the new land, it is merged. *Why here:* these are her first notes.
+2. **Draw what the core pieces add, each as it lands** (notes 2, 4, 6, 9; F7). Mines as small workings at the foot of the hill; canals; the new land's relief, rivers and lakes. All three are merged in the simulation (12 November). A working is drawn only as a stand-in, one of the old pits; a canal is not drawn at all; and the new island generator is switched off until the viewer can draw it, which is the largest piece of work in the viewer and has a design probe in flight. *Trigger:* for the mines and the canals, `night/town-ground` and `night/works-sites` are merged, since they are rewriting the placement code the drawing would work in; for the new land, its probe's design is checked and `night/town-ground` is merged. *Why here:* these are her first notes.
 3. **Roads, bridges and carts laid again on the new rivers** (notes 19, 20; F3). The cart that sails over a river and clips through a bridge was already in a helper's notes: a cart's path is a straight line between cell centres at the height of the ground. The roads' links and every bridge are the viewer's own invention, which is why a road down a valley crosses its river again and again. Neither is mended on its own, because the rivers are about to be replaced. *Trigger:* the viewer draws the new land. *If the new land does not land,* mend both on today's rivers.
 4. **Map views and charts that say what is so** (F2; bears on note 13). One outlying town flattens the price map's scale; a price is shown for goods nobody makes yet; a wage chart that should read 1 in 1750 reads 1.04. *Trigger:* `night/town-ground` is merged, since it adds two map views; the clock, which also worked in them, landed on 12 November.
 5. **A look at each viewer piece once it has landed:** towns (F5), railways (F6), works (F8). What reviewers could not judge until the piece was in. The railways have landed, so F6 is ready: whether the whole network reads as too much on the map, the churches that now have a line against their yard, eighteen curves too tight for a train, roads that drape over the banks, sidings that are plain ribbons. With the towns goes what is left of note 14: houses that vary by more than colour, and a hint of black and white on the oldest at play distance, which the works' detail did not reach. *Trigger:* each landing; the railways' part now ranks below items 1 to 4.
@@ -72,6 +72,7 @@ Not her notes: what helpers and reviewers reported and left open. On the evening
 
 - **3, houses with too little detail:** answered by the house kit, merged 11 November. Her later notes 14 and 16 take it further.
 - **2, mines as big blobs:** answered in the simulation by the mines, merged 12 November: diggings take about 9 cells' worth of land in 1900 where they took 1,373. The picture still shows a working only as a stand-in, so the drawing stays open at Ready next 2.
+- **4 and 6, rivers that run downhill, lakes, canyons and plateaus:** answered in the simulation by the second island generator, merged 12 November and switched off. Nothing of it shows until the viewer draws it: Ready next 2.
 - **5, land that looks ruled:** answered from the whole-island view by the far view, merged 11 November, and from mid distance by the wood, heath and hill edges, merged 12 November.
 - **12, a railway like an aqueduct that then drops:** answered by the railways' profiles, merged 12 November: every cell of track has one level, a line winds or takes an incline where the ground is too steep, and the check finds no step anywhere. What is still wrong with them is at Ready next 5.
 - **9, canals before railways:** answered in the simulation by the canals, merged 12 November: the first opens about 1774, and there are some 900 km by 1900. They are not drawn yet, so the drawing stays open at Ready next 2.
