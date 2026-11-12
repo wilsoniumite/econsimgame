@@ -47,7 +47,7 @@ Of the economic weaknesses listed under stage 1, the game's rules answer most an
 - A loss over those, and a simple search (random or CMA-ES) over a handful of parameters, run on many seeds.
 - Keep parameters in `params.py` and content in `content.toml`; calibration writes a new params file, never edits code.
 
-*Where this stands (12 November 2026):* the table of facts exists, some 450 for a run under the game's rules (it was some 320 before the canals and the books of account added theirs) (`crates/isostate-core/src/facts.rs`), with a seed-for-seed comparison between two sweeps. The tolerances, the loss and the search do not. In the Rust the numbers live in `params.rs` and in each mechanism's own struct, and `--params FILE` or `--set` lays values over them without editing code.
+*Where this stands (12 November 2026):* the table of facts exists, some 450 for a run under the game's rules (`crates/isostate-core/src/facts.rs`; some 320 before the canals and the books of account added theirs), with a seed-for-seed comparison between two sweeps. The tolerances, the loss and the search do not. In the Rust the numbers live in `params.rs` and in each mechanism's own struct, and `--params FILE` or `--set` lays values over them without editing code.
 
 **1.4 Observer quality.**
 - Store event provenance (which series, which test, which threshold) so a reader can always ask "why is this news".
