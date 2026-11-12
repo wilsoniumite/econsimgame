@@ -631,6 +631,10 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             for (given, why) in &loaded.refused {
                 eprintln!("  an order of {} could not be given again ({why}): {}", given.year, serde_json::to_string(&given.order).unwrap_or_default());
             }
+            if !loaded.refused.is_empty() {
+                // (`Saver::write`: a save that holds orders the game no longer does is set aside like another game's)
+                eprintln!("  the save as it was, with every order in it, is not written over: where this game is kept in its place, the file is first set aside whole (.previous.json)");
+            }
             if loaded.drifted {
                 eprintln!("  the island does not stand quite as it was saved: the simulation has changed since");
             }

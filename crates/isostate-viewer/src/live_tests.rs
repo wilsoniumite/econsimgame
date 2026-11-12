@@ -304,7 +304,15 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     assert!(back.refused >= 1 && back.drifted, "{back:?}");
     let note = crate::game::resumed_note(&back).unwrap();
     assert!(note.contains("could not be given again"), "{note}");
+    assert!(note.ends_with(" The save as it was is kept."), "{note}");
     drop(c);
+    // gone on with and kept in its own place: the file as it was, with the order that could not be given
+    // again in it, is set aside whole before the game without that order is saved over it
+    let name = odd_file.to_string_lossy().into_owned();
+    drop(Table::open(&Opening { load: Some(name.clone()), save: Some(name), ..default() }));
+    assert_eq!(std::fs::read_to_string(saves::previous(&odd_file)).unwrap(), odd.to_text(), "the save with every order in it is gone");
+    let kept = saves::read(&odd_file).unwrap();
+    assert!(kept.orders.len() < odd.orders.len() && kept.started == odd.started, "{} orders for {}", kept.orders.len(), odd.orders.len());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -437,7 +445,7 @@ fn the_card_says_what_could_not_be_brought_back() {
     );
     assert_eq!(
         crate::game::resumed_note(&back(3, true)).unwrap(),
-        "The island's rules have changed since this game was saved. Three of your 41 orders could not be given again, so some things stand differently."
+        "The island's rules have changed since this game was saved. Three of your 41 orders could not be given again, so some things stand differently. The save as it was is kept."
     );
     assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 1, drifted: false, passed_over: 0 }).unwrap().contains(" Your one order could not"));
     assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 4, drifted: true, passed_over: 0 }).unwrap().contains(" All four of your orders could not"));

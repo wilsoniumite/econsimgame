@@ -45,7 +45,11 @@ pub const KEPT: usize = 3;
 /// let go. A game is a log of orders, a few hundred kilobytes after a busy
 /// century, so the number costs nothing; nine keeps the names to one digit.
 /// Only a game somebody played takes a place: a trial is kept elsewhere, and
-/// a game with no orders in it is not set aside at all (`holds_orders`).
+/// a game with no orders in it is not set aside at all (`holds_orders`). A
+/// place is also taken by a game's own save when it holds orders the game no
+/// longer does (the rules changed and some could not be given again, or the
+/// game was taken back some years and played another way): those orders are
+/// in no other file.
 pub const GAMES_KEPT: usize = 9;
 
 /// The folder for saved games: `ISOSTATE_SAVES` if set; else the usual place
@@ -382,22 +386,29 @@ impl Saver {
             // new game by mistake does not lose the one that mattered. It is
             // copied aside and stays where it is until the new save takes its
             // place, so there is no moment with no latest save.
-            if let Some((old, file)) = here.filter(|(old, _)| old.started != save.started || old.seed != save.seed || old.families != save.families) {
-                others = true;
+            if let Some((old, file)) = here {
+                others = old.started != save.started || old.seed != save.seed || old.families != save.families;
+                // The same game, but the save that is here holds orders this one
+                // does not: the rules have changed since and some could not be
+                // given again, or the game was taken back to an earlier year and
+                // played another way. Those orders are in no other file, so it is
+                // set aside like another game's. (A game played on only ever adds
+                // to its orders.)
+                let fuller = !others && !save.orders.starts_with(&old.orders);
                 // (a game with nothing of the player's in it takes no place among
                 // those kept, and one set aside already by a write that then
                 // failed is not set aside twice)
-                if holds_orders(&old) && read(&previous(path)).ok().as_ref() != Some(&old) {
+                if (others || fuller) && holds_orders(&old) && read(&previous(path)).ok().as_ref() != Some(&old) {
                     self.make_room(&|n| game_before(path, n), GAMES_KEPT)?;
                     self.step()?;
                     copy_whole(&file, &previous(path)).map_err(told)?;
                 }
-                // its earlier saves are years the one set aside already holds (and
-                // of a game with no orders, years the seed makes again): the new
-                // game's years are not to push another game's out one by one. The
-                // oldest goes first: a write that dies among them leaves the newest,
-                // which is the one set aside, to be known again
-                for n in (1..=KEPT).rev() {
+                // another game's earlier saves are years the one set aside already
+                // holds (and of a game with no orders, years the seed makes again):
+                // the new game's years are not to push another game's out one by
+                // one. The oldest goes first: a write that dies among them leaves
+                // the newest, which is the one set aside, to be known again
+                for n in (1..=KEPT).rev().filter(|_| others) {
                     if earlier(path, n).exists() {
                         self.step()?;
                         let _ = std::fs::remove_file(earlier(path, n));
@@ -622,7 +633,10 @@ mod tests {
         // what is in the game's place before the write, what is written, at a year's end or not,
         // and how many games had been set aside there before
         let old = save(1, 1790);
-        let cases: [(&str, Save, Save, bool, usize); 6] = [
+        let another_way = Save { orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 2 } }], ..save(1, 1788) };
+        let cases: [(&str, Save, Save, bool, usize); 8] = [
+            ("the same game, taken back two years and played another way", old.clone(), another_way.clone(), true, 2),
+            ("the same game, with an order that could not be given again, by an order", old.clone(), Save { orders: Vec::new(), ..save(1, 1790) }, false, GAMES_KEPT),
             ("the same game, a year on", old.clone(), save(1, 1791), true, 2),
             ("the same game, an order given", old.clone(), save(1, 1790), false, 2),
             ("a new game over a played one", old.clone(), save(2, 1750), true, 2),
@@ -660,7 +674,7 @@ mod tests {
                 let latest = read(&path).unwrap_or_else(|e| panic!("{when}: there is no latest save ({e})"));
                 assert!(latest == *before || latest == *new, "{when}: the latest is neither the old save nor the new");
                 // a played game that was there can still be found, whole
-                let set_aside = holds_orders(before) && before.started != new.started;
+                let set_aside = holds_orders(before) && (before.started != new.started || !new.orders.starts_with(&before.orders));
                 if set_aside {
                     let found = latest == *before || (1..=GAMES_KEPT).any(|n| read(&game_before(&path, n)).is_ok_and(|g| g == *before));
                     assert!(found, "{when}: the game that was there is nowhere");

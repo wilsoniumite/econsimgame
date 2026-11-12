@@ -287,6 +287,14 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
     assert_eq!(back.code, Some(0), "{}", back.err);
     assert_eq!(back.err.matches("could not be given again").count(), 10, "{}", back.err);
     assert!(back.err.contains("back at the end of 1750") && back.err.contains("after the save's last year"), "{}", back.err);
+    // gone on with and kept in its own place, the game has none of those orders in it: the file that has
+    // is set aside whole before the game is saved over it, and the terminal says so
+    let as_it_was = std::fs::read_to_string(&wild).unwrap();
+    let kept = game(&saves, &["--load", &text(&wild), "--save", &text(&wild), "--describe", "30,30"]);
+    assert_eq!(kept.code, Some(0), "{}", kept.err);
+    assert!(kept.err.contains("the save as it was, with every order in it, is not written over: where this game is kept in its place, the file is first set aside whole (.previous.json)"), "{}", kept.err);
+    assert_eq!(std::fs::read_to_string(dir.join("wild.previous.json")).unwrap(), as_it_was, "the file with every order in it was written over");
+    assert!(Save::from_text(&std::fs::read_to_string(&wild).unwrap()).unwrap().orders.is_empty());
     // and the save as the game wrote it is gone on with
     let back = game(&saves, &["--load", &text(&good), "--describe", "30,30"]);
     assert_eq!(back.code, Some(0), "{}", back.err);

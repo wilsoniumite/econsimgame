@@ -1545,7 +1545,8 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
                 (n, all) if n == all => format!("All {} of your orders", family::number_word(all)),
                 (n, all) => format!("{} of your {} orders", family::capitalised(&family::number_word(n)), family::number_word(all)),
             };
-            Some(format!("The island's rules have changed since this game was saved. {which} could not be given again, so some things stand differently."))
+            // (the file that still holds those orders is set aside before this game is saved in its place: `Saver::write`)
+            Some(format!("The island's rules have changed since this game was saved. {which} could not be given again, so some things stand differently. The save as it was is kept."))
         }
     };
     match (earlier, rules) {
