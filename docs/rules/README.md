@@ -177,15 +177,24 @@ changed on purpose often (every stage of the rules pass, a rule mended or
 retuned, a new rule switched on), and the economy, the news and `run.bin`
 move with them. That is what the test is for: a change that says it moves
 nothing must leave all four as they were, and a change that moves the game
-says so and anchors them again. A change to the books alone moves `books`
-and `run.bin` (which carries the books' tables) and never `economy` or
+says so and anchors them again. A change to the books alone moves `books`,
+`run.bin` (which carries the books' tables) or both, and never `economy` or
 `news`: the economy moving when only the books were touched means the books
-touched the economy. Like the port's, these hashes are this machine's (see
+touched the economy. (Moving the books' note of the works' dividends below
+the families' take of theirs moves `run.bin` alone, since those tables are
+not among the monthly `acct_` columns.) Like the port's, these hashes are this machine's (see
 "What worries me").
 
-**Anchoring them again.** On the merged tree, never on a branch before its
-merge (two branches that both move the game must meet here, and the hashes
-of either alone are nobody's):
+**Anchoring them again.** On the tree that will land: the branch with the
+newest main merged into it as its last step, or the merge into main itself.
+Two branches that both move the game must meet here, and the hashes of
+either alone are nobody's. In practice the builder of a stage takes them on
+the branch, so that its commits pass their tests; whoever merges main into it
+afterwards (its checker, or whoever lands it if main has moved again) takes
+them once more after the merge, and that is the commit that counts. When
+two such branches have both changed `golden_game.txt`, the merge conflicts on
+its four lines: keep neither side's, but settle the conflict with either and
+then paste in what the command prints on the merged tree. The command,
 
 ```bash
 ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
@@ -193,11 +202,13 @@ ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
 
 checks nothing and stops with the four lines to paste into
 `tests/golden_game.txt`, after checking that the two runs agree. Who may do
-it: whoever lands a change that moves the game's rules on purpose, in the
-same merge, and only after the sweep under the game's rules has been read and
-what moved is what was meant. Who may not: a change that claims to move
-nothing. If the test fails on such a change, the change is wrong, not the
-file. The commit that anchors them says, in its message, which of the four
+it: whoever builds, checks or lands a change that moves the game's rules on
+purpose, as above, and only after the sweep under the game's rules has been
+read and what moved is what was meant. A stage behind its own switch can
+show that nothing else moved: with the switch turned off in `game_params()`
+for one run (and not committed so), the test must pass on the old four. Who
+may not: a change that claims to move nothing. If the test fails on such a
+change, the change is wrong, not the file. The commit that anchors them says, in its message, which of the four
 moved and why ("economy, news and run.bin: stage 2 of the rules pass, the
 ration"), and the line `# Taken:` in the file is changed to say the same in
 a few words.
