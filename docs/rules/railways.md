@@ -53,15 +53,16 @@ traffic and the trade, times `freight`, is the saving. It is multiplied by
 shilling, as in the port); the line goes ahead if that return clears
 `rail_hurdle`. Nothing says where a line ought to pay. A district branch is
 valued on the cells' carting alone; a trunk counts its two towns' trade with
-every other town as well, and a town's first line its one town's. (The sum is quick because only what the new line can reach
-more cheaply is searched again; a test holds it to a search from scratch.)
+every other town as well, and a town's first line its one town's. (The sum
+is quick because only what the new line can reach more cheaply is searched
+again; a test holds it to a search from scratch.)
 
 **A refused line cools off.** A pair of towns is left alone for four years, a
 town or district for `cool_years` (five), or for two if the sum was good and
 only the money was short. A pair with no way between them over land is left
-for ten, since the ground will not change. Nothing is barred for good. (A refused district
-also keeps the promoters away from anything within four cells of it for
-those years, a town included.)
+for ten, since the ground will not change. Nothing is barred for good. (A
+refused district also keeps the promoters away from anything within four
+cells of it for those years, a town included.)
 
 **Lines building count as laid** when the next is reckoned. So two lines of
 one year never pay twice for cells they share, the second is not credited
@@ -337,8 +338,9 @@ to collieries and iron mines (`rail_lines_*`), and branches are 74 per cent
 of the kilometres (`rail_km_share_branches`). The branches to quarries are a
 fifth of what they were at the merge, 14 for 76. The mines (`mines.md`)
 came in between, and they decide where stone and clay are dug; I did not
-trace whether that is why. The canals' page compares the railway with canals and without, in
-company.
+trace whether that is why. (The integration that brought the mines and the
+canals together already had 2,254 km in 1900 with canals and 2,260
+without: `canals.md`, "On the integration branch".)
 
 **In company the branches do pay the country back.** With carting on, the
 game's railways against the port's, seed for seed on twelve seeds: in 1900

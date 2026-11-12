@@ -32,7 +32,9 @@ canal unless somebody cut a junction, which is a project like any other, with
 no new cell and a cell's worth of materials. The links are kept and are what
 the record gives the viewer, so it has no junctions to guess at.
 
-Four to six junctions are cut in a run (one to eleven). The news tells one
+Four to six junctions are cut in a run (one to eleven; six, from four to
+nine, on today's sweep of the game's rules with six families,
+`canal_junctions_cut`). The news tells one
 as a junction ("A junction joins the canals between Sandmere and
 Brambridge"), at the weight of a year's branches and with no kilometres, and
 the facts count it under `canal_junctions_cut`, not among the canals. Not
@@ -59,20 +61,26 @@ seeds 3 and 7 the locks are half of all the stone, bricks and timber.
 materials delivered a canal pays two in wages (a railway pays three tenths),
 and the navvies are hands: last month's wage bill of each canal, at the wage
 of the town that supplies it, is that many people who are not there to be
-hired by farms and works this month, up to a fifth of the town's hands. They
-are counted as employed. They are taken on and let go by degrees, a quarter
+hired by farms and works this month, up to a fifth (`navvy_max_share`) of the
+hands the town still has for hire once its carters and its sinkers are
+counted out ("On the integration branch", below). They are counted as
+employed. They are taken on and let go by degrees, a quarter
 of the way each month (`navvy_adjust`), as the carters are: a canal's orders
 are filled in lumps, its wage bill halves or doubles from one month to the
 next in one town-month in twenty, and when the hands followed the bill at
 once a town's wage rose and fell by half with it (see the review, below).
 In the busiest year of a run the navvies are 1,100 to 2,300 people on an
 island of 200,000, and in the town that supplies a large canal as many as a
-sixth of its hands. Railway navvies are still paid and cost nobody's time,
-as in the port: that is the railways' to change.
+sixth of its hands. (That was the first build. On today's sweep the busiest
+year has 780 to 1,600 navvies, 1,200 on average (`canal_most_navvies`), on
+an island of 210,000 in 1800; the share in one town was not counted
+again.) Railway navvies are still paid and cost nobody's time, as in the
+port: that is the railways' to change.
 
 **It takes years.** Thirty-six months if every order is filled, and a canal
 orders no more each month than its cash will pay for, wages included. From
-promotion to opening the slowest of a run takes five or six years. Every
+promotion to opening the slowest of a run takes five or six years (4.3 to
+5.0 on today's sweep, `canal_slowest_years`). Every
 canal has the same thirty-six months whatever its length, a junction of one
 cell too: that is the planner's rule for every line of every way, and it is
 wrong for the short ones.
@@ -118,9 +126,12 @@ that economy is not one that could have existed. Something has to arrive.
 
 So somebody surveys a canal, once, by the rule every invention in the
 content is found by: the chance in a year is `discovery_rate * p^4 /
-(1 + p^4)`, where p is how much coal and stone the island has dug since
-1750 against 3 million units of each, and the town is drawn by what it digs
-of them. An island that moves more coal gets there sooner. That town knows
+(1 + p^4)`, where p is how much coal the island has dug since 1750 against
+3 million units, or how much stone against 3 million, whichever is less
+(`discover_coal`, `discover_stone`); and the town is drawn by what it dug of
+them in the last year, each against its 3 million, the chance going with
+the square of that, as for every invention (`tech::discovery`). An island
+that digs more coal and stone gets there sooner. That town knows
 how (0.25, as with any invention) and the know-how spreads between towns
 along the trade routes by `tech::diffusion`'s sum.
 
@@ -133,7 +144,16 @@ prove itself, and the canal age crosses the island at the pace canals are
 dug: 50 km in the first ten years, then most of the network in the twenty
 after. With plain diffusion (tried on seed 7) sixteen canals were promoted
 all over the island within five years of the first, and 580 km were open
-ten years on.
+ten years on. (The 50 km was the first build's, and the page did not say
+from when it counted. Counted from the first canal's opening it does not
+hold today, and the tables below do not show it either: under the game's
+rules the first canal opens in about 1776 and 450 to 590 km are open by
+1790. On today's sweep, read from the lengths of each decade, 320 to 560 km
+are open ten years after the first canal opens, on every one of the eight
+islands, and three quarters of the network by 1800. That is nearer what
+plain diffusion gave on seed 7 than what this rule was meant to give. The
+survey's year is not among the sweep's facts, so counted from the survey it
+could not be checked. I did not trace why.)
 
 How much the rule does was measured in the review, on seeds 3 and 7. With
 `hearsay` at 1 (plain diffusion) 548 km are open in 1780; at 0.2, 422; at 0,
@@ -185,9 +205,11 @@ middle of what dx-rail suggested. The materials and wages make a level cell
 cost about a fifth of a cell of the game's railway at the content's prices,
 and a cell with its share of locks about two fifths; that came out at 0.16
 of a year's output for the whole network, against the railways' 0.25 to
-0.37, and I left it. The hurdle began at the railway's 0.06 and went to 0.1
-after the first run, which is the one number here that was moved to make
-fewer canals.
+0.37, and I left it. (On today's sweep it is 0.14, from 0.11 to 0.18, against
+the railways' 0.21: `canal_cost_in_years_of_output` and
+`rail_cost_in_years_of_output`.) The hurdle began at the railway's 0.06 and
+went to 0.1 after the first run, which is the one number here that was
+moved to make fewer canals.
 
 ## What the sweeps showed
 
@@ -213,6 +235,15 @@ sweeps stand behind this page, all under `.claude/night/reports/`:
 No run with canals failed in any of them: 72, 64 and 64 runs, and 64 more at
 the extremes.
 
+All three were made before the canals met the mines (and before the books
+and the rest that came after), so none of their numbers is today's. Where a
+row is the game's rules with six families, today's sweep can say what it is
+now, and it is set beside it; the canals alone on the port, the first
+build's carting runs and every comparison of canals on against canals off
+cannot be read from today's sweep and were not made again. Today's sweep is
+`merged-game-f6-l`: the game's rules as they stand on 12 November, six
+families, seeds 1 to 8 ("Against today's sweep", below).
+
 **Kilometres of canal, and when the first opens** (sixteen seeds; the two
 rows marked are the first build's eight):
 
@@ -224,6 +255,7 @@ rows marked are the first build's eight):
 | the same, six families (first build) | 1776 (1765 to 1788) | 15 | 143 | 349 | 624 | 724 | 760 | 800 | 842 | 844 (734 to 988) |
 | the game's rules | 1777 (1767 to 1796) | 10 | 139 | 451 | 592 | 657 | 709 | 759 | 839 | 863 (684 to 1,158) |
 | the game's rules, six families | 1776 (1764 to 1796) | 19 | 193 | 494 | 615 | 685 | 730 | 783 | 847 | 850 (568 to 1,204) |
+| the same, today (seeds 1 to 8) | 1774 (1767 to 1782) | 6 | 249 | 583 | 662 | 695 | 771 | 815 | 888 | 892 (688 to 1,098) |
 
 So: a survey in the 1760s, the first canal open in the 1770s, most of the
 network dug between 1780 and 1800 at 20 to 26 km a year, and a tail to the
@@ -232,8 +264,9 @@ network dug between 1780 and 1800 at 20 to 26 km a year, and a tail to the
 the same picture as seeds 1 to 8 in every row.
 
 A run digs 24 canals between towns alone (20 to 30) and 23 in company with
-six families (11 to 42), cuts four to six junctions, and runs four to six
-branches: to works (three), quarries, woods, collieries, iron mines and
+six families (11 to 42; today 23, from 16 to 31), cuts four to six
+junctions, and runs four to six branches: to works (three), quarries,
+woods, collieries, iron mines and
 farms (about one of each, or none). Many towns of these islands stand on
 their own coal, so what a canal does for a coalfield it mostly does as a
 trunk from the pit town to its customers. The network costs 0.16 of a
@@ -250,17 +283,22 @@ the boats can be given a name for:
 |---|---|---|---|---|---|---|
 | canals alone | 0.39 | 0.19 | 0.28 | 0.03 | 0.01 | 0.03 |
 | the game's rules, six families | 0.38 | 0.17 | 0.24 | 0.05 | 0.01 | 0.04 |
+| the same, today | 0.42 | 0.16 | 0.22 | 0.05 | 0.01 | 0.03 |
 
 The rest is wool, cloth, bricks and tools in the towns' trade. Alone the
 boats carry 38 million weight-km a year by 1780, 297 by 1800 and 454 by
 1820, on hauls of 44 km (50 in company), and every cell of canal is in use.
 Fares on that traffic, at the canal's own cost and its wharves, come to 0.40
 of the capital laid out in 1800 (0.35 in company): as with the railways
-nobody collects them, and a canal would be a very good thing to own.
+nobody collects them, and a canal would be a very good thing to own. (Today,
+in company: 26 million weight-km a year by 1780, 294 by 1800 and 410 by
+1820, on hauls of 44 km, with every cell in use in 1800, and fares of 0.45
+of the capital in 1800, from 0.34 to 0.63.)
 
 **Before the railways, in every run.** The first canal opens before the
 first railway in all 200 runs of the three sets: by 61 years alone (41 to
-85) and by 55 in company with six families (14 to 89).
+85) and by 55 in company with six families (14 to 89). Today it does so on
+all eight islands, by 53 years (31 to 66).
 
 **And after.** Nothing is closed and nothing needs to be:
 
@@ -270,13 +308,17 @@ first railway in all 200 runs of the three sets: by 61 years alone (41 to
 | cells of canal carrying anything | 0.99 | 0.65 | 0.49 | 0.47 | 0.47 |
 | boats, in company with six families | 417 | 353 | 75 | 12 | 13 |
 | cells of canal carrying anything | 0.98 | 0.70 | 0.37 | 0.28 | 0.24 |
+| boats, today (seeds 1 to 8) | 410 | 292 | 30 | 20 | 18 |
+| cells of canal carrying anything | 0.92 | 0.65 | 0.41 | 0.33 | 0.29 |
 
-The boats' best year is 1832, alone and in company. By 1900 they carry 0.15
-of it beside the port's thousand kilometres of railway and 0.02 of it beside
-the game's 2,600, on hauls of 14 to 18 km, and what is left is stone and
-grain (on the first build's eight seeds 0.33 and 0.36 alone, with coal down
-to 0.10). Sixty-one per cent of the canal has track on it or beside it in
-1900 alone, 84 per cent in company. The railway takes the trunks and leaves
+The boats' best year is 1832, alone and in company (1828 today, from 1808
+to 1846). By 1900 they carry 0.15 of it beside the port's thousand
+kilometres of railway and 0.02 of it beside the game's 2,600 (0.03 beside
+today's 2,250), on hauls of 14 to 18 km (12 today), and what is left is
+stone and grain (on the first build's eight seeds 0.33 and 0.36 alone, with
+coal down to 0.10; today 0.45 and 0.24, with coal at 0.18). Sixty-one per
+cent of the canal has track on it or beside it in 1900 alone, 84 per cent
+in company (82 today). The railway takes the trunks and leaves
 the canal the short runs to places the track has not reached.
 
 **Coal's price between towns does not close up.** The spread of coal's
@@ -289,6 +331,10 @@ without, and the seeds of sixteen in which it is wider and narrower:
 | six families | 0.43 for 0.39 (8/8) | 0.41 for 0.38 (11/5) | 0.45 for 0.43 (8/8) |
 | the game's rules | 0.47 for 0.41 (14/2) | 0.50 for 0.47 (10/6) | 0.44 for 0.47 (4/12) |
 | the game's rules, six families | 0.50 for 0.47 (10/6) | 0.53 for 0.51 (8/8) | 0.57 for 0.56 (9/7) |
+| the same, today, with canals only (seeds 1 to 8) | 0.47 | 0.48 | 0.47 |
+
+(Today's sweep has no run without canals, so the last row has nothing to
+set beside it; `coal_price_spread_1800`, `_1820` and `_1850`.)
 
 If anything the spread is a little wider with canals in the canal years
 (fourteen seeds of sixteen under the game's rules in 1800, thirteen alone in
@@ -307,14 +353,17 @@ town sends in a month is capped at `trade_cap` of its stock. With coal at
 three times the pit price the rule is at both stops already, and making the
 carriage cheaper moves no more of it. dx-rail found the same of the
 railways. Coal's share of the households' warmth and of the works' heat does
-not move either (0.90 for 0.90 and 0.99 for 0.99 in 1800).
+not move either (0.90 for 0.90 and 0.99 for 0.99 in 1800; today, with
+canals, 0.90 and 1.00).
 
 **Works do not move to the canal.** Of all works, each counted by its size,
 0.24 stand within a cell and a half of where the canals come to be, in 1760
 before there is one and in 1800 and 1900 alike; 0.26 of the land is that
 near. Under the game's rules with six families, where works stand by their
-town, it is 0.71 before and 0.74, 0.69 and 0.58 in 1800, 1830 and 1900.
-Canals join the towns, and the towns are where the works already were.
+town, it is 0.71 before and 0.74, 0.69 and 0.58 in 1800, 1830 and 1900
+(today 0.74 before and 0.78, 0.73 and 0.63, with 0.27 of the land that
+near: `canal_works_near_*`, `canal_land_near`). Canals join the towns, and
+the towns are where the works already were.
 
 **Output per head and the real wage, alone.** Against the same rules
 without canals, each relative to its own 1750, with the seeds that are
@@ -372,6 +421,15 @@ them. The real wage of 1800 does not show it (thirteen islands up, nineteen
 down, by nothing). Famine years are fewer on eighteen islands and more on
 seven, which is worth watching and is not established.
 
+(This table, and the one under "On the integration branch", are canals on
+against canals off, and today's sweep has canals on only, so neither can be
+read from it. For what it is worth, today's runs with canals and six
+families give, row by row: output per head 1.70 in 1800, carters 0.118 of
+all hands, 4.83 goods a head and a real wage of 1.63 in 1800, 1.95 in 1850
+and 2.60 in 1900, output per head 2.12 in 1850, the first railway in 1827,
+1,328, 1,835 and 2,248 km of railway in 1850, 1870 and 1900, and 0.4
+famine years a run.)
+
 Nothing else can be told, and in particular the canals do not hold the
 game's railway back. The first build's page said they did, and that the
 island with canals was behind in 1850: on seeds 1 to 8 without families
@@ -419,8 +477,10 @@ Only when the switch is on:
 - **News**: kinds `canal` (openings) and `canal_plan` (schemes). The first
   canal has weight 1, every later opening and scheme 0.3, a year's branches
   together and a junction 0.25. That is about sixty items a run, thirty of
-  each kind. The survey is a `discovery` with no `tech`. The viewer has
-  labels and a colour for the two kinds (`ui.rs`); it draws nothing yet. It
+  each kind (today 38 openings and 29 schemes, `news_canal` and
+  `news_canal_plan`). The survey is a `discovery` with no `tech`. The viewer
+  has labels and a colour for the two kinds (`ui.rs`); it draws nothing yet,
+  and nothing in it reads the header's `canals`. It
   reads the `trans` layer by its bits (1 and 2 for the road, 4 for track, 8
   for track building), so the two new bits do not disturb what it draws now.
 
@@ -430,7 +490,8 @@ and locks from the heights along the links, as map-viewer-ground suggests.
 ## What worries me
 
 - **It all happens in thirty years.** Britain's canals took seventy. Here
-  four fifths of the network is open by 1800. The know-how sets when the
+  four fifths of the network is open by 1800 (three quarters on today's
+  sweep: 662 km of 892). The know-how sets when the
   rush begins, not how long it lasts: `hearsay` at nought puts it off ten
   years and no more (above). It is short because the canals pay too well
   (below), so every town digs all it will ever dig as soon as it knows how.
@@ -438,17 +499,21 @@ and locks from the heights along the links, as map-viewer-ground suggests.
   it; nothing here was tuned against anything.
 - **Canals are nearly all trunks.** The brief had coalfields and quarries
   far from navigable water in mind, and there are four or five such branches
-  a run. Trunks are looked at first and the money goes to them; and a
+  a run (today some ten branches against 23 trunks, but six of the ten run
+  to works and only two to collieries and quarries). Trunks are looked at
+  first and the money goes to them; and a
   district must be three cells from a town, a canal and a navigable river to
   be looked at, which on these islands leaves few. Coal still fills two
   fifths of the boats.
-- **They pay too well.** Fares of 0.3 to 0.4 of the capital a year say the
+- **They pay too well.** Fares of 0.3 to 0.4 of the capital a year (today
+  0.45 in 1800 and 0.38 in 1830) say the
   canals are cheap for what they do, or that nobody collects a toll. A
   promoter needs 10 per cent on today's traffic and the traffic then
   doubles. A company that took the tolls, and shares a family could hold, is
   the same gap the railways page describes.
 - **Nothing closes a canal.** After 1860 half the cells, or three quarters
-  in company, carry nothing. They stay on the map and in the cost graph. The
+  in company, carry nothing (today three fifths in 1860 and seven tenths in
+  1900, `canal_cells_in_use_*`). They stay on the map and in the cost graph. The
   viewer could draw a canal with no boats as disused: `CanalState::traffic`
   has the weight through every cell in the last year, but it is not in the
   record.
@@ -483,7 +548,10 @@ and locks from the heights along the links, as map-viewer-ground suggests.
   might.
 - **The know-how is not on the viewer's knowledge map**, since it is not one
   of the content's inventions.
-- The viewer was built but not run. It does not draw canals.
+- The viewer does not draw canals yet. It builds and runs with them on, and
+  reads past bits 16 and 32 of `trans` and the header's `canals`; its
+  course and profile code (`course.rs`, `profile.rs`) names a canal as the
+  next way it could draw.
 
 ## What the review checked
 
@@ -638,6 +706,43 @@ they did; the passive player and the founder finish first to fourth.
 bits (1 and 2 the road, 4 track, 8 track building), in the railways' new
 course and profiles too, so 16 and 32 disturb nothing, and it still draws no
 canal.
+
+## Against today's sweep
+
+The page was read against the code and against today's sweep on 12 November
+(`.claude/night/reports/merged-game-f6-l`: the game's rules as they stand,
+six families, seeds 1 to 8, made with
+`isostate-core sweep --seeds 1-8 --rules game --families 6`). Every rule,
+formula and default number above is what the code does. The integration
+branch's paragraph, "The canals are the page's canals, a little longer",
+against today's eight islands:
+
+| | integration (seeds 1 to 16) | today (seeds 1 to 8) |
+|---|---|---|
+| first canal opens | 1774 | 1774 (1767 to 1782) |
+| km of canal, 1780, 1790, 1800 | 261, 592, 695 | 249, 583, 662 |
+| km of canal, 1830, 1850, 1900 | 839, 900, 903 (688 to 1,184) | 815, 888, 892 (688 to 1,098) |
+| canals between towns | 24 (13 to 32) | 23 (16 to 31) |
+| junctions cut | five or six (2 to 9) | 6 (4 to 9) |
+| branches to works, woods, quarries, collieries, farms | 6, 1 or 2, 1, 1, 0.5 | 6.2, 1.8, 1.1, 0.8, 0.5 |
+| cost in years of output; spent over expected | 0.14; 1.04 | 0.14; 1.04 |
+| boats, million weight-km a year, 1800 and 1820 | 299, 432 | 294, 410 |
+| haul, km | 46 | 44 |
+| coal, grain, stone and clay in 1800 | 0.41, 0.23, 0.16 | 0.42, 0.22, 0.16 |
+| the boats' best year; their weight-km in 1900 | 1828; 25 | 1828; 18 |
+| years the first canal is ahead of the first railway | 53 (31 to 66) | 53 (31 to 66) |
+| most navvies at work | 1,300 (780 to 2,100) | 1,200 (780 to 1,600) |
+| most canals digging at once | nine or ten (12 on some) | 9 (6 to 12) |
+| the slowest canal, years | five | 4.7 (4.3 to 5.0) |
+
+So the canals of today are the integration's canals, a few per cent
+shorter (662 km in 1800 for 695, 892 in 1900 for 903). What has moved since
+the first build is said beside each figure above; the largest is the pace
+of the start
+("What lets canals begin"). The numbers of the first build, of the review
+and of the merged build were measured on older rules and were not made
+again; nor were the comparisons with canals off, which today's sweep cannot
+give.
 
 ## Facts added to the sweep
 
