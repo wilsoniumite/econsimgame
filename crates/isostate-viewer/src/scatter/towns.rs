@@ -895,10 +895,12 @@ fn cottage(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn(f
     let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, height);
     let green = &mut into.trees[leaf_group(pl.v)];
     if pl.row.is_none() && houses::villa_plot(year, seed) {
-        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof, era, upland, detail, seed };
+        // (a run under the port's rules knows no streets to tell its houses of: they are
+        // the houses they always were)
+        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof, era, upland, street: houses::Street::ALONE, detail, seed };
         houses::villa(into.houses, into.smoke, green, &site, &v, lk);
     } else {
-        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), roof, era, upland, neighbours, detail, seed };
+        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), roof, era, upland, neighbours, street: houses::Street::ALONE, raised: None, detail, seed };
         houses::cottage(into.houses, into.smoke, green, &site, &c, lk);
     }
 }
@@ -919,6 +921,7 @@ fn terrace(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn(f
         roof: first.roof,
         era: Era::of(r.y0 + first.built as i32),
         upland: r.terrain[first.wc] >= 2,
+        street: houses::Street::ALONE,
         detail: into.lod.at(mid.x, mid.y),
         seed,
     };
@@ -943,6 +946,8 @@ fn townhouse(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn
         upland: r.terrain[s.wc] >= 2,
         shop: houses::shop_at(s.dens, seed),
         neighbours: s.neighbours,
+        street: houses::Street::ALONE,
+        fronted: None,
         detail: into.lod.at(pl.p.x, pl.p.y),
         seed,
     };

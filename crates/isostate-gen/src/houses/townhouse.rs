@@ -47,8 +47,11 @@ impl Townhouse {
     }
 }
 
-/// A townhouse on a plot narrower than this has two bays, and on one at
-/// least as wide as `WIDE_FRONT` three; between, it is the house's own choice.
+/// In a street of a family a townhouse on a plot narrower than this has two
+/// bays, and on one at least as wide as `WIDE_FRONT` three; between, and for
+/// a house told nothing of its street, it is the house's own choice. (The
+/// towns lay plots of 0.046 on their back lanes, of 0.05 to 0.062 on their
+/// ways and of 0.056 to 0.066 on their furthest lanes.)
 pub const NARROW_FRONT: f32 = 0.047;
 pub const WIDE_FRONT: f32 = 0.056;
 
@@ -135,7 +138,10 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
     let behind_wing = |x: f32| wing && x > wx0 && x < wx1;
 
     // openings by rule: two or three bays, a window in each on every floor, the door in an end bay
-    let bays = if pw < NARROW_FRONT { 2 } else if pw >= WIDE_FRONT || r(8) < 0.55 { 3 } else { 2 };
+    // (in a street of a family the plot's width has its say: the narrow plots of the back
+    // lanes take two bays and the wide ones of the ways three)
+    let told = t.street.family.is_some();
+    let bays = if told && pw < NARROW_FRONT { 2 } else if told && pw >= WIDE_FRONT || r(8) < 0.55 { 3 } else { 2 };
     let door_bay = if r(9) < 0.5 { 0 } else { bays - 1 };
     let glazing = window(t.era);
     // the front's windows and its door are the later age's where it has a later front

@@ -136,8 +136,9 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
     let wall = fabric.wall;
     let roof = t.roof.rebuilt();
     let (colour, lie) = (roof.colour_in(pal, t.seed, &t.street), roof.cover.lie());
-    // one row in four is hipped at its own ends
-    let hipped = r(4) < 0.25;
+    // in a street of a family one row in four is hipped at its own ends, taking the streets
+    // together (a row told nothing of its street is gabled, as every row once was)
+    let hipped = r(4) < t.street.habit(0.25, 13);
     let body = Range::rect(-hl, hl, zb, zf);
     let y0 = -k.drop(&body);
     let rise = d * lie.rise;

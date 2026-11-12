@@ -14,16 +14,17 @@
 //! step its style takes from the year its plot was first built), whether it
 //! stands in the hills (stone for wash and brick), whether a neighbour stands
 //! close on either side, its `Street` (the family its street's walls and
-//! tiles run in, and how far the street's houses stand back), and the
-//! `Detail` it is to be drawn at.
+//! tiles run in, and the street's habits), and the `Detail` it is to be
+//! drawn at.
 //!
 //! What a house looks like follows from what it is told, so that variety
-//! means something: a narrow plot takes a cottage end-on to the street and a
-//! wide one a long house or one with a cross-wing; a cottage raised a storey
-//! in a later age shows the later work above the old; a townhouse given a
-//! new front keeps its old sides and roof behind it; and wall and roof run in
-//! families along a street. The seed settles the rest (where the stacks
-//! stand, a hipped end, rooms in the roof, an outshut).
+//! means something: wall and roof run in families along a street, and a
+//! street has habits of building that the next street has not (hipped
+//! ends, rooms in the roof, a gable to the street, a cross-wing where the
+//! plots are wide); a cottage raised a storey in a later age shows the
+//! later work above the old. A house that is told none of this is the house
+//! it always was: `tests/houses_as_told.rs` holds it to that, corner for
+//! corner, at every level of detail.
 
 mod cottage;
 mod farmhouse;
@@ -86,29 +87,28 @@ pub fn villa_plot(built: i32, seed: Seed) -> bool {
 /// What a house is told of the street it stands in. The layout knows the
 /// street, and with it variety means something: the wash or the brick of the
 /// walls and the tint of the tiles run in families along a street, and a
-/// street has a building line of its own.
+/// street has its habits (hipped ends, rooms in the roof, where the stacks
+/// stand, a gable to the street), so that two streets of one town are not
+/// the same street twice.
+///
+/// A house told nothing of its street (`Street::ALONE`) chooses every colour
+/// for itself and takes none of the habits: it is the house it was before
+/// houses were told of their streets, to the last corner (the test
+/// `tests/houses_as_told.rs` holds that).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Street {
-    /// two numbers that the houses of one street share (a district's
-    /// streets may share them too). None for a house that is told nothing
-    /// of its street: it then chooses for itself, as every house once did
+    /// two numbers that the houses of one street share. None for a house
+    /// that is told nothing of its street
     pub family: Option<Seed>,
-    /// how far behind the front of its plot the house stands: nothing where
-    /// a street's houses stand hard on it, a forecourt's or a front
-    /// garden's depth where its building line stands back (up to `FORE_MOST`)
-    pub fore: f32,
 }
-
-/// The deepest forecourt or front garden a plot of the usual depth has room for.
-pub const FORE_MOST: f32 = 0.008;
 
 impl Street {
     /// A house told nothing of its street.
-    pub const ALONE: Street = Street { family: None, fore: 0.0 };
+    pub const ALONE: Street = Street { family: None };
 
-    /// A street of a family, its houses hard on it.
+    /// A street of a family.
     pub fn of(family: Seed) -> Street {
-        Street { family: Some(family), fore: 0.0 }
+        Street { family: Some(family) }
     }
 
     /// One of `n` things (washes, bricks, tints of tile) as a number from 0
@@ -137,6 +137,16 @@ impl Street {
             Some(f) if share > 0.0 && share < 1.0 => (share + (f.pick(slot) - 0.5) * 1.3).clamp(0.0, 1.0),
             _ => share,
         }
+    }
+
+    /// The share of a street's houses that take a form no house took
+    /// before houses were told of their streets (a hipped roof, rooms in the
+    /// roof, a stack in the middle of the ridge): `share` of them over all
+    /// the streets, leaning from street to street as `lean` does, so that a
+    /// form is one street's habit and is hardly seen in the next. A house
+    /// told nothing of its street takes none of them.
+    fn habit(&self, share: f32, slot: i32) -> f32 {
+        if self.family.is_some() { self.lean(share, slot) } else { 0.0 }
     }
 }
 

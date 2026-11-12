@@ -2,7 +2,7 @@ use crate::colour::shade;
 use crate::hash::Seed;
 use crate::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, Wall, FOOT};
 use crate::houses::roof::{Cover, Roof};
-use crate::houses::{door, door_at, garden_tree, hearth_smoke, timber_frame, window, window_at, Fabric, Street, BACK_ROOM, FORE_MOST, SET_BACK};
+use crate::houses::{door, door_at, garden_tree, hearth_smoke, timber_frame, window, window_at, Fabric, Street, BACK_ROOM, SET_BACK};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::kit::STOREY;
@@ -13,8 +13,8 @@ use crate::trees::Greenery;
 #[derive(Clone, Copy, Debug)]
 pub struct Cottage {
     /// the plot it stands on; the house is a little narrower, so the gaps
-    /// show. A plot narrower than `NARROW_PLOT` takes its house end-on to
-    /// the street; one of `WIDE_PLOT` or more has room for a cross-wing
+    /// show. In a street of a family a plot of `WIDE_PLOT` or more has
+    /// room for a cross-wing
     pub plot_width: f32,
     pub plot_depth: f32,
     /// one to three
@@ -27,8 +27,8 @@ pub struct Cottage {
     pub upland: bool,
     /// a house stands close on its left (as seen from the street) and on its right
     pub neighbours: (bool, bool),
-    /// the family its street's walls and tiles run in, and how far its
-    /// street's houses stand back from the fronts of their plots
+    /// the family its street's walls and tiles run in, and its street's
+    /// habits of building (`Street::ALONE` for a house told nothing of it)
     pub street: Street,
     /// it was built lower and raised to the storeys it has now in this age.
     /// Where that is a later age than its own, the later work shows above
@@ -41,10 +41,9 @@ pub struct Cottage {
     pub seed: Seed,
 }
 
-/// A plot narrower than this takes its cottage end-on to the street, as the
-/// narrow plots of an old street do.
-pub const NARROW_PLOT: f32 = 0.045;
-/// A plot at least this wide has room for a cottage with a cross-wing, or a long one of four bays.
+/// A plot at least this wide has room for a cottage with a cross-wing, or
+/// a long one of four bays: the widest plots of a town's ways out, and those
+/// of its furthest lanes.
 pub const WIDE_PLOT: f32 = 0.056;
 
 /// How a cottage stands on its plot.
@@ -64,18 +63,19 @@ impl Cottage {
         Cottage { plot_width, plot_depth, storeys, roof, era: Era::Georgian, upland: false, neighbours: (false, false), street: Street::ALONE, raised: None, detail: Detail::Near, seed }
     }
 
-    /// How it stands on its plot: by the width of the plot first, and then
-    /// by a number of its own. On a narrow plot every cottage is end-on; on
-    /// a wide one four in ten have a cross-wing; and of the cottages built
-    /// before the brick years one in eight on a plot of the usual width
-    /// stands end-on.
+    /// How it stands on its plot. A cottage told nothing of its street
+    /// stands with its ridge along it, as every cottage once did. In a
+    /// street of a family the street's habit settles it, and a number of
+    /// the house's own: on a plot of `WIDE_PLOT` or more four in ten have
+    /// a cross-wing, taking the streets together; and of the cottages built
+    /// before the brick years on the narrower plots one in seven stands
+    /// end-on, its gable to the street, as the old lanes of a town have
+    /// them. Either is common in one street and not seen in the next.
     pub fn form(&self) -> Form {
         let own = self.seed.pick(45);
-        if self.plot_width < NARROW_PLOT {
-            Form::EndOn
-        } else if self.plot_width >= WIDE_PLOT && own < 0.42 {
-            Form::Wing
-        } else if self.era <= Era::Georgian && own > 0.875 {
+        if self.plot_width >= WIDE_PLOT {
+            if own < self.street.habit(0.4, 7) { Form::Wing } else { Form::Along }
+        } else if self.era <= Era::Georgian && own > 1.0 - self.street.habit(0.14, 8) {
             Form::EndOn
         } else {
             Form::Along
@@ -90,18 +90,16 @@ pub fn storeys(density: f32, seed: Seed) -> u8 {
 
 /// How far the upper storeys of a timber house oversail its ground storey.
 const JETTY: f32 = 0.0026;
-/// How far behind the back of its plot's building ground a house set back from its street may stand.
-const BEHIND: f32 = 0.003;
 /// How much higher than a storey the eaves of a cottage with rooms in its roof stand.
 const HALF_STOREY: f32 = 0.4;
 
 /// How the walls of a range are put up.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 enum Build {
     /// in one build, from the ground to the eaves
     Whole,
-    /// the storeys above oversail the ground storey at the front
-    Jettied,
+    /// the storeys above oversail the ground storey at the front: where the back and the front of the range are
+    Jettied(f32, f32),
     /// the ground storey of one age, what is above it of a later one
     Raised,
 }
@@ -141,7 +139,8 @@ fn put_up(k: &mut Kit, rg: &Range, y0: f32, h: f32, lower: &Wall, upper: &Wall, 
         return;
     }
     // the ground storey stands back under the storeys above, at the front only
-    let ground = Range { cz: rg.cz - JETTY * 0.5, dep: rg.dep - JETTY, ..*rg };
+    let Build::Jettied(back, front) = how else { return };
+    let ground = Range::rect(rg.cx - rg.len * 0.5, rg.cx + rg.len * 0.5, back, front - JETTY);
     k.walls(&ground, y0, STOREY, lower, [f.side(0, &parts[0].0), f.side(1, &parts[1].0), Side::NONE, f.side(3, &parts[3].0)], true, false);
     k.walls(rg, STOREY, h, lower, [f.side(0, &parts[0].1), f.side(1, &parts[1].1), Side::NONE, f.side(3, &parts[3].1)], false, true);
     k.walls(rg, y0, h, lower, [Side::NONE, Side::NONE, f.side(2, &f.ops[2]), Side::NONE], true, true);
@@ -160,19 +159,18 @@ fn put_up(k: &mut Kit, rg: &Range, y0: f32, h: f32, lower: &Wall, upper: &Wall, 
 /// under a catslide or a lean-to. Every one has a chimney, and a few of
 /// them smoke.
 ///
-/// What it is told settles how it stands (`Cottage::form`): its ridge along
-/// the street; end-on, its gable to the street, on a narrow plot; or with a
-/// cross-wing on a wide one. A wide plot's cottage is long, of four bays.
-/// Where its street's building line stands back it has a front garden. One
-/// that was raised in a later age shows it (`Cottage::raised`). Its walls
-/// and its tiles run in its street's family.
-///
-/// The rest is the seed's: how much of its plot's width it takes; a roof
-/// hipped at both ends on one in four of those built from the eighteenth
-/// century on; rooms in the roof on one in five of one storey, their
-/// windows in small gables standing on the eaves; and where its chimney
-/// stands: at one end (built against the end wall on the older ones), on the
-/// ridge in the middle, as the oldest plans had it, or at both ends.
+/// A cottage told nothing of its street is as it always was: its ridge
+/// along the street, gabled, one chimney at an end. In a street of a family
+/// (`Street`) its walls and its tiles run in the family, and the street's
+/// habits and a number of its own settle the rest: how it stands
+/// (`Cottage::form`: along the street, end-on with its gable to it and
+/// running back down its plot, or with a cross-wing on a wide plot, where
+/// the longest have four bays); a roof hipped at both ends on those built
+/// from the eighteenth century on; rooms in the roof of a cottage of one
+/// storey, their windows in small gables standing on the eaves; and where
+/// its chimney stands: at one end, on the ridge in the middle, as the oldest
+/// plans had it, or at both ends. One that was raised in a later age shows
+/// it (`Cottage::raised`).
 ///
 /// From far off it is its walls and its roof. At the distance the game is
 /// played from it has its openings, its chimney, its outshut, the green of
@@ -191,7 +189,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     let mut k = Kit::new(solid, site, pal, c.detail, (v - 0.5) * 0.1 * age.max(0.3));
     let (pw, pd) = (c.plot_width, c.plot_depth);
     let form = c.form();
-    let fore = c.street.fore.clamp(0.0, FORE_MOST);
+    let st = &c.street;
     let n = c.storeys.max(1) as usize;
     let roof = if n > 1 { c.roof.rebuilt() } else { c.roof };
     let (lie, thatch) = (roof.cover.lie(), roof.cover == Cover::Thatch);
@@ -205,26 +203,26 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     let how = if later.is_some() && (above.col != wall.col || fabric.timber || glazing_above != glazing) {
         Build::Raised
     } else if fabric.timber && n >= 2 && later.is_none() && form != Form::Wing && !k.far() {
-        Build::Jettied
+        Build::Jettied(0.0, 0.0)
     } else {
         Build::Whole
     };
     // rooms in the roof: the eaves stand at a storey and a half
-    let half = n == 1 && !thatch && form != Form::Wing && r(46) < 0.2;
+    let half = n == 1 && !thatch && form != Form::Wing && r(46) < st.habit(0.2, 9);
     let h = STOREY * n as f32 * if thatch { 0.92 } else { 1.0 } + if half { STOREY * HALF_STOREY } else { 0.0 };
 
     // how much of its plot it takes, by how it stands
     let (w, d, wing_d) = match form {
         Form::Along => (pw * (0.66 + 0.2 * v), pd * (0.74 + 0.12 * u), 0.0),
-        Form::EndOn => ((pw * if pw < NARROW_PLOT { 0.78 } else { 0.5 + 0.1 * v }).min(0.034), pd * (0.8 + 0.1 * u), 0.0),
+        // (end-on it runs back down its plot, into the ground an outshut would take)
+        Form::EndOn => (pw * (0.5 + 0.08 * v), pd * (0.96 + 0.14 * u), 0.0),
         Form::Wing => (pw * (0.72 + 0.14 * v), pd * (0.62 + 0.1 * u), 0.0058 + 0.003 * r(49)),
     };
-    // the front of the house, and of its range where a wing stands forward of it; a house
-    // set back from its street may stand a little behind its plot's building ground
-    let (hw, zf) = (w * 0.5, pd * 0.5 - 0.0035 - fore);
+    // the front of the house, and of its range where a wing stands forward of it
+    let (hw, zf) = (w * 0.5, pd * 0.5 - 0.0035);
     let zfm = zf - wing_d;
-    let d = d.min(zfm + pd * 0.5 - 0.0015 + BEHIND.min(fore));
     let zb = zfm - d;
+    let how = if let Build::Jettied(..) = how { Build::Jettied(zb, zfm) } else { how };
     let body = Range::rect(-hw, hw, zb, zfm);
     // the range its roof is fitted to: for a house end-on, the same ground with its length running to the front
     let roofed = if form == Form::EndOn { Range { cx: 0.0, cz: (zfm + zb) * 0.5, len: d, dep: w, turn: 3 } } else { body };
@@ -243,7 +241,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
 
     // the outshut at the back: across the whole of it, or over one end
     let rear = -pd * 0.5 - BACK_ROOM + 0.001;
-    let out_depth = (zb - rear - 0.002).min(0.0085);
+    let out_depth = if form == Form::Along { 0.0085 } else { (zb - rear - 0.002).min(0.0085) };
     let outshut = n <= 2 && r(6) < 0.55 && out_depth >= 0.006 && !k.far();
     let (ox0, ox1) = if r(7) < 0.35 || form == Form::EndOn { (-hw, hw) } else if r(7) < 0.68 { (-hw, -hw + w * 0.58) } else { (hw - w * 0.58, hw) };
     let under = |x: f32| outshut && x > ox0 && x < ox1;
@@ -251,7 +249,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     // openings by rule: two to four bays, the door in one of them, a window over each
     let bays = match form {
         Form::EndOn => 2,
-        _ if w >= 0.052 => 4,
+        _ if w >= 0.052 && st.family.is_some() => 4,
         _ if w >= 0.04 => 3,
         _ => 2,
     };
@@ -307,7 +305,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         // the frame shows on what is left of the house as it was built
         let top = if how == Build::Raised { STOREY - 0.0014 } else { h };
         let posts: Vec<f32> = (1..bays).map(|b| w * b as f32 / bays as f32).collect();
-        if how == Build::Jettied {
+        if let Build::Jettied(..) = how {
             timber_frame(&mut k, &Range::rect(-hw, hw, zb, zfm - JETTY), 0, FOOT, STOREY - 0.0014, &posts);
             timber_frame(&mut k, &body, 0, STOREY + 0.0008, h, &posts);
         } else {
@@ -320,7 +318,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
 
     let colour = roof.colour_in(pal, c.seed, &c.street);
     let half_hipped = thatch && r(8) < 0.5 && form == Form::Along && !k.far();
-    let hipped = !thatch && c.era >= Era::Georgian && form == Form::Along && r(40) < 0.26;
+    let hipped = !thatch && c.era >= Era::Georgian && form == Form::Along && r(40) < st.habit(0.26, 10);
     let end = if half_hipped { End::HalfHip } else if hipped { End::Hip } else { End::Gable };
     let verge = if form == Form::EndOn { lie.verge.max(0.0024) } else { lie.verge };
     let spec = RoofSpec { h, rise, eaves: lie.eaves, verge, ends: [end, end], col: colour, gable: gable_wall, thick: lie.thick };
@@ -338,7 +336,8 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
         } else {
             wf.dark[3] = (true, false);
         }
-        put_up(&mut k, &rg, -k.drop(&rg), h, &wall, &above, if how == Build::Raised { how } else { Build::Whole }, &wf);
+        let wy0 = -k.drop(&rg);
+        put_up(&mut k, &rg, wy0, h, &wall, &above, if how == Build::Raised { how } else { Build::Whole }, &wf);
         let wing_rise = (wing_w * 0.5 * spec.pitch(&body)).min(rise * 0.9);
         let run = d * 0.5 * wing_rise / rise;
         let over = Range { cx: (wx0 + wx1) * 0.5, cz: zfm + wing_d * 0.5, len: wing_d, dep: wing_w, turn: 3 };
@@ -409,7 +408,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
                 // on the ridge in the middle, between two rooms, as the oldest plans have it and
                 // every long house; at both ends of the wider houses of the later ages; or at one end
                 let from = h + rise * if hipped { 0.12 } else { 0.45 };
-                let middle = bays == 4 || r(47) < if c.era == Era::Old { 0.5 } else if c.era == Era::Georgian { 0.18 } else { 0.0 };
+                let middle = bays == 4 || r(47) < st.habit(if c.era == Era::Old { 0.5 } else if c.era == Era::Georgian { 0.18 } else { 0.0 }, 11);
                 let outside = age >= 0.5 && !half_hipped && !hipped && hw + 0.0042 <= pw * 0.5 - 0.0003;
                 if middle {
                     let x = if bays == 3 { side * w / 6.0 } else { 0.0 };
@@ -421,7 +420,7 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
                     k.stack((x0 + x1) * 0.5, zm, 0.0042, 0.0054, h * 0.86 - 0.001, top, fabric.stack, 1)
                 } else {
                     let at = k.stack(side * (hw - 0.0046), zm, 0.0056, 0.0052, from, top, fabric.stack, if bays >= 3 { 2 } else { 1 });
-                    if bays >= 3 && c.era >= Era::Georgian && r(47) > 0.62 {
+                    if bays >= 3 && c.era >= Era::Georgian && r(47) > 1.0 - st.habit(0.38, 12) {
                         k.stack(-side * (hw - 0.0046), zm, 0.0056, 0.0052, from, top, fabric.stack, 1);
                     }
                     at
@@ -432,10 +431,9 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
             hearth_smoke(smoke, at, c.seed, pal);
         }
 
-        // the garden: the plot and the ground behind it, and before the house where it stands back
+        // the garden: the plot and the ground behind it
         let (gx0, gx1) = (-pw * 0.5 + 0.0008, pw * 0.5 - 0.0008);
-        let front = if fore >= 0.003 { pd * 0.5 - 0.0004 } else { zf + 0.001 };
-        k.patch(gx0, gx1, rear, front, 0.0034, *pal.ground.garden);
+        k.patch(gx0, gx1, rear, zf + 0.001, 0.0034, *pal.ground.garden);
         if k.near() {
             let door_x = -hw + bay_at(door_bay);
             k.patch(door_x - 0.002, door_x + 0.002, zfm + 0.002, pd * 0.5 + SET_BACK - 0.0005, 0.0042, *pal.ground.garden_path);
@@ -453,12 +451,6 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
             let (bound, bh, bt) = if c.upland { (*pal.stone.garden_wall, 0.0042, 0.0018) } else if age >= 0.5 { (*pal.foliage.hedge, 0.005, 0.0026) } else { (*pal.timber.fence, 0.0045, 0.0008) };
             k.low_wall((gx0 + 0.001, rear), (gx1, rear), bh, bt, bound);
             k.low_wall((gx0 + 0.001, rear), (gx0 + 0.001, zb), bh, bt, bound);
-            if fore >= 0.003 {
-                // and along the street, either side of the way to the door
-                let z = pd * 0.5 - 0.0012;
-                k.low_wall((gx0 + 0.001, z), (door_x - 0.0026, z), bh * 0.8, bt, bound);
-                k.low_wall((door_x + 0.0026, z), (gx1, z), bh * 0.8, bt, bound);
-            }
             // wood cut for the winter against the end wall away from the chimney, and a butt under the eaves
             if r(13) < 0.6 && pw * 0.5 - hw > 0.0042 {
                 let x = -side * (hw + 0.0002);
@@ -500,16 +492,15 @@ mod tests {
         roofed(storeys, Roof::of(1750, 1850, false, false, seed), seed)
     }
 
-    /// The first seed from `from` whose cottage of the late years on the usual plot answers to `want`.
-    fn seed_where(from: u32, want: impl Fn(&Cottage) -> bool) -> Seed {
-        (from..from + 400).map(Seed::of).find(|&s| want(&Cottage { era: Era::Late, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof { cover: Cover::Tile, weathering: 0 }, s) })).expect("a seed")
+    /// A street of a family: the `n`th of them.
+    fn street(n: u32) -> Street {
+        Street::of(Seed::of(700 + n))
     }
 
     #[test]
     fn thatch_is_steeper_and_stays_only_on_one_storey() {
         let pal = Palette::standard();
-        // (a cottage with no rooms in its roof: those stand higher at the eaves)
-        let seed = seed_where(2, |c| c.seed.pick(46) >= 0.2);
+        let seed = Seed::of(2);
         let (thatch, tile) = (Roof { cover: Cover::Thatch, weathering: 0 }, Roof { cover: Cover::Tile, weathering: 0 });
         let far = |roof: Roof| built(&Cottage { detail: Detail::Far, era: Era::Late, ..Cottage::new(PLOT.0, PLOT.1, 1, roof, seed) });
         let (a, b) = (far(thatch), far(tile));
@@ -532,8 +523,8 @@ mod tests {
         assert_ne!(storeys(0.5, Seed::new(0.5, 0.1)), storeys(0.5, Seed::new(0.5, 0.9)));
     }
 
-    /// The plots a cottage is tried on: narrow, the usual, and wide; and how far its street's houses stand back.
-    const PLOTS: [(f32, f32); 5] = [(0.043, 0.0), (PLOT.0, 0.0), (PLOT.0, FORE_MOST), (0.06, 0.004), (0.068, FORE_MOST)];
+    /// The widths of plot a cottage is tried on: a back lane's, the usual, and the wide ones of the ways and the furthest lanes.
+    const WIDTHS: [f32; 4] = [crate::houses::BACK_PLOT_WIDTH, PLOT.0, 0.06, 0.066];
 
     #[test]
     fn it_stays_on_its_plot_and_grows_with_its_storeys() {
@@ -541,19 +532,21 @@ mod tests {
             let seed = Seed::of(n);
             for era in Era::ALL {
                 for detail in Detail::ALL {
-                    for (width, fore) in PLOTS {
-                        let mut last = 0.0;
-                        for storeys in 1..=3 {
-                            let street = Street { family: (n % 2 == 0).then(|| Seed::of(n / 2)), fore };
-                            let raised = (storeys > 1 && n % 3 > 0).then_some(Era::Late);
-                            let m = built(&Cottage { era, detail, upland: n % 5 == 0, street, raised, ..Cottage::new(width, PLOT.1, storeys, Roof::of(1750, 1850, false, false, seed), seed) });
-                            let (lo, hi) = m.solid.bounds().unwrap();
-                            // the eaves of the widest, turned a little, overhang the plot by a hair, no more
-                            assert!(lo.x > -width * 0.5 - 0.004 && hi.x < width * 0.5 + 0.004, "seed {n} {era:?} on {width}: from {} to {}", lo.x, hi.x);
-                            // behind, it keeps to its plot and the room behind that; before, to its path
-                            assert!(lo.z > -PLOT.1 * 0.5 - BACK_ROOM - 0.003 && hi.z < PLOT.1 * 0.5 + SET_BACK + 0.003, "seed {n} {era:?} on {width}, {fore} back: from {} to {}", lo.z, hi.z);
-                            assert!(hi.y > last, "seed {n}: no taller at {storeys} storeys");
-                            last = hi.y;
+                    for width in WIDTHS {
+                        // told nothing of its street, and in three streets
+                        for st in [Street::ALONE, street(n), street(n + 1), street(n + 2)] {
+                            let mut last = 0.0;
+                            for storeys in 1..=3 {
+                                let raised = (storeys > 1 && n % 3 > 0).then_some(Era::Late);
+                                let m = built(&Cottage { era, detail, upland: n % 5 == 0, street: st, raised, ..Cottage::new(width, PLOT.1, storeys, Roof::of(1750, 1850, false, false, seed), seed) });
+                                let (lo, hi) = m.solid.bounds().unwrap();
+                                // the eaves of the widest, turned a little, overhang the plot by a hair, no more
+                                assert!(lo.x > -width * 0.5 - 0.004 && hi.x < width * 0.5 + 0.004, "seed {n} {era:?} on {width}: from {} to {}", lo.x, hi.x);
+                                // behind, it keeps to its plot and the room behind that; before, to its path
+                                assert!(lo.z > -PLOT.1 * 0.5 - BACK_ROOM - 0.003 && hi.z < PLOT.1 * 0.5 + SET_BACK + 0.003, "seed {n} {era:?} on {width}: from {} to {}", lo.z, hi.z);
+                                assert!(hi.y > last, "seed {n}: no taller at {storeys} storeys");
+                                last = hi.y;
+                            }
                         }
                     }
                 }
@@ -572,11 +565,11 @@ mod tests {
         let pal = Palette::standard();
         let mut smoking = 0;
         for n in 0..400 {
-            for width in [0.043, PLOT.0, 0.062] {
+            for (width, st) in [(PLOT.0, Street::ALONE), (crate::houses::BACK_PLOT_WIDTH, street(n / 20)), (PLOT.0, street(n / 20)), (0.062, street(n / 20))] {
                 let seed = Seed::of(n);
-                let m = built(&Cottage::new(width, PLOT.1, 1, Roof::of(1750, 1850, false, false, seed), seed));
+                let m = built(&Cottage { street: st, era: Era::ALL[n as usize % 4], ..Cottage::new(width, PLOT.1, 1, Roof::of(1750, 1850, false, false, seed), seed) });
                 assert!(m.solid.col.contains(&*pal.smoke.stack_top), "seed {n} on {width} has no chimney");
-                smoking += (width == PLOT.0 && !m.smoke.is_empty()) as usize;
+                smoking += (st == Street::ALONE && !m.smoke.is_empty()) as usize;
             }
         }
         assert!((50..130).contains(&smoking), "{smoking} of 400 smoke");
@@ -587,8 +580,8 @@ mod tests {
         let pal = Palette::standard();
         for n in 0..60 {
             let seed = Seed::of(n);
-            for width in [0.043, PLOT.0, 0.062] {
-                let c = Cottage { era: Era::of(1700 + 5 * n as i32), ..Cottage::new(width, PLOT.1, 2, Roof::of(1750, 1850, false, false, seed), seed) };
+            for (width, st) in [(PLOT.0, Street::ALONE), (crate::houses::BACK_PLOT_WIDTH, street(n / 6)), (PLOT.0, street(n / 6)), (0.062, street(n / 6))] {
+                let c = Cottage { street: st, era: Era::of(1700 + 5 * n as i32), ..Cottage::new(width, PLOT.1, 2, Roof::of(1750, 1850, false, false, seed), seed) };
                 let at = |detail: Detail| built(&Cottage { detail, ..c });
                 let (far, play, near) = (at(Detail::Far), at(Detail::Play), at(Detail::Near));
                 // four walls, two slopes and two gables or hips; with a cross-wing three walls
@@ -612,8 +605,7 @@ mod tests {
     #[test]
     fn the_oldest_sag_at_the_ridge_and_the_newest_are_level() {
         let pal = Palette::standard();
-        // (a cottage with its ridge along the street)
-        let seed = seed_where(7, |c| Cottage { era: Era::Old, ..*c }.form() == Form::Along);
+        let seed = Seed::of(7);
         let roof = Roof { cover: Cover::Tile, weathering: 3 };
         let ridge = |era: Era| {
             let m = built(&Cottage { era, ..Cottage::new(PLOT.0, PLOT.1, 1, roof, seed) });
@@ -632,9 +624,9 @@ mod tests {
         let slope = |x: f32, z: f32| 0.1 + x * 0.15 + z * 0.1;
         let pal = Palette::standard();
         let seed = Seed::of(5);
-        for width in [0.043, PLOT.0, 0.062] {
+        for (width, st) in [(PLOT.0, Street::ALONE), (crate::houses::BACK_PLOT_WIDTH, street(3)), (0.062, street(4))] {
             let mut m = Model::default();
-            let c = Cottage::new(width, PLOT.1, 2, Roof::of(1750, 1850, false, false, seed), seed);
+            let c = Cottage { street: st, ..Cottage::new(width, PLOT.1, 2, Roof::of(1750, 1850, false, false, seed), seed) };
             cottage(&mut m.solid, &mut m.smoke, &mut m.green, &Site::on(Vec3::new(0.0, 0.1, 0.0), 0.0, &slope), &c, &pal);
             assert!(m.is_sound());
             // walls reach the ground at the lowest corner, and nothing is buried deeper than the fall across the plot
@@ -644,42 +636,74 @@ mod tests {
     }
 
     #[test]
-    fn the_plot_settles_how_it_stands() {
+    fn the_street_and_the_plot_settle_how_it_stands() {
         let roof = Roof { cover: Cover::Tile, weathering: 1 };
-        let on = |width: f32, n: u32, era: Era| Cottage { era, ..Cottage::new(width, PLOT.1, 1, roof, Seed::of(n)) };
-        // every cottage on a narrow plot stands end-on, and none of the brick years on the usual plot
-        assert!((0..200).all(|n| on(0.043, n, Era::Late).form() == Form::EndOn));
-        assert!((0..200).all(|n| on(PLOT.0, n, Era::Brick).form() == Form::Along));
-        let count = |width: f32, era: Era, form: Form| (0..400).filter(|&n| on(width, n, era).form() == form).count();
-        assert!((25..80).contains(&count(PLOT.0, Era::Georgian, Form::EndOn)));
-        assert_eq!(count(PLOT.0, Era::Georgian, Form::Wing), 0);
-        assert!((130..210).contains(&count(0.06, Era::Brick, Form::Wing)));
-        for n in 0..40 {
+        let on = |width: f32, n: u32, era: Era, st: Street| Cottage { era, street: st, ..Cottage::new(width, PLOT.1, 1, roof, Seed::of(n)) };
+        let count = |width: f32, era: Era, st: Street, form: Form| (0..200).filter(|&n| on(width, n, era, st).form() == form).count();
+        // told nothing of its street, every cottage stands along it, whatever its plot
+        for width in WIDTHS {
+            assert_eq!(count(width, Era::Old, Street::ALONE, Form::Along), 200);
+        }
+        // over many streets: a wing on four in ten of the wide plots and on none of the others;
+        // end-on, one in seven of those built before the brick years on the narrower plots, and
+        // none built after; and either is one street's habit, hardly seen in the next
+        let (mut wings, mut end_on, mut streets_with, mut streets_of) = (0, 0, 0, 0);
+        for s in 0..60 {
+            let st = street(s);
+            let (w, e) = (count(0.06, Era::Brick, st, Form::Wing), count(PLOT.0, Era::Georgian, st, Form::EndOn));
+            wings += w;
+            end_on += e;
+            streets_with += (e > 0) as usize;
+            streets_of += (e > 60) as usize;
+            assert_eq!(count(PLOT.0, Era::Georgian, st, Form::Wing) + count(0.06, Era::Old, st, Form::EndOn) + count(PLOT.0, Era::Brick, st, Form::EndOn), 0);
+        }
+        assert!((60 * 60..60 * 100).contains(&wings), "{wings} of 12000 with a wing");
+        assert!((60 * 20..60 * 50).contains(&end_on), "{end_on} of 12000 end-on");
+        assert!((15..45).contains(&streets_with) && streets_of >= 3, "{streets_with} streets of 60 have a cottage end-on, {streets_of} have many");
+        for n in 0..200 {
             let size = |c: &Cottage| {
                 let (lo, hi) = built(&Cottage { detail: Detail::Far, ..*c }).solid.bounds().unwrap();
                 (hi.x - lo.x, hi.z - lo.z)
             };
-            // end-on it is narrower than it is deep, and along the street the other way about
-            let (w, d) = size(&on(0.043, n, Era::Georgian));
-            assert!(w < d, "seed {n}: {w} wide and {d} deep end-on");
-            let c = on(PLOT.0, n, Era::Late);
+            // end-on it is narrower than it is deep, verges and all, by an eighth at the least,
+            // and along the street the other way about
+            let st = street(n / 10);
+            let c = on(PLOT.0, n, Era::Georgian, st);
             let (w, d) = size(&c);
-            assert!(w > d - 0.003, "seed {n}: {w} wide and {d} deep along the street");
+            match c.form() {
+                Form::EndOn => assert!(w * 1.125 < d, "seed {n}: {w} wide and {d} deep end-on"),
+                _ => assert!(w > d - 0.003, "seed {n}: {w} wide and {d} deep along the street"),
+            }
             // a wide plot's cottage is longer than the usual plot's
-            assert!(size(&on(0.066, n, Era::Late)).0 > w + 0.006, "seed {n}");
+            if c.form() == Form::Along {
+                assert!(size(&on(0.066, n, Era::Late, st)).0 > w + 0.006, "seed {n}");
+            }
         }
     }
 
     #[test]
-    fn a_house_set_back_stands_behind_a_front_garden() {
-        for n in 0..40 {
-            let seed = Seed::of(n);
-            let c = Cottage { detail: Detail::Far, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof::of(1790, 1850, false, false, seed), seed) };
-            let front = |fore: f32| built(&Cottage { street: Street { family: None, fore }, ..c }).solid.bounds().unwrap().1.z;
-            assert!(front(0.0) - front(0.006) > 0.0055, "seed {n}: {} then {}", front(0.0), front(0.006));
-            // and no further than the deepest forecourt, whatever it is told
-            assert_eq!(front(FORE_MOST), front(0.05));
+    fn a_street_s_habits_show_in_its_roofs() {
+        // over many streets a quarter of the tiled cottages of the later ages are hipped and a
+        // fifth of those of one storey have rooms in the roof; in a street it is most or none
+        let roof = Roof { cover: Cover::Tile, weathering: 1 };
+        let shell = 4 * 2 + 2 * 2 + 2;
+        let (mut taller, mut streets_none, mut streets_most) = (0, 0, 0);
+        for s in 0..60 {
+            let mut here = 0;
+            for n in 0..40 {
+                let c = Cottage { era: Era::Late, detail: Detail::Far, ..Cottage::new(PLOT.0, PLOT.1, 1, roof, Seed::of(n)) };
+                let (alone, told) = (built(&c), built(&Cottage { street: street(s), ..c }));
+                // whatever its roof, from far off it is a shell: as many triangles
+                assert_eq!(told.solid.triangles(), shell);
+                // with rooms in its roof it stands higher at the eaves, and so at the ridge
+                here += (told.solid.bounds().unwrap().1.y > alone.solid.bounds().unwrap().1.y + STOREY * 0.3) as usize;
+            }
+            taller += here;
+            streets_none += (here == 0) as usize;
+            streets_most += (here > 20) as usize;
         }
+        assert!((60 * 4..60 * 12).contains(&taller), "{taller} of 2400 have rooms in the roof");
+        assert!(streets_none >= 12 && streets_most >= 3, "{streets_none} streets of 60 with none, {streets_most} with most");
     }
 
     #[test]

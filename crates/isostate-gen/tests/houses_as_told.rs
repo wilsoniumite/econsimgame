@@ -1,0 +1,154 @@
+//! The houses are held to what they were before the towns' second pass.
+//!
+//! A house that is told only what a house was told then (its plot, storeys,
+//! roof, age, whether it stands in the hills, its neighbours, its seed) comes
+//! out as it did then, mesh for mesh, at all three levels of detail. What
+//! was added since is told in fields of its own (the street's family, the age
+//! a cottage was raised in), and each of them has a value that says "told
+//! nothing": the constructors (`Cottage::new` and the rest) give it. So every
+//! difference in a picture of a town is a difference in what the layout knows
+//! and tells, and none is a change to the houses themselves.
+//!
+//! The numbers below are sums over every corner, facing, colour and triangle
+//! of some thousands of houses of each kind, taken from the generators as
+//! they stood when the town ground landed (commit 09c7f6a). To take them
+//! again after a change that is meant to move a house told nothing, run
+//! `cargo test -p isostate-gen --test houses_as_told -- --nocapture`, which
+//! prints the sums it finds beside those it expects.
+
+use glam::Vec3;
+use isostate_gen::houses::roof::{Cover, Roof};
+use isostate_gen::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
+use isostate_gen::{MeshBuf, Model, Palette, Seed, Site};
+
+/// A running sum of everything in a model, in the order it was built.
+struct Sum(u64);
+
+impl Sum {
+    fn word(&mut self, w: u32) {
+        for b in w.to_le_bytes() {
+            self.0 = (self.0 ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+
+    fn buf(&mut self, b: &MeshBuf) {
+        self.word(b.pos.len() as u32);
+        for p in b.pos.iter().chain(&b.nrm) {
+            p.iter().for_each(|x| self.word(x.to_bits()));
+        }
+        for c in &b.col {
+            c.iter().for_each(|x| self.word(x.to_bits()));
+        }
+        self.word(b.idx.len() as u32);
+        b.idx.iter().for_each(|&i| self.word(i));
+    }
+
+    fn model(&mut self, m: &Model) {
+        for b in [&m.solid, &m.smoke, &m.green.evergreen, &m.green.leaves, &m.green.bare, &m.flat] {
+            self.buf(b);
+        }
+    }
+}
+
+/// The widths of plot the towns lay: a back lane's, a high street's, and what lies between and beyond.
+const WIDTHS: [f32; 5] = [BACK_PLOT_WIDTH, PLOT.0, 0.0537, 0.062, 0.066];
+
+/// The ground a house of the sum stands on: level for one in three, the rest on a slope, each turned its own way.
+fn slope(x: f32, z: f32) -> f32 {
+    0.2 + 0.11 * x - 0.07 * z
+}
+
+/// One sum for each level of detail (far, play, near) over the houses `build` makes for 240 seeds.
+fn sums(build: impl Fn(&mut Model, &Site, u32, Seed, Detail, &Palette)) -> [u64; 3] {
+    let pal = Palette::standard();
+    Detail::ALL.map(|detail| {
+        let mut sum = Sum(0xcbf2_9ce4_8422_2325);
+        for n in 0..240u32 {
+            let seed = Seed::of(n * 7 + 1);
+            let mut m = Model::default();
+            let at = Vec3::new(3.0 + 0.37 * n as f32, 0.0, 5.0 + 0.11 * n as f32);
+            if n % 3 == 0 {
+                build(&mut m, &Site::level(Vec3::new(at.x, 0.3, at.z), 0.4 * n as f32), n, seed, detail, &pal);
+            } else {
+                build(&mut m, &Site::on(Vec3::new(at.x, slope(at.x, at.z), at.z), 0.4 * n as f32, &slope), n, seed, detail, &pal);
+            }
+            assert!(m.is_sound());
+            sum.model(&m);
+        }
+        sum.0
+    })
+}
+
+fn era(n: u32) -> Era {
+    Era::ALL[(n / 3) as usize % 4]
+}
+
+fn roof(n: u32, seed: Seed) -> Roof {
+    match n % 5 {
+        0 => Roof { cover: Cover::Thatch, weathering: (n % 4) as u8 },
+        1 => Roof { cover: Cover::Slate, weathering: (n % 3) as u8 },
+        _ => Roof::of(1700 + (n as i32 * 13) % 190, 1900, n % 7 == 0, n % 2 == 0, seed),
+    }
+}
+
+fn neighbours(n: u32) -> (bool, bool) {
+    (n % 4 >= 2, n % 4 == 1 || n % 4 == 2)
+}
+
+fn check(kind: &str, found: [u64; 3], expected: [u64; 3]) {
+    let line = |s: [u64; 3]| format!("[{:#018x}, {:#018x}, {:#018x}]", s[0], s[1], s[2]);
+    println!("{kind}: found {}, expected {}", line(found), line(expected));
+    assert_eq!(found, expected, "a {kind} that is told nothing new is not the {kind} it was");
+}
+
+#[test]
+fn a_cottage_told_nothing_new_is_the_cottage_it_was() {
+    let found = sums(|m, site, n, seed, detail, pal| {
+        let c = Cottage { era: era(n), upland: n % 7 == 0, neighbours: neighbours(n), detail, ..Cottage::new(WIDTHS[n as usize % 5], PLOT.1, 1 + (n % 11 % 3) as u8, roof(n, seed), seed) };
+        cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal);
+    });
+    check("cottage", found, COTTAGE);
+}
+
+#[test]
+fn a_townhouse_told_nothing_new_is_the_townhouse_it_was() {
+    let found = sums(|m, site, n, seed, detail, pal| {
+        let t = Townhouse { era: era(n), upland: n % 7 == 0, shop: n % 3 == 1, neighbours: neighbours(n), detail, ..Townhouse::new(WIDTHS[n as usize % 5], PLOT.1, 2 + (n % 11 % 3) as u8, roof(n, seed), seed) };
+        townhouse(&mut m.solid, &mut m.smoke, site, &t, pal);
+    });
+    check("townhouse", found, TOWNHOUSE);
+}
+
+#[test]
+fn a_terrace_told_nothing_new_is_the_terrace_it_was() {
+    let found = sums(|m, site, n, seed, detail, pal| {
+        let houses = 2 + n as usize % 5;
+        let t = Terrace { era: era(n), upland: n % 7 == 0, detail, ..Terrace::new(houses, Terrace::length_of(houses, WIDTHS[n as usize % 3]), PLOT.1, 2 + (n % 4 == 3) as u8, roof(n, seed), seed) };
+        terrace(&mut m.solid, &mut m.smoke, site, &t, pal);
+    });
+    check("terrace", found, TERRACE);
+}
+
+#[test]
+fn a_villa_told_nothing_new_is_the_villa_it_was() {
+    let found = sums(|m, site, n, seed, detail, pal| {
+        let v = Villa { era: era(n), upland: n % 7 == 0, detail, ..Villa::new(WIDTHS[n as usize % 5], PLOT.1, roof(n, seed), seed) };
+        villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal);
+    });
+    check("villa", found, VILLA);
+}
+
+#[test]
+fn a_farmhouse_is_the_farmhouse_it_was() {
+    let found = sums(|m, site, n, seed, detail, pal| {
+        let f = Farmhouse { storeys: 1 + (n % 2) as u8, upland: n % 7 == 0, thatch: n % 3 == 0, wing: n % 5 < 2, detail, seed };
+        farmhouse(&mut m.solid, &mut m.smoke, site, &f, pal);
+    });
+    check("farmhouse", found, FARMHOUSE);
+}
+
+const COTTAGE: [u64; 3] = [0x51cdd81fabb0cac1, 0x12cd0990b9ccd8a6, 0xe955a43620921d29];
+const TOWNHOUSE: [u64; 3] = [0x13b84d346227a4cb, 0xea409a29b5f8e853, 0xfbac17fb276aab0e];
+const TERRACE: [u64; 3] = [0x6e968d8008cfd741, 0x01c6ca85a35088d3, 0xc08a275707f94a5e];
+const VILLA: [u64; 3] = [0x7629672e9baf5f08, 0x2371da0d06c40c7d, 0x2fab13f7584f7649];
+const FARMHOUSE: [u64; 3] = [0xe52acdc03ba7b5b3, 0xc4bd12b06e137bc1, 0xbcf6ae29cbd49aa5];

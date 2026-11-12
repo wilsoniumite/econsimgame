@@ -1124,6 +1124,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
                 roof: first.roof,
                 era: Era::of(first.year),
                 upland: r.terrain[first.lot.cell as usize] >= 2,
+                street: houses::Street::ALONE,
                 detail: into.lod.at(mid.x, mid.y),
                 seed,
             };
@@ -1226,7 +1227,7 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
     // streets (those of the brick years are terraces from the first)
     let rebuilt = s.before + if s.lot.road { 10 + (38.0 * pl.v) as usize } else { 28 + (56.0 * pl.v) as usize };
     if villa {
-        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, detail, seed };
+        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, street: houses::Street::ALONE, detail, seed };
         houses::villa(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &v, lk);
         census.villas += 1;
         census.storeys[1] += 1;
@@ -1245,6 +1246,8 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
             upland,
             shop: s.lot.road && houses::shop_at(((story.houses - s.before) as f32 / 84.0).min(1.0), seed),
             neighbours: s.neighbours,
+            street: houses::Street::ALONE,
+            fronted: None,
             detail,
             seed,
         };
@@ -1255,7 +1258,7 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
     } else {
         // a cottage: one storey, and a second once the cell has grown well past it
         let storeys = 1 + (story.houses >= s.before + 36 + (88.0 * pl.v) as usize) as u8;
-        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, detail, seed };
+        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, street: houses::Street::ALONE, raised: None, detail, seed };
         houses::cottage(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &c, lk);
         census.cottages += 1;
         census.storeys[storeys as usize - 1] += 1;
