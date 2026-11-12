@@ -767,7 +767,10 @@ and the canals three things had to be told to them, and the tests said so
 
 `tests/accounts.rs` (`the_books_keep_up_with_the_mines_and_the_canals`)
 holds all three in place against the mines' and the canals' own counts.
-Kept town ground needed nothing: a works' rent is still its `f_rent`.
+Kept town ground needed nothing: a works' rent is still its `f_rent`. Nor
+did the island made by water (`land`, off in the game until the viewer can
+draw it): with it thrown the books balance and change nothing
+(`the_books_are_ready_for_the_island_made_by_water`).
 
 ## What worries me
 
