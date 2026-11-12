@@ -783,8 +783,13 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
 /// were drawn; at ten it was nine tenths.)
 pub const PEOPLE_TO_A_HOUSE: f32 = 12.0;
 /// The ground a drawn house takes with its yard, the streets and the room
-/// left about it, in square cells: what the built-up closes are counted out by.
+/// left about it, in square cells, where the plots are as few as a cell's
+/// streets leave them: what the closes a cell's houses reach are counted out by.
 pub const HOUSE_GROUND: f32 = 0.0084;
+/// The same where houses stand close: what the closes that are built up, and
+/// drawn as the paving, yards and gardens of a town, are counted out by.
+/// Houses beyond them stand in the closes of the town's edge.
+pub const BUILT_GROUND: f32 = 0.0055;
 /// Houses outlast a fall in their cell's residents of this share: a town that
 /// has lost a quarter of its people still stands whole.
 pub const HOUSES_KEEP: f32 = 0.25;
@@ -875,9 +880,12 @@ fn close_grid(g: &Ground, c: u32) -> std::sync::Arc<Vec<(u32, u8)>> {
 pub struct TownCell {
     /// its closes in the order they are built up (`town_order`)
     pub order: Order,
-    /// how many closes it has dry ground for, and how many of them (the first of its order) are built up
+    /// how many closes it has dry ground for; how many of them (the first of
+    /// its order) are built up; and how many its houses reach, the last of
+    /// them standing among gardens and paddocks (`closes_built`)
     pub closes: u16,
     pub built: u16,
+    pub reach: u16,
     /// the houses that stand on it (`town_houses`)
     pub houses: u16,
     /// the cell its ground is built up from, if it is not a town's first
@@ -1092,26 +1100,35 @@ fn town_order(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize, pa
     order
 }
 
-/// How many of a cell's closes, the first of its `order`, are built up for
-/// `houses` houses with a share `works` of the cell under works: ground for
-/// the houses at `HOUSE_GROUND` each and for the works' yards (the works
-/// stand where they stand, `scatter.rs`, and the houses keep out of their
-/// yards), and the edge, where the plots' turns come one by one
-/// (`EDGE_CLOSES`). Closes in the water are never built up.
-pub fn closes_built(order: &[(u32, u8, f32)], houses: usize, works: f32) -> usize {
-    let dry: f32 = order.iter().map(|o| o.2).sum();
-    let want = houses as f32 * HOUSE_GROUND + works * dry;
-    let (mut have, mut built) = (0.0, 0usize);
-    while built < order.len() && order[built].2 > 0.0 && (have < want || (built == 0 && houses > 0)) {
-        have += order[built].2;
-        built += 1;
-    }
-    let mut edge = if houses > 0 { (EDGE_CLOSES * 0.5).round() as usize } else { 0 };
-    while edge > 0 && built < order.len() && order[built].2 > 0.0 {
-        built += 1;
-        edge -= 1;
-    }
-    built
+/// How many of a cell's closes, the first of its `order`, `houses` houses
+/// take: the closes that are built up, at `BUILT_GROUND` a house, and the
+/// closes the houses reach, at `HOUSE_GROUND` a house with the edge where
+/// the plots' turns come one by one (`EDGE_CLOSES`). Between the two a house
+/// stands among the gardens and paddocks of the town's edge. Closes in the
+/// water are never counted.
+///
+/// The works are not counted for. The record says how much of a cell is
+/// under works, and the first helper on the task built up that share of the
+/// cell's closes as well; but a works is drawn in a yard of its own size
+/// where `scatter.rs` stands it, the houses keep out of the yards as drawn,
+/// and the middle of a town, which the record has wholly under works, was a
+/// pale plain with a few yards on it.
+pub fn closes_built(order: &[(u32, u8, f32)], houses: usize) -> (usize, usize) {
+    let count = |ground: f32, edge: usize| {
+        let want = houses as f32 * ground;
+        let (mut have, mut built) = (0.0, 0usize);
+        while built < order.len() && order[built].2 > 0.0 && (have < want || (built == 0 && houses > 0)) {
+            have += order[built].2;
+            built += 1;
+        }
+        let mut edge = if houses > 0 { edge } else { 0 };
+        while edge > 0 && built < order.len() && order[built].2 > 0.0 {
+            built += 1;
+            edge -= 1;
+        }
+        built
+    };
+    (count(BUILT_GROUND, 0), count(HOUSE_GROUND, (EDGE_CLOSES * 0.5).round() as usize))
 }
 
 /// The first year (counted from the start) each pair of neighbouring cells
@@ -1161,8 +1178,7 @@ pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround
         let parent = town_parent(r, k, c);
         let order = town_order(r, g, &cen, k, c, parcels);
         let houses = town_houses(r, k, c);
-        // (yards do not give ground back: the most of the cell the works have held since it joined)
-        let built = closes_built(&order, houses, town_works(r, k, c));
+        let (built, reach) = closes_built(&order, houses);
         for (n, &(i, sub, _)) in order.iter().enumerate() {
             town.rank[i as usize * 8 + sub as usize] = n as u16;
             if n < built {
@@ -1170,7 +1186,7 @@ pub fn town_ground(r: &Replay, g: &Ground, k: usize, class: &[u8]) -> TownGround
             }
         }
         let closes = order.iter().filter(|o| o.2 > 0.0).count();
-        town.cells.insert(c as u32, TownCell { order: order.clone(), closes: closes as u16, built: built as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32) });
+        town.cells.insert(c as u32, TownCell { order: order.clone(), closes: closes as u16, built: built as u16, reach: reach as u16, houses: houses.min(u16::MAX as usize) as u16, parent: parent.map(|p| p as u32) });
     }
     town
 }

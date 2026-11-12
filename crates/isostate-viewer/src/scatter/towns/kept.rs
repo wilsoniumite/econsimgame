@@ -579,7 +579,9 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         lay.streets.push(Street { way, len, steps, state: vec![std::cell::Cell::new(0); steps + 1] });
     }
     let lay = lay;
-    let built: HashMap<u32, f32> = town.cells.iter().map(|(&c, cell)| (c, cell.built as f32)).collect();
+    // (the closes its houses reach: they are built up closely on the first of them, and stand
+    // among the closes of the town's edge on the last)
+    let built: HashMap<u32, f32> = town.cells.iter().map(|(&c, cell)| (c, cell.reach as f32)).collect();
     let built_of = |c: u32| built.get(&c).copied().unwrap_or(0.0);
     // the rows of one side of a street, each on one cell, with a plot on a close that is not built up
     let mut dead: Vec<(i32, u32)> = Vec::new();
@@ -663,7 +665,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 if s.since > joined {
                     let was = *built_before.entry((c, s.since)).or_insert_with(|| {
                         let y = s.since as usize - 1;
-                        town.cells.get(&c).map_or(0.0, |cell| world::closes_built(&cell.order, world::town_houses(r, y, c as usize), world::town_works(r, y, c as usize)) as f32)
+                        town.cells.get(&c).map_or(0.0, |cell| world::closes_built(&cell.order, world::town_houses(r, y, c as usize)).1 as f32)
                     });
                     if turn < was {
                         turn = was + turn * 1e-3;
@@ -910,7 +912,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         census.wanted += cell.houses as usize;
         // the houses a cell has not the plots for: on ground that is all built up, or not
         let short = (cell.houses as usize).saturating_sub(on_cell.get(&c).copied().unwrap_or(0));
-        if cell.built >= cell.closes {
+        if cell.reach >= cell.closes {
             census.short_full += short;
         } else {
             census.short += short;
@@ -919,7 +921,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         if short >= 5 && std::env::var("ISOSTATE_TOWNS").as_deref() == Ok("cells") {
             eprintln!(
                 "towns {}: cell {},{} joined {:?}: {:.0} residents, {} houses wanted, {} short; {} of {} dry closes built up, {:.2} under works",
-                r.y0 + k as i32, c as usize % r.w, c as usize / r.w, r.joined(k, c as usize), r.residents(k, c as usize), cell.houses, short, cell.built, cell.closes, world::town_works(r, k, c as usize)
+                r.y0 + k as i32, c as usize % r.w, c as usize / r.w, r.joined(k, c as usize), r.residents(k, c as usize), cell.houses, short, cell.reach, cell.closes, world::town_works(r, k, c as usize)
             );
         }
     }

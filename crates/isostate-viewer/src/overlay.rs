@@ -754,7 +754,8 @@ fn legend_card(
                 ui::keycap(row, &f, "G");
             });
         }
-        p.spawn((Node { width: Val::Px(396.0), column_gap: Val::Px(5.0), padding: UiRect::top(Val::Px(7.0)), margin: UiRect::top(Val::Px(1.0)), border: UiRect::top(Val::Px(1.0)), align_items: AlignItems::Center, ..default() }, BorderColor::all(RULE))).with_children(|row| {
+        // (task A) seven views are more than one line of chips holds: they go on to a second
+        p.spawn((Node { width: Val::Px(396.0), column_gap: Val::Px(5.0), row_gap: Val::Px(5.0), flex_wrap: FlexWrap::Wrap, padding: UiRect::top(Val::Px(7.0)), margin: UiRect::top(Val::Px(1.0)), border: UiRect::top(Val::Px(1.0)), align_items: AlignItems::Center, ..default() }, BorderColor::all(RULE))).with_children(|row| {
             for o in Overlay::ALL {
                 chip_button(row, &f, o.chip(), o == kind, accent, OverlayChip(Some(o)));
             }
