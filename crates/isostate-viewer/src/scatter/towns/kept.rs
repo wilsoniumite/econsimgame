@@ -193,10 +193,20 @@ struct Story {
     works: f32,
     /// a town's first cell, with its market place
     node: bool,
+    /// for each close of the cell's order, how many houses the cell must
+    /// have for its houses to reach the close (`world::closes_built`)
+    reached_at: Vec<u16>,
 }
 
 impl Story {
-    fn of(r: &Replay, k: usize, c: usize) -> Story {
+    fn of(r: &Replay, k: usize, c: usize, order: &[(u32, u8, f32)]) -> Story {
+        let dry = order.iter().take_while(|o| o.2 > 0.0).count();
+        let mut reached_at: Vec<u16> = Vec::with_capacity(dry);
+        let mut n = 0;
+        while reached_at.len() < dry && n < u16::MAX {
+            n += 1;
+            reached_at.resize(world::closes_built(order, n as usize).1.max(reached_at.len()), n);
+        }
         let mut since = k;
         while since > 0 && r.built[(since - 1) * r.n + c] > 0 {
             since -= 1;
@@ -215,7 +225,21 @@ impl Story {
             joined: r.joined(k, c).unwrap_or(r.y0),
             works: r.works_share(k, c),
             node: r.header.towns.iter().any(|t| t.node == c),
+            reached_at,
         }
+    }
+
+    /// How many houses the cell had when the turn of a plot came: when its
+    /// houses first reached the close of that turn. It is the plot's own
+    /// number, whatever becomes of the plots about it, so the year a house
+    /// went up, its style and what it grows into never change. (A house's
+    /// place among the houses standing on its cell does: a yard given up or
+    /// a road laid frees or takes plots whose turn comes earlier, and with
+    /// the year read from that place some two houses in a hundred counted as
+    /// built in another year every year, and a row of cottages could turn
+    /// into a brick terrace, or a terrace back into cottages.)
+    fn houses_at(&self, turn: f32) -> usize {
+        self.reached_at.get(turn.max(0.0) as usize).or(self.reached_at.last()).map_or(1, |&n| n as usize)
     }
 
     /// The calendar year the cell first had `n` houses, as far as this year
@@ -282,7 +306,9 @@ const OLD_MIDDLE: u16 = 20;
 /// A house that stands this year.
 struct Stood {
     lot: Lot,
-    /// how many houses its cell had before it, the calendar year it went up, and its roof
+    /// how many houses its cell had when its plot's turn came
+    /// (`Story::houses_at`, less this one), the calendar year that was, and
+    /// its roof
     before: usize,
     year: i32,
     roof: Roof,
@@ -428,13 +454,6 @@ pub(super) struct Layout {
     /// the church, 5 a street, 6 a house already standing too near, 7 its
     /// street is not laid there
     why: HashMap<((i32, u8), i32), u8>,
-}
-
-impl Layout {
-    /// The plots that carry a house: the street and side, the place along it, and the cell.
-    pub(super) fn plots(&self) -> impl Iterator<Item = ((i32, u8), i32, u32)> + '_ {
-        self.standing.iter().map(|s| (s.lot.pl.run, s.lot.pl.index, s.lot.cell))
-    }
 }
 
 /// A street that may be laid, and what has been asked of it so far.
@@ -885,7 +904,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         let Some(lot) = cands[i as usize].take() else { continue };
         let p = lot.pl.p;
         // has its cell houses left to build? (asked first: it is the cheapest to answer)
-        let (story, built) = stories.entry(lot.cell).or_insert_with(|| (Story::of(r, k, lot.cell as usize), 0));
+        let (story, built) = stories.entry(lot.cell).or_insert_with(|| (Story::of(r, k, lot.cell as usize, town.cells.get(&lot.cell).map_or(&[][..], |cell| &cell.order[..])), 0));
         let room = *built < story.houses;
         let row = lot.pl.row.map(|ri| (lot.pl.run.0, ri, lot.cell));
         match row.map(|key| row_in.get(&key).copied()) {
@@ -937,27 +956,15 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         }
         taken.entry(c).or_default().push(p);
         let seed = Seed::new(lot.pl.u, lot.pl.v);
-        let before = *built;
         *built += 1;
-        let year = story.year_of(r, k, before + 1, lot.pl.u);
+        // the houses its cell had when its turn came, and the year that was: a row's
+        // plots share a turn, and so the year
+        let before = story.houses_at(lot.turn) - 1;
+        let own = lot.pl.row.map_or(lot.pl.u, |ri| world::hash2(lot.pl.run.0, ri, 29));
+        let year = story.year_of(r, k, before + 1, own);
         let roof = roof_in(r, k, lot.cell as usize, year, seed);
         note(lot.cell, lot.kind, 0);
         standing.push(Stood { lot, before, year, roof, neighbours: (false, false) });
-    }
-    // a row shares the year and the place in the count of its first house
-    let mut row_first: HashMap<(i32, i32, u32), (usize, i32)> = HashMap::default();
-    for s in &standing {
-        if let Some(ri) = s.lot.pl.row {
-            let e = row_first.entry((s.lot.pl.run.0, ri, s.lot.cell)).or_insert((s.before, s.year));
-            if s.before < e.0 {
-                *e = (s.before, s.year);
-            }
-        }
-    }
-    for s in &mut standing {
-        if let Some(ri) = s.lot.pl.row {
-            (s.before, s.year) = row_first[&(s.lot.pl.run.0, ri, s.lot.cell)];
-        }
     }
     // street by street, and which houses have a neighbour on the next plot along
     standing.sort_by_key(|s| (s.lot.pl.run, s.lot.pl.index));
@@ -1108,7 +1115,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
             let (a, b) = (first.lot.pl.p, standing[j - 1].lot.pl.p);
             let mid = (a + b) * 0.5;
             let seed = Seed::new(first.lot.pl.u, first.lot.pl.v);
-            let storeys = 2 + (story.houses >= first.before + 80 + (27.0 * seed.u) as usize) as u8;
+            let storeys = 2 + (story.houses >= first.before + 96 + (32.0 * seed.u) as usize) as u8;
             let t = Terrace {
                 houses: j - i,
                 length: a.distance(b) + first.lot.pl.width * 0.96,
@@ -1171,17 +1178,24 @@ fn by_town(r: &Replay, k: usize, town: &world::TownGround, on_cell: &HashMap<u32
 /// those stood on cells that lost no houses (which a works taking their
 /// ground, a new road or a widened market place may do; nothing else should).
 fn steadiness(r: &Replay, k: usize, layout: &Layout) {
-    type Plots = std::collections::HashMap<((i32, u8), i32), u32>;
+    // by plot: the cell, and the year the house on it went up
+    type Plots = std::collections::HashMap<((i32, u8), i32), (u32, i32)>;
     static LAST: std::sync::Mutex<Option<(usize, Plots, HashMap<u32, usize>)>> = std::sync::Mutex::new(None);
     if std::env::var_os("ISOSTATE_TOWNS").is_none() {
         return;
     }
-    let now: Plots = layout.plots().map(|(run, index, cell)| ((run, index), cell)).collect();
+    let now: Plots = layout.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), (s.lot.cell, s.year))).collect();
     let houses: HashMap<u32, usize> = layout.stories.iter().map(|(&c, s)| (c, s.houses)).collect();
     let mut last = LAST.lock().unwrap();
     if let Some((_, before, had)) = last.as_ref().filter(|l| l.0 + 1 == k) {
-        let gone: Vec<u32> = before.iter().filter(|(plot, _)| !now.contains_key(plot)).map(|(_, &c)| c).collect();
+        let gone: Vec<u32> = before.iter().filter(|(plot, _)| !now.contains_key(plot)).map(|(_, &(c, _))| c).collect();
         let unasked = gone.iter().filter(|c| houses.get(c).copied().unwrap_or(0) >= had.get(c).copied().unwrap_or(0)).count();
+        // the houses that stand where they stood but count as built in another year (a
+        // house's year is its place in its cell's count), and those of them whose year
+        // has crossed from the rows of cottages to the brick terraces or back
+        let redated: Vec<(i32, i32)> = before.iter().filter_map(|(plot, was)| now.get(plot).filter(|n| n.1 != was.1).map(|n| (was.1, n.1))).collect();
+        let restyled = redated.iter().filter(|(a, b)| (*a >= TERRACE_ERA) != (*b >= TERRACE_ERA)).count();
+        eprintln!("towns {}: {} houses that stand where they stood count as built in another year, {} of them across {TERRACE_ERA}", r.y0 + k as i32, redated.len(), restyled);
         // why: no plot there any more, then the reasons of `Layout::why`
         let mut reasons = [0usize; 8];
         for (plot, _) in before.iter().filter(|(plot, _)| !now.contains_key(plot)) {
@@ -1210,7 +1224,7 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
     // rebuilt as a townhouse, the full width of its plot, once the cell has this many houses:
     // soon on a road through the town or round its market place, later on the old back
     // streets (those of the brick years are terraces from the first)
-    let rebuilt = s.before + if s.lot.road { 7 + (27.0 * pl.v) as usize } else { 20 + (40.0 * pl.v) as usize };
+    let rebuilt = s.before + if s.lot.road { 10 + (38.0 * pl.v) as usize } else { 28 + (56.0 * pl.v) as usize };
     if villa {
         let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, detail, seed };
         houses::villa(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &v, lk);
@@ -1219,8 +1233,8 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
     } else if joined && story.houses >= rebuilt && (s.lot.road || s.year < TERRACE_ERA) {
         // a third storey on a road where the frontage is whole and the cell has grown as much
         // again; a fourth only round the market place of a great town
-        let third = s.lot.road && both && story.houses >= rebuilt + 30 + (47.0 * pl.u) as usize;
-        let fourth = third && great && story.houses >= rebuilt + 100;
+        let third = s.lot.road && both && story.houses >= rebuilt + 36 + (56.0 * pl.u) as usize;
+        let fourth = third && great && story.houses >= rebuilt + 120;
         let storeys = 2 + third as u8 + fourth as u8;
         let t = Townhouse {
             plot_width: pl.width,
@@ -1229,7 +1243,7 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
             roof: s.roof,
             era: Era::of(story.year_of(r, k, rebuilt, pl.u).max(s.year)),
             upland,
-            shop: s.lot.road && houses::shop_at(((story.houses - s.before) as f32 / 60.0).min(1.0), seed),
+            shop: s.lot.road && houses::shop_at(((story.houses - s.before) as f32 / 84.0).min(1.0), seed),
             neighbours: s.neighbours,
             detail,
             seed,
@@ -1240,7 +1254,7 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
         census.tall_alone += (storeys >= 3 && !both) as usize;
     } else {
         // a cottage: one storey, and a second once the cell has grown well past it
-        let storeys = 1 + (story.houses >= s.before + 30 + (73.0 * pl.v) as usize) as u8;
+        let storeys = 1 + (story.houses >= s.before + 36 + (88.0 * pl.v) as usize) as u8;
         let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, detail, seed };
         houses::cottage(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &c, lk);
         census.cottages += 1;
@@ -1340,6 +1354,30 @@ mod tests {
             for (&c, cell) in &land.town.cells {
                 let drawn = houses.iter().filter(|h| h.1 == c).count();
                 assert!(drawn <= cell.houses as usize + 5 && drawn * 10 >= cell.houses as usize * 8, "year {k}, cell {c}: {drawn} houses drawn of {} asked", cell.houses);
+            }
+        }
+    }
+
+    #[test]
+    fn a_house_keeps_its_year_whatever_becomes_of_the_plots_about_it() {
+        let r = made_up(true);
+        let g = world::build_ground(&r);
+        let cen = crate::network::centres(&r);
+        let land = world::year_land(&r, &g, 5);
+        // the town as it stands, and with a works' yard on a strip of its middle
+        let node = Vec2::new(cen[5 * r.w + 5].0, cen[5 * r.w + 5].1);
+        let free = lay_out(&r, &g, &cen, 5, &[], &|_, _| false, &land);
+        let yard = lay_out(&r, &g, &cen, 5, &[], &|x, z| (x - node.x - 0.2).abs() < 0.12 && (z - node.y).abs() < 0.3, &land);
+        let years = |l: &Layout| -> std::collections::BTreeMap<((i32, u8), i32), (usize, i32)> { l.standing.iter().map(|s| ((s.lot.pl.run, s.lot.pl.index), (s.before, s.year))).collect() };
+        let (free, yard) = (years(&free), years(&yard));
+        // the yard takes houses, and others go up elsewhere in their place
+        let taken = free.keys().filter(|p| !yard.contains_key(p)).count();
+        let placed = yard.keys().filter(|p| !free.contains_key(p)).count();
+        assert!(taken >= 10 && placed >= 10, "{taken} houses taken by the yard, {placed} built elsewhere");
+        // every house that stands in both went up in the same year, with as many before it
+        for (plot, was) in &free {
+            if let Some(now) = yard.get(plot) {
+                assert_eq!(now, was, "the house on plot {plot:?}");
             }
         }
     }
