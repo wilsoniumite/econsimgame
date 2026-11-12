@@ -532,6 +532,45 @@ fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &m
     c.smooth(1);
 }
 
+/// Every node's height above the water it drains to (a lake, the sea, or the
+/// first stream of 1.5 cubic metres a second it meets), and its ground by the
+/// water: marsh where it is level and within 0.9 m of a lake or the sea, or low
+/// by the sea, or on a slack planed floor (`floor`); else flood plain on a
+/// planed floor or within 3 m of a stream.
+fn wet_ground(g: Grid, z: &[f64], sea: &[bool], rt: &Routing, lake_id: &[u16], flow: &[f64], floor: &[bool]) -> (Vec<f32>, Vec<u8>) {
+    let n = g.n();
+    let mut hand = vec![0.0f32; n];
+    let mut wet = vec![WET_DRY; n];
+    let mut level = vec![0.0f64; n];
+    // the water this node drains to is still: a lake or the sea
+    let mut still = vec![false; n];
+    for &c in &rt.order {
+        let c = c as usize;
+        let r = rt.rcv[c] as usize;
+        if lake_id[c] > 0 || flow[c] >= 1.5 {
+            level[c] = rt.fill[c];
+            still[c] = lake_id[c] > 0 || flow[c] >= 99.0;
+        } else if sea[r] {
+            level[c] = 0.0;
+            still[c] = true;
+        } else {
+            level[c] = level[r];
+            still[c] = still[r];
+        }
+        hand[c] = (z[c] - level[c]).max(0.0) as f32;
+        if lake_id[c] > 0 {
+            continue;
+        }
+        let slope = (rt.fill[c] - if sea[r] { 0.0 } else { rt.fill[r] }) / g.dx();
+        if hand[c] <= 0.9 && slope <= 0.002 && (z[c] < 6.0 || still[c] || (floor[c] && slope < 0.0004)) {
+            wet[c] = WET_MARSH;
+        } else if floor[c] || (hand[c] <= 3.0 && !still[c]) {
+            wet[c] = WET_PLAIN;
+        }
+    }
+    (hand, wet)
+}
+
 /// Put the water on a finished relief. `rng` is the land's stream, after the
 /// plan's draws.
 pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) -> Water {
@@ -697,36 +736,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
     }
 
     // height above the water each node drains to; flood plain and marsh
-    let mut hand = vec![0.0f32; n];
-    let mut wet = vec![WET_DRY; n];
-    {
-        let mut level = vec![0.0f64; n];
-        let mut big = vec![0.0f64; n];
-        for &c in &rt.order {
-            let c = c as usize;
-            let r = rt.rcv[c] as usize;
-            if lake_id[c] > 0 || flow[c] >= 1.5 {
-                level[c] = rt.fill[c];
-                big[c] = if lake_id[c] > 0 { 99.0 } else { flow[c] };
-            } else if sea[r] {
-                level[c] = 0.0;
-                big[c] = 99.0;
-            } else {
-                level[c] = level[r];
-                big[c] = big[r];
-            }
-            hand[c] = (z[c] - level[c]).max(0.0) as f32;
-            if lake_id[c] > 0 {
-                continue;
-            }
-            let slope = (rt.fill[c] - if sea[r] { 0.0 } else { rt.fill[r] }) / dx;
-            if hand[c] <= 0.9 && slope <= 0.002 && (z[c] < 6.0 || big[c] >= 99.0 || (floor[c] && slope < 0.0004)) {
-                wet[c] = WET_MARSH;
-            } else if floor[c] || (hand[c] <= 3.0 && big[c] < 99.0) {
-                wet[c] = WET_PLAIN;
-            }
-        }
-    }
+    let (hand, wet) = wet_ground(g, &z, &sea, &rt, &lake_id, &flow, &floor);
 
     // the rivers as lines
     let is_river = |c: usize| !sea[c] && lake_id[c] == 0 && flow[c] >= P.stream_flow;
