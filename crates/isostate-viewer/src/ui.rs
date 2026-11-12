@@ -240,12 +240,62 @@ pub struct MarketsChip(pub MarketsShow);
 pub struct RowHover {
     pub open: bool,
 }
+/// A list that scrolls inside its card (`scroll_list`): the wheel turns it
+/// while the pointer is over the card.
+#[derive(Component)]
+pub struct WheelList {
+    pub card: Entity,
+}
+/// The thumb at the right edge of a list that scrolls, shown while the list
+/// is longer than its room: how much of it shows, and where.
+#[derive(Component)]
+pub struct ScrollThumb(pub Entity);
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, tabs_fit, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, tabs_fit, panel_visibility, panel_rebuild, wheel_lists, scroll_thumbs, timeline_knob, timeline_ticks).chain(),
     );
+}
+
+/// A list that scrolls inside the card `card`, which must carry a
+/// `RelativeCursorPosition`: the wheel turns the list while the pointer is
+/// over the card, and a thumb stands at its right edge while there is more
+/// of it than shows, so that nothing a list holds is out of reach or out of
+/// mind. `frame` is the room the list is given in the card, `list` the list's
+/// own node (a column; it is made to scroll here) and `marker` what goes on
+/// the list, which is the entity that takes the rows; `rows` puts in any
+/// that are there from the start. The side panel and the note about what was
+/// clicked are both made of this.
+pub fn scroll_list<M: Bundle>(p: &mut ChildSpawnerCommands, card: Entity, frame: Node, list: Node, marker: M, rows: impl FnOnce(&mut ChildSpawnerCommands)) {
+    p.spawn(Node { flex_direction: FlexDirection::Column, min_height: Val::Px(0.0), ..frame }).with_children(|fr| {
+        let body = fr.spawn((Node { flex_direction: FlexDirection::Column, min_height: Val::Px(0.0), overflow: Overflow::scroll_y(), ..list }, ScrollPosition::default(), WheelList { card }, marker)).with_children(rows).id();
+        fr.spawn((
+            Node { position_type: PositionType::Absolute, right: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(THUMB_W), height: Val::Percent(100.0), border_radius: BorderRadius::all(Val::Px(THUMB_W / 2.0)), ..default() },
+            BackgroundColor(THUMB),
+            Visibility::Hidden,
+            ScrollThumb(body),
+        ));
+    });
+}
+
+/// The thumb of a list that scrolls: a thin bar of the ink the rules are drawn in, a little darker.
+const THUMB: Color = Color::srgb(0.80, 0.74, 0.64);
+const THUMB_W: f32 = 3.0;
+/// Room kept for it at the right of a list's rows.
+pub const THUMB_ROOM: f32 = 7.0;
+
+/// Where the thumb of a list stands: its top and its height as shares of the
+/// list's room, or None when the whole list shows. `room` is the height the
+/// list has, `content` how long its rows are and `at` how far it is scrolled.
+pub fn thumb_span(room: f32, content: f32, at: f32) -> Option<(f32, f32)> {
+    if !(room > 0.0) || content <= room + 0.5 {
+        return None;
+    }
+    // never so short that it cannot be seen
+    let h = (room / content).max(0.06);
+    let top = (at / (content - room)).clamp(0.0, 1.0) * (1.0 - h);
+    Some((top, h))
 }
 
 /// A key drawn as a little raised cap.
@@ -498,12 +548,9 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
             SidePanel,
         ))
         .with_children(|p| {
+            let card = p.target_entity();
             p.spawn((text(f, "News", 22.0, INK), PanelTitle, Node { margin: UiRect::bottom(Val::Px(8.0)), ..default() }));
-            p.spawn((
-                Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: Val::Px(0.0), overflow: Overflow::scroll_y(), row_gap: Val::Px(6.0), padding: UiRect::right(Val::Px(6.0)), ..default() },
-                ScrollPosition::default(),
-                PanelBody,
-            ));
+            scroll_list(p, card, Node { flex_grow: 1.0, ..default() }, Node { flex_grow: 1.0, row_gap: Val::Px(6.0), padding: UiRect::right(Val::Px(THUMB_ROOM)), ..default() }, PanelBody, |_| {});
         });
 
     // a reminder of the keys, under the panel
@@ -971,17 +1018,32 @@ pub fn scroll_panel(s: &mut ScrollPosition, c: &ComputedNode, dy: f32) {
     s.0.y = scroll_to(s.0.y, c.scroll_position.y * c.inverse_scale_factor, dy);
 }
 
-fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Query<&RelativeCursorPosition, With<SidePanel>>, mut body: Query<(&mut ScrollPosition, &ComputedNode), With<PanelBody>>) {
-    if ui.tab.is_none() || !panel.iter().any(|p| p.cursor_over()) {
-        return;
-    }
+/// The wheel turns a list while the pointer is over its card and the card shows.
+fn wheel_lists(scroll: Res<AccumulatedMouseScroll>, cards: Query<(&RelativeCursorPosition, &InheritedVisibility)>, mut lists: Query<(&WheelList, &mut ScrollPosition, &ComputedNode)>) {
     let dy = match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y * 36.0,
         MouseScrollUnit::Pixel => scroll.delta.y,
     };
-    if dy != 0.0 {
-        for (mut s, c) in &mut body {
+    if dy == 0.0 {
+        return;
+    }
+    for (list, mut s, c) in &mut lists {
+        if cards.get(list.card).is_ok_and(|(over, shown)| over.cursor_over() && shown.get()) {
             scroll_panel(&mut s, c, dy);
+        }
+    }
+}
+
+/// Each list's thumb stands where the list is scrolled to, and shows only while there is more of the list than its room.
+fn scroll_thumbs(lists: Query<&ComputedNode, With<WheelList>>, mut thumbs: Query<(&ScrollThumb, &mut Node, &mut Visibility)>) {
+    for (thumb, mut node, mut vis) in &mut thumbs {
+        let span = lists.get(thumb.0).ok().and_then(|c| thumb_span(c.size().y, c.content_size().y, c.scroll_position.y));
+        vis.set_if_neq(if span.is_some() { Visibility::Inherited } else { Visibility::Hidden });
+        if let Some((top, h)) = span {
+            let (top, h) = (Val::Percent(top * 100.0), Val::Percent(h * 100.0));
+            if node.top != top || node.height != h {
+                (node.top, node.height) = (top, h);
+            }
         }
     }
 }
@@ -1324,47 +1386,60 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
         None => p.spawn(text(f, &format!("Prices against {first_year}, and the change over the last ten years. Click a good for its history."), 13.0, MUTED)),
     };
     let back = k.saturating_sub(10);
-    for (gi, g) in r.header.goods.iter().enumerate() {
-        let name = format!("price_{}", g.name);
-        // by the month: the month's price, and the price twelve months before it
-        let figures = match by_month {
-            Some(m) => (replay::month(r, &name, m), replay::annual(r, &name, 0), replay::month(r, &name, m.saturating_sub(12))),
-            None => (replay::annual(r, &name, k), replay::annual(r, &name, 0), replay::annual(r, &name, back)),
-        };
-        let (Some(now), Some(first), Some(then)) = figures else { continue };
-        if !(first > 0.0 && now > 0.0) {
-            continue;
+    // the month the figures stand at: the marked month, or the December of the year on the clock
+    let month_now = by_month.unwrap_or(k * 12 + 11);
+    for group in good_groups(&r.header.goods) {
+        // a head over each kind of good, where the content says which a good is
+        if let Some(kind) = group.kind {
+            p.spawn((text(f, kind.heading(), 12.5, MUTED), Node { margin: UiRect::new(Val::Px(GOOD_PAD), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0)), ..default() }));
         }
-        let idx = now / first;
-        let ch = if then > 0.0 { now / then - 1.0 } else { 0.0 };
-        let is_open = open == Some(gi);
-        p.spawn((
-            Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() },
-            BackgroundColor(if is_open { PAPER_2 } else { Color::NONE }),
-            Interaction::default(),
-            FocusPolicy::Block,
-            RowHover { open: is_open },
-            GoodRow(gi),
-        ))
-        .with_children(|row| {
-            row.spawn((text(f, &g.label, 14.5, INK), Node { width: Val::Px(92.0), ..default() }));
-            // a bar on a log scale from the 1750 price in the middle: dearer to the right, cheaper to the left
-            row.spawn((Node { width: Val::Px(110.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(RULE))).with_children(|bar| {
-                let x = (idx.ln() / 3.0_f32.ln()).clamp(-1.0, 1.0);
-                let (l, w) = if x >= 0.0 { (50.0, 50.0 * x) } else { (50.0 + 50.0 * x, -50.0 * x) };
-                bar.spawn((
-                    Node { position_type: PositionType::Absolute, left: Val::Percent(l), width: Val::Percent(w.max(1.5)), top: Val::Px(0.0), bottom: Val::Px(0.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-                    BackgroundColor(if x >= 0.0 { DEARER } else { CHEAPER }),
-                ));
-                bar.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(50.0), width: Val::Px(2.0), top: Val::Px(-3.0), bottom: Val::Px(-3.0), margin: UiRect::left(Val::Px(-1.0)), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() }, BackgroundColor(MUTED)));
-            });
-            row.spawn((text(f, &format!("{:.2}", idx), 13.5, INK), Node { width: Val::Px(40.0), ..default() }));
-            let s = if ch.abs() < 0.03 { "steady".to_string() } else if ch > 0.0 { format!("up {:.0}%", ch * 100.0) } else { format!("down {:.0}%", -ch * 100.0) };
-            row.spawn((text(f, &s, 13.0, MUTED), Node { width: Val::Px(64.0), ..default() }));
+        // (a column of their own, so that the rows stand closer than the panel's other lines)
+        p.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: Val::Px(GOOD_ROW_GAP), ..default() }).with_children(|p| {
+            for gi in group.goods {
+                let g = &r.header.goods[gi];
+                let name = format!("price_{}", g.name);
+                // by the month: the month's price, and the price twelve months before it
+                let figures = match by_month {
+                    Some(m) => (replay::month(r, &name, m), replay::annual(r, &name, 0), replay::month(r, &name, m.saturating_sub(12))),
+                    None => (replay::annual(r, &name, k), replay::annual(r, &name, 0), replay::annual(r, &name, back)),
+                };
+                let (Some(now), Some(first), Some(then)) = figures else { continue };
+                if !(first > 0.0 && now > 0.0) {
+                    continue;
+                }
+                // a good no works has made yet has a price in the record that nothing was sold at:
+                // it keeps its place in the list and says so, and has no history to open
+                if !replay::made_by(r, &g.name, month_now) {
+                    p.spawn(good_row_node()).with_children(|row| {
+                        good_name(row, f, &g.label, MUTED);
+                        row.spawn((text(f, "not made yet", 13.0, MUTED), TextLayout::default().with_no_wrap()));
+                    });
+                    continue;
+                }
+                let idx = now / first;
+                let ch = if then > 0.0 { now / then - 1.0 } else { 0.0 };
+                let is_open = open == Some(gi);
+                p.spawn((good_row_node(), BackgroundColor(if is_open { PAPER_2 } else { Color::NONE }), Interaction::default(), FocusPolicy::Block, RowHover { open: is_open }, GoodRow(gi))).with_children(|row| {
+                    good_name(row, f, &g.label, INK);
+                    // a bar on a log scale from the 1750 price in the middle: dearer to the right, cheaper to the left
+                    row.spawn((Node { width: Val::Px(GOOD_BAR_W), height: Val::Px(8.0), flex_shrink: 0.0, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(RULE))).with_children(|bar| {
+                        let x = (idx.ln() / 3.0_f32.ln()).clamp(-1.0, 1.0);
+                        let (l, w) = if x >= 0.0 { (50.0, 50.0 * x) } else { (50.0 + 50.0 * x, -50.0 * x) };
+                        bar.spawn((
+                            Node { position_type: PositionType::Absolute, left: Val::Percent(l), width: Val::Percent(w.max(3.0)), top: Val::Px(0.0), bottom: Val::Px(0.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+                            BackgroundColor(if x >= 0.0 { DEARER } else { CHEAPER }),
+                        ));
+                        bar.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(50.0), width: Val::Px(2.0), top: Val::Px(-3.0), bottom: Val::Px(-3.0), margin: UiRect::left(Val::Px(-1.0)), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() }, BackgroundColor(MUTED)));
+                    });
+                    row.spawn((text(f, &index_words(idx), 13.5, INK), TextLayout::default().with_no_wrap(), Node { width: Val::Px(GOOD_INDEX_W), flex_shrink: 0.0, ..default() }));
+                    let s = if ch.abs() < 0.03 { "steady".to_string() } else if ch > 0.0 { format!("up {:.0}%", ch * 100.0) } else { format!("down {:.0}%", -ch * 100.0) };
+                    row.spawn((text(f, &s, 13.0, MUTED), TextLayout::default().with_no_wrap(), Node { width: Val::Px(GOOD_CHANGE_W), flex_shrink: 0.0, ..default() }));
+                });
+                if is_open {
+                    good_chart(p, f, images, r, k, by_month, &g.name, accent);
+                }
+            }
         });
-        if is_open {
-            good_chart(p, f, images, r, k, by_month, &g.name, accent);
-        }
     }
     // what investors are building now
     let year = r.y0 + k as i32;
@@ -1384,13 +1459,89 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
     if rows.is_empty() {
         p.spawn(text(f, "No new works in the last five years.", 14.0, MUTED));
     }
-    for (m, n, roi) in rows.into_iter().take(10) {
-        let ml = &r.header.methods[m].label;
-        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, padding: UiRect::vertical(Val::Px(2.0)), ..default() }).with_children(|row| {
-            row.spawn(text(f, &format!("{ml}  \u{00d7}{n}"), 14.0, INK));
-            row.spawn(text(f, &format!("{:.0}% a year", roi * 100.0), 14.0, INK));
-        });
+    let kinds = rows.len();
+    p.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() }).with_children(|p| {
+        for (m, n, roi) in rows.into_iter().take(INVESTOR_ROWS) {
+            let ml = &r.header.methods[m].label;
+            p.spawn(Node { justify_content: JustifyContent::SpaceBetween, column_gap: Val::Px(8.0), padding: UiRect::vertical(Val::Px(2.0)), ..default() }).with_children(|row| {
+                row.spawn((text(f, &format!("{ml}  \u{00d7}{n}"), 14.0, INK), TextLayout::default().with_no_wrap()));
+                row.spawn((text(f, &format!("{:.0}% a year", roi * 100.0), 14.0, INK), TextLayout::default().with_no_wrap(), Node { flex_shrink: 0.0, ..default() }));
+            });
+        }
+    });
+    // the list stops somewhere: say where
+    if let Some(foot) = investors_foot(kinds) {
+        p.spawn(text(f, &foot, 13.0, MUTED));
     }
+}
+
+/// The columns of a good's row in the Markets panel. They come to the width
+/// of the side panel's list (`GOODS_W`), and the name's is wide enough for a
+/// label of 24 characters at its size, so a long name ("Soap and chemicals",
+/// "Lime and cement") neither wraps its row into two nor pushes a figure out
+/// of its column; the tests hold both.
+const GOOD_NAME_W: f32 = 166.0;
+const GOOD_NAME_SIZE: f32 = 14.0;
+const GOOD_BAR_W: f32 = 50.0;
+const GOOD_INDEX_W: f32 = 40.0;
+const GOOD_CHANGE_W: f32 = 60.0;
+const GOOD_GAP: f32 = 6.0;
+const GOOD_PAD: f32 = 6.0;
+/// The room between one good's row and the next.
+const GOOD_ROW_GAP: f32 = 1.0;
+/// The width the side panel's list gives its rows: the card, less its padding and the room kept for the thumb.
+const GOODS_W: f32 = 380.0 - 16.0 - 10.0 - THUMB_ROOM;
+
+/// How many kinds of new works "What investors are building" lists.
+const INVESTOR_ROWS: usize = 10;
+
+fn good_row_node() -> Node {
+    Node { align_items: AlignItems::Center, column_gap: Val::Px(GOOD_GAP), padding: UiRect::axes(Val::Px(GOOD_PAD), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() }
+}
+
+/// A good's name in its column: on one line whatever its length, cut at the column's edge if it is longer than the column.
+fn good_name(row: &mut ChildSpawnerCommands, f: &Handle<Font>, label: &str, colour: Color) {
+    row.spawn(Node { width: Val::Px(GOOD_NAME_W), flex_shrink: 0.0, overflow: Overflow::clip_x(), ..default() }).with_children(|col| {
+        col.spawn((text(f, label, GOOD_NAME_SIZE, colour), TextLayout::default().with_no_wrap(), GoodName));
+    });
+}
+
+/// The text of a good's name in the Markets panel (for the tests to measure).
+#[derive(Component)]
+pub struct GoodName;
+
+/// The goods in the groups the Markets panel lists them under.
+struct GoodGroup {
+    /// the head over the group; none for a list that is not grouped
+    kind: Option<replay::GoodKind>,
+    goods: Vec<usize>,
+}
+
+/// The goods under their three heads (from the land, for the works, for the
+/// household), each group in the content's order, where the content at hand
+/// says which every good is; otherwise one list in the content's order, as a
+/// recorded run gets.
+fn good_groups(goods: &[replay::Good]) -> Vec<GoodGroup> {
+    if goods.is_empty() || goods.iter().any(|g| g.kind.is_none()) {
+        return vec![GoodGroup { kind: None, goods: (0..goods.len()).collect() }];
+    }
+    replay::GoodKind::ALL
+        .into_iter()
+        .map(|kind| GoodGroup { kind: Some(kind), goods: (0..goods.len()).filter(|&g| goods[g].kind == Some(kind)).collect() })
+        .filter(|group| !group.goods.is_empty())
+        .collect()
+}
+
+/// A price against the first year's, in the few characters its column has:
+/// two places, and three for a price that has fallen to under a tenth, which
+/// two would round to nothing (steel in 1900 at 0.004 of its price of 1750).
+fn index_words(idx: f32) -> String {
+    if idx >= 0.095 { format!("{idx:.2}") } else { format!("{idx:.3}") }
+}
+
+/// What the foot of "What investors are building" says when there are more kinds of new works than it lists.
+fn investors_foot(kinds: usize) -> Option<String> {
+    (kinds > INVESTOR_ROWS).then(|| format!("The {} kinds with the best returns, of {kinds} built.", family::number_word(INVESTOR_ROWS)))
 }
 
 #[cfg(test)]

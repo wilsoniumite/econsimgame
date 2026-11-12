@@ -584,6 +584,9 @@ struct ToastBox;
 struct TownLabel(usize);
 #[derive(Component)]
 struct InspectPanel;
+/// The lines of the inspector under its title, which scroll when they are more than its room.
+#[derive(Component)]
+pub struct InspectBody;
 
 #[derive(Resource)]
 struct TrainAssets {
@@ -1930,32 +1933,50 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
         GlobalZIndex(5),
         ToastBox,
     ));
-    // the inspector, bottom right above the timeline
+    // the inspector, bottom right above the timeline. It stands on the timeline's card and grows
+    // upward with what it has to say, as far as the bar across the top and no further: its
+    // room is the column between the two, and past that its lines scroll under its title
+    // (a square at the seat can list every works the family could build there)
     commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(14.0),
+                top: Val::Px(86.0),
                 bottom: Val::Px(70.0),
                 width: Val::Px(380.0),
-                padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(12.0), Val::Px(14.0)),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
-                border_radius: BorderRadius::all(Val::Px(16.0)),
+                justify_content: JustifyContent::End,
                 ..default()
             },
-            BackgroundColor(PAPER),
-            BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.18), Val::Px(0.0), Val::Px(3.0), Val::Px(0.0), Val::Px(10.0)),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
             GlobalZIndex(10),
             Visibility::Hidden,
             InspectPanel,
         ))
-        .with_children(|p| {
-            p.spawn((text(f, "", 20.0, INK), InspectTitle));
-            p.spawn((text(f, "", 14.0, MUTED), InspectText));
-            p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
+        .with_children(|room| {
+            room.spawn((
+                Node {
+                    max_height: Val::Percent(100.0),
+                    padding: UiRect::new(Val::Px(16.0), Val::Px(16.0 - ui::THUMB_ROOM), Val::Px(12.0), Val::Px(14.0)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(4.0),
+                    border_radius: BorderRadius::all(Val::Px(16.0)),
+                    ..default()
+                },
+                BackgroundColor(PAPER),
+                BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.18), Val::Px(0.0), Val::Px(3.0), Val::Px(0.0), Val::Px(10.0)),
+                Interaction::default(),
+                bevy::ui::FocusPolicy::Block,
+                bevy::ui::RelativeCursorPosition::default(),
+            ))
+            .with_children(|p| {
+                let card = p.target_entity();
+                p.spawn((text(f, "", 20.0, INK), InspectTitle));
+                ui::scroll_list(p, card, Node::default(), Node { row_gap: Val::Px(4.0), padding: UiRect::right(Val::Px(ui::THUMB_ROOM)), ..default() }, InspectBody, |p| {
+                    p.spawn((text(f, "", 14.0, MUTED), InspectText));
+                    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
+                });
+            });
         });
     // town labels
     for t in 0..data.r.header.towns.len().min(data.r.n_towns) {
@@ -2401,6 +2422,11 @@ fn pick_cell(r: &Replay, what: Pick) -> usize {
     }
 }
 
+/// How many sites a works' founders priced before they built: "The best of 14 sites priced", or the one.
+fn best_of(sites: i64) -> String {
+    if sites == 1 { "The one site priced".to_string() } else { format!("The best of {sites} sites priced") }
+}
+
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
 
 fn describe(r: &Replay, what: Pick, k: usize) -> String {
@@ -2421,7 +2447,7 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
                 let lead = match kind {
                     "old" => format!("Already at work in 1750; built new, it would return about {:.0}% a year.", num("roi") * 100.0),
                     "expansion" => format!("A second site, opened in {} when the first ran out of room; about {:.0}% a year expected.", num("year") as i64, num("roi") * 100.0),
-                    _ => format!("Built in {} with money from {}. The best of {} sites priced: about {:.0}% a year on the capital.", num("year") as i64, town, num("n_cand") as i64, num("roi") * 100.0),
+                    _ => format!("Built in {} with money from {}. {}: about {:.0}% a year on the capital.", num("year") as i64, town, best_of(num("n_cand") as i64), num("roi") * 100.0),
                 };
                 s.push_str(&format!("\n\nWhy here?  {}\nPer unit of {}: sells at {:.2}", lead, good, num("pout")));
                 if let Some(ins) = rs.get("inputs").and_then(|v| v.as_array()) {
@@ -2431,6 +2457,14 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
                         let p = q.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0);
                         let label = r.header.goods.get(g).map(|g| g.label.to_lowercase()).unwrap_or_default();
                         s.push_str(&format!(", {:.2} {} at {:.2}", a, label, p));
+                    }
+                }
+                // the fuel its kilns, furnaces and coppers burn, which for a lime kiln, a pottery or
+                // a glass cone is the largest of its costs: without it the sums do not come to what is left
+                if let Some(h) = rs.get("heat").and_then(|v| v.as_array()) {
+                    let (a, p) = (h.first().and_then(|v| v.as_f64()).unwrap_or(0.0), h.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0));
+                    if a > 0.0 {
+                        s.push_str(&format!(", {:.2} of heat at {:.2}", a, p));
                     }
                 }
                 if let Some(l) = rs.get("labor").and_then(|v| v.as_array()) {
@@ -2481,12 +2515,19 @@ fn inspect_panel(
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
+    mut body: Query<&mut bevy::ui::ScrollPosition, With<InspectBody>>,
     mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let key = (picked.what, k, ov.kind, ov.good, ov.month());
     if *last == Some(key) {
         return;
+    }
+    // another thing clicked is read from its top
+    if last.map(|l| l.0) != Some(picked.what) {
+        for mut s in &mut body {
+            s.0.y = 0.0;
+        }
     }
     *last = Some(key);
     for mut v in &mut panel {

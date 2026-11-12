@@ -26,7 +26,7 @@ use isostate_core::save::{Done, Game, Order, Outcome};
 use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveMonth, LiveStatic, LiveYear, Prospect, SiteOption};
 
 use crate::family::FamilyView;
-use crate::replay::{self, Firm, Good, Header, Meta, Method, Replay, Town};
+use crate::replay::{self, Firm, Good, GoodKind, Header, Meta, Method, Replay, Town};
 use crate::saves::{self, Saver};
 
 /// The player's family is always the first.
@@ -293,6 +293,45 @@ impl Opening {
     }
 }
 
+/// What kind each good is, as the content has it, for the three heads the
+/// Markets panel lists the goods under. From the land: the good of a land
+/// sector (grain, coal). For the household: made in a works, worth to a
+/// household a full unit or more of some need (the content rates a makeshift
+/// below one: iron for an implement, raw stone for shelter), and the plant of
+/// no works (which leaves tools, steel and machinery with the works). For the
+/// works: every other good.
+pub fn good_kinds(c: &iso::content::Content) -> Vec<GoodKind> {
+    (0..c.G)
+        .map(|g| {
+            if c.sector_good.contains(&g) {
+                GoodKind::Land
+            } else if (0..c.S).any(|s| c.props[(g, s)] >= 1.0) && !(0..c.M).any(|m| c.m_cap[(m, g)] > 0.0) {
+                GoodKind::Household
+            } else {
+                GoodKind::Works
+            }
+        })
+        .collect()
+}
+
+/// The goods each family trade yields, by `Group::index`: what the works of
+/// its methods make and what the land sectors it runs give, in the content's
+/// order. A trade's name alone no longer says it: brewing is with the
+/// estates, and soap and gas with coal.
+pub fn trade_goods(c: &iso::content::Content) -> Vec<Vec<usize>> {
+    Group::ALL
+        .iter()
+        .map(|&group| {
+            let of_method = (0..c.M).filter(|&m| Group::of_method(c, m) == Some(group)).map(|m| c.method_out[m]);
+            let of_sector = (0..c.NS).filter(|&s| Group::of_sector(c, s) == Some(group)).map(|s| c.sector_good[s]);
+            let mut goods: Vec<usize> = of_sector.chain(of_method).collect();
+            goods.sort_unstable();
+            goods.dedup();
+            goods
+        })
+        .collect()
+}
+
 /// The island as the viewer holds it, filled in year by year.
 struct Board {
     cursor: LiveCursor,
@@ -304,7 +343,12 @@ impl Board {
     fn new(sim: &iso::Sim) -> Board {
         let stat = iso::live_static(&sim.st, &sim.content);
         let method_group: Vec<Option<Group>> = stat.methods.iter().map(|m| m.group).collect();
-        Board { cursor: LiveCursor::new(&sim.content), r: shell(&stat, sim.params.seed), view: FamilyView { method_group, ..default() } }
+        // what the content says of its goods and its trades, for the Markets panel and the decisions
+        let mut r = shell(&stat, sim.params.seed);
+        for (g, kind) in r.header.goods.iter_mut().zip(good_kinds(&sim.content)) {
+            g.kind = Some(kind);
+        }
+        Board { cursor: LiveCursor::new(&sim.content), r, view: FamilyView { method_group, trade_goods: trade_goods(&sim.content), ..default() } }
     }
 
     /// Take in the year the simulation has just played, with its twelve months.
@@ -878,7 +922,7 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
     let ny = (stat.end_year - stat.start_year + 1).max(1) as usize;
     let header = Header {
         meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny },
-        goods: stat.goods.iter().map(|g| Good { name: g.name.clone(), label: g.label.clone() }).collect(),
+        goods: stat.goods.iter().map(|g| Good { name: g.name.clone(), label: g.label.clone(), kind: None }).collect(),
         methods: stat.methods.iter().map(|m| Method { name: m.name.clone(), label: m.label.clone(), out: m.out, k0: m.K0 as f32 }).collect(),
         towns: Vec::new(),
         firms: Vec::new(),

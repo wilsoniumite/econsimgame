@@ -11,7 +11,7 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use isostate_core::families::{Group, Post, Posting};
-use isostate_core::{Choice, Decision, FamilyReport};
+use isostate_core::{Choice, Decision, FamilyReport, SiteOption};
 
 use crate::clock;
 use crate::family::{self, short_group, trade, CancelButton, FamilyRow, FamilyView, GotoFirm, GotoTown, MemberRow, OpenDecision, PostButton, RivalRow, StanceButton};
@@ -1053,52 +1053,106 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
                 p.spawn(text(f, &format!("Works are chosen directly only at the seat, {}. Elsewhere, post someone to run a trade in the town: a growing branch builds for itself.", rep.seat_name), 12.5, MUTED));
                 return;
             }
-            let thin = |s: &isostate_core::SiteSums| s.market_share > 0.25 || s.price_ratio > 3.0;
-            let mut good: Vec<(usize, &isostate_core::SiteSums)> = opts.iter().filter(|o| o.allowed.is_ok()).filter_map(|o| o.sums.as_ref().ok().map(|s| (o.method, s))).collect();
-            // deep markets first: a works that would flood its town's market, or sells
-            // at a scarcity price, earns its promised return only until it does
-            good.sort_by(|a, b| thin(a.1).cmp(&thin(b.1)).then(b.1.expected_return.total_cmp(&a.1.expected_return)));
+            let town = site.town.and_then(|t| r.header.towns.get(t)).map_or("this town", |t| t.name.as_str());
+            // (a kind of works is worked on the island once one of it has been founded: only those are named as not known here yet)
+            let list = build_list(opts, &rep.known, town, |m| r.header.firms.iter().any(|firm| firm.method == m));
             p.spawn(text(f, "Build here", 16.0, INK));
             if works_waits {
                 p.spawn(text(f, "A works is ordered here, and waits for the year's turn.", 13.0, accent));
             }
-            if good.is_empty() {
-                p.spawn(text(f, "Nothing in the family's trades would pay here.", 13.0, MUTED));
+            if list.offered.is_empty() {
+                p.spawn(text(f, "Nothing in the family's trades can be built here.", 13.0, MUTED));
             }
-            for (m, s) in good.iter().take(5) {
+            // every works the family could build here, the ones that matter first; the note's lines scroll when they are many
+            for &i in &list.offered {
+                let (o, Ok(s)) = (&opts[i], &opts[i].sums) else { continue };
                 let afford = in_hand >= s.capital_cost && can && !works_waits;
-                p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|row| {
+                let pays = s.expected_return > 0.0;
+                p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(if pays { 3.0 } else { 1.0 })), ..default() }).with_children(|row| {
                     row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, row_gap: Val::Px(1.0), ..default() }).with_children(|col| {
                         col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).with_children(|head| {
-                            head.spawn(text(f, &r.header.methods[*m].label, 14.5, INK));
-                            if thin(s) {
-                                head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(Color::srgb(0.97, 0.89, 0.74))))
+                            head.spawn(text(f, &r.header.methods[o.method].label, 14.5, if pays { INK } else { MUTED }));
+                            if pays && thin_market(s) {
+                                head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::srgb(0.97, 0.89, 0.74))))
                                     .with_children(|tag| {
                                         tag.spawn(text(f, "thin market", 11.5, Color::srgb(0.55, 0.36, 0.12)));
                                     });
                             }
                         });
-                        let ret = if s.expected_return > 0.0 { format!("about {:.0}% a year at today's prices", 100.0 * s.expected_return) } else { "would lose money at today's prices".to_string() };
+                        if !pays {
+                            // a works that would lose money is offered in a line: it can still be built
+                            col.spawn(text(f, &format!("{} to build, would lose money at today's prices", money(s.capital_cost as f32)), 12.5, MUTED));
+                            return;
+                        }
                         let bonus = if s.bonus > 0.0 { format!(", {:.0}% cheaper run by the family", 100.0 * s.bonus) } else { String::new() };
-                        col.spawn(text(f, &format!("{} to build, {}{}", money(s.capital_cost as f32), ret, bonus), 12.5, MUTED));
+                        col.spawn(text(f, &format!("{} to build, about {:.0}% a year at today's prices{}", money(s.capital_cost as f32), 100.0 * s.expected_return, bonus), 12.5, MUTED));
                         let town = r.header.towns.get(s.town).map(|t| t.name.as_str()).unwrap_or("its town");
                         let share = if s.market_share >= 0.995 { format!("more than {town} buys") } else { format!("{:.0}% of what {town} buys", 100.0 * s.market_share.max(0.0)) };
                         let price = if s.price_ratio > 1.5 { format!(", selling at {:.1} times the usual price", s.price_ratio) } else { String::new() };
-                        col.spawn(text(f, &format!("Would make {share}{price}."), 12.5, if thin(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
+                        col.spawn(text(f, &format!("Would make {share}{price}."), 12.5, if thin_market(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
                     });
-                    button(row, f, "Build", afford.then_some(Action::Found { method: *m, cell: c }), accent);
+                    button(row, f, "Build", afford.then_some(Action::Found { method: o.method, cell: c }), accent);
                 });
             }
-            // what the family could build here if it knew the trade
-            let mut unknown: Vec<Group> = opts.iter().filter(|o| o.sums.is_ok() && o.allowed.is_err()).filter_map(|o| o.group).filter(|g| !rep.known.contains(g)).collect();
-            unknown.sort();
-            unknown.dedup();
-            if !unknown.is_empty() {
-                let names: Vec<String> = unknown.iter().map(|&g| trade(g)).collect();
-                p.spawn(text(f, &format!("Works in {} could be built here too, once the family knows the trade.", family::join_words(&names)), 12.0, MUTED));
+            // and why the rest of the island's works are not offered
+            for (i, note) in list.notes.iter().enumerate() {
+                p.spawn((text(f, note, 12.0, MUTED), Node { margin: UiRect::top(Val::Px(if i == 0 { 4.0 } else { 0.0 })), ..default() }));
             }
         }
     }
+}
+
+/// A works that would flood its town's market, or sells at a scarcity price:
+/// it earns its promised return only until it does.
+fn thin_market(s: &isostate_core::SiteSums) -> bool {
+    s.market_share > 0.25 || s.price_ratio > 3.0
+}
+
+/// The Build list of a square at the seat: the works that are offered, as
+/// places in the simulation's list of options, in the order they are shown,
+/// and a line for each reason the rest are not.
+#[derive(Debug, PartialEq)]
+pub struct BuildList {
+    pub offered: Vec<usize>,
+    pub notes: Vec<String>,
+}
+
+/// Every works the family could build on the square is offered, and the ones
+/// that matter come first: those that would pay in a deep market, by their
+/// return; then those that would pay in a thin one; then those that would
+/// lose money, the least first. The rest are not offered, and the notes say
+/// why in the words of the content's labels: no room for them on the square;
+/// worked elsewhere on the island (`worked`) but not known in this town yet;
+/// of a trade the family does not know. A kind of works nobody on the island
+/// has built yet is not named: it is news when it comes.
+pub fn build_list(opts: &[SiteOption], known: &[Group], town: &str, worked: impl Fn(usize) -> bool) -> BuildList {
+    let mut offered: Vec<(usize, &isostate_core::SiteSums)> = opts.iter().enumerate().filter(|(_, o)| o.allowed.is_ok()).filter_map(|(i, o)| o.sums.as_ref().ok().map(|s| (i, s))).collect();
+    let rank = |s: &isostate_core::SiteSums| if s.expected_return <= 0.0 { 2 } else if thin_market(s) { 1 } else { 0 };
+    offered.sort_by(|a, b| rank(a.1).cmp(&rank(b.1)).then(b.1.expected_return.total_cmp(&a.1.expected_return)));
+    let mine = |o: &&SiteOption| o.group.is_some_and(|g| known.contains(&g));
+    let labels = |v: Vec<&SiteOption>| v.iter().map(|o| o.label.clone()).collect::<Vec<_>>().join(", ");
+    let mut notes = Vec::new();
+    // of the family's trades and known here, and still refused: the square has no room, or whatever else the simulation says
+    let (full, other): (Vec<&SiteOption>, Vec<&SiteOption>) = opts.iter().filter(mine).filter(|o| o.sums.is_ok() && o.allowed.is_err()).partition(|o| o.allowed.as_ref().is_err_and(|why| why.contains("no room")));
+    if !full.is_empty() {
+        notes.push(format!("No room is left on this square for: {}.", labels(full)));
+    }
+    for o in other {
+        notes.push(format!("{}: {}.", o.label, o.allowed.as_ref().err().map_or("cannot be built here", |why| why.as_str())));
+    }
+    let far: Vec<&SiteOption> = opts.iter().filter(mine).filter(|o| o.sums.is_err() && worked(o.method)).collect();
+    if !far.is_empty() {
+        notes.push(format!("Worked elsewhere on the island, and not known at {town} yet: {}.", labels(far)));
+    }
+    // what the family could build here if it knew the trade
+    let mut unknown: Vec<Group> = opts.iter().filter(|o| o.sums.is_ok() && o.allowed.is_err()).filter_map(|o| o.group).filter(|g| !known.contains(g)).collect();
+    unknown.sort();
+    unknown.dedup();
+    if !unknown.is_empty() {
+        let names: Vec<String> = unknown.iter().map(|&g| trade(g)).collect();
+        notes.push(format!("Works in {} could be built here too, once the family knows the trade.", family::join_words(&names)));
+    }
+    BuildList { offered: offered.into_iter().map(|(i, _)| i).collect(), notes }
 }
 
 // ------------------------------------------------------------------ decisions

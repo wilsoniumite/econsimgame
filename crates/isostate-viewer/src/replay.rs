@@ -26,6 +26,35 @@ pub struct Meta {
 pub struct Good {
     pub name: String,
     pub label: String,
+    /// what kind of good it is, where the content at hand says (a live game's
+    /// does, `live::good_kinds`; a recorded run's header does not)
+    #[serde(default)]
+    pub kind: Option<GoodKind>,
+}
+
+/// The three kinds the Markets panel lists the goods under, so that a list
+/// of twenty-five reads as three short ones.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GoodKind {
+    /// grown, felled or dug: the good of a land sector
+    Land,
+    /// made in a works, for other works and for building
+    Works,
+    /// made in a works, for the household
+    Household,
+}
+
+impl GoodKind {
+    pub const ALL: [GoodKind; 3] = [GoodKind::Land, GoodKind::Works, GoodKind::Household];
+
+    /// The heading over its goods.
+    pub fn heading(self) -> &'static str {
+        match self {
+            GoodKind::Land => "From the land",
+            GoodKind::Works => "For the works",
+            GoodKind::Household => "For the household",
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -446,6 +475,17 @@ pub fn month_reached(r: &Replay, t: usize) -> usize {
 fn newest_filled(series: &[f32], len: usize, t: usize) -> usize {
     let has = |m: usize| m < len && series.chunks(len.max(1)).any(|row| row.get(m).is_some_and(|v| v.is_finite()));
     (t.saturating_sub(12)..=t).rev().find(|&m| has(m)).unwrap_or(t)
+}
+
+/// Whether any of a good had been made by the end of the run's month `t`
+/// (0 is the first January): false for a good no works has made yet, such as
+/// town gas before the first gasworks, whose price in the record is one
+/// nothing was sold at. A run that does not hold what is made says yes.
+pub fn made_by(r: &Replay, good: &str, t: usize) -> bool {
+    let name = format!("out_{good}");
+    let Some(i) = r.series_names.iter().position(|s| *s == name) else { return true };
+    let row = &r.series[i * r.series_len..(i + 1) * r.series_len];
+    row[..(t + 1).min(row.len())].iter().any(|v| v.is_finite() && *v > 0.0)
 }
 
 /// Annual mean of a named monthly series, or None if the run does not have it.
