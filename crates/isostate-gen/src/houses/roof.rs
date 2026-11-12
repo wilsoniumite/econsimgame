@@ -7,6 +7,7 @@
 
 use crate::colour::{lerp, Rgba};
 use crate::hash::Seed;
+use crate::houses::Street;
 use crate::palette::Palette;
 
 /// What covers a roof.
@@ -111,7 +112,19 @@ impl Roof {
 
     /// The colour of the roof: its covering's, in a tint of the house's own, weathered.
     pub fn colour(&self, pal: &Palette, seed: Seed) -> Rgba {
+        self.colour_in(pal, seed, &Street::ALONE)
+    }
+
+    /// The same for a house in a street: the tint of its tiles or its slate
+    /// runs in the street's family (`Street::family`), since a street was
+    /// roofed from the same kiln or the same quarry.
+    pub fn colour_in(&self, pal: &Palette, seed: Seed, street: &Street) -> Rgba {
         let tint = (seed.u * 29.3 + seed.v * 17.9).fract();
+        let tint = match self.cover {
+            Cover::Tile => street.choice(4, 5, tint, seed.pick(43)),
+            Cover::Slate => street.choice(2, 6, tint, seed.pick(44)),
+            _ => tint,
+        };
         let w = self.weathering.min(3) as usize;
         match self.cover {
             Cover::Thatch => lerp(*pal.thatch.cottage, *pal.thatch.weathered, [0.0, 0.35, 0.7, 1.0][w]),
