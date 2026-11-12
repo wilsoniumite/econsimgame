@@ -143,6 +143,11 @@ pub struct Live {
     /// aside under when the game is first saved (`saves::unread`), for the
     /// opening card to say
     pub unread: Option<String>,
+    /// What the towns paid and charged in the months played before the window
+    /// opened that the books kept (the last year's and the year in progress so
+    /// far), until `game::pump` puts them in `Months`, where the months that
+    /// come are added after them
+    pub months_kept: Option<Months>,
 }
 
 /// How going on with a saved game went.
@@ -454,8 +459,8 @@ impl Board {
     }
 
     /// Take in the last `n` months the simulation has played: their series.
-    /// (What the towns paid month by month is not kept by the simulation, so
-    /// a game gone on with has it only from the month it is gone on with.)
+    /// (What the towns paid and charged month by month is the books', and goes
+    /// to `Months`: `iso::live::months_kept`.)
     fn months(&mut self, sim: &iso::Sim, n: usize) {
         for t in sim.t.saturating_sub(n)..sim.t {
             apply_series(&mut self.r, t, &iso::live::month_series(&sim.st, t));
@@ -712,6 +717,13 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     }
     // a game saved in the middle of a year is gone on with there: the months played of it
     board.months(&game.sim, game.month);
+    // and each town's prices and wages in those months and in the last year's, as the books kept
+    // them, so the price and wage maps show the months nobody watched as they show the ones that
+    // come; a game played through the window holds the same (`Months`)
+    let mut months_kept = Months::default();
+    for m in iso::live::months_kept(&game.sim.st, &game.sim.content) {
+        months_kept.add(&m);
+    }
     // years played on after the saved ones: the card says where the game opens
     if let Some(back) = &mut resumed {
         (back.year, back.month) = (game.last_year() as i32, game.month);
@@ -794,6 +806,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         unsaved: cannot_save,
         kept,
         unread,
+        months_kept: Some(months_kept),
     };
     Ok((r, live, view))
 }
@@ -1174,9 +1187,12 @@ pub fn apply_month(r: &mut Replay, m: &LiveMonth) {
 }
 
 /// What the towns paid and charged month by month, for the months a live game
-/// has played while the viewer watched. The run's own tables hold a year's
-/// averages, which is all a recorded run has; with these the price and wage
-/// maps can show a month.
+/// has played while the viewer watched, and before them the months the books
+/// kept when the window opened (`Live::months_kept`: the last year's and the
+/// year in progress so far, which a game gone on with from a save played over
+/// before there was a window). The run's own tables hold a year's averages,
+/// which is all a recorded run has; with these the price and wage maps can
+/// show a month.
 #[derive(Resource, Default)]
 pub struct Months {
     /// towns and goods in each month's row
