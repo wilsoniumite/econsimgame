@@ -295,7 +295,7 @@ fn the_books_follow_what_a_player_does_between_years() {
     let mut s = sim::start(&P, Rules::Game.content());
     let C = s.content.clone();
     let d = pending(&s.st, 0);
-    decide(&mut s.st, &C, 0, d[0].id, 0).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, 0, &mut s.events).unwrap();
     // (the year it happened in, the works, the family's rents the year before)
     let mut done: Option<(i64, usize, f64)> = None;
     while s.year <= s.end_year {
