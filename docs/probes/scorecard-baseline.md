@@ -10,7 +10,11 @@ with the deeper production tree), the floor measured from five histories of
 the tree moves beyond the floor. Nothing in the simulation was changed; the
 one new piece of code is an example that measures the floor
 (`examples/chance_floor.rs`). Measured on 12 November 2026 at `aa9f158`
-(`main`), on branch `night/o-scorecard-baseline`.
+(`main`), on branch `night/o-scorecard-baseline`. The check of this page
+made every sweep again from binaries it built (`aa9f158` and the tree's
+`be02ef8`) and found them the same to the last digit, and `main` at
+`00aa886`, later the same evening, gives the same sixteen islands as
+`aa9f158` in every fact.
 
 ## In short
 
@@ -277,7 +281,11 @@ and 2.5 floors, each from one island. Over seven histories the floor of
 `pop_1900` is 5,057 rather than 2,082, of the wage of 1831-1850 0.087 rather
 than 0.054, and of the iron price's swing 0.0046 rather than 0.0038; the
 towns' share of 1881-1900 keeps its 0.0032 and the loss on `main`'s
-tolerances its 10.5 (148 to 158). No verdict on an aim below changes.
+tolerances its 10.5 (148 to 158). The same two settings under the tree go
+beyond the tree's floor on 8 and 4 facts; there the floor of the farm
+zigzag, the narrowest the page found (0.021), is 0.078 over seven, as
+`main`'s is, since one of the two moved it by 0.050 with twelve islands up.
+No verdict on an aim below changes.
 
 ```bash
 isostate-core sweep --seeds 1-16 --rules game --families 6 \
@@ -285,10 +293,14 @@ isostate-core sweep --seeds 1-16 --rules game --families 6 \
     --out check-main-chance --quiet --jobs 12
 cargo run --release -p isostate-core --example chance_floor -- main-game main-chance --against check-main-chance
 cargo run --release -p isostate-core --example chance_floor -- main-game check-main-chance
+# and the same with the tree's binary (be02ef8): check-tree-chance, set beside tree-game
+cargo run --release -p isostate-core --example chance_floor -- tree-game tree-chance --against check-tree-chance
+cargo run --release -p isostate-core --example chance_floor -- tree-game check-tree-chance
 ```
 
 (The first four settings of `check-main-chance` are `main-chance` again,
-the same to the last digit, so the last command reads seven histories.)
+the same to the last digit, and so for the tree, so the last command of
+each pair reads seven histories.)
 
 A rule of thumb for the pass over the rules: read a change as the change's
 doing when the mean moves by more than the floors of both the rules it left
@@ -312,7 +324,7 @@ On `main` under the game's rules, against the floor of its five histories:
 |---|---|---|
 | Towns' share of 1881-1900 at least 0.5 | 0.421 | **missed** by 0.079, 25 floors; no island of sixteen meets it |
 | Farm zigzag at most 1.2 | 2.03 | **missed** by 0.83, 11 floors. The fact beside it, the zigzag beyond the weather, is 1.275 against 1.2: a miss of 0.075 on a floor of 0.068, with 6 islands of 16 under 1.2; but all five histories are above it (1.26 to 1.33), so **missed, narrowly** |
-| Iron price's swing at most 0.16 | 0.174 | **missed** by 0.014, 3.6 floors, on 14 islands of 16, and in all five histories (0.170 to 0.174). The card says "met" (within one tolerance between islands); the floor says otherwise |
+| Iron price's swing at most 0.16 | 0.174 | **missed** by 0.014, 3.6 floors, on 14 islands of 16, and in all five histories (0.170 to 0.174; 0.169 to 0.174 over seven, 3.0 of their wider floor). The card says "met" (within one tolerance between islands); the floor says otherwise |
 | Coke iron past half within 10 years | 7.8 | **met** by 2.2 years, 5 floors; 15 of 16 islands |
 | 150 years in under 15 seconds (not in the loss) | 39 s of processor | **missed**, but read on a crowded machine: the floor of `cpu_seconds` is 6.6 s from the load alone. The aim was set for the port, which also takes 39 s here |
 | The railway goes on growing after the first rush (no number) | the last year it grew is 1900 on 16 of 16 | **met** as far as a fact reads it; the port's railway stops growing in 1853 |
@@ -329,10 +341,13 @@ histories:
 - **Farm zigzag**: 1.93 (1.91 to 1.93), **missed**. Beyond the weather it is
   1.194 in the first history, a hair under 1.2 with 10 islands of 16 under
   it, but 1.19 to 1.25 over five and under 1.2 in only one: **on the edge,
-  more likely just missed**.
+  more likely just missed**. (The check's two more histories give 1.177 and
+  1.211: under 1.2 in three of seven, 1.210 on the mean of seven. On the
+  edge.)
 - **Iron price's swing**: 0.150 in the first history, 0.150 to 0.162 over
   five and under 0.16 in four, on 13 islands of 16: **met, narrowly**; the
-  margin, 0.010, is less than the tree's own floor of 0.011.
+  margin, 0.010, is less than the tree's own floor of 0.011. (Two more
+  histories: 0.151 and 0.159, so under 0.16 in six of seven.)
 - **Coke iron**: 8.1 years (7.8 to 8.5), **met**, 15 of 16.
 
 Under the port's rules every aim is missed but coke iron's, and by more than
@@ -466,4 +481,7 @@ repository with the night's reports, under `scorecard-baseline/`:
 `scorecard.txt`, the two cards scored on `main`'s tolerances, and
 `chance-floor-main.txt`, `chance-floor-tree.txt`,
 `chance-floor-tree-against-main.txt`, `tree-vs-main-both-floors.txt` and
-`five-history-means.txt`.
+`five-history-means.txt`; and the check's own, whose names begin with
+`check-`: the same sweeps made again, `check-main-chance` and
+`check-tree-chance` with their two more histories, and the example's
+output on seven.
