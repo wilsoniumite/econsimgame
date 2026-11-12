@@ -108,6 +108,11 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "terraces", about: "A terraced row: two and three storeys built about 1840, then two storeys built after 1860 and in the hills; three to six houses across, each a seed of its own.", land: Land::Town, build: terraces },
     Sheet { name: "terraces-slope", about: "A terraced row on ground that falls along the street: nearly level, a gentle hill and a steep one; four and six houses.", land: Land::Town, build: terraces_slope },
     Sheet { name: "villas", about: "A villa in its garden: built before 1815, to 1860 and after, and in the hills; six seeds across.", land: Land::Town, build: villas },
+    Sheet { name: "seeds-cottages", about: "What a seed alone changes: twenty-four cottages of one storey built in 1780 on the same plot, seen in 1840.", land: Land::Town, build: seeds_cottages },
+    Sheet { name: "seeds-townhouses", about: "What a seed alone changes: twenty-four townhouses of three storeys built in 1780 between neighbours, seen in 1860.", land: Land::Town, build: seeds_townhouses },
+    Sheet { name: "seeds-terraces", about: "What a seed alone changes: twenty-four rows of four houses of two storeys built in 1840.", land: Land::Town, build: seeds_terraces },
+    Sheet { name: "seeds-villas", about: "What a seed alone changes: twenty-four villas built in 1870 on the same plot.", land: Land::Town, build: seeds_villas },
+    Sheet { name: "seeds-farmhouses", about: "What a seed alone changes: twenty-four lowland farmhouses, as a farmstead hands each its storeys, its thatch and its wing.", land: Land::Pasture, build: seeds_farmhouses },
     Sheet { name: "house-backs", about: "What is behind a house: cottages, townhouses, a villa and terraces seen from their yards and gardens.", land: Land::Town, build: house_backs },
     Sheet { name: "house-levels", about: "The three levels a house is drawn at, as the camera's distance chooses: far, play and near across; a cottage, a townhouse, a villa, a terrace and a farmstead down the rows.", land: Land::Town, build: house_levels },
     Sheet { name: "roofs", about: "What a cottage is roofed with by when and where it was built (thatch, tile, stone slate, blue slate), and how it has weathered by the year it is seen: twelve seeds across.", land: Land::Town, build: roofs },
@@ -250,6 +255,52 @@ fn villas(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
         let seed = Seed::of(200 + (row * 6 + col) as u32);
         let v = Villa { detail, era, upland, ..Villa::new(PLOT.0, PLOT.1, Roof::of(year_of(era).max(1830), 1890, upland, true, seed), seed) };
         Cell::new(format!("{name}\nseed {}", 200 + row * 6 + col), |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal))
+    })
+}
+
+// Twenty-four seeds of each kind of house with everything else held the same:
+// what a seed alone changes, for counting how many read as different at a
+// glance from the play distance.
+
+fn seeds_cottages(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(3, 8, |row, col| {
+        let seed = Seed::of(300 + (row * 8 + col) as u32);
+        let c = Cottage { detail, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof::of(1780, 1840, false, false, seed), seed) };
+        Cell::new(format!("seed {}", 300 + row * 8 + col), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+    })
+}
+
+fn seeds_townhouses(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(3, 8, |row, col| {
+        let seed = Seed::of(330 + (row * 8 + col) as u32);
+        let t = Townhouse { detail, neighbours: (true, true), ..Townhouse::new(PLOT.0, PLOT.1, 3, Roof::of(1780, 1860, false, false, seed), seed) };
+        Cell::new(format!("seed {}", 330 + row * 8 + col), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
+    })
+}
+
+fn seeds_terraces(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(6, 4, |row, col| {
+        let seed = Seed::of(360 + (row * 4 + col) as u32);
+        let t = Terrace { detail, ..row_of(4, 2, Era::Brick, false, seed) };
+        Cell::new(format!("seed {}", 360 + row * 4 + col), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
+    })
+}
+
+fn seeds_villas(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(3, 8, |row, col| {
+        let seed = Seed::of(390 + (row * 8 + col) as u32);
+        let v = Villa { detail, era: Era::Late, ..Villa::new(PLOT.0, PLOT.1, Roof::of(1870, 1890, false, true, seed), seed) };
+        Cell::new(format!("seed {}", 390 + row * 8 + col), |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal))
+    })
+}
+
+fn seeds_farmhouses(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(3, 8, |row, col| {
+        // as a farmstead hands its house its storeys, its thatch and its wing
+        let seed = Seed::of(420 + (row * 8 + col) as u32);
+        let big = seed.v > 0.55;
+        let f = crate::houses::Farmhouse { storeys: 1 + big as u8, upland: false, thatch: seed.v < 0.45, wing: big, detail, seed };
+        Cell::new(format!("seed {}", 420 + row * 8 + col), |m, site| crate::houses::farmhouse(&mut m.solid, &mut m.smoke, site, &f, pal))
     })
 }
 

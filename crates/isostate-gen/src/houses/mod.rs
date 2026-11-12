@@ -13,7 +13,17 @@
 //! and is handed, besides its plot, storeys, roof and seed: its `Era` (the
 //! step its style takes from the year its plot was first built), whether it
 //! stands in the hills (stone for wash and brick), whether a neighbour stands
-//! close on either side, and the `Detail` it is to be drawn at.
+//! close on either side, its `Street` (the family its street's walls and
+//! tiles run in, and how far the street's houses stand back), and the
+//! `Detail` it is to be drawn at.
+//!
+//! What a house looks like follows from what it is told, so that variety
+//! means something: a narrow plot takes a cottage end-on to the street and a
+//! wide one a long house or one with a cross-wing; a cottage raised a storey
+//! in a later age shows the later work above the old; a townhouse given a
+//! new front keeps its old sides and roof behind it; and wall and roof run in
+//! families along a street. The seed settles the rest (where the stacks
+//! stand, a hipped end, rooms in the roof, an outshut).
 
 mod cottage;
 mod farmhouse;
@@ -73,6 +83,63 @@ pub fn villa_plot(built: i32, seed: Seed) -> bool {
     built >= 1830 && seed.pick(31) < 0.34
 }
 
+/// What a house is told of the street it stands in. The layout knows the
+/// street, and with it variety means something: the wash or the brick of the
+/// walls and the tint of the tiles run in families along a street, and a
+/// street has a building line of its own.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Street {
+    /// two numbers that the houses of one street share (a district's
+    /// streets may share them too). None for a house that is told nothing
+    /// of its street: it then chooses for itself, as every house once did
+    pub family: Option<Seed>,
+    /// how far behind the front of its plot the house stands: nothing where
+    /// a street's houses stand hard on it, a forecourt's or a front
+    /// garden's depth where its building line stands back (up to `FORE_MOST`)
+    pub fore: f32,
+}
+
+/// The deepest forecourt or front garden a plot of the usual depth has room for.
+pub const FORE_MOST: f32 = 0.008;
+
+impl Street {
+    /// A house told nothing of its street.
+    pub const ALONE: Street = Street { family: None, fore: 0.0 };
+
+    /// A street of a family, its houses hard on it.
+    pub fn of(family: Seed) -> Street {
+        Street { family: Some(family), fore: 0.0 }
+    }
+
+    /// One of `n` things (washes, bricks, tints of tile) as a number from 0
+    /// to 1, for a house whose own choice would be `own`: in a street of a
+    /// family, six houses in ten take the street's (its `slot`th number
+    /// says which), a quarter the next to it, and the rest their own. `r`
+    /// is a number of the house's own.
+    fn choice(&self, n: usize, slot: i32, own: f32, r: f32) -> f32 {
+        let Some(f) = self.family else { return own };
+        let base = (f.pick(slot) * n as f32) as usize % n;
+        if r < 0.62 {
+            (base as f32 + 0.5) / n as f32
+        } else if r < 0.88 {
+            ((base + 1) % n) as f32 / n as f32 + 0.5 / n as f32
+        } else {
+            own
+        }
+    }
+
+    /// A share (of houses in brick, of houses that show their stone) as a
+    /// street of a family has it: a street leans one way or the other, so
+    /// that some are all of one kind and most are mixed. A share of none or
+    /// of all is left alone: what cannot be had in a year is not built.
+    fn lean(&self, share: f32, slot: i32) -> f32 {
+        match self.family {
+            Some(f) if share > 0.0 && share < 1.0 => (share + (f.pick(slot) - 0.5) * 1.3).clamp(0.0, 1.0),
+            _ => share,
+        }
+    }
+}
+
 /// What a house is built of, settled by when and where it was built and by a number of its own.
 #[derive(Clone, Copy, Debug)]
 struct Fabric {
@@ -94,14 +161,22 @@ impl Fabric {
     /// kind are of brick, before the brick years and in them (the rest are
     /// washed). In the hills stone stands where brick would, and for
     /// `UPLAND_BARE` of the houses at the least.
-    pub fn of(pal: &Palette, era: Era, upland: bool, brick_early: f32, brick_late: f32, seed: Seed) -> Fabric {
+    ///
+    /// In a street of a family (`Street::family`) the material and its
+    /// colour run along the street: a street leans to brick or to wash (to
+    /// bare stone or to limewash in the hills, to timber frames or to
+    /// plastered fronts among the oldest), and most of its houses take the
+    /// street's wash, its brick or its stone.
+    pub fn of(pal: &Palette, era: Era, upland: bool, brick_early: f32, brick_late: f32, seed: Seed, street: &Street) -> Fabric {
         let (frame, sill) = (*pal.walls.window_frame, *pal.stone.sill);
         let share = if era >= Era::Brick { brick_late } else { brick_early };
         if upland {
             // the hills build in their own stone, to the ground
-            let stone = pick(&pal.stone.upland_farm, seed.v);
+            let stone = pick(&pal.stone.upland_farm, street.choice(pal.stone.upland_farm.len().max(1), 3, seed.v, seed.pick(42)));
             let (stack, yard_wall) = (shade(stone, 0.9), *pal.stone.garden_wall);
-            if seed.pick(1) < share.max(UPLAND_BARE) {
+            // (a street may be all of bare stone; none is all limewash)
+            let bare = share.max(UPLAND_BARE);
+            if seed.pick(1) < street.lean(bare, 1).max(bare.min(0.35)) {
                 return Fabric { wall: Wall { col: stone, plinth: None, frame, sill }, timber: false, brick: false, stack, yard_wall };
             }
             // a coat of limewash over the rubble, white or cream, down to a foot of bare stone: a
@@ -109,13 +184,13 @@ impl Fabric {
             let col = if seed.pick(2) < 0.6 { *pal.walls.limewash } else { *pal.walls.cream };
             return Fabric { wall: Wall { col, plinth: Some(shade(stone, 0.86)), frame, sill }, timber: false, brick: false, stack, yard_wall };
         }
-        if seed.pick(1) < share {
-            let col = pal.brick.terrace(seed.u);
+        if seed.pick(1) < street.lean(share, 1) {
+            let col = pal.brick.terrace(street.choice(4, 2, seed.u, seed.pick(41)));
             return Fabric { wall: Wall { col, plinth: None, frame, sill }, timber: false, brick: true, stack: *pal.brick.chimney, yard_wall: *pal.brick.dark };
         }
-        let col = pal.walls.town_house(seed.v);
+        let col = pal.walls.town_house(street.choice(6, 3, seed.v, seed.pick(42)));
         let yard_wall = if era >= Era::Brick { *pal.brick.dark } else { *pal.stone.yard_wall };
-        Fabric { wall: Wall { col, plinth: Some(*pal.stone.plinth), frame, sill }, timber: era == Era::Old && seed.pick(2) < 0.65, brick: false, stack: *pal.brick.chimney, yard_wall }
+        Fabric { wall: Wall { col, plinth: Some(*pal.stone.plinth), frame, sill }, timber: era == Era::Old && seed.pick(2) < street.lean(0.65, 4), brick: false, stack: *pal.brick.chimney, yard_wall }
     }
 }
 
@@ -193,7 +268,7 @@ mod tests {
         let pal = Palette::standard();
         let of_stone = |f: &Fabric| pal.stone.upland_farm.iter().any(|c| **c == f.wall.col);
         // houses that stand apart: most show their stone, the rest are white or cream on a foot of stone
-        let houses: Vec<Fabric> = (0..400).map(|n| Fabric::of(&pal, Era::Georgian, true, 0.0, 0.6, Seed::of(n))).collect();
+        let houses: Vec<Fabric> = (0..400).map(|n| Fabric::of(&pal, Era::Georgian, true, 0.0, 0.6, Seed::of(n), &Street::ALONE)).collect();
         let bare = houses.iter().filter(|f| of_stone(f)).count();
         assert!((200..290).contains(&bare), "{bare} of 400 show their stone");
         for f in houses.iter().filter(|f| !of_stone(f)) {
@@ -203,6 +278,38 @@ mod tests {
         // none is framed or of brick, washed or not, and their stacks are of stone
         assert!(houses.iter().all(|f| !f.timber && !f.brick && f.stack != *pal.brick.chimney));
         // a row, which in the lowland is all of brick, is all of stone
-        assert!((0..400).all(|n| of_stone(&Fabric::of(&pal, Era::Brick, true, 1.0, 1.0, Seed::of(n)))));
+        assert!((0..400).all(|n| of_stone(&Fabric::of(&pal, Era::Brick, true, 1.0, 1.0, Seed::of(n), &Street::ALONE))));
+    }
+
+    #[test]
+    fn a_street_s_houses_run_in_a_family_and_streets_differ() {
+        let pal = Palette::standard();
+        // of the houses of one street, how many are of the commonest wall
+        let commonest = |street: &Street, era: Era, upland: bool| {
+            let walls: Vec<_> = (0..200).map(|n| Fabric::of(&pal, era, upland, 0.25, 0.6, Seed::of(n), street).wall.col).collect();
+            let most = walls.iter().map(|w| walls.iter().filter(|x| *x == w).count()).max().unwrap();
+            (most, walls[walls.iter().position(|w| walls.iter().filter(|x| *x == w).count() == most).unwrap()])
+        };
+        // each for itself: no wash or brick has more than a third of the houses
+        assert!(commonest(&Street::ALONE, Era::Georgian, false).0 < 70);
+        let mut leading = Vec::new();
+        for s in 0..40 {
+            let street = Street::of(Seed::of(900 + s));
+            for (era, upland) in [(Era::Georgian, false), (Era::Late, false), (Era::Late, true)] {
+                let (most, wall) = commonest(&street, era, upland);
+                // in a street most are of one, and never all: a street is a family, not a uniform
+                assert!(most >= 60 && most <= 190, "street {s} {era:?}: {most} of 200 alike");
+                if era == Era::Georgian {
+                    leading.push(wall);
+                }
+            }
+            // and the same house in the same street is the same house
+            let f = |n| Fabric::of(&pal, Era::Brick, false, 0.25, 0.6, Seed::of(n), &street).wall.col;
+            assert_eq!(f(7), f(7));
+        }
+        // the streets do not all take the same wash
+        leading.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        leading.dedup();
+        assert!(leading.len() >= 4, "{} washes lead among 40 streets", leading.len());
     }
 }
