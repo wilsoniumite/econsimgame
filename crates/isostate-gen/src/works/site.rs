@@ -32,7 +32,7 @@ use std::sync::OnceLock;
 
 use glam::Vec3;
 
-use super::kit::{Ctx, Face, GROUND_STEP, LIFT};
+use super::kit::{Ctx, Face, LIFT};
 use super::{footprint, grain, Kind, State, Works};
 use crate::colour::{lerp, shade, Rgba};
 use crate::hash::{hash2, Seed};
@@ -388,7 +388,7 @@ impl Plot {
 /// How much wider and deeper than `works::footprint` the ground of a planned
 /// works is: the stores, the stock yards and the lanes want room beside the
 /// process buildings.
-pub const GROUND: f32 = 1.25;
+pub const GROUND: f32 = 1.15;
 
 /// The ground a planned works of a kind wants at a size: its width along the front and its depth.
 pub fn ground(kind: Kind, size: f32) -> (f32, f32) {
@@ -1360,6 +1360,13 @@ fn part_seed(seed: Seed, n: usize) -> Seed {
 /// Build a planned works. It gives back the top of its highest gable and
 /// how many of their own numbers its parts took (the same at every level).
 fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Site, plan: &Plan, now: &Now, pal: &Palette) -> (Option<Vec3>, i32) {
+    // A yard is level. The works stands at the height of its site's origin, whatever the
+    // land does under it: the viewer hands in the height of the highest land under the plot
+    // (`scatter::Slots::firm_level`), so the yard is nowhere below the land, and where the
+    // land falls away from it the yard is built up behind a retaining wall (`terrace`).
+    let land = site;
+    let bench = Site::level(site.origin, site.yaw);
+    let site = &bench;
     let founded = plan.stages[0].year;
     let water = plan.plot.find(founded, |e| matches!(e, Edge::Water { .. })).is_some();
     let mut peak: Option<Vec3> = None;
@@ -1419,7 +1426,7 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
         yard(&mut c, plan, now, y, n, ground);
     }
     if let Some(side) = plan.siding {
-        siding(&mut c, plan, now, side);
+        siding(&mut c, plan, now, side, land);
     }
     if let Some(side) = plan.wharf {
         wharf(&mut c, plan, now, side);
@@ -1432,7 +1439,58 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
     }
     c.finish();
     taken += c.taken();
+    if !land.is_level() {
+        let wall = asked_wall.map_or(*pal.stone.yard_wall, |w| w.0);
+        terrace(solid, land, site, plan, wall, lerp(ground, *pal.ground.lane_dust, 0.45));
+    }
     (peak, taken)
+}
+
+/// How far the yard must stand above the land before a retaining wall or a way up to the gate is built.
+const SHOWS: f32 = 0.002;
+/// How long the way up to the gate of a works that stands above its road is.
+const RAMP: f32 = 0.028;
+
+/// What holds a level yard up where the land falls away from it: a retaining
+/// wall under the edge of the ground the works has taken in, from the yard's
+/// level down to the land, wherever the land lies lower; and where the gate
+/// stands above the land before it, a way up to it. Drawn at every level of
+/// detail: from far off it is what keeps a works on a hillside from floating.
+fn terrace(solid: &mut MeshBuf, land: &Site, bench: &Site, plan: &Plan, wall: Rgba, way: Rgba) {
+    let top = bench.origin.y + LIFT;
+    let out = &plan.enclosed;
+    let foot = Vec3::Y * 0.006;
+    for i in 0..out.outline.len() {
+        let ((a, b), o) = (out.side(i), out.outward(i));
+        let len = (b.0 - a.0).hypot(b.1 - a.1);
+        let n = ((len / 0.03).ceil() as usize).max(1);
+        let facing = bench.turn() * Vec3::new(o.0, 0.0, o.1);
+        let at = |k: usize| { let t = k as f32 / n as f32; land.at(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t) };
+        for k in 0..n {
+            let (p, q) = (at(k), at(k + 1));
+            if bench.origin.y - p.y.min(q.y) < SHOWS {
+                continue;
+            }
+            // (darker at its foot, as every wall is)
+            let (tp, tq) = (Vec3::new(p.x, top, p.z), Vec3::new(q.x, top, q.z));
+            solid.quad_toward([tp, tq, q - foot, p - foot], [wall, wall, shade(wall, 0.84), shade(wall, 0.84)], facing);
+        }
+    }
+    // the way up to the gate, from the land a little before it
+    let ((gx, gw), z1) = (plan.gate, plan.plot.bounds().3);
+    let (fa, fb) = (land.at(gx - gw * 0.5, z1 + RAMP), land.at(gx + gw * 0.5, z1 + RAMP));
+    if bench.origin.y - fa.y.min(fb.y) >= SHOWS {
+        let lift = Vec3::Y * 0.003;
+        let (a, b) = (bench.at(gx - gw * 0.5, z1) + Vec3::Y * LIFT, bench.at(gx + gw * 0.5, z1) + Vec3::Y * LIFT);
+        solid.quad_toward([a, b, fb + lift, fa + lift], [way; 4], Vec3::Y);
+        // its two cheeks, down to the land under the gate posts
+        let right = bench.turn() * Vec3::X;
+        for (head, toe, x, side) in [(a, fa + lift, gx - gw * 0.5, -1.0f32), (b, fb + lift, gx + gw * 0.5, 1.0)] {
+            let under = land.at(x, z1) - foot;
+            solid.tri_toward([head, toe - foot, under], [wall, shade(wall, 0.78), shade(wall, 0.78)], right * side);
+            solid.tri_toward([head, toe, toe - foot], [wall, wall, shade(wall, 0.78)], right * side);
+        }
+    }
 }
 
 // ------------------------------------------------------------------ the parts the plan adds
@@ -1477,39 +1535,19 @@ fn office(c: &mut Ctx) {
     c.stack(-len * 0.5 + 0.003, 0.0, c.storeys(2) + dep * 0.3 + 0.006, 0.0045, c.tone(*pal.brick.chimney), 0.25);
 }
 
-/// The plot's own ground, following the land.
+/// The plot's own ground: one fan over its outline, since the yard is level.
 fn ground_within(c: &mut Ctx, outline: &[(f32, f32)], col: Rgba) {
-    let up = Vec3::Y * LIFT;
-    let fan = |c: &mut Ctx, poly: &[(f32, f32)]| {
-        if poly.len() < 3 {
-            return;
-        }
-        let m = poly.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0 / poly.len() as f32, s.1 + p.1 / poly.len() as f32));
-        let mid = c.at(m.0, m.1) + up;
-        for i in 0..poly.len() {
-            let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
-            let (pa, pb) = (c.at(a.0, a.1) + up, c.at(b.0, b.1) + up);
-            // whichever way round the outline runs, the ground faces up
-            if (pa - mid).cross(pb - mid).y >= 0.0 { c.flat.tri(mid, pa, pb, col) } else { c.flat.tri(mid, pb, pa, col) }
-        }
-    };
-    if c.site.is_level() {
-        fan(c, outline);
+    if outline.len() < 3 {
         return;
     }
-    // on sloping ground, in squares small enough to follow it, each cut to the outline
-    let (x0, x1, z0, z1) = outline.iter().fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, p| (b.0.min(p.0), b.1.max(p.0), b.2.min(p.1), b.3.max(p.1)));
-    let (nx, nz) = ((((x1 - x0) / GROUND_STEP).ceil() as usize).max(1), (((z1 - z0) / GROUND_STEP).ceil() as usize).max(1));
-    let (sx, sz) = ((x1 - x0) / nx as f32, (z1 - z0) / nz as f32);
-    for j in 0..nz {
-        for i in 0..nx {
-            let (a, b) = ((x0 + sx * i as f32, z0 + sz * j as f32), (x0 + sx * (i + 1) as f32, z0 + sz * (j + 1) as f32));
-            let mut poly: Vec<(f32, f32)> = outline.to_vec();
-            for (nx_, nz_, lim) in [(1.0f32, 0.0f32, b.0), (-1.0, 0.0, -a.0), (0.0, 1.0, b.1), (0.0, -1.0, -a.1)] {
-                poly = clip(&poly, nx_, nz_, lim);
-            }
-            fan(c, &poly);
-        }
+    let up = Vec3::Y * LIFT;
+    let m = outline.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0 / outline.len() as f32, s.1 + p.1 / outline.len() as f32));
+    let mid = c.at(m.0, m.1) + up;
+    for i in 0..outline.len() {
+        let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
+        let (pa, pb) = (c.at(a.0, a.1) + up, c.at(b.0, b.1) + up);
+        // whichever way round the outline runs, the ground faces up
+        if (pa - mid).cross(pb - mid).y >= 0.0 { c.flat.tri(mid, pa, pb, col) } else { c.flat.tri(mid, pb, pa, col) }
     }
 }
 
@@ -1602,9 +1640,7 @@ fn lanes(c: &mut Ctx, plan: &Plan, ground: Rgba) {
     let trodden = lerp(ground, *pal.ground.lane_dust, 0.45);
     let up = Vec3::Y * (LIFT + 0.0012);
     let ribbon = |c: &mut Ctx, a: (f32, f32), b: (f32, f32), w: f32, col: Rgba, lift: f32| {
-        let n = if c.site.is_level() { 1 } else { ((((a.0 - b.0).hypot(a.1 - b.1)) / GROUND_STEP).ceil() as usize).max(1) };
-        let pts: Vec<Vec3> = (0..=n).map(|i| { let t = i as f32 / n as f32; c.at(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t) + up + Vec3::Y * lift }).collect();
-        c.flat.ribbon(&pts, w, col);
+        c.flat.ribbon(&[c.at(a.0, a.1) + up + Vec3::Y * lift, c.at(b.0, b.1) + up + Vec3::Y * lift], w, col);
     };
     let (cx, cz, cw, cd) = plan.cart_yard;
     let (_, _, _, bz1) = plan.plot.bounds();
@@ -1669,14 +1705,7 @@ fn lanes(c: &mut Ctx, plan: &Plan, ground: Rgba) {
 /// A rectangle of ground within the plot, a little above the yard's own: the floor of a stock yard.
 fn floor(c: &mut Ctx, (x0, z0, x1, z1): (f32, f32, f32, f32), col: Rgba) {
     let up = Vec3::Y * (LIFT + 0.0006);
-    let (nx, nz) = if c.site.is_level() { (1, 1) } else { ((((x1 - x0) / GROUND_STEP).ceil() as usize).max(1), (((z1 - z0) / GROUND_STEP).ceil() as usize).max(1)) };
-    let (sx, sz) = ((x1 - x0) / nx as f32, (z1 - z0) / nz as f32);
-    for j in 0..nz {
-        for i in 0..nx {
-            let (ax, az) = (x0 + sx * i as f32, z0 + sz * j as f32);
-            c.flat.quad(c.at(ax, az + sz) + up, c.at(ax + sx, az + sz) + up, c.at(ax + sx, az) + up, c.at(ax, az) + up, col);
-        }
-    }
+    c.flat.quad(c.at(x0, z1) + up, c.at(x1, z1) + up, c.at(x1, z0) + up, c.at(x0, z0) + up, col);
 }
 
 /// What lies in an open yard, as full as the works' stock says, on ground
@@ -1790,7 +1819,7 @@ fn wagon(c: &mut Ctx, at: (f32, f32), dir: (f32, f32), body: Rgba, load: Option<
 /// of them as the works is bigger and busier. (The wagons are a STAND-IN for
 /// the traffic the simulation would record: so many as the works' size and
 /// busyness suggest.)
-fn siding(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32)) {
+fn siding(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32), land: &Site) {
     let pal = c.pal;
     let plot = &plan.plot;
     // from the end the spur leaves by to the end with the stop
@@ -1801,25 +1830,29 @@ fn siding(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32)
     }
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
     let pt = |f: f32, off: f32| (a.0 + dir.0 * len * f - dir.1 * off, a.1 + dir.1 * len * f + dir.0 * off);
-    let n = if c.site.is_level() { 1 } else { ((len / GROUND_STEP).ceil() as usize).max(1) };
-    let line = |c: &Ctx, off: f32, lift: f32| -> Vec<Vec3> { (0..=n).map(|i| { let p = pt(i as f32 / n as f32, off); c.at(p.0, p.1) + Vec3::Y * (LIFT + lift) }).collect() };
+    let line = |c: &Ctx, off: f32, lift: f32| -> Vec<Vec3> { [0.0f32, 1.0].into_iter().map(|f| { let p = pt(f, off); c.at(p.0, p.1) + Vec3::Y * (LIFT + lift) }).collect() };
     let ballast = line(c, 0.0, 0.0012);
     c.flat.ribbon(&ballast, 0.013, *pal.rail.ballast);
     for off in [-0.0034f32, 0.0034] {
         let rail = line(c, off, 0.0024);
         c.flat.ribbon(&rail, 0.0013, *pal.rail.rails);
     }
-    // the spur that leads it out to the line: the same track, in its curve
+    // the spur that leads it out to the line: the same track, in its curve, running from
+    // the yard's level to the land's where it meets the line (the viewer gives a works a
+    // siding only where those two are near enough for a track to run between them)
     if plan.spur.len() >= 2 {
-        let at = |c: &Ctx, p: (f32, f32), lift: f32| c.at(p.0, p.1) + Vec3::Y * (LIFT + lift);
-        let bed: Vec<Vec3> = plan.spur.iter().map(|&p| at(c, p, 0.0012)).collect();
+        let last = plan.spur[plan.spur.len() - 1];
+        let fall = land.at(last.0, last.1).y - c.site.origin.y;
+        let steps = (plan.spur.len() - 1) as f32;
+        let at = |c: &Ctx, i: usize, p: (f32, f32), lift: f32| c.at(p.0, p.1) + Vec3::Y * (LIFT + lift + fall * i as f32 / steps);
+        let bed: Vec<Vec3> = plan.spur.iter().enumerate().map(|(i, &p)| at(c, i, p, 0.0012)).collect();
         c.flat.ribbon(&bed, 0.013, *pal.rail.ballast);
         for off in [-0.0034f32, 0.0034] {
             let rail: Vec<Vec3> = (0..plan.spur.len())
                 .map(|i| {
                     let (p, q) = (plan.spur[i.saturating_sub(1)], plan.spur[(i + 1).min(plan.spur.len() - 1)]);
                     let l = (q.0 - p.0).hypot(q.1 - p.1).max(1e-6);
-                    at(c, (plan.spur[i].0 - (q.1 - p.1) / l * off, plan.spur[i].1 + (q.0 - p.0) / l * off), 0.0024)
+                    at(c, i, (plan.spur[i].0 - (q.1 - p.1) / l * off, plan.spur[i].1 + (q.0 - p.0) / l * off), 0.0024)
                 })
                 .collect();
             c.flat.ribbon(&rail, 0.0013, *pal.rail.rails);
@@ -1879,8 +1912,7 @@ fn wharf(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32))
     }
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
     let pt = |f: f32, off: f32| (a.0 + dir.0 * len * f - dir.1 * off, a.1 + dir.1 * len * f + dir.0 * off);
-    let n = if c.site.is_level() { 1 } else { ((len / GROUND_STEP).ceil() as usize).max(1) };
-    let line: Vec<Vec3> = (0..=n).map(|i| { let p = pt(i as f32 / n as f32, 0.0); c.at(p.0, p.1) + Vec3::Y * (LIFT + 0.0012) }).collect();
+    let line: Vec<Vec3> = [0.0f32, 1.0].into_iter().map(|f| { let p = pt(f, 0.0); c.at(p.0, p.1) + Vec3::Y * (LIFT + 0.0012) }).collect();
     c.flat.ribbon(&line, WHARF - 0.002, lerp(*pal.stone.yard_wall, *pal.ground.yard_setts, 0.5));
     if c.going_up() || c.derelict() {
         return;

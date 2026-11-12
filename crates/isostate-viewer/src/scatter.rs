@@ -62,6 +62,8 @@ pub struct Slots {
     /// the ground of each works in its own frame (x along its front, z out to
     /// its gate): its outline, and what each side of it faces and since when
     pub firm_plot: Vec<Plot>,
+    /// the height each works' yard is levelled at: the highest land under its plot
+    pub firm_level: Vec<f32>,
     /// the rung of the size each works' ground was set aside for
     firm_rung: Vec<i32>,
     /// the churchyards the works' ground was taken clear of (`towns::Churchyard::mark`, together)
@@ -317,6 +319,47 @@ impl Room {
             Room::Any => 0.008,
         }
     }
+
+    /// How much the land may rise across a yard. A yard is level, built up
+    /// to the height of the highest land under it, so this is how high its
+    /// retaining wall may stand: a storey and a half (a storey is 0.0205),
+    /// two and a half where ground is short, and at the last whatever the
+    /// land is.
+    fn rise(self) -> f32 {
+        match self {
+            Room::Proper => 0.03,
+            Room::Tight => 0.05,
+            Room::Any => f32::MAX,
+        }
+    }
+}
+
+/// How much the land rises across a box of ground: its highest point less its lowest, at
+/// points no more than a tenth of a cell apart.
+fn rise_across(g: &Ground, x: f32, z: f32, hx: f32, hz: f32) -> f32 {
+    let (nx, nz) = (((2.0 * hx / 0.05).ceil() as usize).max(1), ((2.0 * hz / 0.05).ceil() as usize).max(1));
+    let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+    for jz in 0..=nz {
+        for ix in 0..=nx {
+            let h = world::height_at(g, x - hx + 2.0 * hx * ix as f32 / nx as f32, z - hz + 2.0 * hz * jz as f32 / nz as f32);
+            (lo, hi) = (lo.min(h), hi.max(h));
+        }
+    }
+    hi - lo
+}
+
+/// The highest land under a works' plot, `w` along its front and `d` deep about its middle, as it is turned.
+fn highest_under(g: &Ground, (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32)) -> f32 {
+    let (sin, cos) = yaw.sin_cos();
+    let (nx, nz) = (((w / 0.04).ceil() as usize).max(1), ((d / 0.04).ceil() as usize).max(1));
+    let mut top = f32::MIN;
+    for jz in 0..=nz {
+        for ix in 0..=nx {
+            let (px, pz) = (w * (ix as f32 / nx as f32 - 0.5), d * (jz as f32 / nz as f32 - 0.5));
+            top = top.max(world::height_at(g, x + px * cos + pz * sin, z - px * sin + pz * cos));
+        }
+    }
+    top
 }
 
 /// Ground set aside for a works: the box round its yard, and the years it stands.
@@ -448,6 +491,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], tracks: &[T
             }) {
                 return false;
             }
+            // not on ground too steep to level: a works that finds none level enough stands
+            // elsewhere, or is built smaller (a smaller plot rises less)
+            if rise_across(g, x, z, hx, hz) > room.rise() {
+                return false;
+            }
             let (dry, shore) = (room.dry(), room.shore());
             // dry land under all of it, and no river through it
             let (nx, nz) = (((2.0 * hx / 0.05).ceil() as usize).max(1), ((2.0 * hz / 0.05).ceil() as usize).max(1));
@@ -527,7 +575,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], tracks: &[T
         slots.firm_pos[f] = (x, z, q as f32 * std::f32::consts::FRAC_PI_2 + askew);
         slots.firm_cap[f] = if size < own { size } else { f32::MAX };
         slots.firm_water[f] = world::water_dist(g, x, z) < hx.hypot(hz) + 0.09;
-        slots.firm_plot[f] = plot_of(g, ways, tracks, &rail_year, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f]);
+        // its yard is level, at the height of the highest land under its plot (and a hair, for
+        // the swells between the points looked at)
+        let level = highest_under(g, slots.firm_pos[f], (w, d)) + 0.002;
+        slots.firm_level[f] = level;
+        slots.firm_plot[f] = plot_of(g, ways, tracks, &rail_year, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f], level);
         lots.push(Lot { x, z, hx, hz, from, to });
         placed.push(f);
     }
@@ -592,10 +644,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], tracks: &[T
 /// The plot of a works whose yard's middle, facing and size are settled: a
 /// rectangle with one of its far corners cut off where a road, the railway
 /// or water presses on it, and what each side faces. `tracks` is the railway
-/// where it runs in the open, and `rail_year` the year the line through a
-/// point of the map was laid there.
+/// where it runs in the open, `rail_year` the year the line through a point
+/// of the map was laid there, and `level` the height the works' yard is
+/// levelled at.
 #[allow(clippy::too_many_arguments)]
-fn plot_of(g: &Ground, ways: &[Way], tracks: &[Track], rail_year: &dyn Fn(f32, f32) -> Option<i32>, (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool) -> Plot {
+fn plot_of(g: &Ground, ways: &[Way], tracks: &[Track], rail_year: &dyn Fn(f32, f32) -> Option<i32>, (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool, level: f32) -> Plot {
     let (hw, hd) = (w * 0.5, d * 0.5);
     let (sin, cos) = yaw.sin_cos();
     // a point of the works' own frame on the map, and a map direction in the works' frame
@@ -620,7 +673,8 @@ fn plot_of(g: &Ground, ways: &[Way], tracks: &[Track], rail_year: &dyn Fn(f32, f
     };
     // the side nearest the railway, with the line as it runs by the plot: the planner lays a
     // siding only where it can lead it out to that line (`site::JOIN`). The line is taken where
-    // it runs at the level of the ground (`LEVEL_WITH`), from the year it was laid there
+    // it runs at the level of the ground and of the works' yard (`LEVEL_WITH`: a spur runs
+    // from the one to the other), from the year it was laid there
     let reach = hw.hypot(hd) + 0.3;
     let mut nearest: Option<(f32, usize, usize)> = None;
     for (ti, t) in tracks.iter().enumerate() {
@@ -629,19 +683,19 @@ fn plot_of(g: &Ground, ways: &[Way], tracks: &[Track], rail_year: &dyn Fn(f32, f
         }
         for (pi, p) in t.pts.iter().enumerate() {
             let away = (p.0 - x).hypot(p.1 - z);
-            if p.2.abs() <= LEVEL_WITH && away < nearest.map_or(reach, |n| n.0) {
+            if p.2.abs() <= LEVEL_WITH && (level - world::height_at(g, p.0, p.1)).abs() <= LEVEL_WITH && away < nearest.map_or(reach, |n| n.0) {
                 nearest = Some((away, ti, pi));
             }
         }
     }
     if let Some((_, ti, pi)) = nearest {
         let pts = &tracks[ti].pts;
-        let level = |p: &(f32, f32, f32)| p.2.abs() <= LEVEL_WITH && (p.0 - x).hypot(p.1 - z) < reach;
+        let meets = |p: &(f32, f32, f32)| p.2.abs() <= LEVEL_WITH && (level - world::height_at(g, p.0, p.1)).abs() <= LEVEL_WITH && (p.0 - x).hypot(p.1 - z) < reach;
         let (mut a, mut b) = (pi, pi);
-        while a > 0 && level(&pts[a - 1]) {
+        while a > 0 && meets(&pts[a - 1]) {
             a -= 1;
         }
-        while b + 1 < pts.len() && level(&pts[b + 1]) {
+        while b + 1 < pts.len() && meets(&pts[b + 1]) {
             b += 1;
         }
         let side = plot.side_toward(own(pts[pi].0 - x, pts[pi].1 - z));
@@ -875,7 +929,7 @@ pub fn firm_flag(r: &Replay, g: &Ground, slots: &Slots, f: usize, k: usize, lk: 
         return Some(at);
     }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let at = site::flag_point(&Site::on(ground(g, x, z), yaw, &height), &fs.plan, &fs.now, lk);
+    let at = site::flag_point(&Site::on(Vec3::new(x, slots.firm_level.get(f).copied().unwrap_or_else(|| world::height_at(g, x, z)), z), yaw, &height), &fs.plan, &fs.now, lk);
     known.0.insert(f, (key, at));
     Some(at)
 }
@@ -892,6 +946,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     slots.firm_cap.resize(n, f32::MAX);
     slots.firm_water.resize(n, false);
     slots.firm_plot.resize(n, Plot::rect(0.1, 0.08));
+    slots.firm_level.resize(n, 0.0);
     let cen = crate::network::centres(r);
     // the churchyards of every year so far. When one is new (a town founded, a church rebuilt
     // bigger, or moved by a road or the railway), the cells it reaches are laid out again,
@@ -939,6 +994,27 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
             }
         }
         eprintln!("works laid out in {} cells: {} of {} drawn smaller than they are for want of room, {} with no ground of their own, {} on the ground of a church ({} churchyards over the years)", dirty.len(), squeezed, n, homeless, in_churchyard, yards.len());
+        // how much the land rises across each works' plot: a yard is levelled, so this is how
+        // high its retaining wall stands at the most
+        let mut rises: Vec<(f32, usize)> = (0..n)
+            .map(|f| {
+                let (x, z, yaw) = slots.firm_pos[f];
+                let (x0, x1, z0, z1) = slots.firm_plot[f].bounds();
+                let (w, d) = (x1 - x0, z1 - z0);
+                let (hx, hz) = if (yaw / std::f32::consts::FRAC_PI_2).round() as i32 % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
+                (rise_across(g, x, z, hx, hz), f)
+            })
+            .collect();
+        rises.sort_by(|a, b| a.0.total_cmp(&b.0));
+        if !rises.is_empty() {
+            let at = |q: f32| rises[((rises.len() - 1) as f32 * q) as usize].0;
+            let over = |h: f32| rises.iter().filter(|r| r.0 > h).count();
+            eprintln!("the land across a works' plot rises {:.3} at the middle works, {:.3} at nine in ten, {:.3} at ninety-nine in a hundred and {:.3} at the most; {} of {} rise more than {} (the most a yard is given while ground is not short; a storey is 0.0205), {} more than {}", at(0.5), at(0.9), at(0.99), at(1.0), over(Room::Proper.rise()), n, Room::Proper.rise(), over(Room::Tight.rise()), Room::Tight.rise());
+            if std::env::var_os("ISOSTATE_PLOTS").is_some() {
+                let steepest: Vec<String> = rises.iter().rev().take(8).map(|&(rise, f)| format!("{} at {:.2},{:.2} (from {}, {rise:.3})", firm_kind(r, f).label(), slots.firm_pos[f].0, slots.firm_pos[f].1, r.header.firms[f].born)).collect();
+                eprintln!("  the steepest: {}", steepest.join("; "));
+            }
+        }
     }
     if std::env::var_os("ISOSTATE_PLOTS").is_some() {
         // the cells with the most works at the end, and what stands in each, for pointing a camera
@@ -976,6 +1052,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
         firm_cap: Vec::new(),
         firm_water: Vec::new(),
         firm_plot: Vec::new(),
+        firm_level: Vec::new(),
         firm_rung: Vec::new(),
         churchyards: 0,
         hedge: Vec::new(),
@@ -1280,7 +1357,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
                 plots.entry(c1).or_default().push(lot);
             }
         }
-        let site_ = Site::on(ground(g, p.0, p.1), p.2, &height);
+        // (its yard level, at the height of the highest land under its plot)
+        let site_ = Site::on(Vec3::new(p.0, slots.firm_level[f], p.1), p.2, &height);
         // as much of it as the camera can see, as for a house
         let now = site::Now { detail: lod.at(p.0, p.1), ..fs.now };
         site::site(&mut works_b, &mut smoke, &mut lanes, &site_, &fs.plan, &now, lk);

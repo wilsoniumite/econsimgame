@@ -146,6 +146,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "site-history", about: "One powered mill through its own history on one plot by a stream: going up in 1760, at work, enlarged in 1795, in 1820 and (the railway having come in 1848) in 1870; then the same works shrunk to a fifth for four years and for twelve, standing idle, and derelict.", land: Land::Pasture, build: site_history },
     Sheet { name: "site-history-iron", about: "One coke ironworks through its own history on one plot: going up in 1790, at work, enlarged in 1815, in 1840 and (the railway having come in 1848) in 1865; then shrunk for four years and for twelve, standing idle, and derelict.", land: Land::Pasture, build: site_history_iron },
     Sheet { name: "site-ways", about: "The ways in and out of a works (a rolling mill, then a brickworks, of ten times the standard size): by the gate alone; with a railway along its back; on navigable water; with both; with a works that feeds it on its left and one it feeds on its right; and how busy it is and what it holds, from slack and empty to hard at work and full.", land: Land::Pasture, build: site_ways },
+    Sheet { name: "site-slope", about: "Works on sloping land: a coke ironworks, a powered mill and a brickworks, each of eight times the standard size, on land that falls away to the left by 6 in 100 (top row) and by 12 in 100, which is as steep as a works is given while ground is not short. The yard is level, at the height of the highest land under its plot, and is held up on its low side by a retaining wall.", land: Land::Pasture, build: site_slope },
     Sheet { name: "site-plots", about: "One works on plots of three shapes (square, with its back aslant, with a corner cut off), deep and shallow: a coke ironworks, a powered mill and a works of a kind the generators do not know, each of twelve times the standard size.", land: Land::Pasture, build: site_plots },
     Sheet { name: "works-district", about: "A district of works that stand together along a road with the railway behind: coke furnaces hand pig iron over the wall to a forge and the forge its bars to a rolling mill, with a brickworks, an engine works and a smithy beside them; as it stood in 1800, in 1850 and in 1890.", land: Land::Pasture, build: works_district },
     Sheet { name: "site-loom", about: "Handloom weavers laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_loom },
@@ -778,6 +779,28 @@ fn site_plots(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
                 ("shallow, its back aslant", Plot::wedge(w * 1.55, d / 1.3, 0.45)),
             ];
             shapes.into_iter().enumerate().map(|(i, (name, plot))| site_of(format!("{}\n{name}", kind.label()), kind, 1795, 1885, 12.0, plot, kind as u32 * 8 + i as u32, detail, pal)).collect()
+        })
+        .collect()
+}
+
+fn site_slope(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [0.06f32, 0.12]
+        .into_iter()
+        .map(|fall| {
+            [Kind::CokeFurnace, Kind::TextileMill, Kind::Brickworks]
+                .into_iter()
+                .map(|kind| {
+                    let (w, d) = site::ground(kind, 8.0);
+                    let (plan, now) = site::specimen(kind, 1800, 1885, 8.0, &Plot::rect(w, d), Seed::of(kind as u32 + 21), pal);
+                    let now = Now { detail, ..now };
+                    Cell::on_slope(format!("{}
+falling {fall} to the unit", kind.label()), 0.0, fall, w + 0.1, d + 0.1, *pal.ground.furnace_bank, |m, s| {
+                        // (the yard at the height of the highest land under the plot, as the game hands it)
+                        let top = s.height(s.origin.x + w * 0.5, s.origin.z);
+                        site::site(&mut m.solid, &mut m.smoke, &mut m.flat, &s.moved(Vec3::new(s.origin.x, top, s.origin.z), s.yaw), &plan, &now, pal);
+                    })
+                })
+                .collect()
         })
         .collect()
 }

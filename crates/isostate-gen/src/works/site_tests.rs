@@ -235,7 +235,7 @@ fn every_building_stands_on_the_ground_the_works_has_taken_in() {
     let pal = Palette::standard();
     for kind in Kind::ALL {
         for seed in 0..8 {
-            let (w, d) = ground(kind, 60.0);
+            let (w, d) = ground(kind, 120.0);
             let p = plan(kind, &Process::of(kind), &[Stage { year: 1800, size: 1.6 }], &Plot::rect(w, d), 1810, Seed::of(seed), &pal);
             let (x0, x1, z0, z1) = p.enclosed.bounds();
             assert!(p.lane.is_some() && p.parts.iter().any(|part| part.role == Role::Office), "{kind:?}: no counting house on a plot {w} by {d}");
@@ -527,21 +527,53 @@ fn a_works_of_a_kind_nobody_knows_is_planned_from_its_process() {
 }
 
 #[test]
-fn the_flag_flies_from_the_works_and_the_ground_follows_a_slope() {
+fn the_flag_flies_from_the_works() {
     let pal = Palette::standard();
-    let slope = |x: f32, z: f32| 0.2 + 0.3 * x - 0.1 * z;
     all(|plan, now| {
         let s = Site::level(Vec3::ZERO, 0.3);
         let p = flag_point(&s, plan, &now, &pal);
         let (x0, x1, z0, z1) = plan.plot.bounds();
         assert!(p.y > 0.008 && p.y < 0.45 && p.x.hypot(p.z) <= (x1 - x0).hypot(z1 - z0), "{:?}: the flag is at {p}", plan.kind);
-        if now.size == 10.0 {
-            let mut m = Model::default();
-            site(&mut m.solid, &mut m.smoke, &mut m.flat, &Site::on(Vec3::new(0.0, 0.2, 0.0), 0.0, &slope), plan, &now, &pal);
-            assert!(m.is_sound());
-            for p in &m.flat.pos {
-                assert!((p[1] - slope(p[0], p[2])).abs() < 0.012, "{:?}: the ground at {p:?} is off the slope", plan.kind);
-            }
-        }
     });
+}
+
+#[test]
+fn a_yard_is_level_on_sloping_land_behind_a_retaining_wall() {
+    let pal = Palette::standard();
+    // land that falls to the front and to the right; the site is handed the height of the highest land under the plot
+    let slope = |x: f32, z: f32| 0.2 + 0.12 * x - 0.08 * z;
+    for kind in [Kind::CokeFurnace, Kind::TextileMill, Kind::Smithy, Kind::Other] {
+        let (w, d) = ground(kind, 10.0);
+        for plot in [Plot::rect(w, d), Plot::cut(w, d, 0.35), Plot::rect(w, d).facing(2, Edge::Rail)] {
+            let (plan, now) = specimen(kind, 1800, 1885, 10.0, &plot, Seed::of(8), &pal);
+            let top = plot.outline.iter().map(|p| slope(p.0, p.1)).fold(f32::MIN, f32::max);
+            let on = |ground: &dyn Fn(f32, f32) -> f32| { let mut m = Model::default(); site(&mut m.solid, &mut m.smoke, &mut m.flat, &Site::on(Vec3::new(0.0, top, 0.0), 0.0, ground), &plan, &now, &pal); m };
+            let (sloped, level) = (on(&slope), on(&|_, _| top));
+            assert!(sloped.is_sound());
+            // the yard's ground, its lanes and its floors are level, a little above the yard's
+            // height, and nowhere under the land (but the spur, which runs down to the line)
+            let spur = |p: &[f32; 3]| plan.spur.iter().any(|q| (q.0 - p[0]).hypot(q.1 - p[2]) < 0.012);
+            for p in sloped.flat.pos.iter().filter(|p| !spur(p)) {
+                assert!(p[1] >= top && p[1] <= top + 0.012, "{kind:?}: the ground at {p:?} is not at the yard's level, {top}");
+                assert!(p[1] >= slope(p[0], p[2]) - 1e-4, "{kind:?}: the ground at {p:?} is under the land");
+            }
+            // every building stands on it as it would on level land: the same works, and more
+            // (the wall that holds the yard up, and the way up to its gate)
+            assert!(sloped.flat.pos.iter().zip(&level.flat.pos).filter(|(p, _)| !spur(p)).all(|(p, q)| p == q));
+            assert_eq!(sloped.solid.pos[..level.solid.pos.len()], level.solid.pos[..]);
+            let more = &sloped.solid.pos[level.solid.pos.len()..];
+            assert!(more.len() >= 12, "{kind:?}: no retaining wall");
+            // the wall reaches from the yard's level down into the land, and stands under the edge of the walled ground
+            let (x0, x1, z0, z1) = plan.enclosed.bounds();
+            for p in more {
+                assert!(p[1] <= top + 0.0046 && p[1] >= slope(p[0], p[2]) - 0.0061, "{kind:?}: the wall at {p:?}");
+                assert!(p[0] >= x0 - 1e-4 && p[0] <= x1 + 1e-4 && p[2] >= z0 - 1e-4 && p[2] <= z1 + RAMP + 1e-4);
+            }
+            // highest at the low corner of the yard (front right), and none where the land is at the yard's level
+            let deepest = more.iter().map(|p| top - p[1]).fold(0.0, f32::max);
+            assert!(deepest > 0.5 * (top - slope(x1, z1)), "{kind:?}: the wall is {deepest} deep where the land lies {} below", top - slope(x1, z1));
+            // on level land there is none
+            assert_eq!(level.solid.pos.len(), draw(&plan, &now, 0.0).solid.pos.len());
+        }
+    }
 }
