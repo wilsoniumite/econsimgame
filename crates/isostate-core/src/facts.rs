@@ -98,6 +98,9 @@ pub const METHOD_SHARES: [(&str, i64); 5] =
 /// Goods whose price swings are measured.
 pub const PRICE_GOODS: [&str; 4] = ["grain", "iron", "rails", "cloth"];
 
+/// The good whose dearest year is set against its middling one (a famine of tools).
+pub const TOOLS: &str = "tools";
+
 /// The first ten years are left out of the price swings: prices are still settling.
 pub const PRICE_FROM: i64 = 1760;
 
@@ -617,6 +620,21 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let m = mean(&d);
         let sd = if d.len() >= 2 { mean(&d.iter().map(|v| (v - m) * (v - m)).collect::<Vec<_>>()).sqrt() } else { f64::NAN };
         b.num(format!("price_swing_{good}"), Kind::Real, sd);
+    }
+    // A famine of tools (C137; docs/rules/works.md): when farm machinery comes the engine
+    // works want tools the smithies left cannot make. Tools' dearest year from PRICE_FROM
+    // against the middling (median) year, which year it was, and how many years cost
+    // more than twice the middling one. The price is the island's, in money: it hardly
+    // drifts over the century (the cost of living ends between 0.9 and 1.6 of 1750's).
+    if C.good_index.contains_key(TOOLS) {
+        let p: Vec<f64> = series(&format!("price_{TOOLS}")).get((from - y0) as usize..).unwrap_or(&[]).to_vec();
+        let mut sorted: Vec<f64> = p.iter().copied().filter(|v| v.is_finite()).collect();
+        sorted.sort_by(f64::total_cmp);
+        let middling = quantile(&sorted, 0.5);
+        let dearest = (0..p.len()).filter(|&k| p[k].is_finite()).max_by(|&i, &j| p[i].total_cmp(&p[j]));
+        b.num(format!("price_{TOOLS}_dearest_vs_median"), Kind::Ratio, dearest.map_or(f64::NAN, |k| p[k] / middling));
+        b.year(format!("price_{TOOLS}_dearest_year"), dearest.map(|k| from + k as i64));
+        b.num(format!("price_{TOOLS}_years_over_twice_median"), Kind::Count, p.iter().filter(|&&v| v > 2.0 * middling).count() as f64);
     }
     let farm = series("ag_share");
     let zig: Vec<f64> = farm.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).filter(|v| v.is_finite()).collect();

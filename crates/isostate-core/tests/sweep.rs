@@ -73,6 +73,9 @@ fn a_tiny_sweep_writes_finite_facts() {
             "price_swing_rails",
             "price_swing_cloth",
             "farm_zigzag",
+            "price_tools_dearest_vs_median",
+            "price_tools_dearest_year",
+            "price_tools_years_over_twice_median",
             "news_total",
             "seconds",
         ] {
