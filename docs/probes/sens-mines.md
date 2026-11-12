@@ -258,8 +258,8 @@ What it comes to:
 
 ## Values at which a run breaks
 
-None of these. All 608 runs of the mines' sweeps (the baselines among them) finished and passed the monthly money check, under both
-regimes; so did every run of the chronicle's. No town emptied: the most famine years any run had was four
+None of these. All 608 runs of the mines' sweeps (the baselines among them) finished and passed the
+monthly money check, under both regimes; so did every run of the chronicle's. No town emptied: the most famine years any run had was four
 (`haul` 0.0375, landlords, island 6), against three in the null histories, and famine years are chance (the
 spread between histories of one island is as large as the mean or larger).
 
@@ -306,7 +306,7 @@ island has a bad year in every history, and the settings only move it a little.
    changes per regime, each setting read high against low, sixteen islands, twenty-year means. On one
    baseline and eight islands a sweep reads the commons' luck as an effect of whatever was moved; this
    page's first two settings would have said that both directions of `reach` and `haul` cost the commons
-   4 to 9 per cent of its late real wage.
+   1 to 9 per cent of its real wage of 1900 against 1750, on six or seven islands of eight.
 2. **The regimes' own comparison** in the README (the commons with more people, a lower wage, half the
    railway and two thirds of the canal) is one history per island; the railway alone moves by 39 per cent
    by chance under the commons. It wants the same treatment before it is called a finding.
