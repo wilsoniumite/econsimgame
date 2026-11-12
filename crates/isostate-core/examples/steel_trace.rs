@@ -261,13 +261,13 @@ fn trace(seed: u64, P: &Params, C: Content) -> Trace {
             }
             if f.year.is_none() {
                 f.binding = g;
-                if f.whole.is_none() || f.whole == Some(year) {
-                    // the hazard the draw of this year was made at, before the threshold
-                    let p4 = p.powi(4);
-                    if p < 1.0 {
-                        f.early_hazard += P.discovery_rate * p4 / (1.0 + p4);
-                    }
-                }
+            }
+            if f.whole.is_none() {
+                // the hazard each year's draw is made at while progress is short of the
+                // threshold, found or not: summed on past a find, so that the islands that
+                // had their fluke count as much as those that did not
+                let p4 = p.powi(4);
+                f.early_hazard += P.discovery_rate * p4 / (1.0 + p4);
             }
             if f.year.is_none() && st.tech_year[t] == year {
                 f.year = Some(year);
@@ -533,12 +533,14 @@ fn main() {
         let cells = |m: usize, tot: f64| {
             let out = sum(m, col("out"));
             let cap = sum(m, col("capacity"));
+            // a method that made less than a unit a month in the year has no return to speak of
+            let value = if out < 12.0 { f64::NAN } else { sum(m, col("value")) };
             format!(
                 "{:>14.0} {:>7.3} {:>6.2} {:>13.3} {:>13.3}",
                 out / traces.len() as f64,
                 out / tot.max(1e-9),
                 out / (12.0 * cap).max(1e-9),
-                sum(m, col("profit")) / sum(m, col("value")).max(1e-9),
+                sum(m, col("profit")) / value,
                 sum(m, col("profit")) / plant(m).max(1e-9)
             )
         };
@@ -681,5 +683,4 @@ fn main() {
         std::fs::write(format!("{dir}/years.csv"), h).unwrap();
         println!("\nwrote {dir}/disc.csv and {dir}/years.csv");
     }
-    let _ = accounts::KG;
 }
