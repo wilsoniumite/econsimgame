@@ -735,18 +735,9 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         // the game's railways (docs/rules/railways.md): a line with no second town
         // may be a branch to farms, woods or works as well as to pits, or the town's
         // own first line, so the promoters' book is asked what the line was for
-        match crate::railways::line_for_coal(st, t, was as f64) {
-            Some((opened, true)) => format!(" A branch line to the collieries, opened in {}, brings it down from the pits.", opened.floor()),
-            Some((opened, false)) => format!(" The railway that reached {name} in {} carries it away.", opened.floor()),
-            None => String::new(),
-        }
+        carried_by(name, was, crate::railways::line_for_coal(st, t, was as f64), "A branch line to the collieries", &st.town_name)
     } else {
-        let line = st.rail_opened.iter().rev().find(|r| r.year >= was as f64 && (r.a == t || r.b == t as i64));
-        match line {
-            Some(r) if r.b < 0 => format!(" A mineral line opened in {} brings it down from the pits.", r.year.floor()),
-            Some(r) => format!(" The railway that reached {name} in {} carries it away.", r.year.floor()),
-            None => String::new(),
-        }
+        carried_by(name, was, port_line_for_coal(st, t, was as f64), "A mineral line", &st.town_name)
     };
     // and what the price says about why
     let (p1, p0) = (ch.prices[k][(t, coal)], ch.prices[k - back][(t, coal)]);
@@ -789,6 +780,44 @@ fn coalfields(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, coal
         format!("{now:.0} against {then:.0} in {was} (it needs {} times as much), and {} of the island's (it needs {})", Q.boom_growth, fmt_pct(now / total, 0), fmt_pct(Q.boom_share, 0)),
     );
     events.push(ev);
+}
+
+/// `railways::line_for_coal` for the port's railways (`State::rail_opened`):
+/// a mineral spur has no second town, and every other line runs between two.
+fn port_line_for_coal(st: &State, t: usize, since: f64) -> Option<crate::railways::CoalLine> {
+    let reaches = |r: &crate::state::RailOpened| r.b >= 0 && (r.a == t || r.b == t as i64);
+    let lines = &st.rail_opened;
+    let k = lines.iter().rposition(|r| r.year >= since && (r.a == t || r.b == t as i64))?;
+    let r = &lines[k];
+    if r.b < 0 {
+        return Some(crate::railways::CoalLine { opened: r.year, colliery: true, from: None, nth: 0, first: r.year });
+    }
+    let to_town: Vec<f64> = lines[..=k].iter().filter(|m| reaches(m)).map(|m| m.year).collect();
+    let other = if r.a == t { r.b as usize } else { r.a };
+    Some(crate::railways::CoalLine { opened: r.year, colliery: false, from: (other != t).then_some(other), nth: to_town.len(), first: to_town[0] })
+}
+
+/// What a coal boom says carries the coal away: a branch to the pits, or a
+/// line to the town. "The railway that reached" a town is said only of its
+/// first line; a later one is named by where it comes from, with the first
+/// beside it if that too came since `was` (docs/probes/news-read.md, fault 2).
+fn carried_by(name: &str, was: i64, line: Option<crate::railways::CoalLine>, branch: &str, towns: &[String]) -> String {
+    let Some(l) = line else { return String::new() };
+    let (opened, first) = (l.opened.floor(), l.first.floor());
+    let from = l.from.and_then(|b| towns.get(b));
+    if l.colliery {
+        format!(" {branch}, opened in {opened}, brings it down from the pits.")
+    } else if l.nth <= 1 {
+        format!(" The railway that reached {name} in {opened} carries it away.")
+    } else if l.first >= was as f64 {
+        let from = from.map_or(String::new(), |b| format!(", from {b},"));
+        format!(" The railway reached {name} in {first}, and a {} line{from} in {opened}; they carry it away.", ordinal(l.nth))
+    } else {
+        match from {
+            Some(b) => format!(" The line from {b}, opened in {opened}, carries it away."),
+            None => format!(" A {} line to {name}, opened in {opened}, carries it away.", ordinal(l.nth)),
+        }
+    }
 }
 
 /// A town in decline: well below a peak it reached years ago. One story a
@@ -1341,5 +1370,32 @@ fn and_list(items: &[String]) -> String {
         0 => String::new(),
         1 => items[0].clone(),
         n => format!("{} and {}", items[..n - 1].join(", "), items[n - 1]),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::railways::CoalLine;
+
+    #[test]
+    fn a_coal_boom_says_the_railway_reached_a_town_only_of_its_first_line() {
+        let towns: Vec<String> = ["Brambridge", "Garside", "Sandmere", "Glenbrook"].iter().map(|s| s.to_string()).collect();
+        let line = |opened: f64, from: Option<usize>, nth: usize, first: f64| Some(CoalLine { opened, colliery: false, from, nth, first });
+        let branch = "A branch line to the collieries";
+        // the town's first line, since the year the boom looks back to
+        assert_eq!(carried_by("Garside", 1827, line(1827.6, Some(0), 1, 1827.6), branch, &towns), " The railway that reached Garside in 1827 carries it away.");
+        // island 7's Garside: the line from Brambridge came in 1827, the one from Sandmere in 1829
+        assert_eq!(
+            carried_by("Garside", 1827, line(1829.3, Some(2), 2, 1827.6), branch, &towns),
+            " The railway reached Garside in 1827, and a second line, from Sandmere, in 1829; they carry it away."
+        );
+        // island 7's Stratbank: its first line came in 1823, long before the boom's base year
+        assert_eq!(carried_by("Stratbank", 1833, line(1835.2, Some(3), 2, 1823.5), branch, &towns), " The line from Glenbrook, opened in 1835, carries it away.");
+        assert_eq!(carried_by("Stratbank", 1833, line(1835.2, None, 3, 1823.5), branch, &towns), " A third line to Stratbank, opened in 1835, carries it away.");
+        // a branch to the pits, and nothing at all
+        let pits = Some(CoalLine { opened: 1838.9, colliery: true, from: None, nth: 0, first: 1838.9 });
+        assert_eq!(carried_by("Garside", 1835, pits, branch, &towns), " A branch line to the collieries, opened in 1838, brings it down from the pits.");
+        assert_eq!(carried_by("Garside", 1835, None, branch, &towns), "");
     }
 }
