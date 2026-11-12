@@ -2,7 +2,7 @@
 
 What Stella notices while playing, in her words, and what becomes of each note. It is also where the order of work is decided. The diary of what was done is [DEVLOG.md](DEVLOG.md); this file is what is waiting, what is being done, and why in that order.
 
-Last gone through: the afternoon of 12 November 2026, when saved games, the mines under the commons regime and the books of account landed.
+Last gone through: the afternoon of 12 November 2026, when saved games, the mines under the commons regime and the books of account landed, and twelve easier pieces went out to workers on Opus.
 
 ## How it is kept
 
@@ -19,15 +19,23 @@ Until the evening of 11 November her notes were taken up as they arrived, usuall
 
 Started before this file existed, and left to finish. The usage limit cut every one of them off on the evening of the 11th; each was carried on the next morning from what it had committed. What each branch is expected to answer of the helpers' findings is listed at the foot of the page of findings, to be checked when it lands.
 
-**Paused at 11:40 on 12 November.** The week's allowance for the model the helpers run on stood at 88 per cent, and at the morning's pace the rest would have gone in under half an hour with every piece cut off in mid-task. Five pieces that could not finish in that time were stopped, each with its work committed on its branch, and are marked paused below; they carry on from those commits when there is allowance again. Three that were nearly done were left to finish, and landed that afternoon: saved games, the mines under the commons regime, and the books of account. By noon the allowance stood at 92 per cent, so nothing new is started until it comes back (19 November) or Stella says otherwise. The paused pieces have the first call on it, in this order: the tree's panels, the works' site planner's review, the smooth hand-over's first stage, the towns' second pass, the land-view probe's critic; at most five helpers at once, with the allowance read every half hour.
+**Paused at 11:40 on 12 November.** The week's allowance for the model the helpers run on stood at 88 per cent, and at the morning's pace the rest would have gone in under half an hour with every piece cut off in mid-task. Five pieces that could not finish in that time were stopped, each with its work committed on its branch, and are marked paused below; they carry on from those commits when there is allowance again. Three that were nearly done were left to finish, and landed that afternoon: saved games, the mines under the commons regime, and the books of account. By noon the allowance stood at 92 per cent, so nothing new is started until it comes back (19 November) or Stella says otherwise. The paused pieces have the first call on it, in this order: the tree's panels, the works' site planner's review, the smooth hand-over's first stage, the towns' second pass; at most five helpers at once, with the allowance read every half hour.
+
+**Opus workers, from 12:45 on 12 November.** Stella has a reset of the allowance in hand, and asked for workers on Opus 5.5 to take easier pieces until both allowances are used, so that the reset is spent on the hard ones. Twelve pieces went out, each done by one worker and checked by a second, on branches named `night/o-...`, none of them in the ground of the paused pieces. They are the last rows of the table. Nothing of theirs reaches `main` until it has passed the same trial merge, tests, sweep and pictures as every other piece.
 
 | Piece | Notes | Branch | State |
 |---|---|---|---|
-| How the viewer should draw the new island: measuring and a design in stages, no change to the picture yet (viewer) | 4, 6, 19, 20 | `night/dx-land-view` | measured and designed (`night/dx-land-view`); its critic paused |
+| How the viewer should draw the new island: measuring and a design in stages, no change to the picture yet (viewer) | 4, 6, 19, 20 | `night/dx-land-view` | measured and designed (`night/dx-land-view`); its critic is now an Opus worker (`night/o-land-view-critic`) |
 | The production tree's first stage (core), and the interface with 25 goods and 44 methods (viewer) | 8, in part | `night/tree-review`, `night/tree-ui` | the tree is reviewed and merged with today's `main` on `night/int-tree`; its panels are paused part-way (`night/tree-ui`), and the two go in together |
 | Towns, second pass: what the town ground's reviewer left, and houses that vary by more than colour (viewer) | 14 | `night/towns-2` | paused early in its build (`night/towns-2`) |
 | Works laid out by what they do and hold: a site planner (viewer) | 16 | `night/works-sites` | built (`night/works-sites`); its review paused |
 | The view never waits, first stage: a year's scenery handed over one mesh a frame, and the frame recorder (viewer) | 17 | `night/smooth-1` | paused part-way through its build (`night/smooth-1`) |
+| The sweep's tools: twenty-year means, facts not named by a year, a price of tools, a scorecard against the aims the documents state (F11) | none | `night/o-sweep-tools` | Opus: being built |
+| Four traces with the books of account: carriage, stocks and famine; landlords, rent and empty shelves; works, the wage's bad years and growth that stops; the issue of money and the Python's oddities (F12) | none | `night/o-trace-carriage`, `-rent`, `-works`, `-money` | Opus: being written; each is a page under `docs/probes/` and changes no rule |
+| Guards and tests in the core; the common fund's rule on a switch of its own; a run that stops when its money goes below nothing (Smaller things) | none | `night/o-core-guards-a`, `night/o-core-guards-b` | Opus: being built |
+| The books and the clock: a resumed game's earlier months, December's figures, a lighter copy of the island | 13 | `night/o-live-months` | Opus: being built |
+| Small repairs in the viewer (warnings, options that are not checked, a start that waits 45 seconds) and the land's checks (the picture against the record, the trees' cost, a guard on the field system written twice) (Smaller things) | none | `night/o-viewer-housekeeping`, `night/o-land-checks` | Opus: being built |
+| The front documents: every command run again and every number checked | none | `night/o-docs-run` | Opus: being done |
 
 ## Ready next, in order
 
