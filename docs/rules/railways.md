@@ -92,8 +92,9 @@ Three things are new:
 
 - A line orders each month no more than its cash will pay for at the day's
   prices, so it never owes anything: dear rails slow it down.
-- A line short of cash for the month calls on its two towns' landlords, a
-  tenth of their cash at most. Where a town's landlords are in debt, its
+- At the end of each month, once the month's materials are paid for, a line
+  without the cash for next month's order at today's prices calls on its
+  two towns' landlords, a tenth of their cash at most. Where a town's landlords are in debt, its
   households, who subscribed with them, answer in their place with a
   fortieth of their cash. (Landlords can be in debt for decades. Before the
   review a line whose landlords were could call on nobody, and two branches
@@ -123,7 +124,9 @@ folded into one, lighter, which says how many opened, how many km, and what
 they serve ("6 branch lines open. 63 km of branch line opened in 1841, to
 the quarries near Penheath, Highford and Sandside, the collieries near
 Penhurst, the works near Carwater and the iron mines near Greybourne."). It
-is dated by the last of them to open. Nothing is called a mineral line for
+is told at the year's end, after the year's last month, and dated late in
+the year (at nine tenths of it), or at the last of them to open if that is
+later. Nothing is called a mineral line for
 pits and works any more; what a branch serves is whatever fills most carts
 in its district, land sector by land sector, with the works counted by what
 they move beyond the land's own produce.
@@ -339,11 +342,23 @@ trunks and one or two a town's first line; of the branches 118 run to works,
 43 to woods, 31 to farms, 14 to quarries and clay pits, 11 to pasture and 4
 to collieries and iron mines (`rail_lines_*`), and branches are 74 per cent
 of the kilometres (`rail_km_share_branches`). The branches to quarries are a
-fifth of what they were at the merge, 14 for 76. The mines (`mines.md`)
-came in between, and they decide where stone and clay are dug; I did not
-trace whether that is why. (The integration that brought the mines and the
-canals together already had 2,254 km in 1900 with canals and 2,260
-without: `canals.md`, "On the integration branch".)
+fifth of what they were at the merge, 14 for 76.
+
+All of that came with the mines (`mines.md`). On seeds 1 to 6, the same six
+islands each time, the game's rules with six families give 2,615 km in 1900
+and 70 branches to quarries and clay pits a run just before the mines were
+merged, and 2,230 km and 12 branches just after (`core-steps/mines-before`
+and `mines-after`); the canals then took off another 16 km
+(`canals-before` and `canals-after`), and since then nothing has moved:
+today's sweep gives every railway fact of those six seeds as
+`canals-after` did, to the last digit. `mines.md` says why ("What it does
+in company"): a lease is carted from one pit head, and the pit
+heads stand where the carting is already short, so few of them are worth a
+line of their own. It asks this page whether that is the right answer or
+whether a large quarry now deserves a branch it does not get. Nobody has
+looked yet. (The 2,250 km of today's eight seeds and the 2,254 of the
+integration's sixteen, `canals.md`, "On the integration branch", are the
+same network on different islands.)
 
 **In company the branches do pay the country back.** With carting on, the
 game's railways against the port's, seed for seed on twelve seeds: in 1900
@@ -495,8 +510,11 @@ order book is one good (rails; the canal reads none).
   branches a run).
 - The viewer draws track from the same cell layer as for the port's lines
   (bit 4 of `trans`, and 8 for track building), so the branches are drawn
-  as any other line. The list of opened lines it is given marks a branch,
-  and a town's first line too, as the port marked a spur (`b` is -1).
+  as any other line. The record's list of opened lines (`rail_opened` in
+  the run's header) marks a branch, and a town's first line too, as the
+  port marked a spur (`b` is -1); nothing in the viewer reads that list
+  yet, and with this switch on the chronicle asks the promoters' book
+  instead.
 
 ## Facts added to the sweep
 
@@ -513,4 +531,6 @@ year it opened, summed), `rail_most_lines_building`,
 all the lines cost over what their promoters expected) and
 `rail_worst_overrun` (the same for the line that overran most),
 `rail_lines_trunk`, `rail_lines_to_towns`, `_farms`, `_pastures`,
-`_quarries`, `_mines`, `_works`, `_woods`, and `rail_km_share_branches`.
+`_quarries`, `_mines`, `_works`, `_woods`, and `rail_km_share_branches`
+(the new kilometres of every line that is not a trunk, so a town's first
+line counts as a branch here).
