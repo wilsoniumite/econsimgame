@@ -33,3 +33,32 @@ One probe is of the viewer, not the simulation, as it stood at cd9b41c (11 Novem
   viewer (`src/frames.rs`) that is meant to be merged. A critic ran it again and rewrote
   its stages on `night/smooth-probe-review` (section 11): the first stage is now the
   year's meshes handed over one a frame, half a day's work, with a brief to build from.
+  As of 12 November that stage, with the frame recorder, was begun on `night/smooth-1`
+  and paused part-way with its work committed, so neither is on `main` yet
+  (`docs/BACKLOG.md`).
+
+One probe is of the viewer against the core's second island, as both stood on `night/core`
+at 859b680 (12 November 2026):
+
+- `dx-land-view.md`: what it takes for the viewer to draw the land made by water
+  (`docs/rules/land.md`). What the core hands over (a grid of heights every 500 m, river
+  lines with width, level and flow, lakes, wet ground), how wrong today's picture is on it,
+  what the viewer invents that becomes untrue, and a design in seven stages from "the land
+  reaches the viewer" to "scarps and canyons made to read", with roads and bridges on real
+  rivers between. Its branch, `night/dx-land-view`, adds a measuring example to the core
+  (`examples/land_view_probe.rs`) and a probe to the viewer (`src/landview.rs`, behind
+  `ISOSTATE_LAND_VIEW`) that draws the core's ground, rivers and lakes with today's code.
+
+Three pages of 12 November measure the game's rules as they stood at a6ff0ec, with six
+families, and change nothing:
+
+- `news-read.md`: a century of the news on eight islands, read item by item as a player
+  meets it: what it is like to read, what it does well, and sixteen faults, worst first,
+  each with the item, the line of code that writes it and a suggested wording.
+- `sens-prices.md`: how far the merchants' prices and the Engel curve answer their eight
+  settings, each moved to about three quarters and four thirds of its value on eight
+  islands (sixteen for those that mattered). `engel.y_ref` matters most. It is one of the
+  tables of sensitivity for the pass over all the rules.
+- `sens-machines.md`: the same for the machines and the harvests. The ceiling on a
+  machine's quality is the strongest number in either, and most of why growth stops:
+  with no ceiling within reach output per head peaks in 1895 and not 1879.
