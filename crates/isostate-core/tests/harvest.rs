@@ -6,6 +6,7 @@
 
 use isostate_core::harvest::HarvestParams;
 use isostate_core::mat::Mat;
+use isostate_core::prices::PriceParams;
 use isostate_core::sim::{self, RunResult};
 use isostate_core::{Params, default_content, default_params, econ, families, game_params, live, record};
 
@@ -185,6 +186,25 @@ fn money_is_conserved_and_runs_repeat_with_harvests_on() {
     assert!(grain(&a).iter().zip(grain(&off)).any(|(x, y)| (x / y - 1.0).abs() > 0.01));
 }
 
+/// The dearth reads only the price of grain, and under the port's price rule
+/// that price swings by itself: with no weather at all the dearth line was
+/// tripped fifteen times a run. So the dearth is told only beside the
+/// merchants' prices (`prices.enabled`), and a harvest of no size on the port's
+/// prices is the port's run, its news and all.
+#[test]
+#[allow(non_snake_case)]
+fn no_weather_and_the_ports_prices_tell_no_dearth() {
+    let still = params(3, 1809, Some(HarvestParams { island_sd: 0.0, district_sd: 0.0, ..HarvestParams::game() }));
+    let (r, port) = (run(&still), run(&params(3, 1809, None)));
+    let dearths: Vec<f64> = r.events.iter().filter(|e| e.kind == "dearth").map(|e| e.year).collect();
+    assert!(dearths.is_empty(), "dearths told with no weather and no merchants' prices: {dearths:?}");
+    assert_eq!(r.events, port.events, "the news is not the port's");
+    for (k, name) in port.state.series.names.iter().enumerate() {
+        let (x, y) = (&r.state.series.data[k], &port.state.series.data[k]);
+        assert!(x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits()), "series {name} differs from the port's");
+    }
+}
+
 #[test]
 #[allow(non_snake_case)]
 fn harvests_are_recorded_and_the_news_is_sparse() {
@@ -235,8 +255,10 @@ fn harvests_are_recorded_and_the_news_is_sparse() {
 #[test]
 #[allow(non_snake_case)]
 fn a_bad_year_is_dear_bread_and_a_lower_real_wage_and_the_news_says_so() {
-    // shocks large enough to stand out from the port's own swing in grain
-    let P = params(5, 1809, Some(HarvestParams { island_sd: 0.12, ..HarvestParams::game() }));
+    // shocks large enough to stand out from the port's own swing in grain, and
+    // the merchants' prices, beside which alone a dearth is told
+    let mut P = params(5, 1809, Some(HarvestParams { island_sd: 0.12, ..HarvestParams::game() }));
+    P.prices = PriceParams::game();
     let r = run(&P);
     let (y0, years) = (r.content.start_year, r.rec.n_years);
     let yearly = |name: &str| -> Vec<f64> {
