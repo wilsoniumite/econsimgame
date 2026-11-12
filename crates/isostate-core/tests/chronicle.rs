@@ -271,7 +271,7 @@ fn a_works_ordered_by_hand_is_told_as_it_was() {
     let C = s.content.clone();
     let d = pending(&s.st, 0);
     let textiles = d[0].options.iter().position(|o| o.choice == Choice::Trade { group: Group::Textiles }).unwrap();
-    decide(&mut s.st, &C, 0, d[0].id, textiles).unwrap();
+    decide(&mut s.st, &C, &s.params, 0, d[0].id, textiles, &mut s.events).unwrap();
     sim::run_year(&mut s).unwrap();
     // cash from nowhere, so the order cannot fail for want of it (the money check is off from here)
     s.check_money = false;

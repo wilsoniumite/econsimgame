@@ -8,6 +8,7 @@
 //! from, and the viewer is given the workings.
 #![allow(non_snake_case)]
 
+use isostate_core::commons::{self, CommonsParams};
 use isostate_core::mines::{self, MineParams};
 use isostate_core::*;
 
@@ -129,13 +130,25 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
         // the debt is paid off out of the rents, and the dividend comes back
         assert!(s.st.fund_cash > 0.0, "{families} families: the fund holds {} at the end", s.st.fund_cash);
         // the rule itself: in debt the fund has nothing to share out, in credit
-        // what it holds; and with the mines off it is the port's, debt and all
+        // what it holds; with its switch off it is the port's, debt and all;
+        // and it is the fund's own switch, not the mines'
         let mut st = s.st.clone();
-        assert_eq!(mines::fund_to_share(&st, &P), st.fund_cash);
+        assert_eq!(commons::fund_to_share(&st, &P), st.fund_cash);
         st.fund_cash = -5.0;
-        assert_eq!(mines::fund_to_share(&st, &P), 0.0);
-        assert_eq!(mines::fund_to_share(&st, &Params { mines: MineParams::default(), ..P.clone() }), -5.0);
+        assert_eq!(commons::fund_to_share(&st, &P), 0.0);
+        assert_eq!(commons::fund_to_share(&st, &Params { commons: CommonsParams::default(), ..P.clone() }), -5.0);
+        assert_eq!(commons::fund_to_share(&st, &Params { mines: MineParams::default(), ..P.clone() }), 0.0);
     }
+}
+
+#[test]
+fn the_fund_has_a_switch_of_its_own() {
+    // off under the port, on under the game, and the mines' switch does not move it
+    assert_eq!(default_params().commons, CommonsParams::default());
+    assert!(!default_params().commons.carry_debt && game_params().commons.carry_debt);
+    let mut P = default_params();
+    P.mines = MineParams::game();
+    assert!(!P.commons.carry_debt, "the port with the mines switched on keeps the port's fund");
 }
 
 #[test]
@@ -144,9 +157,17 @@ fn a_fund_in_debt_is_repaid_by_its_rents_alone() {
     // whatever becomes of island 3: a year in, the fund is put half a million
     // in debt by hand, the money going to the households by head, as the wages
     // of a working that sold nothing would. The total is as it was, so the
-    // monthly check goes on holding.
-    let P = commons(7, 0, 1752);
-    let mut s = sim::start(&P, game_content());
+    // monthly check goes on holding. The rule is the fund's own (`commons`), so
+    // it holds with the mines switched off too.
+    for mines_on in [true, false] {
+        let mut P = commons(7, 0, 1752);
+        P.mines.enabled = mines_on;
+        repaid_by_rents_alone(&P);
+    }
+}
+
+fn repaid_by_rents_alone(P: &Params) {
+    let mut s = sim::start(P, game_content());
     for month in 0..12 {
         sim::run_month(&mut s, month).unwrap();
     }
@@ -365,6 +386,13 @@ fn a_working_left_idle_is_abandoned_and_one_at_work_is_not() {
     let idle = |r: &RunResult| (0..r.state.mine_opened.len()).filter(|&k| r.state.mine_opened[k] != 0 && r.state.mine_idle[k] > 0).count();
     assert!(open(&hasty) < open(&patient), "{} workings against {}", open(&hasty), open(&patient));
     assert!(idle(&patient) > 0 && idle(&hasty) == 0, "{} standing idle against {}", idle(&patient), idle(&hasty));
+    // none is taken as one: the review counts the year just ended before it
+    // asks, and none read literally would give up the workings at work too
+    // (docs/rules/mines.md, "The numbers")
+    P.mines.idle_years = 0;
+    let none = run(&P);
+    assert_eq!((&none.state.mine_opened, &none.state.mine_left), (&hasty.state.mine_opened, &hasty.state.mine_left));
+    assert_eq!(bits(&none.state.mine_dug.data), bits(&hasty.state.mine_dug.data));
     // nothing with hands was given up: every working that left has an empty year behind it
     let st = &patient.state;
     for k in 0..st.mine_opened.len() {

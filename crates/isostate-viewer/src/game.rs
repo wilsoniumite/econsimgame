@@ -160,7 +160,9 @@ pub fn plugin(app: &mut App) {
         .add_systems(
             Update,
             (
-                pump,
+                // (a year is written into the run before its scenery is looked at and handed over:
+                // see `year_systems`)
+                pump.before(crate::rebuild_year),
                 settle,
                 drive,
                 ask_site,
@@ -278,7 +280,7 @@ fn months_into_run(game: &mut Game, data: &mut Data, ui: &mut UiState) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn pump(
+pub(crate) fn pump(
     mut live: ResMut<Live>,
     mut data: ResMut<Data>,
     mut fam: ResMut<FamilyView>,
@@ -290,6 +292,7 @@ fn pump(
     time: Res<Time>,
     shots: Option<Res<crate::ShotPlanArgs>>,
 ) {
+    let _frames = crate::frames::span(crate::frames::Sys::Pump);
     // months that waited for a scenery build to let go of the run
     if !game.held.is_empty() && std::sync::Arc::strong_count(&data.r) == 1 {
         months_into_run(&mut game, &mut data, &mut ui);
@@ -801,6 +804,7 @@ fn order_panel(
     font: Res<UiFont>,
     q: Query<(Entity, Option<&Children>), With<InspectActions>>,
 ) {
+    let _frames = crate::frames::span(crate::frames::Sys::Orders);
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let when = now(&tl, &data, &live);
     // (while the year turns the buttons go unlit, since a press would not be taken: the panel is drawn again for that)
@@ -1150,6 +1154,7 @@ fn option_note(d: &Decision, choice: Choice, fam: &FamilyView, me: &FamilyRow, r
 
 #[allow(clippy::too_many_arguments)]
 fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, cards: Query<Entity, With<DecisionCard>>) {
+    let _frames = crate::frames::span(crate::frames::Sys::Orders);
     // with the year's end on its way (the card opened from the badge while the
     // months ran) an answer cannot land in time: the options wait, unlit
     let turning = live.turning();
@@ -1347,6 +1352,7 @@ fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize
 
 #[allow(clippy::too_many_arguments)]
 fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, lines: Option<ResMut<crate::fences::Lines>>, mut meshes: ResMut<Assets<Mesh>>, mut flags: Local<scatter::Flags>) {
+    let _frames = crate::frames::span(crate::frames::Sys::Marks);
     let (Some(marks), Some(mut lines)) = (marks, lines) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there (and

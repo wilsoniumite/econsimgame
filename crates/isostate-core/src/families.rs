@@ -1136,7 +1136,7 @@ fn found_at(st: &mut State, C: &Content, P: &Params, family: usize, method: usiz
     if fam.cash < cost {
         return Err(format!("it costs {cost:.0} and the {} family has {:.0}", fam.surname, fam.cash.max(0.0)));
     }
-    let name = family_works_name(st, C, family, method, i);
+    let name = family_works_name(st, C, P, family, method, i);
     let first_of_kind = !(0..st.F_count).any(|f| st.f_owner[f] == family as i64 && st.f_method[f] == method);
     // chronicle: the first ever, not the first since the family sold its last one
     let first_of_kind = first_of_kind && crate::chronicle::first_of_kind(st, P, family, method);
@@ -1182,9 +1182,14 @@ fn article(word: &str) -> &'static str {
 }
 
 /// "Ashby Ironworks", or "Ashby Ironworks No. 2" if the family already has one.
-fn family_works_name(st: &State, C: &Content, family: usize, m: usize, i: usize) -> String {
+/// Under the life cycle for works (docs/rules/works.md) only the works of this
+/// very name are counted, so the family's "Ashby Mill" is not numbered on from
+/// the town's "Ashby Mills"; a closed works still counts, so no name is given
+/// twice. Without it every name that starts with the base is counted, as the
+/// port numbers its sister works.
+fn family_works_name(st: &State, C: &Content, P: &Params, family: usize, m: usize, i: usize) -> String {
     let base = names::family_firm_name(&C.method_name[m], &st.families[family].surname, &st.town_name[i]);
-    let count = st.f_name.iter().filter(|n| n.starts_with(&base)).count();
+    let count = if P.works.enabled { names::works_of_name(&st.f_name, &base) } else { st.f_name.iter().filter(|n| n.starts_with(&base)).count() };
     if count == 0 { base } else { format!("{base} No. {}", count + 1) }
 }
 
@@ -1338,8 +1343,10 @@ fn raise(st: &mut State, k: usize, prompt: String, member: Option<usize>, option
     fam.decisions.push(Decision { id, prompt, member, options, default, due });
 }
 
-/// Answer decision `id` with option `option`.
-pub fn decide(st: &mut State, C: &Content, family: usize, id: u64, option: usize) -> Result<(), String> {
+/// Answer decision `id` with option `option`. A head chosen in place of the one
+/// the succession put in is news, told in `events` as the succession was and
+/// dated with it, at the end of the year the decision was raised in.
+pub fn decide(st: &mut State, C: &Content, P: &Params, family: usize, id: u64, option: usize, events: &mut Vec<Event>) -> Result<(), String> {
     check_family(st, family)?;
     let fam = &st.families[family];
     let Some(pos) = fam.decisions.iter().position(|d| d.id == id) else {
@@ -1351,12 +1358,22 @@ pub fn decide(st: &mut State, C: &Content, family: usize, id: u64, option: usize
     };
     let (choice, member, due) = (opt.choice, d.member, d.due);
     st.families[family].decisions.remove(pos);
-    apply_choice(st, C, family, choice, member, due - 1, &mut Vec::new());
+    let was = head(&st.families[family]);
+    apply_choice(st, C, family, choice, member, due - 1);
+    let fam = &st.families[family];
+    if let (Some(j), Some(old)) = (head(fam), was) && j != old {
+        let (first, surname, seat) = (&fam.members[j].first, &fam.surname, fam.seat);
+        let title = format!("{first} {surname} heads the family");
+        let text = format!("The {surname}s choose {first} to lead them in place of {}.", fam.members[old].first);
+        events.extend(news_at(P, family, Some(0.3), due - 1, title, text, seat));
+    }
     Ok(())
 }
 
-/// Carry out a choice. `year` is the year the decision was raised in.
-fn apply_choice(st: &mut State, C: &Content, k: usize, choice: Choice, member: Option<usize>, year: i64, events: &mut Vec<Event>) {
+/// Carry out a choice. `year` is the year the decision was raised in. It makes
+/// no news: what the choice changes is told by whoever made it (`decide`, the
+/// succession in `yearly`).
+fn apply_choice(st: &mut State, C: &Content, k: usize, choice: Choice, member: Option<usize>, year: i64) {
     let seat = st.families[k].seat;
     let fam = &mut st.families[k];
     match choice {
@@ -1420,7 +1437,6 @@ fn apply_choice(st: &mut State, C: &Content, k: usize, choice: Choice, member: O
             m.post = Post::Head;
             m.town = seat;
             m.next = None;
-            let _ = events;
         }
     }
 }
@@ -1612,7 +1628,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
     st.cell_rent_year = std::mem::replace(&mut st.cell_rent_paid, vec![0.0; st.N]);
     let values = trade_values(st, C);
     for k in 0..st.families.len() {
-        take_defaults(st, C, k, year, events);
+        take_defaults(st, C, k, year);
         moves(st, k);
         people(st, C, P, rng, k, year, events);
         if k != 0 {
@@ -1628,12 +1644,12 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
     }
 }
 
-fn take_defaults(st: &mut State, C: &Content, k: usize, year: i64, events: &mut Vec<Event>) {
+fn take_defaults(st: &mut State, C: &Content, k: usize, year: i64) {
     let due: Vec<Decision> = st.families[k].decisions.iter().filter(|d| d.due <= year).cloned().collect();
     st.families[k].decisions.retain(|d| d.due > year);
     for d in due {
         let choice = d.options[d.default].choice;
-        apply_choice(st, C, k, choice, d.member, d.due - 1, events);
+        apply_choice(st, C, k, choice, d.member, d.due - 1);
     }
 }
 
@@ -1793,7 +1809,7 @@ fn people(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, k: usize, year
         }
         cands.sort_by(|&a, &b| fam.members[b].age.cmp(&fam.members[a].age));
         if let Some(&eldest) = cands.first() {
-            apply_choice(st, C, k, Choice::Head { member: eldest }, None, year, events);
+            apply_choice(st, C, k, Choice::Head { member: eldest }, None, year);
             let first = st.families[k].members[eldest].first.clone();
             news_items.push(news_at(P, k, Some(0.3), year, format!("{first} {surname} heads the family"), format!("The {surname}s are led from {}.", st.town_name[seat]), seat));
             // chronicle: the player's succession is one great item, which says whom the new head follows
@@ -1956,7 +1972,7 @@ fn raises_ai(st: &mut State, C: &Content, values: &[Vec<f64>], k: usize, j: usiz
     } else {
         new_trade(st, values, fam)
     };
-    apply_choice(st, C, k, choice, Some(j), year, &mut Vec::new());
+    apply_choice(st, C, k, choice, Some(j), year);
 }
 
 /// AI families post every unposted adult as manager of a known trade in the town
