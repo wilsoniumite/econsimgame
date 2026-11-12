@@ -159,6 +159,8 @@ pub struct PatchworkParams {
     /// the first block of the parcel textures along each axis (`world::Land`)
     pub block_i0: i32,
     pub block_j0: i32,
+    /// (task A) 1 in a run whose towns keep their ground (`Replay::kept`)
+    pub town_kept: f32,
 }
 
 impl MaterialExtension for Patchwork {
@@ -187,6 +189,8 @@ fn show_year(tl: Res<crate::Timeline>, data: Res<crate::Data>, sm: Option<Res<cr
     }
     if let Some(mut m) = mats.get_mut(&sm.terrain) {
         m.extension.params.year = year as f32;
+        // (task A) a live game knows whether its towns keep their ground once its first year is in
+        m.extension.params.town_kept = data.r.kept() as u8 as f32;
         *last = Some(year);
     }
 }
@@ -246,7 +250,7 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::lo
 }
 
 pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> PatchworkParams {
-    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0 }
+    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32 }
 }
 
 /// The year's land for every parcel, as the shader reads it: its class
@@ -258,8 +262,14 @@ pub fn year_parcels(r: &Replay, g: &Ground, k: usize, land: &crate::world::YearL
     let mut out = Vec::with_capacity(land.class.len() * 4);
     for (i, &class) in land.class.iter().enumerate() {
         let off = k * r.n + g.land.wcell[i] as usize;
-        let dense = if r.use_[off] == 10 { r.inten[off] } else { 115 };
-        out.extend_from_slice(&[class, land.depth[i], dense, land.under[i]]);
+        // (task A) on kept town ground, how many houses stand on the cell against the most a cell
+        // comes to hold: its closes are gardens between the houses while it is young
+        let kept = land.town.cells.get(&g.land.wcell[i]).filter(|_| class == crate::world::URBAN).map(|c| (c.houses as f32 / 119.0 * 255.0).min(255.0) as u8);
+        let dense = kept.unwrap_or(if r.use_[off] == 10 { r.inten[off] } else { 115 });
+        // (task A) a parcel of town ground is never farmed, so its last byte says which of
+        // its eight closes are built up
+        let last = if class == crate::world::URBAN { land.town.built[i] } else { land.under[i] };
+        out.extend_from_slice(&[class, land.depth[i], dense, last]);
     }
     out
 }

@@ -8,7 +8,11 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Meta {
+    /// The run's own name, as the recorder gives it ("a new game" in a live
+    /// one). Nothing shows it yet, and it is kept because a live game fills it
+    /// (live.rs): a list of games to choose from would be where it is read.
     #[serde(default)]
+    #[allow(dead_code)]
     pub label: String,
     #[serde(default)]
     pub lite: bool,
@@ -71,7 +75,11 @@ pub struct Event {
     pub title: String,
     #[serde(default)]
     pub text: String,
+    /// The square the news is about, where it is about one. Nothing in the
+    /// viewer goes there yet (a click on a piece of news that took the camera
+    /// to its place would); kept because a live game fills it (live.rs).
     #[serde(default)]
+    #[allow(dead_code)]
     pub cell: Option<i64>,
     /// the family the news is about
     #[serde(default)]
@@ -97,6 +105,8 @@ impl Event {
 #[derive(Deserialize, Clone, Debug)]
 pub struct ArrayInfo {
     pub name: String,
+    /// how its numbers are stored, in numpy's words (uint8, int32, float32):
+    /// checked against how the viewer reads the array (`typed`)
     pub dtype: String,
     pub shape: Vec<usize>,
     pub offset: usize,
@@ -118,6 +128,10 @@ pub struct Header {
     pub towns: Vec<Town>,
     pub firms: Vec<Firm>,
     pub events: Vec<Event>,
+    /// the names of the display classes of `mix_a` and `mix_b`, and of the land
+    /// uses of `use`, in the order of their numbers: checked against the order
+    /// the viewer draws them in (`known_names`). Both recorders, the Python's
+    /// and the core's, have always written both.
     #[serde(default)]
     pub disp: Vec<String>,
     pub uses: Vec<String>,
@@ -169,10 +183,47 @@ pub struct Replay {
     pub filled: usize,
     /// owning family of every cell by year, `[year, cell]`, -1 for none (empty without families)
     pub owner: Vec<i8>,
+    /// Town ground that is kept (docs/rules/towns.md), `[year, cell]`; all three
+    /// are empty in a run whose towns do not keep their ground (the port's rules).
+    /// The year the cell joined its town less `BUILT_YEAR0`, 1 to 255; 0 where
+    /// the cell is not town ground.
+    pub built: Vec<u8>,
+    /// the cell's residents, in units of `RES_UNIT` people
+    pub res: Vec<u8>,
+    /// the share of the cell under works, 0 to 255, on every cell
+    pub works: Vec<u8>,
     /// the quarries, pits and mines of each year, where the run keeps them as
     /// workings (the core's docs/rules/mines.md); empty for a run that does not,
     /// whose pits are read off the land mix as before
     pub workings: Vec<Vec<Working>>,
+}
+
+/// `Replay::built` counts years from here (`isostate_core::record::BUILT_YEAR0`).
+pub const BUILT_YEAR0: i32 = 1645;
+/// People to one step of `Replay::res` (`isostate_core::record::RES_UNIT`).
+pub const RES_UNIT: f32 = 8.0;
+
+impl Replay {
+    /// Whether the run's towns keep their ground, and the record says when
+    /// each cell joined its town, who lives on it and how much of it is works.
+    pub fn kept(&self) -> bool {
+        !self.built.is_empty() && !self.res.is_empty()
+    }
+
+    /// The year cell `c` joined its town, if it is town ground in year `k` of a run that keeps it.
+    pub fn joined(&self, k: usize, c: usize) -> Option<i32> {
+        self.built.get(k * self.n + c).filter(|&&b| b > 0).map(|&b| BUILT_YEAR0 + b as i32)
+    }
+
+    /// The residents of cell `c` in year `k` (nothing in a run that does not record them).
+    pub fn residents(&self, k: usize, c: usize) -> f32 {
+        self.res.get(k * self.n + c).map_or(0.0, |&b| b as f32 * RES_UNIT)
+    }
+
+    /// The share of cell `c` under works in year `k`, 0 to 1.
+    pub fn works_share(&self, k: usize, c: usize) -> f32 {
+        self.works.get(k * self.n + c).map_or(0.0, |&b| b as f32 / 255.0)
+    }
 }
 
 /// One working in one year: a pit head on a cell, with what the core says of it.
@@ -185,10 +236,15 @@ pub struct Working {
     pub opened: i32,
     /// mean hands over the year
     pub hands: f32,
-    /// what it raised over the year, and everything raised there so far (its spoil heap)
+    /// What it raised over the year, everything raised there so far (its spoil
+    /// heap), and the share of its cell its pit head, yards and spoil take.
+    /// Nothing draws them yet: they are what pits drawn to their size would
+    /// read, and a live game fills them (live.rs).
+    #[allow(dead_code)]
     pub out: f32,
+    #[allow(dead_code)]
     pub heap: f32,
-    /// the share of its cell its pit head, yards and spoil take
+    #[allow(dead_code)]
     pub surface: f32,
 }
 
@@ -211,6 +267,35 @@ fn slice<'a>(path: &str, buf: &'a [u8], base: usize, a: &ArrayInfo) -> Result<&'
             buf.len()
         )),
     }
+}
+
+/// The bytes of one array the viewer reads as `want` (in numpy's words, as the
+/// recorders write them: uint8, int32, float32), or an error if the run says
+/// it holds something else: read by its name alone, an array of other numbers
+/// would come out as nonsense and nothing would say so.
+fn typed<'a>(path: &str, buf: &'a [u8], base: usize, a: &ArrayInfo, want: &str) -> Result<&'a [u8], String> {
+    if a.dtype != want {
+        return Err(format!("{path}: its array {} holds {} numbers, and the viewer reads it as {want}", a.name, a.dtype));
+    }
+    slice(path, buf, base, a)
+}
+
+/// Whether the run numbers its display classes and its land uses as the
+/// viewer does: the ground's shader, the inspector and the towns read them by
+/// their numbers, so a run that numbered them otherwise would be drawn wrong
+/// without a word. A list the run does not give (as in the tests' tiny runs)
+/// is taken on trust.
+fn known_names(path: &str, header: &Header) -> Result<(), String> {
+    let lists: [(&str, &[String], &[&str]); 2] = [
+        ("display classes", &header.disp, &isostate_core::record::DISP),
+        ("land uses", &header.uses, &isostate_core::land::USE_NAMES),
+    ];
+    for (what, names, known) in lists {
+        if !names.is_empty() && !names.iter().map(String::as_str).eq(known.iter().copied()) {
+            return Err(format!("{path}: its {what} are {}, where the viewer draws {}, in that order", names.join(", "), known.join(", ")));
+        }
+    }
+    Ok(())
 }
 
 pub fn load(path: &str) -> Result<Replay, String> {
@@ -239,12 +324,13 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             .find(|a| a.name == name)
             .ok_or_else(|| format!("{path} has no array called {name}"))
     };
-    let u8s = |name: &str| -> Result<Vec<u8>, String> { Ok(slice(path, buf, base, find(name)?)?.to_vec()) };
+    known_names(path, &header)?;
+    let u8s = |name: &str| -> Result<Vec<u8>, String> { Ok(typed(path, buf, base, find(name)?, "uint8")?.to_vec()) };
     let f32s = |name: &str| -> Result<Vec<f32>, String> {
-        Ok(bytemuck::pod_collect_to_vec::<u8, f32>(slice(path, buf, base, find(name)?)?))
+        Ok(bytemuck::pod_collect_to_vec::<u8, f32>(typed(path, buf, base, find(name)?, "float32")?))
     };
     let i32s = |name: &str| -> Result<Vec<i32>, String> {
-        Ok(bytemuck::pod_collect_to_vec::<u8, i32>(slice(path, buf, base, find(name)?)?))
+        Ok(bytemuck::pod_collect_to_vec::<u8, i32>(typed(path, buf, base, find(name)?, "int32")?))
     };
     // the second dimension of a table: towns in `town_pop`, months in `series`
     let across = |name: &str| -> Result<usize, String> {
@@ -261,6 +347,8 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     let dist = if has("dist") { u8s("dist")? } else { Vec::new() };
     let town_wage = if has("town_wage") { f32s("town_wage")? } else { Vec::new() };
     let town_price = if has("town_price") { f32s("town_price")? } else { Vec::new() };
+    // the three layers of town ground that is kept: all of them or none
+    let (built, res, works) = if has("built") && has("res") && has("works") { (u8s("built")?, u8s("res")?, u8s("works")?) } else { (Vec::new(), Vec::new(), Vec::new()) };
     let use_ = u8s("use")?;
     let (mix_a, mix_b, mix_s) = if has_mix {
         (u8s("mix_a")?, u8s("mix_b")?, u8s("mix_s")?)
@@ -340,6 +428,9 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         header,
         filled: ny,
         owner: Vec::new(),
+        built,
+        res,
+        works,
         workings,
     })
 }
@@ -422,6 +513,13 @@ pub fn annual(r: &Replay, name: &str, k: usize) -> Option<f32> {
     }
 }
 
+/// A very small run (two squares, one year, the town of Ashby founded in
+/// 1700) that begins in `start_year`, for tests of what is said about a run.
+#[cfg(test)]
+pub(crate) fn tiny(start_year: i32) -> Replay {
+    parse("tiny.bin", &tests::with_header(|v| v["meta"]["start_year"] = serde_json::json!(start_year))).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,21 +538,21 @@ mod tests {
             }
         };
         for name in ["elev", "terrain", "river"] {
-            add(name, "u1", vec![1, n], vec![1; n]);
+            add(name, "uint8", vec![1, n], vec![1; n]);
         }
-        add("down", "i4", vec![n], vec![0; n * 4]);
+        add("down", "int32", vec![n], vec![0; n * 4]);
         for name in ["use", "inten", "trans", "catch", "mix_a", "mix_b", "mix_s"] {
-            add(name, "u1", vec![ny, n], vec![1; ny * n]);
+            add(name, "uint8", vec![ny, n], vec![1; ny * n]);
         }
-        add("town_active", "u1", vec![ny, nt], vec![1; ny * nt]);
-        add("town_pop", "f4", vec![ny, nt], 1234.0f32.to_le_bytes().to_vec());
-        add("town_urban", "f4", vec![ny, nt], 400.0f32.to_le_bytes().to_vec());
+        add("town_active", "uint8", vec![ny, nt], vec![1; ny * nt]);
+        add("town_pop", "float32", vec![ny, nt], 1234.0f32.to_le_bytes().to_vec());
+        add("town_urban", "float32", vec![ny, nt], 400.0f32.to_le_bytes().to_vec());
         // one firm, there for the one year, its capacities starting at the first value
         for (name, v) in [("firm_first", 0i32), ("firm_len", 1), ("firm_off", 0)] {
-            add(name, "i4", vec![1], v.to_le_bytes().to_vec());
+            add(name, "int32", vec![1], v.to_le_bytes().to_vec());
         }
-        add("firm_Kvals", "f4", vec![1], 2.5f32.to_le_bytes().to_vec());
-        add("series", "f4", vec![1, 12], (0..12).flat_map(|m| (m as f32).to_le_bytes()).collect());
+        add("firm_Kvals", "float32", vec![1], 2.5f32.to_le_bytes().to_vec());
+        add("series", "float32", vec![1, 12], (0..12).flat_map(|m| (m as f32).to_le_bytes()).collect());
         let header = serde_json::json!({
             "meta": {"W": 2, "H": 1, "start_year": 1750, "n_years": ny, "seed": 7},
             "goods": [], "methods": [], "towns": [{"name": "Ashby", "node": 0, "founded": 1700}],
@@ -480,6 +578,37 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn the_layers_of_kept_town_ground_are_read_where_the_run_has_them() {
+        // a run under the port's rules has none of them
+        let port = parse("tiny.bin", &tiny_run()).unwrap();
+        assert!(!port.kept() && port.built.is_empty() && port.joined(0, 0).is_none());
+        assert_eq!((port.residents(0, 0), port.works_share(0, 1)), (0.0, 0.0));
+        // the same run with the three layers after its last array
+        let whole = tiny_run();
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
+        let mut body = whole[4 + hlen..].to_vec();
+        for (name, bytes) in [("built", [55u8, 0]), ("res", [61, 0]), ("works", [0, 51])] {
+            v["arrays"].as_array_mut().unwrap().push(serde_json::json!({"name": name, "dtype": "uint8", "shape": [1, 2], "offset": body.len(), "nbytes": 2}));
+            body.extend_from_slice(&bytes);
+            body.resize(body.len() + 6, 0);
+        }
+        let mut h = serde_json::to_vec(&v).unwrap();
+        while (4 + h.len()) % 8 != 0 {
+            h.push(b' ');
+        }
+        let mut file = (h.len() as u32).to_le_bytes().to_vec();
+        file.extend_from_slice(&h);
+        file.extend_from_slice(&body);
+        let r = parse("kept.bin", &file).unwrap();
+        assert!(r.kept());
+        // the first cell joined its town in 1700 and has 488 residents; the second is open land a fifth under works
+        assert_eq!((r.joined(0, 0), r.joined(0, 1)), (Some(1700), None));
+        assert_eq!((r.residents(0, 0), r.residents(0, 1)), (488.0, 0.0));
+        assert!((r.works_share(0, 1) - 0.2).abs() < 1e-6);
     }
 
     #[test]
@@ -547,5 +676,69 @@ mod tests {
         file.extend_from_slice(&whole[4 + hlen..]);
         let e = parse("odd.bin", &file).err().unwrap();
         assert!(e.contains("town_pop should be a table"), "{e}");
+    }
+
+    /// The tiny run with its header changed by `edit`, the arrays where they were.
+    pub(super) fn with_header(edit: impl Fn(&mut serde_json::Value)) -> Vec<u8> {
+        let whole = tiny_run();
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
+        edit(&mut v);
+        let mut h = serde_json::to_vec(&v).unwrap();
+        // the arrays' offsets count from the header's end, which may only move by whole steps of eight bytes
+        let grown = (h.len().max(hlen) - hlen).div_ceil(8) * 8;
+        h.resize(hlen + grown, b' ');
+        let mut file = (h.len() as u32).to_le_bytes().to_vec();
+        file.extend_from_slice(&h);
+        file.extend_from_slice(&whole[4 + hlen..]);
+        file
+    }
+
+    #[test]
+    fn an_array_of_other_numbers_than_the_viewer_reads_is_an_error() {
+        // the town's people as doubles: read as floats by name alone they would be nonsense
+        let file = with_header(|v| {
+            for a in v["arrays"].as_array_mut().unwrap() {
+                if a["name"] == "town_pop" {
+                    a["dtype"] = serde_json::json!("float64");
+                }
+            }
+        });
+        let e = parse("doubles.bin", &file).err().unwrap();
+        assert_eq!(e, "doubles.bin: its array town_pop holds float64 numbers, and the viewer reads it as float32");
+        // and the tiny run as written, in the recorders' words, is read
+        assert!(parse("tiny.bin", &tiny_run()).is_ok());
+    }
+
+    #[test]
+    fn a_run_that_numbers_its_land_otherwise_is_an_error() {
+        let ours = |names: &[&str]| serde_json::json!(names);
+        // the lists as the core writes them are read, and so is a run that gives none (the tiny run here)
+        let same = with_header(|v| {
+            v["disp"] = ours(&isostate_core::record::DISP);
+            v["uses"] = ours(&isostate_core::land::USE_NAMES);
+        });
+        assert!(parse("same.bin", &same).is_ok());
+        // two classes the other way round
+        let mut swapped = isostate_core::record::DISP;
+        swapped.swap(1, 2);
+        let file = with_header(|v| v["disp"] = ours(&swapped));
+        let e = parse("swapped.bin", &file).err().unwrap();
+        assert!(e.starts_with("swapped.bin: its display classes are sea, pasture, farm, wood,"), "{e}");
+        assert!(e.ends_with(", where the viewer draws sea, farm, pasture, wood, heath, quarry, claypit, ironmine, coalmine, industry, urban, derelict, in that order"), "{e}");
+        // a land use more
+        let file = with_header(|v| {
+            let mut uses: Vec<&str> = isostate_core::land::USE_NAMES.to_vec();
+            uses.push("canal");
+            v["uses"] = ours(&uses);
+        });
+        assert!(parse("more.bin", &file).err().unwrap().starts_with("more.bin: its land uses are sea, wild,"));
+        // the viewer's own numbers for the classes, in the order of the core's names
+        use crate::world::{CLAYPIT, COALMINE, DERELICT, FARM, HEATH, IRONMINE, PASTURE, QUARRY, SEA, URBAN, WOOD, WORKS};
+        let numbers = [SEA, FARM, PASTURE, WOOD, HEATH, QUARRY, CLAYPIT, IRONMINE, COALMINE, WORKS, URBAN, DERELICT];
+        assert_eq!(numbers.len(), isostate_core::record::DISP.len());
+        for (i, n) in numbers.into_iter().enumerate() {
+            assert_eq!(n as usize, i, "{}", isostate_core::record::DISP[i]);
+        }
     }
 }

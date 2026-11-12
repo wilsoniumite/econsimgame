@@ -252,7 +252,7 @@ Six families against none, the headings and the starred rows only:
 ```text
 now: port rules, 6 families (8 runs); then: port rules (8 runs) in .claude/night/reports/sweep-port-baseline
 seed for seed, on seeds 1 2 3 4 5 6 7 8
-of the 128 facts both have, the seconds aside, 114 differ and 11 of those are starred
+of the 256 facts both have, the seconds aside, 241 differ and 12 of those are starred
 = every seed gives the number it gave
 up/down: the seeds in which the fact is greater now, and those in which it is less
 * the ranges across seeds do not overlap: every seed now is above, or below, every seed then
@@ -272,6 +272,7 @@ Works
   works_per_1000_people_1900             10.2     6.61     +3.6 (+54.4%)      8/0  *
   works_size_median_1900                 0.46     0.84             -0.38      0/8  *
   works_size_p90_1900                    2.52     2.86             -0.34      0/8  *
+  works_founded                        11,879    8,655   +3,224 (+37.2%)      8/0  *
   works_closed                          5,472    4,710     +763 (+16.2%)      8/0  *
 Land
 Methods and inventions
@@ -330,7 +331,8 @@ Python written from this page and sharing nothing with `facts.rs`. For seeds
 can be had from those files agrees (107 of them for a whole run). The rest
 (`growth_capped_*`, `works_top_1pct_capacity_share`, `works_utilisation` and
 the `area_*`) are worked out a second way in `tests/sweep.rs`, from the yearly
-snapshot and the final state of a run to 1790.
+snapshot and the final state of a run to 1790. The facts the mechanisms
+added since (below the table) are in neither check.
 
 | Heading | Facts |
 |---|---|
@@ -343,6 +345,23 @@ snapshot and the final state of a run to 1790.
 | Prices and cycles | `price_swing_GOOD` for grain, iron, rails and cloth: the standard deviation of the yearly change in the log of the price, 1760 to the end; `farm_zigzag`, the mean absolute second difference of the yearly farm share of employment, times 100 |
 | News | `news_KIND`, the number of news items of each kind, and `news_total` |
 | Speed | `seconds` of wall time for the run, with the others running beside it |
+
+Those are the facts the sweep began with, which every run has. Each mechanism
+of the game's rules has since added facts of its own, under the same headings
+and one more, Canals; what each means is on the mechanism's page and at the
+top of `facts.rs`. Some have a value under the port too (the workings, the
+coal's price spread), so as run on 12 November 2026 a sweep of the port has
+some 280 facts and a sweep under the game's rules some 450. In brief:
+
+| Heading | Facts added by the mechanisms |
+|---|---|
+| People and towns | how fast towns grow (`town_growth_pct_p10`, `_p50`, `_p90`, `town_growth_near_old_cap`), the towns founded late and on what (`late_towns`, `late_towns_coal` and the other kinds, `late_town_people_median`, `_largest`), `emigrants` ([people.md](people.md)) |
+| Work and wages | `mine_share_Y`, `grain_output_Y_vs_1750`, `real_wage_chained_Y_vs_1750`, `real_income_Y` and the budget's shares `budget_NEED_Y` ([engel.md](engel.md)); `baskets_per_head_Y`, `goods_per_head_Y`; `carting_share_of_output_Y` and `carters_share_of_hands_Y` ([carting.md](carting.md)); the island's income account, `income_share_work_Y`, `_works_Y`, `_merchants_Y`, `_land_Y`, `income_pay_share_Y`, `income_ownership_years_Y`, and the books' own checks `books_goods_worst` and `books_income_worst` ([accounts.md](accounts.md)) |
+| Railways | the length every ten years from 1830, how many decades it grew, the towns and traffic it reaches, the price of rails, what the lines cost and earned, how late they ran, and the lines by what they serve (`rail_lines_trunk`, `rail_lines_to_KIND`, `rail_km_share_branches`) ([railways.md](railways.md)) |
+| Land | the workings, by kind, and how much of a cell they hold (`workings_Y`, `workings_KIND_Y`, `workings_share_of_cell_Y`, `workings_most_of_cell_Y`), their hands (`hands_KIND_Y`), output a head and price in wages of stone, clay, ore and coal, and `royalties_share_of_output_Y` ([mines.md](mines.md)) |
+| Prices and cycles | `output_swing_grain`, `price_ac1_grain`, `output_ac1_grain`, `real_wage_worst_year`, `real_wage_swing`, `famine_years`, and how grain, its price and the wage answer to the harvest that year and the next (`harvest_sd`, `grain_output_on_harvest` and the rest) ([harvest.md](harvest.md), [prices.md](prices.md)) |
+| News | the news of the newer kinds: `news_canal`, `news_canal_plan`, `news_dearth`, `news_harvest`, `news_region` |
+| Canals | the coal's price spread between towns and its share of warmth and heat; when the first canal was begun and opened and how long before the railway; length, traffic and haul; what the canals carry; the lines by what they serve; what they cost and earned, and the most digging and navvies at once ([canals.md](canals.md)) |
 
 ### The baselines
 
@@ -401,8 +420,9 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   once in 6,400 tries for one fact (once in 35 with four a side, the fewest it
   is given for), and it says nothing about a shift that is real and smaller
   than the spread. The `up/down` tally sees those, but it is a weak test taken
-  a hundred and thirty times: `8/0` comes up by chance once in 128, so in any
-  comparison one such row may mean nothing, and `7/1` means little. For
+  hundreds of times (some 250 facts in a comparison of two port sweeps, some
+  450 under the game's rules): `8/0` comes up by chance once in 128, so in any
+  comparison two to four such rows may mean nothing, and `7/1` means little. For
   anything close, run more seeds.
 - **The golden hashes are this machine's.** They were taken on Windows with
   the MSVC toolchain. Logarithms, exponentials and powers come from the
@@ -495,3 +515,8 @@ One line each as they arrive: the name, its page, its switch.
   every reach, river courses that meander and cut off, estuaries that carry
   boats to the sea, and resource fields that come from the land.
   [land.md](land.md), `land.enabled`.
+- **accounts**: books that say who makes, moves, buys and earns what: a
+  year's books for every town and every works, and the island's income
+  account (work's share, the owners' shares, ownership in years of wages).
+  They watch and never touch the economy. [accounts.md](accounts.md),
+  `accounts.enabled`.

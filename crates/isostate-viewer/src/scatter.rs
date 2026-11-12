@@ -894,11 +894,22 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.place.parcel as usize]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
-    crate::plan::maybe_areas(r, g);
-    crate::rails::maybe_check(r, g);
-    crate::plan::maybe_write(r, g, &slots);
-    crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
+}
+
+/// The measuring tools that environment variables ask for, in this order:
+/// ISOSTATE_AREAS (plan.rs), ISOSTATE_RAIL_CHECK (rails.rs), ISOSTATE_PLAN
+/// (plan.rs), ISOSTATE_TOWNS=years and ISOSTATE_BENCH (plan.rs). The first one asked for does its
+/// work and prints what it found, and the answer is whether one did, for the
+/// program to stop. Called where the options are read, and not from
+/// `make_slots`, so that nothing else that makes the slots can end the program.
+pub fn measure(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) -> bool {
+    if crate::plan::maybe_areas(r, g) || crate::rails::maybe_check(r, g) || crate::plan::maybe_write(r, g, slots) {
+        return true;
+    }
+    // (task A) ISOSTATE_TOWNS=years: every year's towns laid out in turn and counted (it stops the program itself)
+    towns::maybe_years(r, g, slots);
+    crate::plan::maybe_bench(r, g, slots, cen)
 }
 
 /// Spots on the hedges: a grid of candidates in every land cell, each moved
@@ -1207,6 +1218,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // out away from it; and the ground just outside a wood or a heath is scrub.
     // Trees stand in stands, taller in one and lower in the next, and the
     // conifers gather on high and poor ground, the broadleaves on the low.
+    // ISOSTATE_TREES=1 counts them, and their vertices, by kind (`TreeCensus`).
+    let mut tally = TreeCensus::new(std::env::var_os("ISOSTATE_TREES").is_some());
     for s in &slots.trees {
         let (cls, margin) = land.at(s.place);
         if !(world::FARM..=world::HEATH).contains(&cls) {
@@ -1229,7 +1242,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             _ if margin => {
                 // scrub just outside a wood or a heath: bushes, and a low tree here and there
                 if u2 < 0.3 && !near_plot(s.x, s.z) {
-                    bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
+                    tally.add(TreeKind::ScrubBush, &mut trees, |t| bush(&mut t[0], &Site::level(p, 0.0), s.v, s.yaw, lk));
                 }
                 (s.u < 0.1, 0.5 + 0.25 * s.v)
             }
@@ -1244,7 +1257,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             world::HEATH => {
                 // gorse and broom: low bushes, and the odd tree, more of them by a wood
                 if u2 < 0.16 && !near_plot(s.x, s.z) {
-                    bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
+                    tally.add(TreeKind::HeathBush, &mut trees, |t| bush(&mut t[0], &Site::level(p, 0.0), s.v, s.yaw, lk));
                 }
                 (s.u < 0.025 + by_wood * (0.03 + 0.3 * clump), 0.55 + 0.15 * stand + 0.25 * s.v)
             }
@@ -1260,10 +1273,25 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let share = (0.05 + 0.75 * high + 0.2 * poor).min(0.92);
         let conifer = 0.65 * (0.5 + 0.5 * world::vnoise(s.x * 2.3 + 6.1, s.z * 2.3 + 1.9, 455)) + 0.35 * u3 < 0.2 + 0.6 * share;
         let species = if conifer { Species::Conifer } else { Species::Broadleaf };
-        tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
+        let kind = match cls {
+            _ if margin => TreeKind::Scrub,
+            world::WOOD if conifer => TreeKind::WoodConifer,
+            world::WOOD => TreeKind::Wood,
+            world::HEATH => TreeKind::Heath,
+            _ if s.u < 0.012 => TreeKind::Field,
+            _ => TreeKind::ByWood,
+        };
+        tally.add(kind, &mut trees, |t| tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk));
     }
 
-    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
+    // (task A) the towns are handed the year's land, which says what town ground is built up
+    let census = towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &land, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
+    if let Some(c) = census.filter(|_| std::env::var_os("ISOSTATE_TOWNS").is_some()) {
+        eprintln!(
+            "towns {}: {} cells of town ground, {:.0} residents, {} houses wanted and {} drawn ({:.1} people to a house): {} cottages, {} townhouses, {} in terraces, {} villas; {} of one storey, {} of two, {} of three or more ({} of those with no neighbour on one side); {} houses short on cells with open ground left and {} on cells built up whole",
+            r.y0 + k as i32, c.cells, c.residents, c.wanted, c.drawn, c.residents / c.drawn.max(1) as f32, c.cottages, c.townhouses, c.terraced, c.villas, c.storeys[0], c.storeys[1], c.storeys[2], c.tall_alone, c.short, c.short_full
+        );
+    }
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
@@ -1284,7 +1312,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if (s.u * 13.37).fract() < world::above_tree_line(s.x, s.z, p.y) {
             continue;
         }
-        hedge_tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
+        tally.add(TreeKind::Hedgerow, &mut trees, |t| hedge_tree(&mut t[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk));
     }
 
     // farmsteads among the fields, each with a lane to the nearest road
@@ -1354,7 +1382,74 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
     }
 
+    tally.report(r.y0 + k as i32, &trees);
     YearMeshes { trees, houses, works: works_b, smoke, lanes }
+}
+
+/// The kinds of tree and bush the land puts out, for counting them
+/// (`TreeCensus`). The trees of gardens, churchyards and farmsteads are not
+/// told apart: they are what is left of the total.
+#[derive(Clone, Copy)]
+enum TreeKind {
+    /// a broadleaf in a wood, and a conifer
+    Wood,
+    WoodConifer,
+    /// the odd tree out in a field, and the clumps and lone trees near a wood
+    Field,
+    ByWood,
+    /// the odd tree on the heath
+    Heath,
+    /// the low trees of the scrub just outside a wood or a heath, and its bushes
+    Scrub,
+    ScrubBush,
+    /// gorse and broom on the heath
+    HeathBush,
+    /// on the hedges between fields
+    Hedgerow,
+}
+
+const TREE_KINDS: [&str; 9] = ["wood", "wood conifer", "field", "by a wood", "heath", "scrub", "scrub bush", "heath bush", "hedgerow"];
+
+/// With ISOSTATE_TREES set, the year's trees and bushes counted by kind, with
+/// the vertices each kind adds (all three of a tree's buffers: its trunk, its
+/// crown and its bare limbs), printed as each year's scenery is built. Off,
+/// it counts nothing.
+struct TreeCensus {
+    on: bool,
+    count: [usize; 9],
+    verts: [usize; 9],
+}
+
+impl TreeCensus {
+    fn new(on: bool) -> TreeCensus {
+        TreeCensus { on, count: [0; 9], verts: [0; 9] }
+    }
+
+    fn total(trees: &[Greenery; LEAF_GROUPS]) -> usize {
+        trees.iter().flat_map(|t| t.parts()).map(|b| b.pos.len()).sum()
+    }
+
+    /// Put out one tree or bush of a kind, and count it.
+    fn add(&mut self, kind: TreeKind, trees: &mut [Greenery; LEAF_GROUPS], put: impl FnOnce(&mut [Greenery; LEAF_GROUPS])) {
+        if !self.on {
+            return put(trees);
+        }
+        let before = Self::total(trees);
+        put(trees);
+        self.count[kind as usize] += 1;
+        self.verts[kind as usize] += Self::total(trees) - before;
+    }
+
+    fn report(&self, year: i32, trees: &[Greenery; LEAF_GROUPS]) {
+        if !self.on {
+            return;
+        }
+        let all = Self::total(trees);
+        let bare: usize = trees.iter().map(|t| t.bare.pos.len()).sum();
+        let rest = all - self.verts.iter().sum::<usize>();
+        let kinds: Vec<String> = (0..9).map(|k| format!("{} {} ({} vertices)", TREE_KINDS[k], self.count[k], self.verts[k])).collect();
+        eprintln!("trees {year}: {all} vertices, {bare} of them bare limbs; {}; gardens, churchyards and farmsteads {rest} vertices", kinds.join(", "));
+    }
 }
 
 /// A low causeway of stone wherever a road runs over water (the drowned mouth

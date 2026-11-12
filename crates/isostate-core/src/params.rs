@@ -294,6 +294,10 @@ pub struct Params {
     /// uplift and erosion, with its water, in place of the port's.
     #[serde(default, skip_serializing_if = "is_default")]
     pub land: crate::landform::LandParams,
+    /// Books that say who makes, moves, buys and earns what (not in the Python;
+    /// see docs/rules/accounts.md). An observer: the economy never reads them.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub accounts: crate::accounts::AccountsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -497,6 +501,7 @@ pub fn default_params() -> Params {
         mines: crate::mines::MineParams::default(),
         canals: crate::canals::CanalParams::default(),
         land: crate::landform::LandParams::default(),
+        accounts: crate::accounts::AccountsParams::default(),
     }
 }
 
@@ -529,6 +534,7 @@ pub fn game_params() -> Params {
     // it. It stands beside the mines and the canals, and every test passes
     // with it thrown ("On the integration branch" in its page). When it is,
     // the line is `P.land = crate::landform::LandParams::game();`.
+    P.accounts = crate::accounts::AccountsParams::game();
     P
 }
 

@@ -149,6 +149,17 @@ bracken = "#6f9044"
 bracken_autumn = "#a3804f"
 # rushes in the wet of a rough pasture
 rushes = "#6d8a50"
+# the open ground of a town's edge: the grass of its paddocks and small
+# closes, grazed short and deeper than the pasture beyond; the crowns of an
+# orchard's trees seen from above, and those trees in blossom
+close_grass = "#7fb257"
+orchard = "#55893c"
+orchard_blossom = "#ecdcd6"
+# a town that keeps its ground, seen from across the island, where its houses
+# are too small to draw: their roofs of tile and slate over brick and wash,
+# run together; and the same of a town in the hills, slate over grey stone
+town_roofs_far = "#b07f68"
+town_roofs_far_hills = "#8f8d96"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).

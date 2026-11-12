@@ -49,6 +49,10 @@ struct PatchworkParams {
     // the first block of the parcel textures along each axis (world.rs Land)
     block_i0: i32,
     block_j0: i32,
+    // (task A) 1 in a run whose towns keep their ground: their built-up
+    // ground then reads as roofs from far off (0 leaves a town's ground
+    // exactly as it was drawn before)
+    town_kept: f32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
@@ -159,6 +163,11 @@ struct LandPaint {
     bracken: vec4<f32>,
     bracken_autumn: vec4<f32>,
     rushes: vec4<f32>,
+    close_grass: vec4<f32>,
+    orchard: vec4<f32>,
+    orchard_blossom: vec4<f32>,
+    town_roofs_far: vec4<f32>,
+    town_roofs_far_hills: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
@@ -191,7 +200,11 @@ const SUN_XZ: vec2<f32> = vec2<f32>(-0.682, 0.731);
 // ------------------------------------------------------------------ the CPU rule
 // hash2, hash3, vnoise and the field system are world.rs and fields.rs line
 // for line; keep them in step. WGSL u32 arithmetic wraps like
-// Rust's wrapping_mul, so the hashes match bit for bit.
+// Rust's wrapping_mul, so the hashes match bit for bit. The tests of
+// shader_twin.rs read this file, run these functions on the CPU (the field
+// system, edge_warp, edge_fray, summer_snow_line, wood_depth, glade,
+// parcel_texel and the constants) and fail when they and the Rust disagree;
+// what is written inline in the fragment below is not checked by them.
 
 fn hash2(x: i32, y: i32, s: i32) -> f32 {
     var h = (bitcast<u32>(x) * 374761393u) ^ (bitcast<u32>(y) * 668265263u) ^ (bitcast<u32>(s) * 1442695041u);
@@ -398,6 +411,23 @@ fn edge_fray(p: vec2<f32>) -> f32 {
     return 0.09 * vnoise(p.x * 3.7, p.y * 3.7, 465) + 0.055 * vnoise(p.x * 8.9, p.y * 8.9, 467) + 0.028 * vnoise(p.x * 21.0, p.y * 21.0, 469);
 }
 
+// The height at which the snow that lies all summer begins at a spot
+// (world::summer_snow_line).
+fn summer_snow_line(p: vec2<f32>) -> f32 {
+    return snow_line_of(vnoise(p.x * 1.7, p.y * 1.7, 31));
+}
+
+// The same from the noise there, which the fragment has to hand.
+fn snow_line_of(n: f32) -> f32 {
+    return 1.75 - 0.12 * n;
+}
+
+// How wooded a spot is, 0 to 1, from the wood's field there: a wood deepens
+// inward faster than its field (world::wood_depth, WOOD_DEPTH).
+fn wood_depth(w: f32) -> f32 {
+    return clamp(select(w, 0.5 + 1.8 * (w - 0.5), w > 0.5), 0.0, 1.0);
+}
+
 // ------------------------------------------------------------------ helpers
 
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
@@ -511,6 +541,11 @@ struct Spot {
     // 0 near, rising to 1 as the view draws so far off that trees and fields
     // are too small to see one by one
     far: f32,
+    // (task A) town ground: the close the spot lies in (its parcel cut three
+    // times more, world::CLOSE_LEVEL), and whether that close is open ground
+    // at the town's edge and not built up (world::town_ground)
+    close: Cut,
+    town_open: bool,
 }
 
 // ------------------------------------------------------------------ fields
@@ -938,6 +973,69 @@ fn town(sp: Spot) -> vec3<f32> {
     return mottled(c, sp, 0.03);
 }
 
+// (task A) The open ground of a town, which is most of a town's ground: what
+// lies between its streets and the fields. The close is cut once more into
+// small closes, each within its hedge: a paddock, an orchard with its trees
+// in rows, garden ground in beds, or a green of pale grass. From far off they
+// run together into one deep green that is not the fields'.
+fn town_edge(sp: Spot) -> vec3<f32> {
+    let close = cut(sp.bl, sp.close, 6u, 7u);
+    let key = field_key(sp.bl, close);
+    let k = hash3(key, 95u, 0u);
+    let k2 = hash3(key, 97u, 0u);
+    let grass = grass_season(paint.close_grass.rgb, sp.ph) * (0.95 + 0.1 * k2);
+    var crown = paint.orchard.rgb;
+    crown = mix(crown, paint.orchard_blossom.rgb, 0.7 * bell(sp.ph, 0.31, 0.045));
+    crown = mix(crown, paint.hedge_autumn.rgb, 0.55 * bell(sp.ph, 0.84, 0.1));
+    crown = mix(crown, grass, 0.7 * winter(sp.ph));
+    var c = grass;
+    var avg = grass;
+    var hedged = 1.0;
+    if (k < 0.3) {
+        // a paddock, grazed short and worn in patches
+        c *= 1.0 + 0.08 * vnoise(sp.p.x * 13.0, sp.p.y * 13.0, 471) * detail(13.0, sp.foot);
+    } else if (k < 0.54) {
+        // an orchard: trees in rows on grass, each with its shadow
+        let a = TAU * k2;
+        let q = vec2<f32>(cos(a) * sp.p.x - sin(a) * sp.p.y, sin(a) * sp.p.x + cos(a) * sp.p.y) / 0.0125;
+        let at = (fract(q) - 0.5) * 0.0125;
+        let sun = vec2<f32>(cos(a) * SUN_XZ.x - sin(a) * SUN_XZ.y, sin(a) * SUN_XZ.x + cos(a) * SUN_XZ.y);
+        let seen = detail(80.0, sp.foot);
+        let size = 0.0032 + 0.0012 * hash2(i32(floor(q.x)), i32(floor(q.y)), 473);
+        c *= 1.0 - 0.2 * band(length(at + sun * 0.0022), size, sp.foot) * seen;
+        c = mix(c, crown, band(length(at), size, sp.foot) * seen);
+        avg = mix(grass, crown, 0.22);
+        c = mix(avg, c, seen);
+    } else if (k < 0.8) {
+        // garden ground: beds of green and dug earth, dull in winter
+        let a = TAU * k2;
+        let rows = 0.5 + 0.5 * cos(TAU * dot(sp.p, vec2<f32>(cos(a), sin(a))) / 0.011);
+        avg = mix(mix(paint.garden.rgb, paint.garden_dug.rgb, 0.5), paint.soil_winter.rgb, 0.3 * winter(sp.ph));
+        c = mix(avg, mix(paint.garden.rgb, paint.garden_dug.rgb, rows), detail(90.0, sp.foot) * (1.0 - 0.5 * winter(sp.ph)));
+    } else {
+        // a green, or a drying ground: pale open grass
+        c = grass_season(paint.pasture_pale.rgb, sp.ph);
+        avg = c;
+        hedged = 0.35;
+    }
+    c = mix(c, paint.water_meadow.rgb, 0.4 * sp.flood);
+    // its hedge, with a little shade either side
+    let e = cut_edge(sp.bl, close);
+    let hw = HEDGE * 0.7;
+    var hc = paint.hedge.rgb;
+    hc = mix(hc, paint.hedge_autumn.rgb, 0.6 * bell(sp.ph, 0.84, 0.1));
+    hc = mix(hc, paint.hedge_winter.rgb, 0.6 * winter(sp.ph));
+    hc *= 1.0 + 0.14 * vnoise(sp.p.x * 60.0, sp.p.y * 60.0, 77) * detail(60.0, sp.foot);
+    c *= 1.0 - 0.1 * band(e, hw * 2.4, sp.foot);
+    c = mix(c, hc, 0.9 * band(e, hw, sp.foot) * hedged);
+    // far away the closes blend into the town edge's own green: deeper than
+    // the fields, with its hedges and trees in it
+    let size = min((close.hi.x - close.lo.x), (close.hi.y - close.lo.y)) * BLOCK;
+    let lod = smoothstep(1.5, 4.0, size / max(sp.foot, 1e-5));
+    c = mix(mix(avg, hc, 0.16), c, lod);
+    return c;
+}
+
 // Works stand in yards of cinder and gravel with lanes between them.
 fn works_yard(sp: Spot) -> vec3<f32> {
     let q = sp.p * 3.5;
@@ -997,7 +1095,23 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         case IRONMINE: { c = mottled(paint.iron_mine.rgb, sp, 0.08); }
         case COALMINE: { c = mottled(paint.colliery.rgb, sp, 0.12); }
         case WORKS: { c = works_yard(sp); }
-        case URBAN: { c = town(sp); }
+        case URBAN: {
+            // (task A) built-up ground, or the open closes of the town's edge
+            // From across the island the houses are a pixel or less, and the
+            // ground stands for them as a map-maker draws a town, as a mass:
+            // the roofs of the built-up closes run together, the more of them
+            // the fuller the cell, and the gardens between take their tone by
+            // how full the cell is, so an old middle is one mass and the young
+            // ground at a town's edge is closes with a thread of roofs through
+            // them. A town in the hills is slate over stone.
+            let roofs = select(paint.town_roofs_far.rgb, paint.town_roofs_far_hills.rgb, sp.terr >= 2u);
+            let mass = ground.town_kept * sp.far;
+            if (sp.town_open) {
+                c = mix(town_edge(sp), roofs, mass * 0.9 * sp.dense);
+            } else {
+                c = mix(town(sp), roofs, mass * (0.42 + 0.45 * sp.dense));
+            }
+        }
         case DERELICT: { c = derelict(sp); }
         case SEA: {
             // land that lies in a sea cell: rough coastal grass
@@ -1006,7 +1120,7 @@ fn class_colour(cls: u32, sp: Spot) -> vec3<f32> {
         default: { c = rough(sp); }
     }
     var frost = sp.frost;
-    if (cls == URBAN || cls == WORKS) {
+    if ((cls == URBAN && !sp.town_open) || cls == WORKS) {
         frost *= 0.6;
     } else if (cls != FARM && cls != PASTURE) {
         // fields() lays its own rock and snow under the hedges
@@ -1143,8 +1257,8 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     var heathy = 0.0;
     var walled = false;
     let snow_n = vnoise(p.x * 1.7, p.y * 1.7, 31);
-    // how far above the summer snow line (world::summer_snow_line)
-    let above = h - (1.75 - 0.12 * snow_n);
+    // how far above the summer snow line
+    let above = h - snow_line_of(snow_n);
     if (own_cls >= FARM && own_cls <= HEATH) {
         if (above > 0.0) {
             cls = HEATH;
@@ -1154,8 +1268,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             heathy = 0.5 + 0.5 * smoothstep(0.0, 0.12, above);
         } else {
             let f = textureSampleLevel(land_field, land_field_sampler, edge_warp(p) / vec2<f32>(ground.width, ground.height), 0.0).rg + vec2<f32>(edge_fray(p));
-            // a wood deepens inward faster than its field (world::WOOD_DEPTH)
-            wooded = clamp(select(f.x, 0.5 + 1.8 * (f.x - 0.5), f.x > 0.5), 0.0, 1.0);
+            wooded = wood_depth(f.x);
             heathy = clamp(f.y, 0.0, 1.0);
             let under = u32(round(yp.w * 255.0));
             // the parcel's walls and hedges stand, whatever grows over its grass
@@ -1263,6 +1376,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
             sp.enclosed = 1.0 - smoothstep(-0.1, -0.01, above);
             sp.climb = smoothstep(-0.3, 0.0, above);
             sp.far = far;
+            // (task A) on town ground, the close and whether it is built up:
+            // a bit for each of a parcel's eight closes, in the year's texture
+            // (where a parcel of open land has what it is farmed as)
+            sp.close = pc;
+            sp.town_open = false;
+            if (cls == URBAN) {
+                sp.close = cut(bl, pc, PARCEL_LEVEL, 6u);
+                sp.town_open = ((u32(round(yp.w * 255.0)) >> (sp.close.id & 7u)) & 1u) == 0u;
+            }
             let lc = class_colour(cls, sp);
             top = mix(top, lc, landk);
         }
