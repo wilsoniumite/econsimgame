@@ -19,9 +19,17 @@
 //! the same weather, and again with no weather at all. The first gives the
 //! figure the families price land on, the second what that figure would be had
 //! nothing been foreseen, the third the rent an average year would really have
-//! paid. It takes three times as long.
+//! paid. It takes three times as long. After the islands one by one it prints
+//! them pooled by the country's harvest, the table of docs/probes/tr-rent.md.
+//!
+//! Part (d) ends with the town-years short of food sorted by what came before
+//! them, the counts the page gives.
+//!
+//! `--follow SEED:TOWN:YEAR` (e.g. `--follow 1:Stanside:1770`) also prints that
+//! town's landlords' purse month by month through that year: the cash as the
+//! month began, the rents credited, everything else, and the cash at its end.
 #![allow(non_snake_case)]
-use isostate_core::accounts::{self, KL, KT, KG, LAND_FIELDS, TOWN_FIELDS, GOODS_FIELDS};
+use isostate_core::accounts::{KL, KT, KG, LAND_FIELDS, TOWN_FIELDS, GOODS_FIELDS};
 use isostate_core::*;
 use std::fmt::Write as _;
 
@@ -68,14 +76,30 @@ struct RentYear {
     paid: f64,
     est: f64,
     est0: f64,
+    // the rent as paid with the hands hired for an average year
+    paid0: f64,
     avg: f64,
     abs_est: f64,
     abs_est0: f64,
     abs_paid: f64,
     bought_value: f64,
+    // the price paid over the price on an average year's rent, both never below the floor
     bought_err_hire: f64,
     bought_err_all: f64,
     bought_cells: usize,
+    // land bought at the floor of `land_rent_floor` town wages, and purchases whose price
+    // this probe could not work out again (there should be none)
+    bought_floor: f64,
+    bought_unmatched: usize,
+}
+
+// part (d): a town-year short of food, and what came before it
+struct Short {
+    year: i64,
+    founded: i64,
+    worst: f64,
+    cash_below: bool,
+    line_in_debt: bool,
 }
 
 struct Out {
@@ -84,12 +108,14 @@ struct Out {
     debt: Vec<DebtRow>,
     urban: UrbanCheck,
     rent: Vec<RentYear>,
+    short: Vec<Short>,
+    follow: String,
     names: Vec<String>,
     founded: Vec<i64>,
     sectors: Vec<String>,
 }
 
-fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> Out {
+fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64, follow: Option<(&str, i64)>) -> Out {
     let mut P = P.clone();
     P.seed = seed;
     P.accounts.enabled = true;
@@ -97,7 +123,6 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
     let C = sim.content.clone();
     let T = sim.st.T_max;
     let (NS, G) = (C.NS, C.G);
-    let t_lords = col(&TOWN_FIELDS, "cash_landlords");
     let t_spend = col(&TOWN_FIELDS, "spend_landlords");
     let (t_sites, t_town, t_fam, t_pop) =
         (col(&TOWN_FIELDS, "rent_sites"), col(&TOWN_FIELDS, "rent_town"), col(&TOWN_FIELDS, "rent_families"), col(&TOWN_FIELDS, "pop"));
@@ -107,6 +132,8 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
     let mut debt = Vec::new();
     let mut urban = UrbanCheck::default();
     let mut rent = Vec::new();
+    let mut short = Vec::new();
+    let mut follow_text = String::new();
     // part (d): every town's month: people, food in store, food's price, food got over need, households' cash a head
     let mut months: Vec<Vec<[f64; 5]>> = Vec::new();
     // (year, month, town, way, cash in hand the month before it opened)
@@ -133,8 +160,13 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
         } else {
             None
         };
+        // --follow: the town whose landlords' purse is printed month by month this year
+        let followed = follow.filter(|f| f.1 == year).and_then(|f| sim.st.town_name.iter().position(|n| n == f.0));
+        if let Some(t) = followed {
+            let _ = writeln!(follow_text, "  {} landlords' purse, {year} (seed {seed})", sim.st.town_name[t]);
+        }
         for month in 0..12 {
-            let before = sim.st.lord_cash.clone();
+            let before = followed.map(|t| sim.st.lord_cash[t]);
             // part (d): lines and canals that open this month, and what is left in their purse
             let building: Vec<(usize, usize, usize, i64, u8, usize, f64)> =
                 sim.st.projects.iter().map(|p| (p.a, p.b, p.target, p.start, p.way, p.town, p.cash)).collect();
@@ -147,9 +179,18 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                     }
                 }
             }
+            if let (Some(t), Some(was)) = (followed, before) {
+                let (rents, now) = (st.lord_income_prev[t], st.lord_cash[t]);
+                let _ = writeln!(
+                    follow_text,
+                    "    {year}-{:02}: began {was:12.0}  rents credited {rents:+10.0}  everything else {:+10.0}  ended {now:12.0}  (wage {:.2})",
+                    month + 1,
+                    now - was - rents,
+                    st.wage[t]
+                );
+            }
             for t in 0..T {
                 // the month's rents, as they were credited (`econ::step_month` keeps them in lord_income_prev)
-                let _ = before[t];
                 income[t] += st.lord_income_prev[t];
                 cash_min[t] = cash_min[t].min(st.lord_cash[t]);
                 wage_max[t] = wage_max[t].max(st.wage[t]);
@@ -169,18 +210,31 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
         let cash_dec = sim.st.lord_cash.clone();
         let food_min: Vec<f64> = sim.st.food_min_acc.clone();
         // part (c): the figure the families will price land on, cell by cell, before the year closes
-        let (mut est_c, mut est0_c, mut avg_c) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut est_c, mut est0_c, mut paid0_c, mut avg_c) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         if let Some((hire, none)) = &twins {
             let st = &sim.st;
             let gap = |s: &State, c: usize| s.harvest_rent_gap.get(c).copied().unwrap_or(0.0);
             est_c = (0..st.N).map(|c| st.cell_rent_paid[c] + gap(st, c)).collect();
             est0_c = (0..st.N).map(|c| hire.st.cell_rent_paid[c] + gap(&hire.st, c)).collect();
+            paid0_c = hire.st.cell_rent_paid.clone();
             avg_c = (0..st.N).map(|c| none.st.cell_rent_paid[c]).collect();
         }
         let projects_before: Vec<(usize, usize, usize, i64)> = sim.st.projects.iter().map(|p| (p.a, p.b, p.target, p.start)).collect();
         let owners_before = sim.st.cell_owner.clone();
         sim::end_year(&mut sim);
         let st = &sim.st;
+        if let Some(t) = followed {
+            let spent = st.acct.year(k).map(|b| b.towns[t * KT + t_spend] as f64).unwrap_or(f64::NAN);
+            let _ = writeln!(
+                follow_text,
+                "    the months: rents {:+.0}, everything else {:+.0} (the books' spending of the landlords {:.0}); at the year's end {:+.0}, leaving {:.0}",
+                income[t],
+                cash_dec[t] - cash_jan[t] - income[t],
+                spent,
+                st.lord_cash[t] - cash_dec[t],
+                st.lord_cash[t]
+            );
+        }
         // (a) the landlords' purse, year by year
         if parts.contains('a') {
             let mut subs = vec![0.0; T];
@@ -225,7 +279,6 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                         rent_fam: tw[t_fam] as f64,
                         pop: tw[t_pop] as f64,
                     });
-                    let _ = tw[t_lords];
                 }
             }
         }
@@ -280,18 +333,27 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                 r.paid += paid;
                 r.est += est_c[c];
                 r.est0 += est0_c[c];
+                r.paid0 += paid0_c[c];
                 r.avg += avg_c[c];
                 r.abs_est += (est_c[c] - avg_c[c]).abs();
                 r.abs_est0 += (est0_c[c] - avg_c[c]).abs();
                 r.abs_paid += (paid - avg_c[c]).abs();
                 if owners_before[c] != st.cell_owner[c] && st.cell_owner[c] >= 0 {
-                    // bought at the year's end, at 25 years of est (or the floor)
+                    // bought at the year's end, at 25 years of est, never counted below the
+                    // floor (`families::land_price`); the right price is 25 years of avg, never
+                    // below the same floor, so a purchase made at the floor either way was right
                     let price = families::land_price(st, &P, c);
-                    r.bought_value += price;
-                    if price > P.years_purchase * est_c[c].min(est0_c[c]).min(avg_c[c]) + 1e-9 || est_c[c] * P.years_purchase >= price - 1e-6 {
-                        r.bought_err_hire += P.years_purchase * (est_c[c] - est0_c[c]);
-                        r.bought_err_all += P.years_purchase * (est_c[c] - avg_c[c]);
+                    let floor = 12.0 * P.land_rent_floor * st.wage[st.catch[c] as usize];
+                    let at = |rent: f64| P.years_purchase * rent.max(floor);
+                    if (price - at(est_c[c])).abs() > 1e-6 * price.abs().max(1.0) {
+                        r.bought_unmatched += 1;
                     }
+                    r.bought_value += price;
+                    if floor >= est_c[c] {
+                        r.bought_floor += price;
+                    }
+                    r.bought_err_hire += at(est_c[c]) - at(est0_c[c]);
+                    r.bought_err_all += at(est_c[c]) - at(avg_c[c]);
                     r.bought_cells += 1;
                 }
             }
@@ -316,8 +378,10 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                 // the months round the worst: the year before's last three and this year's first five
                 let worst = (0..12).min_by(|&a, &c| ratio_months[t][a].total_cmp(&ratio_months[t][c])).unwrap_or(0);
                 let at = months.len() - 12 + worst;
+                let mut s = Short { year, founded: st.town_founded[t], worst: food_min[t], cash_below: false, line_in_debt: false };
                 for m in at.saturating_sub(3)..(at + 3).min(months.len()) {
                     let r = months[m][t];
+                    s.cash_below |= r[4] < 0.0;
                     let _ = writeln!(
                         text,
                         "      {}-{:02}: people {:7.0}, food in store {:8.0} ({:.2} months of need), price {:.3}, food got {:.2} of need, households' cash a head {:.2}",
@@ -334,6 +398,7 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                 for &(y, m, town, way, cash) in &opened {
                     let when = (y - C.start_year) as usize * 12 + m;
                     if town == t && when + 3 >= at && when <= at {
+                        s.line_in_debt |= cash < 0.0;
                         let _ = writeln!(
                             text,
                             "      {}-{:02}: a {} of this town's opened with {:.0} in its purse the month before (what is left goes to the households)",
@@ -344,6 +409,7 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
                         );
                     }
                 }
+                short.push(s);
                 if k > 0 {
                     if let Some(p) = st.acct.year(k - 1) {
                         for &g in &food {
@@ -387,6 +453,8 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64) -> 
         debt,
         urban,
         rent,
+        short,
+        follow: follow_text,
         names: sim.st.town_name.clone(),
         founded: sim.st.town_founded.clone(),
         sectors: C.sector_name.clone(),
@@ -397,6 +465,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (mut seeds, mut families, mut parts, mut set, mut from, mut to, mut out, mut rules) =
         (vec![1u64, 2, 3, 4, 5, 6, 7, 8], 6usize, String::from("a,b,d"), None::<String>, 1750i64, 1900i64, None::<String>, Rules::Game);
+    let mut follow: Option<(u64, String, i64)> = None;
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
@@ -414,6 +483,12 @@ fn main() {
             "--from" => from = next().parse().unwrap(),
             "--to" => to = next().parse().unwrap(),
             "--out" => out = Some(next()),
+            "--follow" => {
+                let v = next();
+                let f: Vec<&str> = v.split(':').collect();
+                assert!(f.len() == 3, "--follow takes SEED:TOWN:YEAR");
+                follow = Some((f[0].parse().unwrap(), f[1].to_string(), f[2].parse().unwrap()));
+            }
             "--port" => {
                 rules = Rules::Port;
                 i += 1;
@@ -434,12 +509,19 @@ fn main() {
             .map(|&seed| {
                 let P = P.clone();
                 let parts = parts.clone();
-                s.spawn(move || run(seed, &P, rules, &parts, from, to))
+                let follow = follow.as_ref().filter(|f| f.0 == seed).map(|f| (f.1.as_str(), f.2));
+                s.spawn(move || run(seed, &P, rules, &parts, from, to, follow))
             })
             .collect();
         hs.into_iter().map(|h| h.join().expect("a run panicked")).collect()
     });
     println!("{} rules, {} families, seeds {:?}{}", rules.as_str(), families, seeds, set.as_deref().map(|s| format!(", {s}")).unwrap_or_default());
+    if follow.is_some() {
+        println!("\nthe landlords' purse, month by month");
+        for o in &outs {
+            print!("{}", o.follow);
+        }
+    }
 
     if parts.contains('a') {
         println!("\n(a) landlords below nothing at a year's end: each spell, town by town");
@@ -632,6 +714,56 @@ fn main() {
                 );
             }
         }
+        // the islands pooled by the country's harvest: the page's table
+        let all: Vec<(u64, &RentYear)> = outs.iter().flat_map(|o| o.rent.iter().map(move |r| (o.seed, r))).collect();
+        println!("\n  pooled over the islands ({} island-years); in brackets the least and greatest island; the price error is", all.len());
+        println!("  the price paid over 25 years of avg, both never below the floor of land_rent_floor town wages, over the price paid");
+        println!("  harvest            years   paid-avg  paid0-avg  est-avg [islands]          est0-avg   |paid|  |est|  |est0|   land bought  at the floor  price error (hiring's part)");
+        for (label, lo, hi) in [("worse than 0.94", 0.0, 0.94), ("0.94 to 0.97", 0.94, 0.97), ("0.97 to 1.03", 0.97, 1.03), ("1.03 to 1.06", 1.03, 1.06), ("better than 1.06", 1.06, 9.0)] {
+            let ys: Vec<&RentYear> = all.iter().filter(|(_, r)| r.harvest >= lo && r.harvest < hi).map(|(_, r)| *r).collect();
+            if ys.is_empty() {
+                continue;
+            }
+            let s = |f: fn(&RentYear) -> f64| ys.iter().map(|r| f(r)).sum::<f64>();
+            let avg = s(|r| r.avg).max(1.0);
+            let mut per: Vec<f64> = outs
+                .iter()
+                .filter_map(|o| {
+                    let v: Vec<&RentYear> = o.rent.iter().filter(|r| r.harvest >= lo && r.harvest < hi).collect();
+                    let a: f64 = v.iter().map(|r| r.avg).sum();
+                    (a > 0.0).then(|| (v.iter().map(|r| r.est).sum::<f64>() - a) / a)
+                })
+                .collect();
+            per.sort_by(f64::total_cmp);
+            let bought = s(|r| r.bought_value).max(1.0);
+            println!(
+                "  {:16} {:5}   {:+.3}     {:+.3}     {:+.3} [{:+.3} .. {:+.3}]   {:+.3}     {:.3}  {:.3}  {:.3}   {:11.0}  {:11.0}  {:+.3} ({:+.3})",
+                label,
+                ys.len(),
+                (s(|r| r.paid) - avg) / avg,
+                (s(|r| r.paid0) - avg) / avg,
+                (s(|r| r.est) - avg) / avg,
+                per.first().copied().unwrap_or(f64::NAN),
+                per.last().copied().unwrap_or(f64::NAN),
+                (s(|r| r.est0) - avg) / avg,
+                s(|r| r.abs_paid) / avg,
+                s(|r| r.abs_est) / avg,
+                s(|r| r.abs_est0) / avg,
+                s(|r| r.bought_value),
+                s(|r| r.bought_floor),
+                s(|r| r.bought_err_all) / bought,
+                s(|r| r.bought_err_hire) / bought
+            );
+        }
+        let bought: f64 = all.iter().map(|(_, r)| r.bought_value).sum::<f64>().max(1.0);
+        println!(
+            "  every year: land bought {:.0} in {} purchases ({} whose price this probe could not work out again); the price error summed {:+.4} of it, its absolute size {:.4}",
+            bought,
+            all.iter().map(|(_, r)| r.bought_cells).sum::<usize>(),
+            all.iter().map(|(_, r)| r.bought_unmatched).sum::<usize>(),
+            all.iter().map(|(_, r)| r.bought_err_all).sum::<f64>() / bought,
+            all.iter().map(|(_, r)| r.bought_err_all.abs()).sum::<f64>() / bought
+        );
     }
 
     if parts.contains('d') {
@@ -640,6 +772,38 @@ fn main() {
             println!(" seed {}", o.seed);
             print!("{}", o.text);
         }
+        // sorted by what came before them, the first that fits: a line of the town's that
+        // opened in debt in the three months before the worst, the town's first year, the
+        // households' cash below nothing in the months printed, or none of these
+        let all: Vec<&Short> = outs.iter().flat_map(|o| o.short.iter()).collect();
+        println!(
+            "\n  {} town-years short of food; with the households' cash below nothing in the months round the worst: {}",
+            all.len(),
+            all.iter().filter(|s| s.cash_below).count()
+        );
+        let kind = |s: &Short| {
+            if s.line_in_debt {
+                "a line of the town's opened in debt just before"
+            } else if s.year - s.founded <= 1 {
+                "a new town's first year"
+            } else if s.cash_below {
+                "households' cash below nothing, no line"
+            } else {
+                "other"
+            }
+        };
+        for k in ["a line of the town's opened in debt just before", "a new town's first year", "households' cash below nothing, no line", "other"] {
+            let v: Vec<&&Short> = all.iter().filter(|s| kind(s) == k).collect();
+            if v.is_empty() {
+                continue;
+            }
+            println!(
+                "    {:48} {:4}  (in towns twenty years old or more: {}; under a twentieth of their food at the worst: {})",
+                k,
+                v.len(),
+                v.iter().filter(|s| s.year - s.founded >= 20).count(),
+                v.iter().filter(|s| s.worst < 0.05).count()
+            );
+        }
     }
-    let _ = accounts::KM;
 }
