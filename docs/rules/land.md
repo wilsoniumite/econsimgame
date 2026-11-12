@@ -77,7 +77,7 @@ knows which layer is at the surface.
   is drawn 4 to 11 km long, but stops short where the valley comes down to
   60 m or has fallen 60 m, and is not dug at all if that leaves less than
   2 km. The upland lakes come out mostly 4 to 10 square km, with a few of 1
-  to 3 and of 10 to 18 (seeds 1 to 40; some of the smallest are hollows
+  to 4 and of 10 to 18 (seeds 1 to 40; some of the smallest are hollows
   the erosion left, not troughs). The chance drawn for the lowland lake is
   `lowland_lake`, 0.35, but a hollow scooped beside the coast is taken by
   the sea and is a bay: ten of forty seeds have the lake. These are the
@@ -86,8 +86,9 @@ knows which layer is at the surface.
   filled to its spill point. One of 0.75 square km or more is kept as a
   lake with its level, depth, outlet and outflow (the flow of the lake's
   nodes that drain out of it), and smaller ones silt up.
-- *The sea rises* at the end until `land_fraction` (0.58, the port's) of the
-  cells are land. The lower valleys drown into estuaries, which is how real
+- *The sea rises* next, until `land_fraction` (0.58, the port's) of the
+  cells are land, every hollow (the new lakes among them) counting as dry
+  (it rises 60 m at most). The lower valleys drown into estuaries, which is how real
   ones were made.
 - *The big rivers plane their valley floors*: flat, wider downstream, wide in
   soft rock and hardly at all in hard, where the valley stays a gorge.
@@ -106,8 +107,8 @@ knows which layer is at the surface.
   drains to (a lake, the sea, or the first stream of 1.5 cubic metres a
   second it meets). Level ground, falling no more than 2 in 1,000, within
   0.9 m of that water is marsh or fen where the water is a lake or the sea,
-  where the ground is less than 6 m above the sea, or where it is a planed
-  valley floor beside a slack river (one falling less than 4 in 10,000).
+  where the ground is less than 6 m above the sea, or where it is planed
+  valley floor that itself falls less than 4 in 10,000.
   The rest of a planed floor, and any ground within 3 m of a stream, is
   flood plain.
 
@@ -134,6 +135,9 @@ times that.
 the fine grid:
 
 - A cell is *land* when at least half its nodes are dry. One island is kept.
+  A cell of water that is not a lake cell (below) and that the open sea
+  cannot reach from cell to cell is land too: it is an inlet narrower than
+  a cell, and the tideways below are made of such cells.
 - *Height* `h` is the mean height of the cell's dry nodes over `h_ref`
   (1,500 m), which makes the mean step between neighbouring cells what it is
   on the port's island (0.020 against 0.020), since the cost of carting
@@ -145,7 +149,9 @@ the fine grid:
   never larger than that of the cell it runs into, so there are no rings.
   `acc` is the area upstream in cells; a cell is a `river` from 5 cubic
   metres a second and `navigable` from 12 where it falls less than 1.5 in
-  1,000, and where a quarter of the cell is under a lake.
+  1,000 (its stream's fall over the fine steps that take it out of the
+  cell, four at most), and it is both where a quarter of the cell is under
+  a lake.
 - *Tideways*. The sea's rise drowned the lower valleys into inlets narrower
   than a cell, so a river usually meets the tide a few cells inside what the
   cells call land (100 to 200 land cells an island, give or take, have
@@ -162,11 +168,12 @@ the fine grid:
   tideway is a river's flow or more the cell is an `estuary` cell, and so a
   `river`; each island has 20 to 60 of them (21 to 59 on seeds 1 to 40).
   Where it is a navigable river's flow the cell is `navigable` (tidewater is
-  level) and it is `coast`: ships come up it. Fewer cells are that, 15 to
-  40 an island (14 to 39 on seeds 1 to 40, counting the estuary cells that
-  are both navigable and coast, which may take in a few made navigable by
-  their own river). With them nine tenths of an island's navigable water is
-  joined to the open sea by navigable water: 0.90 of it on seeds 1 to 12
+  level) and it is `coast`: ships come up it. Fewer cells are that: on
+  seeds 1 to 40, 14 to 39 estuary cells an island are both navigable and
+  coast (a few of them may be so by their own river or by the open sea
+  beside them), and 10 to 34 are so with no cell of sea beside them. With
+  them nine tenths of an island's navigable water is joined to the open
+  sea by navigable water: 0.90 of it on seeds 1 to 12
   taken together and 0.93 on 1 to 40, though island by island it runs from
   0.74 (seed 11; seed 7 has 0.75) to 0.97.
 - *The resource fields come from the land*: corn land from height, slope,
@@ -204,11 +211,12 @@ A cell that is not land (less than half of it dry) and has more of its
 water in a lake than in the sea is a lake cell, and water to the economy:
 `land` is false and `terrain` is `SEA`, so nothing is grown or built there,
 no town stands on it and no railway crosses it, and boats cross it at the
-sea's rate. (So a lake cell may have well under half its ground under the
-lake: five nodes of sixteen will do, if the rest is dry ground and a little
-sea. Its `h` is the lake's level.) Its shore is not `coast`: that is
-tidewater, the sea's shore and the tideways, which emigrants and (when it
-comes) foreign trade leave from.
+sea's rate. (So by the rule a lake cell may have well under half its ground
+under the lake: five nodes of sixteen will do, if the rest is dry ground and
+a little sea. None does on seeds 1 to 40, where every lake cell has at least
+nine of its sixteen nodes under the lake. Its `h` is the lake's level.) Its
+shore is not `coast`: that is tidewater, the sea's shore and the tideways,
+which emigrants and (when it comes) foreign trade leave from.
 `Landform::lake` says which water cells are lake, `Landform::shore` which
 land cells are beside one, and `Landform::estuary` which land cells have a
 river's tideway through them. Three small hooks, each marked `land:` where
@@ -223,9 +231,9 @@ it stands:
   lake cell and a sea cell lie side by side (none does on forty seeds, but
   nothing forbids it) the load is carried over the bar at a beach's cost.
 - `sim::init_before_firms`: a lake's shore counts as being by the water, as
-  the coast and a river cell do, which makes a town's cell there two and a
-  half times as likely to be looked at as the site of a new works
-  (`firms::candidate_cells`).
+  the coast and a river cell do, which gives a town's cell there two and a
+  half times the weight in the draw of cells looked at as the site of a new
+  works (`firms::candidate_cells`).
 
 A ribbon lake a kilometre wide never fills half a cell, so most upland lakes
 are not water cells: they are a share of their cells (`lake_share`), and
@@ -357,11 +365,10 @@ to 6 seconds longer on the new island than on the old (20 to 22 against
 
 These times were taken when the page was written and the machine was quiet
 or nearly so; they cannot be had again on a busy night. On 12 November,
-with some thirty other builds and sweeps running, `land_stats` on seeds 1
-to 12 took 3.4 to 4 seconds an island (1.7 for the relief, 2.5 for the
-water, 0.04 for the cells, and one island 11 s), and seed 7 took 21 s at
-`fine = 6` and 14 s at 8, which says more about the machine that night than
-about the land.
+with some thirty other builds and sweeps running, two runs of `land_stats`
+on seeds 1 to 12 took 3.2 to 11 seconds an island, and seed 7 took 10 to
+21 s at `fine = 6` and 14 to 15 s at 8, which says more about the machine
+that night than about the land.
 
 ## Twelve islands in numbers
 
@@ -381,7 +388,8 @@ which are put right):
 | highest point, m | 897 | 978 | 1,074 |
 | mean height of the land, m | 92 | 108 | 126 |
 
-Against the port's generator, the same seeds (sums over land cells):
+Against the port's generator, the same seeds (an island on average; each
+field summed over its land cells):
 
 | | port | land | ratio |
 |---|---|---|---|
