@@ -2,7 +2,7 @@
 
 What Stella notices while playing, in her words, and what becomes of each note. It is also where the order of work is decided. The diary of what was done is [DEVLOG.md](DEVLOG.md); this file is what is waiting, what is being done, and why in that order.
 
-Last gone through: the morning of 12 November 2026, when the clock that tells the month landed.
+Last gone through: the morning of 12 November 2026, when the canals landed.
 
 ## How it is kept
 
@@ -21,16 +21,14 @@ Started before this file existed, and left to finish. The usage limit cut every 
 
 | Piece | Notes | Branch | State |
 |---|---|---|---|
-| Canals (core) | 9 | `night/canals-review` | reviewed; being merged on the integration branch |
-| A second island generator: erosion, real rivers, lakes (core) | 4, 6 | `night/land-review` | reviewed; merged on the integration branch after the canals. It stays switched off until the viewer can draw it |
-| Books of account for towns, works and the island (core) | 13 | `night/accounts` | built; in review |
+| A second island generator: erosion, real rivers, lakes (core) | 4, 6 | `night/land-review` | reviewed; being merged on the integration branch, beside the mines and the canals. It stays switched off until the viewer can draw it |
+| Books of account for towns, works and the island (core) | 13 | `night/accounts-review` | reviewed, with the mines and the canals taught to the books; next to be merged |
 | The production tree's first stage (core) | 8, in part | `night/tree` | being built; a second helper carries on from the first's saved work |
 | Saved games that cannot be lost to a test start, a second copy of the game or a crash (F1) | none | `night/saves-guard` | being built: Ready next 1, taken up when the clock landed, since the clock changed the save |
 | Towns drawn from the ground they keep (viewer) | 14 | `night/town-ground` | being built; cut off twice, and a third helper carries on from the saved work |
 | Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | built; in review |
 | Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | built; in review |
-| Where frames stall: a recorder, measurements and a design, no fix yet (viewer) | 17 | `night/smooth-probe` | measured and designed; with its critic |
-| The documents a newcomer reads first: README, the plan's account of where we are (F23) | none | `night/docs-front` | written; being checked command by command |
+| Two small repairs after the morning's landings: the mines lose money under the commons regime (the game's own regime is sound); the READMEs still tell of a clock that steps by the year | none | `night/mines-commons`, `night/docs-clock` | being built |
 
 Queued behind one of these and already briefed: works laid out by what they do and hold (note 16), which starts on `night/works-detail` once that has been reviewed.
 
@@ -39,13 +37,13 @@ Queued behind one of these and already briefed: works laid out by what they do a
 Nothing here is started until its trigger is met and the backlog has been gone through again. Her notes and what helpers found are in one order.
 
 1. **A real game is not lost to a test start** (F1). Taken up on 12 November, when the clock landed: see In flight.
-2. **Draw what the core pieces add, each as it lands** (notes 2, 4, 6, 9; F7). Mines as small workings at the foot of the hill; canals; the new land's relief, rivers and lakes. The mines are merged (12 November) and are drawn only as a stand-in, one of the old pits at each working: the grey blocks are gone and the mines are nearly invisible. *Trigger:* for the mines, `night/works-detail` and `night/town-ground` are merged, since they are rewriting the generators and the placement code the drawing would work in; for the canals and the new land, each is merged. *Why here:* these are her first notes.
+2. **Draw what the core pieces add, each as it lands** (notes 2, 4, 6, 9; F7). Mines as small workings at the foot of the hill; canals; the new land's relief, rivers and lakes. The mines and the canals are merged (12 November). A working is drawn only as a stand-in, one of the old pits; a canal is not drawn at all. *Trigger:* for the mines and the canals, `night/works-detail` and `night/town-ground` are merged, since they are rewriting the generators and the placement code the drawing would work in (the railways' course and profile, which a canal can reuse, landed on 12 November); for the new land, it is merged. *Why here:* these are her first notes.
 3. **Roads, bridges and carts laid again on the new rivers** (notes 19, 20; F3). The cart that sails over a river and clips through a bridge was already in a helper's notes: a cart's path is a straight line between cell centres at the height of the ground. The roads' links and every bridge are the viewer's own invention, which is why a road down a valley crosses its river again and again. Neither is mended on its own, because the rivers are about to be replaced. *Trigger:* the viewer draws the new land. *If the new land does not land,* mend both on today's rivers.
 4. **Map views and charts that say what is so** (F2; bears on note 13). One outlying town flattens the price map's scale; a price is shown for goods nobody makes yet; a wage chart that should read 1 in 1750 reads 1.04. *Trigger:* `night/town-ground` is merged, since it adds two map views; the clock, which also worked in them, landed on 12 November.
 5. **A look at each viewer piece once it has landed:** towns (F5), railways (F6), works (F8). What reviewers could not judge until the piece was in. The railways have landed, so F6 is ready: whether the whole network reads as too much on the map, the churches that now have a line against their yard, eighteen curves too tight for a train, roads that drape over the banks, sidings that are plain ribbons. *Trigger:* each landing; the railways' part now ranks below items 1 to 4.
 6. **What the record carries for the viewer, and a test that holds it** (F9; note 16). The record keeps two land classes a cell where the picture uses four, clips rent and distance, and carries no traffic; the golden test would not notice a change to any of it. With it goes a row for each works and year (capacity, what is on order, hands, how hard it runs, its state: twelve bytes), which the probe of combined works found to be true today and which the viewer's site planner needs in place of its stand-ins. *Trigger:* mines, canals, the new land and the books of account are merged, since each adds to the record. *Why here:* the inspector, ownership on the map and anything that follows traffic wait on it.
 7. **The inspector** (note 13): a market's industries as a flow, with prices, volumes and carting. *Trigger:* the books of account are merged, and item 6.
-8. **A hand-over that keeps the view smooth** (note 17; F14). *Trigger:* the probe's design is written and checked, and the monthly clock and the buildings' levels of detail are merged, since all three change the same code.
+8. **A hand-over that keeps the view smooth** (note 17; F14). The probe is in and checked ([probes/dx-smooth.md](probes/dx-smooth.md)): the picture stands still for a third of a second each time a year's scenery goes to the graphics card, and handing the year's meshes over one a frame removes it for half a day's work. After that, the year's arrival off the main thread (two or three days), then sending less. *Trigger:* `night/winter-fixes` and `night/works-detail` are merged, since both rewrite the lines the first stage changes; the monthly clock, the third, landed on 12 November.
 9. **A save that outlives a change to the simulation** (F10). A saved game is its orders played again from 1750, so every core piece merged makes older saves drift, and loading a century takes 23 seconds. *Trigger:* `night/calendar` and the core pieces in review are merged; before the run to 2050. Large.
 10. **A pass over all the game's rules together, and a scorecard.** First the sweep's own tools (F11: twenty-year means over sixteen seeds, tolerances, facts not named by year), then the things measured and never explained, which the books make cheap to trace (F12), then the pass itself (F18: growth that comes early and stops in the 1880s, the wage's dip with kept town ground, swings, famines, the steel rail, numbers never searched). *Trigger:* mines, canals, the new land and the books of account are merged.
 11. **Combined works as a mechanism** (note 16; F4). The probe is in ([probes/dx-combines.md](probes/dx-combines.md)) and its critic says build it changed: a concern with books for each stage, stages kept in proportion, formed by neighbours merging or by a user building its own maker, families' works included. As prototyped it moves nothing on the island, so it is for the picture and for the tree's longer chains, and ranks no higher than this. Stock yards at the works are not to be built as first specified: a works holds no goods today, and the yards as designed would hoard in a shortage. *Trigger:* the production tree's first stage is merged.
@@ -57,7 +55,7 @@ Nothing here is started until its trigger is met and the backlog has been gone t
 17. **The first stage of the run to 2050** (note 1; F22). *Trigger:* Stella has read the design and answered its questions.
 18. **Polish, in this order:** the clock, the cards and the present (F24); the news watched in the running game (F25); winter and the light (F26); a title screen and a start that shows something (F27); life and weather (F28). *Trigger:* each names the landing it follows on its own page.
 
-One piece could go at once and was taken up the same evening, since the repository was about to be read by someone new: **documents that still describe the Python port** (F23).
+One piece could go at once and was taken up the same evening, since the repository was about to be read by someone new: **documents that still describe the Python port** (F23). It landed on 12 November: the README is written again, with every command in it run on the merged build.
 
 ## Waiting on Stella
 
@@ -78,6 +76,7 @@ Not her notes: what helpers and reviewers reported and left open. On the evening
 - **2, mines as big blobs:** answered in the simulation by the mines, merged 12 November: diggings take about 9 cells' worth of land in 1900 where they took 1,373. The picture still shows a working only as a stand-in, so the drawing stays open at Ready next 2.
 - **5, land that looks ruled:** answered from the whole-island view by the far view, merged 11 November, and from mid distance by the wood, heath and hill edges, merged 12 November.
 - **12, a railway like an aqueduct that then drops:** answered by the railways' profiles, merged 12 November: every cell of track has one level, a line winds or takes an incline where the ground is too steep, and the check finds no step anywhere. What is still wrong with them is at Ready next 5.
+- **9, canals before railways:** answered in the simulation by the canals, merged 12 November: the first opens about 1774, and there are some 900 km by 1900. They are not drawn yet, so the drawing stays open at Ready next 2.
 - **10, a game that goes too fast, and the month:** answered by the clock that tells the month, merged 12 November. The bar reads the month; a game starts at a month a second, which is thirty minutes for the 150 years, and can go at a month every two seconds, an hour. Weeks are not shown, since the simulation has nothing shorter than a month. Three things about it are hers to decide and are under Waiting on Stella.
 - **11, "I really like a lot of the new looks":** nothing to do but keep going that way.
 - **15, examples of the generators:** five contact sheets sent; twelve are under `.claude/night/shots/lab-for-stella/` on her machine, and `isostate-viewer --lab list` names the rest.
