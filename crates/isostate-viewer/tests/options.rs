@@ -124,6 +124,26 @@ fn a_name_that_is_another_option_is_refused_before_anything_is_played() {
 }
 
 #[test]
+fn a_good_a_game_lacks_is_refused_before_its_island_is_made() {
+    let dir = scratch("goods");
+    let picture = dir.join("coal.png");
+    // the word came from a --view, and the refusal says so (it used to say --overlay)
+    let view = format!("{},1850,,,,,,price:cole", text(&picture));
+    let ran = game(&dir, &["--view", &view], &[]);
+    let said = refused(&ran, "--view: \"cole\" is not a good of this run: use one of ", "");
+    assert!(said.contains("coal"), "{said}");
+    assert!(!picture.exists());
+    let ran = game(&dir, &["--overlay", "price:Cole", "--describe", "30,30"], &[]);
+    refused(&ran, "--overlay: \"Cole\" is not a good of this run: use one of ", "");
+    // a good the game has, by its name in any case, goes through to the island
+    let ran = game(&dir, &["--families", "1", "--overlay", "price:COAL", "--describe", "30,30"], &[]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(ran.err.contains("making island 7 with 1 family\u{2026}"), "{}", ran.err);
+    assert!(!ran.out.is_empty(), "nothing was described");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_measuring_tool_does_its_work_and_the_program_stops_where_the_options_are_read() {
     let dir = scratch("plan");
     let plan = dir.join("plan.ppm");

@@ -687,6 +687,15 @@ fn main() {
         let code = lab::run(lab::LabArgs { sheet, out: args.out.clone(), size: args.size, season: args.season, tilt: args.lab_tilt, loupe: args.loupe, turn: args.lab_turn }, look);
         std::process::exit(code);
     }
+    // a map view whose good a game will not have is refused before its island is made: the
+    // goods are the rules' own (those of a saved game, or the game's for a new one). A recorded
+    // run's goods are known once it is read, which is quick, and are checked then.
+    if args.new {
+        let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
+        let c = rules.content();
+        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone() }).collect();
+        refuse_map_views(&args, |w| overlay::complaint_among(w, &goods));
+    }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
         // the standard shots are pictures too
@@ -765,14 +774,9 @@ fn main() {
             eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
         }
     }
-    // an overlay word that cannot be shown is refused, so a mistyped shot is not taken for the plain map
-    // (a word that is no map view was refused with the options; a good is known only with the run)
-    for w in args.overlay.iter().chain(args.views.iter().filter_map(|v| v.overlay.as_ref())) {
-        if let Some(why) = overlay::complaint(w, &r) {
-            eprintln!("--overlay: {why}");
-            std::process::exit(2);
-        }
-    }
+    // a recorded run's map views, now its goods are known (a game's were checked before its island
+    // was made, and are checked again against the goods it has)
+    refuse_map_views(&args, |w| overlay::complaint(w, &r));
     let latest = r.filled.clamp(1, r.ny) - 1;
     let k0 = match args.year {
         Some(y) => ((y - r.y0).max(0) as usize).min(latest),
@@ -968,6 +972,20 @@ fn main() {
         app.insert_resource(sheet);
     }
     app.run();
+}
+
+/// Stop on a map view that cannot be shown, saying which option it came from,
+/// so that a mistyped picture is not taken of the plain map. A word that is no
+/// map view at all was refused with the options; whether a good is one the run
+/// has is for `complaint` to say, given the run's goods.
+fn refuse_map_views(args: &Args, complaint: impl Fn(&str) -> Option<String>) {
+    let words = args.overlay.iter().map(|w| ("--overlay", w)).chain(args.views.iter().filter_map(|v| v.overlay.as_ref().map(|w| ("--view", w))));
+    for (opt, w) in words {
+        if let Some(why) = complaint(w) {
+            eprintln!("{opt}: {why}");
+            std::process::exit(2);
+        }
+    }
 }
 
 #[derive(Resource)]
@@ -2865,7 +2883,7 @@ mod tests {
         assert_eq!(args("--shots").err().unwrap(), "--shots needs a value after it");
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
-        // map views (a good the run does not have is refused once the run is read)
+        // map views (a good the run does not have is refused before a game's island is made, or once a recorded run is read: tests/options.rs)
         assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain");
         assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
         // a script's steps are read with the options
