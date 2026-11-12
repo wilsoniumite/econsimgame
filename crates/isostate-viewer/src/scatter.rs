@@ -117,8 +117,8 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
 
 // ------------------------------------------------------------------ where the works stand
 //
-// Every works has a yard of its own, as wide and as deep as its kind needs at
-// its size (`works::footprint`), and the yards of a cell must not overlap one
+// Every works has a plot of its own, as wide and as deep as its kind needs at
+// its size with room for its stores and yards (`site::ground`), and the plots of a cell must not overlap one
 // another, the market place, a churchyard (in any year the church stands
 // there: `towns::churchyards`), the roads, the railway or the river. So the
 // ground of a cell is handed out: each works, in the order they were founded,
@@ -130,13 +130,14 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
 // it uses or uses what it makes. So the works of a cell gather into a
 // district along its road, with lanes between them, and a chain of trades
 // stands wall to wall. Its gate faces the road. A works that has closed
-// gives its ground up to those founded after. Nothing moves from year to
+// keeps its ground while its buildings stand (`STANDS_CLOSED` years: cold,
+// then derelict) and then gives it up to those founded after. Nothing moves from year to
 // year, and a works founded later never moves one that stands. In a live game the future is not known: when a works
 // outgrows the ground set aside for it, its cell is laid out again, and its
 // younger neighbours may move.
 //
 // A cell with more works than it has room for: a works that finds no spot is
-// tried at half the size, and half again, down to the smallest; it is then
+// tried at seven tenths of the size, and again, down to the smallest; it is then
 // drawn no bigger than fits (`Slots::firm_cap`). If the smallest finds no
 // spot either (a cell that is nearly all shore, river or road), it is tried
 // on a finer grid with less room to the water and none to the roads; then
@@ -163,9 +164,27 @@ fn firm_ratio(r: &Replay, f: usize, kk: f32) -> f32 {
     kk / r.header.methods[r.header.firms[f].method].k0.max(1e-6)
 }
 
-/// The years a works stands (the first year index it has capacity, and one
-/// past the last, or no end if it stands in the last year known), and the
-/// most capacity it reaches.
+/// How long the buildings of a works that has closed are left standing: cold,
+/// with the gate shut, for the first years, then derelict, and then cleared.
+/// (The record says the year a works' capacity went to nothing and no more:
+/// how long a ruin stands is the viewer's rule, the same for every works.)
+const STANDS_COLD: usize = 2;
+const STANDS_CLOSED: usize = 6;
+
+/// What a works is doing that has had no capacity for `years`, while it stands.
+fn closed_state(years: usize) -> Option<State> {
+    match years {
+        0 => None,
+        y if y <= STANDS_COLD => Some(State::Idle),
+        y if y <= STANDS_CLOSED => Some(State::Derelict),
+        _ => None,
+    }
+}
+
+/// The years a works keeps its ground (the first year index it has capacity,
+/// and one past the last year its buildings stand, which is `STANDS_CLOSED`
+/// years after it last had any; or no end if it is at work in the last year
+/// known), and the most capacity it reaches.
 fn firm_life(r: &Replay, f: usize) -> (usize, usize, f32) {
     let (first, len, off) = (r.firm_first[f].max(0) as usize, r.firm_len[f].max(0) as usize, r.firm_off[f].max(0) as usize);
     let (mut from, mut to, mut top) = (None, 0, 0.0f32);
@@ -177,7 +196,7 @@ fn firm_life(r: &Replay, f: usize) -> (usize, usize, f32) {
         }
     }
     match from {
-        Some(from) => (from, if to >= r.filled.min(r.ny) { usize::MAX } else { to }, top),
+        Some(from) => (from, if to >= r.filled.min(r.ny) { usize::MAX } else { to + STANDS_CLOSED }, top),
         None => ((r.header.firms[f].born - r.y0).max(0) as usize, usize::MAX, 0.0),
     }
 }
@@ -576,12 +595,15 @@ pub struct FirmSite {
 static PLANS: std::sync::Mutex<Option<std::collections::HashMap<(usize, u64), std::sync::Arc<site::Plan>>>> = std::sync::Mutex::new(None);
 
 /// The works of firm `f` as the planner takes it in year `k`, if it stands
-/// then (`works::site`). THE FACTS, and where each comes from:
+/// then, at work or closed and not yet cleared (`works::site`). THE FACTS,
+/// and where each comes from:
 /// - its kind and process: the method (`site::Process::standard`, the shipped content);
 /// - the stages of its growth: its capacity in every year so far, on its size ladder;
 /// - its plot: `Slots::firm_plot`, with what each side faces and since when;
 /// - its state: going up in its first year; a stage built this year is under
-///   scaffolding; stages it has shrunk out of stand idle, then derelict;
+///   scaffolding; stages it has shrunk out of stand idle, then derelict; and
+///   the whole of it cold for `STANDS_COLD` years after its capacity went to
+///   nothing, then derelict, until it is cleared `STANDS_CLOSED` years after;
 /// - how busy it is and what it holds: STAND-INS, as the record keeps neither,
 ///   both read from what its capacity did this year. Busy: 0.9 in a year its
 ///   capacity rose, 0.45 in one it fell, else 0.75. Stock: a works that is
@@ -611,10 +633,14 @@ fn planned(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look, facts: &Fac
     let size = history.last().map_or(0.4, |h| h.1);
     let top = history.iter().map(|h| h.1).fold(0.0f32, f32::max);
     let shrunk_for = history.iter().rev().take_while(|h| h.1 < top * 0.8).count() as i32;
+    if let Some(state) = closed_state(facts.closed_for) {
+        // closed: cold, with what it could not sell about it, and then derelict
+        return FirmSite { plan, now: site::Now { year, size, state, busy: 0.0, stock_in: 0.1, stock_out: 0.3, shrunk_for, detail: Detail::Near } };
+    }
     let kk = replay::firm_k(r, f, k);
     let before = if k > 0 { replay::firm_k(r, f, k - 1) } else { kk };
-    let state = if before <= 0.0 && firm.born > r.y0 { State::GoingUp } else { State::Working };
-    let (rose, fell) = (kk > before * 1.02, kk < before * 0.98);
+    let state = if history.len() == 1 && firm.born > r.y0 { State::GoingUp } else { State::Working };
+    let (rose, fell) = (kk > before * 1.02 && history.len() > 1, kk < before * 0.98);
     let busy = if rose { 0.9 } else if fell { 0.45 } else { 0.75 };
     // (a works keeps a little more or less about it than its neighbour, by a number of its own that never changes)
     let own = |n: i32| 0.12 * (world::hash2(f as i32, n, 53) - 0.5);
@@ -630,16 +656,20 @@ struct Facts {
     history: Vec<(i32, f32)>,
     stages: Vec<site::Stage>,
     mark: u64,
+    /// how many years it has had no capacity: nought while it is at work
+    closed_for: usize,
 }
 
+/// The facts of a works that is at work in year `k`, or that was within the
+/// last `STANDS_CLOSED` years and still stands.
 fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
-    if replay::firm_k(r, f, k) <= 0.0 {
-        return None;
-    }
+    // the last year it had any capacity
+    let last = (k.saturating_sub(STANDS_CLOSED)..=k).rev().find(|&i| replay::firm_k(r, f, i) > 0.0)?;
+    let closed_for = k - last;
     let (phase, cap) = (firm_phase(f), slots.firm_cap.get(f).copied().unwrap_or(f32::MAX));
     let size_of = |kk: f32| works::rung_size(works::rung(firm_ratio(r, f, kk), phase), phase).min(cap);
     let first = r.firm_first.get(f).copied().unwrap_or(0).max(0) as usize;
-    let history: Vec<(i32, f32)> = (first..=k).filter_map(|i| { let kk = replay::firm_k(r, f, i); (kk > 0.0).then(|| (r.y0 + i as i32, size_of(kk))) }).collect();
+    let history: Vec<(i32, f32)> = (first..=last).filter_map(|i| { let kk = replay::firm_k(r, f, i); (kk > 0.0).then(|| (r.y0 + i as i32, size_of(kk))) }).collect();
     let stages = site::stages(&history);
     let year = r.y0 + k as i32;
     let plot = slots.firm_plot.get(f)?;
@@ -658,7 +688,7 @@ fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
         (r.header.firms[f].method, r.header.meta.seed).hash(&mut h);
         h.finish()
     };
-    Some(Facts { history, stages, mark })
+    Some(Facts { history, stages, mark, closed_for })
 }
 
 /// What the plans of year `k` hold, in a line, for ISOSTATE_TIMING: how many
@@ -668,9 +698,9 @@ fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
 /// a camera at them.
 fn plans_said(r: &Replay, slots: &Slots, k: usize, lk: &Look) -> String {
     let year = r.y0 + k as i32;
-    let names = ["a siding", "a wharf", "a works that feeds it over the wall", "one it feeds", "parts out of use", "a stage built smaller for want of room", "a stage that found no room at all"];
-    let mut count = [0usize; 7];
-    let mut places: [Vec<String>; 7] = Default::default();
+    let names = ["a siding", "a wharf", "a works that feeds it over the wall", "one it feeds", "parts out of use", "a stage built smaller for want of room", "a stage that found no room at all", "its gate shut", "its roofs falling in"];
+    let mut count = [0usize; 9];
+    let mut places: [Vec<String>; 9] = Default::default();
     let mut all = 0;
     // the capacity the works have, what their stages come to, and what of it is built
     let (mut have, mut staged, mut built) = (0.0f32, 0.0f32, 0.0f32);
@@ -678,12 +708,14 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, lk: &Look) -> String {
         let Some(fs) = firm_site(r, slots, f, k, lk) else { continue };
         all += 1;
         let plan = &fs.plan;
-        have += fs.now.size;
-        staged += plan.stages.last().map_or(0.0, |s| s.size);
-        built += plan.parts.iter().filter(|p| p.role == site::Role::Core).map(|p| p.size).sum::<f32>();
+        if !matches!(fs.now.state, State::Idle | State::Derelict) {
+            have += fs.now.size;
+            staged += plan.stages.last().map_or(0.0, |s| s.size);
+            built += plan.parts.iter().filter(|p| p.role == site::Role::Core).map(|p| p.size).sum::<f32>();
+        }
         let faces = |want: Edge| (0..plan.plot.edges.len()).any(|i| plan.plot.edge(i, year) == want);
         let top = plan.stages.last().map_or(0.0, |s| s.size);
-        let has = [plan.siding.is_some(), plan.wharf.is_some(), faces(Edge::Fed), faces(Edge::Feeds), fs.now.shrunk_for > 0 && plan.stages.len() > 1 && fs.now.size < top, plan.squeezed > 0, plan.dropped > 0];
+        let has = [plan.siding.is_some(), plan.wharf.is_some(), faces(Edge::Fed), faces(Edge::Feeds), fs.now.shrunk_for > 0 && plan.stages.len() > 1 && fs.now.size < top, plan.squeezed > 0, plan.dropped > 0, fs.now.state == State::Idle, fs.now.state == State::Derelict];
         for (i, _) in has.iter().enumerate().filter(|(_, h)| **h) {
             count[i] += 1;
             if places[i].len() < 6 {
@@ -692,7 +724,7 @@ fn plans_said(r: &Replay, slots: &Slots, k: usize, lk: &Look) -> String {
             }
         }
     }
-    let mut out = format!("works planned in {year}: {all}; {}; of their capacity {:.0}% is in the stages they were built in and {:.0}% stands as buildings", names.iter().zip(count).map(|(n, c)| format!("{c} with {n}")).collect::<Vec<_>>().join(", "), 100.0 * staged / have.max(1e-6), 100.0 * built / have.max(1e-6));
+    let mut out = format!("works standing in {year}: {all}; {}; of the capacity of those at work {:.0}% is in the stages they were built in and {:.0}% stands as buildings", names.iter().zip(count).map(|(n, c)| format!("{c} with {n}")).collect::<Vec<_>>().join(", "), 100.0 * staged / have.max(1e-6), 100.0 * built / have.max(1e-6));
     if std::env::var_os("ISOSTATE_PLOTS").is_some() {
         for (n, p) in names.iter().zip(&places).filter(|(_, p)| !p.is_empty()) {
             out.push_str(&format!("\n  with {n}: {}", p.join("; ")));
@@ -1433,6 +1465,16 @@ fn lane(b: &mut Builder, lk: &Look, g: &Ground, from: (f32, f32), to: (f32, f32)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_works_that_has_closed_stands_cold_then_derelict_and_is_then_cleared() {
+        assert_eq!(closed_state(0), None, "a works at work is not closed");
+        assert_eq!(closed_state(1), Some(State::Idle));
+        assert_eq!(closed_state(STANDS_COLD), Some(State::Idle));
+        assert_eq!(closed_state(STANDS_COLD + 1), Some(State::Derelict));
+        assert_eq!(closed_state(STANDS_CLOSED), Some(State::Derelict));
+        assert_eq!(closed_state(STANDS_CLOSED + 1), None, "its ground is given up");
+    }
 
     #[test]
     fn houses_are_drawn_in_full_near_a_close_camera_and_as_shells_far_off() {
