@@ -415,8 +415,8 @@ fn one_run(P: &Params, content: Content) -> Result<Done, String> {
     let mut s = sim::start(P, content);
     let mut gathered = facts::Gathered::default();
     while s.year <= s.end_year {
-        sim::run_year(&mut s)?;
-        facts::gather_year(&mut gathered, &s);
+        // sim::run_year, with the facts' notes taken after each month and the year's end
+        facts::run_year_noting(&mut s, &mut gathered)?;
     }
     let r = sim::finish(s);
     let seconds = t0.elapsed().as_secs_f64();

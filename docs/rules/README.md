@@ -312,7 +312,9 @@ All of them are worked out after the run from what it already keeps (the
 observer's series, the yearly snapshots, the final state); the simulation's
 loop is not touched. Two things nobody keeps, the towns' growth against the
 cap and the land under each use, are noted between years by the sweep's own
-loop. The facts are computed from the content, so another content file works:
+loop, and a few that only a month shows (a town's wage against the middle
+town's, the hands at work against the people) between months
+(`facts::run_year_noting`). The facts are computed from the content, so another content file works:
 a method or good it lacks is skipped, and one it adds gets its rows.
 
 A fact taken from a series in a year is the mean of that year's twelve months,
@@ -365,6 +367,7 @@ some 280 facts and a sweep under the game's rules some 450. In brief:
 | Prices and cycles | `output_swing_grain`, `price_ac1_grain`, `output_ac1_grain`, `real_wage_worst_year`, `real_wage_swing`, `famine_years`, and how grain, its price and the wage answer to the harvest that year and the next (`harvest_sd`, `grain_output_on_harvest` and the rest) ([harvest.md](harvest.md), [prices.md](prices.md)) |
 | News | the news of the newer kinds: `news_canal`, `news_canal_plan`, `news_dearth`, `news_harvest`, `news_region` |
 | Canals | the coal's price spread between towns and its share of warmth and heat; when the first canal was begun and opened and how long before the railway; length, traffic and haul; what the canals carry; the lines by what they serve; what they cost and earned, and the most digging and navvies at once ([canals.md](canals.md)) |
+| (the pass over the rules) | the facts its card reads: `pop_Y_vs_1750`, the towns' gain at the end, spending a head over the chained cost of living by decade, the five worst years, timber's swing, the tools' dear years against the years about them, hungry months after a district, wild wages and overworked towns by the town-month, the diggings without the carters, the carters between towns and a unit of weight and path cost, closing by age, the works near their market ([scorecard.md](scorecard.md), "The facts added for the pass over the rules") |
 
 ### The baselines
 
@@ -458,9 +461,9 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   than about the code.
 - **Facts are named by year**, so sweeps to different end years have few
   names in common and compare poorly.
-- **The loss function and the search of PLAN.md 1.3 are not here.** The facts
-  have no tolerances yet; `facts.json` is the table a loss would be computed
-  from.
+- **The search of PLAN.md 1.3 is not here.** The scorecard
+  ([scorecard.md](scorecard.md)) gives the pass over the rules' twenty aims
+  with their tolerances and a loss over them; nothing searches it yet.
 
 ## Mechanisms under the game's rules
 
