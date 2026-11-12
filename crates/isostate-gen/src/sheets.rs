@@ -22,14 +22,16 @@ use glam::{Vec2, Vec3};
 
 use crate::bridge::{road_bridge, RoadBridge};
 use crate::farm::{farmstead, Farmstead};
+use crate::fence::fence;
 use crate::hash::Seed;
-use crate::houses::{cottage, terrace, townhouse, Cottage, Terrace, Townhouse, BACK_PLOT_WIDTH, PLOT};
+use crate::houses::roof::{self, Roof};
+use crate::houses::{cottage, terrace, townhouse, villa, Cottage, Detail, Era, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
 use crate::palette::Palette;
-use crate::scenes::{self, Cover, Market, Street, WorksYard};
+use crate::scenes::{self, Cover, Market, Street};
 use crate::site::{Model, Site};
 use crate::town;
 use crate::trees::{bush, hedge_tree, tree, Species, Tree};
-use crate::works::{pit, scaffold, works, yard_shed, Kind, Pit, PitKind, Works, YardShed};
+use crate::works::{pit, works, Kind, Pit, PitKind, State, Works};
 
 /// The ground a sheet stands on: the land its things stand on in the game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +63,24 @@ impl Cell {
         build(&mut model, &Site::level(Vec3::ZERO, yaw));
         Cell { label: label.into(), model }
     }
+
+    /// A cell on ground that rises `fall` for each unit along the site's
+    /// x, `width` wide and `depth` deep: the ground is built too, as a
+    /// bank standing on the lab's level floor, so that the thing is seen
+    /// sitting into it.
+    pub fn on_slope(label: impl Into<String>, yaw: f32, fall: f32, width: f32, depth: f32, bank: crate::colour::Rgba, build: impl FnOnce(&mut Model, &Site)) -> Cell {
+        let (hw, hd) = (width * 0.5, depth * 0.5);
+        let ground = move |x: f32, _z: f32| (x + hw) * fall + 0.004;
+        let mut model = Model::default();
+        let top = |x: f32, z: f32| Vec3::new(x, ground(x, z), z);
+        let b = &mut model.solid;
+        b.quad(top(-hw, hd), top(hw, hd), top(hw, -hd), top(-hw, -hd), bank);
+        b.quad(Vec3::new(-hw, 0.0, hd), Vec3::new(hw, 0.0, hd), top(hw, hd), top(-hw, hd), crate::colour::shade(bank, 0.86));
+        b.quad(Vec3::new(hw, 0.0, -hd), Vec3::new(-hw, 0.0, -hd), top(-hw, -hd), top(hw, -hd), crate::colour::shade(bank, 0.8));
+        b.quad(Vec3::new(hw, 0.0, hd), Vec3::new(hw, 0.0, -hd), top(hw, -hd), top(hw, hd), crate::colour::shade(bank, 0.9));
+        build(&mut model, &Site::on(Vec3::new(0.0, ground(0.0, 0.0), 0.0), yaw, &ground));
+        Cell { label: label.into(), model }
+    }
 }
 
 /// `rows` rows of `cols` cells, each made by `cell(row, col)`.
@@ -81,25 +101,51 @@ pub struct Sheet {
 
 /// Every sheet the lab knows. To add one, write its function and add a line here.
 pub static SHEETS: &[Sheet] = &[
-    Sheet { name: "cottages", about: "A house on its own plot: one to three storeys down the rows, ten seeds across.", land: Land::Town, build: cottages },
-    Sheet { name: "townhouses", about: "A house in a high street's frontage: two and three storeys down the rows, ten seeds across.", land: Land::Town, build: townhouses },
-    Sheet { name: "terraces", about: "A terraced row: two and three storeys down the rows; three to six houses across, each a seed of its own.", land: Land::Town, build: terraces },
-    Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: with back lanes built before 1815, and after.", land: Land::Town, build: street },
-    Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up, and a big town fully.", land: Land::Town, build: market },
-    Sheet { name: "landmarks", about: "What marks a town out: its church (and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
-    Sheet { name: "works-trades", about: "The cottage trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_trades },
-    Sheet { name: "works-iron", about: "Ironmaking: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_iron },
-    Sheet { name: "works-heavy", about: "The heavy trades: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_heavy },
-    Sheet { name: "works-mills", about: "Mills, kilns and the rest: a kind in each row, tiers 1 to 4 across.", land: Land::Yard, build: works_mills },
-    Sheet { name: "works-kinds", about: "Every kind of works at tier 2, side by side, to tell them apart by shape.", land: Land::Yard, build: works_kinds },
-    Sheet { name: "works-going-up", about: "A works under scaffolding, as it is the year it opens and the year it grows a tier: four kinds across, tier 1 and tier 2.", land: Land::Yard, build: works_going_up },
-    Sheet { name: "works-yards", about: "A works among the sheds of its yard, as works ground is filled.", land: Land::Yard, build: works_yards },
-    Sheet { name: "yard-sheds", about: "The sheds and warehouses of a works yard: sixteen seeds.", land: Land::Yard, build: yard_sheds },
+    Sheet { name: "cottages", about: "A house on its own plot, standing when the story opens and seen in 1800: one to three storeys down the rows, ten seeds across.", land: Land::Town, build: cottages },
+    Sheet { name: "cottages-eras", about: "Cottages by when and where they were built: before 1720, to 1815, to 1860 and after in the lowland, then the hills early and late; eight seeds across, of one storey and of two by turns.", land: Land::Town, build: cottages_eras },
+    Sheet { name: "townhouses", about: "A house in a high street's frontage, built about 1780: two, three and four storeys down the rows, ten seeds across.", land: Land::Town, build: townhouses },
+    Sheet { name: "townhouses-eras", about: "Townhouses of three storeys by when and where they were built: before 1720, to 1815, to 1860 and after in the lowland, then the hills; eight seeds across, every other one a shop.", land: Land::Town, build: townhouses_eras },
+    Sheet { name: "terraces", about: "A terraced row: two and three storeys built about 1840, then two storeys built after 1860 and in the hills; three to six houses across, each a seed of its own.", land: Land::Town, build: terraces },
+    Sheet { name: "terraces-slope", about: "A terraced row on ground that falls along the street: nearly level, a gentle hill and a steep one; four and six houses.", land: Land::Town, build: terraces_slope },
+    Sheet { name: "villas", about: "A villa in its garden: built before 1815, to 1860 and after, and in the hills; six seeds across.", land: Land::Town, build: villas },
+    Sheet { name: "house-backs", about: "What is behind a house: cottages, townhouses, a villa and terraces seen from their yards and gardens.", land: Land::Town, build: house_backs },
+    Sheet { name: "house-levels", about: "The three levels a house is drawn at, as the camera's distance chooses: far, play and near across; a cottage, a townhouse, a villa, a terrace and a farmstead down the rows.", land: Land::Town, build: house_levels },
+    Sheet { name: "roofs", about: "What a cottage is roofed with by when and where it was built (thatch, tile, stone slate, blue slate), and how it has weathered by the year it is seen: twelve seeds across.", land: Land::Town, build: roofs },
+    Sheet { name: "street", about: "A high street with its back lanes, as the towns lay them out, built up to 0.95 in the middle and 0.3 at the ends: as it stands in 1800, and in 1880. Every house in full, as the game draws them close to.", land: Land::Town, build: street },
+    Sheet { name: "street-play", about: "The same street with its houses at the level the game draws them from the distance it is played at: the play picture of this sheet is what the game shows.", land: Land::Town, build: street_play },
+    Sheet { name: "street-far", about: "The same street with its houses as the game draws them from far off: the far picture of this sheet is what the game shows.", land: Land::Town, build: street_far },
+    Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up in 1780, and a big town fully in 1880.", land: Land::Town, build: market },
+    Sheet { name: "market-play", about: "The same market places with their houses at the level the game draws them from the distance it is played at.", land: Land::Town, build: market_play },
+    Sheet { name: "landmarks", about: "What marks a town out: its church in its churchyard (a small town's, with a spire, and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
+    Sheet { name: "works-kinds", about: "Every kind of works at three times the standard size, built about 1820, side by side: to tell them apart by shape.", land: Land::Pasture, build: works_kinds },
+    Sheet { name: "works-small", about: "Every kind of works at its smallest, 0.4 of the standard size, as most stand in the game today: built in 1760, then built in 1870.", land: Land::Yard, build: works_small },
+    Sheet { name: "works-standard", about: "Every kind of works at the standard size: built in 1760, then built in 1870.", land: Land::Yard, build: works_standard },
+    Sheet { name: "works-great", about: "Every kind of works at thirty times the standard size, built about 1850.", land: Land::Pasture, build: works_great },
+    Sheet { name: "works-states", about: "The states of a works down the rows: going up, being enlarged, working, standing idle, derelict. Six kinds across, at three times the standard size.", land: Land::Pasture, build: works_states },
+    Sheet { name: "works-states-great", about: "The states of a great works down the rows: going up, being enlarged, working, standing idle, derelict. Three kinds across, at thirty times the standard size.", land: Land::Pasture, build: works_states_great },
+    Sheet { name: "works-loom", about: "Handloom weavers: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_loom },
+    Sheet { name: "works-smithy", about: "Smithies: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_smithy },
+    Sheet { name: "works-millwright", about: "Millwrights: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_millwright },
+    Sheet { name: "works-shops", about: "Shops and trades: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_shops },
+    Sheet { name: "works-charcoal", about: "Charcoal burning: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Wood, build: works_charcoal },
+    Sheet { name: "works-bloomery", about: "Bloomeries: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_bloomery },
+    Sheet { name: "works-charcoal-furnace", about: "Charcoal blast furnaces: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_charcoal_furnace },
+    Sheet { name: "works-coke-furnace", about: "Coke blast furnaces: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_coke_furnace },
+    Sheet { name: "works-forge", about: "Forges making wrought rails: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_forge },
+    Sheet { name: "works-rolling", about: "Rolling mills: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_rolling },
+    Sheet { name: "works-rail-mill", about: "Steel rail mills: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_rail_mill },
+    Sheet { name: "works-crucible", about: "Crucible steel: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_crucible },
+    Sheet { name: "works-converter", about: "Converter shops: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_converter },
+    Sheet { name: "works-engine", about: "Engine works: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_engine },
+    Sheet { name: "works-mill", about: "Powered mills: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_mill },
+    Sheet { name: "works-brick", about: "Brickworks: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_brick },
+    Sheet { name: "works-other", about: "A works of a kind the generators do not know: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_other },
     Sheet { name: "pits", about: "Pits and their spoil heaps: coal, ironstone, stone and clay down the rows; a small, a middling and a large heap across.", land: Land::Heath, build: pits },
     Sheet { name: "farmsteads", about: "A farmstead seen from its yard: lowland and upland, arable and pasture down the rows; six seeds across.", land: Land::Pasture, build: farmsteads },
-    Sheet { name: "trees", about: "Trees and bushes: broadleaf, conifer, hedgerow tree and heath bush down the rows; sizes across (a tree has no age yet).", land: Land::Pasture, build: trees },
-    Sheet { name: "woods", about: "A patch of lowland wood and of upland wood, with a tree at every slot as the island has them.", land: Land::Wood, build: woods },
+    Sheet { name: "trees", about: "Trees and bushes: broadleaf, conifer, hedgerow tree and heath bush down the rows; sizes across (a tree has no age yet). With --season 0 the broadleaves are bare; 0.8 is autumn.", land: Land::Pasture, build: trees },
+    Sheet { name: "woods", about: "A patch of lowland wood and of upland wood, with a tree at every slot as the island has them. With --season 0 the broadleaves are bare; 0.8 is autumn.", land: Land::Wood, build: woods },
     Sheet { name: "heath", about: "Two patches of heath, fifteen slots each: gorse and broom at about one slot in six (and a tree at one in thirty: none here).", land: Land::Heath, build: heath },
+    Sheet { name: "fences", about: "A family's fence round a field, in four colours a family might have (the banners themselves are the interface's): timber rails stained toward the colour, and post caps painted in it.", land: Land::Pasture, build: fences },
     Sheet { name: "bridges", about: "A road bridge: a lane's and a main road's down the rows; wider rivers across (water drawn flat and matt here).", land: Land::Pasture, build: bridges },
 ];
 
@@ -116,47 +162,239 @@ fn storeys(n: usize) -> String {
 
 fn cottages(pal: &Palette) -> Vec<Vec<Cell>> {
     grid(3, 10, |row, col| {
-        let c = Cottage { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: row as u8 + 1, seed: Seed::of(col as u32) };
-        Cell::new(format!("{}\nseed {col}", storeys(row + 1)), |m, site| cottage(&mut m.solid, &mut m.smoke, site, &c, pal))
+        // standing since before 1750 and seen in 1800: thatch and tile, part weathered; the oldest are framed
+        let seed = Seed::of(col as u32);
+        let built = roof::built_before(1750, seed);
+        let c = Cottage { era: Era::of(built), ..Cottage::new(PLOT.0, PLOT.1, row as u8 + 1, Roof::of(built, 1800, false, false, seed), seed) };
+        Cell::new(format!("{}, {built}\nseed {col}", storeys(row + 1)), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+    })
+}
+
+/// The years a house of each era is taken to have been built in, for its roof.
+fn year_of(era: Era) -> i32 {
+    match era {
+        Era::Old => 1700,
+        Era::Georgian => 1780,
+        Era::Brick => 1840,
+        Era::Late => 1875,
+    }
+}
+
+/// The rows of a sheet of eras: each era in the lowland, then the hills early and late.
+const ERA_ROWS: [(Era, bool, &str); 6] =
+    [(Era::Old, false, "before 1720"), (Era::Georgian, false, "1720 to 1815"), (Era::Brick, false, "1815 to 1860"), (Era::Late, false, "after 1860"), (Era::Georgian, true, "hills, to 1815"), (Era::Late, true, "hills, after 1860")];
+
+fn cottages_eras(pal: &Palette) -> Vec<Vec<Cell>> {
+    grid(ERA_ROWS.len(), 8, |row, col| {
+        let (era, upland, name) = ERA_ROWS[row];
+        let seed = Seed::of(60 + (row * 8 + col) as u32);
+        let n = 1 + (col % 2) as u8;
+        let c = Cottage { era, upland, ..Cottage::new(PLOT.0, PLOT.1, n, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
+        Cell::new(format!("{name}\n{}", storeys(n as usize)), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
     })
 }
 
 fn townhouses(pal: &Palette) -> Vec<Vec<Cell>> {
-    grid(2, 10, |row, col| {
-        let t = Townhouse { plot_width: PLOT.0, plot_depth: PLOT.1, storeys: row as u8 + 2, seed: Seed::of(col as u32) };
+    grid(3, 10, |row, col| {
+        // built in 1780 and seen in 1860
+        let seed = Seed::of(col as u32);
+        let t = Townhouse::new(PLOT.0, PLOT.1, row as u8 + 2, Roof::of(1780, 1860, false, false, seed), seed);
         Cell::new(format!("{}\nseed {col}", storeys(row + 2)), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 
-fn terraces(pal: &Palette) -> Vec<Vec<Cell>> {
-    grid(2, 4, |row, col| {
-        let houses = col + 3;
-        // a seed for each cell, so the sheet shows every brick and both roofs
-        let t = Terrace { houses, length: Terrace::length_of(houses, BACK_PLOT_WIDTH), depth: PLOT.1, storeys: row as u8 + 2, seed: Seed::of((row * 4 + col) as u32) };
-        Cell::new(format!("{houses} houses, {}\nseed {}", storeys(row + 2), row * 4 + col), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
+fn townhouses_eras(pal: &Palette) -> Vec<Vec<Cell>> {
+    grid(ERA_ROWS.len(), 8, |row, col| {
+        let (era, upland, name) = ERA_ROWS[row];
+        let seed = Seed::of(120 + (row * 8 + col) as u32);
+        let shop = col % 2 == 1;
+        let t = Townhouse { era, upland, shop, ..Townhouse::new(PLOT.0, PLOT.1, 3, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
+        Cell::new(format!("{name}\n{}", if shop { "a shop" } else { "a house" }), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 
-fn street(pal: &Palette) -> Vec<Vec<Cell>> {
-    [false, true]
+/// A terraced row of `houses` houses.
+fn row_of(houses: usize, n: u8, era: Era, upland: bool, seed: Seed) -> Terrace {
+    Terrace { era, upland, ..Terrace::new(houses, Terrace::length_of(houses, BACK_PLOT_WIDTH), PLOT.1, n, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) }
+}
+
+fn terraces(pal: &Palette) -> Vec<Vec<Cell>> {
+    let rows = [(2, Era::Brick, false, "1840"), (3, Era::Brick, false, "1840"), (2, Era::Late, false, "1875"), (2, Era::Late, true, "the hills")];
+    grid(4, 4, |row, col| {
+        let (n, era, upland, name) = rows[row];
+        let houses = col + 3;
+        // a seed for each cell, so the sheet shows every brick and both roofs
+        let seed = Seed::of((row * 4 + col) as u32);
+        let t = row_of(houses, n, era, upland, seed);
+        Cell::new(format!("{houses} houses, {}\n{name}, seed {}", storeys(n as usize), row * 4 + col), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
+    })
+}
+
+fn terraces_slope(pal: &Palette) -> Vec<Vec<Cell>> {
+    let falls = [(0.01, "nearly level"), (0.06, "a gentle hill"), (0.14, "a steep hill")];
+    grid(3, 2, |row, col| {
+        let (fall, name) = falls[row];
+        let houses = [4, 6][col];
+        let seed = Seed::of(30 + (row * 2 + col) as u32);
+        let t = row_of(houses, 2, Era::Brick, false, seed);
+        Cell::on_slope(format!("{houses} houses on {name}\nfalling {fall} to the unit"), 0.0, fall, t.length + 0.03, 0.09, *pal.ground.street_earth, |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
+    })
+}
+
+fn villas(pal: &Palette) -> Vec<Vec<Cell>> {
+    let rows = [(Era::Georgian, false, "to 1815"), (Era::Brick, false, "1815 to 1860"), (Era::Late, false, "after 1860"), (Era::Late, true, "hills, after 1860")];
+    grid(4, 6, |row, col| {
+        let (era, upland, name) = rows[row];
+        let seed = Seed::of(200 + (row * 6 + col) as u32);
+        let v = Villa { era, upland, ..Villa::new(PLOT.0, PLOT.1, Roof::of(year_of(era).max(1830), 1890, upland, true, seed), seed) };
+        Cell::new(format!("{name}\nseed {}", 200 + row * 6 + col), |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal))
+    })
+}
+
+/// A cottage, a townhouse, a villa, a terrace and a farmstead, each built into a model at a level of detail.
+fn one_of_each(detail: Detail, n: u32, pal: &Palette) -> [(&'static str, Model); 5] {
+    let seed = Seed::of(n);
+    let level = Site::level(Vec3::ZERO, 0.0);
+    let mut out = [("a cottage", Model::default()), ("a townhouse", Model::default()), ("a villa", Model::default()), ("a terrace", Model::default()), ("a farmstead", Model::default())];
+    let c = Cottage { era: Era::Old, detail, ..Cottage::new(PLOT.0, PLOT.1, 2, Roof::of(1700, 1800, false, false, seed), seed) };
+    cottage(&mut out[0].1.solid, &mut Default::default(), &mut out[0].1.green, &level, &c, pal);
+    let t = Townhouse { shop: true, detail, ..Townhouse::new(PLOT.0, PLOT.1, 3, Roof::of(1780, 1860, false, false, seed), seed) };
+    townhouse(&mut out[1].1.solid, &mut Default::default(), &level, &t, pal);
+    let v = Villa { era: Era::Late, detail, ..Villa::new(PLOT.0, PLOT.1, Roof::of(1875, 1890, false, true, seed), seed) };
+    villa(&mut out[2].1.solid, &mut Default::default(), &mut out[2].1.green, &level, &v, pal);
+    let r = Terrace { detail, ..row_of(4, 2, Era::Brick, false, seed) };
+    terrace(&mut out[3].1.solid, &mut Default::default(), &level, &r, pal);
+    let f = Farmstead { arable: true, upland: false, detail, seed: Seed::new(0.4, 0.7) };
+    farmstead(&mut out[4].1.solid, &mut Default::default(), &mut out[4].1.green, &Site::level(Vec3::ZERO, std::f32::consts::PI), &f, pal);
+    out
+}
+
+fn house_levels(pal: &Palette) -> Vec<Vec<Cell>> {
+    let levels: Vec<[(&'static str, Model); 5]> = Detail::ALL.iter().map(|&d| one_of_each(d, 5, pal)).collect();
+    (0..5)
+        .map(|kind| {
+            Detail::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, d)| {
+                    let (name, model) = &levels[i][kind];
+                    Cell { label: format!("{name}: {}\n{} triangles", d.label(), model.solid.triangles()), model: model.clone() }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn house_backs(pal: &Palette) -> Vec<Vec<Cell>> {
+    let back = std::f32::consts::PI;
+    let mut rows: Vec<Vec<Cell>> = Vec::new();
+    rows.push(
+        (0..6)
+            .map(|col| {
+                let seed = Seed::of(col);
+                let built = roof::built_before(1750, seed);
+                let c = Cottage { era: Era::of(built), ..Cottage::new(PLOT.0, PLOT.1, 1 + (col % 2) as u8, Roof::of(built, 1800, false, false, seed), seed) };
+                Cell::turned(format!("a cottage of {built}\nseed {col}"), back, |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+            })
+            .collect(),
+    );
+    rows.push(
+        (0..6)
+            .map(|col| {
+                let seed = Seed::of(col);
+                if col == 5 {
+                    let v = Villa { era: Era::Late, ..Villa::new(PLOT.0, PLOT.1, Roof::of(1875, 1890, false, true, seed), seed) };
+                    return Cell::turned("a villa\nafter 1860", back, |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal));
+                }
+                let t = Townhouse { neighbours: (true, true), ..Townhouse::new(PLOT.0, PLOT.1, 2 + (col % 2) as u8, Roof::of(1780, 1860, false, false, seed), seed) };
+                Cell::turned(format!("a townhouse\nseed {col}"), back, |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
+            })
+            .collect(),
+    );
+    rows.push(
+        [(4, 2), (6, 2), (5, 3)]
+            .into_iter()
+            .enumerate()
+            .map(|(i, (houses, n))| {
+                let t = row_of(houses, n, Era::Brick, false, Seed::of(i as u32 + 3));
+                Cell::turned(format!("a terrace of {houses}\n{}", storeys(n as usize)), back, |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
+            })
+            .collect(),
+    );
+    rows
+}
+
+/// What a house is roofed with by when and where it was built, and how the roof weathers.
+fn roofs(pal: &Palette) -> Vec<Vec<Cell>> {
+    // (built, seen, in the hills, the railway had come)
+    let rows = [
+        (1740, 1750, false, false, "lowland, built 1740\nseen 1750"),
+        (1740, 1850, false, false, "lowland, built 1740\nseen 1850"),
+        (1800, 1850, false, false, "lowland, built 1800\nseen 1850"),
+        (1840, 1850, false, false, "lowland, built 1840\nseen 1850"),
+        (1870, 1900, false, true, "lowland, built 1870 by rail\nseen 1900"),
+        (1740, 1850, true, false, "upland, built 1740\nseen 1850"),
+        (1870, 1900, true, true, "upland, built 1870 by rail\nseen 1900"),
+    ];
+    rows.into_iter()
+        .map(|(built, year, upland, by_rail, label)| {
+            (0..12)
+                .map(|col| {
+                    // seeds of their own, so no column is all one covering; one storey, as a raised cottage loses its thatch
+                    let seed = Seed::of(40 + col);
+                    let c = Cottage { era: Era::of(built), upland, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof::of(built, year, upland, by_rail, seed), seed) };
+                    Cell::new(if col == 0 { label.to_string() } else { format!("seed {}", 40 + col) }, |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn street_at(detail: Detail, pal: &Palette) -> Vec<Vec<Cell>> {
+    [(1800, "in 1800: separate houses on the back lanes"), (1880, "in 1880: terraces on the back lanes, and slate")]
         .into_iter()
-        .map(|terraces| {
-            let s = Street { length: 1.0, middle: 0.95, ends: 0.3, terraces, id: 3 };
-            let label = if terraces { "back lanes built from 1815: terraces" } else { "back lanes built before 1815: separate houses" };
+        .map(|(year, label)| {
+            let s = Street { length: 1.0, middle: 0.95, ends: 0.3, year, id: 3, detail };
             vec![Cell::new(label, |m, site| scenes::street(m, site, &s, pal))]
         })
         .collect()
 }
 
+fn street(pal: &Palette) -> Vec<Vec<Cell>> {
+    street_at(Detail::Near, pal)
+}
+
+fn street_play(pal: &Palette) -> Vec<Vec<Cell>> {
+    street_at(Detail::Play, pal)
+}
+
+fn street_far(pal: &Palette) -> Vec<Vec<Cell>> {
+    street_at(Detail::Far, pal)
+}
+
+fn market_at(detail: Detail, pal: &Palette) -> Vec<Vec<Cell>> {
+    let cell = |big: bool, density: f32, year: i32, label: &str| Cell::new(label, |m, site| scenes::market(m, site, &Market { big, density, year, id: 2, detail }, pal));
+    vec![vec![cell(false, 0.5, 1780, "a small town in 1780, built up to 0.5"), cell(true, 1.0, 1880, "a big town in 1880, fully built up")]]
+}
+
 fn market(pal: &Palette) -> Vec<Vec<Cell>> {
-    let cell = |big: bool, density: f32, label: &str| Cell::new(label, |m, site| scenes::market(m, site, &Market { big, density, id: 2 }, pal));
-    vec![vec![cell(false, 0.5, "a small town, built up to 0.5"), cell(true, 1.0, "a big town, fully built up")]]
+    market_at(Detail::Near, pal)
+}
+
+fn market_play(pal: &Palette) -> Vec<Vec<Cell>> {
+    market_at(Detail::Play, pal)
 }
 
 fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {
+    // the churches are seen from the south, the tower and its gate to the left
+    let church = |big: bool, spire: bool, label: &str| {
+        let c = town::Church { big, spire, seed: Seed::of(big as u32 + 1) };
+        Cell::turned(label, -0.75, |m, site| town::church(&mut m.solid, site, &c, pal))
+    };
     vec![vec![
-        Cell::new("church", |m, site| town::church(&mut m.solid, site, false, pal)),
-        Cell::new("a big town's church", |m, site| town::church(&mut m.solid, site, true, pal)),
+        church(false, false, "a small town's church"),
+        church(false, true, "the same with a spire"),
+        church(true, true, "a big town's church"),
         Cell::new("station", |m, site| town::station(&mut m.solid, site, pal)),
         Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, pal)),
         Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, pal)),
@@ -166,70 +404,149 @@ fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {
 
 // ------------------------------------------------------------------ works
 
-/// A row for each kind, tiers 1 to 4 across.
-fn works_rows(kinds: &[Kind], pal: &Palette) -> Vec<Vec<Cell>> {
-    kinds
-        .iter()
-        .enumerate()
-        .map(|(i, &kind)| {
-            (1..=4u8)
-                .map(|tier| {
-                    let w = Works { kind, tier, seed: (i as f32 * 4.0 + tier as f32) * 0.37 };
-                    Cell::new(format!("{}\ntier {tier}", kind.label()), |m, site| works(&mut m.solid, &mut m.smoke, site, &w, pal))
+/// The sizes a works is shown at: from a workshop to a great works.
+const SIZES: [f32; 6] = [0.4, 1.0, 3.0, 10.0, 30.0, 100.0];
+
+/// A works in a cell.
+fn works_cell(label: String, w: Works, pal: &Palette) -> Cell {
+    Cell::new(label, |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
+}
+
+/// One kind at every size: built early and by water, then built late and by rail.
+fn works_sizes(kind: Kind, pal: &Palette) -> Vec<Vec<Cell>> {
+    [(1760, true), (1870, false)]
+        .into_iter()
+        .map(|(founded, water)| {
+            SIZES
+                .iter()
+                .enumerate()
+                .map(|(i, &size)| {
+                    let w = Works { founded, water, rail: !water, seed: Seed::of(kind as u32 * 16 + i as u32), ..Works::new(kind, size) };
+                    works_cell(format!("{}, {founded}\nsize {size}", kind.label()), w, pal)
                 })
                 .collect()
         })
         .collect()
 }
 
-fn works_trades(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::HandLoom, Kind::Smithy, Kind::Millwright], pal)
+fn works_loom(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::HandLoom, pal)
 }
 
-fn works_iron(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::CharcoalBurning, Kind::Bloomery, Kind::CharcoalFurnace, Kind::CokeFurnace], pal)
+fn works_smithy(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Smithy, pal)
 }
 
-fn works_heavy(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::ForgeRails, Kind::RollingMill, Kind::SteelRolling, Kind::Bessemer, Kind::EngineWorks], pal)
+fn works_millwright(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Millwright, pal)
 }
 
-fn works_mills(pal: &Palette) -> Vec<Vec<Cell>> {
-    works_rows(&[Kind::TextileMill, Kind::Brickworks, Kind::CrucibleSteel, Kind::Other], pal)
+fn works_shops(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Shops, pal)
 }
 
-fn works_kinds(pal: &Palette) -> Vec<Vec<Cell>> {
-    grid(4, 4, |row, col| {
-        let kind = Kind::ALL[row * 4 + col];
-        Cell::new(kind.label(), |m, site| works(&mut m.solid, &mut m.smoke, site, &Works { kind, tier: 2, seed: (row * 4 + col) as f32 * 0.37 }, pal))
-    })
+fn works_charcoal(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CharcoalBurning, pal)
 }
 
-/// The one state a works has besides its tier: scaffolding, the year it opens and the year it grows a tier.
-fn works_going_up(pal: &Palette) -> Vec<Vec<Cell>> {
-    let kinds = [Kind::Smithy, Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill];
-    grid(2, 4, |row, col| {
-        let (kind, tier) = (kinds[col], row as u8 + 1);
-        Cell::new(format!("{}\ntier {tier}, going up", kind.label()), |m, site| {
-            works(&mut m.solid, &mut m.smoke, site, &Works { kind, tier, seed: col as f32 * 0.37 }, pal);
-            scaffold(&mut m.solid, site, tier, pal);
-        })
-    })
+fn works_bloomery(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Bloomery, pal)
 }
 
-fn works_yards(pal: &Palette) -> Vec<Vec<Cell>> {
-    [(Kind::CokeFurnace, 3u8), (Kind::TextileMill, 3), (Kind::RollingMill, 4)]
-        .into_iter()
+fn works_charcoal_furnace(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CharcoalFurnace, pal)
+}
+
+fn works_coke_furnace(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CokeFurnace, pal)
+}
+
+fn works_forge(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::ForgeRails, pal)
+}
+
+fn works_rolling(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::RollingMill, pal)
+}
+
+fn works_rail_mill(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::SteelRolling, pal)
+}
+
+fn works_crucible(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::CrucibleSteel, pal)
+}
+
+fn works_converter(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Bessemer, pal)
+}
+
+fn works_engine(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::EngineWorks, pal)
+}
+
+fn works_mill(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::TextileMill, pal)
+}
+
+fn works_brick(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Brickworks, pal)
+}
+
+fn works_other(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_sizes(Kind::Other, pal)
+}
+
+/// Every kind at one size and one founding year, in rows of `across`.
+fn works_all(size: f32, founded: i32, across: usize, pal: &Palette) -> Vec<Vec<Cell>> {
+    Kind::ALL
+        .chunks(across)
         .enumerate()
-        .map(|(i, (kind, tier))| vec![Cell::new(format!("{}, tier {tier}, in its yard", kind.label()), |m, site| scenes::works_yard(m, site, &WorksYard { kind, tier, id: i as i32 + 1 }, pal))])
+        .map(|(row, kinds)| kinds.iter().enumerate().map(|(col, &kind)| works_cell(kind.label().into(), Works { founded, seed: Seed::of((row * across + col) as u32), ..Works::new(kind, size) }, pal)).collect())
         .collect()
 }
 
-fn yard_sheds(pal: &Palette) -> Vec<Vec<Cell>> {
-    grid(2, 8, |row, col| {
-        let n = (row * 8 + col) as u32;
-        Cell::new(format!("seed {n}"), |m, site| yard_shed(&mut m.solid, &mut m.smoke, site, &YardShed { seed: Seed::of(n), smoke_seed: n as f32 }, pal))
-    })
+fn works_kinds(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_all(3.0, 1820, 6, pal)
+}
+
+fn works_great(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_all(30.0, 1850, 3, pal)
+}
+
+/// Every kind at one size, built early and then built late, in rows of nine.
+fn works_early_and_late(size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
+    let mut rows = Vec::new();
+    for founded in [1760, 1870] {
+        for (row, kinds) in Kind::ALL.chunks(9).enumerate() {
+            rows.push(kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{founded}", kind.label()), Works { founded, seed: Seed::of((row * 9 + i) as u32), ..Works::new(kind, size) }, pal)).collect());
+        }
+    }
+    rows
+}
+
+fn works_small(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_early_and_late(0.4, pal)
+}
+
+fn works_standard(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_early_and_late(1.0, pal)
+}
+
+/// The states of a works down the rows, a kind in each column.
+fn works_in_states(kinds: &[Kind], size: f32, pal: &Palette) -> Vec<Vec<Cell>> {
+    State::ALL
+        .iter()
+        .map(|&state| kinds.iter().enumerate().map(|(i, &kind)| works_cell(format!("{}\n{}", kind.label(), state.label()), Works { state, founded: 1840, seed: Seed::of(i as u32), ..Works::new(kind, size) }, pal)).collect())
+        .collect()
+}
+
+fn works_states(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_in_states(&[Kind::Smithy, Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Brickworks, Kind::CrucibleSteel], 3.0, pal)
+}
+
+fn works_states_great(pal: &Palette) -> Vec<Vec<Cell>> {
+    works_in_states(&[Kind::TextileMill, Kind::CokeFurnace, Kind::EngineWorks], 30.0, pal)
 }
 
 fn pits(pal: &Palette) -> Vec<Vec<Cell>> {
@@ -247,9 +564,9 @@ fn farmsteads(pal: &Palette) -> Vec<Vec<Cell>> {
     let kinds = [(false, true, "lowland arable"), (false, false, "lowland pasture"), (true, true, "upland arable"), (true, false, "upland pasture")];
     grid(4, 6, |row, col| {
         let (upland, arable, name) = kinds[row];
-        let f = Farmstead { arable, upland, seed: Seed::of(col as u32) };
+        let f = Farmstead { arable, upland, detail: Detail::Near, seed: Seed::of(col as u32) };
         // turned about, so the yard and the barn are on the camera's side of the house
-        Cell::turned(format!("{name}\nseed {col}"), std::f32::consts::PI, |m, site| farmstead(&mut m.solid, &mut m.green, site, &f, pal))
+        Cell::turned(format!("{name}\nseed {col}"), std::f32::consts::PI, |m, site| farmstead(&mut m.solid, &mut m.smoke, &mut m.green, site, &f, pal))
     })
 }
 
@@ -290,9 +607,32 @@ fn heath(pal: &Palette) -> Vec<Vec<Cell>> {
     vec![[2, 7].into_iter().map(|id| Cell::new(format!("heath, patch {id}"), |m, site| scenes::cover(m, site, Cover::Heath, id, pal))).collect()]
 }
 
+fn fences(pal: &Palette) -> Vec<Vec<Cell>> {
+    // stand-ins for the families' banners, which are the interface's colours and not in the palette
+    let families = [(*pal.walls.lighthouse_red, "a red family's"), (*pal.vehicles.engine, "a green family's"), (*pal.slate.house, "a blue family's"), (*pal.marks.finial, "a gold family's")];
+    vec![families
+        .into_iter()
+        .map(|(colour, name)| {
+            Cell::new(format!("{name} fence\nround a field"), |m, site| {
+                // a field a quarter of a square by a sixth, a post every 0.09 or so
+                let (w, d) = (0.27, 0.18);
+                let mut line = Vec::new();
+                for (from, to, posts) in [((-w, -d), (w, -d), 6), ((w, -d), (w, d), 4), ((w, d), (-w, d), 6), ((-w, d), (-w, -d), 4)] {
+                    for i in 0..posts {
+                        let t = i as f32 / posts as f32;
+                        line.push(site.at(0.5 * (from.0 + (to.0 - from.0) * t), 0.5 * (from.1 + (to.1 - from.1) * t)));
+                    }
+                }
+                line.push(line[0]);
+                fence(&mut m.solid, &line, colour, pal);
+            })
+        })
+        .collect()]
+}
+
 fn bridges(pal: &Palette) -> Vec<Vec<Cell>> {
-    let halves = [0.012, 0.025, 0.04, 0.06];
-    grid(2, 4, |row, col| {
+    let halves = [0.012, 0.025, 0.04, 0.06, 0.1];
+    grid(2, 5, |row, col| {
         let (main, half) = (row == 1, halves[col]);
         let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main };
         let label = format!("{}\nriver {} wide", if main { "main road" } else { "lane" }, half * 2.0);
@@ -332,6 +672,26 @@ mod tests {
     }
 
     #[test]
+    fn every_face_that_can_be_seen_has_a_facing() {
+        // a quad takes its facing from its first corner; begun at a corner where two of its
+        // points meet, it has none, and is drawn unlit: a dark wedge on a pale thing
+        let pal = Palette::standard();
+        for sheet in SHEETS {
+            for cell in (sheet.build)(&pal).into_iter().flatten() {
+                let m = &cell.model;
+                for b in [&m.solid, &m.smoke, &m.green.evergreen, &m.green.leaves, &m.green.bare, &m.flat] {
+                    for t in b.idx.chunks(3) {
+                        let p = [0, 1, 2].map(|i| glam::Vec3::from_array(b.pos[t[i] as usize]));
+                        let area = (p[1] - p[0]).cross(p[2] - p[0]).length();
+                        let facing = glam::Vec3::from_array(b.nrm[t[0] as usize]).length();
+                        assert!(area < 1e-9 || facing > 0.5, "{}: {} has a face of {area} with no facing at {}", sheet.name, cell.label, p[0]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_cell_fits_the_closest_view() {
         // the camera at its closest sees about 1.2 by 0.9 of a map cell; a cell
         // wider or deeper than that would be cut off in the close picture
@@ -341,7 +701,9 @@ mod tests {
                 for cell in row {
                     let (lo, hi) = cell.model.bounds().unwrap();
                     assert!(hi.x - lo.x <= 1.15, "{}: {} is {} wide", sheet.name, cell.label, hi.x - lo.x);
-                    assert!((hi.z - lo.z) + (hi.y - lo.y) * 0.8 <= 0.8, "{}: {} is {} deep and {} tall", sheet.name, cell.label, hi.z - lo.z, hi.y - lo.y);
+                    // (a great works is deeper: the lab stands back until the whole of it shows)
+                    let room = if sheet.name.starts_with("works") { 1.0 } else { 0.8 };
+                    assert!((hi.z - lo.z) + (hi.y - lo.y) * 0.8 <= room, "{}: {} is {} deep and {} tall", sheet.name, cell.label, hi.z - lo.z, hi.y - lo.y);
                 }
             }
         }

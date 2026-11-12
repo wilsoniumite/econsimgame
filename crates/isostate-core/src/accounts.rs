@@ -170,17 +170,18 @@ const M_PROFIT: usize = 12;
 const M_DIV: usize = 13;
 
 /// Per town, `[town * KT + column]`. Money is the year's total.
-pub const TOWN_FIELDS: [&str; 32] = [
+pub const TOWN_FIELDS: [&str; 33] = [
     "pop",             // at the year's end
     "wage",            // mean of the twelve months
-    "supply",          // hands for hire (carters already taken out), mean
+    "supply",          // hands for hire (carters, sinkers and canal navvies already taken out), mean
     "carters",         // hands carting, mean (0 unless carting takes labour)
-    "hands_land",      // mean
+    "navvies",         // hands digging canals, mean (0 unless canals take labour)
+    "hands_land",      // mean, the sinkers of new workings among them (mines)
     "hands_works",     // mean
     // what the town's households received, by kind
     "pay_works",
     "pay_land",
-    "pay_projects",    // navvies on the railways
+    "pay_projects",    // navvies on the railways and canals
     "cart_works",      // carting for works, in and out
     "cart_land",       // carting of the land's produce
     "cart_trade",      // carting of what the town sent to other towns
@@ -213,34 +214,35 @@ const T_POP: usize = 0;
 const T_WAGE: usize = 1;
 const T_SUPPLY: usize = 2;
 const T_CARTERS: usize = 3;
-const T_HANDS_LAND: usize = 4;
-const T_HANDS_WORKS: usize = 5;
-const T_PAY_WORKS: usize = 6;
-const T_PAY_LAND: usize = 7;
-const T_PAY_PROJ: usize = 8;
-const T_CART_WORKS: usize = 9;
-const T_CART_LAND: usize = 10;
-const T_CART_TRADE: usize = 11;
-const T_MANAGERS: usize = 12;
-const T_DIV_WORKS: usize = 13;
-const T_DIV_MERCH: usize = 14;
-const T_FUND: usize = 15;
-const T_ISSUE: usize = 16;
-const T_DIV_FAM: usize = 17;
-const T_RENT_LAND: usize = 18;
-const T_RENT_SITES: usize = 19;
-const T_RENT_TOWN: usize = 20;
-const T_RENT_FAM: usize = 21;
-const T_SPEND_HH: usize = 22;
-const T_SPEND_LORDS: usize = 23;
-const T_SPEND_FAM: usize = 24;
-const T_INVEST: usize = 25;
-const T_PROJECTS: usize = 26;
-const T_MERCH_NET: usize = 27;
-const T_STOCK_VALUE: usize = 28;
-const T_CASH_HH: usize = 29;
-const T_CASH_LORDS: usize = 30;
-const T_CASH_MERCH: usize = 31;
+const T_NAVVIES: usize = 4;
+const T_HANDS_LAND: usize = 5;
+const T_HANDS_WORKS: usize = 6;
+const T_PAY_WORKS: usize = 7;
+const T_PAY_LAND: usize = 8;
+const T_PAY_PROJ: usize = 9;
+const T_CART_WORKS: usize = 10;
+const T_CART_LAND: usize = 11;
+const T_CART_TRADE: usize = 12;
+const T_MANAGERS: usize = 13;
+const T_DIV_WORKS: usize = 14;
+const T_DIV_MERCH: usize = 15;
+const T_FUND: usize = 16;
+const T_ISSUE: usize = 17;
+const T_DIV_FAM: usize = 18;
+const T_RENT_LAND: usize = 19;
+const T_RENT_SITES: usize = 20;
+const T_RENT_TOWN: usize = 21;
+const T_RENT_FAM: usize = 22;
+const T_SPEND_HH: usize = 23;
+const T_SPEND_LORDS: usize = 24;
+const T_SPEND_FAM: usize = 25;
+const T_INVEST: usize = 26;
+const T_PROJECTS: usize = 27;
+const T_MERCH_NET: usize = 28;
+const T_STOCK_VALUE: usize = 29;
+const T_CASH_HH: usize = 30;
+const T_CASH_LORDS: usize = 31;
+const T_CASH_MERCH: usize = 32;
 /// The household kinds, `T_PAY_WORKS..=T_ISSUE`: they add up to what the town's households received.
 const HH_KINDS: std::ops::RangeInclusive<usize> = T_PAY_WORKS..=T_ISSUE;
 
@@ -541,6 +543,8 @@ pub struct Books {
     ml: Vec<f64>,
     /// The goods each method can use: its materials, and every fuel if it needs heat.
     mgoods: Vec<Vec<usize>>,
+    /// The land sectors that dig: quarries, clay pits, iron mines and collieries.
+    digs: Vec<bool>,
     div: Vec<f64>,
     fund_open: f64,
     /// The month's rents, and of them what went to families.
@@ -563,15 +567,18 @@ pub struct Books {
 /// function, named as it is there.
 pub struct Month<'a> {
     // land units
-    pub ex: &'a [usize],
     pub et: &'a [usize],
     pub sec: &'a [usize],
     pub Y: &'a [f64],
     pub Lex: &'a [f64],
     pub cart_ex: &'a [f64],
-    pub rent_ex: &'a [f64],
     pub mach_got: &'a [f64],
     pub rail_got: &'a [f64],
+    /// The land's rents as `econ::pay_cell_rents` was handed them: the town each
+    /// was paid in, the cell it was paid to, the amount. Unit by unit (`et`,
+    /// `ex`, `rent_ex`), or under `mines` with each working's royalty split
+    /// among the cells of its lease.
+    pub land_rents: (&'a [usize], &'a [usize], &'a [f64]),
     // works
     pub fi: &'a [usize],
     pub ft: &'a [usize],
@@ -705,6 +712,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         mk: vec![0.0; st.T_max * HH_KINDS.clone().count()],
         ml: vec![0.0; st.T_max * C.NS * 5],
         mgoods: (0..C.M).map(|m| (0..C.G).filter(|&g| C.m_in[(m, g)] > 0.0 || (C.m_heat[m] > 0.0 && C.fuel_goods.contains(&g))).collect()).collect(),
+        // (not the content's `mine` flag, which marks the two that take machinery and rails)
+        digs: C.sector_name.iter().map(|n| crate::mines::is_extractive(n)).collect(),
         ..Books::default()
     };
 }
@@ -845,6 +854,13 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         r[3] += m.mach_got[u];
         r[4] += m.rail_got[u];
     }
+    // mines: the sinkers of a working being opened are hands at it too, paid the
+    // town's wage out of its royalty (`mines::pay_crews`)
+    if !st.mine_crew_each.is_empty() {
+        for u in (0..m.et.len()).filter(|&u| b.digs[m.sec[u]]) {
+            ml[(m.et[u] * NS + m.sec[u]) * ML + 1] += crate::mines::crew(st, u);
+        }
+    }
     let spread = P.merchant_spread;
     for t in (0..T).filter(|&t| st.town_active[t]) {
         for s in 0..NS {
@@ -972,7 +988,7 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         }
     }
 
-    // ---- railways
+    // ---- railways and canals
     for (pr, got) in st.projects.iter().zip(m.proj_got) {
         let t = pr.town;
         let mut pay = 0.0;
@@ -982,8 +998,9 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
                 pay += got[g] * p[(t, g)];
             }
         }
-        // econ::step_month: the navvies are paid three tenths of the materials
-        let wages = 0.3 * pay;
+        // the navvies' wages on those materials, as econ::step_month has just
+        // paid them: three tenths for a railway, a canal says its own
+        let wages = pr.navvy_pay;
         a.towns[t * KT + T_PROJECTS] += pay + wages;
         mk[t * kinds + hk(T_PAY_PROJ)] += wages;
     }
@@ -1003,6 +1020,9 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         a.towns[kt + T_SUPPLY] += m.supply[t];
         if st.carters.len() == T {
             a.towns[kt + T_CARTERS] += st.carters[t];
+        }
+        if st.cn.navvies.len() == T {
+            a.towns[kt + T_NAVVIES] += st.cn.navvies[t];
         }
         for g in 0..G {
             let k = (t * G + g) * KG;
@@ -1042,19 +1062,19 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             a.needs[(t * S + s) * 2 + 1] += m.q_l[(t, s)] * m.lord_pop[t] * paid;
         }
     }
-    // the families' land: the rents of its farms and pits (the units are in
-    // order of cell, so a cell's are found by halving) and of its town houses
-    // (`families::take_rents`, `families::take_urban_rents`)
+    // the families' land: the rents of its farms and pits, read as they were paid
+    // out (under `mines` a working's royalty goes to every cell of its lease),
+    // and of its town houses (`families::take_rents`, `families::take_urban_rents`)
     if fam_on {
+        let (towns, cells, parts) = m.land_rents;
+        for (k, &c) in cells.iter().enumerate() {
+            let Some(o) = families::owner_of_cell(st, c) else { continue };
+            a.fam[o].rents += parts[k];
+            a.towns[towns[k] * KT + T_RENT_FAM] += parts[k];
+            fam_rents += parts[k];
+        }
         for c in 0..st.N {
             let Some(o) = families::owner_of_cell(st, c) else { continue };
-            let mut u = m.ex.partition_point(|&x| x < c);
-            while u < m.ex.len() && m.ex[u] == c {
-                a.fam[o].rents += m.rent_ex[u];
-                a.towns[m.et[u] * KT + T_RENT_FAM] += m.rent_ex[u];
-                fam_rents += m.rent_ex[u];
-                u += 1;
-            }
             let t = st.catch[c];
             if st.urban[c] && t >= 0 && st.urban_rent[t as usize] > 0.0 {
                 let t = t as usize;
@@ -1218,7 +1238,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     let mut y = IslandYear { year, rent_by_sector: a.rent_sector.clone(), to_families: a.fam.clone(), ..IslandYear::default() };
     for t in 0..T {
         let r = &mut a.towns[t * KT..(t + 1) * KT];
-        for k in [T_WAGE, T_SUPPLY, T_CARTERS, T_HANDS_LAND, T_HANDS_WORKS] {
+        for k in [T_WAGE, T_SUPPLY, T_CARTERS, T_NAVVIES, T_HANDS_LAND, T_HANDS_WORKS] {
             r[k] /= n;
         }
         r[T_POP] = if st.town_active[t] { st.pop[t] } else { 0.0 };
@@ -1246,7 +1266,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     let profit: f64 = (0..T * M).map(|k| a.methods[k * KM + M_PROFIT]).sum();
     y.works_kept = profit - y.div_households - y.div_families;
     for s in 0..NS {
-        if C.sector_mine[s] {
+        if b.digs[s] {
             y.rent_pits += a.rent_sector[s];
         } else {
             y.rent_farm += a.rent_sector[s];
@@ -1846,7 +1866,8 @@ pub fn header(st: &State) -> Option<Value> {
         "goods_fields": GOODS_FIELDS,
         "land_fields": LAND_FIELDS,
         "method_fields": METHOD_FIELDS,
-        "town_fields": TOWN_FIELDS,
+        // (as a slice: an array of more than 32 has no serialised form)
+        "town_fields": &TOWN_FIELDS[..],
         "need_fields": ["households", "landlords"],
         "trade_key": ["from", "to", "good"],
         "trade_val": ["qty", "value", "carting"],

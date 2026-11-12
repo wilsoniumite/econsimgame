@@ -24,6 +24,7 @@
 #![allow(non_snake_case)]
 
 pub mod accounts;
+pub mod canals;
 pub mod carting;
 pub mod chronicle;
 pub mod cli;
@@ -38,6 +39,7 @@ pub mod land;
 pub mod live;
 pub mod machines;
 pub mod mat;
+pub mod mines;
 pub mod names;
 pub mod ndimage;
 pub mod observer;
@@ -49,10 +51,12 @@ pub mod rail;
 pub mod railways;
 pub mod record;
 pub mod rng;
+pub mod save;
 pub mod sim;
 pub mod state;
 pub mod sweep;
 pub mod tech;
+pub mod towns;
 pub mod transport;
 pub mod util;
 pub mod ways;

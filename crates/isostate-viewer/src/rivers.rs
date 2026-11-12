@@ -527,6 +527,30 @@ impl WaterIndex {
         }
         best
     }
+
+    /// How far a spot is from the middle of the nearest river, and that
+    /// river's half width there; a distance of 1 or more means none is near.
+    pub fn nearest(&self, p: Vec2) -> (f32, f32) {
+        let (bx, by) = ((p.x / self.cell).floor() as isize, (p.y / self.cell).floor() as isize);
+        let mut best = (f32::MAX, 0.0);
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let (x, y) = (bx + dx, by + dy);
+                if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
+                    continue;
+                }
+                for &(a, b, hw, _, _) in &self.buckets[y as usize * self.w + x as usize] {
+                    let ab = b - a;
+                    let t = ((p - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
+                    let d = p.distance(a + ab * t);
+                    if d < best.0 {
+                        best = (d, hw);
+                    }
+                }
+            }
+        }
+        best
+    }
 }
 
 /// Where the straight line from a to b crosses a river: the point, the river's

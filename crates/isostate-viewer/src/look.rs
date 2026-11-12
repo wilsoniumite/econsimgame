@@ -151,6 +151,13 @@ shader_paint! {
         beach_wet,
         beach,
         shingle,
+        soil_light,
+        soil_red,
+        rough_grass,
+        wood_canopy,
+        river_thread,
+        shore_far,
+        wood_canopy_autumn,
     }
 }
 
@@ -294,6 +301,7 @@ pub struct Surfaces {
     pub sea: f32,
     pub sea_reflectance: f32,
     pub smoke_translucence: f32,
+    pub bare_limb_translucence: f32,
 }
 
 // ------------------------------------------------------------------ the whole look

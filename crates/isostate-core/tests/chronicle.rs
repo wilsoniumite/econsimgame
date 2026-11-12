@@ -495,8 +495,12 @@ fn a_run_without_families_has_its_history_too() {
 
 #[test]
 fn a_founding_redraws_only_the_districts_it_was_cut_from() {
-    // forty years of seed 7, in which most of its towns are founded
-    let mut s = sim::start(&game(6, 1790), game_content());
+    // fifty years of seed 7, in which most of its towns are founded. (Forty were
+    // enough until the canals were merged beside the mines, docs/rules/canals.md:
+    // with both the island founds no town from 1772 to 1790, the years its canals
+    // are dug and take carting a new market would have saved, and its fifth town
+    // comes in 1791, not 1780. By 1810 it has founded nine, with canals or without.)
+    let mut s = sim::start(&game(6, 1800), game_content());
     let T = s.st.T_max;
     let (mut foundings, mut spared, mut carried) = (0, 0, 0);
     let mut before = vec![1750; T];
@@ -607,15 +611,50 @@ fn towns_and_districts_have_stories() {
     // With carting and the game's railways merged (docs/rules/carting.md) the
     // digest is of the 1770s, three towns again, where two inventions, coke
     // iron's crossing and the family's new trade outweigh it.
+    // With kept town ground merged (docs/rules/towns.md) it is of the 1750s
+    // again, three towns: coal's crossing, an iron glut and a coal boom round
+    // Granness outweigh it, and the decade's fourth place is the player's, which
+    // `chronicle::rank` keeps for the family's heaviest item whatever else
+    // happened (here the Fairfaxes setting up in building materials, the lighter
+    // of the two). So the player's place is left out of "all heavier" below.
+    // With the mines as workings (docs/rules/mines.md) the towns of a game move
+    // again (before kept town ground was merged beside them, seed 7 founded two
+    // a decade at most and had no digest at all), so the test no longer takes
+    // one for granted: it holds that a digest is filed for exactly the decades
+    // that have the towns for one, and checks whatever digests there are.
+    digests_of_new_towns(r);
+    // So that the digest itself is still read by a test, a second island: the
+    // first fifty years of seed 8, which founds three towns in the 1750s and
+    // three in the 1790s with the mines as workings and kept town ground.
+    let mut P = game(6, 1800);
+    P.seed = 8;
+    let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
+    assert!(digests_of_new_towns(&early) >= 1, "seed 8 has a decade of new towns before 1800");
+}
+
+/// A decade of new towns is one item, filed for exactly the decades of the
+/// eighteenth century that have the towns for one, with each town's year, and
+/// kept unless the decade is full of heavier things (the player's place aside).
+/// Gives the number of digests there are.
+fn digests_of_new_towns(r: &RunResult) -> usize {
     let digests: Vec<&Event> = r.events.iter().filter(|e| e.kind == "town" && e.title.contains("new towns in the 17")).collect();
-    assert!(!digests.is_empty(), "seed 7 has a decade of new towns");
+    let min = r.params.chronicle.new_towns_min.max(1);
+    let founded_in = |d: i64| (0..r.state.T_max).filter(|&t| r.state.town_active[t] && (1750 + 10 * d..1760 + 10 * d).contains(&r.state.town_founded[t])).count();
+    let due: std::collections::BTreeSet<i64> = (0..5).filter(|&d| founded_in(d) >= min).collect();
+    assert_eq!(digests.iter().map(|e| decade(e)).collect::<std::collections::BTreeSet<i64>>(), due, "a digest for each decade of new towns, and no other");
     let mut decades = std::collections::BTreeSet::new();
     for digest in &digests {
         assert!(decades.insert(decade(digest)), "one digest a decade: {}", digest.title);
         let years = format!("({}", 175 + decade(digest));
         assert!(digest.text.contains(&years) && digest.why.is_some(), "{}: {}", digest.title, digest.text);
         let kept: Vec<&Event> = r.events.iter().filter(|e| e.kept == Some(true) && decade(e) == decade(digest)).collect();
-        let outweighed = kept.len() == r.params.chronicle.per_decade && kept.iter().all(|e| e.weight > digest.weight);
-        assert!(digest.kept == Some(true) || outweighed, "{} is kept, or the decade's {} are all heavier", digest.title, kept.len());
+        // the player's place: the heaviest of the family's own items that were kept, the earlier of equals
+        let own = kept.iter().enumerate().filter(|(_, e)| class(e) == "own").fold(None, |best: Option<usize>, (k, e)| match best {
+            Some(b) if kept[b].weight >= e.weight => Some(b),
+            _ => Some(k),
+        });
+        let outweighed = kept.len() == r.params.chronicle.per_decade && kept.iter().enumerate().all(|(k, e)| Some(k) == own || e.weight > digest.weight);
+        assert!(digest.kept == Some(true) || outweighed, "{} is kept, or the decade's {} are all heavier, the player's place aside", digest.title, kept.len());
     }
+    digests.len()
 }

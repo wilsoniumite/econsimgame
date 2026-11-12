@@ -66,6 +66,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::towns::TownsParams;
 use crate::works::WorksParams;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,6 +279,17 @@ pub struct Params {
     /// answers to how people live, and towns founded all century.
     #[serde(default, skip_serializing_if = "is_default")]
     pub people: crate::peopling::PeopleParams,
+    /// Town ground that is kept (not in the Python; see docs/rules/towns.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub towns: TownsParams,
+    /// Mines and pits that take little of the surface (not in the Python; see
+    /// docs/rules/mines.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mines: crate::mines::MineParams,
+    /// Canals, dug where the carting they save pays for them (not in the Python;
+    /// see docs/rules/canals.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub canals: crate::canals::CanalParams,
     /// Books that say who makes, moves, buys and earns what (not in the Python;
     /// see docs/rules/accounts.md). An observer: the economy never reads them.
     #[serde(default, skip_serializing_if = "is_default")]
@@ -481,6 +493,9 @@ pub fn default_params() -> Params {
         railways: crate::railways::RailwayParams::default(),
         carting: crate::carting::CartingParams::default(),
         people: crate::peopling::PeopleParams::default(),
+        towns: TownsParams::default(),
+        mines: crate::mines::MineParams::default(),
+        canals: crate::canals::CanalParams::default(),
         accounts: crate::accounts::AccountsParams::default(),
     }
 }
@@ -507,6 +522,9 @@ pub fn game_params() -> Params {
     P.railways = crate::railways::RailwayParams::game();
     P.carting = crate::carting::CartingParams::game();
     P.people = crate::peopling::PeopleParams::game();
+    P.towns = TownsParams::game();
+    P.mines = crate::mines::MineParams::game();
+    P.canals = crate::canals::CanalParams::game();
     P.accounts = crate::accounts::AccountsParams::game();
     P
 }

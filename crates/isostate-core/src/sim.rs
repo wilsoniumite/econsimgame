@@ -21,6 +21,7 @@ use crate::record::{self, Record};
 use crate::rng::{Rngs, make_rngs};
 use crate::state::{Event, State};
 use crate::tech;
+use crate::towns;
 use crate::transport as tr;
 use crate::util::{argsort, bincount, pairwise_sum};
 use crate::works;
@@ -396,7 +397,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     let (N, T) = (st.N, st.T_max);
     let mut pbar = st.price_acc.clone();
     pbar.data.iter_mut().for_each(|v| *v /= 12.0);
-    let wbar: Vec<f64> = st.wage_acc.iter().map(|v| v / 12.0).collect();
+    let mut wbar: Vec<f64> = st.wage_acc.iter().map(|v| v / 12.0).collect();
     st.pbar = pbar.clone();
     st.wbar = wbar.clone();
     st.price_acc.fill(0.0);
@@ -409,6 +410,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     st.ag_labor = bincount(&st.ex_town, &ag_w, T);
     let ind_w: Vec<f64> = (0..st.f_alive.len()).map(|f| if st.f_alive[f] { st.f_labor[f] } else { 0.0 }).collect();
     st.ind_labor = bincount(&st.f_town, &ind_w, T);
+    towns::year_hands(st, P); // towns: the year's mean of works' hands, not December's
     st.cell_labor = bincount(&st.ex_cell, &st.ex_labor, N);
 
     let mut founded = Vec::new();
@@ -428,11 +430,17 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     tech::diffusion(st, C, P);
     st.cell_flow_year = st.cell_flow.clone();
     update_roads(st, C, P);
+    // canals (docs/rules/canals.md): what the year's goods put on the water, on the
+    // paths they took (before the paths are worked out again)
+    crate::canals::year_traffic(st, C, P, year, warm);
     if !warm && P.people.enabled {
         founded = crate::peopling::found_towns(st, C, P, year, events);
         // people: what each cell paid to reach its market, before the paths are worked out again
         st.pp_dcatch_was = st.dcatch.clone();
     }
+    // towns: a new town's year is its donor's. Here, after whichever rule founds
+    // towns has run and while the market areas are still last year's
+    towns::new_town_year(st, P, &founded, &mut pbar, &mut wbar);
     st.prev_catch = st.catch.clone();
     land::update_transport(st, C, P);
     if P.people.enabled {
@@ -459,6 +467,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     if !warm {
         rail::plan(st, C, P, &mut rng.rail, year, &pbar, events);
         rail::plan_spurs(st, C, P, &mut rng.rail, year, &pbar, events);
+        // canals (docs/rules/canals.md): their promoters look round too
+        crate::canals::plan(st, C, P, year, &pbar, events);
         notable_closures(st, C, P, &closed, year, events);
         // the families (if any) act last, on the year's prices; they draw from the
         // misc stream, which the Python never uses
@@ -594,6 +604,8 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     let Sim { st, content: C, params: P, events, .. } = sim;
     econ::step_month(st, C, P);
     rail::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
+    // canals (docs/rules/canals.md): canals that are dug open
+    crate::canals::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
         let drift = st.money_now - (st.money_start + st.issued);
@@ -621,6 +633,7 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
     crate::chronicle::yearly(st, C, P, year, events);
     record::snapshot(rec, st, C, P, (year - C.start_year) as usize);
     harvest::snapshot(rec, st, P, (year - C.start_year) as usize);
+    crate::mines::snapshot(rec, st, P, (year - C.start_year) as usize); // mines: the year's workings
     sim.year += 1;
     Ok(())
 }

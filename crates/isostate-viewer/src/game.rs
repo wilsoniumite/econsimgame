@@ -25,6 +25,9 @@ use crate::{scatter, world, Data, InspectActions, Orbit, Pick, Picked, Timeline,
 pub struct Game {
     /// the answer about the picked cell, once it has come
     pub site: Option<SiteInfo>,
+    /// the world has moved on since that answer: it stays on screen, but
+    /// nothing can be ordered from it until the new answer comes
+    site_stale: bool,
     /// the cell a question is out about
     pub asked: Option<usize>,
     /// how the last order went
@@ -41,7 +44,9 @@ pub struct Game {
     pending: Vec<usize>,
     /// the end of the game has been shown
     ended: bool,
-    drawn: Option<(Option<Pick>, usize, u64)>,
+    /// the card that ends the game is up
+    end_open: bool,
+    drawn: Option<(Option<Pick>, usize, u64, Now, bool)>,
     marks: Option<(usize, usize, usize, u64)>,
     /// decisions already put in front of the player, so each opens by itself only once
     seen: BTreeSet<u64>,
@@ -51,7 +56,41 @@ pub struct Game {
     pub open: Option<u64>,
     /// the welcome card is up: decisions wait behind it
     welcoming: bool,
-    card_drawn: Option<(Option<u64>, u64)>,
+    card_drawn: Option<(Option<u64>, u64, bool)>,
+}
+
+impl Game {
+    /// A card that wants an answer is up: the welcome, a decision or the end
+    /// of the game. The clock stands still under it.
+    pub fn modal(&self) -> bool {
+        self.welcoming || self.open.is_some() || self.end_open
+    }
+
+    /// For the scripted runs: which cards are up and how the last order went.
+    pub fn summary(&self) -> String {
+        let card = match (self.welcoming, self.open) {
+            (true, _) => "the welcome card is up".to_string(),
+            (false, Some(id)) => format!("decision {id} is open"),
+            (false, None) if self.end_open => "the end card is up".to_string(),
+            (false, None) => "no card is open".to_string(),
+        };
+        let note = match &self.note {
+            Some((ok, text)) => format!("; the last order {}: {text}", if *ok { "went through" } else { "was refused" }),
+            None => String::new(),
+        };
+        format!("{card}{}{}{note}", if self.ended && !self.end_open { ", the end card has been shown" } else { "" }, if self.busy { ", an order is out" } else { "" })
+    }
+}
+
+/// Whether a card that wants an answer was up when this frame began. A key
+/// that closes or answers the card is the card's alone: read here, not from
+/// `Game`, it stays so whichever system runs first, so Space on the welcome
+/// card cannot also start the clock.
+#[derive(Resource, Default)]
+pub struct CardOpen(pub bool);
+
+fn note_cards(game: Res<Game>, mut open: ResMut<CardOpen>) {
+    open.0 = game.modal();
 }
 
 /// The card shown when the century is over.
@@ -61,6 +100,15 @@ struct EndCard;
 /// The card that opens a new game.
 #[derive(Component)]
 struct Welcome;
+
+/// On the opening card of a game gone on with: carry on, or start again.
+#[derive(Component)]
+struct ContinueButton;
+#[derive(Component)]
+struct NewGameButton;
+/// The small print under them, which also says if a new game could not be started.
+#[derive(Component)]
+struct WelcomeHint;
 
 /// The card for a decision.
 #[derive(Component)]
@@ -81,9 +129,9 @@ pub struct ActionButton(pub Action);
 
 /// One option of a decision.
 #[derive(Component, Clone, Copy)]
-struct DecideButton {
-    id: u64,
-    option: usize,
+pub struct DecideButton {
+    pub id: u64,
+    pub option: usize,
 }
 
 /// Close the decision card and decide later.
@@ -99,13 +147,16 @@ struct Marks(Handle<Mesh>);
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<Game>()
+        .init_resource::<CardOpen>()
+        .add_systems(First, note_cards)
         .add_systems(Startup, setup_marks.run_if(resource_exists::<Live>))
         .add_systems(PostStartup, welcome.run_if(resource_exists::<Live>))
-        .add_systems(Update, close_welcome)
+        .add_systems(Update, (press_unattended, new_game_clicks, close_welcome).chain())
         .add_systems(
             Update,
             (
                 pump,
+                settle,
                 drive,
                 ask_site,
                 action_clicks,
@@ -162,7 +213,7 @@ pub fn year_families(view: &mut FamilyView, reports: &[FamilyReport], year: i32)
 }
 
 /// The player's family after an order, between years.
-fn player_family(view: &mut FamilyView, rep: &FamilyReport) {
+pub fn player_family(view: &mut FamilyView, rep: &FamilyReport) {
     if let Some(row) = view.families.get_mut(rep.index) {
         let h = std::mem::take(&mut row.history);
         *row = row_of(rep, h);
@@ -215,7 +266,7 @@ fn pump(
                 scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
                 year_families(&mut fam, &y.families, y.year as i32);
                 fam.prospects = prospects;
-                live.stepping = false;
+                live.stepped(true);
                 if tl.built == Some(y.index) {
                     tl.built = None;
                 }
@@ -226,7 +277,8 @@ fn pump(
                 game.pending.clear();
                 // the world has moved on: ask about the picked square again
                 game.asked = None;
-                game.site = None;
+                game.site_stale = true;
+                game.note = None;
                 game.version += 1;
                 ui.dirty += 1;
                 if shots.is_none() || cards_in_shots() {
@@ -240,6 +292,7 @@ fn pump(
             Msg::Site(s) => {
                 if game.asked == Some(s.cell) {
                     game.site = Some(s);
+                    game.site_stale = false;
                     game.version += 1;
                 }
             }
@@ -257,15 +310,18 @@ fn pump(
                     ui.dirty += 1;
                     queue_new(&mut game, &fam, &mut tl);
                 }
+                // the order changed the square: ask again before offering more
                 game.asked = None;
+                game.site_stale = true;
                 game.version += 1;
             }
             Msg::Failed(e) => {
-                live.stepping = false;
+                live.stepped(false);
                 game.busy = false;
                 game.note = Some((false, e));
                 game.version += 1;
             }
+            Msg::Unsaved(why) => live.unsaved = why,
         }
     }
 }
@@ -275,16 +331,79 @@ fn cards_in_shots() -> bool {
     std::env::var_os("ISOSTATE_WELCOME").is_some()
 }
 
-/// Ask for the next year when the clock reaches the last one there is.
-fn drive(mut live: ResMut<Live>, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, keys: Res<ButtonInput<KeyCode>>) {
+/// Where the year on the clock stands against the years worked out. The next
+/// year is asked for a little before the clock needs it, so that the years
+/// roll without a stop; until the clock gets there, the newest year the
+/// player has been shown is still the present as they see it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Now {
+    /// a year gone by, which the player has gone back to look at
+    Past,
+    /// the newest year shown, with the next worked out and about to show:
+    /// the simulation has moved on, so an order would land a year late
+    Turning,
+    /// the newest year there is: orders land here
+    Present,
+}
+
+/// `k` is the year on the clock, `latest` the newest worked out and `seen`
+/// the newest the clock has shown, all as indices.
+pub fn now_of(k: usize, latest: usize, seen: usize) -> Now {
+    if k >= latest {
+        Now::Present
+    } else if k >= seen {
+        Now::Turning
+    } else {
+        Now::Past
+    }
+}
+
+fn now(tl: &Timeline, data: &Data, live: &Live) -> Now {
+    now_of((tl.t.floor() as usize).min(data.r.ny - 1), data.latest(), live.seen)
+}
+
+/// How long before a year ends to ask for the next, as a part of the year:
+/// as late as will still have it ready in time, so that for most of the year
+/// the newest year worked out is the one on screen and orders can be given
+/// there. `took` is how long the last year took to arrive, in seconds, and
+/// `speed` the clock's, in years a second.
+fn lead_years(took: Option<f32>, speed: f32) -> f32 {
+    match took {
+        // nothing to go by yet: ask at once
+        None => 1.0,
+        // half as long again, and a tenth of a second for the frames either side
+        Some(s) => ((s * 1.5 + 0.1) * speed).clamp(0.0, 1.0),
+    }
+}
+
+/// Stopped on the newest year shown while the next is already worked out,
+/// the clock moves on to it: the simulation cannot go back, so the present is
+/// there, and that is where orders can be given. (The player who steps back a
+/// year on purpose is in the past and stays there.)
+fn settle(mut live: ResMut<Live>, mut tl: ResMut<Timeline>, data: Res<Data>) {
+    if !tl.playing && now(&tl, &data, &live) == Now::Turning {
+        tl.t = data.latest() as f32;
+    }
+    let k = (tl.t.floor() as usize).min(data.latest());
+    if k > live.seen {
+        live.seen = k;
+    }
+}
+
+/// Ask for the next year in time for the clock to roll into it.
+fn drive(mut live: ResMut<Live>, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, keys: Res<ButtonInput<KeyCode>>, cards: Res<CardOpen>) {
     let r = &data.r;
     if r.filled >= r.ny || live.stepping {
         return;
     }
-    let at_end = tl.t >= data.latest() as f32;
-    if tl.playing && at_end {
+    // no year is worked out under a card that waits for the player
+    if cards.0 || game.modal() {
+        return;
+    }
+    let latest = data.latest() as f32;
+    if tl.playing && tl.t >= latest + 1.0 - lead_years(live.took, tl.speed) {
         live.step();
-    } else if !tl.playing && at_end && (keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period)) {
+    } else if !tl.playing && tl.t >= latest && (keys.just_pressed(KeyCode::ArrowRight) || keys.just_pressed(KeyCode::Period)) {
         // one more year, then stop and show it
         game.follow = true;
         live.step();
@@ -305,8 +424,12 @@ fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<L
     };
     if present(&tl, &data) && !live.stepping && game.asked != Some(c) {
         game.asked = Some(c);
-        game.site = None;
-        game.note = None;
+        // the last answer about this square stays up until the new one comes,
+        // and so does word of how the last order about it went
+        if game.site.as_ref().is_none_or(|s| s.cell != c) {
+            game.site = None;
+            game.note = None;
+        }
         game.version += 1;
         live.send(Cmd::Site(c));
     }
@@ -317,6 +440,10 @@ fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<L
 fn action_clicks(q: Query<(&Interaction, &ActionButton), Changed<Interaction>>, live: Res<Live>, mut game: ResMut<Game>, mut tl: ResMut<Timeline>, data: Res<Data>) {
     for (i, a) in &q {
         if *i != Interaction::Pressed || game.busy {
+            continue;
+        }
+        // an order lands in the newest year worked out, so it is taken only when that is the year on screen
+        if a.0 != Action::Present && !(present(&tl, &data) && !live.stepping) {
             continue;
         }
         game.last_order = Some(a.0);
@@ -354,7 +481,9 @@ fn decide_clicks(
     mut game: ResMut<Game>,
 ) {
     for (i, d) in &q {
-        if *i == Interaction::Pressed && !game.busy {
+        // a year on its way takes the default before an answer sent now could
+        // arrive, and the answer would be refused: the card says so and waits
+        if *i == Interaction::Pressed && !game.busy && !live.stepping {
             live.send(Cmd::Decide { id: d.id, option: d.option });
             game.busy = true;
             game.open = None;
@@ -393,6 +522,9 @@ fn stance_clicks(q: Query<(&Interaction, &StanceButton), Changed<Interaction>>, 
         if *i == Interaction::Pressed && !game.busy {
             live.send(Cmd::Stance { group: s.group, town: s.town, stance: s.stance });
             game.busy = true;
+            // as the other orders do: the last order's note goes, and the order panel is drawn again
+            game.note = None;
+            game.version += 1;
         }
     }
 }
@@ -453,6 +585,9 @@ fn step_note(live: Res<Live>, data: Res<Data>, mut q: Query<&mut Text, With<crat
     let r = &data.r;
     let s = if live.stepping {
         format!("working out {}\u{2026}", r.y0 + r.filled as i32)
+    } else if live.unsaved.is_some() {
+        // the terminal has the reason; here it must not pass unseen
+        "the game could not be saved".to_string()
     } else if r.filled >= r.ny {
         "the century is over".to_string()
     } else {
@@ -510,11 +645,13 @@ fn order_panel(
     tl: Res<Timeline>,
     data: Res<Data>,
     fam: Res<FamilyView>,
+    live: Res<Live>,
     font: Res<UiFont>,
     q: Query<(Entity, Option<&Children>), With<InspectActions>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (picked.what, k, game.version);
+    let when = now(&tl, &data, &live);
+    let key = (picked.what, k, game.version, when, live.stepping);
     if game.drawn == Some(key) && !fam.is_changed() {
         return;
     }
@@ -531,7 +668,8 @@ fn order_panel(
     let Some(me) = fam.player() else { return };
     let accent = me.colour;
     let latest_year = r.y0 + data.latest() as i32;
-    let now = present(&tl, &data);
+    // orders can be given when the year on screen is the newest worked out and the next is not on its way
+    let can = when == Now::Present && !live.stepping && !game.busy;
     commands.entity(e).with_children(|p| {
         let rule = |p: &mut ChildSpawnerCommands| {
             p.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
@@ -552,23 +690,25 @@ fn order_panel(
             }
             Pick::Town(t) => {
                 rule(p);
-                if !now {
+                if when == Now::Past {
                     back_to_present(p, &f, r, k, latest_year, accent);
                     return;
                 }
-                town_orders(p, &f, &fam, me, r, t, &game);
+                town_orders(p, &f, &fam, me, r, t, can);
             }
             Pick::Cell(c) => {
                 rule(p);
-                if !now {
+                if when == Now::Past {
                     back_to_present(p, &f, r, k, latest_year, accent);
                     return;
                 }
                 let Some(site) = game.site.as_ref().filter(|s| s.cell == c) else {
-                    p.spawn(text(&f, "Asking the land agent\u{2026}", 13.5, MUTED));
+                    // while the year turns the land agent is asked once it has
+                    let wait = if when == Now::Present && !live.stepping { "Asking the land agent\u{2026}" } else { "The year is turning\u{2026}" };
+                    p.spawn(text(&f, wait, 13.5, MUTED));
                     return;
                 };
-                cell_orders(p, &f, me, r, site, &game);
+                cell_orders(p, &f, me, r, site, can && !game.site_stale);
             }
         }
         if let Some((ok, note)) = &game.note {
@@ -596,7 +736,7 @@ fn town_name(r: &Replay, t: usize) -> String {
 
 /// A town: the seat, the family's branches and people there, and who could
 /// be posted to run a trade there.
-fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView, me: &FamilyRow, r: &Replay, t: usize, game: &Game) {
+fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView, me: &FamilyRow, r: &Replay, t: usize, can: bool) {
     let rep = &me.rep;
     let accent = me.colour;
     let name = town_name(r, t);
@@ -606,18 +746,18 @@ fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView,
         p.spawn(text(f, "The head lives here and runs every trade the family knows here. Works are chosen and land bought directly only around the seat.", 12.5, MUTED));
         if let Some(next) = rep.next_seat {
             p.spawn(text(f, &format!("Moving to {} at the year end.", town_name(r, next)), 13.0, accent));
-            p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {name}"), (!game.busy).then_some(Action::MoveSeat(t)), accent));
+            p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {name}"), can.then_some(Action::MoveSeat(t)), accent));
         }
     } else if rep.next_seat == Some(t) {
         p.spawn(text(f, &format!("The {} family's seat moves here at the year end.", rep.surname), 14.0, accent));
-        p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {}", rep.seat_name), (!game.busy).then_some(Action::MoveSeat(rep.seat)), accent));
+        p.spawn(Node { margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|x| button(x, f, &format!("Stay at {}", rep.seat_name), can.then_some(Action::MoveSeat(rep.seat)), accent));
     } else {
         p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(2.0)), ..default() }).with_children(|x| {
             x.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
                 col.spawn(text(f, &format!("Move the seat to {name}?"), 14.0, INK));
                 col.spawn(text(f, &format!("The head moves at the year end, and with the head the bonus and the family's direct choices. Now at {}.", rep.seat_name), 12.0, MUTED));
             });
-            button(x, f, "Move", (!game.busy).then_some(Action::MoveSeat(t)), accent);
+            button(x, f, "Move", can.then_some(Action::MoveSeat(t)), accent);
         });
     }
 
@@ -696,7 +836,7 @@ fn stance_word(s: isostate_core::Stance) -> &'static str {
 }
 
 /// A square of land: who holds it, buying it, and the works that could be built on it.
-fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r: &Replay, site: &SiteInfo, game: &Game) {
+fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r: &Replay, site: &SiteInfo, can: bool) {
     let rep = &me.rep;
     let accent = me.colour;
     let c = site.cell;
@@ -721,7 +861,7 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
             }
         });
         if site.owner != Some(PLAYER) && site.land_allowed.is_ok() {
-            let ok = me.cash as f64 >= site.land_price && !game.busy;
+            let ok = me.cash as f64 >= site.land_price && can;
             button(row, f, "Buy", ok.then_some(Action::Buy(c)), accent);
         }
     });
@@ -748,7 +888,7 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
                 p.spawn(text(f, "Nothing in the family's trades would pay here.", 13.0, MUTED));
             }
             for (m, s) in good.iter().take(5) {
-                let afford = me.cash as f64 >= s.capital_cost && !game.busy;
+                let afford = me.cash as f64 >= s.capital_cost && can;
                 p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|row| {
                     row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, row_gap: Val::Px(1.0), ..default() }).with_children(|col| {
                         col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).with_children(|head| {
@@ -831,8 +971,11 @@ fn option_note(d: &Decision, choice: Choice, fam: &FamilyView, me: &FamilyRow, r
 }
 
 #[allow(clippy::too_many_arguments)]
-fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<FamilyView>, data: Res<Data>, font: Res<UiFont>, cards: Query<Entity, With<DecisionCard>>) {
-    let key = (game.open, game.version);
+fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, cards: Query<Entity, With<DecisionCard>>) {
+    // with the next year on its way (the card opened from the badge while the
+    // years ran) an answer cannot land in time: the options wait, unlit
+    let turning = live.stepping;
+    let key = (game.open, game.version, turning);
     if game.card_drawn == Some(key) && !fam.is_changed() {
         return;
     }
@@ -892,17 +1035,18 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                 c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
                 for (i, o) in d.options.iter().enumerate() {
                     let note = option_note(d, o.choice, &fam, me, r);
-                    c.spawn((
+                    let mut option = c.spawn((
                         Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
                         BackgroundColor(BTN),
                         Interaction::default(),
                         FocusPolicy::Block,
-                        crate::ui::Hoverable,
-                        DecideButton { id: d.id, option: i },
-                    ))
-                    .with_children(|b| {
+                    ));
+                    if !turning {
+                        option.insert((crate::ui::Hoverable, DecideButton { id: d.id, option: i }));
+                    }
+                    option.with_children(|b| {
                         b.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|head| {
-                            head.spawn(text(&f, &o.label, 15.5, INK));
+                            head.spawn(text(&f, &o.label, 15.5, if turning { MUTED } else { INK }));
                             if i == d.default {
                                 head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(accent.with_alpha(0.15))))
                                     .with_children(|t| {
@@ -916,7 +1060,8 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                     });
                 }
                 c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|row| {
-                    row.spawn(text(&f, &format!("Unanswered, the default is taken at the end of {}.", d.due), 12.5, MUTED));
+                    let foot = if turning { "The year is turning\u{2026}".to_string() } else { format!("Unanswered, the default is taken at the end of {}.", d.due) };
+                    row.spawn(text(&f, &foot, 12.5, MUTED));
                     row.spawn((
                         Node { padding: UiRect::axes(Val::Px(11.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(9.0)), flex_shrink: 0.0, ..default() },
                         BackgroundColor(BTN),
@@ -940,15 +1085,17 @@ fn setup_marks(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<As
     let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
     commands.spawn((Mesh3d(h.clone()), MeshMaterial3d(mat)));
     commands.insert_resource(Marks(h));
+    commands.insert_resource(crate::fences::Lines::default());
 }
 
 fn banner_rgba(i: usize) -> [f32; 4] {
     hex(family::BANNERS[i % family::BANNERS.len()])
 }
 
-/// A pennant on a pole beside every family works, a low fence round every
-/// family's land, and a tall flag on the market square of every family's seat.
-fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look) -> Builder {
+/// A pennant on the highest gable of every family works, a low fence round every
+/// family's open land, and a tall flag on the market square of every family's seat.
+#[allow(clippy::too_many_arguments)]
+fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f32, f32)], seats: &[(usize, usize, bool)], k: usize, lk: &Look, flags: &mut scatter::Flags, lines: &mut crate::fences::Lines) -> Builder {
     let mut b = Builder::default();
     let pole = *lk.marks.pole;
     for (i, &(fam, town, moving)) in seats.iter().enumerate() {
@@ -977,62 +1124,21 @@ fn build_marks(r: &Replay, g: &world::Ground, slots: &scatter::Slots, cen: &[(f3
         if replay::firm_k(r, f, k) <= 0.0 {
             continue;
         }
-        let Some(&(x, z, yaw)) = slots.firm_pos.get(f) else { continue };
-        let q = Quat::from_rotation_y(yaw);
-        let off = q * Vec3::new(-0.055, 0.0, -0.045);
-        let base = Vec3::new(x + off.x, world::height_at(g, x + off.x, z + off.z), z + off.z);
-        let top = base + Vec3::Y * 0.13;
-        b.beam(base - Vec3::Y * 0.01, top, 0.005, pole);
-        // the pennant streams downwind, the same way on every pole
-        let fly = Vec3::new(0.06, -0.012, 0.03);
+        // one flag on the works' highest gable, on a staff half the building's height: big
+        // enough to tell the family by from close up, a fleck of its colour from play distance
+        let Some(peak) = scatter::firm_flag(r, g, slots, f, k, lk, flags) else { continue };
+        let tall = (peak.y - world::height_at(g, peak.x, peak.z)).max(0.0);
+        let staff = (tall * 0.5).clamp(0.022, 0.04);
+        let top = peak + Vec3::Y * staff;
+        b.beam(peak - Vec3::Y * 0.004, top, staff * 0.1, pole);
+        // the pennant streams downwind, the same way on every staff (and with the smoke)
+        let fly = isostate_gen::works::WIND * (staff * 1.1) - Vec3::Y * (staff * 0.2);
         let col = banner_rgba(o);
-        b.tri(top, top - Vec3::Y * 0.032, top + fly, col);
-        b.tri(top, top + fly, top - Vec3::Y * 0.032, col);
+        b.tri(top, top - Vec3::Y * (staff * 0.6), top + fly, col);
+        b.tri(top, top + fly, top - Vec3::Y * (staff * 0.6), col);
     }
-    if !r.owner.is_empty() {
-        let n = r.n;
-        let own = |c: usize| r.owner[k * n + c];
-        for c in 0..n {
-            let o = own(c);
-            if o < 0 {
-                continue;
-            }
-            let (x, z) = ((c % r.w) as i32, (c / r.w) as i32);
-            let col = lerp(banner_rgba(o as usize), *lk.marks.cloth_pale, 0.25);
-            let post = lerp(col, *lk.marks.post_shade, 0.35);
-            let inset = 0.03;
-            // edges whose far side is not this family's: (dx, dz) to the neighbour, and the edge's two ends
-            let x0 = x as f32 + inset;
-            let x1 = x as f32 + 1.0 - inset;
-            let z0 = z as f32 + inset;
-            let z1 = z as f32 + 1.0 - inset;
-            for (dx, dz, a, e) in [(0, -1, (x0, z0), (x1, z0)), (0, 1, (x0, z1), (x1, z1)), (-1, 0, (x0, z0), (x0, z1)), (1, 0, (x1, z0), (x1, z1))] {
-                let (nx, nz) = (x + dx, z + dz);
-                let same = nx >= 0 && nz >= 0 && (nx as usize) < r.w && (nz as usize) < r.h && own(nz as usize * r.w + nx as usize) == o;
-                if same {
-                    continue;
-                }
-                let steps = 8;
-                let mut prev: Option<Vec3> = None;
-                for i in 0..=steps {
-                    let t = i as f32 / steps as f32;
-                    let (px, pz) = (a.0 + (e.0 - a.0) * t, a.1 + (e.1 - a.1) * t);
-                    let h = world::height_at(g, px, pz);
-                    if h < 0.03 {
-                        prev = None;
-                        continue;
-                    }
-                    let p0 = Vec3::new(px, h, pz);
-                    b.block(p0, 0.008, 0.008, 0.024, 0.0, post, Some(post), 0.01);
-                    let rail = p0 + Vec3::Y * 0.017;
-                    if let Some(q0) = prev {
-                        b.beam(q0, rail, 0.005, col);
-                    }
-                    prev = Some(rail);
-                }
-            }
-        }
-    }
+    // fences round the families' open land, along its hedge lines (fences.rs)
+    world::timed("family fences", || crate::fences::family_fences(&mut b, r, g, k, lk, lines, &banner_rgba));
     b
 }
 
@@ -1054,11 +1160,14 @@ fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize
     b.block(s + Vec3::Y * 0.05, 0.05, 0.006, 0.03, 0.3, colour, Some(colour), 0.0);
 }
 
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, marks: Option<Res<Marks>>, mut meshes: ResMut<Assets<Mesh>>) {
-    let Some(marks) = marks else { return };
+#[allow(clippy::too_many_arguments)]
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, lines: Option<ResMut<crate::fences::Lines>>, mut meshes: ResMut<Assets<Mesh>>, mut flags: Local<scatter::Flags>) {
+    let (Some(marks), Some(mut lines)) = (marks, lines) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    // the seats are known for the present only, so they are drawn there
-    let seats: Vec<(usize, usize, bool)> = if present(&tl, &data) {
+    // the seats are known for the present only, so they are drawn there (and
+    // while the year turns, so the flags do not blink once a year)
+    let front = now(&tl, &data, &live) != Now::Past;
+    let seats: Vec<(usize, usize, bool)> = if front {
         fam.families.iter().flat_map(|f| std::iter::once((f.rep.index, f.seat, false)).chain(f.rep.next_seat.map(|t| (f.rep.index, t, true)))).collect()
     } else {
         Vec::new()
@@ -1069,8 +1178,8 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
         return;
     }
     game.marks = Some(key);
-    let mut b = build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look);
-    if present(&tl, &data) {
+    let mut b = world::timed("year marks", || build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look, &mut flags, &mut lines));
+    if front {
         for &c in &game.pending {
             stakes(&mut b, &look, &data.g, &data.r, c, banner_rgba(PLAYER));
         }
@@ -1087,9 +1196,11 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
         for e in &cards {
             commands.entity(e).despawn();
         }
+        game.end_open = false;
     }
     let r = &data.r;
-    if game.ended || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
+    // a finished game gone on with: the opening card first, then this one
+    if game.ended || game.welcoming || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
         return;
     }
     // screenshots skip it, as they do the welcome, unless asked for
@@ -1097,9 +1208,10 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
         return;
     }
     game.ended = true;
+    game.end_open = true;
     let f = font.0.clone();
     let mut rank: Vec<&FamilyRow> = fam.families.iter().collect();
-    rank.sort_by(|a, b| b.net_worth.partial_cmp(&a.net_worth).unwrap_or(std::cmp::Ordering::Equal));
+    rank.sort_by(|a, b| crate::ui::biggest_first(a.net_worth, b.net_worth));
     let me = fam.player();
     commands
         .spawn((
@@ -1135,8 +1247,11 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
 }
 
 /// A new game opens on a card saying who the player is and how to begin; the
-/// first decision waits behind it.
-fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>) {
+/// first decision waits behind it. A game gone on with from a save opens on
+/// the same card saying how the family stands, with Continue and New game.
+fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>) {
+    // works ordered since the last year (in a game gone on with) keep their pegs
+    game.pending = live.ordered.clone();
     // screenshots skip it unless asked for
     if shots.is_some() && !cards_in_shots() {
         return;
@@ -1176,6 +1291,10 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: 
                 c.spawn(text(&f, &format!("{year}"), 15.0, MUTED));
                 c.spawn(text(&f, &format!("The {} family of {}", me.name, me.seat_name), 26.0, me.colour));
                 let living = me.rep.members.iter().filter(|m| m.alive).count();
+                if let Some(back) = &live.resumed {
+                    welcome_back(c, &f, me, living, back, data.r.y0);
+                    return;
+                }
                 c.spawn(text(
                     &f,
                     &format!(
@@ -1200,14 +1319,171 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, font: 
                         row.spawn(text(&f, line, 14.5, INK));
                     });
                 }
-                c.spawn((text(&f, "Click anywhere to begin.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
+                // only said of a game that is being saved
+                let begin = if live.kept { "Click anywhere to begin. The game saves itself as you play." } else { "Click anywhere to begin." };
+                c.spawn((text(&f, begin, 13.0, MUTED), Node { margin: UiRect::top(Val::Px(8.0)), ..default() }));
             });
         });
 }
 
-fn close_welcome(mut commands: Commands, q: Query<(Entity, &Interaction), With<Welcome>>, keys: Res<ButtonInput<KeyCode>>, game: Option<ResMut<Game>>) {
+/// A key that only goes with others, or belongs to the desktop. Alt on its
+/// way to Alt-Tab, or the key that takes a picture of the screen, is not the
+/// player beginning the game.
+fn goes_with_others(k: &KeyCode) -> bool {
+    use KeyCode::*;
+    matches!(k, AltLeft | AltRight | ControlLeft | ControlRight | ShiftLeft | ShiftRight | SuperLeft | SuperRight | PrintScreen | CapsLock | NumLock | ScrollLock)
+}
+
+/// What a save that could not be played again as it was is owed in words:
+/// that it is an earlier one than the last, how many orders were refused,
+/// and that the island stands differently.
+pub fn resumed_note(back: &live::Resumed) -> Option<String> {
+    let all = back.orders + back.refused;
+    let earlier = (back.passed_over > 0).then(|| format!("The last save could not be read, so this is an earlier one, from {}.", back.year));
+    let rules = match (back.refused, back.drifted) {
+        (0, false) => None,
+        (0, true) => Some("The island's rules have changed since this game was saved, so the years have played out a little differently.".to_string()),
+        (n, _) => {
+            let which = match (n, all) {
+                (_, 1) => "Your one order".to_string(),
+                (n, all) if n == all => format!("All {} of your orders", family::number_word(all)),
+                (n, all) => format!("{} of your {} orders", family::capitalised(&family::number_word(n)), family::number_word(all)),
+            };
+            Some(format!("The island's rules have changed since this game was saved. {which} could not be given again, so some things stand differently."))
+        }
+    };
+    match (earlier, rules) {
+        (Some(a), Some(b)) => Some(format!("{a} {b}")),
+        (a, b) => a.or(b),
+    }
+}
+
+/// The rest of the opening card for a game gone on with: how the family
+/// stands, what could not be brought back, and the two ways on.
+fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, living: usize, back: &live::Resumed, first_year: i32) {
+    c.spawn(text(
+        f,
+        &format!("Welcome back. {} of the family, with {} in hand and worth {} in all.", family::capitalised(&family::number_word(living)), money(me.cash), money(me.net_worth)),
+        15.0,
+        INK,
+    ));
+    if let Some(note) = resumed_note(back) {
+        c.spawn((
+            Node { margin: UiRect::top(Val::Px(4.0)), padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
+            BackgroundColor(Color::srgb(0.97, 0.89, 0.74)),
+        ))
+        .with_children(|n| {
+            n.spawn(text(f, &note, 13.5, Color::srgb(0.45, 0.29, 0.10)));
+        });
+    }
+    c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
+    c.spawn(Node { column_gap: Val::Px(10.0), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+        row.spawn((
+            Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            BackgroundColor(me.colour),
+            Interaction::default(),
+            FocusPolicy::Block,
+            ContinueButton,
+        ))
+        .with_children(|b| {
+            b.spawn(text(f, &format!("Continue from {}", back.year), 15.5, Color::WHITE));
+        });
+        row.spawn((
+            Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+            BackgroundColor(BTN),
+            Interaction::default(),
+            FocusPolicy::Block,
+            crate::ui::Hoverable,
+            NewGameButton,
+        ))
+        .with_children(|b| {
+            b.spawn(text(f, "New game", 15.5, INK));
+        });
+    });
+    c.spawn((
+        text(f, &format!("A new game begins again in {first_year} and leaves this one saved beside it."), 13.0, MUTED),
+        Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
+        WelcomeHint,
+    ));
+}
+
+/// Nobody at the pointer: ISOSTATE_WELCOME=continue or =new presses that
+/// button of the opening card, once, so that what the buttons do can be
+/// checked from the terminal (in a screenshot run, or with a window).
+fn press_unattended(
+    mut pressed: Local<bool>,
+    mut go_on: Query<&mut Interaction, (With<ContinueButton>, Without<NewGameButton>)>,
+    mut new_game: Query<&mut Interaction, (With<NewGameButton>, Without<ContinueButton>)>,
+) {
+    if *pressed {
+        return;
+    }
+    let button = match std::env::var("ISOSTATE_WELCOME").as_deref() {
+        Ok("continue") => go_on.single_mut(),
+        Ok("new") => new_game.single_mut(),
+        _ => return,
+    };
+    if let Ok(mut i) = button {
+        *i = Interaction::Pressed;
+        *pressed = true;
+        eprintln!("pressing the card's button, as ISOSTATE_WELCOME asks");
+    }
+}
+
+/// Start the program again on a new game, and leave this one. The game being
+/// left is already saved; the new one sets it aside when it is first saved.
+fn new_game_clicks(
+    q: Query<&Interaction, (Changed<Interaction>, With<NewGameButton>)>,
+    data: Res<Data>,
+    // there is none in a replay, which has no such button either
+    fam: Option<Res<FamilyView>>,
+    mut hint: Query<&mut Text, With<WelcomeHint>>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    let Some(fam) = fam else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    // on the island on the table, with as many families: a save that was loaded may be of another than the arguments name
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let scripted = args.iter().any(|a| a == "--script");
+    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len());
+    if scripted {
+        // a scripted run is one program from start to end: say what would be started, and stop
+        println!("script: New game would start the program again with: {}", args.join(" "));
+        exit.write(AppExit::Success);
+        return;
+    }
+    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(args).spawn());
+    match started {
+        Ok(_) => {
+            eprintln!("starting again on a new game");
+            exit.write(AppExit::Success);
+        }
+        Err(e) => {
+            eprintln!("a new game could not be started: {e}");
+            for mut t in &mut hint {
+                t.0 = "A new game could not be started from here. Close the game and start it again with --new.".to_string();
+            }
+        }
+    }
+}
+
+fn close_welcome(
+    mut commands: Commands,
+    q: Query<(Entity, &Interaction), With<Welcome>>,
+    go_on: Query<&Interaction, With<ContinueButton>>,
+    new_game: Query<&Interaction, With<NewGameButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    game: Option<ResMut<Game>>,
+) {
+    // New game leaves the card up until the program starts again
+    if new_game.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let go_on = go_on.iter().any(|i| *i == Interaction::Pressed);
     for (e, i) in &q {
-        if *i == Interaction::Pressed || keys.get_just_pressed().next().is_some() {
+        if *i == Interaction::Pressed || go_on || keys.get_just_pressed().any(|k| !goes_with_others(k)) {
             commands.entity(e).despawn();
             if let Some(mut game) = game {
                 game.welcoming = false;
@@ -1217,5 +1493,95 @@ fn close_welcome(mut commands: Commands, q: Query<(Entity, &Interaction), With<W
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_present_is_the_newest_year_and_the_past_is_what_was_left_behind() {
+        // the clock on the newest year there is
+        assert_eq!(now_of(36, 36, 36), Now::Present);
+        // the next year has been fetched ahead and the clock has not got there
+        assert_eq!(now_of(36, 37, 36), Now::Turning);
+        // the clock got there
+        assert_eq!(now_of(37, 37, 36), Now::Present);
+        // stepped back a year on purpose, or scrubbed far back and playing up
+        // to the front again: the past until the clock is on the newest year
+        assert_eq!(now_of(36, 37, 37), Now::Past);
+        assert_eq!(now_of(3, 37, 37), Now::Past);
+    }
+
+    #[test]
+    fn a_key_held_with_others_does_not_close_the_welcome() {
+        for k in [KeyCode::AltLeft, KeyCode::ShiftRight, KeyCode::ControlLeft, KeyCode::SuperLeft, KeyCode::PrintScreen] {
+            assert!(goes_with_others(&k), "{k:?}");
+        }
+        for k in [KeyCode::Space, KeyCode::Enter, KeyCode::Escape, KeyCode::KeyA, KeyCode::ArrowRight] {
+            assert!(!goes_with_others(&k), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn the_next_year_is_asked_for_late_but_in_time() {
+        // nothing measured: ask on entering the year, as before
+        assert_eq!(lead_years(None, 0.5), 1.0);
+        // a year that takes 0.3 s to work out, at 1x (a year in two seconds): the last 28% of the year
+        let lead = lead_years(Some(0.3), 0.5);
+        assert!((lead - 0.275).abs() < 1e-4, "{lead}");
+        // never later than the work needs, never more than the whole year
+        for speed in [0.5, 1.0, 2.0, 4.0] {
+            for took in [0.05, 0.14, 0.3, 0.8, 3.0] {
+                let lead = lead_years(Some(took), speed);
+                assert!(lead <= 1.0 && lead >= (took * speed).min(1.0), "took {took} at {speed}: {lead}");
+            }
+        }
+    }
+
+    /// The clock and the simulation thread in miniature: the share of frames
+    /// with the clock running in which an order would land in the year on
+    /// screen, and the number of frames the clock stood waiting for a year.
+    fn play(speed: f32, sim_secs: f32, lead: impl Fn(Option<f32>, f32) -> f32) -> (f32, u32) {
+        let dt = 1.0 / 30.0;
+        let (mut t, mut latest, mut took) = (0.0f32, 0usize, None);
+        let mut due: Option<f32> = None;
+        let (mut can, mut frames, mut waited) = (0u32, 0u32, 0u32);
+        let mut clock = 0.0f32;
+        while latest < 40 {
+            clock += dt;
+            // the year asked for arrives
+            if due.is_some_and(|d| clock >= d) {
+                due = None;
+                latest += 1;
+                took = Some(sim_secs);
+            }
+            // the clock runs, and waits at the end of the newest year
+            let cap = latest as f32 + 0.999;
+            if t + dt * speed > cap {
+                waited += 1;
+            }
+            t = (t + dt * speed).min(cap);
+            if due.is_none() && t >= latest as f32 + 1.0 - lead(took, speed) {
+                due = Some(clock + sim_secs);
+            }
+            frames += 1;
+            can += (t.floor() as usize >= latest && due.is_none()) as u32;
+        }
+        (can as f32 / frames as f32, waited)
+    }
+
+    #[test]
+    fn orders_can_be_given_for_most_of_a_year_at_1x() {
+        // a year takes 0.3 s to work out (a debug build early in the century)
+        let (before, _) = play(0.5, 0.3, |_, _| 1.0);
+        let (after, waited) = play(0.5, 0.3, lead_years);
+        assert!(before < 0.05, "asking on entering the year left {before} of the frames for orders");
+        assert!(after > 0.65, "asking late leaves {after} of the frames for orders");
+        assert!(waited <= 2, "the clock stood waiting for {waited} frames");
+        // at 2x there is still half of each year
+        let (after, _) = play(1.0, 0.3, lead_years);
+        assert!(after > 0.4, "{after}");
     }
 }

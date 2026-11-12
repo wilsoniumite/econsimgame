@@ -29,6 +29,14 @@ impl Seed {
         Seed { u, v }
     }
 
+    /// A further number from 0 to 1 that follows from the pair: the `n`th
+    /// of as many as a thing needs, each unlike the others, for the choices
+    /// it must not make all alike (a house with a rear wing need not be the
+    /// one with a dormer).
+    pub fn pick(&self, n: i32) -> f32 {
+        hash2((self.u * 65_521.0) as i32, (self.v * 65_521.0) as i32, 1_000 + n)
+    }
+
     /// The pair for the `n`th of anything.
     pub fn of(n: u32) -> Seed {
         Seed { u: hash2(n as i32, 1, 77), v: hash2(n as i32, 2, 77) }

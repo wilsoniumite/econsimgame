@@ -24,12 +24,27 @@ pub struct Ground {
     pub farmyard: Colour,
     pub farmyard_edge: Colour,
     pub station_platform: Colour,
+    pub churchyard_grass: Colour,
     pub spoil_coal: Colour,
     pub spoil_ironstone: Colour,
     pub spoil_stone: Colour,
     pub spoil_clay: Colour,
     pub charcoal_clamp: Colour,
     pub charcoal_clamp_top: Colour,
+    pub yard_cinders: Colour,
+    pub yard_setts: Colour,
+    pub yard_earth: Colour,
+    pub shop_pavement: Colour,
+    pub charcoal_hearth: Colour,
+    pub yard_weeds: Colour,
+    pub clay_face: Colour,
+    pub clay_bottom: Colour,
+    pub slag: Colour,
+    pub furnace_bank: Colour,
+    pub garden: Colour,
+    pub garden_bed: Colour,
+    pub garden_path: Colour,
+    pub back_yard: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -43,8 +58,11 @@ pub struct Walls {
     pub station: Colour,
     pub market_hall: Colour,
     pub weaver_cottage: Colour,
+    pub shop_front: Colour,
     pub lighthouse_white: Colour,
     pub lighthouse_red: Colour,
+    pub window_frame: Colour,
+    pub door_paints: Vec<Colour>,
 }
 
 impl Walls {
@@ -64,12 +82,17 @@ impl Walls {
 pub struct Roofs {
     pub tile_red: Colour,
     pub tile_dark: Colour,
+    pub tile_orange: Colour,
     pub tile_farm: Colour,
     pub moss: Colour,
+    pub church_lead: Colour,
     pub barn: Colour,
     pub station_canopy: Colour,
     pub drying_shed: Colour,
     pub coke_ovens: Colour,
+    pub stone_slate: Colour,
+    pub awnings: Vec<Colour>,
+    pub chimney_pot: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -77,6 +100,8 @@ pub struct Roofs {
 pub struct Thatch {
     pub farmhouse: Colour,
     pub weaver_cottage: Colour,
+    pub cottage: Colour,
+    pub weathered: Colour,
     pub rick: Colour,
 }
 
@@ -85,6 +110,7 @@ pub struct Thatch {
 pub struct Slate {
     pub house: Colour,
     pub town: Colour,
+    pub stone: Colour,
     pub works: Colour,
     pub upland_farm: Colour,
     pub upland_barn: Colour,
@@ -99,17 +125,31 @@ pub struct Timber {
     pub headframe: Colour,
     pub barn_tarred: Colour,
     pub door: Colour,
+    pub fence: Colour,
+    pub planks: Colour,
+    pub logs: Colour,
+    pub waterwheel: Colour,
+    pub belfry_louvre: Colour,
+    pub house_frame: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Stone {
     pub church: Colour,
+    pub church_spire: Colour,
+    pub churchyard_wall: Colour,
+    pub gravestone: Colour,
     pub market_cross: Colour,
     pub works: Colour,
     pub shed: Colour,
+    pub yard_wall: Colour,
+    pub limestone: Colour,
     pub upland_farm: Vec<Colour>,
     pub upland_barn: Colour,
+    pub sill: Colour,
+    pub plinth: Colour,
+    pub garden_wall: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -137,6 +177,7 @@ impl Brick {
 pub struct Glass {
     pub window: Colour,
     pub mill_lit: Colour,
+    pub roof_light: Colour,
     pub lighthouse_lamp: Colour,
 }
 
@@ -145,16 +186,31 @@ pub struct Glass {
 pub struct Iron {
     pub winding_gear: Colour,
     pub converter: Colour,
+    pub plate: Colour,
+    pub glow: Colour,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Goods {
+    pub coal: Colour,
+    pub bales: Colour,
+    pub cloth: Colour,
+    pub bricks: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Foliage {
     pub trunk: Colour,
+    pub bare_limb: Colour,
     pub broadleaf: Vec<Colour>,
     pub conifer: Vec<Colour>,
+    pub yew: Colour,
     pub gorse: Colour,
     pub broom: Colour,
+    pub hedge: Colour,
+    pub vegetables: Colour,
     pub tint_winter: [f32; 3],
     pub tint_spring: [f32; 3],
     pub tint_summer: [f32; 3],
@@ -163,10 +219,13 @@ pub struct Foliage {
 
 impl Foliage {
     /// What the leaves are multiplied by at a phase of the year: 0 midwinter,
-    /// 0.25 spring, 0.5 summer, 0.75 autumn, and round to winter again.
+    /// 0.25 spring, summer from 0.4 to 0.66, autumn at 0.78, and round to
+    /// winter again. The leaves hold their summer green until late August
+    /// and turn in a few weeks.
     pub fn tint(&self, phase: f32) -> [f32; 3] {
-        let keys: [(f32, [f32; 3]); 5] = [(0.0, self.tint_winter), (0.25, self.tint_spring), (0.5, self.tint_summer), (0.75, self.tint_autumn), (1.0, self.tint_winter)];
-        let i = keys.iter().position(|k| k.0 > phase).unwrap_or(4).max(1);
+        let keys: [(f32, [f32; 3]); 6] =
+            [(0.0, self.tint_winter), (0.25, self.tint_spring), (0.4, self.tint_summer), (0.66, self.tint_summer), (0.78, self.tint_autumn), (1.0, self.tint_winter)];
+        let i = keys.iter().position(|k| k.0 > phase).unwrap_or(5).max(1);
         let (a, b) = (keys[i - 1], keys[i]);
         let t = ((phase - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
         [a.1[0] + (b.1[0] - a.1[0]) * t, a.1[1] + (b.1[1] - a.1[1]) * t, a.1[2] + (b.1[2] - a.1[2]) * t]
@@ -178,7 +237,18 @@ impl Foliage {
 pub struct Water {
     pub river: Colour,
     pub river_bank: Colour,
+    pub river_tint_winter: [f32; 3],
     pub sea_floor: Colour,
+}
+
+impl Water {
+    /// What the rivers are multiplied by at a phase of the year (0
+    /// midwinter, 0.5 midsummer): the winter tint in the depth of winter,
+    /// fading out by the end of February and in again from November.
+    pub fn river_tint(&self, phase: f32) -> [f32; 3] {
+        let winter = (((phase * std::f32::consts::TAU).cos() - 0.45) / 0.55).clamp(0.0, 1.0);
+        self.river_tint_winter.map(|t| 1.0 + (t - 1.0) * winter)
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -242,6 +312,7 @@ pub struct Marks {
     pub pole: Colour,
     pub finial: Colour,
     pub cloth_pale: Colour,
+    pub fence_timber: Colour,
     pub post_shade: Colour,
     pub peg: Colour,
     pub hover: Colour,
@@ -264,6 +335,7 @@ pub struct Palette {
     pub brick: Brick,
     pub glass: Glass,
     pub iron: Iron,
+    pub goods: Goods,
     pub foliage: Foliage,
     pub water: Water,
     pub smoke: Smoke,
@@ -280,13 +352,7 @@ const LOOK_FILE: &str = include_str!("../../isostate-viewer/assets/look.toml");
 impl Palette {
     /// The tables of the look file that are the palette's.
     pub const TABLES: &'static [&'static str] =
-        &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks"];
-
-    /// The roof of a separate house in town, by a number of its own: mostly
-    /// red tile, some slate, the odd one gone green.
-    pub fn house_roof(&self, u: f32) -> Rgba {
-        *[self.roofs.tile_red, self.slate.house, self.roofs.tile_red, self.roofs.moss, self.roofs.tile_dark][(u * 13.0) as usize % 5]
-    }
+        &["ground", "walls", "roofs", "thatch", "slate", "timber", "stone", "brick", "glass", "iron", "goods", "foliage", "water", "smoke", "rail", "bridges", "vehicles", "marks"];
 
     /// The walls of a shed in a works yard: brick of one sort or another, or stone.
     pub fn yard_shed_wall(&self, v: f32) -> Rgba {
@@ -321,6 +387,8 @@ impl Palette {
             ("foliage.conifer", &self.foliage.conifer),
             ("stone.upland_farm", &self.stone.upland_farm),
             ("vehicles.wagons", &self.vehicles.wagons),
+            ("roofs.awnings", &self.roofs.awnings),
+            ("walls.door_paints", &self.walls.door_paints),
         ] {
             if list.is_empty() {
                 return Err(format!("`{name}` needs at least one colour"));
@@ -342,7 +410,6 @@ mod tests {
         assert_eq!(pal.foliage.broadleaf.len(), 5);
         assert_eq!(pal.walls.town_house(0.0), *pal.walls.cream);
         assert_eq!(pal.walls.town_house(0.99), *pal.walls.cream);
-        assert_eq!(pal.house_roof(0.1), *pal.slate.house);
     }
 
     #[test]
@@ -370,6 +437,16 @@ mod tests {
     }
 
     #[test]
+    fn the_rivers_are_steel_in_midwinter_only() {
+        let w = Palette::standard().water;
+        assert_eq!(w.river_tint(0.0), w.river_tint_winter);
+        assert_eq!(w.river_tint(0.5), [1.0; 3]);
+        assert_eq!(w.river_tint(0.25), [1.0; 3]);
+        assert_eq!(w.river_tint(0.8), [1.0; 3]);
+        assert!(w.river_tint(0.95)[0] < 1.0 && w.river_tint(0.95)[0] > w.river_tint_winter[0]);
+    }
+
+    #[test]
     fn the_leaves_turn_through_the_year() {
         let f = Palette::standard().foliage;
         assert_eq!(f.tint(0.0), f.tint_winter);
@@ -377,5 +454,9 @@ mod tests {
         assert_eq!(f.tint(0.25), f.tint_spring);
         let between = f.tint(0.125);
         assert!((between[1] - (f.tint_winter[1] + f.tint_spring[1]) * 0.5).abs() < 1e-6);
+        // green through the summer, gold in October
+        assert_eq!(f.tint(0.64), f.tint_summer);
+        assert_eq!(f.tint(0.78), f.tint_autumn);
+        assert!(f.tint(0.72)[0] > 1.2 && f.tint(0.78)[0] > f.tint(0.78)[1] * 1.5);
     }
 }

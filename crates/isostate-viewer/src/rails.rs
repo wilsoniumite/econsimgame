@@ -280,12 +280,18 @@ fn build_year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RailYear 
 
 static CACHE: Mutex<Option<(u64, Arc<RailYear>)>> = Mutex::new(None);
 
+/// A number for the railways of year k that is the same in two years with the
+/// same network: the track laid and being laid, cell by cell (so a live
+/// game's new year is noticed too).
+pub fn key(r: &Replay, k: usize) -> u64 {
+    r.trans[k * r.n..(k + 1) * r.n].iter().fold(1469598103934665603u64, |h, &b| (h ^ (b & 12) as u64).wrapping_mul(1099511628211))
+}
+
 /// The railways of year k. They are worked out once and kept for as long as
 /// the network stays the same, which it does for most years, so stepping
 /// through the years does not grade the lines again.
 pub fn year(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Arc<RailYear> {
-    // the track laid and being laid, cell by cell (a live game's new year is noticed too)
-    let key = r.trans[k * r.n..(k + 1) * r.n].iter().fold(1469598103934665603u64, |h, &b| (h ^ (b & 12) as u64).wrapping_mul(1099511628211));
+    let key = key(r, k);
     let mut c = CACHE.lock().unwrap();
     if let Some((ckey, ry)) = c.as_ref() {
         if *ckey == key {
