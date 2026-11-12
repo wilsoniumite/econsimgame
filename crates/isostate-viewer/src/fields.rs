@@ -37,6 +37,9 @@ pub const TURN_S: f32 = 0.324_043_6;
 pub const PARCEL_LEVEL: u32 = 3;
 /// The most cuts a field can have.
 pub const MAX_DEPTH: u32 = 6;
+/// The cuts from this level on are the plots the ground shader cuts a town's
+/// built-up ground into (`town` in terrain.wesl): no field or close is cut so deep.
+pub const PLOT_LEVEL: u32 = 7;
 
 pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
@@ -167,7 +170,10 @@ pub fn cut(bl: &Block, from: Cut, level: u32, depth: u32) -> Cut {
         let ey = (c.hi.y - c.lo.y) * lv;
         let k = hash3(bi, bj.wrapping_add(c.id.wrapping_mul(7919)), 160 + lvl);
         let mut along_u = ex >= ey;
-        if strips && lvl >= PARCEL_LEVEL {
+        if lvl >= PLOT_LEVEL {
+            // the plots of a town's built-up ground, which only the shader cuts: always
+            // across the longer side, so that a strip is cut into plots and not slivers
+        } else if strips && lvl >= PARCEL_LEVEL {
             along_u = strip_u;
         } else if k < 0.12 {
             along_u = !along_u;

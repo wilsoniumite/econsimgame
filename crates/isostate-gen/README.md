@@ -28,6 +28,8 @@ pub struct Cottage {
     pub era: Era,
     pub upland: bool,
     pub neighbours: (bool, bool),
+    pub street: Street,
+    pub raised: Option<Era>,
     pub detail: Detail,
     pub seed: Seed,
 }
@@ -335,6 +337,37 @@ What a house is handed, besides its plot, storeys, roof and seed:
 - **`neighbours`**: whether a house stands on the next plot to its left and
   right as it faces the street (verges, hips and dim side walls follow).
 - **`shop`** (a townhouse): `houses::shop_at(density, seed)` says where.
+- **`street`** (`houses::Street`): the two numbers the houses of one street
+  share, from which a street has a family and habits. The family: half a
+  street's houses take the street's wash, brick or stone and its tint of
+  tile, a quarter the next one along, a quarter their own; and the street
+  leans to brick or to wash (in the hills to bare stone or limewash, among
+  the oldest to frames or plaster), so a few streets are nearly all of one
+  and most are mixed. The habits are forms that are common in one street
+  and not seen in the next: a cottage end-on, its gable to the street,
+  running back down its plot (built before 1815, on the narrower plots); a
+  cross-wing or four bays on a plot of 0.056 or more; a roof hipped at both
+  ends; rooms in the roof under small gables on the eaves; a stack in the
+  middle of the ridge or at both ends; a townhouse's two or three bays by
+  its plot's width; a row hipped at its open ends. A house told nothing of
+  its street (`Street::ALONE`) chooses every colour for itself and takes
+  none of the habits.
+- **`raised`** (a cottage) and **`fronted`** (a townhouse): the age in
+  which it was raised a storey, or given a new front. Where that is later
+  than its own age the later work shows: brick over wash and sashes over
+  casements on the cottage (a framed one raised from 1815 on keeps its
+  frame below and has none above); a front of brick or stucco with a
+  parapet on the townhouse, its old sides and roof behind. `None` for a
+  house as it was built.
+
+**A house told nothing new is the house it was.** `tests/houses_as_told.rs`
+builds some thousands of houses of each kind at each level of detail with
+`street: Street::ALONE`, `raised: None` and `fronted: None` (what the `new`
+constructors give) and holds the sum of every corner, facing, colour and
+triangle to what the generators gave before houses were told of their
+streets. So a change to the houses' look arrives only through something the
+layout knows and tells, and a field added later should keep to that: give
+it a value that means "told nothing", and leave the sums as they are.
 - **`detail`** (`Detail::Far`, `Play`, `Near`): how much of it to draw. Far:
   walls and roof (a cottage is 14 triangles). Play: openings as flat panels,
   stacks, wings, outshuts, the colour of the garden (about 70). Near:
@@ -361,7 +394,13 @@ makes for itself from `seed.pick(n)`, a different `n` for each.
 The sheets: `cottages`, `cottages-eras`, `townhouses`, `townhouses-eras`,
 `terraces`, `terraces-slope` (the ground is built too, as a bank), `villas`,
 `house-backs` (seen from their yards), `house-levels` (the three levels
-side by side, with their triangles), `roofs`, `farmsteads`; and the scenes
+side by side, with their triangles), `roofs`, `farmsteads`; `seeds-cottages`,
+`seeds-townhouses`, `seeds-terraces`, `seeds-villas` and `seeds-farmhouses`
+(twenty-four seeds of one kind with all else held, to count what a seed
+alone changes); `streets-cottages`, `streets-wide`, `streets-old`,
+`streets-townhouses` and `streets-terraces` (the same houses told nothing
+of their street in the first row and standing in a street of a family in
+each row below: what a street tells them); and the scenes
 `street` and `market` (each picture at the level the game draws from its
 distance, as every sheet's is), and `street-play`, `street-far` and
 `market-play` (one level in every picture, to see it close up).
