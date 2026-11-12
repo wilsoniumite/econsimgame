@@ -138,14 +138,22 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
 // keeps its ground while its buildings stand (`STANDS_CLOSED` years: cold,
 // then derelict) and then gives it up to those founded after. Nothing moves from year to
 // year, and a works founded later never moves one that stands. In a live game the future is not known: when a works
-// outgrows the ground set aside for it, its cell is laid out again, and its
-// younger neighbours may move.
+// is new, or outgrows the ground set aside for it, its cell is laid out
+// again. The works that still fit their ground keep it as it is; the one
+// that outgrew its ground stays where it stands if its bigger plot fits
+// there, and otherwise is found another spot (`lay_out`, `Held`).
 //
-// A cell with more works than it has room for: a works that finds no spot is
+// A yard is level (`works::site`), so a plot is not given ground that rises
+// more than a storey and a half across it (`Room::rise`), and each works
+// stands at the height of the highest land under its plot
+// (`Slots::firm_level`), behind a retaining wall where the land falls away.
+//
+// A cell with more works than it has room for, or none level enough: a works that finds no spot is
 // tried at seven tenths of the size, and again, down to the smallest; it is then
 // drawn no bigger than fits (`Slots::firm_cap`). If the smallest finds no
 // spot either (a cell that is nearly all shore, river or road), it is tried
-// on a finer grid with less room to the water and none to the roads; then
+// on a finer grid with less room to the water and none to the roads, on
+// steeper ground; then
 // anywhere above the tide that no other yard has taken, wall to wall with
 // its neighbours; and only if that fails too does it stand on the cell's
 // highest land and overlap them. ISOSTATE_TIMING says how many of each
@@ -592,7 +600,8 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], tracks: &[T
             let ((x, z, yaw), (w, d)) = (slots.firm_pos[f], site::ground(kind, own));
             let q = quarter_of(yaw);
             let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
-            if fits(x, z, hx, hz, &lots, Room::Proper) {
+            // (with as little room as it was given when it first stood there, if need be)
+            if [Room::Proper, Room::Tight, Room::Any].into_iter().any(|room| fits(x, z, hx, hz, &lots, room)) {
                 found = Some((x, z, q));
             }
         }
