@@ -136,8 +136,77 @@ fn twice_the_money_at_the_start_is_twice_the_money_in_every_month() {
 #[test]
 fn the_issue_is_never_below_nothing() {
     // money that only grows cannot go below nothing (tr-money.md, section 2):
-    // every month's issue is a share of a positive total
-    let P = params(5, true, 6);
-    let (_, money) = money_by_month(&P, 3, 1.0);
+    // every month's issue is a share of a positive total. The machines' extreme
+    // setting is the case: in March 1766 island 7's machines become fifty times
+    // better, the households' income for the month is many times the money, and
+    // the port's count issues less than nothing every month after, until in
+    // October the money is below nothing and the check stops the island.
+    fn extreme(true_total: bool) -> Params {
+        let mut P = params(7, true_total, 6);
+        P.machines.quality_b = 2.0;
+        P.machines.quality_cap = 50.0;
+        P.machines.quality_Q0 = 0.0;
+        P.end_year = Some(1767);
+        P
+    }
+    let P = extreme(true);
+    let (_, money) = money_by_month(&P, 1767 - 1750 + 1, 1.0);
     assert!(money.windows(2).all(|w| w[1] > w[0]), "the money grows every month");
+    let port = sim::run_with(&extreme(false), game_content(), false, true);
+    assert!(port.is_err(), "the port's count takes island 7's money below nothing in 1766");
+}
+
+#[test]
+fn what_the_player_does_moves_money_between_purses_and_makes_none() {
+    // the player's family takes up a trade, and at the turn of each of its
+    // first three years founds a works and buys land: what it pays goes to other
+    // purses, so the money of every month is still the money the island began
+    // with grown at the rule's rate
+    let P = params(2, true, 6);
+    let C = game_content();
+    let (st, rngs) = init_state(&P, &C);
+    let m_init = econ::money_total(&st);
+    let mut sim = sim::start_from(&P, C, st, rngs);
+    let g = P.money.growth / 12.0;
+    let warm = 12 * P.warmup_years as i32;
+    let (mut founded, mut bought, mut k) = (0, 0, 0);
+    for _ in 0..3 {
+        // a trade other than the estates, so that there is a works to found
+        for d in families::pending(&sim.st, 0) {
+            let pick = d.options.iter().position(|o| matches!(o.choice, families::Choice::Trade { group } if group != families::Group::Estates));
+            let Sim { st, content, params, events, .. } = &mut sim;
+            let _ = families::decide(st, content, params, 0, d.id, pick.unwrap_or(d.default), events);
+        }
+        let seat = sim.st.families[0].seat;
+        let cells: Vec<usize> = (0..sim.st.N).filter(|&c| sim.st.catch[c] == seat as i64).collect();
+        let mut options: Vec<(f64, usize, usize)> = Vec::new();
+        for &c in &cells {
+            let Ok(opts) = families::site_options(&sim.st, &sim.content, &sim.params, 0, c) else { continue };
+            for o in opts {
+                if let (Ok(()), Ok(x)) = (&o.allowed, &o.sums) {
+                    options.push((x.capital_cost, o.method, c));
+                }
+            }
+        }
+        // the dearest works the family can pay for, so that a good part of its purse moves
+        options.retain(|o| o.0 <= sim.st.families[0].cash);
+        options.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let before = econ::money_total(&sim.st);
+        let Sim { st, content, params, events, year, .. } = &mut sim;
+        if options.iter().any(|&(_, m, c)| families::found_works(st, content, params, 0, m, c, *year, events).is_ok()) {
+            founded += 1;
+        }
+        if cells.iter().any(|&c| st.cell_owner[c] < 0 && families::buy_land(st, content, params, 0, c).is_ok()) {
+            bought += 1;
+        }
+        assert!(rel(econ::money_total(&sim.st), before) < 1e-12, "the orders made or lost money");
+        for month in 0..12 {
+            sim::run_month(&mut sim, month).expect("money is conserved every month");
+            k += 1;
+            let want = m_init * (1.0 + g).powi(warm + k);
+            assert!(rel(sim.st.money_now, want) < 1e-9, "month {k}: money {:.9e}, the rule says {want:.9e}", sim.st.money_now);
+        }
+        sim::end_year(&mut sim);
+    }
+    assert!(founded > 0 && bought > 0, "the case is gone: the family founded {founded} works and bought land {bought} times");
 }
