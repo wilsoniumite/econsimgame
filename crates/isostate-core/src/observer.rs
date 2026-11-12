@@ -496,6 +496,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
                 (false, true) => (format!("{label} shortage"), "supply has failed while buyers still want it"),
                 (false, false) => (format!("{label} slump"), "buyers have stopped buying"),
             };
+            // chronicle: grain that moved with the weather says so
+            let why = crate::chronicle::grain_reason(st, P, gname, up_q).unwrap_or(why);
             ob.last_alarm.insert(gname.to_string(), year);
             let text = format!(
                 "{label} output {} {} this year against a trend of {} a year, while prices {} {}: {why}.",
