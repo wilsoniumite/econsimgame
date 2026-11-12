@@ -78,16 +78,26 @@ impl Ran {
 
 /// Start the game with these arguments, keeping its saved games in `saves`.
 fn start(saves: &Path, args: &[&str]) -> Started {
+    start_told(saves, args, None)
+}
+
+/// `start`, with what ISOSTATE_WELCOME says (which of the opening card's
+/// buttons is pressed with nobody at the pointer).
+fn start_told(saves: &Path, args: &[&str], welcome: Option<&str>) -> Started {
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let logs = saves.parent().unwrap().join("said");
     std::fs::create_dir_all(&logs).unwrap();
     let (out, err) = (logs.join(format!("{n}.out.txt")), logs.join(format!("{n}.err.txt")));
-    let child = Command::new(env!("CARGO_BIN_EXE_isostate-viewer"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_isostate-viewer"));
+    match welcome {
+        Some(button) => cmd.env("ISOSTATE_WELCOME", button),
+        None => cmd.env_remove("ISOSTATE_WELCOME"),
+    };
+    let child = cmd
         .args(args)
         // never the player's own folder
         .env("ISOSTATE_SAVES", saves)
-        .env_remove("ISOSTATE_WELCOME")
         .env_remove("ISOSTATE_RESTARTED")
         .env_remove("ISOSTATE_HELP")
         .stdin(Stdio::null())
@@ -178,8 +188,31 @@ fn an_option_that_is_wrong_is_refused_in_one_sentence() {
     assert_eq!(refused(&ran, 2, "--families: ", "give a number in that range"), "--families: a game has from 1 to 30 families, not 500; give a number in that range");
     let ran = game(&saves, &["--families", "0"]);
     refused(&ran, 2, "--families: a game has from 1 to 30 families, not 0", "give a number in that range");
-    // a check that asks to write an autosave must name the folder (here it has, so this one is let by)
+    // every option that wants something after it, given nothing: one sentence, and no island made
+    for opt in ["--load", "--save", "--families", "--advance", "--seed", "--script", "--shot", "--view", "--describe", "--year", "--size", "--shots"] {
+        let ran = game(&saves, &[opt]);
+        refused(&ran, 2, &format!("{opt} needs "), " after it");
+    }
+    // and given what it cannot take
+    for (args, begins) in [
+        (&["--families", "six"][..], "--families: six is not a number it can take"),
+        (&["--families", "-1"], "--families: -1 is not a number it can take"),
+        (&["--advance", "-3"], "--advance: -3 is not a number it can take"),
+        (&["--advance", "99999999999999999999"], "--advance: 99999999999999999999 is not a number it can take"),
+        (&["--seed", "1e3"], "--seed: 1e3 is not a number it can take"),
+        (&["--script", "--new"], "--script: --new: not a step"),
+        (&["--loda", "x.json"], "--loda is not an option"),
+    ] {
+        let ran = game(&saves, args);
+        refused(&ran, 2, begins, "");
+    }
     assert!(!saves.exists(), "a refused start made the folder for saved games");
+    // as many years as can be counted is the whole game and not one more than can be: this once
+    // stopped the program where it stood (a family alone on the island, to be quick about it)
+    let ran = game(&saves, &["--advance", "18446744073709551615", "--families", "1", "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(ran.err.contains("nobody is at this game") && ran.err.contains("prepared the game"), "{}", ran.err);
+    assert!(!saves.exists(), "a run that only describes a square made the folder for saved games");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -224,6 +257,36 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
     let said = try_file("later.json", Some(whole.replace("\"format\": 2,", "\"format\": 9,")));
     assert!(said.contains("saved by a later version of the game (layout 9; this one reads up to 2)"), "{said}");
     try_file("not-there.json", None);
+    let said = try_file("empty.json", Some(String::new()));
+    assert!(said.contains("not a saved game: "), "{said}");
+    // a folder, and a file that is no text at all: said in the game's words, not the system's
+    std::fs::create_dir_all(dir.join("folder.json")).unwrap();
+    let said = try_file("folder.json", None);
+    assert!(said.contains("not a saved game: it is a folder, and a saved game is a file in one"), "{said}");
+    std::fs::write(dir.join("picture.json"), [0x89, b'P', b'N', b'G', 0xff, 0xfe, 0x00, 0x01]).unwrap();
+    let said = try_file("picture.json", None);
+    assert!(said.contains("not a saved game: it is not a file of text"), "{said}");
+    // orders that name what is not on the island (a square, a town, a works nobody knows, a member of
+    // the family who is not there) are refused one at a time, each said, and the rest of the game is played
+    let wild = dir.join("wild.json");
+    let orders = r#""orders": [
+    {"year":1750,"kind":"buy_land","cell":99999999},
+    {"year":1750,"kind":"buy_land","cell":18446744073709551615},
+    {"year":1750,"kind":"move_seat","town":4000},
+    {"year":1750,"kind":"found","method":"a works nobody knows","cell":18446744073709551615},
+    {"year":1750,"kind":"found","method":"a works nobody knows","cell":0},
+    {"year":1750,"kind":"post","member":77,"posting":{"kind":"manager","group":"iron","town":900}},
+    {"year":1750,"kind":"stance","group":"estates","town":12345,"stance":"grow"},
+    {"year":1750,"kind":"decide","id":18446744073709551615,"choice":{"kind":"head","member":999}},
+    {"year":-40,"kind":"move_seat","town":18446744073709551615},
+    {"year":1890,"kind":"move_seat","town":1}
+  ]"#;
+    assert!(whole.contains("\"orders\": []"), "{whole}");
+    std::fs::write(&wild, whole.replace("\"orders\": []", orders)).unwrap();
+    let back = game(&saves, &["--load", &text(&wild), "--describe", "30,30"]);
+    assert_eq!(back.code, Some(0), "{}", back.err);
+    assert_eq!(back.err.matches("could not be given again").count(), 10, "{}", back.err);
+    assert!(back.err.contains("back at the end of 1750") && back.err.contains("after the save's last year"), "{}", back.err);
     // and the save as the game wrote it is gone on with
     let back = game(&saves, &["--load", &text(&good), "--describe", "30,30"]);
     assert_eq!(back.code, Some(0), "{}", back.err);
@@ -358,10 +421,16 @@ fn a_file_that_cannot_be_read_is_set_aside_and_the_card_says_when_an_earlier_sav
     // is answered and two years are played
     let clear = "key:Escape;key:Escape;key:Escape;key:Escape";
     // (Space closes the opening card and leaves the first decision's card open behind it; Escape would put that off too)
-    let play = format!("key:Space;frames:3;decide:0;settle;{clear};click:To January;settle;{clear};click:To January;settle;{clear};print:on");
+    let play = format!("print:open;key:Space;frames:3;decide:0;settle;{clear};click:To January;settle;{clear};click:To January;settle;{clear};print:on");
     let ran = game(&saves, &["--keep", "--script", &play]);
     assert_eq!(ran.code, Some(0), "{}\n{}", ran.out, ran.err);
     assert!(ran.err.contains("a saved game could not be read: ") && ran.err.contains("making island 7 with 6 families"), "{}", ran.err);
+    // the new game's opening card says why it is a new game, and that the file is kept and under what name
+    let says = ran.line("script:   the welcome card says: ");
+    assert!(
+        says.contains(" | The saved game that was here could not be read, so this is a new one. That file is not written over: it is set aside as island-7-families-6.unread.json when this game is first saved, and the terminal says what is wrong with it. | Click anywhere to begin. The game saves itself as you play."),
+        "{says}"
+    );
     assert!(ran.printed("on").contains("newest year 1752") && !ran.out.contains("script: no click"), "{}", ran.out);
     // the file that could not be read is beside the save, whole, where the years cannot push it out
     assert_eq!(files(&saves), ["island-7-families-6.1.json", "island-7-families-6.2.json", "island-7-families-6.json", "island-7-families-6.json.lock", "island-7-families-6.unread.json"]);
@@ -466,5 +535,206 @@ fn a_whole_game_saved_left_and_loaded_again_lands_on_the_same_month_with_the_sam
     assert_eq!(again.1, ended.1, "the finished game came back with other holdings (it ended on {:?} and came back on {:?})", ended.0, again.0);
     assert_eq!(again.0, "1900");
     assert!(!saves.exists(), "games kept in named files, and scripts: nothing belongs in the folder of autosaves");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_save_in_the_first_layout_still_loads() {
+    let dir = scratch("first-layout");
+    let saves = dir.join("saves");
+    let (file, _) = a_played_game(&saves);
+    let whole = std::fs::read_to_string(&file).unwrap();
+    let now = Save::from_text(&whole).unwrap();
+    // as the game wrote it before the clock told the month: no months played, nothing waiting, layout 1
+    assert!(whole.contains("\"format\": 2,") && whole.contains("  \"month\": 0,\n") && whole.contains(",\n  \"waiting\": []\n"), "{whole}");
+    let first = whole.replace("\"format\": 2,", "\"format\": 1,").replace("  \"month\": 0,\n", "").replace(",\n  \"waiting\": []\n", "\n");
+    assert!(!first.contains("month") && !first.contains("waiting"), "{first}");
+    let old = dir.join("first-layout.json");
+    std::fs::write(&old, &first).unwrap();
+    // loaded, and saved at once in another file: the same year, the same orders, the same island to the last digit
+    let again = dir.join("again.json");
+    let ran = game(&saves, &["--load", &text(&old), "--save", &text(&again), "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(ran.err.contains(&format!("playing 3 years again, with {} orders", now.orders.len())) && ran.err.contains("back at the end of 1752"), "{}", ran.err);
+    assert!(!ran.err.contains("does not stand quite as it was saved") && !ran.err.contains("could not be given again") && !ran.err.contains("saved under other rules"), "{}", ran.err);
+    let back = Save::from_text(&std::fs::read_to_string(&again).unwrap()).unwrap();
+    assert_eq!((back.format, back.year, back.month, &back.check, &back.orders, back.waiting.len(), back.started), (2, now.year, 0, &now.check, &now.orders, 0, now.started));
+    // and the file in the first layout is as it was
+    assert_eq!(std::fs::read_to_string(&old).unwrap(), first);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_game_begun_where_another_is_kept_says_what_becomes_of_that_one() {
+    let dir = scratch("said-aside");
+    let saves = dir.join("saves");
+    let (file, played) = a_played_game(&saves);
+    let orders = Save::from_text(&String::from_utf8_lossy(&played)).unwrap().orders.len();
+    let previous = saves.join("island-7-families-6.previous.json");
+    // a new game in the played one's place: said before anything is written, and then done
+    let ran = game(&saves, &["--new", "--save", &text(&file), "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    let said = ran.said();
+    let told = said.iter().position(|l| l.starts_with("another game is kept there")).unwrap_or_else(|| panic!("nothing was said of the played game:\n{}", ran.err));
+    assert_eq!(
+        said[told],
+        format!(
+            "another game is kept there (the Fairfax family's, which had reached 1752 with {orders} orders): it is not written over, but set aside whole as {} when this game is first saved (--load FILE goes on with it)",
+            previous.display()
+        )
+    );
+    assert!(said.iter().position(|l| l.starts_with("saved in 1750: ")).is_some_and(|saved| saved > told), "{}", ran.err);
+    assert_eq!(std::fs::read(&previous).unwrap(), played);
+    assert_eq!(Save::from_text(&std::fs::read_to_string(&file).unwrap()).unwrap().year, 1750);
+    // a new game over that one, which nobody gave an order in: it is written over, and that is said too
+    let ran = game(&saves, &["--new", "--save", &text(&file), "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(
+        ran.err.contains("another game is kept there (the Fairfax family's, which had reached 1750 with 0 orders): nobody gave an order in it, so it is written over when this game is first saved, and the same island makes it again"),
+        "{}",
+        ran.err
+    );
+    assert_eq!(std::fs::read(&previous).unwrap(), played, "the played game set aside was moved by a game with no orders");
+    assert!(!saves.join("island-7-families-6.previous.2.json").exists());
+    // and the game that is there, gone on with, has nothing of the kind said of it
+    let ran = game(&saves, &["--load", &text(&file), "--save", &text(&file), "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(!ran.err.contains("another game is kept there"), "{}", ran.err);
+    // the played game is gone on with by naming it, and takes its place back; the one it finds there has no orders
+    let ran = game(&saves, &["--load", &text(&previous), "--save", &text(&file), "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(ran.err.contains("back at the end of 1752") && ran.err.contains("nobody gave an order in it, so it is written over"), "{}", ran.err);
+    let back = Save::from_text(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let was = Save::from_text(&String::from_utf8_lossy(&played)).unwrap();
+    assert_eq!((back.year, &back.orders, &back.check, back.started), (was.year, &was.orders, &was.check, was.started));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore = "takes pictures, which needs a graphics adapter: run with -- --ignored --test-threads 1"]
+fn runs_that_take_pictures_leave_the_played_game_alone() {
+    let dir = scratch("pictures");
+    let saves = dir.join("saves");
+    let (file, played) = a_played_game(&saves);
+    let beside = files(&saves);
+    let pictures = dir.join("pictures");
+    let (one, two, three, sheet) = (pictures.join("one.png"), pictures.join("two.png"), pictures.join("three.png"), pictures.join("sheet"));
+    let view = format!("{},,30,30,0,55,40", text(&three));
+    // every kind of start that takes pictures, on the island the played game is of, with and without years
+    // played first and the demo's orders: none is kept, and none goes on with the played game
+    for (args, picture) in [
+        (&["--shot", &text(&one)][..], one.clone()),
+        (&["--advance", "3", "--demo", "--shot", &text(&two)], two.clone()),
+        (&["--new", "--advance", "2", "--view", &view], three.clone()),
+        (&["--shots", &text(&sheet)], sheet.join("index.html")),
+    ] {
+        let ran = start(&saves, args).end(280.0);
+        assert_eq!(ran.code, Some(0), "{args:?}\n{}", ran.err);
+        assert!(ran.err.contains("nobody is at this game (it takes pictures or is played by a script), so it is not kept and no saved game is written over (--save FILE keeps it)"), "{args:?}\n{}", ran.err);
+        assert!(!ran.err.contains("going on with"), "{args:?}: a run that takes pictures went on with the played game\n{}", ran.err);
+        assert!(picture.exists(), "{args:?} took no picture");
+        assert_eq!(std::fs::read(&file).unwrap(), played, "{args:?} wrote where the played game is kept");
+        assert_eq!(files(&saves), beside, "{args:?} left something among the saved games");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore = "takes a picture, which needs a graphics adapter: run with -- --ignored --test-threads 1"]
+fn new_game_hands_the_place_over_to_the_copy_it_starts() {
+    let dir = scratch("handed-over");
+    let saves = dir.join("saves");
+    let (file, played) = a_played_game(&saves);
+    let picture = dir.join("new-game.png");
+    // the played game is gone on with and kept as the island's own, so this copy holds its place; the
+    // opening card's New game is pressed (ISOSTATE_WELCOME=new: nobody is at the pointer), which starts
+    // the program again and leaves. The copy it starts says what it does in the same place as this one.
+    let first = start_told(&saves, &["--load", &text(&file), "--keep", "--shot", &text(&picture)], Some("new"));
+    let err = first.err.clone();
+    let ran = first.end(120.0);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(ran.err.contains("the game is kept in ") && ran.err.contains("pressing the card's button, as ISOSTATE_WELCOME asks") && ran.err.contains("starting again on a new game"), "{}", ran.err);
+    // the new copy waited for the old one to let go of the place and took it: it is not refused as a second copy
+    let said = || String::from_utf8_lossy(&std::fs::read(&err).unwrap_or_default()).into_owned();
+    let new_copy = |all: &str| all.split("starting again on a new game").nth(1).unwrap_or_default().to_string();
+    let t0 = Instant::now();
+    while !new_copy(&said()).contains("the game is kept in ") {
+        assert!(!said().contains("another copy of the game is open"), "the new game was kept out by the copy that started it:\n{}", said());
+        assert!(t0.elapsed().as_secs() < 60, "the new game did not start:\n{}", said());
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(new_copy(&said()).contains("making island 7 with 6 families"), "{}", said());
+    // it takes its picture and ends, and lets go of the place in its turn (a lock that is held cannot be read)
+    let lock = saves.join("island-7-families-6.json.lock");
+    while !picture.exists() || std::fs::read(&lock).is_err() {
+        assert!(t0.elapsed().as_secs() < 240, "the new game did not end:\n{}", said());
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    // nothing has happened in the new game, so nothing is written yet: the played game is as it was
+    assert_eq!(std::fs::read(&file).unwrap(), played);
+    assert_eq!(files(&saves), ["island-7-families-6.json", "island-7-families-6.json.lock"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore = "plays the game with --script, which needs a graphics adapter: run with -- --ignored --test-threads 1"]
+fn a_game_killed_a_dozen_times_as_it_plays_is_gone_on_with_each_time() {
+    let dir = scratch("killed");
+    let saves = dir.join("saves");
+    let file = saves.join("island-7-families-6.json");
+    let read = |p: &Path| Save::from_text(&std::fs::read_to_string(p).map_err(|e| e.to_string())?);
+    let clear = "key:Escape;key:Escape;key:Escape;key:Escape";
+    // the first copy begins the game and answers its first decision; every copy then runs the clock at
+    // its fastest, answering what comes up, until it is killed where it stands
+    let begin = format!("key:Space;frames:3;decide:0;settle;{clear};click:Fastest;run:900");
+    let go_on = format!("{clear};click:Fastest;run:900");
+    let mut last: Option<Save> = None;
+    for round in 0..12u64 {
+        let copy = start(&saves, &["--keep", "--script", if round == 0 { &begin } else { &go_on }]);
+        // it is playing when its save has moved on from where the last copy left it
+        let t0 = Instant::now();
+        loop {
+            let now = read(&file).ok();
+            if now.as_ref().is_some_and(|now| last.as_ref().is_none_or(|l| (now.year, now.orders.len()) > (l.year, l.orders.len()))) {
+                break;
+            }
+            let said = copy.said_so_far();
+            assert!(!said.contains("another copy of the game is open"), "round {round}: the copy killed before this one kept it out:\n{said}");
+            assert!(t0.elapsed().as_secs() < 200, "round {round}: the game did not get going:\n{said}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // some way into a year, or into its turn, or into the save of it: a different moment each round
+        std::thread::sleep(Duration::from_millis(150 + round * 137 % 900));
+        let said = copy.said_so_far();
+        copy.crash();
+        if round > 0 {
+            assert!(said.contains("going on with the") && !said.contains("the latest save could not be read") && !said.contains("does not stand quite as it was saved") && !said.contains("could not be given again"), "round {round}:\n{said}");
+        }
+        // the latest is whole, the same game, and no further back than it had been seen; so are the years kept beside it
+        let now = read(&file).unwrap_or_else(|e| panic!("round {round}: there is no latest save ({e})"));
+        if let Some(l) = &last {
+            assert_eq!(now.started, l.started, "round {round}: another game is in its place");
+            assert!((now.year, now.month) >= (l.year, l.month) && now.orders.len() >= l.orders.len(), "round {round}: the game went back, from {} {} with {} orders to {} {} with {}", l.year, l.month, l.orders.len(), now.year, now.month, now.orders.len());
+        }
+        for name in files(&saves) {
+            let known = ["island-7-families-6.json", "island-7-families-6.1.json", "island-7-families-6.2.json", "island-7-families-6.3.json", "island-7-families-6.json.lock", "island-7-families-6.writing.json", "island-7-families-6.1.copying.json"];
+            assert!(known.contains(&name.as_str()), "round {round}: {name} is among the saved games");
+            if name.ends_with(".json") && !name.contains("writing") && !name.contains("copying") {
+                let year = read(&saves.join(&name)).unwrap_or_else(|e| panic!("round {round}: {name} is not whole ({e})"));
+                assert_eq!(year.started, now.started);
+            }
+        }
+        last = Some(now);
+    }
+    // a dozen copies on, the game is some years in with orders in it, and what is left loads to the
+    // island as it was saved, to the last digit
+    let last = last.unwrap();
+    assert!(last.year >= 1755 && !last.orders.is_empty(), "the game got no further than {} with {} orders", last.year, last.orders.len());
+    let again = dir.join("again.json");
+    let ran = game(&saves, &["--load", &text(&file), "--save", &text(&again), "--describe", "30,30"]);
+    assert_eq!(ran.code, Some(0), "{}", ran.err);
+    assert!(!ran.err.contains("does not stand quite as it was saved") && !ran.err.contains("could not be given again"), "{}", ran.err);
+    let back = read(&again).unwrap();
+    assert_eq!((back.year, back.month, &back.check, &back.orders, &back.waiting), (last.year, last.month, &last.check, &last.orders, &last.waiting));
     let _ = std::fs::remove_dir_all(&dir);
 }
