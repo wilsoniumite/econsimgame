@@ -1052,17 +1052,13 @@ mod tests {
     }
 
     /// (task A) The made-up town under the port's rules is drawn as it was
-    /// before the towns kept their ground. The figures were first those of
-    /// the same town built from the code as it stood before the task, where
-    /// this test was run with the three layers left out of `made_up`. They
-    /// were taken again when the wood edges, the mines and the railways'
-    /// levels were merged in (main at 590ec00), which move the farmsteads
-    /// that are counted with the houses; that the towns of a port run were
-    /// not moved by the task was checked then on a recorded run (island 7 to
-    /// 1800), whose houses, works, trees, lanes and roads had the fingerprints
-    /// main gives them (`ISOSTATE_MESH_SUMS`) in every year looked at. Its
-    /// ground is drawn as it was too: every parcel of town built up whole,
-    /// and the shader told nothing.
+    /// before the towns kept their ground: the figures are those of the same
+    /// town built from the code without the task (main at 590ec00), where
+    /// this test was run with the three layers left out of `made_up`. A
+    /// recorded port run (island 7 to 1800) agrees: its houses, works,
+    /// trees, lanes and roads have the fingerprints main gives them
+    /// (`ISOSTATE_MESH_SUMS`). Its ground is drawn as it was too: every
+    /// parcel of town built up whole, and the shader told nothing.
     #[test]
     fn a_run_under_the_port_s_rules_is_drawn_as_it_was() {
         let r = made_up(false);
