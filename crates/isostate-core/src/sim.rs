@@ -510,10 +510,12 @@ pub fn notable_closures(st: &State, C: &Content, _P: &Params, closed: &[usize], 
             0.4,
             title,
             format!(
-                "The {} near {}, open since {}, can no longer cover its costs.",
+                "The {} near {}, open since {}{}, can no longer cover its costs.",
                 C.method_label[st.f_method[fid]].to_lowercase(),
                 st.town_name[i],
-                st.f_born[fid]
+                st.f_born[fid],
+                // chronicle: a works named after another town says why (nothing while it is off)
+                crate::chronicle::named_when(st, C, _P, fid, i)
             ),
         );
         ev.town = Some(i);
