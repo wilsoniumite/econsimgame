@@ -548,6 +548,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             w[t] = 0.0;
         }
     }
+    // hands (docs/rules/hands.md): a town still short of hands at the month's
+    // highest wage is held at that wage, and below its employers are cut to the
+    // hands it has (no town is short, and nothing is asked, while the rule is off)
+    let short = crate::hands::short_towns(st, P, &hi, &supply, &|t, x| town_demand(t, x, false).0, &mut w);
     // final demand at the clearing wage, unit by unit. Python evaluates
     // lam * (Cc / w)^(1/alpha); lam * Cc^(1/alpha) * w^(-1/alpha) is the same number
     // (to an ulp or two) and reuses the power already taken for the bisection.
@@ -558,7 +562,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             wpow[t * NS + s] = wq[t].powf(-sector_inv_alpha[s]);
         }
     }
-    let Lex: Vec<f64> = (0..NE)
+    let mut Lex: Vec<f64> = (0..NE)
         .map(|u| (Lprev_ex[u] + kx * (x_pow[u] * wpow[et[u] * NS + sec[u]] - Lprev_ex[u])).max(0.0))
         .collect();
     let mut Lf = vec![0.0; NFI];
@@ -568,6 +572,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         Lf[i] = x;
         ufirm[i] = u;
     }
+    // hands: every employer of a short town gets the same share of what it asked
+    // for, and carries into next month what it got
+    crate::hands::ration(&short, &supply, &et, &ft, &mut Lex, &mut Lf);
     st.ex_Lprev = Lex.clone();
     // Python: A * f * lam**alpha * Lex**(1 - alpha). lam > 0 on every unit, so
     // lam * (Lex / lam)**(1 - alpha) is the same number with one power instead of two.

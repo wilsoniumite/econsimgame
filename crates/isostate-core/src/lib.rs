@@ -35,6 +35,7 @@ pub mod engel;
 pub mod facts;
 pub mod families;
 pub mod firms;
+pub mod hands;
 pub mod harvest;
 pub mod land;
 pub mod landcells;

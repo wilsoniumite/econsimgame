@@ -523,6 +523,11 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **hands**: a town cannot hire hands it does not have. When even the
+  highest wage the month allows leaves more hands wanted than the town has
+  to spare, the wage stays there and every employer in the town is cut by
+  the same share to the hands there are, and carries forward what it got.
+  [hands.md](hands.md), `hands.ration`.
 - **money**: the month's new money is reckoned on all the money there is
   when the month begins, at 0.0175 a year, so that it grows 1.764 per cent a
   year on every island, the rate today's islands had, where the port's count

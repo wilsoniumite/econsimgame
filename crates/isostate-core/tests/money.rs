@@ -140,9 +140,13 @@ fn the_issue_is_never_below_nothing() {
     // setting is the case: in March 1766 island 7's machines become fifty times
     // better, the households' income for the month is many times the money, and
     // the port's count issues less than nothing every month after, until in
-    // October the money is below nothing and the check stops the island.
+    // October the money is below nothing and the check stops the island. The
+    // mines' wages that make that income run away only while a town may hire
+    // hands it does not have, so the case is held with `hands.ration` off
+    // (docs/rules/hands.md closes it from the other side).
     fn extreme(true_total: bool) -> Params {
         let mut P = params(7, true_total, 6);
+        P.hands.ration = false;
         P.machines.quality_b = 2.0;
         P.machines.quality_cap = 50.0;
         P.machines.quality_Q0 = 0.0;

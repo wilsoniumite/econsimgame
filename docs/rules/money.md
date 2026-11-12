@@ -62,7 +62,10 @@ then still passes, being about the switch itself, and the other five fail.
 - the issue is never below nothing, on the case that went below it: island 7
   under the machines' extreme setting (`quality_b` 2, `quality_cap` 50,
   `quality_Q0` 0), whose money grows every month to 1767 under the rule,
-  where the port's count takes it below nothing in 1766 and the run stops;
+  where the port's count takes it below nothing in 1766 and the run stops.
+  The case is held with `hands.ration` off: the mines' wages that make the
+  month's income many times the money run away only while a town may hire
+  hands it does not have, so with stage 2 on the port's count survives it;
 - what the player does makes no money: the family takes up a trade, and at
   the turn of each of its first three years founds the dearest works it can
   pay for at its seat and buys land, and the money of every month is still
