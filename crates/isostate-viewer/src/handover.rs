@@ -216,9 +216,9 @@ pub struct HandOver {
     queue: VecDeque<Piece>,
     /// the year the queue is of
     year: Option<usize>,
-    /// the run moved on under the queue's year while it was going out: it is
-    /// on screen, but not to be called built
-    stale: bool,
+    /// the state of the run its build was made from (`Shown::run`: how many
+    /// years the run held), to be set beside the run's when the last has gone
+    run: u32,
     /// nothing goes in this frame (`hold`)
     held: bool,
     pub budget: Budget,
@@ -232,7 +232,7 @@ pub struct HandOver {
 
 impl HandOver {
     pub fn new(pace: Pace) -> HandOver {
-        HandOver { queue: VecDeque::new(), year: None, stale: false, held: false, budget: Budget::new(pace), began: None, sent: (0, 0), on_screen: default() }
+        HandOver { queue: VecDeque::new(), year: None, run: 0, held: false, budget: Budget::new(pace), began: None, sent: (0, 0), on_screen: default() }
     }
 
     /// Nothing is waiting: the year last queued is on screen whole.
@@ -262,20 +262,28 @@ impl HandOver {
         self.queue.iter().map(name).collect::<Vec<_>>().join(", ")
     }
 
-    /// Queue a finished build's meshes for year `k`, in the order they are to go.
-    pub fn fill(&mut self, k: usize, pieces: Vec<Piece>) {
+    /// Queue a finished build's meshes for year `k`, built from the run as it
+    /// stood at `run` (how many years it held), in the order they are to go.
+    pub fn fill(&mut self, k: usize, run: u32, pieces: Vec<Piece>) {
         debug_assert!(self.queue.is_empty(), "a build was begun while the last was still going out");
         let bytes = pieces.iter().map(|p| p.bytes).sum();
         self.began = Some((std::time::Instant::now(), pieces.len(), bytes));
         self.queue.extend(pieces);
         self.year = Some(k);
-        self.stale = false;
+        self.run = run;
     }
 
-    /// The run has changed under the year that is going out (a live game's
-    /// year arrived for it): what is on its way is of the run as it was.
-    pub fn outdated(&mut self) {
-        self.stale = true;
+    /// The last of the queue has gone: the year it was of, if it may be called
+    /// built. It may not when a year arrived for that very year after its build
+    /// began (the run now holds `run` years, of which `latest` is the newest):
+    /// what went on screen is of the run as it was, and the year is built
+    /// again. This is asked when the queue empties, of the run as it is then,
+    /// so it does not hang on which system noticed the year arriving first.
+    /// (In today's game the clock never stands in a year that has not arrived,
+    /// and each year arrives once, so this does not happen; it is a guard.)
+    fn finished(&mut self, run: u32, latest: usize) -> Option<usize> {
+        let k = self.year.take()?;
+        (run == self.run || k != latest).then_some(k)
     }
 
     /// Let no mesh go in this frame, which has work enough of its own: the
@@ -312,13 +320,14 @@ pub fn feed(mut hand: ResMut<HandOver>, mut tl: ResMut<Timeline>, data: Res<crat
         }
     }
     if go > 0 && hand.queue.is_empty() {
-        if let Some(k) = hand.year.take() {
-            if !hand.stale {
-                tl.built = Some(k);
-            }
-            if let (Some((began, n, bytes)), true) = (hand.began.take(), crate::timing()) {
-                eprintln!("  year {} on screen: its {n} meshes ({:.0} MB) went to the renderer over {:.0} ms, at {:.0} MB a second by the end", data.r.y0 + k as i32, bytes as f32 / 1e6, began.elapsed().as_secs_f32() * 1e3, hand.budget.rate / 1e6);
-            }
+        let k = hand.year;
+        match hand.finished(data.r.filled as u32, data.latest()) {
+            Some(k) => tl.built = Some(k),
+            None if k.is_some() && crate::timing() => eprintln!("  the year that went on screen was built from the run before its own year arrived: it is built again"),
+            None => {}
+        }
+        if let (Some(k), Some((began, n, bytes)), true) = (k, hand.began.take(), crate::timing()) {
+            eprintln!("  year {} on screen: its {n} meshes ({:.0} MB) went to the renderer over {:.0} ms, at {:.0} MB a second by the end", data.r.y0 + k as i32, bytes as f32 / 1e6, began.elapsed().as_secs_f32() * 1e3, hand.budget.rate / 1e6);
         }
     }
 }
@@ -473,6 +482,28 @@ mod tests {
         // stills take no notice
         let mut b = Budget::new(Pace::Whole);
         assert_eq!(b.frame(0.0, &[10 * MB, 4 * MB], true), 2);
+    }
+
+    #[test]
+    fn a_year_whose_own_year_arrived_after_its_build_began_is_not_counted_built() {
+        let piece = || Piece { handle: Handle::default(), mesh: Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, bevy::asset::RenderAssetUsages::RENDER_WORLD), bytes: 120, print: None };
+        let mut hand = HandOver::new(Pace::Budget);
+        // a year queued and let go (as `feed` does), then asked about with the run as it then is
+        let mut out = |k: usize, built_from: u32, run: u32, latest: usize| {
+            hand.fill(k, built_from, vec![piece()]);
+            hand.queue.clear();
+            hand.finished(run, latest)
+        };
+        // year 6 built while the run held seven years (0 to 6): the run as it was when it went out
+        assert_eq!(out(6, 7, 7, 6), Some(6));
+        // year 6 built from a run that held six years (0 to 5), and year 6 came in while it was
+        // built or went out: what went on screen is of the run before its own year, and it is
+        // built again
+        assert_eq!(out(6, 6, 7, 6), None);
+        // a year arriving that is not the one going out leaves it as it was
+        assert_eq!(out(5, 6, 7, 6), Some(5));
+        // and a year is counted once
+        assert_eq!(hand.finished(7, 6), None);
     }
 
     #[test]

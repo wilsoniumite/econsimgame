@@ -160,7 +160,9 @@ pub fn plugin(app: &mut App) {
         .add_systems(
             Update,
             (
-                pump,
+                // (a year is written into the run before its scenery is looked at and handed over:
+                // see `year_systems`)
+                pump.before(crate::rebuild_year),
                 settle,
                 drive,
                 ask_site,
@@ -278,7 +280,7 @@ fn months_into_run(game: &mut Game, data: &mut Data, ui: &mut UiState) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn pump(
+pub(crate) fn pump(
     mut live: ResMut<Live>,
     mut data: ResMut<Data>,
     mut fam: ResMut<FamilyView>,

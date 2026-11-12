@@ -935,8 +935,8 @@ fn main() {
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
         .add_plugins(carts::plugin)
-        .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain())
-        .add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, handover::feed, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
+        .add_systems(Startup, (setup_world, setup_ui, icons::setup).chain());
+    year_systems(&mut app);
     // the seasons' clock is read by the ground, the trees, the sun and the date alike
     app.add_systems(Update, season_clock.after(advance_time).before(seasons));
     // which of the trees' meshes show is settled in one place, by the season and the map view together
@@ -1012,6 +1012,20 @@ struct ShotPlanArgs {
     wait: f32,
     default_dist: f32,
     default_look: (f32, f32),
+}
+
+/// The game's own systems in `Update`, in the order they run. A year comes
+/// from the simulation in `game::pump`, which writes it into the run, and goes
+/// on screen through `rebuild_year`, which queues its build, and
+/// `handover::feed`, which lets the queue go a mesh at a time. The pump runs
+/// first, so that the frame a year arrives in is the frame `rebuild_year`
+/// notices it in and holds the hand-over back (`HandOver::hold`), and so that
+/// a year cannot be written in between the feed's last mesh and the next look.
+/// That order is set where the pump is added (`game::plugin`); before, it held
+/// only by way of `game::next_clicks`, which comes after the pump in its chain
+/// and runs before `time_input`. A test holds it.
+fn year_systems(app: &mut App) {
+    app.add_systems(Update, (ui::ui_hover, time_input, advance_time, rebuild_year, handover::feed, move_trains, seasons, camera_input, apply_camera, labels, toasts, pick, inspect_panel).chain());
 }
 
 // ------------------------------------------------------------------ world setup
@@ -1467,12 +1481,10 @@ fn rebuild_year(
     let run = data.r.filled as u32;
     if shown.run != run {
         shown.run = run;
-        // a year arrived for the very year whose meshes are on their way to the renderer:
-        // they are of the run as it was, and that year is built again when they have gone
-        if hand.year().is_some_and(|k| k == data.latest()) {
-            hand.outdated();
-        }
-        // and the frame a year arrives in has work enough of its own
+        // the frame a year arrives in has work enough of its own. `game::pump`, which writes the
+        // year in, runs before this in every frame (`year_systems`), so it is this very frame.
+        // (Whether the meshes on their way are of the run as it was is asked when the last has
+        // gone: `HandOver::finished`.)
         hand.hold();
     }
     // so has the frame the clock's year changes in
@@ -1566,7 +1578,7 @@ fn rebuild_year(
             }
             pieces = hand_over_order(built, flat, showing, hidden);
         }
-        hand.fill(sc.k, pieces);
+        hand.fill(sc.k, run, pieces);
         let ms = began.elapsed().as_secs_f32() * 1e3;
         if for_camera { shown.swaps.1 += 1 } else { shown.swaps.0 += 1 }
         shown.last = Some((for_camera, corners, ms));
@@ -2659,6 +2671,29 @@ fn move_trains(time: Res<Time>, rails: Res<Rails>, mut q: Query<(&mut Train, &mu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_year_is_written_in_before_its_scenery_is_looked_at_and_handed_over() {
+        // the game's systems as the game adds them, in a schedule set out but never run
+        let mut app = App::new();
+        game::plugin(&mut app);
+        year_systems(&mut app);
+        app.world_mut().schedule_scope(Update, |world, s| {
+            s.initialize(world).expect("the schedule is set out");
+            let g = s.graph();
+            let key = |set: bevy::ecs::schedule::InternedSystemSet| *g.systems_in_set(set).unwrap().first().unwrap();
+            let year = [key(game::pump.into_system_set().intern()), key(rebuild_year.into_system_set().intern()), key(handover::feed.into_system_set().intern())];
+            // each pair writes something the other writes (the clock's built year, the queue), and
+            // the scheduler lists every such pair it was not told the order of: none of these is listed
+            for (a, b, _) in g.conflicting_systems().iter() {
+                assert!(!(year.contains(a) && year.contains(b)), "the pump, rebuild_year and the feed are not all ordered against one another");
+            }
+            // and the order is the pump, then rebuild_year, then the feed
+            let order: Vec<_> = s.systems().unwrap().map(|(k, _)| k).collect();
+            let at = year.map(|k| order.iter().position(|&o| o == k).unwrap());
+            assert!(at[0] < at[1] && at[1] < at[2], "{at:?}");
+        });
+    }
 
     /// Run a season clock for some seconds at 30 frames a second; the year's
     /// clock runs beside it at `speed`. Returns the clock, how far the season
