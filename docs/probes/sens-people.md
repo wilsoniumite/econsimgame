@@ -324,7 +324,10 @@ year in any town. `found_spacing` at 4 and 16, `decline_years` at 7 and 30 and
 facts with all eight islands agreeing, none of them a headline). The closest
 is `found_spacing` at 16 cells, with 15 per cent fewer towns in 1900 than
 today on seven islands of eight, z -1.2; but today sits high on towns, and
-against `found_spacing` at 4 it is one town fewer, so a lean at most. A floor that never binds is still a guard
+against `found_spacing` at 4 it is one town fewer, so a lean at most.
+`found_cells` was tried at 20 and 80 too: 20 moves the same one island that
+30 does, and 80 is where it first binds upward, on four islands of eight, by
+half a town in 1900 on the eight together. A floor that never binds is still a guard
 against a setting far outside this range, so it may be better left in than
 dropped.
 
