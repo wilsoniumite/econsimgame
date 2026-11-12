@@ -53,6 +53,9 @@ pub const PORT: u8 = 0;
 pub const RAILWAY: u8 = 1;
 /// `Project::way` of the canals (`canals.rs`).
 pub const CANAL: u8 = 2;
+/// `Project::way` of a parish's or a turnpike trust's road works (`roads.rs`,
+/// a probe: `docs/probes/dx-roads.md`). The promoters here never see them.
+pub const ROAD: u8 = 3;
 
 /// `Project::serves` and `Line::serves`: a line between two towns.
 pub const SERVES_TRUNK: u8 = 0;
@@ -669,7 +672,7 @@ fn subscribe(st: &mut State, towns: &[usize], cost: f64) -> Option<(f64, Vec<(bo
 
 /// Share `amount` among the subscribers in proportion to what each put in. A
 /// negative amount is a last call on them.
-fn repay(st: &mut State, subs: &[(bool, usize, f64)], amount: f64) {
+pub(crate) fn repay(st: &mut State, subs: &[(bool, usize, f64)], amount: f64) {
     let total: f64 = subs.iter().map(|s| s.2).sum();
     if total <= 0.0 {
         return;

@@ -215,7 +215,7 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         };
         let mut ev = Event::new(
             year as f64 + 0.6,
-            "famine",
+            "emigration",
             0.5,
             format!("{} people leave the island", fmt_thousands_f0(gone)),
             format!("After a hungry year {} people {whence} take ship, {quay}. What they had goes on the passage.", fmt_thousands_f0(gone)),

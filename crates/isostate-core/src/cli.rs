@@ -12,7 +12,8 @@
 //! the rules a live game is played under (`params::game_params`).
 //!
 //! `isostate-core sweep` runs many seeds against many settings and tabulates
-//! their stylised facts; see `sweep.rs`.
+//! their stylised facts; see `sweep.rs`. `isostate-core scorecard DIR` reads a
+//! sweep against the aims the documents state; see `scorecard.rs`.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -110,11 +111,12 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     match it.next().map(String::as_str) {
         Some("run") => {}
         Some("sweep") => return crate::sweep::main_with_args(&args[1..]),
+        Some("scorecard") => return crate::scorecard::main_with_args(&args[1..]),
         Some("-h") | Some("--help") | None => {
-            println!("{USAGE}\n{}", crate::sweep::USAGE);
+            println!("{USAGE}\n{}\n{}", crate::sweep::USAGE, crate::scorecard::USAGE);
             return Ok(());
         }
-        Some(other) => return Err(format!("unknown command {other:?}\n{USAGE}\n{}", crate::sweep::USAGE)),
+        Some(other) => return Err(format!("unknown command {other:?}\n{USAGE}\n{}\n{}", crate::sweep::USAGE, crate::scorecard::USAGE)),
     }
     let mut seed: Option<u64> = None;
     let mut rules = Rules::Port;

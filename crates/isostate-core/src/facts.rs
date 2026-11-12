@@ -98,6 +98,9 @@ pub const METHOD_SHARES: [(&str, i64); 5] =
 /// Goods whose price swings are measured.
 pub const PRICE_GOODS: [&str; 4] = ["grain", "iron", "rails", "cloth"];
 
+/// The good whose dearest year is set against its middling one (a famine of tools).
+pub const TOOLS: &str = "tools";
+
 /// The first ten years are left out of the price swings: prices are still settling.
 pub const PRICE_FROM: i64 = 1760;
 
@@ -174,11 +177,65 @@ pub fn marks(y0: i64, y1: i64) -> Vec<i64> {
     v
 }
 
+/// How many years a mean over years spans (R11 in the backlog's sweep of findings).
+/// A single year's real wage moves by more than most changes to the rules do: it
+/// read 0.2 lower on every island of eight and 0.05 higher on the next eight
+/// (`docs/rules/towns.md`). Twenty years take out the weather and the building
+/// cycle and keep the century's shape.
+pub const SPAN: i64 = 20;
+
+/// The spans of years the means are taken over, as (first, last): twenty years
+/// ending twenty, forty, sixty years after the first year, and so on, then the
+/// twenty ending in the run's last year if that is not already one of them.
+/// 1751-1770, 1771-1790 ... 1871-1890 and 1881-1900 for a whole run; none for a
+/// run of under twenty years after its first.
+pub fn spans(y0: i64, y1: i64) -> Vec<(i64, i64)> {
+    let mut v = Vec::new();
+    let mut end = y0 + SPAN;
+    while end <= y1 {
+        v.push((end - SPAN + 1, end));
+        end += SPAN;
+    }
+    if y1 - y0 >= SPAN && v.last().map(|s| s.1) != Some(y1) {
+        v.push((y1 - SPAN + 1, y1));
+    }
+    v
+}
+
+/// The mean of a yearly series over the years `a..=b`, leaving out years with no
+/// value (a share whose total was empty all year); NaN if none has one.
+fn span_mean(v: &[f64], y0: i64, a: i64, b: i64) -> f64 {
+    let vals: Vec<f64> = (a..=b).filter_map(|y| v.get((y - y0) as usize).copied()).filter(|x| x.is_finite()).collect();
+    mean(&vals)
+}
+
 /// Every observer series averaged over each year's twelve months: `[series][year]`,
 /// in the registry's order. NaN where a share had an empty total all year.
 pub fn annual_means(r: &RunResult) -> Vec<Vec<f64>> {
     let y0 = r.content.start_year;
     r.state.series.data.iter().map(|d| (0..r.rec.n_years).map(|k| annual(d, y0, y0 + k as i64)).collect()).collect()
+}
+
+/// Each year's wage of the median town by people: the year's mean wage of the town
+/// in which, the towns taken from the lowest wage up, half the island's people have
+/// been counted. From the yearly snapshot; NaN for a year with nobody in a town.
+pub fn median_town_wage(rec: &crate::record::Record) -> Vec<f64> {
+    let T = rec.T;
+    (0..rec.n_years)
+        .map(|k| {
+            let mut towns: Vec<(f64, f64)> = (0..T)
+                .filter(|&t| rec.town_active[k * T + t] == 1 && rec.town_pop[k * T + t] > 0.0)
+                .map(|t| (rec.town_wage[k * T + t] as f64, rec.town_pop[k * T + t] as f64))
+                .collect();
+            towns.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let half = 0.5 * towns.iter().map(|&(_, p)| p).sum::<f64>();
+            let mut seen = 0.0;
+            towns.iter().find(|&&(_, p)| {
+                seen += p;
+                seen >= half
+            }).map_or(f64::NAN, |&(w, _)| w)
+        })
+        .collect()
 }
 
 /// numpy's default quantile of a sorted slice (linear between neighbours).
@@ -189,6 +246,47 @@ fn quantile(sorted: &[f64], q: f64) -> f64 {
     let pos = q * (sorted.len() - 1) as f64;
     let (lo, hi) = (pos.floor() as usize, pos.ceil() as usize);
     sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo as f64)
+}
+
+/// How many years before a year's own harvest still count as its weather in
+/// `farm_zigzag_beyond_weather`. The harvest page finds the farm hands answering a
+/// short crop for two to four years after it, each echo about half the last.
+pub const WEATHER_LAGS: usize = 4;
+
+/// Least squares with a constant: the coefficients `[constant, x0, x1, ...]` that
+/// fit `y` best from the rows of `x`. None when the columns do not tell the
+/// coefficients apart (a harvest the same every year).
+fn least_squares(x: &[Vec<f64>], y: &[f64]) -> Option<Vec<f64>> {
+    let p = x.first()?.len() + 1;
+    if x.len() < p {
+        return None;
+    }
+    // the normal equations, then elimination with the largest pivot
+    let mut a = vec![vec![0.0; p + 1]; p];
+    for (row, &target) in x.iter().zip(y) {
+        let full: Vec<f64> = std::iter::once(1.0).chain(row.iter().copied()).collect();
+        for i in 0..p {
+            for j in 0..p {
+                a[i][j] += full[i] * full[j];
+            }
+            a[i][p] += full[i] * target;
+        }
+    }
+    let scale = (0..p).map(|i| a[i][i].abs()).fold(0.0, f64::max);
+    for c in 0..p {
+        let pivot = (c..p).max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))?;
+        if a[pivot][c].abs() <= 1e-12 * scale {
+            return None;
+        }
+        a.swap(c, pivot);
+        for i in (0..p).filter(|&i| i != c) {
+            let f = a[i][c] / a[c][c];
+            for j in c..=p {
+                a[i][j] -= f * a[c][j];
+            }
+        }
+    }
+    Some((0..p).map(|i| a[i][p] / a[i][i]).collect())
 }
 
 fn mean(v: &[f64]) -> f64 {
@@ -221,6 +319,22 @@ impl Builder {
     fn year(&mut self, name: String, y: Option<i64>) {
         self.facts.push(Fact { name, group: self.group, kind: Kind::Year, value: y.map(|y| y as f64) });
     }
+
+    /// A fact already made, again under a name that says its place in the run and
+    /// not its year (`pop_last` for `pop_1900`), under the current heading. Nothing
+    /// if there is no such fact (a run too short for a twenty-year mean).
+    fn again(&mut self, from: &str, name: &str) {
+        if let Some(f) = self.facts.iter().find(|f| f.name == from) {
+            let f = Fact { name: name.to_string(), group: self.group, ..f.clone() };
+            self.facts.push(f);
+        }
+    }
+}
+
+/// The middle year of a run, for the facts named `_mid`: 1825 for a run from 1750 to
+/// 1900, 1900 for a run to 2050.
+pub fn middle(y0: i64, y1: i64) -> i64 {
+    y0 + (y1 - y0) / 2
 }
 
 /// The stylised facts of a finished run. `seconds` is how long it took.
@@ -258,9 +372,30 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for &y in &marks {
         b.num(format!("urban_share_{y}"), Kind::Share, at("urban_share", y));
     }
+    // twenty-year means (SPAN): urban_share_1881_1900 is the mean of the twenty years' yearly means
+    for &(a, z) in &spans(y0, y1) {
+        b.num(format!("urban_share_{a}_{z}"), Kind::Share, span_mean(series("urban_share"), y0, a, z));
+    }
     for &y in &marks {
         b.num(format!("towns_{y}"), Kind::Count, at("towns", y));
     }
+    // The same by their place in the run and not their year (R7): the first year, the
+    // middle, the last and the last twenty years, so that sweeps to different end years
+    // have names in common (docs/rules/scorecard.md says which to read when).
+    let mid = middle(y0, y1);
+    let last20 = spans(y0, y1).last().copied();
+    let placed = |name: &str| -> [String; 3] {
+        let (a, z) = last20.unwrap_or((y1, y1));
+        [format!("{name}_{y0}"), format!("{name}_{y1}"), if last20.is_some() { format!("{name}_{a}_{z}") } else { String::new() }]
+    };
+    b.again(&format!("pop_{y1}"), "pop_last");
+    b.num("pop_mid".into(), Kind::Count, at("pop", mid));
+    let [first, last, last_span] = placed("urban_share");
+    b.again(&first, "urban_share_first");
+    b.num("urban_share_mid".into(), Kind::Share, at("urban_share", mid));
+    b.again(&last, "urban_share_last");
+    b.again(&last_span, "urban_share_last20");
+    b.again(&format!("towns_{y1}"), "towns_last");
     let last_town = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] >= y0).map(|t| st.town_founded[t]).max();
     b.year("last_town_founded".into(), last_town);
     // people: the towns founded from 1800 on, by what their districts were known for
@@ -330,6 +465,50 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::accounts::facts(r) {
         b.num(name, kind, v);
     }
+    // twenty-year means (SPAN) of what a scorecard reads: what a wage buys and output per
+    // head against the first year (real_wage_1881_1900_vs_1750), the shares of work, and
+    // work's share of the island's income where the books are kept
+    let spans = spans(y0, y1);
+    let mut against_first = vec![("real_wage", "real_wage"), ("output_per_head", "gdp_pc")];
+    if st.series.index.contains_key("real_wage_chained") {
+        against_first.push(("real_wage_chained", "real_wage_chained"));
+    }
+    for (label, name) in against_first {
+        for &(a, z) in &spans {
+            b.num(format!("{label}_{a}_{z}_vs_{y0}"), Kind::Ratio, span_mean(series(name), y0, a, z) / at(name, y0));
+        }
+    }
+    let (ag, ind) = (series("ag_share"), series("ind_share"));
+    let mines: Vec<f64> = ag.iter().zip(ind).map(|(a, i)| 1.0 - a - i).collect();
+    for (label, v) in [("farm_share", ag), ("industry_share", ind), ("mine_share", &mines[..])] {
+        for &(a, z) in &spans {
+            b.num(format!("{label}_{a}_{z}"), Kind::Share, span_mean(v, y0, a, z));
+        }
+    }
+    if st.series.index.contains_key("acct_share_work") {
+        for &(a, z) in &spans {
+            b.num(format!("income_share_work_{a}_{z}"), Kind::Share, span_mean(series("acct_share_work"), y0, a, z));
+        }
+    }
+    // by their place in the run (R7), as for the towns above
+    for name in ["farm_share", "industry_share", "mine_share"] {
+        let [first, last, last_span] = placed(name);
+        b.again(&first, &format!("{name}_first"));
+        b.again(&last, &format!("{name}_last"));
+        b.again(&last_span, &format!("{name}_last20"));
+    }
+    for (label, name) in [("real_wage", "real_wage"), ("output_per_head", "gdp_pc"), ("real_wage_chained", "real_wage_chained")] {
+        if !st.series.index.contains_key(name) {
+            continue;
+        }
+        let [_, last, last_span] = placed(label);
+        if y1 > y0 {
+            b.num(format!("{label}_mid_vs_first"), Kind::Ratio, at(name, mid) / at(name, y0));
+        }
+        b.again(&format!("{last}_vs_{y0}"), &format!("{label}_last_vs_first"));
+        b.again(&format!("{last_span}_vs_{y0}"), &format!("{label}_last20_vs_first"));
+    }
+    b.again(&placed("income_share_work")[2], "income_share_work_last20");
 
     // ---- railways
     b.group = GROUPS[2];
@@ -348,6 +527,9 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let december = |k: usize| km.get(k * 12 + 11).copied().unwrap_or(0.0);
     let grew = (0..n).rev().find(|&k| december(k) > if k == 0 { 0.0 } else { december(k - 1) });
     b.year("rail_last_growth_year".into(), grew.map(|k| years[k]));
+    // by their place in the run (R7)
+    b.num("rail_km_mid".into(), Kind::Count, at("rail_km", mid));
+    b.again(&format!("rail_km_{y1}"), "rail_km_last");
     // railways (docs/rules/railways.md): the network by decade, what it serves and what it cost
     for (name, kind, v) in crate::railways::facts(r) {
         b.num(name, kind, v);
@@ -400,6 +582,12 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("works_closed_median_life".into(), Kind::Real, quantile(&life, 0.5));
     let util: Vec<f64> = alive.iter().filter(|&&f| st.f_K[f] > 0.0).map(|&f| st.f_u[f]).collect();
     b.num(format!("works_utilisation_{y1}"), Kind::Share, mean(&util));
+    // by their place in the run (R7)
+    for name in ["works", "works_ex_services", "works_per_1000_people", "works_size_median", "works_size_p90", "works_size_largest"] {
+        b.again(&format!("{name}_{y1}"), &format!("{name}_last"));
+    }
+    b.again(&format!("works_top_1pct_capacity_share_{y1}"), "works_top_1pct_capacity_share_last");
+    b.again(&format!("works_utilisation_{y1}"), "works_utilisation_last");
 
     // ---- land
     b.group = GROUPS[4];
@@ -412,6 +600,8 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             let cells = year_use((y - y0) as usize).iter().filter(|&&u| u == code).count();
             b.num(format!("cells_{name}_{y}"), Kind::Count, cells as f64);
         }
+        // by its place in the run (R7)
+        b.again(&format!("cells_{name}_{y1}"), &format!("cells_{name}_last"));
     }
     // the rest of the land is shared out within each cell, so it is counted by area: every
     // cell's share summed, in cells. (By main use a wood that is a third of every cell around
@@ -466,7 +656,15 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let first = out.iter().position(|&v| v > 0.0);
         b.year(format!("first_output_{name}"), first.map(|k| years[k]));
         let tot = good_total(j);
-        b.year(format!("half_of_output_{name}"), (0..out.len()).find(|&k| tot[k] > 0.0 && out[k] >= 0.5 * tot[k]).map(|k| years[k]));
+        let half = (0..out.len()).find(|&k| tot[k] > 0.0 && out[k] >= 0.5 * tot[k]).map(|k| years[k]);
+        b.year(format!("half_of_output_{name}"), half);
+        // how long from its discovery to half its good's output (the prices page asks that
+        // coke iron take no more than ten years; docs/rules/scorecard.md)
+        let found = Some(st.tech_year[j]).filter(|&y| y >= y0);
+        b.num(format!("years_to_half_{name}"), Kind::Real, match (found, half) {
+            (Some(d), Some(h)) => (h - d) as f64,
+            _ => f64::NAN,
+        });
         if first.is_none() {
             never_built.push(name.clone());
         }
@@ -494,9 +692,57 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let sd = if d.len() >= 2 { mean(&d.iter().map(|v| (v - m) * (v - m)).collect::<Vec<_>>()).sqrt() } else { f64::NAN };
         b.num(format!("price_swing_{good}"), Kind::Real, sd);
     }
+    // A famine of tools (C137; docs/rules/works.md): when farm machinery comes the engine
+    // works want tools the smithies left cannot make. Tools' dearest year from PRICE_FROM
+    // against the middling (median) year, which year it was, and how many years cost
+    // more than twice the middling one. The price is the island's, in money: it hardly
+    // drifts over the century (the cost of living ends between 0.9 and 1.6 of 1750's).
+    if C.good_index.contains_key(TOOLS) {
+        let p: Vec<f64> = series(&format!("price_{TOOLS}")).get((from - y0) as usize..).unwrap_or(&[]).to_vec();
+        let mut sorted: Vec<f64> = p.iter().copied().filter(|v| v.is_finite()).collect();
+        sorted.sort_by(f64::total_cmp);
+        let middling = quantile(&sorted, 0.5);
+        let dearest = (0..p.len()).filter(|&k| p[k].is_finite()).max_by(|&i, &j| p[i].total_cmp(&p[j]));
+        b.num(format!("price_{TOOLS}_dearest_vs_median"), Kind::Ratio, dearest.map_or(f64::NAN, |k| p[k] / middling));
+        b.year(format!("price_{TOOLS}_dearest_year"), dearest.map(|k| from + k as i64));
+        b.num(format!("price_{TOOLS}_years_over_twice_median"), Kind::Count, p.iter().filter(|&&v| v > 2.0 * middling).count() as f64);
+    }
     let farm = series("ag_share");
     let zig: Vec<f64> = farm.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).filter(|v| v.is_finite()).collect();
     b.num("farm_zigzag".into(), Kind::Real, 100.0 * mean(&zig));
+    // harvest (C126): with the weather on, the zigzag is mostly the weather's, and no
+    // longer tells the false cycle the prices page cured from good years and bad. Here the
+    // year's second difference of the farm share is set against the log of the country's
+    // harvest in that year and the WEATHER_LAGS before it (least squares, with a
+    // constant), and what the harvests do not account for is measured as the zigzag
+    // is: farm_zigzag_beyond_weather. With no harvests there is nothing to take out, and
+    // it is the zigzag itself. farm_zigzag_weather_share is the share of the zigzag's
+    // variance the harvests account for.
+    let h: Vec<f64> = r.rec.harvest.iter().map(|&v| (v as f64).ln()).collect();
+    let (beyond, weather) = if h.len() == farm.len() && h.len() > 2 * (WEATHER_LAGS + 3) {
+        let (mut x, mut y) = (Vec::new(), Vec::new());
+        for k in WEATHER_LAGS.max(2)..farm.len() {
+            let d2 = farm[k] - 2.0 * farm[k - 1] + farm[k - 2];
+            if d2.is_finite() {
+                x.push((0..=WEATHER_LAGS).map(|lag| h[k - lag]).collect::<Vec<f64>>());
+                y.push(d2);
+            }
+        }
+        match least_squares(&x, &y) {
+            Some(fit) => {
+                let resid: Vec<f64> = x.iter().zip(&y).map(|(row, d)| d - fit[0] - row.iter().zip(&fit[1..]).map(|(a, c)| a * c).sum::<f64>()).collect();
+                let my = mean(&y);
+                let total: f64 = y.iter().map(|d| (d - my) * (d - my)).sum();
+                let left: f64 = resid.iter().map(|e| e * e).sum();
+                (100.0 * mean(&resid.iter().map(|e| e.abs()).collect::<Vec<_>>()), if total > 0.0 { 1.0 - left / total } else { f64::NAN })
+            }
+            None => (f64::NAN, f64::NAN),
+        }
+    } else {
+        (100.0 * mean(&zig), f64::NAN)
+    };
+    b.num("farm_zigzag_beyond_weather".into(), Kind::Real, beyond);
+    b.num("farm_zigzag_weather_share".into(), Kind::Share, weather);
     // harvest: how grain moves from year to year, and what the worst years do.
     // Yearly changes of the log, from PRICE_FROM as above. A lag-one correlation
     // near -0.5 is what independent yearly shocks to a level give; near zero or
@@ -524,6 +770,17 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let dw = changes("real_wage");
         b.num("real_wage_worst_year".into(), Kind::Real, dw.iter().copied().fold(f64::NAN, f64::min).exp_m1());
         b.num("real_wage_swing".into(), Kind::Real, sd(&dw));
+        // The same fall read from the middle of the island and not its mean. The island's
+        // wage is every town's averaged by its people, so one town's wild wage coming back
+        // down reads as a fall for everyone (seed 11 with the new land: 2.29 then 1.00, read
+        // as -0.565). Here each year's wage is the median town's, by people (half the
+        // island's people live in towns that paid less that year), over the year's cost of
+        // living, and the fact is its largest fall on the year before.
+        let middle_wage = median_town_wage(rec);
+        let cpi = series("cpi");
+        let real: Vec<f64> = middle_wage.iter().zip(cpi).map(|(w, c)| w / c).collect();
+        let dm: Vec<f64> = real.get((from - y0) as usize..).unwrap_or(&[]).windows(2).map(|w| (w[1] / w[0]).ln()).filter(|d| d.is_finite()).collect();
+        b.num("real_wage_worst_year_median_town".into(), Kind::Real, dm.iter().copied().fold(f64::NAN, f64::min).exp_m1());
         // With harvests on: how large they were, and what a year's harvest does that
         // same year. Each `_on_harvest` is the slope of the yearly change in a log on
         // the log of the country's harvest (1 is an average year), over every year
@@ -554,6 +811,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let mut hungry: Vec<i64> = r.events.iter().filter(|e| e.kind == "famine").map(|e| e.year.floor() as i64).collect();
     hungry.dedup();
     b.num("famine_years".into(), Kind::Count, hungry.len() as f64);
+    // people (docs/rules/people.md): years in which a thousandth of the island took ship after
+    // a hungry year. Until 12 November 2026 these were filed as famine news and counted above.
+    let mut sailed: Vec<i64> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| e.year.floor() as i64).collect();
+    sailed.dedup();
+    b.num("emigration_years".into(), Kind::Count, sailed.len() as f64);
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
@@ -566,4 +828,40 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("seconds".into(), Kind::Real, seconds);
 
     Facts { facts: b.facts, never_built, news }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_spans_are_twenty_years_and_the_last_ends_with_the_run() {
+        assert_eq!(spans(1750, 1900), vec![(1751, 1770), (1771, 1790), (1791, 1810), (1811, 1830), (1831, 1850), (1851, 1870), (1871, 1890), (1881, 1900)]);
+        // a run that ends on a span's end has no extra one
+        assert_eq!(spans(1750, 1790), vec![(1751, 1770), (1771, 1790)]);
+        assert_eq!(spans(1750, 1785), vec![(1751, 1770), (1766, 1785)]);
+        assert_eq!(spans(1750, 1770), vec![(1751, 1770)]);
+        assert!(spans(1750, 1769).is_empty() && spans(1750, 1750).is_empty());
+        assert_eq!(spans(1750, 2050).last(), Some(&(2031, 2050)));
+        // a year with no value is left out of the mean, not counted as nought
+        let v = [1.0, 2.0, f64::NAN, 4.0, 5.0];
+        assert_eq!(span_mean(&v, 1750, 1751, 1753), 3.0);
+        assert_eq!(span_mean(&v, 1750, 1750, 1754), 3.0);
+        assert!(span_mean(&v, 1750, 1752, 1752).is_nan());
+    }
+
+    #[test]
+    fn least_squares_finds_a_line_it_was_given() {
+        // y = 0.5 + 2 x0 - 3 x1, exactly
+        let x: Vec<Vec<f64>> = (0..12).map(|k| vec![k as f64, ((k * 7) % 5) as f64]).collect();
+        let y: Vec<f64> = x.iter().map(|r| 0.5 + 2.0 * r[0] - 3.0 * r[1]).collect();
+        let fit = least_squares(&x, &y).unwrap();
+        for (got, want) in fit.iter().zip([0.5, 2.0, -3.0]) {
+            assert!((got - want).abs() < 1e-9, "{fit:?}");
+        }
+        // a column that never changes cannot be told from the constant
+        let flat: Vec<Vec<f64>> = (0..12).map(|k| vec![k as f64, 1.0]).collect();
+        assert!(least_squares(&flat, &y).is_none());
+        assert!(least_squares(&x[..2], &y[..2]).is_none(), "fewer rows than coefficients");
+    }
 }

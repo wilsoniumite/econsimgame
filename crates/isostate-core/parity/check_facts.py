@@ -11,6 +11,10 @@ Nothing here shares code with facts.rs: the definitions are written out again
 from docs/rules/README.md, in plain Python with no packages, so a slip in
 either shows as a difference. Exits non-zero if any fact differs.
 
+The facts added for the scorecard (docs/rules/scorecard.md) are checked in
+part: the tools facts, most twenty-year means, a few names by place and the
+median town's worst year.
+
 Not checked here, because the files do not hold what they need: growth_capped_*,
 works_top_1pct_capacity_share, works_utilisation and the area_* facts. Those
 are worked out a second way in tests/sweep.rs.
@@ -182,6 +186,65 @@ for good in ("grain", "iron", "rails", "cloth"):
 farm = [annual("ag_share", y) for y in years]
 bend = [abs(farm[k + 2] - 2 * farm[k + 1] + farm[k]) for k in range(n_years - 2)]
 mine["farm_zigzag"] = 100 * sum(bend) / len(bend) if bend else None
+
+# ---- added on 12 November 2026 (docs/rules/scorecard.md)
+# tools: the dearest year from 1760 against the middling (median) year
+if "price_tools" in cols:
+    p = [annual("price_tools", y) for y in range(start, y1 + 1)]
+    middling = quantile(sorted(p), 0.5)
+    k = p.index(max(p))
+    mine["price_tools_dearest_vs_median"] = p[k] / middling
+    mine["price_tools_dearest_year"] = start + k
+    mine["price_tools_years_over_twice_median"] = sum(1 for v in p if v > 2 * middling)
+
+# twenty-year means: twenty years ending 20, 40, ... years after the first, and the last twenty
+spans = [(e - 19, e) for e in range(y0 + 20, y1 + 1, 20)]
+if y1 - y0 >= 20 and (not spans or spans[-1][1] != y1):
+    spans.append((y1 - 19, y1))
+
+
+def span_mean(f, a, z):
+    v = [f(y) for y in range(a, z + 1)]
+    v = [x for x in v if math.isfinite(x)]
+    return sum(v) / len(v) if v else None
+
+
+for a, z in spans:
+    mine[f"urban_share_{a}_{z}"] = span_mean(lambda y: annual("urban_share", y), a, z)
+    mine[f"real_wage_{a}_{z}_vs_{y0}"] = span_mean(lambda y: annual("real_wage", y), a, z) / annual("real_wage", y0)
+    mine[f"output_per_head_{a}_{z}_vs_{y0}"] = span_mean(lambda y: annual("gdp_pc", y), a, z) / annual("gdp_pc", y0)
+    mine[f"farm_share_{a}_{z}"] = span_mean(lambda y: annual("ag_share", y), a, z)
+    mine[f"industry_share_{a}_{z}"] = span_mean(lambda y: annual("ind_share", y), a, z)
+
+# by their place in the run: the last year's fact under a second name, and the middle year
+mid = y0 + (y1 - y0) // 2
+mine["pop_last"] = mine[f"pop_{y1}"]
+mine["pop_mid"] = annual("pop", mid)
+mine["urban_share_mid"] = annual("urban_share", mid)
+mine["rail_km_mid"] = annual("rail_km", mid)
+mine["works_last"] = mine[f"works_{y1}"]
+if spans:
+    a, z = spans[-1]
+    mine["urban_share_last20"] = mine[f"urban_share_{a}_{z}"]
+    mine["real_wage_last20_vs_first"] = mine[f"real_wage_{a}_{z}_vs_{y0}"]
+
+# the worst year for wages from the median town by people, over the year's cost of living
+T = table["town_wage"]["shape"][1]
+town_wage, town_pop, town_active = array("town_wage"), array("town_pop"), array("town_active")
+middle_real = []
+for k in range(n_years):
+    towns = sorted((town_wage[k * T + t], town_pop[k * T + t]) for t in range(T) if town_active[k * T + t] == 1 and town_pop[k * T + t] > 0)
+    half, seen, w = 0.5 * sum(p for _, p in towns), 0.0, math.nan
+    for wage, people in towns:
+        seen += people
+        if seen >= half:
+            w = wage
+            break
+    middle_real.append(w / annual("cpi", y0 + k))
+falls = [math.log(b / a) for a, b in zip(middle_real[start - y0:], middle_real[start - y0 + 1:])]
+falls = [d for d in falls if math.isfinite(d)]
+if falls:
+    mine["real_wage_worst_year_median_town"] = math.expm1(min(falls))
 
 # ---- news
 events = json.load(open(f"{run_dir}/events.json"))

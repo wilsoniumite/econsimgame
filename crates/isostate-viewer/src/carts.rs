@@ -34,6 +34,7 @@ fn setup(mut commands: Commands, look: Res<crate::look::TheLook>, mut meshes: Re
 }
 
 fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>, mut last: Local<Option<usize>>) {
+    let _frames = crate::frames::span(crate::frames::Sys::Traffic);
     let Some(assets) = assets else { return };
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
