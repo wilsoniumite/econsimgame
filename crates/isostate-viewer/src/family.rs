@@ -17,6 +17,7 @@ use bevy::ui::FocusPolicy;
 use isostate_core::families::{Group, Path, Post, Posting, Stance, N_GROUPS};
 use isostate_core::{BranchReport, Decision, FamilyReport, MemberReport, Prospect};
 
+use crate::live::Standing;
 use crate::replay::Replay;
 use crate::ui::{money, text, BAD, BTN, GOOD, INK, MUTED, PAPER_2, RULE};
 
@@ -92,6 +93,10 @@ pub struct StanceButton {
 /// Open the card for a decision.
 #[derive(Component, Clone, Copy)]
 pub struct OpenDecision(pub u64);
+
+/// Take back an order that waits for the year's end, by its place among them.
+#[derive(Component, Clone, Copy)]
+pub struct CancelButton(pub usize);
 
 /// A rival in the list of great families: click to see more of it.
 #[derive(Component, Clone, Copy)]
@@ -341,14 +346,50 @@ fn sparkline(p: &mut ChildSpawnerCommands, f: &Handle<Font>, history: &[f32], co
 
 // ------------------------------------------------------------------ the family tab
 
+/// The orders given since the year's turn, which wait for the year's end:
+/// each with when it will be carried out, and a way to take it back.
+fn waiting_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, me: &FamilyRow, stands: &Standing) {
+    if stands.waiting.is_empty() {
+        return;
+    }
+    let (end, turn) = crate::game::turn_words(r.y0, r.filled.max(1) - 1);
+    heading(p, f, "Waiting for the year's end");
+    p.spawn(text(
+        f,
+        &format!("Given since the year's turn. What you told the family takes effect at {end}; works are begun and land bought at the turn, in {turn}, if the money is there then."),
+        12.5,
+        MUTED,
+    ));
+    for (i, order) in stands.waiting.iter().enumerate() {
+        p.spawn((
+            Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(10.0)), border: UiRect::left(Val::Px(3.0)), ..default() },
+            BackgroundColor(PAPER_2),
+            BorderColor::all(me.colour),
+        ))
+        .with_children(|row| {
+            row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
+                col.spawn(text(f, &crate::live::order_words(order, r, Some(&me.rep)), 14.0, INK));
+                col.spawn(text(f, &if order.for_year_end() { format!("At {end}") } else { format!("In {turn}") }, 12.0, MUTED));
+            });
+            chip_button(row, f, "Take back", false, me.colour, CancelButton(i));
+        });
+    }
+    if stands.promised >= 0.5 {
+        p.spawn(text(f, &format!("{} of the family's cash is promised to them.", money(stands.promised as f32)), 12.5, MUTED));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize, past: bool, expanded: Option<usize>, rival: Option<usize>) {
+pub fn family_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: Option<&FamilyView>, r: &Replay, k: usize, past: bool, expanded: Option<usize>, rival: Option<usize>, stands: Option<&Standing>) {
     let Some(v) = fam else { return no_family(p, f, "family") };
     let Some(me) = v.player() else { return no_family(p, f, "family") };
     let rep = &me.rep;
     let accent = me.colour;
     if past {
         past_note(p, f, v, r, k);
+    }
+    if let Some(stands) = stands {
+        waiting_orders(p, f, r, me, stands);
     }
     let mut rank: Vec<usize> = (0..v.families.len()).collect();
     rank.sort_by(|&a, &b| v.families[b].net_worth.total_cmp(&v.families[a].net_worth));

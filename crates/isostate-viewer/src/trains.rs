@@ -35,7 +35,7 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 /// Routes along the main roads for year k: carters' rounds of a dozen cells,
 /// starting from a few cells picked by hash and turning by hash at junctions.
 pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
-    let adj = graph(r, k, |v| v & 3 == 3);
+    let adj = crate::course::graph(r, k, |v| v & 3 == 3);
     let mut out = Vec::new();
     for start in 0..r.n {
         if adj[start].is_empty() || world::hash2(start as i32, 5, 44) > 0.03 {
@@ -60,34 +60,6 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<
         }
     }
     out
-}
-
-/// The cells whose transport byte passes `on`, linked to their neighbours (a
-/// diagonal only where no pair of straight links joins the two).
-fn graph(r: &Replay, k: usize, on: impl Fn(u8) -> bool) -> Vec<Vec<usize>> {
-    let (w, h, n) = (r.w, r.h, r.n);
-    let tr = &r.trans[k * n..(k + 1) * n];
-    let rail = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && on(tr[y as usize * w + x as usize]);
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for c in 0..n {
-        if !on(tr[c]) {
-            continue;
-        }
-        let (x, y) = ((c % w) as isize, (c / w) as isize);
-        for (dx, dy) in [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)] {
-            let (nx, ny) = (x + dx, y + dy);
-            if !rail(nx, ny) {
-                continue;
-            }
-            if dx != 0 && dy != 0 && (rail(x + dx, y) || rail(x, y + dy)) {
-                continue;
-            }
-            let m = ny as usize * w + nx as usize;
-            adj[c].push(m);
-            adj[m].push(c);
-        }
-    }
-    adj
 }
 
 /// A path through the centres of a list of cells, draped `lift` above the ground.

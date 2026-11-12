@@ -38,17 +38,21 @@ pub struct Chart<'a> {
     pub width: f32,
     /// height of the plot
     pub height: f32,
-    /// one value per year from the first; NaN where there is none
+    /// one value per year from the first (per month, with `months`); NaN where there is none
     pub line: &'a [f32],
     /// a second line with a scale of its own, drawn in `accent`
     pub second: Option<&'a [f32]>,
     pub accent: [u8; 3],
-    /// the year on screen, counted from the first
+    /// the year on screen, counted from the first (with `months`, the month)
     pub mark: usize,
-    /// how many years lie along the bottom
+    /// how many years lie along the bottom (with `months`, how many months)
     pub years: usize,
     /// the calendar year of the first, so the grid can stand on round years
     pub first_year: i32,
+    /// the figures are a month each, from the January of `first_year`: the
+    /// grid stands on every January, and the years under the plot are those
+    /// of the first month and the last
+    pub months: bool,
 }
 
 impl Chart<'_> {
@@ -224,7 +228,8 @@ pub fn plot(c: &Chart) -> Plot {
     }
     let every = if c.years > 60 { 25 } else if c.years > 20 { 10 } else { 5 };
     for i in 0..c.years {
-        if (c.first_year + i as i32) % every == 0 && i > 0 && i < last {
+        let round = if c.months { i % 12 == 0 } else { (c.first_year + i as i32) % every == 0 };
+        if round && i > 0 && i < last {
             cv.rule(true, x_of(i), SS * 0.5, GRID, 0.6);
         }
     }
@@ -320,8 +325,9 @@ pub fn spawn(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets
         col.spawn(Node { width: Val::Px(pw), margin: UiRect::left(Val::Px(GUTTER)), padding: UiRect::horizontal(Val::Px(2.0)), justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|row| {
             row.spawn(text(f, &format!("{}", c.first_year), 11.5, MUTED));
             // a game in its first year has one year to show, and it is named once
-            if c.years > 1 {
-                row.spawn(text(f, &format!("{}", c.first_year + c.years as i32 - 1), 11.5, MUTED));
+            let last_year = c.first_year + if c.months { (c.years.max(1) as i32 - 1) / 12 } else { c.years as i32 - 1 };
+            if last_year > c.first_year {
+                row.spawn(text(f, &format!("{last_year}"), 11.5, MUTED));
             }
         });
     });
@@ -332,7 +338,24 @@ mod tests {
     use super::*;
 
     fn chart(line: &[f32]) -> Chart<'_> {
-        Chart { width: 248.0, height: 60.0, line, second: None, accent: [178, 58, 58], mark: 5, years: line.len(), first_year: 1750 }
+        Chart { width: 248.0, height: 60.0, line, second: None, accent: [178, 58, 58], mark: 5, years: line.len(), first_year: 1750, months: false }
+    }
+
+    #[test]
+    fn a_chart_of_months_rules_every_january() {
+        // five years of months, level: the only ink above the line is the grid's
+        let vals = [1.0f32; 60];
+        let mut c = chart(&vals);
+        c.months = true;
+        c.mark = 59;
+        let p = plot(&c);
+        let (pad_x, y) = (6.0 * SS, 20.0);
+        let x_of = |i: usize| pad_x + i as f32 / 59.0 * (p.w as f32 - 2.0 * pad_x);
+        for year in 1..5 {
+            // darker on the January than half a year either side of it
+            let on = light(&p, x_of(year * 12), y);
+            assert!(on < light(&p, x_of(year * 12 + 6), y) - 5.0 && on < light(&p, x_of(year * 12 - 6), y) - 5.0, "no rule on January of year {year}");
+        }
     }
 
     /// How dark a pixel is: paper is light, ink is dark.

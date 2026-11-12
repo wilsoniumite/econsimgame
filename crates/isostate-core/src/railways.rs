@@ -97,10 +97,14 @@ fn rail_book_mut(st: &mut State) -> &mut ways::WayBook {
     &mut st.rw
 }
 
+fn rail_knows(st: &State, t: usize) -> f64 {
+    st.know[(t, st.t_rail)]
+}
+
 /// The railway as the promoters of `ways.rs` see it. The hurdle, the induced
 /// traffic, the know-how and the materials per cell are the port's numbers; the
 /// rest are `RailwayParams`.
-pub fn way(st: &State, C: &Content, P: &Params) -> Way {
+pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
     let R = &P.railways;
     let mut materials = vec![0.0; C.G];
     materials[C.gi("rails")] = R.cost_mult * P.rail_rails_per_cell;
@@ -108,14 +112,17 @@ pub fn way(st: &State, C: &Content, P: &Params) -> Way {
     materials[C.gi("stone")] = R.cost_mult * P.rail_stone_per_cell;
     Way {
         id: ways::RAILWAY,
-        words: Words { kind: "railway", plan_kind: "rail_plan", noun: "railway", Noun: "Railway", track: "track", branch: "branch line" },
+        words: Words { kind: "railway", plan_kind: "rail_plan", noun: "railway", Noun: "Railway", track: "track", branch: "branch line", line: "line", weight: 0.45, branches_weight: 0.35 },
         run_cost: tr::RAIL_COST,
         materials,
+        rise: Vec::new(),
+        wages: 0.3,
+        wharf: None,
         // a month at the least: `Project::months` of 0 marks a project of the port's
         build_months: R.build_months.max(1.0),
         // transport::rail_build_graph's numbers: slopes, mountains and bridges are dear
         build: BuildCost { lowland: 1.0, hills: 2.2, mountains: 6.0, other: 50.0, river: 1.5, slope: 40.0, laid: 0.15 },
-        tech: st.t_rail,
+        knows: rail_knows,
         know: P.rail_know,
         hurdle: P.rail_hurdle,
         induced: P.rail_induced,
@@ -128,6 +135,13 @@ pub fn way(st: &State, C: &Content, P: &Params) -> Way {
         layer: rail_layer,
         layer_mut: rail_layer_mut,
         book_mut: rail_book_mut,
+        heads: None,
+        opened: None,
+        first_any: false,
+        local: false,
+        // canals (docs/rules/canals.md): a canal being dug will have taken its
+        // carting by the time a line opens; nothing while no canal is digging
+        rivals: Some(crate::canals::digging),
     }
 }
 

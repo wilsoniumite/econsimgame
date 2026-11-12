@@ -23,6 +23,7 @@
 //!   stylised facts each run is reduced to (`isostate-core sweep`).
 #![allow(non_snake_case)]
 
+pub mod canals;
 pub mod carting;
 pub mod chronicle;
 pub mod cli;
@@ -34,6 +35,9 @@ pub mod families;
 pub mod firms;
 pub mod harvest;
 pub mod land;
+pub mod landcells;
+pub mod landform;
+pub mod landwater;
 pub mod live;
 pub mod machines;
 pub mod mat;
@@ -67,7 +71,7 @@ pub use families::{
     BranchReport, Choice, Decision, DecisionOption, FamilyReport, Group, MemberReport, Path, Post, Posting, Prospect, SiteOption, SiteSums, Stance, buy_land,
     decide, family_report, found_works, may_buy_land, move_seat, pending, post_member, set_stance, site_options,
 };
-pub use live::{LiveCursor, LiveStatic, LiveYear, live_static, live_year};
+pub use live::{LiveCursor, LiveMonth, LiveStatic, LiveYear, live_month, live_static, live_year};
 pub use econ::step_month;
 pub use params::{Params, RentRegime, Rules, default_params, game_params};
 pub use sim::{RunResult, Sim, init_state, run, yearly as step_year};

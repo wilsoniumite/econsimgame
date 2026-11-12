@@ -29,9 +29,11 @@
 //! The module knows nothing about railways in particular. A [`Way`] says what is
 //! being built: what it costs to run on, what a cell of it is made of, how long
 //! it takes, what the ground charges for it, which technology it needs, and which
-//! cell layer and which book it writes. `railways.rs` supplies the railway; a
-//! canal age needs a `Way` of its own, a layer, a book, and one more branch in
-//! `transport::build_graph`.
+//! cell layer and which book it writes. `railways.rs` supplies the railway and
+//! `canals.rs` the canal, which differs in four things a `Way` can say: it floats
+//! (a layer of its own over the cells, joined link by link, with a wharf between
+//! it and the ground), its locks take materials by the height climbed, it may
+//! start from any town or navigable river, and it keeps its own knowledge.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -49,6 +51,8 @@ use crate::world::{HILLS, LOWLAND, MOUNTAINS, World};
 pub const PORT: u8 = 0;
 /// `Project::way` of the game's railways.
 pub const RAILWAY: u8 = 1;
+/// `Project::way` of the canals (`canals.rs`).
+pub const CANAL: u8 = 2;
 
 /// `Project::serves` and `Line::serves`: a line between two towns.
 pub const SERVES_TRUNK: u8 = 0;
@@ -89,6 +93,12 @@ pub struct Words {
     pub track: &'static str,
     /// "branch line".
     pub branch: &'static str,
+    /// What a scheme is said to be for: "line" in "money for 40 km of line".
+    pub line: &'static str,
+    /// The weight of a scheme's news and of an opening after the first (0.45
+    /// for a railway), and of the year's branches taken together (0.35).
+    pub weight: f64,
+    pub branches_weight: f64,
 }
 
 /// One kind of way and the promoters' rules for it.
@@ -101,12 +111,24 @@ pub struct Way {
     pub run_cost: f64,
     /// Units of each good one new cell takes (length G).
     pub materials: Vec<f64>,
+    /// Units of each good for every unit of height the new line climbs or
+    /// falls (length G, or empty): a canal's locks. A railway has none.
+    pub rise: Vec<f64>,
+    /// Wages paid on every shilling of materials (`econ::step_month` pays the
+    /// navvies so): three tenths for a railway, as in the port.
+    pub wages: f64,
+    /// A way that floats: it is a layer of its own over the cells, joined only
+    /// along its lines, and a load pays this to get on to it and again to get
+    /// off (`transport::Graph::boat`). `None` for a way laid on the ground,
+    /// where every cell is a station and neighbouring cells of track are joined.
+    pub wharf: Option<f64>,
     /// Months a line takes if the market fills every order: 1 or more
     /// (`Project::months` of 0 marks a project of the port's).
     pub build_months: f64,
     pub build: BuildCost,
-    /// The technology a town must know (`st.know` column) and how well.
-    pub tech: usize,
+    /// How well a town knows how to build the way (a column of `st.know` for
+    /// the railway; the canal keeps its own), and how well it must.
+    pub knows: fn(&State, usize) -> f64,
     pub know: f64,
     /// The yearly return on cost a line must promise.
     pub hurdle: f64,
@@ -129,6 +151,24 @@ pub struct Way {
     pub layer: fn(&State) -> &[u8],
     pub layer_mut: fn(&mut State) -> &mut Vec<u8>,
     pub book_mut: fn(&mut State) -> &mut WayBook,
+    /// Cells a branch may start from besides the way itself: for a canal, the
+    /// towns and the navigable rivers. A railway branches only from track.
+    pub heads: Option<fn(&State) -> Vec<usize>>,
+    /// Called when a line opens, after its cells are written to the layer, with
+    /// the moment it opened: what the way keeps beyond the layer and the book.
+    pub opened: Option<fn(&mut State, &Project, f64)>,
+    /// The first line of any kind is the great news, not the first between two
+    /// towns (the first canal is as likely to run from a coalfield).
+    pub first_any: bool,
+    /// The districts looked at each year are the dearest among those whose own
+    /// market town knows how to build the way, not the dearest of the island
+    /// (where the know-how is in one town, its districts are the ones looked at).
+    pub local: bool,
+    /// Lays the lines of other ways that are being built on the promoters' copy
+    /// of the cost graph, so that nothing is promoted on carting a rival will
+    /// have taken by the time it opens (a canal beside a railway half laid, a
+    /// railway beside a canal half dug).
+    pub rivals: Option<fn(&State, &Params, &mut tr::Graph)>,
 }
 
 /// One line that was built.
@@ -271,6 +311,45 @@ fn unlay(g: &mut tr::Graph, changed: &[(usize, f64)]) {
     }
 }
 
+/// What laying one line changed on a cost graph, so that it can be taken up again.
+#[derive(Default)]
+struct Laid {
+    /// Edges of the ground made cheaper, with what they cost before.
+    edges: Vec<(usize, f64)>,
+    /// Links of water added.
+    links: Vec<(usize, usize)>,
+}
+
+/// Lay a line of `way` on the cost graph `g`. A way on the ground makes every
+/// step between two cells that carry it cheaper (`lay`; `laid` must already
+/// include `new_cells`). A way that floats is joined link by link along `path`,
+/// the line's cells in order, and to nothing else: two canals in neighbouring
+/// cells are not joined unless a line was dug from one into the other.
+fn lay_line(g: &mut tr::Graph, world: &World, way: &Way, laid: &[bool], path: &[usize], new_cells: &[usize]) -> Laid {
+    match way.wharf {
+        None => Laid { edges: lay(g, world, laid, new_cells, way.run_cost), links: Vec::new() },
+        Some(wharf) => {
+            g.wharf = wharf;
+            let mut links = Vec::new();
+            for p in path.windows(2) {
+                let step = apart(world.W, p[0], p[1]);
+                if g.link_boats(p[0], p[1], way.run_cost * step) {
+                    links.push((p[0], p[1]));
+                }
+            }
+            Laid { edges: Vec::new(), links }
+        }
+    }
+}
+
+/// Take a line laid by `lay_line` up again.
+fn take_up(g: &mut tr::Graph, laid: &Laid) {
+    unlay(g, &laid.edges);
+    for &(a, b) in laid.links.iter().rev() {
+        g.unlink_boats(a, b);
+    }
+}
+
 /// Path costs `base` brought up to date after the edges `changed` of `g` got
 /// cheaper. Only what a cheaper edge can reach more cheaply is visited, so
 /// reckoning a short branch costs a search over its own neighbourhood and not
@@ -278,6 +357,9 @@ fn unlay(g: &mut tr::Graph, changed: &[(usize, f64)]) {
 fn improve(g: &tr::Graph, base: &[f64], changed: &[(usize, f64)]) -> Vec<f64> {
     use std::cmp::Reverse;
     use std::collections::BinaryHeap;
+    if g.has_boats() {
+        return improve_boats(g, base, changed);
+    }
     let mut d = base.to_vec();
     let mut heap: BinaryHeap<(Reverse<u64>, u32)> = BinaryHeap::new();
     let relax = |d: &mut Vec<f64>, heap: &mut BinaryHeap<(Reverse<u64>, u32)>, u: usize, k: usize| {
@@ -304,13 +386,86 @@ fn improve(g: &tr::Graph, base: &[f64], changed: &[(usize, f64)]) -> Vec<f64> {
     d
 }
 
+/// `improve` on a graph with canals (`transport::dijkstra_boats` has the two
+/// layers). `base` has only the ground's costs, so the water's are worked out
+/// again from every cell with a canal; that is a search over the canals alone,
+/// and then the ground is visited only where a cheaper edge or a boat improves
+/// on it. The result is again what a search from scratch would give.
+fn improve_boats(g: &tr::Graph, base: &[f64], changed: &[(usize, f64)]) -> Vec<f64> {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    let N = g.N;
+    let mut d = base.to_vec();
+    let mut afloat = vec![f64::INFINITY; N];
+    // node c is the ground of cell c, node N + c its water
+    let mut heap: BinaryHeap<(Reverse<u64>, u32)> = BinaryHeap::new();
+    for c in 0..N {
+        if !g.boat[c].is_empty() && d[c].is_finite() {
+            afloat[c] = d[c] + g.wharf;
+            heap.push((Reverse(afloat[c].to_bits()), (N + c) as u32));
+        }
+    }
+    for &(e, _) in changed {
+        let (u, k) = (e / 8, e % 8);
+        if let Some(v) = tr::neighbour(g.H, g.W, u, k) {
+            let nd = d[u] + g.w[e];
+            if nd < d[v] {
+                d[v] = nd;
+                heap.push((Reverse(nd.to_bits()), v as u32));
+            }
+        }
+    }
+    while let Some((Reverse(bits), node)) = heap.pop() {
+        let at = f64::from_bits(bits);
+        if (node as usize) < N {
+            let u = node as usize;
+            if at > d[u] {
+                continue;
+            }
+            for k in 0..8 {
+                if let Some(v) = tr::neighbour(g.H, g.W, u, k) {
+                    let nd = at + g.w[u * 8 + k];
+                    if nd < d[v] {
+                        d[v] = nd;
+                        heap.push((Reverse(nd.to_bits()), v as u32));
+                    }
+                }
+            }
+            if !g.boat[u].is_empty() && at + g.wharf < afloat[u] {
+                afloat[u] = at + g.wharf;
+                heap.push((Reverse(afloat[u].to_bits()), (N + u) as u32));
+            }
+        } else {
+            let u = node as usize - N;
+            if at > afloat[u] {
+                continue;
+            }
+            for &(v, w) in &g.boat[u] {
+                let v = v as usize;
+                if at + w < afloat[v] {
+                    afloat[v] = at + w;
+                    heap.push((Reverse(afloat[v].to_bits()), (N + v) as u32));
+                }
+            }
+            if at + g.wharf < d[u] {
+                d[u] = at + g.wharf;
+                heap.push((Reverse(d[u].to_bits()), u as u32));
+            }
+        }
+    }
+    d
+}
+
 /// The network as the promoters reckon with it this year: what is laid and what
 /// is being laid, the cost graph with all of that in place, and every cell's
 /// cost to market on it. Remade after each promotion.
 struct Net {
     /// Cells that carry the way or have it building.
     laid: Vec<bool>,
+    /// Whether a branch has anywhere to start from.
     any: bool,
+    /// Cells a branch may start from besides the way itself (`Way::heads`).
+    heads: Vec<usize>,
     /// The cost graph with the lines under way laid as well.
     g: tr::Graph,
     /// The active towns.
@@ -325,29 +480,41 @@ struct Net {
 }
 
 impl Net {
-    fn new(st: &State, way: &Way) -> Net {
+    fn new(st: &State, P: &Params, way: &Way) -> Net {
         let layer = (way.layer)(st);
         let mut laid: Vec<bool> = layer.iter().map(|&r| r > 0).collect();
         let mut g = st.graph.clone();
+        if let Some(rivals) = way.rivals {
+            rivals(st, P, &mut g);
+        }
         let under_way: Vec<usize> = st.projects.iter().filter(|pr| pr.way == way.id).flat_map(|pr| pr.new.iter().copied()).collect();
         for &c in &under_way {
             laid[c] = true;
         }
-        lay(&mut g, &st.world, &laid, &under_way, way.run_cost);
+        if way.wharf.is_none() {
+            lay(&mut g, &st.world, &laid, &under_way, way.run_cost);
+        } else {
+            // a way that floats is joined along each line, not cell to neighbouring cell
+            for pr in st.projects.iter().filter(|pr| pr.way == way.id) {
+                lay_line(&mut g, &st.world, way, &laid, &pr.cells, &pr.new);
+            }
+        }
         let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
         let nodes: Vec<(usize, f64)> = act.iter().map(|&t| (st.town_node[t], 0.0)).collect();
         let d = tr::distances(&g, &nodes);
         let route = build_graph(&st.world, &laid, &way.build);
-        let any = laid.iter().any(|&l| l);
-        Net { laid, any, g, act, d, from_town: BTreeMap::new(), route, reach: None }
+        let heads = way.heads.map_or_else(Vec::new, |heads| heads(st));
+        let any = laid.iter().any(|&l| l) || !heads.is_empty();
+        Net { laid, any, heads, g, act, d, from_town: BTreeMap::new(), route, reach: None }
     }
 
     /// The cheapest route from any point of the network to `target`: its cells
     /// from the junction outward. Empty if there is none over land.
     fn route_to(&mut self, target: usize) -> Vec<usize> {
-        let (laid, route) = (&self.laid, &self.route);
+        let (laid, route, heads) = (&self.laid, &self.route, &self.heads);
         let reach = self.reach.get_or_insert_with(|| {
-            let sources: Vec<(usize, f64)> = (0..laid.len()).filter(|&c| laid[c]).map(|c| (c, 0.0)).collect();
+            let mut sources: Vec<(usize, f64)> = (0..laid.len()).filter(|&c| laid[c]).map(|c| (c, 0.0)).collect();
+            sources.extend(heads.iter().filter(|&&c| !laid[c]).map(|&c| (c, 0.0)));
             tr::dijkstra(route, &sources, None)
         });
         if !reach.dist[target].is_finite() || reach.dist[target] > 1e5 {
@@ -363,10 +530,10 @@ impl Net {
         path
     }
 
-    /// What `new_cells` would save in a year at today's traffic, in money:
-    /// the carting between every cell and its market, and the carting on the
-    /// trade of each town in `towns` with every other town.
-    fn sums(&mut self, st: &State, P: &Params, way: &Way, new_cells: &[usize], towns: &[usize]) -> (f64, f64) {
+    /// What the line along `path`, with its `new_cells`, would save in a year at
+    /// today's traffic, in money: the carting between every cell and its market,
+    /// and the carting on the trade of each town in `towns` with every other town.
+    fn sums(&mut self, st: &State, P: &Params, way: &Way, path: &[usize], new_cells: &[usize], towns: &[usize]) -> (f64, f64) {
         // each served town's cost to every cell, on the network as it stands
         for &t in towns {
             let g = &self.g;
@@ -376,8 +543,9 @@ impl Net {
         for &c in new_cells {
             self.laid[c] = true;
         }
-        let changed = lay(&mut self.g, &st.world, &self.laid, new_cells, way.run_cost);
-        let d1 = improve(&self.g, &self.d, &changed);
+        let line = lay_line(&mut self.g, &st.world, way, &self.laid, path, new_cells);
+        let changed = &line.edges;
+        let d1 = improve(&self.g, &self.d, changed);
         let mut local = 0.0;
         for c in 0..st.N {
             let f = st.cell_flow_year[c];
@@ -389,7 +557,7 @@ impl Net {
         let mut trade = 0.0;
         for (n, &t) in towns.iter().enumerate() {
             let c0 = &self.from_town[&t];
-            let c1 = improve(&self.g, c0, &changed);
+            let c1 = improve(&self.g, c0, changed);
             for &j in &self.act {
                 if j == t || towns[..n].contains(&j) {
                     continue;
@@ -400,7 +568,7 @@ impl Net {
                 }
             }
         }
-        unlay(&mut self.g, &changed);
+        take_up(&mut self.g, &line);
         for &c in new_cells {
             self.laid[c] = false;
         }
@@ -408,9 +576,26 @@ impl Net {
     }
 }
 
-/// Materials for `n_new` cells of the way.
-fn materials(way: &Way, n_new: usize) -> Vec<f64> {
-    way.materials.iter().map(|&m| m * n_new as f64).collect()
+/// Materials for the line along `path` of which `new_cells` are still to be
+/// made: so much a cell, and for a way with locks so much for every unit of
+/// height between a new cell and its neighbour on the line.
+fn materials(way: &Way, world: &World, path: &[usize], new_cells: &[usize]) -> Vec<f64> {
+    // (a junction cut between two canals that lie side by side is a cell's work)
+    let cells = if way.wharf.is_some() { new_cells.len().max(1) } else { new_cells.len() };
+    let mut need: Vec<f64> = way.materials.iter().map(|&m| m * cells as f64).collect();
+    if !way.rise.is_empty() {
+        let climb: f64 = path.windows(2).filter(|p| new_cells.contains(&p[0]) || new_cells.contains(&p[1])).map(|p| (world.h[p[0]] - world.h[p[1]]).abs()).sum();
+        for (n, &r) in need.iter_mut().zip(&way.rise) {
+            *n += r * climb;
+        }
+    }
+    need
+}
+
+/// The wages a project pays on every shilling of materials: its way's, or the
+/// port's three tenths (`Project::wages` of 0 marks a project of the port's).
+pub fn navvy_share(pr: &Project) -> f64 {
+    if pr.wages > 0.0 { pr.wages } else { 0.3 }
 }
 
 /// The price the promoters reckon on for `need` of good `g` bought in town `t`
@@ -433,7 +618,7 @@ fn reckoned_price(st: &State, pbar: &Mat, g: usize, t: usize, need: f64, months:
 /// What the promoters expect to pay for `need` bought in town `t`: the prices of
 /// `reckoned_price`, with the order-book good marked up by what the lines already
 /// building still have on order, measured in years of the whole country's make
-/// of it; and three tenths on top for the navvies (`econ::step_month` pays them so).
+/// of it; and the way's wages on top for the navvies (`econ::step_month` pays them so).
 fn expected_cost(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], t: usize) -> f64 {
     let mut markup = 1.0;
     if let Some(gb) = way.order_book {
@@ -442,7 +627,7 @@ fn expected_cost(st: &State, C: &Content, way: &Way, pbar: &Mat, need: &[f64], t
         markup += backlog / made.max(1.0);
     }
     let price = |g: usize| reckoned_price(st, pbar, g, t, need[g], way.build_months);
-    pairwise_sum_by(C.G, |g| if need[g] > 0.0 { need[g] * price(g) * if Some(g) == way.order_book { markup } else { 1.0 } } else { 0.0 }) * 1.3
+    pairwise_sum_by(C.G, |g| if need[g] > 0.0 { need[g] * price(g) * if Some(g) == way.order_book { markup } else { 1.0 } } else { 0.0 }) * (1.0 + way.wages)
 }
 
 /// The cheaper of two towns to buy `need` in, by the promoters' own reckoning,
@@ -604,7 +789,7 @@ fn report_branches(st: &State, way: &Way, book: &mut WayBook, year: i64, events:
     let mut ev = Event::new(
         when,
         way.words.kind,
-        0.35,
+        way.words.branches_weight,
         title,
         format!("{km:.0} km of {} opened in {year}, to {}.", way.words.branch, list(&parts)),
     );
@@ -647,6 +832,8 @@ fn project(way: &Way, serves: u8, a: usize, b: usize, target: usize, town: usize
         length_km: 2.0 * length,
         way: way.id,
         months: way.build_months,
+        wages: way.wages,
+        navvy_pay: 0.0,
         serves,
         paid_in: raised,
         subs,
@@ -658,7 +845,7 @@ fn project(way: &Way, serves: u8, a: usize, b: usize, target: usize, town: usize
 #[allow(clippy::too_many_arguments)]
 fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBook, year: i64, pbar: &Mat, events: &mut Vec<Event>) {
     let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
-    let k: Vec<f64> = (0..st.T_max).map(|t| st.know[(t, way.tech)]).collect();
+    let k: Vec<f64> = (0..st.T_max).map(|t| (way.knows)(st, t)).collect();
     let kmax = act.iter().map(|&t| k[t]).fold(f64::NEG_INFINITY, f64::max);
     let building = |st: &State| st.projects.iter().filter(|pr| pr.way == way.id).count();
     if act.len() < 2 || kmax < way.know || building(st) >= way.max_projects {
@@ -668,7 +855,7 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
     book.pair_cooldown.retain(|_, until| *until > year);
     book.spot_cooldown.retain(|_, until| *until > year);
     let W = st.world.W;
-    let mut net = Net::new(st, way);
+    let mut net = Net::new(st, P, way);
 
     // ---- trunks: pairs of towns, the busiest first
     let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
@@ -693,6 +880,9 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         let (na, nb) = (st.town_node[a_], st.town_node[b_]);
         let paths = tr::dijkstra(&net.route, &[(na, 0.0)], Some(nb));
         if !paths.dist[nb].is_finite() || paths.dist[nb] > 1e5 {
+            // no way over land (or, for a canal, none that keeps off the mountains):
+            // the ground does not change, so there is no hurry to look again
+            book.pair_cooldown.insert((a_, b_), year + 10);
             continue;
         }
         let path = tr::path_cells(&paths.pred, na, nb);
@@ -700,12 +890,15 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         }
         let new_cells: Vec<usize> = path.iter().copied().filter(|&c| !net.laid[c]).collect();
-        if new_cells.is_empty() {
+        // (a way that floats is not joined where two of its lines merely lie in
+        // neighbouring cells: there a junction is still to be cut, with no new cell)
+        let joined = way.wharf.is_none() || path.windows(2).all(|p| net.g.boat.get(p[0]).is_some_and(|links| links.iter().any(|l| l.0 as usize == p[1])));
+        if new_cells.is_empty() && joined {
             book.links.insert((a_, b_));
             continue;
         }
-        let (local, trade) = net.sums(st, P, way, &new_cells, &[a_, b_]);
-        let need = materials(way, new_cells.len());
+        let (local, trade) = net.sums(st, P, way, &path, &new_cells, &[a_, b_]);
+        let need = materials(way, &st.world, &path, &new_cells);
         let (buy_town, cost) = cheaper_town(st, C, way, pbar, &need, a_, b_);
         let roi = way.induced * (local + trade) / cost.max(1e-9);
         if roi < way.hurdle {
@@ -717,24 +910,41 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         };
         let pr = project(way, SERVES_TRUNK, a_, b_, nb, buy_town, path, new_cells, need, raised, subs, year, roi, cost, W);
-        let mut ev = Event::new(
-            year as f64 + 0.95,
-            way.words.plan_kind,
-            0.45,
-            format!("{} and {} {} promoted", st.town_name[a_], st.town_name[b_], way.words.Noun),
-            format!(
-                "Promoters raise money for {:.0} km of line. They expect the carting it saves, between the towns and along the way, to repay {} a year.",
-                pr.length_km,
-                fmt_pct(roi, 0)
-            ),
-        );
+        let mut ev = if pr.new.is_empty() {
+            // (a way that floats) nothing new but the cut between two lines that lie
+            // side by side: told as what it is, not as so many km of new line
+            Event::new(
+                year as f64 + 0.95,
+                way.words.plan_kind,
+                way.words.branches_weight,
+                format!("A {} junction promoted between {} and {}", way.words.noun, st.town_name[a_], st.town_name[b_]),
+                format!(
+                    "Two {}s lie side by side on the way between the towns and do not meet. Promoters raise money for a short cut to join them, and expect the carting it saves to repay {} a year.",
+                    way.words.noun,
+                    fmt_pct(roi, 0)
+                ),
+            )
+        } else {
+            Event::new(
+                year as f64 + 0.95,
+                way.words.plan_kind,
+                way.words.weight,
+                format!("{} and {} {} promoted", st.town_name[a_], st.town_name[b_], way.words.Noun),
+                format!(
+                    "Promoters raise money for {:.0} km of {}. They expect the carting it saves, between the towns and along the way, to repay {} a year.",
+                    pr.length_km,
+                    way.words.line,
+                    fmt_pct(roi, 0)
+                ),
+            )
+        };
         ev.town = Some(a_);
         ev.cell = Some(na);
         events.push(ev);
         // a pair with a line building is not looked at again
         book.links.insert((a_, b_));
         st.projects.push(pr);
-        net = Net::new(st, way);
+        net = Net::new(st, P, way);
     }
 
     // ---- branches: from the nearest point of the network
@@ -747,13 +957,23 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
     let cooling = |book: &WayBook, c: usize| book.spot_cooldown.iter().any(|(&q, &until)| until > year && apart(W, q, c) < 4.0);
     let mut towns: Vec<usize> = act.iter().copied().filter(|&t| !net.laid[st.town_node[t]] && !cooling(book, st.town_node[t])).collect();
     towns.sort_by(|&x, &y| st.pop[y].total_cmp(&st.pop[x]).then(x.cmp(&y)));
+    if way.heads.is_some() {
+        // a way that may start from any town has no town to reach: its towns are
+        // joined by trunks, and its branches run from the towns to the districts
+        towns.clear();
+    }
     for t in towns {
         cands.push((SERVES_TOWN, st.town_node[t], t));
     }
     // the carting bill of each 5 by 5 block, on the network as it will be
     let bill: Vec<f64> = (0..N).map(|c| if net.d[c].is_finite() { st.cell_flow_year[c] * net.d[c] } else { 0.0 }).collect();
     let block: Vec<f64> = ndimage::uniform_filter(&bill, H, W, 5, Mode::Constant).iter().map(|v| v * 25.0).collect();
-    let free: Vec<bool> = net.laid.iter().map(|&l| !l).collect();
+    let mut free: Vec<bool> = net.laid.iter().map(|&l| !l).collect();
+    // (a town or a river a branch could start from counts as the way: a district
+    // that sits on one is no district for a branch)
+    for &q in &net.heads {
+        free[q] = false;
+    }
     let d_way = ndimage::distance_transform_edt(&free, H, W);
     let neg: Vec<f64> = block.iter().map(|&v| -v).collect();
     let mut picked: Vec<usize> = Vec::new();
@@ -763,6 +983,9 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         }
         // (a cell on the line is never a district, whatever the gap is set to)
         if st.catch[c] < 0 || !st.world.land[c] || net.laid[c] || d_way[c] < way.branch_gap {
+            continue;
+        }
+        if way.local && k[st.catch[c] as usize] < way.know {
             continue;
         }
         if picked.iter().any(|&q| apart(W, q, c) < way.district_spacing) || cooling(book, c) {
@@ -786,7 +1009,7 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
         let junction = path[0];
         // the town at the network's end: the junction's market town if it has the
         // way, else the town with it that is cheapest to reach from there
-        let on_way = |t: usize| net.laid[st.town_node[t]];
+        let on_way = |t: usize| net.laid[st.town_node[t]] || way.heads.is_some();
         let ct = st.catch[junction];
         let jt = if ct >= 0 && on_way(ct as usize) {
             ct as usize
@@ -803,8 +1026,8 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         }
         let serve: Vec<usize> = if serves == SERVES_TOWN { vec![town] } else { Vec::new() };
-        let (local, trade) = net.sums(st, P, way, &new_cells, &serve);
-        let need = materials(way, new_cells.len());
+        let (local, trade) = net.sums(st, P, way, &path, &new_cells, &serve);
+        let need = materials(way, &st.world, &path, &new_cells);
         let (buy_town, cost) = cheaper_town(st, C, way, pbar, &need, town, jt);
         let roi = way.induced * (local + trade) / cost.max(1e-9);
         if roi < way.hurdle {
@@ -816,14 +1039,14 @@ fn promote(st: &mut State, C: &Content, P: &Params, way: &Way, book: &mut WayBoo
             continue;
         };
         st.projects.push(project(way, serves, town, jt, target, buy_town, path, new_cells, need, raised, subs, year, roi, cost, W));
-        net = Net::new(st, way);
+        net = Net::new(st, P, way);
     }
 }
 
-/// What a month's order of `rq` costs a line at `price`: the materials, and three
-/// tenths on top for the navvies (as `econ::step_month` pays them).
-fn month_bill(rq: &[f64], price: &[f64]) -> f64 {
-    1.3 * rq.iter().zip(price).map(|(q, p)| q * p).sum::<f64>()
+/// What a month's order of `rq` costs a line at `price`: the materials, and the
+/// navvies' wages on top, `wages` to the shilling (as `econ::step_month` pays them).
+fn month_bill(rq: &[f64], price: &[f64], wages: f64) -> f64 {
+    (1.0 + wages) * rq.iter().zip(price).map(|(q, p)| q * p).sum::<f64>()
 }
 
 /// The month's order of materials for a line of the game's promoters, cut down to
@@ -834,7 +1057,7 @@ pub fn within_means(pr: &Project, rq: &mut [f64], price: &[f64]) {
     if pr.months <= 0.0 {
         return;
     }
-    let bill = month_bill(rq, price);
+    let bill = month_bill(rq, price, navvy_share(pr));
     let cash = pr.cash.max(0.0);
     if bill > cash {
         // a hair under, so that rounding never leaves the line a farthing short
@@ -867,7 +1090,7 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
         // about the 35 to 8 in which the two subscribe.
         let months = if pr.months > 0.0 { pr.months } else { 10.0 };
         let rq: Vec<f64> = (0..pr.order.len()).map(|g| pr.order[g].min(pr.need[g] / months)).collect();
-        let mut short = month_bill(&rq, st.price.row(pr.town)) - pr.cash;
+        let mut short = month_bill(&rq, st.price.row(pr.town), navvy_share(&pr)) - pr.cash;
         for (n, t) in [pr.a, pr.b].into_iter().enumerate() {
             if short <= 0.0 || (n == 1 && pr.b == pr.a) {
                 continue;
@@ -898,13 +1121,16 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             keep.push(pr);
             continue;
         }
-        let first = !book.lines.iter().any(|l| l.serves == SERVES_TRUNK);
+        let first = if way.first_any { book.lines.is_empty() } else { !book.lines.iter().any(|l| l.serves == SERVES_TRUNK) };
         // Only its own cells: where its route runs over a line still building, that
         // line lays them when it opens (and pays for them, once).
         for &c in &pr.new {
             (way.layer_mut)(st)[c] = 1;
         }
         // what is left goes back to those who subscribed
+        if let Some(opened) = way.opened {
+            opened(st, &pr, year_float);
+        }
         let subs = std::mem::take(&mut pr.subs);
         repay(st, &subs, pr.cash);
         let spent = pr.paid_in - pr.cash;
@@ -928,7 +1154,20 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             st.rail_opened.push(RailOpened { year: year_float, a: pr.a, b: if trunk { pr.b as i64 } else { -1 }, km: pr.length_km });
         }
         let (a_, b_) = (pr.a, pr.b);
-        if trunk {
+        if trunk && pr.new.is_empty() {
+            // (a way that floats) a junction cut between two lines that lay side by side
+            let mut ev = Event::new(
+                year_float,
+                way.words.kind,
+                way.words.branches_weight,
+                format!("A junction joins the {}s between {} and {}", way.words.noun, st.town_name[a_], st.town_name[b_]),
+                format!("A short cut, begun in {}. Boats now pass between two {}s that lay side by side and did not meet.", pr.start, way.words.noun),
+            );
+            ev.town = Some(a_);
+            ev.cell = Some(st.town_node[a_]);
+            ev.cell2 = Some(st.town_node[b_]);
+            events.push(ev);
+        } else if trunk {
             let title = format!(
                 "{}{} to {}",
                 if first { format!("The first {} opens: ", way.words.noun) } else { format!("{} opens: ", way.words.Noun) },
@@ -938,7 +1177,7 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             let mut ev = Event::new(
                 year_float,
                 way.words.kind,
-                if first { 1.0 } else { 0.45 },
+                if first { 1.0 } else { way.words.weight },
                 title,
                 format!(
                     "{:.0} km of {}, begun in {}. Freight between the towns now moves at a fraction of the carting cost.",
@@ -958,9 +1197,26 @@ pub fn progress(st: &mut State, way: &Way, year_float: f64, events: &mut Vec<Eve
             let mut ev = Event::new(
                 year_float,
                 way.words.kind,
-                0.45,
+                way.words.weight,
                 format!("The {} reaches {}", way.words.noun, st.town_name[a_]),
                 format!("{:.0} km of {} join {} to {from}. The line was begun in {}.", pr.length_km, way.words.track, st.town_name[a_], pr.start),
+            );
+            ev.town = Some(a_);
+            ev.cell = Some(pr.target);
+            ev.cell2 = Some(pr.cells[0]);
+            events.push(ev);
+        } else if first && way.first_any {
+            // the first line of all runs to a district (`Way::first_any`)
+            let what = serves_word(pr.serves);
+            let mut ev = Event::new(
+                year_float,
+                way.words.kind,
+                1.0,
+                format!("The first {} opens: the {what} near {}", way.words.noun, st.town_name[a_]),
+                format!(
+                    "{:.0} km of {}, begun in {}. What the {what} send to {} now goes by water at a fraction of the carting cost.",
+                    pr.length_km, way.words.track, pr.start, st.town_name[a_]
+                ),
             );
             ev.town = Some(a_);
             ev.cell = Some(pr.target);
@@ -1043,7 +1299,7 @@ mod tests {
         let path = a_line(&st, &way);
         let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
         let (a, b) = (act[0], act[1]);
-        let need = materials(&way, path.len());
+        let need = materials(&way, &st.world, &path, &path);
         let W = st.world.W;
         st.projects.push(project(&way, SERVES_TRUNK, a, b, path[path.len() - 1], a, path.clone(), path, need, 0.0, Vec::new(), 1800, 0.1, 1.0, W));
         for t in [a, b] {
@@ -1055,7 +1311,7 @@ mod tests {
         let pr = &st.projects[0];
         // the month's bill, all of it from the first town's households
         let rq: Vec<f64> = pr.need.iter().map(|n| n / way.build_months).collect();
-        let bill = month_bill(&rq, st.price.row(a));
+        let bill = month_bill(&rq, st.price.row(a), 0.3);
         assert!(bill > 0.0 && (pr.cash - bill).abs() <= 1e-9 * bill, "{} called against a bill of {bill}", pr.cash);
         assert_eq!(pr.subs, vec![(false, a, pr.cash)]);
         assert_eq!((st.lord_cash[a], st.lord_cash[b], st.hh_cash[b]), (-1000.0, -1000.0, 1e9));
@@ -1100,5 +1356,119 @@ mod tests {
         // and taking it up again leaves the graph as it was
         unlay(&mut g, &changed);
         assert!(g.w.iter().zip(&before).all(|(x, y)| x.to_bits() == y.to_bits()));
+    }
+
+    /// The same for a way that floats, and for a railway laid where a canal is.
+    #[test]
+    fn a_canal_dug_and_improved_is_a_search_from_scratch() {
+        let (st, railway) = island();
+        let (P, C) = (default_params(), default_content());
+        let canal = crate::canals::way(&st, &C, &P);
+        // a canal between the first two towns that have a way round the mountains
+        let route = build_graph(&st.world, &vec![false; st.N], &canal.build);
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        let mut path = Vec::new();
+        'pairs: for &a in &act {
+            for &b in &act {
+                let (na, nb) = (st.town_node[a], st.town_node[b]);
+                let paths = tr::dijkstra(&route, &[(na, 0.0)], Some(nb));
+                if a < b && paths.dist[nb] < 1e5 {
+                    path = tr::path_cells(&paths.pred, na, nb);
+                    break 'pairs;
+                }
+            }
+        }
+        assert!(path.len() > 6, "two towns can be joined by canal");
+        assert!(path.iter().all(|&c| st.world.terrain[c] != MOUNTAINS), "no canal over the mountains");
+        let towns: Vec<(usize, f64)> = act.iter().map(|&t| (st.town_node[t], 0.0)).collect();
+        let mut g = st.graph.clone();
+        let base = tr::distances(&g, &towns);
+        let mut laid = vec![false; st.N];
+        for &c in &path {
+            laid[c] = true;
+        }
+        let same = |quick: &[f64], fresh: &[f64]| {
+            (0..st.N).all(|c| if fresh[c].is_finite() { (quick[c] - fresh[c]).abs() <= 1e-9 * fresh[c].max(1.0) } else { !quick[c].is_finite() })
+        };
+        let dug = lay_line(&mut g, &st.world, &canal, &laid, &path, &path);
+        assert!(dug.edges.is_empty() && dug.links.len() == path.len() - 1, "a canal is its links and leaves the ground alone");
+        let (quick, fresh) = (improve(&g, &base, &dug.edges), tr::distances(&g, &towns));
+        assert!(same(&quick, &fresh));
+        let saved: f64 = (0..st.N).filter(|&c| fresh[c].is_finite()).map(|c| base[c] - fresh[c]).sum();
+        assert!(saved > 0.0, "the canal brings some cells nearer a market");
+        // the search that keeps the trees gives the distances of the one that does not
+        let trees = tr::dijkstra(&g, &towns, None);
+        assert!(trees.dist.iter().zip(&fresh).all(|(x, y)| x.to_bits() == y.to_bits()));
+        // a railway laid beside it: what it makes cheaper reaches the water too
+        let line = a_line(&st, &railway);
+        let mut railed = vec![false; st.N];
+        for &c in &line {
+            railed[c] = true;
+        }
+        let track = lay_line(&mut g, &st.world, &railway, &railed, &line, &line);
+        assert!(track.links.is_empty() && !track.edges.is_empty());
+        let (quick, both) = (improve(&g, &fresh, &track.edges), tr::distances(&g, &towns));
+        assert!(same(&quick, &both));
+        // and both taken up again leave the graph as it was
+        take_up(&mut g, &track);
+        take_up(&mut g, &dug);
+        assert!(g.w.iter().zip(&st.graph.w).all(|(x, y)| x.to_bits() == y.to_bits()));
+        assert!(g.boat.iter().all(|links| links.is_empty()));
+        assert!(same(&tr::distances(&g, &towns), &base));
+    }
+
+    /// The railway's promoters reckon with a canal that is still being dug, as the
+    /// canal's reckon with a line being laid: neither is promoted on carting the
+    /// other will have taken.
+    #[test]
+    fn a_canal_being_dug_is_on_the_railway_promoters_graph() {
+        let (mut st, railway) = island();
+        let (mut P, C) = (default_params(), default_content());
+        let canal = crate::canals::way(&st, &C, &P);
+        let path = a_line(&st, &railway);
+        let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+        let (a, b) = (act[0], act[1]);
+        let need = materials(&canal, &st.world, &path, &path);
+        let W = st.world.W;
+        st.projects.push(project(&canal, SERVES_TRUNK, a, b, path[path.len() - 1], a, path.clone(), path.clone(), need, 0.0, Vec::new(), 1800, 0.1, 1.0, W));
+        // switched off, the graph is the island's own
+        let net = Net::new(&st, &P, &railway);
+        assert!(!net.g.has_boats() && net.laid.iter().all(|&l| !l), "a canal is no railway under way");
+        P.canals.enabled = true;
+        let net = Net::new(&st, &P, &railway);
+        let links: usize = net.g.boat.iter().map(|l| l.len()).sum();
+        assert_eq!(links, 2 * (path.len() - 1), "every link of the canal, both ways");
+        assert_eq!(net.g.wharf, P.canals.wharf);
+        // and the two towns are nearer each other for it
+        let from_a = |g: &tr::Graph| tr::distances(g, &[(st.town_node[a], 0.0)])[st.town_node[b]];
+        assert!(from_a(&net.g) < from_a(&st.graph), "{} against {}", from_a(&net.g), from_a(&st.graph));
+        // the canal's promoters see a railway being laid in the same way
+        st.projects.clear();
+        st.canal = vec![0; st.N]; // as `canals::plan` makes it
+        st.projects.push(project(&railway, SERVES_TRUNK, a, b, path[path.len() - 1], a, path.clone(), path.clone(), vec![0.0; C.G], 0.0, Vec::new(), 1800, 0.1, 1.0, W));
+        let net = Net::new(&st, &P, &canal);
+        assert!(!net.g.has_boats() && from_a(&net.g) < from_a(&st.graph));
+    }
+
+    /// Locks are paid for: a canal's materials grow with the height it climbs.
+    #[test]
+    fn a_canal_pays_for_its_locks() {
+        let (st, railway) = island();
+        let (P, C) = (default_params(), default_content());
+        let canal = crate::canals::way(&st, &C, &P);
+        let path = a_line(&st, &railway);
+        let climb: f64 = path.windows(2).map(|p| (st.world.h[p[0]] - st.world.h[p[1]]).abs()).sum();
+        assert!(climb > 0.0);
+        let need = materials(&canal, &st.world, &path, &path);
+        let stone = C.gi("stone");
+        let want = P.canals.stone * (path.len() as f64 + P.canals.lock_cells * climb);
+        assert!((need[stone] - want).abs() < 1e-9 * want, "{} against {want}", need[stone]);
+        // clay lines the cut and is no part of a lock
+        assert_eq!(need[C.gi("clay")], P.canals.clay * path.len() as f64);
+        // a railway has no locks: so much a cell and no more
+        let rails = C.gi("rails");
+        assert_eq!(materials(&railway, &st.world, &path, &path)[rails], railway.materials[rails] * path.len() as f64);
+        // and a canal's navvies are paid twice the materials, a railway's three tenths
+        assert_eq!((canal.wages, railway.wages), (P.canals.wages, 0.3));
     }
 }

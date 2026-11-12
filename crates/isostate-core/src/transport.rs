@@ -38,6 +38,13 @@ pub struct Graph {
     /// The cheapest and dearest finite edge, which decide how `dijkstra` queues nodes.
     pub min_w: f64,
     pub max_w: f64,
+    // ---- canals (docs/rules/canals.md): both empty and unused unless a canal is open
+    /// `boat[c]`: the cells a boat can reach from cell c along one link of canal,
+    /// with the cost of the link. A canal is a layer of its own over the cells:
+    /// a load is on the road or on the water, and pays `wharf` to change.
+    pub boat: Vec<Vec<(u32, f64)>>,
+    /// The charge for getting a load on to a boat, and again for getting it off.
+    pub wharf: f64,
 }
 
 impl Graph {
@@ -45,7 +52,32 @@ impl Graph {
         let finite = w.iter().copied().filter(|x| x.is_finite());
         let min_w = finite.clone().fold(f64::INFINITY, f64::min);
         let max_w = finite.fold(0.0, f64::max);
-        Graph { N, W, H, w, railed, min_w, max_w }
+        Graph { N, W, H, w, railed, min_w, max_w, boat: Vec::new(), wharf: 0.0 }
+    }
+
+    /// canals: whether any cell has a canal, so that searches must look at the water too.
+    pub fn has_boats(&self) -> bool {
+        !self.boat.is_empty()
+    }
+
+    /// canals: join cells a and b by a link of canal costing `cost` to pass.
+    /// False if they are joined already.
+    pub fn link_boats(&mut self, a: usize, b: usize, cost: f64) -> bool {
+        if self.boat.is_empty() {
+            self.boat = vec![Vec::new(); self.N];
+        }
+        if self.boat[a].iter().any(|l| l.0 as usize == b) {
+            return false;
+        }
+        self.boat[a].push((b as u32, cost));
+        self.boat[b].push((a as u32, cost));
+        true
+    }
+
+    /// canals: take up the link between a and b again.
+    pub fn unlink_boats(&mut self, a: usize, b: usize) {
+        self.boat[a].retain(|l| l.0 as usize != b);
+        self.boat[b].retain(|l| l.0 as usize != a);
     }
 }
 
@@ -93,10 +125,29 @@ pub fn build_graph(world: &World, road: &[u8], rail: &[u8], port_mask: &[bool], 
             }
             if both_sea {
                 cost = SEA_COST * step;
+                // land: a lake is not an arm of the sea. Where a lake cell and
+                // a sea cell lie side by side there is a bar of land between
+                // them, and a boat's load is carried over it as over a beach
+                if let Some(lf) = &world.landform {
+                    if lf.lake[a] != lf.lake[b] {
+                        cost = BEACH_COST;
+                    }
+                }
             }
             if !both_land && !both_sea {
                 let landside = if world.land[a] { a } else { b };
                 cost = if port_mask[landside] { PORT_COST } else { BEACH_COST };
+                // land: a boat on a navigable river goes on into the lake the
+                // river runs through, and out of it again; and the mouth of a
+                // tideway is a harbour without a town's having to make one
+                if let Some(lf) = &world.landform {
+                    let waterside = if world.land[a] { b } else { a };
+                    if lf.lake[waterside] && world.navigable[landside] {
+                        cost = cost.min(RIVER_COST * step);
+                    } else if !lf.lake[waterside] && lf.estuary[landside] && world.navigable[landside] {
+                        cost = cost.min(PORT_COST);
+                    }
+                }
             }
             w[a * 8 + k] = cost.max(1e-3);
             railed[a * 8 + k] = on_rail;
@@ -163,6 +214,10 @@ pub struct Paths {
 /// the predecessors along its path are final at that point, so they are the same
 /// as after a full search; other cells may be unfinished.
 pub fn dijkstra(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> Paths {
+    // canals (docs/rules/canals.md): with a canal open the search has two layers
+    if g.has_boats() {
+        return dijkstra_boats(g, sources, target);
+    }
     dijkstra_heap(g, sources, target)
 }
 
@@ -176,6 +231,10 @@ pub fn dijkstra(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> P
 /// edge weights span too wide a range for buckets. Both give exactly the
 /// distances scipy gives.
 pub fn distances(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
+    // canals (docs/rules/canals.md): with a canal open the search has two layers
+    if g.has_boats() {
+        return distances_boats(g, sources);
+    }
     if g.min_w > 0.0 && g.max_w / g.min_w < 65_536.0 {
         dijkstra_buckets(g, sources, None).dist
     } else {
@@ -328,6 +387,204 @@ fn dijkstra_heap(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> 
         });
     }
     Paths { dist, pred, order }
+}
+
+/// canals (docs/rules/canals.md): shortest paths when some cells have a canal.
+///
+/// A cell with a canal is two nodes, the ground and the water. Between them is
+/// the wharf (`g.wharf` each way); along the water a boat goes from cell to cell
+/// by the links of `g.boat`. So a load that takes the canal pays the wharf twice
+/// and the cheap water in between, and a cart that only crosses a canal pays
+/// nothing for it.
+///
+/// The result has one entry per cell, as every other search: the cost of
+/// reaching the cell's ground. Where the cheapest way there ends on a boat, the
+/// cell's predecessor is the cell where the load was put on the water, however
+/// far off that is, so the tree is still a tree over cells and the cells in
+/// between are not on it (`canals::year_traffic` finds the water's traffic).
+/// Ties go to the higher node as in `dijkstra_heap`, the ground before the water.
+fn dijkstra_boats(g: &Graph, sources: &[(usize, f64)], target: Option<usize>) -> Paths {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    let N = g.N;
+    let mut dist = vec![f64::INFINITY; N];
+    let mut pred = vec![NO_PRED; N];
+    let mut done = vec![false; N];
+    let mut order: Vec<u32> = Vec::with_capacity(N);
+    // the water: cost of being afloat at each cell, and where that boat was loaded
+    let mut afloat = vec![f64::INFINITY; N];
+    let mut loaded = vec![0u32; N];
+    let mut done_w = vec![false; N];
+    // node c is the ground of cell c, node N + c its water
+    let mut heap: BinaryHeap<(Reverse<u64>, u32)> = BinaryHeap::new();
+    for &(s, d0) in sources {
+        debug_assert!(d0 >= 0.0);
+        if d0 < dist[s] {
+            dist[s] = d0;
+            heap.push((Reverse(d0.to_bits()), s as u32));
+        }
+    }
+    while let Some((Reverse(dbits), node)) = heap.pop() {
+        let d = f64::from_bits(dbits);
+        if (node as usize) < N {
+            let u = node as usize;
+            if done[u] || d > dist[u] {
+                continue;
+            }
+            done[u] = true;
+            order.push(u as u32);
+            if target == Some(u) {
+                break;
+            }
+            for_each_edge(g, u, |k, v| {
+                if done[v] {
+                    return;
+                }
+                let nd = d + g.w[u * 8 + k];
+                if nd < dist[v] {
+                    dist[v] = nd;
+                    pred[v] = u as i64;
+                    heap.push((Reverse(nd.to_bits()), v as u32));
+                }
+            });
+            // on to a boat here
+            if !g.boat[u].is_empty() && !done_w[u] && d + g.wharf < afloat[u] {
+                afloat[u] = d + g.wharf;
+                loaded[u] = u as u32;
+                heap.push((Reverse(afloat[u].to_bits()), (N + u) as u32));
+            }
+        } else {
+            let u = node as usize - N;
+            if done_w[u] || d > afloat[u] {
+                continue;
+            }
+            done_w[u] = true;
+            for &(v, w) in &g.boat[u] {
+                let v = v as usize;
+                let nd = d + w;
+                if !done_w[v] && nd < afloat[v] {
+                    afloat[v] = nd;
+                    loaded[v] = loaded[u];
+                    heap.push((Reverse(nd.to_bits()), (N + v) as u32));
+                }
+            }
+            // off the boat here (never where it was loaded: that would be a round trip)
+            let nd = d + g.wharf;
+            if loaded[u] as usize != u && !done[u] && nd < dist[u] {
+                dist[u] = nd;
+                pred[u] = loaded[u] as i64;
+                heap.push((Reverse(nd.to_bits()), u as u32));
+            }
+        }
+    }
+    Paths { dist, pred, order }
+}
+
+/// canals: `distances` when some cells have a canal. The two layers of
+/// `dijkstra_boats` on the bucket queue of `dijkstra_buckets`, which is sound
+/// here for the same reason: the bucket is a hair narrower than the cheapest
+/// step of any kind (an edge of the ground, a link of water, the wharf), so
+/// nothing in a bucket can shorten anything else in it. The distances are those
+/// `dijkstra_boats` gives.
+fn distances_boats(g: &Graph, sources: &[(usize, f64)]) -> Vec<f64> {
+    let N = g.N;
+    let (mut lo, mut hi) = (g.min_w.min(g.wharf), g.max_w.max(g.wharf));
+    for links in &g.boat {
+        for &(_, w) in links {
+            lo = lo.min(w);
+            hi = hi.max(w);
+        }
+    }
+    if !(lo > 0.0 && hi / lo < 65_536.0) {
+        return dijkstra_boats(g, sources, None).dist;
+    }
+    let mut dist = vec![f64::INFINITY; N];
+    let mut afloat = vec![f64::INFINITY; N];
+    // node c is the ground of cell c, node N + c its water
+    let mut done = vec![false; 2 * N];
+    let per_width = 1.0 / (lo * (1.0 - 1e-9));
+    let bucket = |d: f64| (d * per_width) as usize;
+    let ring = ((hi * per_width) as usize + 2).next_power_of_two();
+    let mask = ring - 1;
+    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); ring];
+    let mut srcs: Vec<(usize, f64)> = sources.to_vec();
+    srcs.sort_unstable_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+    let mut next_src = 0;
+    let mut queued = 0usize;
+    let mut cur = match srcs.first() {
+        Some(&(_, d0)) => bucket(d0),
+        None => return dist,
+    };
+    loop {
+        while next_src < srcs.len() && bucket(srcs[next_src].1) <= cur {
+            let (s, d0) = srcs[next_src];
+            next_src += 1;
+            if d0 < dist[s] {
+                dist[s] = d0;
+                buckets[cur & mask].push(s as u32);
+                queued += 1;
+            }
+        }
+        if queued == 0 {
+            match srcs.get(next_src) {
+                Some(&(_, d0)) => {
+                    cur = bucket(d0);
+                    continue;
+                }
+                None => break,
+            }
+        }
+        let mut items = std::mem::take(&mut buckets[cur & mask]);
+        queued -= items.len();
+        for &node in &items {
+            let node = node as usize;
+            if done[node] {
+                continue;
+            }
+            done[node] = true;
+            if node < N {
+                let u = node;
+                let du = dist[u];
+                let wu = &g.w[u * 8..u * 8 + 8];
+                for_each_edge(g, u, |k, v| {
+                    if done[v] {
+                        return;
+                    }
+                    let nd = du + wu[k];
+                    if nd < dist[v] {
+                        dist[v] = nd;
+                        buckets[bucket(nd) & mask].push(v as u32);
+                        queued += 1;
+                    }
+                });
+                if !g.boat[u].is_empty() && !done[N + u] && du + g.wharf < afloat[u] {
+                    afloat[u] = du + g.wharf;
+                    buckets[bucket(afloat[u]) & mask].push((N + u) as u32);
+                    queued += 1;
+                }
+            } else {
+                let u = node - N;
+                let d = afloat[u];
+                for &(v, w) in &g.boat[u] {
+                    let v = v as usize;
+                    if !done[N + v] && d + w < afloat[v] {
+                        afloat[v] = d + w;
+                        buckets[bucket(d + w) & mask].push((N + v) as u32);
+                        queued += 1;
+                    }
+                }
+                if !done[u] && d + g.wharf < dist[u] {
+                    dist[u] = d + g.wharf;
+                    buckets[bucket(dist[u]) & mask].push(u as u32);
+                    queued += 1;
+                }
+            }
+        }
+        items.clear();
+        buckets[cur & mask] = items;
+        cur += 1;
+    }
+    dist
 }
 
 /// Distances, predecessor trees and settle orders from every active town.

@@ -36,3 +36,17 @@ Part of the [backlog](../BACKLOG.md). Things only she can settle, gathered on th
   - *Hedgerow trees away from woods are down to about 60 per cent of what they were* (L37). `merged-7-towns/town-1750.png` against `merged-8-houses-far/town-1750.png`.
   - *A lower sun shows the relief far better than the standard light* (L163). `look-demo/island-1900.png`, shot with `look-demo/dusk.toml`, against `merged-8-houses-far/island-1900.png`; the setting is `[sun]` in `look.toml`.
   - *One outlying town flattens the price map's scale* (L119, in piece 2). `overlays-charts-review/price-steel-1750.png`. The choice is between the true range and quantiles, as the rent view has.
+
+- **Left for her by the reviews that landed on 12 November.** The pictures named are under `.claude/night/shots/` on her machine.
+  - *A wood's edge cuts arable fields,* where it might have followed the hedge. With hedge-following the stair-stepped blocks stay wherever wood meets corn country (`wood-edges/land-2/lowland-1800.png` shows that rule).
+  - *How large a wood may be.* Woods and clearings are a few kilometres across at most, because each district of 6 km keeps the areas the record gives it. Larger forests need the record to hold them, or a looser hold that lets the painted areas drift further from the record.
+  - *October:* the far canopy is a bronze and the crowns are bright orange (`wood-edges-review/land/lowland-1800-october.png`).
+  - *The hill margin is a soft wash:* bracken shows as rust blotches in October and hardly at all in summer.
+  - *Tall viaducts over open country* where a line is losing height (`rails-review/after/tallest.png`). A lower limit trades them for more inclines.
+  - *How much a line wanders on low ground* to follow the contour, and how tight a winding may be (`rails-review/after/coast.png`).
+  - *Forty inclines and banks on one island,* each with its shed where there is room.
+  - *Churches and the railway.* The line passes a little to one side of a town's middle, where churches stand, and four churches in 1900 have it against their yard. The church's place already asks where the railway is, so the railway cannot ask where the church is: one of the two has to give way by rule.
+  - *Winter at every turn.* A clock stopped at a year's turn stands at January, so the opening card, every decision card and every moment an order is carried out sit over a winter island. The alternative is to ease to high summer wherever the bar shows a plain year, as the stills do.
+  - *Pausing at the two fastest speeds lands on the next January,* since at those speeds the year's end is asked for half a year ahead. At the three slower speeds it happens only in the last weeks of December.
+  - *Word to the family given in the middle of a year takes effect after December,* before the books close. A seat moved in May gives the same game as one moved at the turn before; a branch's stance set in May is not in force until the year's end, where one set at a turn is in force for that year.
+  - *The speeds' names* (Slow, Steady, Brisk, Fast, Fastest), *a game starting at Steady,* and *a game opening on "January 1751"* are the builder's choices.

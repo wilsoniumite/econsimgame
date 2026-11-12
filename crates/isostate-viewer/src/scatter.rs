@@ -99,7 +99,7 @@ fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: 
                         z,
                         wcell: wc as u32,
                         sub,
-                        place: if placed { world::place_at(g, x, z) } else { world::Place { parcel: 0, beyond: 0, lean: 0 } },
+                        place: if placed { world::place_at(g, x, z) } else { world::Place::default() },
                         u: world::hash2(id, 3, seed),
                         v: world::hash2(id, 4, seed),
                         yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
@@ -172,10 +172,16 @@ fn firm_life(r: &Replay, f: usize) -> (usize, usize, f32) {
     }
 }
 
+/// A point of a road or a railway that works keep clear of: where it is, the
+/// room to leave either side of it, and the room to leave even where ground
+/// is short (none for a road; a railway's own bed, which no yard can stand on).
+type Way = (f32, f32, f32, f32);
+
 /// The roads and railways of year `k` as points along them, by the cell each
-/// point lies in, with the room to leave either side: works keep clear of them.
-fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<(f32, f32, f32)>> {
-    let mut out: std::collections::HashMap<usize, Vec<(f32, f32, f32)>> = Default::default();
+/// point lies in: works keep clear of them. The railway is taken where it
+/// runs (`rails.rs`), not as straight lines between the middles of its cells.
+fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<Way>> {
+    let mut out: std::collections::HashMap<usize, Vec<Way>> = Default::default();
     let mut lay = |a: (f32, f32), b: (f32, f32), clear: f32| {
         let len = (b.0 - a.0).hypot(b.1 - a.1);
         let n = ((len / 0.03).ceil() as usize).max(1);
@@ -183,25 +189,36 @@ fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<u
             let t = i as f32 / n as f32;
             let (x, z) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
             let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-            out.entry(c).or_default().push((x, z, clear));
+            out.entry(c).or_default().push((x, z, clear, 0.0));
         }
     };
     for (c, m, lv) in crate::network::road_segments(r, k) {
         lay(cen[c], cen[m], if lv == 3 { 0.03 } else { 0.024 });
     }
-    // the railway, as the straight lines between the middles of its cells (the line itself curves a little)
-    let tr = &r.trans[k * r.n..(k + 1) * r.n];
-    let has = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < r.w && (y as usize) < r.h && tr[y as usize * r.w + x as usize] & 4 != 0;
-    for c in 0..r.n {
-        if tr[c] & 4 == 0 {
-            continue;
-        }
-        let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
-        for (dx, dy) in [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)] {
-            if has(x + dx, y + dy) && !(dx != 0 && dy != 0 && (has(x + dx, y) || has(x, y + dy))) {
-                lay(cen[c], cen[(y + dy) as usize * r.w + (x + dx) as usize], 0.05);
+    // the railway where it really runs, with room for its banks: every point of every line that
+    // is not under the ground, told to the cell it lies in and to a neighbour it lies close by
+    let rails = crate::rails::year(r, g, cen, k);
+    let mut tell = |x: f32, z: f32, clear: f32, at_least: f32| {
+        let cell = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
+        let mut told: Vec<usize> = Vec::with_capacity(3);
+        for (dx, dz) in [(0.0f32, 0.0f32), (0.12, 0.0), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
+            let c = cell(x + dx, z + dz);
+            if !told.contains(&c) {
+                told.push(c);
+                out.entry(c).or_default().push((x, z, clear, at_least));
             }
         }
+    };
+    for line in &rails.lines {
+        for (i, p) in line.pts.iter().enumerate() {
+            if line.kind[i] != crate::rails::Kind::Tunnel {
+                tell(p.x, p.z, 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12), 0.03);
+            }
+        }
+    }
+    // and the ground of its stations, engine houses and sheds
+    for (at, clear) in rails.grounds() {
+        tell(at.x, at.y, clear, 0.0);
     }
     out
 }
@@ -211,9 +228,9 @@ fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<u
 enum Room {
     /// well back from the shore, the rivers, the roads, the railway and the cell's edge
     Proper,
-    /// nearer the water, and with no care for the roads
+    /// nearer the water, and with no care for the roads (but off the railway's bed)
     Tight,
-    /// anywhere above the tide that no other yard has taken, close up to its neighbours
+    /// anywhere above the tide that no other yard has taken and no line runs over, close up to its neighbours
     Any,
 }
 
@@ -250,7 +267,7 @@ struct Lot {
 /// Lay out the works of one cell: `firms` in the order they were founded.
 /// It gives back how many found no room at their own size, and how many none at all.
 #[allow(clippy::too_many_arguments)]
-fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
+fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
     let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
     // the churchyards that reach into this cell, or near it
     let yards: Vec<&towns::Churchyard> = yards.iter().filter(|y| y.meets_box(cx + 0.5, cy + 0.5, 0.55, 0.55)).collect();
@@ -314,7 +331,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             if yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(x, z, hx + wall, hz + wall)) {
                 return false;
             }
-            if strict && ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
+            // the roads and the railway; where room is short, only the railway's own bed
+            if ways.iter().any(|&(wx, wz, clear, at_least)| {
+                let clear = if strict { clear } else { at_least };
+                clear > 0.0 && (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear
+            }) {
                 return false;
             }
             let (dry, shore) = (room.dry(), room.shore());
@@ -381,9 +402,10 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             // furthest from the yards already there; the higher, of two as far
             let (hx, hz) = if quarter % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
             let ashore = |s: &&(f32, f32, f32)| [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)].iter().all(|&(dx, dz)| world::height_at(g, s.0 + dx, s.1 + dz) >= 0.004) && !yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(s.0, s.1, hx, hz));
+            let off_the_line = |s: &&(f32, f32, f32)| !ways.iter().any(|&(wx, wz, _, at_least)| at_least > 0.0 && (wx - s.0).abs() < hx + at_least && (wz - s.1).abs() < hz + at_least);
             let apart = |s: &(f32, f32, f32)| lots.iter().filter(|l| from < l.to && l.from < to).map(|l| (l.x - s.0).hypot(l.z - s.1)).fold(f32::MAX, f32::min);
             let furthest = |spots: Vec<&(f32, f32, f32)>| spots.into_iter().rev().max_by(|a, b| apart(a).total_cmp(&apart(b))).map(|s| (s.0, s.1));
-            let at = furthest(tight.iter().filter(ashore).collect()).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
+            let at = furthest(tight.iter().filter(ashore).filter(off_the_line).collect()).or_else(|| furthest(tight.iter().filter(ashore).collect())).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
             (at.0, at.1, quarter)
         });
         let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
@@ -479,7 +501,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     if dirty.is_empty() {
         return;
     }
-    let ways = ways(r, &cen, r.filled.clamp(1, r.ny) - 1);
+    let ways = ways(r, g, &cen, r.filled.clamp(1, r.ny) - 1);
     let mut by_cell: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
     for f in 0..n {
         if dirty.contains(&r.header.firms[f].cell) {
@@ -538,6 +560,7 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
     crate::plan::maybe_areas(r, g);
+    crate::rails::maybe_check(r, g);
     crate::plan::maybe_write(r, g, &slots);
     crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
@@ -740,10 +763,19 @@ pub struct YearMeshes {
 }
 
 pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
-    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk, lod))
+    build_year_on(r, g, slots, cen, k, lk, lod, &world::year_land(r, g, k))
 }
 
-fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
+/// (task C, the land) The year's scenery on a year's land already worked out
+/// (`world::year_land`), so that one reckoning of it serves the ground's
+/// textures and the scenery.
+#[allow(clippy::too_many_arguments)]
+pub fn build_year_on(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, land: &world::YearLand) -> YearMeshes {
+    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk, lod, land))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, land: &world::YearLand) -> YearMeshes {
     let mut trees: [Greenery; LEAF_GROUPS] = Default::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
@@ -766,9 +798,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let site = Site::on(ground(g, p.0, p.1), p.2, &height);
         works(&mut works_b, &mut smoke, &mut lanes, &site, &w, lk);
     }
-    // the railway's embankments, viaducts, cuttings, portals and bridges, and a
+    // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river
-    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk));
+    let (rail_works, rail_smoke) = crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk);
+    works_b.append(rail_works);
+    smoke.append(rail_smoke);
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         let along = (b - a).normalize_or(bevy::math::Vec2::X);
@@ -780,22 +814,24 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
     let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
-    // near a works or a market place, or in a churchyard
+    // near a works or a market place, in a churchyard, or on the railway or its banks
+    let rail_year = crate::rails::year(r, g, cen, k);
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false) || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
+        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false)
+            || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
+            || rail_year.near(x, z, 0.016)
     };
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
 
     // Woods with a shape of their own. A wood is thick and tall in its depths
-    // and thinner and lower toward its edge (`YearLand::wood`), with glades
+    // and thinner and lower toward its edge (`YearLand::wooded`), with glades
     // and rides the trees keep out of (`world::glade`, which the ground paints
     // too); the country next to a wood carries clumps and lone trees that thin
-    // out away from it; and the margin a wood leaves to the fields is scrub.
+    // out away from it; and the ground just outside a wood or a heath is scrub.
     // Trees stand in stands, taller in one and lower in the next, and the
     // conifers gather on high and poor ground, the broadleaves on the low.
-    let land = world::year_land(r, g, k);
     for s in &slots.trees {
         let (cls, margin) = land.at(s.place);
         if !(world::FARM..=world::HEATH).contains(&cls) {
@@ -815,8 +851,8 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let clump = fields_smooth(0.6, 0.78, 0.5 + 0.5 * world::vnoise(s.x * 5.1, s.z * 5.1, 451));
         let stand = 0.5 + 0.5 * world::vnoise(s.x * 2.9 + 3.1, s.z * 2.9 + 8.7, 457);
         let (grow, scale) = match cls {
-            world::WOOD | world::HEATH if margin => {
-                // scrub on the margin: bushes, and a low tree here and there
+            _ if margin => {
+                // scrub just outside a wood or a heath: bushes, and a low tree here and there
                 if u2 < 0.3 && !near_plot(s.x, s.z) {
                     bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
                 }

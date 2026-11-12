@@ -131,6 +131,7 @@ pub fn load_world(d: &Dump) -> World {
         jitter: d.f64("world_jitter"),
         town_sites: d.scalar("world_town_sites").as_array().unwrap().iter().map(|v| num(v) as usize).collect(),
         forest0: d.f64("world_forest0"),
+        landform: None, // land: the Python's island is the port's
     }
 }
 

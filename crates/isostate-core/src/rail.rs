@@ -46,7 +46,10 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
     let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
     let k: Vec<f64> = (0..st.T_max).map(|t| st.know[(t, tr_idx)]).collect();
     let kmax = act.iter().map(|&t| k[t]).fold(f64::NEG_INFINITY, f64::max);
-    if act.len() < 2 || kmax < P.rail_know || st.projects.len() >= P.rail_max_projects {
+    // canals (docs/rules/canals.md): a canal being dug is no railway project. With no
+    // canals every project is the port's and this is `st.projects.len()`, as in the Python.
+    let building = |st: &State| st.projects.iter().filter(|pr| pr.way == crate::ways::PORT).count();
+    if act.len() < 2 || kmax < P.rail_know || building(st) >= P.rail_max_projects {
         return;
     }
     let gr = C.gi("rails");
@@ -55,7 +58,7 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
     for &a_ in &act {
         for &b_ in &act {
             if a_ < b_ && k[a_].max(k[b_]) >= P.rail_know && k[a_].min(k[b_]) > 0.05 {
-                if st.rail_links.contains(&(a_, b_)) || st.projects.iter().any(|pr| (pr.a, pr.b) == (a_, b_)) {
+                if st.rail_links.contains(&(a_, b_)) || st.projects.iter().any(|pr| pr.way == crate::ways::PORT && (pr.a, pr.b) == (a_, b_)) {
                     continue;
                 }
                 if st.rail_cooldown.get(&(a_, b_)).copied().unwrap_or(-99) > year {
@@ -76,7 +79,7 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
     let rg = tr::rail_build_graph(&st.world, &st.rail);
     let W = st.world.W;
     for &(flow, a_, b_) in pairs.iter().take(30) {
-        if st.projects.len() >= P.rail_max_projects {
+        if building(st) >= P.rail_max_projects {
             break;
         }
         let (na, nb) = (st.town_node[a_], st.town_node[b_]);
@@ -168,7 +171,9 @@ pub fn plan_spurs(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year:
         return;
     }
     let tr_idx = st.t_rail;
-    if st.projects.len() >= P.rail_max_projects {
+    // canals: as in `plan`, only the port's own projects count
+    let building = |st: &State| st.projects.iter().filter(|pr| pr.way == crate::ways::PORT).count();
+    if building(st) >= P.rail_max_projects {
         return;
     }
     let (H, W) = (st.world.H, st.world.W);
@@ -182,7 +187,7 @@ pub fn plan_spurs(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year:
     let mut rg: Option<tr::Graph> = None;
     let neg_flow: Vec<f64> = flow.iter().map(|&f| -f).collect();
     for &c in argsort(&neg_flow).iter().take(25) {
-        if st.projects.len() >= P.rail_max_projects {
+        if building(st) >= P.rail_max_projects {
             break;
         }
         let i = st.catch[c];

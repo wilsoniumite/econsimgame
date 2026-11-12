@@ -274,6 +274,11 @@ fn near_matches<'a>(bad: &str, known: &[&'a str]) -> Vec<&'a str> {
         })
         .collect();
     scored.sort();
+    // land: with a name a letter or two off, a shorter name that merely sits inside
+    // the misspelt one (`land` in `land_thetta`) is noise, and is not offered
+    if scored.iter().any(|&(d, _)| d <= limit) {
+        scored.retain(|&(d, k)| d <= limit || k.contains(bad));
+    }
     scored.into_iter().take(6).map(|(_, k)| k).collect()
 }
 

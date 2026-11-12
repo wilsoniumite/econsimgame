@@ -158,6 +158,10 @@ shader_paint! {
         river_thread,
         shore_far,
         wood_canopy_autumn,
+        moor_grass,
+        bracken,
+        bracken_autumn,
+        rushes,
     }
 }
 

@@ -42,6 +42,9 @@ pub struct World {
     pub jitter: Vec<f64>,
     pub town_sites: Vec<usize>,
     pub forest0: Vec<f64>,
+    /// Land (not in the Python; see docs/rules/land.md): the fine grid and the
+    /// water of an island made by `landcells::generate_land`. None on the port's island.
+    pub landform: Option<Box<crate::landcells::Landform>>,
 }
 
 impl World {
@@ -443,6 +446,7 @@ pub fn generate_world(rng: &mut Rng, W: usize, H: usize, n_towns: usize, land_fr
         jitter,
         town_sites: Vec::new(),
         forest0: Vec::new(),
+        landform: None,
     };
     world.town_sites = pick_town_sites(&world, rng, n_towns);
     // Woods are already thinned around old settlements in 1750.

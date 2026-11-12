@@ -70,7 +70,7 @@ pub struct Fact {
 }
 
 /// The headings, in the order they are printed.
-pub const GROUPS: [&str; 9] = [
+pub const GROUPS: [&str; 10] = [
     "People and towns",
     "Work and wages",
     "Railways",
@@ -80,6 +80,8 @@ pub const GROUPS: [&str; 9] = [
     "Prices and cycles",
     "News",
     "Speed",
+    // canals (docs/rules/canals.md): at the end, so that the others keep their places
+    "Canals",
 ];
 
 /// The two headings the sweep needs by name: it adds the news facts itself, and
@@ -344,6 +346,12 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.year("rail_last_growth_year".into(), grew.map(|k| years[k]));
     // railways (docs/rules/railways.md): the network by decade, what it serves and what it cost
     for (name, kind, v) in crate::railways::facts(r) {
+        b.num(name, kind, v);
+    }
+    // canals (docs/rules/canals.md): the network, what it carries, and coal's price
+    // and uses, which any run can answer
+    b.group = GROUPS[9];
+    for (name, kind, v) in crate::canals::facts(r) {
         b.num(name, kind, v);
     }
 

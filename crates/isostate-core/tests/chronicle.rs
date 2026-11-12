@@ -495,8 +495,12 @@ fn a_run_without_families_has_its_history_too() {
 
 #[test]
 fn a_founding_redraws_only_the_districts_it_was_cut_from() {
-    // forty years of seed 7, in which most of its towns are founded
-    let mut s = sim::start(&game(6, 1790), game_content());
+    // fifty years of seed 7, in which most of its towns are founded. (Forty were
+    // enough until the canals were merged beside the mines, docs/rules/canals.md:
+    // with both the island founds no town from 1772 to 1790, the years its canals
+    // are dug and take carting a new market would have saved, and its fifth town
+    // comes in 1791, not 1780. By 1810 it has founded nine, with canals or without.)
+    let mut s = sim::start(&game(6, 1800), game_content());
     let T = s.st.T_max;
     let (mut foundings, mut spared, mut carried) = (0, 0, 0);
     let mut before = vec![1750; T];

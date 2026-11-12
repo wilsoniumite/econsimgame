@@ -117,6 +117,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "market", about: "A market place with its church and the houses round it: a small town half built up in 1780, and a big town fully in 1880.", land: Land::Town, build: market },
     Sheet { name: "market-play", about: "The same market places with their houses at the level the game draws them from the distance it is played at.", land: Land::Town, build: market_play },
     Sheet { name: "landmarks", about: "What marks a town out: its church in its churchyard (a small town's, with a spire, and a big town's), station, market cross, market hall and lighthouse.", land: Land::Town, build: landmarks },
+    Sheet { name: "railway", about: "What stands by a railway: a town's station, the winding engine house at the head of an inclined plane (before 1850), the banking engine's shed at the foot of a steep bank (after), and the buffer stop at the end of a line; each beside a length of track.", land: Land::Pasture, build: railway },
     Sheet { name: "works-kinds", about: "Every kind of works at three times the standard size, built about 1820, side by side: to tell them apart by shape.", land: Land::Pasture, build: works_kinds },
     Sheet { name: "works-small", about: "Every kind of works at its smallest, 0.4 of the standard size, as most stand in the game today: built in 1760, then built in 1870.", land: Land::Yard, build: works_small },
     Sheet { name: "works-standard", about: "Every kind of works at the standard size: built in 1760, then built in 1870.", land: Land::Yard, build: works_standard },
@@ -399,6 +400,39 @@ fn landmarks(pal: &Palette) -> Vec<Vec<Cell>> {
         Cell::new("market cross", |m, site| town::market_cross(&mut m.solid, site, pal)),
         Cell::new("market hall", |m, site| town::market_hall(&mut m.solid, site, pal)),
         Cell::new("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, pal)),
+    ]]
+}
+
+/// A length of track along a cell, `dz` in front of the middle of what stands there.
+fn track(m: &mut Model, site: &Site, pal: &Palette, half: f32, dz: f32) {
+    let (a, b) = (site.at(-half, dz) + Vec3::Y * 0.004, site.at(half, dz) + Vec3::Y * 0.004);
+    m.flat.ribbon(&[a, b], 0.04, *pal.rail.ballast);
+    m.flat.ribbon(&[a + Vec3::Y * 0.004, b + Vec3::Y * 0.004], 0.016, *pal.rail.rails);
+}
+
+fn railway(pal: &Palette) -> Vec<Vec<Cell>> {
+    use crate::rail;
+    vec![vec![
+        Cell::new("station", |m, site| {
+            town::station(&mut m.solid, site, pal);
+            track(m, site, pal, 0.1, 0.085);
+        }),
+        Cell::new("winding engine
+at an incline's head", |m, site| {
+            rail::winding_house(&mut m.solid, &mut m.smoke, site, pal);
+            track(m, site, pal, 0.1, rail::WINDING_HOUSE.1 * 0.5 + rail::TRACK_CLEAR);
+        }),
+        Cell::new("banking engine's shed
+at a bank's foot", |m, site| {
+            rail::banker_shed(&mut m.solid, site, pal);
+            track(m, site, pal, 0.1, rail::BANKER_SHED.1 * 0.5 + rail::TRACK_CLEAR);
+        }),
+        Cell::new("buffer stop", |m, site| {
+            rail::buffer_stop(&mut m.solid, site, pal);
+            let (a, b) = (site.at(0.0, 0.0) + Vec3::Y * 0.004, site.at(-0.1, 0.0) + Vec3::Y * 0.004);
+            m.flat.ribbon(&[b, a], 0.04, *pal.rail.ballast);
+            m.flat.ribbon(&[b + Vec3::Y * 0.004, a + Vec3::Y * 0.004], 0.016, *pal.rail.rails);
+        }),
     ]]
 }
 
