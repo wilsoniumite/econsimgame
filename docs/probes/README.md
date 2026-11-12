@@ -76,6 +76,14 @@ them are those of a5ea2ea.
   as the same game to the last digit. A design in stages for keeping such pictures beside the
   log of orders, so that a century loads in tenths of a second and a game can outlive a change
   of the rules. Its example is `examples/save_state.rs`.
+- `dx-record.md` (a probe, of the record and the live hand-over at 11dbe7d, 12 November 2026,
+  islands 7 and 3 with six families, and 7 again to 2050): every array of `run.bin` and every
+  field of the live hand-over, which of them the viewer reads (34 of 63 arrays) and what is lost
+  on the way to the picture (a fifth of the land's ground outside the two classes kept, rent
+  clipped in town centres, no traffic, no owners in a recording, a works' capacity and nothing
+  else); what each missing thing would weigh, by year, raw and gzipped, and in time to write and
+  to read; and a next layout in five stages, the first a test that holds the record and the
+  works' rows the site planner waits for. Its example is `examples/record_probe.rs`.
 
 ## The traces with the books (12 November 2026)
 
@@ -89,6 +97,13 @@ an answer was leaned on.
   year's at `foreseen` 0.5), and island 6's empty shelves (empty purses after a port line opened
   in debt; today mostly a January after a town takes a district, which moving the merchants'
   stock and their measure of sales with it would mend). Example `examples/trace_rent.rs`.
+- `tr-carriage.md` (at 295a379): carriage, stocks and famine. Under the game's rules the
+  railway's gain reaches the wage (output a head and the real wage both 8 per cent higher, through
+  prices; about seven parts in ten to work, its usual share, and to the owners of land and
+  houses twice theirs, with next to nothing to works' owners or merchants); the handling charge is a tenth to a seventh of the carting bill and a hand in a
+  hundred; coal is never held long and timber hardly; and the famines the canals took away were
+  the railway's: small towns handed districts larger than themselves, whose merchants' shelves
+  stayed behind (`peopling::move_with_cells`). Example `examples/trace_carriage.rs`.
 - `tr-money.md` (at 295a379): the issue of money (it grows about 1.77 per cent a year where the
   setting says 2, because the households' whole month's income is outside the count; issuing on
   the true total moves the price level, and through the freight rate fixed in coins, carriage
