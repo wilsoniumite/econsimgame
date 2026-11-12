@@ -301,6 +301,33 @@ Run on eight islands.
    cloud. A pass that reads a whole scorecard of small changes should read each
    against nudged runs or against the other end of its own range, as here.
 
+## What the review ran again
+
+The baseline came out as main to the last digit again (0 of 446 facts
+differ). Sixteen of the thirty-five rows were run again on islands 1 to 8,
+every one the page leans on among them (`growth_top`, `y_still`, `ease`,
+`town_deaths`, `found_saving`, `donor_max`, `d_old_growth`, `urban_rent_rate`,
+both switches) and `town_size`, `dearth_from`, `found_people`, `donor_rest`,
+`d_old` and `tau` besides: every fact and every year of every island came out
+the same as the sweeps above. The figures in the tables, the pairs and the far
+values were read again from those sweeps with a script written afresh, and
+came out as given, but for the few mended in place (a quarter off
+`growth_top`, not a third; which real wage the cloud's 7 per cent is; the
+wage under `rent_floor` on sixteen islands). `dearth_from` and `tau` were run
+on islands 9 to 16 as well, with the results in their rows.
+
+Four of the settings said to do nothing were tried twice as far out, on
+islands 1 to 8. `growth_floor` at -0.03 and at -0.12 still leaves every fact
+of every island as it is today: births less deaths never fall to 3 per cent a
+year in any town. `found_spacing` at 4 and 16, `decline_years` at 7 and 30 and
+`back_span` at 20 and 80 move nothing past what a nudge moves (at most two
+facts with all eight islands agreeing, none of them a headline). The closest
+is `found_spacing` at 16 cells, with 15 per cent fewer towns in 1900 than
+today on seven islands of eight, z -1.2; but today sits high on towns, and
+against `found_spacing` at 4 it is one town fewer, so a lean at most. A floor that never binds is still a guard
+against a setting far outside this range, so it may be better left in than
+dropped.
+
 ## Files
 
 The sweeps are under `.claude/night/reports/opus/sens-people/`: `base` and
