@@ -80,6 +80,17 @@ pub fn units(m: f32) -> f32 {
     }
 }
 
+/// How high a rise of `m` metres is drawn: what `units` makes of a difference
+/// of heights anywhere above the first few metres over the tide, where the
+/// shore's stretch has run out. A rule about how far one thing stands over or
+/// under another (how deep the ground may stand over a railway before it
+/// tunnels, how high a line may stand on arches) is stated in metres and read
+/// through this, so that it means the same whatever `RELIEF` is; and a
+/// gradient of 1 in N is `rise(CELL_M / N)` for each cell of length.
+pub fn rise(m: f32) -> f32 {
+    RELIEF * m / CELL_M
+}
+
 /// The height in metres that is drawn at `u`: `units` the other way.
 pub fn metres(u: f32) -> f32 {
     // `units` only ever rises, so its place is found by halving
@@ -198,8 +209,9 @@ pub struct Laid {
 }
 
 impl Laid {
-    /// The lake whose water stands over a spot where the ground is `h` high, if one does.
-    fn lake_over(&self, h: f32, x: f32, z: f32) -> Option<f32> {
+    /// The lake whose water stands over a spot where the ground is `h` high,
+    /// if one does: the height its sheet is drawn at.
+    pub fn lake_over(&self, h: f32, x: f32, z: f32) -> Option<f32> {
         let i = ((x * VRES as f32).max(0.0) as usize).min(self.gw - 2);
         let j = ((z * VRES as f32).max(0.0) as usize).min(self.gh - 2);
         match self.sheet[j * (self.gw - 1) + i] {
@@ -498,6 +510,10 @@ mod tests {
         assert!(units(1.4) < 0.05 && units(1.5) > 0.05, "nothing is built on the first metre and a half: {} and {}", units(1.4), units(1.5));
         assert!((units(1000.0) - (1.5 + 0.055)).abs() < 1e-4, "{}", units(1000.0));
         assert!((units(600.0) - units(400.0) - RELIEF * 200.0 / CELL_M).abs() < 1e-5);
+        // and a rise is drawn the same height wherever it stands, from a few metres over the tide
+        for base in [8.0f32, 40.0, 500.0] {
+            assert!((units(base + 67.0) - units(base) - rise(67.0)).abs() < 1e-4, "a rise of 67 m from {base} m");
+        }
         // under the sea: a tideway of a metre is under the sea floor's line, 5 m is 0.17 down, the deep 1.2
         assert!(units(-0.2) < -0.004 && units(-1.0) < -0.04);
         assert!((units(-5.0) + 0.17).abs() < 0.001 && (units(-165.0) + 1.25).abs() < 0.001, "{} and {}", units(-5.0), units(-165.0));

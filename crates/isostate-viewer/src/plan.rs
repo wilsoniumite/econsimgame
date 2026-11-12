@@ -334,6 +334,8 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) -> bool {
                     "ley" => g.land.ley[i] as f32 / 255.0,
                     "soil" => g.land.soil[i] as f32 / 255.0,
                     "depth" => (g.land.depth[i] as f32 - 3.0) / 3.0,
+                    // (the ground's height, for reading a railway's course against the relief)
+                    "height" => (hh / 1.2).clamp(0.0, 1.0).sqrt(),
                     _ => if g.land.open_until[i] > 0 { 1.0 } else { 0.0 },
                 };
                 [0.1 + 0.85 * v * v, 0.15 + 0.75 * (v * 1.6).min(1.0), 0.45 - 0.3 * v + 0.35 * (v - 0.7).max(0.0) * 3.0]
@@ -394,6 +396,66 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) -> bool {
                 eprintln!("line {li}: {:?} from {:.1},{:.1} to {:.1},{:.1}", kind, a.x, a.z, b.x, b.z);
             }
             i = j + 1;
+        }
+    }
+    // ISOSTATE_PLAN_RAILS=1: the railway drawn on the plan by what it stands on (black on the
+    // ground, brown on a bank, red on a viaduct, blue on a girder bridge, white in a tunnel,
+    // yellow where it is an incline), with a ring where it passes each cell and contours
+    // every 0.1 of height, for seeing how a line's course lies on the relief
+    if std::env::var_os("ISOSTATE_PLAN_RAILS").is_some() {
+        for (i, c) in img.iter_mut().enumerate() {
+            let (x, z) = (x0 + ((i % w) as f32 + 0.5) * px, z0 + ((i / w) as f32 + 0.5) * px);
+            let level = |x: f32, z: f32| (world::height_at(g, x, z).max(0.0) / 0.1).floor();
+            if level(x, z) != level(x + px, z) || level(x, z) != level(x, z + px) {
+                *c = [c[0] * 0.72, c[1] * 0.72, c[2] * 0.72];
+            }
+            // the cells' edges, faintly, where a cell is wide enough to show, and the cells with track paler
+            if ppc >= 40.0 {
+                if x.floor() != (x + px).floor() || z.floor() != (z + px).floor() {
+                    *c = [0.5 * c[0] + 0.5, 0.5 * c[1] + 0.5, 0.5 * c[2] + 0.5];
+                }
+                let cell = (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
+                if r.trans[k * r.n + cell] & 4 != 0 {
+                    *c = [0.8 * c[0] + 0.2, 0.8 * c[1] + 0.2, 0.8 * c[2] + 0.2];
+                }
+            }
+        }
+        let mut mark = |x: f32, z: f32, half: isize, col: [f32; 3]| {
+            let (i, j) = (((x - x0) * ppc).floor() as isize, ((z - z0) * ppc).floor() as isize);
+            for dj in -half..=half {
+                for di in -half..=half {
+                    let (a, b) = (i + di, j + dj);
+                    if a >= 0 && b >= 0 && (a as usize) < w && (b as usize) < h {
+                        img[b as usize * w + a as usize] = col;
+                    }
+                }
+            }
+        };
+        let half = if ppc >= 60.0 || ppc <= 16.0 { 1 } else { 0 };
+        for line in &ry.lines {
+            for q in 0..line.pts.len().saturating_sub(1) {
+                let col = match line.kind[q] {
+                    _ if line.worked[q] != crate::rails::Worked::Plain && line.kind[q] != crate::rails::Kind::Tunnel => [0.95, 0.85, 0.1],
+                    crate::rails::Kind::Grade => [0.05, 0.05, 0.05],
+                    crate::rails::Kind::Embankment => [0.45, 0.28, 0.12],
+                    crate::rails::Kind::Viaduct => [0.9, 0.1, 0.1],
+                    crate::rails::Kind::Bridge => [0.1, 0.25, 0.95],
+                    crate::rails::Kind::Tunnel => [1.0, 1.0, 1.0],
+                };
+                let (a, b) = (line.pts[q], line.pts[q + 1]);
+                let steps = ((a.distance(b) * ppc).ceil() as usize).max(1);
+                for s in 0..=steps {
+                    let p = a.lerp(b, s as f32 / steps as f32);
+                    mark(p.x, p.z, half, col);
+                }
+            }
+        }
+        for stop in ry.stops.values() {
+            let col = if stop.town { [0.95, 0.3, 0.9] } else { [0.1, 0.9, 0.9] };
+            for a in 0..16 {
+                let p = stop.at + bevy::math::Vec2::from_angle(a as f32 * std::f32::consts::TAU / 16.0) * (2.5 * px).max(0.03);
+                mark(p.x, p.y, 0, col);
+            }
         }
     }
     let rgb: Vec<u8> = img.iter().flat_map(|c| c.map(|v| (v.clamp(0.0, 1.0) * 255.0) as u8)).collect();
