@@ -1024,8 +1024,9 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                         turn = was + turn * 1e-3;
                     }
                 }
-                // (the year from which a works' yard has held neither the plot nor its length of lane)
-                let freed = lay.clear_since(p).max(lay.clear_since(p + n * side * (depth * 0.5 + houses::BACK_ROOM))).max(lay.clear_since_at(si, t_of(i)));
+                // (the year from which a works' yard has held neither the plot nor its length of
+                // lane: the plot at its middle and at its back, the two places a house is kept out by)
+                let freed = lay.clear_since(p).max(lay.clear_since(p + n * side * (depth * 0.5))).max(lay.clear_since_at(si, t_of(i)));
                 let v = family.map_or(pv, |f| (f + 0.3 * (pv - 0.5)).clamp(0.0, 0.999));
                 let pl = Plot { p, yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 }, run: (id, j), row: in_row.then_some(row), high: s.kind == 0, index: i, width: spacing, depth, need: 0.0, u: pu, v };
                 side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined).max(freed), street: (0, 0.0), family: told }, t_of(i), freed));
@@ -1085,7 +1086,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             let Some((c, _, _)) = lay.town_at(p) else { continue };
             // the market place is the first of a town to be built round (but for ground a
             // works' yard held: that comes into the order when the yard is given up)
-            let (joined, freed) = (lay.joined[&c], lay.clear_since(p).max(lay.clear_since(p + dirv * (houses::PLOT.1 * 0.5 + houses::BACK_ROOM))));
+            let (joined, freed) = (lay.joined[&c], lay.clear_since(p).max(lay.clear_since(p + dirv * (houses::PLOT.1 * 0.5))));
             let mut turn = -2.0 + pu;
             if freed > joined && freed <= k as u32 {
                 let was = *built_before.entry((c, freed)).or_insert_with(|| {
@@ -1153,12 +1154,18 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             note(lot.cell, lot.kind, 7);
             continue;
         }
-        // (its yard or garden runs back from the house as far again as the plot is deep:
-        // the back of it is asked too, so that no garden ends in a works' yard, a
-        // churchyard, the railway or the water. A garden may come down to the water's
-        // edge, where a house may not stand: there the end of it need only be dry.)
-        let back = p - Vec2::new(lot.pl.yaw.sin(), lot.pl.yaw.cos()) * (lot.pl.depth * 0.5 + houses::BACK_ROOM);
-        let behind = if world::water_dist(g, back.x, back.y) < 0.03 { world::height_at(g, back.x, back.y) < 0.05 || lay.clear_since(back) > k as u32 } else { near_plot(back.x, back.y) };
+        // (its yard or garden runs back from the house to `back`, as far again as the plot
+        // is deep. What keeps a house out (`near_plot`) keeps it some way off what it guards:
+        // 0.02 off a works' yard, 0.03 off a churchyard, 0.016 off the railway's banks. So
+        // the back of the plot (`edge`) is asked as its middle is, and the garden behind it
+        // then ends clear of the yard, the churchyard and the banks as they are drawn. Asking
+        // the end of the garden itself, with that room again, emptied the old middles about
+        // the works and the churches, where a garden may well end at a yard's wall. A garden
+        // may come down to the water's edge, where a house may not stand: there the end of
+        // it need only be dry.)
+        let dir = Vec2::new(lot.pl.yaw.sin(), lot.pl.yaw.cos());
+        let (back, edge) = (p - dir * (lot.pl.depth * 0.5 + houses::BACK_ROOM), p - dir * (lot.pl.depth * 0.5));
+        let behind = if world::water_dist(g, edge.x, edge.y) < 0.03 { world::height_at(g, back.x, back.y) < 0.05 || lay.clear_since(edge) > k as u32 } else { near_plot(edge.x, edge.y) };
         if near_plot(p.x, p.y) || behind {
             tell(lot.pl.run, lot.pl.index, 3);
             note(lot.cell, lot.kind, 3);
@@ -1778,11 +1785,13 @@ mod tests {
         let g = world::build_ground(&r);
         let cen = crate::network::centres(&r);
         let node = Vec2::new(cen[5 * r.w + 5].0, cen[5 * r.w + 5].1);
-        // a works' yard across a strip of the town's middle, and a pond beside it (the
-        // layout is told of the water as it is of a yard)
-        let yard = |x: f32, z: f32| (x - node.x - 0.2).abs() < 0.12 && (z - node.y).abs() < 0.3 || Vec2::new(x, z).distance(node + Vec2::new(-0.25, 0.2)) < 0.1;
+        // a works' yard across a strip of the town's middle, and a pond beside it, as they
+        // are drawn; the layout is told of them with the room scatter.rs keeps about a yard
+        // (0.02), as it is told of the water
+        let held = |x: f32, z: f32, room: f32| (x - node.x - 0.2).abs() < 0.12 + room && (z - node.y).abs() < 0.3 + room || Vec2::new(x, z).distance(node + Vec2::new(-0.25, 0.2)) < 0.1 + room;
+        let yard = |x: f32, z: f32| held(x, z, 0.0);
         for k in [0, 3, 5] {
-            let l = laid(&r, &g, k, &yard);
+            let l = laid(&r, &g, k, &|x, z| held(x, z, 0.02));
             assert!(l.standing.len() > 60, "year {k}: {} houses", l.standing.len());
             for s in &l.standing {
                 let pl = &s.lot.pl;
