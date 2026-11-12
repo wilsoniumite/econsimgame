@@ -147,7 +147,83 @@ fn a_farmhouse_is_the_farmhouse_it_was() {
     check("farmhouse", found, FARMHOUSE);
 }
 
-const COTTAGE: [u64; 3] = [0x51cdd81fabb0cac1, 0x12cd0990b9ccd8a6, 0xe955a43620921d29];
+/// A number from 0 to 1 for the `k`th thing about the `n`th house of `on_any_plot`: drawn
+/// apart from the seeds the houses use, so that what is tried does not follow their numbers.
+fn draw(n: u32, k: u32) -> f32 {
+    let mut x = n.wrapping_mul(0x9e37_79b9) ^ k.wrapping_mul(0x85eb_ca6b);
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x2c1b_3c6d);
+    x ^= x >> 12;
+    (x >> 8) as f32 / (1u32 << 24) as f32
+}
+
+/// The same proof taken a second way, by a second hand: 1,500 houses of each kind on plots
+/// of any width from 0.04 to 0.07 and any depth from 0.030 to 0.042 (not only those the
+/// towns lay), townhouses to four storeys and rows to seven houses, every age, cover and
+/// weathering, each turned its own way on level ground or a slope. The sums were taken
+/// from main's generators at the same commit as those above.
+#[test]
+fn a_house_told_nothing_new_on_any_plot_is_the_house_it_was() {
+    let pal = Palette::standard();
+    let slope = |x: f32, z: f32| 0.15 - 0.13 * x + 0.09 * z;
+    let mut sums = [[0xcbf2_9ce4_8422_2325u64; 3]; 4];
+    for n in 0..1500u32 {
+        let d = |k: u32| draw(n, k);
+        let seed = Seed::new(d(1), d(2));
+        let (width, depth) = (0.04 + 0.03 * d(3), 0.03 + 0.012 * d(4));
+        let era = Era::ALL[(d(5) * 4.0) as usize % 4];
+        let roof = match (d(6) * 4.0) as u32 {
+            0 => Roof { cover: Cover::Thatch, weathering: (d(7) * 4.0) as u8 },
+            1 => Roof { cover: Cover::Tile, weathering: (d(7) * 4.0) as u8 },
+            _ => Roof::of(1700 + (d(8) * 200.0) as i32, 1750 + (d(9) * 150.0) as i32, d(10) < 0.3, d(11) < 0.5, seed),
+        };
+        let (upland, neighbours) = (d(12) < 0.25, (d(13) < 0.5, d(14) < 0.5));
+        let (at, yaw) = (Vec3::new(1.0 + d(15) * 20.0, 0.0, 1.0 + d(16) * 20.0), d(17) * std::f32::consts::TAU);
+        for (l, detail) in Detail::ALL.into_iter().enumerate() {
+            let site = if n % 2 == 0 { Site::level(Vec3::new(at.x, 0.25, at.z), yaw) } else { Site::on(Vec3::new(at.x, slope(at.x, at.z), at.z), yaw, &slope) };
+            let mut add = |kind: usize, m: &Model| {
+                let mut s = Sum(sums[kind][l]);
+                s.model(m);
+                sums[kind][l] = s.0;
+            };
+            let mut m = Model::default();
+            let c = Cottage { era, upland, neighbours, detail, ..Cottage::new(width, depth, 1 + (d(18) * 3.0) as u8, roof, seed) };
+            cottage(&mut m.solid, &mut m.smoke, &mut m.green, &site, &c, &pal);
+            add(0, &m);
+            let mut m = Model::default();
+            let t = Townhouse { era, upland, shop: d(19) < 0.4, neighbours, detail, ..Townhouse::new(width, depth, 2 + (d(20) * 3.0) as u8, roof, seed) };
+            townhouse(&mut m.solid, &mut m.smoke, &site, &t, &pal);
+            add(1, &m);
+            let mut m = Model::default();
+            let houses = 2 + (d(21) * 6.0) as usize;
+            let t = Terrace { era, upland, detail, ..Terrace::new(houses, Terrace::length_of(houses, width), depth, 2 + (d(22) < 0.3) as u8, roof, seed) };
+            terrace(&mut m.solid, &mut m.smoke, &site, &t, &pal);
+            add(2, &m);
+            let mut m = Model::default();
+            let v = Villa { era, upland, detail, ..Villa::new(width, depth, roof, seed) };
+            villa(&mut m.solid, &mut m.smoke, &mut m.green, &site, &v, &pal);
+            add(3, &m);
+        }
+    }
+    let kinds = ["cottage", "townhouse", "terrace", "villa"];
+    // (every sum is printed before any is held, so that all four can be taken again at once)
+    for (kind, found) in kinds.iter().zip(sums) {
+        println!("{kind} on any plot: found [{:#018x}, {:#018x}, {:#018x}]", found[0], found[1], found[2]);
+    }
+    for (kind, (found, expected)) in kinds.into_iter().zip(sums.into_iter().zip(ON_ANY_PLOT)) {
+        check(kind, found, expected);
+    }
+}
+
+/// The sums of `a_house_told_nothing_new_on_any_plot_is_the_house_it_was`: cottage, townhouse, terrace, villa.
+const ON_ANY_PLOT: [[u64; 3]; 4] = [
+    [0x23d506334213547c, 0x66da791bde3fd66f, 0xf58dbfefe319a761],
+    [0x52a8160f21950881, 0xc8d5f7c87d484a98, 0x0f9df0a2aded08b3],
+    [0x992aca89905585e9, 0x9bdb52276eb2e259, 0xd51d3b6f9b8e9de5],
+    [0x76611b7a110c7645, 0x4013c3d4c79079ff, 0xc0f991b89ec1dab9],
+];
+
+const COTTAGE: [u64; 3] =[0x51cdd81fabb0cac1, 0x12cd0990b9ccd8a6, 0xe955a43620921d29];
 const TOWNHOUSE: [u64; 3] = [0x13b84d346227a4cb, 0xea409a29b5f8e853, 0xfbac17fb276aab0e];
 const TERRACE: [u64; 3] = [0x6e968d8008cfd741, 0x01c6ca85a35088d3, 0xc08a275707f94a5e];
 const VILLA: [u64; 3] = [0x7629672e9baf5f08, 0x2371da0d06c40c7d, 0x2fab13f7584f7649];
