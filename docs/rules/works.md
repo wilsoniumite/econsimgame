@@ -10,7 +10,12 @@ size and then hardly grows; what grows is their number. With the life cycle a
 works that earns its keep grows where it stands, year after year, until its
 cell is full, and then opens a sister works next door. In 1900 there are
 some 650 works, the median one six or seven times its trade's usual size, a
-few of them a hundred times, on about 130 cells beside the towns.
+few of them a hundred times, on about 130 cells beside the towns. Those are
+the port's rules with the life cycle alone, as it was built. In the game as
+it is played now, with every other rule on and six families, there are 738
+works in 1900, the median one 6.0 usual sizes and the largest 121, on 199
+industry cells (the mean of eight seeds, `isostate-core sweep --seeds 1-8
+--rules game --families 6`, 12 November 2026).
 
 ## Why the port's works stay small
 
@@ -41,8 +46,9 @@ Six parts, lettered as in the diagnosis. Each has its own number or switch in
 than a twentieth of its capacity, built and on order together, is still to
 come (and always while nothing is built yet). The yearly review
 (`firms::review`) can then grow a works every year, shrink it when it stands
-idle and close it after three losing years, which the port's flag had been
-preventing.
+idle and close it after three years in a row of losing money while it stood
+nearly idle (a return below nothing and under 15 per cent of its capacity
+used, the port's test), which the port's flag had been preventing.
 
 **B. Land by hands, and the cell as the size limit** (`hands_per_cell` 2,000,
 `cell_limit` 0.8). `works::land_take` is the one place that says how much land
@@ -59,7 +65,8 @@ concern in the town that still has room (`works::extend_sister`), and if there
 is none, to a new sister works the size of that growth on a cell within two of
 it that has room (`firms::spawn_sister`, `works::sister_K`). No cell is ever
 asked to hold more works than it has ground for; `tests/works.rs` checks that
-every year.
+every year of a run (seed 7 to 1829, the port with the life cycle, no
+families).
 
 A works that grows needs more land, and pays for it: `State::works_lease` is
 the most land each works has taken so far, and an order that takes it past
@@ -69,9 +76,16 @@ less than the works pays for the ground it has. The second half matters more
 than it looks: once the works have taken three fifths of a cell the port's
 land rule gives the rest to nobody, no other use is left to set a price, and
 by 1900 three works in four stand on such cells (seed 7). Without the floor
-their growth there came free. Under the port a works' rent is fixed for life
-at what it bid when it was a tenth of the size. Rent is a small cost either
-way: 3 to 5 per cent of the works' wage bill (seed 7).
+their growth there came free. That is the port's land rule with the life
+cycle alone. Under the game's rules kept town ground puts a price on such a
+cell (`rent_floor`, `towns::price_ground`; `towns.md`): it costs what it
+would earn as open land, and a cell of the town itself costs what the
+housing a works displaces would pay. `works::ordered` reads the same price,
+so there the floor binds less often. Under the port a works' rent is fixed
+for life at what it bid when it was a tenth of the size. Rent is a small cost
+either way: 3 to 5 per cent of the works' wage bill (seed 7). The seed 7
+numbers in this paragraph were measured with the life cycle alone and have
+not been measured again under the game's rules.
 
 **C. Entry counts the merchant's spread** (`count_spread`). The merchant takes
 6 per cent of the price off everything a works sells (`merchant_spread`), and
@@ -163,7 +177,9 @@ tables stay empty; `tests/golden.rs` holds the port to the byte.
   books do count the spread, and its rule of thumb for how hard to run is a
   number to tune, not a sum to correct.
 - **A warm-up under the port's rules.** The warm-up decade runs under the
-  rules of the run, so 1750 opens with about 280 works, not 600. Tried the
+  rules of the run, so 1750 opens with about 280 works, not 600 (with the
+  life cycle alone; in the game as it is played now, 219, between 190 and 267
+  on eight seeds). Tried the
   other way (four seeds): 1750 then opens with 558 works, the millwrights a
   mean path cost of 27 from their market, and 294 works close in the 1750s
   (82 otherwise) while the trades move to town. The player's first decade
@@ -193,7 +209,9 @@ tables stay empty; `tests/golden.rs` holds the port to the byte.
 ## Before and after
 
 The port against the port with `works.enabled=true`, without families and
-with six. Means over eight seeds, with the least and greatest seed in brackets
+with six. These are the port's rules with the life cycle alone, as the review
+measured them; a sweep of today's game cannot give them and they were not
+measured again (the game as it stands is under "In company"). Means over eight seeds, with the least and greatest seed in brackets
 where it matters. The first table is seeds 1 to 8, the seeds the mechanism was
 built on; the second is seeds 9 to 16, which nobody had run before the review.
 The sweeps are `sweep-works-review-base`, `-base-f6`, `-base-s9`,
@@ -319,7 +337,8 @@ without farm machinery, so take this as the likely reading, not a proof.
 ### The scripted players
 
 `examples/bots.rs` on seeds 1, 2, 3 and 7, `--rules port` against `--rules
-game` (which on this branch is the port plus the life cycle). Net worth in
+game`, which when this was measured was the port plus the life cycle and
+nothing else (it is now the whole game: see "In company"). Net worth in
 1900, the player's rank among the six families in 1775/1800/1850/1900, works
 founded and standing:
 
@@ -374,12 +393,18 @@ instead of seven hundred. The richest rival in 1900 stays in the same range
   two cells of their market. Only 14 per cent are on town ground itself,
   because the town's own cells are few; a town that keeps its ground will
   grow over the works beside it. A newcomer's bid for ground on a cell the
-  works have mostly taken is still the port's floor of a hundredth (the cell
-  has no other rent to outbid); whoever prices town ground should price that
-  too, and `works::ordered` then wants the same price.
+  works have mostly taken was the port's floor of a hundredth (the cell has
+  no other rent to outbid), and this page asked whoever priced town ground to
+  price that too. Kept town ground has done it: under the game's rules such a
+  cell costs what it would earn as open land (`rent_floor`,
+  `towns::price_ground`), and `works::ordered`, which reads the same
+  `State::land_rent_only`, charges a growing works the same.
 - **New towns** are founded where work stands far from any market. With
   hands walking there is less of that, so the island has one or two towns
   fewer in 1900 and founds them later (the last around 1830 instead of 1800).
+  That is the port's founding rule. Under the game's rules the people rules
+  found the towns (`people.md`), and in the game as it is played now there
+  are 17.8 towns in 1900, the last founded in 1847 (1814 to 1873 by seed).
 
 ## In company with the rest of the game
 
@@ -426,7 +451,44 @@ on 233 cells for 1,006; 16.8 towns for 20.2; 1,017 km of railway for 1,121;
 the real wage's yearly swing 0.065 for 0.033 and its worst year 16 per cent
 down for 8; steel rails 0.10 of rails in 1890 for 0.98.
 
-What they say:
+All of this is the game as it stood at that merge. The game's railways,
+carting, the people rules, kept town ground, the mines, the canals and the
+books of account have come in since, so none of it can be read from a sweep
+of today's game, and it was not measured again. Where the same fact exists
+today it reads as follows: the merge's column from the table above, beside
+the game as it is played now (seeds 1 to 8, six families,
+`isostate-core sweep --seeds 1-8 --rules game --families 6`, 12 November
+2026; the mean over seeds):
+
+| six families | with the life cycle, at the merge | the game now |
+|---|---|---|
+| works standing 1800 / 1850 / 1900 | 282 / 565 / 711 | 237 / 532 / 738 |
+| size in 1900: median, ninth tenth, largest | 5.5, 36, 121 | 6.0, 37, 121 |
+| works founded, closed in a run | 2,141, 1,668 | 1,991, 1,475 |
+| median life of a works that closed | 10.8 | 11.7 |
+| utilisation in 1900, mean over works | 0.78 | 0.75 |
+| industry cells 1800 / 1850 / 1900 | 22 / 106 / 236 | 18 / 68 / 199 |
+| towns in 1900, the last founded | 16.8, 1839 | 17.8, 1847 |
+| real wage 1800 / 1850 / 1900 (1750 = 1) | 1.56 / 2.51 / 2.80 | 1.63 / 1.95 / 2.60 |
+| the same, chained | 1.82 / 3.49 / 4.35 | 1.90 / 2.88 / 4.24 |
+| output per head 1800 / 1850 / 1900 | 1.63 / 2.49 / 2.65 | 1.70 / 2.12 / 2.65 |
+| the year output per head peaks | 1877 | 1879 |
+| railway km 1850, 1900 | 925, 971 | 1,328, 2,248 |
+| converter's share of steel, 1880 | 1.00 | 0.86 |
+| steel rails' share of rails, 1890 | 0.26 | 0.002 |
+| price swings: grain, iron, rails, cloth | 0.106, 0.176, 0.172, 0.037 | 0.109, 0.172, 0.183, 0.039 |
+| the real wage: its yearly swing, its worst year | 0.062, 17% down | 0.056, 14% down |
+| famine years in a run | 2.2 | 0.4 |
+| alarms, closures in the news | 16.3, 201 | 18, 191 |
+
+The works themselves are where the merge left them: much the same count and
+size, a little fewer founded and closed. The middle of the century has moved
+most. The wage of 1850 reads 1.95 where it read 2.51, because carting puts
+off the machines' rise by about ten years (`carting.md`, "In company"). The
+wage of 1800 and of 1900 are close to the merge's, so what is said below of
+the middle decades should be read as of the merge, not of today.
+
+What they say (at the merge):
 
 - **In company the life cycle does what it does alone.** A tenth of the
   works, ten times the size, three quarters of the ground given back, three
@@ -588,10 +650,13 @@ district has forty works and not four hundred.
 - **Prices swing harder, most of all with families**: cloth a quarter, iron
   and rails 16 to 39 per cent with six families. Larger works order larger
   lumps. The year's room holds it there; the price rule is the cure.
-- **The converter is not built** (one seed of thirty-two; the port builds it
-  in 10 of 32, late in the century in all but one, and it never makes half
-  the steel). The cause is
-  the price of steel. Crucible works that can grow to twenty usual sizes make
+- **The converter is not built**, with the life cycle alone on the port's
+  content. (The game's content makes the converter cheaper, `machines.md`,
+  and under the game's rules it is built: in the game as it is played now it
+  makes 0.86 of the steel in 1880, the mean of eight seeds.) Under the port
+  with the life cycle it is built on one seed of thirty-two (the port alone
+  builds it in 10 of 32, late in the century in all but one, and it never
+  makes half the steel). The cause is the price of steel. Crucible works that can grow to twenty usual sizes make
   steel at 17 to 22 from the 1830s where the port's small ones need 28 to 39,
   and at that price the converter loses money at any size: on seed 7 its best
   site promises between minus 5 and minus 20 per cent a year from 1850 to
@@ -644,13 +709,19 @@ district has forty works and not four hundred.
 ```bash
 cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules port --out DIR/base
 cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules port --set works.enabled=true --out DIR/works --compare DIR/base
-cargo run --release -p isostate-core --example works_census -- --decades --set '{"works":{"enabled":true}}' 3 7 11 21
+cargo run --release -p isostate-core --example works_census -- --decades --families 6 --set '{"works":{"enabled":true}}' 3 7 11 21
 cargo run --release -p isostate-core --example bots -- --rules game
+cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --out DIR/game
 ```
 
 The census prints, for each method, the works standing, their sizes, their
 hands and where they stand, and decade by decade the works founded, the
-sister works, the closures, output per head and the real wage. Expect 540 to
-770 works in 1900, a median size of 5 to 9, 110 to 145 industry cells, a real
-wage 1.3 to 1.8 times 1750's from 1850 on (a seed in a tools famine falls
-below that for a few years) and under 2,300 works founded in a run.
+sister works, the closures, output per head and the real wage. It runs the
+port with no families unless told otherwise, so `--families 6` is what gives
+the census of six families above. For the port with the life cycle (the
+second line) expect 540 to 770 works in 1900, a median size of 5 to 9, 110 to
+145 industry cells, a real wage 1.3 to 1.8 times 1750's from 1850 on (a seed
+in a tools famine falls below that for a few years) and under 2,300 works
+founded in a run. For the game as it is played (the last line; 12 November
+2026) expect 680 to 800 works in 1900, a median size of 5.6 to 6.2, 180 to
+240 industry cells and 1,700 to 2,200 works founded in a run.
