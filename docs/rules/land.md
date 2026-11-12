@@ -8,9 +8,9 @@ viewer). It draws from a random stream of its own (`rng::land_stream`,
 stream 11); the port's `generate_world` is not touched.
 
 It is **not yet switched on in the game's rules**. The economy stands on the
-new land (the sweeps below), but the viewer cannot draw it yet and a test
-or three of other mechanisms are written to the port's island. "Why it is off"
-says what is needed.
+new land (the sweeps below, and "On the integration branch" for how it
+stands beside the mines and the canals), but the viewer cannot draw it yet.
+"Why it is off" says what is needed.
 
 ## What was wrong
 
@@ -460,9 +460,16 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
    `money_is_conserved_and_runs_are_deterministic_with_machines_on`, which
    found an active town whose machine table was still -1 (a town founded in
    the run's last year: an edge worth its owner's look whatever island is
-   used).
-3. **It has not been run beside the mechanisms being built tonight** (canals,
-   mines, the water industry, logging), which were tuned on the old island.
+   used). On the integration branch, beside the towns' ground, the mines and
+   the canals, the same trial passes every test (183 of them): the
+   chronicle's test had been given fifty years to find its five foundings
+   in place of forty when the canals came, and on the new land it finds
+   them. That is luck as much as soundness, and the next change to the land
+   may undo it.
+3. **It had not been run beside the mines and the canals**, which were tuned
+   on the old island. It has now ("On the integration branch"): it stands,
+   and what it does to each is written there. The water industry and the
+   logging are still to come.
 
 The scripted players are not in the way. `examples/bots.rs` plays the game's
 rules, so it plays the old island until the switch is thrown; with it thrown
@@ -472,8 +479,8 @@ on the old (the thoughtful player ends first of six on all four seeds on
 either island, with 57 to 127 million against 40 to 105).
 
 To switch it on: `P.land = crate::landform::LandParams::game();` in
-`game_params()`, re-anchor that test (and the other two if they fail again),
-and run the sweeps again.
+`game_params()`, run the tests (re-anchor any of the three above that fails
+again), and run the sweeps again.
 
 ## How it was checked
 
@@ -520,8 +527,10 @@ and a `max_slope` or `h_ref` of 0 sinking or spoiling the island.
 
 ## In company
 
-Not measured beyond the sweeps above, which have every merged mechanism on.
-What to expect of those to come:
+The sweeps above have every mechanism on that was merged when they were
+made; the towns' kept ground, the mines and the canals came after, and "On
+the integration branch" has those. What to expect of each, written before
+any of that was measured:
 
 - **Harvest** has wet and dry years by district; `discharge_with` takes
   exactly that and gives the rivers of such a year.
@@ -533,7 +542,8 @@ What to expect of those to come:
   to join; a canal's build graph should treat a lake cell as water to use,
   not land to dig, and a tideway cell is navigable already. With the rivers
   joined to the sea there should be less for a canal to do than on the
-  port's island; that has not been measured.
+  port's island. Measured since, in "On the integration branch": there is a
+  seventh less canal, and a lake is still neither used nor joined.
 - **Logging** reads `forest_pot`, which now follows rain and height, and
   rivers that could float timber (`discharge`, `stream`).
 - **People** founds towns where a market saves carting, with a liking for
@@ -545,6 +555,172 @@ What to expect of those to come:
   drawn at the water's edge, foreign trade's quays) should know that a
   tideway cell is coast with no sea cell next to it: `Landform::estuary`
   says which.
+
+## On the integration branch
+
+`night/core`, the merge of 12 November, where the land met the towns' kept
+ground, the mines and the canals for the first time: everything above was
+measured before them, on islands whose quarries and pits were still the
+port's and which had no canal. The sweeps are under
+`.claude/night/reports/core-steps/`, all under the game's rules with six
+families: `land-before` and `land-after` (seeds 1 to 6, the switch off),
+`land-on` (the same seeds, on), `land-x-s7-16` (seeds 7 to 16, off and on),
+`land-x-canals-mines` (seeds 1 to 6 with the land, the canals and the mines
+each on and off, 48 runs), `land-x-timing` and `land-x-timing6`.
+`examples/land_canals.rs` says where the canals of a run lie with respect to
+the island's water.
+
+**The merge.** Four places where the land and the mechanisms merged since
+had each added lines at the same spot: the end of `Params` and of its two
+constructors, the arrays and the header in `record::pack`, the streams in
+`rng.rs` and the list in the README. All kept, the land's last. No stream
+number is shared (the people have 8, the canals 9, the land 11). One place
+has an order to it, `land::update_transport`: the harbours are marked (a
+town on the coast, and on the new land a town on a lake's shore),
+`transport::build_graph` makes the ground's graph with the land's three
+hooks in it, and then `canals::float` lays the canals over it. The canals
+come last because they are a layer over a finished graph; nothing of the
+land's reads them.
+
+**Off is the branch as it stood.** With the switch off, seeds 1 to 6 give
+all 420 facts of `land-before` to the last digit. The golden constants are
+untouched, the viewer builds and its tests pass, and no run failed in any
+sweep.
+
+**On, it stands.** Sixteen seeds with everything on, and seeds 1 to 6 again
+with the canals, the mines or both off: 34 runs on the new land, none
+failed, every month's money counted. A run takes three seconds longer when
+six are made side by side (22.6 for 19.5) and under one when it runs alone
+(19.3 for 18.6), which is the island being made. On for off, sixteen seeds,
+with the islands higher and lower:
+
+| | the new land for the port's | |
+|---|---|---|
+| people in 1900, thousands | 729 for 726 | 10/6 |
+| towns, 1800, 1850, 1900 | 13.8 for 12.6, 18.1 for 16.6, 19.2 for 17.2 | 13/2, 9/3, 12/2 |
+| later foundings that are quarry towns, colliery towns | 3.6 for 2.4, 1.1 for 0.5 | 10/5, 7/2 |
+| share of people in towns, 1750, 1900 | 0.209 for 0.217, 0.417 for 0.420 | 2/14, 8/8 |
+| carters among all hands, 1750, 1800, 1900 | 0.140 for 0.127, 0.134 for 0.119, 0.072 for 0.066 | 15/1, 15/1, 13/3 |
+| real wage, 1800, 1850, 1900 | 1.61 for 1.59, 2.04 for 1.99, 2.73 for 2.61 | 8/8, 10/6, 12/4 |
+| output per head, 1800, 1850, 1900 | 1.66 for 1.66, 2.21 for 2.16, 2.78 for 2.67 | 9/7, 10/6, 13/3 |
+| first canal | 1774 for 1774 | 9/6 |
+| km of canal, 1780, 1800, 1850, 1900 | 345 for 261, 595 for 695, 763 for 900, 768 for 903 | 10/5, 2/14, 3/13, 3/13 |
+| what the canals cost, in years of output | 0.108 for 0.142 | 0/16 |
+| the boats' work in 1820, million weight-km | 474 for 432 | 13/3 |
+| of their load in 1800: coal; stone and clay | 0.35 for 0.41; 0.24 for 0.16 | 2/14; 16/0 |
+| first railway | 1832 for 1827 | 12/4 |
+| km of railway, 1840, 1850, 1870, 1900 | 566 for 820, 1,163 for 1,348, 1,847 for 1,829, 2,426 for 2,254 | 4/11, 4/12, 8/8, 13/3 |
+| branches to farms, to works | 57 for 33, 106 for 120 | 14/2, 3/13 |
+| works, 1900 | 753 for 729 | 7/9 |
+| town cells and works' cells, 1900 | 332 for 324, 194 for 198 | 9/7, 6/9 |
+| workings, 1750, 1900 | 302 for 261, 506 for 491 | 14/1, 11/5 |
+| clay pits, 1900 | 158 for 116 | 16/0 |
+| dug a head in 1800: stone; clay | 0.55 for 0.39; 0.13 for 0.17 | 16/0; 1/15 |
+| land under workings in 1900, cells | 9.2 for 9.1 | 8/8 |
+| farm and pasture in 1750, cells | 1,727 for 1,562, 1,746 for 1,856 | 16/0, 0/16 |
+| price swing: grain, iron, rails, cloth | 0.111 for 0.113, 0.170 for 0.174, 0.178 for 0.179, 0.040 for 0.039 | 8/8, 8/8, 9/7, 12/4 |
+| famine years in a run | 1.2 for 0.4 | 7/3 |
+
+People, the works, the land they stand on and the swings of prices are
+inside the spread between islands. No price sits at a floor or a ceiling.
+What moves:
+
+**The canals have less to do, as expected, and do it cheaper.** A seventh
+less canal by 1900 on thirteen islands of sixteen, for three quarters of
+the money on all sixteen, carrying a tenth more. They start as early and
+are a third longer in 1780, then stop sooner: the first towns are on
+navigable water already and a short cut joins a good deal. The boats carry
+more stone and clay and less coal.
+
+**They keep to the rivers more than they did.** On seeds 1 to 6, 27 to 35
+per cent of a run's canal cells are river cells, against 13 to 21 on the
+port's island, and 13 to 19 per cent are on water boats already use
+(a navigable river or a tideway), against 5 to 13. A run has 35 to 78 links
+of canal that go from one navigable cell to the next, 49 on average for
+31, on less canal. That is `canals.md`'s "one river, one canal" grown: a
+boat on a canal pays 0.13 a cell and no wharf to stay aboard, a boat on the
+river 0.3, a river cell is cheap to dig, and the new land has a fifth more
+navigable cells with the towns standing on them. It is a river navigation
+more often than a canal beside a river, and nothing in the rules knows the
+difference. One to five per cent of the canal lies on a tideway.
+
+**The lakes are out of it.** A canal cannot be dug through a lake cell
+(nothing can be built on water) and does not use one: a boat that comes to
+a lake's shore by canal lands its load at the wharf and carries it over a
+beach to the lake's boats, unless a town stands there. It hardly shows,
+because an island has two to four lake cells (33 on seed 6, which has the
+lowland lake, and 2 per cent of its canal is on the shore), but the
+expectation above, a lake as water for a canal to use, is not met.
+
+**The railway comes later and ends longer, which is not what the page
+found.** Before the mines and the canals the new land had a twentieth to an
+eighth less railway in 1900. Beside them it has a third less in 1840, as
+much in 1870 and 8 per cent more in 1900, on thirteen islands of sixteen.
+Seeds 1 to 6 with the mechanisms taken out one at a time say why the end
+differs. On the port's island the mines cut the railway of 1900 by a
+seventh (2,615 km with neither, 2,230 with the mines, 2,214 with both). On
+the new land they hardly do (2,418, 2,357, 2,427). I take the reason to be
+that the port's diggings had been spread over a fifth of the land and are
+now a few hundred pit heads, while the new land's stone and coal were in
+few cells to begin with; that is a reading of six seeds, not a tracing. So
+the "less railway" above was measured against an island whose scattered
+diggings wanted branches, and beside the mines the new land is the one
+with more to carry. The late start is canals and mines together (593 km in
+1840 with both on seeds 1 to 6, 840 to 890 with either or neither), and
+that I did not trace at all. Lines run over a little more: the worst in a
+run costs 3.1 times what was expected for 2.7, on twelve islands. The kind of line holds as the page has it: three quarters more
+branches to farms, a ninth fewer to works.
+
+**It is not a cheaper island to carry goods about.** "What worries me"
+supposed it was, from the harbours at the tideways. The carters say
+otherwise: one hand in seven carts in 1750 against one in eight, on fifteen
+islands of sixteen, and still a tenth more in 1900. The first towns stand
+on the water, so the corn, the stone and the coal inland are further from
+a market.
+
+**Two more towns, and they are quarry towns.** 19.2 towns in 1900 for 17.2,
+on twelve islands of sixteen, where the page found none more. Seeds 1 to 6
+again: on the new land 16.8 towns without the mines and 19.2 with them, on
+the port's island 18.7 and 18.3. The stone lies on the scarps and in the
+belt, the mines make each quarry a working with its hands at one place, the
+first towns are down on the water, and `people.md`'s rule founds a town
+where a market saves the most carting. On seed 16 twelve of the seventeen
+foundings are quarry towns. The canals cost this island no towns (19.3 with
+them, 19.2 without, seeds 1 to 6).
+
+**More stone is dug and less clay**: 0.55 a head in 1800 for 0.39 on all
+sixteen islands, at an eighth less against the wage, and a quarter less
+clay, from pits that are a third more numerous by 1900. Rich stone in few
+cells, and clay spread thin over the vales. Not traced further (what is
+built of each).
+
+**Famine years: 1.2 a run for 0.4.** More on seven islands, fewer on three.
+Most of the difference is seed 16, where Ormside, a quarry town founded in
+1776, goes short of bread in six of its first eleven years and again in
+1849, when its households get a fifth of the food they need. Without that
+island it is 0.7 for 0.4. This is the page's warning come true in company
+(a town founded where its food has to be carted in), and the quarry towns
+are where it happens.
+
+**A small town's branch waited twenty-three years.** Seed 1, Kirkrigg, a
+town of 3,000 people and falling: a branch of three cells to a works,
+promoted in 1868 and opened in 1891. Nothing was wrong with the line or
+its materials. Its landlords had about a hundred in cash, a call takes a
+tenth of that a month, and because they were not in debt the households
+(33,000 in cash) were never asked. That is `ways::progress`, not the land,
+and it wants its owner's look: landlords with a few shillings shield the
+households who subscribed with them. It was left alone here, since mending
+it would move every run under the game's rules, the land off or on. The
+new land shows it because it has more small towns. No line had been
+building ten years when a run ended, and on seeds 7 to 16 the slowest line
+takes six years on either island.
+
+**The scripted players** play all sixteen games through on the new land
+beside the mines and the canals (`core-steps/land-bots-game.txt`, seeds 1,
+2, 3 and 7, the switch thrown for the trial). The thoughtful player ends
+first of the six families on all four seeds, with 34 to 105 million against
+41 to 57 on the port's island; the landlord first on three and second on
+one; the passive player and the founder first to fourth, as on the port's.
 
 ## What worries me
 
@@ -581,7 +757,21 @@ What to expect of those to come:
   beach unless a town stands at the mouth. Here every navigable tideway
   lets them out at a port's cost. That is what an estuary is, but it makes
   this a cheaper island to carry goods about, and some of the missing
-  railway is surely that.
+  railway is surely that. (So I thought. Beside the mines and the canals
+  no railway is missing by 1900 and more hands cart, not fewer: "On the
+  integration branch".)
+- **Quarry towns are founded where their bread has to be carted in.** The
+  stone is on the scarps and in the belt, the corn is not, and beside the
+  mines the new land founds two more towns a run, most of them at the
+  quarries. One island of sixteen has such a town short of bread for seven
+  years. The founding rule weighs the carting a market would save; it does
+  not ask what the town will eat.
+- **A third of the canal follows a river.** A third of a run's canal cells
+  are river cells and a sixth are on water boats use already. A river
+  made navigable and a canal dug beside it are one thing to the rules, at
+  one price.
+- **A lake is not water to a canal.** It cannot be dug through and it is not
+  joined: a canal that comes to the shore ends at a beach.
 - **A tideway is judged by the river that enters it**, not by its own width
   or depth: 12 cubic metres a second of river and boats use it all the way
   down, however narrow the inlet.
