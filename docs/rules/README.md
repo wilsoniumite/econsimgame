@@ -626,3 +626,8 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **hands**: a town cannot hire hands it does not have. When even the
+  highest wage the month allows leaves more hands wanted than the town has
+  to spare, the wage stays there and every employer in the town is cut by
+  the same share to the hands there are, and carries forward what it got.
+  [hands.md](hands.md), `hands.ration`.
