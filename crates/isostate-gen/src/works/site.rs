@@ -198,12 +198,20 @@ impl Process {
     fn tips(&self) -> bool {
         self.heat > 0.0 || self.inputs.iter().any(|(g, _)| matches!(g.name.as_str(), "iron_ore" | "coal" | "charcoal" | "clay"))
     }
+
+    /// What is left of a unit of output to tip: the bulk of what comes in,
+    /// fuel and all, less the bulk of what goes out. A furnace leaves six
+    /// times its iron in slag; a mill leaves the ashes of its boilers.
+    fn waste(&self, year: i32) -> f32 {
+        let fuel = self.fuel(year).map_or(0.0, |(g, a)| g.weight * a);
+        (self.inputs.iter().map(|(g, a)| g.weight * a).sum::<f32>() + fuel - self.output.weight).max(0.0)
+    }
 }
 
 // ------------------------------------------------------------------ the plot
 
 /// What a side of a plot faces.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Edge {
     /// the road (or the lane to it): the gate is here
     Road,
@@ -520,6 +528,8 @@ pub struct Plan {
 const SIDING: f32 = 0.022;
 const WHARF: f32 = 0.018;
 const WALL: f32 = 0.005;
+/// How near its railway or its water a works must have built to have a siding or a wharf there.
+const REACH: f32 = 0.08;
 
 /// The free ground of a plot while it is being laid out.
 struct Field {
@@ -737,9 +747,17 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     // wall, by the siding, at the wharf, or through the gate, in to its one side and out at its other
     let by = |side: usize, t: f32, back: f32| plot.along(side, t, back);
     let aside = gw * 0.5 + 0.03;
-    let ways = |year: i32| -> ((f32, f32), (f32, f32)) {
-        let siding = plot.find(year, |e| e == Edge::Rail);
-        let wharf = plot.find(year, |e| e == Edge::Water { navigable: true });
+    // a works has a siding or a wharf of its own once it has built out to within reach of the
+    // line or the water: a small works on ground set aside for a great one carts to the station
+    // (and a works that takes in and sends out nothing with any weight to it, a shop, has neither)
+    let carries = !incoming.is_empty() || Keep::of(&process.output) != Keep::Nothing;
+    let reaches = |side: usize, parts: &[Part]| {
+        let ((a, _), n) = (plot.side(side), plot.outward(side));
+        carries && parts.iter().any(|p| (a.0 - p.x) * n.0 + (a.1 - p.z) * n.1 - (p.w * n.0.abs() + p.d * n.1.abs()) * 0.5 <= REACH)
+    };
+    let ways = |year: i32, parts: &[Part]| -> ((f32, f32), (f32, f32)) {
+        let siding = plot.find(year, |e| e == Edge::Rail).filter(|s| reaches(*s, parts));
+        let wharf = plot.find(year, |e| e == Edge::Water { navigable: true }).filter(|s| reaches(*s, parts));
         let fed = plot.find(year, |e| e == Edge::Fed);
         let feeds = plot.find(year, |e| e == Edge::Feeds);
         let receive = fed.map(|s| by(s, 0.5, WALL)).or(siding.map(|s| by(s, 0.3, SIDING))).or(wharf.map(|s| by(s, 0.35, WHARF))).unwrap_or((gx - aside, bz1 - 0.02));
@@ -767,7 +785,6 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     for (i, st) in stages.iter().enumerate() {
         let before = if i == 0 { 0.0 } else { stages[i - 1].size };
         set_back(&mut field, st.year);
-        let (receive, dispatch) = ways(st.year);
         // ---- the process buildings of the stage
         let wheel = i == 0 && st.year < 1790 && stream.is_some();
         let by_water = i == 0 && stream.is_some();
@@ -820,7 +837,8 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
                 }
                 break;
             }
-            size = (size * 0.6).max(0.4);
+            // (by small steps, so that a stage is built as near the size it was as its ground has room for)
+            size = (size * 0.8).max(0.4);
         }
         match found {
             Some(p) => {
@@ -833,6 +851,8 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
             }
             None => dropped += 1,
         }
+
+        let (receive, dispatch) = ways(st.year, &parts);
 
         // ---- the counting house, once there are hands enough to want a clerk
         if st.size >= 1.5 && before < 1.5 {
@@ -884,10 +904,10 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
 
     // ---- the siding and the wharf, along what of their sides is free
     set_back(&mut field, year);
-    let (receive, dispatch) = ways(year);
+    let (receive, dispatch) = ways(year, &parts);
     let run = |s: &(usize, f32, f32)| { let (a, b) = plot.side(s.0); (s.2 - s.1) * (b.0 - a.0).hypot(b.1 - a.1) };
-    let siding = plot.find(year, |e| e == Edge::Rail).and_then(|i| field.stretch(plot, i, SIDING).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.04);
-    let wharf = plot.find(year, |e| e == Edge::Water { navigable: true }).and_then(|i| field.stretch(plot, i, WHARF).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.03);
+    let siding = plot.find(year, |e| e == Edge::Rail).filter(|s| reaches(*s, &parts)).and_then(|i| field.stretch(plot, i, SIDING).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.04);
+    let wharf = plot.find(year, |e| e == Edge::Water { navigable: true }).filter(|s| reaches(*s, &parts)).and_then(|i| field.stretch(plot, i, WHARF).map(|(a, b)| (i, a, b))).filter(|s| run(s) >= 0.03);
     let built = field.taken.len();
     let reserved = 1 + lane.is_some() as usize + office_ground.is_some() as usize;
     let mut strips: Vec<(f32, f32, f32, f32)> = Vec::new();
@@ -914,7 +934,8 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         // the corner of what is built so far that is furthest from the gate
         let b = field.taken[reserved.min(built - 1)..built].iter().fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, t| (b.0.min(t.0), b.1.max(t.2), b.2.min(t.1), b.3.max(t.3)));
         let far = [(b.0, b.2), (b.1, b.2), (b.0, b.3), (b.1, b.3)].into_iter().fold((gate, -1.0f32), |best, p| { let d = dist(p, gate); if d > best.1 { (p, d) } else { best } }).0;
-        wants.push((Hold::Tip, 0.09 * standard, far));
+        // (as big as what the process leaves: a furnace's slag bank, a mill's ash heap)
+        wants.push((Hold::Tip, 0.09 * standard * (process.waste(founded) / 3.0).clamp(0.15, 1.0), far));
     }
     for (x, z, w, d) in strips {
         field.take(x, z, w, d);

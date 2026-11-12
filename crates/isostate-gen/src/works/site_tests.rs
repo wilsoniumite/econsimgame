@@ -270,6 +270,42 @@ fn the_ways_in_and_out_follow_what_the_plot_faces() {
 }
 
 #[test]
+fn a_small_works_on_ground_set_aside_for_a_great_one_has_no_siding_until_it_builds_out_to_the_line() {
+    let pal = Palette::standard();
+    for kind in [Kind::CokeFurnace, Kind::TextileMill, Kind::EngineWorks] {
+        // the ground of a works that will stand at thirty times the standard size, the railway along its back from the first
+        let (w, d) = ground(kind, 30.0);
+        let plot = Plot::rect(w, d).facing(2, Edge::Rail);
+        let record = history(1850, 1890, 30.0);
+        let small = plan(kind, &Process::of(kind), &stages(&record[..3]), &plot, 1852, Seed::of(6), &pal);
+        assert!(small.siding.is_none(), "{kind:?}: a works of {} has a siding a field away", small.stages[0].size);
+        // it has walled in the ground by its gate and no more, and carts in and out by the gate
+        let (_, _, z0, z1) = small.enclosed.bounds();
+        assert!(z1 - z0 < d * 0.6, "{kind:?}: its wall takes in {} of a plot {d} deep", z1 - z0);
+        assert!(small.receive.1 > z1 - 0.03 && small.dispatch.1 > z1 - 0.03);
+        // grown to its size, it has built out to the line and has its siding; and what stood first has not moved
+        let great = plan(kind, &Process::of(kind), &stages(&record), &plot, 1890, Seed::of(6), &pal);
+        assert!(great.siding.is_some(), "{kind:?}: no siding at thirty times the standard size");
+        assert_eq!(small.parts[..], great.parts[..small.parts.len()]);
+    }
+}
+
+#[test]
+fn the_tip_is_as_big_as_what_the_process_leaves() {
+    let pal = Palette::standard();
+    // a furnace leaves several times its iron in slag, a mill the ashes of its boilers
+    let (furnace, mill) = (Process::of(Kind::CokeFurnace), Process::of(Kind::TextileMill));
+    assert!(furnace.waste(1850) > 5.0 * mill.waste(1850) && mill.waste(1850) > 0.0, "{} and {}", furnace.waste(1850), mill.waste(1850));
+    let tip = |kind: Kind| {
+        let (w, d) = ground(kind, 10.0);
+        let (p, _) = specimen(kind, 1800, 1885, 10.0, &Plot::rect(w, d), Seed::of(2), &pal);
+        let (sw, sd) = kind.plot();
+        p.yards.iter().find(|y| y.hold == Hold::Tip).map_or(0.0, |y| y.w * y.d) / (sw * sd)
+    };
+    assert!(tip(Kind::CokeFurnace) > 2.5 * tip(Kind::TextileMill) && tip(Kind::TextileMill) > 0.0, "{} and {}", tip(Kind::CokeFurnace), tip(Kind::TextileMill));
+}
+
+#[test]
 fn a_works_of_a_kind_nobody_knows_is_planned_from_its_process() {
     let pal = Palette::standard();
     let glass = Process { inputs: vec![(Good::new("sand", 2.0, 0.3), 1.4), (Good::new("soda", 0.6, 4.0), 0.3)], heat: 1.8, labour: 0.6, capital: 120.0, output: Good::new("glass", 1.1, 9.0) };

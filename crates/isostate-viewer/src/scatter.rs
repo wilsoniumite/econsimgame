@@ -469,7 +469,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
         slots.firm_pos[f] = (x, z, q as f32 * std::f32::consts::FRAC_PI_2 + askew);
         slots.firm_cap[f] = if size < own { size } else { f32::MAX };
         slots.firm_water[f] = world::water_dist(g, x, z) < hx.hypot(hz) + 0.09;
-        slots.firm_plot[f] = plot_of(r, g, ways, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f], railed.map(|k| r.y0 + k as i32));
+        slots.firm_plot[f] = plot_of(g, ways, (x, z, slots.firm_pos[f].2), (w, d), slots.firm_water[f], railed.map(|k| r.y0 + k as i32));
         lots.push(Lot { x, z, hx, hz, from, to });
         placed.push(f);
     }
@@ -512,8 +512,7 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[to
 /// rectangle with one of its far corners cut off where a road, the railway
 /// or water presses on it, and what each side faces. `rail` is the year the
 /// railway came to the cell.
-fn plot_of(r: &Replay, g: &Ground, ways: &[Way], (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool, rail: Option<i32>) -> Plot {
-    let _ = r;
+fn plot_of(g: &Ground, ways: &[Way], (x, z, yaw): (f32, f32, f32), (w, d): (f32, f32), water: bool, rail: Option<i32>) -> Plot {
     let (hw, hd) = (w * 0.5, d * 0.5);
     let (sin, cos) = yaw.sin_cos();
     // a point of the works' own frame on the map, and a map direction in the works' frame
@@ -553,8 +552,12 @@ fn plot_of(r: &Replay, g: &Ground, ways: &[Way], (x, z, yaw): (f32, f32, f32), (
         if let Some((dx, dz)) = to {
             let side = plot.side_toward(own(dx, dz));
             let broad = g.rivers.iter().flat_map(|rv| rv.pts.iter().zip(&rv.half)).map(|(p, half)| ((p.x - x).hypot(p.y - z), *half)).min_by(|a, b| a.0.total_cmp(&b.0)).map_or(false, |(_, half)| half >= 0.03);
+            // (a quay stands on the water: a plot whose side lies a field back from the bank has none)
+            let (a, b) = (plot.outline[side], plot.outline[(side + 1) % plot.outline.len()]);
+            let (mx, mz) = map((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5);
+            let on_the_bank = world::water_dist(g, mx, mz) < 0.06;
             if side != 0 && plot.edges[side] == Edge::Wall {
-                plot = plot.facing(side, Edge::Water { navigable: broad });
+                plot = plot.facing(side, Edge::Water { navigable: broad && on_the_bank });
             }
         }
     }
@@ -579,25 +582,67 @@ static PLANS: std::sync::Mutex<Option<std::collections::HashMap<(usize, u64), st
 /// - its plot: `Slots::firm_plot`, with what each side faces and since when;
 /// - its state: going up in its first year; a stage built this year is under
 ///   scaffolding; stages it has shrunk out of stand idle, then derelict;
-/// - how busy it is and what it holds: STAND-INS, as the record keeps neither.
-///   Busy: 0.9 in a year its capacity rose, 0.45 in one it fell, else 0.75.
-///   Stock: between a third full and nearly full, by a number of the works'
-///   own that changes every third year.
+/// - how busy it is and what it holds: STAND-INS, as the record keeps neither,
+///   both read from what its capacity did this year. Busy: 0.9 in a year its
+///   capacity rose, 0.45 in one it fell, else 0.75. Stock: a works that is
+///   growing buys ahead and sells as fast as it makes (its stock yards four
+///   fifths full, its warehouse a third); one that is shrinking runs its
+///   stock down and has what it made on its hands (a third and five sixths);
+///   otherwise three fifths and a half. Each works keeps a little more or
+///   less than that, by a number of its own that never changes, so nothing
+///   in a yard changes in a year the record does not.
 pub fn firm_site(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look) -> Option<FirmSite> {
+    Some(planned(r, slots, f, k, lk, &firm_facts(r, slots, f, k)?))
+}
+
+/// The plan of a works whose facts are in hand (found among those already made, or made and kept), and how it stands in year `k`.
+fn planned(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look, facts: &Facts) -> FirmSite {
+    let firm = &r.header.firms[f];
+    let year = r.y0 + k as i32;
+    let kept = PLANS.lock().unwrap().get_or_insert_with(Default::default).get(&(f, facts.mark)).cloned();
+    let plan = kept.unwrap_or_else(|| {
+        let kind = firm_kind(r, f);
+        let process = site::Process::standard(&r.header.methods[firm.method].name).unwrap_or_else(|| site::Process::of(Kind::Other));
+        let plan = std::sync::Arc::new(site::plan(kind, &process, &facts.stages, &slots.firm_plot[f], year, firm_seed(f), lk));
+        PLANS.lock().unwrap().get_or_insert_with(Default::default).insert((f, facts.mark), plan.clone());
+        plan
+    });
+    let history = &facts.history;
+    let size = history.last().map_or(0.4, |h| h.1);
+    let top = history.iter().map(|h| h.1).fold(0.0f32, f32::max);
+    let shrunk_for = history.iter().rev().take_while(|h| h.1 < top * 0.8).count() as i32;
     let kk = replay::firm_k(r, f, k);
-    if kk <= 0.0 {
+    let before = if k > 0 { replay::firm_k(r, f, k - 1) } else { kk };
+    let state = if before <= 0.0 && firm.born > r.y0 { State::GoingUp } else { State::Working };
+    let (rose, fell) = (kk > before * 1.02, kk < before * 0.98);
+    let busy = if rose { 0.9 } else if fell { 0.45 } else { 0.75 };
+    // (a works keeps a little more or less about it than its neighbour, by a number of its own that never changes)
+    let own = |n: i32| 0.12 * (world::hash2(f as i32, n, 53) - 0.5);
+    let stock_in = (if rose { 0.8 } else if fell { 0.35 } else { 0.6 }) + own(1);
+    let stock_out = (if rose { 0.3 } else if fell { 0.85 } else { 0.5 }) + own(2);
+    FirmSite { plan, now: site::Now { year, size, state, busy, stock_in, stock_out, shrunk_for, detail: Detail::Near } }
+}
+
+/// What the plan of a works is made from in a year: its size in every year it
+/// has stood so far, the stages of its growth, and a mark of those and of its
+/// plot as its sides face that year, by which a plan already made is found.
+struct Facts {
+    history: Vec<(i32, f32)>,
+    stages: Vec<site::Stage>,
+    mark: u64,
+}
+
+fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
+    if replay::firm_k(r, f, k) <= 0.0 {
         return None;
     }
-    let firm = &r.header.firms[f];
     let (phase, cap) = (firm_phase(f), slots.firm_cap.get(f).copied().unwrap_or(f32::MAX));
     let size_of = |kk: f32| works::rung_size(works::rung(firm_ratio(r, f, kk), phase), phase).min(cap);
-    // its size in every year it has stood so far
     let first = r.firm_first.get(f).copied().unwrap_or(0).max(0) as usize;
     let history: Vec<(i32, f32)> = (first..=k).filter_map(|i| { let kk = replay::firm_k(r, f, i); (kk > 0.0).then(|| (r.y0 + i as i32, size_of(kk))) }).collect();
     let stages = site::stages(&history);
     let year = r.y0 + k as i32;
     let plot = slots.firm_plot.get(f)?;
-    // the mark of what the plan is made from
     let mark = {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -607,28 +652,53 @@ pub fn firm_site(r: &Replay, slots: &Slots, f: usize, k: usize, lk: &Look) -> Op
         for p in &plot.outline {
             (p.0.to_bits(), p.1.to_bits()).hash(&mut h);
         }
-        for (i, e) in plot.edges.iter().enumerate() {
-            (format!("{e:?}"), plot.since[i] <= year).hash(&mut h);
+        for i in 0..plot.edges.len() {
+            plot.edge(i, year).hash(&mut h);
         }
-        (firm.method, r.header.meta.seed).hash(&mut h);
+        (r.header.firms[f].method, r.header.meta.seed).hash(&mut h);
         h.finish()
     };
-    let kept = PLANS.lock().unwrap().get_or_insert_with(Default::default).get(&(f, mark)).cloned();
-    let plan = kept.unwrap_or_else(|| {
-        let kind = firm_kind(r, f);
-        let process = site::Process::standard(&r.header.methods[firm.method].name).unwrap_or_else(|| site::Process::of(Kind::Other));
-        let plan = std::sync::Arc::new(site::plan(kind, &process, &stages, plot, year, firm_seed(f), lk));
-        PLANS.lock().unwrap().get_or_insert_with(Default::default).insert((f, mark), plan.clone());
-        plan
-    });
-    let size = history.last().map_or(0.4, |h| h.1);
-    let top = history.iter().map(|h| h.1).fold(0.0f32, f32::max);
-    let shrunk_for = history.iter().rev().take_while(|h| h.1 < top * 0.8).count() as i32;
-    let before = if k > 0 { replay::firm_k(r, f, k - 1) } else { kk };
-    let state = if before <= 0.0 && firm.born > r.y0 { State::GoingUp } else { State::Working };
-    let busy = if kk > before * 1.02 { 0.9 } else if kk < before * 0.98 { 0.45 } else { 0.75 };
-    let own = |n: i32| world::hash2(f as i32, year / 3 + n, 53);
-    Some(FirmSite { plan, now: site::Now { year, size, state, busy, stock_in: 0.35 + 0.6 * own(1), stock_out: 0.25 + 0.6 * own(2), shrunk_for, detail: Detail::Near } })
+    Some(Facts { history, stages, mark })
+}
+
+/// What the plans of year `k` hold, in a line, for ISOSTATE_TIMING: how many
+/// works have a siding, a wharf, a neighbour over the wall, parts out of use,
+/// and how many were built smaller than they are for want of room on their
+/// plot. With ISOSTATE_PLOTS, where the first few of each stand, for pointing
+/// a camera at them.
+fn plans_said(r: &Replay, slots: &Slots, k: usize, lk: &Look) -> String {
+    let year = r.y0 + k as i32;
+    let names = ["a siding", "a wharf", "a works that feeds it over the wall", "one it feeds", "parts out of use", "a stage built smaller for want of room", "a stage that found no room at all"];
+    let mut count = [0usize; 7];
+    let mut places: [Vec<String>; 7] = Default::default();
+    let mut all = 0;
+    // the capacity the works have, what their stages come to, and what of it is built
+    let (mut have, mut staged, mut built) = (0.0f32, 0.0f32, 0.0f32);
+    for f in 0..r.header.firms.len() {
+        let Some(fs) = firm_site(r, slots, f, k, lk) else { continue };
+        all += 1;
+        let plan = &fs.plan;
+        have += fs.now.size;
+        staged += plan.stages.last().map_or(0.0, |s| s.size);
+        built += plan.parts.iter().filter(|p| p.role == site::Role::Core).map(|p| p.size).sum::<f32>();
+        let faces = |want: Edge| (0..plan.plot.edges.len()).any(|i| plan.plot.edge(i, year) == want);
+        let top = plan.stages.last().map_or(0.0, |s| s.size);
+        let has = [plan.siding.is_some(), plan.wharf.is_some(), faces(Edge::Fed), faces(Edge::Feeds), fs.now.shrunk_for > 0 && plan.stages.len() > 1 && fs.now.size < top, plan.squeezed > 0, plan.dropped > 0];
+        for (i, _) in has.iter().enumerate().filter(|(_, h)| **h) {
+            count[i] += 1;
+            if places[i].len() < 6 {
+                let (x, z, _) = slots.firm_pos[f];
+                places[i].push(format!("{} at {x:.2},{z:.2}", firm_kind(r, f).label()));
+            }
+        }
+    }
+    let mut out = format!("works planned in {year}: {all}; {}; of their capacity {:.0}% is in the stages they were built in and {:.0}% stands as buildings", names.iter().zip(count).map(|(n, c)| format!("{c} with {n}")).collect::<Vec<_>>().join(", "), 100.0 * staged / have.max(1e-6), 100.0 * built / have.max(1e-6));
+    if std::env::var_os("ISOSTATE_PLOTS").is_some() {
+        for (n, p) in names.iter().zip(&places).filter(|(_, p)| !p.is_empty()) {
+            out.push_str(&format!("\n  with {n}: {}", p.join("; ")));
+        }
+    }
+    out
 }
 
 /// The works of firm `f` as it is drawn in year `k`, if it stands then: the
@@ -1025,16 +1095,21 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // time one against the other on the same machine in the same minute
     let old = std::env::var("ISOSTATE_WORKS").map_or(false, |v| v == "old");
     let begun = std::time::Instant::now();
-    // where few plans are made yet (a game just opened, a replay opened on a late year), the
-    // plans this year needs are made on every core; after that a year needs a handful, and
-    // they are made as the works are drawn
-    let made = PLANS.lock().unwrap().as_ref().map_or(0, |p| p.len());
-    if !old && made * 2 < r.header.firms.iter().enumerate().filter(|(f, _)| replay::firm_k(r, *f, k) > 0.0).count() {
+    // what each works' plan is made from this year, and the plans themselves. Where many are
+    // not made yet (a game just opened, a replay opened on a late year or moved a long way)
+    // they are made on every core; most years want a handful
+    let sites: Vec<Option<FirmSite>> = if old {
+        Vec::new()
+    } else {
         use rayon::prelude::*;
-        (0..r.header.firms.len()).into_par_iter().for_each(|f| {
-            firm_site(r, slots, f, k, lk);
-        });
-    }
+        let facts: Vec<Option<Facts>> = (0..r.header.firms.len()).into_par_iter().map(|f| firm_facts(r, slots, f, k)).collect();
+        let wanting = {
+            let plans = PLANS.lock().unwrap();
+            facts.iter().enumerate().filter(|(f, facts)| facts.as_ref().map_or(false, |facts| plans.as_ref().map_or(true, |p| !p.contains_key(&(*f, facts.mark))))).count()
+        };
+        let site_of = |(f, facts): (usize, &Option<Facts>)| facts.as_ref().map(|facts| planned(r, slots, f, k, lk, facts));
+        if wanting >= 24 { facts.par_iter().enumerate().map(site_of).collect() } else { facts.iter().enumerate().map(site_of).collect() }
+    };
     for (f, firm) in r.header.firms.iter().enumerate() {
         if old {
             let Some(w) = firm_works(r, slots, f, k) else { continue };
@@ -1047,7 +1122,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             works::works(&mut works_b, &mut smoke, &mut lanes, &Site::on(ground(g, p.0, p.1), p.2, &height), &w, lk);
             continue;
         }
-        let Some(fs) = firm_site(r, slots, f, k, lk) else { continue };
+        let Some(fs) = &sites[f] else { continue };
         let p = slots.firm_pos[f];
         // the box round the ground it has taken in so far as it lies on the map, and a little
         // room (the rest of its plot is kept for it, and is field or wood until it is wanted)
@@ -1063,6 +1138,9 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     }
     if std::env::var_os("ISOSTATE_TIMING").is_some() || std::env::var_os("ISOSTATE_BENCH").is_some() {
         eprintln!("timing year works: {:.1} ms for {} vertices of works and {} of their ground", begun.elapsed().as_secs_f64() * 1000.0, works_b.pos.len(), lanes.pos.len());
+        if !old {
+            eprintln!("{}", plans_said(r, slots, k, lk));
+        }
     }
     // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river
