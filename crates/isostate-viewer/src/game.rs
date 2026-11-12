@@ -953,6 +953,9 @@ fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView,
                 let pr = fam.prospect(t, g).map(|p| family::earnings(p, g, &name)).unwrap_or_else(|| "nothing new would pay here".into());
                 p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|col| {
                     col.spawn(text(f, &format!("{} \u{00b7} {}", short_group(g), pr), 13.0, INK));
+                    if let Some(goods) = goods_of_trade(fam, r, g) {
+                        col.spawn(text(f, &goods, 12.0, MUTED));
+                    }
                     if !free.is_empty() {
                         col.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(4.0), row_gap: Val::Px(4.0), ..default() }).with_children(|chips| {
                             for m in &free {
@@ -1089,7 +1092,10 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
                         let town = r.header.towns.get(s.town).map(|t| t.name.as_str()).unwrap_or("its town");
                         let share = if s.market_share >= 0.995 { format!("more than {town} buys") } else { format!("{:.0}% of what {town} buys", 100.0 * s.market_share.max(0.0)) };
                         let price = if s.price_ratio > 1.5 { format!(", selling at {:.1} times the usual price", s.price_ratio) } else { String::new() };
-                        col.spawn(text(f, &format!("Would make {share}{price}."), 12.5, if thin_market(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
+                        // a dear price where none is made may be one nothing was sold at (town gas before a town's first
+                        // gasworks), and the return above is worked out at it: say so, as a fact
+                        let none = if s.price_ratio > 1.5 && s.town_output <= 0.0 { format!(" None was made at {town} last year.") } else { String::new() };
+                        col.spawn(text(f, &format!("Would make {share}{price}.{none}"), 12.5, if thin_market(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
                     });
                     button(row, f, "Build", afford.then_some(Action::Found { method: o.method, cell: c }), accent);
                 });
@@ -1173,6 +1179,22 @@ fn decision_badge(fam: Res<FamilyView>, mut q: Query<(&mut Node, &Children), Wit
             }
         }
     }
+}
+
+/// The trade an option of a decision is about, if it is about one.
+fn trade_of(choice: Choice) -> Option<Group> {
+    match choice {
+        Choice::Trade { group } | Choice::Apprentice { group, .. } => Some(group),
+        Choice::University | Choice::Head { .. } => None,
+    }
+}
+
+/// What a trade makes, by the content's labels: "Coal · Town gas · Soap and
+/// chemicals". None where the game at hand does not say (a recorded run).
+fn goods_of_trade(fam: &FamilyView, r: &Replay, g: Group) -> Option<String> {
+    let goods = fam.trade_goods.get(g.index())?;
+    let labels: Vec<&str> = goods.iter().filter_map(|&i| r.header.goods.get(i)).map(|good| good.label.as_str()).collect();
+    (!labels.is_empty()).then(|| labels.join(" \u{00b7} "))
 }
 
 /// What choosing an option would mean, in a line.
@@ -1286,6 +1308,10 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                                     });
                             }
                         });
+                        // a trade's name no longer says what it makes (soap and gas are with coal, beer with the estates)
+                        if let Some(goods) = trade_of(o.choice).and_then(|g| goods_of_trade(&fam, r, g)) {
+                            b.spawn(text(&f, &goods, 12.0, INK));
+                        }
                         if !note.is_empty() {
                             b.spawn(text(&f, &note, 12.5, MUTED));
                         }
@@ -1865,5 +1891,78 @@ mod tests {
 
         // the newest year's end is 1783's: the year in progress is 1784
         assert_eq!(turn_words(1750, 33), ("the end of 1784".to_string(), "January 1785".to_string()));
+    }
+
+    /// The sums of a works that would return `ret` a year, with `share` of its
+    /// town's market at `ratio` times the usual price.
+    fn sums(ret: f64, share: f64, ratio: f64) -> isostate_core::SiteSums {
+        isostate_core::SiteSums {
+            town: 0,
+            K: 1.0,
+            gate_price: 1.0,
+            inputs: Vec::new(),
+            input_cost: 0.0,
+            heat: 0.0,
+            heat_price: 0.0,
+            heat_cost: 0.0,
+            labor: 0.0,
+            wage: 0.0,
+            labor_cost: 0.0,
+            margin: 0.0,
+            rent_bid: 0.0,
+            capital_cost: 100.0,
+            expected_return: ret,
+            bonus: 0.0,
+            agglo: 1.0,
+            output: 1.0,
+            town_demand: 1.0,
+            town_output: 1.0,
+            market_share: share,
+            price_ratio: ratio,
+        }
+    }
+
+    fn option(method: usize, label: &str, group: Group, sums: Result<isostate_core::SiteSums, &str>, allowed: Result<(), &str>) -> SiteOption {
+        SiteOption { method, name: label.to_lowercase(), label: label.into(), group: Some(group), sums: sums.map_err(String::from), allowed: allowed.map_err(String::from) }
+    }
+
+    #[test]
+    fn the_build_list_puts_what_pays_in_a_deep_market_first_and_says_why_the_rest_are_not_there() {
+        let room = "the cell has no room left for this of this size";
+        let opts = vec![
+            // offered: losing a little, losing a lot, thin and paying, deep and paying well, deep and paying less
+            option(0, "Brewhouse", Group::Estates, Ok(sums(-0.05, 0.1, 1.0)), Ok(())),
+            option(1, "Lime kiln", Group::Building, Ok(sums(-0.40, 0.1, 1.0)), Ok(())),
+            option(2, "Gasworks", Group::CoalMining, Ok(sums(14.0, 0.6, 1.0)), Ok(())),
+            option(3, "Forged rails", Group::Iron, Ok(sums(0.30, 0.1, 1.0)), Ok(())),
+            option(4, "Saw pit", Group::Building, Ok(sums(0.12, 0.1, 4.0)), Ok(())),
+            option(5, "Masons and carpenters", Group::Building, Ok(sums(0.20, 0.05, 1.2)), Ok(())),
+            // known trades, known here, but the square is full: one line for all of them
+            option(6, "Bricklayers", Group::Building, Ok(sums(0.5, 0.1, 1.0)), Err(room)),
+            option(7, "Brickworks", Group::Building, Ok(sums(0.5, 0.1, 1.0)), Err(room)),
+            // a known trade worked elsewhere on the island and not here; and one nobody has built
+            option(8, "Steam sawmill", Group::Building, Err("Steam sawmill is not known in Ashby yet"), Err("Steam sawmill is not known in Ashby yet")),
+            option(9, "Cement works", Group::Building, Err("Cement works is not known in Ashby yet"), Err("Cement works is not known in Ashby yet")),
+            // trades the family does not know: each trade named once, whatever it pays
+            option(10, "Spinning mill", Group::Textiles, Ok(sums(0.9, 0.1, 1.0)), Err("the Hartley family does not know textiles yet")),
+            option(11, "Hand looms", Group::Textiles, Ok(sums(0.1, 0.1, 1.0)), Err("the Hartley family does not know textiles yet")),
+            option(12, "Machine shop", Group::Engineering, Ok(sums(0.1, 0.1, 1.0)), Err("the Hartley family does not know engineering yet")),
+        ];
+        let known = [Group::Estates, Group::Building, Group::CoalMining, Group::Iron];
+        let list = build_list(&opts, &known, "Ashby", |m| m == 8);
+        // deep and paying by return, then thin (a flooded market or a scarcity price), then losing the least first
+        assert_eq!(list.offered, [3, 5, 2, 4, 0, 1]);
+        assert_eq!(
+            list.notes,
+            [
+                "No room is left on this square for: Bricklayers, Brickworks.",
+                "Worked elsewhere on the island, and not known at Ashby yet: Steam sawmill.",
+                "Works in textiles and engineering could be built here too, once the family knows the trade.",
+            ]
+        );
+        // with nothing refused there is nothing to say under the list
+        let list = build_list(&opts[..6], &known, "Ashby", |_| true);
+        assert_eq!(list.offered.len(), 6);
+        assert!(list.notes.is_empty());
     }
 }
