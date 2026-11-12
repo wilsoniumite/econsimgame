@@ -104,11 +104,16 @@ down together to fit. A small place with one good year can no longer double.
 
 Once a year, after the year's roads are known, the rule asks where a market
 is most missed. Every cell pays to cart its year's tonnage to the town it
-trades through. For the half dozen spots where that bill is heaviest, at
-least `found_spacing` cells from every town, it works out the district a
-market there would serve (every cell nearer to it than to its present
-market), what the district's people would save in carting in a year, and
-what they earn. A town is founded on the site that saves the most if
+trades through. For the half dozen spots where that bill is heaviest (summed
+over the seven by seven cells round each, the spots at least five cells
+apart), each settled on the best ground within two cells of it, it works out
+the district a market there would serve (every cell nearer to it than to its
+present market), what the district's people would save in carting in a year,
+and what its hands earn. A spot must be more than `found_spacing` cells from
+every town as the crow flies, on land that is not hill or mountain, with a
+way to market, and not on a cell that works hold half of. Taking the sites
+in order of what they save, a town is founded on the first that passes all
+of these:
 
 - the saving is at least `found_saving` of the district's wages,
 - the district holds at least `found_cells` cells and `found_people` people,
@@ -119,21 +124,29 @@ what they earn. A town is founded on the site that saves the most if
 The estimate is made on last year's paths, so before anything is settled the
 site is tried for real: the town's node is switched on, the catchments are
 worked out exactly as the yearly step will work them out, and the district is
-counted again. Only if it still passes does the town stand. No town can be
-founded on a handful of cells, because the cells are counted first.
+counted again. Only if it still passes does the town stand (its cells, its
+people, the share any one town gives and the rest its givers are owed; the
+saving is not reckoned again). Each such try is a full set of paths, so no
+more than two sites are tried for real in a year. No town can be founded on
+a handful of cells, because the cells are counted first.
 
-At most one town is founded a year, and a town that has just given a sixth of
-its people is left alone for eight years. On seed 7 the 1750s see two
-foundings where the port has eight or nine.
+At most one town is founded a year, and every town that gave people to it,
+however few, is left alone for eight years, as is the new town itself. On
+seed 7 the 1750s see two foundings where the port has eight or nine (people
+alone on the port's island, at the numbers it was first tuned to; today's
+sweep does not count foundings by decade).
 
 Nothing in the rule names a coalfield or a railway. They show up because
 that is where tonnage is: a pit ten cells from its market pays more in
 carting than a parish of farms does. Each founding is recorded with what its
-district was known for (the trade that takes a larger share of its hands
-than it does on the island: coal, iron, stone, works, or farm where none
-stands out), whether the site is on the coast, and whether a railway ran
-within a cell of it on the day, and the news tells it that way: a colliery
-town, a quarry town, a town of works, a harbour town, a market town. Town
+district was known for (coal, iron, stone, works, or farm where none stands
+out: of the trades that take at least a tenth of the district's hands and a
+quarter more of them than of the island's, the one that is most over its
+island share; services are left out, since they follow people), whether the
+site is on the coast, and whether a railway ran within a cell of it on the
+day, and the news tells it that way: a colliery town, a mining town (iron),
+a quarry town, a town of works, and for a farming district a harbour town on
+the coast and a market town inland. Town
 names come from a random stream of their own (stream 8), so nothing the port
 draws is disturbed.
 
@@ -143,7 +156,9 @@ Every year, once the catchments are worked out again, the households of every
 cell that now trades through another town go to that town, with their cash
 and their landlords' cash. A town's people are taken to be spread over its
 cells as its labour at work is, so a town keeps the people whose cells it
-keeps. A town founded this year gets its people the same way, and with them
+keeps; but a town always keeps its own cell, and so never gives up more than
+95 per cent of its people in a year, however many of its cells go. A town
+founded this year gets its people the same way, and with them
 the same share of the old market's stocks and its merchants' cash. Every one
 of these is a transfer from one town's purse to another's.
 
@@ -188,8 +203,8 @@ they go is the market's business.
 | name | value | what it is |
 |---|---|---|
 | `enabled` | off; on in the game | the switch |
-| `growth_top` | 0.016 (0.0165 on the port's island) | births less deaths a year that income alone can approach |
-| `y_still` | 1.3 (1.5 on the port's island) | income over subsistence at which births balance deaths |
+| `growth_top` | 0.016 (first tuned to 0.0165 on the port's island) | births less deaths a year that income alone can approach |
+| `y_still` | 1.3 (first tuned to 1.5 on the port's island) | income over subsistence at which births balance deaths |
 | `ease` | 2.1 | how quickly the rate nears its ceiling |
 | `town_deaths` | 0.012 | extra deaths a year per head in a great town where all live on town ground |
 | `town_size` | 10,000 | townsfolk at which a town is half way to being a great one |
@@ -200,7 +215,7 @@ they go is the market's business.
 | `arrivals_max` | 0.1 | migrants a town can take in a year, as a share of its people |
 | `found_saving` | 0.08 | carting saved in a year over the district's yearly wages |
 | `found_cells`, `found_people` | 40, 3,000 | the least district that can keep a market |
-| `found_spacing` | 8 | cells between a new town and any other |
+| `found_spacing` | 8 | a new town stands more than this many cells from any other |
 | `donor_max` | 0.2 | the most of its people a town gives to one founding |
 | `donor_rest` | 8 | years a giving town, or a new one, is left alone |
 
@@ -239,13 +254,15 @@ within sight of it.
 - `people::growth` and `people::migration` each call in with one line when
   the switch is on.
 - `sim::yearly` skips the port's `people::found_towns`, calls
-  `peopling::found_towns` after `update_roads`, notes what each cell paid to
+  `peopling::found_towns` after `update_roads` (and after the canals have
+  counted the year's traffic, which changes nothing it reads), notes what each cell paid to
   reach its market before the paths are worked out again, and calls
   `peopling::move_with_cells` every year where the port calls
   `people::resettle_new_towns` in founding years only.
 - `econ::step_month` keeps `st.requests` (what each town's buyers asked for)
   when the switch is on, as it already does when there are families.
-- The state's new fields (`pp_*`, at the end of `State`) stay empty while the
+- The state's new fields (`pp_*`, in `State` after the port's own; the
+  mechanisms merged since have added theirs after them) stay empty while the
   switch is off.
 - The sweep gains `town_growth_pct_p10`, `_p50` and `_p90` (every town-year's
   rate of increase, in per cent; under the port, its clamped rule),
@@ -255,8 +272,8 @@ within sight of it.
   `_farm`, `late_towns_port`, `late_towns_rail`, `late_town_people_median`,
   `late_town_people_largest` and `emigrants`. With the switch on,
   `growth_capped_*` count a town as held when income has carried it to within
-  a twentieth of `growth_top`, which takes an income above five and a half
-  times subsistence (six on the port's numbers).
+  a twentieth of `growth_top`, which takes an income above 5.4 times
+  subsistence (6.25 at the numbers first tuned on the port's island).
 - Beside the game's other rules (see "In company"): a new town takes its
   donor's price anchors (`prices::found_town`), and every price that
   `move_with_cells` sets takes its anchor with it (`prices::anchor_follows`);
@@ -267,9 +284,11 @@ within sight of it.
   the emigration news carries its own reason, so the chronicle does not give
   it the hunger's.
 - `cargo run --release -p isostate-core --example people -- 7 --families 6`
-  prints one run by decade, every founding with its reason, and one town's
-  people and cells (`--town`, `--every-year` for a line a year, `--off` for
-  the port's rules, `--candidates` for the sites the rule looked at).
+  prints one run by decade under the game's rules, every founding with its
+  reason, and one town's people and cells (`--town`, `--every-year` for a
+  line a year, `--off` for the rest of the game's rules with the port's
+  people rules in place of these, `--candidates` for the sites the rule
+  looked at, `--set people.NAME=VALUE`, `--end-year`).
 
 ## What a sweep showed
 
@@ -513,8 +532,9 @@ seeds 1 to 6:
 | 1.3, 0.0155 | 201, 359, 650 | 0.37, 0.59, 0.80 | 8.45 |
 | **1.3, 0.016** | 203, 372, 686 | 0.38, 0.61, 0.82 | 8.46 |
 
-The tests of `tests/people.rs` that are histories of the port's island
-(Kelrigg, the hemmed-in sites) keep the pair they were built on.
+The tests of `tests/people.rs` that run on the port's island (Kelrigg, the
+hemmed-in sites, and also the sixty years with six families and the run
+with the rules on against off) keep the pair they were built on.
 
 **What it does in company**, against the game before, seed for seed. The
 middle column is the carters' change alone, to show what is not people's.
@@ -601,6 +621,43 @@ What that says, set against what this page says of people alone:
   was third, first, second and fourth). In money the player ends with 14 to
   86 million where it had 23 to 76. One game each.
 
+**Today.** Everything above in this section was measured at the merge and is
+kept as it was. The mines and the canals have been merged into the game's
+rules since, and the books of account beside them, so the island has moved
+again. The game's sweep of seeds 1 to 8 with six families as it stands
+(`isostate-core sweep --seeds 1-8 --rules game --families 6`, in
+`.claude/night/reports/merged-game-f6-l`) reads, beside the merge's seeds 1
+to 6:
+
+| | at the merge, seeds 1 to 6 | today, seeds 1 to 8 |
+|---|---|---|
+| people in 1800, 1850, 1900 | 203,500, 371,900, 686,000 | 211,600, 393,300, 731,900 |
+| a town-year's rate, per cent: tenth, middle, ninetieth | 0.84, 1.24, 1.48 | 0.92, 1.27, 1.50 |
+| towns in 1800, 1850, 1900 | 12.7, 16.3, 16.5 | 12.6, 16.9, 17.8 |
+| last town founded | 1842 | 1847 (1814 to 1873) |
+| towns founded from 1800 | 3.8 | 5.1 (2 to 7) |
+| of those: quarry, farm, works, coal, iron | 2.2, 1.0, 0.5, 0.2, none | 2.4, 1.1, 0.9, 0.8, none |
+| of those on the coast, and beside a railway | 0.7, one in twenty-five | 0.4, 0.8 |
+| people of the middle and the largest late town in 1900 | 14,000, 26,000 | 20,300, 47,300 |
+| emigrants, whole run | 307 | 133 (0 to 470) |
+| baskets a head in 1800, 1850, 1900 | 2.95, 5.03, 8.46 | 3.30, 5.18, 8.76 |
+| chained real wage in 1900, 1750 = 1 | 4.45 | 4.24 |
+| urban share in 1900 | 0.414 | 0.419 |
+| famine years in a run | 1.3 | 0.4 |
+| railway in 1850, 1870, 1900, km | 1,520, 2,192, 2,644 | 1,328, 1,835, 2,248 |
+
+The slow start is still there, a little quicker: from `annual.csv`, the mean
+of the eight seeds grows 0.5 per cent a year in the 1750s, 0.7 in the 1760s,
+0.9 in the 1770s, 1.1 in the 1780s and 1.22 to 1.28 from the 1790s on, and
+the island ends with 5.4 times its people of 1750 where the merge had 5.1.
+That is the worry about the two numbers below come true in a small way: the
+island stands richer than it did, so it grows faster. Late towns are a
+little more common and larger, and a sixth of them now stand beside a
+railway where almost none did. Nothing here was searched again. The other
+tables of this page (the merge's, and those under "What a sweep showed")
+are not in today's sweep in the same form, or were measured on other seeds
+or under the port, and are left as measured.
+
 ## Tests
 
 `tests/people.rs`: the rate's shape (zero at `y_still`, rising, flattening,
@@ -677,8 +734,9 @@ by a tenth of its people changing market as well as by a founding.
   the island gains, and a town of exporters gains least. A better test would
   net off the onward journey of what the district sells beyond itself.
 - **If incomes rise, so will the population.** That is the point of the
-  rule, and it is bounded: at six times subsistence the income part is 1.56
-  per cent a year against 1.27 at three. But fifty years at the higher rate
+  rule, and it is bounded: at six times subsistence the income part is 1.54
+  per cent a year against 1.32 at three (1.56 against 1.27 at the numbers
+  first tuned on the port's island). But fifty years at the higher rate
   is 15 per cent more people in 1900, and they press on the same land.
   `growth_top` was tuned on the port's incomes and will want turning down a
   little if the island gets much richer. (It did, and was: 0.016 beside the
@@ -722,9 +780,16 @@ by a tenth of its people changing market as well as by a founding.
   which the conservation check needs, and a passage is a fair thing for it
   to buy, but it is a windfall to the port's merchants with no service made
   for it. It is small: a few thousand people a century.
-- **Emigration is told as hunger.** The news item has the kind `famine`, so
-  the sweep's `news_famine` counts sailings with the port's hunger items
-  (5.3 a run against 2.0 without families, 3.1 against 1.6 with).
+- **Emigration is told as hunger.** The news item has the kind `famine`
+  (`peopling::growth`), so the sweep's `news_famine` counts sailings with the
+  port's hunger items (5.3 a run against 2.0 without families, 3.1 against
+  1.6 with; people alone on the port's island, at its first numbers). So does
+  `famine_years`, which counts every year with an item of that kind: a year
+  in which people sailed after a month that fed fewer than all, but no town
+  fell under the port's line of 82 per cent, is counted as a famine year.
+  The chronicle tells the two apart; the sweep does not. Today's game sweep
+  has 0.5 items of that kind a run and 0.4 famine years in all, so whatever
+  share of them is sailings, it is small.
 - **The test hook.** `st.pp_found_next` orders a town at a cell whatever the
   rule thinks of it. It is there for the tiny-town test and for scenarios;
   nothing in a normal run sets it.
