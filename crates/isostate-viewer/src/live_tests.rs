@@ -286,7 +286,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     same(&a, &b, "after loading");
     // the last year's months for the maps, as the books kept them
     assert_eq!(b.months.first, 29 * 12);
-    same_months(&a, &b, (29 * 12..30 * 12).filter(|t| t % 12 != 11), "after loading");
+    same_months(&a, &b, 29 * 12..30 * 12, "after loading");
     let on_order: Vec<usize> = saved.orders.iter().filter(|g| g.year == 1779).filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None }).collect();
     assert_eq!(b.live.ordered, on_order, "works ordered in the last year keep their pegs");
 
@@ -300,7 +300,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
         }
     }
     same(&a, &b, "three years on");
-    same_months(&a, &b, (30 * 12..33 * 12).filter(|t| t % 12 != 11), "three years on");
+    same_months(&a, &b, 30 * 12..33 * 12, "three years on");
     assert!(!b.carried.is_empty(), "orders were given after loading");
     assert_eq!(a.carried, b.carried, "the same orders were carried out in both");
     assert_eq!(saves::read(&file).unwrap().year, 1782);
@@ -428,10 +428,9 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     assert_eq!((b.live.months, b.live.asked), (5, 5));
     assert_eq!(b.live.standing, stands);
     // the price and wage maps have the months the loaded game played before it was opened, 1753's and
-    // 1754's (the books kept them), as the game that was watched has them. (December goes out once its
-    // year has ended, so it is compared once that is mended.)
+    // 1754's (the books kept them), as the game that was watched has them; December as it ended in both
     assert_eq!(b.months.first, 3 * 12);
-    same_months(&a, &b, (3 * 12..4 * 12 + 5).filter(|t| t % 12 != 11), "loaded in June 1754");
+    same_months(&a, &b, 3 * 12..4 * 12 + 5, "loaded in June 1754");
     assert!(!b.month() && !b.month());
     same_months(&a, &b, 4 * 12..4 * 12 + 7, "seven months into 1754");
     // (what each trade would earn is worked out when a year arrives or a game is opened: for the one in January, for the other in June)

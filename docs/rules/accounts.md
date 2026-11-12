@@ -331,12 +331,27 @@ be made in the middle of a year. What the books do then:
   ended, after its dividends and rents, which is `LiveMonth::cash`. (The
   price is kept for every town slot, a slot with no town yet at the price it
   will open at, as the message sends it; the wage of such a slot is 0.) The
-  tests hold them equal to the last bit for January to November. December's
-  `LiveMonth` in a game is taken after the year has ended, so its prices and
-  wages are those the next January opens at: where a district changed
-  market at the year's end and took its prices with it
-  (`peopling::move_with_cells`) they differ from December's close, in the
-  fourth digit on island 3. The books' December is the close.
+  tests hold them equal to the last bit, all twelve months.
+- **December is told as it ended.** A game's thread takes December's
+  `LiveMonth` after the year has ended (`save::Game::month` ends the year
+  inside December's call, and nothing here may change that), and the island
+  then stands as the next January opens: districts that changed market at
+  the year's end took their prices with them (`peopling::move_with_cells`),
+  which moved December's prices in the fourth digit on island 3; towns
+  founded at the year's end have a wage; the families have bought land and
+  built. Until now the price and wage maps' December, and the families' cash
+  for December, were those. `live_month` now reads a month whose year has
+  closed from the books (`month_end`), so December's prices, wages and cash
+  are the ones December ended at, the same as the books' December and as
+  `live::months_kept` gives a loaded game. On island 3 both Decembers of the
+  test moved in prices or wages and in cash, so the difference was real
+  every year, not only in the fourth digit. Without the books (the port, or
+  `ISOSTATE_NO_BOOKS`) December is still read as the next January opens. The
+  Markets panel by the month was never touched by this: its months are the
+  island's own series, which are written as each month ends. Nothing else
+  moves: no series, no fact of the sweep, no picture, and a played game and
+  a loaded one still agree to the last bit (`live_tests.rs`, both save
+  tests, now with December in them).
 - **The months nobody watched.** A viewer keeps each town's prices and wages
   by the month from the months it is sent, for the price and wage maps. A
   game gone on with from a save plays its months over before there is a

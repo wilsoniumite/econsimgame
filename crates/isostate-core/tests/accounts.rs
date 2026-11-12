@@ -624,8 +624,8 @@ fn a_game_gone_on_with_has_the_months_it_did_not_watch() {
     // them out. Here they are the months a played game sent, to the last bit:
     // after every month of three years, from the game as it is played; and from
     // the same game saved in June and loaded, at a turn and loaded, and loaded
-    // twice. (December is left for later in this test: a game sends it once the
-    // year has ended, when its prices, wages and cash are those January opens at.)
+    // twice. December too: a game sends it once the year has ended, and it is
+    // told as it ended, not as the next January opens.
     let mut g = save::Game::new(3, 6, 0);
     let (C, P) = (g.sim.content.clone(), g.sim.params.clone());
     let stat = live::live_static(&g.sim.st, &C);
@@ -640,6 +640,8 @@ fn a_game_gone_on_with_has_the_months_it_did_not_watch() {
     let d = pending(&g.sim.st, 0);
     g.give(save::Order::decide(&g.sim, d[0].id, 0).unwrap()).unwrap();
     let mut at_turn = None;
+    // Decembers whose close the year's end moved, in prices or wages, and in the families' cash
+    let (mut moved, mut spent) = (0, 0);
     while g.sim.t < 2 * 12 + 5 {
         // land bought at the turn of 1752, as a player's purchase moves the family's cash between years
         if (g.last_year(), g.month) == (1751, 0) {
@@ -653,8 +655,14 @@ fn a_game_gone_on_with_has_the_months_it_did_not_watch() {
         // the month just played is the books' newest, and it is the month sent
         let kept = live::months_kept(&g.sim.st, &C);
         assert_eq!(kept.len(), if g.sim.t <= 12 { g.sim.t } else { 12 + g.sim.t % 12 });
-        if !turned {
-            same_month(&m, kept.last().unwrap(), &own, "as it is played");
+        same_month(&m, kept.last().unwrap(), &own, "as it is played");
+        if turned {
+            // what the island stands at once the year has ended: the next January's opening
+            let st = &g.sim.st;
+            let opens: Vec<f32> = st.price.data.iter().map(|&p| p as f32).collect();
+            let wages: Vec<f32> = (0..st.T_max).map(|i| if st.town_active[i] { st.wage[i] as f32 } else { 0.0 }).collect();
+            moved += (opens != m.price || wages != m.wage) as usize;
+            spent += st.families.iter().zip(&m.cash).any(|(f, &c)| f.cash != c) as usize;
         }
         sent.push(m);
         if turned {
@@ -663,6 +671,8 @@ fn a_game_gone_on_with_has_the_months_it_did_not_watch() {
         }
     }
     assert_eq!((g.last_year(), g.month), (1751, 5));
+    // (both Decembers would have been told otherwise as January opened: so the books' close is what was sent)
+    assert_eq!((moved, spent), (2, 2), "Decembers whose prices or wages, and whose cash, the year's end moved");
     // a game that is loaded in June has 1751's twelve months and 1752's five, and so has the game that was played
     let in_june = again(&g);
     let twice = again(&in_june);
@@ -811,16 +821,15 @@ fn a_viewer_that_takes_the_months_as_they_come_is_told_the_years_figures() {
     // The months the books keep of the last complete year and the months a
     // viewer was sent say the same price, the one each month ended at, for
     // every town that stood all year. (The books' is single precision, as the
-    // message's is.) January to November, that is: a game's December is sent
-    // once the year has ended (`save::Game::month` ends it), so its prices are
-    // those the next January opens at, after districts that changed market
-    // took their prices with them (`peopling::move_with_cells`), while the
-    // books' December is the price December's trade ended at.
+    // message's is.) December too: a game sends it once the year has ended
+    // (`save::Game::month` ends it), when districts that changed market have
+    // taken their prices with them (`peopling::move_with_cells`), and it is
+    // told from the books, at the price December's trade ended at.
     let st = &g.sim.st;
     assert_eq!(sent_prices.len(), 12);
     for t in (0..st.town_name.len()).filter(|&t| st.town_founded[t] < 1752) {
         let months = accounts::town_books(st, &C, t, None).unwrap().months.expect("the last year's months");
-        for (mo, sent) in sent_prices.iter().enumerate().take(11) {
+        for (mo, sent) in sent_prices.iter().enumerate() {
             for good in 0..C.G {
                 assert_eq!((months[mo][good][0] as f32).to_bits(), sent[t * C.G + good].to_bits(), "town {t}, month {mo}, {}", C.good_name[good]);
             }
