@@ -297,12 +297,22 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
 ///   the carters, the navvies and the menders are last month's money divided
 ///   by it, each only where it is above nothing (`carting::take_carters`,
 ///   `canals::take_navvies`, `roads::take_menders`).
-/// - `st.fill`, until it is replaced beside the wage: the inputs that lift the
-///   land's output (`sector_tfp`) are counted at last month's fill.
+/// - `st.fill`, until it is replaced beside the wage. Under the port the inputs
+///   that lift the land's output (`sector_tfp`) are counted at last month's
+///   fill. Under the game's machines (`machines::sector_tfp`) the lift is the
+///   machines standing, `st.machine_stock`, which `machines::end_month` moved
+///   at the end of last month on that month's fill. Either way the lift also
+///   reads `st.tools_mult`, written in the bookkeeping at the month's end.
 /// - `st.hh_income_prev` and `st.lord_income_prev`, which set this month's
 ///   budgets and are written only once this month's incomes are paid.
 /// - `st.f_fill` (`phi_prev`), each works' smoothed fill, read before execution
 ///   writes this month's into it.
+/// - `st.ex_Lprev` and `st.f_labor`, the hands each of the land's units and each
+///   works had last month, from which this month's demand for hands moves only
+///   part of the way (`labor_adjust_ex`, `labor_adjust_firm`).
+/// - `st.pexp`, the prices expected, at which the land's units reckon what their
+///   crop and their machines are worth; it follows this month's prices only in
+///   "prices respond".
 /// - `st.cart_bill`, read and emptied by `take_carters` at the start of the
 ///   labour market and filled again after it by the works', the land's and the
 ///   trade's carting; and each project's `navvy_pay`, set when the project pays
