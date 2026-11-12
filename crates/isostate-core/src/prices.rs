@@ -36,8 +36,11 @@ use crate::state::State;
 /// A price moves by at most this much (in logs) a month, as in the port's rule.
 pub const MAX_STEP: f64 = 0.12;
 
+/// Read through [`PriceSettings`], so that a setting that makes no sense on its
+/// own is refused as it is read, by every road (a file, an override, the
+/// sweep's `--set`, a params.json read back).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(try_from = "PriceSettings")]
 pub struct PriceParams {
     /// Merchants mark prices with their stock and stop buying into a glut.
     pub enabled: bool,
@@ -69,6 +72,50 @@ impl PriceParams {
     /// The game's merchants.
     pub fn game() -> PriceParams {
         PriceParams { enabled: true, ..PriceParams::default() }
+    }
+}
+
+/// [`PriceParams`] as written in a file, before it is checked. The same fields;
+/// what is left out takes the default.
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PriceSettings {
+    enabled: bool,
+    markup: f64,
+    glut_months: f64,
+    glut_stop_months: f64,
+    glut_floor: f64,
+}
+
+impl Default for PriceSettings {
+    fn default() -> PriceSettings {
+        let PriceParams { enabled, markup, glut_months, glut_stop_months, glut_floor } = PriceParams::default();
+        PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor }
+    }
+}
+
+impl TryFrom<PriceSettings> for PriceParams {
+    type Error = String;
+
+    /// Refuse a setting that makes no sense whatever else is set, in one
+    /// sentence that names it. Whether the switch is on does not matter: a
+    /// file that says a nonsense number has a mistake in it either way.
+    fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
+        let PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor } = s;
+        // (each written so that a number that is not a number fails it too)
+        if !(markup >= 0.0 && markup.is_finite()) {
+            return Err(format!("prices.markup is {markup}, and a negative markup asks more as the shelves fill, which wrecks the island: give 0 (the port's rule) or more, 0.3 to 0.8 being where it steadies prices"));
+        }
+        if !(glut_months >= 0.0 && glut_months.is_finite()) {
+            return Err(format!("prices.glut_months is {glut_months}, and it has to be a number of months of stock, or 0 for merchants who always take all"));
+        }
+        if glut_months > 0.0 && !(glut_stop_months >= glut_months && glut_stop_months.is_finite()) {
+            return Err(format!("prices.glut_stop_months is {glut_stop_months}, under glut_months ({glut_months}), and merchants cannot stop taking before they start to take less: give it glut_months or more (the same is a brake that drops from all to glut_floor at once)"));
+        }
+        if !(0.0..=1.0).contains(&glut_floor) {
+            return Err(format!("prices.glut_floor is {glut_floor}, and it is a share of a works' capacity, from 0 to 1"));
+        }
+        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, glut_floor })
     }
 }
 
@@ -277,6 +324,44 @@ mod tests {
         let mut off = State { price: crate::mat::Mat::filled(2, C.G, base), ..State::default() };
         anchor_follows(&mut off, &C, &crate::default_params(), 1, 0, 2.0 * base);
         assert_eq!(off.price_anchor.rows, 0);
+    }
+
+    /// Nonsense settings are refused as they are read, each in one sentence
+    /// naming it; sense, the edges included, is read as written.
+    #[test]
+    fn nonsense_settings_are_refused_where_they_are_read() {
+        let read = |text: &str| crate::game_params().with_toml_overrides(text);
+        for (text, name) in [
+            ("prices = { markup = -0.5 }", "prices.markup is -0.5"),
+            ("prices = { glut_months = -1.0 }", "prices.glut_months is -1"),
+            ("prices = { glut_stop_months = 3.0 }", "prices.glut_stop_months is 3"),
+            ("prices = { glut_floor = 1.5 }", "prices.glut_floor is 1.5"),
+            ("prices = { glut_floor = -0.1 }", "prices.glut_floor is -0.1"),
+        ] {
+            let err = read(text).expect_err(text);
+            assert!(err.contains(name), "{text}: {err}");
+            assert_eq!(err.matches(". ").count(), 0, "{text}: more than one sentence: {err}");
+        }
+        // nonsense is nonsense with the switch off too, and a number that is
+        // not one (TOML can write it; it reaches the struct read straight from the file)
+        assert!(crate::default_params().with_json_overrides(r#"{"prices": {"markup": -1}}"#).is_err());
+        let err = crate::Params::from_toml_str("[prices]\nmarkup = nan\n").expect_err("a markup that is not a number");
+        assert!(err.contains("prices.markup is NaN"), "{err}");
+        // the sweep's own reader meets the same refusal
+        let err = crate::sweep::set_field(&crate::game_params(), "prices.markup", &serde_json::json!(-1.0)).expect_err("a negative markup by --set");
+        assert!(err.contains("prices.markup is -1"), "{err}");
+        // the edges are sense: no markup, a brake that is off, a cliff at the start, any floor from 0 to 1
+        for text in ["prices = { markup = 0.0 }", "prices = { glut_months = 0.0, glut_stop_months = 0.0 }", "prices = { glut_stop_months = 4.0 }", "prices = { glut_floor = 1.0 }"] {
+            read(text).unwrap_or_else(|e| panic!("{text}: {e}"));
+        }
+        // and what is written is what is read, with the rest the game's
+        let p = read("prices = { markup = 0.8 }").unwrap().prices;
+        assert_eq!(p, PriceParams { markup: 0.8, ..PriceParams::game() });
+        // the port's and the game's numbers go out and come back unchanged
+        for P in [crate::default_params(), crate::game_params()] {
+            let back: crate::Params = serde_json::from_value(serde_json::to_value(&P).unwrap()).unwrap();
+            assert_eq!(back.prices, P.prices);
+        }
     }
 
     #[test]
