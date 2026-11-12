@@ -243,14 +243,55 @@ pub fn land_views(r: &Replay, g: &crate::world::Ground, cen: &[(f32, f32)], home
         }
         top.filter(|t| t.0 > 0.0).map(|(_, c)| ((c % r.w) as f32 + 0.5, (c / r.w) as f32 + 0.5))
     };
+    // the middle of the window of `half` cells each way where two things, each summed over
+    // the window, are most evenly matched, with the two sums there
+    let best_pair = |half: isize, score: &dyn Fn(usize) -> Option<(f32, f32)>| -> ((f32, f32), f32, f32) {
+        let cell: Vec<(f32, f32)> = (0..r.n).map(|c| if r.terrain[c] == 0 { None } else { score(c) }.unwrap_or((0.0, 0.0))).collect();
+        let mut top = (0.0f32, 0.0f32, 0usize);
+        for c in 0..r.n {
+            let (x, z) = ((c % r.w) as isize, (c / r.w) as isize);
+            let (mut a, mut b) = (0.0f32, 0.0f32);
+            for dz in -half..=half {
+                for dx in -half..=half {
+                    let (xx, zz) = (x + dx, z + dz);
+                    if xx >= 0 && zz >= 0 && (xx as usize) < r.w && (zz as usize) < r.h {
+                        let (p, q) = cell[zz as usize * r.w + xx as usize];
+                        (a, b) = (a + p, b + q);
+                    }
+                }
+            }
+            if a.min(b) > top.0.min(top.1) {
+                top = (a, b, c);
+            }
+        }
+        (((top.2 % r.w) as f32 + 0.5, (top.2 / r.w) as f32 + 0.5), top.0, top.1)
+    };
+    // why a camera found nothing to look at, which the terminal is told: its four pictures are left out
+    let mut missing: Vec<(&str, String)> = Vec::new();
     let mut cams: Vec<(&str, String, (f32, f32), f32, f32)> = vec![("island", "The whole island".into(), island.0, ISLAND_PITCH, island.1)];
     let k = k_of(1800);
     if let Some(at) = best(5, &|c| (r.terrain[c] == 1).then(|| { let s = world::open_shares(r, k, c); s[2].min(s[0] + s[1] + s[3]) })) {
         cams.push(("lowland", "Wooded lowland from 8 km up".into(), at, PLAY_PITCH, 40.0));
+    } else {
+        missing.push(("lowland", format!("no lowland square has both wood and open land in {}", year_of(1800))));
     }
+    // the hill country where pasture and moor are most mixed in 1900, square by square; failing
+    // that (on island 7 no square of the hills has both), the stretch of hills 14 km across with
+    // the most of both in its squares between them, if each comes to five squares, a tenth of
+    // the stretch: on island 7 the best has 3.2 squares of moor, which is 2 per cent of what
+    // the camera would see, too little to judge moor by
     let k = k_of(1900);
-    if let Some(at) = best(3, &|c| (r.terrain[c] == 2).then(|| { let s = world::open_shares(r, k, c); s[1].min(s[3]) })) {
+    let hill = |c: usize| (r.terrain[c] == 2).then(|| { let s = world::open_shares(r, k, c); (s[1], s[3]) });
+    if let Some(at) = best(3, &|c| hill(c).map(|(p, m)| p.min(m))) {
         cams.push(("hills", "A hill margin, pasture against the moor".into(), at, PLAY_PITCH, 25.0));
+    } else {
+        let (at, pasture, moor) = best_pair(3, &hill);
+        if pasture.min(moor) >= 5.0 {
+            eprintln!("land view hills: no square of the hills has both pasture and moor in {}, so it looks at the stretch with the most of both side by side ({pasture:.1} squares of pasture and {moor:.1} of moor)", year_of(1900));
+            cams.push(("hills", "A hill margin, pasture against the moor".into(), at, PLAY_PITCH, 25.0));
+        } else {
+            missing.push(("hills", format!("no square of the hills has both pasture and moor in {}, and no stretch 14 km across has five squares of each side by side (at best {pasture:.1} of pasture and {moor:.1} of moor)", year_of(1900))));
+        }
     }
     let town = home.or_else(|| {
         (0..r.n_towns.min(r.header.towns.len()))
@@ -260,15 +301,22 @@ pub fn land_views(r: &Replay, g: &crate::world::Ground, cen: &[(f32, f32)], home
     if let Some(t) = town {
         let (x, z) = cen[r.header.towns[t].node];
         cams.push(("town", format!("The country round {}", r.header.towns[t].name), (x, z + 1.0), PLAY_PITCH, 24.0));
+    } else {
+        missing.push(("town", "the island has no town standing at the end".to_string()));
     }
     // the highest ground, if any of it keeps its snow through the summer
     let top = (0..g.gw * g.gh).max_by(|&a, &b| g.hgt[a].total_cmp(&g.hgt[b])).unwrap_or(0);
     if g.hgt[top] > 1.75 {
         cams.push(("snowline", "The snow line".into(), ((top % g.gw) as f32 / world::VRES as f32, (top / g.gw) as f32 / world::VRES as f32 + 1.0), PLAY_PITCH, 18.0));
+    } else {
+        missing.push(("snowline", format!("no ground is high enough to keep its snow through the summer (the highest stands {:.2} units up, and this camera wants more than 1.75)", g.hgt[top])));
     }
     // where each camera looks, for pointing a --view of one's own at the same country
     for (name, _, look, _, dist) in &cams {
         eprintln!("land view {name}: looks at {:.1},{:.1} from {dist:.0}", look.0, look.1);
+    }
+    for (name, why) in &missing {
+        eprintln!("land view {name}: not taken, since {why}; its four pictures are left out");
     }
     let mut out = Vec::new();
     for (year, season, when) in [(1800, 0.5, "summer"), (1900, 0.5, "summer"), (1800, 0.8, "october"), (1900, 0.0, "midwinter")] {
