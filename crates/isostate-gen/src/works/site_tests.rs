@@ -39,6 +39,34 @@ fn show_a_plan() {
     println!("{}", map(&plan));
 }
 
+/// Prints where the vertices of planned works are, at each level of detail:
+/// the process buildings, the stores and the counting house, the yards'
+/// stock, the rest of the plot (its ground, wall, lanes and siding), beside
+/// the same works drawn the old way in one yard
+/// (`cargo test -p isostate-gen where_the_vertices -- --ignored --nocapture`).
+#[test]
+#[ignore]
+fn where_the_vertices_of_a_works_are() {
+    let pal = Palette::standard();
+    println!("{:<18}{:>6}{:>6} {:>8}{:>8}{:>8}{:>8}{:>8}{:>8}", "kind", "size", "level", "process", "stores", "stock", "plot", "all", "old way");
+    for kind in [Kind::Smithy, Kind::Shops, Kind::CokeFurnace, Kind::RollingMill, Kind::TextileMill, Kind::EngineWorks, Kind::Brickworks] {
+        for size in [1.0f32, 5.0, 25.0] {
+            let (w, d) = ground(kind, size);
+            let (plan, now) = specimen(kind, 1800, 1885, size, &Plot::rect(w, d).facing(2, Edge::Rail), Seed::of(5), &pal);
+            for detail in Detail::ALL {
+                let count = |p: &Plan| { let m = draw(p, &Now { detail, ..now }, 0.0); m.solid.pos.len() + m.flat.pos.len() };
+                let all = count(&plan);
+                let no_stock = count(&Plan { yards: Vec::new(), ..plan.clone() });
+                let cores: Vec<Part> = plan.parts.iter().filter(|p| p.role == Role::Core).copied().collect();
+                let no_stores = count(&Plan { parts: cores, ..plan.clone() });
+                let bare = count(&Plan { parts: Vec::new(), yards: Vec::new(), ..plan.clone() });
+                let old = { let mut m = Model::default(); crate::works::works(&mut m.solid, &mut m.smoke, &mut m.flat, &Site::level(Vec3::ZERO, 0.0), &Works { detail, ..Works::new(kind, size) }, &pal); m.solid.pos.len() + m.flat.pos.len() };
+                println!("{:<18}{:>6}{:>6} {:>8}{:>8}{:>8}{:>8}{:>8}{:>8}", kind.label(), size, format!("{detail:?}"), all - bare - (all - no_stores) - (all - no_stock), all - no_stores, all - no_stock, bare, all, old);
+            }
+        }
+    }
+}
+
 /// A plan as a map in letters, the road at the bottom: a stage's process
 /// buildings by its number, `s` a store, `w` the warehouse, `c` the counting
 /// house, `A` `B` `C` the yards of what comes in, `O` of what is made, `T`
