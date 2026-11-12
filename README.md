@@ -198,6 +198,7 @@ crates/isostate-core/   the simulation, in Rust: a library and the isostate-core
   tests/                the golden test, the step-by-step parity tests, and tests for each mechanism
   examples/             scripted players (bots.rs), censuses of works, towns and mines, timing, probes
   parity/               Python scripts that dump the Python's state for the parity tests
+  README.md             what the crate is, how to run it, and where each part is explained
   FAMILIES.md           how families work, the live API, and what the scripted players found
   PORTING.md            the port: the mapping, every deviation, the parity tables, oddities in the Python
 crates/isostate-gen/    the generators: plain functions that turn what the simulation knows into
