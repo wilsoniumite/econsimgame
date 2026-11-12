@@ -171,10 +171,11 @@ the curve does not begin until the 1780s and the towns of 1900 are two points
 smaller (0.275 for 0.298). (All of this on the port with the curve.)
 
 Under today's game rules the island starts poorer, not richer: 1.56 bundles a
-head in 1750 (1.51 to 1.60; `real_income_1750` in today's sweep). So 1750 is
-the port's rule in nearly every town, and the curve turns in a town only once
-its income has passed 2; the island's income as a whole first passes it
-between 1761 and 1782 on today's eight islands. Nothing has been retuned for
+head in 1750 (1.51 to 1.60; `real_income_1750` in today's sweep). So in 1750
+the curve turns only in the towns already past 2, if there are any (the sweep
+does not keep a town's income, and nobody has counted them), and the island's
+income as a whole first passes 2 between 1761 and 1782 on today's eight
+islands. Nothing has been retuned for
 it; see the worry about `y_ref` below.
 
 `--set engel.enabled=true` measures the mechanism alone, and
@@ -334,7 +335,7 @@ without families the famine notices rise in step with it (with families the
 count is too jumpy on eight seeds to put in order). Strengths 2 and 3 cannot be
 told apart on eight seeds. A
 strength of 8 is nearly the two-piece curve of the `dx-towns` probe (a further
-shilling is nine tenths of the way to the richer set at an income of 2.6) and
+shilling is nearly nine tenths of the way to the richer set at an income of 2.6) and
 buys three or four more points of town than 3 does. The game has 3 because the
 brief was a smooth curve, and because households that already spend like the
 rich at three bundles leave the nineteenth century nothing to do; 5 or 8 are
@@ -539,8 +540,9 @@ Since the pair above, the machines, the harvests, the life cycle for works, the
 railways, carting, the people, the towns, the mines, the canals and the books
 of account have all joined the game's rules, so none of the tables above is
 what a game now plays. This is what the curve's own facts read today: the
-sweep of the merged game, seeds 1 to 8 with six families, at the code of
-`340f263` (`isostate-core sweep --seeds 1-8 --rules game --families 6`, its
+sweep of the merged game, seeds 1 to 8 with six families, on the simulation
+as main has it since the books of account joined (`752ad67`;
+`isostate-core sweep --seeds 1-8 --rules game --families 6`, its
 `summary.txt` and `annual.csv` under `.claude/night/reports/merged-game-f6-l/`).
 Each number is one year's mean over its twelve months, averaged over the eight
 seeds; no flat-curve run was made beside it, so it says where the game stands
@@ -563,10 +565,11 @@ and not what the curve does in it.
 
 Three things in it bear on this page. The island of 1750 is poorer than the
 one the curve was tuned on (1.56 bundles a head against 1.83), and further
-below `y_ref`; the life cycle for works took it from 1.87 to 1.68 and the
-merge of the railways, carting and the people to 1.49 (the merged sweeps
-`merged-game-f6-c`, `-d` and `-e` in the same folder), and it has been 1.56
-since. Incomes then rise far past
+below `y_ref`; the life cycle for works took it from 1.87 to 1.68, the
+merge of the railways, carting and the people to 1.49, and the mines' merge
+back up to 1.56, where it has stood since (the merged sweeps
+`merged-game-f6-c`, `-d`, `-e`, `-f` and `-g` in the same folder). Incomes
+then rise far past
 anything the port reached, so by 1900 nearly every further shilling is split
 by the richer set and food is down to 15 per cent of budgets. And the gap
 between the two indices is wider than the port's: the cost of living in 1900
@@ -585,7 +588,9 @@ mines. Under the game's rules the carters and the navvies are counted among
 the hands too (`carting.md`, `canals.md`) and fall into the same remainder, so
 there it is not the mines' share: of today's 0.216 in 1750, about 0.125 is
 carters and 0.090 the quarries, pits and mines (`carters_share_of_hands_1750`
-and the `hands_*_1750` facts of the sweep above).
+and the `hands_*_1750` facts of the sweep above). Those two are counted a
+little differently, the carters against everyone of working age and the
+mines' hands in December alone, so they only add up to the remainder roughly.
 
 These are not in the table of facts in this folder's `README.md` yet, and
 `crates/isostate-core/parity/check_facts.py` does not work them out a second
