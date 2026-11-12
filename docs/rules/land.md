@@ -288,7 +288,8 @@ units, so cell (x, y) covers x to x + 1 by y to y + 1.
 - By cell: `lake`, `shore`, `lake_share`; `estuary` (land with a river's
   tideway through it); `rain` (mm a year); `runoff` (mm in each month,
   `runoff[m * N + c]`); `discharge` (mean flow of the cell's largest stream,
-  or of its tideway); `basin` (which sea outlet) and `stream` (which river line
+  or of its tideway where that is more); `basin` (which sea outlet) and
+  `stream` (which river line
   the cell's water joins first); `power` (kW: flow times fall, summed over
   the cell's streams); `floodplain` and `marsh` (shares of the cell);
   `wetness` (0 to 1); `slope`; `relief`; `site_kind` and `site` (why a town
@@ -419,8 +420,11 @@ rivers above the tide match the port's, and the tideways come on top);
 fewer hill cells; more cells of middling-to-good corn land for the same
 total; coal in fewer, richer cells; and a much lower `h`, because `h` is now
 height in metres over 1,500 and the port's was stretched to fill 0 to 1 on
-every island. The lake cells (1 to 61 an island) come out of the land the
-sea would have taken, so the land count holds. And the first towns stand on
+every island. The lake cells (1 to 61 an island) come out of the land: the
+sea's rise is set with every hollow counted as dry, so an island with the
+lowland lake has about as many fewer land cells as it has lake cells (seed
+11, with 61, has 5,792; 23 of the 30 seeds of forty without it have 5,830
+to 5,861), which the test's point and a half of the map easily holds. And the first towns stand on
 the water: nearly all on a navigable river or tideway and most of them
 ports, where the port's island has two or three of each.
 
