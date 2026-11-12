@@ -154,6 +154,10 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     if P.engel.enabled {
         crate::engel::add_series(&mut reg, C, n_months);
     }
+    // accounts: the income shares and ownership in years of wages, only when the books are kept
+    if P.accounts.enabled {
+        crate::accounts::add_series(&mut reg, n_months);
+    }
     st.series = reg;
     st.obs = ObserverState::default();
 }

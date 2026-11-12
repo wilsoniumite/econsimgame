@@ -112,6 +112,10 @@ pub struct LiveStatic {
     pub series: Vec<LiveSeries>,
     /// The industry groups, in `Group::index` order.
     pub groups: Vec<LiveGroup>,
+    /// land: the fine grid, the rivers' lines, the lakes and the water's cell
+    /// fields of an island the mechanism made (None on the port's island).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub land: Option<Box<crate::landcells::Landform>>,
 }
 
 /// The static half. Call after `sim::start` (the series registry exists from then).
@@ -163,6 +167,7 @@ pub fn live_static(st: &State, C: &Content) -> LiveStatic {
             .map(|(n, m)| LiveSeries { name: n.clone(), label: m.label.clone(), group: m.group.clone(), unit: m.unit.clone() })
             .collect(),
         groups: Group::ALL.iter().map(|g| LiveGroup { name: g.name().to_string(), label: g.label().to_string() }).collect(),
+        land: w.landform.clone(),
     }
 }
 
@@ -280,6 +285,18 @@ pub struct LiveYear {
     /// while it is being dug). Empty unless the mechanism is on. The `trans`
     /// layer marks the same cells with 16 (open) and 32 (digging).
     pub canals: Vec<crate::canals::LinkOut>,
+    /// accounts: the island's income account for the year (None unless the books
+    /// are kept). One town's or one works' books are asked for when wanted, with
+    /// `accounts::town_books` and `accounts::works_books`.
+    pub accounts: Option<crate::accounts::IslandYear>,
+    /// accounts: the series whose figure is the year's and not a month's, as
+    /// (place in `LiveStatic::series`, the year's figure). They have no figure
+    /// in any month until the year's books close, and then the same one in all
+    /// twelve; `live_month` sent the months before that, without it. A viewer
+    /// that keeps the months as they came writes each of these into the
+    /// twelve months of the year, and then holds what one that read the
+    /// series after the year closed holds. Empty unless the books are kept.
+    pub year_series: Vec<(usize, f64)>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -294,6 +311,8 @@ pub struct LiveMonth {
     /// The month's place in the monthly series: 12 times the year's index, plus the month.
     pub index: usize,
     /// The month's value of every monthly series, in `LiveStatic::series` order.
+    /// (The books' series have none yet, NaN, in a month of a year still open:
+    /// `LiveYear::year_series` brings the year's.)
     pub series: Vec<f64>,
     /// The month's wage in each town, by town slot.
     pub wage: Vec<f32>,
@@ -454,5 +473,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
         workings: crate::mines::workings(st),
         canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
+        accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
+        year_series: crate::accounts::year_series(st, year),
     }
 }

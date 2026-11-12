@@ -162,6 +162,11 @@ shader_paint! {
         bracken,
         bracken_autumn,
         rushes,
+        close_grass,
+        orchard,
+        orchard_blossom,
+        town_roofs_far,
+        town_roofs_far_hills,
     }
 }
 

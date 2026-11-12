@@ -34,7 +34,12 @@ pub fn init_state(P: &Params, C: &Content) -> (State, Rngs) {
 
 /// `init_state` with the random streams given (the parity tests replay numpy's draws).
 pub fn init_state_with(P: &Params, C: &Content, mut rng: Rngs) -> (State, Rngs) {
-    let world = generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58);
+    // land: an island made by water, from its own stream, in place of the port's
+    let world = if P.land.enabled {
+        crate::landcells::generate_land(P.seed, P.W, P.H, P.n_towns, &P.land)
+    } else {
+        generate_world(&mut rng.world, P.W, P.H, P.n_towns, 0.58)
+    };
     let (mut st, pbar, wbar) = init_before_firms(P, C, world, &mut rng);
     seed_firms(&mut st, C, P, &mut rng, &pbar, &wbar);
     (st, rng)
@@ -96,6 +101,12 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     st.urban = vec![false; N];
     st.urban_res = vec![0.0; N];
     st.water = (0..N).map(|c| world.coast[c] || world.river[c]).collect();
+    // land: a lake's shore is by the water too
+    if let Some(lf) = &world.landform {
+        for c in 0..N {
+            st.water[c] = st.water[c] || lf.shore[c];
+        }
+    }
     st.world = world;
 
     // firms
@@ -592,6 +603,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     families::init(&mut st, &C, P, &mut rngs.misc);
     // chronicle: what the families start with counts as held
     crate::chronicle::init(&mut st, &C, P);
+    // accounts: the books open on the warmed-up economy
+    crate::accounts::init(&mut st, &C, P);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
@@ -632,6 +645,8 @@ pub fn end_year(sim: &mut Sim) {
     let year = sim.year;
     let Sim { st, content: C, params: P, rngs, events, rec, .. } = sim;
     yearly(st, C, P, rngs, year, events, false);
+    // accounts: the year's books close on the year's prices, works and owners
+    crate::accounts::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);

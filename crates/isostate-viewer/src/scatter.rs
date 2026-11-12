@@ -564,6 +564,8 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     crate::plan::maybe_areas(r, g);
     crate::rails::maybe_check(r, g);
     crate::plan::maybe_write(r, g, &slots);
+    // (task A) ISOSTATE_TOWNS=years: every year's towns laid out in turn and counted
+    towns::maybe_years(r, g, &slots);
     crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
 }
@@ -891,7 +893,14 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
     }
 
-    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
+    // (task A) the towns are handed the year's land, which says what town ground is built up
+    let census = towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &land, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
+    if let Some(c) = census.filter(|_| std::env::var_os("ISOSTATE_TOWNS").is_some()) {
+        eprintln!(
+            "towns {}: {} cells of town ground, {:.0} residents, {} houses wanted and {} drawn ({:.1} people to a house): {} cottages, {} townhouses, {} in terraces, {} villas; {} of one storey, {} of two, {} of three or more ({} of those with no neighbour on one side); {} houses short on cells with open ground left and {} on cells built up whole",
+            r.y0 + k as i32, c.cells, c.residents, c.wanted, c.drawn, c.residents / c.drawn.max(1) as f32, c.cottages, c.townhouses, c.terraced, c.villas, c.storeys[0], c.storeys[1], c.storeys[2], c.tall_alone, c.short, c.short_full
+        );
+    }
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;

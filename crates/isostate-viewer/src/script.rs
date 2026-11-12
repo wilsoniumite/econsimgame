@@ -2,8 +2,12 @@
 //! timing. `--script "key:Space;wait:2;print"` runs the game with no window,
 //! plays the steps in order as a player's presses and clicks, prints what the
 //! clock, the cards and the order panel did, and stops. It takes its own
-//! pictures (`shot:PATH`), and leaves the saved game alone unless
-//! `ISOSTATE_SAVES` or `--save` gives it a place of its own.
+//! pictures (`shot:PATH`). Nobody is at a scripted game, so it is not kept and
+//! writes over no saved game: `--save FILE` keeps it in a file, and `--keep`
+//! in the island's autosave, which is for checks of the saving itself and
+//! wants `ISOSTATE_SAVES` to name the folder. Where `ISOSTATE_SAVES` names a
+//! folder a script goes on with the autosave it finds there, as a player's
+//! start would, and shows the card for it.
 //!
 //! Steps, separated by semicolons:
 //!
@@ -24,9 +28,10 @@
 //!                     is given its default and the clock is started again
 //!     until:PART      let the game run until the clock is this far through a
 //!                     year (until:0.95 is just before the year turns)
-//!     print[:NOTE]    print the clock and its date, the cards, the orders that
-//!                     wait for the year's end, the order panel, and what
-//!                     scenery is on screen and what putting it there cost
+//!     print[:NOTE]    print the clock and its date, the cards (the opening card
+//!                     in its own words), the orders that wait for the year's
+//!                     end, the order panel, and what scenery is on screen and
+//!                     what putting it there cost
 //!     scenery[:NOTE]  build the year on the clock afresh and say whether what
 //!                     is on screen is that; stops the run if it is not
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none)
@@ -232,7 +237,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "scroll" => Step::Scroll(num("the pixels")?),
             "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
             "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') => Step::Chip(arg.to_ascii_lowercase()),
-            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, wages, plain and pill")),
+            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill")),
             "good" => match arg.to_ascii_lowercase().as_str() {
                 "next" => Step::Good(1),
                 "back" => Step::Good(-1),
@@ -414,6 +419,16 @@ fn print_state(world: &mut World, note: &str) {
         );
     }
     println!("script:   {}", crate::scenery_line(world));
+    // the opening card in its own words: what a game gone on with is told of its save
+    let mut q = world.query_filtered::<Entity, With<crate::game::Welcome>>();
+    let card: Vec<Entity> = q.iter(world).collect();
+    let mut says = Vec::new();
+    for e in card {
+        texts(world, e, &mut says);
+    }
+    if !says.is_empty() {
+        println!("script:   the welcome card says: {}", says.join(" | "));
+    }
     // the order panel under the inspector: what it says and what can be pressed
     let mut q = world.query_filtered::<Entity, With<InspectActions>>();
     let panel: Vec<Entity> = q.iter(world).collect();
@@ -874,8 +889,8 @@ mod tests {
         assert_eq!(parse("key:Nope").err().unwrap(), "key:Nope: no key called Nope");
         assert_eq!(parse("key:Shift+Nope").err().unwrap(), "key:Shift+Nope: no key called Nope");
         assert_eq!(parse("wait:long").err().unwrap(), "wait:long: the seconds must be a number");
-        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, plain and pill");
-        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, plain and pill");
+        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
+        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
         assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island or half:goods");
         // steps are parted by semicolons: commas belong to pick and look

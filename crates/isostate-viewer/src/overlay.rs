@@ -37,10 +37,14 @@ pub enum Overlay {
     Reach,
     Price,
     Wages,
+    /// (task A) when each square of town ground joined its town
+    Growth,
+    /// (task A) the people living on each square of town ground
+    Residents,
 }
 
 impl Overlay {
-    pub const ALL: [Overlay; 5] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Wages];
+    pub const ALL: [Overlay; 7] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Wages, Overlay::Growth, Overlay::Residents];
 
     /// The word on its chip.
     fn chip(self) -> &'static str {
@@ -50,12 +54,14 @@ impl Overlay {
             Overlay::Reach => "Reach",
             Overlay::Price => "Prices",
             Overlay::Wages => "Wages",
+            Overlay::Growth => "Town growth",
+            Overlay::Residents => "Residents",
         }
     }
 }
 
 /// For the command line: "rent", "areas", "reach", "price", "price:coal",
-/// "wages", or "plain" for no overlay. The good is by name or label, and stays
+/// "wages", "growth", "residents", or "plain" for no overlay. The good is by name or label, and stays
 /// as it was if none is given. None if the word is not an overlay at all.
 pub fn parse(word: &str, r: &Replay) -> Option<(Option<Overlay>, Option<usize>)> {
     let w = word.to_ascii_lowercase();
@@ -67,6 +73,8 @@ pub fn parse(word: &str, r: &Replay) -> Option<(Option<Overlay>, Option<usize>)>
         "reach" => Some(Overlay::Reach),
         "price" => Some(Overlay::Price),
         "wages" => Some(Overlay::Wages),
+        "growth" => Some(Overlay::Growth),
+        "residents" => Some(Overlay::Residents),
         _ => return None,
     };
     let good = tail.and_then(|t| r.header.goods.iter().position(|g| g.name.eq_ignore_ascii_case(t) || g.label.eq_ignore_ascii_case(t)));
@@ -78,7 +86,7 @@ pub fn parse(word: &str, r: &Replay) -> Option<(Option<Overlay>, Option<usize>)>
 /// a word is otherwise passed over (the plain map, or the good as it was).
 pub fn complaint(word: &str, r: &Replay) -> Option<String> {
     match parse(word, r) {
-        None => Some(format!("\"{word}\" is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain")),
+        None => Some(format!("\"{word}\" is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain")),
         Some((_, None)) => {
             let good = word.split_once(':')?.1;
             let names: Vec<&str> = r.header.goods.iter().map(|g| g.name.as_str()).collect();
@@ -91,7 +99,7 @@ pub fn complaint(word: &str, r: &Replay) -> Option<String> {
 /// Whether a word of a `--view` names an overlay (before the run is loaded).
 pub fn is_word(word: &str) -> bool {
     let w = word.to_ascii_lowercase();
-    matches!(w.split(':').next().unwrap_or(""), "plain" | "rent" | "areas" | "reach" | "price" | "wages")
+    matches!(w.split(':').next().unwrap_or(""), "plain" | "rent" | "areas" | "reach" | "price" | "wages" | "growth" | "residents")
 }
 
 /// What is washed over the map, if anything.
@@ -133,7 +141,7 @@ impl MapOverlay {
 
     /// The overlay goes by market towns, so the map should name them all.
     pub fn names_towns(&self) -> bool {
-        matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Wages))
+        matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Wages | Overlay::Growth | Overlay::Residents))
     }
 
     /// The month whose prices or wages the map shows in place of the year's, if it shows one.
@@ -183,6 +191,13 @@ const SEPIA: [u32; 5] = [0xf4ead0, 0xe6cf9c, 0xd2aa6a, 0xb07e45, 0x80552e];
 const SLATE: [u32; 5] = [0xeeeee2, 0xc9d6d2, 0x9bb3ba, 0x6d8d9e, 0x45647a];
 const MADDER: [u32; 5] = [0xf5eadc, 0xe8cfbb, 0xd2aa96, 0xb28171, 0x86574d];
 const MULBERRY: [u32; 5] = [0xf2ebe6, 0xdccbd2, 0xbfa3b8, 0x9a7b9b, 0x6f557c];
+/// (task A) Town ground by the year it joined, from the oldest (dark brick)
+/// to the newest (straw), and its residents from few (pale) to many (indigo).
+const BRICK: [u32; 5] = [0x5e2f2b, 0x9c4a3a, 0xcf7b4c, 0xe6ae5e, 0xf2d98a];
+const INDIGO: [u32; 5] = [0xc9d4ee, 0xaebde0, 0x8497c9, 0x5a6dab, 0x333f7d];
+/// (task A) The low end of the scale of when town ground joined: the middles
+/// of the first towns are dated a century before the record opens.
+const OLDEST_GROUND: f32 = 1650.0;
 /// Market areas: six soft tints, so that no two neighbours share one. Straw,
 /// sage, clay, slate, heather and lichen: washes, not flags.
 const AREAS: [u32; 6] = [0xe8d3a6, 0xb9cdb0, 0xdcb5a2, 0xb3c3cf, 0xc8b8c6, 0xd3d29a];
@@ -478,6 +493,48 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
             };
             Wash { cells, legend, soft: 0.06, lines: true }
         }
+        // (task A) the two views of town ground that is kept (docs/rules/towns.md)
+        Overlay::Growth | Overlay::Residents => {
+            let growth = kind == Overlay::Growth;
+            let title = if growth { format!("Town ground in {year}, by when it joined") } else { format!("Residents of town ground in {year}") };
+            if !r.kept() {
+                // (the land is left blank, each square with its market, as on any other view)
+                for c in lands {
+                    put(c, rgb(BLANK));
+                }
+                return Wash { cells, legend: none(title, "This record does not hold the towns' ground: under its rules a town does not keep the ground it builds on.".into()), soft: 0.06, lines: false };
+            }
+            // both scales are the same in every year, so a square keeps its tint for as long
+            // as its figure stands: from the oldest ground the record dates to the run's last
+            // year, and from the people ground holds the year it joins to what the oldest
+            // ground of 1900 comes to hold (by ratio, as rent is: for most of the century
+            // the towns' ground holds 400 to 700, and on an even scale it was all one pale tint)
+            let last = r.y0 + r.ny as i32 - 1;
+            let sc = if growth { Scale { lo: OLDEST_GROUND, hi: last as f32, log: false } } else { Scale { lo: 300.0, hi: 1400.0, log: true } };
+            let stops = if growth { &BRICK } else { &INDIGO };
+            let (mut squares, mut people) = (0usize, 0.0f32);
+            for c in lands {
+                let tint = r.joined(k, c).map(|y| {
+                    squares += 1;
+                    people += r.residents(k, c);
+                    ramp(stops, sc.at(if growth { y as f32 } else { r.residents(k, c) }))
+                });
+                put(c, tint.unwrap_or(rgb(BLANK)));
+            }
+            let s = if squares == 1 { "" } else { "s" };
+            let legend = Legend {
+                title,
+                note: if growth {
+                    format!("When each square of town ground joined its town. A town keeps the ground it builds on and grows outward from it, so its oldest ground is its middle. {squares} square{s} of town ground.")
+                } else {
+                    format!("The people living on each square of town ground. Ground holds 300 people the year it joins its town and fills as it ages. {} people on {squares} square{s}.", ui::thousands(people))
+                },
+                ramp: ramp_bar(stops),
+                low: if growth { format!("{OLDEST_GROUND:.0} or before") } else { "300 people or fewer".into() },
+                high: if growth { format!("{last}") } else { "1,400 or more".into() },
+            };
+            Wash { cells, legend, soft: 0.06, lines: false }
+        }
     }
 }
 
@@ -536,6 +593,18 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: O
                 None => return None,
             }
         }
+        // (task A)
+        Overlay::Growth | Overlay::Residents if !r.kept() => return None,
+        Overlay::Growth => match (r.joined(k, c), town) {
+            (Some(y), Some(t)) if y < r.y0 => format!("Town ground: part of {} since about {y}.", town_name(r, t)),
+            (Some(y), Some(t)) => format!("Town ground: it joined {} in {y}.", town_name(r, t)),
+            (Some(y), None) => format!("Town ground: since {y}."),
+            (None, _) => "Town ground: this square is not town ground.".to_string(),
+        },
+        Overlay::Residents => match r.joined(k, c) {
+            Some(_) => format!("Residents: about {} people live on this square.", ui::thousands(r.residents(k, c))),
+            None => "Residents: this square is not town ground.".to_string(),
+        },
     })
 }
 
@@ -753,7 +822,8 @@ fn legend_card(
                 ui::keycap(row, &f, "G");
             });
         }
-        p.spawn((Node { width: Val::Px(396.0), column_gap: Val::Px(5.0), padding: UiRect::top(Val::Px(7.0)), margin: UiRect::top(Val::Px(1.0)), border: UiRect::top(Val::Px(1.0)), align_items: AlignItems::Center, ..default() }, BorderColor::all(RULE))).with_children(|row| {
+        // (task A) seven views are more than one line of chips holds: they go on to a second
+        p.spawn((Node { width: Val::Px(396.0), column_gap: Val::Px(5.0), row_gap: Val::Px(5.0), flex_wrap: FlexWrap::Wrap, padding: UiRect::top(Val::Px(7.0)), margin: UiRect::top(Val::Px(1.0)), border: UiRect::top(Val::Px(1.0)), align_items: AlignItems::Center, ..default() }, BorderColor::all(RULE))).with_children(|row| {
             for o in Overlay::ALL {
                 chip_button(row, &f, o.chip(), o == kind, accent, OverlayChip(Some(o)));
             }
@@ -823,6 +893,9 @@ mod tests {
             series_len: 12,
             filled: 1,
             owner: Vec::new(),
+            built: Vec::new(),
+            res: Vec::new(),
+            works: Vec::new(),
             workings: Vec::new(),
         }
     }
@@ -930,16 +1003,16 @@ mod tests {
     fn the_key_steps_through_every_overlay_and_back_to_the_plain_map() {
         let mut ov = MapOverlay::new(None, 0);
         let mut seen = Vec::new();
-        for _ in 0..6 {
+        for _ in 0..8 {
             ov.step(false);
             seen.push(ov.kind);
         }
-        assert_eq!(seen, vec![Some(Overlay::Rent), Some(Overlay::Areas), Some(Overlay::Reach), Some(Overlay::Price), Some(Overlay::Wages), None]);
+        assert_eq!(seen, vec![Some(Overlay::Rent), Some(Overlay::Areas), Some(Overlay::Reach), Some(Overlay::Price), Some(Overlay::Wages), Some(Overlay::Growth), Some(Overlay::Residents), None]);
         // backwards from the plain map is the last of them, and the pill remembers it
         ov.step(true);
-        assert_eq!(ov.kind, Some(Overlay::Wages));
+        assert_eq!(ov.kind, Some(Overlay::Residents));
         ov.set(None);
-        assert_eq!(ov.last, Overlay::Wages);
+        assert_eq!(ov.last, Overlay::Residents);
     }
 
     #[test]

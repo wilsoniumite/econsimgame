@@ -101,6 +101,8 @@ struct Args {
     load: Option<String>,
     /// where to save, instead of the island's autosave
     save: Option<String>,
+    /// keep the game in the island's autosave though the start is not plain play
+    keep: bool,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -160,9 +162,13 @@ With no run named, a new game starts.
   --seed N             which island (7); a new game
   --load FILE          go on with this saved game
   --save FILE          keep the game in FILE instead of the island's autosave
-  --families N         how many great families (6)
-  --advance N          play N years before the game opens
-  --demo               the family builds a works and buys land in its first year
+  --keep               keep the game in the island's autosave though the start is not plain
+                       play (--advance, --demo, --script); with nobody at the game it needs
+                       ISOSTATE_SAVES to name the folder
+  --families N         how many great families (6; from 1 to 30)
+  --advance N          play N years before the game opens (a trial: it is kept among the
+                       trials, apart from the island's own saved game)
+  --demo               the family builds a works and buys land in its first year (a trial too)
   --year Y             open on this year
   --size WxH           the size of the window or the pictures (1600x1000)
   --at X,Z             where the camera looks, in map cells
@@ -173,7 +179,7 @@ With no run named, a new game starts.
   --no-tilt            no miniature focus
   --season F           hold the season: 0 midwinter, 0.25 spring, 0.5 summer, 0.75 autumn
   --pick X,Z           start with this spot clicked
-  --overlay NAME       start with a map view: rent, areas, reach, price, price:GOOD, wages
+  --overlay NAME       start with a map view: rent, areas, reach, price, price:GOOD, wages, growth, residents
                        or plain
   --describe X,Z       print what a click there would show, and stop
 
@@ -243,9 +249,17 @@ fn pair<T: std::str::FromStr>(opt: &str, s: &str, sep: char) -> Result<(T, T), S
     }
 }
 
-/// A value that names something (a directory, a sheet): it must be there.
+/// A value that names something (a file, a directory, a sheet): it must be
+/// there, and it is not the next option. `--load --size 800x600` would
+/// otherwise take --size for the file to load.
 fn named(opt: &str, s: String, what: &str) -> Result<String, String> {
-    if s.trim().is_empty() { Err(format!("{opt} needs {what} after it")) } else { Ok(s) }
+    if s.trim().is_empty() {
+        Err(format!("{opt} needs {what} after it"))
+    } else if s.starts_with("--") {
+        Err(format!("{opt} needs {what} after it, and {s} is another option: put the name between them (a name that begins with dashes is written ./{s})"))
+    } else {
+        Ok(s)
+    }
 }
 
 /// Read the command line. An option that is not one is refused, with the
@@ -278,6 +292,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         fresh: false,
         load: None,
         save: None,
+        keep: false,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -329,7 +344,13 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
             "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
-            "--families" => { a.families = number(opt, &next(i)?)?; i += 1; }
+            "--keep" => a.keep = true,
+            "--families" => {
+                a.families = number(opt, &next(i)?)?;
+                // refused here, before an island is made for a number no game can have
+                isostate_core::save::families_allowed(a.families).map_err(|why| format!("{opt}: {why}; give a number in that range"))?;
+                i += 1;
+            }
             "--advance" => { a.advance = number(opt, &next(i)?)?; i += 1; }
             "--demo" => a.demo = true,
             "--pick" => { a.pick = Some(pair(opt, &next(i)?, ',')?); i += 1; }
@@ -338,7 +359,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--overlay" => {
                 let w = next(i)?;
                 if !overlay::is_word(&w) {
-                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain"));
+                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain"));
                 }
                 a.overlay = Some(w);
                 i += 1;
@@ -678,6 +699,8 @@ fn main() {
     }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
+        // the standard shots are pictures too
+        let pictures = !args.views.is_empty() || args.shot.is_some() || args.describe.is_some() || args.class_map || args.shots.is_some();
         let opening = live::Opening {
             seed: args.seed,
             families: args.families,
@@ -686,15 +709,19 @@ fn main() {
             load: args.load.clone(),
             save: args.save.clone(),
             fresh: args.fresh,
-            // the standard shots are pictures too; and a scripted run is a check, not the player's
-            // game, so it leaves the autosave alone unless ISOSTATE_SAVES names a folder to keep one in
-            shots: !args.views.is_empty()
-                || args.shot.is_some()
-                || args.describe.is_some()
-                || args.class_map
-                || args.shots.is_some()
-                || (args.script.is_some() && std::env::var_os("ISOSTATE_SAVES").is_none_or(|v| v.is_empty())),
+            // a scripted run is a check, not the player's game: it goes on with an autosave only
+            // when ISOSTATE_SAVES names the folder to look in
+            shots: pictures || (args.script.is_some() && std::env::var_os("ISOSTATE_SAVES").is_none_or(|v| v.is_empty())),
+            // and, like a run that takes pictures, it writes no game unless --save names the place
+            unattended: pictures || args.script.is_some(),
+            restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
+            keep: args.keep,
         };
+        // a check may write an autosave, but never among the player's own saved games
+        if let Some(why) = opening.keep_refused(std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty())) {
+            eprintln!("the game could not start: {why}");
+            std::process::exit(1);
+        }
         match live::start(&opening) {
             Ok((r, l, f)) => (r, Some(l), Some(f)),
             Err(e) => {
@@ -2929,7 +2956,7 @@ mod tests {
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
         // map views (a good the run does not have is refused once the run is read)
-        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages or plain");
+        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain");
         assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
         // a script's steps are read with the options
         assert_eq!(args("--script bogus").err().unwrap(), "--script: bogus: not a step (see the top of script.rs)");
@@ -2937,6 +2964,20 @@ mod tests {
         // saved games
         assert_eq!(args("--load").err().unwrap(), "--load needs a value after it");
         assert_eq!(args("--new --save").err().unwrap(), "--save needs a value after it");
+        // the option after --load or --save is not the file's name (--size was once taken for it)
+        assert_eq!(
+            args("--load --size 800x600").err().unwrap(),
+            "--load needs the name of a saved game after it, and --size is another option: put the name between them (a name that begins with dashes is written ./--size)"
+        );
+        assert!(args("--new --save --advance 3").err().unwrap().starts_with("--save needs the name of a file to keep the game in after it, and --advance is another option"));
+        assert!(args("--shots --wait 3").err().unwrap().starts_with("--shots needs a directory after it, and --wait is another option"));
+        assert_eq!(args("--load ./--odd.json").unwrap().load.as_deref(), Some("./--odd.json"));
+        assert_eq!(args("--load -odd.json").unwrap().load.as_deref(), Some("-odd.json"));
+        // a number of families no game can have is refused with the options, before an island is made
+        assert_eq!(args("--families 0").err().unwrap(), "--families: a game has from 1 to 30 families, not 0; give a number in that range");
+        assert_eq!(args("--families 31").err().unwrap(), "--families: a game has from 1 to 30 families, not 31; give a number in that range");
+        assert_eq!(args("--families 4000000000").err().unwrap(), "--families: a game has from 1 to 30 families, not 4000000000; give a number in that range");
+        assert_eq!((args("--families 1").unwrap().families, args("--families 30").unwrap().families), (1, 30));
         assert_eq!(args("--seed seven").err().unwrap(), "--seed: seven is not a number it can take");
         assert_eq!(args("--size 800").err().unwrap(), "--size: 800 should be two numbers with an x between them");
         assert_eq!(args("--size 0x600").err().unwrap(), "--size: a picture needs a width and a height");
@@ -2947,7 +2988,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--load", "--save", "--keep", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }
