@@ -78,8 +78,9 @@ ration.
 
 ## The tests
 
-`tests/hands.rs`, each of which also shows the fault with the rule off, so
-that it fails if the rule is taken away:
+`tests/hands.rs`. The three in the middle also show the fault with the rule
+off, so that they fail if the rule is taken away; the first guards the
+switch and the last is a property every run must have:
 
 - the switch is off under the port and on in the game, and a port run's
   `params.json` does not mention it;
@@ -133,8 +134,9 @@ design's five numbers to the last figure. At the game's own numbers on
 sixteen islands (`wage_watch game 6 on 1 16`), without the rule the worst is
 Brambank at 8.6 times in March 1751, with three town-months over four times,
 all on island 3; with it no town on any island passes 2.2 times (Kirkside,
-island 12, February 1870). So aim 13 of the pass, no town paying over ten
-times the middle town's wage in sixteen runs, is met with room to spare.
+island 12, February 1870), and on islands 17 to 24 none passes 1.9
+(`wage_watch game 6 on 1 24`). So aim 13 of the pass, no town paying over
+ten times the middle town's wage in sixteen runs, is met with room to spare.
 
 `examples/overhire.rs` on the same sixteen islands with the rule on: no
 town-month with more at work than the town has people, under the landlords
@@ -142,7 +144,9 @@ town-month with more at work than the town has people, under the landlords
 6 and 19 (above, `mines.md`). The rule acts, holding a town at the top of
 its month's range and sharing out its hands, in 5 town-months from 1750 to
 1900 under the landlords and in 15 under the commons. None of the commons
-runs failed the money check.
+runs failed the money check. Islands 17 to 24 add none over their people
+either, of 194,256 town-months under the landlords and 217,620 under the
+commons.
 
 The landlords' debt, with the people rule off so that redrawn districts
 bring the fault back (`examples/trace_rent.rs --seeds 1-16 --part a --set
@@ -179,9 +183,49 @@ without, set against how far two histories of the same rules differ:
 Of 550 facts with a value on every island, two pass the test of three
 standard errors with twelve islands of sixteen moving the same way, and both
 are of 1750: the land under the diggings, 0.018 of a cell less, and the price
-of clay in wages, a sixth of a per cent less. That is the warm-up, which the
-null pair cannot move, so for the facts of 1750 the test is too easily
-passed.
+of clay in wages, a sixth of a per cent less. Those are the rule's own doing
+in the warm-up. A null pair hardly moves the island of 1750, so there a
+small change the rule makes on a few islands stands out: on the mean of
+sixteen, works in 1750 are 2.5 fewer of 228, the land under farms 1.8 cells
+less of 1,562, coal dearer in wages by 1.2 per cent. None of it is on the
+card, and none of it goes the same way on twelve islands.
+
+The check of this page read it again on seven histories each way: the rule
+on, under the six small moves of `harvest.island_sd` the scorecard's
+baseline uses for its floor (`docs/probes/scorecard-baseline.md`), against
+that page's seven histories of main. Nothing on the card moves: the railway
+of 1850 is 56 km shorter on eight islands and longer on eight, the canals
+of 1800 11 km shorter, eight and eight; what a wage buys in 1881 to 1900 is
+0.003 less, the towns' share 0.0007 less, people in 1900 3,100 fewer (the
+floor of chance is 5,100), the farm zigzag beyond the weather 0.06 lower,
+inside its floor of 0.07. Pooling those histories with the three each way
+above (nine each way), five facts of 551 pass the test, the land under the
+diggings of 1750 and four small ones not on the card: the diggings' share of
+the land in 1800, the railway's share in branches, grain's swing and the
+royalties' share of output in 1800, each by a few per cent of itself and on
+twelve or thirteen islands of sixteen, which is about what chance gives
+among 551 facts.
+
+That harvest's null has a weakness worth knowing: moving `harvest.island_sd`
+by a ten-millionth leaves 1750 exactly where it was and barely moves the
+dates of the first inventions, where `works.walk` and `carting.adjust`
+moved by a millionth act from the warm-up. Island 6's coke iron is found in
+1776 in six of the harvest's seven histories of main and in 1790 in both of
+the other two nulls. Against the
+harvest's null alone, the rule seems to put coke iron a year later on the
+mean; against nulls that act in the warm-up it does not. A rule that acts in
+the warm-up wants a null that acts there too.
+
+**The bar for the coal inventions.** One island's dates do move with the
+rule, in every history: island 11 finds coke iron in 1772 for 1778 and the
+engine works in 1780 for 1797. The port sets each invention's bar at a
+multiple of what the island made in a year of the warm-up (coke iron at 35
+years of its coal and 30 of its iron; `sim::start_from`). Without the rule
+island 11's warm-up dug 250,000 of coal a year, some of it by hands its
+coal town did not have; with it 214,000, so coke iron's bar falls from 8.76
+million of coal to 7.48 million and the engine works' from 7.00 to 5.98
+million. On the islands whose warm-up had no such town the bars move by
+under half a per cent.
 
 The critic asked for two facts to be read against the null pair, because a
 single comparison had them lower on eleven islands of sixteen
