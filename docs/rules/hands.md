@@ -148,6 +148,16 @@ runs failed the money check. Islands 17 to 24 add none over their people
 either, of 194,256 town-months under the landlords and 217,620 under the
 commons.
 
+Under the commons the common fund carried the losses of a town paying hands
+it did not have, and `commons::fund_to_share` was written for the debt they
+left. With the rule the fund is never in debt on islands 1 to 16, where
+without it island 3's was in debt for 110 months from 1751, at the deepest
+4.6 times all the money the island began with, and island 13's for 15
+months from 1750 (a short probe, kept outside the repository with the
+check's notes, that counts each month the fund ends below nothing, six
+families, to 1900). The design expected `fund_to_share` to find no debt
+left to deal with, and it finds none.
+
 The landlords' debt, with the people rule off so that redrawn districts
 bring the fault back (`examples/trace_rent.rs --seeds 1-16 --part a --set
 '{"people":{"enabled":false}}'`): without the rule there are 154 spells of a
