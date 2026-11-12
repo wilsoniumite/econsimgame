@@ -1,6 +1,8 @@
 //! The land mechanism's islands in numbers, seed by seed, beside the port's:
 //! how long one takes to make, its lakes, its navigable water, its largest
-//! basin, its relief, and how much land, corn land, coal and ore it has.
+//! basin, its relief, and how much land, corn land, coal and ore it has; then
+//! its marsh and flood plain, its river, navigable and tideway cells, and the
+//! woodland potential of its cells 760 m up or more.
 //!
 //!     cargo run --release -p isostate-core --example land_stats -- [SEEDS, e.g. 1-12] [--set NAME=VALUE]...
 #![allow(non_snake_case)]
@@ -8,7 +10,7 @@ use std::time::Instant;
 
 use isostate_core::landcells::make_world;
 use isostate_core::landform::{LandParams, build_relief, draw_design};
-use isostate_core::landwater::make_water;
+use isostate_core::landwater::{WET_MARSH, WET_PLAIN, make_water};
 use isostate_core::rng::{land_stream, make_rngs};
 use isostate_core::world::{World, generate_world};
 
@@ -101,6 +103,9 @@ fn main() {
     let (mut old_all, mut new_all): (Vec<Vec<f64>>, Vec<Vec<f64>>) = (Vec::new(), Vec::new());
     println!("seed  secs (relief water cells)  lakes  largest km2  upland  nav km  river km  basin%  max m  mean m  hills  mtns  land  lake cells  sites");
     let mut tsum = [0.0; 4];
+    // the wet ground, the water boats use and the woods on the tops, printed after
+    let mut wet_rows: Vec<String> = Vec::new();
+    let mut wet_sum = [0.0f64; 8];
     for &seed in &seeds {
         let mut r = make_rngs(seed);
         let old = generate_world(&mut r.world, 120, 84, 6, 0.58);
@@ -154,9 +159,30 @@ fn main() {
             lf.lake.iter().filter(|&&l| l).count(),
             sites.join(" "),
         );
+        let node_km2 = (2.0 / lf.fine as f64).powi(2);
+        let marsh = lf.wet.iter().filter(|&&v| v == WET_MARSH).count() as f64 * node_km2;
+        let plain = lf.wet.iter().filter(|&&v| v == WET_PLAIN).count() as f64 * node_km2;
+        let N = w.W * w.H;
+        let tops: Vec<usize> = (0..N).filter(|&c| w.land[c] && w.h[c] * lf.h_ref >= 760.0).collect();
+        let wood_tops = tops.iter().map(|&c| w.forest_pot[c]).sum::<f64>();
+        let wood_top_most = tops.iter().map(|&c| w.forest_pot[c]).fold(0.0, f64::max);
+        let wr = [marsh, plain, tn.river, tn.nav, lf.estuary.iter().filter(|&&e| e).count() as f64, tops.len() as f64, wood_tops, wood_top_most];
+        for (s, v) in wet_sum.iter_mut().zip(wr) {
+            *s += v;
+        }
+        wet_rows.push(format!(
+            "{seed:4}  {:9.1}  {:9.1}  {:11.0}  {:9.0}  {:13.0}  {:13.0}  {:12.2}  {:12.3}",
+            wr[0], wr[1], wr[2], wr[3], wr[4], wr[5], wr[6], wr[7]
+        ));
     }
     let n = seeds.len() as f64;
     println!("mean seconds: {:.2} (relief {:.2}, water {:.2}, cells {:.2})", tsum[0] / n, tsum[1] / n, tsum[2] / n, tsum[3] / n);
+    println!("\nseed  marsh km2  plain km2  river cells  nav cells  estuary cells  cells >=760 m  wood on them  most of it");
+    for r in &wet_rows {
+        println!("{r}");
+    }
+    let m: Vec<f64> = wet_sum.iter().map(|s| s / n).collect();
+    println!("mean  {:9.1}  {:9.1}  {:11.1}  {:9.1}  {:13.1}  {:13.1}  {:12.2}  {:12.3}", m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7]);
     println!("\n{:12} {:>10} {:>22} {:>10} {:>22} {:>7}", "per island", "port", "[least .. most]", "land", "[least .. most]", "ratio");
     for (k, name) in names.iter().enumerate() {
         let lo = |a: &Vec<Vec<f64>>| a.iter().map(|r| r[k]).fold(f64::INFINITY, f64::min);

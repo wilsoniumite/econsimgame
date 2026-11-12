@@ -28,6 +28,7 @@ mod live;
 mod look;
 mod meshkit;
 mod network;
+mod newland;
 mod overlay;
 mod plan;
 mod profile;
@@ -95,8 +96,10 @@ struct Args {
     advance: usize,
     /// give the player a works and some land at the start (for screenshots)
     demo: bool,
-    /// a new game was asked for (--new or --seed): the island's autosave is not gone on with
+    /// a new game was asked for (--new, --seed or --new-land): the island's autosave is not gone on with
     fresh: bool,
+    /// the new game is on the second island generator's land (`--new-land`; newland.rs)
+    new_land: bool,
     /// a saved game to go on with
     load: Option<String>,
     /// where to save, instead of the island's autosave
@@ -160,6 +163,9 @@ With no run named, a new game starts.
   --new                a new game, whatever is saved (with no run named and nothing else
                        asked for, the island's saved game is gone on with)
   --seed N             which island (7); a new game
+  --new-land           a new game on the new land: the second island generator's, with rivers
+                       that run downhill, lakes and tideways, which the game's rules do not
+                       switch on yet. A preview: it is kept only where --save names a file
   --load FILE          go on with this saved game
   --save FILE          keep the game in FILE instead of the island's autosave
   --keep               keep the game in the island's autosave though the start is not plain
@@ -290,6 +296,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         advance: 0,
         demo: false,
         fresh: false,
+        new_land: false,
         load: None,
         save: None,
         keep: false,
@@ -341,6 +348,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--no-tilt" => a.tilt = false,
             "--new" => { a.new = true; a.fresh = true; }
             "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
+            "--new-land" => { a.new_land = true; a.new = true; a.fresh = true; }
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
             "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
             "--keep" => a.keep = true,
@@ -436,6 +444,10 @@ fn parse(v: &[String]) -> Result<Args, String> {
     }
     if !a.named_run || a.load.is_some() {
         a.new = true;
+    }
+    // a saved game says itself which land it is played on; --new-land is for a game that is begun
+    if let (true, Some(file)) = (a.new_land, &a.load) {
+        return Err(format!("--new-land starts a new game, and --load goes on with one: a game saved on the new land is played on it again without being told, so leave --new-land out to go on with {file}"));
     }
     // options that only mean something beside another say so, rather than being passed over in silence
     if a.lab.is_none() && (a.out.is_some() || a.lab_tilt || a.loupe != 1 || a.lab_turn.is_some()) {
@@ -716,7 +728,7 @@ fn main() {
     if args.new {
         let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
         let c = rules.content();
-        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone() }).collect();
+        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone(), weight: None, price: None }).collect();
         refuse_map_views(&args, |w| overlay::complaint_among(w, &goods));
     }
     let t0 = std::time::Instant::now();
@@ -738,6 +750,7 @@ fn main() {
             unattended: pictures || args.script.is_some(),
             restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
             keep: args.keep,
+            new_land: args.new_land,
         };
         // a check may write an autosave, but never among the player's own saved games
         if let Some(why) = opening.keep_refused(std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty())) {
@@ -770,8 +783,8 @@ fn main() {
     let g = world::build_ground(&r);
     let slots = scatter::make_slots(&r, &g);
     let cen = network::centres(&r);
-    // a measuring tool asked for by an environment variable (plan.rs, rails.rs) does its work, and that is all
-    if scatter::measure(&r, &g, &slots, &cen) {
+    // a measuring tool asked for by an environment variable (newland.rs, plan.rs, rails.rs) does its work, and that is all
+    if newland::maybe_report(&r, &g, &cen) || scatter::measure(&r, &g, &slots, &cen) {
         std::process::exit(0);
     }
     eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
@@ -894,7 +907,7 @@ fn main() {
         views = standard.iter().map(|s| s.spec.clone()).collect();
         views.sort_by_key(|v| v.year);
         let mut what = if args.new {
-            format!("Island {} with {}, {} by {} pixels", args.seed, families_words(args.families), args.size.0, args.size.1)
+            format!("Island {} with {}{}, {} by {} pixels", args.seed, families_words(args.families), if args.new_land { ", on the new land" } else { "" }, args.size.0, args.size.1)
         } else {
             format!("{}, {} by {} pixels", args.run, args.size.0, args.size.1)
         };
@@ -3015,6 +3028,11 @@ mod tests {
         assert!(!a.fresh && a.load.is_none() && a.save.is_none());
         // --new and --seed ask for a new game whatever is saved
         assert!(args("--new").unwrap().fresh && args("--seed 3").unwrap().fresh);
+        // --new-land is a new game too, on the new land, even beside a recorded run; and not a saved one
+        let a = args("--new-land --seed 3").unwrap();
+        assert!(a.new && a.fresh && a.new_land && a.seed == 3);
+        assert!(args("runs/x/run.bin --new-land").unwrap().new && !args("--new").unwrap().new_land);
+        assert!(args("--new-land --load mine.json").err().unwrap().starts_with("--new-land starts a new game, and --load goes on with one"));
         // a saved game is a game, even beside a recorded run
         let a = args("runs/x/run.bin --load mine.json --save other.json").unwrap();
         assert_eq!((a.new, a.fresh, a.load.as_deref(), a.save.as_deref()), (true, false, Some("mine.json"), Some("other.json")));
@@ -3108,7 +3126,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--load", "--save", "--keep", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

@@ -202,6 +202,12 @@ impl Grid {
     pub fn dx(&self) -> f64 {
         CELL_M / self.k as f64
     }
+    /// Metres from node `a` to its neighbour `b`: one node spacing straight
+    /// across, 1.41 of one on the diagonal, as the erosion counts it. A fall
+    /// over a step is read as a slope only over this.
+    pub fn step_m(&self, a: usize, b: usize) -> f64 {
+        if a % self.w != b % self.w && a / self.w != b / self.w { self.dx() * std::f64::consts::SQRT_2 } else { self.dx() }
+    }
     /// A node's centre in cell units.
     pub fn xy(&self, n: usize) -> (f64, f64) {
         (((n % self.w) as f64 + 0.5) / self.k as f64, ((n / self.w) as f64 + 0.5) / self.k as f64)

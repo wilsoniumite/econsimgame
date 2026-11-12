@@ -12,7 +12,11 @@
 //! snapshots (`record.rs`) and the final state. Two things nobody keeps, how
 //! many people lived in towns growing at the cap and how much land lay under
 //! each use, are noted between years by `gather_year`, which the sweep calls
-//! from its own loop.
+//! from its own loop; and what only a month shows (a town's wage against the
+//! middle town's, the hands at work against the people, the year's weight
+//! carried) is noted between months by `gather_month` (`run_year_noting` does
+//! both). The facts the pass over the rules added for its card are listed in
+//! `docs/rules/scorecard.md`.
 //!
 //! Everything is worked out from the content, so another content file works: a
 //! method or good named below that the content does not have is skipped.
@@ -104,6 +108,29 @@ pub const TOOLS: &str = "tools";
 /// The first ten years are left out of the price swings: prices are still settling.
 pub const PRICE_FROM: i64 = 1760;
 
+/// Timber, whose swing is the building cycle's (docs/probes/tr-cycles.md), and the
+/// year its second swing is read from: the pass over the rules reads swings from 1800
+/// (docs/designs/rules-pass.md, aim 8 and section 8).
+pub const TIMBER: &str = "timber";
+pub const TIMBER_FROM: i64 = 1800;
+
+/// The years about each year that its tools' price is set against (aim 11): itself and
+/// twelve on either side, fewer at the run's ends.
+pub const TOOLS_WINDOW: usize = 25;
+
+/// How many of a yearly series' values are over twice the median of the `window`
+/// years centred on them (cut short at the series' ends).
+pub fn years_over_twice_local_median(p: &[f64], window: usize) -> usize {
+    let half = window / 2;
+    (0..p.len())
+        .filter(|&k| {
+            let mut near: Vec<f64> = p[k.saturating_sub(half)..(k + half + 1).min(p.len())].iter().copied().filter(|v| v.is_finite()).collect();
+            near.sort_by(f64::total_cmp);
+            p[k] > 2.0 * quantile(&near, 0.5)
+        })
+        .count()
+}
+
 /// Besides the fifty-year marks, the railway's length is taken in this year
 /// (PLAN.md 1.3: rail km by 1870).
 pub const RAIL_YEAR: i64 = 1870;
@@ -136,11 +163,142 @@ pub struct Gathered {
     pub rates: Vec<f64>,
     /// Per year: the workings of each extractive sector (mines: docs/rules/mines.md).
     pub mines: Vec<crate::mines::YearNote>,
+    /// Per year: of the works' hands at the year's end, the share whose works stand
+    /// within a path cost of 2 of their market (`works.walk`; docs/rules/works.md).
+    pub near_market: Vec<f64>,
+    /// What only a month can show. Empty unless the run was stepped a month at a
+    /// time with `gather_month` (`run_year_noting` does it).
+    pub months: MonthNotes,
 }
 
-/// Call after each `sim::run_year`.
+/// The famine line of `people::growth`: a town that got under this share of the
+/// food it needs in a month went hungry that month.
+pub const FAMINE_LINE: f64 = 0.82;
+
+/// A town paying more than this many times the middle town's wage is a wage gone
+/// wild (docs/designs/rules-pass.md, aim 13; `examples/wage_watch.rs`).
+pub const WILD_WAGE: f64 = 10.0;
+
+/// What the sweep notes month by month for the pass over the rules
+/// (docs/designs/rules-pass.md, section 5, "Stage 1's facts"), because nothing in
+/// a run keeps it. Town-months count the towns standing with people in them.
+#[derive(Clone, Debug, Default)]
+pub struct MonthNotes {
+    pub town_months: usize,
+    /// Town-months whose wage was over `WILD_WAGE` times the middle town's (the
+    /// median of the towns' wages that month, each town once, as `wage_watch` has it).
+    pub wage_wild: usize,
+    /// The greatest a town's wage ever was against the middle town's.
+    pub wage_greatest_vs_middle: f64,
+    /// Town-months with more at work than the town's people of working age
+    /// (`month_stats.employment` over `participation` times the people, as
+    /// `examples/overhire.rs` counts them).
+    pub more_at_work_than_people: usize,
+    /// Town-months from February to December with a wage the month before, and of
+    /// them those whose wage moved by half or more (`carting.adjust`).
+    pub wage_compared: usize,
+    pub wage_moved_by_half: usize,
+    /// Every town's wage last month.
+    pub last_wage: Vec<f64>,
+    /// Per month: hands in quarries, clay pits and mines over all at work.
+    pub diggings: Vec<f64>,
+    /// Per year: the weight carried times the path cost it was carried over (each
+    /// cell's produce and works' goods to their market, and the trade between
+    /// towns), at the year's path costs.
+    pub weight_path: Vec<f64>,
+    /// Each cell's market in December, to see which towns took cells at the year's end.
+    pub catch_december: Vec<i64>,
+    /// The towns that took cells from another town's market at the last year's end.
+    pub took_cells: Vec<bool>,
+    /// January and February town-months under the famine line in a town that took
+    /// cells at the year's end (aim 12; docs/probes/tr-carriage.md, (d)).
+    pub hungry_after_new_cells: usize,
+}
+
+/// Twelve months, each noted, then the year's end, noted: `sim::run_year` with the
+/// facts' gathering in between. The sweep runs every year this way; nothing it
+/// notes changes the run.
+pub fn run_year_noting(sim: &mut Sim, g: &mut Gathered) -> Result<(), String> {
+    for month in 0..12 {
+        crate::sim::run_month(sim, month)?;
+        gather_month(g, sim, month);
+    }
+    crate::sim::end_year(sim);
+    gather_year(g, sim);
+    Ok(())
+}
+
+/// Call after each `sim::run_month`, before the year's end.
+pub fn gather_month(g: &mut Gathered, sim: &Sim, month: usize) {
+    let (st, P) = (&sim.st, &sim.params);
+    let n = &mut g.months;
+    let ms = &st.month_stats;
+    let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t] && st.pop[t] > 0.0).collect();
+    let mut wages: Vec<f64> = act.iter().map(|&t| st.wage[t]).collect();
+    wages.sort_by(f64::total_cmp);
+    let middle = wages.get(wages.len() / 2).copied().unwrap_or(f64::NAN);
+    for &t in &act {
+        n.town_months += 1;
+        let rel = st.wage[t] / middle;
+        n.wage_wild += (rel > WILD_WAGE) as usize;
+        if rel > n.wage_greatest_vs_middle {
+            n.wage_greatest_vs_middle = rel;
+        }
+        n.more_at_work_than_people += ms.employment.get(t).is_some_and(|&e| e > P.participation * st.pop[t] * (1.0 + 1e-9)) as usize;
+        // January begins on the year's new districts, so it is not set against December
+        if month > 0 && n.last_wage.get(t).is_some_and(|&w| w > 0.0) {
+            n.wage_compared += 1;
+            n.wage_moved_by_half += ((st.wage[t] / n.last_wage[t]).ln().abs() >= 1.5f64.ln()) as usize;
+        }
+        if month < 2 && n.took_cells.get(t) == Some(&true) && st.food_ratio[t] < FAMINE_LINE {
+            n.hungry_after_new_cells += 1;
+        }
+    }
+    n.last_wage = st.wage.clone();
+    // the observer's land is the first three sectors (farm, pasture, woods); the rest dig
+    let all: f64 = ms.employment.iter().sum();
+    let dig: f64 = ms.ex_labor_by_sector.iter().skip(3).sum();
+    n.diggings.push(if all > 0.0 { dig / all } else { f64::NAN });
+    if month == 11 {
+        // the year's flows, summed over its months until the year's end clears them
+        let land: f64 = (0..st.N).filter(|&c| st.catch[c] >= 0 && st.dcatch[c].is_finite()).map(|c| st.cell_flow[c] * st.dcatch[c]).sum();
+        let mut trade = 0.0;
+        for i in (0..st.T_max).filter(|&i| st.town_active[i]) {
+            for j in (0..st.T_max).filter(|&j| j != i && st.town_active[j]) {
+                let c = st.town_cost[(i, j)];
+                if c.is_finite() {
+                    trade += st.trade_F[(i, j)] * c;
+                }
+            }
+        }
+        n.weight_path.push(land + trade);
+        n.catch_december = st.catch.clone();
+    }
+}
+
+/// Call after each `sim::run_year` (or `sim::end_year`).
 pub fn gather_year(g: &mut Gathered, sim: &Sim) {
     let (st, P) = (&sim.st, &sim.params);
+    // the towns that took cells from another town's market at this year's end
+    if g.months.catch_december.len() == st.N {
+        let mut took = vec![false; st.T_max];
+        for (c, &was) in g.months.catch_december.iter().enumerate() {
+            let now = st.catch[c];
+            if was >= 0 && now >= 0 && now != was {
+                took[now as usize] = true;
+            }
+        }
+        g.months.took_cells = took;
+    }
+    // works.walk: the works' hands near their market (examples/works_census.rs, "near")
+    let (mut near, mut hands) = (0.0, 0.0);
+    for f in (0..st.f_alive.len().min(st.f_labor.len())).filter(|&f| st.f_alive[f]) {
+        hands += st.f_labor[f];
+        if st.dcatch[st.f_cell[f]] <= 2.0 {
+            near += st.f_labor[f];
+        }
+    }
+    g.near_market.push(if hands > 0.0 { near / hands } else { f64::NAN });
     let (mut capped, mut all) = (0.0, 0.0);
     for t in 0..st.T_max {
         if !st.town_active[t] || st.y_ratio[t] <= 0.0 {
@@ -198,6 +356,23 @@ pub fn spans(y0: i64, y1: i64) -> Vec<(i64, i64)> {
     }
     if y1 - y0 >= SPAN && v.last().map(|s| s.1) != Some(y1) {
         v.push((y1 - SPAN + 1, y1));
+    }
+    v
+}
+
+/// The decades of a run as (its name, first year, last year): 1750 for 1750-1759 and so
+/// on, the last taking in the run's last year (1890 for 1890-1900), as
+/// `examples/trace_works.rs` takes them. The first begins with the run.
+pub fn decades(y0: i64, y1: i64) -> Vec<(i64, i64, i64)> {
+    let mut v = Vec::new();
+    let mut d = y0.div_euclid(10) * 10;
+    while d <= y1 {
+        let end = if d + 19 > y1 { y1 } else { d + 9 };
+        v.push((d, d.max(y0), end));
+        if end == y1 {
+            break;
+        }
+        d += 10;
     }
     v
 }
@@ -331,6 +506,28 @@ impl Builder {
     }
 }
 
+/// The ages at which the chance of a works closing is read, in years, both ends in
+/// (`examples/trace_works.rs`).
+pub const CLOSING_AGES: [(i64, i64, &str); 7] =
+    [(0, 2, "0_2"), (3, 5, "3_5"), (6, 9, "6_9"), (10, 14, "10_14"), (15, 24, "15_24"), (25, 49, "25_49"), (50, i64::MAX, "50_up")];
+
+/// Works-years lived at an age from `a` to `z` between `y0` and `y1`, and the works
+/// that closed at such an age, of every works the state has ever had.
+pub fn closing_at_age(st: &crate::state::State, y0: i64, y1: i64, a: i64, z: i64) -> (f64, f64) {
+    let (mut at_risk, mut closed) = (0.0, 0.0);
+    for f in 0..st.F_count {
+        let born = st.f_born[f];
+        let end = if st.f_alive[f] { y1 } else { st.f_died[f] };
+        for y in born.max(y0)..=end.min(y1) {
+            if (a..=z).contains(&(y - born)) {
+                at_risk += 1.0;
+                closed += (!st.f_alive[f] && st.f_died[f] == y) as u8 as f64;
+            }
+        }
+    }
+    (at_risk, closed)
+}
+
 /// The middle year of a run, for the facts named `_mid`: 1825 for a run from 1750 to
 /// 1900, 1900 for a run to 2050.
 pub fn middle(y0: i64, y1: i64) -> i64 {
@@ -396,6 +593,17 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.again(&last, "urban_share_last");
     b.again(&last_span, "urban_share_last20");
     b.again(&format!("towns_{y1}"), "towns_last");
+    // the pass over the rules (docs/designs/rules-pass.md, aims 1 and 4): how many times the
+    // first year's people each mark has, and whether the towns' share is still rising at the
+    // end: the last twenty years' mean less the twenty years' before them
+    // (urban_share_1881_1900_less_1861_1880)
+    for &y in &marks[1..] {
+        b.num(format!("pop_{y}_vs_{y0}"), Kind::Ratio, at("pop", y) / at("pop", y0));
+    }
+    if let Some((a, z)) = last20.filter(|&(a, _)| a - SPAN > y0) {
+        let u = series("urban_share");
+        b.num(format!("urban_share_{a}_{z}_less_{}_{}", a - SPAN, z - SPAN), Kind::Real, span_mean(u, y0, a, z) - span_mean(u, y0, a - SPAN, z - SPAN));
+    }
     let last_town = (0..st.T_max).filter(|&t| st.town_active[t] && st.town_founded[t] >= y0).map(|t| st.town_founded[t]).max();
     b.year("last_town_founded".into(), last_town);
     // people: the towns founded from 1800 on, by what their districts were known for
@@ -510,6 +718,85 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     }
     b.again(&placed("income_share_work")[2], "income_share_work_last20");
 
+    // ---- the pass over the rules, stage 1 (docs/designs/rules-pass.md, section 5): the
+    // facts the card needs that the sweep did not have
+    // The diggings' own share of hands. `mine_share` is one less the land's and the works'
+    // shares, so under carting it counts the carters (and the navvies and menders) as well;
+    // this counts only the quarries, clay pits and mines, from the month's own hands.
+    let diggings: Vec<f64> = if g.months.diggings.len() == 12 * n { g.months.diggings.chunks(12).map(mean).collect() } else { vec![f64::NAN; n] };
+    for &y in &marks {
+        b.num(format!("diggings_share_{y}"), Kind::Share, diggings[(y - y0) as usize]);
+    }
+    for &(a, z) in &spans {
+        b.num(format!("diggings_share_{a}_{z}"), Kind::Share, span_mean(&diggings, y0, a, z));
+    }
+    // Spending a head over the chained cost of living (docs/probes/tr-works.md, section 1):
+    // `gdp_nom / pop / cpi_chained`, by decade against the first, its highest year, and the
+    // last decade against the one twenty years before it (aim 6: the 1890s over the 1870s).
+    // The observer's `gdp_pc` is deflated by the basket of 1750, which turns a stall into a fall.
+    if st.series.index.contains_key("cpi_chained") {
+        let (nom, pop, cpi) = (series("gdp_nom"), series("pop"), series("cpi_chained"));
+        let spend: Vec<f64> = (0..n).map(|k| nom[k] / pop[k] / cpi[k]).collect();
+        let ds = decades(y0, y1);
+        let dmean = |&(_, a, z): &(i64, i64, i64)| span_mean(&spend, y0, a, z);
+        for d in &ds[1..] {
+            b.num(format!("spending_per_head_chained_{}s_vs_{}s", d.0, ds[0].0), Kind::Ratio, dmean(d) / dmean(&ds[0]));
+        }
+        if let (Some(last), true) = (ds.last(), ds.len() > 2) {
+            let before = &ds[ds.len() - 3];
+            b.num(format!("spending_per_head_chained_{}s_vs_{}s", last.0, before.0), Kind::Ratio, dmean(last) / dmean(before));
+        }
+        let peak = (0..n).filter(|&k| spend[k].is_finite()).max_by(|&i, &j| spend[i].total_cmp(&spend[j]));
+        b.year("spending_per_head_chained_peak_year".into(), peak.map(|k| years[k]));
+    }
+    // Carters between towns (aim 19): each town's carters times the share of its carting
+    // bill that is the works' carting and the trade it sends, the rest being its land's
+    // produce on the way to market; over the hands, as `carters_share_of_hands_Y` has them.
+    if st.acct.on && r.params.carting.enabled {
+        use crate::accounts::{KT, TOWN_FIELDS};
+        let col = |name: &str| TOWN_FIELDS.iter().position(|&c| c == name).expect("a column of the books");
+        let (carters, land, works, trade) = (col("carters"), col("cart_land"), col("cart_works"), col("cart_trade"));
+        for &y in &marks {
+            let book = st.acct.years.iter().position(|yr| yr.year == y).and_then(|k| st.acct.year(k));
+            let between = book.map_or(f64::NAN, |rec| {
+                let mut v = 0.0;
+                for t in 0..st.T_max {
+                    let row = &rec.towns[t * KT..(t + 1) * KT];
+                    let bill = (row[land] + row[works] + row[trade]) as f64;
+                    if bill > 0.0 {
+                        v += row[carters] as f64 * (row[works] + row[trade]) as f64 / bill;
+                    }
+                }
+                v
+            });
+            b.num(format!("carters_between_towns_share_of_hands_{y}"), Kind::Share, between / (r.params.participation * at("pop", y)));
+        }
+    }
+    // The carters a unit of weight and path cost (design 4.6, "How it is checked"): the
+    // year's carters (the mean of its months) over the year's weight carried times the path
+    // cost it went over, per thousand. Under a fixed freight it falls as the wage rises.
+    if r.params.carting.enabled && g.months.weight_path.len() == n {
+        let warm = r.params.warmup_years.max(0) as usize;
+        let per = |y: i64| -> f64 {
+            let k = (y - y0) as usize;
+            st.cart_years.get(warm + k).map_or(f64::NAN, |&(_, c)| 1000.0 * c / 12.0 / g.months.weight_path[k])
+        };
+        for &y in &marks {
+            b.num(format!("carters_per_1000_weight_path_{y}"), Kind::Real, per(y));
+        }
+        for &y in &marks[1..] {
+            b.num(format!("carters_per_1000_weight_path_{y}_vs_{y0}"), Kind::Ratio, per(y) / per(y0));
+        }
+    }
+    // Town-months (aim 13 and the faults of section 4.1; `carting.adjust`), from the months
+    // the sweep noted; no value for a run stepped a year at a time.
+    let m = &g.months;
+    let noted = |v: f64| if m.town_months > 0 { v } else { f64::NAN };
+    b.num("town_months_wage_over_ten_middle".into(), Kind::Count, noted(m.wage_wild as f64));
+    b.num("town_wage_greatest_vs_middle".into(), Kind::Ratio, noted(m.wage_greatest_vs_middle));
+    b.num("town_months_more_at_work_than_people".into(), Kind::Count, noted(m.more_at_work_than_people as f64));
+    b.num("town_months_wage_moved_by_half".into(), Kind::Share, if m.wage_compared > 0 { m.wage_moved_by_half as f64 / m.wage_compared as f64 } else { f64::NAN });
+
     // ---- railways
     b.group = GROUPS[2];
     let km = Named { index: &st.series.index, data: &st.series.data }.get("rail_km");
@@ -580,6 +867,17 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("works_founded".into(), Kind::Count, (0..st.F_count).filter(|&f| st.f_born[f] >= y0).count() as f64);
     b.num("works_closed".into(), Kind::Count, life.len() as f64);
     b.num("works_closed_median_life".into(), Kind::Real, quantile(&life, 0.5));
+    // the pass over the rules: the chance a works closes in a year, by its age (closures at
+    // that age over works-years at that age, of works standing at any time from the first
+    // year), which docs/probes/tr-works.md, section 3, reads in place of the median life
+    for (a, z, name) in CLOSING_AGES {
+        let (at_risk, closed) = closing_at_age(st, y0, y1, a, z);
+        b.num(format!("works_closing_chance_age_{name}"), Kind::Share, if at_risk > 0.0 { closed / at_risk } else { f64::NAN });
+    }
+    // and the works' hands near their market (works.walk), at the marks
+    for &y in &marks {
+        b.num(format!("works_hands_within_2_of_market_{y}"), Kind::Share, g.near_market.get((y - y0) as usize).copied().unwrap_or(f64::NAN));
+    }
     let util: Vec<f64> = alive.iter().filter(|&&f| st.f_K[f] > 0.0).map(|&f| st.f_u[f]).collect();
     b.num(format!("works_utilisation_{y1}"), Kind::Share, mean(&util));
     // by their place in the run (R7)
@@ -682,15 +980,25 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     // ---- prices and cycles
     b.group = GROUPS[6];
     let from = if y1 >= PRICE_FROM + 2 { PRICE_FROM.max(y0) } else { y0 };
+    let swing = |good: &str, from: i64| -> f64 {
+        let price = series(&format!("price_{good}")).get((from - y0) as usize..).unwrap_or(&[]);
+        let d: Vec<f64> = price.windows(2).map(|w| (w[1] / w[0]).ln()).filter(|v| v.is_finite()).collect();
+        let m = mean(&d);
+        if d.len() >= 2 { mean(&d.iter().map(|v| (v - m) * (v - m)).collect::<Vec<_>>()).sqrt() } else { f64::NAN }
+    };
     for good in PRICE_GOODS {
         if !C.good_index.contains_key(good) {
             continue;
         }
-        let price = series(&format!("price_{good}")).get((from - y0) as usize..).unwrap_or(&[]);
-        let d: Vec<f64> = price.windows(2).map(|w| (w[1] / w[0]).ln()).filter(|v| v.is_finite()).collect();
-        let m = mean(&d);
-        let sd = if d.len() >= 2 { mean(&d.iter().map(|v| (v - m) * (v - m)).collect::<Vec<_>>()).sqrt() } else { f64::NAN };
-        b.num(format!("price_swing_{good}"), Kind::Real, sd);
+        b.num(format!("price_swing_{good}"), Kind::Real, swing(good, from));
+    }
+    // the pass over the rules (aim 8): timber's swing, the building cycle's mark
+    // (docs/probes/tr-cycles.md), as its neighbours have theirs and from 1800 as the aim has it
+    if C.good_index.contains_key(TIMBER) {
+        b.num(format!("price_swing_{TIMBER}"), Kind::Real, swing(TIMBER, from));
+        if y1 >= TIMBER_FROM + 2 {
+            b.num(format!("price_swing_{TIMBER}_from_{TIMBER_FROM}"), Kind::Real, swing(TIMBER, TIMBER_FROM.max(y0)));
+        }
     }
     // A famine of tools (C137; docs/rules/works.md): when farm machinery comes the engine
     // works want tools the smithies left cannot make. Tools' dearest year from PRICE_FROM
@@ -706,6 +1014,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         b.num(format!("price_{TOOLS}_dearest_vs_median"), Kind::Ratio, dearest.map_or(f64::NAN, |k| p[k] / middling));
         b.year(format!("price_{TOOLS}_dearest_year"), dearest.map(|k| from + k as i64));
         b.num(format!("price_{TOOLS}_years_over_twice_median"), Kind::Count, p.iter().filter(|&&v| v > 2.0 * middling).count() as f64);
+        // the pass over the rules (aim 11): against the middling price of the TOOLS_WINDOW
+        // years about each year and not the century's, since a price that falls all century
+        // (as tools' does with the production tree) would read as a famine at its start
+        b.num(format!("price_{TOOLS}_years_over_twice_local_median"), Kind::Count, years_over_twice_local_median(&p, TOOLS_WINDOW) as f64);
     }
     let farm = series("ag_share");
     let zig: Vec<f64> = farm.windows(3).map(|w| (w[2] - 2.0 * w[1] + w[0]).abs()).filter(|v| v.is_finite()).collect();
@@ -769,6 +1081,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         // the hardest single year for wage earners: the real wage's largest fall on the year before
         let dw = changes("real_wage");
         b.num("real_wage_worst_year".into(), Kind::Real, dw.iter().copied().fold(f64::NAN, f64::min).exp_m1());
+        // the pass over the rules (aim 7): the mean of the five worst, a steadier reading of
+        // the same tail than the single worst (docs/probes/tr-works.md, section 4)
+        let mut falls: Vec<f64> = dw.iter().map(|d| d.exp_m1()).collect();
+        falls.sort_by(f64::total_cmp);
+        b.num("real_wage_five_worst_years_mean".into(), Kind::Real, if falls.len() >= 5 { mean(&falls[..5]) } else { f64::NAN });
         b.num("real_wage_swing".into(), Kind::Real, sd(&dw));
         // The same fall read from the middle of the island and not its mean. The island's
         // wage is every town's averaged by its people, so one town's wild wage coming back
@@ -816,6 +1133,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     let mut sailed: Vec<i64> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| e.year.floor() as i64).collect();
     sailed.dedup();
     b.num("emigration_years".into(), Kind::Count, sailed.len() as f64);
+    // the pass over the rules (aim 12): hungry months just after a town took cells from
+    // another town's market at the year's end, when the shelves stay behind
+    // (docs/probes/tr-carriage.md, (d)); no value for a run stepped a year at a time
+    b.num("hungry_months_after_new_cells".into(), Kind::Count, if g.months.town_months > 0 { g.months.hungry_after_new_cells as f64 } else { f64::NAN });
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();
