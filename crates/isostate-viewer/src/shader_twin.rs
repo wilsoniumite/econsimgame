@@ -12,8 +12,16 @@
 //! those functions are written in (`Program`), and set what each gives
 //! beside what the Rust gives, at a few thousand spots over and round an
 //! island. A number or a step changed on one side and not the other fails a
-//! test and names the function. What stays unguarded is listed in the notes
-//! of `night/o-land-checks` and in the test at the end of this file.
+//! test and names the function.
+//!
+//! What they do not guard: what the fragment writes inline (the order in
+//! which it decides a spot's class, which parcels keep their walls, the open
+//! fields' year, `max(depth, PARCEL_LEVEL)`); how the textures are packed in
+//! terrain.rs and unpacked in the shader; the GPU's linear filter between the
+//! texels of the wood and heath field and its own rounding, which only
+//! `ISOSTATE_COMPARE_CLASSES` on a graphics adapter sees; and the places where
+//! the two sides differ by design (the scrub's ramp against `world::SCRUB`,
+//! the tree line against the ground's climb, the winter snow line).
 //!
 //! The reader knows only what those functions use: `fn`, `let`, `var`,
 //! `if`, `for`, `loop`, `break`, `return`, structs, two- to four-wide
