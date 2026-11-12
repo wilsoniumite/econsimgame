@@ -351,44 +351,51 @@ impl Saver {
         // the latest is another game's: its years are not this game's to keep
         let mut others = false;
         if !self.settled {
-            match read(path) {
-                // another game's save is here (a new game on the same island,
-                // or a file named with --save): it is set aside whole, not
-                // written over, and so are those set aside before it, so that
-                // starting a new game by mistake does not lose the one that
-                // mattered. It is copied aside and stays where it is until
-                // the new save takes its place, so there is no moment with no
-                // latest save.
-                Ok(old) if old.started != save.started || old.seed != save.seed || old.families != save.families => {
-                    others = true;
-                    // (a game with nothing of the player's in it takes no place among
-                    // those kept, and one set aside already by a write that then
-                    // failed is not set aside twice)
-                    if holds_orders(&old) && read(&previous(path)).ok().as_ref() != Some(&old) {
-                        self.make_room(&|n| game_before(path, n), GAMES_KEPT)?;
+            // the game that is here, and the file it is in: the latest, or if
+            // that cannot be read the newest of the years kept beside it that
+            // can, which is the one a player was offered to go on with
+            let here = match read(path) {
+                Ok(old) => Some((old, path.to_path_buf())),
+                Err(_) => {
+                    // a file that cannot be read (a save cut short, one written by
+                    // a later version of the game, or one that says what no game
+                    // could): it is set aside, where the years to come cannot
+                    // push it out, and behind it the few set aside before
+                    if path.exists() {
+                        self.make_room(&|n| unread_before(path, n), KEPT)?;
                         self.step()?;
-                        copy_whole(path, &previous(path)).map_err(told)?;
+                        std::fs::rename(path, unread(path)).map_err(told)?;
                     }
-                    // its earlier saves are years the one set aside already holds (and
-                    // of a game with no orders, years the seed makes again)
-                    for n in 1..=KEPT {
-                        if earlier(path, n).exists() {
-                            self.step()?;
-                            let _ = std::fs::remove_file(earlier(path, n));
-                        }
-                    }
+                    (1..=KEPT).find_map(|n| read(&earlier(path, n)).ok().map(|old| (old, earlier(path, n))))
                 }
-                Ok(_) => {}
-                // a file that cannot be read (a save cut short, one written by
-                // a later version of the game, or one that says what no game
-                // could): it is set aside too, where the years to come cannot
-                // push it out, and behind it the few set aside before
-                Err(_) if path.exists() => {
-                    self.make_room(&|n| unread_before(path, n), KEPT)?;
+            };
+            // another game's save is here (a new game on the same island, or
+            // a file named with --save): it is set aside whole, not written
+            // over, and so are those set aside before it, so that starting a
+            // new game by mistake does not lose the one that mattered. It is
+            // copied aside and stays where it is until the new save takes its
+            // place, so there is no moment with no latest save.
+            if let Some((old, file)) = here.filter(|(old, _)| old.started != save.started || old.seed != save.seed || old.families != save.families) {
+                others = true;
+                // (a game with nothing of the player's in it takes no place among
+                // those kept, and one set aside already by a write that then
+                // failed is not set aside twice)
+                if holds_orders(&old) && read(&previous(path)).ok().as_ref() != Some(&old) {
+                    self.make_room(&|n| game_before(path, n), GAMES_KEPT)?;
                     self.step()?;
-                    std::fs::rename(path, unread(path)).map_err(told)?;
+                    copy_whole(&file, &previous(path)).map_err(told)?;
                 }
-                Err(_) => {}
+                // its earlier saves are years the one set aside already holds (and
+                // of a game with no orders, years the seed makes again): the new
+                // game's years are not to push another game's out one by one. The
+                // oldest goes first: a write that dies among them leaves the newest,
+                // which is the one set aside, to be known again
+                for n in (1..=KEPT).rev() {
+                    if earlier(path, n).exists() {
+                        self.step()?;
+                        let _ = std::fs::remove_file(earlier(path, n));
+                    }
+                }
             }
         }
         // (a latest that the newest earlier save already is was kept by a write
@@ -791,6 +798,92 @@ mod tests {
         assert_eq!(read(&earlier(&path, 1)).unwrap().year, 1751);
         assert_eq!(read(&earlier(&path, 2)).unwrap().year, 1750);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_new_game_begun_when_the_latest_cannot_be_read_sets_the_earlier_save_aside() {
+        // a played game whose latest save was spoiled from outside: the card offers the year before
+        // it ("The last save could not be read, so this is an earlier one") and New game beside it
+        let dir = scratch("spoiled-new");
+        let path = dir.join("game.json");
+        let mut s = Saver::new(path.clone());
+        for year in 1750..=1790 {
+            s.write(&save(1, year), true).unwrap();
+        }
+        std::fs::write(&path, &save(1, 1790).to_text()[..40]).unwrap();
+        assert_eq!(read_latest(&path).unwrap().0, save(1, 1789));
+        // New game is chosen, and the new game is played for longer than earlier years are kept
+        let mut new = Saver::new(path.clone());
+        new.write(&save(2, 1750), false).unwrap();
+        // the played game is set aside whole, as its latest would have been: the newest year of it that can be read
+        assert_eq!(read(&previous(&path)).unwrap(), save(1, 1789), "the game that was there is nowhere but among the years kept");
+        assert_eq!(files(&dir), ["game.json", "game.previous.json", "game.unread.json"]);
+        for year in 1751..=1760 {
+            new.write(&save(2, year), true).unwrap();
+        }
+        assert_eq!(read(&previous(&path)).unwrap(), save(1, 1789), "the years of the new game pushed the old one out");
+        assert_eq!(std::fs::read_to_string(unread(&path)).unwrap().len(), 40);
+        assert_eq!(files(&dir), ["game.1.json", "game.2.json", "game.3.json", "game.json", "game.previous.json", "game.unread.json"]);
+        assert!((1..=KEPT).all(|n| read(&earlier(&path, n)).unwrap().started == 2));
+
+        // the same with no file at all in the latest's place (a write that set the spoiled one aside and then died)
+        let dir2 = scratch("spoiled-gone");
+        let path2 = dir2.join("game.json");
+        let mut s = Saver::new(path2.clone());
+        for year in 1750..=1790 {
+            s.write(&save(1, year), true).unwrap();
+        }
+        std::fs::remove_file(&path2).unwrap();
+        let mut new = Saver::new(path2.clone());
+        for year in 1750..=1760 {
+            new.write(&save(2, year), true).unwrap();
+        }
+        assert_eq!(read(&previous(&path2)).unwrap(), save(1, 1789));
+        // and the same game going on from the earlier save keeps its years and sets nothing aside
+        let dir3 = scratch("spoiled-on");
+        let path3 = dir3.join("game.json");
+        let mut s = Saver::new(path3.clone());
+        for year in 1750..=1790 {
+            s.write(&save(1, year), true).unwrap();
+        }
+        std::fs::write(&path3, "junk").unwrap();
+        Saver::new(path3.clone()).write(&save(1, 1790), true).unwrap();
+        assert!(!previous(&path3).exists());
+        assert_eq!((1..=KEPT).map(|n| read(&earlier(&path3, n)).unwrap().year).collect::<Vec<_>>(), [1789, 1788, 1787]);
+        for d in [dir, dir2, dir3] {
+            let _ = std::fs::remove_dir_all(&d);
+        }
+
+        // that first write of the new game, stopped before each of its steps as a crash would stop it: the
+        // played game can be found whole at every one, and saving again ends as if nothing had happened
+        let mut stopped = 0;
+        for stop in 1.. {
+            let dir = scratch("spoiled-stopped");
+            let path = dir.join("game.json");
+            let mut s = Saver::new(path.clone());
+            for year in 1785..=1790 {
+                s.write(&save(1, year), true).unwrap();
+            }
+            std::fs::write(&path, "junk").unwrap();
+            let mut new = Saver::new(path.clone());
+            new.stop_before = Some(stop);
+            let wrote = new.write(&save(2, 1750), true);
+            if wrote.is_ok() {
+                let _ = std::fs::remove_dir_all(&dir);
+                break;
+            }
+            stopped += 1;
+            let found = || (1..=KEPT).map(|n| earlier(&path, n)).chain([previous(&path)]).any(|p| read(&p).is_ok_and(|g| g == save(1, 1789)));
+            assert!(found(), "stopped before step {stop}: the played game is nowhere");
+            Saver::new(path.clone()).write(&save(2, 1750), true).unwrap();
+            assert_eq!(read(&path).unwrap(), save(2, 1750));
+            assert_eq!(read(&previous(&path)).unwrap(), save(1, 1789), "stopped before step {stop}, and saved again");
+            assert!(!game_before(&path, 2).exists(), "stopped before step {stop}: the game was set aside twice");
+            assert_eq!(std::fs::read_to_string(unread(&path)).unwrap(), "junk");
+            assert!(!unread_before(&path, 2).exists() && !earlier(&path, 1).exists());
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        assert!(stopped >= 5, "the write was stopped {stopped} times");
     }
 
     #[test]
