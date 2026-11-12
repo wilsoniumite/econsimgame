@@ -113,7 +113,7 @@ fn a_name_that_is_another_option_is_refused_before_anything_is_played() {
     for (args, begins, ends) in [
         (&["--look", "--advance", "3"][..], "--look needs the name of a look file after it, and --advance is another option", "./--advance)"),
         (&["--view", "--shot", "x.png"], "--view needs a picture's name and its view after it, and --shot is another option", "./--shot)"),
-        (&["--shots", &text(&dir.join("sheet")), "--shots-note", "--shots-compare", "before"], "--shots-note needs a line of text after it, and --shots-compare is another option", "./--shots-compare)"),
+        (&["--shots", &text(&dir.join("sheet")), "--shots-note", "--shots-compare", "before"], "--shots-note needs a line of text after it, and --shots-compare is another option", "put the line between them"),
         (&["--shot"], "--shot needs a value after it", "--shot needs a value after it"),
     ] {
         let ran = game(&dir, args, &[]);
@@ -132,6 +132,16 @@ fn a_good_a_game_lacks_is_refused_before_its_island_is_made() {
     let ran = game(&dir, &["--view", &view], &[]);
     let said = refused(&ran, "--view: \"cole\" is not a good of this run: use one of ", "");
     assert!(said.contains("coal"), "{said}");
+    assert!(!picture.exists());
+    // and the good a view's Markets panel opens on, which was not checked at all
+    let view = format!("{},1850,,,,,,markets,open:Cole:months", text(&picture));
+    let ran = game(&dir, &["--view", &view], &[]);
+    refused(&ran, "--view: \"Cole\" is not a good of this run: use one of ", "");
+    assert!(!picture.exists());
+    // a word in a view that is no panel, no map view and nothing the Markets panel shows
+    let view = format!("{},1850,,,,,,rents", text(&picture));
+    let ran = game(&dir, &["--view", &view], &[]);
+    refused(&ran, "--view: rents is not a word a view takes", "for the Markets panel");
     assert!(!picture.exists());
     let ran = game(&dir, &["--overlay", "price:Cole", "--describe", "30,30"], &[]);
     refused(&ran, "--overlay: \"Cole\" is not a good of this run: use one of ", "");

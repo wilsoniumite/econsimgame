@@ -372,7 +372,15 @@ fn parse(v: &[String]) -> Result<Args, String> {
             // (task C, the land) the same machinery as --shots, with the far views of the land
             "--land-shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); a.land_shots = true; i += 1; }
             "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
-            "--shots-note" => { a.shots_note = named(opt, next(i)?, "a line of text")?; i += 1; }
+            "--shots-note" => {
+                // a line of text and not a name, so its refusal does not offer ./ in front of it
+                let s = next(i)?;
+                if s.starts_with("--") {
+                    return Err(format!("{opt} needs a line of text after it, and {s} is another option: put the line between them"));
+                }
+                a.shots_note = named(opt, s, "a line of text")?;
+                i += 1;
+            }
             "--compare-shots" => {
                 match (v.get(i + 1), v.get(i + 2)) {
                     (Some(x), Some(y)) => a.compare_shots = Some((named(opt, x.clone(), "two directories")?, named(opt, y.clone(), "two directories")?)),
@@ -398,6 +406,12 @@ fn parse(v: &[String]) -> Result<Args, String> {
                     }
                 };
                 let words: Vec<&String> = p.iter().skip(7).filter(|s| !s.is_empty() && s.parse::<f32>().is_err()).collect();
+                // a word that is none of these is refused, and not read as no panel: a mistyped map
+                // view would otherwise be taken of the plain map
+                let known = |s: &str| overlay::is_word(s) || ui::markets_word(s) || ui::Tab::parse(s).is_some() || s.eq_ignore_ascii_case("none");
+                if let Some(w) = words.iter().find(|s| !known(s)) {
+                    return Err(format!("{opt}: {w} is not a word a view takes: use a panel (family, holdings, markets, news or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"));
+                }
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
                     year: num(1)?.map(|y| y as i32),
@@ -978,11 +992,19 @@ fn main() {
 /// Stop on a map view that cannot be shown, saying which option it came from,
 /// so that a mistyped picture is not taken of the plain map. A word that is no
 /// map view at all was refused with the options; whether a good is one the run
-/// has is for `complaint` to say, given the run's goods.
+/// has is for `complaint` to say, given the run's goods. The good a view's
+/// Markets panel opens on (open:GOOD) is asked about as its price.
 fn refuse_map_views(args: &Args, complaint: impl Fn(&str) -> Option<String>) {
-    let words = args.overlay.iter().map(|w| ("--overlay", w)).chain(args.views.iter().filter_map(|v| v.overlay.as_ref().map(|w| ("--view", w))));
+    let opened = |w: &String| {
+        let lower = w.to_ascii_lowercase();
+        let end = if lower.ends_with(":months") { w.len() - ":months".len() } else { w.len() };
+        lower[..end].starts_with("open:").then(|| format!("price:{}", &w["open:".len()..end]))
+    };
+    let words = args.overlay.iter().map(|w| ("--overlay", w.clone()))
+        .chain(args.views.iter().filter_map(|v| v.overlay.as_ref().map(|w| ("--view", w.clone()))))
+        .chain(args.views.iter().filter_map(|v| v.markets.as_ref().and_then(opened).map(|w| ("--view", w))));
     for (opt, w) in words {
-        if let Some(why) = complaint(w) {
+        if let Some(why) = complaint(&w) {
             eprintln!("{opt}: {why}");
             std::process::exit(2);
         }
@@ -2910,7 +2932,14 @@ mod tests {
         );
         assert!(args("--look --advance 3").err().unwrap().starts_with("--look needs the name of a look file after it, and --advance is another option"));
         assert!(args("--view --shot x.png").err().unwrap().starts_with("--view needs a picture's name and its view after it, and --shot is another option"));
-        assert!(args("--shots out --shots-note --shots-compare before").err().unwrap().starts_with("--shots-note needs a line of text after it, and --shots-compare is another option"));
+        // (a note is a line of text, not a name: no ./ is offered for it)
+        assert_eq!(
+            args("--shots out --shots-note --shots-compare before").err().unwrap(),
+            "--shots-note needs a line of text after it, and --shots-compare is another option: put the line between them"
+        );
+        assert_eq!(args("--shots out --shots-note").err().unwrap(), "--shots-note needs a value after it");
+        let empty: Vec<String> = ["--shots", "out", "--shots-note", ""].map(String::from).to_vec();
+        assert_eq!(parse(&empty).err().unwrap(), "--shots-note needs a line of text after it");
         assert_eq!(args("--shot ./--new.png").unwrap().shot.as_deref(), Some("./--new.png"));
         assert_eq!(args("--load ./--odd.json").unwrap().load.as_deref(), Some("./--odd.json"));
         assert_eq!(args("--load -odd.json").unwrap().load.as_deref(), Some("-odd.json"));
@@ -2926,6 +2955,17 @@ mod tests {
         assert_eq!(args("--view a.png,l850").err().unwrap(), "--view: l850 is not a number it can take");
         assert_eq!(args("--view a.png,1850,markets").err().unwrap(), "--view: markets is not a number it can take");
         assert!(args("--view a.png,,,,,,").is_ok());
+        // a word in a view that is no panel, no map view and nothing the Markets panel shows is
+        // refused: "rents" was once read as no panel, and the picture taken of the plain map
+        assert_eq!(
+            args("--view a.png,1850,,,,,,rents").err().unwrap(),
+            "--view: rents is not a word a view takes: use a panel (family, holdings, markets, news or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"
+        );
+        assert!(args("--view a.png,1850,,,,,,wages,famly").err().unwrap().starts_with("--view: famly is not a word a view takes"));
+        assert!(args("--view a.png,1850,,,,,,open:months").err().unwrap().starts_with("--view: open:months is not a word a view takes"));
+        for words in ["none", "None", "Family,price:coal", "news,island:months", "open:Coal:months", "holdings,plain,0.5"] {
+            assert!(args(&format!("--view a.png,1850,,,,,,{words}")).is_ok(), "{words}");
+        }
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
