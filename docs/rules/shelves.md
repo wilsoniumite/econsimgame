@@ -315,6 +315,15 @@ from Carford's hungry January and which the rule ends).
   part of what the town made and sold of each) would fit the trade better
   than a share of people; it was not tried, because the design asks for the
   rule as it is written, and the January it mends is far the larger thing.
+  (*The check of this page* doubts the share good by good would help the
+  giver: the farms' part of the grain made is nine tenths, so it would send
+  nine tenths of the grain store away with them where the share of people
+  sends two fifths, and leave less for the people who stay. Melhope, island
+  33, made 157,256 of grain in 1825 and 8,953 in 1826 and got 0.33 of its
+  food in July; what it ran short of was grain carried in, which is the
+  importer's stock cycle `tr-loose-b.md` describes, and the mend that page
+  points at, buying from the month's arrivals as well as the store, is the
+  one to try first.)
 - **A new town's first spring.** The three town-years short of food that are
   left, on twenty-four islands, are towns in the year after their founding,
   whose district's stock came with them in December and was sold by June.
