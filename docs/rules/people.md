@@ -163,6 +163,14 @@ founded this year gets its people the same way, and with them
 the same share of the old market's stocks and its merchants' cash. Every one
 of these is a transfer from one town's purse to another's.
 
+Under the game's rules a town that already stood gets that share of the
+stocks too, with the merchants' cash and their measure of sales, whenever it
+takes a district: the merchants who served the district go on serving it.
+That has a switch of its own, `people.shelves_go`, and a page of its own,
+[shelves.md](shelves.md). Without it an old town that took a district opened
+January with the shelves of the town it had been, and most of the game's
+hungry months and its emigrants came from that January.
+
 This is what makes a small market area harmless. A town left with twenty
 cells has twenty cells' worth of people, not the crowd it had when it was
 large, and the arrivals limit keeps newcomers from pouring into it.
@@ -219,6 +227,7 @@ they go is the market's business.
 | `found_spacing` | 8 | a new town stands more than this many cells from any other |
 | `donor_max` | 0.2 | the most of its people a town gives to one founding |
 | `donor_rest` | 8 | years a giving town, or a new one, is left alone |
+| `shelves_go` | off; on in the game | the merchants' stock, cash and measure of sales go with a district to a town that already stood, as to a new one ([shelves.md](shelves.md)) |
 
 `growth_top` was set so that the island grows about fivefold on the port's
 income path: on seeds 1 to 8 (with `found_saving` at 0.05, before the review's

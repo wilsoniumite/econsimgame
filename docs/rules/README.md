@@ -496,6 +496,11 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **shelves**: when a district changes town, its merchants' stock, their cash
+  and their measure of sales go with it to whichever town takes it, as its
+  people do, so that a town that took a district does not open January with
+  the shelves of the town it was. [shelves.md](shelves.md),
+  `people.shelves_go`.
 - **towns**: town ground that is kept. A town keeps the cells it builds on and
   grows outward from them along its roads, taking in the works beside it, so
   the island's town ground is some five times as wide in 1900 as in 1750 and
