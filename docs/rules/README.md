@@ -203,7 +203,9 @@ ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
 checks nothing and stops with the four lines to paste into
 `tests/golden_game.txt`, after checking that the two runs agree. Who may do
 it: whoever builds, checks or lands a change that moves the game's rules on
-purpose, as above, and only after the sweep under the game's rules has been
+purpose, or what `run.bin` records for the viewer (the works' site planner
+moved `run.bin` alone by writing each good's price into its header), as
+above, and only after the sweep under the game's rules has been
 read and what moved is what was meant. A stage behind its own switch can
 show that nothing else moved: with the switch turned off in `game_params()`
 for one run (and not committed so), the test must pass on the old four. Who
