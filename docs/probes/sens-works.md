@@ -168,8 +168,8 @@ trades cannot keep up with the people (0.1).
    timber's and the cost of living's, an eighth fewer closures); a larger room the reverse. The
    level of the real wage, goods and baskets per head does not move at either end: the real wage
    of 1880-99 is within 2 per cent of the game's at 0.1125 and at 0.2. works.md's sweep in company
-   (eight islands, 0.10 to 0.30) found 0.15 best for the wage of 1900 by a tenth; on sixteen
-   islands, against three runs at 0.15, that does not show. So the choice is one of pacing and of
+   (eight islands, 0.10 to 0.30) found 0.15 best for the wage of 1900, a tenth above 0.2; on
+   sixteen islands, against three runs at 0.15, that does not show. So the choice is one of pacing and of
    how rough the ride is, not of how rich the island ends, and works.md's reason for 0.15 ("the
    steadier place") is the one that holds. Two things it moves that nobody had tied to it: the
    steel rail (an eighth of rails in 1890 at 0.1125, almost none at 0.2: dearer iron makes steel
@@ -182,10 +182,11 @@ trades cannot keep up with the people (0.1).
    C92) are to be met with carting in. It does not move 1900, and it moves the middle of the century
    much less than carting as a whole does.
 3. **`carting.enabled`**, for the size of what it costs: a fifth of the households' budget in
-   1850, an eighth in 1800, a twentieth of the people in 1900, two points of urban share, and
+   1850, an eighth in 1800, a twentieth of the people in 1900, two and a half points of the
+   towns' share in 1900, and
    the railway a tenth shorter. By 1900 it costs about 1 per cent of baskets and 3 of goods.
 4. **`works.hands_per_cell` and `works.cell_limit`** set the map: how many works stand, how large
-   and on how many cells (industry on 140 to 283 cells in 1900 across the values tried). They are
+   and on how many cells (industry on 140 to 283 cells in 1900 within a third either way). They are
    free of the economy from 1,500 to 8,000 hands and from a cell limit of 0.3 to 1.0, so they
    can be set for the picture; at 500 hands to a cell the island begins to pay (7 per cent of
    goods per head in 1900).
