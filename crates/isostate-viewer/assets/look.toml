@@ -429,11 +429,13 @@ rails = "#3d3633"
 # the dashed earthworks of a line being laid
 earthworks = "#a3967f"
 # an embankment: its top under the ballast, its grass sides (one in shade),
-# and stone where it meets the sea; the same stone builds viaducts, tunnel
-# portals and the abutments of girder bridges
+# and the stone it is pitched with where it meets the sea (a bank like the
+# grass ones, so winter frosts it and lays no snow on it); the same stone
+# builds viaducts, tunnel portals and the abutments of girder bridges
 bank_top = "#9a8f78"
 bank_grass = "#7f9a52"
 bank_grass_shade = "#6c8546"
+sea_wall = "#b9ad97"
 stone = "#b9ad97"
 viaduct_brick = "#a45f45"
 # a cutting: grass where it is shallow and rock where it is deep, each lit

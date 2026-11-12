@@ -269,6 +269,7 @@ pub struct Rail {
     pub bank_top: Colour,
     pub bank_grass: Colour,
     pub bank_grass_shade: Colour,
+    pub sea_wall: Colour,
     pub stone: Colour,
     pub viaduct_brick: Colour,
     pub cutting_grass_lit: Colour,
@@ -460,6 +461,7 @@ impl Palette {
                 &mut r.bank_top,
                 &mut r.bank_grass,
                 &mut r.bank_grass_shade,
+                &mut r.sea_wall,
                 &mut r.cutting_grass_lit,
                 &mut r.cutting_grass_shade,
                 &mut r.cutting_rock_lit,
@@ -540,7 +542,7 @@ mod tests {
             assert_eq!(c[3], SNOW);
         }
         // the ground round a house, its garden and what grows in it take frost, as the land does
-        for c in [pal.ground.garden, pal.ground.garden_bed, pal.ground.back_yard, pal.ground.farm_lane, pal.ground.yard_cinders, pal.foliage.hedge, pal.foliage.vegetables, pal.rail.bank_grass] {
+        for c in [pal.ground.garden, pal.ground.garden_bed, pal.ground.back_yard, pal.ground.farm_lane, pal.ground.yard_cinders, pal.foliage.hedge, pal.foliage.vegetables, pal.rail.bank_grass, pal.rail.sea_wall] {
             assert_eq!(c[3], FROST);
         }
         assert_eq!(pal.water.river[3], ICE);

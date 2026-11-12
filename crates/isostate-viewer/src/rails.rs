@@ -420,9 +420,12 @@ fn build_structures(ry: &RailYear, g: &Ground, lk: &Look) -> Builder {
                 let f1 = p1 + s1 * ((half + 1.5 * h1 + 0.01) * side);
                 let g0 = Vec3::new(f0.x, world::height_at(g, f0.x, f0.z) - 0.006, f0.z);
                 let g1 = Vec3::new(f1.x, world::height_at(g, f1.x, f1.z) - 0.006, f1.z);
-                // by the sea the bank is faced with stone
+                // by the sea the bank is faced with stone (task D: in a token of its own, which
+                // winter frosts as it does the grass banks; in the viaducts' stone it took snow,
+                // a white slab along the shore)
                 let sea_wall = world::height_at(g, f0.x, f0.z) < 0.03;
-                let col = if sea_wall { if side > 0.0 { stone } else { shade(stone, 0.85) } } else if (side > 0.0) == ((s0.x - s0.z) > 0.0) { grass } else { grass_dark };
+                let pitching = *lk.rail.sea_wall;
+                let col = if sea_wall { if side > 0.0 { pitching } else { shade(pitching, 0.85) } } else if (side > 0.0) == ((s0.x - s0.z) > 0.0) { grass } else { grass_dark };
                 if side > 0.0 {
                     b.quad(t0, g0, g1, t1, col);
                 } else {
