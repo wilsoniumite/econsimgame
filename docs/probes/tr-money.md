@@ -107,9 +107,9 @@ The rest of what moves the same way on fifteen or sixteen islands is small and g
 
 Sure of the size and the place: the books and the example agree to rounding on every year of sixteen islands, and the mend gives exactly 2 per cent. Fairly sure that the real economy is indifferent to the level of prices but for the freight: two sets of eight islands, twenty-year means, ranges that straddle 1. What would change my mind: a fact that moves the same way on all sixteen islands and has no constant in coins behind it. The other constants in coins I found are wide limits (the wage's ceiling of 500 in the wage search, the price floor and ceiling at 0.05 and 40 times base prices) that a third more on prices does not reach.
 
-### For the pass over all the rules: Stella's decision
+### For the pass over all the rules: the designer's decision
 
-It is the port's rule, and the golden test holds the port, so any mend is a switch under the game's rules alone (`docs/rules/README.md`). What she needs to choose:
+It is the port's rule, and the golden test holds the port, so any mend is a switch under the game's rules alone (`docs/rules/README.md`). What is to be chosen:
 
 - **Leave it.** The game's money grows 1.72 to 1.78 per cent a year and the shortfall wanders with the money owed (to 1.58 under large harvest shocks). Nothing real depends on that except through the freight rate.
 - **Issue on the true total, behind a switch.** One line. Prices and money wages a third higher by 1900, the price index of the game's charts with them; carting cheaper, fewer carters, two or three fewer towns and a tenth less canal by 1900 unless the freight moves with it. Every number a scorecard was read against moves by noise or more, so it should come before the pass over the rules or as its first step, not after.
@@ -175,7 +175,7 @@ It is the same thing as section 1. The issue is smaller because more of the mone
 
 ## What it means for the pass over all the rules
 
-- **`money_growth` and the issue (`econ::step_month`, "dividends, common fund, issuance").** A decision for Stella, set out at the end of section 1. Either way the scorecard should not read the price level or money wages against a target of 2 per cent.
+- **`money_growth` and the issue (`econ::step_month`, "dividends, common fund, issuance").** A decision for the designer, set out at the end of section 1. Either way the scorecard should not read the price level or money wages against a target of 2 per cent.
 - **`freight` (`Params::freight`).** The one number through which the level of prices reaches the real island: carters, carting's share, town foundings, canals. It belongs with the decision on the issue, and with checked-rules row 14.
 - **The merchants' debts under the price rule.** Half the money by 1900, all of it at large shocks. Nothing in the economy minds, but it bends the count of section 1 and it is an odd thing for merchants to do for a century. Worth a trace of its own with the books' `merchants_kept` and `stock_value` (it is not in piece 12's list).
 - **The money check's allowance** (C12): a few roundings of the purses' gross, not a millionth of the net, would stop the false alarms.
