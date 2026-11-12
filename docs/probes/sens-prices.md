@@ -189,9 +189,11 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
 
 - `prices.markup` of 1.5 and 2: 21 and 60 famine years a run, tens of thousands of
   emigrants, every price swinging harder than the port's. Famine years already 1.8 a run
-  at 1.0. No town is emptied (the count of towns never falls, and people never fall by more
-  than three per cent in a year on the islands opened), and no run failed the money check;
-  it is a starving island, not a broken program.
+  at 1.0. The island's people never fall by more than 1.1 per cent from one year's mean to
+  the next on any of the eight islands at 2 (and not at all at 1.5), and no run failed the
+  money check; it is a starving island, not a broken program. Whether a single town is
+  emptied the sweeps cannot say: they keep no count of people town by town, and the count
+  of towns tells nothing, since no rule ever removes a town.
 - `engel.y_ref` of 1.0: 2.5 famine years a run, a twentieth fewer people. The engel page
   saw this on two islands with a steep curve; it holds at the game's strength.
 - Nothing else tried breaks. Every one of the 304 runs passed the monthly money check.
@@ -215,16 +217,17 @@ against a hole, not a tuning knob. The one hint, fewer and larger works with a f
 ## What I would look at first in a pass over the rules
 
 1. **Decide `y_ref` as a choice about towns against famines**, not as a calibration. The
-   page's rule (set it where the island starts) now says about 1.55, which gives three to
-   four points more town before 1850, one and a half by the 1890s, two per cent fewer people
+   page's rule (set it where the island starts) now says about 1.55, which gives two and a
+   half to four points more town before 1850, one and a half by the 1890s, two per cent fewer people
    and a tenth more swing in grain. Settle it with the harvest in view, on sixteen islands.
 2. **Move the markup's test**: the prices page asks for a zigzag under 1.2; today's game is at
    2.0 with the game's markup. Try 0.6 to 0.7 on sixteen islands with the shock test of
    `examples/prices_probe.rs`, and watch the famine count, which is the first thing to rise.
 3. **Leave strength and the brake alone.** Strength's work is now mostly done by income; the
    brake's numbers do nothing measurable.
-4. **Re-measure the curve's ceiling.** The engel page's "just under four in ten" was set at an
-   income of 3.6; at 8.9 the towns are at 0.42 and still rising. The richer set of shares
+4. **Re-measure the curve's ceiling.** The engel page's "just under four in ten" was measured
+   on two richer islands of the port alone, at 5.3 and about 7 bundles (0.37 and 0.38); today's
+   game, at 8.9 bundles and with the other mechanisms, has the towns at 0.42 and still rising. The richer set of shares
    (content, not a setting) is now what decides how far they go.
 
 ## Not done
