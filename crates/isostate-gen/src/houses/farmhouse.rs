@@ -1,12 +1,12 @@
 use crate::colour::{pick, shade};
 use crate::hash::Seed;
 use crate::houses::cottage::back_door;
-use crate::houses::kit::{Detail, End, Kit, Open, Opening, Over, Range, RoofSpec, Side, Wall, FOOT};
+use crate::kit::{Detail, End, Kit, Open, Opening, Over, Range, RoofSpec, Side, Wall, FOOT};
 use crate::houses::roof::Cover;
 use crate::houses::{door_at, hearth_smoke, window_at};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::houses::kit::STOREY;
+use crate::kit::STOREY;
 use crate::site::Site;
 
 /// The house of a farmstead. The site is the middle of it; its front is +z.

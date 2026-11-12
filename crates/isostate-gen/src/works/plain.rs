@@ -15,7 +15,9 @@ pub fn plain(c: &mut Ctx) {
         for i in 0..cols {
             let x = (i as f32 - (cols as f32 - 1.0) * 0.5) * (len + 0.012);
             let s = c.shed(x, -hd + 0.008 + dep * 0.5 + j as f32 * (dep + 0.012), len, dep, h, false, wall, roof);
-            c.windows(&s, 1, 0, 1, 0.012, false, *pal.glass.window);
+            c.windows(&s, 0, 1, false);
+            // a cart's way in
+            c.doors(&s, super::kit::Face::Front, -len * 0.13, len * 0.13, 0.0, h * 0.68, false, *pal.timber.door);
         }
     }
     let front = -hd + 0.008 + rows as f32 * (dep + 0.012);

@@ -26,9 +26,14 @@
 //!                     frames' work took (those a month or a year came in apart)
 //!     run:SECONDS     the same, keeping the years going: a decision that opens
 //!                     is given its default and the clock is started again
+//!     until:PART      let the game run until the clock is this far through a
+//!                     year (until:0.95 is just before the year turns)
 //!     print[:NOTE]    print the clock and its date, the cards (the opening card
 //!                     in its own words), the orders that wait for the year's
-//!                     end and the order panel
+//!                     end, the order panel, and what scenery is on screen and
+//!                     what putting it there cost
+//!     scenery[:NOTE]  build the year on the clock afresh and say whether what
+//!                     is on screen is that; stops the run if it is not
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none)
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
@@ -77,7 +82,10 @@ enum Step {
     Settle,
     /// seconds, and whether to answer decisions and keep the clock going
     Sample(f32, bool),
+    /// how far through a year the clock must be
+    Until(f32),
     Print(String),
+    Scenery(String),
     Tab(Option<ui::Tab>),
     Pick(f32, f32),
     Look(f32, f32, f32),
@@ -208,7 +216,12 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "settle" => Step::Settle,
             "sample" => Step::Sample(num("the seconds")?, false),
             "run" => Step::Sample(num("the seconds")?, true),
+            "until" => match num("how far through the year")? {
+                part if (0.0..1.0).contains(&part) => Step::Until(part),
+                _ => return Err(format!("{part}: a part of a year runs from 0 to just under 1")),
+            },
             "print" => Step::Print(arg.to_string()),
+            "scenery" => Step::Scenery(arg.to_string()),
             "tab" => Step::Tab(ui::Tab::parse(arg)),
             "pick" => match nums()?.as_slice() {
                 [x, z] => Step::Pick(*x, *z),
@@ -405,6 +418,7 @@ fn print_state(world: &mut World, note: &str) {
             l.standing.pegs.len()
         );
     }
+    println!("script:   {}", crate::scenery_line(world));
     // the opening card in its own words: what a game gone on with is told of its save
     let mut q = world.query_filtered::<Entity, With<crate::game::Welcome>>();
     let card: Vec<Entity> = q.iter(world).collect();
@@ -732,7 +746,29 @@ fn step(world: &mut World, sc: &mut Script) {
                     print_tally(world, &sc.tally, s);
                 }
             }
+            Step::Until(part) => {
+                if !sc.begun {
+                    sc.begun = true;
+                    sc.until = now + 60.0;
+                }
+                // a decision that opens is given its default, as `run` does, to keep the years going
+                if keep_playing(world, sc) {
+                    return;
+                }
+                let tl = world.resource::<Timeline>();
+                done = tl.playing && tl.t.fract() >= part;
+                if !done && now >= sc.until {
+                    fail(&format!("until:{part}: the clock is {} and did not come to that part of a year in a minute", if tl.playing { "running" } else { "stopped" }));
+                }
+            }
             Step::Print(note) => print_state(world, &note),
+            Step::Scenery(note) => {
+                let note = if note.is_empty() { String::new() } else { format!("[{note}] ") };
+                match crate::check_scenery(world) {
+                    Ok(said) => println!("script: {note}scenery: {said}"),
+                    Err(why) => fail(&format!("{note}scenery: {why}")),
+                }
+            }
             Step::Tab(t) => {
                 world.resource_mut::<UiState>().tab = t;
                 frame = true;
@@ -799,6 +835,9 @@ fn step(world: &mut World, sc: &mut Script) {
                 sc.frames = sc.frames.saturating_sub(1);
                 if done {
                     print_map(world, &note);
+                    // whether the trees stand aside for a map view, as they are set this frame
+                    let (shown, all) = crate::trees_showing(world);
+                    println!("script:   trees: {shown} of {all} meshes showing");
                 }
             }
             Step::Shot(path) => {

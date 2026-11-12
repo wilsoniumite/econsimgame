@@ -326,9 +326,24 @@ fn pump(
                 months_into_run(&mut game, &mut data, &mut ui);
                 // copy-on-write: a scenery build may still hold the old run
                 let Data { r, g, slots, .. } = &mut *data;
+                // (task D) what a new year costs the frame it arrives in, with ISOSTATE_TIMING
+                let (t0, held) = (std::time::Instant::now(), std::sync::Arc::strong_count(r) > 1);
                 let r = std::sync::Arc::make_mut(r);
+                let t1 = t0.elapsed().as_secs_f32();
                 live::apply_year(r, y);
+                let t2 = t0.elapsed().as_secs_f32();
                 scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
+                if std::env::var_os("ISOSTATE_TIMING").is_some() {
+                    eprintln!(
+                        "year {} arrives: {:.0} ms on the main thread ({:.0} taking the run{}, {:.0} writing the year in, {:.0} standing its new works)",
+                        y.year,
+                        t0.elapsed().as_secs_f32() * 1e3,
+                        t1 * 1e3,
+                        if held { ", copied because a scenery build holds it" } else { "" },
+                        (t2 - t1) * 1e3,
+                        (t0.elapsed().as_secs_f32() - t2) * 1e3
+                    );
+                }
                 year_families(&mut fam, &y.families, y.year as i32);
                 // the turn's orders have been carried out since the year's picture was taken
                 if let Some(rep) = &end.family {

@@ -6,6 +6,22 @@ use serde::Deserialize;
 /// The colour of a mesh corner: linear red, green, blue and alpha.
 pub type Rgba = [f32; 4];
 
+/// (Winter, task D.) What is built is drawn solid, so a corner's alpha is not
+/// how much shows through: it says what winter does to a surface that faces
+/// the sky, and the viewer's material for buildings (`src/built.wesl`) reads
+/// it. A generator never sets it: it comes with the token, from the palette
+/// (`Palette::mark_for_winter`), and `shade` and `lerp` carry it along.
+pub mod settles {
+    /// Snow lies on it: a roof, a wall's top, a stack of goods. Every token that is not marked.
+    pub const SNOW: f32 = 1.0;
+    /// It is ground, or grows on it: it takes the frost the land round it takes, and its green goes dull.
+    pub const FROST: f32 = 0.5;
+    /// Standing water: it freezes over.
+    pub const ICE: f32 = 0.25;
+    /// A fire, or the mouth of a flue: nothing settles.
+    pub const NOTHING: f32 = 0.0;
+}
+
 /// A colour from the look file: "#rrggbb", or [red, green, blue] from 0 to 1,
 /// both in sRGB as a painter would pick them. It stands for its linear RGBA,
 /// which is what mesh corners want (`*palette.brick.red`), and keeps the sRGB
@@ -36,6 +52,12 @@ impl Colour {
     /// The colour as it was written: sRGB red, green and blue from 0 to 1.
     pub fn srgb(self) -> [f32; 3] {
         self.srgb
+    }
+
+    /// The same colour with a mark for what winter does to it (`settles`).
+    pub fn settling(mut self, mark: f32) -> Colour {
+        self.linear[3] = mark;
+        self
     }
 
     /// The colour as a shader wants it in a uniform: sRGB, as the ground and
@@ -103,9 +125,10 @@ pub fn shade(c: Rgba, k: f32) -> Rgba {
     [c[0] * k, c[1] * k, c[2] * k, c[3]]
 }
 
-/// From `a` to `b` as `t` goes from 0 to 1.
+/// From `a` to `b` as `t` goes from 0 to 1. The mix is marked for winter
+/// (`settles`) as the larger part of it is.
 pub fn lerp(a: Rgba, b: Rgba, t: f32) -> Rgba {
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, 1.0]
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, if t < 0.5 { a[3] } else { b[3] }]
 }
 
 #[cfg(test)]
@@ -148,5 +171,18 @@ mod tests {
     fn shade_and_lerp() {
         assert_eq!(shade([1.0, 0.5, 0.25, 1.0], 0.5), [0.5, 0.25, 0.125, 1.0]);
         assert_eq!(lerp([0.0, 0.0, 0.0, 1.0], [1.0, 2.0, 4.0, 1.0], 0.5), [0.5, 1.0, 2.0, 1.0]);
+    }
+
+    #[test]
+    fn a_mark_for_winter_goes_with_the_colour() {
+        let roof = Colour::from_srgb([0.7, 0.3, 0.2]);
+        let flue = Colour::from_srgb([0.2, 0.2, 0.2]).settling(settles::NOTHING);
+        assert_eq!((roof[3], flue[3]), (settles::SNOW, settles::NOTHING));
+        // the mark changes nothing else, and a darker face of the same thing keeps it
+        assert_eq!(flue[..3], Colour::from_srgb([0.2, 0.2, 0.2])[..3]);
+        assert_eq!(shade(*flue, 0.8)[3], settles::NOTHING);
+        // a mix is what the larger part of it is
+        assert_eq!(lerp(*roof, *flue, 0.3)[3], settles::SNOW);
+        assert_eq!(lerp(*roof, *flue, 0.7)[3], settles::NOTHING);
     }
 }

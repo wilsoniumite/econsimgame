@@ -632,3 +632,21 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     unsafe { std::env::remove_var("ISOSTATE_SAVES") };
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_month_leaves_what_scenery_is_built_from_as_it_was() {
+    // (winter, task D) `rebuild_year` takes the years the run holds for the state of the run
+    // that scenery is built from: a year built again from the same years is the camera's
+    // alone, and only its houses go on screen again. That holds while a month writes
+    // nothing a year's scenery reads, and a year's turn always adds a year
+    let mut t = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, ..default() });
+    let of = |r: &Replay| (r.filled, r.header.firms.len(), bits(&r.firm_k), bits(&r.town_pop), r.mix_a.clone(), r.mix_b.clone(), r.mix_s.clone());
+    let before = of(&t.r);
+    let mut months = 0;
+    while !t.month() {
+        months += 1;
+        assert!(of(&t.r) == before, "month {months} changed the years, the works or the land the scenery is built from");
+    }
+    assert!(months >= 11, "a year of months went by ({months})");
+    assert_eq!(t.r.filled, before.0 + 1, "a year's turn adds a year to the run");
+}

@@ -1,12 +1,12 @@
 use crate::colour::{pick, shade};
 use crate::hash::Seed;
 use crate::houses::cottage::back_door;
-use crate::houses::kit::{Detail, End, Era, Kit, Open, Opening, Range, RoofSpec, Side, FOOT};
+use crate::kit::{Detail, End, Era, Kit, Open, Opening, Range, RoofSpec, Side, FOOT};
 use crate::houses::roof::Roof;
 use crate::houses::{door, door_at, hearth_smoke, timber_frame, window, window_at, Fabric, BACK_ROOM};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::houses::kit::STOREY;
+use crate::kit::STOREY;
 use crate::site::Site;
 
 /// A house in a continuous frontage.
