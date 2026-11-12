@@ -49,11 +49,14 @@ pub struct ChronicleParams {
     pub per_decade: usize,
     /// A finished decade keeps at least this many, if it has them above `fill_floor`.
     pub at_least: usize,
-    /// At most this many of one kind in a decade (slumps called and dated count
-    /// as one kind, as do railways planned and opened).
+    /// At most this many of one kind in a decade (railways planned and opened
+    /// count as one kind, as do a harvest and its dearth).
     pub per_kind: usize,
     /// Inventions are what the period is remembered for: they may have more.
     pub inventions: usize,
+    /// And so are the turning points: the 1840s that saw more hands in workshops
+    /// than on the land also saw rolling mills overtake the rail forges.
+    pub turning_points: usize,
     /// An item lighter than this is kept only to fill a thin decade.
     pub floor: f64,
     /// And one lighter than this is never kept.
@@ -114,6 +117,7 @@ impl Default for ChronicleParams {
             at_least: 2,
             per_kind: 1,
             inventions: 2,
+            turning_points: 2,
             floor: 0.6,
             fill_floor: 0.45,
             own_great: 0.7,
@@ -1404,10 +1408,13 @@ fn closure_provenance(st: &State, C: &Content, P: &Params, year: i64, events: &m
 
 // ---------------------------------------------------------------- ranking
 
-/// The kinds that count as one when a decade's places are shared out.
+/// The kinds that count as one when a decade's places are shared out. An alarm
+/// and a verdict are not one kind: the verdict that dates an alarm's slump
+/// takes its place anyway (`rank`), so all that sharing a kind did was drop a
+/// fall still running when an earlier slump was dated in the same decade
+/// ("Output falls 10.0%" in 1895, beside the depression of 1884–1890).
 fn class(e: &Event) -> &str {
     match e.kind.as_str() {
-        "alarm" | "verdict" => "cycle",
         "railway" | "rail_plan" => "railway",
         // canals (docs/rules/canals.md): planned and opened are one kind too
         "canal" | "canal_plan" => "canal",
@@ -1482,7 +1489,11 @@ pub fn rank(events: &mut [Event], P: &Params, start_year: i64, end_year: i64, up
         let mut of_class: BTreeMap<String, usize> = BTreeMap::new();
         let mut keep = |i: usize, kept: &mut Vec<usize>, events: &[Event]| -> bool {
             let c = class(&events[i]);
-            let cap = if c == "discovery" { Q.inventions } else { Q.per_kind };
+            let cap = match c {
+                "discovery" => Q.inventions,
+                "crossing" => Q.turning_points,
+                _ => Q.per_kind,
+            };
             let n = of_class.entry(c.to_string()).or_insert(0);
             if kept.len() >= Q.per_decade || *n >= cap || kept.contains(&i) {
                 return false;
@@ -1702,6 +1713,45 @@ mod tests {
         // charcoal burning is told as what it is; the other trades by their group
         assert_eq!(trade_of(&C, charcoal).as_deref(), Some("charcoal burning"));
         assert_eq!(trade_of(&C, bricks).as_deref(), Some("building materials"));
+    }
+
+    #[test]
+    fn a_decade_keeps_two_turning_points_and_a_fall_beside_an_earlier_slump_dated() {
+        let game = crate::params::game_params();
+        let item = |year: f64, kind: &str, weight: f64, title: &str| Event::new(year, kind, weight, title.to_string(), String::new());
+        // island 4's 1840s and 1890s, as they were told
+        let mut verdict = item(1891.95, "verdict", 0.75, "The depression of 1884–1890");
+        verdict.span = Some([1884.0, 1890.0]);
+        let mut events = vec![
+            item(1841.95, "verdict", 0.75, "The slump of 1838–1839"),
+            item(1842.85, "steep", 0.80, "Coal glut"),
+            item(1843.8, "crossing", 0.85, "Rolling mills overtake the rail forges"),
+            item(1846.8, "crossing", 0.95, "More hands in workshops and mills than on the land"),
+            item(1849.8, "crossing", 0.85, "Converter steel overtakes crucible steel"),
+            verdict,
+            item(1895.85, "alarm", 0.80, "Output falls 10.0%"),
+            item(1899.9, "region", 0.62, "Wolfbrook is the fastest-growing town of the 1890s"),
+        ];
+        rank(&mut events, &game, 1750, 1900, 1900);
+        let kept: Vec<&str> = events.iter().filter(|e| e.kept == Some(true)).map(|e| e.title.as_str()).collect();
+        assert_eq!(
+            kept,
+            [
+                "The slump of 1838–1839",
+                "Coal glut",
+                "Rolling mills overtake the rail forges",
+                "More hands in workshops and mills than on the land",
+                "The depression of 1884–1890",
+                "Output falls 10.0%",
+                "Wolfbrook is the fastest-growing town of the 1890s"
+            ]
+        );
+        // an alarm its verdict has dated still gives way to it
+        let mut verdict = item(1767.95, "verdict", 0.75, "The slump of 1764–1765");
+        verdict.span = Some([1764.0, 1765.0]);
+        let mut events = vec![item(1765.85, "alarm", 0.8, "Output falls 3.2%"), verdict];
+        rank(&mut events, &game, 1750, 1900, 1900);
+        assert_eq!(events.iter().map(|e| e.kept).collect::<Vec<_>>(), [Some(false), Some(true)]);
     }
 
     #[test]

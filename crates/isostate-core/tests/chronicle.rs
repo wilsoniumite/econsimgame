@@ -46,7 +46,6 @@ fn decade(e: &Event) -> i64 {
 
 fn class(e: &Event) -> String {
     match e.kind.as_str() {
-        "alarm" | "verdict" => "cycle".to_string(),
         "railway" | "rail_plan" => "railway".to_string(),
         "harvest" | "dearth" => "harvest".to_string(),
         "family" if e.family == Some(0) => "own".to_string(),
@@ -165,7 +164,12 @@ fn a_decade_keeps_a_handful() {
             *of_class.entry(class(e)).or_insert(0) += 1;
         }
         for (c, n) in of_class {
-            assert!(n <= if c == "discovery" { Q.inventions } else { Q.per_kind }, "decade {d} keeps {n} of {c}");
+            let cap = match c.as_str() {
+                "discovery" => Q.inventions,
+                "crossing" => Q.turning_points,
+                _ => Q.per_kind,
+            };
+            assert!(n <= cap, "decade {d} keeps {n} of {c}");
         }
     }
     let total: usize = by_decade.values().map(|v| v.len()).sum();
