@@ -37,7 +37,14 @@ One probe is of the viewer, not the simulation, as it stood at cd9b41c (11 Novem
   and paused part-way with its work committed, so neither is on `main` yet
   (`docs/BACKLOG.md`).
 
-A probe of how the viewer should draw the second island generator's land
-(`docs/rules/land.md`) is measured and designed on its own branch,
-`night/dx-land-view`, and its critic was paused on 12 November; its page comes here
-when it lands.
+One probe is of the viewer against the core's second island, as both stood on `night/core`
+at 859b680 (12 November 2026):
+
+- `dx-land-view.md`: what it takes for the viewer to draw the land made by water
+  (`docs/rules/land.md`). What the core hands over (a grid of heights every 500 m, river
+  lines with width, level and flow, lakes, wet ground), how wrong today's picture is on it,
+  what the viewer invents that becomes untrue, and a design in seven stages from "the land
+  reaches the viewer" to "scarps and canyons made to read", with roads and bridges on real
+  rivers between. Its branch, `night/dx-land-view`, adds a measuring example to the core
+  (`examples/land_view_probe.rs`) and a probe to the viewer (`src/landview.rs`, behind
+  `ISOSTATE_LAND_VIEW`) that draws the core's ground, rivers and lakes with today's code.
