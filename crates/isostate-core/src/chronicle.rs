@@ -497,6 +497,43 @@ pub fn baseline(P: &Params, series: &[f64], y0: i64, year: i64, when: i64, v0: f
     Some((label, pairwise_sum(&v) / v.len() as f64))
 }
 
+/// The reason a market item on grain gives when the weather is the reason
+/// (`observer::yearly`'s steepness detector, under the harvest's rules). The
+/// detector reads a year's output against its trend and the price, and says
+/// "supply has failed while buyers still want it" of a fall in output, or "new
+/// capacity is flooding the market" of a rise. For grain the fall can be last
+/// year's bumper harvest not coming again, and the rise the harvest coming back
+/// after a short one; neither is a failure of supply or new capacity
+/// (docs/probes/news-read.md, fault 5). `rose` is whether output rose. The
+/// harvests are this year's and last year's (`harvest::yearly` runs first); a
+/// bumper or a poor one is one the harvest's news would tell (`news_z` of its
+/// usual spread), and "short" last year is a spread or more below an ordinary
+/// year. The harvest must have moved the same way as output, by a spread or
+/// more. Otherwise the detector's own reason stands.
+pub fn grain_reason(st: &State, P: &Params, good: &str, rose: bool) -> Option<&'static str> {
+    let H = &P.harvest;
+    if !P.chronicle.enabled || !H.enabled || good != "grain" || H.island_sd <= 0.0 {
+        return None;
+    }
+    let past = &st.harvest_past;
+    let [.., last, now] = past[..] else { return None };
+    if !(now > 0.0 && last > 0.0) {
+        return None;
+    }
+    let (now, last) = (now.ln(), last.ln());
+    let (sd, news) = (H.island_sd, H.news_z * H.island_sd);
+    let moved = now - last;
+    match rose {
+        true if moved < sd => None,
+        false if moved > -sd => None,
+        true if now > news => Some("the harvest is a bumper one"),
+        true if last < -sd => Some("the harvest has come back after a short one"),
+        false if now < -news => Some("the harvest has come in short"),
+        false if last > news => Some("last year's harvest was a bumper one, and this year's is not"),
+        _ => None,
+    }
+}
+
 /// Cities passing round numbers, for every town and not only the first
 /// (`observer::yearly` calls this in place of its own loop). The first town
 /// past a size is told as the port tells it; a later one more quietly, with
@@ -1565,6 +1602,26 @@ mod tests {
         // the game tells 13 and 99 per cent, and not what would print as 100 or 1288
         assert!(return_told(&game, 0.13) && return_told(&game, 0.994));
         assert!(!return_told(&game, 0.996) && !return_told(&game, 12.88));
+    }
+
+    #[test]
+    fn grain_that_moved_with_the_weather_says_so() {
+        let game = crate::params::game_params();
+        assert!(game.harvest.enabled && game.chronicle.enabled);
+        let st = |past: &[f64]| State { harvest_past: past.to_vec(), ..State::default() };
+        // island 4, 1818: a fall in output the year after a bumper harvest of 10 per cent
+        assert_eq!(grain_reason(&st(&[1.0, 1.10, 0.975]), &game, "grain", false), Some("last year's harvest was a bumper one, and this year's is not"));
+        // island 7, 1831: a rise after the third lean year, 14 per cent short
+        assert_eq!(grain_reason(&st(&[0.97, 0.96, 0.86, 1.03]), &game, "grain", true), Some("the harvest has come back after a short one"));
+        assert_eq!(grain_reason(&st(&[1.0, 1.12]), &game, "grain", true), Some("the harvest is a bumper one"));
+        assert_eq!(grain_reason(&st(&[1.0, 0.88]), &game, "grain", false), Some("the harvest has come in short"));
+        // output against the weather, or a harvest that hardly moved: the detector's own reason
+        assert_eq!(grain_reason(&st(&[1.10, 0.975]), &game, "grain", true), None);
+        assert_eq!(grain_reason(&st(&[1.0, 1.02]), &game, "grain", true), None);
+        // other goods, the port, and a first year with nothing to compare
+        assert_eq!(grain_reason(&st(&[1.10, 0.975]), &game, "coal", false), None);
+        assert_eq!(grain_reason(&st(&[1.10, 0.975]), &crate::params::default_params(), "grain", false), None);
+        assert_eq!(grain_reason(&st(&[0.9]), &game, "grain", false), None);
     }
 
     #[test]
