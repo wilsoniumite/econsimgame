@@ -73,11 +73,11 @@ knows which layer is at the surface.
   square km, 100 to 520 m up and falling gently, no two within 28 km), the
   floor below the lip at the lower end so that the water stands the whole
   length, and on some islands a broad hollow in a lowland basin, its shore
-  drawn in lobes and bays (86 to 223 square km on seeds 1 to 23). A trough
+  drawn in lobes and bays (86 to 223 square km on seeds 1 to 40). A trough
   is drawn 4 to 11 km long, but stops short where the valley comes down to
   60 m or has fallen 60 m, and is not dug at all if that leaves less than
   2 km. The upland lakes come out mostly 4 to 10 square km, with a few of 1
-  to 3 and of 10 to 16 (seeds 1 to 23; some of the smallest are hollows
+  to 3 and of 10 to 18 (seeds 1 to 40; some of the smallest are hollows
   the erosion left, not troughs). The chance drawn for the lowland lake is
   `lowland_lake`, 0.35, but a hollow scooped beside the coast is taken by
   the sea and is a bay: ten of forty seeds have the lake. These are the
@@ -94,9 +94,9 @@ knows which layer is at the surface.
 - *Rain* comes in with the wind off the sea, falls more as the air is pushed
   up over high ground, and less beyond it: `rain` (900 mm) on the windward
   coast, most on the windward slopes of the belt, least in the rain shadow
-  (the wettest land cell has four to six times the rain of the driest, 3.98
-  to 6.14 times on seeds 1 to 23, the driest 350 to 500 mm a year and the
-  wettest 1,950 to 2,250; the test asks for more than twice).
+  (the wettest land cell has four to six times the rain of the driest, 3.6
+  to 6.9 times on seeds 1 to 40, the driest 300 to 550 mm a year and the
+  wettest 1,900 to 2,300; the test asks for more than twice).
 - *Runoff* is a monthly water balance in each cell: winter is wetter, summer
   takes more back, the soil holds 100 mm, and what is over runs off at once
   or seeps out slowly. It is kept by cell and month.
@@ -118,7 +118,8 @@ moved by Howard and Knutson's model of meander migration: a bank erodes at a
 rate set by the curvature of the bend there and, more strongly, by the bends
 just upstream, so bends grow, travel down the valley, and at last meet and
 cut themselves off, leaving an oxbow. A reach steeper than 4 in 1,000, or a
-stream of less than 1 cubic metre a second, stays where the erosion put it;
+stream of less than 1 cubic metre a second, stays where the erosion put it,
+and a reach moves the slower the nearer its fall is to that;
 a bend cannot climb the valley side (it moves freely where the ground is
 within 3 m of the water and not at all where it is 8 m above); a reach on
 gravel too steep to hold one channel is marked braided. The biggest rivers
@@ -148,8 +149,8 @@ the fine grid:
 - *Tideways*. The sea's rise drowned the lower valleys into inlets narrower
   than a cell, so a river usually meets the tide a few cells inside what the
   cells call land (100 to 200 land cells an island, give or take, have
-  tidewater in them and no cell of sea beside them: 99 to 207 on seeds 1
-  to 23). Left at that, no navigable river reached the coast on twelve
+  tidewater in them and no cell of sea beside them: 82 to 234 on seeds 1
+  to 40, and 99 to 207 on 1 to 12). Left at that, no navigable river reached the coast on twelve
   islands of sixteen, and the first towns had no port. So the cells follow
   the tide: every cell with tidewater knows the neighbour its inlet runs on
   into (always one nearer the open sea, counted in fine steps over the
@@ -161,7 +162,7 @@ the fine grid:
   `river`; each island has 20 to 60 of them (21 to 59 on seeds 1 to 40).
   Where it is a navigable river's flow the cell is `navigable` (tidewater is
   level) and it is `coast`: ships come up it. Fewer cells are that, 15 to
-  40 an island (15 to 39 on seeds 1 to 23, counting the estuary cells that
+  40 an island (14 to 39 on seeds 1 to 40, counting the estuary cells that
   are both navigable and coast, which may take in a few made navigable by
   their own river). With them nine tenths of an island's navigable water is
   joined to the open sea by navigable water: 0.90 of it on seeds 1 to 12
@@ -171,10 +172,9 @@ the fine grid:
   rain and the rock's soil, best on the flood plain's silt where it is not
   marsh; grass where it is wet, cool or steep and on the water meadows;
   woodland from rain and height, thinning between 380 and 760 m to a
-  third or less of full woodland above that (0.30 to 0.32 at most on the
-  first eight seeds, on 1 to 29 such cells an island; a tree line, but not
-  a bare one); stone where hard
-  rock is laid bare (scarps, gorges, the belt); clay in the vales and on the
+  third or less of full woodland above that (0.28 to 0.33 at most, on 1 to
+  34 such cells an island, seeds 1 to 40; a tree line, but not a bare
+  one); stone where hard rock is laid bare (scarps, gorges, the belt); clay in the vales and on the
   alluvium; coal in the coalfields, richer where the land has been worn down
   nearly to the seam; ore in the belt, and ironstone with the coal.
 - *The first towns* are chosen by the port's rule (a fertile country round
@@ -186,11 +186,15 @@ the fine grid:
   of 3 square km or more, a gap through the hills. Each adds 0.4 times its
   strength to the port's score: 0.1 to 0.3 for an estuary's head, by the
   size of its river, 0.5 for a confluence or a gap, 0.8 for a lake's
-  outlet. Of the first six towns on twelve islands, 30 stand
-  at an estuary's head, 27 at a confluence, 7 at a lake's outlet and 8 on
-  plain ground; none took a gap, though each island has 5 to 24 cells that
-  count as one (4 to 24 on forty seeds). The first town of all is nearly always at the head of a
-  large estuary.
+  outlet. Of the first six towns on twelve islands, 30 stand at an
+  estuary's head, 27 at a confluence, 7 at a lake's outlet and 8 on plain
+  ground (by the kind each site is given: a confluence on a tideway counts
+  as a confluence even where it is also the tideway's head); none took a
+  gap, though each island has 5 to 24 cells that count as one (4 to 24 on
+  forty seeds). The first town of all stands on a tideway with 34 to 114
+  cubic metres a second coming down it on all twelve islands, and at the
+  tideway's head on eight of them; on half the twelve it is counted a
+  confluence.
 
 ### A lake cell is water
 
@@ -287,7 +291,7 @@ harvest's wet and dry years, by district): flow is runoff gathered
 downstream, so a dry district upstream lowers the river all the way to the
 sea. `discharge_month(&world, m)` gives the average year's flow in month m.
 The largest navigable river runs six to eight times as high in January as
-in July on seeds 1 to 8 (5.7 to 8.7 times on 1 to 23), since summer's
+in July on seeds 1 to 8 (5.2 to 9.9 times on 1 to 40), since summer's
 runoff is little more than what seeps out of the ground; the test asks only
 for 1.3 times, on seeds 1 and 6.
 
