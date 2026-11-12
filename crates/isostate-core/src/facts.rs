@@ -12,7 +12,11 @@
 //! snapshots (`record.rs`) and the final state. Two things nobody keeps, how
 //! many people lived in towns growing at the cap and how much land lay under
 //! each use, are noted between years by `gather_year`, which the sweep calls
-//! from its own loop.
+//! from its own loop; and what only a month shows (a town's wage against the
+//! middle town's, the hands at work against the people, the year's weight
+//! carried) is noted between months by `gather_month` (`run_year_noting` does
+//! both). The facts the pass over the rules added for its card are listed in
+//! `docs/rules/scorecard.md`.
 //!
 //! Everything is worked out from the content, so another content file works: a
 //! method or good named below that the content does not have is skipped.
