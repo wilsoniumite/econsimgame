@@ -56,6 +56,7 @@ pub mod record;
 pub mod rng;
 pub mod roads;
 pub mod save;
+pub mod scorecard;
 pub mod sim;
 pub mod state;
 pub mod sweep;
