@@ -29,12 +29,19 @@ month to the number last month's bill would pay, as the farms' and the
 works' hands are hired part of the way to what their employers want
 (`labor_adjust_ex` 0.15, `labor_adjust_firm` 0.35). The first version hired
 them all at once, and that set towns with a heavy bill swinging ("The wage
-that flipped", below).
+that flipped", below). The cap holds after the step too: a town never has
+more than `max_share` of its hands carting.
+
+The carters come out of the supply first. Under the game's rules two more
+groups follow them, each from the hands still left: the hands sinking new
+workings (`mines.md`) and the navvies digging a canal (`canals.md`). So the
+supply the wage clears is smaller again by those.
 
 The bill is added up where the carting money is already paid out, to the
 same town it is paid to, so the carters live where they are paid: a cell's
-produce on its way to market, a works' inputs and output, and what a town
-pays to send its trade to other towns. That last part is the port's whole
+produce on its way to market, a works' inputs and output, and the carriage
+on the trade a town sends to other towns, which the buying town's merchants
+pay to the sending town's households. That last part is the port's whole
 charge on trade, which is the carriage and a handling charge of 3 per cent
 of the goods' value (`handling`); both were income that cost nobody
 anything, and both are now somebody's time, but only the carriage falls when
@@ -44,7 +51,8 @@ once the month's goods have moved.
 Nothing else changes, and no money moves that did not move before: the
 carting money still goes to households, who are now the carters. The wage
 then clears a smaller supply of hands for everything else. A better road, a
-railway or a canal lowers the bill, and next month the hands are back.
+railway or a canal lowers the bill, and from the next month the hands come
+back, a quarter of the way each month.
 
 Carters are counted in each town's employment (they are at work), but they
 belong to no sector, so the farm and industry shares of employment are shares
@@ -71,6 +79,9 @@ for bit, that also keeps the bill (a test holds it to that), so the
 Seeds 1 to 8 to 1900, the port's rules with only this switched on, against
 the port. Mean, and in brackets the least and greatest seed. Sweep folders
 `sweep-carting*` and `sweep-railways-carting*` under `.claude/night/reports/`.
+These are the port with carting alone, with carters hired at once (before
+`adjust`); a sweep of today's game cannot give them and they were not
+measured again. The game as it stands is under "In company".
 
 **How many carters.** Under the port's own railways:
 
@@ -258,8 +269,38 @@ cent of hands in 1800 and 3.3 in 1900, and the baskets of 1750, 1850 and
 carting 1.65, 7.30 and 8.94: half the gap of 1850 closes.
 
 Because a run with carting starts lower, the ratios to a run's own 1750 hide
-all of this (the real wage of 1900 is 2.77 times 1750's now and was 2.86).
-Baskets and goods per head are the facts to read.
+all of this (at the merge the real wage of 1900 was 2.77 times 1750's, and
+2.86 before it). Baskets and goods per head are the facts to read.
+
+All of this section is the game as it stood at that merge, with carters
+hired at once. The people rules (which brought `adjust`), kept town ground,
+the mines, the canals and the books of account have come in since, so none
+of it can be read from a sweep of today's game, and it was not measured
+again. Where the same fact exists today it reads as follows: the merge's
+numbers from the tables above (the game's railways, twelve seeds), beside the
+game as it is played now (seeds 1 to 8, six families,
+`isostate-core sweep --seeds 1-8 --rules game --families 6`, 12 November
+2026; the mean over seeds):
+
+| six families | at the merge | the game now |
+|---|---|---|
+| carters over all hands 1750 / 1800 / 1850 / 1900 | 0.140 / 0.142 / 0.086 / 0.066 | 0.125 / 0.118 / 0.083 / 0.064 |
+| carting bill over output, same years | 0.100 / 0.096 / 0.054 / 0.045 | 0.091 / 0.079 / 0.052 / 0.044 |
+| baskets per head, same years | 1.50 / 3.02 / 4.88 / 8.56 | 1.52 / 3.30 / 5.18 / 8.76 |
+| goods per head, same years | 2.47 / 4.45 / 7.18 / 11.34 | 2.59 / 4.83 / 7.92 / 11.4 |
+| urban share 1750, 1900 | 0.210, 0.420 | 0.218, 0.419 |
+| people in 1900 | 672,000 | 732,000 |
+| towns in 1900 | 15.7 | 17.8 |
+| works standing in 1900 | 667 | 738 |
+| famine years in a run | 2.0 | 0.4 |
+| real wage of 1900 over 1750's | 2.77 | 2.60 |
+
+So it is an eighth of all hands on the road before the railway now, not a
+seventh, and the bill is a little lighter in 1800; by 1900 the two stand
+where they stood. The slow middle of the century is still there: the
+baskets of 1850 are 5.18, between seeds 3.69 and 7.33, where at the merge
+with carting off they were 6.54 (the level table above). Whether the delay is
+still ten years has not been measured again.
 
 **The scripted players** (`examples/bots.rs` on seeds 1, 2, 3 and 7, the
 whole game; `core-steps/railways-probe/bots-game.txt`, against
@@ -301,7 +342,8 @@ before, six families, seeds 1 to 12:
 
 So in the game as it stood a fifth of all town-months had the wage double
 or halve. People made it plain because a district that gets a market of its
-own is an exporter whose merchants pay the cart onward, which puts a third
+own is an exporter, and the cart onward to the towns that buy from it is
+paid to its own households and so is on its own bill, which puts a third
 to a half of its wage bill on the road; a new town's wage went to between
 two and four and a half times the middle town's in its first spring, on
 every one of twelve islands.
@@ -328,7 +370,8 @@ before) the baskets of 1900 go from 8.50 to 8.39 on seeds 1 to 6 and from
 11.6, and the railway of 1850 is 16 and 5 per cent longer (ten seeds of
 twelve); nothing is starred but a little less wild land in 1800.
 `tests/carting.rs` holds the flipping down (over 3 per cent of town-months
-at once on seed 4, under half a per cent by degrees).
+at once on seed 4, under half a per cent by degrees: the port with carting
+alone, to 1789).
 
 ## What worries me
 
@@ -344,12 +387,18 @@ at once on seed 4, under half a per cent by degrees).
 - **A carter's work is priced in money, and the money changes.** Carters are
   the bill over the wage. The freight rate (`freight`) is the port's and
   never moves, while the money wage rises by about two thirds over the run
-  (5.5 to 8.9 on eight seeds). So by 1900 the same cartload over the same
-  road takes two fifths fewer hands than in 1750, railway or no railway,
-  and part of the fall in carters with no railways at all (0.133 of all
-  hands in 1800, 0.110 in 1900) is this and not better roads. A freight
-  rate that followed the wage would mend it; that changes what carriage
-  costs everyone and was left for a decision.
+  under the port with carting alone (5.5 to 8.9 on eight seeds). So there,
+  by 1900, the same cartload over the same road takes two fifths fewer hands
+  than in 1750, railway or no railway, and part of the fall in carters with
+  no railways at all (0.133 of all hands in 1800, 0.110 in 1900) is this and
+  not better roads. In the game as it is played now the wage rises much
+  more: from 4.3 in 1750 to 13.5 in 1900, three times and more (2.5 to 4.0
+  times by seed; the people-weighted wage, `wage` in the `annual.csv` of
+  `isostate-core sweep --seeds 1-8 --rules game --families 6`, 12 November
+  2026). There the same cartload takes about two thirds fewer hands in 1900
+  than in 1750 before any road, canal or railway is counted. A freight rate
+  that followed the wage would mend it; that changes what carriage costs
+  everyone and was left for a decision.
 - **Three per cent of the value of all trade is on the bill**, as handling,
   and no road or railway lowers it. I did not measure how much of the bill
   it is.
@@ -374,9 +423,9 @@ at once on seed 4, under half a per cent by degrees).
 - **A town of exporters carts a great deal.** A new quarry or colliery town
   can have three hands in ten on the road, twice the island's share,
   because the cart from its market to the towns that buy its stone is on
-  its own bill (see the worry before the last). That is what the model's
-  trade says, not a fault of the damper, but it is where carting bites
-  hardest.
+  its own bill (see "Carters are a town's, not a road's", above). That is
+  what the model's trade says, not a fault of the damper, but it is where
+  carting bites hardest.
 - **The family game shifts on one seed of four.** The scripted players
   (`examples/bots.rs`) finish all sixteen runs under the game's rules, which
   now means railways and carting together. Against the port's rules their
