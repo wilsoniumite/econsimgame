@@ -397,8 +397,9 @@ mod tests {
                         }
                     }
                 }
-                // (the scale sheet has a row for every generator there is, and runs to several pages)
-                if shot != Shot::Close && sheet.name != "scale" {
+                // (the scale sheet has a row for every generator there is, and runs to several pages;
+                // so do the sheets of one kind of works on its plots, three rows of them up to the greatest)
+                if shot != Shot::Close && sheet.name != "scale" && !sheet.name.starts_with("site-") {
                     assert_eq!(pages.len(), 1, "{} {} does not fit one page", sheet.name, shot.name());
                 }
             }

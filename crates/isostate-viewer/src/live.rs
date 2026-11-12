@@ -447,7 +447,7 @@ impl Board {
     fn new(sim: &iso::Sim) -> Board {
         let stat = iso::live_static(&sim.st, &sim.content);
         let method_group: Vec<Option<Group>> = stat.methods.iter().map(|m| m.group).collect();
-        Board { cursor: LiveCursor::new(&sim.content), r: shell(&stat, sim.params.seed), view: FamilyView { method_group, ..default() } }
+        Board { cursor: LiveCursor::new(&sim.content), r: shell(&stat, &sim.content, sim.params.seed), view: FamilyView { method_group, ..default() } }
     }
 
     /// Take in the year the simulation has just played, with its twelve months.
@@ -1082,14 +1082,30 @@ fn done(game: &Game, begun: &[usize], r: Result<String, String>) -> Msg {
 }
 
 /// A replay with the island and nothing else, every year still to come.
-fn shell(stat: &LiveStatic, seed: u64) -> Replay {
+fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Replay {
     let (w, h) = (stat.W, stat.H);
     let n = w * h;
     let ny = (stat.end_year - stat.start_year + 1).max(1) as usize;
     let header = Header {
         meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny },
-        goods: stat.goods.iter().map(|g| Good { name: g.name.clone(), label: g.label.clone() }).collect(),
-        methods: stat.methods.iter().map(|m| Method { name: m.name.clone(), label: m.label.clone(), out: m.out, k0: m.K0 as f32 }).collect(),
+        // (each good's bulk and price and each method's process are the run's own content's:
+        // the works' site planner lays a works out from them)
+        goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32) }).collect(),
+        methods: stat
+            .methods
+            .iter()
+            .enumerate()
+            .map(|(m, method)| Method {
+                name: method.name.clone(),
+                label: method.label.clone(),
+                out: method.out,
+                k0: method.K0 as f32,
+                inputs: Some((0..content.G).filter(|&g| content.m_in[(m, g)] != 0.0).map(|g| (g, content.m_in[(m, g)] as f32)).collect()),
+                heat: Some(content.m_heat[m] as f32),
+                labor: Some(content.m_labor[m] as f32),
+                capital: Some((0..content.G).map(|g| content.base_price[g] * content.m_cap[(m, g)]).sum::<f64>() as f32),
+            })
+            .collect(),
         towns: Vec::new(),
         firms: Vec::new(),
         events: Vec::new(),

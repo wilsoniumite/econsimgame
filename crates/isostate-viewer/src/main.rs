@@ -728,7 +728,7 @@ fn main() {
     if args.new {
         let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
         let c = rules.content();
-        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone() }).collect();
+        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone(), weight: None, price: None }).collect();
         refuse_map_views(&args, |w| overlay::complaint_among(w, &goods));
     }
     let t0 = std::time::Instant::now();
