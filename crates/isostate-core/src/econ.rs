@@ -323,7 +323,11 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
 /// The order is part of the result, since each of the last three caps itself
 /// on the hands the ones before it left. The merchants' take
 /// (`prices::merchants_take`) is fixed before the wage is sought and does not
-/// depend on it. `st.ex_Lprev` is written as soon as the wage is found.
+/// depend on it. Once the wage is found, and before the hands are counted at
+/// it, a town short of hands even at the top of its bracket is held there
+/// (`hands::short_towns`, reading the bracket and the supply the four takers
+/// left); after the hands are counted its employers are cut to the hands it has
+/// (`hands::ration`), and only then is `st.ex_Lprev` written.
 ///
 /// Within the month:
 /// - Prices are read all month and move only in "prices respond", after trade
