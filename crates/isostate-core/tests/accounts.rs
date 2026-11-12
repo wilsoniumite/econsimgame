@@ -458,6 +458,146 @@ fn a_game_left_in_the_middle_of_a_year_goes_on_with_the_same_books() {
     }
 }
 
+/// The whole of the books as text: what they publish, the sums they are
+/// running for the year in progress, and the month's scratch, to the last
+/// digit (a float written with `{:?}` reads back as the same float). All but
+/// the wall time they took, which is the last thing in them.
+fn whole_books(s: &sim::Sim) -> String {
+    let text = format!("{:?}", s.st.acct);
+    let cut = text.rfind("seconds: ").expect("the books' clock is the last thing in them");
+    text[..cut].to_string()
+}
+
+/// Two games stand at the same point with the same books, the year in
+/// progress and all, the same series and the same fingerprint.
+fn same_whole(a: &sim::Sim, b: &sim::Sim, when: &str) {
+    assert_eq!((a.year, a.t), (b.year, b.t), "{when}: where the games stand");
+    let (x, y) = (whole_books(a), whole_books(b));
+    if x != y {
+        let at = x.bytes().zip(y.bytes()).position(|(p, q)| p != q).unwrap_or(x.len().min(y.len()));
+        let from = x[..at].rfind(|c: char| c.is_alphabetic()).map_or(0, |i| i.saturating_sub(40));
+        panic!("{when}: the books differ, {} characters in:\n  {}\n  {}", at, &x[from..(at + 60).min(x.len())], &y[from..(at + 60).min(y.len())]);
+    }
+    for (i, name) in a.st.series.names.iter().enumerate() {
+        assert_eq!(bits(&a.st.series.data[i]), bits(&b.st.series.data[i]), "{when}: the series {name}");
+    }
+    assert_eq!(save::check(a), save::check(b), "{when}");
+    same_books(a, b, when);
+}
+
+#[test]
+fn the_books_are_the_same_books_however_the_game_was_reached() {
+    // One game, reached five ways: played through by the month; saved at a
+    // year's turn and loaded; saved in May and loaded; saved in June with
+    // orders waiting and loaded; and loaded, saved and loaded again. At three
+    // points (in June 1752 with two orders waiting, at the turn after it where
+    // they are carried out, and in April 1754) everything in the books is
+    // compared, not only what they publish: the sums they are running for the
+    // year in progress and the months they have kept of it are in the text too.
+    //
+    // The player's orders, by the calendar: a decision answered before the
+    // first year, land bought at the turn of 1752, and in June 1752 a move of
+    // the seat and more land, which wait. Each is given where it falls, unless
+    // the game came from a save that has it already.
+    fn orders(g: &mut save::Game) {
+        let seat = g.sim.st.families[0].seat;
+        let land = |g: &save::Game| (0..g.sim.st.N).find(|&c| g.sim.st.catch[c] == seat as i64 && may_buy_land(&g.sim.st, 0, c).is_ok()).expect("some land to buy at the seat");
+        match (g.last_year(), g.month) {
+            (1749, 0) if g.orders.is_empty() => {
+                let d = pending(&g.sim.st, 0);
+                g.give(save::Order::decide(&g.sim, d[0].id, 0).unwrap()).unwrap();
+            }
+            (1751, 0) if !g.orders.iter().any(|o| o.year == 1751) => {
+                let cell = land(g);
+                g.give(save::Order::BuyLand { cell }).expect("the land is bought");
+            }
+            (1751, 5) if g.waiting.is_empty() => {
+                let other = (0..g.sim.st.T_max).find(|&t| t != seat && g.sim.st.town_active[t]).expect("another town");
+                assert_eq!(g.give(save::Order::MoveSeat { town: other }), Ok(save::Done::Waits));
+                let cell = land(g);
+                assert_eq!(g.give(save::Order::BuyLand { cell }), Ok(save::Done::Waits));
+            }
+            _ => {}
+        }
+    }
+    // play on to `months` months into the year after `year`, giving the orders on the way and there
+    fn reach(g: &mut save::Game, year: i64, months: usize) {
+        loop {
+            orders(g);
+            if (g.last_year(), g.month) >= (year, months) {
+                break;
+            }
+            if g.month().unwrap() {
+                g.turn();
+            }
+        }
+    }
+    // through the file's text, as a game on disk goes
+    fn again(g: &save::Game) -> save::Game {
+        let loaded = save::load(&save::Save::from_text(&g.save(0).to_text()).unwrap(), |_| {}).unwrap();
+        assert!(!loaded.drifted && loaded.refused.is_empty(), "{:?}", loaded.refused);
+        loaded.game
+    }
+
+    let mut played = save::Game::new(3, 6, 0);
+    reach(&mut played, 1750, 0);
+    let mut at_turn = again(&played);
+    reach(&mut played, 1750, 4);
+    let mut in_may = again(&played);
+    reach(&mut played, 1751, 5);
+    assert_eq!((played.orders.len(), played.waiting.len(), played.sim.st.acct.years.len()), (2, 2, 2));
+    let mut in_june = again(&played);
+    reach(&mut at_turn, 1751, 5);
+    reach(&mut in_may, 1751, 5);
+    let mut twice = again(&again(&in_may));
+    assert_eq!((in_june.waiting.len(), twice.waiting.len()), (2, 2));
+    // the year in progress is in what is compared: five months of it are in the books' text
+    let open = whole_books(&played.sim);
+    assert!(open.contains("month: 5,"), "the books are five months into their year");
+    // (one more month moves the text and nothing the books publish: the text sees what the tables do not)
+    let mut ahead = played.sim.clone();
+    sim::run_month(&mut ahead, 5).unwrap();
+    assert_ne!(whole_books(&ahead), open);
+    assert_eq!(format!("{:?}", (&ahead.st.acct.years, &ahead.st.acct.hist, &ahead.st.acct.last_months)), format!("{:?}", (&played.sim.st.acct.years, &played.sim.st.acct.hist, &played.sim.st.acct.last_months)));
+
+    let mut others = [("saved at a turn", &mut at_turn), ("saved in May", &mut in_may), ("saved in June", &mut in_june), ("loaded twice", &mut twice)];
+    for (year, months, when) in [(1751, 5, "in June 1752"), (1752, 0, "at the turn of 1753"), (1753, 3, "in April 1754")] {
+        reach(&mut played, year, months);
+        for (how, g) in others.iter_mut() {
+            reach(g, year, months);
+            same_whole(&played.sim, &g.sim, &format!("{when}, {how}"));
+            assert_eq!(played.orders, g.orders, "{when}, {how}: the orders carried out");
+        }
+    }
+    // (the seat moved at the year's end, so the land that waited beside the old one was refused at the turn)
+    assert_eq!((played.orders.len(), played.waiting.len(), played.sim.st.acct.years.len()), (3, 0, 4), "what waited was dealt with, and four years are closed");
+    assert_ne!(whole_books(&played.sim), open, "and the books moved on");
+
+    // And with no orders, the game's own steps against the simulation's: a
+    // game played by the month (`Game::month`) and a run stepped a year at a
+    // time (`sim::run_year`) and then by the month, into May of the third
+    // year and on through its end.
+    let mut by_month = save::Game::new(3, 6, 0);
+    let mut by_year = sim::start(&save::params(Rules::Game, 3, 6), Rules::Game.content());
+    for _ in 0..2 * 12 + 4 {
+        if by_month.month().unwrap() {
+            by_month.turn();
+        }
+    }
+    sim::run_year(&mut by_year).unwrap();
+    sim::run_year(&mut by_year).unwrap();
+    for month in 0..4 {
+        sim::run_month(&mut by_year, month).unwrap();
+    }
+    same_whole(&by_month.sim, &by_year, "in May 1752, by the month and by the year");
+    for month in 4..12 {
+        assert_eq!(by_month.month().unwrap(), month == 11);
+        sim::run_month(&mut by_year, month).unwrap();
+    }
+    sim::end_year(&mut by_year);
+    same_whole(&by_month.sim, &by_year, "at the turn of 1753, by the month and by the year");
+}
+
 #[test]
 fn the_books_do_not_change_what_a_save_is_checked_by() {
     // the fingerprint a save carries is of the island's history, which the
