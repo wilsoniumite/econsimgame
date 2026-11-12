@@ -22,7 +22,7 @@ Started before this file existed, and left to finish. The usage limit cut every 
 | Piece | Notes | Branch | State |
 |---|---|---|---|
 | A second island generator: erosion, real rivers, lakes (core) | 4, 6 | `night/land-review` | reviewed; being merged on the integration branch, beside the mines and the canals. It stays switched off until the viewer can draw it |
-| Books of account for towns, works and the island (core) | 13 | `night/accounts-review` | reviewed, with the mines and the canals taught to the books; next to be merged |
+| Books of account for towns, works and the island (core) | 13 | `night/int-accounts` | reviewed; being merged onto `main`. The books move no fact and no picture, but beside the monthly clock a saved game does not come back with the same series, and a helper is finding why before it goes in |
 | The production tree's first stage (core) | 8, in part | `night/tree` | being built; a second helper carries on from the first's saved work |
 | Saved games that cannot be lost to a test start, a second copy of the game or a crash (F1) | none | `night/saves-guard` | being built: Ready next 1, taken up when the clock landed, since the clock changed the save |
 | Towns drawn from the ground they keep (viewer) | 14 | `night/town-ground` | being built; cut off twice, and a third helper carries on from the saved work |
