@@ -6,7 +6,7 @@ Nothing on the map is placed by hand. Households, landlords, investors and railw
 
 The name is von Thünen's: *Der isolierte Staat* (1826) is where the rings of land use around a market town were first worked out. Here they form on their own and then bend around rivers, roads and rails.
 
-![Melbourne, the player's home town on island 7, in the summer of 1860: mills and furnaces by the river, the parish church, streets of houses, a stone bridge and the railway coming in](docs/shots/melbourne-1860.jpg)
+![Melbourne, the player's home town on island 7, in the summer of 1860: a mill and furnaces by the river, the parish church, streets of houses, a stone bridge, and a train on the railway through the town](docs/shots/melbourne-1860.jpg)
 
 The simulation and the game are written in Rust, in three crates. The model began as a Python package, which is kept here as the reference the Rust was ported from. This is early work. The island runs, and a game can be played from 1750 to 1900 and saved, but the part where you decide what your family does is not much fun yet. [Where it stands](#where-it-stands), at the foot, says what is wrong with it today.
 
@@ -96,7 +96,7 @@ cargo run -p isostate-viewer -- --lab cottages-eras --out runs/lab
 
 ```bash
 cargo test -p isostate-core --release    # 164 tests, four to six minutes once built; the golden test is among them
-cargo test -p isostate-gen               # 113 tests, a few seconds
+cargo test -p isostate-gen               # 116 tests, a few seconds
 ```
 
 ## Two sets of rules
@@ -306,6 +306,7 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 - A town of 1900 is drawn as a wide pale ground with houses strung along some streets and dotted thinly elsewhere, and tall houses stand alone outside the middle. Towns drawn from the ground they keep are in hand.
 - A quarry, pit or mine is drawn as one small pit on its cell, a stand-in. Pit heads, spoil heaps to their size, and idle or abandoned workings are not drawn yet (`docs/rules/mines.md`, "What the viewer is given").
 - The roads and bridges are the viewer's own invention, so a road down a valley crosses its river again and again, and a cart can pass through a bridge.
+- The railways climb like railways since 12 November, and some of it is still wrong: on island 7 in 1900 four churches have the line hard against their yard, eighteen curves are tighter than a train should take, roads drape over the banks with no bridge or crossing, and sidings are plain ribbons (`docs/DEVLOG.md`).
 - A works that closes vanishes at once. Small works of different kinds are hard to tell apart from the distance the game is played at.
 - A year's scenery is rebuilt whole, off the main thread, and handed over in one go. Whether that stalls the picture is being measured.
 - A recorded run of a game replays without its owners, so with no pennants or fences.
