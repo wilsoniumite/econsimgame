@@ -1141,9 +1141,12 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             continue;
         }
         // (its yard or garden runs back from the house as far again as the plot is deep:
-        // the back of it is asked too, so that no garden ends in a works' yard or the water)
+        // the back of it is asked too, so that no garden ends in a works' yard, a
+        // churchyard, the railway or the water. A garden may come down to the water's
+        // edge, where a house may not stand: there the end of it need only be dry.)
         let back = p - Vec2::new(lot.pl.yaw.sin(), lot.pl.yaw.cos()) * (lot.pl.depth * 0.5 + houses::BACK_ROOM);
-        if near_plot(p.x, p.y) || near_plot(back.x, back.y) {
+        let behind = if world::water_dist(g, back.x, back.y) < 0.03 { world::height_at(g, back.x, back.y) < 0.05 || lay.clear_since(back) > k as u32 } else { near_plot(back.x, back.y) };
+        if near_plot(p.x, p.y) || behind {
             tell(lot.pl.run, lot.pl.index, 3);
             note(lot.cell, lot.kind, 3);
             continue;
@@ -1345,21 +1348,17 @@ fn what_stands(r: &Replay, k: usize, sq: &[Square], standing: &[Stood], stories:
             let pl = &s.lot.pl;
             let seed = Seed::new(pl.u, pl.v);
             let most = story.most();
-            let both = s.neighbours.0 && s.neighbours.1;
+            let (joined, both) = (s.neighbours.0 || s.neighbours.1, s.neighbours.0 && s.neighbours.1);
             // villas: on the lanes and the ways out, on ground that had little works on it
             // the year the house went up, and never in a row
             let villa = pl.row.is_none() && s.lot.kind != 9 && !story.node && houses::villa_plot(s.year, seed) && r.works_share((s.year - r.y0).clamp(0, k as i32) as usize, s.lot.cell as usize) < 0.15;
             // rebuilt as a townhouse, the full width of its plot, once the cell has this many houses:
             // soon on a road through the town or round its market place, later on the old back
-            // streets (those of the brick years are terraces from the first). By then the plots
-            // beside it have had their turn, so a frontage joins as it is rebuilt. (It was only
-            // rebuilt where a neighbour stood that year, and a townhouse whose neighbour a
-            // works' yard took was a cottage again the year after: a thousand houses in a
-            // century and a half went back so.)
+            // streets (those of the brick years are terraces from the first)
             let rebuilt = s.before + if s.lot.road { 10 + (38.0 * pl.v) as usize } else { 28 + (56.0 * pl.v) as usize };
             whats.push(if villa {
                 What::Villa
-            } else if most >= rebuilt && (s.lot.road || s.year < TERRACE_ERA) {
+            } else if joined && most >= rebuilt && (s.lot.road || s.year < TERRACE_ERA) {
                 // a third storey on a road where the frontage is whole and the cell has grown as much
                 // again; a fourth only round the market place of a great town
                 let great = s.lot.kind == 9 && sq.iter().any(|q| q.big && q.at.distance(pl.p) < 0.2);
@@ -1739,6 +1738,8 @@ mod tests {
                 // from the middle of its plot back to the end of its yard or garden
                 let back = pl.p - Vec2::new(pl.yaw.sin(), pl.yaw.cos()) * (pl.depth * 0.5 + houses::BACK_ROOM);
                 assert!(!yard(pl.p.x, pl.p.y) && !yard(back.x, back.y), "year {k}: the house on plot {:?} at {}, or the end of its garden at {back}, is in a works' yard or the water", (pl.run, pl.index), pl.p);
+                // and neither is under water (the made-up island's ground is dry where its town is)
+                assert!(world::height_at(&g, pl.p.x, pl.p.y) >= 0.05 && world::height_at(&g, back.x, back.y) >= 0.05, "year {k}: plot {:?}", (pl.run, pl.index));
                 // nor does a lane that is drawn run through the house or across the end of its
                 // garden, unless the lane is younger than the house and was laid round it
                 for (line, width) in &l.lanes {
