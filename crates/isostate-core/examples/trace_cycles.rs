@@ -31,7 +31,7 @@
 
 use std::collections::BTreeMap;
 
-use isostate_core::accounts::{GOODS_FIELDS, KG, KM, KW, METHOD_FIELDS, WORKS_FIELDS};
+use isostate_core::accounts::{GOODS_FIELDS, KG, KM, METHOD_FIELDS};
 use isostate_core::sweep::{parse_seeds, parse_value, set_field};
 use isostate_core::*;
 
@@ -247,7 +247,6 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
     let b = &st.acct;
     let gcol = |name: &str| col(&GOODS_FIELDS, name);
     let mcol = |name: &str| col(&METHOD_FIELDS, name);
-    let wcol = |name: &str| col(&WORKS_FIELDS, name);
     let buyers = gcol("households")..=gcol("projects");
     // island totals of a column of the goods' books, a year
     let island = |k: usize, g: usize, c: usize| -> f64 {
@@ -379,6 +378,13 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
     put("mill_room_vs_timber_next_corr", corr(&isl_mill[k1800..n - 1], &dlog(&p_timber)[k1800..]));
     put("mill_room_vs_timber_same_corr", corr(&isl_mill[k1800 + 1..], &dlog(&p_timber)[k1800..]));
     put("mill_room_period", period(&isl_mill[k1800..].iter().map(|x| x - mean(&isl_mill[k1800..])).collect::<Vec<_>>()));
+    // the brickworks' room taken on the island, beside the mills' the same year and the year before
+    let brick = mi("brickworks");
+    let isl_brick: Vec<f64> = (0..n)
+        .map(|k| (0..T).map(|t| run.orders[k].added[t * M + brick]).sum::<f64>() / (0..T).map(|t| run.orders[k].budget[t * M + brick]).sum::<f64>().max(1e-9))
+        .collect();
+    put("brick_room_vs_mill_same_corr", corr(&isl_brick[k1800..], &isl_mill[k1800..]));
+    put("brick_room_vs_mill_before_corr", corr(&isl_brick[k1800 + 1..], &isl_mill[k1800..n - 1]));
     // mills' return on their plant and how hard they ran: profit over capacity at plant prices
     let unit_cap = |k: usize, m: usize| -> f64 { (0..G).map(|g| C.m_cap[(m, g)] * series(&format!("price_{}", C.good_name[g]))[k]).sum() };
     let mill_roi: Vec<f64> = (0..n).map(|k| method(k, mill, mcol("profit")) / (method(k, mill, mcol("capacity")) * unit_cap(k, mill)).max(1e-9)).collect();
@@ -454,6 +460,12 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
         put(&format!("tools_{label}_bought_per_head"), over(ks, &|k| bought(k, tools) / series("pop")[k].max(1.0)));
         put(&format!("tools_{label}_households_per_head"), over(ks, &|k| hh(k) / series("pop")[k].max(1.0)));
         put(&format!("tools_{label}_machinery_unmet"), over(ks, &|k| unmet(k, machinery)));
+        // the same years from 1860 on, so that a famine year is set beside calm years of
+        // its own decades and not beside the early century, when households still bought tools
+        let late: Vec<usize> = ks.iter().copied().filter(|&k| y0 + k as i64 >= 1860).collect();
+        put(&format!("tools_{label}_from_1860_years"), late.len() as f64);
+        put(&format!("tools_{label}_from_1860_households_per_head"), over(&late, &|k| hh(k) / series("pop")[k].max(1.0)));
+        put(&format!("tools_{label}_from_1860_households_share"), over(&late, &|k| hh(k) / bought(k, tools).max(1e-9)));
     }
 
     // ---- (c) every good: how it swings, and what might make it
@@ -542,7 +554,6 @@ fn reduce(run: &Run, from: i64, want_detail: bool) -> Out {
             ));
         }
     }
-    let _ = (KW, wcol("invest"));
     Out { nums, detail }
 }
 
