@@ -2,9 +2,11 @@
 
 Books that say who makes, moves, buys and earns what. Not in the Python. The
 switch is `accounts.enabled`; the code is `accounts.rs`, five marked calls in
-`econ::step_month` (and one line there reshaped, so that the hired managers'
-cuts live long enough to be read), and a few marked lines each in `sim.rs`,
-`observer.rs`, `land.rs`, `facts.rs`, `record.rs` and `live.rs`.
+`econ::step_month` (and two lines there reshaped, so that the hired managers'
+cuts and the mines' list of who is paid each royalty live long enough to be
+read), a few marked lines each in `sim.rs`, `observer.rs`, `land.rs`,
+`facts.rs`, `record.rs` and `live.rs`, and one small function in `mines.rs`
+that says how many sinkers a working has.
 
 ## What they are for
 
@@ -26,8 +28,8 @@ what.
 The books are an observer. Nothing in the economy reads `State::acct`, no
 random number is drawn, and a run with the books on is the same run, number
 for number, as one with them off (a test holds four runs to that, bit for bit;
-the sweeps below hold sixteen more). Under the port they are off, nothing is
-kept, and `params.json` does not mention them.
+the sweeps below hold forty-eight more to it by their facts). Under the port
+they are off, nothing is kept, and `params.json` does not mention them.
 
 ## What is kept
 
@@ -56,7 +58,7 @@ until it closes.
 | `works_fuel` | burnt by works |
 | `land` | bought by farms, pits and mines: machinery and rails |
 | `building` | bought by works being built or enlarged |
-| `projects` | bought by railways under construction (and by anything else that builds through `State::projects`) |
+| `projects` | bought by railways and canals under construction (anything that builds through `State::projects`) |
 | `sent` | carried to other towns |
 | `received` | arrived from other towns |
 | `spoiled` | lost in store (`decay`) |
@@ -81,7 +83,10 @@ For every town and good:
 produce's way to market), `inputs` (machinery and rails bought), `rent`. The
 merchants pay `value * (1 - merchant_spread)` for the produce, and that is
 `wages + carting + inputs + rent`: rent is whatever is left, as it is in the
-economy, and in a bad month it is below nothing.
+economy, and in a bad month it is below nothing. Under `mines` a quarry's, a
+pit's or a mine's rent is its workings' royalty, and the sinkers of a working
+being opened are among its `hands` and their pay among its `wages` (which is
+why a new working's royalty starts below nothing).
 
 ### A town's methods: `METHOD_FIELDS`, `[town][method][14]`
 
@@ -100,18 +105,18 @@ Beside it, sparse, what each method in each town used of each good:
 (both, delivered to the works). These are the edges of a flow chart: ore and
 coal into the furnaces, iron out of them and into the forges.
 
-### A town's own figures: `TOWN_FIELDS`, `[town][32]`
+### A town's own figures: `TOWN_FIELDS`, `[town][33]`
 
 | columns | |
 |---|---|
 | `pop` | people at the year's end |
-| `wage`, `supply`, `carters`, `hands_land`, `hands_works` | means: the wage, hands for hire (carters taken out), hands carting (0 unless `carting` is on), hands on the land and in works |
-| `pay_works`, `pay_land`, `pay_projects`, `cart_works`, `cart_land`, `cart_trade`, `managers`, `div_works`, `div_merchants`, `fund`, `issue` | what the town's households received, by kind; the eleven add up to all they received |
+| `wage`, `supply`, `carters`, `navvies`, `hands_land`, `hands_works` | means: the wage; hands for hire, with the carters, the canals' navvies and the sinkers of new workings already taken out; hands carting (0 unless `carting` is on); hands digging canals (0 unless `canals` is on); hands on the land, the sinkers among them; hands in works |
+| `pay_works`, `pay_land`, `pay_projects`, `cart_works`, `cart_land`, `cart_trade`, `managers`, `div_works`, `div_merchants`, `fund`, `issue` | what the town's households received, by kind; the eleven add up to all they received. `pay_projects` is the navvies' pay, on railways and canals |
 | `div_families` | dividends of family works here |
 | `rent_land`, `rent_sites`, `rent_town` | rents paid in the town's district: farms, woods, pits and mines; works' sites; town houses |
 | `rent_families` | of those three, what went to families |
 | `spend_households`, `spend_landlords`, `spend_families` | spending on goods |
-| `invest`, `projects` | works' purchases of capital goods; railways' outlay (materials and navvies) |
+| `invest`, `projects` | works' purchases of capital goods; railways' and canals' outlay (materials and navvies) |
 | `merchants_net` | the merchants' takings less what they paid out, before their dividend |
 | `stock_value` | their stock at the year's end, at that month's prices |
 | `cash_households`, `cash_landlords`, `cash_merchants` | at the year's end |
@@ -149,12 +154,12 @@ One for every complete year (`Books::years`). Its fields, in four groups.
 
 | | |
 |---|---|
-| `pay_works`, `pay_land`, `pay_projects` | wages in works, on the land, on the railways |
+| `pay_works`, `pay_land`, `pay_projects` | wages in works, on the land (sinkers included), on the railways and canals |
 | `carting` | carters' pay |
 | `managers` | hired managers |
 | `div_households`, `div_families`, `works_kept` | works' dividends to their town's households (works no family owns) and to families; profit the works kept |
 | `merchants_div`, `merchants_kept` | the merchants' dividend (to their town's households), and what they kept |
-| `rent_farm`, `rent_pits`, `rent_sites`, `rent_town`, `rent_by_sector` | rents of farms, pastures and woods; of quarries, pits and mines; of works' sites; of town houses |
+| `rent_farm`, `rent_pits`, `rent_sites`, `rent_town`, `rent_by_sector` | rents of farms, pastures and woods; of quarries, clay pits, iron mines and collieries (their royalties, under `mines`); of works' sites; of town houses; and the land's seven sectors one by one |
 | `issue`, `fund_div` | new money and the common fund's dividend, both paid to households by head |
 
 **Who received it.** `to_households`, `to_landlords`, `to_families` (each
@@ -248,16 +253,27 @@ material and as fuel, and what both cost delivered).
 
 `town_books` is None for a year not yet complete, a town slot that does not
 exist, or with the books off. A works founded this year has no `years` yet.
+`works_books` is None with the books off or for a works that does not exist;
+with `accounts.works` off it comes back with no `years`.
+
+A game that is loaded from a save (`save.rs`) has its books again: a save is
+the orders, loading plays the years over, and the books are kept as they
+were the first time.
 
 **In a recorded run.** `run.bin` gets these arrays, only when the books were
-kept. `n` is the number of years; every float is float32.
+kept. `n` is the number of years; every float is float32. `T` here is the
+number of towns there are as the run ends (the header's `towns` list, and
+`accounts.towns`), not the `T_max` slots of the file's other town arrays:
+slots are filled in order, the rest would be nothing but zeros, and they were
+two thirds of these tables. A town founded late has rows of zeros for the
+years before it.
 
 | array | shape | |
 |---|---|---|
 | `acct_goods` | `[n, T, G, 22]` | `GOODS_FIELDS` |
 | `acct_land` | `[n, T, NS, 7]` | `LAND_FIELDS` |
 | `acct_methods` | `[n, T, M, 14]` | `METHOD_FIELDS` |
-| `acct_towns` | `[n, T, 32]` | `TOWN_FIELDS` |
+| `acct_towns` | `[n, T, 33]` | `TOWN_FIELDS` |
 | `acct_needs` | `[n, T, S, 2]` | households; landlords and families |
 | `acct_trade_off` | `[n + 1]` int32 | year `k`'s flows are rows `off[k]..off[k + 1]` of the next two |
 | `acct_trade_key` | `[rows, 3]` int32 | from, to, good |
@@ -269,8 +285,8 @@ kept. `n` is the number of years; every float is float32.
 | `acct_works_id` | `[rows]` int32 | firm id, ascending within a year |
 | `acct_works` | `[rows, 21]` | `WORKS_FIELDS` |
 
-and the header gets an `accounts` object: `start_year`, the column names of
-every table (`goods_fields`, `land_fields`, `method_fields`, `town_fields`,
+and the header gets an `accounts` object: `start_year`, `towns` (the `T`
+above), the column names of every table (`goods_fields`, `land_fields`, `method_fields`, `town_fields`,
 `need_fields`, `trade_key`, `trade_val`, `use_key`, `use_val`,
 `works_fields`), and `island`, the list of every year's `IslandYear`. A
 `lite` pack leaves out the three works arrays. The last year's months and
@@ -316,29 +332,35 @@ over in the year's account, so a leak shows as a number.
 `tests/accounts.rs` holds all three under 1e-9 for every year of a run under
 the port with six families, under the game's rules with six families, and
 under the commons regime; checks the books against the observer's own series
-(output of every good and method, `gdp_nom`) and against the families' own
-record of what they received; and holds runs with the books on to runs with
-them off.
+(output of every good and method, `gdp_nom`), against the families' own
+record of what they received, against the mines' own count of each digging
+sector's hands, output and royalty, and against the canals' own count of
+their navvies; and holds runs with the books on to runs with them off.
 
 On seeds 1 to 8 to 1900, with six families, the worst of every year of every
-run:
+run (the game's rules as they stand with the mines, the canals and kept town
+ground beside the rest):
 
 | | port | game |
 |---|---|---|
-| goods, as a share of what passed through | 6.5e-15 | 4.1e-15 |
-| goods, in units of the good | 1.2e-9 | 4.9e-10 |
-| incomes paid against received | 5.9e-13 | 6.9e-15 |
-| income against spending | 7.1e-16 | 7.2e-16 |
+| goods, as a share of what passed through | 6.5e-15 | 4.3e-15 |
+| goods, in units of the good | 1.2e-9 | 7.1e-10 |
+| incomes paid against received | 5.8e-13 | 2.7e-13 |
+| income against spending | 7.0e-16 | 5.9e-16 |
 
 That is rounding. With `oversold` (below) given its own column, the island's
-goods and money add up.
+goods and money add up. Seeds 9 to 16 under the game's rules say the same
+(5.6e-15 and 2.7e-13 at worst over all sixteen).
 
 **The books change nothing.** `tests/accounts.rs` compares four runs with the
 books on and off bit for bit (every series, every news item, cash, prices,
-stocks, capacities, land shares, the recorded map layers). The four sweeps
-(seeds 1 to 8, port rules, with and without six families, the books off and
-on) say the same of sixteen more: "of the 165 facts both have, the seconds
-aside, 0 differ", both times.
+stocks, capacities, land shares, the recorded map layers). Six sweeps on
+seeds 1 to 16 say the same of forty-eight more, by every fact the sweep
+keeps: under the port without families and with six, the books off and then
+on, "of the 257 facts both have, the seconds aside, 0 differ" (259 with
+families); under the game's rules with six families, 0 of 420. And seed 3
+under the port, with and without families, writes the `series_monthly.csv`,
+`events.json` and `params.json` it wrote before any mechanism was added.
 
 ## What does not balance
 
@@ -354,14 +376,15 @@ books count it as `oversold`, so that the rest balances.
 
 It is small, and it is only the fuels. Over all eight seeds and all 151
 years, as a share of everything bought of the good: coal 1.1e-5, charcoal
-9.3e-7 and timber 9.0e-8 under the port with six families (5.9e-7, 1.8e-6
-and 2.3e-8 under the game's rules); every other good 1e-18 or less, which is
+9.3e-7 and timber 9.0e-8 under the port with six families (1.3e-7, 2.4e-7
+and 7.6e-9 under the game's rules); every other good 1e-17 or less, which is
 rounding at the floor. By value, in the worst year of a run it is between
 7.6e-6 and 3.8e-4 of everything bought on the island under the port, and
-between 2.6e-7 and 1.1e-4 under the game's rules. A town can feel it more
-than the island does: on seed 7 in 1756, Mallowwick's works burnt 24 units of
-coal that were never dug, six parts in ten thousand of the coal that passed
-through the town that year. Rationing each fuel on its own availability would
+between 5.7e-8 and 5.1e-5 under the game's rules. A town can feel it more
+than the island does: when the books were first tried (seed 7, the game's
+rules of that day), Mallowwick's works burnt 24 units of coal in 1756 that
+were never dug, six parts in ten thousand of the coal that passed through
+the town that year. Rationing each fuel on its own availability would
 end it; that is a change to the port, so it is not made here.
 
 **Under the port, a town's wage can run to the ceiling for months, and the
@@ -395,7 +418,7 @@ it has left after its district or its people were redrawn at the year's end:
 then no wage clears the market, the wage doubles each month until enough
 hands have been shed, and the land pays the bill. It does not happen under
 the game's rules: in none of the eight seeds does land's share fall under
-0.135 in any year or the landlords' cash go below nothing, which is what
+0.11 in any year or the landlords' cash go below nothing, which is what
 `people` (households go with their cells, taking their wage with them) was
 made to do.
 
@@ -419,19 +442,25 @@ Under the port:
 | works and land together | 7.04 [6.33 .. 7.56] | 7.03 [6.58 .. 7.52] | 7.93 [7.50 .. 8.71] | 7.94 [7.38 .. 8.82] |
 | families' share of all works' value | 0.069 [0.055 .. 0.077] | 0.232 [0.163 .. 0.297] | 0.453 [0.320 .. 0.522] | 0.563 [0.461 .. 0.620] |
 
-Under the game's rules:
+Under the game's rules (as they stand with the mines, the canals and kept
+town ground in them):
 
 | | 1750 | 1800 | 1850 | 1900 |
 |---|---|---|---|---|
-| work's share of income | 0.703 [0.696 .. 0.715] | 0.671 [0.642 .. 0.712] | 0.647 [0.599 .. 0.687] | 0.698 [0.666 .. 0.727] |
-| works' owners' share | 0.069 [0.057 .. 0.084] | 0.107 [0.046 .. 0.143] | 0.115 [0.072 .. 0.180] | 0.088 [0.068 .. 0.117] |
-| merchants' share | 0.037 [0.026 .. 0.043] | 0.050 [0.023 .. 0.084] | 0.066 [0.011 .. 0.099] | 0.040 [0.015 .. 0.064] |
-| land's owners' share | 0.191 [0.185 .. 0.201] | 0.172 [0.160 .. 0.201] | 0.172 [0.150 .. 0.193] | 0.174 [0.169 .. 0.178] |
-| household income that is pay | 0.875 [0.858 .. 0.904] | 0.854 [0.818 .. 0.910] | 0.839 [0.786 .. 0.898] | 0.891 [0.863 .. 0.931] |
-| works, in years of the wage bill | 0.170 [0.161 .. 0.184] | 0.586 [0.312 .. 1.158] | 1.204 [0.881 .. 1.490] | 1.018 [0.850 .. 1.262] |
-| land, in years of the wage bill | 6.79 [6.56 .. 7.17] | 6.42 [6.04 .. 7.04] | 6.65 [5.69 .. 7.76] | 6.23 [5.85 .. 6.57] |
-| works and land together | 6.96 [6.73 .. 7.35] | 7.01 [6.58 .. 7.35] | 7.86 [6.76 .. 9.25] | 7.25 [6.72 .. 7.83] |
-| families' share of all works' value | 0.071 [0.057 .. 0.094] | 0.416 [0.282 .. 0.493] | 0.472 [0.267 .. 0.638] | 0.558 [0.396 .. 0.734] |
+| work's share of income | 0.711 [0.704 .. 0.718] | 0.681 [0.655 .. 0.732] | 0.654 [0.591 .. 0.711] | 0.697 [0.677 .. 0.719] |
+| works' owners' share | 0.060 [0.052 .. 0.082] | 0.095 [0.042 .. 0.142] | 0.117 [0.056 .. 0.182] | 0.087 [0.067 .. 0.108] |
+| merchants' share | 0.028 [0.017 .. 0.036] | 0.052 [0.031 .. 0.076] | 0.063 [0.039 .. 0.082] | 0.042 [0.019 .. 0.059] |
+| land's owners' share | 0.201 [0.188 .. 0.214] | 0.172 [0.157 .. 0.195] | 0.165 [0.148 .. 0.175] | 0.174 [0.169 .. 0.180] |
+| household income that is pay | 0.900 [0.877 .. 0.922] | 0.859 [0.822 .. 0.925] | 0.842 [0.761 .. 0.901] | 0.886 [0.859 .. 0.905] |
+| works, in years of the wage bill | 0.162 [0.154 .. 0.170] | 0.537 [0.243 .. 1.106] | 1.173 [0.811 .. 1.533] | 1.043 [0.877 .. 1.156] |
+| land, in years of the wage bill | 7.06 [6.67 .. 7.54] | 6.30 [5.87 .. 6.69] | 6.31 [6.03 .. 6.66] | 6.23 [6.03 .. 6.41] |
+| works and land together | 7.22 [6.83 .. 7.71] | 6.84 [6.57 .. 6.99] | 7.48 [6.97 .. 7.86] | 7.27 [6.95 .. 7.57] |
+| families' share of all works' value | 0.068 [0.054 .. 0.081] | 0.415 [0.314 .. 0.465] | 0.429 [0.324 .. 0.501] | 0.507 [0.406 .. 0.578] |
+
+Seeds 9 to 16 tell the same story: over all sixteen the sweep's facts give
+work's share as 0.709, 0.679, 0.654 and 0.693 (in 1900 between 0.670 and
+0.735), the share of household income that is pay as 0.894, 0.858, 0.835
+and 0.887, and works and land together as 7.14, 6.90, 7.39 and 7.33 years.
 
 Without families, under the port, the sweep's facts give 0.687, 0.675, 0.604
 and 0.579 for work's share and 0.859, 0.820, 0.723 and 0.700 for the share
@@ -440,28 +469,28 @@ of household income that is pay.
 What I would say from them, and no more:
 
 - **Seven tenths of the island's income is pay in 1750, and a fifth is
-  rent.** Both rule sets agree to a point.
+  rent.** The two rule sets agree to within two points.
 - **Work's share falls over the century under the port, by nine or ten
   points, and what it loses goes to the owners of works and to merchants,**
   not to land, whose share drifts down from 0.19 to 0.16. Under the game's
   rules it falls six points by 1850 and is back at 0.70 in 1900; the two
-  rule sets' ranges for 1900 do not overlap (0.58 to 0.63 against 0.67 to
-  0.73). The single year 1850 is noisy: one seed's works' owners take 0.30
-  of income that year under the port.
+  rule sets' ranges for 1900 do not overlap (0.58 to 0.63 against 0.68 to
+  0.72, or 0.67 to 0.74 on sixteen seeds). The single year 1850 is noisy:
+  one seed's works' owners take 0.30 of income that year under the port.
 - **Households live mostly on pay, and less so as the century goes on under
   the port** (0.86 to 0.74 or 0.78): works' and merchants' dividends are
   paid to the households of the works' town, so the island's small capital
   is owned by the people who work, and its growing profits reach them as
-  dividends. Under the game's rules the share that is pay stays near 0.85
-  to 0.89.
+  dividends. Under the game's rules the share that is pay stays between
+  0.84 and 0.90.
 - **All the island's works and land cost about seven years of all its pay,
-  eight by 1850.** Nearly all of that is land, and land's part is not a
+  eight by 1850 under the port.** Nearly all of that is land, and land's part is not a
   finding: land is priced at 25 years' rent by rule, so `land_years` is 25
   times land's share over work's and tells you the ratio of rent to wages
   and nothing about a market in land. The works' part is real, and it grows
   from two months of the wage bill to a year or a little more.
-- **The six families own 7 per cent of the works' capital in 1750 and more
-  than half of it in 1900**, under both rule sets.
+- **The six families own 7 per cent of the works' capital in 1750 and half
+  of it or more in 1900**, under both rule sets.
 
 Nothing here falls the way the labour work expects the twentieth century to:
 there is no machine yet that takes work's share for good. But the gauges
@@ -469,70 +498,80 @@ exist now, and the run to 2050 can be read with them.
 
 ## A worked example
 
-Iron in Ryeport in 1850, seed 1, the game's rules, six families
-(`--rules game --year 1850 --works`). Ryeport is a town of 85,875 people; the
-wage averaged 11.2; 26,849 hands were on the land, 16,491 in works and 2,722
+Iron in Ulford in 1850, seed 1, the game's rules, six families
+(`--rules game --year 1850 --works`). Ulford is a town of 54,394 people; the
+wage averaged 11.5; 14,977 hands were on the land, 10,412 in works and 1,229
 carting.
 
 ```text
-  in store as the year began          7368.6
-  made                               38029.1
-    by Coke blast furnace          38029.1   6.0 works, 295 hands, wages 39708, materials 51426, fuel 0,
-                                             carting in 0 and out 639, rent 1358, profit 124382, dividends 96343
-  received from other towns           7128.7
-    from Ulford                     2042.5   worth 10859 there, carting 451 (0.221 a unit)
-    from Wilmere                     293.9   worth 1680 there, carting 66 (0.225 a unit)
-    from Oldford                    1994.4   worth 10829 there, carting 391 (0.196 a unit)
-    from Ormstrand                   128.5   worth 748 there, carting 36 (0.280 a unit)
-    from Elmness                     452.5   worth 2323 there, carting 109 (0.240 a unit)
-    from Sandford                   1136.0   worth 5716 there, carting 258 (0.227 a unit)
-    from Oakdelf                      60.8   worth 303 there, carting 13 (0.208 a unit)
-    from Coldhope                    176.8   worth 899 there, carting 34 (0.191 a unit)
-    from Stansea                     441.5   worth 2243 there, carting 95 (0.216 a unit)
-    from Ashwick                     355.5   worth 1868 there, carting 89 (0.251 a unit)
-    from Uldale                       46.3   worth 162 there, carting 6 (0.129 a unit)
-  came with districts                    0.0
-  sold though not in store               0.0
-  bought                             40569.6
-    by households                      6.8
-    by landlords                       1.6
-    by families                        1.0
-    by works, as material          40560.2
-  sent to other towns                  126.5
-    to Ashwick                       126.5   worth 825 here, carting 37 (0.289 a unit)
-  spoiled in store                     155.4
-  in store as the year ended         11674.9
-  left unplaced by the books          0.0016
-  asked for 41527.4, of which unmet 957.8
-  price 5.908 (from 5.300 to 6.904), the merchants' anchor 6.997
+  in store as the year began         3803.9
+  made                              29295.8
+    by Coke blast furnace        29295.8   6.0 works, 218 hands, wages 30141, materials 34139, fuel 0,
+                                           carting in 39 and out 267, rent 1032, profit 90326, dividends 85769
+  received from other towns          6111.7
+    from Wilmere                   658.1   worth 3163 there, carting 151 (0.229 a unit)
+    from Oldford                  1373.1   worth 6624 there, carting 278 (0.203 a unit)
+    from Ryeport                   512.8   worth 2405 there, carting 107 (0.210 a unit)
+    from Ormstrand                 144.9   worth 703 there, carting 31 (0.216 a unit)
+    from Elmness                   785.7   worth 3805 there, carting 133 (0.170 a unit)
+    from Sandford                  165.1   worth 812 there, carting 40 (0.240 a unit)
+    from Oakbridge                 194.6   worth 846 there, carting 29 (0.149 a unit)
+    from Coldbank                 1264.4   worth 5647 there, carting 240 (0.190 a unit)
+    from Stanside                  212.2   worth 1045 there, carting 52 (0.243 a unit)
+    from Ashside                    78.5   worth 356 there, carting 12 (0.154 a unit)
+    from Uldale                     87.3   worth 397 there, carting 16 (0.187 a unit)
+    from Carford                   149.4   worth 800 there, carting 37 (0.244 a unit)
+    from Crandelf                   37.5   worth 164 there, carting 6 (0.160 a unit)
+    from Longwater                 106.0   worth 500 there, carting 24 (0.230 a unit)
+    from Ashbank                   172.3   worth 855 there, carting 41 (0.238 a unit)
+    from Barbrook                  169.9   worth 798 there, carting 40 (0.235 a unit)
+  came with districts                   0.0
+  sold though not in store              0.0
+  bought                            31685.7
+    by households                   29.5
+    by landlords                     5.9
+    by families                      3.4
+    by works, as material        31646.9
+  sent to other towns                 147.2
+    to Ormstrand                    12.2   worth 66 here, carting 3 (0.235 a unit)
+    to Carford                      13.6   worth 81 here, carting 4 (0.262 a unit)
+    to Barbrook                    121.5   worth 699 here, carting 32 (0.267 a unit)
+  spoiled in store                     72.2
+  in store as the year ended         7306.3
+  left unplaced by the books        -0.0005
+  asked for 31835.8, of which unmet 150.1
+  price 5.484 (from 4.833 to 6.671), the merchants' anchor 5.758
 ```
 
-38,029 made and 7,129 brought in are 45,158; 40,570 bought, 127 sent and 155
-spoiled are 40,852; the difference, 4,306, is what the stock grew by (7,369
-to 11,675). The 0.0016 left over is single precision. Ryeport is the
-island's forge: six furnaces make the iron, eleven other towns send theirs
-as well at about 0.2 a unit in carting (the iron itself is worth 5 to 6), and nearly all of
-it goes into the town's own works. Buyers asked for 958 units more than they
-got.
+29,296 made and 6,112 brought in are 35,408; 31,686 bought, 147 sent and 72
+spoiled are 31,905; the difference, 3,502, is what the stock grew by (3,804
+to 7,306). The 0.0005 left over is single precision. Ulford is a forge
+town: six furnaces make the iron, sixteen other towns send theirs as well at
+about 0.2 a unit in carting (the iron itself is worth a little under 5 where
+it comes from), and nearly all of it goes into the town's own works. Buyers asked for
+150 units more than they got.
 
 The largest of the six furnaces, year by year (`works_books`):
 
 ```text
-Quennell & Sons Ironworks No. 3 (Coke blast furnace)
-  year  owner  capacity      out  revenue   inputs  cart out    hands    wages     rent   profit  dividends  invest  util
-  1848  Quenn    1073.5  12595.4   101180    12332       213     93.6    11381      217    77250      58899   35241  0.98
-  1849  Quenn    1204.1  13566.7   107138    15095       229     98.7    12248      251    79544      64500   45900  0.94
-  1850  Quenn    1319.0  14157.0    80763    18028       239    103.0    13861      286    48588      37828   45459  0.89
-  1851  Quenn    1436.5  16403.8    70601    19182       277    117.2    15910      322    35187      29340   44126  0.95
-  1852  Quenn    1384.4  17267.8    62460    17488       291    126.3    16047      322    28603      26824    1513  1.00
+Quennell & Sons Ironworks (Coke blast furnace), year by year
+  year  owner  capacity      out  revenue   inputs     fuel  cart in  cart out    hands    wages     rent   profit  dividends  invest  util
+  1847  Quenn     681.8   8273.0    37961     8062        0       15        98     60.6     7849      235    21801      21592       0  0.97
+  1848  Quenn     761.4   8565.6    51652     9239        0       15       102     60.5     7858      235    34304      25499   27057  0.94
+  1849  Quenn     857.2  10039.3    65463     9159        0       18       119     72.1     9386      253    46648      37543   33196  0.98
+  1850  Quenn     964.0  10086.8    53720    11500        0       18       120     71.8     9934      308    31962      29257   35376  0.88
+  1851  Quenn    1059.3  11936.1    48020    14805        0       21       142     81.5    11000      344    21850      16299   31596  0.94
+  1852  Quenn    1021.1  12745.2    42715    12446        0       22       151     90.1    11513      344    18391      17802    1040  1.00
+  1853  Quenn     980.4  12254.9    39957    13563        0       21       145     87.3    11521      344    14508      13712      32  1.00
 ```
 
-The Quennells' furnace makes a third of the town's iron with a hundred
-hands, put 45,000 a year into new capacity while iron was dear, and saw its
-profit fall by two thirds in four years as the price came down. Its carting
-in is nothing because it stands nearer the pits than the town does: it buys
-ore and coal below the town's price (the `inputs` column is what the
-merchants were paid, which is the town's price or less).
+The Quennells' furnace makes a third of the town's iron with seventy hands,
+put some 30,000 a year into new capacity while iron was dear, and saw its
+profit fall by two thirds in four years as the price came down. Its fuel is
+nothing because a coke furnace takes its coal as a material, and its carting
+in is next to nothing: its ore and coal reach it at about the town's price
+(the `inputs` column is what the merchants were paid, which is the town's
+price, or less for a works that stands nearer the source than the town does).
 
 ## What they cost
 
@@ -541,12 +580,15 @@ islands running at once on a machine that other work was also using:
 
 | | the books | of the run | kept in memory |
 |---|---|---|---|
-| game's rules, six families | 3.8 ms | 2.3 to 2.6 per cent | 26 to 34 MB |
-| port, six families | 13.0 ms | 6.5 to 7.7 per cent | 66 to 76 MB |
+| game's rules, six families | 2.9 ms | 1.9 to 2.0 per cent | 29 to 33 MB |
+| port, six families | 9.5 ms | 6.0 to 6.9 per cent | 66 to 76 MB |
 | port, six families, `works = false` | | 4.9 to 5.5 per cent | 25 to 28 MB |
 
-(The third row was taken on a busier machine than the other two, so its
-share is the fairer figure and its milliseconds are left out.) The port with
+(The first two rows are the review's, on the game's rules as they stand with
+the mines and the canals; when the books were first written, on a busier
+night, they read 3.8 and 13.0 ms and half a point more of the run. The third
+row is from that night, so its share is the fairer figure and its
+milliseconds are left out.) The port with
 six families has seven thousand works by 1900 and the game's rules have a
 few hundred, which is most of the difference. Half of the rest is one pass a
 month over the land's units (tens of thousands of them), reading five of the
@@ -554,9 +596,16 @@ month's arrays. These are wall-clock figures on a shared machine and moved
 by a third from one hour to the next; the shares are steadier than the
 milliseconds.
 
-The sweep's own clock agrees for the port without families (23.1 s a run with
-the books against 24.9 s without, inside the noise of that night) and shows
-more with six families and their seven thousand works (29.4 s against 25.8).
+The sweep's own clock, on sixteen seeds, eight islands at a time: under the
+game's rules with six families a run takes 27.6 s with the books and 25.8 s
+without, eight islands slower and eight faster, which is the noise of the
+machine; under the port without families 21.3 s against 23.6 s, noise again.
+Under the port with six families and their seven thousand works it is 25.1 s
+against 21.9 s, and all sixteen islands are slower: three seconds a run,
+twice what the hooks' own clock counts. The rest is presumably the works'
+tables crowding the economy's own data out of the processor's cache; I did
+not measure that. The port keeps no books unless it is asked to, so this is
+the price of asking.
 
 One thing cost far more than all of that until it was found, and whoever
 adds the next observer should know of it. The first version copied the
@@ -596,6 +645,28 @@ will say so for it (`tests/accounts.rs`, `the_books_balance_under_the_game`).
   what the land's pass costs. A mechanism that changes how a unit's rent is
   made (a royalty, a tithe) must change `accounts::note_month` with it; the
   income check will fail until it does.
+
+It has happened once, and went as it should. When the books met the mines
+and the canals three things had to be told to them, and the tests said so
+(with the first alone left out, the month's income check fails in 1756 by
+2.5 per cent, in four tests):
+
+- `mines` pays the sinkers of a new working at the town's wage out of its
+  royalty, hands the labour market never sees. The books now count them
+  among the sector's hands (`mines::crew`), so wages and rent come out as
+  they were paid.
+- `mines` pays a working's royalty to the owners of every cell of its lease,
+  not to the pit head's cell alone. The books read the land's rents as
+  `econ::pay_cell_rents` was handed them (`Month::land_rents`), so a
+  family's rents are the family's own figure again.
+- `canals` pays its navvies two shillings on every shilling of materials
+  where a railway pays three tenths, and takes them out of the town's hands.
+  The books read each project's wages as they were paid
+  (`Project::navvy_pay`), and a town's navvies have a column.
+
+`tests/accounts.rs` (`the_books_keep_up_with_the_mines_and_the_canals`)
+holds all three in place against the mines' and the canals' own counts.
+Kept town ground needed nothing: a works' rent is still its `f_rent`.
 
 ## What worries me
 

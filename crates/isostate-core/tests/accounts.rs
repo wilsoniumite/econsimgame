@@ -319,6 +319,27 @@ fn the_books_follow_what_a_player_does_between_years() {
 }
 
 #[test]
+fn a_loaded_game_has_its_books_again() {
+    // a save is the player's orders; loading plays the years over, books and all
+    let mut g = save::Game::new(3, 6, 0);
+    let d = pending(&g.sim.st, 0);
+    g.give(save::Order::decide(&g.sim, d[0].id, 0).unwrap()).unwrap();
+    for _ in 0..3 {
+        g.year().unwrap();
+    }
+    let seat = g.sim.st.families[0].seat as i64;
+    let cell = (0..g.sim.st.N).find(|&c| g.sim.st.catch[c] == seat && may_buy_land(&g.sim.st, 0, c).is_ok()).expect("some land to buy at the seat");
+    g.give(save::Order::BuyLand { cell }).expect("the land is bought");
+    g.year().unwrap();
+    let again = save::load(&g.save(0), |_| {}).unwrap();
+    assert!(!again.drifted && again.refused.is_empty());
+    let (was, now) = (&g.sim.st.acct, &again.game.sim.st.acct);
+    assert_eq!(was.years.len(), 4);
+    assert_eq!(was.years, now.years);
+    assert_eq!(was.hist.goods.iter().map(|v| v.to_bits()).collect::<Vec<_>>(), now.hist.goods.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+}
+
+#[test]
 fn a_run_of_one_year_and_towns_not_yet_founded() {
     let r = run(Rules::Game, &params(Rules::Game, 4, 0, 1750, true));
     let (st, C) = (&r.state, &r.content);
