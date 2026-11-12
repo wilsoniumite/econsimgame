@@ -174,6 +174,11 @@ fn balances(rules: Rules, seed: u64, families: usize, end: i64) {
         let land_rent: f64 = rec.land.chunks(KL).map(|l| l[KL - 1] as f64).sum();
         assert!(near(land_rent, y.rent_farm + y.rent_pits), "{}: the sectors' rents", y.year);
         assert!(near(y.rent_by_sector.iter().sum(), y.rent_farm + y.rent_pits));
+        // the pits' rent is that of the four sectors that dig: quarries and clay
+        // pits as well as the two the content marks as mines
+        let digs: f64 = (0..C.NS).filter(|&s| mines::is_extractive(&C.sector_name[s])).map(|s| y.rent_by_sector[s]).sum();
+        assert!((y.rent_pits - digs).abs() <= 1e-9 * digs.abs().max(1.0), "{}: {} to the pits, {digs} by sector", y.year, y.rent_pits);
+        assert!(y.rent_by_sector[C.sector_name.iter().position(|n| n == "quarry").unwrap()] != 0.0);
         // what was spent on each need is what was spent on goods
         let S = C.S;
         let need = |who: usize| (0..T * S).map(|k| rec.needs[k * 2 + who] as f64).sum::<f64>();
@@ -199,6 +204,53 @@ fn the_books_balance_under_the_port() {
 #[test]
 fn the_books_balance_under_the_game() {
     balances(Rules::Game, 7, 6, 1784);
+}
+
+#[test]
+fn the_books_keep_up_with_the_mines_and_the_canals() {
+    // the game as it is played, to 1800 on seed 7, where canals are dug
+    // (tests/canals.rs) and workings are sunk: the sinkers' pay, a working's
+    // royalty split among the cells of its lease, and navvies paid two shillings
+    // on every shilling of materials all pass through the books
+    const END: i64 = 1800;
+    let r = run(Rules::Game, &params(Rules::Game, 7, 6, END, true));
+    let (st, C) = (&r.state, &r.content);
+    assert!(r.params.mines.enabled && r.params.canals.enabled && r.params.canals.wages > 0.3);
+    for y in &st.acct.years {
+        assert!(y.balance_goods < 1e-9 && y.balance_income < 1e-9 && y.balance_spending < 1e-9, "{}: {} {} {}", y.year, y.balance_goods, y.balance_income, y.balance_spending);
+    }
+    let (T, NS) = (st.T_max, C.NS);
+    // the towns' navvies are the canals' own count of them, year by year
+    let mut years_digging = 0;
+    for cy in &st.cn.years {
+        let rec = st.acct.year((cy.year - 1750) as usize).unwrap();
+        let navvies: f64 = (0..T).map(|t| rec.towns[t * KT + tcol("navvies")] as f64).sum();
+        assert!((navvies - cy.navvies).abs() <= 1e-4 * cy.navvies + 1e-3, "{}: {navvies} navvies in the books, {} in the canals' own", cy.year, cy.navvies);
+        years_digging += (cy.navvies > 50.0) as usize;
+    }
+    assert!(years_digging > 0, "no canal was dug by {END}");
+    // a railway's navvies are paid three tenths of its materials and a canal's
+    // twice them: every year's pay lies between, and a year of canals alone is at the top
+    let canal = r.params.canals.wages;
+    let shares: Vec<f64> = st.acct.years.iter().filter(|y| y.pay_projects > 0.0).map(|y| y.pay_projects / (y.projects - y.pay_projects)).collect();
+    assert!(shares.iter().all(|&s| s > 0.3 - 1e-9 && s < canal + 1e-9), "{shares:?}");
+    assert!(shares.iter().any(|&s| (s - canal).abs() < 1e-9), "no year of canals alone: {shares:?}");
+    // the mines keep each working's hands (the sinkers among them), output and
+    // royalty over the last complete year; sector by sector they are the books'
+    assert!(st.mine_opened.iter().any(|&y| y as i64 == END - 1), "no working was being sunk in {END}");
+    let rec = st.acct.year((END - 1750) as usize).unwrap();
+    for (row, &s) in st.mine_sectors.iter().enumerate() {
+        let own = |m: &mat::Mat| (0..st.N).map(|c| m[(row, c)]).sum::<f64>();
+        let books = |name: &str| (0..T).map(|t| rec.land[(t * NS + s) * KL + accounts::LAND_FIELDS.iter().position(|&n| n == name).unwrap()] as f64).sum::<f64>();
+        for (name, m) in [("hands", &st.mine_hands), ("out", &st.mine_out), ("rent", &st.mine_royalty)] {
+            assert!((books(name) - own(m)).abs() <= 1e-5 * own(m).abs() + 1e-3, "{} {name}: {} in the books, {} in the mines' own", C.sector_name[s], books(name), own(m));
+        }
+    }
+    // and the families' rents, royalties among them, are what the families say they had
+    let last = st.acct.years.last().unwrap();
+    for (fam, got) in st.families.iter().zip(&last.to_families) {
+        assert!((got.rents - fam.last_year.rents).abs() <= 1e-9 * fam.last_year.rents.abs().max(1.0), "the {} family: {} in the books, {} in its own", fam.surname, got.rents, fam.last_year.rents);
+    }
 }
 
 #[test]
