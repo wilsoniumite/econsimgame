@@ -271,7 +271,9 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
     let blocked: Vec<bool> = (0..N)
         .map(|c| {
             let u = st.land_use[c];
-            !st.world.land[c] || u == USE_SEA || (u >= USE_SECTOR0 + 5 && u <= USE_SECTOR0 + 6)
+            // mines (docs/rules/mines.md): nor a pit head at work (a quarry's and a clay
+            // pit's too), which no longer shows as its cell's main use
+            !st.world.land[c] || u == USE_SEA || (u >= USE_SECTOR0 + 5 && u <= USE_SECTOR0 + 6) || crate::mines::blocks_town(st, P, c)
         })
         .collect();
     let ks = st.cell_K_share.clone();

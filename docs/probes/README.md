@@ -13,3 +13,23 @@ report (`night/dx-...`) hold the measuring code and are not for merging.
 - `dx-rail.md`: why the railway network stops, and what railways do to the economy.
 
 Line numbers in them are those of a5ea2ea.
+
+One later probe, of the game's rules as they stood at 63f7b46 (11 November 2026), on
+seeds 1 to 8 with six families:
+
+- `dx-combines.md`: what a works holds (nothing but plant and cash), how the chains lie
+  on the map, a design and a small prototype of combined works behind `combines.enabled`,
+  and what a railway or navigable water does for a works. A second helper then went
+  through it as its critic (branch `night/dx-combines-review`): the measurements stood,
+  some readings of them were corrected in place, and its last section has the verdict
+  (build it changed: the record's row now; combined works as a concern with books for
+  each stage, not as the prototype has them).
+
+One probe is of the viewer, not the simulation, as it stood at cd9b41c (11 November 2026):
+
+- `dx-smooth.md`: where the game's frames stall (a year's scenery handed to the renderer
+  whole, a third of a second each year), and what keeps the view moving whatever the
+  simulation is doing. Its branch, `night/smooth-probe`, adds a frame recorder to the
+  viewer (`src/frames.rs`) that is meant to be merged. A critic ran it again and rewrote
+  its stages on `night/smooth-probe-review` (section 11): the first stage is now the
+  year's meshes handed over one a frame, half a day's work, with a brief to build from.

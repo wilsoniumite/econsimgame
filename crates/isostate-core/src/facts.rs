@@ -70,7 +70,7 @@ pub struct Fact {
 }
 
 /// The headings, in the order they are printed.
-pub const GROUPS: [&str; 9] = [
+pub const GROUPS: [&str; 10] = [
     "People and towns",
     "Work and wages",
     "Railways",
@@ -80,6 +80,8 @@ pub const GROUPS: [&str; 9] = [
     "Prices and cycles",
     "News",
     "Speed",
+    // canals (docs/rules/canals.md): at the end, so that the others keep their places
+    "Canals",
 ];
 
 /// The two headings the sweep needs by name: it adds the news facts itself, and
@@ -129,6 +131,8 @@ pub struct Gathered {
     pub area: Vec<Vec<f64>>,
     /// Every town's rate of natural increase in every year (people: docs/rules/people.md).
     pub rates: Vec<f64>,
+    /// Per year: the workings of each extractive sector (mines: docs/rules/mines.md).
+    pub mines: Vec<crate::mines::YearNote>,
 }
 
 /// Call after each `sim::run_year`.
@@ -152,6 +156,7 @@ pub fn gather_year(g: &mut Gathered, sim: &Sim) {
     }
     g.capped.push(if all > 0.0 { capped / all } else { f64::NAN });
     g.area.push((0..st.lam.rows).map(|r| (0..st.N).map(|c| st.lam[(r, c)]).sum()).collect());
+    g.mines.push(crate::mines::gather(st, &sim.content, P));
 }
 
 /// The years facts are taken in: the first, every fiftieth year after it, and the
@@ -343,6 +348,12 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::railways::facts(r) {
         b.num(name, kind, v);
     }
+    // canals (docs/rules/canals.md): the network, what it carries, and coal's price
+    // and uses, which any run can answer
+    b.group = GROUPS[9];
+    for (name, kind, v) in crate::canals::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- works
     b.group = GROUPS[3];
@@ -411,6 +422,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             let area = g.area.get((y - y0) as usize).map_or(f64::NAN, |a| rows.iter().map(|&r| a[r]).sum());
             b.num(format!("area_{name}_{y}"), Kind::Real, area);
         }
+    }
+    // mines (docs/rules/mines.md): the workings, their hands, what they raise and what they pay
+    for (name, kind, v) in crate::mines::facts(r, g) {
+        b.num(name, kind, v);
     }
     // of the cells urban in a year, the share not urban ten years on
     let mut churn = Vec::new();

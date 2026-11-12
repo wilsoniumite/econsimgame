@@ -80,6 +80,33 @@ pub fn road_segments(r: &Replay, k: usize) -> Vec<(usize, usize, u8)> {
     out
 }
 
+/// Where the railway has sidings in year `k`: two at a big town's station,
+/// one at a middling town's, and one in a cell where three works or more
+/// stand by the line.
+fn sidings(r: &Replay, cen: &[(f32, f32)], k: usize) -> Vec<crate::rails::Sidings> {
+    let railed = |c: usize| r.trans[k * r.n + c] & 4 != 0;
+    let middle = |c: usize| bevy::math::Vec2::new(cen[c].0, cen[c].1);
+    let mut out: Vec<crate::rails::Sidings> = Vec::new();
+    for t in 0..r.n_towns.min(r.header.towns.len()) {
+        let node = r.header.towns[t].node;
+        let urban = r.town_urban[k * r.n_towns + t];
+        if r.town_active[k * r.n_towns + t] != 0 && railed(node) && urban > 3000.0 {
+            out.push((node, if urban > 12000.0 { 2 } else { 1 }, middle(node)));
+        }
+    }
+    let mut works: std::collections::HashMap<usize, usize> = Default::default();
+    for (f, firm) in r.header.firms.iter().enumerate() {
+        let (first, len, off) = (r.firm_first[f].max(0) as usize, r.firm_len[f].max(0) as usize, r.firm_off[f].max(0) as usize);
+        if railed(firm.cell) && k >= first && k < first + len && r.firm_k[off + k - first] > 0.0 {
+            *works.entry(firm.cell).or_default() += 1;
+        }
+    }
+    let mut districts: Vec<usize> = works.into_iter().filter(|&(c, n)| n >= 3 && !out.iter().any(|s| s.0 == c)).map(|(c, _)| c).collect();
+    districts.sort_unstable();
+    out.extend(districts.into_iter().map(|c| (c, 1, middle(c))));
+    out
+}
+
 pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look) -> Nets {
     world::timed("year nets", || year_nets_inner(r, g, cen, k, lk))
 }
@@ -87,7 +114,7 @@ pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look
 fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look) -> Nets {
     let mut roads = Builder::default();
     // the railways are graded curves with their own works (rails.rs)
-    let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g, lk);
+    let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g, lk, &sidings(r, cen, k));
     let (lane, main) = (*lk.ground.lane_dust, *lk.ground.road_gravel);
     for (c, m, lv) in road_segments(r, k) {
         let pts = drape(g, &[cen[c], cen[m]], 0.01);

@@ -178,6 +178,10 @@ pub struct Replay {
     pub res: Vec<u8>,
     /// the share of the cell under works, 0 to 255, on every cell
     pub works: Vec<u8>,
+    /// the quarries, pits and mines of each year, where the run keeps them as
+    /// workings (the core's docs/rules/mines.md); empty for a run that does not,
+    /// whose pits are read off the land mix as before
+    pub workings: Vec<Vec<Working>>,
 }
 
 /// `Replay::built` counts years from here (`isostate_core::record::BUILT_YEAR0`).
@@ -206,6 +210,30 @@ impl Replay {
     pub fn works_share(&self, k: usize, c: usize) -> f32 {
         self.works.get(k * self.n + c).map_or(0.0, |&b| b as f32 / 255.0)
     }
+}
+
+/// One working in one year: a pit head on a cell, with what the core says of it.
+#[derive(Clone, Debug)]
+pub struct Working {
+    pub cell: u32,
+    /// its display class (`world::QUARRY` .. `world::COALMINE`)
+    pub class: u8,
+    /// the year it was opened; 0 for one that lies abandoned
+    pub opened: i32,
+    /// mean hands over the year
+    pub hands: f32,
+    /// what it raised over the year, and everything raised there so far (its spoil heap)
+    pub out: f32,
+    pub heap: f32,
+    /// the share of its cell its pit head, yards and spoil take
+    pub surface: f32,
+}
+
+/// The display class of one of the core's sectors: the sectors come in the
+/// order of the display classes, after sea and before heath (farm, pasture and
+/// wood are 1 to 3, the four kinds of diggings 5 to 8).
+pub fn sector_class(sector: usize) -> u8 {
+    if sector < 3 { sector as u8 + 1 } else { sector as u8 + 2 }
 }
 
 /// The bytes of one array, or an error if the file ends before the array does.
@@ -285,6 +313,37 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     if use_.len() != ny * w * h {
         return Err(format!("{path}: its land use has {} values, where {ny} years of {w} by {h} cells need {}", use_.len(), ny * w * h));
     }
+    // the workings, where the run keeps its quarries, pits and mines as such: year k's
+    // are rows mine_first[k] .. mine_first[k + 1] of the other arrays. A run without
+    // them (the port, an older recording) has none, and its pits are read off the mix.
+    let mut workings: Vec<Vec<Working>> = Vec::new();
+    if has("mine_first") {
+        let first = i32s("mine_first")?;
+        let (cell, sector, opened) = (i32s("mine_cell")?, u8s("mine_sector")?, i32s("mine_opened")?);
+        let (hands, out, heap, surface) = (f32s("mine_hands")?, f32s("mine_out")?, f32s("mine_heap")?, f32s("mine_surface")?);
+        // every row has a value in every column, or a row would be read past a column's end
+        let rows = cell.len();
+        if [sector.len(), opened.len(), hands.len(), out.len(), heap.len(), surface.len()].iter().any(|&l| l != rows) {
+            return Err(format!("{path}: the columns of its table of workings are not all {rows} rows long"));
+        }
+        for k in 0..first.len().saturating_sub(1) {
+            let a = (first[k].max(0) as usize).min(rows);
+            let b = (first[k + 1].max(0) as usize).min(rows).max(a);
+            workings.push(
+                (a..b)
+                    .map(|i| Working {
+                        cell: cell[i] as u32,
+                        class: sector_class(sector[i] as usize),
+                        opened: opened[i],
+                        hands: hands[i],
+                        out: out[i],
+                        heap: heap[i],
+                        surface: surface[i],
+                    })
+                    .collect(),
+            );
+        }
+    }
     Ok(Replay {
         w,
         h,
@@ -323,6 +382,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         built,
         res,
         works,
+        workings,
     })
 }
 
@@ -356,6 +416,36 @@ pub fn yearly(r: &Replay, name: &str) -> Vec<f32> {
             if n > 0 { sum / n as f32 } else { f32::NAN }
         })
         .collect()
+}
+
+/// `n` months of a named series from month `first` of the run (0 is the first
+/// January), for a chart: NaN where there is no figure (a month a game has not
+/// reached), and empty if the run has no such series.
+pub fn monthly(r: &Replay, name: &str, first: usize, n: usize) -> Vec<f32> {
+    let Some(i) = r.series_names.iter().position(|s| s == name) else { return Vec::new() };
+    let row = &r.series[i * r.series_len..(i + 1) * r.series_len];
+    (first..first + n).map(|t| row.get(t).copied().unwrap_or(f32::NAN)).collect()
+}
+
+/// One month of a named series, if the run has it and has got that far.
+pub fn month(r: &Replay, name: &str, t: usize) -> Option<f32> {
+    let i = r.series_names.iter().position(|s| s == name)?;
+    r.series.get(i * r.series_len + t).copied().filter(|v| t < r.series_len && v.is_finite())
+}
+
+/// The newest month no later than `t`, and no more than a year before it,
+/// that the run has figures for; `t` itself if there is none. A live game's
+/// months go into the run a moment after they come when a scenery build holds
+/// it, so the month the clock has just passed may not be there yet, and a
+/// panel that marked it would have nothing to show.
+pub fn month_reached(r: &Replay, t: usize) -> usize {
+    newest_filled(&r.series, r.series_len, t)
+}
+
+/// `month_reached` on the table itself: one row of `len` months to a series.
+fn newest_filled(series: &[f32], len: usize, t: usize) -> usize {
+    let has = |m: usize| m < len && series.chunks(len.max(1)).any(|row| row.get(m).is_some_and(|v| v.is_finite()));
+    (t.saturating_sub(12)..=t).rev().find(|&m| has(m)).unwrap_or(t)
 }
 
 /// Annual mean of a named monthly series, or None if the run does not have it.
@@ -463,6 +553,23 @@ mod tests {
         assert_eq!((r.joined(0, 0), r.joined(0, 1)), (Some(1700), None));
         assert_eq!((r.residents(0, 0), r.residents(0, 1)), (488.0, 0.0));
         assert!((r.works_share(0, 1) - 0.2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_month_marked_is_one_the_run_has() {
+        // two series of 36 months; the game has played 26 of them, and one series has no figures at all
+        let n = f32::NAN;
+        let mut table = vec![n; 72];
+        table[..26].fill(1.0);
+        // the clock says month 25 is over and it is there
+        assert_eq!(newest_filled(&table, 36, 25), 25);
+        // months 26 and 27 have come from the simulation but wait to go into the run: the newest that is in
+        assert_eq!(newest_filled(&table, 36, 26), 25);
+        assert_eq!(newest_filled(&table, 36, 27), 25);
+        // past the end of the run, and in a run with no figures, the month asked for
+        assert_eq!(newest_filled(&table, 36, 40), 40);
+        assert_eq!(newest_filled(&[n; 36], 36, 5), 5);
+        assert_eq!(newest_filled(&[], 0, 5), 5);
     }
 
     #[test]

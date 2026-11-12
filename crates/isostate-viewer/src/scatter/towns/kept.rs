@@ -344,7 +344,7 @@ fn link(r: &Replay, a: usize, b: usize) -> Option<(usize, usize)> {
 /// lane's place, and its plots); and lanes and cross streets behind each.
 /// The oldest ways first: a later way's lanes give way to the streets and
 /// plots that were there before it (`lay_out`).
-fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, town: &world::TownGround, sq: &[Square]) -> Vec<Way> {
+fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, town: &world::TownGround, sq: &[Square], stations: &[Option<Vec2>]) -> Vec<Way> {
     let on_town = |c: usize| r.built[k * r.n + c] > 0;
     // (lower cell, direction) -> the road's level, or 0 for a lane, and the year the way was first there
     let mut links: std::collections::BTreeMap<(usize, usize), (u8, u32)> = Default::default();
@@ -419,10 +419,9 @@ fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, town: &world::Town
             }
         }
     }
-    for s in sq {
+    for (s, st) in sq.iter().zip(stations) {
         let node = r.header.towns[s.town].node;
-        if r.trans[k * r.n + node] & 4 != 0 {
-            let st = station_at(s);
+        if let Some(st) = *st {
             let d = (st - s.at).normalize_or_zero();
             // from the year the railway came
             let since = (0..=k).find(|&y| r.trans[y * r.n + node] & 4 != 0).unwrap_or(k) as u32;
@@ -494,6 +493,8 @@ struct Laying<'a> {
     town: &'a world::TownGround,
     near_plot: &'a dyn Fn(f32, f32) -> bool,
     sq: &'a [Square],
+    /// the stations of the towns the railway has come to (`station_at`)
+    stations: Vec<Vec2>,
     parishes: &'a [Parish],
     /// the cells of the map with a market place, a station or a church in them or next to them
     by_square: std::collections::HashSet<(i32, i32)>,
@@ -535,7 +536,7 @@ impl Laying<'_> {
     /// By a market place or a station, or crowding a church or the way to its gate.
     fn in_square(&self, p: Vec2) -> bool {
         self.by_square.contains(&(p.x.floor() as i32, p.y.floor() as i32))
-            && (self.sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(station_at(s)) < 0.07) || self.parishes.iter().any(|c| c.crowded_by(p)))
+            && (self.sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012) || self.stations.iter().any(|st| p.distance(*st) < 0.08) || self.parishes.iter().any(|c| c.crowded_by(p)))
     }
 
     /// Whether a lane behind a way, or a cross street off it, has come at `p`
@@ -672,7 +673,9 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     let sq = squares(r, cen, k);
     let t0 = std::time::Instant::now();
     let mut by_square: std::collections::HashSet<(i32, i32)> = Default::default();
-    for p in sq.iter().flat_map(|s| [s.at, station_at(s)]).chain(parishes.iter().map(|c| c.at)) {
+    // (the station stands beside the line where it passes the town: `station_at`)
+    let stations: Vec<Option<Vec2>> = sq.iter().map(|s| station_at(r, g, cen, k, s).map(|(at, _, _)| at)).collect();
+    for p in sq.iter().map(|s| s.at).chain(stations.iter().flatten().copied()).chain(parishes.iter().map(|c| c.at)) {
         for (dx, dy) in (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (dx, dy))) {
             by_square.insert((p.x.floor() as i32 + dx, p.y.floor() as i32 + dy));
         }
@@ -682,6 +685,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         town,
         near_plot,
         sq: &sq,
+        stations: stations.iter().flatten().copied().collect(),
         parishes,
         by_square,
         closes: std::cell::RefCell::new(world::CloseLookup::new(g)),
@@ -692,7 +696,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         main_at: HashMap::default(),
         mains_by_cell: HashMap::default(),
     };
-    for way in ways(r, g, cen, k, town, &sq) {
+    for way in ways(r, g, cen, k, town, &sq, &stations) {
         let len = way.a.distance(way.b).max(1e-4);
         let steps = ((len / 0.03).ceil() as usize).max(1);
         // every quarter of a cell of the map the street comes within a tenth of a cell of

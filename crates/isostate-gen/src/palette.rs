@@ -269,15 +269,13 @@ pub struct Rail {
     pub bank_top: Colour,
     pub bank_grass: Colour,
     pub bank_grass_shade: Colour,
+    pub bank_scree: Colour,
     pub stone: Colour,
     pub viaduct_brick: Colour,
-    pub cutting_grass_lit: Colour,
-    pub cutting_grass_shade: Colour,
-    pub cutting_rock_lit: Colour,
-    pub cutting_rock_shade: Colour,
-    pub cutting_back: Colour,
     pub tunnel_mouth: Colour,
     pub girder: Colour,
+    pub rope: Colour,
+    pub buffer: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]

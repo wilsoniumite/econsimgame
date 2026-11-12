@@ -131,6 +131,11 @@ pub struct Patchwork {
     #[texture(105)]
     #[sampler(106)]
     pub rivers: Handle<Image>,
+    /// this year's wood and heath as two smooth fields, eight texels to a
+    /// cell and read between them (`world::YearLand::field`, `land_field`)
+    #[texture(107)]
+    #[sampler(108)]
+    pub field: Handle<Image>,
 }
 
 #[derive(Clone, Copy, Debug, Reflect, ShaderType)]
@@ -249,19 +254,22 @@ pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> Pat
 }
 
 /// The year's land for every parcel, as the shader reads it: its class
-/// (`world::year_land`), how wooded it is, and the town density of its cell
-/// that scatter.rs builds houses by.
-pub fn year_parcels(r: &Replay, g: &Ground, k: usize) -> Vec<u8> {
-    let land = crate::world::year_land(r, g, k);
+/// (`world::year_land`), how many times it is cut into fields this year
+/// (`YearLand::depth`), the town density of its cell that scatter.rs builds
+/// houses by, and what it is farmed as where neither wood nor heath stands
+/// on it (`YearLand::under`).
+pub fn year_parcels(r: &Replay, g: &Ground, k: usize, land: &crate::world::YearLand) -> Vec<u8> {
     let mut out = Vec::with_capacity(land.class.len() * 4);
-    for (i, (&class, &wood)) in land.class.iter().zip(&land.wood).enumerate() {
+    for (i, &class) in land.class.iter().enumerate() {
         let off = k * r.n + g.land.wcell[i] as usize;
         // (task A) on kept town ground, how many houses stand on the cell against the most a cell
         // comes to hold: its closes are gardens between the houses while it is young
         let kept = land.town.cells.get(&g.land.wcell[i]).filter(|_| class == crate::world::URBAN).map(|c| (c.houses as f32 / 119.0 * 255.0).min(255.0) as u8);
         let dense = kept.unwrap_or(if r.use_[off] == 10 { r.inten[off] } else { 115 });
-        // (task A) which of the eight closes of a parcel of town ground are built up
-        out.extend_from_slice(&[class, wood, dense, land.town.built[i]]);
+        // (task A) a parcel of town ground is never farmed, so its last byte says which of
+        // its eight closes are built up
+        let last = if class == crate::world::URBAN { land.town.built[i] } else { land.under[i] };
+        out.extend_from_slice(&[class, land.depth[i], dense, last]);
     }
     out
 }
@@ -311,6 +319,16 @@ pub fn parcel_image(g: &Ground, data: Vec<u8>) -> Image {
     let size = Extent3d { width: (g.land.bw * 8) as u32, height: g.land.bh as u32, depth_or_array_layers: 1 };
     let mut img = Image::new(size, TextureDimension::D2, data, TextureFormat::Rgba8Unorm, RenderAssetUsages::default());
     img.sampler = ImageSampler::nearest();
+    img
+}
+
+/// The year's wood and heath (`world::YearLand::field`) as a texture the
+/// shader reads between texels. Replacing its data later writes into the
+/// same GPU texture.
+pub fn field_image(g: &Ground, data: Vec<u8>) -> Image {
+    let size = Extent3d { width: g.land.tw as u32, height: g.land.th as u32, depth_or_array_layers: 1 };
+    let mut img = Image::new(size, TextureDimension::D2, data, TextureFormat::Rg8Unorm, RenderAssetUsages::default());
+    img.sampler = ImageSampler::linear();
     img
 }
 

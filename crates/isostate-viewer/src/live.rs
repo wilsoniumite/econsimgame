@@ -2,22 +2,28 @@
 //! it finishes is written into the same arrays a recorded run fills, so the
 //! map, the panels and the timeline cannot tell a live game from a replay.
 //!
-//! The thread does nothing on its own. The viewer asks for the next year when
-//! the clock reaches the last one it has, and sends the player's orders (buy
-//! this land, build that works) in between, so an order given while looking at
-//! 1786 takes effect in the world before 1787 is worked out.
+//! The thread does nothing on its own. The viewer asks for the next month as
+//! the clock comes to its end, and gets back the little that a month changes
+//! (the series, the towns' prices and wages, the families' cash, a railway
+//! opened); after December comes the year's end, and with it the year as
+//! before: the map, the works, the families and the news. The player's orders
+//! (buy this land, build that works) go in between. One given at a year's
+//! turn, before January is asked for, is carried out at once; one given later
+//! in the year waits for the year's end (`isostate_core::save` says which end
+//! of it), and the thread says so in its answer.
 //!
 //! The thread also keeps the game saved. Every order it carries out goes in a
 //! log, and the log is written to the island's autosave after every year and
-//! every order (`saves`). Going on with a saved game plays its years again
-//! here, before the window opens, giving each order where it was first given.
+//! every order, and when the clock stops in the middle of a year (`saves`).
+//! Going on with a saved game plays its months again here, before the window
+//! opens, carrying each order out where it was first carried out.
 
 use std::sync::{mpsc, Mutex};
 
 use bevy::prelude::*;
 use isostate_core::families::{self, Group, Posting, Stance, N_GROUPS};
-use isostate_core::save::{Done, Game, Order};
-use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveStatic, LiveYear, Prospect, SiteOption};
+use isostate_core::save::{Done, Game, Order, Outcome};
+use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveMonth, LiveStatic, LiveYear, Prospect, SiteOption};
 
 use crate::family::FamilyView;
 use crate::replay::{self, Firm, Good, Header, Meta, Method, Replay, Town};
@@ -27,7 +33,7 @@ use crate::saves::{self, Saver};
 pub const PLAYER: usize = 0;
 
 pub enum Cmd {
-    /// work out the next year
+    /// work out the next month, and after December the year's end with it
     Step,
     /// what could be done with this cell
     Site(usize),
@@ -41,6 +47,35 @@ pub enum Cmd {
     Stance { group: Group, town: usize, stance: Stance },
     /// move the seat (and the head) at the year end; the present seat cancels a move
     MoveSeat(usize),
+    /// take back one of the orders that wait for the year's end, by its place among them
+    Cancel(usize),
+    /// the clock has stopped: write the save now if months have gone by since the last
+    Keep,
+}
+
+/// What waits for the year's end, as the interface shows it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Standing {
+    /// the orders given since the year's turn, in the order they were given
+    pub waiting: Vec<Order>,
+    /// how much of the family's cash they would take if carried out today
+    pub promised: f64,
+    /// squares where a works is to stand and does not yet: ordered and
+    /// waiting, or begun at the last turn
+    pub pegs: Vec<usize>,
+}
+
+/// A year's end as the thread sends it.
+pub struct YearEnd {
+    pub year: LiveYear,
+    /// what each trade would earn in each town (`families::prospect_works`)
+    pub prospects: Vec<[Prospect; N_GROUPS]>,
+    /// what became of each order that waited for this year's end: whether it
+    /// was carried out, and a line to tell the player
+    pub carried: Vec<(bool, String)>,
+    /// the player's family once the turn's orders were carried out, if any were
+    pub family: Option<FamilyReport>,
+    pub standing: Standing,
 }
 
 pub struct SiteInfo {
@@ -56,11 +91,13 @@ pub struct SiteInfo {
 }
 
 pub enum Msg {
-    /// a year, with what each trade would earn in each town (`families::prospect_works`)
-    Year(Box<LiveYear>, Vec<[Prospect; N_GROUPS]>),
+    /// a month (December's comes just before its year)
+    Month(Box<LiveMonth>),
+    Year(Box<YearEnd>),
     Site(SiteInfo),
-    /// an order was carried out (or not), with the player's family as it now stands
-    Done { ok: bool, text: String, family: Option<FamilyReport> },
+    /// an order was carried out, or waits, or was refused; with the player's
+    /// family as it stands (and as it has been told to stand), and what waits
+    Done { ok: bool, text: String, family: Option<FamilyReport>, standing: Standing },
     Failed(String),
     /// the game could not be saved, and why; None once it can be again
     Unsaved(Option<String>),
@@ -72,16 +109,25 @@ pub struct Live {
     tx: Option<mpsc::Sender<Cmd>>,
     rx: Mutex<mpsc::Receiver<Msg>>,
     thread: Option<std::thread::JoinHandle<()>>,
-    /// a year is being worked out
-    pub stepping: bool,
+    /// months of the year in progress (the one after the newest year's end
+    /// there is) that have been asked for, and that have come
+    pub asked: usize,
+    pub months: usize,
     /// the newest year (as an index) the clock has shown. The next is asked
     /// for a little before it is due, so for a moment there is a year worked
     /// out that the player has not seen; see `game::Now`.
     pub seen: usize,
-    /// when the year being worked out was asked for
-    sent: Option<std::time::Instant>,
-    /// how long the last year took to arrive, in seconds
-    pub took: Option<f32>,
+    /// when each month still on its way was asked for
+    sent: std::collections::VecDeque<std::time::Instant>,
+    /// when the last month or year came, and when December's work began
+    came: Option<std::time::Instant>,
+    turn_began: Option<std::time::Instant>,
+    /// how long the last month took to arrive, and the last year's end with
+    /// its December, in seconds
+    pub month_took: Option<f32>,
+    pub turn_took: Option<f32>,
+    /// what waits for the year's end
+    pub standing: Standing,
     /// the thread has stopped and that has been reported
     gone: std::sync::atomic::AtomicBool,
     /// the game was gone on with from a save, and how that went
@@ -100,6 +146,8 @@ pub struct Resumed {
     /// the year the game is gone on with from: the one the save had reached,
     /// or later if more were played before the window opened (`--advance`)
     pub year: i32,
+    /// months of the year after it that had been played
+    pub month: usize,
     /// orders given again
     pub orders: usize,
     /// orders the simulation refused this time: its rules have changed since the save
@@ -108,6 +156,19 @@ pub struct Resumed {
     pub drifted: bool,
     /// newer saves that could not be read, so that this is an earlier one
     pub passed_over: usize,
+}
+
+impl Resumed {
+    /// Where the game is gone on with from, as the clock will show it:
+    /// "January 1787" after 1786, "June 1787" for one left in the middle of
+    /// that year. A game that is `over` has no January after its last year,
+    /// and the clock shows that year alone.
+    pub fn date(&self, over: bool) -> String {
+        if over {
+            return format!("{}", self.year);
+        }
+        crate::clock::month_year(crate::clock::Date { year: self.year + 1, month: self.month.min(11), part: 0.0 })
+    }
 }
 
 impl Live {
@@ -130,20 +191,64 @@ impl Live {
         }
     }
 
+    /// A month, or the year's end, is being worked out.
+    pub fn stepping(&self) -> bool {
+        self.asked > self.months || self.months >= 12
+    }
+
+    /// The simulation stands at a year's turn and nothing has been asked of
+    /// it since: an order given now is carried out at once.
+    pub fn at_turn(&self) -> bool {
+        self.asked == 0
+    }
+
+    /// December has been asked for, and the year's end comes with it: until
+    /// it has come, an order or an answer given now would arrive after it.
+    pub fn turning(&self) -> bool {
+        self.asked >= 12
+    }
+
+    /// Ask for the next month, if the year has one left to ask for.
     pub fn step(&mut self) {
-        if !self.stepping {
-            self.stepping = true;
-            self.sent = Some(std::time::Instant::now());
+        if self.asked < 12 {
+            self.asked += 1;
+            self.sent.push_back(std::time::Instant::now());
             self.send(Cmd::Step);
         }
     }
 
-    /// The year asked for has come (or failed to).
-    pub fn stepped(&mut self, arrived: bool) {
-        self.stepping = false;
-        if let (true, Some(t0)) = (arrived, self.sent.take()) {
-            self.took = Some(t0.elapsed().as_secs_f32());
+    /// A month has come. December's is not the end of its work: the year follows.
+    pub fn month_came(&mut self) {
+        let now = std::time::Instant::now();
+        // the work began when it was asked for, or when the month before it was done
+        let began = self.sent.pop_front().map(|t0| self.came.map_or(t0, |c| c.max(t0)));
+        self.months = (self.months + 1).min(12);
+        if self.months < 12 {
+            if let Some(b) = began {
+                self.month_took = Some((now - b).as_secs_f32());
+            }
+        } else {
+            self.turn_began = began;
         }
+        self.came = Some(now);
+    }
+
+    /// The year's end has come: the next year's months are still to ask for.
+    pub fn year_came(&mut self) {
+        let now = std::time::Instant::now();
+        if let Some(b) = self.turn_began.take() {
+            self.turn_took = Some((now - b).as_secs_f32());
+        }
+        self.came = Some(now);
+        (self.asked, self.months) = (0, 0);
+        self.sent.clear();
+    }
+
+    /// What was asked for failed to come.
+    pub fn failed(&mut self) {
+        self.asked = self.months;
+        self.sent.clear();
+        self.turn_began = None;
     }
 }
 
@@ -202,11 +307,130 @@ impl Board {
         Board { cursor: LiveCursor::new(&sim.content), r: shell(&stat, sim.params.seed), view: FamilyView { method_group, ..default() } }
     }
 
-    /// Take in the year the simulation has just played.
+    /// Take in the year the simulation has just played, with its twelve months.
     fn year(&mut self, sim: &iso::Sim) {
+        self.months(sim, 12);
         let y = iso::live_year(&mut self.cursor, &sim.st, &sim.content, &sim.params, &sim.events);
         apply_year(&mut self.r, &y);
         crate::game::year_families(&mut self.view, &y.families, y.year as i32);
+    }
+
+    /// Take in the last `n` months the simulation has played: their series.
+    /// (What the towns paid month by month is not kept by the simulation, so
+    /// a game gone on with has it only from the month it is gone on with.)
+    fn months(&mut self, sim: &iso::Sim, n: usize) {
+        for t in sim.t.saturating_sub(n)..sim.t {
+            apply_series(&mut self.r, t, &iso::live::month_series(&sim.st, t));
+        }
+    }
+}
+
+/// What waits for the year's end in a game, for the interface.
+fn standing(game: &Game, begun: &[usize]) -> Standing {
+    let s = &game.sim;
+    let promised = match (game.foreseen(), iso::family_report(&s.st, &s.content, &s.params, PLAYER)) {
+        (Some(seen), Ok(now)) => (now.cash - seen.cash).max(0.0),
+        _ => 0.0,
+    };
+    let waiting_works = game.waiting.iter().filter_map(|o| if let Order::Found { cell, .. } = o { Some(*cell) } else { None });
+    Standing { waiting: game.waiting.clone(), promised, pegs: begun.iter().copied().chain(waiting_works).collect() }
+}
+
+/// The player's family for the panels: as it stands, and in what the family
+/// has been told (who is posted where, what a branch does, where the seat
+/// goes, what is decided) as it will stand once the orders that wait are
+/// carried out. What it owns and has in hand is only ever what it has now.
+fn family_now(game: &Game) -> Option<FamilyReport> {
+    let s = &game.sim;
+    let now = iso::family_report(&s.st, &s.content, &s.params, PLAYER).ok()?;
+    Some(match game.foreseen() {
+        Some(seen) => FamilyReport {
+            cash: now.cash,
+            works_value: now.works_value,
+            land_value: now.land_value,
+            net_worth: now.net_worth,
+            firms: now.firms,
+            absentee: now.absentee,
+            cells: now.cells,
+            ..seen
+        },
+        None => now,
+    })
+}
+
+/// The squares where works were begun at the last year's turn: by an order
+/// carried out there, which the year's own picture does not show yet.
+fn begun_at_turn(game: &Game) -> Vec<usize> {
+    game.orders
+        .iter()
+        .filter(|g| g.year == game.last_year() && g.month == 0)
+        .filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None })
+        .collect()
+}
+
+/// What an order is, in a few words, for the list of those that wait.
+pub fn order_words(order: &Order, r: &Replay, rep: Option<&FamilyReport>) -> String {
+    let town = |t: usize| r.header.towns.get(t).map_or_else(|| format!("town {t}"), |x| x.name.clone());
+    let near = |c: usize| {
+        let t = r.filled.checked_sub(1).and_then(|k| r.catch.get(k * r.n + c)).and_then(|&t| (t as usize).checked_sub(1));
+        t.map_or_else(|| "the island".to_string(), town)
+    };
+    match order {
+        Order::Found { method, cell } => {
+            let label = r.header.methods.iter().find(|m| &m.name == method).map_or(method.as_str(), |m| m.label.as_str());
+            format!("Build by {}: {}", near(*cell), label.to_lowercase())
+        }
+        Order::BuyLand { cell } => format!("Buy a square of land by {}", near(*cell)),
+        Order::Decide { choice, .. } => match choice {
+            iso::Choice::Trade { group } => format!("Take up {}", crate::family::trade(*group)),
+            iso::Choice::Apprentice { group, town: t } => format!("An apprenticeship in {} at {}", crate::family::trade(*group), town(*t)),
+            iso::Choice::University => "University".to_string(),
+            iso::Choice::Head { member } => match rep.and_then(|f| f.members.get(*member)) {
+                Some(m) => format!("{} to head the family", m.first),
+                None => "A new head of the family".to_string(),
+            },
+        },
+        Order::Post { member, posting } => {
+            let who = rep.and_then(|f| f.members.get(*member)).map_or_else(|| "Someone".to_string(), |m| m.first.clone());
+            match posting {
+                Posting::Manager { group, town: t } => format!("{who} to run {} at {}", crate::family::trade(*group), town(*t)),
+                Posting::Unposted => format!("{who} off the post"),
+            }
+        }
+        Order::Stance { group, town: t, stance } => {
+            let does = match stance {
+                Stance::Grow => "to grow",
+                Stance::Hold => "to hold",
+                Stance::WindDown => "to wind down",
+            };
+            format!("{} at {} {does}", crate::family::short_group(*group), town(*t))
+        }
+        Order::MoveSeat { town: t } => format!("Move the seat to {}", town(*t)),
+    }
+}
+
+/// When an order given now, in the middle of a year, will happen: said to
+/// the player in the thread's answer.
+fn waits_words(game: &Game, order: &Order) -> String {
+    // the year in progress, whose end the order waits for
+    let year = game.sim.year;
+    match order {
+        Order::Found { .. } => format!("Ordered. Building begins at the year's turn, in January {}, if the money is there then.", year + 1),
+        Order::BuyLand { .. } => format!("Ordered. The land is bought at the year's turn, in January {}, at its price then.", year + 1),
+        Order::Decide { .. } => format!("Decided. It takes effect at the end of {year}, where the default would have."),
+        Order::Post { .. } => format!("Told. It takes effect at the end of {year}."),
+        Order::Stance { .. } => format!("Told. The branch goes by it from the end of {year}."),
+        Order::MoveSeat { .. } => format!("Told. The seat moves at the end of {year}."),
+    }
+}
+
+/// What became of an order that waited, in a line for the player.
+fn carried_words(s: &iso::Sim, o: &Outcome, what: &str) -> (bool, String) {
+    match &o.result {
+        Ok(Done::Founded(f)) => (true, format!("{} is begun, and will open in {}", s.st.f_name[*f], s.year)),
+        Ok(Done::Bought(price)) => (true, format!("{what}: bought for {}", crate::ui::money(*price as f32))),
+        Ok(_) => (true, format!("{what}: done")),
+        Err(why) => (false, format!("{what}: not done, because {why}")),
     }
 }
 
@@ -274,9 +498,11 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             if loaded.drifted {
                 eprintln!("  the island does not stand quite as it was saved: the simulation has changed since");
             }
-            eprintln!("  back in {} after {:.1}s", loaded.game.last_year(), t0.elapsed().as_secs_f32());
+            let reached = match loaded.game.month { 0 => format!("at the end of {}", loaded.game.last_year()), m => format!("{m} months into {}", loaded.game.last_year() + 1) };
+            eprintln!("  back {reached} after {:.1}s", t0.elapsed().as_secs_f32());
             resumed = Some(Resumed {
                 year: loaded.game.last_year() as i32,
+                month: loaded.game.month,
                 orders: loaded.game.orders.len(),
                 refused: loaded.refused.len(),
                 drifted: loaded.drifted,
@@ -296,27 +522,33 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         if game.over() {
             break;
         }
+        // (from a save made in the middle of a year, the first of these is the rest of that year)
         game.year()?;
         board.year(&game.sim);
+        // what waited for the year's end, in a save made in the middle of a year
+        for done in game.turn() {
+            if let Err(why) = &done.result {
+                eprintln!("  an order that waited for the end of {} could not be carried out ({why}): {}", game.last_year(), serde_json::to_string(&done.order).unwrap_or_default());
+            }
+        }
         if new && i == 0 && o.demo {
             demo_orders(&mut game);
         }
     }
-    // years played on after the saved ones: the card says the year the game opens in
+    // a game saved in the middle of a year is gone on with there: the months played of it
+    board.months(&game.sim, game.month);
+    // years played on after the saved ones: the card says where the game opens
     if let Some(back) = &mut resumed {
-        back.year = game.last_year() as i32;
+        (back.year, back.month) = (game.last_year() as i32, game.month);
     }
     let Board { cursor, r, mut view } = board;
     // orders given since the last year: the family as it stands now, and the works to come
-    if let Ok(rep) = iso::family_report(&game.sim.st, &game.sim.content, &game.sim.params, PLAYER) {
+    if let Some(rep) = family_now(&game) {
         crate::game::player_family(&mut view, &rep);
     }
-    let ordered = game
-        .orders
-        .iter()
-        .filter(|g| g.year == game.last_year())
-        .filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None })
-        .collect();
+    let begun = begun_at_turn(&game);
+    let stands = standing(&game, &begun);
+    let ordered = stands.pegs.clone();
     view.prospects = all_prospects(&game.sim);
 
     // where the game is kept: a place that was named, or the island's autosave
@@ -339,22 +571,28 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     }
 
     let kept = saver.is_some();
+    let months = game.month;
 
     let (tx_cmd, rx_cmd) = mpsc::channel::<Cmd>();
     let (tx_msg, rx_msg) = mpsc::channel::<Msg>();
     let thread = std::thread::Builder::new()
         .name("isostate-sim".into())
-        .spawn(move || run_thread(game, cursor, saver, rx_cmd, tx_msg))
+        .spawn(move || run_thread(game, cursor, saver, begun, rx_cmd, tx_msg))
         .map_err(|e| format!("cannot start the simulation thread: {e}"))?;
     let live = Live {
         tx: Some(tx_cmd),
         rx: Mutex::new(rx_msg),
         thread: Some(thread),
-        stepping: false,
+        asked: months,
+        months,
         // a game opens on the newest year there is
         seen: r.filled.max(1) - 1,
-        sent: None,
-        took: None,
+        sent: Default::default(),
+        came: None,
+        turn_began: None,
+        month_took: None,
+        turn_took: None,
+        standing: stands,
         gone: std::sync::atomic::AtomicBool::new(false),
         resumed,
         ordered,
@@ -366,8 +604,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
 
 /// For screenshots: the best-paying works near home that costs at most half
 /// the family's cash (taking up its trade first, if the first trade is still
-/// to choose), and the cheapest few squares around it. They are given as a
-/// player's orders are, after the first year, so a save holds them.
+/// to choose), and the nearest few squares round it that it can afford. They
+/// are given as a player's orders are, after the first year, so a save holds
+/// them.
 fn demo_orders(game: &mut Game) {
     let s = &game.sim;
     let Ok(rep) = iso::family_report(&s.st, &s.content, &s.params, PLAYER) else { return };
@@ -425,18 +664,32 @@ fn demo_orders(game: &mut Game) {
         if let Err(e) = Order::found(&game.sim, m, c).and_then(|o| game.give(o)) {
             eprintln!("demo: could not build: {e}");
         }
+        // Land: up to four squares, the nearest to the works first and the
+        // cheaper of two as near, that are not the family's already and that
+        // half its cash will buy between them (the works has to be paid for).
+        // Ground beside a town costs ten times what open country does, so the
+        // squares next to the works are often out of reach; the search goes
+        // out as far as four squares.
         let s = &game.sim;
         let (cx, cy) = ((c % s.st.world.W) as i64, (c / s.st.world.W) as i64);
-        let mut around: Vec<(f64, usize)> = (-1..=1)
-            .flat_map(|dy| (-1..=1).map(move |dx| (cx + dx, cy + dy)))
-            .filter(|&(x, y)| x >= 0 && y >= 0 && x < w && y < h)
-            .map(|(x, y)| (y * w + x) as usize)
-            .filter(|&c| s.st.world.land[c])
-            .map(|c| (families::land_price(&s.st, &s.params, c), c))
+        let mut around: Vec<(i64, f64, usize)> = (-4..=4)
+            .flat_map(|dy| (-4..=4).map(move |dx| (dx, dy)))
+            .filter(|&(dx, dy)| cx + dx >= 0 && cy + dy >= 0 && cx + dx < w && cy + dy < h)
+            .map(|(dx, dy)| (dx.abs().max(dy.abs()), ((cy + dy) * w + cx + dx) as usize))
+            .filter(|&(_, c)| s.st.world.land[c] && s.st.cell_owner[c] != PLAYER as i64)
+            .map(|(d, c)| (d, families::land_price(&s.st, &s.params, c), c))
             .collect();
-        around.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        for (_, c) in around.into_iter().take(4) {
-            let _ = game.give(Order::BuyLand { cell: c });
+        around.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)));
+        let mut purse = s.st.families[PLAYER].cash * 0.5;
+        let mut bought = 0;
+        for (_, price, c) in around {
+            if bought == 4 {
+                break;
+            }
+            if price <= purse && game.give(Order::BuyLand { cell: c }).is_ok() {
+                purse -= price;
+                bought += 1;
+            }
         }
     }
 }
@@ -455,10 +708,10 @@ fn all_prospects(s: &iso::Sim) -> Vec<[Prospect; N_GROUPS]> {
     out
 }
 
-/// A command as the order the log keeps. Asking for a year or about a square is not one.
+/// A command as the order the log keeps. Asking for a month or about a square is not one.
 fn order_of(sim: &iso::Sim, cmd: Cmd) -> Result<Order, String> {
     match cmd {
-        Cmd::Step | Cmd::Site(_) => Err("that is not an order".to_string()),
+        Cmd::Step | Cmd::Site(_) | Cmd::Cancel(_) | Cmd::Keep => Err("that is not an order".to_string()),
         Cmd::Found { method, cell } => Order::found(sim, method, cell),
         Cmd::BuyLand(cell) => Ok(Order::BuyLand { cell }),
         Cmd::Decide { id, option } => Order::decide(sim, id, option),
@@ -468,9 +721,26 @@ fn order_of(sim: &iso::Sim, cmd: Cmd) -> Result<Order, String> {
     }
 }
 
-fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
+/// Write the game's save, and tell the interface once when saving starts to
+/// fail and once when it works again. False if the interface has gone.
+fn write_save(game: &Game, saver: &mut Option<Saver>, saved: &mut bool, year_end: bool, tx: &mpsc::Sender<Msg>) -> bool {
+    let Some(saver) = saver else { return true };
+    let now = saver.write(&game.save(saves::now()), year_end);
+    if let Err(e) = &now {
+        eprintln!("the game could not be saved: {e}");
+    }
+    if now.is_ok() != *saved {
+        *saved = now.is_ok();
+        return tx.send(Msg::Unsaved(now.err())).is_ok();
+    }
+    true
+}
+
+fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, mut begun: Vec<usize>, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
     // whether the last save was written, so a failure is told once and not every year
     let mut saved = true;
+    // months have been played since the last save
+    let mut unkept = false;
     while let Ok(cmd) = rx.recv() {
         let mut year_end = false;
         let msg = match cmd {
@@ -478,12 +748,29 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                 if game.over() {
                     Msg::Failed(format!("{} was the last year.", game.sim.end_year))
                 } else {
-                    match game.year() {
-                        Ok(()) => {
-                            year_end = true;
+                    match game.month() {
+                        Ok(turned) => {
+                            unkept = true;
                             let s = &game.sim;
-                            let y = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
-                            Msg::Year(Box::new(y), all_prospects(s))
+                            let month = iso::live_month(&mut cursor, &s.st, &s.content, &s.params, &s.events, s.t - 1);
+                            if !turned {
+                                Msg::Month(Box::new(month))
+                            } else {
+                                // December first, then its year as it ended, before the turn's orders.
+                                // (The year has ended by the time December is taken, so the month carries the
+                                // year's end's news as well as its own, and the year that follows has none to add.)
+                                if tx.send(Msg::Month(Box::new(month))).is_err() {
+                                    return;
+                                }
+                                year_end = true;
+                                let year = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
+                                let done = game.turn();
+                                begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| if let Order::Found { cell, .. } = &o.order { Some(*cell) } else { None }).collect();
+                                let s = &game.sim;
+                                let carried = done.iter().map(|o| carried_words(s, o, &order_line(&game, &o.order))).collect();
+                                let family = if done.is_empty() { None } else { family_now(&game) };
+                                Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun) }))
+                            }
                         }
                         Err(e) => Msg::Failed(e),
                     }
@@ -502,43 +789,85 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                     options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
                 })
             }
+            Cmd::Keep => {
+                // the clock has stopped in the middle of a year: the months since the last save are kept
+                if std::mem::take(&mut unkept) && !write_save(&game, &mut saver, &mut saved, false, &tx) {
+                    return;
+                }
+                continue;
+            }
+            Cmd::Cancel(i) => {
+                let r = game.cancel(i).map(|_| String::new());
+                done(&game, &begun, r)
+            }
             order => {
-                // carried out, and kept in the log if it was
-                let r = order_of(&game.sim, order).and_then(|o| game.give(o));
+                // carried out, and kept in the log if it was; or kept to wait for the year's end
+                let r = order_of(&game.sim, order).and_then(|o| game.give(o.clone()).map(|d| (o, d)));
+                if let Ok((Order::Found { cell, .. }, Done::Founded(_))) = &r {
+                    begun.push(*cell);
+                }
                 let s = &game.sim;
-                let text = r.map(|d| match d {
+                let text = r.map(|(o, d)| match d {
                     Done::Founded(f) => format!("{} will open in {}.", s.st.f_name[f], s.year),
                     Done::Bought(price) => format!("The land is yours, for {}.", crate::ui::money(price as f32)),
                     Done::Done => String::new(),
+                    Done::Waits => waits_words(&game, &o),
                 });
-                done(s, text)
+                done(&game, &begun, text)
             }
         };
-        // the game is kept saved: after every year, and after every order carried out
+        // the game is kept saved: after every year, and after every order carried out or kept to wait
         let changed = year_end || matches!(msg, Msg::Done { ok: true, .. });
         if tx.send(msg).is_err() {
             return;
         }
-        if let (true, Some(saver)) = (changed, &mut saver) {
-            let now = saver.write(&game.save(saves::now()), year_end);
-            if let Err(e) = &now {
-                eprintln!("the game could not be saved: {e}");
-            }
-            if now.is_ok() != saved {
-                saved = now.is_ok();
-                if tx.send(Msg::Unsaved(now.err())).is_err() {
-                    return;
-                }
+        if changed {
+            unkept = false;
+            if !write_save(&game, &mut saver, &mut saved, year_end, &tx) {
+                return;
             }
         }
     }
+    // the game is being left: the months played since the last save go with it
+    if unkept {
+        write_save(&game, &mut saver, &mut saved, false, &tx);
+    }
 }
 
-fn done(s: &iso::Sim, r: Result<String, String>) -> Msg {
-    let family = iso::family_report(&s.st, &s.content, &s.params, PLAYER).ok();
+/// An order in a few words, with nothing but the simulation to go by (the
+/// thread has no map): for the lines that say what became of it.
+fn order_line(game: &Game, order: &Order) -> String {
+    let s = &game.sim;
+    let town = |t: usize| s.st.town_name.get(t).cloned().unwrap_or_else(|| format!("town {t}"));
+    let near = |c: usize| s.st.catch.get(c).and_then(|&t| (t >= 0).then(|| town(t as usize))).unwrap_or_else(|| "the island".to_string());
+    let member = |j: usize| s.st.families.get(PLAYER).and_then(|f| f.members.get(j)).map_or_else(|| "Someone".to_string(), |m| m.first.clone());
+    match order {
+        Order::Found { method, cell } => {
+            let label = s.content.method_name.iter().position(|n| n == method).map_or(method.clone(), |m| s.content.method_label[m].to_lowercase());
+            format!("The works by {} ({label})", near(*cell))
+        }
+        Order::BuyLand { cell } => format!("The land by {}", near(*cell)),
+        Order::Decide { choice, .. } => match choice {
+            iso::Choice::Trade { group } => format!("Taking up {}", crate::family::trade(*group)),
+            iso::Choice::Apprentice { group, town: t } => format!("The apprenticeship in {} at {}", crate::family::trade(*group), town(*t)),
+            iso::Choice::University => "University".to_string(),
+            iso::Choice::Head { member: j } => format!("{} as head of the family", member(*j)),
+        },
+        Order::Post { member: j, posting } => match posting {
+            Posting::Manager { group, town: t } => format!("{} to run {} at {}", member(*j), crate::family::trade(*group), town(*t)),
+            Posting::Unposted => format!("{} off the post", member(*j)),
+        },
+        Order::Stance { group, town: t, .. } => format!("The word to {} at {}", crate::family::short_group(*group).to_lowercase(), town(*t)),
+        Order::MoveSeat { town: t } => format!("The seat's move to {}", town(*t)),
+    }
+}
+
+fn done(game: &Game, begun: &[usize], r: Result<String, String>) -> Msg {
+    let family = family_now(game);
+    let standing = standing(game, begun);
     match r {
-        Ok(text) => Msg::Done { ok: true, text, family },
-        Err(text) => Msg::Done { ok: false, text, family },
+        Ok(text) => Msg::Done { ok: true, text, family, standing },
+        Err(text) => Msg::Done { ok: false, text, family, standing },
     }
 }
 
@@ -599,6 +928,96 @@ fn shell(stat: &LiveStatic, seed: u64) -> Replay {
         built: Vec::new(),
         res: Vec::new(),
         works: Vec::new(),
+        workings: Vec::new(),
+    }
+}
+
+/// Add news to the run's list, each item with its place in the simulation's list.
+fn add_news(r: &mut Replay, events: &[iso::Event]) {
+    let sent = r.header.events.len();
+    for (j, e) in events.iter().enumerate() {
+        r.header.events.push(replay::Event {
+            year: e.year as f32,
+            kind: e.kind.clone(),
+            weight: e.weight as f32,
+            title: e.title.clone(),
+            text: e.text.clone(),
+            cell: e.cell.map(|c| c as i64),
+            family: e.family,
+            kept: e.kept,
+            seq: sent + j,
+        });
+    }
+}
+
+/// Write one month of every monthly series into the replay's table: `t` is
+/// the month's place in the run, 0 for the first January.
+pub fn apply_series(r: &mut Replay, t: usize, values: &[f64]) {
+    if t >= r.series_len {
+        return;
+    }
+    for (i, v) in values.iter().enumerate() {
+        if let Some(x) = r.series.get_mut(i * r.series_len + t) {
+            *x = *v as f32;
+        }
+    }
+}
+
+/// Write one simulated month into the replay: its series, and its news.
+pub fn apply_month(r: &mut Replay, m: &LiveMonth) {
+    apply_series(r, m.index, &m.series);
+    if !m.events.is_empty() {
+        add_news(r, &m.events);
+        r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
+    }
+}
+
+/// What the towns paid and charged month by month, for the months a live game
+/// has played while the viewer watched. The run's own tables hold a year's
+/// averages, which is all a recorded run has; with these the price and wage
+/// maps can show a month.
+#[derive(Resource, Default)]
+pub struct Months {
+    /// towns and goods in each month's row
+    nt: usize,
+    ng: usize,
+    /// the place in the run of the first month held
+    first: usize,
+    wage: Vec<f32>,
+    price: Vec<f32>,
+}
+
+impl Months {
+    pub fn add(&mut self, m: &LiveMonth) {
+        let (nt, ng) = (m.wage.len(), if m.wage.is_empty() { 0 } else { m.price.len() / m.wage.len() });
+        // the first month, or one that does not follow the last held: start again from it
+        if self.wage.is_empty() || (nt, ng) != (self.nt, self.ng) || m.index != self.first + self.wage.len() / nt.max(1) {
+            *self = Months { nt, ng, first: m.index, wage: Vec::new(), price: Vec::new() };
+        }
+        self.wage.extend_from_slice(&m.wage);
+        self.price.extend_from_slice(&m.price);
+    }
+
+    /// The row of month `t` (its place in the run), if it is held.
+    fn row(&self, t: usize) -> Option<usize> {
+        let i = t.checked_sub(self.first)?;
+        (self.nt > 0 && i < self.wage.len() / self.nt).then_some(i)
+    }
+
+    /// The newest month held that is no later than `t`, and no earlier than
+    /// the January of its year.
+    pub fn at_or_before(&self, t: usize) -> Option<usize> {
+        (t - t % 12..=t).rev().find(|&m| self.row(m).is_some())
+    }
+
+    pub fn wage(&self, t: usize, town: usize) -> Option<f32> {
+        let i = self.row(t)?;
+        self.wage.get(i * self.nt + town).copied()
+    }
+
+    pub fn price(&self, t: usize, town: usize, good: usize) -> Option<f32> {
+        let i = self.row(t)?;
+        (town < self.nt && good < self.ng).then(|| self.price[(i * self.nt + town) * self.ng + good])
     }
 }
 
@@ -696,31 +1115,31 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             e.kept = Some(kept);
         }
     }
-    let sent = r.header.events.len();
-    for (j, e) in y.events.iter().enumerate() {
-        r.header.events.push(replay::Event {
-            year: e.year as f32,
-            kind: e.kind.clone(),
-            weight: e.weight as f32,
-            title: e.title.clone(),
-            text: e.text.clone(),
-            cell: e.cell.map(|c| c as i64),
-            family: e.family,
-            kept: e.kept,
-            seq: sent + j,
-        });
-    }
+    add_news(r, &y.events);
     // in order of date; nothing may keep a place in this list across years (the toasts keep copies)
     r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
 
-    // the monthly series arrive as yearly means: every month of the year gets the mean
-    for (i, v) in y.series.iter().enumerate() {
-        let row = i * r.series_len;
-        for m in 0..12 {
-            r.series[row + k * 12 + m] = *v as f32;
-        }
-    }
+    // (the monthly series came month by month: `apply_series`)
 
+    // the year's quarries, pits and mines, where the rules keep them as workings
+    if !y.workings.is_empty() {
+        if r.workings.len() < ny {
+            r.workings.resize(ny, Vec::new());
+        }
+        r.workings[k] = y
+            .workings
+            .iter()
+            .map(|w| replay::Working {
+                cell: w.cell as u32,
+                class: replay::sector_class(w.sector),
+                opened: w.opened,
+                hands: w.hands,
+                out: w.out,
+                heap: w.heap,
+                surface: w.surface,
+            })
+            .collect();
+    }
     if !y.cell_owner.is_empty() {
         if r.owner.is_empty() {
             r.owner = vec![-1; ny * n];

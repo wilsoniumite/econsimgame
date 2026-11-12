@@ -66,6 +66,8 @@ pub fn display_mix(st: &State, C: &Content) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let mut b_out = vec![0u8; N];
     let mut s_out = vec![0u8; N];
     let mut D = vec![0.0f64; nd];
+    // mines: under the mechanism a working's share is all pit head and spoil
+    let (dig, rough) = crate::mines::display_split(st);
     for c in 0..N {
         D.iter_mut().for_each(|v| *v = 0.0);
         let ks = st.cell_K_share[c].clamp(0.0, 1.0);
@@ -77,8 +79,8 @@ pub fn display_mix(st: &State, C: &Content) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         for (s, name) in C.sector_name.iter().enumerate() {
             let share = st.lam[(s, c)] * scale;
             if extractive(name) {
-                D[sector_disp(name)] += 0.45 * share;
-                D[4] += 0.55 * share;
+                D[sector_disp(name)] += dig * share;
+                D[4] += rough * share;
             } else {
                 D[sector_disp(name)] += share;
             }
@@ -159,6 +161,9 @@ pub struct Record {
     pub harvest: Vec<f32>,
     /// towns: the `TOWN_LAYERS`, laid out as `layers` is (empty unless `towns.enabled`).
     pub town_layers: Vec<Vec<u8>>,
+    /// mines: every working there is or has been, year by year. Empty unless the
+    /// mechanism is on.
+    pub workings: Vec<Vec<crate::mines::Working>>,
 }
 
 impl Record {
@@ -192,6 +197,7 @@ pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
         projects: Vec::new(),
         town_harvest: Vec::new(),
         harvest: Vec::new(),
+        workings: Vec::new(),
     }
 }
 
@@ -218,9 +224,17 @@ pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
     }
     let (mix_a, mix_b, mix_s) = display_mix(st, C);
     let mut trans: Vec<u8> = (0..N).map(|c| st.road[c].min(3) + if st.rail[c] > 0 { 4 } else { 0 }).collect();
+    // canals (docs/rules/canals.md): 16 marks a cell with a canal open and 32 one
+    // being dug (the layer is empty while they are off); 8 stays a railway building
+    for (t, &c) in trans.iter_mut().zip(&st.canal) {
+        if c > 0 {
+            *t |= 16;
+        }
+    }
     for pr in &st.projects {
+        let bit = if pr.way == crate::ways::CANAL { 32 } else { 8 };
         for &c in &pr.new {
-            trans[c] |= 8;
+            trans[c] |= bit;
         }
     }
     let mut out: Vec<Vec<u8>> = (0..LAYERS.len()).map(|_| vec![0u8; N]).collect();
@@ -297,6 +311,8 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
     rec.projects.push(
         st.projects
             .iter()
+            // canals: a canal being dug is not on the list of railways building
+            .filter(|pr| pr.way != crate::ways::CANAL)
             .map(|pr| {
                 let order: f64 = crate::util::pairwise_sum(&pr.order);
                 let need: f64 = crate::util::pairwise_sum(&pr.need);
@@ -480,6 +496,29 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         arrays.push(f32_array("town_harvest", vec![n_years, T], &rec.town_harvest));
         arrays.push(f32_array("harvest", vec![n_years], &rec.harvest));
     }
+    // mines: only a run with the mechanism on has these (docs/rules/mines.md).
+    // Year k's workings are rows mine_first[k] .. mine_first[k + 1] of the rest.
+    if !lite && !rec.workings.is_empty() {
+        let mut first = vec![0i32; n_years + 1];
+        for k in 0..n_years {
+            first[k + 1] = first[k] + rec.workings.get(k).map_or(0, |w| w.len()) as i32;
+        }
+        let all: Vec<&crate::mines::Working> = rec.workings.iter().flatten().collect();
+        let n = all.len();
+        let ints = |f: &dyn Fn(&crate::mines::Working) -> i32| all.iter().map(|w| f(w)).collect::<Vec<i32>>();
+        let reals = |f: &dyn Fn(&crate::mines::Working) -> f32| all.iter().map(|w| f(w)).collect::<Vec<f32>>();
+        arrays.push(i32_array("mine_first", vec![n_years + 1], &first));
+        arrays.push(i32_array("mine_cell", vec![n], &ints(&|w| w.cell as i32)));
+        arrays.push(u8_array("mine_sector", vec![n], all.iter().map(|w| w.sector as u8).collect()));
+        arrays.push(i32_array("mine_opened", vec![n], &ints(&|w| w.opened)));
+        arrays.push(i32_array("mine_left", vec![n], &ints(&|w| w.left)));
+        arrays.push(f32_array("mine_hands", vec![n], &reals(&|w| w.hands)));
+        arrays.push(f32_array("mine_out", vec![n], &reals(&|w| w.out)));
+        arrays.push(f32_array("mine_heap", vec![n], &reals(&|w| w.heap)));
+        arrays.push(i32_array("mine_cells", vec![n], &ints(&|w| w.cells as i32)));
+        arrays.push(f32_array("mine_surface", vec![n], &reals(&|w| w.surface)));
+        arrays.push(f32_array("mine_royalty", vec![n], &reals(&|w| w.royalty)));
+    }
 
     let towns: Vec<Value> = (0..st.town_name.len())
         .map(|i| json!({"name": st.town_name[i], "node": st.town_node[i], "founded": st.town_founded[i]}))
@@ -547,6 +586,15 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         "share_groups": share_groups,
         "arrays": table,
     });
+    // canals (docs/rules/canals.md): the network as links from cell to cell, each with
+    // the year its canal was begun and the moment it opened (null if still digging)
+    if P.canals.enabled {
+        header["canals"] = json!({
+            "cost": P.canals.cost,
+            "wharf": P.canals.wharf,
+            "links": serde_json::to_value(crate::canals::links_out(st)).unwrap(),
+        });
+    }
     clean(&mut header);
     let hjson = ensure_ascii(&serde_json::to_string(&header).unwrap()).into_bytes();
     let pad = (8 - (4 + hjson.len()) % 8) % 8;

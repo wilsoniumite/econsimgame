@@ -469,11 +469,20 @@ fn railway_through(lengths: &[(Vec2, Vec2)], church: &town::Church, at: Vec2, ya
     })
 }
 
-/// The station is down its own road to the south of the market place.
-fn station_at(s: &Square) -> Vec2 {
-    let q = bevy::math::Quat::from_rotation_y(s.yaw);
-    let o = q * Vec3::new(0.0, 0.0, 0.24);
-    s.at + Vec2::new(o.x, o.z)
+/// A town's station, once the railway has come: it stands beside the line
+/// where the line passes the town (`rails.rs`), on the town's side of it,
+/// its platform to the track. The middle of the building, the way it faces,
+/// and the level of the rails there.
+fn station_at(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> Option<(Vec2, f32, f32)> {
+    let node = r.header.towns[s.town].node;
+    if r.trans[k * r.n + node] & 4 == 0 {
+        return None;
+    }
+    let rails = crate::rails::year(r, g, cen, k);
+    let stop = rails.stops.get(&node)?;
+    let across = Vec2::new(-stop.dir.y, stop.dir.x);
+    let toward = if across.dot(s.at - stop.at) >= 0.0 { across } else { -across };
+    Some((stop.at + toward * 0.085, (-toward.x).atan2(-toward.y), stop.level))
 }
 
 /// The market places, churches, stations and lighthouses of the towns. The
@@ -520,9 +529,8 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         }
         parishes.push(p);
         plots.entry(node).or_default().push((s.at.x, s.at.y, 0.085, 0.085));
-        if r.trans[k * r.n + node] & 4 != 0 {
-            let st = station_at(&s);
-            town::station(houses, &Site::level(ground(g, st.x, st.y), s.yaw), lk);
+        if let Some((st, yaw, level)) = station_at(r, g, cen, k, &s) {
+            town::station(houses, &Site::level(Vec3::new(st.x, level, st.y), yaw), lk);
             plots.entry(node).or_default().push((st.x, st.y, 0.085, 0.085));
         }
         // a lighthouse if the town is a harbour: walk toward the sea to the waterline
@@ -567,7 +575,7 @@ fn class_here(r: &Replay, g: &Ground, k: usize, x: f32, z: f32) -> (u8, usize) {
 
 /// Every street that could be laid this year: each road through town ground, and
 /// back lanes, outer lanes and cross streets laid out along it.
-fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Street> {
+fn streets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Street> {
     let townish = |c: usize| {
         let off = k * r.n + c;
         r.use_[off] == 10 || r.mix_a[off] == world::URBAN || r.mix_b[off] == world::URBAN
@@ -609,8 +617,7 @@ fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Stree
     }
     // a road from each market place down to its station
     for s in sq {
-        if r.trans[k * r.n + r.header.towns[s.town].node] & 4 != 0 {
-            let st = station_at(s);
+        if let Some((st, _, _)) = station_at(r, g, cen, k, s) {
             let d = (st - s.at).normalize_or_zero();
             out.push(Street { a: s.at + d * s.radius, b: st - d * 0.03, width: 0.02, need: 0.0, id: -1 - s.town as i32, road: false });
         }
@@ -659,7 +666,8 @@ fn houses_port(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usi
     let houses = &mut *into.houses;
     let sq = squares(r, cen, k);
     // a house keeps its whole plot out of a churchyard
-    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(station_at(s)) < 0.07) || parishes.iter().any(|c| c.crowded_by(p));
+    let stations: Vec<Vec2> = sq.iter().filter_map(|s| station_at(r, g, cen, k, s)).map(|(at, _, _)| at).collect();
+    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012) || stations.iter().any(|st| p.distance(*st) < 0.08) || parishes.iter().any(|c| c.crowded_by(p));
     let built = |p: Vec2, need: f32| -> bool {
         if world::height_at(g, p.x, p.y) < 0.05 {
             return false;
@@ -673,7 +681,7 @@ fn houses_port(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usi
     let mut street_pts: HashMap<(i32, i32), Vec<(Vec2, f32)>> = HashMap::new();
     let cell = |p: Vec2| ((p.x / 0.05).floor() as i32, (p.y / 0.05).floor() as i32);
     let colour = *lk.ground.street_earth;
-    for s in streets(r, cen, k, &sq) {
+    for s in streets(r, g, cen, k, &sq) {
         let len = s.a.distance(s.b);
         let steps = ((len / 0.03).ceil() as usize).max(1);
         let mut runs: Vec<(f32, f32)> = Vec::new();
@@ -1014,6 +1022,7 @@ mod tests {
             built: if kept { vec![0; ny * n] } else { Vec::new() },
             res: if kept { vec![0; ny * n] } else { Vec::new() },
             works: if kept { vec![0; ny * n] } else { Vec::new() },
+            workings: Vec::new(),
         };
         for k in 0..ny {
             for c in (0..n).filter(|&c| land(c)) {
@@ -1043,11 +1052,17 @@ mod tests {
     }
 
     /// (task A) The made-up town under the port's rules is drawn as it was
-    /// before the towns kept their ground: the figures are those of the same
-    /// town built from the code as it stood before the task (rust-3d at
-    /// 5dc0caa), where this test was run with the three layers left out of
-    /// `made_up`. Its ground is drawn as it was too: every parcel of town
-    /// built up whole, and the shader told nothing.
+    /// before the towns kept their ground. The figures were first those of
+    /// the same town built from the code as it stood before the task, where
+    /// this test was run with the three layers left out of `made_up`. They
+    /// were taken again when the wood edges, the mines and the railways'
+    /// levels were merged in (main at 590ec00), which move the farmsteads
+    /// that are counted with the houses; that the towns of a port run were
+    /// not moved by the task was checked then on a recorded run (island 7 to
+    /// 1800), whose houses, works, trees, lanes and roads had the fingerprints
+    /// main gives them (`ISOSTATE_MESH_SUMS`) in every year looked at. Its
+    /// ground is drawn as it was too: every parcel of town built up whole,
+    /// and the shader told nothing.
     #[test]
     fn a_run_under_the_port_s_rules_is_drawn_as_it_was() {
         let r = made_up(false);
@@ -1083,10 +1098,9 @@ mod tests {
     }
 
     /// The houses of the made-up town under the port's rules in its first
-    /// year and its sixth, as the code before the task builds them: vertices,
-    /// indices, and the sums of the vertices' three coordinates to the
-    /// nearest whole number.
-    const PORT_TOWN: [(usize, usize, [i64; 3]); 2] = [(43475, 62433, [306984, 11694, 260396]), (80980, 118980, [507079, 23231, 464379])];
+    /// year and its sixth: vertices, indices, and the sums of the vertices'
+    /// three coordinates to the nearest whole number.
+    const PORT_TOWN: [(usize, usize, [i64; 3]); 2] = [(43711, 62781, [308247, 11765, 261698]), (81523, 119787, [509985, 23405, 467382])];
 
     /// A small town's church off a market place at nought, out to the south-east.
     fn yard() -> (town::Church, Vec2, f32, Vec2) {
