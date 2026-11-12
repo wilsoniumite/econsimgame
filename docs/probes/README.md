@@ -48,3 +48,14 @@ at 859b680 (12 November 2026):
   rivers between. Its branch, `night/dx-land-view`, adds a measuring example to the core
   (`examples/land_view_probe.rs`) and a probe to the viewer (`src/landview.rs`, behind
   `ISOSTATE_LAND_VIEW`) that draws the core's ground, rivers and lakes with today's code.
+
+Two pages of 12 November measure the game's rules as they stood at a6ff0ec, with six
+families, and change nothing:
+
+- `news-read.md`: a century of the news on eight islands, read item by item as a player
+  meets it: what it is like to read, what it does well, and sixteen faults, worst first,
+  each with the item, the line of code that writes it and a suggested wording.
+- `sens-prices.md`: how far the merchants' prices and the Engel curve answer their eight
+  settings, each moved to about three quarters and four thirds of its value on eight
+  islands (sixteen for those that mattered). `engel.y_ref` matters most. It is one of the
+  tables of sensitivity for the pass over all the rules.
