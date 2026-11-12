@@ -144,8 +144,9 @@ prove itself, and the canal age crosses the island at the pace canals are
 dug: 50 km in the first ten years, then most of the network in the twenty
 after. With plain diffusion (tried on seed 7) sixteen canals were promoted
 all over the island within five years of the first, and 580 km were open
-ten years on. (The 50 km was the first build's, on seed 7, and counts from
-the survey. It still holds there under today's rules: the canal is surveyed
+ten years on. (The 50 km was the first build's, on seed 7, and fits only
+if it is counted from the survey. So counted, it still holds there under
+today's rules: the canal is surveyed
 at Brambridge in 1761, Brambridge's own branch to its collieries is begun in
 1766 and opens in 1771 with 16 km, the four canals Brambridge then promotes
 open at the end of 1775, and the neighbours follow; 494 km of the 968 of
