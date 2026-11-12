@@ -615,9 +615,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
     }
     // tree (docs/rules/tree.md, "Plant waits"): what households and the works
-    // at work ask for, before the orders for new plant and for railways are
-    // added. Only with the tree laid: without it nothing that plant is built of
-    // is a works' daily input, and the rule measured as no gain
+    // at work ask for, before the orders for new plant and for railways and
+    // canals are added. Only with the tree laid: without it nothing that plant
+    // is built of is a works' daily input, and the rule measured as no gain
     let R_now = (P.tree.plant_waits && C.stage > 0).then(|| R.clone());
     add_by_town(&mut R, &ot, &req_inv);
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
@@ -648,10 +648,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
     // tree: plant waits. Where the market is short, the day's trade is served
     // first (households, the works' own inputs and fuel, the land's machines)
-    // and the orders for plant and for railway materials share what is left. A
-    // works half built can wait a season for its bricks; a bricklayer with a
-    // house half up cannot. `fill` is then the day's trade's and `fill_plant`
-    // the orders'; without the rule both are the port's one number.
+    // and the orders for plant and for the materials of railways and canals
+    // share what is left. A works half built can wait a season for its bricks;
+    // a bricklayer with a house half up cannot. `fill` is then the day's
+    // trade's and `fill_plant` the orders'; without the rule both are the
+    // port's one number.
     let fill_plant = match &R_now {
         Some(now) => crate::tree::plant_waits(&st.inv, now, &R, &mut fill),
         None => fill.clone(),

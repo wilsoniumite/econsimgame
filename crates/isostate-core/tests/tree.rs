@@ -41,6 +41,13 @@ fn off_by_default_and_on_in_the_game() {
     assert_eq!(printed(&tree::content(&P, game_content()).unwrap()), printed(&game_content()));
     // and a port run's params.json does not name it
     assert!(!serde_json::to_string(&default_params()).unwrap().contains("tree"));
+    // the canals' clock is the canals' own without a stage, and for coal with one
+    let (off, on) = (game_content(), tree::game_content_at(1));
+    let P = game_params();
+    assert_eq!(default_params().tree.canal_stone, 1.0);
+    assert_eq!((tree::canal_clock(&off, &P, "stone"), tree::canal_clock(&off, &P, "coal")), (1.0, 1.0));
+    assert_eq!((tree::canal_clock(&on, &P, "stone"), tree::canal_clock(&on, &P, "coal")), (P.tree.canal_stone, 1.0));
+    assert!(P.tree.canal_stone > 0.0 && P.tree.canal_stone < 1.0);
 }
 
 #[test]
@@ -312,14 +319,16 @@ fn plant_waits_and_the_bricklayers_are_served() {
 
 #[test]
 fn without_a_stage_plant_waiting_does_nothing() {
-    // the game without the tree is `tree.stage = 0` and nothing more: the
-    // switch for plant waiting stays where the game's rules put it, and the
-    // run is the same run to the last bit with it thrown either way
-    let mut with = game(4, 6, 1775);
+    // the game without the tree is `tree.stage = 0` and nothing more: plant
+    // waiting and the canals' stone clock stay where the game's rules put
+    // them, and the run is the same run to the last bit with them put back
+    // (to 1780, by when the first canal has been surveyed and dug)
+    let mut with = game(4, 6, 1780);
     with.tree.stage = 0;
-    assert!(with.tree.plant_waits);
+    assert!(with.tree.plant_waits && with.tree.canal_stone < 1.0);
     let mut without = with.clone();
     without.tree.plant_waits = false;
+    without.tree.canal_stone = 1.0;
     let (a, b) = (run(&with), run(&without));
     assert_eq!(a.content.G, 16);
     assert_eq!(a.state.series.names, b.state.series.names);

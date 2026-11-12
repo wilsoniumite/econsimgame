@@ -176,7 +176,7 @@ these.
 | `branch_gap` | 3 | a district is this many cells from town, canal and navigable river |
 | `district_spacing` | 6 | and this far from the year's other districts |
 | `cool_years` | 5 | years a refused branch is left alone |
-| `discover_coal`, `discover_stone` | 3,000,000 each | dug since 1750 before a survey is likely |
+| `discover_coal`, `discover_stone` | 3,000,000 each | dug since 1750 before a survey is likely (with the production tree laid the stone asked for is 0.35 of this, because builders make the same houses of a third of the stone: [tree.md](tree.md), "In company with the canals") |
 | `know` | 0.25 | how well a town must know canals to dig one |
 | `hearsay` | 0.2 | what a town with no canal counts for when the know-how spreads |
 

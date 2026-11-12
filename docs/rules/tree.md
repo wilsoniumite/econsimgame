@@ -4,7 +4,8 @@ A deeper production tree, first stage. Not in the Python. The switch is
 `tree.stage`: 0 is the content as it was, 1 lays the first stage of the
 game's overlay, `data/game.toml`, over it. The code is `tree.rs`, with hooks
 marked "tree" in `content.rs`, `econ::step_month`, `sim.rs`, `land.rs`,
-`observer.rs`, `families.rs`, `names.rs`, `save.rs` and `util.rs`.
+`observer.rs`, `families.rs`, `names.rs`, `save.rs`, `util.rs` and
+`canals.rs`.
 
 Stella's words on where the simulation should go: it "should be rich, fluid,
 real economics, with deep tech and production trees", and she asked by name
@@ -141,10 +142,15 @@ both, and it showed at once:
 
 So where a market is short, **the day's trade is served first** (households,
 the works' own inputs and fuel, the land's machines), **and the orders for
-new plant and for railway materials share what is left.** A works half built
-can wait a season for its bricks; a bricklayer with a house half up cannot.
-Everything is still bought at the market's price and paid for by the buyer;
-only the order of the queue changes.
+new plant and for the materials of railways and canals share what is left.**
+A works half built can wait a season for its bricks; a bricklayer with a
+house half up cannot. Everything is still bought at the market's price and
+paid for by the buyer; only the order of the queue changes. The price itself
+still answers to everything asked for, the orders that wait included, so a
+market that keeps plant waiting is a market whose price is rising: the
+day's trade gives way to the price, and the orders are served out of what
+it leaves. The sum is `tree::served_first`, with a test of its edges (an
+empty market, a market nobody asks anything of, orders alone).
 
 With it the builders' works have 99 per cent of what they ask for in every
 half-century (98, 96 and 91 without), and the worst year of the real wage is
@@ -198,16 +204,18 @@ built.
 | `file` | "" | "" | an overlay file to read in place of the one built in, for trying numbers without building again |
 | `seed_trades` | true | true | open 1750 with the new goods' trades in place |
 | `plant_waits` | false | true | households and the works at work are served before orders for plant; acts only with a stage laid |
+| `canal_stone` | 1 | 0.35 | the share of `canals.discover_stone` the canals' first survey waits for; acts only with a stage laid ("In company with the canals", below) |
 
 `--set tree.stage=1 --set tree.plant_waits=true` measures the tree alone under
 the port's rules. Under the game's rules, `--set tree.stage=0` is the game
-without it.
+without it, to the byte: the other numbers do nothing without a stage.
 
 ## What the sweeps showed
 
 Eight seeds, the game's rules, six families, to 1900. "Without" is `--set
-tree.stage=0`; both were run on the same build, after the mines were merged.
-The range is the least and greatest seed.
+tree.stage=0`; both were run on the same build, after the mines were merged
+and before the canals. (Sixteen seeds, and the island with the canals in,
+are under "What the review found" and "In company with the canals".)
 
 | | without the tree | with stage 1 | seeds up/down |
 |---|---|---|---|
@@ -266,7 +274,9 @@ with six families).
 
 Every one is found within seven years of its aim on average. The hazard
 alone spreads a discovery over about twelve years either side of its mean,
-so one seed in eight far from the aim is the dice.
+so one seed in eight far from the aim is the dice. (On sixteen seeds the
+islands differ by more than the dice: "Discovery dates scatter", in the
+review.)
 
 **Hands**, as shares of all hands at work in December:
 
@@ -396,9 +406,11 @@ tenths of the way and is run again on a new sweep: three passes settled
 these to within four years of every aim in the reckoning, and within seven
 in the sweep itself.
 
-Run it again whenever the island or the rules change. Canals and a second
-island generator are being merged after this: both will move every number in
-that table.
+Run it again whenever the island or the rules change. The canals turned out
+to move these clocks very little ("In company with the canals"): the fitter
+was read on the merged build and nothing was written. The second island
+generator is in the code and switched off; when it is switched on every
+number in that table will want fitting again.
 
 ## Tried and not kept
 
@@ -419,6 +431,160 @@ that table.
 - **Plant waiting without the tree.** Above: no gain, and a wider yearly
   swing in the real wage in all eight seeds.
 
+## What the review found
+
+A second helper read the code against the design and the brief, tried to
+break it, and ran everything again on a build of its own, with seeds 9 to 16
+beside 1 to 8. The sweeps are under `.claude/night/reports/`, named
+`sweep-treerev-*`.
+
+**Off is off.** The golden test passes with its constants untouched. Seed 3
+under the port's rules, with and without six families, writes the same
+`series_monthly.csv`, `events.json` and `params.json` as the baseline kept
+from before any mechanism (`.claude/night/baseline`). Under the game's rules
+`tree.stage = 0` was set beside a build of the commit the tree was cut from:
+seed 3 with six families writes the same two files to the byte. The tree
+draws no random number, switched on or off, and no hook does anything at
+stage 0: one test runs the game without a stage twice, with plant waiting and
+the canals' clock as the game has them and put back, and compares every
+series bit for bit.
+
+**Money.** Every run of every sweep checks the island's money each month.
+None failed: the game with six families at stage 0, at stage 1 and at stage 1
+without plant waiting (sixteen seeds each), the game without families (eight
+seeds, both stages), the port with the tree alone, with and without families
+(eight seeds), and the odd settings below.
+
+**The numbers hold on eight more islands.** Seeds 9 to 16 give what seeds 1
+to 8 gave. On all sixteen, before the canals were merged: the real wage in
+1900 3.26 against 2.65 (up in fifteen), output per head 3.47 against 2.70
+(sixteen, clear of the spread), living in towns 0.465 against 0.423 in 1900
+and 0.293 against 0.217 in 1750 (sixteen), quarry hands 0.023 against 0.138
+in 1900, 5.7 per cent fewer people (fifteen), railways inside the spread
+(1,248 km against 1,315 in 1850, 2,346 against 2,260 in 1900), famine news
+0.5 a run against 1.6, dearths 9.1 against 7.7. Every invention is found
+within six years of its aim on the sixteen-seed mean. On seeds 9 to 16 alone
+no good's price stands at its floor or ceiling, builders are 7.6, 10.3, 12.0
+and 7.4 per cent of hands at the four dates, and the last wave is a little
+later than on the first eight (the engineering works found in 1879, built in
+seven of eight by 1900).
+
+**Plant waiting, measured where it acts.** Stage 1 with and without it, on
+sixteen seeds: the real wage's worst year is -0.140 with it and -0.180
+without (better in fourteen), its yearly swing 0.052 and 0.060 (fourteen).
+It does not slow the railways: 1,248 km against 1,171 in 1850 and 1,773
+against 1,788 in 1870. What it costs is plant: 1,040 works stand in 1900
+against 1,150 (fewer in thirteen), and the engineering works is never built
+in three seeds of sixteen where it was one. No fact stands clear of the
+spread either way.
+
+**Discovery dates scatter.** The means sit on their aims; the islands do
+not. Over sixteen seeds, with the canals in, the gasworks is found between
+1808 and 1863 (the median island in 1818), the steam sawmill between 1800
+and 1862, cement between 1832 and 1874, the converter between 1842 and 1888,
+contract builders between 1851 and 1884, the new shops between 1840 and
+1893, the engineering works between 1856 and 1897. The early inventions are
+tighter (the pottery manufactory 1767 to 1792, machine paper 1804 to 1827).
+The hazard would give a dozen years either side; the rest is the island. A
+threshold is a plain number of units, an island poor in coal or iron takes
+decades longer to make it, and each late invention holds back the ones that
+wait on its good. The design named this risk. It is honest (an island that
+makes little iron learns little about iron) and it is why the last wave is
+missing on some islands: the engineering works is built by 1900 in twelve
+seeds of sixteen and the new shops in thirteen. A player's island may have
+gas light in 1810 or in 1860. Whether that is variety or a fault is a
+design question; a threshold counted per head, or against the island's own
+1750, would narrow it.
+
+**Why there are fewer people.** It is the people rule's deaths in great towns
+and nothing else. With `people.town_deaths = 0` on eight seeds the island
+with the tree has 976,000 people in 1900 and the island without it 955,000:
+two per cent more, where with the towns' deaths it has six per cent fewer.
+
+**Odd settings.** A stage above the file's highest (`tree.stage = 9`) is
+stage 1 to the last digit. `tree.seed_trades = false` runs: 1750 opens with
+0.251 of its people in towns where the seeded trades give 0.292, and by 1900
+the two islands are the same inside the spread. An overlay file that is
+missing or wrong stops the run with a sentence that says what is wrong.
+
+**What was changed.** The sum that shares a short market was taken out of
+`econ::step_month` into `tree::served_first` (five lines are left there),
+with a test of its edges; no fact of a sweep moved. Then the canals, below.
+Nothing was found wrong with the loader, the content's new keys, the
+families' trades, the observer's groups or the two short-cuts in the trade
+and delivered-price passes (nothing reads a delivered price but a works
+buying an input or a fuel; plant is reckoned at the town's price).
+
+## In company with the canals
+
+The review merged the integration branch as it stood (the canals, the land
+generator, which is off, and the monthly clock). With `tree.stage = 0` the
+merged build gives the integration branch's own sweep fact for fact (seeds 1
+to 8, six families, 0 of 420 facts differ).
+
+**The canals' stone clock.** The first canal is surveyed once three million
+units of coal and three million of stone have been dug
+(`canals.discover_coal`, `discover_stone`). On the island the canals were
+tuned on, stone passes three million in 1756 and coal in 1762, so coal is
+the clock and stone a guard behind it. With builders the same houses take a
+third of the stone (0.34 of it dug by 1760, 0.35 by 1770): stone passes
+three million in 1767, becomes the clock, and the first canal is begun in
+1780 where it was 1771, with a third less canal in 1800 (467 km against 695,
+less in all sixteen seeds). So with a stage laid the stone asked for is
+`tree.canal_stone` of the canals' number, 0.35: the guard is met in 1756
+again and the first canal is begun in 1773 (1771 without the tree; later in
+eight seeds, earlier in six). The hook is one marked line in
+`canals::knowledge`; at stage 0 the clock is the canals' own.
+
+What is left is not the clock. With the stone clock eased the island still
+has a fifth less canal in 1800 (554 km against 695, less in all sixteen) and
+an eighth less in 1900 (789 against 903). Stone and clay were 16 per cent of
+what the canals carried in 1800 and are 6 per cent with builders: there is
+a third of the stone to move, so fewer cuts pay. A canal also waits behind
+the day's trade for its stone and bricks, as a railway does: the slowest
+takes 5.6 years to dig against 5.0 (longer in fourteen seeds).
+
+**The island, sixteen seeds, six families, the canals in** (the final build;
+"without" is `--set tree.stage=0`):
+
+| | without the tree | with stage 1 | seeds up/down |
+|---|---|---|---|
+| real wage in 1800, 1850, 1900 (1750 = 1) | 1.59, 1.99, 2.61 | 1.64, 2.10, 3.20 | 9/7, 11/5, 16/0 |
+| the same on the chained index | 1.83, 2.84, 4.29 | 1.84, 2.93, 5.80 | 7/9, 8/8, 15/1 |
+| output per head in 1900 | 2.67 | 3.43 | 16/0, clear of the spread |
+| people in 1900 | 726,000 | 682,000 | 1/15 |
+| living in towns, 1750, 1800, 1850, 1900 | 0.22, 0.26, 0.35, 0.42 | 0.29, 0.36, 0.42, 0.46 | 16/0 each |
+| hands in works, 1750 and 1900 | 0.22, 0.49 | 0.32, 0.54 | 16/0, clear |
+| hands in quarries, 1750, 1800, 1850, 1900 | 0.073, 0.079, 0.113, 0.141 | 0.019, 0.028, 0.044, 0.027 | 0/16, clear |
+| works standing in 1900 | 729 | 1,014 | 16/0, clear |
+| first railway; km in 1850, 1870, 1900 | 1827; 1,348, 1,829, 2,254 | 1830; 1,187, 1,776, 2,389 | 10/6; 5/11, 6/10, 12/4 |
+| first canal begun; km in 1800 and 1900 | 1771; 695, 903 | 1773; 554, 789 | 8/6; 0/16, 5/11 |
+| price swings: grain, iron, rails, cloth | 0.113, 0.174, 0.179, 0.039 | 0.112, 0.150, 0.161, 0.043 | iron and rails down 2/14, cloth up 15/1 |
+| the real wage's worst year; yearly swing | -0.153; 0.056 | -0.131; 0.051 | 11/5; 6/10 |
+| dearths; famines (news items a run) | 8.4; 0.4 | 9.8; 0.1 | 9/5; 2/6 |
+| towns in 1850 and 1900; last town founded | 16.6, 17.2; 1846 | 14.6, 16.6; 1870 | 2/12, 6/10; 14/2 |
+
+It is the island of the table further up, with canals: a little over a fifth
+richer by the fixed basket in 1900, a third by the chained one, four to ten points more of
+its people in towns, six per cent fewer people. Builders are 7.5, 10.1, 12.2
+and 8.2 per cent of hands at the four dates and quarrymen 2.2, 3.1, 4.7 and
+2.6 (seeds 1 to 8); no good's price stands at its floor or ceiling; every
+stage 1 works is built in all eight seeds but the new shops (six). The
+tables are in `.claude/night/reports/treerev-m-market-stage1.txt` and
+`-stage0.txt`. The railways of mid-century
+are a tenth shorter on average and level by 1870, in eleven seeds of
+sixteen: inside the spread, and worth watching.
+
+**The thresholds stand.** The fitter, read on this sweep without writing,
+reckons every invention within three years of its aim but the two whose
+thresholds it is told to keep: the shops, six years late, and the edge-tool
+works, five. In the sweep itself the latest are the engineering works
+(found in 1877, aimed at 1870), the gasworks (1822 for 1815), contract
+builders (1868 for 1862) and the pottery manufactory (1776 for 1770). The
+canals move the tree's clocks very little, and nothing was refitted. Never
+built by 1900, in seeds of sixteen: the engineering works in four, the
+steel rail mill in four, the new shops in three, the engine works in two.
+
 ## What worries me
 
 - **Timber still rings.** The cycle above is the base game's and is not
@@ -436,9 +602,25 @@ that table.
   which found works larger, it is worse: the engineering works in four seeds
   of eight, the new shops in two, contract builders in one. The game is
   played with six families, and that is what was tuned.
-- **Fewer people.** Six per cent fewer in 1900 in every seed. It is the
-  people rule doing what it says with a more urban island, but nobody chose
-  it.
+- **Fewer people.** Six per cent fewer in 1900, in fifteen seeds of sixteen.
+  It is the people rule doing what it says with a more urban island (traced
+  in the review: without the towns' deaths the tree's island has the more
+  people), but nobody chose it.
+- **A fifth less canal.** With builders there is a third of the stone to
+  move, and the canals lose their second cargo: 554 km in 1800 against 695,
+  789 in 1900 against 903, after the stone clock is put right. The canals'
+  own numbers were tuned on the island that heaped stone; nobody has looked
+  at whether the canal age is still what its page wants.
+- **Machinery is near its floor in 1900.** It sells at 0.07 of its base
+  price (about 5 a unit) where the floor is 0.05, and steel at 0.11: not
+  pinned in any town-year to 1900, but a run on to 2050 will pin both unless
+  the floor moves or the learning slows.
+- **Builders lose a fifth of shelter by 1900.** On the final build they make
+  98, 95, 87 and 79 per cent of shelter at the four dates (78 on seeds 9 to
+  16), not the 89 of the first eight-seed table: once the continuous kiln
+  makes bricks at half their base price, raw brick is 11 per cent of shelter
+  and raw stone 7, even rated at a half and a quarter. Builders are still
+  8 per cent of hands in 1900 and the quarries under 3.
 - **Under the port's rules the tree alone has more famine news** (4.1 items
   a run against 2.2 without families, 4.4 against 2.5 with). Under the
   game's rules, with the harvest and people rules, famines fall (0.6
@@ -457,10 +639,22 @@ that table.
   as without. It waits for railways that wear out (stage 5).
 - **Examples that hold a content of their own.** `works_census`,
   `mines_census`, `towns_census` and `towns_edges` now ask for the laid
-  content; `machines` and `prices_probe` still print from the rules' own and
-  will leave the new methods out of their tables.
-- **Eight seeds, one island generator.** Everything above is means over
-  seeds 1 to 8.
+  content. `machines` and `prices_probe` read the run's own content and are
+  right as they are; their tables list the port's goods and methods by name
+  and so say nothing of the new ones.
+- **Copies of the year's end.** `examples/tree_market.rs` and one test in
+  `tests/tree.rs` step the months themselves to read each month's market,
+  and so carry a copy of what `sim::run_year` does when the year turns, as a
+  dozen other examples and tests do. A mechanism that adds a line there
+  must add it to them, or the example's run is not quite the game's.
+- **The chronicle's test of new towns** needs an island with a decade of
+  three foundings in its first fifty years, and has had to change seed each
+  time the island's economy moved (7, 8, 11, now 3).
+- **The game has not been seen with 25 goods.** The viewer builds; nobody
+  has looked at its panels with nine more goods in their lists, and the 28
+  new works are drawn as "any other works".
+- **Sixteen seeds, one island generator.** Everything above is means over
+  seeds 1 to 8 or 1 to 16 of the port's island.
 
 ## For whoever draws the works
 

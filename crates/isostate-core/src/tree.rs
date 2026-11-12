@@ -46,26 +46,34 @@ pub struct TreeParams {
     /// Without it they are founded during the warm-up decade, a works a year.
     pub seed_trades: bool,
     /// Plant waits: where a market is short, households and the works at work
-    /// are served first and the orders for new plant and for railway materials
-    /// share what is left (`econ::step_month`). Under the port everyone is cut
-    /// alike, which is harmless while nothing that plant is built of is also a
-    /// works' daily input; with the tree bricks, sawn timber, lime and glass
-    /// are both, and each spring's orders for plant stopped the builders. It
-    /// acts only with a stage laid: at stage 0 a run is the run without the tree.
+    /// are served first and the orders for new plant and for the materials of
+    /// railways and canals share what is left (`econ::step_month`). Under the
+    /// port everyone is cut alike, which is harmless while nothing that plant
+    /// is built of is also a works' daily input; with the tree bricks, sawn
+    /// timber, lime and glass are both, and each spring's orders for plant
+    /// stopped the builders. It acts only with a stage laid: at stage 0 a run
+    /// is the run without the tree.
     pub plant_waits: bool,
+    /// With a stage laid, the stone the canals' first survey waits for
+    /// (`canals.discover_stone`) is this share of its number. That number was
+    /// set on an island that heaps raw stone into walls; with builders the
+    /// same houses take a third of the stone (0.34 of it dug by 1760, 0.35 by
+    /// 1770), so a clock that counts stone dug runs at a third of the speed
+    /// and the first canal came nine years late. 1 leaves the clock alone.
+    pub canal_stone: f64,
 }
 
 impl Default for TreeParams {
     /// Off: the port's content as it is.
     fn default() -> TreeParams {
-        TreeParams { stage: 0, file: String::new(), seed_trades: true, plant_waits: false }
+        TreeParams { stage: 0, file: String::new(), seed_trades: true, plant_waits: false, canal_stone: 1.0 }
     }
 }
 
 impl TreeParams {
     /// The game's tree: the highest stage that works.
     pub fn game() -> TreeParams {
-        TreeParams { stage: GAME_STAGE, plant_waits: true, ..TreeParams::default() }
+        TreeParams { stage: GAME_STAGE, plant_waits: true, canal_stone: 0.35, ..TreeParams::default() }
     }
 }
 
@@ -517,9 +525,10 @@ pub fn delivered_goods(C: &Content) -> Vec<bool> {
 
 /// Plant waits, in one market: `have` is the stock, `first` what households and
 /// the works at work asked for, `all` that and the orders for new plant and for
-/// railway materials. The day's trade is served first and the orders share
-/// what is left. Returns the share of what it asked for that each is given:
-/// the day's trade, then the orders. Nobody is given more than the market has.
+/// the materials of railways and canals. The day's trade is served first and
+/// the orders share what is left. Returns the share of what it asked for that
+/// each is given: the day's trade, then the orders. Nobody is given more than
+/// the market has.
 pub fn served_first(have: f64, first: f64, all: f64) -> (f64, f64) {
     let fill = if first > 1e-12 { (have / first).min(1.0) } else { 1.0 };
     let left = (have - fill * first).max(0.0);
@@ -537,6 +546,13 @@ pub fn plant_waits(inv: &Mat, first: &Mat, all: &Mat, fill: &mut Mat) -> Mat {
         (fill.data[k], fill_plant.data[k]) = served_first(inv.data[k], first.data[k], all.data[k]);
     }
     fill_plant
+}
+
+/// What the canals' clock asks of `good` before a first survey
+/// (`canals::knowledge`), as a share of the canals' own number: all of it,
+/// but for stone with a stage laid (`TreeParams::canal_stone`).
+pub fn canal_clock(C: &Content, P: &Params, good: &str) -> f64 {
+    if C.stage > 0 && good == "stone" { P.tree.canal_stone } else { 1.0 }
 }
 
 /// The 1750 trades of the goods the port does not have. `need` is what each
