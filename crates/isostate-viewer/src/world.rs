@@ -788,9 +788,6 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
     // how far each parcel's ranks stand inside what makes a wood of it, and a
     // heath (negative: outside), in units of SURE, -1 to 1
     let mut lean = vec![[-1.0f32; 2]; n];
-    // how much grassier each parcel of open land ranks than the share of
-    // arable in its mix asks: pasture at or above 0, arable below
-    let mut tilt = vec![f32::NAN; n];
     // How far inside a rank's threshold a parcel is surely wood (or heath), and how far
     // outside surely not. Between, it leans one way by degrees and the country round it
     // decides (`land_field`): were every parcel sure, the woods would all be of one grain,
@@ -820,8 +817,7 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
             continue;
         }
         // farmed, it would be pasture or arable by how grassy it ranks
-        tilt[i] = l.lea[i] - f[0] / improved.max(1e-6);
-        under[i] = if tilt[i] >= 0.0 { PASTURE } else { FARM };
+        under[i] = if l.lea[i] >= f[0] / improved.max(1e-6) { PASTURE } else { FARM };
         let tame = improved / (improved + wilds);
         {
             let woods = if wilds > 0.0 { f[2] / wilds } else { 0.0 };
@@ -837,8 +833,7 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
             under[i]
         };
     }
-    keep_farmed(l, &shares, r.w, &tilt, &mut class, &mut under);
-    let field = timed("year's wood and heath", || land_field(l, &class, &lean, &shares, r.w));
+    let field = timed("year's wood and heath", || land_field(l, &class, &lean));
     // the small closes round the towns founded since the record began
     let mut depth = l.depth.clone();
     let year = r.y0 + k as i32;
@@ -864,80 +859,6 @@ pub fn year_land(r: &Replay, g: &Ground, k: usize) -> YearLand {
     YearLand { class, town, field, tw: l.tw, under, depth }
 }
 
-/// Arable against pasture, district by district. A parcel of open land is
-/// farmed as pasture where it ranks grassier than the share of arable in its
-/// mix asks (`tilt`), and the mix is blended from the cells round it, so where
-/// the record changes sharply from one district to the next the parcels can
-/// be many points off it. In a region of `REGION` by `REGION` districts of
-/// `KEEP` squares whose farmed parcels are further than `KEEP_WITHIN` from the
-/// record's share of arable in its farmed land, the line between arable and
-/// pasture is moved in each of its districts, through the parcels' own ranks,
-/// by what is over; the grassiest still go to grass first. Every other region
-/// is left exactly as it was.
-fn keep_farmed(l: &Land, shares: &[[f32; 4]], w: usize, tilt: &[f32], class: &mut [u8], under: &mut [u8]) {
-    let h = shares.len() / w.max(1);
-    if w == 0 || h == 0 {
-        return;
-    }
-    let (dw, dh) = (w.div_ceil(KEEP), h.div_ceil(KEEP));
-    let district = |p: Vec2| ((p.y.max(0.0) as usize).min(h - 1) / KEEP) * dw + (p.x.max(0.0) as usize).min(w - 1) / KEEP;
-    let rw = dw.div_ceil(REGION);
-    let region = |d: usize| (d / dw / REGION) * rw + (d % dw) / REGION;
-    let mut farmed: Vec<Vec<usize>> = vec![Vec::new(); dw * dh];
-    for i in 0..tilt.len() {
-        if tilt[i].is_finite() && l.area[i] > 0.0 && (class[i] == FARM || class[i] == PASTURE) {
-            farmed[district(l.at[i])].push(i);
-        }
-    }
-    // each district's farmed area and its arable as the parcels stand; each region's
-    // the same, and the record's arable and pasture in it
-    let sums: Vec<[f32; 2]> = farmed.iter().map(|own| [own.iter().map(|&i| l.area[i]).sum(), own.iter().filter(|&&i| tilt[i] < 0.0).map(|&i| l.area[i]).sum()]).collect();
-    let mut regions = vec![[0.0f32; 4]; rw * dh.div_ceil(REGION)];
-    for (d, s) in sums.iter().enumerate() {
-        let g = &mut regions[region(d)];
-        (g[0], g[1]) = (g[0] + s[0], g[1] + s[1]);
-    }
-    for (c, s) in shares.iter().enumerate() {
-        let g = &mut regions[region((c / w / KEEP) * dw + (c % w) / KEEP)];
-        (g[2], g[3]) = (g[2] + s[0], g[3] + s[1]);
-    }
-    // where each district draws its line: 0 for the rule as it stands
-    let mut line = vec![0.0f32; dw * dh];
-    for (d, own) in farmed.iter_mut().enumerate() {
-        let ([total, arable], g) = (sums[d], regions[region(d)]);
-        if total <= 1e-6 || g[0] <= 1e-6 || g[2] + g[3] <= 1e-6 {
-            continue;
-        }
-        let over = beyond(g[2] / (g[2] + g[3]) - g[1] / g[0]);
-        if over == 0.0 {
-            continue;
-        }
-        let goal = (arable / total + over).clamp(0.0, 1.0);
-        // the least grassy first, as many as make up the arable wanted
-        own.sort_by(|&a, &b| tilt[a].total_cmp(&tilt[b]));
-        let (mut sum, mut k) = (0.0, 0);
-        while k < own.len() && sum + 0.5 * l.area[own[k]] < goal * total {
-            sum += l.area[own[k]];
-            k += 1;
-        }
-        line[d] = match k {
-            0 => tilt[own[0]] - 1e-3,
-            k if k == own.len() => tilt[own[k - 1]] + 1e-3,
-            k => 0.5 * (tilt[own[k - 1]] + tilt[own[k]]),
-        };
-    }
-    for i in 0..tilt.len() {
-        let s = if tilt[i].is_finite() { line[district(l.at[i])] } else { 0.0 };
-        if s == 0.0 {
-            continue;
-        }
-        under[i] = if tilt[i] >= s { PASTURE } else { FARM };
-        if class[i] == FARM || class[i] == PASTURE {
-            class[i] = under[i];
-        }
-    }
-}
-
 // Where the woods and the heaths lie. Built ground is what it is, to its
 // parcel's side, and arable meets pasture along a hedge. But wood and heath
 // meet the farmed land, and each other, along lines of their own. Each
@@ -951,10 +872,8 @@ fn keep_farmed(l: &Land, shares: &[[f32; 4]], w: usize, tilt: &[f32], class: &mu
 // the next. Smoothing loses the small woods and fills the small clearings,
 // and the swell adds and takes, so each district's fields are then shifted
 // until as much of it stands above the line as its parcels of wood (and of
-// heath) come to, or, where the parcels of a region of 12 km stand more than
-// two points from the record, as brings the region within two points of it
-// (`REGION`, `KEEP_WITHIN`): the areas are the simulation's, district by
-// district, and only the outlines are the viewer's. What a wood or a heath does not reach
+// heath) come to: the areas are the simulation's, district by district, and
+// only the outlines are the viewer's. What a wood or a heath does not reach
 // of its own parcels is farmed (`YearLand::under`), as pasture or arable in
 // the district's own proportion, which makes up for what they take of the
 // parcels beside them.
@@ -965,30 +884,12 @@ const KEEP: usize = 3;
 /// How many times the districts' lines are drawn (`land_field`).
 const KEEP_ROUNDS: usize = 4;
 
-/// The districts are judged against the record in regions of this many by
-/// this many (12 km, as `plan::maybe_areas` measures them): small enough to
-/// catch the parcels smearing a change in the record a cell or two across,
-/// large enough that the record's own lumpiness, cell by cell, is not
-/// pressed onto a picture whose mixes are blended for smoothness.
-const REGION: usize = 2;
-
-/// How far a region's parcels may stand from the record's share of its open
-/// land in each use before it is brought nearer, as a share of that land:
-/// two points. Within it the parcels' own areas are kept, so a region
-/// already near the record is drawn exactly as it was.
-const KEEP_WITHIN: f32 = 0.02;
-
-/// How far an error stands beyond `KEEP_WITHIN`, with its sign: 0 within it.
-fn beyond(err: f32) -> f32 {
-    err.signum() * (err.abs() - KEEP_WITHIN).max(0.0)
-}
-
 /// How much steeper than they were smoothed the fields of wood and of heath
 /// are handed on, about the line that makes a wood or a heath: it keeps the
 /// fraying of an edge (`edge_fray`) and the scrub outside it narrow.
 const STEEPEN: (f32, f32) = (1.8, 1.5);
 
-fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]], shares: &[[f32; 4]], w: usize) -> Vec<u8> {
+fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]]) -> Vec<u8> {
     use rayon::prelude::*;
     let (tw, th) = (l.tw, l.th);
     let n = tw * th;
@@ -1020,15 +921,10 @@ fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]], shares: &[[f32; 4]], w:
     }
     // Each district's open texels, and how many of them lie in its parcels of
     // wood and of heath: so many must stand above the wood's line, and of the
-    // rest so many above the heath's. But where the record changes sharply
-    // from one country to the next the parcels can be many points off it, as
-    // their mixes are blended across the cells round them; so in a region
-    // whose parcels are further from the record than `KEEP_WITHIN`, each of
-    // its districts gives or takes its share of what is over.
+    // rest so many above the heath's.
     let side = KEEP * FIELD_RES;
     let (dw, dh) = (tw.div_ceil(side), th.div_ceil(side));
-    let rows = shares.len() / w.max(1);
-    let mut districts: Vec<(Vec<u32>, usize, usize)> = (0..dw * dh)
+    let districts: Vec<(Vec<u32>, usize, usize)> = (0..dw * dh)
         .into_par_iter()
         .map(|d| {
             let (x0, y0) = ((d % dw) * side, (d / dw) * side);
@@ -1041,33 +937,6 @@ fn land_field(l: &Land, class: &[u8], lean: &[[f32; 2]], shares: &[[f32; 4]], w:
             (own, woods, heaths)
         })
         .collect();
-    // each region's open texels, its parcels' wood and heath, and the record's four shares
-    let rw = dw.div_ceil(REGION);
-    let region = |d: usize| (d / dw / REGION) * rw + (d % dw) / REGION;
-    let mut regions = vec![([0.0f32; 3], [0.0f32; 4]); rw * dh.div_ceil(REGION)];
-    for (d, (own, woods, heaths)) in districts.iter().enumerate() {
-        let g = &mut regions[region(d)].0;
-        (g[0], g[1], g[2]) = (g[0] + own.len() as f32, g[1] + *woods as f32, g[2] + *heaths as f32);
-    }
-    for (c, s) in shares.iter().enumerate() {
-        let d = ((c / w.max(1)) / KEEP) * dw + (c % w.max(1)) / KEEP;
-        if d < dw * dh && c / w.max(1) < rows {
-            for (r, v) in regions[region(d)].1.iter_mut().zip(s) {
-                *r += v;
-            }
-        }
-    }
-    for (d, (own, woods, heaths)) in districts.iter_mut().enumerate() {
-        let (g, rec) = &regions[region(d)];
-        let open: f32 = rec.iter().sum();
-        if g[0] < 1.0 || open <= 1e-6 {
-            continue;
-        }
-        let n = own.len() as f32;
-        let keep = |parcels: &mut usize, now: f32, s: f32| *parcels = (*parcels as f32 + n * beyond(s / open - now / g[0])).clamp(0.0, n).round() as usize;
-        keep(woods, g[1], rec[2]);
-        keep(heaths, g[2], rec[3]);
-    }
     // the lines at a texel, read between the districts' middles so that no edge steps where
     // two districts meet
     let at = |lines: &[(f32, f32)], t: usize| -> (f32, f32) {
@@ -2040,88 +1909,38 @@ mod tests {
 
     #[test]
     fn each_district_keeps_its_wood_and_heath() {
-        // the year's two fields, before their edges are warped and frayed: in every region of
-        // REGION by REGION districts as many texels stand above the wood's line as lie in its
-        // parcels of wood, and of the rest as many above the heath's as lie in its parcels of
-        // heath; or, where the parcels are further than KEEP_WITHIN from the record, that far
-        // from it
+        // the year's two fields, before their edges are warped and frayed: in every district
+        // of KEEP cells as many texels stand above the wood's line as lie in its parcels of
+        // wood, and of the rest as many above the heath's as lie in its parcels of heath
         let r = island();
         let g = build_ground(&r);
         let land = year_land(&r, &g, 0);
         let l = &g.land;
-        let side = REGION * KEEP * FIELD_RES;
-        let (mut regions, mut worst, mut sum, mut held) = (0, 0.0f32, 0.0f32, 0);
+        let side = KEEP * FIELD_RES;
+        let (mut districts, mut worst, mut sum) = (0, 0.0f32, 0.0f32);
         for d in 0..l.tw.div_ceil(side) * l.th.div_ceil(side) {
             let (x0, y0) = ((d % l.tw.div_ceil(side)) * side, (d / l.tw.div_ceil(side)) * side);
             let mut own = Vec::new();
             for y in y0..(y0 + side).min(l.th) {
                 own.extend((x0..(x0 + side).min(l.tw)).map(|x| y * l.tw + x).filter(|&t| l.tex[t] != u32::MAX && (FARM..=HEATH).contains(&land.class[l.tex[t] as usize])));
             }
-            if own.len() < 600 {
+            if own.len() < 200 {
                 continue;
             }
-            regions += 1;
-            let mut rec = [0.0f32; 4];
-            for c in (0..r.n).filter(|&c| (c / r.w) / (REGION * KEEP) == y0 / side && (c % r.w) / (REGION * KEEP) == x0 / side) {
-                for (s, v) in rec.iter_mut().zip(open_shares(&r, 0, c)) {
-                    *s += v;
-                }
-            }
-            let n = own.len() as f32;
-            let open: f32 = rec.iter().sum();
+            districts += 1;
+            let parcels = |c: u8| own.iter().filter(|&&t| land.class[l.tex[t] as usize] == c).count() as f32;
             let wood = own.iter().filter(|&&t| land.field[2 * t] >= 128).count() as f32;
             let heath = own.iter().filter(|&&t| land.field[2 * t] < 128 && land.field[2 * t + 1] >= 128).count() as f32;
-            for (name, class, got) in [("wood", WOOD, wood), ("heath", HEATH, heath)] {
-                let parcels = own.iter().filter(|&&t| land.class[l.tex[t] as usize] == class).count() as f32 / n;
-                let record = rec[(class - FARM) as usize] / open;
-                // what the region is held to: its parcels, or KEEP_WITHIN of the record
-                let want = parcels.clamp(record - KEEP_WITHIN, record + KEEP_WITHIN);
-                held += (want != parcels) as usize;
-                let out = (got / n - want).abs();
+            for (name, got, want) in [("wood", wood, parcels(WOOD)), ("heath", heath, parcels(HEATH))] {
+                let out = (got - want).abs() / own.len() as f32;
                 (worst, sum) = (worst.max(out), sum + out);
-                assert!(out < 0.03, "region {d}: {name} stands on {got} texels of {n}, its parcels on {:.0} and the record has {:.0}", parcels * n, record * n);
+                assert!(out < 0.04, "district {d}: {name} stands on {got} texels of {}, and its parcels on {want}", own.len());
             }
         }
-        assert!(regions >= 3, "only {regions} regions with land enough to judge");
-        assert!(held >= 1, "no region of the test island is held to the record, so this does not test that it is");
-        let mean = sum / (2 * regions) as f32;
-        assert!(mean < 0.01, "the regions are out by {:.2}% of their open land on average, {:.2}% at worst", 100.0 * mean, 100.0 * worst);
-    }
-
-    #[test]
-    fn each_district_keeps_its_arable_and_pasture() {
-        // in every region of REGION by REGION districts the farmed parcels' arable is within
-        // KEEP_WITHIN of the record's share of arable in its farmed land, to the size of a
-        // parcel in each of its districts
-        let r = island();
-        let g = build_ground(&r);
-        let land = year_land(&r, &g, 0);
-        let l = &g.land;
-        let span = REGION * KEEP;
-        let rw = r.w.div_ceil(span);
-        let mut sums = vec![([0.0f32; 2], [0.0f32; 2], 0.0f32); rw * r.h.div_ceil(span)];
-        for c in 0..r.n {
-            let s = open_shares(&r, 0, c);
-            let d = &mut sums[(c / r.w) / span * rw + (c % r.w) / span];
-            (d.0[0], d.0[1]) = (d.0[0] + s[0], d.0[1] + s[1]);
-        }
-        for i in (0..l.at.len()).filter(|&i| l.area[i] > 0.0 && (land.class[i] == FARM || land.class[i] == PASTURE)) {
-            let d = &mut sums[(l.at[i].y.max(0.0) as usize).min(r.h - 1) / span * rw + (l.at[i].x.max(0.0) as usize).min(r.w - 1) / span];
-            d.1[(land.class[i] - FARM) as usize] += l.area[i];
-            d.2 = d.2.max(l.area[i]);
-        }
-        let mut judged = 0;
-        for (d, (rec, got, biggest)) in sums.iter().enumerate() {
-            let farmed = got[0] + got[1];
-            if farmed < 1.0 || rec[0] + rec[1] < 1e-3 {
-                continue;
-            }
-            judged += 1;
-            let (want, has) = (rec[0] / (rec[0] + rec[1]), got[0] / farmed);
-            let slack = KEEP_WITHIN + (REGION * REGION) as f32 * 0.5 * biggest / farmed;
-            assert!((has - want).abs() <= slack, "region {d}: arable is {has:.3} of the farmed parcels, and the record has {want:.3}");
-        }
-        assert!(judged >= 3, "only {judged} regions farmed enough to judge");
+        // a district at the island's edge, most of it sea, is the last to settle
+        assert!(districts >= 6, "only {districts} districts with land enough to judge");
+        let mean = sum / (2 * districts) as f32;
+        assert!(mean < 0.01, "the districts are out by {:.2}% of their open land on average, {:.2}% at worst", 100.0 * mean, 100.0 * worst);
     }
 
     #[test]
