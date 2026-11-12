@@ -676,9 +676,10 @@ fn main() {
     let cen = network::centres(&r);
     eprintln!("prepared {} in {:.1}s", if args.new { "the game" } else { args.run.as_str() }, t0.elapsed().as_secs_f32());
 
-    if live.is_some() {
+    // (a game whose last year is played has none left to take any time)
+    let left = r.ny.saturating_sub(r.filled);
+    if live.is_some() && left > 0 {
         // how long the game's years take at each of the clock's speeds, if nothing stops it
-        let left = r.ny.saturating_sub(r.filled);
         let speeds: Vec<String> = clock::SPEEDS.iter().map(|s| format!("{} ({}; {})", s.name, s.pace, clock::length_words(clock::crossing(left, s.rate)))).collect();
         eprintln!("the clock's speeds, with how long the {left} years to {} would take: {}", r.y0 + r.ny as i32 - 1, speeds.join(", "));
     }
@@ -809,8 +810,10 @@ fn main() {
         });
     }
     let headless = !views.is_empty() || args.script.is_some();
-    // a game opens in the season of its date; pictures, and a recorded run, in high summer
-    let season0 = if live.is_some() && views.is_empty() { SeasonClock { phase: t0.fract(), follows: true, coarse: false } } else { SeasonClock::default() };
+    // a game opens in the season of its date; pictures, a recorded run, and a game opened where
+    // the bar shows a year and no month (on a year gone by, or with its last year played) in high summer
+    let dated0 = live.is_some() && views.is_empty() && k0 == latest && r.filled < r.ny;
+    let season0 = if dated0 { SeasonClock { phase: t0.fract(), follows: true, coarse: false } } else { SeasonClock::default() };
     if headless {
         app.add_plugins(
             DefaultPlugins

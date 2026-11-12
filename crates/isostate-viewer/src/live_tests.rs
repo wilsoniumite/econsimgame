@@ -383,7 +383,7 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     // gone on with: the same month, the same orders waiting, the same island
     let mut b = Table::open(&Opening { load: Some(name.clone()), shots: true, ..default() });
     // (the first game is still open: its months since the last order are not in the file yet)
-    assert_eq!(b.live.resumed.as_ref().map(|r| (r.year, r.month, r.date())), Some((1753, 5, "June 1754".to_string())));
+    assert_eq!(b.live.resumed.as_ref().map(|r| (r.year, r.month, r.date(false))), Some((1753, 5, "June 1754".to_string())));
     assert_eq!((b.live.months, b.live.asked), (5, 5));
     assert_eq!(b.live.standing, stands);
     assert!(!b.month() && !b.month());
@@ -421,7 +421,9 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     let left = saves::read(&file).unwrap();
     assert_eq!((left.year, left.month, left.waiting.len()), (1754, 3, 0));
     let c = Table::open(&Opening { load: Some(name), shots: true, ..default() });
-    assert_eq!(c.live.resumed.as_ref().unwrap().date(), "April 1755");
+    assert_eq!(c.live.resumed.as_ref().unwrap().date(false), "April 1755");
+    // a game that is over has no January after its last year
+    assert_eq!(Resumed { year: 1900, month: 0, orders: 0, refused: 0, drifted: false, passed_over: 0 }.date(true), "1900");
     assert!(!c.live.resumed.as_ref().unwrap().drifted);
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);

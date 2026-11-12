@@ -610,7 +610,8 @@ fn stance_clicks(q: Query<(&Interaction, &StanceButton), Changed<Interaction>>, 
 /// An order that waits for the year's end is taken back.
 fn cancel_clicks(q: Query<(&Interaction, &CancelButton), Changed<Interaction>>, live: Res<Live>, mut game: ResMut<Game>) {
     for (i, c) in &q {
-        if *i == Interaction::Pressed && !game.busy {
+        // (with the year's end on its way the order would be carried out before this came, and there would be none to take back)
+        if *i == Interaction::Pressed && !game.busy && !live.turning() {
             live.send(Cmd::Cancel(c.0));
             game.busy = true;
             game.note = None;
@@ -1431,7 +1432,9 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: 
     game.welcoming = true;
     let f = font.0.clone();
     // where the clock stands: the turn after the first year, or where a saved game left off
-    let year = clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11))));
+    // (a game that is over stands on its last year, which has no January after it)
+    let over = data.r.filled >= data.r.ny;
+    let year = if over { format!("{}", data.r.y0 + data.latest() as i32) } else { clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11)))) };
     let rivals = fam.families.len().saturating_sub(1);
     commands
         .spawn((
@@ -1453,7 +1456,7 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: 
                 c.spawn(text(&f, &format!("The {} family of {}", me.name, me.seat_name), 26.0, me.colour));
                 let living = me.rep.members.iter().filter(|m| m.alive).count();
                 if let Some(back) = &live.resumed {
-                    welcome_back(c, &f, me, living, back, data.r.y0);
+                    welcome_back(c, &f, me, living, back, over, data.r.y0);
                     return;
                 }
                 c.spawn(text(
@@ -1522,7 +1525,7 @@ pub fn resumed_note(back: &live::Resumed) -> Option<String> {
 
 /// The rest of the opening card for a game gone on with: how the family
 /// stands, what could not be brought back, and the two ways on.
-fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, living: usize, back: &live::Resumed, first_year: i32) {
+fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, living: usize, back: &live::Resumed, over: bool, first_year: i32) {
     c.spawn(text(
         f,
         &format!("Welcome back. {} of the family, with {} in hand and worth {} in all.", family::capitalised(&family::number_word(living)), money(me.cash), money(me.net_worth)),
@@ -1548,7 +1551,7 @@ fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, 
             ContinueButton,
         ))
         .with_children(|b| {
-            b.spawn(text(f, &format!("Continue from {}", back.date()), 15.5, Color::WHITE));
+            b.spawn(text(f, &format!("Continue from {}", back.date(over)), 15.5, Color::WHITE));
         });
         row.spawn((
             Node { padding: UiRect::axes(Val::Px(16.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },

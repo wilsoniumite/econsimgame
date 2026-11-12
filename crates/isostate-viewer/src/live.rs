@@ -160,8 +160,13 @@ pub struct Resumed {
 
 impl Resumed {
     /// Where the game is gone on with from, as the clock will show it:
-    /// "January 1787" after 1786, "June 1787" for one left in the middle of that year.
-    pub fn date(&self) -> String {
+    /// "January 1787" after 1786, "June 1787" for one left in the middle of
+    /// that year. A game that is `over` has no January after its last year,
+    /// and the clock shows that year alone.
+    pub fn date(&self, over: bool) -> String {
+        if over {
+            return format!("{}", self.year);
+        }
         crate::clock::month_year(crate::clock::Date { year: self.year + 1, month: self.month.min(11), part: 0.0 })
     }
 }

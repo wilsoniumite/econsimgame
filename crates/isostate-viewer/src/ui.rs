@@ -1122,7 +1122,7 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, year: 
     };
     let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::bottom(Val::Px(4.0)), ..default() }).with_children(|row| {
-        row.spawn(text(f, &format!("{n} items up to {year}"), 13.0, MUTED));
+        row.spawn(text(f, &format!("{n} {} up to {year}", if n == 1 { "item" } else { "items" }), 13.0, MUTED));
         let label = match show {
             NewsShow::Major => "Showing major",
             NewsShow::All => "Showing all",
