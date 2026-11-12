@@ -52,8 +52,8 @@ them are those of a5ea2ea.
   a frame recorder to the viewer (`src/frames.rs`) that is meant to be merged. A critic ran it
   again and rewrote its stages on `night/smooth-probe-review` (section 11): the first stage is
   the year's meshes handed over one a frame, half a day's work, with a brief to build from. That
-  stage, with the frame recorder, is being finished on `night/o-finish-smooth-1`, so neither is
-  on `main` yet (`docs/BACKLOG.md`).
+  stage, with the frame recorder, was finished on `night/o-finish-smooth-1` and landed on
+  12 November (`src/handover.rs`, `src/frames.rs`); section 12 says what was built and measured.
 - `dx-land-view.md` (a probe, of the viewer against the core's second island, as both stood on
   `night/core` at 859b680, 12 November 2026): what it takes for the viewer to draw the land
   made by water (`docs/rules/land.md`). What the core hands over (a grid of heights every
@@ -104,6 +104,16 @@ them are those of a5ea2ea.
   a district changes market, villages at pit heads, and wharves and stations as places with a
   charge. Only the page is on `main`; the prototype, its test and its example `new_towns.rs` are
   on `night/o-dx-new-towns-check`.
+- `dx-roads.md` (a probe, of the game's rules at a6ff0ec, 12 November 2026, eight islands with
+  six families and sixteen for the sweep): who pays for the roads and bridges and who is paid a
+  railway's fares. Today nobody: a road is worn into being by traffic alone, a river that is not
+  navigable costs nothing to cross, and fares are carters' wages. A design from the period's
+  own institutions (the parish, the turnpike trust, the bridge by its river's width, the company)
+  and a prototype of the first three behind `roads.enabled`, off under both sets of rules,
+  which came onto `main` with its example `examples/probe_roads.rs`: switched on, turnpikes are
+  half as many, lenders get 5 per cent at the median and 113 bridges an island are built, with
+  the carting bill and the wage inside chance. Its order of work starts with railway and canal
+  companies that are paid their fares.
 
 ## The traces with the books (12 November 2026)
 
