@@ -84,6 +84,15 @@ them are those of a5ea2ea.
   else); what each missing thing would weigh, by year, raw and gzipped, and in time to write and
   to read; and a next layout in five stages, the first a test that holds the record and the
   works' rows the site planner waits for. Its example is `examples/record_probe.rs`.
+- `dx-inspector.md` (a probe, of the books of account at 11dbe7d, 12 November 2026, island 7
+  with six families): a market's trades as a flow. Three towns (a farm town, the iron and coal
+  town, the largest) read from the books in 1800 and 1880: what each makes, buys in and sends
+  out, from and to which towns, at what price and carting, who earns what, and which figures
+  balance (all the books promise) and which do not (purses that move at the year's end,
+  dividends out of cash, a flow's own price against the year's mean). Text mock-ups of the
+  inspector with those figures (a town's card and sheet, a good in a town, one good across the
+  island, one works), what the viewer must be handed (nothing from the record for a live game),
+  and the order to build it. Its example, `examples/flows.rs`, prints every table.
 
 ## The traces with the books (12 November 2026)
 
