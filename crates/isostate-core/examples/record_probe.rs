@@ -125,6 +125,8 @@ struct Clip {
     works_kept: usize,
     works_alive: usize,
     states: [usize; 6],
+    /// works with more than `built_share` on order as December ends, before the turn's orders
+    up_before_turn: usize,
     news_with_cell: usize,
     news: usize,
     /// today's hand-over: live_year's bytes (the families' reports as JSON) and its time
@@ -236,6 +238,25 @@ fn works_state(P: &Params, K: f64, order: f64, util: f64) -> u8 {
     }
 }
 
+/// The month's carting laid on the paths, as `sim::update_roads` lays the
+/// year's: what each cell's market draws from it since `before`, pushed up the
+/// town's tree of cheapest paths, and the trade between towns along its paths
+/// (the year's so far, which costs the same to lay). In two bytes a cell.
+fn month_traffic(st: &State, before: &[f64]) -> Vec<u8> {
+    let N = st.N;
+    let mut traffic = vec![0.0; N];
+    for i in 0..st.T_max {
+        if !st.town_active[i] {
+            continue;
+        }
+        let fl: Vec<f64> = (0..N).map(|c| if st.catch[c] == i as i64 { st.cell_flow[c] - before[c] } else { 0.0 }).collect();
+        let order: Vec<usize> = st.settle[i].iter().rev().map(|&c| c as usize).collect();
+        isostate_core::transport::tree_traffic(&st.pred[i], &order, &fl, &mut traffic);
+    }
+    isostate_core::transport::pair_traffic(&st.pred, &st.town_node, &st.trade_F_year, &mut traffic);
+    u16s(traffic.iter().map(|&t| log16(t, -3.0, 10.0)))
+}
+
 /// Years a closed works keeps a row, so the picture can show it standing empty.
 const KEEP_CLOSED: i64 = 6;
 
@@ -265,7 +286,7 @@ fn one(seed: u64, end_year: Option<i64>, keep: bool) -> Run {
     let (N, T, G, NS) = (s.st.N, s.st.T_max, C.G, C.NS);
     let names = [
         "mix4", "mix12", "rent16", "dist16", "res16", "built16", "traffic16", "boats16", "owner8", "owner_rows", "owner_moves", "works12",
-        "works_month", "machines", "harvest_cells", "town_y",
+        "works_month", "machines", "harvest_cells", "town_y", "traffic_month",
     ];
     let mut cands: Vec<Cand> = names.iter().map(|n| Cand::new(n)).collect();
     let ix = |name: &str| names.iter().position(|n| *n == name).unwrap();
@@ -277,18 +298,29 @@ fn one(seed: u64, end_year: Option<i64>, keep: bool) -> Run {
     let hands_col = accounts::WORKS_FIELDS.iter().position(|&f| f == "hands").unwrap();
     let util_col = accounts::WORKS_FIELDS.iter().position(|&f| f == "util").unwrap();
     let farm_rows: Vec<usize> = C.sector_name.iter().enumerate().filter(|(_, n)| *n == "farm" || *n == "pasture").map(|(s, _)| s).collect();
-    let t_sim = Instant::now();
     let mut sim_ns = 0u128;
+    let mut month_flow = vec![0.0; N];
     while s.year <= s.end_year {
         let k = (s.year - C.start_year) as usize;
         let mut cl = Clip { year: s.year, ..Default::default() };
         for m in 0..12 {
             let t0 = Instant::now();
             sim::run_month(&mut s, m).expect("money is conserved");
-            if m == 11 {
-                sim::end_year(&mut s);
-            }
             sim_ns += t0.elapsed().as_nanos();
+            // carts month by month: the month's flows pushed up each town's tree of
+            // cheapest paths, as `sim::update_roads` does once a year
+            cands[ix("traffic_month")].add_month(k, keep, || month_traffic(&s.st, &month_flow), |b| read_u16s(b).map(|v| unlog16(v, -3.0, 10.0) as f64).sum());
+            month_flow.copy_from_slice(&s.st.cell_flow);
+            if m == 11 {
+                // works going up as December ends, before the turn orders the next year's growth
+                let st = &s.st;
+                cl.up_before_turn = (0..st.F_count).filter(|&f| st.f_alive[f] && works::building(&s.params, st.f_K[f], st.f_order_K[f])).count();
+                let t0 = Instant::now();
+                sim::end_year(&mut s);
+                sim_ns += t0.elapsed().as_nanos();
+                // (the year's step lays the year's flows on the paths and empties them)
+                month_flow.fill(0.0);
+            }
             if m < 11 {
                 let t0 = Instant::now();
                 let lm = live::live_month(&mut cursor, &s.st, &s.content, &s.params, &s.events, s.t - 1);
@@ -551,7 +583,6 @@ fn one(seed: u64, end_year: Option<i64>, keep: bool) -> Run {
         clip.push(cl);
     }
     let sim_ms = sim_ns as f64 / 1e6;
-    let _ = t_sim;
     let end = s.year - 1;
     let r = sim::finish(s);
     let t0 = Instant::now();
@@ -697,10 +728,10 @@ fn print_run(r: &Run, out: Option<&std::path::Path>) {
             c.year, c.lost2, c.lost4, c.third10, c.rent_cells, c.rent_over, c.rent_max, c.dist_over, c.dist_none, c.dist_max, c.res_over, c.res_max, c.built_over, c.traffic_cells, c.boat_cells, c.owned, c.moved
         );
     }
-    println!("\nthe works' rows: rows, works standing, kept after closing, and by state (going up, working, short time, standing, closed this year, closed before):");
+    println!("\nthe works' rows: rows, works standing, kept after closing, by state at the turn (going up, working, short time, standing, closed this year, closed before), and going up as December ended:");
     for &k in &marks {
         let c = &r.clip[k];
-        println!("  {} {:>6} {:>6} {:>6}   {:?}", c.year, c.works_rows, c.works_alive, c.works_kept, c.states);
+        println!("  {} {:>6} {:>6} {:>6}   {:?} {:>6}", c.year, c.works_rows, c.works_alive, c.works_kept, c.states, c.up_before_turn);
     }
     let rows: usize = r.clip.iter().map(|c| c.works_rows).sum();
     let alive: usize = r.clip.iter().map(|c| c.works_alive).sum();
