@@ -78,7 +78,7 @@ struct Args {
     pitch: f32,
     dist: Option<f32>,
     frames: u32,
-    /// seconds to wait before the first screenshot (`--wait`)
+    /// the longest a picture waits for the renderer's shaders, in seconds (`--wait`)
     wait: Option<f32>,
     tilt: bool,
     views: Vec<ShotSpec>,
@@ -190,7 +190,7 @@ Pictures and checks with no window:
                        or open:GOOD for what the Markets panel shows (island:months and
                        open:GOOD:months for its charts month by month)
   --shot PATH          a picture of the opening view
-  --wait S             seconds before the first picture, for shaders to compile (45)
+  --wait S             the longest a picture waits for the renderer's shaders (45; 120 with --shots)
   --frames N           frames to let a picture settle (40)
   --ground-debug       draw the ground as flat class colours and nothing else
   --class-map          write the CPU's land class under every pixel of each view, and stop
@@ -502,7 +502,7 @@ struct ShotPlan {
     frames: u32,
     countdown: u32,
     capturing: u32,
-    start: std::time::Instant,
+    /// the longest a picture waits for the renderer's shaders, in seconds (`--wait`)
     wait: f32,
     default_dist: f32,
     default_look: (f32, f32),
@@ -955,9 +955,10 @@ fn main() {
             std::process::exit(2);
         }
     } else if headless {
-        // screenshots wait for the renderer's shaders by themselves (take_shot); the fixed wait
-        // is kept for software renderers, and the standard shots do without it
-        let wait = args.wait.unwrap_or(if args.shots.is_some() { 0.0 } else { 45.0 });
+        // a picture waits for what it needs, its year's scenery and the renderer's shaders, and then
+        // some frames for it to settle (take_shot); for the shaders no longer than this, which a busy
+        // machine taking the standard shots has been given more of (`--wait` says how long)
+        let wait = args.wait.unwrap_or(if args.shots.is_some() { 120.0 } else { 45.0 });
         app.insert_resource(ShotPlanArgs { views, size: args.size, frames: args.frames, wait, default_dist: dist, default_look: look_at });
         app.add_systems(Update, take_shot.after(toasts));
         let waiting = PipelinesWaiting::default();
@@ -1171,7 +1172,6 @@ fn setup_world(
             frames: shot.frames,
             countdown: shot.frames,
             capturing: 0,
-            start: std::time::Instant::now(),
             wait: shot.wait,
             default_dist: shot.default_dist,
             default_look: shot.default_look,
@@ -2191,6 +2191,7 @@ fn take_shot(
     waiting: Res<PipelinesWaiting>,
     mut patience: Local<u32>,
     mut held: Local<Option<std::time::Instant>>,
+    mut gave_up: Local<Option<usize>>,
 ) {
     let Some(mut plan) = plan else { return };
     if plan.index >= plan.views.len() {
@@ -2248,27 +2249,30 @@ fn take_shot(
         }
         return;
     }
-    // the first view waits for shaders to compile on software renderers, and every view for its year's scenery
+    // what a picture needs: first its year's scenery on screen
     if !scenery_ready(&tl, &data) {
         return;
     }
-    let ready = plan.index > 0 || plan.start.elapsed().as_secs_f32() >= plan.wait;
-    // a pipeline still being put together means something in view is not drawn yet:
-    // hold the shot until it is there and has been drawn for a few frames (a busy
-    // machine can take many seconds over the ground's shader), but not for ever
-    if ready && waiting.0.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+    // then every shader it is drawn with: a pipeline still being put together means
+    // something in view is not drawn yet, so the shot is held until it is there and has
+    // been drawn for a few frames (a busy machine can take many seconds over the ground's
+    // shader, and the first frames of a run are black), but no longer than `--wait`
+    let pending = waiting.0.load(std::sync::atomic::Ordering::Relaxed);
+    if pending > 0 && *gave_up != Some(plan.index) {
         let since = *held.get_or_insert_with(std::time::Instant::now);
-        if since.elapsed().as_secs_f32() < 120.0 {
+        if since.elapsed().as_secs_f32() < plan.wait {
             plan.countdown = plan.countdown.max(4);
             return;
         }
+        eprintln!("{pending} of the renderer's shaders were still being put together after {:.0} s, so {} is taken without what they draw (--wait S gives them longer)", plan.wait, v.path);
+        *held = None;
+        *gave_up = Some(plan.index);
     } else if let Some(since) = held.take() {
         eprintln!("waited {:.1} s for the renderer's shaders", since.elapsed().as_secs_f32());
     }
+    // and some frames for it all to settle
     if plan.countdown > 0 {
-        if plan.countdown > 1 || ready {
-            plan.countdown -= 1;
-        }
+        plan.countdown -= 1;
         return;
     }
     commands.spawn(Screenshot::image(plan.image.clone())).observe(save_to_disk(v.path.clone()));
