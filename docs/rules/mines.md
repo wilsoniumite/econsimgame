@@ -68,7 +68,10 @@ whose deposit is worked, each by what its cell gives (`mines::royalty_cells`
 splits the working's line): to a family that owns the cell, or to the
 landlords of the pit head's town, or to the common fund. The landowner here
 is also the adventurer: in a bad month the royalty is less than nothing, and
-it is the landowners who are out of pocket, as they were for a farm.
+it is the landowners who are out of pocket, as they were for a farm. Where
+nobody owns the ground the common fund is the adventurer, and a fund in debt
+pays no dividend until its rents have made the debt good ("Under the
+commons", below).
 
 **C. Sinking.** A working has to be sunk: `sink` hands (40) for a year at the
 town's wage, who raise nothing. They come out of the town's labour supply as
@@ -791,6 +794,200 @@ the family starts with, and the save held one.
 The demo now buys the nearest squares it can afford, up to four and with at
 most half its cash, which is what its note always said it did.
 
+## Under the commons
+
+The other scenario pays the rent of land nobody owns to every household by
+head, where this one gives it to the landlords of the land's town (README,
+"Scenarios"). The mines were built and reviewed under the landlords. On the
+day they were merged the README's sweep of both regimes stopped on one
+island of eight: seed 3 under the commons, in January 1762 with six families
+("money not conserved: drift -1.839638e-3") and in 1764 with none. With the
+mines off the same island ran to 1900.
+
+**Who is paid when nobody owns the ground.** The payments are those of B and
+C. Only the last purse they reach is different.
+
+- **The royalty.** A cell a family owns pays the family, as before. The rest
+  goes into the common fund with the farms' rent, and each month the fund
+  shares out nine tenths of what it holds, by head, to every household on
+  the island. A colliery's town gets no more of its royalty than any other.
+- **The sinkers** are paid by their working at the town's wage, and the
+  money goes to the households of the pit head's town, as before. Their
+  wages come off the royalty, so the outlay is the island's: while a working
+  is being sunk the fund takes in a little less and every dividend is a
+  little smaller. On seed 3 in the 1750s two or three workings are being
+  sunk at a time, 40 hands each at a wage of 4.5: some 500 a month, off
+  rents of 100,000.
+- **A bad month**, when the royalty is less than nothing, comes out of the
+  fund in the same way. Under the landlords the landowner is the adventurer.
+  Under the commons the fund is.
+- **The lease** is not paid for under either regime, and the mechanism makes
+  no other payment. The machines a working buys and the carting of what it
+  raises are the port's, and go where they went.
+
+**What went wrong.** No money was lost. Every one of those payments
+balances, and the purses summed to the right total every month. What failed
+was the fund's last step. The port's fund shares out nine tenths of what it
+holds whatever its sign, so a fund in debt takes money from every household
+by head, whether the household has it or not. Under the port that hardly
+matters, because a farm's bad month is small beside the island's rents. A
+working's can be very large. On seed 3 without families, before the mend
+(the probe that became `examples/purses.rs`, run on the build as it was; its
+output is under `.claude/night/tmp/mines-commons/`):
+
+- A town is founded on a coalfield at the end of 1750, with 5,959 people and
+  2,627 hands for hire. Its collieries had been a long cart from any market
+  and now have one at the pit head. In January 1751 they have 9,188 hands
+  and raise coal worth 421,579 in the month. (The port's labour market lets
+  a town's demand for hands run ahead of its people for a month, and doubles
+  the wage: see the second worry below.)
+- The wage doubles every month, from 9.9 in January to its ceiling of 500 in
+  July. A working moves 15 per cent of the way to the hands it wants each
+  month, so for most of the year the collieries pay thousands of men many
+  times what the coal sells for. The island's rents, royalties among them,
+  are 95 thousand below nothing in March, 1.4 million below in June and 1.9
+  million below in July: 8.4 million below from March to December, on an
+  island with 2.7 million of money.
+- The fund charges it to everyone by head. By December the households of the
+  six old towns hold between -541 and -759 thousand a town, where they had
+  held about 200 thousand, and those of the new town hold 7.2 million. A
+  household that owes buys nothing. The old towns' wages are about 3.0 that
+  December, 0.8 the next, 0.3 the next and 0.1 from 1754.
+- In January 1759 the quarries of a town of 6,187 people, where the wage is
+  0.11, take on 10.7 million hands. From then the purses are hundreds of
+  millions each way, and the money they sum to is still 3 million.
+- In January 1764 the quarries of another town take on 44 billion hands,
+  and the money itself goes below nothing: 3.1 million in December, 66
+  million less than nothing in January. The port issues new money each
+  month as a share of the money it counts before the month's wages and
+  dividends have reached the households. With 41 billion on its way to
+  them the count is far below nothing, and so is the issue. (With six
+  families it is January 1762: the money has shrunk from 1.2 million to
+  249 thousand in three years, and is 3.7 billion below nothing that
+  month.)
+- The monthly check allows a drift of a millionth of the money, or of a
+  millionth of one unit once the money is under one. A sum of purses is
+  good to about one part in 10^14 of its largest term, so on households
+  holding 41 billion and merchants owing 44 billion the rounding is 1e-4,
+  a hundred times what the check then allows.
+
+So the message was wrong about the fault and right that there was one. The
+drift is rounding at every stage: 5e-10 on purses of 2.6 million in 1758
+and 1e-6 on 120 million in 1759, both far inside an allowance of 3, and
+1e-4 on 41 billion in January 1764 against an allowance of 1e-6. What
+stopped the run was the money going below nothing, which is no leak either:
+the issue is counted, and the purses sum to what was issued.
+
+**The mend** is `mines::fund_to_share`, one line where `econ::step_month`
+pays the dividend. With the mines on, what the fund has to share out is what
+it holds and never less than nothing. A fund in debt pays no dividend until
+the rents have made the debt good, and asks nobody for anything. That is
+what a town's landlords do under the other regime: their purse goes below
+nothing, they stop spending, and their rents fill it again. (On seed 11
+under the landlords one town's landlords are 1.8 million down by July 1740,
+in the warm-up, after just such a run on its collieries.) With the mines off
+the fund is the port's, levy and all.
+
+The same island, mended. The same town is founded, its wage runs to 500 in
+the same way, and the fund is 8.4 million in debt in December 1751. Nobody
+is charged. The fund is clear again in 1758, after 88 months. The old towns'
+wages are between 4.2 and 6.0 to 1755, fall to between 3.1 and 3.7 in 1758
+as the debt takes money out of circulation, and are back above 3.8 in 1760.
+With six families the debt is 12.3 million at its deepest and lasts 110
+months; prices rise by half while the new town spends its windfall (the
+index is 1.49 in 1754) and fall back as the debt is paid (0.79 in 1760);
+and what a wage buys stays between 0.98 and 1.11 of 1750's from 1752 to
+1762. The island goes on to 1900.
+
+**What the sweeps show** (`.claude/night/reports/mines-commons/`).
+
+- **Sixteen seeds under both regimes, with six families and with none: 64
+  runs, none failed** (`after-regimes-f6`, `after-regimes-f0`). Before the
+  mend one of the sixteen commons runs with families failed
+  (`before-commons-f6`).
+- **The game as it is played has not moved.** Under the landlords the fund
+  never holds a penny, so the line does nothing. Eight seeds with six
+  families give the same `annual.csv` byte for byte before and after, and
+  the same value for every one of the 323 facts, the seconds aside
+  (`before-landlords-f6`, `after-landlords-f6`).
+- **Under the commons every island is a little different, and none
+  clearly.** A run's first prices are guesses, and in the first months of
+  1740 the fund is in debt on most islands (nine months on seed 1, 78
+  thousand at the deepest). Those months were a levy and are now a missed
+  dividend, so the warm-up ends somewhere else. On the fifteen islands that
+  finished before, 317 of 324 facts differ and none is clear of the spread
+  (`after-commons-f6-compare.txt`): people in 1900 822 thousand > 822
+  thousand (6/8), the real wage of 1900 2.35 > 2.40 times 1750's (9/5),
+  baskets a head 9.08 > 9.04 (7/7), the worst year for the real wage -0.188
+  > -0.176 (7/7). The largest moves are the track of 1900, 1,279 > 1,063 km
+  (4/10), and the baskets of 1850, 5.83 > 5.35 (4/10).
+- **In the recorded years the fund is in debt on two islands of sixteen**
+  (six families). One is seed 3, above. The other is seed 13, for its first
+  fifteen months, paying off a bad year of the warm-up: in 1748 the iron
+  mines of a town of 23,606 people took 10,916 hands, the wage went from 18
+  to 141 in three months, and the fund owed 2.8 million. No town's
+  households hold less than nothing in any month of any of the sixteen.
+
+- **With the canals in.** The canals reached main while this was being
+  done, and the branch took them in. On that build (`merged-*`): sixteen
+  seeds under both regimes, with six families and with none, 64 runs and
+  none failed; under the landlords eight seeds give the same `annual.csv`
+  byte for byte and the same 420 facts with the mend and without; without
+  the mend seed 3 under the commons stops as it did, to the digit; and
+  under the commons neither the game's rules without the canals nor the
+  canals alone over the port fail on sixteen seeds.
+
+**What the review found.** The mend was checked by another hand before it
+was merged (branch `night/mines-commons-review`; sweeps under
+`.claude/night/reports/mines-commons-review/`).
+
+- **The fault and the mend are as described.** On main as it stood, seed 3
+  under the commons stopped in 1762-0 with six families and in 1764-0 with
+  none, with the drifts printed above. With the mend both run on. Sixteen
+  seeds under both regimes, with six families and with none, are 64 runs
+  and none fails. Under the landlords eight seeds give the same
+  `annual.csv` byte for byte with the mend and without, and the same 420
+  facts.
+- **It is a rule and not a quieter check.** The check was not touched. The
+  fund's debt is counted in the money like any purse, every month of every
+  run passes the check with it there, and nothing is paid twice or
+  forgiven: the rents that would have been dividends repay what the new
+  town's households were paid. On the sixteen islands with six families the
+  least any town's households hold in any month is 2,433, and the fund is
+  in debt on the two islands named above and no other.
+- **What stopped the run was the money going below nothing**, which the
+  first account of it missed; "What went wrong" above now says so. One
+  seed's number and two small figures were also put right.
+- **A second test** holds the rule on an island with no bad year of its
+  own, so that it is kept whatever a later mechanism does to seed 3
+  ("Checking it").
+- **Extreme settings under both regimes**, as the mines' own review tried
+  them under the landlords: `sink` 0 and 400 with `reach` 0 and 4,
+  `payback` 0, 0.5 and 20, `idle_years` 0, 1 and 300, `memory` 0 and 1 with
+  `year_room` 0 and 5, `reserve` 0 and 100,000 with `haul` 0 and 1, and
+  `hands_per_cell` 0 and 200 with `cell_limit` 0 and 1, each on eight seeds
+  with six families (`x-f6-*`). That is 352 runs, half of them under the
+  commons, and none failed or ran away. Under the commons people in 1900
+  are between 715 and 867 thousand on every island at every setting, and
+  the worst year for the real wage on any of them is a third down (-0.33,
+  with `idle_years` 0 or 1 and again with `haul` 1 and no depth; -0.24
+  under the landlords).
+- **With the second island generator in** (`land.md`, switched off). It
+  reached main during the review. With it off the 64 runs are the same
+  byte for byte as before it. With it on, sixteen seeds with six families
+  under both regimes are 32 runs and none fails
+  (`merged-land-regimes-f6`). One of them has a bad year: seed 11 under the
+  commons, where in 1762 a town of 33 thousand people, one of the first
+  six, has the run on its workings. The fund is 3.6 million in debt and
+  clear after 34 months, and no purse goes below nothing. The island's
+  real wage reads 2.29 times 1750's that year and 1.00 the next, so the
+  sweep's worst year for the real wage, -0.565, is that wage coming down
+  again. So the bad year does not need a new town, and the mend holds on
+  the new land too.
+
+What this does not mend is the bad year itself, which happens under both
+regimes (the second worry below).
+
 ## What worries me
 
 - **Bad years.** Earlier builds of this mechanism had years in which a
@@ -806,6 +1003,61 @@ most half its cash, which is what its note always said it did.
   it is level (-0.159 against -0.155, 8/8); under the port alone the worst
   seed of sixteen is -0.29 against the port's -0.23. A working is a big
   thing in a small town, and its hands still come and go with its price.
+- **A working can ask for more hands than its town has.** This is the bad
+  year at its worst. It is the port's own oddity (`machines.md`, first
+  worry: "a town can still hire more hands than it has"), and the commons
+  only showed how far it can go. A mine wants hands as the third or fourth
+  power of its net price over the wage (alpha is 0.3 for coal and ore, 0.25
+  for stone and clay), with nothing to stop it at the number of people
+  there are; the port's labour market meets the whole demand for a month
+  and doubles the wage; and the mine lets go of 15 per cent of its surplus
+  a month. So when a net price jumps, a mine hires men who do not exist and
+  pays them a wage that doubles until it has shed them. A town founded
+  beside a pit head is the sure way to make a net price jump: the carting
+  falls away overnight. Under the game's rules with six families and the
+  landlords, one island of sixteen has such a year on record: seed 3, where
+  the new town of 1750 has a wage 8.6 times the middle town's in March 1751
+  (`examples/wage_watch.rs`: three town-months over four times the middle
+  wage, and none on the other fifteen). Without families the same town has
+  2,950 colliers and 2,838 hands for hire, and its wage is 74 in April
+  against 4.3 elsewhere. Under the commons the same founding gave 9,188
+  colliers and a wage of 500. The loss falls on the town's landlords or on
+  the common fund, and both can carry it; but the hands and the coal are
+  not real, and the households of the new town are paid millions for them.
+  A mine that could hire no more than its town has to spare would mend it
+  at the root. That changes the labour market for everyone, the landlords'
+  game included, so it was not done here.
+- **The fund's rule hangs on the mines' switch.** Under the game's rules
+  that is where it is needed: with the mines off the fund is never in debt
+  in the recorded years on any of sixteen islands, and with them on it is
+  on two. But the levy is a hazard of the commons, not of the mines. Every
+  other mechanism was tried under the commons on sixteen seeds with six
+  families, once taken out of the game's rules and once switched on alone
+  over the port (`commons-game-without-*`, `commons-port-with-*`,
+  `commons-port-alone`, and for the canals `merged-commons-*`: 400 runs).
+  One failed: the machines alone over the
+  port, seed 3, "drift 1.061708e-6 in 1837-9". It is the same illness with
+  the port's own mines. A town is founded at the end of 1752 with 1,840
+  hands for hire, its collieries have 7,105 in January, the wage is 500 by
+  July, the port's fund charges every household, and by 1757 every other
+  town is ruined. Nobody plays that combination, so it is left as it is.
+  If the fund should carry its debt whatever is switched on, it wants a
+  switch of its own in the game's rules, and `fund_to_share` is the one
+  line to move.
+- **The money can go below nothing, and then the money check cries wolf.**
+  The port issues money each month as a share of what it counts before the
+  month's wages and dividends have reached the households. In a month when
+  those are many times the money, as they were in the years above, the
+  issue is less than nothing, and one such month can take the money below
+  nothing. The check allows a drift of a millionth of the money, and of a
+  millionth of one unit once the money is under one, so from that month
+  rounding alone is more than it allows and the run stops with "money not
+  conserved" though nothing was lost. Both are the port's and were left
+  alone (the check's half was already in the backlog:
+  `docs/backlog/sweep-2026-11-11/checked-core-reports.md`, row 12). An
+  island in that state is past saving, and it is as well that something
+  stops it. Read the purses before believing the message
+  (`examples/purses.rs`).
 - **A town can be boxed in.** A town goes round a pit head at work, so
   workings on every side of a small town would stop it growing. Town cells
   are up with the mines on, not down, and I saw no town held; but nothing
@@ -865,7 +1117,15 @@ most half its cash, which is what its note always said it did.
 
 `cargo test -p isostate-core --release --test mines`: off is the port and
 fills nothing; money is conserved for forty years and for twenty with six
-families, and a run is deterministic; the mines hold under 3 per cent of the
+families, and a run is deterministic; under the commons seed 3 is played
+past the years it stopped in (to 1763 with six families and 1765 with
+none) under the game's rules, its fund is in debt for more than two years
+and deeper than all the island's money, shares out nothing while it is, is
+in credit again at the end, and no town's households ever hold less than
+nothing; on seed 7, which has no bad year of its own, a fund put half a
+million in debt by hand takes in its rents and pays nothing out until it is
+clear, and is the port's fund again from the month after; the mines hold
+under 3 per cent of the
 land they held and the rest is farmed, grazed, wooded or wild, with no less
 raised; every year the land shares of every cell sum as they should, each
 working's surface is its row of the shares, and the monthly loop has exactly
@@ -882,3 +1142,10 @@ a port run, and lists nothing the warm-up gave up.
 `cargo run -p isostate-core --release --example mines_census -- --rules game
 --families 6 [--map coalmine] [--trace] 3 7` prints the tables above for any
 rules and seeds, the map, and with `--trace` a sector year by year.
+
+`cargo run -p isostate-core --release --example purses -- 3 0 1760 monthly
+from=1751` prints who holds the money month by month under the commons: the
+purses, the fund, the rents, each town's wage, people and households' cash,
+and any town with more hands at work than it has. It runs with the monthly
+check off and says where the check would have stopped. `landlords`, `port`
+and `machines.enabled=true` choose other rules.

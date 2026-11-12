@@ -298,6 +298,10 @@ pub struct Params {
     /// docs/rules/tree.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub tree: crate::tree::TreeParams,
+    /// Books that say who makes, moves, buys and earns what (not in the Python;
+    /// see docs/rules/accounts.md). An observer: the economy never reads them.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub accounts: crate::accounts::AccountsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -502,6 +506,7 @@ pub fn default_params() -> Params {
         canals: crate::canals::CanalParams::default(),
         land: crate::landform::LandParams::default(),
         tree: crate::tree::TreeParams::default(),
+        accounts: crate::accounts::AccountsParams::default(),
     }
 }
 
@@ -535,6 +540,7 @@ pub fn game_params() -> Params {
     // with it thrown ("On the integration branch" in its page). When it is,
     // the line is `P.land = crate::landform::LandParams::game();`.
     P.tree = crate::tree::TreeParams::game();
+    P.accounts = crate::accounts::AccountsParams::game();
     P
 }
 

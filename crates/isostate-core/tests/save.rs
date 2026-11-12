@@ -448,6 +448,131 @@ fn a_decision_answered_late_in_the_year_takes_the_place_of_its_default() {
 }
 
 #[test]
+fn a_file_that_says_what_no_game_could_have_written_is_refused() {
+    let mut g = Game::new(7, 3, 5);
+    play(&mut g, 2);
+    let good = g.save(0);
+    assert_eq!(good.sound(), Ok(()));
+    // a game saved before its first year says the year before it, and one that is over its last
+    let unplayed = Game::new(7, 3, 5).save(0);
+    assert_eq!((unplayed.year, unplayed.sound()), (1749, Ok(())));
+    assert_eq!(Save { year: 1900, ..good.clone() }.sound(), Ok(()));
+
+    // refused as text, before a year is played, and refused by `load` when it never was text
+    let refused = |s: Save| {
+        let as_text = Save::from_text(&s.to_text()).unwrap_err();
+        let t0 = std::time::Instant::now();
+        let loaded = save::load(&s, |_| panic!("a year of a save that is refused was played")).unwrap_err();
+        assert!(t0.elapsed().as_secs_f32() < 5.0, "the refusal came after the island was made: {loaded}");
+        assert_eq!(as_text, loaded);
+        assert!(as_text.starts_with("not a saved game the game wrote: "), "{as_text}");
+        as_text
+    };
+    // the year 5000 was once taken at its word and announced as 3,251 years to play
+    assert!(refused(Save { year: 5000, ..good.clone() }).ends_with("it says the game had reached the year 5000, and the island's years are 1750 to 1900"));
+    assert!(refused(Save { year: 1901, ..good.clone() }).contains("the year 1901"));
+    assert!(refused(Save { year: 1748, ..good.clone() }).contains("the year 1748"));
+    assert!(refused(Save { year: -3, ..good.clone() }).contains("the year -3"));
+    // families: the player's at least, and no more than have names
+    assert_eq!(save::MAX_FAMILIES, 30);
+    assert!(refused(Save { families: 0, ..good.clone() }).ends_with("it names 0 families, and a game has from 1 to 30 families, not 0"));
+    assert!(refused(Save { families: 31, ..good.clone() }).contains("it names 31 families"));
+    assert!(refused(Save { families: 4_000_000_000, ..good.clone() }).contains("it names 4000000000 families"));
+    assert_eq!(Save { families: 30, ..good.clone() }.sound(), Ok(()));
+    assert_eq!(save::families_allowed(1), Ok(()));
+    assert_eq!(save::families_allowed(0).unwrap_err(), "a game has from 1 to 30 families, not 0");
+    // months: a save is made with none to eleven of the year played
+    assert_eq!(Save { month: 11, ..good.clone() }.sound(), Ok(()));
+    assert!(refused(Save { month: 12, ..good.clone() }).contains("it says 12 months of a year had been played"));
+    assert!(refused(Save { format: 0, ..good.clone() }).contains("layout 0"));
+    // an order is dated twelve months into a year at the most
+    let mut late = good.clone();
+    late.orders.push(save::Given { year: 1751, month: 13, order: Order::MoveSeat { town: 0 } });
+    assert!(refused(late).contains("an order dated 13 months into 1752"));
+
+    // what an order names is the simulation's to refuse, one order at a time: the rest is played
+    let mut wild = good.clone();
+    wild.orders.push(save::Given { year: 1751, month: 0, order: Order::BuyLand { cell: usize::MAX } });
+    wild.orders.push(save::Given { year: 1751, month: 0, order: Order::MoveSeat { town: usize::MAX } });
+    wild.orders.push(save::Given { year: 1751, month: 0, order: Order::Post { member: usize::MAX, posting: Posting::Unposted } });
+    wild.orders.push(save::Given { year: 1751, month: 0, order: Order::Found { method: g.sim.content.method_name[0].clone(), cell: usize::MAX } });
+    let back = save::load(&Save::from_text(&wild.to_text()).unwrap(), |_| {}).unwrap();
+    assert_eq!(back.refused.len(), 4, "{:?}", back.refused);
+    assert_eq!(back.game.orders, good.orders);
+    assert!(!back.drifted);
+}
+
+#[test]
+fn orders_that_name_anything_at_all_are_refused_or_carried_out_and_the_game_goes_on() {
+    use isostate_core::families::{Choice, Group, Stance};
+    let mut g = Game::new(7, 3, 5);
+    play(&mut g, 3);
+    let good = g.save(0);
+    // every number an order can hold, at its ends, just inside them and just outside: squares, towns,
+    // members of the family, decisions
+    let numbers = [0usize, 1, 2, 3, 7, 63, 64, 65, 255, 9_999, 10_000, 10_001, 1 << 20, 1 << 32, usize::MAX / 2, usize::MAX - 1, usize::MAX];
+    let methods: Vec<String> = g.sim.content.method_name.iter().take(4).cloned().chain(["a works nobody knows".to_string(), String::new()]).collect();
+    let mut wild: Vec<Order> = Vec::new();
+    for (i, &x) in numbers.iter().enumerate() {
+        let y = numbers[(i * 7 + 3) % numbers.len()];
+        let group = Group::ALL[i % Group::ALL.len()];
+        let stance = [Stance::Grow, Stance::Hold, Stance::WindDown][i % 3];
+        wild.push(Order::BuyLand { cell: x });
+        wild.push(Order::MoveSeat { town: x });
+        wild.push(Order::Found { method: methods[i % methods.len()].clone(), cell: x });
+        wild.push(Order::Found { method: methods[0].clone(), cell: x });
+        wild.push(Order::Stance { group, town: x, stance });
+        wild.push(Order::Post { member: x, posting: Posting::Manager { group, town: y } });
+        wild.push(Order::Post { member: y, posting: Posting::Unposted });
+        wild.push(Order::Decide { id: x as u64, choice: Choice::Apprentice { group, town: y } });
+        wild.push(Order::Decide { id: y as u64, choice: Choice::Head { member: x } });
+        wild.push(Order::Decide { id: x as u64, choice: Choice::Trade { group } });
+        wild.push(Order::Decide { id: x as u64, choice: Choice::University });
+    }
+    // dated at every turn of the game, at each year's end (twelve months in) and, as no game dates
+    // an order, in the middle of a year; in any order; and left waiting
+    let mut doctored = good.clone();
+    doctored.orders = wild.iter().enumerate().map(|(i, o)| save::Given { year: 1749 + (i as i64 * 5) % 4, month: [0, 12, 5, 0, 11, 1][i % 6], order: o.clone() }).collect();
+    doctored.orders.push(save::Given { year: i64::MIN, month: 0, order: Order::MoveSeat { town: 1 } });
+    doctored.orders.push(save::Given { year: i64::MAX, month: 12, order: Order::MoveSeat { town: 1 } });
+    doctored.month = 7;
+    doctored.waiting = wild.clone();
+    doctored.seed = u64::MAX;
+    doctored.started = u64::MAX;
+    doctored.rules.name = "rules nobody knows".to_string();
+    let text = doctored.to_text();
+    // the file is read and played: what cannot be done is refused, an order at a time, and nothing stops the program
+    let played = std::panic::catch_unwind(|| {
+        let mut back = save::load(&Save::from_text(&text).expect("it is a saved game by its layout"), |_| {}).expect("it loads");
+        let refused = back.refused.len();
+        let carried = back.game.orders.len();
+        // and it goes on: the orders that wait are tried at the year's end and its turn, and two more years are played
+        for _ in 0..2 {
+            back.game.year().expect("the year is played");
+            back.game.turn();
+        }
+        let again = save::load(&Save::from_text(&back.game.save(0).to_text()).unwrap(), |_| {}).expect("what it saves loads");
+        (refused, carried, again.refused.len(), again.drifted)
+    });
+    let (refused, carried, refused_again, drifted) = played.unwrap_or_else(|_| panic!("an order in a file stopped the program"));
+    assert!(refused > 100, "{refused} of {} orders were refused", doctored.orders.len());
+    assert_eq!(refused + carried, doctored.orders.len());
+    // what was carried out is a game like any other: saved and loaded, it comes back as it was
+    assert_eq!((refused_again, drifted), (0, false));
+}
+
+#[test]
+fn a_game_with_as_many_families_as_there_are_names_starts_and_plays() {
+    let mut g = Game::new(7, save::MAX_FAMILIES, 0);
+    assert_eq!(g.sim.st.families.len(), 30);
+    let names: std::collections::BTreeSet<&str> = g.sim.st.families.iter().map(|f| f.surname.as_str()).collect();
+    assert_eq!(names.len(), 30, "every family has a surname of its own");
+    g.year().unwrap();
+    let back = save::load(&Save::from_text(&g.save(0).to_text()).unwrap(), |_| {}).unwrap();
+    assert!(!back.drifted);
+}
+
+#[test]
 fn dates_are_written_in_utc() {
     assert_eq!(save::utc(0), "1970-01-01 00:00 UTC");
     assert_eq!(save::utc(951_782_400), "2000-02-29 00:00 UTC");

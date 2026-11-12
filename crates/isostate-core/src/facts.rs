@@ -326,6 +326,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::carting::facts(r) {
         b.num(name, kind, v);
     }
+    // accounts (docs/rules/accounts.md): who earns what, only of a run that kept books
+    for (name, kind, v) in crate::accounts::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- railways
     b.group = GROUPS[2];

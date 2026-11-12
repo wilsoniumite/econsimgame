@@ -3,9 +3,9 @@
 //! byte); switched on, money is conserved, a run is deterministic, the
 //! quarries, pits and mines give the surface back, every working stands on
 //! ground a pit head may have and works deposit nobody else has, the royalty
-//! is paid out whole to the cells the deposit lies under, what is raised is
-//! counted against the cells it came from, and the viewer is given the
-//! workings.
+//! is paid out whole to the cells the deposit lies under, a common fund in
+//! debt charges nobody, what is raised is counted against the cells it came
+//! from, and the viewer is given the workings.
 #![allow(non_snake_case)]
 
 use isostate_core::mines::{self, MineParams};
@@ -67,6 +67,125 @@ fn money_is_conserved_and_a_run_is_deterministic() {
     assert_eq!(bits(&a.state.mine_dug.data), bits(&b.state.mine_dug.data));
     let f = run(&params(7, 6, 1770));
     assert!(f.state.families.len() == 6 && f.state.mine_opened.iter().any(|&y| y != 0));
+}
+
+/// The game's rules under the commons, as `--rules game --regime commons` runs them.
+fn commons(seed: u64, n_families: usize, end_year: i64) -> Params {
+    let mut P = game_params();
+    P.seed = seed;
+    P.n_families = n_families;
+    P.end_year = Some(end_year);
+    P.rent_regime = RentRegime::Commons;
+    P
+}
+
+#[test]
+fn under_the_commons_a_fund_in_debt_levies_nobody() {
+    // Island 3 founds a town on a coalfield at the end of 1750. Its collieries
+    // ask for over three times the hands the town has, the wage doubles month
+    // after month, and for most of 1751 they pay out many times what they
+    // sell: a royalty far below nothing, which under the commons is the fund's
+    // to carry. The port's fund shares out nine tenths of what it holds
+    // whatever its sign, so every household on the island was charged by head,
+    // whether it had the money or not. No town but the new one bought anything
+    // for years, the quarries of a town where the wage had fallen to 0.11 then
+    // asked for ten million hands, and in the end the purses were billions
+    // each way and the money itself below nothing (the month's issue is a
+    // share of the money counted before the wages reach the households), where
+    // the monthly check allows a millionth of one unit and read the purses'
+    // rounding as money lost: in January 1762 with six families, in 1764 with
+    // none. Both are played past that year here.
+    for (families, end_year) in [(6, 1763), (0, 1765)] {
+        let P = commons(3, families, end_year);
+        let mut s = sim::start(&P, game_content());
+        let money = s.st.money_start;
+        let (mut months, mut deepest) = (0, 0.0f64);
+        // the least any town's households held, and when
+        let mut least = (f64::INFINITY, String::new());
+        while s.year <= s.end_year {
+            let year = s.year;
+            for month in 0..12 {
+                // the monthly money check is in here: this is where the run stopped
+                sim::run_month(&mut s, month).unwrap_or_else(|e| panic!("{families} families: {e}"));
+                let st = &s.st;
+                if st.fund_cash < 0.0 {
+                    months += 1;
+                    deepest = deepest.max(-st.fund_cash);
+                }
+                for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+                    if st.hh_cash[t] < least.0 {
+                        least = (st.hh_cash[t], format!("{} in {year}-{month}", st.town_name[t]));
+                    }
+                }
+            }
+            sim::end_year(&mut s);
+        }
+        // the island is the one this test was written on: the fund was in debt
+        // for years, and deeper than all the money there was. (If a later rule
+        // spares island 3 its bad year, find another island that has one.)
+        assert!(months > 24 && deepest > money, "{families} families: {months} months in debt, {deepest} at the deepest, of {money}");
+        // nobody was charged for it: no town's households ever held less than nothing
+        assert!(least.0 >= 0.0, "{families} families: the households of {} hold {}", least.1, least.0);
+        // the debt is paid off out of the rents, and the dividend comes back
+        assert!(s.st.fund_cash > 0.0, "{families} families: the fund holds {} at the end", s.st.fund_cash);
+        // the rule itself: in debt the fund has nothing to share out, in credit
+        // what it holds; and with the mines off it is the port's, debt and all
+        let mut st = s.st.clone();
+        assert_eq!(mines::fund_to_share(&st, &P), st.fund_cash);
+        st.fund_cash = -5.0;
+        assert_eq!(mines::fund_to_share(&st, &P), 0.0);
+        assert_eq!(mines::fund_to_share(&st, &Params { mines: MineParams::default(), ..P.clone() }), -5.0);
+    }
+}
+
+#[test]
+fn a_fund_in_debt_is_repaid_by_its_rents_alone() {
+    // The rule on an island that has no bad year of its own, so that it is held
+    // whatever becomes of island 3: a year in, the fund is put half a million
+    // in debt by hand, the money going to the households by head, as the wages
+    // of a working that sold nothing would. The total is as it was, so the
+    // monthly check goes on holding.
+    let P = commons(7, 0, 1752);
+    let mut s = sim::start(&P, game_content());
+    for month in 0..12 {
+        sim::run_month(&mut s, month).unwrap();
+    }
+    sim::end_year(&mut s);
+    assert!(s.st.fund_cash > 0.0, "an island in an ordinary year: the fund holds {}", s.st.fund_cash);
+    let debt = 5.0e5;
+    let people: f64 = s.st.pop.iter().sum();
+    for t in 0..s.st.T_max {
+        s.st.hh_cash[t] += debt * s.st.pop[t] / people;
+    }
+    s.st.fund_cash -= debt;
+    let (mut months, mut clear) = (0, false);
+    while s.year <= s.end_year {
+        for month in 0..12 {
+            let before = s.st.fund_cash;
+            let cash = s.st.hh_cash.clone();
+            sim::run_month(&mut s, month).unwrap();
+            let st = &s.st;
+            if before < 0.0 && st.fund_cash < 0.0 {
+                // nothing went out of it and nothing but the month's rents came in
+                months += 1;
+                assert!((st.fund_cash - (before + st.m_rent)).abs() < 1e-6, "{}-{month}: {before} and rents of {} left {}", s.year, st.m_rent, st.fund_cash);
+                assert!(st.m_rent > 0.0);
+            } else if before < 0.0 {
+                // the month the debt is cleared: nine tenths of what is over are shared out
+                clear = true;
+                assert!((st.fund_cash - 0.1 * (before + st.m_rent)).abs() < 1e-6, "{}-{month}: {before} and rents of {} left {}", s.year, st.m_rent, st.fund_cash);
+            } else if clear {
+                // and from then on it is the port's fund again
+                assert!((st.fund_cash - 0.1 * (before + st.m_rent)).abs() < 1e-6);
+            }
+            for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+                assert!(st.hh_cash[t] >= 0.0, "{}-{month}: the households of {} held {} and hold {}", s.year, st.town_name[t], cash[t], st.hh_cash[t]);
+            }
+        }
+        sim::end_year(&mut s);
+    }
+    // rents of about a hundred thousand a month repay half a million in a few months
+    assert!(clear && (2..=12).contains(&months), "in debt for {months} months, clear: {clear}");
 }
 
 #[test]

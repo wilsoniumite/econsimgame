@@ -522,4 +522,9 @@ pub struct State {
     pub canal: Vec<u8>,
     /// What the canal promoters remember, and what the canals carried.
     pub cn: crate::canals::CanalState,
+
+    // ---------------- accounts (docs/rules/accounts.md; empty while `accounts` is off)
+    /// The books: the year now running, and every complete year's. Nothing in
+    /// the economy reads them.
+    pub acct: crate::accounts::Books,
 }

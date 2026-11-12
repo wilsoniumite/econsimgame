@@ -56,7 +56,7 @@ cargo run -p isostate-viewer -- runs/game7/run.bin
 
 Space plays and pauses, Left and Right step a year, and a click asks about a works, a town or a square, with the sums that put each works where it is. There is no family to play in a recording. `runs/port7/run.bin` shows the island under the port's rules, which is a different history of the same land.
 
-**A sweep of seeds.** `sweep` runs many islands side by side on their own threads and boils each run down to its stylised facts, some 320 of them under the game's rules: people, wages, towns, railways, works, land and the diggings, inventions, price swings and the news. With `--compare` it sets the result beside an earlier sweep, seed for seed.
+**A sweep of seeds.** `sweep` runs many islands side by side on their own threads and boils each run down to its stylised facts, some 450 of them under the game's rules: people, wages, who earns what, towns, railways, canals, works, land and the diggings, inventions, price swings and the news. With `--compare` it sets the result beside an earlier sweep, seed for seed.
 
 ```bash
 cargo run -p isostate-core --release -- sweep --seeds 1-8 --rules port --families 6 --out runs/sweep-port
@@ -97,8 +97,8 @@ cargo run -p isostate-viewer -- --lab cottages-eras --out runs/lab
 **The tests.**
 
 ```bash
-cargo test -p isostate-core --release    # 164 tests, four to six minutes once built; the golden test is among them
-cargo test -p isostate-gen               # 116 tests, a few seconds
+cargo test -p isostate-core --release    # 210 tests, four to six minutes once built; the golden test is among them
+cargo test -p isostate-gen               # 127 tests, a few seconds
 ```
 
 ## Two sets of rules
@@ -107,7 +107,7 @@ The simulation runs under one of two sets of rules, and [docs/rules/README.md](d
 
 **The port** is a line-by-line port of the Python package. Every step was checked against the Python: deterministic steps agree to about 1e-14, and given Python's random numbers the stochastic steps make the same draws and reach the same decisions ([crates/isostate-core/PORTING.md](crates/isostate-core/PORTING.md)). It must stay exactly that, so nothing new is ever switched on under it. `crates/isostate-core/tests/golden.rs` runs seed 7 to 1900, once without families and once with six, and holds the monthly series and the news to stored hashes, byte for byte. It is what `isostate-core run` and `sweep` use unless told otherwise.
 
-**The game's rules** are the port plus every mechanism the Python never had, each with a switch of its own, a page under `docs/rules/` and a sweep before and after. They are what a live game is played under, and `--rules game` picks them on the command line. Eleven mechanisms are in:
+**The game's rules** are the port plus every mechanism the Python never had, each with a switch of its own, a page under `docs/rules/` and a sweep before and after. They are what a live game is played under, and `--rules game` picks them on the command line. Twelve mechanisms are in:
 
 | Mechanism | What it does | Page |
 |---|---|---|
@@ -122,6 +122,9 @@ The simulation runs under one of two sets of rules, and [docs/rules/README.md](d
 | people | Births and deaths that answer to income, crowding and dearth, and towns that go on being founded where a market would save the most carting. | [people.md](docs/rules/people.md) |
 | towns | A town keeps the ground it builds on and grows outward from it along its roads. | [towns.md](docs/rules/towns.md) |
 | mines | A quarry, pit or mine is a pit head with the lease of the deposit round it. It pays a royalty and takes little of the surface, so the diggings hold a few cells of the island and not a fifth of it. | [mines.md](docs/rules/mines.md) |
+| canals | A canal age before the railways. A canal is dug where the carting it would save pays for it, boats carry what goes far, and the traffic leaves for the railway when one comes. | [canals.md](docs/rules/canals.md) |
+
+Two more switches are not mechanisms of the economy. The books of account (`accounts`, on under the game's rules) keep a year's books for every town and good and for every works, and an income account for the island; they watch and never touch the economy ([accounts.md](docs/rules/accounts.md)). A second island generator, with rivers that run downhill, lakes and relief (`land`), is merged and switched off until the viewer can draw it ([land.md](docs/rules/land.md)).
 
 Families are older than this convention. They are off under both sets of rules until a run says how many there are: the viewer asks for six, and `--families 6` does it on the command line ([crates/isostate-core/FAMILIES.md](crates/isostate-core/FAMILIES.md)).
 
@@ -129,18 +132,20 @@ What the two give, as means over islands 1 to 8 with six families, from the two 
 
 | | the port | the game's rules |
 |---|---|---|
-| People in 1900 | 683 thousand | 720 thousand |
+| People in 1900 | 683 thousand | 732 thousand |
 | Share of people living in towns, 1750 and 1900 | 0.26 and 0.26 | 0.22 and 0.42 |
-| What a wage buys in 1800, 1850 and 1900 (1750 = 1) | 1.31, 1.35, 1.35 | 1.62, 1.93, 2.61 |
-| Works standing in 1900 | 6,973 | 747 |
+| What a wage buys in 1800, 1850 and 1900 (1750 = 1) | 1.31, 1.35, 1.35 | 1.63, 1.95, 2.60 |
+| Works standing in 1900 | 6,973 | 738 |
 | The middling works of 1900, in its trade's usual size | 0.46 | 6.0 |
-| Cells of town ground, 1750 and 1900 | 69 and 77 | 64 and 323 |
-| Cells of works ground in 1900 | 981 | 200 |
+| Cells of town ground, 1750 and 1900 | 69 and 77 | 64 and 328 |
+| Cells of works ground in 1900 | 981 | 199 |
 | Land under quarries, pits and mines in 1900, in cells' worth | 1,188 | 9 |
-| Railway in 1850, 1870 and 1900 | 1,057, 1,071 and 1,072 km | 1,239, 1,853 and 2,261 km |
-| The last town founded | 1802 | 1844 |
-| Converter steel's share of steel in 1880 | none | 0.84 |
-| News items in a run | 1,485 | 926 |
+| Railway in 1850, 1870 and 1900 | 1,057, 1,071 and 1,072 km | 1,328, 1,835 and 2,248 km |
+| Canal in 1800 and 1900 | none | 662 and 892 km |
+| The last town founded | 1802 | 1847 |
+| Converter steel's share of steel in 1880 | none | 0.86 |
+| News items in a run | 1,485 | 1,002 |
+| Work's share of the island's income, 1750 and 1900 (from the books, `docs/rules/accounts.md`) | 0.69 and 0.60 | 0.71 and 0.70 |
 
 ## How the model works
 
@@ -177,7 +182,9 @@ On the command line it is `--regime commons`, in the Python and the Rust alike. 
 cargo run -p isostate-core --release -- sweep --seeds 1-8 --rules game --families 6 --set rent_regime=landlords,commons --out runs/sweep-regimes
 ```
 
-As run on 12 November 2026, one of its sixteen runs fails: island 3 under the commons stops in 1762, when the monthly check finds that money is not conserved. The sweep says so, finishes the other fifteen and ends with an error. The fault came in with the mines (the same run passes with `--set mines.enabled=false`) and is not mended yet. On the seven islands that finished under both, the commons islands end the century with more people (830 thousand against 719 thousand), fewer famine years (0.9 a run against 2.0), a lower wage (2.25 times 1750's against 2.65, though a commons household also has its dividend, which the wage does not count) and much less railway (1,310 km against 2,278). Nobody has yet traced why, so take these as what the model does and not as findings.
+As run on 12 November 2026, all sixteen runs finish. The commons islands end the century with more people (833 thousand against 732 thousand), a lower wage (2.46 times 1750's against 2.60, though a commons household also has its dividend, which the wage does not count), half the railway (1,148 km against 2,248) and two thirds of the canal (600 km against 892). Famine years are the same, 0.4 a run. Nobody has yet traced why, so take these as what the model does and not as findings.
+
+One rule of the commons differs under the game's rules. When the common fund is in debt (a mine's bad year can put it there) it pays no dividend until its rents have repaid the debt. In the Python and the port it charges the debt to every household by head, and on island 3 that emptied every purse and stopped the run in 1762 (`docs/rules/mines.md`, "Under the commons").
 
 ## Layout
 
@@ -266,7 +273,7 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 
 The numbers below are means over islands 1 to 8 with six families, from the sweeps above as run on 12 November 2026, unless a page is named.
 
-**What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, five map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. The work now in hand is listed in the backlog: canals, a second island generator with real rivers and lakes, books of account, a deeper production tree, and towns and works drawn better.
+**What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, five map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. Canals, books of account and a second island generator with real rivers and lakes (switched off until the viewer can draw it) came in on 12 November. The work now in hand is listed in the backlog: a deeper production tree, works laid out by what they do, a view that stays smooth while the simulation works, and the drawing of mines, canals and the new land.
 
 **The game.**
 
@@ -278,15 +285,15 @@ The numbers below are means over islands 1 to 8 with six families, from the swee
 
 **The economy under the game's rules.**
 
-- Growth comes early and then stops. Output per head peaks in 1882 on average and falls after. The cause is not proven.
+- Growth comes early and then stops. Output per head peaks in 1879 on average and falls after. The cause is not proven.
 - The share of people in towns reaches 0.42 by 1900. The plan asks for a half.
-- There is a building cycle nobody chose: a town's mills order a whole year's room for new capacity at once and then next to nothing for two or three years, and timber trebles when they do (`docs/rules/works.md`). The worst year for what a wage buys is 15 per cent down.
+- There is a building cycle nobody chose: a town's mills order a whole year's room for new capacity at once and then next to nothing for two or three years, and timber trebles when they do (`docs/rules/works.md`). The worst year for what a wage buys is 14 per cent down.
 - Tools run short when farm machinery arrives: in their dearest year they cost 5.8 times what they do in a middling one (`docs/rules/works.md`, six islands, before the mines).
-- There are 2.2 famine years in a run.
+- There are 0.4 famine years in a run. There were 2.2 before the canals, and why they should do that is not traced (`docs/rules/canals.md`).
 - The steel rail hardly arrives: it is 3 per cent of rails in 1890, and on one island of eight it is never made. Cheaper ore since the mines has made it worse (`docs/rules/mines.md`).
-- The railway age begins anywhere from 1805 to 1850, so in 1850 one island has 25 km of line and another 1,834. Nobody collects a railway's fares, and nobody pays for a road or a bridge.
+- The first line opens anywhere from 1809 to 1842, so in 1850 one island has 575 km of line and another 1,804. Nobody collects a railway's fares, and nobody pays for a road or a bridge.
 - Quarrymen are one hand in seven by 1900, and the island takes some twenty units of stone a head a year, which is far too much if a unit is about a ton. Households buy shelter as raw stone, because the masons, bricklayers and carpenters who belong between the quarry and the house are designed and not yet built (`docs/rules/mines.md`, "Why quarrying takes so many hands").
-- Under the commons scenario one island of eight fails the monthly money check in 1762, since the mines came in (see Scenarios).
+- A mine can hire more hands than its town has. On one island of sixteen a town founded on a coalfield in 1750 pays 8.6 times its neighbours' wage the spring after; under the commons scenario the same founding sends the wage to its ceiling and leaves the common fund in debt for nine years (`docs/rules/mines.md`, "Under the commons").
 - Most of the mechanisms' numbers were set on a few islands and never searched. Eight islands is a small sample, and a single year's wage misleads: read twenty-year means before believing a row (`docs/rules/towns.md`).
 - No foreign trade and no government, and money grows at a fixed rate.
 - Run past 1900, the island goes Malthusian, because there is no demographic transition and no technology after steel. On island 7 with `--end-year 2050` the people grow from 740 thousand in 1900 to 4.3 million, and what a wage buys falls from 3.0 times 1750's to three quarters of what it bought in 1750.

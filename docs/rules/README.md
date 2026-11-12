@@ -501,3 +501,8 @@ One line each as they arrive: the name, its page, its switch.
   generations of iron, tools, machinery and bricks; where a market is short,
   plant on order waits behind the day's trade. [tree.md](tree.md),
   `tree.stage` (0 is none of it).
+- **accounts**: books that say who makes, moves, buys and earns what: a
+  year's books for every town and every works, and the island's income
+  account (work's share, the owners' shares, ownership in years of wages).
+  They watch and never touch the economy. [accounts.md](accounts.md),
+  `accounts.enabled`.
