@@ -15,12 +15,16 @@ railway age vary widely between islands). On the first: the stricter promoter
 (`rail_hurdle` 0.08, which is `rail_induced` 1.875) gives 140 km less railway in
 1900 on 14 islands of 16 and leaves output a head and the wage where they were,
 as the railways page found before its repairs; the laxer one gives about as much
-more. On the second: no setting of either mechanism moves the first line by
-more than two years, and of the dials only `cost_mult`, `districts` and
-`branch_gap` move the railway of 1850 by nearly as much as it differs between
-islands (260 to 300 km between their two values, against a spread of 280), so the
-wandering date is the discovery's, as the railways page says, and not the
-promoters'.
+more. On the second: no setting of the railways moves the first line by more
+than two years. Some of the canals' dials move its mean over sixteen islands by
+two to three years (`cost`, `wages` and `bricks` between their two values), but
+only because on two or three islands the first line jumps by two or three decades,
+one way at one value and the other way at the other, and the other islands hardly
+move: the date has a long tail of its own. Of the dials only `cost_mult`,
+`districts` and `branch_gap` move the railway of 1850 by nearly as much as it
+differs between islands (260 to 300 km between their two values, against a
+spread of 280), so the wandering date is the discovery's, as the railways page
+says, and not the promoters'.
 
 ## In short
 
@@ -36,7 +40,7 @@ promoters'.
    cent lower. The economy feels the railways and the canals through the two
    switches, not through their dials. Switching the game's railways off costs 3.0 per cent of output a head in
    1881 to 1900 (14 islands of 16) and 3.7 per cent of the real wage (13 of 16);
-   switching the canals off puts 1.4 more points of the island's hands to carting
+   switching the canals off puts 1.5 more points of the island's hands to carting
    in 1800 (all 16) and gives a run 1.4 famine years where it had 0.4 (9 islands
    more, 3 fewer).
 3. **The railway's size is set by the branch planner's dials** more than by
@@ -46,9 +50,15 @@ promoters'.
    gives more line than either 2 or 4.
 4. **The hurdle and the induced traffic are one number** for both ways. The
    promoters' test is `induced * saving / cost >= hurdle` and nothing else reads
-   either, so `rail_hurdle` 0.08 and `rail_induced` 1.875 give every fact alike.
-5. **The canal age keeps its shape whatever is moved.** Every setting tried
-   leaves between 0.73 and 0.79 of the network of 1900 open by 1800. The dials
+   either but the news, which quotes `induced * saving / cost` as the return the
+   promoters expect, so `rail_hurdle` 0.08 and `rail_induced` 1.875 give every
+   fact alike (all 3,600 on seeds 1 to 8).
+5. **The canal age keeps its shape whatever is moved.** Every dial tried
+   leaves between 0.73 and 0.80 of the network of 1900 open by 1800. Switching
+   the game's railways off brings it to 0.69, not by a longer rush (the canals
+   are the same to the metre in 1800 and within 4 km in 1830) but by digging on
+   after 1830 where no railway takes the traffic: the canal of 1900 is 106 km
+   longer, on 15 islands of 16. The dials
    move the first canal by two to five years and the network by a tenth; none
    stretches the rush, which is the canals page's first worry.
 6. **Eight islands and one baseline mislead.** Making a canal dearer and making
