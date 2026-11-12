@@ -1087,12 +1087,22 @@ fn places(ch: &mut ChronicleState, pop: &[f64], active: &[bool], year: i64, marg
         let since = ch.held_since[p];
         let redrawn = |t: usize| ch.redrawn.get(t).copied().unwrap_or(i64::MIN);
         let overtook = from.is_some_and(|y| redrawn(c) < since && redrawn(y) < since);
-        let before = ch.leaders[p];
         ch.leaders[p] = Some(c);
-        if p == 0 && ch.leaders[1] == Some(c) {
-            // the old first is now second if it truly is (the same story, told
-            // once); otherwise the second place waits for a story of its own
-            ch.leaders[1] = before.filter(|&b| b == order[1]);
+        if p == 0 && from.is_some() && from == order.get(1).copied() {
+            // the story names the town it took first place from just below, so
+            // the reader takes that town to be second (the same story, told
+            // once), whichever town was told of there before (island 4, 1760:
+            // "Sunhaven is now the island's first town ... to Mallowbourne's
+            // 23,875", and then in 1768 "Mallowbourne is now the island's
+            // second town")
+            if ch.leaders[1] != from {
+                ch.leaders[1] = from;
+                ch.challenger[1] = None;
+                ch.lead_years[1] = 0;
+            }
+        } else if p == 0 && ch.leaders[1] == Some(c) {
+            // otherwise the second place waits for a story of its own
+            ch.leaders[1] = None;
         }
         return Some(Change { place: p, town: c, from, overtook });
     }
@@ -1697,6 +1707,15 @@ mod tests {
         years.extend((1851..=1856).map(|y| (y, if y % 2 == 1 { [43.0, 48.0, 47.0, 30.0] } else { [43.0, 47.0, 48.0, 30.0] })));
         let got = told(&years, &[]);
         assert_eq!(got[0], (1853, Change { place: 0, town: k, from: Some(m), overtook: true }));
+
+        // Kelside takes first place from Melbourne, which the story names just
+        // below; Stratbank, told second, had passed Melbourne for a year in
+        // between. Melbourne is second in the reader's eyes from that story on,
+        // and is not told again as overtaking Stratbank (island 4, 1760 and 1768)
+        let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0]), (1851, [44.0, 50.0, 43.0, 30.0]), (1852, [43.0, 50.0, 44.0, 30.0])];
+        years.extend((1853..=1860).map(|y| (y, [44.0, 50.0, 40.0, 30.0])));
+        let got = told(&years, &[]);
+        assert_eq!(got, vec![(1853, Change { place: 0, town: k, from: Some(m), overtook: true })]);
 
         // within the margin nothing is told, however long it lasts
         let mut years = vec![(1850, [50.0, 40.0, 46.0, 45.0])];
