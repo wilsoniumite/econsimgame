@@ -206,6 +206,84 @@ pub fn standard_views(r: &Replay, cen: &[(f32, f32)], slots: &scatter::Slots, ho
     out
 }
 
+/// The far views of the land (`--land-shots DIR`): five cameras, each in 1800
+/// and 1900 in summer, in 1800 in October and in 1900 in midwinter, for
+/// judging a change to the rules the land is laid out and painted by
+/// (`world::year_land`, the land blocks of terrain.wesl). Like the standard
+/// views they are chosen from the run, so they follow the game on any island:
+/// the whole island; from 8 km up, the lowland where wood and field are most
+/// mixed in 1800; the hill country where pasture and heath are most mixed in
+/// 1900; the country round the home town; and the highest ground, for the
+/// snow line.
+pub fn land_views(r: &Replay, g: &crate::world::Ground, cen: &[(f32, f32)], home: Option<usize>, island: ((f32, f32), f32), dir: &str) -> Vec<Standard> {
+    use crate::world;
+    let last = r.filled.clamp(1, r.ny) - 1;
+    let year_of = |y: i32| y.clamp(r.y0, r.y0 + last as i32);
+    let k_of = |y: i32| (year_of(y) - r.y0) as usize;
+    let path = |name: &str| Path::new(dir).join(format!("{name}.png")).to_string_lossy().replace('\\', "/");
+    // the middle of the window of `half` cells each way that scores highest, a cell's score
+    // being None where the window may not reach (the sea, the wrong kind of country)
+    let best = |half: isize, score: &dyn Fn(usize) -> Option<f32>| -> Option<(f32, f32)> {
+        let cell: Vec<Option<f32>> = (0..r.n).map(|c| if r.terrain[c] == 0 { None } else { score(c) }).collect();
+        let mut top: Option<(f32, usize)> = None;
+        for c in 0..r.n {
+            let (x, z) = ((c % r.w) as isize, (c / r.w) as isize);
+            let mut sum = 0.0;
+            for dz in -half..=half {
+                for dx in -half..=half {
+                    let (xx, zz) = (x + dx, z + dz);
+                    if xx >= 0 && zz >= 0 && (xx as usize) < r.w && (zz as usize) < r.h {
+                        sum += cell[zz as usize * r.w + xx as usize].unwrap_or(0.0);
+                    }
+                }
+            }
+            if top.is_none_or(|t| sum > t.0) {
+                top = Some((sum, c));
+            }
+        }
+        top.filter(|t| t.0 > 0.0).map(|(_, c)| ((c % r.w) as f32 + 0.5, (c / r.w) as f32 + 0.5))
+    };
+    let mut cams: Vec<(&str, String, (f32, f32), f32, f32)> = vec![("island", "The whole island".into(), island.0, ISLAND_PITCH, island.1)];
+    let k = k_of(1800);
+    if let Some(at) = best(5, &|c| (r.terrain[c] == 1).then(|| { let s = world::open_shares(r, k, c); s[2].min(s[0] + s[1] + s[3]) })) {
+        cams.push(("lowland", "Wooded lowland from 8 km up".into(), at, PLAY_PITCH, 40.0));
+    }
+    let k = k_of(1900);
+    if let Some(at) = best(3, &|c| (r.terrain[c] == 2).then(|| { let s = world::open_shares(r, k, c); s[1].min(s[3]) })) {
+        cams.push(("hills", "A hill margin, pasture against the moor".into(), at, PLAY_PITCH, 25.0));
+    }
+    let town = home.or_else(|| {
+        (0..r.n_towns.min(r.header.towns.len()))
+            .filter(|&t| r.town_active[last * r.n_towns + t] > 0)
+            .max_by(|&a, &b| r.town_urban[last * r.n_towns + a].total_cmp(&r.town_urban[last * r.n_towns + b]))
+    });
+    if let Some(t) = town {
+        let (x, z) = cen[r.header.towns[t].node];
+        cams.push(("town", format!("The country round {}", r.header.towns[t].name), (x, z + 1.0), PLAY_PITCH, 24.0));
+    }
+    // the highest ground, if any of it keeps its snow through the summer
+    let top = (0..g.gw * g.gh).max_by(|&a, &b| g.hgt[a].total_cmp(&g.hgt[b])).unwrap_or(0);
+    if g.hgt[top] > 1.75 {
+        cams.push(("snowline", "The snow line".into(), ((top % g.gw) as f32 / world::VRES as f32, (top / g.gw) as f32 / world::VRES as f32 + 1.0), PLAY_PITCH, 18.0));
+    }
+    // where each camera looks, for pointing a --view of one's own at the same country
+    for (name, _, look, _, dist) in &cams {
+        eprintln!("land view {name}: looks at {:.1},{:.1} from {dist:.0}", look.0, look.1);
+    }
+    let mut out = Vec::new();
+    for (year, season, when) in [(1800, 0.5, "summer"), (1900, 0.5, "summer"), (1800, 0.8, "october"), (1900, 0.0, "midwinter")] {
+        for (name, caption, look, pitch, dist) in &cams {
+            let name = if when == "summer" { format!("{name}-{year}") } else { format!("{name}-{year}-{when}") };
+            out.push(Standard {
+                spec: ShotSpec { path: path(&name), year: Some(year_of(year)), look: Some(*look), yaw: 0.0, pitch: *pitch, dist: Some(*dist), season: Some(season), tab: Some(None), overlay: None, markets: None },
+                name,
+                caption: format!("{caption}, {when} {}", year_of(year)),
+            });
+        }
+    }
+    out
+}
+
 // ------------------------------------------------------------------ comparing two sets
 
 /// How far two shots of the same name differ.
@@ -231,6 +309,79 @@ fn load_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), String> {
     let (w, h) = (img.width(), img.height());
     let data = img.data.ok_or_else(|| format!("{} has no pixels", path.display()))?;
     Ok((w, h, data))
+}
+
+/// Compare a `--ground-debug` shot (what the shader draws, in the flat class
+/// colours of `debug_colour` in terrain.wesl) with the `--class-map` of the
+/// same view (what `world::class_at` says, in `shot.classes.pgm` beside it).
+/// It writes `shot.diff.png`: grey where the two agree, red where they differ
+/// on a class edge (a pixel's middle can fall either side), yellow where they
+/// differ away from one, dark where there is nothing to compare. It gives a
+/// line saying how many pixels agree, and whether none differ away from an
+/// edge but a few (under a thousandth of those compared).
+pub fn compare_classes(shot: &Path) -> Result<(String, bool), String> {
+    const PAL: [[i32; 3]; 12] =
+        [[0, 0, 255], [255, 255, 0], [0, 255, 0], [0, 128, 0], [255, 0, 255], [0, 255, 255], [255, 128, 0], [128, 0, 0], [128, 0, 255], [255, 0, 0], [0, 128, 255], [128, 255, 128]];
+    let (w, h, px) = load_rgba(shot)?;
+    let (w, h) = (w as usize, h as usize);
+    let pgm = shot.with_extension("classes.pgm");
+    let data = std::fs::read(&pgm).map_err(|e| format!("cannot read {}: {e}", pgm.display()))?;
+    // the header is three lines: P5, the size, 255
+    let start = data.iter().enumerate().filter(|x| *x.1 == b'\n').nth(2).map(|(i, _)| i + 1).ok_or("the class map has no header")?;
+    let cpu = &data[start..];
+    if cpu.len() != w * h {
+        return Err(format!("{} and {} are not the same size", shot.display(), pgm.display()));
+    }
+    // the shader's class under each pixel, where the pixel is a class colour
+    let gpu: Vec<u8> = (0..w * h)
+        .map(|i| {
+            let p = &px[i * 4..i * 4 + 3];
+            let d = |c: &[i32; 3]| (0..3).map(|k| (p[k] as i32 - c[k]).pow(2)).sum::<i32>();
+            let best = (0..12).min_by_key(|&c| d(&PAL[c])).unwrap();
+            if d(&PAL[best]) < 400 { best as u8 } else { 255 }
+        })
+        .collect();
+    let (mut both, mut agree, mut differ, mut inner, mut unknown) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut out = vec![0u8; w * h * 3];
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if cpu[i] == 255 {
+                continue;
+            }
+            if gpu[i] == 255 {
+                unknown += 1;
+                continue;
+            }
+            both += 1;
+            let col = if gpu[i] == cpu[i] {
+                agree += 1;
+                [150, 150, 150]
+            } else {
+                differ += 1;
+                // next to a class edge of the CPU's map?
+                let edge = (-1..=1isize).any(|dy| (-1..=1isize).any(|dx| {
+                    let (xx, yy) = ((x as isize + dx).rem_euclid(w as isize) as usize, (y as isize + dy).rem_euclid(h as isize) as usize);
+                    cpu[yy * w + xx] != cpu[i]
+                }));
+                if edge {
+                    [255, 40, 40]
+                } else {
+                    inner += 1;
+                    [255, 255, 0]
+                }
+            };
+            out[i * 3..i * 3 + 3].copy_from_slice(&col);
+        }
+    }
+    let diff = shot.with_extension("diff.png");
+    crate::plan::write_picture(&diff.to_string_lossy(), w, h, &out)?;
+    let line = format!(
+        "{}: {both} land pixels compared, {agree} agree ({:.3}%), {differ} differ, of which {inner} away from a class edge; {unknown} land pixels without a class colour (interface, smoothing)",
+        shot.display(),
+        100.0 * agree as f64 / both.max(1) as f64
+    );
+    Ok((line, inner * 1000 <= both))
 }
 
 /// Compare two pictures pixel by pixel. Where they differ at all, a picture of

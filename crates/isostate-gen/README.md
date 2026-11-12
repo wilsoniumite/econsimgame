@@ -24,10 +24,15 @@ pub struct Cottage {
     pub plot_width: f32,
     pub plot_depth: f32,
     pub storeys: u8,
+    pub roof: Roof,
+    pub era: Era,
+    pub upland: bool,
+    pub neighbours: (bool, bool),
+    pub detail: Detail,
     pub seed: Seed,
 }
 
-pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, c: &Cottage, pal: &Palette)
+pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, site: &Site, c: &Cottage, pal: &Palette)
 ```
 
 The viewer decides where things stand and which stand this year
@@ -61,7 +66,8 @@ what one thing looks like.
 ## Units and conventions
 
 - **One unit is one cell of the map, 2 km.** A house plot is 0.05 by 0.036; a
-  storey is 0.024 (`parts::STOREY`); a full-grown tree is about 0.11 tall.
+  storey of a house is 0.0205 (of a works 0.022, of the towns' other buildings
+  0.024, `parts::STOREY`); a full-grown tree is about 0.11 tall.
   Nothing is to scale with the map (a house 100 m wide), but things are to
   scale with each other. Up is +y, with heights exaggerated as on a model.
 - **The site's origin is the middle of the thing's footprint, on the ground.**
@@ -102,7 +108,9 @@ what one thing looks like.
   not the year: the viewer knows when a plot was first built and what could
   be had there then.
 - **Stay on the plot.** A house keeps inside its plot (the eaves may overhang
-  by a hair). A works keeps inside its yard, which is as wide and as deep as
+  by a hair), the ground behind it that the towns leave for its yard
+  (`houses::BACK_ROOM`), and the strip before it that its path crosses to the
+  street (`houses::SET_BACK`). A works keeps inside its yard, which is as wide and as deep as
   `works::footprint(kind, size)` says: the viewer sets ground aside by that
   and nothing else, so anything outside it may stand in a neighbour's yard.
   The tests check both. (Smoke is free to drift.)
@@ -111,16 +119,17 @@ what one thing looks like.
 
 | file | what |
 | --- | --- |
-| `mesh.rs` | `MeshBuf` and its shapes: `tri`, `quad`, `block`, `gable`, `frustum` (columns, cones, spires, hipped roofs), `ball`, `beam`, `ribbon`; `append`, `merge`, `transform`, `bounds` |
+| `mesh.rs` | `MeshBuf` and its shapes: `tri`, `quad`, `quad_toward` and `tri_toward` (a colour at each corner, turned to face a way: what the houses are built of), `block`, `gable`, `frustum` (columns, cones, spires, hipped roofs), `ball`, `beam`, `ribbon`; `append`, `merge`, `transform`, `bounds` |
 | `colour.rs` | `Colour` (a token), `Rgba`, `shade`, `lerp`, `pick`, `hex` |
 | `palette.rs` | `Palette`: the named colours, read from the look file |
 | `hash.rs` | `hash2`, `Seed` |
 | `site.rs` | `Site` (where a thing stands), `Model` (the four buffers) |
-| `parts.rs` | what houses share: `gabled`, `windows`, `chimney`, `smoking_chimney` |
-| `houses/` | `cottage`, `townhouse`, `terrace`, the density at which each adds a storey, and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, and how it weathers |
+| `parts.rs` | `gabled`, a plain building (the barns and sheds of a farmstead), and `STOREY`, the storey of what is neither a house nor a works |
+| `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; `kit.rs`, the parts they are put together from; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
 | `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit` |
-| `farm.rs` | `farmstead` |
+| `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the barn, a cart shed, a rick |
 | `town/` | `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
+| `rail.rs` | what stands by a railway where the ground was too steep for an ordinary line: `winding_house` (the stationary engine at the head of an inclined plane, before 1850), `banker_shed` (the banking engine's shed at the foot of a steep bank, after), and `buffer_stop`; `WINDING_HOUSE` and `BANKER_SHED` are the ground each keeps, and `TRACK_CLEAR` how far before its front the track runs |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
 | `bridge.rs` | `road_bridge`: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
 | `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
@@ -130,7 +139,105 @@ what one thing looks like.
 The scenes follow the viewer's layout rules by hand (plot spacing, set-backs,
 the densities at which a plot is built). They are not what the game runs: a
 change to the layout in `scatter/towns.rs` is not seen in the lab until
-`scenes.rs` is changed to match.
+`scenes.rs` is changed to match. The same goes for the patch of wood: it is
+an even stand of trees, while a wood in the game is filled in by `scatter.rs`
+from the year's land (`isostate-viewer/src/world.rs`, "the lie of the land"),
+thick and tall in its depths, thinner toward its edge, with glades and rides,
+stands of taller and lower trees, conifers gathered on high and poor ground,
+clumps and lone trees in the fields beside it, and a tree line below the
+mountain's summer snow. Where a wood's edge runs is the land's own rule too
+(two smooth fields of the year, `YearLand::field`), not a generator's. The
+`woods` sheet shows the trees; the game's shots show the woods, and the far
+views of the land have a set of their own, which is what to look at after a
+change to the land's rules or to the ground shader:
+
+```bash
+isostate-viewer --land-shots out/land --shots-compare out/land-before
+```
+
+Five cameras chosen from the run (the whole island, wooded lowland from 8 km
+up, a hill margin, the country round the home town, the snow line), each in
+the summers of 1800 and 1900, in October 1800 and in midwinter 1900: twenty
+pictures in about 40 seconds, on the standard shots' machinery, so
+`--shots-compare` and `--compare-shots` work on them. It prints where each
+camera looks, for pointing a `--view` at the same country. The pictures say
+whether the land looks right; `ISOSTATE_AREAS=1` says whether it is still the
+simulation's (each use as painted against the record, over the island and
+over districts of 12 km, and how much of it changes from one year to the
+next).
+
+## Houses
+
+A house is put together from the parts in `houses/kit.rs`, as a works is
+from `works/kit.rs`. (The two kits are separate: a works' parts know its
+state, a house's its level of detail and its age. They share `MeshBuf`, the
+palette, `Site` and the works' `plume`.) A kind of house is a few lines that
+place parts on its plot:
+
+- **A `Range`** is a rectangle of the plan with a way round (`a` along its
+  ridge, `c` across; turned by quarter turns). `walls` builds its four
+  sides, each a `Side`: not drawn (a party wall), blank, or with openings;
+  dimmed where a neighbour stands close; darker toward a corner it runs
+  into (the angle of a wing). A wall is darker at its foot and under its
+  eaves: that is the ambient occlusion, baked into the corners' colours.
+- **Openings are placed by rule** (`Opening`: its middle along the wall, its
+  foot, its size, and what it is: `Sash`, `Casement`, `Door` with a hood or a
+  fanlight, `Shop`, `Arch`). Close to, the wall is built in strips round a
+  hole for each, a storey at a time, and the window or door is let into the
+  hole; from the play distance the same list is flat panels on a whole wall.
+- **`roof`** fits a pitched roof to a range, each end a gable, a hip, a
+  half-hip, stopped against a party wall, or run on into another roof with
+  valleys (`End::Valley(run)`: a wing whose eaves are level with its
+  house's). `gablet`, `dormer`, `lean_to` (an outshut, a catslide, a porch),
+  `bay`, `stack` (with its pots; it gives back where its smoke rises).
+- **Behind and about:** `patch` (a garden, a flagged yard, a path),
+  `low_wall` (a wall, a hedge, a paling), `shed` (a privy), `butt`,
+  `woodpile`. All follow the ground the site hands in.
+- **`crooked`**: every corner goes through `Kit::pt`, where an old house's
+  walls lean and its ridge dips, so the whole house goes crooked together.
+
+What a house is handed, besides its plot, storeys, roof and seed:
+
+- **`era`** (`Era::of(year)`): the step its style takes from the year its
+  plot was first built (a townhouse: the year its ground was first dense
+  enough for one). Before 1720 timber frames, jetties, casements, gables to
+  the street; to 1815 wash or stone, sashes, hoods and fanlights, parapets;
+  to 1860 brick and slate; after, bay windows and L-shaped villas.
+- **`upland`**: the hills build in their own stone, to the ground, under
+  stone slates darker than the walls; four in ten of the houses that stand
+  apart are limewashed over the stone, and a row is bare stone throughout.
+- **`neighbours`**: whether a house stands on the next plot to its left and
+  right as it faces the street (verges, hips and dim side walls follow).
+- **`shop`** (a townhouse): `houses::shop_at(density, seed)` says where.
+- **`detail`** (`Detail::Far`, `Play`, `Near`): how much of it to draw. Far:
+  walls and roof (a cottage is 14 triangles). Play: openings as flat panels,
+  stacks, wings, outshuts, the colour of the garden (about 70). Near:
+  everything (about 350). The viewer chooses by where the camera is
+  (`scatter::Lod`); the three must be the same house, and each kind's tests
+  build all three. Only what goes into `solid` and `smoke` may follow the
+  level: a garden's tree is the same tree at all three, because when the
+  camera alone has moved the viewer puts the houses and their smoke on
+  screen again and leaves the island's trees as they are.
+
+A terrace is handed the ground (`Site::on`) and steps with it: houses whose
+ground is near enough level share a floor and are built as one run; where
+the floor changes the higher run shows its gable. The other houses take up
+a slope with their walls (`Kit::drop`).
+
+To add a kind of house: a struct with the inputs above and a `new` that
+fills in the usual ones, a function that places parts (`cottage.rs` is the
+plainest to copy), the tests (it keeps to its plot at every level, era and
+seed; each level draws more than the last; far is a shell and a roof), a
+sheet, and a call from `scatter/towns.rs`. Take every choice the house
+makes for itself from `seed.pick(n)`, a different `n` for each.
+
+The sheets: `cottages`, `cottages-eras`, `townhouses`, `townhouses-eras`,
+`terraces`, `terraces-slope` (the ground is built too, as a bank), `villas`,
+`house-backs` (seen from their yards), `house-levels` (the three levels
+side by side, with their triangles), `roofs`, `farmsteads`; and the scenes
+`street` and `market` (every house in full), `street-play`, `street-far`
+and `market-play` (at the level the game draws from that distance: the play
+picture of `street-play` is what the game shows).
 
 ## Works
 
@@ -176,6 +283,17 @@ size, then make every count come from what fits (`c.fit`, `c.spread`), so
 that it fills its yard at 100 and still fits at 0.4: the tests build every
 kind at every size, founding year and state and check that the footprint
 holds it.
+
+The railway's banks, viaducts, girder bridges and tunnel mouths are not
+generators: they are made along a line from the difference between its level
+and the ground, in the viewer (`isostate-viewer/src/rails.rs`). What stands
+beside the line is here (`rail.rs`, and the station in `town/`), and the
+`railway` sheet shows each by a length of track. Each stands with its front
+(+z) to the track; the viewer hands it a level site at the height of the
+rails, on ground that lies within a little of that height and clear of every
+line (and builds a stone footing under it where the ground falls away), so a
+winding house or a shed must keep to the ground its constant says: the
+viewer sets that aside and nothing more.
 
 The sheets: `works-kinds` (every kind at size 3), `works-small` and
 `works-standard` (at 0.4 and 1, built early and late), `works-great` (at
@@ -235,7 +353,9 @@ Sheet { name: "my-things", about: "My thing: storeys down the rows, six seeds ac
 ```
 
    A cell is one generator call, or several placed together: a street or a
-   yard tells more than a house alone. The lab works out the spacing from what
+   yard tells more than a house alone. (`Cell::turned` shows a thing from
+   another side; `Cell::on_slope` stands it on sloping ground, with the
+   ground built as a bank.) The lab works out the spacing from what
    each cell holds, so a sheet says nothing about layout. A label is one or
    two short lines. `land` is the ground the thing stands on in the game, which
    sets the colour of the lab's ground.

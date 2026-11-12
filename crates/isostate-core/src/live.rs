@@ -153,7 +153,8 @@ pub fn live_static(st: &State, C: &Content) -> LiveStatic {
         sectors: C.sector_name.clone(),
         uses: USE_NAMES.iter().map(|s| s.to_string()).collect(),
         disp: DISP.iter().map(|s| s.to_string()).collect(),
-        layers: LAYERS.iter().map(|s| s.to_string()).collect(),
+        // towns: the three it adds are named only where the game keeps town ground
+        layers: LAYERS.iter().chain(record::TOWN_LAYERS.iter().filter(|_| crate::towns::kept(st))).map(|s| s.to_string()).collect(),
         series: st
             .series
             .names
@@ -184,6 +185,17 @@ pub struct LiveLayers {
     pub mix_a: Vec<u8>,
     pub mix_b: Vec<u8>,
     pub mix_s: Vec<u8>,
+    // towns: three more, only in a game whose towns keep their ground
+    // (`record::TOWN_LAYERS`, the same bytes as in `run.bin`)
+    /// The year the cell joined its town less `record::BUILT_YEAR0` (1 to 255); 0: not town ground.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub built: Option<Vec<u8>>,
+    /// The cell's residents, in units of `record::RES_UNIT` people.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub res: Option<Vec<u8>>,
+    /// The share of the cell under works, 0 to 255, on every cell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub works: Option<Vec<u8>>,
 }
 
 /// Town arrays for the year, indexed by town slot (`T_max` of them).
@@ -260,6 +272,9 @@ pub struct LiveYear {
     /// slot (1.0 is average; empty unless the mechanism is on), and the country's.
     pub harvest_town: Vec<f32>,
     pub harvest: Option<f32>,
+    /// mines: every working there is or has been, as the year ends (empty
+    /// unless the mechanism is on; docs/rules/mines.md).
+    pub workings: Vec<crate::mines::Working>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -344,6 +359,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
 
     let mut l = record::layers(st, C).into_iter();
     let mut next = || l.next().expect("nine layers");
+    let mut tl = record::town_layers(st).unwrap_or_default().into_iter();
     let layers = LiveLayers {
         land_use: next(),
         inten: next(),
@@ -354,6 +370,9 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         mix_a: next(),
         mix_b: next(),
         mix_s: next(),
+        built: tl.next(),
+        res: tl.next(),
+        works: tl.next(),
     };
     let towns = LiveTowns {
         active: st.town_active.clone(),
@@ -426,5 +445,6 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         cell_owner: st.cell_owner.iter().map(|&o| o as i16).collect(),
         harvest_town: st.harvest_town.iter().map(|&v| v as f32).collect(),
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
+        workings: crate::mines::workings(st),
     }
 }

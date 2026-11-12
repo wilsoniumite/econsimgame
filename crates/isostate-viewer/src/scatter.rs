@@ -18,6 +18,7 @@ pub mod towns;
 
 use isostate_gen::bridge::{road_bridge, RoadBridge};
 use isostate_gen::farm::{farmstead, Farmstead};
+use isostate_gen::houses::Detail;
 use isostate_gen::trees::{bush, hedge_tree, leaf_group, tree, Greenery, Species, Tree, LEAF_GROUPS};
 use isostate_gen::works::{self, pit, works, Kind, Pit, PitKind, State, Works};
 use isostate_gen::{Seed, Site};
@@ -35,6 +36,9 @@ pub struct Slot {
     pub wcell: u32,
     /// patch-noise value at the spot, 0..255, so the slot agrees with the painted ground
     pub sub: f32,
+    /// where the spot lies in the field system (`world::place_at`), for asking
+    /// the year's land what it stands on
+    pub place: world::Place,
     /// fixed thresholds and variety
     pub u: f32,
     pub v: f32,
@@ -67,36 +71,44 @@ pub struct Slots {
     pub farm_open: Vec<i32>,
 }
 
-fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32) -> Vec<Slot> {
-    let mut out = Vec::new();
-    for c in 0..r.n {
-        if r.terrain[c] == 0 {
-            continue;
-        }
-        let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
-        for j in 0..n {
-            for i in 0..n {
-                let id = (c * n * n + j * n + i) as i32;
-                let x = cx + (i as f32 + 0.5 + jitter * (world::hash2(id, 1, seed) - 0.5)) / n as f32;
-                let z = cy + (j as f32 + 0.5 + jitter * (world::hash2(id, 2, seed) - 0.5)) / n as f32;
-                // nothing on the beach or in a river
-                if world::height_at(g, x, z) < 0.05 || world::water_dist(g, x, z) < 0.025 {
-                    continue;
-                }
-                let (wc, sub) = world::class_key(g, x, z);
-                out.push(Slot {
-                    x,
-                    z,
-                    wcell: wc as u32,
-                    sub,
-                    u: world::hash2(id, 3, seed),
-                    v: world::hash2(id, 4, seed),
-                    yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
-                });
+/// A jittered grid of n by n spots in every land cell. `placed` finds each
+/// spot's place in the field system too, for the things that go by the open
+/// land's classes (trees, farms); houses and pits go by the cell rule alone.
+fn grid_slots(r: &Replay, g: &Ground, n: usize, seed: i32, jitter: f32, placed: bool) -> Vec<Slot> {
+    use rayon::prelude::*;
+    (0..r.n)
+        .into_par_iter()
+        .flat_map_iter(|c| {
+            let mut out = Vec::new();
+            if r.terrain[c] == 0 {
+                return out;
             }
-        }
-    }
-    out
+            let (cx, cy) = ((c % r.w) as f32, (c / r.w) as f32);
+            for j in 0..n {
+                for i in 0..n {
+                    let id = (c * n * n + j * n + i) as i32;
+                    let x = cx + (i as f32 + 0.5 + jitter * (world::hash2(id, 1, seed) - 0.5)) / n as f32;
+                    let z = cy + (j as f32 + 0.5 + jitter * (world::hash2(id, 2, seed) - 0.5)) / n as f32;
+                    // nothing on the beach or in a river
+                    if world::height_at(g, x, z) < 0.05 || world::water_dist(g, x, z) < 0.025 {
+                        continue;
+                    }
+                    let (wc, sub) = world::class_key(g, x, z);
+                    out.push(Slot {
+                        x,
+                        z,
+                        wcell: wc as u32,
+                        sub,
+                        place: if placed { world::place_at(g, x, z) } else { world::Place::default() },
+                        u: world::hash2(id, 3, seed),
+                        v: world::hash2(id, 4, seed),
+                        yaw: world::hash2(id, 5, seed) * std::f32::consts::TAU,
+                    });
+                }
+            }
+            out
+        })
+        .collect()
 }
 
 // ------------------------------------------------------------------ where the works stand
@@ -160,10 +172,16 @@ fn firm_life(r: &Replay, f: usize) -> (usize, usize, f32) {
     }
 }
 
+/// A point of a road or a railway that works keep clear of: where it is, the
+/// room to leave either side of it, and the room to leave even where ground
+/// is short (none for a road; a railway's own bed, which no yard can stand on).
+type Way = (f32, f32, f32, f32);
+
 /// The roads and railways of year `k` as points along them, by the cell each
-/// point lies in, with the room to leave either side: works keep clear of them.
-fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<(f32, f32, f32)>> {
-    let mut out: std::collections::HashMap<usize, Vec<(f32, f32, f32)>> = Default::default();
+/// point lies in: works keep clear of them. The railway is taken where it
+/// runs (`rails.rs`), not as straight lines between the middles of its cells.
+fn ways(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<usize, Vec<Way>> {
+    let mut out: std::collections::HashMap<usize, Vec<Way>> = Default::default();
     let mut lay = |a: (f32, f32), b: (f32, f32), clear: f32| {
         let len = (b.0 - a.0).hypot(b.1 - a.1);
         let n = ((len / 0.03).ceil() as usize).max(1);
@@ -171,25 +189,36 @@ fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<u
             let t = i as f32 / n as f32;
             let (x, z) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
             let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-            out.entry(c).or_default().push((x, z, clear));
+            out.entry(c).or_default().push((x, z, clear, 0.0));
         }
     };
     for (c, m, lv) in crate::network::road_segments(r, k) {
         lay(cen[c], cen[m], if lv == 3 { 0.03 } else { 0.024 });
     }
-    // the railway, as the straight lines between the middles of its cells (the line itself curves a little)
-    let tr = &r.trans[k * r.n..(k + 1) * r.n];
-    let has = |x: isize, y: isize| x >= 0 && y >= 0 && (x as usize) < r.w && (y as usize) < r.h && tr[y as usize * r.w + x as usize] & 4 != 0;
-    for c in 0..r.n {
-        if tr[c] & 4 == 0 {
-            continue;
-        }
-        let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
-        for (dx, dy) in [(1isize, 0isize), (0, 1), (1, 1), (-1, 1)] {
-            if has(x + dx, y + dy) && !(dx != 0 && dy != 0 && (has(x + dx, y) || has(x, y + dy))) {
-                lay(cen[c], cen[(y + dy) as usize * r.w + (x + dx) as usize], 0.05);
+    // the railway where it really runs, with room for its banks: every point of every line that
+    // is not under the ground, told to the cell it lies in and to a neighbour it lies close by
+    let rails = crate::rails::year(r, g, cen, k);
+    let mut tell = |x: f32, z: f32, clear: f32, at_least: f32| {
+        let cell = |x: f32, z: f32| (z.floor().max(0.0) as usize).min(r.h - 1) * r.w + (x.floor().max(0.0) as usize).min(r.w - 1);
+        let mut told: Vec<usize> = Vec::with_capacity(3);
+        for (dx, dz) in [(0.0f32, 0.0f32), (0.12, 0.0), (-0.12, 0.0), (0.0, 0.12), (0.0, -0.12)] {
+            let c = cell(x + dx, z + dz);
+            if !told.contains(&c) {
+                told.push(c);
+                out.entry(c).or_default().push((x, z, clear, at_least));
             }
         }
+    };
+    for line in &rails.lines {
+        for (i, p) in line.pts.iter().enumerate() {
+            if line.kind[i] != crate::rails::Kind::Tunnel {
+                tell(p.x, p.z, 0.05 + (1.2 * (p.y - line.ground[i])).clamp(0.0, 0.12), 0.03);
+            }
+        }
+    }
+    // and the ground of its stations, engine houses and sheds
+    for (at, clear) in rails.grounds() {
+        tell(at.x, at.y, clear, 0.0);
     }
     out
 }
@@ -199,9 +228,9 @@ fn ways(r: &Replay, cen: &[(f32, f32)], k: usize) -> std::collections::HashMap<u
 enum Room {
     /// well back from the shore, the rivers, the roads, the railway and the cell's edge
     Proper,
-    /// nearer the water, and with no care for the roads
+    /// nearer the water, and with no care for the roads (but off the railway's bed)
     Tight,
-    /// anywhere above the tide that no other yard has taken, close up to its neighbours
+    /// anywhere above the tide that no other yard has taken and no line runs over, close up to its neighbours
     Any,
 }
 
@@ -238,7 +267,7 @@ struct Lot {
 /// Lay out the works of one cell: `firms` in the order they were founded.
 /// It gives back how many found no room at their own size, and how many none at all.
 #[allow(clippy::too_many_arguments)]
-fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
+fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[Way], yards: &[towns::Churchyard], cell: usize, firms: &[usize], lives: &[(usize, usize, f32)], rungs: &[i32], slots: &mut Slots) -> (usize, usize) {
     let (cx, cy) = ((cell % r.w) as f32, (cell / r.w) as f32);
     // the churchyards that reach into this cell, or near it
     let yards: Vec<&towns::Churchyard> = yards.iter().filter(|y| y.meets_box(cx + 0.5, cy + 0.5, 0.55, 0.55)).collect();
@@ -302,7 +331,11 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             if yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(x, z, hx + wall, hz + wall)) {
                 return false;
             }
-            if strict && ways.iter().any(|&(wx, wz, clear)| (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear) {
+            // the roads and the railway; where room is short, only the railway's own bed
+            if ways.iter().any(|&(wx, wz, clear, at_least)| {
+                let clear = if strict { clear } else { at_least };
+                clear > 0.0 && (wx - x).abs() < hx + clear && (wz - z).abs() < hz + clear
+            }) {
                 return false;
             }
             let (dry, shore) = (room.dry(), room.shore());
@@ -369,9 +402,10 @@ fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], ways: &[(f32, f32, f32)],
             // furthest from the yards already there; the higher, of two as far
             let (hx, hz) = if quarter % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
             let ashore = |s: &&(f32, f32, f32)| [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz)].iter().all(|&(dx, dz)| world::height_at(g, s.0 + dx, s.1 + dz) >= 0.004) && !yards.iter().any(|y| from < y.to && y.from < to && y.meets_box(s.0, s.1, hx, hz));
+            let off_the_line = |s: &&(f32, f32, f32)| !ways.iter().any(|&(wx, wz, _, at_least)| at_least > 0.0 && (wx - s.0).abs() < hx + at_least && (wz - s.1).abs() < hz + at_least);
             let apart = |s: &(f32, f32, f32)| lots.iter().filter(|l| from < l.to && l.from < to).map(|l| (l.x - s.0).hypot(l.z - s.1)).fold(f32::MAX, f32::min);
             let furthest = |spots: Vec<&(f32, f32, f32)>| spots.into_iter().rev().max_by(|a, b| apart(a).total_cmp(&apart(b))).map(|s| (s.0, s.1));
-            let at = furthest(tight.iter().filter(ashore).collect()).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
+            let at = furthest(tight.iter().filter(ashore).filter(off_the_line).collect()).or_else(|| furthest(tight.iter().filter(ashore).collect())).or_else(|| furthest(tight.iter().collect())).unwrap_or((cx + 0.5, cy + 0.5));
             (at.0, at.1, quarter)
         });
         let (hx, hz) = if q % 2 == 0 { (w * 0.5, d * 0.5) } else { (d * 0.5, w * 0.5) };
@@ -467,7 +501,7 @@ pub fn place_new_firms(r: &Replay, g: &Ground, slots: &mut Slots) {
     if dirty.is_empty() {
         return;
     }
-    let ways = ways(r, &cen, r.filled.clamp(1, r.ny) - 1);
+    let ways = ways(r, g, &cen, r.filled.clamp(1, r.ny) - 1);
     let mut by_cell: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
     for f in 0..n {
         if dirty.contains(&r.header.firms[f].cell) {
@@ -507,10 +541,10 @@ pub fn make_slots(r: &Replay, g: &Ground) -> Slots {
 
 fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
     let mut slots = Slots {
-        trees: grid_slots(r, g, 6, 11, 0.9),
-        houses: grid_slots(r, g, 7, 12, 0.7),
+        trees: grid_slots(r, g, 7, 11, 0.9, true),
+        houses: grid_slots(r, g, 7, 12, 0.7, false),
         farms: Vec::new(),
-        mines: grid_slots(r, g, 2, 14, 0.7),
+        mines: grid_slots(r, g, 2, 14, 0.7, false),
         firm_pos: Vec::new(),
         firm_cap: Vec::new(),
         firm_water: Vec::new(),
@@ -521,10 +555,12 @@ fn make_slots_inner(r: &Replay, g: &Ground) -> Slots {
         farm_open: Vec::new(),
     };
     (slots.hedge, slots.hedge_open) = hedge_slots(r, g).into_iter().unzip();
-    slots.farms = grid_slots(r, g, 2, 13, 0.5).into_iter().map(|s| farm_spot(g, s)).collect();
-    slots.farm_open = slots.farms.iter().map(|s| g.open_until[world::own_cell(g, s.x, s.z)]).collect();
+    slots.farms = grid_slots(r, g, 2, 13, 0.5, true).into_iter().map(|s| farm_spot(g, s)).collect();
+    slots.farm_open = slots.farms.iter().map(|s| g.land.open_until[s.place.parcel as usize]).collect();
     // every works gets ground in its cell, first come first served
     place_new_firms(r, g, &mut slots);
+    crate::plan::maybe_areas(r, g);
+    crate::rails::maybe_check(r, g);
     crate::plan::maybe_write(r, g, &slots);
     crate::plan::maybe_bench(r, g, &slots, &crate::network::centres(r));
     slots
@@ -578,11 +614,12 @@ fn hedge_slots(r: &Replay, g: &Ground) -> Vec<(Slot, i32)> {
                         z: hz,
                         wcell: wc as u32,
                         sub,
+                        place: world::place_at(g, x, z),
                         u,
                         v: world::hash2(id, 4, 17),
                         yaw: world::hash2(id, 5, 17) * std::f32::consts::TAU,
                     };
-                    out.push((slot, g.open_until[world::own_cell(g, x, z)]));
+                    out.push((slot, g.land.open_until[slot.place.parcel as usize]));
                 }
             }
             out
@@ -603,8 +640,112 @@ fn farm_spot(g: &Ground, s: Slot) -> Slot {
     out
 }
 
+use crate::fields::smoothstep as fields_smooth;
+
 fn ground(g: &Ground, x: f32, z: f32) -> Vec3 {
     Vec3::new(x, world::height_at(g, x, z), z)
+}
+
+// ------------------------------------------------------------------ how much of each house is drawn
+//
+// A big town has ten thousand houses, and a house drawn in full (windows let
+// into the wall, a yard with its wall and its privy) is some hundreds of
+// triangles. So the houses of a year are built at three levels
+// (`houses::Detail`), chosen by where the camera was looking and from how
+// far when the year's scenery was begun: in full within sight of a camera
+// that is close, with openings, stacks and back wings within sight of one
+// at the distance the game is played from, and as shells and roofs
+// elsewhere. When the camera has moved or zoomed so far that what it sees is
+// no longer covered, the year's scenery is built again (`stale`), off the
+// main thread, as it is for a new year; nothing but the houses and their
+// smoke differs by the camera, so nothing else is put on screen again
+// (`rebuild_year`).
+
+/// Where the camera was looking and from how far when a year's scenery was
+/// begun, which settles how much of each house is drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lod {
+    /// where the camera looks, on the map
+    pub focus: (f32, f32),
+    /// how far it is from there
+    pub dist: f32,
+    /// every house at this level, wherever the camera is
+    all: Option<Detail>,
+}
+
+impl Lod {
+    /// A camera this close or closer has the houses it sees drawn in full.
+    pub const NEAR: f32 = 4.0;
+    /// One this close or closer has them drawn with their openings and stacks.
+    pub const PLAY: f32 = 40.0;
+
+    pub fn of_camera(focus: (f32, f32), dist: f32) -> Lod {
+        Lod { focus, dist, all: None }
+    }
+
+    /// Every house of the island at one level.
+    pub fn all(detail: Detail) -> Lod {
+        Lod { focus: (0.0, 0.0), dist: 0.0, all: Some(detail) }
+    }
+
+    /// The level the houses in the middle of the view are drawn at from a distance.
+    fn band(dist: f32) -> Detail {
+        if dist <= Lod::NEAR {
+            Detail::Near
+        } else if dist <= Lod::PLAY {
+            Detail::Play
+        } else {
+            Detail::Far
+        }
+    }
+
+    /// How far from the middle of the view the houses must be at the level
+    /// its distance asks for, and how far out they are built at it, which
+    /// leaves room to pan and to draw back before they must be built again.
+    /// (At the game's tilt the ground at the top corners of the picture is
+    /// a third as far again from the middle as the camera is. What stands
+    /// out there is further from the camera, so smaller, and the lens
+    /// softens it: the level below serves.)
+    fn sight(dist: f32) -> f32 {
+        dist + 0.25
+    }
+
+    fn reach(dist: f32) -> f32 {
+        1.6 * dist + 1.2
+    }
+
+    /// The level a house at a point of the map is drawn at.
+    pub fn at(&self, x: f32, z: f32) -> Detail {
+        if let Some(detail) = self.all {
+            return detail;
+        }
+        let band = Lod::band(self.dist);
+        let away = (x - self.focus.0).hypot(z - self.focus.1);
+        if band == Detail::Far || away <= Lod::reach(self.dist) {
+            band
+        } else if band == Detail::Near && away <= Lod::reach(Lod::NEAR * 2.0) {
+            // beyond what a close camera sees, the middle distance: the haze and the lens soften it
+            Detail::Play
+        } else {
+            Detail::Far
+        }
+    }
+
+    /// Whether scenery built for this camera will not do for the camera as
+    /// it is `now`: some house it sees is drawn with less than it should
+    /// be, or it has drawn far enough back that all are drawn with more.
+    pub fn stale(&self, now: &Lod) -> bool {
+        if self.all.is_some() || now.all.is_some() {
+            return self.all != now.all;
+        }
+        let want = Lod::band(now.dist);
+        let sight = Lod::sight(now.dist);
+        let short = (0..8).any(|i| {
+            let a = i as f32 * std::f32::consts::FRAC_PI_4;
+            self.at(now.focus.0 + a.cos() * sight, now.focus.1 + a.sin() * sight) < want
+        });
+        short || self.at(now.focus.0, now.focus.1) < want || (Lod::band(self.dist) > want && now.dist > self.dist * 1.3)
+    }
 }
 
 // ------------------------------------------------------------------ the year's meshes
@@ -621,11 +762,20 @@ pub struct YearMeshes {
     pub lanes: Builder,
 }
 
-pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
-    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk))
+pub fn build_year(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod) -> YearMeshes {
+    build_year_on(r, g, slots, cen, k, lk, lod, &world::year_land(r, g, k))
 }
 
-fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look) -> YearMeshes {
+/// (task C, the land) The year's scenery on a year's land already worked out
+/// (`world::year_land`), so that one reckoning of it serves the ground's
+/// textures and the scenery.
+#[allow(clippy::too_many_arguments)]
+pub fn build_year_on(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, land: &world::YearLand) -> YearMeshes {
+    world::timed("year scatter", || build_year_inner(r, g, slots, cen, k, lk, lod, land))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: &Lod, land: &world::YearLand) -> YearMeshes {
     let mut trees: [Greenery; LEAF_GROUPS] = Default::default();
     let mut houses = Builder::default();
     let mut works_b = Builder::default();
@@ -648,9 +798,11 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let site = Site::on(ground(g, p.0, p.1), p.2, &height);
         works(&mut works_b, &mut smoke, &mut lanes, &site, &w, lk);
     }
-    // the railway's embankments, viaducts, cuttings, portals and bridges, and a
+    // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river
-    works_b.append(crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk));
+    let (rail_works, rail_smoke) = crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk);
+    works_b.append(rail_works);
+    smoke.append(rail_smoke);
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         let along = (b - a).normalize_or(bevy::math::Vec2::X);
@@ -662,40 +814,81 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
     let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
-    // near a works or a market place, or in a churchyard
+    // near a works or a market place, in a churchyard, or on the railway or its banks
+    let rail_year = crate::rails::year(r, g, cen, k);
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
-        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false) || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
+        plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false)
+            || parishes.iter().any(|p| p.holds(bevy::math::Vec2::new(x, z), 0.03))
+            || rail_year.near(x, z, 0.016)
     };
     // the town houses are placed afresh each year, so they also keep out of the rivers
     let near_plot_or_water = |x: f32, z: f32| -> bool { near_plot(x, z) || world::water_dist(g, x, z) < 0.03 };
 
+    // Woods with a shape of their own. A wood is thick and tall in its depths
+    // and thinner and lower toward its edge (`YearLand::wooded`), with glades
+    // and rides the trees keep out of (`world::glade`, which the ground paints
+    // too); the country next to a wood carries clumps and lone trees that thin
+    // out away from it; and the ground just outside a wood or a heath is scrub.
+    // Trees stand in stands, taller in one and lower in the next, and the
+    // conifers gather on high and poor ground, the broadleaves on the low.
     for s in &slots.trees {
-        let cls = world::pick_class(r, k, s.wcell as usize, s.sub);
-        let terr = r.terrain[s.wcell as usize];
+        let (cls, margin) = land.at(s.place);
+        if !(world::FARM..=world::HEATH).contains(&cls) {
+            continue;
+        }
+        // the tree line: fewer and lower trees and bushes up to the summer snow, none on it
+        let p = ground(g, s.x, s.z);
+        let bare = world::above_tree_line(s.x, s.z, p.y);
+        if (s.v * 13.37).fract() < bare {
+            continue;
+        }
+        let wooded = land.wooded(s.place);
+        // 0 far from any wood, 1 at a wood's edge
+        let by_wood = (wooded * 2.0).min(1.0);
+        // a second and a third number of the slot's own
+        let (u2, u3) = ((s.v * 7.13).fract(), (s.u * 11.7).fract());
+        let clump = fields_smooth(0.6, 0.78, 0.5 + 0.5 * world::vnoise(s.x * 5.1, s.z * 5.1, 451));
+        let stand = 0.5 + 0.5 * world::vnoise(s.x * 2.9 + 3.1, s.z * 2.9 + 8.7, 457);
         let (grow, scale) = match cls {
-            world::WOOD => (true, 0.85 + 0.4 * s.v),
-            // the odd tree out in a field; most stand in the hedges
-            world::FARM | world::PASTURE => (s.u < 0.012, 0.75 + 0.3 * s.v),
-            world::HEATH => {
-                // gorse and broom: low bushes, and the odd tree
-                if s.u < 0.16 && !near_plot(s.x, s.z) {
-                    bush(&mut trees[0], &Site::level(ground(g, s.x, s.z), 0.0), s.v, s.yaw, lk);
+            _ if margin => {
+                // scrub just outside a wood or a heath: bushes, and a low tree here and there
+                if u2 < 0.3 && !near_plot(s.x, s.z) {
+                    bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
                 }
-                (s.u < if terr >= 3 { 0.02 } else { 0.035 }, 0.6 + 0.3 * s.v)
+                (s.u < 0.1, 0.5 + 0.25 * s.v)
+            }
+            world::WOOD => {
+                let deep = (wooded * 2.0 - 1.0).clamp(0.0, 1.0);
+                let open = world::glade(s.x, s.z, deep);
+                ((1.0 - s.u) < (0.7 + 0.26 * deep) * (1.0 - open), (0.62 + 0.3 * deep) * (0.78 + 0.44 * stand) + 0.3 * s.v)
+            }
+            // the odd tree out in a field, and clumps and lone trees near a wood;
+            // most of a field's trees stand in its hedges
+            world::FARM | world::PASTURE => (s.u < 0.012 + by_wood * (0.03 + 0.5 * clump), 0.7 + 0.2 * stand + 0.25 * s.v),
+            world::HEATH => {
+                // gorse and broom: low bushes, and the odd tree, more of them by a wood
+                if u2 < 0.16 && !near_plot(s.x, s.z) {
+                    bush(&mut trees[0], &Site::level(p, 0.0), s.v, s.yaw, lk);
+                }
+                (s.u < 0.025 + by_wood * (0.03 + 0.3 * clump), 0.55 + 0.15 * stand + 0.25 * s.v)
             }
             _ => (false, 1.0),
         };
         if !grow || near_plot(s.x, s.z) {
             continue;
         }
-        let p = ground(g, s.x, s.z);
-        let conifer = terr >= 2 && s.v > 0.35 || s.v > 0.88;
+        let scale = scale * (1.0 - 0.45 * bare);
+        // conifers in stands, on high ground and on the poor tops
+        let high = fields_smooth(0.34, 0.8, p.y + 0.12 * world::vnoise(s.x * 0.9, s.z * 0.9, 453));
+        let poor = fields_smooth(0.55, 0.95, g.land.moor[s.place.parcel as usize]);
+        let share = (0.05 + 0.75 * high + 0.2 * poor).min(0.92);
+        let conifer = 0.65 * (0.5 + 0.5 * world::vnoise(s.x * 2.3 + 6.1, s.z * 2.3 + 1.9, 455)) + 0.35 * u3 < 0.2 + 0.6 * share;
         let species = if conifer { Species::Conifer } else { Species::Broadleaf };
         tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), &Tree { species, size: scale, tint: s.u, turn: s.yaw }, lk);
     }
 
-    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut houses, &mut smoke);
+    towns::houses(r, g, slots, cen, k, lk, &parishes, &near_plot_or_water, &mut towns::Into { houses: &mut houses, smoke: &mut smoke, trees: &mut trees, lod });
 
     // hedgerow trees, once the fields are enclosed, and never in a road
     let year = r.y0 + k as i32;
@@ -704,30 +897,41 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         if year < open {
             continue;
         }
-        let cls = world::pick_class(r, k, s.wcell as usize, s.sub);
+        let (cls, _) = land.at(s.place);
         if !(cls == world::FARM || cls == world::PASTURE) || near_plot(s.x, s.z) || roads.nearest(s.x, s.z, 0.03).is_some() {
             continue;
         }
+        // the hedges are fuller of trees near a wood than out on the open plain
+        if (s.v * 5.77).fract() > 0.6 + 0.8 * land.wooded(s.place) {
+            continue;
+        }
         let p = ground(g, s.x, s.z);
+        if (s.u * 13.37).fract() < world::above_tree_line(s.x, s.z, p.y) {
+            continue;
+        }
         hedge_tree(&mut trees[leaf_group(s.v)], &Site::level(p, 0.0), 0.55 + 0.3 * s.v, s.u * 7.3, s.yaw, lk);
     }
 
     // farmsteads among the fields, each with a lane to the nearest road
     for (s, &open) in slots.farms.iter().zip(&slots.farm_open) {
         let c = s.wcell as usize;
-        let off = k * r.n + c;
-        let main = r.mix_a[off];
+        // the farm is of the land it stands on
+        let (main, _) = land.at(s.place);
         if year < open || !(main == world::FARM || main == world::PASTURE) || s.u > 0.32 || near_plot(s.x, s.z) {
             continue;
         }
-        let cls = world::pick_class(r, k, c, s.sub);
-        if !(cls == world::FARM || cls == world::PASTURE) || roads.nearest(s.x, s.z, 0.075).is_some() {
+        if roads.nearest(s.x, s.z, 0.075).is_some() {
+            continue;
+        }
+        // nobody farms from a house above the tree line: the mountain's grass is grazed from below
+        let p = ground(g, s.x, s.z);
+        if world::above_tree_line(s.x, s.z, p.y) > 0.0 {
             continue;
         }
         // stone and slate in the hills
         let upland = r.terrain[c] >= 2;
-        let site = Site::on(ground(g, s.x, s.z), s.yaw, &height);
-        farmstead(&mut houses, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, seed: Seed::new(s.u, s.v) }, lk);
+        let site = Site::on(p, s.yaw, &height);
+        farmstead(&mut houses, &mut smoke, &mut trees[leaf_group(s.v)], &site, &Farmstead { arable: main == world::FARM, upland, detail: lod.at(s.x, s.z), seed: Seed::new(s.u, s.v) }, lk);
         let q = bevy::math::Quat::from_rotation_y(s.yaw);
         let gate = Vec3::new(s.x, 0.0, s.z) + q * Vec3::new(0.0, 0.0, -0.05);
         if let Some(to) = roads.nearest(gate.x, gate.z, 0.55) {
@@ -735,20 +939,44 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         }
     }
 
-    for s in &slots.mines {
-        let c = s.wcell as usize;
-        let cls = world::pick_class(r, k, c, s.sub);
-        let kind = match cls {
-            world::COALMINE => PitKind::Coal,
-            world::IRONMINE => PitKind::Ironstone,
-            world::QUARRY => PitKind::Stone,
-            world::CLAYPIT => PitKind::Clay,
-            _ => continue,
-        };
-        if s.u > 0.7 || near_plot(s.x, s.z) {
-            continue;
+    let pit_kind = |cls: u8| match cls {
+        world::COALMINE => Some(PitKind::Coal),
+        world::IRONMINE => Some(PitKind::Ironstone),
+        world::QUARRY => Some(PitKind::Stone),
+        world::CLAYPIT => Some(PitKind::Clay),
+        _ => None,
+    };
+    // Where the run keeps its quarries, pits and mines as workings (a pit head on
+    // one cell, with its hands; the core's docs/rules/mines.md), each working at
+    // work gets one pit, on the first free spot of its cell: a stand-in until the
+    // pit heads and spoil heaps are drawn to their size. Otherwise the pits are
+    // read off the land mix, a pit on every spot the mix paints as diggings.
+    let year_workings = r.workings.get(k).filter(|w| !w.is_empty());
+    if let Some(list) = year_workings {
+        let mut waiting: std::collections::HashMap<u32, Vec<PitKind>> = std::collections::HashMap::new();
+        for w in list.iter().filter(|w| w.opened != 0 && w.hands >= 1.0) {
+            if let Some(kind) = pit_kind(w.class) {
+                waiting.entry(w.cell).or_default().push(kind);
+            }
         }
-        pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        for s in &slots.mines {
+            if near_plot(s.x, s.z) {
+                continue;
+            }
+            let Some(kinds) = waiting.get_mut(&s.wcell) else { continue };
+            let Some(kind) = kinds.pop() else { continue };
+            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        }
+    } else {
+        for s in &slots.mines {
+            let c = s.wcell as usize;
+            let cls = world::pick_class(r, k, c, s.sub);
+            let Some(kind) = pit_kind(cls) else { continue };
+            if s.u > 0.7 || near_plot(s.x, s.z) {
+                continue;
+            }
+            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+        }
     }
 
     YearMeshes { trees, houses, works: works_b, smoke, lanes }
@@ -862,6 +1090,49 @@ fn lane(b: &mut Builder, lk: &Look, g: &Ground, from: (f32, f32), to: (f32, f32)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn houses_are_drawn_in_full_near_a_close_camera_and_as_shells_far_off() {
+        let close = Lod::of_camera((10.0, 10.0), 1.5);
+        assert_eq!(close.at(10.0, 10.0), Detail::Near);
+        assert_eq!(close.at(12.5, 10.0), Detail::Near);
+        assert_eq!(close.at(16.0, 10.0), Detail::Play);
+        assert_eq!(close.at(40.0, 10.0), Detail::Far);
+        let play = Lod::of_camera((10.0, 10.0), 14.0);
+        assert_eq!(play.at(10.0, 10.0), Detail::Play);
+        assert_eq!(play.at(10.0, 27.0), Detail::Play);
+        assert_eq!(play.at(10.0, 35.0), Detail::Far);
+        let far = Lod::of_camera((10.0, 10.0), 70.0);
+        assert_eq!(far.at(10.0, 10.0), Detail::Far);
+        assert_eq!(Lod::all(Detail::Near).at(99.0, 0.0), Detail::Near);
+    }
+
+    #[test]
+    fn scenery_is_built_again_when_the_camera_sees_past_what_was_built_for_it() {
+        let built = Lod::of_camera((10.0, 10.0), 1.5);
+        // looking about a little, or drawing back a little, what was built still covers the view
+        assert!(!built.stale(&Lod::of_camera((10.5, 10.3), 1.5)));
+        assert!(!built.stale(&Lod::of_camera((10.0, 10.0), 2.2)));
+        assert!(!built.stale(&built));
+        // panned a few cells off, or drawn back to see more than was built in full
+        assert!(built.stale(&Lod::of_camera((13.0, 10.0), 1.5)));
+        assert!(built.stale(&Lod::of_camera((10.0, 10.0), 4.5)));
+        // drawn right back, the island is built again as shells
+        assert!(built.stale(&Lod::of_camera((10.0, 10.0), 70.0)));
+        // and coming in again from far off, in full
+        let far = Lod::of_camera((10.0, 10.0), 70.0);
+        assert!(!far.stale(&Lod::of_camera((30.0, 10.0), 120.0)));
+        assert!(far.stale(&Lod::of_camera((10.0, 10.0), 14.0)));
+        assert!(Lod::of_camera((10.0, 10.0), 14.0).stale(&built));
+        // the play distance covers a good pan before it must be built again
+        let play = Lod::of_camera((10.0, 10.0), 14.0);
+        assert!(!play.stale(&Lod::of_camera((16.0, 12.0), 14.0)));
+        assert!(play.stale(&Lod::of_camera((22.0, 10.0), 14.0)));
+        // just past the distance at which houses are drawn in full, what was built in full is kept
+        let nearish = Lod::of_camera((10.0, 10.0), 3.8);
+        assert!(!nearish.stale(&Lod::of_camera((10.0, 10.0), 4.4)));
+        assert!(nearish.stale(&Lod::of_camera((10.0, 10.0), 5.5)));
+    }
 
     #[test]
     fn each_try_for_a_yard_asks_for_less_room_than_the_last() {

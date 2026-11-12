@@ -14,7 +14,7 @@
 
 use super::*;
 use bevy::math::Vec2;
-use isostate_gen::houses::{self, roof, storeys, Cottage, Roof, Terrace, Townhouse};
+use isostate_gen::houses::{self, roof, storeys, Cottage, Era, Roof, Terrace, Townhouse, Villa};
 use isostate_gen::town;
 use std::collections::HashMap;
 
@@ -66,6 +66,27 @@ struct Plot {
     v: f32,
 }
 
+/// A plot with a house on it this year.
+struct Standing {
+    pl: Plot,
+    /// how built up its ground is now
+    dens: f32,
+    /// the year (counted from the start) its ground was first built up enough for it
+    built: usize,
+    roof: Roof,
+    /// the cell and the patch of it the plot's ground is read from
+    wc: usize,
+    sub: f32,
+    /// a house stands on the next plot along its street, on its left and on its right as it faces the street
+    neighbours: (bool, bool),
+}
+
+/// The year a house that went up in year `built` (counted from the start) was
+/// built: one standing when the story opens was built some time before.
+fn year_built(r: &Replay, built: usize, seed: Seed) -> i32 {
+    if built == 0 { roof::built_before(r.y0, seed) } else { r.y0 + built as i32 }
+}
+
 /// The first year a plot's ground was town ground built up to `need`, if it has been by year k.
 fn first_built(r: &Replay, k: usize, wc: usize, sub: f32, need: f32) -> Option<usize> {
     (0..=k).find(|&y| density(r, y, wc) >= need && matches!(world::pick_class(r, y, wc, sub), world::URBAN | world::WORKS))
@@ -76,7 +97,7 @@ fn first_built(r: &Replay, k: usize, wc: usize, sub: f32, need: f32) -> Option<u
 /// there that year, weathered since. A house standing when the story opens
 /// was built some time before.
 fn roof_of(r: &Replay, k: usize, wc: usize, built: usize, seed: Seed) -> Roof {
-    let (year, now) = (if built == 0 { roof::built_before(r.y0, seed) } else { r.y0 + built as i32 }, r.y0 + k as i32);
+    let (year, now) = (year_built(r, built, seed), r.y0 + k as i32);
     // whether the railway had come by the year the roof it has now was laid
     let laid = (Roof::laid(year, now, seed) - r.y0).clamp(0, k as i32) as usize;
     Roof::of(year, now, r.terrain[wc] >= 2, r.trans[laid * r.n + wc] & 4 != 0, seed)
@@ -445,11 +466,20 @@ fn railway_through(lengths: &[(Vec2, Vec2)], church: &town::Church, at: Vec2, ya
     })
 }
 
-/// The station is down its own road to the south of the market place.
-fn station_at(s: &Square) -> Vec2 {
-    let q = bevy::math::Quat::from_rotation_y(s.yaw);
-    let o = q * Vec3::new(0.0, 0.0, 0.24);
-    s.at + Vec2::new(o.x, o.z)
+/// A town's station, once the railway has come: it stands beside the line
+/// where the line passes the town (`rails.rs`), on the town's side of it,
+/// its platform to the track. The middle of the building, the way it faces,
+/// and the level of the rails there.
+fn station_at(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, s: &Square) -> Option<(Vec2, f32, f32)> {
+    let node = r.header.towns[s.town].node;
+    if r.trans[k * r.n + node] & 4 == 0 {
+        return None;
+    }
+    let rails = crate::rails::year(r, g, cen, k);
+    let stop = rails.stops.get(&node)?;
+    let across = Vec2::new(-stop.dir.y, stop.dir.x);
+    let toward = if across.dot(s.at - stop.at) >= 0.0 { across } else { -across };
+    Some((stop.at + toward * 0.085, (-toward.x).atan2(-toward.y), stop.level))
 }
 
 /// The market places, churches, stations and lighthouses of the towns. The
@@ -496,9 +526,8 @@ pub(super) fn landmarks(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk
         }
         parishes.push(p);
         plots.entry(node).or_default().push((s.at.x, s.at.y, 0.085, 0.085));
-        if r.trans[k * r.n + node] & 4 != 0 {
-            let st = station_at(&s);
-            town::station(houses, &Site::level(ground(g, st.x, st.y), s.yaw), lk);
+        if let Some((st, yaw, level)) = station_at(r, g, cen, k, &s) {
+            town::station(houses, &Site::level(Vec3::new(st.x, level, st.y), yaw), lk);
             plots.entry(node).or_default().push((st.x, st.y, 0.085, 0.085));
         }
         // a lighthouse if the town is a harbour: walk toward the sea to the waterline
@@ -543,7 +572,7 @@ fn class_here(r: &Replay, g: &Ground, k: usize, x: f32, z: f32) -> (u8, usize) {
 
 /// Every street that could be laid this year: each road through town ground, and
 /// back lanes, outer lanes and cross streets laid out along it.
-fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Street> {
+fn streets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Street> {
     let townish = |c: usize| {
         let off = k * r.n + c;
         r.use_[off] == 10 || r.mix_a[off] == world::URBAN || r.mix_b[off] == world::URBAN
@@ -585,8 +614,7 @@ fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Stree
     }
     // a road from each market place down to its station
     for s in sq {
-        if r.trans[k * r.n + r.header.towns[s.town].node] & 4 != 0 {
-            let st = station_at(s);
+        if let Some((st, _, _)) = station_at(r, g, cen, k, s) {
             let d = (st - s.at).normalize_or_zero();
             out.push(Street { a: s.at + d * s.radius, b: st - d * 0.03, width: 0.02, need: 0.0, id: -1 - s.town as i32, road: false });
         }
@@ -594,11 +622,21 @@ fn streets(r: &Replay, cen: &[(f32, f32)], k: usize, sq: &[Square]) -> Vec<Stree
     out
 }
 
+/// What the houses are built into, and how much of each is drawn where.
+pub(super) struct Into<'a> {
+    pub houses: &'a mut Builder,
+    pub smoke: &'a mut Builder,
+    pub trees: &'a mut [Greenery; LEAF_GROUPS],
+    pub lod: &'a Lod,
+}
+
 #[allow(clippy::too_many_arguments)]
-pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, houses: &mut Builder, smoke: &mut Builder) {
+pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k: usize, lk: &Look, parishes: &[Parish], near_plot: &dyn Fn(f32, f32) -> bool, into: &mut Into) {
+    let houses = &mut *into.houses;
     let sq = squares(r, cen, k);
     // a house keeps its whole plot out of a churchyard
-    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(station_at(s)) < 0.07) || parishes.iter().any(|c| c.crowded_by(p));
+    let stations: Vec<Vec2> = sq.iter().filter_map(|s| station_at(r, g, cen, k, s)).map(|(at, _, _)| at).collect();
+    let in_square = |p: Vec2| sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012) || stations.iter().any(|st| p.distance(*st) < 0.08) || parishes.iter().any(|c| c.crowded_by(p));
     let built = |p: Vec2, need: f32| -> bool {
         if world::height_at(g, p.x, p.y) < 0.05 {
             return false;
@@ -612,7 +650,7 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
     let mut street_pts: HashMap<(i32, i32), Vec<(Vec2, f32)>> = HashMap::new();
     let cell = |p: Vec2| ((p.x / 0.05).floor() as i32, (p.y / 0.05).floor() as i32);
     let colour = *lk.ground.street_earth;
-    for s in streets(r, cen, k, &sq) {
+    for s in streets(r, g, cen, k, &sq) {
         let len = s.a.distance(s.b);
         let steps = ((len / 0.03).ceil() as usize).max(1);
         let mut runs: Vec<(f32, f32)> = Vec::new();
@@ -702,7 +740,8 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
                 };
                 cands.push(Plot {
                     p: s.a + along * t_of(i) + n * side * set_back,
-                    yaw: yaw_along + if side < 0.0 { std::f32::consts::PI } else { 0.0 },
+                    // its front to the street
+                    yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 },
                     run: (id, j),
                     row: row.map(|r| r.0),
                     high: s.road,
@@ -733,7 +772,7 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
     // ground as the town grows. Each knows the year it was built, which settles its style.
     cands.sort_by(|a, b| a.need.total_cmp(&b.need));
     let mut taken: HashMap<(i32, i32), Vec<Vec2>> = HashMap::new();
-    let mut standing: Vec<(Plot, f32, i32, Roof)> = Vec::new();
+    let mut standing: Vec<Standing> = Vec::new();
     let mut row_year: HashMap<(i32, i32), Option<usize>> = HashMap::new();
     for pl in cands {
         let (cls, wc) = class_here(r, g, k, pl.p.x, pl.p.y);
@@ -757,30 +796,39 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
         }
         taken.entry(c).or_default().push(pl.p);
         let roof = roof_of(r, k, wc, built, Seed::new(pl.u, pl.v));
-        standing.push((pl, dens, r.y0 + built as i32, roof));
+        standing.push(Standing { pl, dens, built, roof, wc, sub, neighbours: (false, false) });
     }
 
     // rows built in the industrial years are brick terraces; everything else stands as separate houses
-    standing.sort_by_key(|(p, _, _, _)| (p.run, p.index));
+    standing.sort_by_key(|s| (s.pl.run, s.pl.index));
+    // which houses have a neighbour on the next plot along: a plot on the far side of its street
+    // (and one round a market place) has the next along on its right, one on the near side on its left
+    for i in 0..standing.len() {
+        let next_to = |j: usize| standing[j].pl.run == standing[i].pl.run && (standing[j].pl.index - standing[i].pl.index).abs() == 1;
+        let (before, after) = (i > 0 && next_to(i - 1), i + 1 < standing.len() && next_to(i + 1));
+        standing[i].neighbours = if standing[i].pl.run.1 == 1 { (after, before) } else { (before, after) };
+    }
+    let height = |x: f32, z: f32| world::height_at(g, x, z);
     let mut i = 0;
     while i < standing.len() {
-        let (first, _, year) = (&standing[i].0, standing[i].1, standing[i].2);
+        let first = &standing[i];
         let mut j = i + 1;
-        if let (Some(ri), true) = (first.row, year >= TERRACE_ERA) {
-            while j < standing.len() && standing[j].0.run == first.run && standing[j].0.row == Some(ri) && standing[j].0.index == standing[j - 1].0.index + 1 {
+        if let (Some(ri), true) = (first.pl.row, r.y0 + first.built as i32 >= TERRACE_ERA) {
+            while j < standing.len() && standing[j].pl.run == first.pl.run && standing[j].pl.row == Some(ri) && standing[j].pl.index == standing[j - 1].pl.index + 1 {
                 j += 1;
             }
         }
         if j - i >= 2 {
-            terrace(houses, smoke, lk, g, &standing[i..j]);
+            terrace(into, r, lk, g, &height, &standing[i..j]);
         } else {
-            for (pl, d, _, roof) in &standing[i..j] {
+            for s in &standing[i..j] {
                 // on the high streets and the market place a house is rebuilt as a
                 // townhouse of the full plot once its ground is dense enough, each at its own point
-                if pl.high && *d >= pl.need + 0.12 + 0.25 * pl.v {
-                    townhouse(houses, smoke, lk, g, pl, *d, *roof);
+                let rebuilt = s.pl.need + 0.12 + 0.25 * s.pl.v;
+                if s.pl.high && s.dens >= rebuilt {
+                    townhouse(into, r, lk, g, &height, k, s, rebuilt);
                 } else {
-                    cottage(houses, smoke, lk, g, pl, *d, *roof);
+                    cottage(into, r, lk, g, &height, &s.pl, s.dens, s.built, s.roof, s.wc, s.neighbours);
                 }
             }
         }
@@ -799,36 +847,74 @@ pub(super) fn houses(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], 
         }
         let pl = Plot { p, yaw: (s.yaw / std::f32::consts::FRAC_PI_2).round() * std::f32::consts::FRAC_PI_2, run: (0, 0), row: None, high: false, index: 0, width: 0.05, depth: 0.036, need: 0.0, u: s.u, v: s.v };
         let built = first_built(r, k, c, s.sub, 0.0).unwrap_or(k);
-        cottage(houses, smoke, lk, g, &pl, density(r, k, c), roof_of(r, k, c, built, Seed::new(s.u, s.v)));
+        cottage(into, r, lk, g, &height, &pl, density(r, k, c), built, roof_of(r, k, c, built, Seed::new(s.u, s.v)), c, (false, false));
     }
 }
 
-/// A house standing on its own plot. Each adds a storey at its own density,
-/// so a street grows a house at a time.
-fn cottage(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32, roof: Roof) {
+/// A house standing on its own plot, in the style of the year it was first
+/// built: a cottage, which adds a storey at its own density, so a street
+/// grows a house at a time; or, on some of the plots first built once the
+/// railway years' money was about, a villa in its garden.
+#[allow(clippy::too_many_arguments)]
+fn cottage(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn(f32, f32) -> f32, pl: &Plot, dens: f32, built: usize, roof: Roof, wc: usize, neighbours: (bool, bool)) {
     let seed = Seed::new(pl.u, pl.v);
-    let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), roof, seed };
-    houses::cottage(houses, smoke, &Site::level(ground(g, pl.p.x, pl.p.y), pl.yaw), &c, lk);
+    let year = year_built(r, built, seed);
+    let (era, upland, detail) = (Era::of(year), r.terrain[wc] >= 2, into.lod.at(pl.p.x, pl.p.y));
+    let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, height);
+    let green = &mut into.trees[leaf_group(pl.v)];
+    if pl.row.is_none() && houses::villa_plot(year, seed) {
+        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof, era, upland, detail, seed };
+        houses::villa(into.houses, into.smoke, green, &site, &v, lk);
+    } else {
+        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::cottage(dens, seed), roof, era, upland, neighbours, detail, seed };
+        houses::cottage(into.houses, into.smoke, green, &site, &c, lk);
+    }
 }
 
-/// A terraced row over several plots, raised a storey when its own ground is dense enough.
-fn terrace(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, row: &[(Plot, f32, i32, Roof)]) {
-    let (a, b) = (row[0].0.p, row[row.len() - 1].0.p);
+/// A terraced row over several plots, raised a storey when its own ground is
+/// dense enough. It is handed the ground, and steps with it.
+fn terrace(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn(f32, f32) -> f32, row: &[Standing]) {
+    let (a, b) = (row[0].pl.p, row[row.len() - 1].pl.p);
     let mid = (a + b) * 0.5;
-    let first = &row[0].0;
-    let dens = row.iter().map(|(_, d, _, _)| *d).sum::<f32>() / row.len() as f32;
-    // ground under the row: the lower end, so it never floats
-    let h = row.iter().map(|(pl, _, _, _)| world::height_at(g, pl.p.x, pl.p.y)).fold(f32::MAX, f32::min);
-    let seed = Seed::new(first.u, first.v);
-    let t = Terrace { houses: row.len(), length: a.distance(b) + first.width * 0.96, depth: first.depth, storeys: storeys::terrace(dens, seed), roof: row[0].3, seed };
-    houses::terrace(houses, smoke, &Site::level(Vec3::new(mid.x, h, mid.y), first.yaw), &t, lk);
+    let first = &row[0];
+    let dens = row.iter().map(|s| s.dens).sum::<f32>() / row.len() as f32;
+    let seed = Seed::new(first.pl.u, first.pl.v);
+    let t = Terrace {
+        houses: row.len(),
+        length: a.distance(b) + first.pl.width * 0.96,
+        depth: first.pl.depth,
+        storeys: storeys::terrace(dens, seed),
+        roof: first.roof,
+        era: Era::of(r.y0 + first.built as i32),
+        upland: r.terrain[first.wc] >= 2,
+        detail: into.lod.at(mid.x, mid.y),
+        seed,
+    };
+    houses::terrace(into.houses, into.smoke, &Site::on(ground(g, mid.x, mid.y), first.pl.yaw, height), &t, lk);
 }
 
-/// A house in a continuous frontage: the full width of its plot, two or three storeys.
-fn townhouse(houses: &mut Builder, smoke: &mut Builder, lk: &Look, g: &Ground, pl: &Plot, dens: f32, roof: Roof) {
+/// A house in a continuous frontage: the full width of its plot, two or
+/// three storeys, in the style of the year its ground was first dense
+/// enough for it (`rebuilt` is that density), with a shop below where the
+/// ground is busy enough.
+#[allow(clippy::too_many_arguments)]
+fn townhouse(into: &mut Into, r: &Replay, lk: &Look, g: &Ground, height: &dyn Fn(f32, f32) -> f32, k: usize, s: &Standing, rebuilt: f32) {
+    let pl = &s.pl;
     let seed = Seed::new(pl.u, pl.v);
-    let t = Townhouse { plot_width: pl.width, plot_depth: pl.depth, storeys: storeys::townhouse(dens, seed), roof, seed };
-    houses::townhouse(houses, smoke, &Site::level(ground(g, pl.p.x, pl.p.y), pl.yaw), &t, lk);
+    let since = first_built(r, k, s.wc, s.sub, rebuilt).unwrap_or(s.built);
+    let t = Townhouse {
+        plot_width: pl.width,
+        plot_depth: pl.depth,
+        storeys: storeys::townhouse(s.dens, seed),
+        roof: s.roof,
+        era: Era::of(year_built(r, since, seed)),
+        upland: r.terrain[s.wc] >= 2,
+        shop: houses::shop_at(s.dens, seed),
+        neighbours: s.neighbours,
+        detail: into.lod.at(pl.p.x, pl.p.y),
+        seed,
+    };
+    houses::townhouse(into.houses, into.smoke, &Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, height), &t, lk);
 }
 
 #[cfg(test)]

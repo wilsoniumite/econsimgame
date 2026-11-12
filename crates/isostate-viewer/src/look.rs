@@ -151,6 +151,17 @@ shader_paint! {
         beach_wet,
         beach,
         shingle,
+        soil_light,
+        soil_red,
+        rough_grass,
+        wood_canopy,
+        river_thread,
+        shore_far,
+        wood_canopy_autumn,
+        moor_grass,
+        bracken,
+        bracken_autumn,
+        rushes,
     }
 }
 

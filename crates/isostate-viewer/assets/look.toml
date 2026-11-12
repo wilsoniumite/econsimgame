@@ -119,6 +119,36 @@ seabed_deep = "#2f5f78"
 beach_wet = "#cfbd8b"
 beach = "#ead9a3"
 shingle = "#a49c8a"
+# ploughed soil on the light lands (chalk and sand) and on the red marls; the
+# plain soil above is the loam between them
+soil_light = "#b39c74"
+soil_red = "#8f5f45"
+# rough grass and scrub: a glade or a ride in a wood, the grassy floor under the
+# thin trees of its rim, and the rough ground just outside a wood or a heath
+rough_grass = "#86a856"
+# a wood's canopy seen from so far off that the trees cannot be told apart:
+# between the sunlit crowns and the shade among them, so that the trees do not
+# show as light specks on it
+wood_canopy = "#52843e"
+# a river seen from far off, drawn as a thread that keeps a pixel or two of width
+river_thread = "#5b9dc6"
+# the line of sand ruled along the shore in the far view
+shore_far = "#f0e2b4"
+# the canopy of a broadleaf wood in October, from as far off: the gold of its
+# trees (tint_autumn over the broadleaf greens, in [foliage]) with the shade
+# among them and the oaks that have not yet turned, a bronze and not a bright
+# gold, so that a half-wooded island does not go yellow
+wood_canopy_autumn = "#96803f"
+# the rough grass of the hill margins: what a pasture's grass goes toward as it
+# nears the moor and as the ground rises, and what the moor's own edge goes
+# toward, so that the two meet without a line
+moor_grass = "#a3b36b"
+# bracken, which breaks the line between the intakes and the moor: green in
+# summer, rust from October to spring
+bracken = "#6f9044"
+bracken_autumn = "#a3804f"
+# rushes in the wet of a rough pasture
+rushes = "#6d8a50"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).
@@ -175,6 +205,12 @@ clay_bottom = "#a97a54"
 slag = "#8d8a86"
 # the earth bank a charcoal furnace is charged from
 furnace_bank = "#8a9a5e"
+# round a house: the grass of its garden, the dug earth of its beds, the path
+# to its door, and the flagged yard behind a terrace
+garden = "#9cb46b"
+garden_bed = "#8f7452"
+garden_path = "#d3c5a4"
+back_yard = "#a89c89"
 
 [walls]
 # the washes of the separate houses in town and of the lowland farmhouses;
@@ -191,6 +227,10 @@ weaver_cottage = "#f0e2c4"
 shop_front = "#3f5d50"
 lighthouse_white = "#f7f5ef"
 lighthouse_red = "#c94b3c"
+# the painted frames and glazing bars of a house's windows
+window_frame = "#f4f0e6"
+# a front door, painted in one of these
+door_paints = ["#3f5d50", "#3d4f6b", "#7a342c", "#2f2d2c", "#7a5a3c", "#8a8f6a"]
 
 [roofs]
 # clay tile: the common red, a darker one (also the station and the market
@@ -214,6 +254,8 @@ coke_ovens = "#5a4a42"
 stone_slate = "#5f594f"
 # a shop's awning, in one of these
 awnings = ["#c9584a", "#e9dcbc", "#5c8a94", "#dba94a"]
+# the clay pots on a house's chimney stack
+chimney_pot = "#cb7b54"
 
 [thatch]
 farmhouse = "#c9a75c"
@@ -229,8 +271,9 @@ rick = "#d8b55e"
 # second also on the terraces
 house = "#626e86"
 town = "#55617a"
-# the thick sandstone slates of the hills
-stone = "#a59c8a"
+# the thick sandstone slates of the hills, weathered darker than the stone of
+# the walls under them, so that a hill town's roofs read apart from its walls
+stone = "#82786a"
 # on works, sheds and engine houses
 works = "#4a5468"
 upland_farm = "#5b6577"
@@ -254,6 +297,8 @@ logs = "#84603f"
 waterwheel = "#5f4733"
 # the louvres of a church tower's bell openings, dark with age
 belfry_louvre = "#4d463f"
+# the oak frame of a timber-framed house, dark with age
+house_frame = "#4b3d33"
 
 [stone]
 # the church, and the pillars of the market hall
@@ -275,6 +320,11 @@ limestone = "#d9d3c5"
 # farmhouses in the hills, in three tints
 upland_farm = ["#cfc6b4", "#bdb4a3", "#d8cfbd"]
 upland_barn = "#a9a08f"
+# round a house: its sills, lintels, doorsteps and copings; the plinth a
+# washed wall stands on; and a dry-stone wall round a garden in the hills
+sill = "#d6cec0"
+plinth = "#8c8579"
+garden_wall = "#b0a797"
 
 [brick]
 # the common brick: mills and engine works, terraces, sheds, engine houses
@@ -326,6 +376,9 @@ yew = "#2c5440"
 # low bushes on the heath
 gorse = "#9aa548"
 broom = "#6b7f3e"
+# a clipped hedge round a garden, and the rows of a vegetable plot
+hedge = "#4f7a3c"
+vegetables = "#6c9a4b"
 # what the leaves of the broadleaf trees are multiplied by through the year:
 # [red, green, blue], 1 leaves them as they are (conifers, gorse and broom
 # keep their own green). Summer holds from May to late August; autumn is
@@ -367,18 +420,17 @@ earthworks = "#a3967f"
 bank_top = "#9a8f78"
 bank_grass = "#7f9a52"
 bank_grass_shade = "#6c8546"
+# a bank on the high fells, of broken rock
+bank_scree = "#b3ab9e"
 stone = "#b9ad97"
 viaduct_brick = "#a45f45"
-# a cutting: grass where it is shallow and rock where it is deep, each lit
-# on one side and in shade on the other, and the grass back of its banks
-cutting_grass_lit = "#93a660"
-cutting_grass_shade = "#6d7f49"
-cutting_rock_lit = "#b5ab97"
-cutting_rock_shade = "#857e70"
-cutting_back = "#86a056"
 tunnel_mouth = "#2a2522"
 # a plate girder bridge over a river
 girder = "#4c4f55"
+# the hemp rope of an inclined plane, between its rails
+rope = "#c9b48a"
+# the painted beam of a buffer stop at the end of a line
+buffer = "#b5523f"
 
 [bridges]
 # the stone bridges that carry roads over rivers: a main road's in pale
@@ -434,7 +486,7 @@ outline_alpha = 0.95
 [sun]
 # which way the sun stands, in radians from due south (the camera's side at
 # the start), negative toward the west: -0.75 is south-west. The hedge
-# shadows painted on the ground and the lit side of a railway cutting assume
+# shadows painted on the ground and the lit side of a railway's bank assume
 # this south-west sun and do not follow a change here.
 turn = -0.75
 # how high it stands, in radians above the horizon: in midwinter, and how

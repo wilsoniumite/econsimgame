@@ -449,4 +449,66 @@ pub struct State {
     /// For tests and scenarios: a cell where a town is to be founded this year,
     /// whatever the founding rule would say of its district.
     pub pp_found_next: Option<usize>,
+    // ---------------- towns: kept town ground (not in the Python; all empty while `towns.enabled` is off)
+    /// The year each cell joined its town (0: not town ground).
+    pub town_built: Vec<i64>,
+    /// The people each town cell has room for this year, works on it allowed for.
+    pub town_room: Vec<f64>,
+    /// Each town's cells in the order they joined, the centre first.
+    pub town_ground: Vec<Vec<usize>>,
+    /// The most town people each town has had (cut back when it gives up ground).
+    pub town_peak: Vec<f64>,
+    /// Years in a row each town has had fewer people than `towns.empty` of that.
+    pub town_low_years: Vec<i64>,
+    /// What each town cell would pay a month if houses stood on all of it (what
+    /// a works there bids against).
+    pub town_ground_rent: Vec<f64>,
+    /// Works' hands by town, summed over the months of the year so far.
+    pub town_hands_acc: Vec<f64>,
+
+    // ---------------- mines (docs/rules/mines.md; all empty while `mines.enabled` is off)
+    /// The extractive sectors in the content's order: row r of the tables below
+    /// is sector `mine_sectors[r]`.
+    pub mine_sectors: Vec<usize>,
+    /// `[r * N + cell]`: the year the working there was opened (0: none is open),
+    /// and the year the last one there was abandoned (0: never, or during the
+    /// warm-up, which the map is not told of).
+    pub mine_opened: Vec<i32>,
+    pub mine_left: Vec<i32>,
+    /// `[r * N + cell]`: the years running the working there has stood idle.
+    pub mine_idle: Vec<u8>,
+    /// `[r * N + cell]`: the cell of the pit head that works this cell's deposit, or -1.
+    pub mine_head: Vec<i32>,
+    /// `[r * N + cell]`: everything raised at the pit head on this cell so far (its spoil heap).
+    pub mine_heap: Vec<f64>,
+    /// By `r * N + pit head's cell`: the cells whose deposit the working has,
+    /// each with its share of what is raised and of the royalty.
+    pub mine_districts: BTreeMap<usize, Vec<(usize, f64)>>,
+    /// (rows, N): everything raised from each cell's deposit so far, and the
+    /// cell's share of what its working raises.
+    pub mine_dug: Mat,
+    pub mine_share: Mat,
+    /// (rows, N): the royalty a pit head on each cell is believed to pay before
+    /// its crew, in its town's wages a month: the last few years' promise,
+    /// smoothed (for a site, from the deposit nobody has within its reach; for a
+    /// working, from its lease).
+    pub mine_promise: Mat,
+    /// (rows, N): the F of each working (`mines.rs`, A): the deposit within its
+    /// reach as one richness. 0 where no pit head stands.
+    pub mine_rich: Mat,
+    /// (rows, N): the share of its cell each working's surface takes this year.
+    pub mine_surface: Mat,
+    /// (rows, N) each, over the last complete year: mean hands (the sinkers
+    /// among them), output and royalty paid.
+    pub mine_hands: Mat,
+    pub mine_out: Mat,
+    pub mine_royalty: Mat,
+    /// (3 * rows, N): the same three for the year now running, summed month by
+    /// month, and the months counted.
+    pub mine_acc: Mat,
+    pub mine_months: usize,
+    /// The sinkers each new working in each town has this month, and the year
+    /// of the last review (a working it opened is being sunk).
+    pub mine_crew_each: Vec<f64>,
+    pub mine_year: i64,
 }
