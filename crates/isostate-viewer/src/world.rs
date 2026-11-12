@@ -1762,6 +1762,7 @@ mod tests {
             res: Vec::new(),
             works: Vec::new(),
             workings: Vec::new(),
+            land: None,
         };
         for c in (0..n).filter(|&c| land(c)) {
             (r.mix_a[c], r.mix_b[c], r.mix_s[c]) = if c % w < 7 { (FARM, WOOD, 153) } else { (PASTURE, HEATH, 102) };

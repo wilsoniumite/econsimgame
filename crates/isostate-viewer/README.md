@@ -10,6 +10,7 @@ The game, and a 3D viewer for Isolated State runs, in Bevy 0.20. It draws the is
 cargo run -p isostate-viewer --release                                    # the game on island 7 with six families: a new one, or the one you left
 cargo run -p isostate-viewer --release -- --new                           # a new game, whatever is saved
 cargo run -p isostate-viewer --release -- --seed 11 --families 4          # another island, fewer rivals
+cargo run -p isostate-viewer --release -- --new-land                      # a new game on the new land, to look at it (see The new land)
 cargo run -p isostate-core --release -- run --seed 7 --out runs/rust7     # record a run (or use the Python package)
 cargo run -p isostate-viewer --release -- runs/rust7/run.bin              # and watch it
 ```
@@ -112,6 +113,7 @@ Start the viewer with nothing but the game asked for and, if that island has a s
 Only play writes where a played game is kept.
 
 - `--new` or `--seed N`: a new game, whatever is saved. The terminal says what is in its place and what becomes of it.
+- `--new-land`: a new game on the new land (see The new land). It is a preview, so it is never kept in the island's autosave or among its trials, where it would set aside the game played there on the old island. The terminal says "this game is on the new land, which is a preview the game's rules do not switch on yet: it is not kept". `--save FILE` keeps it in a file of its own; the save says which land the game is on, so `--load FILE --save FILE` goes on with it on the same land. With `--load` and no `--save` it is gone on with and not kept. `--new-land` beside `--load` is refused: a saved game says its land itself.
 - `--advance N` or `--demo`, with somebody at the game: a trial. It is a new game kept apart, in `trials/island-7-families-6.json` inside the same folder, and the terminal says so. `--load` that file to go on with it.
 - A run with nobody at it keeps nothing and writes over nothing: pictures (`--view`, `--shot`, `--shots`, `--land-shots`, `--describe`, `--class-map`) and scripted runs (`--script`). The terminal says "nobody is at this game (it takes pictures or is played by a script), so it is not kept and no saved game is written over". Where `ISOSTATE_SAVES` names a folder a scripted run still goes on with the autosave it finds there and shows its card, but does not write it.
 - `--save FILE`: keep the game in FILE, whatever the start. FILE must be free or already hold a saved game, in a folder that can be written; anything else is refused before a year is played and left alone. With no `--load` it is a new game, and a game already in FILE is set aside beside it.
@@ -138,7 +140,7 @@ Refused before anything is played, each in one sentence:
 
 Orders in a file that name a square, a town, a works or a member of the family that is not there are refused one at a time as the years are played again, each named in the terminal, and the rest of the game is played.
 
-A save is a log of orders, not the state of the island: the seed, the number of families, the rules' name with a fingerprint of their numbers, the last year played and the months played of the year after it, a fingerprint of the island as it stood, one line for each order carried out, and the orders that still wait for the year's end.
+A save is a log of orders, not the state of the island: the seed, the number of families, the rules' name with a fingerprint of their numbers, the last year played and the months played of the year after it, a fingerprint of the island as it stood, one line for each order carried out, and the orders that still wait for the year's end. A game begun with `--new-land` also has `"land": true`, and is played again on the new land; no other save has the line.
 
 ```json
 {"year":1750,"kind":"decide","id":0,"choice":{"kind":"trade","group":"iron"}},
@@ -149,6 +151,18 @@ A save is a log of orders, not the state of the island: the seed, the number of 
 An order's `year` is the last year played when it was carried out, and its `month` how many months of the year after had been played: none, and left out, at a year's turn; twelve for word to the family that was given in the middle of a year and carried out at its end. This is the file's second layout (`"format": 2`). A file in the first, from before the clock told the month, has no months and nothing waiting, and loads unchanged as a game saved at a year's turn.
 
 Loading plays the months again and carries each order out where it was first carried out (`isostate_core::save`). The simulation is deterministic, so the island comes back the same to the last digit; `tests/save.rs` in the core and `src/live_tests.rs` here hold it to that. It takes about a second for every seven years in the dev build, before the window opens, and the terminal counts the decades. The other side of that: a save is only as good as the rules it was made under. When the simulation has changed since, the years play out differently; an order the simulation now refuses is skipped and counted, and the opening card says how many, or that the island stands differently. The save as it was, with every order in it, is set aside as `.previous.json` before the game is saved over it. The terminal lists each refused order and why.
+
+### The new land
+
+The core has a second island generator, with rivers that run downhill, lakes, tideways and relief every 500 m (`docs/rules/land.md`). It is switched off under the game's rules until the viewer can draw all of it, which is being done in stages (`docs/probes/dx-land-view.md`). To look at it meanwhile:
+
+```bash
+cargo run -p isostate-viewer -- --new-land                                        # a new game on the new land of island 7
+cargo run -p isostate-viewer -- --new-land --seed 3 --save runs/land3.json        # another island's, kept in a file
+cargo run -p isostate-viewer -- --new-land --shots runs/land-shots                # the standard shots of it
+```
+
+`--new-land` starts a new game under the game's rules with the land switched on (`isostate_core::save::Game::on_new_land`), and `--shots`, `--land-shots`, `--view`, `--shot`, `--script`, `--describe` and `--advance` all work with it. A run recorded on the new land (`isostate-core run --params FILE`, where FILE says `land = { enabled = true }`) plays back as any run does. The viewer keeps its own plain copy of the land beside the run (`src/newland.rs`, `Replay::land`): the heights, rock, lakes, wet ground and flow at every node of the core's fine grid, the river lines with their widths, levels and flows, the oxbows and the lakes. A recorded run's land is read all or nothing, and an array that is short is refused by name. A lite pack of such a run has no map layers and is refused as ever, with a word that the land is not in it either; a run that speaks of the land and does not carry its arrays is drawn as the old kind of island and says so. `ISOSTATE_LAND_REPORT=1` prints what the run's land holds (nodes, rivers, lakes, rock, and what each town's meeting place stands on, with where they are, for pointing a camera) and stops.
 
 ### Screenshots without a window
 
