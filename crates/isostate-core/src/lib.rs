@@ -54,6 +54,7 @@ pub mod rail;
 pub mod railways;
 pub mod record;
 pub mod rng;
+pub mod roads;
 pub mod save;
 pub mod sim;
 pub mod state;

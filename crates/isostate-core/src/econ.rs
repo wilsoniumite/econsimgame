@@ -428,6 +428,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // last of the three: each caps itself on the hands still left, the carters and
     // the sinkers are at work the town already lives by, and a canal can wait
     crate::canals::take_navvies(st, P, &mut supply);
+    // roads (docs/probes/dx-roads.md): nor are the men making and mending roads
+    crate::roads::take_menders(st, P, &mut supply);
     let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
     // so a price blip does not empty the fields in a month.
@@ -1139,6 +1141,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::carting::count_carters(st, P, &mut employment);
     // canals: and so are the navvies
     crate::canals::count_navvies(st, P, &mut employment);
+    // roads: and so are the menders
+    crate::roads::count_menders(st, P, &mut employment);
     let mut heat_use = vec![0.0; NF];
     for i in 0..NFI {
         for k in 0..NF {

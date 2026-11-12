@@ -385,8 +385,11 @@ pub fn update_roads(st: &mut State, _C: &Content, P: &Params) {
     }
     let [t1, t2, t3] = P.road_thresholds;
     let thr = [0.0, t1, t2, t3];
+    // roads (docs/probes/dx-roads.md): from 1750 only a track is worn for nothing;
+    // a made road is the parish's and a turnpike a trust's (`roads::yearly`)
+    let free = if P.roads.enabled && !st.rd.cell_trust.is_empty() { 1 } else { 3 };
     for c in 0..N {
-        let lvl = (traffic[c] >= t1) as u8 + (traffic[c] >= t2) as u8 + (traffic[c] >= t3) as u8;
+        let lvl = ((traffic[c] >= t1) as u8 + (traffic[c] >= t2) as u8 + (traffic[c] >= t3) as u8).min(free);
         if lvl > st.road[c] {
             st.road[c] = lvl;
         }
@@ -440,7 +443,12 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     }
     tech::diffusion(st, C, P);
     st.cell_flow_year = st.cell_flow.clone();
+    // roads (docs/probes/dx-roads.md): the roads of 1750 are inherited, then paid for
+    if !warm {
+        crate::roads::begin(st, C, P, year);
+    }
     update_roads(st, C, P);
+    crate::roads::yearly(st, C, P, year, warm);
     // canals (docs/rules/canals.md): what the year's goods put on the water, on the
     // paths they took (before the paths are worked out again)
     crate::canals::year_traffic(st, C, P, year, warm);
@@ -617,6 +625,8 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     rail::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     // canals (docs/rules/canals.md): canals that are dug open
     crate::canals::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
+    // roads (docs/probes/dx-roads.md): tolls taken, road works opened
+    crate::roads::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
         let drift = st.money_now - (st.money_start + st.issued);
