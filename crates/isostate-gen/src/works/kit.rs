@@ -1138,7 +1138,10 @@ impl<'a, 's> Ctx<'a, 's> {
         }
         let col = self.tone(col);
         let masonry = h >= 0.0065;
-        let (hw, hd, t) = (self.hw - 0.0025, self.hd - 0.0025, if masonry { 0.0034 } else { 0.0016 });
+        let t = if masonry { 0.0034 } else { 0.0016 };
+        // its outer face stands at the edge of the yard's ground: a strip of ground left
+        // outside it is a pixel wide from the nearest camera, and shows as a dotted line
+        let (hw, hd) = (self.hw - 0.0002 - t * 0.5, self.hd - 0.0002 - t * 0.5);
         let gate = gate.min(hw * 1.2);
         self.wall_run((hw, -hd), (-hw, -hd), h, t, col, masonry);
         self.wall_run((-hw, -hd), (-hw, hd), h, t, col, masonry);
