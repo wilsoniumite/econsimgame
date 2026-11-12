@@ -313,7 +313,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         let opt = v[i].as_str();
         match opt {
             "--year" => { a.year = Some(number(opt, &next(i)?)?); i += 1; }
-            "--shot" => { a.shot = Some(next(i)?); i += 1; }
+            "--shot" => { a.shot = Some(named(opt, next(i)?, "the name of a picture")?); i += 1; }
             "--size" => {
                 a.size = pair(opt, &next(i)?, 'x')?;
                 if a.size.0 == 0 || a.size.1 == 0 {
@@ -327,8 +327,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
                 let s = next(i)?;
                 match s.split_once(',') {
                     Some((x, z)) if x.trim().parse::<f32>().is_ok() || z.trim().parse::<f32>().is_ok() => a.at = Some(pair(opt, &s, ',')?),
-                    _ if s.is_empty() => return Err(format!("{opt} needs the name of a look file")),
-                    _ => a.look_file = Some(s),
+                    _ => a.look_file = Some(named(opt, s, "the name of a look file")?),
                 }
                 i += 1;
             }
@@ -373,7 +372,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             // (task C, the land) the same machinery as --shots, with the far views of the land
             "--land-shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); a.land_shots = true; i += 1; }
             "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
-            "--shots-note" => { a.shots_note = next(i)?; i += 1; }
+            "--shots-note" => { a.shots_note = named(opt, next(i)?, "a line of text")?; i += 1; }
             "--compare-shots" => {
                 match (v.get(i + 1), v.get(i + 2)) {
                     (Some(x), Some(y)) => a.compare_shots = Some((named(opt, x.clone(), "two directories")?, named(opt, y.clone(), "two directories")?)),
@@ -390,7 +389,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--view" => {
                 // path,year,x,z,yaw,pitch,dist[,season][,words]: a number after dist is a season; a word
                 // is a panel, a map overlay, or what the Markets panel shows
-                let p: Vec<String> = next(i)?.split(',').map(String::from).collect();
+                let p: Vec<String> = named(opt, next(i)?, "a picture's name and its view")?.split(',').map(String::from).collect();
                 // an empty value falls back; one that is not a number is refused
                 let num = |j: usize| -> Result<Option<f32>, String> {
                     match p.get(j).map(|s| s.trim()) {
@@ -2882,6 +2881,15 @@ mod tests {
         );
         assert!(args("--new --save --advance 3").err().unwrap().starts_with("--save needs the name of a file to keep the game in after it, and --advance is another option"));
         assert!(args("--shots --wait 3").err().unwrap().starts_with("--shots needs a directory after it, and --wait is another option"));
+        // nor after --shot, --look, --view or --shots-note: --shot --new once took --new for the picture's name
+        assert_eq!(
+            args("--shot --new").err().unwrap(),
+            "--shot needs the name of a picture after it, and --new is another option: put the name between them (a name that begins with dashes is written ./--new)"
+        );
+        assert!(args("--look --advance 3").err().unwrap().starts_with("--look needs the name of a look file after it, and --advance is another option"));
+        assert!(args("--view --shot x.png").err().unwrap().starts_with("--view needs a picture's name and its view after it, and --shot is another option"));
+        assert!(args("--shots out --shots-note --shots-compare before").err().unwrap().starts_with("--shots-note needs a line of text after it, and --shots-compare is another option"));
+        assert_eq!(args("--shot ./--new.png").unwrap().shot.as_deref(), Some("./--new.png"));
         assert_eq!(args("--load ./--odd.json").unwrap().load.as_deref(), Some("./--odd.json"));
         assert_eq!(args("--load -odd.json").unwrap().load.as_deref(), Some("-odd.json"));
         // a number of families no game can have is refused with the options, before an island is made
