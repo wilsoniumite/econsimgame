@@ -110,8 +110,9 @@ apart), each settled on the best ground within two cells of it, it works out
 the district a market there would serve (every cell nearer to it than to its
 present market), what the district's people would save in carting in a year,
 and what its hands earn. A spot must be more than `found_spacing` cells from
-every town as the crow flies, on land that is not hill or mountain, with a
-way to market, and not on a cell that works hold half of. Taking the sites
+every town as the crow flies, on lowland or hills (not mountains; a hill
+site counts a little against it when the spot is settled), with a way to
+market, and not on a cell that works hold half of. Taking the sites
 in order of what they save, a town is founded on the first that passes all
 of these:
 
@@ -785,8 +786,9 @@ by a tenth of its people changing market as well as by a founding.
   port's hunger items (5.3 a run against 2.0 without families, 3.1 against
   1.6 with; people alone on the port's island, at its first numbers). So does
   `famine_years`, which counts every year with an item of that kind: a year
-  in which people sailed after a month that fed fewer than all, but no town
-  fell under the port's line of 82 per cent, is counted as a famine year.
+  in which a thousandth of the island sailed after a month that fed fewer
+  than all, but the port's hunger news did not fire (no town of three years'
+  standing fell under its line of 82 per cent), is counted as a famine year.
   The chronicle tells the two apart; the sweep does not. Today's game sweep
   has 0.5 items of that kind a run and 0.4 famine years in all, so whatever
   share of them is sailings, it is small.

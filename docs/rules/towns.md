@@ -51,7 +51,7 @@ after (`d_old_growth`; 5 until the merge), reached as 1 - exp(-age / 30)
 (`tau`). So ground of 1700 holds about 490 people in 1750 and 1,430 in 1900,
 ground of 1880 holds about 850 in 1900, and the centre is the oldest ground
 and the fullest.
-`towns::room` is that sum.
+`towns::room` is that reckoning for one cell.
 
 **Growth.** When the town's people outgrow the room of its cells it takes the
 best free cell next to its own ground, inside its market area, and goes on
@@ -60,8 +60,9 @@ centre, a little for being by the water, a little at random. Since a road
 makes a cell cheap to reach, towns grow in ribbons along roads and shores,
 not in rings. The sea and iron and coal pits are never taken, as under the
 port, and under the mines' rules ([mines.md](mines.md)) nor is any pit head
-at work, a quarry's or a clay pit's too; a pit is grown round. Next to means
-any of the eight cells round a cell of the town's ground.
+at work, a quarry's or a clay pit's too. Next to means any of the eight
+cells round a cell of the town's ground, and a pit is grown round: the
+ground beyond it, in the same market area, counts as next to the town.
 
 **Works on town ground.** A cell with works on it may be taken like any other,
 and the works stay. The cell then has less room for people: half the usual on
