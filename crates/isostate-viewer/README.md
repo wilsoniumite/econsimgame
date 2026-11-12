@@ -10,6 +10,7 @@ The game, and a 3D viewer for Isolated State runs, in Bevy 0.20. It draws the is
 cargo run -p isostate-viewer --release                                    # the game on island 7 with six families: a new one, or the one you left
 cargo run -p isostate-viewer --release -- --new                           # a new game, whatever is saved
 cargo run -p isostate-viewer --release -- --seed 11 --families 4          # another island, fewer rivals
+cargo run -p isostate-viewer --release -- --new-land                      # a new game on the new land, to look at it (see The new land)
 cargo run -p isostate-core --release -- run --seed 7 --out runs/rust7     # record a run (or use the Python package)
 cargo run -p isostate-viewer --release -- runs/rust7/run.bin              # and watch it
 ```
@@ -113,6 +114,7 @@ Start the viewer with nothing but the game asked for and, if that island has a s
 Only play writes where a played game is kept.
 
 - `--new` or `--seed N`: a new game, whatever is saved. The terminal says what is in its place and what becomes of it.
+- `--new-land`: a new game on the new land (see The new land). It is a preview, so it is never kept in the island's autosave or among its trials, where it would set aside the game played there on the old island. The terminal says "this game is on the new land, which is a preview the game's rules do not switch on yet: it is not kept". `--save FILE` keeps it in a file of its own; the save says which land the game is on, so `--load FILE --save FILE` goes on with it on the same land. With `--load` and no `--save` it is gone on with and not kept. `--new-land` beside `--load` is refused: a saved game says its land itself.
 - `--advance N` or `--demo`, with somebody at the game: a trial. It is a new game kept apart, in `trials/island-7-families-6.json` inside the same folder, and the terminal says so. `--load` that file to go on with it.
 - A run with nobody at it keeps nothing and writes over nothing: pictures (`--view`, `--shot`, `--shots`, `--land-shots`, `--describe`, `--class-map`) and scripted runs (`--script`). The terminal says "nobody is at this game (it takes pictures or is played by a script), so it is not kept and no saved game is written over". Where `ISOSTATE_SAVES` names a folder a scripted run still goes on with the autosave it finds there and shows its card, but does not write it.
 - `--save FILE`: keep the game in FILE, whatever the start. FILE must be free or already hold a saved game, in a folder that can be written; anything else is refused before a year is played and left alone. With no `--load` it is a new game, and a game already in FILE is set aside beside it.
@@ -141,7 +143,7 @@ A value that is missing, or that is the next option (`--shot --new`), is refused
 
 Orders in a file that name a square, a town, a works or a member of the family that is not there are refused one at a time as the years are played again, each named in the terminal, and the rest of the game is played.
 
-A save is a log of orders, not the state of the island: the seed, the number of families, the rules' name with a fingerprint of their numbers, the last year played and the months played of the year after it, a fingerprint of the island as it stood, one line for each order carried out, and the orders that still wait for the year's end.
+A save is a log of orders, not the state of the island: the seed, the number of families, the rules' name with a fingerprint of their numbers, the last year played and the months played of the year after it, a fingerprint of the island as it stood, one line for each order carried out, and the orders that still wait for the year's end. A game begun with `--new-land` also has `"land": true`, and is played again on the new land; no other save has the line.
 
 ```json
 {"year":1750,"kind":"decide","id":0,"choice":{"kind":"trade","group":"iron"}},
@@ -152,6 +154,41 @@ A save is a log of orders, not the state of the island: the seed, the number of 
 An order's `year` is the last year played when it was carried out, and its `month` how many months of the year after had been played: none, and left out, at a year's turn; twelve for word to the family that was given in the middle of a year and carried out at its end. This is the file's second layout (`"format": 2`). A file in the first, from before the clock told the month, has no months and nothing waiting, and loads unchanged as a game saved at a year's turn.
 
 Loading plays the months again and carries each order out where it was first carried out (`isostate_core::save`). The simulation is deterministic, so the island comes back the same to the last digit; `tests/save.rs` in the core and `src/live_tests.rs` here hold it to that. It takes about a second for every seven years in the dev build, before the window opens, and the terminal counts the decades. The other side of that: a save is only as good as the rules it was made under. When the simulation has changed since, the years play out differently; an order the simulation now refuses is skipped and counted, and the opening card says how many, or that the island stands differently. The save as it was, with every order in it, is set aside as `.previous.json` before the game is saved over it. The terminal lists each refused order and why.
+
+### The new land
+
+The core has a second island generator, with rivers that run downhill, lakes, tideways and relief every 500 m (`docs/rules/land.md`). It is switched off under the game's rules until the viewer can draw all of it, which is being done in stages (`docs/probes/dx-land-view.md`). To look at it meanwhile:
+
+```bash
+cargo run -p isostate-viewer -- --new-land                                        # a new game on the new land of island 7
+cargo run -p isostate-viewer -- --new-land --seed 3 --save runs/land3.json        # another island's, kept in a file
+cargo run -p isostate-viewer -- --new-land --shots runs/land-shots                # the standard shots of it
+```
+
+`--new-land` starts a new game under the game's rules with the land switched on (`isostate_core::save::Game::on_new_land`), and `--shots`, `--land-shots`, `--view`, `--shot`, `--script`, `--describe` and `--advance` all work with it. A run recorded on the new land (`isostate-core run --params FILE`, where FILE says `land = { enabled = true }`) plays back as any run does. The viewer keeps its own plain copy of the land beside the run (`src/newland.rs`, `Replay::land`): the heights, rock, lakes, wet ground and flow at every node of the core's fine grid (500 m apart), the river lines with their widths, levels and flows, the oxbows and the lakes. A recorded run's land is read all or nothing, and an array that is short is refused by name. A lite pack of such a run has no map layers and is refused as ever, with a word that the land is not in it either; a run that speaks of the land and does not carry its arrays is drawn as the old kind of island and says so.
+
+**What is drawn from it** (stages 0 and 1 of the design, `src/newland/ground.rs` and `src/newland/middles.rs`). The old island, and every run without the land, goes through the code it always did.
+
+- **The ground** is laid through the core's heights at the mesh's eight vertices to a cell, with none of the viewer's own coast or relief. The relief is raised three times (`newland::RELIEF`), a constant and not yet a setting of the look: every height the viewer's rules are written in (the field system's hill, the conifers, the snow, the rock, the railways' profile) was tuned at about three times, and stays there until those heights are in metres.
+- **The shore** goes through one function, `newland::units`, which the ground, the rivers' levels and the lakes all use. It stretches the first metre and a half above the tide up to the line nothing is built under (0.05 as drawn), so that every rule written for the old shore goes on meaning what it meant; its price is a shore drawn far steeper than it lies. On the new land the ground's shader does not turn a steep shore to shingle, so a tideway's banks are mud and sand.
+- **The rivers** are the core's lines from where they carry 1 cubic metre a second (`MIN_FLOW`), at the core's widths (6 to 83 m on island 7) and levels, each with a bed in the ground as wide as the squares of the mesh its water lies in, drawn by the old island's ribbons. The valley floors are the core's flood plain and marsh.
+- **The lakes** are each a sheet of the rivers' water at the lake's level, so the shore is where the ground comes up through it, and a lake goes to steel with the rivers in the depth of winter. A lake is water to whoever asks the ground how high it is (`world::height_at` tells the depth under a lake as a height under nought) or how near the water (`world::water_dist`), so no tree, field, farmstead, house or works stands in one, and its area is no district's arable or wood.
+- **The sea** reads the same heights, so the tideways are arms of the sea.
+- **The cells' meeting places** (`network::centres`: where the roads meet, the market square stands, the railway passes) are each moved onto the nearest dry and level spot of their own cell: off tidewater, lakes and marsh, back from a river, and off the steepest ground where the cell has gentler. On island 7 a third of them move, by 380 m on average, and a town at the head of its tideway has its market place on the bank.
+- **The dry shore of a cell the record calls water** (a lake's shore, the land behind a tideway) is drawn as the open land of the land cell beside it, with its trees, hedges and farms, and not as the sea's beach; so is whatever of a lake's shore comes up through the lake's sheet.
+
+**What is not drawn yet**, each a later stage of the design: railways that choose their way by the real relief (they stand on viaducts over it); roads that go round water and cross rivers at chosen bridges (they still run straight between the meeting places, over tideways and lakes on causeways); river banks, bars, oxbows, rapids and falls; lakes and tideways with shores, depth and colours of their own (a tideway one node wide breaks into pools, and a lake's flat shore follows the mesh in steps); marsh and fen in the ground's paint; heights and thresholds in metres; quays, and boats on tideways and lakes (a town at a lake gets the sea's lighthouse); towns laid out on slopes; crags and canyon walls.
+
+`ISOSTATE_LAND_REPORT=1` prints what the run's land holds and what was drawn from it (nodes, rivers and their beds, lakes, rock, the heights and slopes as drawn, how many meeting places moved and why, and what each town's stands on, with where they are, for pointing a camera) and stops. `ISOSTATE_TIMING=1` adds how long the ground took.
+
+**Two named sets of pictures** are kept for each stage, of island 7 with six families on the new land, and compared with the stage before:
+
+```bash
+isostate-viewer --new-land --shots DIR/standard --shots-compare BEFORE/standard        # the standard twelve
+isostate-viewer --new-land --land-shots DIR/land --shots-compare BEFORE/land           # the far views of the land
+```
+
+Each is taken twice, and the two takes must agree to the pixel before the set is trusted.
 
 ### Screenshots without a window
 
@@ -263,7 +300,7 @@ The generators have a lab that draws them with no game, as contact sheets at the
 
 ## How the picture is made
 
-The economy only knows shares and densities per 2 km cell, so the viewer invents the detail, deterministically.
+The economy only knows shares and densities per 2 km cell, so the viewer invents the detail, deterministically. (On the new land the core knows the heights every 500 m, the rivers' lines and the lakes, and the landform, the rivers and the sea below are drawn from those: see The new land, above. Everything from the fields on is as described here on either land.)
 
 - **Landform.** One heightfield (eight vertices per cell, relief exaggerated about three times), in chunks of 8 by 8 cells so that what is out of view is not drawn, and open sea far from any shore is left to the sea's surface. Below the scale of a cell the land takes the shape of its terrain: soft swells in the lowland, rounded spurs between V-shaped valleys in the hills, sharp crests in the mountains, added so that each cell keeps its height on average. The coast is ragged, with bays and headlands; low land meets the sea on a narrow beach and high land breaks off in a cliff (`world.rs`).
 - **Rivers.** The simulation knows which cells a river runs through and how big it is there. The river runs beside the cell centres (where the roads meet and the market squares are) on a smooth course, and meanders about it as a sine-generated curve, the shape real meanders take: wide, irregular loops in flat lowland, a nearly straight course in steep upland, its loops longer as it widens downstream. Its level falls steadily from source to mouth and it cuts its valley down to that level: a flat floodplain about the meander belt in the lowland, painted as water meadows, a narrow V in the hills, and a drowned funnel, an estuary, at the coast (`rivers.rs`). Roads cross on hump-backed stone bridges with open arches, parapets and a ramp on each bank (one arch, or two or three with cutwaters on the piers, as the crossing is long; a road that crosses aslant gets a bridge as long as its way over the water), and on a causeway where they cross drowned ground. In the depth of winter the rivers go to steel.

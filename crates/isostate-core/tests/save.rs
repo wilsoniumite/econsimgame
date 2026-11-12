@@ -573,6 +573,32 @@ fn a_game_with_as_many_families_as_there_are_names_starts_and_plays() {
 }
 
 #[test]
+fn a_game_started_on_the_new_land_is_saved_and_played_again_on_it() {
+    // the usual game is on the old island, and its save does not mention the land
+    let old = Game::new(7, 2, 0);
+    assert!(!old.on_land() && old.sim.st.world.landform.is_none());
+    assert!(!old.save(0).to_text().contains("\"land\""), "a game started in the usual way writes the save it always wrote");
+    // a game started on the new land has the land, under the same rules, and its save says so
+    let mut g = Game::on_new_land(params::Rules::Game, 7, 2, 0);
+    assert!(g.on_land() && g.sim.st.world.landform.is_some());
+    assert_eq!(g.rules, params::Rules::Game);
+    assert_ne!(g.sim.st.world.terrain, old.sim.st.world.terrain, "the new land is another island");
+    g.year().unwrap();
+    let saved = g.save(0);
+    assert!(saved.land && saved.same_rules());
+    let text = saved.to_text();
+    assert!(text.contains("\"land\": true"), "{text}");
+    // played again it is the same island to the last digit, not the old one
+    let back = save::load(&Save::from_text(&text).unwrap(), |_| {}).unwrap();
+    assert!(back.game.on_land() && !back.drifted && back.refused.is_empty());
+    assert_eq!(back.game.sim.st.world.terrain, g.sim.st.world.terrain);
+    assert_eq!(save::check(&back.game.sim), save::check(&g.sim));
+    // and the same save with the mark struck out would be the old island, which the check catches
+    let struck = Save { land: false, ..saved };
+    assert!(save::load(&struck, |_| {}).unwrap().drifted);
+}
+
+#[test]
 fn dates_are_written_in_utc() {
     assert_eq!(save::utc(0), "1970-01-01 00:00 UTC");
     assert_eq!(save::utc(951_782_400), "2000-02-29 00:00 UTC");
