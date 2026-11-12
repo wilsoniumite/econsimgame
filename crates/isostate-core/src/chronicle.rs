@@ -299,7 +299,7 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     }
     if new_here {
         let surname = &st.families[family].surname;
-        let trade = group.map_or("a new trade".to_string(), |g| g.label().to_lowercase());
+        let trade = trade_of(C, m).unwrap_or_else(|| "a new trade".to_string());
         let mut e = Event::new(
             year as f64 + 0.95,
             "family",
@@ -324,6 +324,18 @@ pub fn works_founded(st: &mut State, C: &Content, P: &Params, family: usize, fid
     }
     st.chron.branch_opened.push((fid, new_here));
     true
+}
+
+/// The trade a works of method `m` is told under in the chronicle's own
+/// sentences: its group's ("iron and steel"), except that charcoal burning,
+/// which the families count in coal and mining, is called what it is. In the
+/// 1770s charcoal and coal are rivals, and "sets up in coal and mining ...
+/// Ashby's Charcoal" reads as a mistake (docs/probes/news-read.md, fault 21).
+/// Among the families' works it is the only one of that group (pits and
+/// mines are their land, not works), so "the first works in that trade" holds.
+fn trade_of(C: &Content, m: usize) -> Option<String> {
+    let group = Group::of_method(C, m)?;
+    Some(if C.method_name[m] == "charcoal_burning" { "charcoal burning".to_string() } else { group.label().to_lowercase() })
 }
 
 /// Whether a new works' expected return is told. The port always tells it;
@@ -367,7 +379,7 @@ pub fn branch_summary(st: &mut State, C: &Content, P: &Params, family: usize, ye
         return;
     }
     let surname = &st.families[family].surname;
-    let trade = |f: usize| Group::of_method(C, st.f_method[f]).map_or("other trades".to_string(), |g| g.label().to_lowercase());
+    let trade = |f: usize| trade_of(C, st.f_method[f]).unwrap_or_else(|| "other trades".to_string());
     // "at Melbourne two in iron and steel and one in textiles; at Granness one in
     // engineering": towns in the order the branches ran, trades in the order they built
     let by_town = |works: &[usize]| -> String {
@@ -1186,7 +1198,7 @@ fn closures(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, year: 
         }
     }
     let biggest = closed[t].iter().copied().max_by(|&a, &b| st.f_K[a].total_cmp(&st.f_K[b]).then(b.cmp(&a))).expect("some closed");
-    let named = format!(" The largest was {}, open since {}.", st.f_name[biggest], st.f_born[biggest]);
+    let named = format!(" The largest was {}, open since {}{}.", st.f_name[biggest], st.f_born[biggest], named_when(st, C, P, biggest, t));
     let mut ev = Event::new(
         year as f64 + 0.9,
         "region",
@@ -1340,6 +1352,36 @@ pub fn famine_provenance(st: &State, P: &Params, year: i64, events: &mut [Event]
             None,
             format!("{} got {} of its food at the worst point (hunger is under 82%); {} went hungry, and three or more are told as one", st.town_name[t], fmt_pct(st.food_min_acc[t], 0), if hit == 1 { "one town".to_string() } else { format!("{} towns", number(hit)) }),
         );
+    }
+}
+
+/// The town a works' name points at, if it was named after a town: works are
+/// named for the town whose district they were built in ("Mallowwick
+/// Brickworks"), and keep the name when a road or a new town puts their ground
+/// in another's district. A family's works are named for the family.
+fn named_for(st: &State, C: &Content, f: usize) -> Option<usize> {
+    let name = &st.f_name[f];
+    // "Ulford Brickworks No. 3" is the third of that name
+    let base = match name.rfind(" No. ") {
+        Some(i) if !name[i + 5..].is_empty() && name[i + 5..].bytes().all(|b| b.is_ascii_digit()) => &name[..i],
+        _ => name.as_str(),
+    };
+    let patterns = crate::names::firm_patterns(&C.method_name[st.f_method[f]]);
+    let town = |t: &String| !t.is_empty() && patterns.iter().any(|p| p.contains("{T}") && !p.contains("{S") && p.replace("{T}", t) == base);
+    st.town_name.iter().position(town)
+}
+
+/// " and named when its ground was Mallowwick's" for a works near `town`
+/// whose name points at another town, or nothing (and nothing while the
+/// chronicle is off). Without it "Mallowwick Brickworks closes. The brickworks
+/// near Sandmere ..." reads as a mistake (docs/probes/news-read.md, fault 6).
+pub fn named_when(st: &State, C: &Content, P: &Params, f: usize, town: usize) -> String {
+    if !P.chronicle.enabled {
+        return String::new();
+    }
+    match named_for(st, C, f) {
+        Some(t) if t != town => format!(" and named when its ground was {}'s", st.town_name[t]),
+        _ => String::new(),
     }
 }
 
@@ -1622,6 +1664,44 @@ mod tests {
         assert_eq!(grain_reason(&st(&[1.10, 0.975]), &game, "coal", false), None);
         assert_eq!(grain_reason(&st(&[1.10, 0.975]), &crate::params::default_params(), "grain", false), None);
         assert_eq!(grain_reason(&st(&[0.9]), &game, "grain", false), None);
+    }
+
+    #[test]
+    fn a_works_named_after_another_town_says_why_and_charcoal_is_not_coal() {
+        let C = crate::content::default_content();
+        let (game, port) = (crate::params::game_params(), crate::params::default_params());
+        let method = |name: &str| C.method_name.iter().position(|m| m == name).expect("a method of that name");
+        let (bricks, charcoal) = (method("brickworks"), method("charcoal_burning"));
+        let towns = ["Mallowwick", "Sandmere", "Garside", "Penmere"];
+        let works = [
+            ("Mallowwick Brickworks", bricks),
+            ("Mallowwick Brickworks No. 3", bricks),
+            ("Garside's Brickfield", bricks),
+            ("Sandmere Brickworks", bricks),
+            ("Sandmere Colliers' Wood", charcoal),
+        ];
+        let st = State {
+            town_name: towns.iter().map(|s| s.to_string()).collect(),
+            f_name: works.iter().map(|w| w.0.to_string()).collect(),
+            f_method: works.iter().map(|w| w.1).collect(),
+            ..State::default()
+        };
+        let (mallowwick, sandmere, penmere) = (0, 1, 3);
+        // island 7, 1757: works called Mallowwick Brickworks, near Sandmere
+        assert_eq!(named_when(&st, &C, &game, 0, sandmere), " and named when its ground was Mallowwick's");
+        assert_eq!(named_when(&st, &C, &game, 1, sandmere), " and named when its ground was Mallowwick's");
+        // named for the town it stands near, or for a person (Garside is a surname and a town)
+        assert_eq!(named_when(&st, &C, &game, 0, mallowwick), "");
+        assert_eq!(named_when(&st, &C, &game, 2, sandmere), "");
+        assert_eq!(named_when(&st, &C, &game, 3, sandmere), "");
+        // as island 4's Sunhaven Colliers' Wood near Penmere (1771), a town founded round it later
+        assert_eq!(named_when(&st, &C, &game, 4, penmere), " and named when its ground was Sandmere's");
+        // and the port says nothing
+        assert_eq!(named_when(&st, &C, &port, 0, sandmere), "");
+
+        // charcoal burning is told as what it is; the other trades by their group
+        assert_eq!(trade_of(&C, charcoal).as_deref(), Some("charcoal burning"));
+        assert_eq!(trade_of(&C, bricks).as_deref(), Some("building materials"));
     }
 
     #[test]
