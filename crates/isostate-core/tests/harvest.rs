@@ -199,9 +199,10 @@ fn no_weather_and_the_ports_prices_tell_no_dearth() {
     let dearths: Vec<f64> = r.events.iter().filter(|e| e.kind == "dearth").map(|e| e.year).collect();
     assert!(dearths.is_empty(), "dearths told with no weather and no merchants' prices: {dearths:?}");
     assert_eq!(r.events, port.events, "the news is not the port's");
+    // each of the port's series found by name (the harvest's own stand beside them)
     for (k, name) in port.state.series.names.iter().enumerate() {
-        let (x, y) = (&r.state.series.data[k], &port.state.series.data[k]);
-        assert!(x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits()), "series {name} differs from the port's");
+        let (x, y) = (r.state.series.get(name), &port.state.series.data[k]);
+        assert!(x.len() == y.len() && x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits()), "series {name} differs from the port's");
     }
 }
 
