@@ -57,7 +57,7 @@ with two dozen other workers, so a sweep took from one to eighteen minutes.
 ### How to read the tables
 
 A run here is chaotic: change any number at all, even one that does nothing to
-speak of, and 380 to 460 of the 446 facts move a little somewhere. So the
+speak of, and 350 to 440 of the 446 facts move a little somewhere. So the
 count of facts that differ means nothing, and every movement is read against
 how much the islands differ among themselves.
 
@@ -75,8 +75,9 @@ how much the islands differ among themselves.
 
 What nothing looks like: `people.dearth` at 0.04 moves no fact on seven
 islands of eight by a z of a half or more. Setting a number that does nothing
-against the baseline still gives three or four facts at 7/1 and a z of about
-0.5, by chance. So below, a movement is **real** at 8/0 (or 0/8) with a z of 1
+against the baseline still gives up to ten or so facts at 7/1 and a z of a
+half or a little more, by chance (none for `dearth`, thirteen for
+`migration_dist` at 80). So below, a movement is **real** at 8/0 (or 0/8) with a z of 1
 or more, or with a star; a **lean** at 7/1 with a z between a half and one;
 and anything less is **nothing**.
 
@@ -85,7 +86,8 @@ the same eight islands nudged by sixteen settings that do nothing material
 (the dearth's, emigration's, `arrivals_max`, `found_spacing`, `empty`,
 `decline_years`), the spread *within one island* from nudges alone is: towns
 of 1900, 1.3; towns founded from 1800, 1.2; the real wage of 1900, 0.19 times
-1750's (7 per cent); output per head of 1900, 0.15; railway of 1900, 93 km;
+1750's (7 per cent of the plain real wage, 4 per cent of the chained one,
+which stand at about 2.7 and 4.3 times 1750's); output per head of 1900, 0.15; railway of 1900, 93 km;
 people of 1900, 5,700; town cells of 1900, 14; works of 1900, 36. And today's
 baseline on islands 1 to 8 happens to sit high on towns: 5.1 founded from
 1800 where the cloud has 4.3, and 17.8 towns in 1900 for 17.1. So almost any
@@ -129,8 +131,9 @@ lower wage per head. Across all four, output per head in the 1880s moves
 about a third of a per cent the other way for each per cent of people in 1900
 (`growth_top` 0.0213: people +83 per cent, output per head -24 per cent;
 0.012: -37 and +14; sixteen islands each). The towns' share of the people
-hardly moves with any of them (a point or two). The famine years do not move:
-the island of today is fed.
+hardly moves with any of them (a point or two). The famine years hardly move:
+the island of today is fed. The most is `ease`, 2.8 against 1.575, at 0.6 a
+run against 0.06 (sixteen islands, nine up and none down).
 
 The founding rule has five gates, and they do not bind alike. Loosened one at
 a time, only `found_saving` lets more towns through; the others hold back what
@@ -152,11 +155,11 @@ pass) and `found_spacing`.
 | `smooth` | 0.5 | 0.375, 0.667 | Urban share 1880s -2% (z -1.1), works of 1900 +7%. Against today, 16: 0.375 works -6% | 0/16, 14/2 (16); 1/15 | the count of town people, and a lean on works |
 | `empty` | 0.6 | 0.45, 0.8 | The ten-year churn of town ground, which is near nothing either way (0.0006 to 0.007) | 8/0* | nothing else |
 | `decline_years` | 15 | 11, 20 | nothing | | nothing |
-| `back_years` | 60 | 45, 80 | Town cells of 1750 -4%; works of the 1780s +9%. The single year 1900's real wage +10% (7/1), but its twenty-year mean +3% (6/2) | 0/7, 7/1 | a little in 1750; see below on the single year |
+| `back_years` | 60 | 45, 80 | Town cells of 1750 -4%; works of the 1780s +9%. The single year 1900's plain real wage +10% (7/1) and its chained one +6% (7/1), but the chained twenty-year mean +3% (6/2) | 0/7, 7/1 | a little in 1750; see below on the single year |
 | `back_span` | 40 | 30, 53 | nothing | | nothing |
 | `mean_hands` | on | off | Against today: works in the 1880s -8% (z -2.4), towns of 1900 -13%. 16: works of 1900 -4%, towns -7% | 0/8, 0/7; 6/10, 3/11 | a lean that fades on sixteen |
 | `donor_wage` | on | off | Against today, 16: the first engine works 20 years earlier (on eight islands the first rolling mill 21 years earlier too); nothing else | 2/14 | as the towns page says |
-| `rent_floor` | on | off | Against today: chained real wage of 1900 +3.4%, industry cells of 1750 -68%. 16: the wage +1% | 7/1, 0/7; 11/5 | the wage fades on sixteen; the 1750 works remain |
+| `rent_floor` | on | off | Against today: chained real wage of 1900 +3.4%, industry cells of 1750 -68%. 16: the wage +1.5% | 7/1, 0/7; 11/5 | the wage fades on sixteen; the 1750 works remain |
 
 And the port's numbers these two rules read:
 
@@ -176,7 +179,7 @@ and no visible cost elsewhere.
 ## The settings that matter most
 
 1. **`growth_top`**, then **`y_still`**, then **`ease`**. Births less deaths
-   decide the island's people, and the people decide the rest. A third off
+   decide the island's people, and the people decide the rest. A quarter off
    `growth_top` takes 268,000 people from 1900 and adds 14 per cent to output
    per head in the 1880s; a third on adds 608,000 and takes 24 per cent (16
    islands: the people on every island, starred; output per head on 15 and 16
@@ -211,7 +214,7 @@ and no visible cost elsewhere.
 - **Bind only one way**: `found_people`, `donor_rest`, and to a lesser degree
   `donor_max`, cut the towns when tightened and do little when loosened.
 - **Leans that faded on sixteen islands**: `rent_floor` off (the real wage of
-  1900 +3.4 per cent on eight islands, +1 per cent on sixteen), `mean_hands`
+  1900 +3.4 per cent on eight islands, +1.5 per cent on sixteen), `mean_hands`
   off (works -8 per cent in the 1880s on eight, -4 per cent on sixteen), and
   `migration_dist` (+6 per cent on 1900's wage on eight, +1 per cent on
   sixteen).
@@ -274,12 +277,16 @@ Run on eight islands.
    8.38, the wage higher without on ten islands and lower on six. Over
    1840-59 the wage is 4 per cent higher without kept ground (11 islands of
    16), inside the spread between islands (z 0.3), and by the 1880s that is
-   gone. Town ground still costs 3 per cent of the farm
+   gone. R99 was measured in the plain real wage of the single year 1900
+   (2.59 for 2.80), and in that too there is no dip now: 2.61 with kept
+   ground and 2.61 without (nine islands higher without, seven lower). Town
+   ground still costs 3 per cent of the farm
    land on every island (1,447 cells' worth against 1,492). The mend the towns
    page left (let a town cell keep the share of its ground the houses do not
    need) would give that land back, but there is no wage to recover by it.
-3. **Treat the founding gates as one rule.** Five numbers, of which one
-   decides when loosened and three when tightened, and two never. If more
+3. **Treat the founding gates as one rule.** Six numbers in five gates (the
+   donors' limit is two), of which one decides when loosened and three when
+   tightened, and two never. If more
    towns are wanted for the map, `found_saving` with `donor_max` is the
    pair; the cost is a few per cent of the late wage.
 4. **Leave alone**, or drop as settings: `growth_floor`, `found_cells`,
@@ -287,7 +294,8 @@ Run on eight islands.
    these sizes. The dearth's three numbers are idle on today's island and
    should be read again when anything makes the island hungrier.
 5. **Measure against a cloud, not one baseline.** One island's single year
-   moves by 7 per cent of its wage from a nudge that does nothing, and today's
+   moves by 7 per cent of its plain real wage (4 per cent of the chained) from
+   a nudge that does nothing, and today's
    baseline on islands 1 to 8 happens to sit about one late town above its
    cloud. A pass that reads a whole scorecard of small changes should read each
    against nudged runs or against the other end of its own range, as here.
