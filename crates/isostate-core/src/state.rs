@@ -527,4 +527,8 @@ pub struct State {
     /// The books: the year now running, and every complete year's. Nothing in
     /// the economy reads them.
     pub acct: crate::accounts::Books,
+
+    // ---------------- roads (a probe, docs/probes/dx-roads.md; empty while `roads` is off)
+    /// Who pays for the roads: the trusts, the bridges built, the menders.
+    pub rd: crate::roads::RoadState,
 }
