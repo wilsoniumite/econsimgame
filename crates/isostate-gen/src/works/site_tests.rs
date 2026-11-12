@@ -461,7 +461,7 @@ fn the_fire_trades_fill_their_ground_with_what_they_hold() {
             let what = format!("{kind:?} at {size}");
             assert_eq!((p.squeezed, p.dropped), (0, 0), "{what}: a stage found no room at its size");
             let holds: Vec<Hold> = p.yards.iter().map(|y| y.hold).collect();
-            for (n, (good, _)) in p.incoming.iter().enumerate() {
+            for (n, (good, _)) in p.held.iter().enumerate() {
                 assert!(Keep::of(good) == Keep::Cover || holds.contains(&Hold::In(n)), "{what}: no yard for its {}", good.name);
             }
             assert!(holds.contains(&Hold::Out) && holds.contains(&Hold::Tip), "{what}: {holds:?}");
@@ -502,6 +502,21 @@ fn a_planned_works_draws_no_stock_that_its_process_does_not_name() {
             assert!(!has_lime(&draw(&p, &now, 0.0)), "{kind:?} at {size} has limestone about it");
         }
     }
+}
+
+#[test]
+fn a_works_founded_on_cordwood_has_coal_in_its_yard_once_coal_is_burned() {
+    // (the fuel is a stand-in: cordwood before 1790, coal from then)
+    let pal = Palette::standard();
+    let (w, d) = ground(Kind::Brickworks, 3.0);
+    let st = [Stage { year: 1770, size: 3.0 }];
+    let of = |year: i32| plan(Kind::Brickworks, &Process::of(Kind::Brickworks), &st, &Plot::rect(w, d), year, Seed::of(2), &pal);
+    let fuel = |p: &Plan| p.yards.iter().filter_map(|y| if let Hold::In(n) = y.hold { Some(p.held[n].0.name.clone()) } else { None }).collect::<std::collections::BTreeSet<String>>();
+    let (early, late) = (of(1780), of(1890));
+    assert!(fuel(&early).contains("timber") && !fuel(&early).contains("coal"), "{:?}", fuel(&early));
+    assert!(fuel(&late).contains("coal") && !fuel(&late).contains("timber"), "{:?}", fuel(&late));
+    // and nothing it built has moved
+    assert_eq!(early.parts, late.parts);
 }
 
 #[test]
@@ -604,11 +619,10 @@ fn trades_nobody_has_drawn_get_plans_of_their_own_from_what_the_run_says_of_them
         // a yard for each thing that comes in and lies in the open (its fuel among them), a
         // store for each that is kept under a roof
         for (i, (good, _)) in p.incoming.iter().enumerate() {
-            match Keep::of(good) {
-                Keep::Cover => assert!(p.parts.iter().any(|x| x.role == Role::Store(i)), "{name}: no store for its {}", good.name),
-                Keep::Nothing => {}
-                _ => assert!(p.yards.iter().any(|y| y.hold == Hold::In(i)), "{name}: no yard for its {}", good.name),
-            }
+            assert!(Keep::of(good) != Keep::Cover || p.parts.iter().any(|x| x.role == Role::Store(i)), "{name}: no store for its {}", good.name);
+        }
+        for (i, (good, _)) in p.held.iter().enumerate() {
+            assert!(matches!(Keep::of(good), Keep::Cover | Keep::Nothing) || p.yards.iter().any(|y| y.hold == Hold::In(i)), "{name}: no yard for its {}", good.name);
         }
         // what it makes: a stack yard, a warehouse, or (work that is never carried) neither
         let (yard, house) = (p.yards.iter().any(|y| y.hold == Hold::Out), p.parts.iter().any(|x| x.role == Role::Warehouse));

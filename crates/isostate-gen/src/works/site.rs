@@ -121,6 +121,10 @@ fn good_colour(g: &Good, pal: &Palette) -> Rgba {
     }
 }
 
+/// The year from which a works that burns fuel is taken to burn coal, and
+/// cordwood before it (`Process::fuel`, a stand-in).
+pub const COAL_FROM: i32 = 1790;
+
 /// What a works does, as the simulation's content says of its method.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Process {
@@ -187,7 +191,7 @@ impl Process {
         if self.heat <= 0.0 {
             return None;
         }
-        Some(if year >= 1790 { (Process::good("coal"), self.heat / 2.4) } else { (Process::good("timber"), self.heat) })
+        Some(if year >= COAL_FROM { (Process::good("coal"), self.heat / 2.4) } else { (Process::good("timber"), self.heat) })
     }
 
     /// The goods that come in, fuel among them: each with its share of the bulk that comes in.
@@ -460,7 +464,8 @@ pub fn stages(history: &[(i32, f32)]) -> Vec<Stage> {
 pub enum Role {
     /// the process buildings of a stage, drawn by the kind's own function
     Core,
-    /// a store for the `n`th good that comes in and is kept under a roof
+    /// a store for the `n`th good that came in when the works was founded
+    /// (`Plan::incoming`) and is kept under a roof
     Store(usize),
     /// the warehouse for what is made
     Warehouse,
@@ -517,7 +522,7 @@ impl Part {
 /// What lies in an open yard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hold {
-    /// the `n`th good that comes in
+    /// the `n`th good that comes in in the plan's year (`Plan::held`)
     In(usize),
     /// what is made
     Out,
@@ -570,8 +575,13 @@ pub struct Plan {
     /// stop stands at the other)
     pub spur: Vec<(f32, f32)>,
     pub spur_at_start: bool,
-    /// the goods that come in (fuel among them), each with its share of the bulk
+    /// the goods that came in when it was founded (its fuel then among them),
+    /// each with its share of the bulk: what its stores were built for
     pub incoming: Vec<(Good, f32)>,
+    /// the goods that come in in the plan's year: what its open yards hold.
+    /// (The fuel is the year's: a works founded on cordwood burns coal by
+    /// 1790, and has coal in its yard from then.)
+    pub held: Vec<(Good, f32)>,
     /// how many parts found no room at their own size (and were built smaller, or a store not at all), and how many stages' process buildings found none
     pub squeezed: usize,
     pub dropped: usize,
@@ -886,6 +896,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     let span = pw.hypot(pd);
     let mut field = Field::new(plot);
     let incoming = process.incoming(founded);
+    let held = process.incoming(year);
 
     // the gate, off the middle of the front, and the cart yard inside it
     let (fa, fb) = plot.side(0);
@@ -1185,13 +1196,13 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         let b = field.taken[reserved.min(built - 1)..built].iter().fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, t| (b.0.min(t.0), b.1.max(t.2), b.2.min(t.1), b.3.max(t.3)));
         let far = [(b.0, b.2), (b.1, b.2), (b.0, b.3), (b.1, b.3)].into_iter().fold((gate, -1.0f32), |best, p| { let d = dist(p, gate); if d > best.1 { (p, d) } else { best } }).0;
         // (as big as what the process leaves: a furnace's slag bank, a mill's ash heap)
-        wants.push((Hold::Tip, TIP * standard * (process.waste(founded) / 3.0).clamp(0.15, 1.0), far));
+        wants.push((Hold::Tip, TIP * standard * (process.waste(year) / 3.0).clamp(0.15, 1.0), far));
     }
     // (then what is made, which is the less ground and says what the works is; then what comes in)
     if matches!(Keep::of(&process.output), Keep::Heap | Keep::Stack | Keep::Logs) {
         wants.push((Hold::Out, STOCK_OUT * standard, dispatch));
     }
-    wants.extend(incoming.iter().enumerate().filter(|(_, (g, _))| matches!(Keep::of(g), Keep::Heap | Keep::Stack | Keep::Logs)).map(|(n, (_, share))| (Hold::In(n), STOCK_IN * standard * share.max(0.3), receive)));
+    wants.extend(held.iter().enumerate().filter(|(_, (g, _))| matches!(Keep::of(g), Keep::Heap | Keep::Stack | Keep::Logs)).map(|(n, (_, share))| (Hold::In(n), STOCK_IN * standard * share.max(0.3), receive)));
     for (x, z, w, d) in strips {
         field.take(x, z, w, d);
     }
@@ -1255,7 +1266,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
     }
     let enclosed = enclose(whole, outline);
 
-    Plan { kind, process: process.clone(), plot: whole.clone(), stages, seed, parts, yards, gate: (gx, gw), cart_yard, lane, receive, dispatch, year, siding, wharf, spur, spur_at_start, incoming, squeezed, dropped, enclosed, laid_for }
+    Plan { kind, process: process.clone(), plot: whole.clone(), stages, seed, parts, yards, gate: (gx, gw), cart_yard, lane, receive, dispatch, year, siding, wharf, spur, spur_at_start, incoming, held, squeezed, dropped, enclosed, laid_for }
 }
 
 /// The plot a works has taken in of its whole plot: `outline` is a part of
@@ -1671,7 +1682,7 @@ fn lanes(c: &mut Ctx, plan: &Plan, ground: Rgba) {
     }
     // the tramway, in a works of some size where heavy stuff is moved: from where it comes in
     // to the lane, along it, and off it to each stage's process buildings
-    let heavy = plan.incoming.iter().any(|(g, _)| Keep::of(g) == Keep::Heap);
+    let heavy = plan.held.iter().any(|(g, _)| Keep::of(g) == Keep::Heap);
     let total = plan.stages.last().unwrap().size;
     if let (true, Some((a, b))) = (heavy && total >= 3.0 && plan.stages.last().unwrap().year >= 1800, hub) {
         let rails = *pal.rail.rails;
@@ -1696,7 +1707,7 @@ fn lanes(c: &mut Ctx, plan: &Plan, ground: Rgba) {
         }
         // and to each yard of what comes in loose, where the way from the lane is clear of buildings
         for y in &plan.yards {
-            if !matches!(y.hold, Hold::In(i) if Keep::of(&plan.incoming[i].0) == Keep::Heap) {
+            if !matches!(y.hold, Hold::In(i) if Keep::of(&plan.held[i].0) == Keep::Heap) {
                 continue;
             }
             let from = on_lane((y.x, y.z));
@@ -1724,7 +1735,7 @@ fn floor(c: &mut Ctx, (x0, z0, x1, z1): (f32, f32, f32, f32), col: Rgba) {
 fn yard(c: &mut Ctx, plan: &Plan, now: &Now, y: &Yard, n: usize, ground: Rgba) {
     let pal = c.pal;
     let (good, full) = match y.hold {
-        Hold::In(i) => (Some(&plan.incoming[i].0), now.stock_in),
+        Hold::In(i) => (Some(&plan.held[i].0), now.stock_in),
         Hold::Out => (Some(&plan.process.output), now.stock_out),
         Hold::Tip => (None, 1.0),
     };
@@ -1898,7 +1909,7 @@ fn siding(c: &mut Ctx, plan: &Plan, now: &Now, (side, f0, f1): (usize, f32, f32)
     let room = ((len * 0.88) / 0.0205).floor() as usize;
     let wanted = (1.3 * (now.size.max(0.4) * now.busy.clamp(0.1, 1.0)).powf(0.45)).ceil() as usize;
     let count = wanted.clamp(1, room.max(1));
-    let load_in = plan.incoming.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|(g, _)| good_colour(g, pal));
+    let load_in = plan.held.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|(g, _)| good_colour(g, pal));
     let load_out = (Keep::of(&plan.process.output) != Keep::Nothing).then(|| good_colour(&plan.process.output, pal));
     for k in 0..count {
         // those that brought stuff in stand toward the way in, those to take it away toward the way out

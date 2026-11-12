@@ -966,6 +966,8 @@ fn firm_facts(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Facts> {
         for p in &plot.line {
             (p.0.to_bits(), p.1.to_bits()).hash(&mut h);
         }
+        // (and which fuel lies in its yards: `site::Process::fuel`'s year)
+        (year >= site::COAL_FROM).hash(&mut h);
         (r.header.firms[f].method, r.header.meta.seed).hash(&mut h);
         h.finish()
     };
