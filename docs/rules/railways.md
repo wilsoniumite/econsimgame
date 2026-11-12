@@ -265,11 +265,14 @@ twelve or thirteen seconds it took.
 rules the merged code gives every one of the 186 facts of every seed as the
 code before the merge gave it.
 
-Kilometres of line, six families, carting on in every row but the third. The
-first three rows are the merge's sweeps on twelve seeds; the last is today's
-(`merged-game-f6-l`: the game's rules as they stand on 12 November, with the
-canals, the mines, people, kept town ground and the books all on, seeds 1 to
-8; see "Today", below):
+Kilometres of line, six families, carting on in every row. (The page used to
+say "in every row but the last", but that row is the "railways and carting,
+six families" row of the first table, number for number.) The first two rows
+are the merge's sweeps on twelve seeds, the third is the port's island with
+the two switches (above), and the last is today's (`merged-game-f6-l`: the
+game's rules as they stand on 12 November, with the canals, the mines,
+people, kept town ground and the books all on, seeds 1 to 8; see "Today",
+below):
 
 | | 1830 | 1840 | 1850 | 1860 | 1870 | 1880 | 1890 | 1900 |
 |---|---|---|---|---|---|---|---|---|
