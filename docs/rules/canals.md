@@ -5,7 +5,7 @@ A canal age before the railways. Not in the Python. The switch is
 of way, the know-how, what the boats carried, the facts), the promoters of
 `ways.rs` in a canal mode, and a second layer in the cost graph
 (`transport.rs`). It builds on the railways' planner
-([railways.md](railways.md), "What a canal age needs").
+([railways.md](railways.md), "Other ways: the canals").
 
 ## What it does
 
@@ -144,16 +144,19 @@ prove itself, and the canal age crosses the island at the pace canals are
 dug: 50 km in the first ten years, then most of the network in the twenty
 after. With plain diffusion (tried on seed 7) sixteen canals were promoted
 all over the island within five years of the first, and 580 km were open
-ten years on. (The 50 km was the first build's, and the page did not say
-from when it counted. Counted from the first canal's opening it does not
-hold today, and the tables below do not show it either: under the game's
-rules the first canal opens in about 1776 and 450 to 590 km are open by
-1790. On today's sweep, read from the lengths of each decade, 320 to 560 km
-are open ten years after the first canal opens, on every one of the eight
-islands, and three quarters of the network by 1800. That is nearer what
-plain diffusion gave on seed 7 than what this rule was meant to give. The
-survey's year is not among the sweep's facts, so counted from the survey it
-could not be checked. I did not trace why.)
+ten years on. (The 50 km was the first build's, on seed 7, and counts from
+the survey. It still holds there under today's rules: the canal is surveyed
+at Brambridge in 1761, Brambridge's own branch to its collieries is begun in
+1766 and opens in 1771 with 16 km, the four canals Brambridge then promotes
+open at the end of 1775, and the neighbours follow; 494 km of the 968 of
+1900 are open by 1790 and 640 by 1800. One run, `isostate-core run --seed 7
+--rules game --families 6`, read from its news. Counted from the first
+canal's opening the canal age is not slow at all, and was not at the review
+either (below: 422 km in 1780 with `hearsay` at 0.2): on today's sweep 320
+to 560 km are open ten years after the first canal opens, read from the
+lengths of each decade, on every one of the eight islands. The survey's
+year is not among the sweep's facts, so the other seven islands were not
+counted from it.)
 
 How much the rule does was measured in the review, on seeds 3 and 7. With
 `hearsay` at 1 (plain diffusion) 548 km are open in 1780; at 0.2, 422; at 0,
@@ -735,11 +738,12 @@ against today's eight islands:
 | most canals digging at once | nine or ten (12 on some) | 9 (6 to 12) |
 | the slowest canal, years | five | 4.7 (4.3 to 5.0) |
 
-So the canals of today are the integration's canals, a few per cent
-shorter (662 km in 1800 for 695, 892 in 1900 for 903). What has moved since
-the first build is said beside each figure above; the largest is the pace
-of the start
-("What lets canals begin"). The numbers of the first build, of the review
+So the canals of today are the integration's canals. The two columns are
+different islands (seeds 1 to 8 against 1 to 16), and that is all the
+difference between them: on seeds 1 to 6 today's sweep gives every canal
+and railway fact as the integration's `core-steps/canals-after` gave it, to
+the last digit. What has moved since the first build is said beside each
+figure above. The numbers of the first build, of the review
 and of the merged build were measured on older rules and were not made
 again; nor were the comparisons with canals off, which today's sweep cannot
 give.
