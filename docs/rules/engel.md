@@ -134,12 +134,18 @@ actually bought in each. So a year is always compared with the year before on
 the baskets of those two years, and firewood stops counting when people stop
 buying it. A month is read against the last complete year, so its value is known
 at once; when December is in, the year's own means close the link. The first
-link starts where the fixed basket does, at the last month of the warm-up, so
-the two indices agree in January 1750.
+link starts where the fixed basket does, at the last month of the warm-up
+(the fixed basket's own prices and purchases, landlords' included), so both
+indices stand at 1 on the same base. They are not the same number in January
+1750, since the chained one already weighs that month's purchases as well as
+the base's, but they start together: on today's eight islands (the sweep
+named under "In today's game", below) the means of 1750 are 0.976 and 0.976,
+and on no island further apart than a thousandth.
 
 The twelve readings of a year do not average exactly to the link the year
 closes on, because one month's purchases are not the year's. Measured on seed 3
-over the 150 years, the two differ by 0.06 per cent in a typical year and by
+over the 150 years (the port with the curve, before the other rules joined),
+the two differ by 0.06 per cent in a typical year and by
 0.35 per cent in the worst, so a year's mean of `cpi_chained` (which is what the
 sweep's facts use) can be taken for the chain. `tests/engel.rs` works the chain
 out a second time, month by month, from the prices and purchases the observer
@@ -157,11 +163,18 @@ the 1750 basket; the news still reads the old ones.
 | `engel.strength` | 3.0 | how fast the shares turn: at twice `y_ref` they are `1 - 0.5^strength` of the way. 0 is a flat curve: the port's households, with the new series recorded |
 | `shares_rich` (content) | 0.05, 0.06, 0.24, 0.22, 0.07, 0.36 | the richer set |
 
-`y_ref` is 2 because that is where the island starts: real income is 1.83 in
-1750 on eight seeds (1.78 to 1.90), so 1750 is the port's 1750. At 1.5 the towns
-of the early 1750s are already two points larger (0.27 for 0.25) and comfort's
-share of budgets half as big again; at 2.5 the curve does not begin until the
-1780s and the towns of 1900 are two points smaller (0.275 for 0.298).
+`y_ref` is 2 because that is where the island started when it was chosen: real
+income is 1.83 in 1750 on eight seeds (1.78 to 1.90) under the port, so 1750 is
+the port's 1750. At 1.5 the towns of the early 1750s are already two points
+larger (0.27 for 0.25) and comfort's share of budgets half as big again; at 2.5
+the curve does not begin until the 1780s and the towns of 1900 are two points
+smaller (0.275 for 0.298). (All of this on the port with the curve.)
+
+Under today's game rules the island starts poorer, not richer: 1.56 bundles a
+head in 1750 (1.51 to 1.60; `real_income_1750` in today's sweep). So 1750 is
+still the port's rule in every town, and the curve begins to turn only when an
+island's income first passes 2, which on today's eight islands is between 1761
+and 1782. Nothing has been retuned for it; see the worry about `y_ref` below.
 
 `--set engel.enabled=true` measures the mechanism alone, and
 `--set engel.enabled=true --set engel.strength=0` gives the port with the new
@@ -171,6 +184,11 @@ series comes out of a flat-curve run the same in every year as out of a port
 run.)
 
 ## What the sweeps showed
+
+Everything from here to "In company with prices" was measured on the port with
+the curve alone, before any other mechanism joined the game's rules; the
+numbers are the record of why the curve was built as it is, and they cannot be
+read from today's sweep. Where the game stands now is under "In today's game".
 
 Eight seeds (1 to 8) to 1900 under the port's rules, with and without six
 families. The first two tables are the sweep's own facts: each number is one
@@ -323,8 +341,11 @@ there for whoever wants more.
 
 ### How far the towns get
 
-**On today's income path, to three in ten.** Real income stops at about 3.6
-bundles a head from 1850 on, and at that income the curve has the towns at 0.30
+**On the port's income path, to three in ten.** (This section is the port
+with the curve; under today's game rules incomes do keep rising, to 8.8 bundles
+a head in 1900, and the towns reach 0.42: "In today's game", below.) Real
+income stops at about 3.6 bundles a head from 1850 on, and at that income the
+curve has the towns at 0.30
 in 1900 where the port has 0.24 (0.32 for 0.26 with six families). That is a
 quarter of the way from the port to "most people live in towns".
 
@@ -335,7 +356,7 @@ for 1900):
 
 | | real income 1900 | towns, flat curve | towns, curve | works, curve | land, curve | grain a head, flat and curve (1750 = 1) |
 |---|---|---|---|---|---|---|
-| today's island | 3.6 | 0.238 | 0.298 | 0.324 | 0.386 | 1.75, 1.39 |
+| the port's island | 3.6 | 0.238 | 0.298 | 0.324 | 0.386 | 1.75, 1.39 |
 | `husbandry_boost=1.2`, `tools_boost=1.0` | 5.3 | 0.251 | 0.374 | 0.421 | 0.300 | 2.40, 1.63 |
 | `husbandry_boost=1.8`, `tools_boost=1.5` | 6.5 to 7.3 | 0.260 | 0.381 | 0.430 | 0.294 | 3.20, 1.67 |
 
@@ -353,7 +374,7 @@ it.** In this content comfort is the only need met entirely by town work.
 Shelter is bought mostly as quarried stone, clothing is mill cloth that needs
 few hands, and the mines keep three hands in ten throughout. The `dx-towns`
 probe's set, with comfort at 0.60 and less on shelter and clothing (0.04, 0.06,
-0.13, 0.13, 0.04, 0.60), gives 0.34 on today's island at strength 3 (0.30 to
+0.13, 0.13, 0.04, 0.60), gives 0.34 on the port's island at strength 3 (0.30 to
 0.38 by seed) and 0.38 with `husbandry_boost=1.2` alone (income 4.2); that probe
 reported 0.45 for it with better husbandry and tools and a two-piece curve, and
 0.50 with the tier set lower. So one half wants three things together: this
@@ -375,9 +396,12 @@ lives there.
   demand for grain bends less when its price moves, so the same shortfall
   takes a bigger price rise to clear, and households that eat 1.4 times the
   grain of 1750 instead of 1.8 are nearer the floor when it comes. (A famine
-  notice is a month in which a town's households get less than 0.82 of their
-  subsistence food. Buying 1.8 times subsistence, they can be short by more
-  than half before that happens; buying 1.4 times, by four tenths.) Food
+  notice is a year in which a town's households, in their worst month, get
+  less than 0.82 of their subsistence food: one notice for each such town
+  founded more than two years before, or a single one for the year when three
+  or more are hit (`people::growth`). Buying 1.8 times subsistence, they can
+  be short by more than half before that happens; buying 1.4 times, by four
+  tenths.) Food
   markets do behave so, but it feeds the cobweb that `dx-cycles` describes.
 - The farms' area is 5 per cent less in 1900 (1,216 cells' worth for 1,282,
   less on every island; 7 per cent less with families) and the pastures' and
@@ -415,7 +439,7 @@ notices a run):
 - **A curve that is nearly flat** (`strength` 0.01) is the port to within
   noise at every `y_ref`.
 - **A richer set that is all comfort** (`shares_rich` 0, 0, 0, 0, 0, 1 in a
-  content file) puts the towns at 0.43 in 1900 on today's incomes. **One that
+  content file) puts the towns at 0.43 in 1900 on the port's incomes. **One that
   is all bread**, an Engel curve run backwards (no families), shrinks them to
   0.23 and takes food to half of budgets. Both run to 1900 with money
   conserved.
@@ -508,22 +532,72 @@ is off in their company (`core-steps/engel-off`).
 Not done here: the scripted players and the prices probe's shock were not run
 again on the pair.
 
+## In today's game
+
+Since the pair above, the machines, the harvests, the life cycle for works, the
+railways, carting, the people, the towns, the mines, the canals and the books
+of account have all joined the game's rules, so none of the tables above is
+what a game now plays. This is what the curve's own facts read today: the
+sweep of the merged game, seeds 1 to 8 with six families, at the code of
+`340f263` (`isostate-core sweep --seeds 1-8 --rules game --families 6`, its
+`summary.txt` and `annual.csv` under `.claude/night/reports/merged-game-f6-l/`).
+Each number is
+one year's mean over its twelve months, averaged over the eight seeds; no
+flat-curve run was made beside it, so it says where the game stands and not
+what the curve does in it.
+
+| | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|
+| real income (bundles a head) | 1.56 | 3.30 | 5.18 | 8.75 |
+| food: share of budgets | 0.410 | 0.322 | 0.259 | 0.150 |
+| warmth | 0.199 | 0.107 | 0.092 | 0.083 |
+| shelter | 0.133 | 0.197 | 0.208 | 0.224 |
+| clothing | 0.180 | 0.199 | 0.192 | 0.219 |
+| implements | 0.041 | 0.052 | 0.058 | 0.063 |
+| comfort | 0.036 | 0.122 | 0.191 | 0.261 |
+| real wage, 1750 basket (1750 = 1) | | 1.63 | 1.95 | 2.60 |
+| real wage, chained (1750 = 1) | | 1.90 | 2.88 | 4.24 |
+| towns: share of people | 0.218 | 0.266 | 0.344 | 0.419 |
+| works: share of labour | 0.224 | 0.296 | 0.400 | 0.486 |
+| grain output (1750 = 1) | | 2.18 | 4.37 | 11.76 |
+
+Three things in it bear on this page. The island of 1750 is poorer than the
+one the curve was tuned on (1.56 bundles a head against 1.83), and further
+below `y_ref`; the life cycle for works took it from 1.87 to 1.68 and the
+merge of the railways, carting and the people to 1.49 (the merged sweeps
+`merged-game-f6-c`, `-d` and `-e`
+in the same folder), and it has been 1.56 since. Incomes then rise far past
+anything the port reached, so by 1900 nearly every further shilling is split
+by the richer set and food is down to 15 per cent of budgets. And the gap
+between the two indices is wider than the port's: the cost of living in 1900
+is 1.20 on the 1750 basket and 0.73 chained, so the chained real wage is 4.24
+where the basket's is 2.60.
+
 ## Facts added to the sweep
 
-Under "Work and wages": `mine_share_Y` (quarries, pits and mines: the work that
-is neither on the land nor in the works) and `grain_output_Y_vs_1750`, for every
+Under "Work and wages": `mine_share_Y` and `grain_output_Y_vs_1750`, for every
 run; and for a run with the mechanism's series, `real_wage_chained_Y_vs_1750`,
 `real_income_Y` and `budget_NEED_Y`.
 
+`mine_share_Y` is what is left when the land's share and the works' share are
+taken from the whole (`facts.rs`): under the port, the quarries, pits and
+mines. Under the game's rules the carters and the navvies are counted among
+the hands too (`carting.md`, `canals.md`) and fall into the same remainder, so
+there it is not the mines' share: of today's 0.216 in 1750, about 0.125 is
+carters and 0.090 the quarries, pits and mines (`carters_share_of_hands_1750`
+and the `hands_*_1750` facts of the sweep above).
+
 These are not in the table of facts in this folder's `README.md` yet, and
-`parity/check_facts.py` does not work them out a second time (it lists them as
-not checked).
+`crates/isostate-core/parity/check_facts.py` does not work them out a second
+time (it lists them as not checked).
 
 ## What worries me
 
 - **On its own it is a modest cure.** Six points of town by 1900, and a ceiling
-  just under four in ten however rich the island gets. The section above says
-  why; it should not be read as "the towns are fixed".
+  just under four in ten however rich the island gets, on the port's other
+  rules. The section above says why; it should not be read as "the towns are
+  fixed". (With the rest of today's game the towns reach 0.42 in 1900; how
+  much of that is the curve's has not been measured on today's rules.)
 - **The richer set is a judgement, not a measurement.** It follows the brief
   (less food and warmth, more comfort, a little more clothing and shelter) and
   sits near the landlords' shares. Comfort is carrying everything a richer
@@ -541,6 +615,10 @@ not checked).
   the incomes of 1750 above 2 bundles, the curve is already turning in 1750 and
   1750 is no longer the port's. On the richer islands above (real income 2.25
   and 2.55 in the early 1750s) the towns of 1750 are one and two points larger.
+  What has happened since is the other way: today's game starts at 1.56, so
+  the curve waits until the 1760s or 1770s to begin ("In today's game"). The
+  strengths and the reference were chosen on an island that started at 1.83,
+  and have not been looked at again on this one.
 - **The news and the viewer still read the 1750 basket.** "The real wage
   doubles" is announced on the old index, and `gdp_real` and output per head are
   deflated by it. With the curve on, the basket of 1750 is less and less what
@@ -558,10 +636,12 @@ not checked).
 - **Landlords and families have no curve.** Their shares are fixed however rich
   they grow. For the gentry that is probably right; for a family that goes from
   a farm to an empire it may not be.
-- **The seed firms of 1750 are still sized by the port's rule** (`seed_firms`
-  asks what a town at 2.1 bundles would buy, with the content's shares). At
-  `y_ref` 2 the difference is nothing to speak of, but a much lower `y_ref` would
-  start the island with too few shops.
+- **The seed firms of 1750 are still sized by the port's rule** (`sim::seed_firms`
+  asks what a town with a goods budget of 2.1 a head in money would buy, with
+  the content's shares; at the content's base prices that is about 1.6
+  bundles). At `y_ref` 2 the difference is nothing, since that is below the
+  reference, but a much lower `y_ref` would start the island with too few
+  shops.
 - **Sixteen seeds for the game's numbers, eight for everything else.** A star
   says the two ranges do not overlap, which with eight seeds is strong for one
   fact and weak across 136 of them. The shares of labour and of budgets move
