@@ -94,11 +94,11 @@ Three things are new:
   prices, so it never owes anything: dear rails slow it down.
 - At the end of each month, once the month's materials are paid for, a line
   without the cash for next month's order at today's prices calls on its
-  two towns' landlords, a tenth of their cash at most. Where a town's landlords are in debt, its
-  households, who subscribed with them, answer in their place with a
-  fortieth of their cash. (Landlords can be in debt for decades. Before the
-  review a line whose landlords were could call on nobody, and two branches
-  on seed 12 waited forty years.)
+  two towns' landlords, a tenth of their cash at most. Where a town's
+  landlords are in debt, its households, who subscribed with them, answer
+  in their place with a fortieth of their cash. (Landlords can be in debt
+  for decades. Before the review a line whose landlords were could call on
+  nobody, and two branches on seed 12 waited forty years.)
 - What is left when it opens goes back to the subscribers in proportion to
   what each put in.
 
@@ -344,21 +344,22 @@ to collieries and iron mines (`rail_lines_*`), and branches are 74 per cent
 of the kilometres (`rail_km_share_branches`). The branches to quarries are a
 fifth of what they were at the merge, 14 for 76.
 
-All of that came with the mines (`mines.md`). On seeds 1 to 6, the same six
-islands each time, the game's rules with six families give 2,615 km in 1900
-and 70 branches to quarries and clay pits a run just before the mines were
-merged, and 2,230 km and 12 branches just after (`core-steps/mines-before`
-and `mines-after`); the canals then took off another 16 km
+The shorter network and the lost branches to quarries came with the mines
+(`mines.md`). On seeds 1 to 6, the same six islands each time, the game's
+rules with six families give 2,643 km in 1900 at the merge, 2,615 km and
+70 branches to quarries and clay pits a run just before the mines were
+merged, and 2,230 km and 12 branches just after (`core-steps/railways-after`,
+`mines-before` and `mines-after`); the canals then took off another 16 km
 (`canals-before` and `canals-after`), and since then nothing has moved:
-today's sweep gives every railway fact of those six seeds as
-`canals-after` did, to the last digit. `mines.md` says why ("What it does
-in company"): a lease is carted from one pit head, and the pit
-heads stand where the carting is already short, so few of them are worth a
-line of their own. It asks this page whether that is the right answer or
-whether a large quarry now deserves a branch it does not get. Nobody has
-looked yet. (The 2,250 km of today's eight seeds and the 2,254 of the
-integration's sixteen, `canals.md`, "On the integration branch", are the
-same network on different islands.)
+today's sweep gives every fact of those six seeds as `canals-after` did,
+to the last digit. `mines.md` says why ("What it does in company"): a
+lease is carted from one pit head, and the pit heads stand where the
+carting is already short, so few of them are worth a line of their own. It
+asks this page whether that is the right answer or whether a large quarry
+now deserves a branch it does not get. Nobody has looked yet. (The 2,250 km
+of today's eight seeds and the 2,254 of the integration's sixteen,
+`canals.md`, "On the integration branch", are the same rules on two sets of
+islands that share their first six.)
 
 **In company the branches do pay the country back.** With carting on, the
 game's railways against the port's, seed for seed on twelve seeds: in 1900
