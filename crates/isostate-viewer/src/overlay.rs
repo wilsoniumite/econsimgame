@@ -865,6 +865,7 @@ mod tests {
             uses: Vec::new(),
             arrays: Vec::new(),
             series: Default::default(),
+            land: None,
         };
         Replay {
             header,
@@ -908,6 +909,7 @@ mod tests {
             res: Vec::new(),
             works: Vec::new(),
             workings: Vec::new(),
+            land: None,
         }
     }
 
