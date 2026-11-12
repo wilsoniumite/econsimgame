@@ -88,8 +88,8 @@ knows which layer is at the surface.
   nodes that drain out of it), and smaller ones silt up.
 - *The sea rises* next, until `land_fraction` (0.58, the port's) of the
   cells are land, every hollow (the new lakes among them) counting as dry
-  (it rises 60 m at most). The lower valleys drown into estuaries, which is how real
-  ones were made.
+  (it rises 60 m at most). The lower valleys drown into estuaries, which is
+  how real ones were made.
 - *The big rivers plane their valley floors*: flat, wider downstream, wide in
   soft rock and hardly at all in hard, where the valley stays a gorge.
 - *Rain* comes in with the wind off the sea, falls more as the air is pushed
@@ -108,9 +108,8 @@ knows which layer is at the surface.
   second it meets). Level ground, falling no more than 2 in 1,000, within
   0.9 m of that water is marsh or fen where the water is a lake or the sea,
   where the ground is less than 6 m above the sea, or where it is planed
-  valley floor that itself falls less than 4 in 10,000.
-  The rest of a planed floor, and any ground within 3 m of a stream, is
-  flood plain.
+  valley floor that itself falls less than 4 in 10,000. The rest of a
+  planed floor, and any ground within 3 m of a stream, is flood plain.
 
 **4. River courses** (`landwater::meander`). Every stream of `stream_flow`
 (0.3 cubic metres a second) or more is traced as a line from its source to
