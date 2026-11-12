@@ -697,6 +697,31 @@ fn a_game_gone_on_with_has_the_months_it_did_not_watch() {
 }
 
 #[test]
+fn a_works_founded_at_the_years_end_is_in_that_years_books() {
+    // The year in progress has a row for each works there is, and grows when
+    // works are founded (`fit_works`). Works founded in the year's end, after
+    // December's month and before the books close, have their row in the
+    // year's books, with the year's end's capacity and cash, as they had when
+    // the rows were for every works there was room for.
+    let P = params(Rules::Game, 3, 6, 1760, true);
+    let mut s = sim::start(&P, Rules::Game.content());
+    let mut founded = 0;
+    while s.year <= s.end_year {
+        for month in 0..12 {
+            sim::run_month(&mut s, month).unwrap();
+        }
+        let before = s.st.F_count;
+        sim::end_year(&mut s);
+        let rec = s.st.acct.year(s.st.acct.hist.n - 1).unwrap();
+        for f in (0..s.st.F_count).filter(|&f| s.st.f_alive[f]) {
+            assert!(rec.works_id.binary_search(&(f as u32)).is_ok(), "works {f}, standing at the end of {}, has no row in its books", s.year - 1);
+        }
+        founded += s.st.F_count - before;
+    }
+    assert!(founded > 0, "some works were founded at a year's end");
+}
+
+#[test]
 fn a_copy_of_the_island_shares_the_years_put_away() {
     // An order given in the middle of a year is tried on a copy of the island
     // (`save::Game::give`), and the interface asks for two more. The years the
