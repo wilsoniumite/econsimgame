@@ -577,3 +577,64 @@ fn a_yard_is_level_on_sloping_land_behind_a_retaining_wall() {
         }
     }
 }
+
+#[test]
+fn trades_nobody_has_drawn_get_plans_of_their_own_from_what_the_run_says_of_them() {
+    // eight of the deeper production tree's trades (`sheets::UNKNOWN`): none is in the shipped
+    // content, none has a kind, and each is laid out by its process alone
+    let pal = Palette::standard();
+    let trades: Vec<(&str, Process)> = crate::sheets::UNKNOWN
+        .iter()
+        .map(|&(name, inputs, heat, labour, capital, out)| (name, Process { inputs: inputs.iter().map(|&(g, w, p, a)| (Good::new(g, w, p), a)).collect(), heat, labour, capital, output: Good::new(out.0, out.1, out.2) }))
+        .collect();
+    let (w, d) = ground(Kind::Other, 8.0);
+    let st = stages(&history(1800, 1885, 8.0));
+    let built: Vec<(Plan, Model)> = trades
+        .iter()
+        .map(|(name, process)| {
+            assert!(Process::standard(name).is_none() && Kind::of_method(name) == Kind::Other, "{name} is known now: choose another");
+            let p = plan(Kind::Other, process, &st, &Plot::rect(w, d), 1885, Seed::of(4), &pal);
+            let m = draw(&p, &Now { size: 8.0, ..Now::working(&p, 1885) }, 0.0);
+            assert!(m.is_sound() && (p.squeezed, p.dropped) == (0, 0), "{name}");
+            (p, m)
+        })
+        .collect();
+    let no_fire = built.iter().zip(&trades).filter(|(_, t)| t.1.heat == 0.0).map(|(b, _)| b.1.smoke.triangles()).max().unwrap();
+    for (n, ((name, process), (p, m))) in trades.iter().zip(&built).enumerate() {
+        // a yard for each thing that comes in and lies in the open (its fuel among them), a
+        // store for each that is kept under a roof
+        for (i, (good, _)) in p.incoming.iter().enumerate() {
+            match Keep::of(good) {
+                Keep::Cover => assert!(p.parts.iter().any(|x| x.role == Role::Store(i)), "{name}: no store for its {}", good.name),
+                Keep::Nothing => {}
+                _ => assert!(p.yards.iter().any(|y| y.hold == Hold::In(i)), "{name}: no yard for its {}", good.name),
+            }
+        }
+        // what it makes: a stack yard, a warehouse, or (work that is never carried) neither
+        let (yard, house) = (p.yards.iter().any(|y| y.hold == Hold::Out), p.parts.iter().any(|x| x.role == Role::Warehouse));
+        match Keep::of(&process.output) {
+            Keep::Cover => assert!(house && !yard, "{name}"),
+            Keep::Nothing => assert!(!house && !yard, "{name}: a yard for {}, which is not carried", process.output.name),
+            _ => assert!(yard && !house, "{name}"),
+        }
+        // it smokes if it burns, and not otherwise (but for its counting house's fire)
+        assert_eq!(m.smoke.triangles() > no_fire, process.heat > 0.0, "{name}");
+        // and it is its own works: no two of the eight are drawn alike
+        for (other, (_, o)) in built.iter().enumerate().skip(n + 1) {
+            assert!(m.solid != o.solid || m.flat != o.flat, "{name} is drawn as {} is", trades[other].0);
+        }
+    }
+    // a trade that burns two and a half units of heat or more fires in kilns: the potbank and
+    // the glasshouse have them, and the same works burning less has not
+    // (its kilns stand in place of the boiler house and its tall chimney: it is a lower works, and still smokes)
+    let drawn = |process: &Process| {
+        let p = plan(Kind::Other, process, &st, &Plot::rect(w, d), 1885, Seed::of(4), &pal);
+        let m = draw(&p, &Now { size: 8.0, ..Now::working(&p, 1885) }, 0.0);
+        (m.solid.bounds().unwrap().1.y, m.smoke.triangles())
+    };
+    for name in ["potbank", "glasshouse"] {
+        let process = &trades.iter().find(|t| t.0 == name).unwrap().1;
+        let (kilns, less) = (drawn(process), drawn(&Process { heat: 2.0, ..process.clone() }));
+        assert!(kilns.0 < less.0 * 0.7 && kilns.1 > no_fire, "{name}: {kilns:?} with its kilns, {less:?} burning less");
+    }
+}

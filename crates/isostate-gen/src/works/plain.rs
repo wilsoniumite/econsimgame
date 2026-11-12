@@ -32,9 +32,14 @@ pub fn plain(c: &mut Ctx) {
 /// shop, of storeys where the work is of many hands on light goods and a
 /// hall where the stuff is heavy; a preparing shed for each good that comes
 /// in beyond the first; where the process burns fuel, a boiler house and a
-/// chimney, and hearth stacks on the shop where it burns a great deal; and
-/// where its plant is dear and it was built late, a finishing shed under
-/// north lights.
+/// chimney; where it burns a great deal (a unit and a half of heat to a unit
+/// of what it makes), hearth stacks on the shop; where it burns more still
+/// (two and a half: a potbank, a glasshouse, an alkali works), kilns in
+/// place of the boiler house: in a row before the shop, as many as its size
+/// asks, or one beside it in a small yard; and where its plant is dear
+/// and it was built late, a finishing shed under north lights. Every one of
+/// these is read off the process's numbers, so two trades nobody has drawn
+/// still look like two trades.
 pub fn process(c: &mut Ctx, p: &super::site::Process) {
     use super::kit::Face;
     let (hw, hd, g, size, pal) = (c.hw, c.hd, c.g, c.w.size, c.pal);
@@ -44,10 +49,17 @@ pub fn process(c: &mut Ctx, p: &super::site::Process) {
     let heavy = p.inputs.iter().any(|(good, _)| good.weight >= 1.5) || p.output.weight >= 1.2;
     let storeys = if heavy { 1 } else { (1.6 + p.labour.min(4.0) * 0.3 + size.max(0.4).log10()).round().clamp(1.0, 4.0) as usize };
     let h = if heavy { 0.032 * g } else { c.storeys(storeys) };
-    let fired = p.heat > 0.0;
-    let side = if fired { 0.03 * g } else { 0.0 };
+    // where it burns a great deal its fire is in kilns, and it has no boiler house
+    let kilns = p.heat >= 2.5;
+    let fired = p.heat > 0.0 && !kilns;
+    // (a works that fires in kilns has a shallower shop, and the kilns before it; in a yard
+    // too shallow for that, a kiln beside the shop)
+    let dep = (if kilns { 0.026 } else { 0.036 } * g).min(2.0 * hd - 0.02);
+    let before = 2.0 * hd - 0.016 - dep - 0.01;
+    let kiln = (0.013 * g).min(if before >= 0.021 { (before - 0.003) * 0.5 } else { hd - 0.009 });
+    let beside = kilns && before < 0.021;
+    let side = if fired { 0.03 * g } else if beside { 2.0 * kiln + 0.005 } else { 0.0 };
     let prep = p.inputs.len().saturating_sub(1).min(3);
-    let dep = (0.036 * g).min(2.0 * hd - 0.02);
     let len = (2.0 * hw - 0.016 - side).min(0.11 * g * size.max(0.4).powf(0.2));
     let (x0, z0) = (-hw + 0.008 + len * 0.5, -hd + 0.008 + dep * 0.5);
     let shop = c.shed(x0, z0, len, dep, h, false, wall, roof);
@@ -78,8 +90,25 @@ pub fn process(c: &mut Ctx, p: &super::site::Process) {
             }
         }
     }
+    let mut front = z0 + dep * 0.5 + 0.01;
+    if kilns && kiln >= 0.006 {
+        // the kilns, fired in turn: in a row before the shop, as many as the square root of
+        // its size asks and its ground has room for; or the one beside it
+        let pitch = 2.0 * kiln + 0.006 * g;
+        let n = if beside { 1 } else { c.fit(2.0 * hw - 0.016, pitch, ((1.2 * size.max(0.4).sqrt()).ceil() as usize).max(1)) };
+        let brick = c.tone(*pal.brick.red);
+        for k in 0..n {
+            let (x, z) = if beside { (hw - 0.008 - kiln, -hd + 0.008 + kiln) } else { (-hw + 0.008 + kiln + k as f32 * pitch, front + kiln) };
+            let top = c.bottle_kiln(x, z, kiln, !c.derelict(), brick);
+            if !c.going_up() && k % 2 == 0 {
+                c.plume(top, 0.5);
+            }
+        }
+        if !beside {
+            front += 2.0 * kiln + 0.006;
+        }
+    }
     // a preparing shed for each further good that comes in, across the front of the yard
-    let front = z0 + dep * 0.5 + 0.01;
     let room = hd - 0.008 - front;
     if prep > 0 && room > 0.02 {
         let (pl, pd) = ((2.0 * hw - 0.016 - 0.006 * (prep as f32 - 1.0)) / prep as f32, room.min(0.026 * g));

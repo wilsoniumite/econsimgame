@@ -146,6 +146,7 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "site-history", about: "One powered mill through its own history on one plot by a stream: going up in 1760, at work, enlarged in 1795, in 1820 and (the railway having come in 1848) in 1870; then the same works shrunk to a fifth for four years and for twelve, standing idle, and derelict.", land: Land::Pasture, build: site_history },
     Sheet { name: "site-history-iron", about: "One coke ironworks through its own history on one plot: going up in 1790, at work, enlarged in 1815, in 1840 and (the railway having come in 1848) in 1865; then shrunk for four years and for twelve, standing idle, and derelict.", land: Land::Pasture, build: site_history_iron },
     Sheet { name: "site-ways", about: "The ways in and out of a works (a rolling mill, then a brickworks, of ten times the standard size): by the gate alone; with a railway along its back; on navigable water; with both; with a works that feeds it on its left and one it feeds on its right; and how busy it is and what it holds, from slack and empty to hard at work and full.", land: Land::Pasture, build: site_ways },
+    Sheet { name: "site-unknown", about: "Works of trades the generators have never heard of, each planned from its process alone (works::site, plain::process): a brewhouse, a glasshouse, a gasworks, a saw pit, a lime kiln, a potbank, a paper mill and a mason's yard, as the deeper production tree's overlay had them on 12 November 2026 (examples only: the game hands the planner the run's own processes). At the standard size in 1830 (top row) and at eight times it in 1885.", land: Land::Pasture, build: site_unknown },
     Sheet { name: "site-slope", about: "Works on sloping land: a coke ironworks, a powered mill and a brickworks, each of eight times the standard size, on land that falls away to the left by 6 in 100 (top row) and by 12 in 100, which is as steep as a works is given while ground is not short. The yard is level, at the height of the highest land under its plot, and is held up on its low side by a retaining wall.", land: Land::Pasture, build: site_slope },
     Sheet { name: "site-plots", about: "One works on plots of three shapes (square, with its back aslant, with a corner cut off), deep and shallow: a coke ironworks, a powered mill and a works of a kind the generators do not know, each of twelve times the standard size.", land: Land::Pasture, build: site_plots },
     Sheet { name: "works-district", about: "A district of works that stand together along a road with the railway behind: coke furnaces hand pig iron over the wall to a forge and the forge its bars to a rolling mill, with a brickworks, an engine works and a smithy beside them; as it stood in 1800, in 1850 and in 1890.", land: Land::Pasture, build: works_district },
@@ -779,6 +780,42 @@ fn site_plots(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
                 ("shallow, its back aslant", Plot::wedge(w * 1.55, d / 1.3, 0.45)),
             ];
             shapes.into_iter().enumerate().map(|(i, (name, plot))| site_of(format!("{}\n{name}", kind.label()), kind, 1795, 1885, 12.0, plot, kind as u32 * 8 + i as u32, detail, pal)).collect()
+        })
+        .collect()
+}
+
+/// Eight processes that are not in the shipped content, for showing what the
+/// planner makes of a trade nobody has drawn: (name, goods in with weight,
+/// price and amount, heat, labour, cost of plant, good out with weight and price).
+pub(crate) type Unknown = (&'static str, &'static [(&'static str, f32, f32, f32)], f32, f32, f32, (&'static str, f32, f32));
+pub(crate) const UNKNOWN: [Unknown; 8] = [
+    ("brewhouse", &[("grain", 1.0, 1.0, 1.2)], 0.4, 0.1, 6.6, ("beer", 2.0, 2.0)),
+    ("glasshouse", &[("stone", 2.2, 0.6, 1.0), ("chemicals", 0.9, 4.5, 0.3)], 6.0, 1.2, 39.6, ("glass", 1.0, 9.0)),
+    ("gasworks", &[("coal", 1.6, 0.9, 1.2), ("lime", 1.5, 2.0, 0.04)], 0.0, 0.06, 32.2, ("gas", 20.0, 2.4)),
+    ("saw pit", &[("timber", 1.6, 0.8, 1.4)], 0.0, 0.28, 2.0, ("lumber", 1.2, 2.2)),
+    ("lime kiln", &[("stone", 2.2, 0.6, 1.6)], 1.3, 0.08, 5.1, ("lime", 1.5, 2.0)),
+    ("potbank", &[("clay", 2.0, 0.4, 1.3)], 2.5, 0.5, 14.0, ("pottery", 1.0, 3.4)),
+    ("paper mill", &[("cloth", 0.3, 5.0, 0.2)], 0.5, 1.0, 12.8, ("paper", 0.5, 4.6)),
+    ("masons", &[("stone", 2.2, 0.6, 1.1), ("lumber", 1.2, 2.2, 0.2), ("lime", 1.5, 2.0, 0.1)], 0.0, 0.25, 2.8, ("building", 12.0, 2.2)),
+];
+
+fn site_unknown(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [(1.0f32, 1790, 1830), (8.0, 1800, 1885)]
+        .into_iter()
+        .map(|(size, founded, year)| {
+            UNKNOWN
+                .iter()
+                .enumerate()
+                .map(|(n, &(name, inputs, heat, labour, capital, out))| {
+                    let process = site::Process { inputs: inputs.iter().map(|&(g, w, p, a)| (site::Good::new(g, w, p), a)).collect(), heat, labour, capital, output: site::Good::new(out.0, out.1, out.2) };
+                    let (w, d) = site::ground(Kind::Other, size);
+                    let record = site::history(founded, year, size);
+                    let plan = site::plan(Kind::Other, &process, &site::stages(&record), &Plot::rect(w, d), year, Seed::of(n as u32 + 90), pal);
+                    let now = Now { size, detail, ..Now::working(&plan, year) };
+                    site_cell(format!("{name}
+size {size} in {year}"), &plan, &now, pal)
+                })
+                .collect()
         })
         .collect()
 }

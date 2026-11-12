@@ -30,6 +30,16 @@ pub struct Meta {
 pub struct Good {
     pub name: String,
     pub label: String,
+    /// Its bulk in carting and its price at the start, as the run's own
+    /// content has them: by these a works' site planner tells how the good
+    /// is kept, in heaps, in stacks or under a roof (`scatter::process_of`).
+    /// A record that does not say leaves them out. (The Python's records and
+    /// the core's have always written the weight; the core's write the
+    /// price from 12 November 2026.)
+    #[serde(default)]
+    pub weight: Option<f32>,
+    #[serde(default)]
+    pub price: Option<f32>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -39,6 +49,22 @@ pub struct Method {
     pub out: usize,
     #[serde(rename = "K0")]
     pub k0: f32,
+    /// What the method does, as the run's own content has it: its goods in
+    /// (each good's place among the goods, and how much goes to a unit of
+    /// output), the heat it burns and its labour to a unit of output, and
+    /// what a unit of monthly capacity costs to build at the goods' starting
+    /// prices. A works is laid out from these (`scatter::process_of`), so a
+    /// trade the art has never heard of still gets a plan of its own. A
+    /// record that does not say leaves them out. (Both recorders have always
+    /// written the first three; the core's writes the last from 12 November 2026.)
+    #[serde(default)]
+    pub inputs: Option<Vec<(usize, f32)>>,
+    #[serde(default)]
+    pub heat: Option<f32>,
+    #[serde(default)]
+    pub labor: Option<f32>,
+    #[serde(default)]
+    pub capital: Option<f32>,
 }
 
 #[derive(Deserialize, Clone, Debug)]

@@ -73,13 +73,20 @@ pub enum Keep {
     Logs,
     /// under a roof: wool, cloth, charcoal, grain, tools
     Cover,
-    /// nothing to keep: what is sold is work, not goods (the content's "services")
+    /// nothing to keep: what is sold is work, not goods (the content's
+    /// "services"), or is made where it is used and not carried at all
     Nothing,
 }
 
+/// A good of this bulk or more is not kept in any yard: the content gives
+/// such a weight to what is made where it is used and never carted (the
+/// deeper production tree's building work is 12 and its town gas 20, where
+/// stone, the heaviest thing a cart takes, is 2.2).
+const NOT_CARRIED: f32 = 8.0;
+
 impl Keep {
     pub fn of(g: &Good) -> Keep {
-        if g.name == "services" {
+        if g.name == "services" || g.weight >= NOT_CARRIED {
             Keep::Nothing
         } else if g.name == "timber" {
             Keep::Logs
@@ -129,8 +136,10 @@ pub struct Process {
 }
 
 /// The content shipped with the repository, which the lab and the tests read
-/// the processes from. The game hands the planner the process from the
-/// simulation it is running.
+/// the processes from. The game does not: it hands the planner each method's
+/// process as the run it is showing has it (the viewer's
+/// `scatter::process_of`, from the record's header or the live game's
+/// content), so that a run with a content of its own is laid out by its own.
 const CONTENT: &str = include_str!("../../../../data/content.toml");
 
 fn content() -> &'static toml::Table {
