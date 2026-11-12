@@ -376,3 +376,38 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
     }
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn carts_keep_to_their_roads_and_their_bridges_on_island_7() {
+        // island 7 with six families, played to 1900 as the standard pictures play it (about half a minute)
+        let o = crate::live::Opening { seed: 7, families: 6, advance: 150, fresh: true, shots: true, ..Default::default() };
+        let (r, _live, _view) = crate::live::start(&o).expect("the game starts");
+        let g = world::build_ground(&r);
+        let cen = network::centres(&r);
+        let mut crossed = 0;
+        for year in [1800, 1850, 1900] {
+            let k = (year - r.y0) as usize;
+            assert!(k < r.filled, "{year} is not played");
+            let c = check(&r, &g, &cen, k);
+            assert!(c.rounds >= 10, "{year}: only {} carters' rounds", c.rounds);
+            // at the height of the road or the deck under it, wherever it is
+            assert!(c.off_surface.0 < 1e-4, "{year}: a cart rides {} off its road's surface at {}", c.off_surface.0, c.off_surface.1);
+            // and so never at the water's height, nor under it
+            if let Some((h, at)) = c.over_water {
+                assert!(h > LIFT, "{year}: a cart is {h} above the water at {at}");
+            }
+            // on its road's ribbon, to one side of the middle line
+            assert!(c.off_ribbon.0 <= 0.0, "{year}: a cart is {} beyond the edge of its road's ribbon at {}", c.off_ribbon.0, c.off_ribbon.1);
+            // and on a bridge, its wheels between the parapets
+            if let Some((through, at)) = c.through_parapet {
+                assert!(through <= 0.0, "{year}: a cart's wheels are {through} into a parapet at {at}");
+            }
+            crossed += c.cart_bridges.len();
+        }
+        assert!(crossed >= 10, "the carts cross only {crossed} bridges in the three years");
+    }
+}
