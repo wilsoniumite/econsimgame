@@ -288,6 +288,10 @@ pub struct Opening {
     /// this copy was started by one that is closing (New game), which may
     /// still hold the place the game is kept in: wait a little for it
     pub restarted: bool,
+    /// keep the game in its island's autosave whatever the start (`--keep`):
+    /// for a game begun some years in that is to be the island's own, and for
+    /// checks of the saving itself, which name their own folder
+    pub keep: bool,
 }
 
 /// Where a game is kept as it is played.
@@ -316,15 +320,28 @@ impl Opening {
     /// a start that nobody is at (pictures, a script) keeps nothing, and one
     /// that is not plain play (years played before it opens, the demo's
     /// orders) keeps its game among the trials, so that neither can set a
-    /// played game aside. A place that was named is the place, whatever the start.
+    /// played game aside. A place that was named is the place, whatever the
+    /// start, and so is the autosave when it was asked for by name (`keep`).
     pub fn keeping(&self) -> Keeping {
         match &self.save {
             Some(file) => Keeping::Named(file.into()),
+            None if self.keep => Keeping::Autosave,
             None if self.shots || self.unattended => Keeping::Nowhere,
             None if self.advance > 0 => Keeping::Trial("--advance"),
             None if self.demo => Keeping::Trial("--demo"),
             None => Keeping::Autosave,
         }
+    }
+}
+
+impl Opening {
+    /// Why `--keep` is refused, if it is: with nobody at the game it writes
+    /// an autosave only in a folder that was named for it (`ISOSTATE_SAVES`),
+    /// never in the player's own, where the games somebody played are kept.
+    pub fn keep_refused(&self, folder_named: bool) -> Option<String> {
+        (self.keep && self.save.is_none() && (self.shots || self.unattended) && !folder_named).then(|| {
+            "--keep with nobody at the game (a script, pictures) writes an autosave only in a folder named for it, so set ISOSTATE_SAVES to that folder or name a file with --save".to_string()
+        })
     }
 }
 

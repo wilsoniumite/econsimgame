@@ -218,8 +218,7 @@ fn same(a: &Table, b: &Table, when: &str) {
 
 #[test]
 fn a_game_saved_by_the_thread_comes_back_the_same() {
-    let dir = std::env::temp_dir().join(format!("isostate-live-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = saves::test_dir("live-test");
     let file = dir.join("game.json");
     let name = file.to_string_lossy().into_owned();
 
@@ -326,8 +325,7 @@ fn a_square_to_buy(t: &Table) -> usize {
 
 #[test]
 fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
-    let dir = std::env::temp_dir().join(format!("isostate-midyear-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = saves::test_dir("midyear-test");
     let file = dir.join("game.json");
     let name = file.to_string_lossy().into_owned();
 
@@ -455,8 +453,7 @@ fn the_card_says_what_could_not_be_brought_back() {
 #[test]
 fn only_a_plain_start_goes_on_with_the_autosave() {
     // ISOSTATE_SAVES is this test's alone: the other test names its file
-    let dir = std::env::temp_dir().join(format!("isostate-autosave-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = saves::test_dir("autosave-test");
     unsafe { std::env::set_var("ISOSTATE_SAVES", &dir) };
     let file = saves::autosave(7, 3);
     assert_eq!(file, dir.join("island-7-families-3.json"));
@@ -530,6 +527,17 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     assert_eq!(Opening { advance: 1, save: Some("x.json".into()), ..default() }.keeping(), Keeping::Named("x.json".into()));
     assert_eq!(Opening { advance: 1, unattended: true, ..default() }.keeping(), Keeping::Nowhere);
     assert_eq!(Opening { fresh: true, ..default() }.keeping(), Keeping::Autosave);
+    // told to by name (--keep), any start is kept as the island's own; a named file comes first
+    assert_eq!(Opening { advance: 1, unattended: true, shots: true, keep: true, ..default() }.keeping(), Keeping::Autosave);
+    assert_eq!(Opening { keep: true, save: Some("x.json".into()), ..default() }.keeping(), Keeping::Named("x.json".into()));
+    // but with nobody at the game, only in a folder that was named for it: never among the player's own
+    let check = Opening { unattended: true, keep: true, ..default() };
+    assert!(check.keep_refused(false).unwrap().starts_with("--keep with nobody at the game"));
+    assert_eq!(check.keep_refused(true), None);
+    assert!(Opening { shots: true, keep: true, ..default() }.keep_refused(false).is_some());
+    assert_eq!(Opening { advance: 5, keep: true, ..default() }.keep_refused(false), None, "somebody is at it, and asked");
+    assert_eq!(Opening { unattended: true, ..default() }.keep_refused(false), None);
+    assert_eq!(Opening { unattended: true, keep: true, save: Some("x.json".into()), ..default() }.keep_refused(false), None);
     for n in 1..=4 {
         let mut t = Table::open(&Opening { seed: 7, families: 3, advance: n, demo: n == 4, ..default() });
         assert!(t.live.resumed.is_none() && t.live.kept, "a trial is kept, in a place of its own");

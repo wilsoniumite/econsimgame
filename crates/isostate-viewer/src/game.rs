@@ -104,7 +104,7 @@ struct EndCard;
 
 /// The card that opens a new game.
 #[derive(Component)]
-struct Welcome;
+pub struct Welcome;
 
 /// On the opening card of a game gone on with: carry on, or start again.
 #[derive(Component)]

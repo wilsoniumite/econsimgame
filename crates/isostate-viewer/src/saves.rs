@@ -126,8 +126,15 @@ pub fn unread_before(path: &Path, n: usize) -> PathBuf {
     if n <= 1 { unread(path) } else { beside(path, &format!("unread.{n}")) }
 }
 
+/// What the system said went wrong, as a clause: its own words, without the
+/// full stop Windows puts in the middle ("Access is denied. (os error 5)"),
+/// so that a refusal built on it is still one sentence.
+pub fn plainly(e: &std::io::Error) -> String {
+    e.to_string().replace(". (os error", " (os error")
+}
+
 pub fn read(path: &Path) -> Result<Save, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path.display(), plainly(&e)))?;
     Save::from_text(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -154,7 +161,7 @@ pub fn may_keep(path: &Path) -> Result<(), String> {
         read(path).map_err(|e| format!("{e}, and --save writes only where nothing is or over a saved game it can read: name another file"))?;
     }
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let cannot = |e: std::io::Error| format!("a game cannot be kept in {}, because nothing can be written in {} ({e}): name a file in a folder that can be written", path.display(), dir.display());
+    let cannot = |e: std::io::Error| format!("a game cannot be kept in {}, because nothing can be written in {} ({}): name a file in a folder that can be written", path.display(), dir.display(), plainly(&e));
     std::fs::create_dir_all(dir).map_err(cannot)?;
     // a file of its own name, made and taken away again: not the name a save is written under
     let trying = beside(path, "trying");
@@ -238,7 +245,7 @@ impl Saver {
     /// save: it goes when this is dropped and when the program ends, however
     /// it ends, so a game that crashed does not keep the next one out.
     pub fn claim(path: PathBuf) -> Result<Saver, Held> {
-        let told = |e: std::io::Error| Held::Unwritable(format!("{}: {e}", path.display()));
+        let told = |e: std::io::Error| Held::Unwritable(format!("{}: {}", path.display(), plainly(&e)));
         if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             std::fs::create_dir_all(dir).map_err(told)?;
         }
@@ -425,6 +432,17 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize) -> Vec<String>
     out
 }
 
+/// A folder of a test's own, empty: under `ISOSTATE_TEST_DIR` if that is set
+/// (so that a helper's runs stay where it was told to keep them), else under
+/// the system's folder for temporary files.
+#[cfg(test)]
+pub fn test_dir(name: &str) -> PathBuf {
+    let root = std::env::var_os("ISOSTATE_TEST_DIR").filter(|v| !v.is_empty()).map_or_else(std::env::temp_dir, PathBuf::from);
+    let dir = root.join(format!("isostate-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,9 +469,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("isostate-saves-test-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        dir
+        test_dir(&format!("saves-test-{name}"))
     }
 
     fn files(dir: &Path) -> Vec<String> {

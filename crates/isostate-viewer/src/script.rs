@@ -400,6 +400,16 @@ fn print_state(world: &mut World, note: &str) {
             l.standing.pegs.len()
         );
     }
+    // the opening card in its own words: what a game gone on with is told of its save
+    let mut q = world.query_filtered::<Entity, With<crate::game::Welcome>>();
+    let card: Vec<Entity> = q.iter(world).collect();
+    let mut says = Vec::new();
+    for e in card {
+        texts(world, e, &mut says);
+    }
+    if !says.is_empty() {
+        println!("script:   the welcome card says: {}", says.join(" | "));
+    }
     // the order panel under the inspector: what it says and what can be pressed
     let mut q = world.query_filtered::<Entity, With<InspectActions>>();
     let panel: Vec<Entity> = q.iter(world).collect();

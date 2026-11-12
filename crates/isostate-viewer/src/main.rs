@@ -98,6 +98,8 @@ struct Args {
     load: Option<String>,
     /// where to save, instead of the island's autosave
     save: Option<String>,
+    /// keep the game in the island's autosave though the start is not plain play
+    keep: bool,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -157,6 +159,9 @@ With no run named, a new game starts.
   --seed N             which island (7); a new game
   --load FILE          go on with this saved game
   --save FILE          keep the game in FILE instead of the island's autosave
+  --keep               keep the game in the island's autosave though the start is not plain
+                       play (--advance, --demo, --script); with nobody at the game it needs
+                       ISOSTATE_SAVES to name the folder
   --families N         how many great families (6; from 1 to 30)
   --advance N          play N years before the game opens (a trial: it is kept among the
                        trials, apart from the island's own saved game)
@@ -284,6 +289,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         fresh: false,
         load: None,
         save: None,
+        keep: false,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -335,6 +341,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--seed" => { a.seed = number(opt, &next(i)?)?; a.fresh = true; i += 1; }
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
             "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
+            "--keep" => a.keep = true,
             "--families" => {
                 a.families = number(opt, &next(i)?)?;
                 // refused here, before an island is made for a number no game can have
@@ -690,7 +697,13 @@ fn main() {
             // and, like a run that takes pictures, it writes no game unless --save names the place
             unattended: pictures || args.script.is_some(),
             restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
+            keep: args.keep,
         };
+        // a check may write an autosave, but never among the player's own saved games
+        if let Some(why) = opening.keep_refused(std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty())) {
+            eprintln!("the game could not start: {why}");
+            std::process::exit(1);
+        }
         match live::start(&opening) {
             Ok((r, l, f)) => (r, Some(l), Some(f)),
             Err(e) => {
@@ -2628,7 +2641,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--load", "--save", "--keep", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }
