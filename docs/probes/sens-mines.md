@@ -9,7 +9,8 @@ a6ff0ec (12 November 2026). No rule and no fact was changed: this page is the on
 Every run is the game's rules with six families, from 1740 to 1900. Each of the mines' ten numbers was
 run at about three quarters and four thirds of its value on islands 1 to 8, under both regimes, and three
 of them again on islands 9 to 16. Each of the chronicle's twenty-two thresholds was run the
-same way on islands 1 to 8. The sweeps and the scripts that read them are under
+same way on islands 1 to 8, under the landlords only (the chronicle's example takes the game's rules as
+they are). The sweeps and the scripts that read them are under
 `.claude/night/reports/opus/sens-mines/` (the scripts in `scripts/`); none of it is tracked.
 
 ## In brief
@@ -21,8 +22,9 @@ same way on islands 1 to 8. The sweeps and the scripts that read them are under
   tenth of a per cent to one per cent. So nothing in the late century can be read from one baseline on eight islands, and
   the usual "7/1" of a sweep's `--compare` is a weak test there. This changed how the rest was read (next
   section), and it is the first thing I would carry into the pass over the rules.
-- **`reach` is the mines' strongest number.** From 1.5 cells to 2.7 there are 41 per cent fewer workings at
-  every date (0/16 under both regimes), each taking 45 per cent more of its cell; stone raised a head in
+- **`reach` is the mines' strongest number.** From 1.5 cells to 2.7 there are a third fewer workings in
+  1750 and two fifths fewer by 1900 (0/16 under both regimes at every date), each taking 45 per cent more of
+  its cell; stone raised a head in
   1750 is a tenth higher and 5 per cent cheaper (16/0, 0/16). Under the landlords the island of 1900 has 9.5
   per cent less railway (1/15) and, on most islands though not all, 5 per cent fewer baskets a head (3/13)
   and 7 per cent less coal a head (5/11).
@@ -33,7 +35,7 @@ same way on islands 1 to 8. The sweeps and the scripts that read them are under
   `hands_per_cell` moves only the land under the diggings, as 1/x. `memory` and `year_room` are at the
   noise floor. `reserve` does what its page says, a little more coal and fewer colliers late. `idle_years`
   shapes the workings the warm-up gives up and nothing after.
-- **Nothing breaks.** Every one of the 576 runs of the mines finished and passed the monthly money check.
+- **Nothing breaks.** Every one of the 608 runs of the mines' sweeps finished and passed the monthly money check.
   The worst year for the real wage, -0.45, is a null history (island 9 under the landlords, where one town
   pays 84.5 times the middle town's wage for a month in 1782): the bad year that `mines.md` already owns up
   to is there at today's values, about one history in sixty-four, and no setting here clearly changes how
@@ -95,8 +97,8 @@ sixteen. "1750" facts are where a setting shows cleanly; "late" is what beats th
 
 | setting | today | tried | what moved most, low to high | facts beating the noise |
 |---|---|---|---|---|
-| `reach` | 2.0 | 1.5, 2.7 | (sixteen) workings -43% at every date (0/16), each +47% of its cell (16/0); stone a head 1750 +11% (16/0), 4.8% cheaper (0/16). Late: railway 1900 -9.5% (1/15); baskets 1900 -4.8% (3/13), real wage 1900/1750 -5.9% (4/12), coal a head 1900 -7.4% (5/11) | 52; 36 on sixteen |
-| `haul` | 0.05 | 0.0375, 0.0667 | (sixteen) stone a head 1750 -3.7% (1/15), 1.6% dearer (14/2); colliers' share of hands 1800 +8% (15/1). Coal over the wage 1900 -9% (8/8): nothing late | 22; 7 on sixteen |
+| `reach` | 2.0 | 1.5, 2.7 | (sixteen) workings -34% in 1750, -35% in 1800, -38% in 1850, -43% in 1900 (0/16 each), each +47% of its cell (16/0); stone a head 1750 +11% (16/0), 4.8% cheaper (0/16). Late: railway 1900 -9.5% (1/15); baskets 1900 -4.8% (3/13), real wage 1900/1750 -5.9% (4/12), coal a head 1900 -7.4% (5/11) | 52; 36 on sixteen |
+| `haul` | 0.05 | 0.0375, 0.0667 | (sixteen) stone a head 1750 -3.7% (1/15), 1.6% dearer (14/2); colliers' share of hands 1800 +8% (15/1). Coal over the wage 1900 -9% (8/8): nothing late | 21; 7 on sixteen |
 | `sink` | 40 | 30, 53 | workings 1900 -11% (0/8), 1750 -5% (0/8); stone a head 1750 -5.2% (1/7), 2.7% dearer (8/0); carters' share of hands 1750 -1.7% (0/8). Nothing late | 37 |
 | `payback` | 4 | 3, 5.33 | workings 1900 +11% (8/0), 1750 +4% (8/0); stone a head 1750 +5.9% (8/0), 3.1% cheaper (0/8); goods a head 1750 +0.4% (7/1). Nothing late | 44 |
 | `idle_years` | 10 | 8, 13 | clay a head 1750 +12.5% (8/0); workings 1800 +6.3% (8/0); stone a head 1750 -1.2% (0/8). Nothing late | 19 |
@@ -111,11 +113,11 @@ sixteen. "1750" facts are where a setting shows cleanly; "late" is what beats th
 
 | setting | today | tried | what moved most, low to high | facts beating the noise |
 |---|---|---|---|---|
-| `reach` | 2.0 | 1.5, 2.7 | (sixteen) workings -41% (0/16), each +45% of its cell (16/0); stone a head 1750 +10% (16/0), 5.1% cheaper (0/16); goods a head 1750 +0.7% (13/3, z 12). Late: coal a head 1900 -6.6% (4/12); nothing else | 45; 34 on sixteen |
+| `reach` | 2.0 | 1.5, 2.7 | (sixteen) workings -37% in 1750, -41% in 1900 (0/16 each), each +45% of its cell (16/0); stone a head 1750 +10% (16/0), 5.1% cheaper (0/16); goods a head 1750 +0.7% (13/3, z 12). Late: coal a head 1900 -6.6% (4/12); nothing else | 45; 34 on sixteen |
 | `haul` | 0.05 | 0.0375, 0.0667 | (sixteen) stone a head 1750 -5.7% (0/16), 2.4% dearer (16/0). Coal over the wage 1900 +21% (10/6): opposite to the landlords and agreed under neither | 26; 7 on sixteen |
 | `sink` | 40 | 30, 53 | workings 1900 -11% (0/8); stone a head 1750 -6.4% (0/8), 2.8% dearer (8/0); carters' share 1750 -2.4% (0/8). Nothing late | 38 |
 | `payback` | 4 | 3, 5.33 | workings 1900 +12% (8/0); stone a head 1750 +6.3% (8/0), 2.9% cheaper (0/8); carters' share 1750 +2.2% (8/0). Nothing late | 42 |
-| `idle_years` | 10 | 8, 13 | clay a head 1750 +13% (8/0); stone a head 1750 -1.3% (0/8). Nothing late | 17 |
+| `idle_years` | 10 | 8, 13 | clay a head 1750 +13% (8/0); stone a head 1750 -1.3% (0/8). Nothing late | 16 |
 | `memory` | 0.3 | 0.225, 0.4 | iron over the wage 1751-70 -4.2% (1/7) | 3 |
 | `year_room` | 0.15 | 0.1125, 0.2 | collieries 1900 -11% (1/7); works 1850 -14% (0/8, z -3.4) | 8 |
 | `reserve` | 20,000,000 | 15,000,000, 26,700,000 | clay a head 1900 -13% (1/7) | 1 |
@@ -197,11 +199,13 @@ What it comes to:
 - **The feed's length is two numbers, `per_decade` and `floor`.** Nothing else moves it by more than one
   item in 59. `per_decade` 3 gives the sparer history the chronicle's page wondered about: two or three
   items in every decade, and it is regional stories, markets and milestones that go, not inventions or the
-  player. `floor` 0.8 is too high, and shows a dependence the page does not state: the player's place is
-  kept at `floor`, so a floor above `own_great` empties it.
+  player. `floor` 0.8 is too high, and shows a dependence the page leaves unsaid: the player's place is
+  kept at `floor` (the page writes its value, 0.6), so a floor above `own_great` empties it.
 - **The player's own news is the `own_*` weights against `floor`.** Each moves the player's kept items by 2
   to 4.5 when it crosses the floor and by nothing when it does not; lowering `own_great` below the floor
-  hands four of the player's places a run to regional stories.
+  takes four and a half of the player's items a run out of the feed; the rest of the news fills most of
+  the room (regional stories +1.3; milestones, dearths, new towns and declines about +0.5 each), and the
+  feed is one item shorter.
 - **The regional thresholds move what is told, hardly what is kept.** One of a kind a decade caps the kept
   stories, so a third either way moves the kept count by under one item a run for every threshold. What is
   told moves by 0.1 to 2.5 stories a run, less than chance moves an island's regional stories from one
@@ -239,7 +243,7 @@ What it comes to:
 
 ## Values at which a run breaks
 
-None of these. All 576 runs of the mines' sweeps finished and passed the monthly money check, under both
+None of these. All 608 runs of the mines' sweeps (the baselines among them) finished and passed the monthly money check, under both
 regimes; so did every run of the chronicle's. No town emptied: the most famine years any run had was four
 (`haul` 0.0375, landlords, island 6), against three in the null histories, and famine years are chance (the
 spread between histories of one island is as large as the mean or larger).
@@ -300,8 +304,9 @@ island has a bad year in every history, and the settings only move it a little.
    describes (a working that hires no more than its town has to spare) would take that noise out of every
    table of this pass.
 5. **`cell_limit` could go**, or stay as a guard that never fires.
-6. **The chronicle's `floor` and the player's place.** The page says the player's place is kept at 0.6;
-   the code keeps it at `floor`. Either the page or the code should say which is meant.
+6. **The chronicle's `floor` and the player's place.** The code keeps the player's place at `floor`, so
+   the two weights move together; `chronicle.md` writes the floor's value, 0.6, where it describes the
+   place, and would be clearer naming `floor` and saying that it must stay below `own_great`.
 7. **`closures_min`** was lowered from ten to five when the life cycle for works came in, on counts from
    four islands and then twelve; it is the chronicle's one steep threshold, so it wants another look
    whenever the works' sizes move.
