@@ -305,6 +305,8 @@ struct Recorder {
     swap: Option<(f32, u8)>,
     /// the longest frame while the last scenery went on screen and the renderer took it in
     swap_longest: Option<f32>,
+    /// the frame in hand did a scripted check's work, not the game's (`aside`)
+    aside: bool,
 }
 
 /// What the last whole frame cost the main thread, for a scripted run's `sample`.
@@ -336,6 +338,17 @@ pub fn take_longest(world: &mut World) -> Option<f32> {
 pub fn swap_longest(world: &World) -> Option<f32> {
     let rec = world.get_resource::<Recorder>()?;
     rec.swap.map(|s| s.0).or(rec.swap_longest)
+}
+
+/// The frame in hand does work of a scripted check's own (`scenery` builds
+/// the year afresh on the main thread, which takes a second or two), and is
+/// not to be counted as the renderer's while it takes scenery in. A scripted
+/// `settle` ends in the frame the last mesh goes, and the watch runs two
+/// frames past that, so the check's frame fell inside it.
+pub fn aside(world: &mut World) {
+    if let Some(mut rec) = world.get_resource_mut::<Recorder>() {
+        rec.aside = true;
+    }
 }
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
@@ -519,7 +532,7 @@ pub fn add(app: &mut App, meter: bool) {
     let now = Instant::now();
     let world = app.world_mut();
     let (meshes, images) = (world.resource::<Messages<AssetEvent<Mesh>>>().get_cursor(), world.resource::<Messages<AssetEvent<Image>>>().get_cursor());
-    world.insert_resource(Recorder { out, t0: now, begun: now, stamps: [now; MAIN_PARTS.len() - 1], cur: None, frames: Vec::new(), segs: vec!["warm-up".into()], seen: None, meshes, images, windowed, about, written: false, build_began: None, longest: 0.0, swap: None, swap_longest: None });
+    world.insert_resource(Recorder { out, t0: now, begun: now, stamps: [now; MAIN_PARTS.len() - 1], cur: None, frames: Vec::new(), segs: vec!["warm-up".into()], seen: None, meshes, images, windowed, about, written: false, build_began: None, longest: 0.0, swap: None, swap_longest: None, aside: false });
 
     // the main thread: a stamp before First, after PreUpdate, Update and PostUpdate, and after Last
     let mut order = app.world_mut().resource_mut::<MainScheduleOrder>();
@@ -662,6 +675,22 @@ fn whole_years(fs: &[&Frame]) -> Vec<(f32, f32)> {
     out
 }
 
+/// What a changed mesh will cost the card, its corners and its indices, in
+/// bytes. A mesh the renderer alone keeps (the year's scenery) has no data on
+/// the main thread once the renderer has taken it, and the engine's own
+/// sizes panic on such a mesh. Today every one is read here, in `Last`,
+/// before the renderer takes it; one changed later in a frame would be read
+/// after, and is then counted as nothing rather than stopping the run.
+fn mesh_bytes(m: &Mesh) -> usize {
+    let corners = m.try_attributes().map_or(0, |a| a.map(|(_, v)| v.get_bytes().len()).sum());
+    let indices = match m.try_indices_option() {
+        Ok(Some(bevy::mesh::Indices::U16(i))) => 2 * i.len(),
+        Ok(Some(bevy::mesh::Indices::U32(i))) => 4 * i.len(),
+        _ => 0,
+    };
+    corners + indices
+}
+
 fn ms(a: Instant, b: Instant) -> f32 {
     b.saturating_duration_since(a).as_secs_f32() * 1e3
 }
@@ -680,8 +709,11 @@ fn begin(mut rec: ResMut<Recorder>) {
         if f.marks.contains('W') || f.marks.contains('C') {
             rec.swap = Some((0.0, 3));
         }
+        let aside = std::mem::take(&mut rec.aside);
         if let Some((longest, left)) = rec.swap.as_mut() {
-            *longest = longest.max(f.frame_ms);
+            if !aside {
+                *longest = longest.max(f.frame_ms);
+            }
             if f.queue == 0 {
                 *left -= 1;
             }
@@ -725,7 +757,7 @@ fn end(world: &mut World) {
         for id in ids {
             let Some(m) = meshes.get(id) else { continue };
             f.meshes += 1;
-            f.mesh_mb += (m.get_vertex_buffer_size() + m.get_index_buffer_bytes().map_or(0, |b| b.len())) as f32 / 1e6;
+            f.mesh_mb += mesh_bytes(m) as f32 / 1e6;
         }
         f.images = rec.images.read(world.resource::<Messages<AssetEvent<Image>>>()).filter(|e| matches!(e, AssetEvent::Modified { .. })).count() as u32;
 

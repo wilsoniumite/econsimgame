@@ -1607,8 +1607,8 @@ fn rebuild_year(
 /// holds the trees up by a frame. It was tried last, as the first brief had
 /// it, and for as long as the trees took to go the new works stood on bare
 /// ground with no yard, the new roads were missing, and a train ran where no
-/// track was drawn (docs/probes/dx-smooth.md, section 12, says what the
-/// pictures of a year half arrived showed).
+/// track was drawn (docs/probes/dx-smooth.md, section 12, "Stage one, as
+/// built", says what the pictures of a year half arrived showed).
 fn hand_over_order(built: [handover::Piece; 3], flat: [handover::Piece; 3], showing: Vec<handover::Piece>, hidden: Vec<handover::Piece>) -> Vec<handover::Piece> {
     let [houses, works, smoke] = built;
     let [lanes, roads, rails] = flat;
@@ -1670,6 +1670,8 @@ fn scenery_line(world: &mut World) -> String {
 /// mesh last assigned under each handle (`handover::feed`), taken by the build
 /// that made it, against the fresh build's.
 fn check_scenery(world: &mut World) -> Result<String, String> {
+    // (the build below is the check's, not the game's: the frame it is in is not the renderer's)
+    frames::aside(world);
     let Some(lod) = world.resource::<Shown>().lod else { return Err("no scenery has been built yet".into()) };
     let (data, tl, look) = (world.resource::<Data>(), world.resource::<Timeline>(), world.resource::<TheLook>());
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);

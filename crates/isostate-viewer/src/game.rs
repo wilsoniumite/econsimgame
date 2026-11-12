@@ -1154,6 +1154,7 @@ fn option_note(d: &Decision, choice: Choice, fam: &FamilyView, me: &FamilyRow, r
 
 #[allow(clippy::too_many_arguments)]
 fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, cards: Query<Entity, With<DecisionCard>>) {
+    let _frames = crate::frames::span(crate::frames::Sys::Orders);
     // with the year's end on its way (the card opened from the badge while the
     // months ran) an answer cannot land in time: the options wait, unlit
     let turning = live.turning();
