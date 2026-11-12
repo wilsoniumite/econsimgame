@@ -34,11 +34,11 @@ use crate::site::Site;
 pub(super) use crate::scale::{BAY, STOREY};
 
 /// How far what stands in a yard reaches below the ground, so that a slope shows no gap.
-const SINK: f32 = 0.02;
+pub(super) const SINK: f32 = 0.02;
 /// How far a yard's ground lies above the land, and what lies on it above that.
-const LIFT: f32 = 0.0045;
+pub(super) const LIFT: f32 = 0.0045;
 /// The yard's ground follows the land in squares no bigger than this.
-const GROUND_STEP: f32 = 0.045;
+pub(super) const GROUND_STEP: f32 = 0.045;
 /// A works' window: how wide, how tall, and how high its sill stands above its floor.
 const WINDOW: (f32, f32) = (0.0066, 0.0086);
 const SILL: f32 = FOOT + 0.0058;
@@ -147,6 +147,18 @@ pub(super) struct Ctx<'a, 's> {
     pub sheds: Vec<Shed>,
     /// its windows are lit from within: a mill at work
     pub lit: bool,
+    /// it is a part of a planned works (`site`): the plot's ground and the wall
+    /// round it are the plan's, so `ground` and `wall` only say what was asked for
+    pub planned: bool,
+    /// how weathered it is by its age, in steps from 0 (new) to 2 (two generations old)
+    pub worn: f32,
+    /// the ground and the wall a kind asked for while it was a part of a plan
+    pub asked_ground: Option<Rgba>,
+    pub asked_wall: Option<(Rgba, f32)>,
+    /// what lies loose about the works (its stock of ore and coal, its tip)
+    /// is laid out apart, by the plan of a planned works (`site`), from the
+    /// process and what the works holds: a kind's own heaps are not drawn
+    pub stock_apart: bool,
     pending: Vec<Pending>,
     count: i32,
 }
@@ -154,7 +166,15 @@ pub(super) struct Ctx<'a, 's> {
 impl<'a, 's> Ctx<'a, 's> {
     pub fn new(solid: &'a mut MeshBuf, smoke: &'a mut MeshBuf, flat: &'a mut MeshBuf, site: &'a Site<'s>, w: &Works, pal: &'a Palette) -> Self {
         let (fw, fd) = super::footprint(w.kind, w.size);
-        Ctx { solid, smoke, flat, site, pal, w: *w, hw: fw * 0.5, hd: fd * 0.5, g: super::grain(w.size), peak: None, sheds: Vec::new(), lit: false, pending: Vec::new(), count: 0 }
+        Ctx { solid, smoke, flat, site, pal, w: *w, hw: fw * 0.5, hd: fd * 0.5, g: super::grain(w.size), peak: None, sheds: Vec::new(), lit: false, planned: false, worn: 0.0, asked_ground: None, asked_wall: None, stock_apart: false, pending: Vec::new(), count: 0 }
+    }
+
+    /// A part of a planned works (`site`): it stands on the ground the plan
+    /// gave it, `2 * hw` by `2 * hd` about the site's origin, and has the
+    /// year it was built in `w.founded`, its own state and its own seed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn part(solid: &'a mut MeshBuf, smoke: &'a mut MeshBuf, flat: &'a mut MeshBuf, site: &'a Site<'s>, w: &Works, pal: &'a Palette, hw: f32, hd: f32, worn: f32) -> Self {
+        Ctx { hw, hd, planned: true, worn, ..Ctx::new(solid, smoke, flat, site, w, pal) }
     }
 
     // -------------------------------------------------------------- what the works is
@@ -234,6 +254,8 @@ impl<'a, 's> Ctx<'a, 's> {
 
     /// A colour as it weathers: dulled and greened once the works is derelict.
     pub fn tone(&self, c: Rgba) -> Rgba {
+        // an old part is a little sooted, as a roof is a little mossed
+        let c = if self.worn > 0.0 { lerp(c, *self.pal.smoke.soot, 0.07 * self.worn) } else { c };
         if self.derelict() { shade(lerp(c, *self.pal.ground.yard_weeds, 0.22), 0.88) } else { c }
     }
 
@@ -919,16 +941,19 @@ impl<'a, 's> Ctx<'a, 's> {
     /// From far off only the great heaps are drawn; close to a heap has a shoulder.
     pub fn heap(&mut self, x: f32, z: f32, r: f32, h: f32, col: Rgba) {
         let turn = self.rnd() * 3.0;
-        if self.far() && r < 0.02 {
+        if self.stock_apart || (self.far() && r < 0.02) {
             return;
         }
         let sides = if self.near() { 7 } else { 5 };
         // (a small heap comes to a point: the flat of its top would be finer than the level draws)
         let top = if self.near() || r * 0.28 >= 0.004 { r * 0.28 } else { 0.0 };
-        self.solid.frustum_turned(self.at(x, z), r, top, h, sides, turn, SINK * 0.5, col, Some(shade(col, 1.08)));
+        // (it lies on the yard's ground, which is laid `LIFT` above the land: a heap that
+        // rose from the land itself would show only its top)
+        let up = Vec3::Y * LIFT;
+        self.solid.frustum_turned(self.at(x, z) + up, r, top, h, sides, turn, SINK * 0.5 + LIFT, col, Some(shade(col, 1.08)));
         if self.near() && r > 0.006 {
             let (dx, dz) = (turn.cos() * r * 0.55, turn.sin() * r * 0.55);
-            self.solid.frustum_turned(self.at(x + dx, z + dz), r * 0.5, 0.0, h * 0.55, 5, turn + 1.0, SINK * 0.5, shade(col, 0.94), None);
+            self.solid.frustum_turned(self.at(x + dx, z + dz) + up, r * 0.5, 0.0, h * 0.55, 5, turn + 1.0, SINK * 0.5 + LIFT, shade(col, 0.94), None);
         }
     }
 
@@ -941,13 +966,14 @@ impl<'a, 's> Ctx<'a, 's> {
             return;
         }
         let yaw = self.site.yaw + if across { std::f32::consts::FRAC_PI_2 } else { 0.0 };
-        let p = self.at(x, z);
+        // (on the yard's ground, `LIFT` above the land, as a heap is)
+        let p = self.at(x, z) + Vec3::Y * LIFT;
         if self.near() && h > 0.0036 && len.min(dep) > 0.004 {
             let low = h * 0.55;
-            self.solid.block(p, len, dep, low, yaw, shade(col, 0.94), Some(shade(col, 0.8)), SINK * 0.5);
+            self.solid.block(p, len, dep, low, yaw, shade(col, 0.94), Some(shade(col, 0.8)), SINK * 0.5 + LIFT);
             self.solid.block(p + Vec3::Y * low, len - 0.0012, dep - 0.0012, h - low, yaw, col, Some(shade(col, 1.08)), 0.0);
         } else {
-            self.solid.block(p, len, dep, h, yaw, col, Some(shade(col, 1.08)), SINK * 0.5);
+            self.solid.block(p, len, dep, h, yaw, col, Some(shade(col, 1.08)), SINK * 0.5 + LIFT);
         }
     }
 
@@ -959,6 +985,9 @@ impl<'a, 's> Ctx<'a, 's> {
             return;
         }
         let (pw, pd) = (w / cols as f32, d / rows as f32);
+        // (in a planned works only what stands where the process leaves it, the rows nearest
+        // the buildings: the stack yard by the way out is the plan's)
+        let rows = if self.stock_apart { ((0.026 * self.g / pd).ceil() as usize).clamp(1, rows) } else { rows };
         for j in 0..rows {
             for i in 0..cols {
                 // a stack or two is always away at the customer's
@@ -1033,6 +1062,10 @@ impl<'a, 's> Ctx<'a, 's> {
     /// The yard's own ground over the whole footprint (or, with `round`,
     /// over the ellipse within it), following the land.
     pub fn ground(&mut self, col: Rgba, round: bool) {
+        if self.planned {
+            self.asked_ground = Some(col);
+            return;
+        }
         let col = if self.derelict() { lerp(col, *self.pal.ground.yard_weeds, 0.65) } else { col };
         let up = Vec3::Y * LIFT;
         if self.site.is_level() {
@@ -1085,7 +1118,7 @@ impl<'a, 's> Ctx<'a, 's> {
 
     /// A run of wall or fence from one place in the yard to another,
     /// following the ground; close to, with a coping that oversails it.
-    fn wall_run(&mut self, a: (f32, f32), b: (f32, f32), h: f32, t: f32, col: Rgba, coping: bool) {
+    pub fn wall_run(&mut self, a: (f32, f32), b: (f32, f32), h: f32, t: f32, col: Rgba, coping: bool) {
         let len = (b.0 - a.0).hypot(b.1 - a.1);
         if len < 1e-4 {
             return;
@@ -1124,7 +1157,7 @@ impl<'a, 's> Ctx<'a, 's> {
     }
 
     /// A pier of a wall or a gate at a place in the yard: square, and capped close to.
-    fn pier(&mut self, x: f32, z: f32, side: f32, h: f32, col: Rgba) {
+    pub fn pier(&mut self, x: f32, z: f32, side: f32, h: f32, col: Rgba) {
         let p = self.at(x, z);
         self.solid.block(p, side, side, h, self.site.yaw, shade(col, 0.95), Some(shade(col, 1.1)), SINK * 0.5);
         if self.near() {
@@ -1140,6 +1173,10 @@ impl<'a, 's> Ctx<'a, 's> {
     /// while the works is going up, and nothing from far off, where the
     /// yard's ground says where the works is.
     pub fn wall(&mut self, col: Rgba, h: f32, gate: f32) {
+        if self.planned {
+            self.asked_wall = Some((col, h));
+            return;
+        }
         if self.going_up() {
             return;
         }
@@ -1214,6 +1251,10 @@ impl<'a, 's> Ctx<'a, 's> {
 
     /// What lies about a works that is being built: a pile of timber and a heap of bricks.
     pub fn builders_yard(&mut self) {
+        // (a part of a planned works has no yard of its own to lay timber about in)
+        if self.planned {
+            return;
+        }
         let (x, z) = (self.hw * 0.5, self.hd * 0.72);
         let board = *self.pal.timber.scaffold_board;
         let len = (0.03 * self.g).min(self.hw * 0.7);

@@ -182,6 +182,10 @@ fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 /// What became of an order that waited for the year's end.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Outcome {
@@ -250,6 +254,24 @@ impl Game {
     /// A new game under these rules.
     pub fn under(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
         Game { sim: sim::start(&params(rules, seed, families), rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+    }
+
+    /// A new game under these rules on the second island generator's land
+    /// (docs/rules/land.md), whatever the rules say of it: the rules as they
+    /// stand, with the land switched on and its numbers the game's. It is how
+    /// a game is started on the new land before the switch is thrown under
+    /// the game's rules, and it changes nothing for a game started any other
+    /// way. A save of such a game says so (`Save::land`) and is played again
+    /// on the same land.
+    pub fn on_new_land(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
+        let mut P = params(rules, seed, families);
+        P.land = crate::landform::LandParams::game();
+        Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+    }
+
+    /// Whether the game is played on the second island generator's land.
+    pub fn on_land(&self) -> bool {
+        self.sim.params.land.enabled
     }
 
     /// The last year played (the year before the first, if none has been).
@@ -399,6 +421,7 @@ impl Game {
             seat: me.as_ref().map(|r| r.seat_name.clone()).unwrap_or_default(),
             worth: me.as_ref().map(|r| r.net_worth.round() as i64).unwrap_or(0),
             check: check(&self.sim),
+            land: self.on_land() && !self.rules.params().land.enabled,
             orders: self.orders.clone(),
             waiting: self.waiting.clone(),
         }
@@ -435,6 +458,12 @@ pub struct Save {
     /// A fingerprint of the island as it stood (`check`).
     #[serde(default)]
     pub check: String,
+    /// The game was started on the second island generator's land though its
+    /// rules do not switch it on (`Game::on_new_land`), and is played again
+    /// there. Left out of the file otherwise, so every other save is written
+    /// as it always was.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub land: bool,
     pub orders: Vec<Given>,
     /// Orders given since the year's turn, waiting for the year's end (layout 2).
     #[serde(default)]
@@ -551,7 +580,12 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     }
     // a save made in memory has not been through `from_text`
     save.sound()?;
-    let mut game = Game::under(save.played_under(), save.seed, save.families, save.started);
+    // a game started on the new land before its rules switch it on is played again there
+    let mut game = if save.land {
+        Game::on_new_land(save.played_under(), save.seed, save.families, save.started)
+    } else {
+        Game::under(save.played_under(), save.seed, save.families, save.started)
+    };
     let mut refused = Vec::new();
     let mut next = 0;
     // where the save had got to: a year's turn, or some months into the year after it

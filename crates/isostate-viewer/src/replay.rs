@@ -30,6 +30,16 @@ pub struct Meta {
 pub struct Good {
     pub name: String,
     pub label: String,
+    /// Its bulk in carting and its price at the start, as the run's own
+    /// content has them: by these a works' site planner tells how the good
+    /// is kept, in heaps, in stacks or under a roof (`scatter::process_of`).
+    /// A record that does not say leaves them out. (The Python's records and
+    /// the core's have always written the weight; the core's write the
+    /// price from 12 November 2026.)
+    #[serde(default)]
+    pub weight: Option<f32>,
+    #[serde(default)]
+    pub price: Option<f32>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -39,6 +49,22 @@ pub struct Method {
     pub out: usize,
     #[serde(rename = "K0")]
     pub k0: f32,
+    /// What the method does, as the run's own content has it: its goods in
+    /// (each good's place among the goods, and how much goes to a unit of
+    /// output), the heat it burns and its labour to a unit of output, and
+    /// what a unit of monthly capacity costs to build at the goods' starting
+    /// prices. A works is laid out from these (`scatter::process_of`), so a
+    /// trade the art has never heard of still gets a plan of its own. A
+    /// record that does not say leaves them out. (Both recorders have always
+    /// written the first three; the core's writes the last from 12 November 2026.)
+    #[serde(default)]
+    pub inputs: Option<Vec<(usize, f32)>>,
+    #[serde(default)]
+    pub heat: Option<f32>,
+    #[serde(default)]
+    pub labor: Option<f32>,
+    #[serde(default)]
+    pub capital: Option<f32>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -138,6 +164,10 @@ pub struct Header {
     pub arrays: Vec<ArrayInfo>,
     #[serde(default)]
     pub series: SeriesNames,
+    /// what a run made on the second island generator's land says of it
+    /// (newland.rs); a run made on the old island has none
+    #[serde(default)]
+    pub land: Option<crate::newland::LandHeader>,
 }
 
 /// Everything the viewer needs from one run, copied into plain vectors.
@@ -196,6 +226,13 @@ pub struct Replay {
     /// workings (the core's docs/rules/mines.md); empty for a run that does not,
     /// whose pits are read off the land mix as before
     pub workings: Vec<Vec<Working>>,
+    /// The second island generator's land, where the run was made on it
+    /// (newland.rs): the heights every 500 m, the rivers' lines, the lakes.
+    /// None for a run made on the old island, which is drawn as it always
+    /// was. It hangs here in an `Arc` of its own, so that copying a run (as a
+    /// live game does when a year arrives while a scenery build holds it)
+    /// copies a pointer and not four megabytes.
+    pub land: Option<std::sync::Arc<crate::newland::NewLand>>,
 }
 
 /// `Replay::built` counts years from here (`isostate_core::record::BUILT_YEAR0`).
@@ -298,6 +335,15 @@ fn known_names(path: &str, header: &Header) -> Result<(), String> {
     Ok(())
 }
 
+/// What is said of a run whose header speaks of the new land and which has
+/// none of its arrays (they were left out, as a lite pack leaves them out):
+/// that its land cannot be drawn, and what is drawn in its place.
+fn no_land_arrays(path: &str) -> String {
+    format!(
+        "{path} was made on the new land (the second island generator's) and does not carry its arrays, so its land cannot be drawn. What is drawn in its place is the old kind of island, made up from the cells' heights: the viewer's own rivers, no lakes, and the tideways as dry land"
+    )
+}
+
 pub fn load(path: &str) -> Result<Replay, String> {
     let buf = std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     parse(path, &buf)
@@ -315,7 +361,13 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     }
     let header: Header = serde_json::from_slice(&buf[4..base]).map_err(|e| format!("bad header in {path}: {e}"))?;
     if header.meta.lite {
-        return Err(format!("{path} is a lite run (charts only) and has no map layers"));
+        // a lite pack of a run made on the new land keeps the header's word of it and none of its arrays
+        let land = if header.land.is_some() {
+            ", and the land it was made on (the new island's heights, rivers and lakes) is not in a lite pack either: nothing of the island can be drawn from it, so record the run again without --lite"
+        } else {
+            ""
+        };
+        return Err(format!("{path} is a lite run (charts only) and has no map layers{land}"));
     }
     let find = |name: &str| -> Result<&ArrayInfo, String> {
         header
@@ -393,6 +445,76 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             );
         }
     }
+    // The second island generator's land, all of it or none. A run whose header speaks of
+    // the land and which has its arrays is read whole, and an array that is short is
+    // refused by name. One whose header speaks of it and which has no heights is drawn as
+    // the old island is, and says so: it must not be the invented island without a word.
+    let land = match &header.land {
+        Some(lh) if has("land_height") => {
+            if lh.fine == 0 || lh.fw != w * lh.fine || lh.fh != h * lh.fine {
+                return Err(format!("{path}: its land is {} by {} nodes at {} to a cell's side, which does not fit a map of {w} by {h} cells", lh.fw, lh.fh, lh.fine));
+            }
+            let sized = |name: &str, len: usize, want: usize, of: &str| -> Result<(), String> {
+                if len == want { Ok(()) } else { Err(format!("{path}: its array {name} has {len} values, where {of} need {want}")) }
+            };
+            let fine = format!("the land's {} by {} nodes", lh.fw, lh.fh);
+            let cells = format!("the map's {w} by {h} cells");
+            let node_f32 = |name: &str| -> Result<Vec<f32>, String> {
+                let v = f32s(name)?;
+                sized(name, v.len(), lh.fw * lh.fh, &fine).map(|()| v)
+            };
+            let node_u8 = |name: &str| -> Result<Vec<u8>, String> {
+                let v = u8s(name)?;
+                sized(name, v.len(), lh.fw * lh.fh, &fine).map(|()| v)
+            };
+            let cell_flag = |name: &str| -> Result<Vec<bool>, String> {
+                let v = u8s(name)?;
+                sized(name, v.len(), w * h, &cells).map(|()| v.iter().map(|&b| b != 0).collect())
+            };
+            let named = |e: String| format!("{path}: {e}");
+            let lines = crate::newland::lines_from(&crate::newland::LineArrays {
+                start: i32s("river_start")?,
+                xy: f32s("river_xy")?,
+                width: f32s("river_width")?,
+                level: f32s("river_level")?,
+                flow: f32s("river_flow")?,
+                end: i32s("river_end")?,
+            })
+            .map_err(named)?;
+            let oxbows = crate::newland::oxbows_from(&i32s("oxbow_start")?, &f32s("oxbow_xy")?, &f32s("oxbow_width")?, &f32s("oxbow_level")?).map_err(named)?;
+            // each node under a lake names it by its place in the header's list plus 1, and the
+            // ground looks the lake's level up by it: a lake the header does not list is refused
+            let lake = node_u8("land_lake")?;
+            if let Some(&id) = lake.iter().find(|&&id| id as usize > lh.lakes.len()) {
+                return Err(format!("{path}: its array land_lake puts a node under lake {id} (counting from 1), and its header lists {} lakes", lh.lakes.len()));
+            }
+            Some(std::sync::Arc::new(crate::newland::NewLand {
+                w,
+                h,
+                fine: lh.fine,
+                fw: lh.fw,
+                fh: lh.fh,
+                height: node_f32("land_height")?,
+                rock: node_u8("land_rock")?,
+                lake,
+                wet: node_u8("land_wet")?,
+                flow: node_f32("land_flow")?,
+                lines,
+                oxbows,
+                lakes: lh.lakes.clone(),
+                drowned: lh.drowned,
+                lake_cell: cell_flag("land_lakecell")?,
+                shore: cell_flag("land_shore")?,
+                estuary: cell_flag("land_estuary")?,
+                middles: Default::default(),
+            }))
+        }
+        Some(_) => {
+            eprintln!("{}", no_land_arrays(path));
+            None
+        }
+        None => None,
+    };
     Ok(Replay {
         w,
         h,
@@ -400,6 +522,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         ny,
         y0: header.meta.start_year,
         n_towns,
+        land,
         elev: u8s("elev")?,
         terrain: u8s("terrain")?,
         river: u8s("river")?,
@@ -609,6 +732,167 @@ mod tests {
         assert_eq!((r.joined(0, 0), r.joined(0, 1)), (Some(1700), None));
         assert_eq!((r.residents(0, 0), r.residents(0, 1)), (488.0, 0.0));
         assert!((r.works_share(0, 1) - 0.2).abs() < 1e-6);
+    }
+
+    /// The tiny run as one made on the new land: the header's `land` object
+    /// and, if `arrays`, the land's arrays after its last array, as the core
+    /// writes them (`landcells::static_arrays`): two cells at four nodes to a
+    /// cell's side, one river of three points and no oxbow. `edit` is given
+    /// each array's name and its values' bytes before they are laid down.
+    fn land_run(arrays: bool, edit: impl Fn(&str, &mut Vec<u8>)) -> Vec<u8> {
+        let whole = tiny_run();
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
+        let mut body = whole[4 + hlen..].to_vec();
+        v["land"] = serde_json::json!({
+            "fine": 4, "fw": 8, "fh": 4, "h_ref": 1500.0, "wind": [1.0, 0.0], "drowned": 5.0,
+            "lakes": [{"level": 95.0, "area_km2": 12.0, "depth": 9.0, "x": 1.2, "y": 0.4, "outlet": [1.0, 0.5], "outflow": 2.5}],
+            "outlets": [], "rock_names": [], "wet_names": [], "site_names": [],
+        });
+        let floats = |v: &[f32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+        let ints = |v: &[i32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<u8>>();
+        let heights: Vec<f32> = (0..32).map(|n| n as f32 * 10.0 - 20.0).collect();
+        let land: Vec<(&str, &str, usize, Vec<u8>)> = vec![
+            ("land_height", "float32", 4, floats(&heights)),
+            ("land_rock", "uint8", 1, vec![2; 32]),
+            ("land_lake", "uint8", 1, (0..32).map(|n| (n == 9) as u8).collect()),
+            ("land_wet", "uint8", 1, (0..32).map(|n| (n % 3) as u8).collect()),
+            ("land_flow", "float32", 4, floats(&[0.5; 32])),
+            ("river_start", "int32", 4, ints(&[0, 3])),
+            ("river_xy", "float32", 4, floats(&[0.2, 0.2, 0.6, 0.4, 1.0, 0.5])),
+            ("river_width", "float32", 4, floats(&[6.0, 8.0, 9.0])),
+            ("river_level", "float32", 4, floats(&[120.0, 100.0, 95.0])),
+            ("river_flow", "float32", 4, floats(&[0.3, 1.0, 1.5])),
+            ("river_braided", "uint8", 1, vec![0; 3]),
+            ("river_end", "int32", 4, ints(&[-2])),
+            ("oxbow_start", "int32", 4, ints(&[0])),
+            ("oxbow_xy", "float32", 4, Vec::new()),
+            ("oxbow_width", "float32", 4, Vec::new()),
+            ("oxbow_level", "float32", 4, Vec::new()),
+            ("land_lakecell", "uint8", 1, vec![0, 1]),
+            ("land_shore", "uint8", 1, vec![1, 0]),
+            ("land_estuary", "uint8", 1, vec![0, 0]),
+        ];
+        if arrays {
+            for (name, dtype, size, mut bytes) in land {
+                edit(name, &mut bytes);
+                v["arrays"].as_array_mut().unwrap().push(serde_json::json!({"name": name, "dtype": dtype, "shape": [bytes.len() / size], "offset": body.len(), "nbytes": bytes.len()}));
+                body.extend_from_slice(&bytes);
+                while body.len() % 8 != 0 {
+                    body.push(0);
+                }
+            }
+        }
+        let mut h = serde_json::to_vec(&v).unwrap();
+        while (4 + h.len()) % 8 != 0 {
+            h.push(b' ');
+        }
+        let mut file = (h.len() as u32).to_le_bytes().to_vec();
+        file.extend_from_slice(&h);
+        file.extend_from_slice(&body);
+        file
+    }
+
+    #[test]
+    fn a_run_made_on_the_new_land_is_read_with_its_land_and_one_without_has_none() {
+        // the old island: no word of the land in the header, and none in the run
+        assert!(parse("tiny.bin", &tiny_run()).unwrap().land.is_none());
+        let r = parse("land.bin", &land_run(true, |_, _| {})).unwrap();
+        let land = r.land.as_deref().expect("the run's land");
+        assert_eq!((land.w, land.h, land.fine, land.fw, land.fh), (2, 1, 4, 8, 4));
+        assert_eq!((land.height.len(), land.height[0], land.height[31]), (32, -20.0, 290.0));
+        assert_eq!((land.rock[5], land.lake[9], land.lake[10], land.wet[5], land.flow[7]), (2, 1, 0, 2, 0.5));
+        assert_eq!(land.lines.len(), 1);
+        assert_eq!((land.lines[0].pts.len(), land.lines[0].end, land.lines[0].width[2], land.lines[0].level[0], land.lines[0].flow[1]), (3, crate::newland::End::Lake(0), 9.0, 120.0, 1.0));
+        assert!(land.oxbows.is_empty());
+        assert_eq!((land.lakes.len(), land.lakes[0].level, land.lakes[0].outlet, land.drowned), (1, 95.0, (1.0, 0.5), 5.0));
+        assert_eq!((land.lake_cell.clone(), land.shore.clone(), land.estuary.clone()), (vec![false, true], vec![true, false], vec![false, false]));
+        // the run itself is read as ever
+        assert_eq!((r.w, r.h, r.town_pop.clone()), (2, 1, vec![1234.0]));
+        // a copy of the run shares the land and does not copy it
+        let copy = r.clone();
+        assert!(std::sync::Arc::ptr_eq(r.land.as_ref().unwrap(), copy.land.as_ref().unwrap()));
+    }
+
+    #[test]
+    fn an_array_of_the_land_cut_short_is_refused_by_name() {
+        // each array the viewer reads, a value short: the run is refused, and the array named
+        let per = |name: &str| if matches!(name, "land_rock" | "land_lake" | "land_wet" | "land_lakecell" | "land_shore" | "land_estuary") { 1 } else { 4 };
+        for name in [
+            "land_height", "land_rock", "land_lake", "land_wet", "land_flow", "river_start", "river_xy", "river_width", "river_level", "river_flow", "river_end", "land_lakecell", "land_shore",
+            "land_estuary",
+        ] {
+            let file = land_run(true, |n, bytes| {
+                if n == name {
+                    bytes.truncate(bytes.len() - per(name));
+                }
+            });
+            let e = parse("short.bin", &file).err().unwrap_or_else(|| panic!("a run whose {name} is a value short was read"));
+            assert!(e.starts_with("short.bin: its array ") && e.contains(name), "{name}: {e}");
+        }
+        // said in full, for the heights and for a cell's flags
+        let short = |name: &'static str, by: usize| {
+            parse("short.bin", &land_run(true, move |n, bytes| if n == name { bytes.truncate(bytes.len() - by) })).err().unwrap()
+        };
+        assert_eq!(short("land_height", 4), "short.bin: its array land_height has 31 values, where the land's 8 by 4 nodes need 32");
+        assert_eq!(short("land_estuary", 1), "short.bin: its array land_estuary has 1 values, where the map's 2 by 1 cells need 2");
+        // an array that is not there at all, and one of other numbers
+        let e = parse("short.bin", &land_run(true, |n, bytes| if n == "land_wet" { bytes.clear() })).err().unwrap();
+        assert_eq!(e, "short.bin: its array land_wet has 0 values, where the land's 8 by 4 nodes need 32");
+        // the file itself cut off in the land's last array
+        let whole = land_run(true, |_, _| {});
+        // (the last array is two bytes and six of padding)
+        let e = parse("cut.bin", &whole[..whole.len() - 7]).err().unwrap();
+        assert!(e.contains("cut.bin is cut short: its array land_estuary should end"), "{e}");
+        // a node under a lake the header does not list (it has one)
+        let e = parse("odd.bin", &land_run(true, |n, bytes| if n == "land_lake" { bytes[9] = 2 })).err().unwrap();
+        assert_eq!(e, "odd.bin: its array land_lake puts a node under lake 2 (counting from 1), and its header lists 1 lakes");
+        // a grid that does not fit the map
+        let file = reheaded(&whole, |v| v["land"]["fw"] = serde_json::json!(9));
+        assert_eq!(parse("odd.bin", &file).err().unwrap(), "odd.bin: its land is 9 by 4 nodes at 4 to a cell's side, which does not fit a map of 2 by 1 cells");
+    }
+
+    /// A run with its header changed by `edit`, in a header no longer than it
+    /// was, so that the arrays stay where they are.
+    fn reheaded(whole: &[u8], edit: impl Fn(&mut serde_json::Value)) -> Vec<u8> {
+        let hlen = u32::from_le_bytes([whole[0], whole[1], whole[2], whole[3]]) as usize;
+        let mut v: serde_json::Value = serde_json::from_slice(&whole[4..4 + hlen]).unwrap();
+        edit(&mut v);
+        let mut h = serde_json::to_vec(&v).unwrap();
+        let grown = (h.len().max(hlen) - hlen).div_ceil(8) * 8;
+        h.resize(hlen + grown, b' ');
+        let mut file = (h.len() as u32).to_le_bytes().to_vec();
+        file.extend_from_slice(&h);
+        file.extend_from_slice(&whole[4 + hlen..]);
+        file
+    }
+
+    #[test]
+    fn the_lines_starts_and_ends_agree_or_the_run_is_refused() {
+        let with = |name: &'static str, ints: &'static [i32]| parse("lines.bin", &land_run(true, move |n, bytes| if n == name { *bytes = ints.iter().flat_map(|x| x.to_le_bytes()).collect() })).err().unwrap();
+        // the last start is the number of points; the first is nought; an end for every river
+        assert_eq!(with("river_start", &[0, 2]), "lines.bin: its array river_start ends at point 2, and there are 3 points");
+        assert_eq!(with("river_start", &[1, 3]), "lines.bin: its array river_start should begin at 0 and begins at 1");
+        assert_eq!(with("river_start", &[0, 2, 3]), "lines.bin: its array river_end has 1 rivers, where river_start has 2");
+        assert_eq!(with("river_end", &[-1, -1]), "lines.bin: its array river_end has 2 rivers, where river_start has 1");
+        assert_eq!(with("river_end", &[4]), "lines.bin: its array river_end says a river joins river 4, and there are 1");
+        assert_eq!(with("oxbow_start", &[0, 2]), "lines.bin: its array oxbow_start ends at point 2, and there are 0 points");
+    }
+
+    #[test]
+    fn a_run_that_speaks_of_the_land_and_has_none_of_its_arrays_says_what_is_drawn() {
+        // the header's word of the land with no array of it: read, without the land, and it says so
+        let r = parse("bare.bin", &land_run(false, |_, _| {})).unwrap();
+        assert!(r.header.land.is_some() && r.land.is_none());
+        let said = no_land_arrays("bare.bin");
+        assert!(said.starts_with("bare.bin was made on the new land") && said.contains("its land cannot be drawn") && said.contains("What is drawn in its place is the old kind of island"), "{said}");
+        // a lite pack, which has no map layers at all, is refused as ever, and says the land is not in it either
+        let file = reheaded(&land_run(false, |_, _| {}), |v| v["meta"]["lite"] = serde_json::json!(true));
+        let e = parse("lite.bin", &file).err().unwrap();
+        assert!(e.starts_with("lite.bin is a lite run (charts only) and has no map layers, and the land it was made on") && e.ends_with("record the run again without --lite"), "{e}");
+        // and a lite pack of the old island says what it always said
+        let old = with_header(|v| v["meta"]["lite"] = serde_json::json!(true));
+        assert_eq!(parse("lite.bin", &old).err().unwrap(), "lite.bin is a lite run (charts only) and has no map layers");
     }
 
     #[test]

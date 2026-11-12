@@ -31,6 +31,7 @@ use crate::scenes::{self, Cover, Market, Street};
 use crate::site::{Model, Site};
 use crate::town;
 use crate::trees::{bush, hedge_tree, tree, Species, Tree};
+use crate::works::site::{self, Edge, Now, Plot, Stage};
 use crate::works::{pit, works, Kind, Pit, PitKind, State, Works};
 
 /// The ground a sheet stands on: the land its things stand on in the game.
@@ -150,6 +151,32 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "works-engine", about: "Engine works: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_engine },
     Sheet { name: "works-mill", about: "Powered mills: built in 1760 by water (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_mill },
     Sheet { name: "works-brick", about: "Brickworks: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: works_brick },
+    Sheet { name: "sites-kinds", about: "Every kind of works laid out on its plot (works::site): ten times the standard size in 1880, founded in 1790 and grown since, so each shows the stages of its growth, its stores and stock yards, and its way in and out by the gate.", land: Land::Pasture, build: sites_kinds },
+    Sheet { name: "sites-small", about: "Every kind of works laid out on its plot at the standard size in 1800, founded in 1770: what most of a small town's works are.", land: Land::Pasture, build: sites_small },
+    Sheet { name: "site-history", about: "One powered mill through its own history on one plot by a stream: going up in 1760, at work, enlarged in 1795, in 1820 and (the railway having come in 1848) in 1870; then the same works shrunk to a fifth for four years and for twelve, standing idle, and derelict.", land: Land::Pasture, build: site_history },
+    Sheet { name: "site-history-iron", about: "One coke ironworks through its own history on one plot: going up in 1790, at work, enlarged in 1815, in 1840 and (the railway having come in 1848) in 1865; then shrunk for four years and for twelve, standing idle, and derelict.", land: Land::Pasture, build: site_history_iron },
+    Sheet { name: "site-ways", about: "The ways in and out of a works (a rolling mill, then a brickworks, of ten times the standard size): by the gate alone; with a railway along its back; on navigable water; with both; with a works that feeds it on its left and one it feeds on its right; and how busy it is and what it holds, from slack and empty to hard at work and full.", land: Land::Pasture, build: site_ways },
+    Sheet { name: "site-unknown", about: "Works of trades the generators have never heard of, each planned from its process alone (works::site, plain::process): a brewhouse, a glasshouse, a gasworks, a saw pit, a lime kiln, a potbank, a paper mill and a mason's yard, as the deeper production tree's overlay had them on 12 November 2026 (examples only: the game hands the planner the run's own processes). At the standard size in 1830 (top row) and at eight times it in 1885.", land: Land::Pasture, build: site_unknown },
+    Sheet { name: "site-slope", about: "Works on sloping land: a coke ironworks, a powered mill and a brickworks, each of eight times the standard size, on land that falls away to the left by 6 in 100 (top row) and by 12 in 100, which is as steep as a works is given while ground is not short. The yard is level, at the height of the highest land under its plot, and is held up on its low side by a retaining wall.", land: Land::Pasture, build: site_slope },
+    Sheet { name: "site-plots", about: "One works on plots of three shapes (square, with its back aslant, with a corner cut off), deep and shallow: a coke ironworks, a powered mill and a works of a kind the generators do not know, each of twelve times the standard size.", land: Land::Pasture, build: site_plots },
+    Sheet { name: "works-district", about: "A district of works that stand together along a road with the railway behind: coke furnaces hand pig iron over the wall to a forge and the forge its bars to a rolling mill, with a brickworks, an engine works and a smithy beside them; as it stood in 1800, in 1850 and in 1890.", land: Land::Pasture, build: works_district },
+    Sheet { name: "site-loom", about: "Handloom weavers laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_loom },
+    Sheet { name: "site-smithy", about: "Smithies laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_smithy },
+    Sheet { name: "site-millwright", about: "Millwrights laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_millwright },
+    Sheet { name: "site-shops", about: "Shops and trades laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_shops },
+    Sheet { name: "site-charcoal", about: "Charcoal burning laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_charcoal },
+    Sheet { name: "site-bloomery", about: "Bloomeries laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_bloomery },
+    Sheet { name: "site-charcoal-furnace", about: "Charcoal blast furnaces laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_charcoal_furnace },
+    Sheet { name: "site-coke-furnace", about: "Coke blast furnaces laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_coke_furnace },
+    Sheet { name: "site-forge", about: "Forges making wrought rails laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_forge },
+    Sheet { name: "site-rolling", about: "Rolling mills laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_rolling },
+    Sheet { name: "site-rail-mill", about: "Steel rail mills laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_rail_mill },
+    Sheet { name: "site-crucible", about: "Crucible steel laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_crucible },
+    Sheet { name: "site-converter", about: "Converter shops laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_converter },
+    Sheet { name: "site-engine", about: "Engine works laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_engine },
+    Sheet { name: "site-mill", about: "Powered mills laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_mill },
+    Sheet { name: "site-brick", about: "Brickworks laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_brick },
+    Sheet { name: "site-other", about: "A works of a kind the generators do not know laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_other },
     Sheet { name: "works-other", about: "A works of a kind the generators do not know: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_other },
     Sheet { name: "pits", about: "Pits and their spoil heaps: coal, ironstone, stone and clay down the rows; a small, a middling and a large heap across.", land: Land::Heath, build: pits },
     Sheet { name: "farmsteads", about: "A farmstead seen from its yard: lowland and upland, arable and pasture down the rows; six seeds across.", land: Land::Pasture, build: farmsteads },
@@ -700,6 +727,355 @@ fn works_states_great(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     works_in_states(&[Kind::TextileMill, Kind::CokeFurnace, Kind::EngineWorks], 30.0, pal, detail)
 }
 
+// ------------------------------------------------------------------ works laid out on their plots
+
+/// What a plot's sides face, drawn beside it so that a sheet shows why a
+/// works is laid out as it is: the road before it, a railway, water.
+fn beside(m: &mut Model, s: &Site, plot: &Plot, year: i32, pal: &Palette) {
+    let n = plot.outline.len();
+    let mid = plot.outline.iter().fold((0.0, 0.0), |a, p| (a.0 + p.0 / n as f32, a.1 + p.1 / n as f32));
+    for i in 0..n {
+        let (a, b) = (plot.outline[i], plot.outline[(i + 1) % n]);
+        let (dx, dz) = (b.0 - a.0, b.1 - a.1);
+        let len = dx.hypot(dz).max(1e-5);
+        let mut o = (dz / len, -dx / len);
+        if (a.0 - mid.0) * o.0 + (a.1 - mid.1) * o.1 < 0.0 {
+            o = (-o.0, -o.1);
+        }
+        let line = |off: f32, lift: f32| [s.at(a.0 + o.0 * off - dx / len * 0.02, a.1 + o.1 * off - dz / len * 0.02) + Vec3::Y * lift, s.at(b.0 + o.0 * off + dx / len * 0.02, b.1 + o.1 * off + dz / len * 0.02) + Vec3::Y * lift];
+        match plot.edge(i, year) {
+            Edge::Road => m.flat.ribbon(&line(0.016, 0.003), 0.026, *pal.ground.road_gravel),
+            Edge::Water { navigable } => m.flat.ribbon(&line(if navigable { 0.04 } else { 0.014 }, 0.003), if navigable { 0.075 } else { 0.022 }, *pal.water.river),
+            _ => {}
+        }
+    }
+    // the railway where the plot says it runs, once it has come: a siding is led out to it
+    if (0..n).any(|i| plot.edge(i, year) == Edge::Rail) && plot.line.len() >= 2 {
+        let along = |lift: f32| -> Vec<Vec3> { plot.line.iter().map(|p| s.at(p.0, p.1) + Vec3::Y * lift).collect() };
+        m.flat.ribbon(&along(0.003), 0.03, *pal.rail.ballast);
+        m.flat.ribbon(&along(0.005), 0.012, *pal.rail.rails);
+    }
+}
+
+/// A planned works in a cell, with what its plot's sides face drawn beside it.
+fn site_cell(label: String, plan: &site::Plan, now: &Now, pal: &Palette) -> Cell {
+    Cell::new(label, |m, s| {
+        site::site(&mut m.solid, &mut m.smoke, &mut m.flat, s, plan, now, pal);
+        beside(m, s, &plan.plot, now.year, pal);
+    })
+}
+
+/// A kind of works founded and grown to a size by a year, on a plot.
+fn site_of(label: String, kind: Kind, founded: i32, year: i32, size: f32, plot: Plot, seed: u32, detail: Detail, pal: &Palette) -> Cell {
+    let (plan, now) = site::specimen(kind, founded, year, size, &plot, Seed::of(seed), pal);
+    site_cell(label, &plan, &Now { detail, ..now }, pal)
+}
+
+fn sites_at(pal: &Palette, detail: Detail, founded: i32, year: i32, size: f32) -> Vec<Vec<Cell>> {
+    Kind::ALL
+        .chunks(6)
+        .map(|row| {
+            row.iter()
+                .map(|&kind| {
+                    let (w, d) = site::ground(kind, size);
+                    site_of(format!("{}\nsize {size} in {year}", kind.label()), kind, founded, year, size, Plot::rect(w, d), kind as u32 + 3, detail, pal)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn sites_kinds(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    sites_at(pal, detail, 1790, 1880, 10.0)
+}
+
+fn sites_small(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    sites_at(pal, detail, 1770, 1800, 1.0)
+}
+
+/// One kind at every size, as it stands in 1890: founded early on a square
+/// plot by a stream, in 1820 on a plot with its back aslant along a railway,
+/// and late on a plot with a corner cut off.
+fn site_sizes(kind: Kind, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [1760, 1820, 1870]
+        .into_iter()
+        .map(|founded| {
+            SIZES
+                .iter()
+                .enumerate()
+                .map(|(i, &size)| {
+                    let (w, d) = site::ground(kind, size);
+                    let (plot, on) = match founded {
+                        1760 => (Plot::rect(w, d).facing(1, Edge::Water { navigable: false }), "by a stream"),
+                        1820 => (Plot::wedge(w * 1.15, d * 1.15, 0.25).facing(2, Edge::Rail), "by a railway"),
+                        _ => (Plot::cut(w * 1.05, d * 1.05, 0.35), "a corner cut"),
+                    };
+                    site_of(format!("{}, {founded}, {on}\nsize {size}", kind.label()), kind, founded, 1890, size, plot, kind as u32 * 16 + i as u32, detail, pal)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// A works through its own history: the stages it was built in, on one plot.
+fn history_of(kind: Kind, stages: &[Stage], plot: Plot, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    let process = site::Process::of(kind);
+    let seed = Seed::of(kind as u32 + 40);
+    let upto = |year: i32| -> Vec<Stage> { stages.iter().copied().filter(|s| s.year <= year).collect() };
+    let cell = |label: &str, year: i32, change: &dyn Fn(Now) -> Now| {
+        let plan = site::plan(kind, &process, &upto(year), &plot, year, seed, pal);
+        let now = change(Now { detail, ..Now::working(&plan, year) });
+        site_cell(format!("{label}\n{year}"), &plan, &now, pal)
+    };
+    let first = stages[0].year;
+    let last = stages.last().unwrap();
+    let mut growing = vec![cell("going up", first, &|n| Now { state: State::GoingUp, ..n }), cell("at work", first + 12, &|n| n)];
+    for st in &stages[1..] {
+        growing.push(cell("being enlarged", st.year, &|n| n));
+    }
+    growing.push(cell("at work", last.year + 15, &|n| n));
+    let end = last.year + 25;
+    let low = stages[stages.len().saturating_sub(3)].size;
+    let ending = vec![
+        cell("shrunk these four years", end, &|n| Now { size: low, shrunk_for: 4, busy: 0.4, stock_in: 0.3, stock_out: 0.3, ..n }),
+        cell("shrunk these twelve", end + 8, &|n| Now { size: low, shrunk_for: 12, busy: 0.4, stock_in: 0.3, stock_out: 0.2, ..n }),
+        cell("standing idle", end + 9, &|n| Now { state: State::Idle, busy: 0.0, ..n }),
+        cell("derelict", end + 20, &|n| Now { state: State::Derelict, busy: 0.0, ..n }),
+    ];
+    vec![growing, ending]
+}
+
+fn site_history(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    let (w, d) = site::ground(Kind::TextileMill, 24.0);
+    let plot = Plot::rect(w, d).facing(1, Edge::Water { navigable: false }).facing_from(2, Edge::Rail, 1848);
+    history_of(Kind::TextileMill, &[Stage { year: 1760, size: 0.6 }, Stage { year: 1795, size: 2.0 }, Stage { year: 1820, size: 7.0 }, Stage { year: 1870, size: 24.0 }], plot, pal, detail)
+}
+
+fn site_history_iron(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    let (w, d) = site::ground(Kind::CokeFurnace, 20.0);
+    let plot = Plot::wedge(w, d, 0.25).facing_from(2, Edge::Rail, 1848);
+    history_of(Kind::CokeFurnace, &[Stage { year: 1790, size: 0.8 }, Stage { year: 1815, size: 2.4 }, Stage { year: 1840, size: 7.0 }, Stage { year: 1865, size: 20.0 }], plot, pal, detail)
+}
+
+fn site_ways(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [Kind::RollingMill, Kind::Brickworks]
+        .into_iter()
+        .map(|kind| {
+            let (w, d) = site::ground(kind, 10.0);
+            let plot = || Plot::rect(w, d);
+            let nav = Edge::Water { navigable: true };
+            let cell = |label: &str, plot: Plot, change: &dyn Fn(Now) -> Now| {
+                let (plan, now) = site::specimen(kind, 1800, 1885, 10.0, &plot, Seed::of(kind as u32 + 9), pal);
+                site_cell(format!("{}\n{label}", kind.label()), &plan, &change(Now { detail, ..now }), pal)
+            };
+            vec![
+                cell("by the gate", plot(), &|n| n),
+                cell("a railway behind", plot().facing(2, Edge::Rail), &|n| n),
+                cell("on navigable water", plot().facing(3, nav), &|n| n),
+                cell("railway and water", plot().facing(2, Edge::Rail).facing(1, nav), &|n| n),
+                cell("fed on its left, feeds on its right", plot().facing(3, Edge::Fed).facing(1, Edge::Feeds), &|n| n),
+                cell("slack and empty", plot().facing(2, Edge::Rail), &|n| Now { busy: 0.15, stock_in: 0.1, stock_out: 0.1, ..n }),
+                cell("hard at work and full", plot().facing(2, Edge::Rail), &|n| Now { busy: 1.0, stock_in: 1.0, stock_out: 1.0, ..n }),
+            ]
+        })
+        .collect()
+}
+
+fn site_plots(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [Kind::CokeFurnace, Kind::TextileMill, Kind::Other]
+        .into_iter()
+        .map(|kind| {
+            let (w, d) = site::ground(kind, 12.0);
+            let shapes: [(&str, Plot); 6] = [
+                ("square", Plot::rect(w, d)),
+                ("its back aslant", Plot::wedge(w * 1.1, d * 1.1, 0.4)),
+                ("a corner cut off", Plot::cut(w * 1.08, d * 1.08, 0.45)),
+                ("wide and shallow", Plot::rect(w * 1.5, d / 1.5)),
+                ("narrow and deep", Plot::rect(w / 1.45, d * 1.45)),
+                ("shallow, its back aslant", Plot::wedge(w * 1.55, d / 1.3, 0.45)),
+            ];
+            shapes.into_iter().enumerate().map(|(i, (name, plot))| site_of(format!("{}\n{name}", kind.label()), kind, 1795, 1885, 12.0, plot, kind as u32 * 8 + i as u32, detail, pal)).collect()
+        })
+        .collect()
+}
+
+/// Eight processes that are not in the shipped content, for showing what the
+/// planner makes of a trade nobody has drawn: (name, goods in with weight,
+/// price and amount, heat, labour, cost of plant, good out with weight and price).
+pub(crate) type Unknown = (&'static str, &'static [(&'static str, f32, f32, f32)], f32, f32, f32, (&'static str, f32, f32));
+pub(crate) const UNKNOWN: [Unknown; 8] = [
+    ("brewhouse", &[("grain", 1.0, 1.0, 1.2)], 0.4, 0.1, 6.6, ("beer", 2.0, 2.0)),
+    ("glasshouse", &[("stone", 2.2, 0.6, 1.0), ("chemicals", 0.9, 4.5, 0.3)], 6.0, 1.2, 39.6, ("glass", 1.0, 9.0)),
+    ("gasworks", &[("coal", 1.6, 0.9, 1.2), ("lime", 1.5, 2.0, 0.04)], 0.0, 0.06, 32.2, ("gas", 20.0, 2.4)),
+    ("saw pit", &[("timber", 1.6, 0.8, 1.4)], 0.0, 0.28, 2.0, ("lumber", 1.2, 2.2)),
+    ("lime kiln", &[("stone", 2.2, 0.6, 1.6)], 1.3, 0.08, 5.1, ("lime", 1.5, 2.0)),
+    ("potbank", &[("clay", 2.0, 0.4, 1.3)], 2.5, 0.5, 14.0, ("pottery", 1.0, 3.4)),
+    ("paper mill", &[("cloth", 0.3, 5.0, 0.2)], 0.5, 1.0, 12.8, ("paper", 0.5, 4.6)),
+    ("masons", &[("stone", 2.2, 0.6, 1.1), ("lumber", 1.2, 2.2, 0.2), ("lime", 1.5, 2.0, 0.1)], 0.0, 0.25, 2.8, ("building", 12.0, 2.2)),
+];
+
+fn site_unknown(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [(1.0f32, 1790, 1830), (8.0, 1800, 1885)]
+        .into_iter()
+        .map(|(size, founded, year)| {
+            UNKNOWN
+                .iter()
+                .enumerate()
+                .map(|(n, &(name, inputs, heat, labour, capital, out))| {
+                    let process = site::Process { inputs: inputs.iter().map(|&(g, w, p, a)| (site::Good::new(g, w, p), a)).collect(), heat, labour, capital, output: site::Good::new(out.0, out.1, out.2) };
+                    let (w, d) = site::ground(Kind::Other, size);
+                    let record = site::history(founded, year, size);
+                    let plan = site::plan(Kind::Other, &process, &site::stages(&record), &Plot::rect(w, d), year, Seed::of(n as u32 + 90), pal);
+                    let now = Now { size, detail, ..Now::working(&plan, year) };
+                    site_cell(format!("{name}
+size {size} in {year}"), &plan, &now, pal)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn site_slope(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [0.06f32, 0.12]
+        .into_iter()
+        .map(|fall| {
+            [Kind::CokeFurnace, Kind::TextileMill, Kind::Brickworks]
+                .into_iter()
+                .map(|kind| {
+                    let (w, d) = site::ground(kind, 8.0);
+                    let (plan, now) = site::specimen(kind, 1800, 1885, 8.0, &Plot::rect(w, d), Seed::of(kind as u32 + 21), pal);
+                    let now = Now { detail, ..now };
+                    Cell::on_slope(format!("{}
+falling {fall} to the unit", kind.label()), 0.0, fall, w + 0.1, d + 0.1, *pal.ground.furnace_bank, |m, s| {
+                        // (the yard at the height of the highest land under the plot, as the game hands it)
+                        let top = s.height(s.origin.x + w * 0.5, s.origin.z);
+                        site::site(&mut m.solid, &mut m.smoke, &mut m.flat, &s.moved(Vec3::new(s.origin.x, top, s.origin.z), s.yaw), &plan, &now, pal);
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// A district of works along a road, the railway (from 1845) behind them:
+/// each plot's sides say which neighbour hands it material or takes its output.
+fn district(year: i32, detail: Detail, pal: &Palette) -> Cell {
+    // (kind, founded, size in 1890): the chain of iron first, in the order material passes along it
+    let works: [(Kind, i32, f32); 6] = [(Kind::CokeFurnace, 1785, 8.0), (Kind::ForgeRails, 1805, 3.5), (Kind::RollingMill, 1830, 5.0), (Kind::Brickworks, 1775, 2.5), (Kind::EngineWorks, 1840, 3.5), (Kind::Smithy, 1765, 1.5)];
+    let depth = works.iter().map(|&(kind, _, size)| site::ground(kind, size).1).fold(0.0, f32::max);
+    let mut placed = Vec::new();
+    let mut x = 0.0;
+    for (n, &(kind, founded, size)) in works.iter().enumerate() {
+        let (w, d) = site::ground(kind, size);
+        // every plot is as deep as the deepest, and as much narrower as keeps its ground
+        let w = w * d / depth;
+        placed.push((n, kind, founded, size, x + w * 0.5, w));
+        x += w + if n == 2 { 0.02 } else { 0.0 };
+    }
+    let total = x;
+    Cell::new(format!("a works district\n{year}"), |m, s| {
+        for &(n, kind, founded, size, cx, w) in &placed {
+            if founded > year {
+                continue;
+            }
+            // (the district's one line, as it runs by this plot: every siding is led out to it)
+            let line = vec![(-cx - 0.01, -depth * 0.5 - site::LINE_OFF), (total - cx + 0.01, -depth * 0.5 - site::LINE_OFF)];
+            let mut plot = Plot::rect(w, depth).with_line(line).facing_from(2, Edge::Rail, 1845);
+            // the chain: the furnaces feed the forge on their right, the forge the rolling mill
+            if n < 2 {
+                plot = plot.facing_from(1, Edge::Feeds, works[n + 1].1);
+            }
+            if n == 1 || n == 2 {
+                plot = plot.facing_from(3, Edge::Fed, founded);
+            }
+            let record: Vec<(i32, f32)> = site::history(founded, 1890, size).into_iter().filter(|h| h.0 <= year).collect();
+            let plan = site::plan(kind, &site::Process::of(kind), &site::stages(&record), &plot, year, Seed::of(n as u32 + 70), pal);
+            let now = Now { size: record.last().unwrap().1, state: if year == founded { State::GoingUp } else { State::Working }, detail, ..Now::working(&plan, year) };
+            let at = s.moved(s.at(cx - total * 0.5, 0.0), s.yaw);
+            site::site(&mut m.solid, &mut m.smoke, &mut m.flat, &at, &plan, &now, pal);
+        }
+        let (a, b) = (s.at(-total * 0.5 - 0.01, depth * 0.5 + 0.018) + Vec3::Y * 0.003, s.at(total * 0.5 + 0.01, depth * 0.5 + 0.018) + Vec3::Y * 0.003);
+        m.flat.ribbon(&[a, b], 0.028, *pal.ground.road_gravel);
+        if year >= 1845 {
+            let (a, b) = (s.at(-total * 0.5 - 0.01, -depth * 0.5 - site::LINE_OFF) + Vec3::Y * 0.003, s.at(total * 0.5 + 0.01, -depth * 0.5 - site::LINE_OFF) + Vec3::Y * 0.003);
+            m.flat.ribbon(&[a, b], 0.03, *pal.rail.ballast);
+            m.flat.ribbon(&[a + Vec3::Y * 0.002, b + Vec3::Y * 0.002], 0.012, *pal.rail.rails);
+        }
+    })
+}
+
+fn works_district(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    vec![vec![district(1800, detail, pal)], vec![district(1850, detail, pal)], vec![district(1890, detail, pal)]]
+}
+
+fn site_loom(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::HandLoom, pal, detail)
+}
+
+fn site_smithy(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Smithy, pal, detail)
+}
+
+fn site_millwright(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Millwright, pal, detail)
+}
+
+fn site_shops(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Shops, pal, detail)
+}
+
+fn site_charcoal(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::CharcoalBurning, pal, detail)
+}
+
+fn site_bloomery(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Bloomery, pal, detail)
+}
+
+fn site_charcoal_furnace(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::CharcoalFurnace, pal, detail)
+}
+
+fn site_coke_furnace(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::CokeFurnace, pal, detail)
+}
+
+fn site_forge(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::ForgeRails, pal, detail)
+}
+
+fn site_rolling(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::RollingMill, pal, detail)
+}
+
+fn site_rail_mill(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::SteelRolling, pal, detail)
+}
+
+fn site_crucible(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::CrucibleSteel, pal, detail)
+}
+
+fn site_converter(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Bessemer, pal, detail)
+}
+
+fn site_engine(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::EngineWorks, pal, detail)
+}
+
+fn site_mill(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::TextileMill, pal, detail)
+}
+
+fn site_brick(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Brickworks, pal, detail)
+}
+
+fn site_other(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_sizes(Kind::Other, pal, detail)
+}
+
 fn pits(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     let kinds = [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")];
     grid(4, 3, |row, col| {
@@ -901,7 +1277,7 @@ mod tests {
                     let (lo, hi) = cell.model.bounds().unwrap();
                     assert!(hi.x - lo.x <= 1.15, "{}: {} is {} wide", sheet.name, cell.label, hi.x - lo.x);
                     // (a great works is deeper: the lab stands back until the whole of it shows)
-                    let room = if sheet.name.starts_with("works") { 1.0 } else { 0.8 };
+                    let room = if sheet.name.starts_with("works") || sheet.name.starts_with("site") { 1.0 } else { 0.8 };
                     assert!((hi.z - lo.z) + (hi.y - lo.y) * 0.8 <= room, "{}: {} is {} deep and {} tall", sheet.name, cell.label, hi.z - lo.z, hi.y - lo.y);
                 }
             }
