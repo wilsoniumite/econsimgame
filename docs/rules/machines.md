@@ -92,18 +92,17 @@ its own.
 
 - The converter's and the steel rail mill's plant cost `MACHINES_PLANT_SCALE`
   (0.3) of the port's. The port's converter needs 150 bricks and 2 machinery
-  for each unit of monthly capacity: 410 at the content's base prices, which
-  is 1.6 times a rolling mill (100 bricks and 1 machinery, 250) and nearly
-  seven times a crucible steel works (30 bricks and 15 clay, 60). This page
-  used to say about a thousand, five times a rolling mill. The thousand must
-  be at the dearer prices of the first helper's runs (it was not recorded
-  which); at the hurdle rate (12 per cent a year, on 85 per cent of capacity)
-  it is 12 a unit of steel in capital alone where crucible steel carries 2,
-  which is the converter against the crucible: against the rolling mill it is
-  never more than twice, at any prices. Cut to
-  three tenths, the converter's plant is 123 at base prices and the steel rail
-  mill's 96 (from 321); the engine works' (466), the rolling mill's and the
-  coke furnace's (147) are all dearer.
+  for each unit of monthly capacity: 410 at the content's base prices. That
+  is 1.6 times a rolling mill (100 bricks and 1 machinery, 250), and never
+  more than twice one at any prices, but nearly seven times a crucible steel
+  works (30 bricks and 15 clay, 60). This page used to say about a thousand,
+  five times a rolling mill. A thousand is what it costs with bricks at about
+  three times their base price and machinery a third above its own, and at
+  the hurdle rate (12 per cent a year, on 85 per cent of capacity) that is 12
+  a unit of steel in capital alone, where crucible steel at the same prices
+  carries 2; the "five times" fits no prices. Cut to three tenths, the converter's plant is 123 at base prices
+  and the steel rail mill's 96 (from 321); the engine works' (466), the
+  rolling mill's and the coke furnace's (147) are all dearer.
 - A steel rail outlasts iron ones several times over. There is one good,
   "rails", counted in iron rails, so a ton of steel rail is entered as the
   three iron rails it stands in for (`MACHINES_STEEL_RAIL_WORTH`): the mill
@@ -287,9 +286,10 @@ times the usual price. The cause is in two lines of the port:
 - A works with anything on order counts as building (`firms::review`), and a
   building works may not grow. An order asks each month for a quarter of what
   is still outstanding (`econ::step_month`, `f_order * 0.25`), so it shrinks
-  geometrically and is only struck off below a billionth of a unit: about 70
-  months even when every delivery is filled. A works can therefore grow once
-  in six or seven years, by half at most.
+  geometrically and is only struck off when the goods still on order are
+  below a millionth of a unit (or the capacity below a billionth): about 70
+  months for an engine works' bricks even when every delivery is filled. A
+  works can therefore grow once in six or seven years, by half at most.
 - So capacity comes from new works, and entry allows one a year per town and
   method, two when the return is above 0.8, each of 0.4 or 0.8 of the usual
   size. An engine works' usual size is 3 units a month.
@@ -530,10 +530,11 @@ the three were run together the harvests, the life cycle for works, the
 railways, carting, the people, the towns, the mines, the canals and the books
 of account have joined them. This is where the machines' own measures stand
 today, read from the sweep of the merged game, seeds 1 to 8 with six
-families, at the code of `340f263` (`isostate-core sweep --seeds 1-8 --rules
-game --families 6`, under `.claude/night/reports/merged-game-f6-l/`). The
-facts are the sweep's own; the rest were worked out from its `annual.csv` by
-the definitions of `examples/machines.rs` (five-year means over 1750 to 1752,
+families, on the simulation as main has it since the books of account joined
+(`752ad67`; `isostate-core sweep --seeds 1-8 --rules game --families 6`,
+under `.claude/night/reports/merged-game-f6-l/`). The facts are the sweep's
+own; the rest were worked out from its `annual.csv` by the definitions of
+`examples/machines.rs` (five-year means over the mean of 1750 to 1752,
 machinery's highest yearly price after 1850 over the median of 1836 to 1850),
 without running the example. Two differ from the example's: the chained wage
 is the observer's `real_wage_chained`, not the example's own chain, and
@@ -570,9 +571,9 @@ puts the century's gain at 4.25 where the 1750 basket says 2.58. The
 converter comes as it did in company, making all the steel by 1880 on six
 islands of eight; on one (seed 3, which pours the least steel) it is not
 built until 1888, quality is still 1.02 in 1850 and never reaches the cap.
-The steel rail is the change: the mill is found and built on seven islands of
-eight but rolls almost nothing, where with the machines alone it rolled
-nearly all the rails of 1890, and a quarter of them once the life cycle for
+The steel rail is the change: the mill is found on every island (on seed 3
+only in 1891) and built on seven of the eight, but rolls almost nothing,
+where with the machines alone it rolled nearly all the rails of 1890, and a quarter of them once the life cycle for
 works had joined. The worry above about the
 converter's numbers and the quality curve wanting tuning together, with the
 works rules on, now covers the steel rail as well.
@@ -619,7 +620,7 @@ works rules on, now covers the steel rail as well.
 - **Steel still has no use of its own.** It matters here because the engine
   builders learn from it. Households already take nine tenths of their
   implements as steel in 1840 (0.87 on today's eight islands, from
-  `share_implements_steel` in the sweep's `annual.csv`, but 0.03 on seed 3,
+  `share_implements_steel` in the sweep's `annual.csv`, but 0.02 on seed 3,
   which pours the least steel). A steel that goes into the machines themselves
   would be a change to the engine works' recipe, which is content for another
   night.
