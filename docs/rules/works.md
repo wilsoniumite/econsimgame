@@ -211,8 +211,8 @@ tables stay empty; `tests/golden.rs` holds the port to the byte.
 The port against the port with `works.enabled=true`, without families and
 with six. These are the port's rules with the life cycle alone, as the review
 measured them; a sweep of today's game cannot give them and they were not
-measured again (the game as it stands is under "In company"). Means over eight seeds, with the least and greatest seed in brackets
-where it matters. The first table is seeds 1 to 8, the seeds the mechanism was
+measured again (the game as it stands is under "In company"). Means over
+eight seeds, with the least and greatest seed in brackets where it matters. The first table is seeds 1 to 8, the seeds the mechanism was
 built on; the second is seeds 9 to 16, which nobody had run before the review.
 The sweeps are `sweep-works-review-base`, `-base-f6`, `-base-s9`,
 `-base-f6-s9`, `-v4-s16` and `-v4-f6-s16` under `.claude/night/reports/`.
@@ -483,10 +483,11 @@ the game as it is played now (seeds 1 to 8, six families,
 
 The works themselves are where the merge left them: much the same count and
 size, a little fewer founded and closed. The middle of the century has moved
-most. The wage of 1850 reads 1.95 where it read 2.51, because carting puts
-off the machines' rise by about ten years (`carting.md`, "In company"). The
-wage of 1800 and of 1900 are close to the merge's, so what is said below of
-the middle decades should be read as of the merge, not of today.
+most. The wage of 1850 reads 1.95 where it read 2.51, most likely because
+carting puts off the machines' rise by about ten years (`carting.md`, "In
+company"; nobody has taken today's numbers apart). The wages of 1800 and
+1900 are close to the merge's, so what is said below of the middle decades
+should be read as of the merge, not of today.
 
 What they say (at the merge):
 
@@ -656,8 +657,8 @@ district has forty works and not four hundred.
   makes 0.86 of the steel in 1880, the mean of eight seeds.) Under the port
   with the life cycle it is built on one seed of thirty-two (the port alone
   builds it in 10 of 32, late in the century in all but one, and it never
-  makes half the steel). The cause is the price of steel. Crucible works that can grow to twenty usual sizes make
-  steel at 17 to 22 from the 1830s where the port's small ones need 28 to 39,
+  makes half the steel). The cause is the price of steel. Crucible works
+  that can grow to twenty usual sizes make steel at 17 to 22 from the 1830s where the port's small ones need 28 to 39,
   and at that price the converter loses money at any size: on seed 7 its best
   site promises between minus 5 and minus 20 per cent a year from 1850 to
   1900 against a hurdle of 12, where under the port steel at 52 gives it 12.5
