@@ -632,6 +632,14 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
     for month in 0..12 {
         run_month(sim, month)?;
     }
+    end_year(sim);
+    Ok(())
+}
+
+/// The year's end, once its twelve months have been played with `run_month`:
+/// the yearly step, the observer's detectors and the yearly snapshot. A game
+/// played a month at a time (`save::Game::month`) calls this after December.
+pub fn end_year(sim: &mut Sim) {
     let year = sim.year;
     let Sim { st, content: C, params: P, rngs, events, rec, .. } = sim;
     yearly(st, C, P, rngs, year, events, false);
@@ -642,7 +650,6 @@ pub fn run_year(sim: &mut Sim) -> Result<(), String> {
     harvest::snapshot(rec, st, P, (year - C.start_year) as usize);
     crate::mines::snapshot(rec, st, P, (year - C.start_year) as usize); // mines: the year's workings
     sim.year += 1;
-    Ok(())
 }
 
 pub fn finish(sim: Sim) -> RunResult {

@@ -8,7 +8,11 @@
 //! A legend card says what is shown, with the real numbers at the ends of the
 //! scale, and the inspector says the value in the square that was clicked.
 //! Nothing is shown that the simulation does not record: the scales are the
-//! year's own figures, never a guess.
+//! year's own figures, never a guess. Where the clock stands in a month of a
+//! live game, the price and wage maps show that month's figures (the last
+//! month that is over), which the viewer has kept since the game was opened
+//! (`live::Months`); everywhere else they show the year's average, and the
+//! rest of the views are the year's, as the map is.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
@@ -18,6 +22,7 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::ui::FocusPolicy;
 
 use crate::family::{chip_button, FamilyView};
+use crate::live::Months;
 use crate::replay::{self, Replay};
 use crate::ui::{self, text, INK, MUTED, RULE};
 use crate::{terrain, Data, SeasonMats, Timeline, UiFont};
@@ -97,8 +102,9 @@ pub struct MapOverlay {
     pub good: usize,
     /// the overlay the pill brings back
     last: Overlay,
-    /// what the texture holds: overlay, good, year index, years filled
-    painted: Option<(Option<Overlay>, usize, usize, usize)>,
+    /// what the texture holds: overlay, good, year index, years filled, and
+    /// the month whose prices or wages it shows in place of the year's
+    painted: Option<(Option<Overlay>, usize, usize, usize, Option<usize>)>,
     legend: Option<Legend>,
     /// bumped when the legend card must be rebuilt
     version: u64,
@@ -130,10 +136,42 @@ impl MapOverlay {
         matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Wages))
     }
 
-    /// What the overlay says of a square, for the inspector.
-    pub fn said(&self, r: &Replay, k: usize, c: usize) -> Option<String> {
-        said(r, k, c, self.kind?, self.good)
+    /// The month whose prices or wages the map shows in place of the year's, if it shows one.
+    pub fn month(&self) -> Option<usize> {
+        self.painted.and_then(|p| p.4)
     }
+
+    /// What the overlay says of a square, for the inspector: of the month the map shows, if it shows one.
+    pub fn said(&self, r: &Replay, months: &Months, k: usize, c: usize) -> Option<String> {
+        let month = self.painted.and_then(|p| p.4).map(|t| Month::of(r, months, t));
+        said(r, k, c, self.kind?, self.good, month.as_ref())
+    }
+}
+
+/// A month whose prices and wages a map shows in place of the year's averages.
+pub struct Month<'a> {
+    pub months: &'a Months,
+    /// the month's place in the run (0 is the first January)
+    pub t: usize,
+    /// "March 1784"
+    pub label: String,
+}
+
+impl Month<'_> {
+    pub fn of<'a>(r: &Replay, months: &'a Months, t: usize) -> Month<'a> {
+        Month { months, t, label: format!("{} {}", crate::clock::MONTHS[t % 12], r.y0 + (t / 12) as i32) }
+    }
+}
+
+/// The month the price and wage maps show for a clock at `t`: the last month
+/// that is over, if the viewer holds it or an earlier one of the same year.
+/// None where the date shows no month, and where nothing is held (a recorded
+/// run; a year a game played before it was opened).
+pub fn month_shown(months: &Months, t: f32, dated: bool) -> Option<usize> {
+    if !dated {
+        return None;
+    }
+    months.at_or_before(crate::clock::series_month(t).checked_sub(1)?)
 }
 
 // ------------------------------------------------------------------ the tints
@@ -326,7 +364,8 @@ fn ramp_bar(stops: &[u32; 5]) -> Vec<[u8; 3]> {
 }
 
 /// The overlay for year index `k`: tints, and the legend that explains them.
-pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
+/// With `month`, prices and wages are that month's and not the year's.
+pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Month>) -> Wash {
     let year = r.y0 + k as i32;
     let mut cells = vec![0u8; r.n * 4];
     // every land cell carries its market as its region, so the shader can rule the boundaries
@@ -397,8 +436,12 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
         Overlay::Price | Overlay::Wages => {
             let is_price = kind == Overlay::Price;
             let label = r.header.goods.get(good).map_or("goods".to_string(), |g| g.label.to_lowercase());
-            let value = |t: usize| if is_price { price(r, k, t, good) } else { wage(r, k, t) };
-            let title = if is_price { format!("The price of {label} in {year}") } else { format!("Wages in {year}") };
+            let value = |t: usize| match month {
+                Some(m) => if is_price { m.months.price(m.t, t, good) } else { m.months.wage(m.t, t) }.filter(|v| v.is_finite() && *v > 0.0),
+                None => if is_price { price(r, k, t, good) } else { wage(r, k, t) },
+            };
+            let when = month.map_or(format!("{year}"), |m| m.label.clone());
+            let title = if is_price { format!("The price of {label} in {when}") } else { format!("Wages in {when}") };
             // the cheapest and the dearest market are the ends of the scale
             let towns: Vec<(usize, f32)> = markets(r, k).into_iter().filter_map(|t| value(t).map(|v| (t, v))).collect();
             let lo = towns.iter().copied().min_by(|a, b| a.1.total_cmp(&b.1));
@@ -412,7 +455,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
                 } else if r.town_price.is_empty() {
                     "This record does not hold the towns' prices.".to_string()
                 } else {
-                    format!("No market has a price for {label} in {year}.")
+                    format!("No market has a price for {label} in {when}.")
                 };
                 return Wash { cells, legend: none(title, note), soft: 0.06, lines: true };
             };
@@ -423,10 +466,11 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
             }
             let legend = Legend {
                 title,
-                note: if is_price {
-                    "Each square takes the price in the market it trades in, the year's average. Carriage to and from the market is not counted.".into()
-                } else {
-                    "What a month's work pays in each town, the year's average, shown across the town's market area.".into()
+                note: match (is_price, month.is_some()) {
+                    (true, false) => "Each square takes the price in the market it trades in, the year's average. Carriage to and from the market is not counted.".into(),
+                    (true, true) => "Each square takes the price in the market it trades in, as it stood at the month's end. Carriage to and from the market is not counted.".into(),
+                    (false, false) => "What a month's work pays in each town, the year's average, shown across the town's market area.".into(),
+                    (false, true) => "What the month's work paid in each town, shown across the town's market area.".into(),
                 },
                 ramp: ramp_bar(stops),
                 low: format!("{} at {}", coin(lo.1), town_name(r, lo.0)),
@@ -439,7 +483,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize) -> Wash {
 
 /// What the overlay says of square `c` in year index `k`, as a sentence for the
 /// inspector. None where it has nothing to say (the sea, or no record).
-pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize) -> Option<String> {
+pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: Option<&Month>) -> Option<String> {
     if c >= r.n || !land(r, c) {
         return None;
     }
@@ -468,16 +512,30 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize) -> Optio
             let g = r.header.goods.get(good)?;
             // the record holds a price, not whether any was sold at it, and a good may be
             // one thing or many (coal, rails), so the sentence commits to neither
-            match town.map(|t| (t, price(r, k, t, good))) {
-                Some((t, Some(p))) => format!("Price: {} for {} at {}, the market this square trades in.", coin(p), g.label.to_lowercase(), town_name(r, t)),
-                Some((t, None)) => format!("Price: {}'s market has no price for {} this year.", town_name(r, t), g.label.to_lowercase()),
+            let of = |t: usize| match month {
+                Some(m) => m.months.price(m.t, t, good).filter(|p| p.is_finite() && *p > 0.0),
+                None => price(r, k, t, good),
+            };
+            let then = month.map_or(String::new(), |m| format!(" in {}", m.label));
+            match town.map(|t| (t, of(t))) {
+                Some((t, Some(p))) => format!("Price: {} for {} at {}{then}, the market this square trades in.", coin(p), g.label.to_lowercase(), town_name(r, t)),
+                Some((t, None)) => format!("Price: {}'s market has no price for {} {}.", town_name(r, t), g.label.to_lowercase(), if month.is_some() { "this month" } else { "this year" }),
                 None => "Price: it trades in no town's market.".to_string(),
             }
         }
-        Overlay::Wages => match town.and_then(|t| wage(r, k, t).map(|w| (t, w))) {
-            Some((t, w)) => format!("Wages: a month's work pays {} at {}.", coin(w), town_name(r, t)),
-            None => return None,
-        },
+        Overlay::Wages => {
+            let of = |t: usize| match month {
+                Some(m) => m.months.wage(m.t, t).filter(|w| w.is_finite() && *w > 0.0),
+                None => wage(r, k, t),
+            };
+            match town.and_then(|t| of(t).map(|w| (t, w))) {
+                Some((t, w)) => match month {
+                    Some(m) => format!("Wages: a month's work paid {} at {} in {}.", coin(w), town_name(r, t), m.label),
+                    None => format!("Wages: a month's work pays {} at {}.", coin(w), town_name(r, t)),
+                },
+                None => return None,
+            }
+        }
     })
 }
 
@@ -554,10 +612,14 @@ fn input(
 
 /// Write the chosen overlay for the year on the clock into the ground's
 /// texture, and turn the wash on or off. Runs only when one of them changes.
+#[allow(clippy::too_many_arguments)]
 fn paint(
     mut ov: ResMut<MapOverlay>,
     tl: Res<Timeline>,
     data: Res<Data>,
+    months: Res<Months>,
+    live: Option<Res<crate::live::Live>>,
+    stills: Option<Res<crate::ShotPlanArgs>>,
     sm: Option<Res<SeasonMats>>,
     mut mats: ResMut<Assets<terrain::GroundMaterial>>,
     mut images: ResMut<Assets<Image>>,
@@ -567,12 +629,18 @@ fn paint(
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let good = ov.good.min(r.header.goods.len().saturating_sub(1));
-    let key = (ov.kind, good, k, r.filled);
+    // prices and wages go by the month where the clock shows one and the month is held
+    let month = match ov.kind {
+        Some(Overlay::Price | Overlay::Wages) => month_shown(&months, tl.t, crate::shown_date(&tl, &data, live.as_deref(), stills.is_some()).is_some()),
+        _ => None,
+    };
+    let key = (ov.kind, good, k, r.filled, month);
     if ov.painted == Some(key) {
         return;
     }
     let was_on = ov.painted.is_some_and(|p| p.0.is_some());
-    let w = ov.kind.map(|kind| wash(r, k, kind, good));
+    let month = month.map(|t| Month::of(r, &months, t));
+    let w = ov.kind.map(|kind| wash(r, k, kind, good, month.as_ref()));
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
     if let (Some(w), Some(h)) = (&w, &handle) {
         if let Some(mut img) = images.get_mut(h) {
@@ -772,7 +840,7 @@ mod tests {
     fn the_sea_is_left_alone_and_land_carries_its_market() {
         let r = strip();
         for kind in Overlay::ALL {
-            let w = wash(&r, 0, kind, 0);
+            let w = wash(&r, 0, kind, 0, None);
             assert_eq!(tint(&w, 0), [0, 0, 0, 0], "{kind:?} tints the sea");
             assert_eq!((tint(&w, 1)[3], tint(&w, 2)[3], tint(&w, 3)[3]), (1, 1, 2), "{kind:?} regions");
         }
@@ -781,38 +849,74 @@ mod tests {
     #[test]
     fn prices_and_wages_run_from_the_cheapest_town_to_the_dearest() {
         let r = strip();
-        let w = wash(&r, 0, Overlay::Price, 0);
+        let w = wash(&r, 0, Overlay::Price, 0, None);
         assert_eq!(w.legend.low, "\u{00a3}1.00 at Ashby");
         assert_eq!(w.legend.high, "\u{00a3}1.50 at Brill");
         assert_eq!(&tint(&w, 1)[..3], &rgb(MADDER[0]));
         assert_eq!(&tint(&w, 3)[..3], &rgb(MADDER[4]));
         assert!(w.lines);
         // coal has a price only at Brill: Ashby's squares are blank, and the inspector says so
-        let w = wash(&r, 0, Overlay::Price, 1);
+        let w = wash(&r, 0, Overlay::Price, 1, None);
         assert_eq!(&tint(&w, 1)[..3], &rgb(BLANK));
-        assert_eq!(said(&r, 0, 2, Overlay::Price, 1).unwrap(), "Price: Ashby's market has no price for coal this year.");
-        assert_eq!(said(&r, 0, 3, Overlay::Price, 1).unwrap(), "Price: \u{00a3}0.80 for coal at Brill, the market this square trades in.");
+        assert_eq!(said(&r, 0, 2, Overlay::Price, 1, None).unwrap(), "Price: Ashby's market has no price for coal this year.");
+        assert_eq!(said(&r, 0, 3, Overlay::Price, 1, None).unwrap(), "Price: \u{00a3}0.80 for coal at Brill, the market this square trades in.");
         // a square outside every market area has no price to take
         let mut lone = strip();
         lone.catch[3] = 0;
-        assert_eq!(said(&lone, 0, 3, Overlay::Price, 0).unwrap(), "Price: it trades in no town's market.");
-        let w = wash(&r, 0, Overlay::Wages, 0);
+        assert_eq!(said(&lone, 0, 3, Overlay::Price, 0, None).unwrap(), "Price: it trades in no town's market.");
+        let w = wash(&r, 0, Overlay::Wages, 0, None);
         assert_eq!((w.legend.low.as_str(), w.legend.high.as_str()), ("\u{00a3}2.00 at Ashby", "\u{00a3}3.00 at Brill"));
-        assert_eq!(said(&r, 0, 2, Overlay::Wages, 0).unwrap(), "Wages: a month's work pays \u{00a3}2.00 at Ashby.");
+        assert_eq!(said(&r, 0, 2, Overlay::Wages, 0, None).unwrap(), "Wages: a month's work pays \u{00a3}2.00 at Ashby.");
+    }
+
+    #[test]
+    fn where_the_clock_shows_a_month_prices_and_wages_are_the_months() {
+        let r = strip();
+        let mut months = Months::default();
+        // January to March of the second year, as a live game sends them
+        for (m, grain) in [(0, 1.3), (1, 1.25), (2, 1.2)] {
+            months.add(&isostate_core::LiveMonth { year: 1751, month: m, index: 12 + m, series: Vec::new(), wage: vec![2.5, 2.8], price: vec![grain, 0.0, 1.1, 0.9], cash: Vec::new(), events: Vec::new() });
+        }
+        // the clock a little into April: March is the last month over
+        let t = crate::clock::at(0, 3) + 0.04;
+        assert_eq!(month_shown(&months, t, true), Some(14));
+        // at the turn the last month over is December of the year before, which is not held: the year's averages
+        assert_eq!(month_shown(&months, 0.0, true), None);
+        // where the bar shows no month, the year's
+        assert_eq!(month_shown(&months, t, false), None);
+        // a month that has not come: the newest of its year that has
+        assert_eq!(month_shown(&months, crate::clock::at(0, 8), true), Some(14));
+        // and a year the viewer holds nothing of
+        assert_eq!(month_shown(&months, crate::clock::at(4, 8), true), None);
+
+        let month = Month::of(&r, &months, 14);
+        assert_eq!(month.label, "March 1751");
+        let w = wash(&r, 0, Overlay::Price, 0, Some(&month));
+        assert_eq!(w.legend.title, "The price of grain in March 1751");
+        assert!(w.legend.note.contains("at the month's end"), "{}", w.legend.note);
+        // the month's prices, not the year's (which have Ashby the cheaper)
+        assert_eq!((w.legend.low.as_str(), w.legend.high.as_str()), ("\u{00a3}1.10 at Brill", "\u{00a3}1.20 at Ashby"));
+        assert_eq!(said(&r, 0, 2, Overlay::Price, 0, Some(&month)).unwrap(), "Price: \u{00a3}1.20 for grain at Ashby in March 1751, the market this square trades in.");
+        assert_eq!(said(&r, 0, 2, Overlay::Price, 1, Some(&month)).unwrap(), "Price: Ashby's market has no price for coal this month.");
+        let w = wash(&r, 0, Overlay::Wages, 0, Some(&month));
+        assert_eq!((w.legend.title.as_str(), w.legend.low.as_str()), ("Wages in March 1751", "\u{00a3}2.50 at Ashby"));
+        assert_eq!(said(&r, 0, 2, Overlay::Wages, 0, Some(&month)).unwrap(), "Wages: a month's work paid \u{00a3}2.50 at Ashby in March 1751.");
+        // the views that go by the year take no notice of a month
+        assert_eq!(wash(&r, 0, Overlay::Rent, 0, Some(&month)).legend.title, wash(&r, 0, Overlay::Rent, 0, None).legend.title);
     }
 
     #[test]
     fn the_inspector_says_what_the_overlay_shows() {
         let r = strip();
-        assert_eq!(said(&r, 0, 0, Overlay::Rent, 0), None);
+        assert_eq!(said(&r, 0, 0, Overlay::Rent, 0, None), None);
         // 12 months of the record's middle value: 10^(128/255*6 - 3) is about 1.03 a month
-        assert_eq!(said(&r, 0, 2, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns about \u{00a3}12 a year.");
+        assert_eq!(said(&r, 0, 2, Overlay::Rent, 0, None).unwrap(), "Rent: the ground of this square earns about \u{00a3}12 a year.");
         // the record's top step is a floor, not a figure
-        assert_eq!(said(&r, 0, 3, Overlay::Rent, 0).unwrap(), "Rent: the ground of this square earns \u{00a3}12k a year or more.");
-        assert_eq!(said(&r, 0, 2, Overlay::Areas, 0).unwrap(), "Market: it buys and sells at Ashby, one of 2 squares that do.");
-        assert_eq!(said(&r, 0, 1, Overlay::Reach, 0).unwrap(), "Way to market: Ashby's market is here.");
-        assert_eq!(said(&r, 0, 2, Overlay::Reach, 0).unwrap(), "Way to market: Ashby is as far as 6.0 km of flat open country.");
-        assert_eq!(said(&r, 0, 3, Overlay::Reach, 0).unwrap(), "Way to market: there is no way from here to any market.");
+        assert_eq!(said(&r, 0, 3, Overlay::Rent, 0, None).unwrap(), "Rent: the ground of this square earns \u{00a3}12k a year or more.");
+        assert_eq!(said(&r, 0, 2, Overlay::Areas, 0, None).unwrap(), "Market: it buys and sells at Ashby, one of 2 squares that do.");
+        assert_eq!(said(&r, 0, 1, Overlay::Reach, 0, None).unwrap(), "Way to market: Ashby's market is here.");
+        assert_eq!(said(&r, 0, 2, Overlay::Reach, 0, None).unwrap(), "Way to market: Ashby is as far as 6.0 km of flat open country.");
+        assert_eq!(said(&r, 0, 3, Overlay::Reach, 0, None).unwrap(), "Way to market: there is no way from here to any market.");
     }
 
     #[test]
@@ -820,7 +924,7 @@ mod tests {
         let r = strip();
         let t = area_tints(&r, 0);
         assert_ne!(t[0], t[1]);
-        let w = wash(&r, 0, Overlay::Areas, 0);
+        let w = wash(&r, 0, Overlay::Areas, 0, None);
         assert_ne!(&tint(&w, 2)[..3], &tint(&w, 3)[..3]);
         // the year is in the title, and is not said again
         assert_eq!(w.legend.title, "Market areas in 1750");

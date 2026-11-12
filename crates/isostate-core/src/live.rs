@@ -1,7 +1,10 @@
 //! A live view of a running simulation, for the viewer: what never changes, once
 //! (`live_static`), and after every simulated year what that year changed
 //! (`live_year`). Not in the Python; `record` keeps the same data for a whole
-//! run, and the encodings are the same as in `run.bin`.
+//! run, and the encodings are the same as in `run.bin`. A viewer whose clock
+//! shows months may also ask after each month for the little that the months
+//! change (`live_month`: the series, the towns' prices and wages, the
+//! families' cash, a railway opened).
 //!
 //! The intended loop, in the thread that owns the `Sim`:
 //!
@@ -282,6 +285,59 @@ pub struct LiveYear {
     /// while it is being dug). Empty unless the mechanism is on. The `trans`
     /// layer marks the same cells with 16 (open) and 32 (digging).
     pub canals: Vec<crate::canals::LinkOut>,
+}
+
+/// One finished month: what the economy changes month by month, kept small
+/// (a few hundred numbers), for a viewer whose clock shows months. The map,
+/// the works, the families' reports and most of the news are the year's
+/// (`LiveYear`).
+#[derive(Clone, Debug, Serialize)]
+pub struct LiveMonth {
+    pub year: i64,
+    /// 0 for January.
+    pub month: usize,
+    /// The month's place in the monthly series: 12 times the year's index, plus the month.
+    pub index: usize,
+    /// The month's value of every monthly series, in `LiveStatic::series` order.
+    pub series: Vec<f64>,
+    /// The month's wage in each town, by town slot.
+    pub wage: Vec<f32>,
+    /// The month's prices, `[town * G + good]`.
+    pub price: Vec<f32>,
+    /// Every family's cash at the month's end (empty without families).
+    pub cash: Vec<f64>,
+    /// News since the previous call (`live_month` or `live_year`): what the
+    /// months themselves make, which is a railway opened.
+    pub events: Vec<Event>,
+}
+
+/// The values of every monthly series in month `t` of the run (0 for the first
+/// January), in `LiveStatic::series` order.
+pub fn month_series(st: &State, t: usize) -> Vec<f64> {
+    st.series.data.iter().map(|d| d.get(t).copied().unwrap_or(f64::NAN)).collect()
+}
+
+/// The month just simulated. Call after `sim::run_month` (or `save::Game::month`)
+/// with `t` the month's place in the series, which is `Sim::t - 1` then; the
+/// year's last month may be left to `live_year`, which sends the news either way.
+pub fn live_month(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, events: &[Event], t: usize) -> LiveMonth {
+    let (T, G) = (st.T_max, C.G);
+    let new_events = events[cursor.events.min(events.len())..].to_vec();
+    // chronicle: the marks these went out with, so a later change to one is told
+    if P.chronicle.enabled {
+        cursor.kept.extend(new_events.iter().map(|e| e.kept));
+    }
+    cursor.events = events.len();
+    LiveMonth {
+        year: C.start_year + (t / 12) as i64,
+        month: t % 12,
+        index: t,
+        series: month_series(st, t),
+        wage: (0..T).map(|i| if st.town_active[i] { st.wage[i] as f32 } else { 0.0 }).collect(),
+        price: (0..T * G).map(|k| st.price.data[k] as f32).collect(),
+        cash: st.families.iter().map(|f| f.cash).collect(),
+        events: new_events,
+    }
 }
 
 /// What the viewer has been sent so far.
