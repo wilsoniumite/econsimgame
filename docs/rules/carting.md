@@ -43,9 +43,9 @@ produce on its way to market, a works' inputs and output, and the charge on
 the trade a town sends to other towns, which the buying town's merchants
 pay to the sending town's households. That charge is the port's whole
 charge on trade: the carriage and a handling charge of 3 per cent of the
-goods' value at the sending town's price (`handling`); both were income that cost nobody
-anything, and both are now somebody's time, but only the carriage falls when
-a railway is built. The lag of a month is because the bill is only known
+goods' value at the sending town's price (`handling`); both were income that
+cost nobody anything, and both are now somebody's time, but only the
+carriage falls when a railway is built. The lag of a month is because the bill is only known
 once the month's goods have moved.
 
 Nothing else changes, and no money moves that did not move before: the
