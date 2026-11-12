@@ -119,7 +119,7 @@ fn main() {
                 println!("\n==== {name} has no books in {year}");
                 continue;
             };
-            town(st, C, tb, year, spread, &all, &price_at);
+            town(st, C, tb, year, spread, &price_at);
         }
 
         if let Some(gname) = &good {
@@ -152,7 +152,8 @@ fn main() {
             // how many lines a map of them would draw, at a few thresholds
             for at in [100.0f32, 500.0, 1000.0] {
                 let big: Vec<_> = flows.iter().filter(|f| f.qty >= at).collect();
-                println!("    of {at} units or more: {} flows, {:.1} per cent of what was carried", big.len(), 100.0 * big.iter().map(|f| f.qty as f64).sum::<f64>() / q.max(1e-9));
+                // (folded from 0.0: a sum of no flows would otherwise print as -0.0 per cent)
+                println!("    of {at} units or more: {} flows, {:.1} per cent of what was carried", big.len(), 100.0 * big.iter().fold(0.0, |s, f| s + f.qty as f64) / q.max(1e-9));
             }
             println!("  {:>12} -> {:<12} {:>9} {:>9} {:>9} {:>9}  {:>9} {:>9}", "from", "to", "qty", "price", "carting", "a unit", "delivered", "price");
             for f in flows.iter().take(15) {
@@ -301,7 +302,7 @@ fn main() {
 }
 
 /// One town's books for a year, and the checks.
-fn town(st: &State, C: &Content, tb: &TownBooks, year: i64, spread: f64, all: &[Option<TownBooks>], price_at: &dyn Fn(usize, usize) -> f64) {
+fn town(st: &State, C: &Content, tb: &TownBooks, year: i64, spread: f64, price_at: &dyn Fn(usize, usize) -> f64) {
     println!("\n==== {} in {year}", tb.name);
     println!(
         "  {:.0} people; wage {:.3} a month; {:.0} hands for hire, {:.0} on the land, {:.0} in works, {:.0} carting, {:.0} digging canals",
@@ -515,7 +516,7 @@ fn town(st: &State, C: &Content, tb: &TownBooks, year: i64, spread: f64, all: &[
     println!("                                             dividends {}", diff(ws("dividends"), sum_m(&|m| m.dividends)));
     println!("                                     invest (the town's) {}", diff(ws("invest"), fig(tb, "invest")));
     // money: the purses at the year's end against the year before, and what the books saw go in and out
-    if let Some(prev) = all.first().and(accounts::town_books(st, C, tb.town, Some(year - 1))) {
+    if let Some(prev) = accounts::town_books(st, C, tb.town, Some(year - 1)) {
         let hh_in: f64 = ["pay_works", "pay_land", "pay_projects", "cart_works", "cart_land", "cart_trade", "managers", "div_works", "div_merchants", "fund", "issue"].iter().map(|k| fig(tb, k)).sum();
         let d_cash = fig(tb, "cash_households") - fig(&prev, "cash_households");
         println!("  households: received less spent on goods and house rent, against their cash's change: {}", diff(hh_in - fig(tb, "spend_households") - fig(tb, "rent_town"), d_cash));
