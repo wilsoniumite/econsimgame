@@ -104,7 +104,7 @@ where. A game is played under the game's rules, and there works have a life
 cycle (`docs/rules/works.md`, `src/works.rs`). It changes three things for a
 family: how big a works is founded, when a branch extends a works it has and
 does not found another, and when a works is refused. This section was checked
-against `works.rs`, `families.rs` and `firms.rs` on 11 November 2026. Under
+against `works.rs`, `families.rs` and `firms.rs` on 12 November 2026. Under
 the port every function named here gives the port's number.
 
 **How big a works is founded** (`families::founding_K`). First the size its
@@ -140,8 +140,9 @@ method's labour per unit, over 2,000 (`works::land_take`). A smithy of five
 men takes a yard, a mill of a thousand hands half a cell. The ground is taken
 on the day the capacity is ordered, built or not, and rent is paid on it from
 then. When a works needs more ground than it has leased, the rest is rented
-at what the cell's land earns that year, and never for less than the works
-already pays (`works::ordered`).
+at a quarter over what the cell's land earns that year, which is what a new
+works bids, and never for less than the works already pays
+(`works::ordered`).
 
 **When a works is refused.** `found_works` refuses, in this order, and the
 `allowed` field of each `SiteOption` gives the same reason (cash aside):
@@ -156,7 +157,7 @@ already pays (`works::ordered`).
    and if that is more than the cell it says "the cell has no room left for
    powered mill of this size". A poorer family founds a smaller works, which
    may fit where a richer one's would not;
-5. too little cash: "it costs 2,400 and the Fairfax family has 1,900". With
+5. too little cash: "it costs 2400 and the Fairfax family has 1900". With
    the purse rule this happens only when even the smallest works is beyond
    the family.
 
@@ -213,20 +214,23 @@ into a sister works it already has, on the family's cash.
 
 **What it comes to.** A family ends the century with a few dozen works of
 some size, where under the port it had several hundred small ones. On seed 7
-under the game's rules, with every default taken, the player has 26 works in
-1900, and the six families hold 7, 44, 49 and 51 per cent of the works'
-capital in 1750, 1800, 1850 and 1900, 13 to 22 per cent of the rent and 2 to
-10 per cent of the money (`examples/live.rs`, run on 11 November 2026).
+under the game's rules, with every default taken, the player has 24 works in
+1900, and the six families hold 6, 48, 42 and 39 per cent of the works'
+capital in 1750, 1800, 1850 and 1900, 13 to 19 per cent of the rent and 2 to
+11 per cent of the money (`examples/live.rs`, run on 12 November 2026, with
+the mines in).
 
 The tables and the worries in the rest of this page were measured under the
 port's rules, before the game's rules existed. `examples/bots.rs` and
 `examples/live.rs` now play the game's rules unless given `--rules port`. The
 scripted players under the game's rules are in `docs/rules/works.md` ("The
-scripted players" and "In company with the rest of the game") and
-`docs/rules/towns.md` ("In company, after the merge"): the landlord still
-comes first on every island, the founder founds 120 to 148 works and has 25
-to 32 standing, and the player who takes every default ends fourth of six on
-three islands of four.
+scripted players" and "In company with the rest of the game"),
+`docs/rules/towns.md` ("In company, after the merge") and
+`docs/rules/mines.md` ("What it does in company"). Played again on 12
+November 2026 with the mines in, on seeds 1, 2, 3 and 7: the landlord still
+comes first on every island, the founder founds 94 to 145 works and has 30
+to 41 standing, and the player who takes every default ends fourth of six on
+three islands of four and first on the other.
 
 ## The API
 
