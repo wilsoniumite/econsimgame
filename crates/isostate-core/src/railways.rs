@@ -161,20 +161,48 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
     ways::progress(st, &way, year_float, events);
 }
 
+/// The line that carries a town's coal away, as the chronicle's coalfield
+/// stories tell it (`line_for_coal`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoalLine {
+    /// The moment it opened.
+    pub opened: f64,
+    /// A branch to the collieries of the town's district, not a line to the town.
+    pub colliery: bool,
+    /// For a line to the town: the town at its other end, if it has one.
+    pub from: Option<usize>,
+    /// For a line to the town: how many lines had reached the town once it
+    /// opened (1 for its first), and the moment the first of them opened.
+    pub nth: usize,
+    pub first: f64,
+}
+
 /// For the chronicle's coalfield stories: the latest of the game's lines opened
-/// since `since` that carries town `t`'s coal, with the moment it opened. `true`
-/// is a branch to the collieries of the town's district; `false` is the railway
-/// reaching the town itself, as a trunk or as its first line. A branch to the
-/// district's farms, woods, quarries or works is passed over: it is on the same
-/// list of opened lines (`State::rail_opened`, with no second town, where the
-/// port has only its mineral spurs), but it is not what brings the coal down.
-pub fn line_for_coal(st: &State, t: usize, since: f64) -> Option<(f64, bool)> {
-    st.rw.lines.iter().rev().filter(|l| l.opened >= since).find_map(|l| match l.serves {
-        SERVES_TRUNK if l.a == t || l.b == t => Some((l.opened, false)),
-        SERVES_TOWN if l.a == t => Some((l.opened, false)),
-        serves if l.a == t && ways::serves_word(serves) == "collieries" => Some((l.opened, true)),
-        _ => None,
-    })
+/// since `since` that carries town `t`'s coal. It is a branch to the collieries
+/// of the town's district, or the railway reaching the town itself, as a trunk
+/// or as its first line; and for the second, which line to the town it was and
+/// when the first came, at any time, so that "the railway that reached" a town
+/// is said only of its first line. A branch to the district's farms, woods,
+/// quarries or works is passed over: it is on the same list of opened lines
+/// (`State::rail_opened`, with no second town, where the port has only its
+/// mineral spurs), but it is not what brings the coal down.
+pub fn line_for_coal(st: &State, t: usize, since: f64) -> Option<CoalLine> {
+    let reaches = |l: &ways::Line| match l.serves {
+        SERVES_TRUNK => l.a == t || l.b == t,
+        SERVES_TOWN => l.a == t,
+        _ => false,
+    };
+    let collieries = |l: &ways::Line| l.serves != SERVES_TRUNK && l.serves != SERVES_TOWN && l.a == t && ways::serves_word(l.serves) == "collieries";
+    // the book lists lines as they open
+    let lines = &st.rw.lines;
+    let k = lines.iter().rposition(|l| l.opened >= since && (reaches(l) || collieries(l)))?;
+    let l = &lines[k];
+    if !reaches(l) {
+        return Some(CoalLine { opened: l.opened, colliery: true, from: None, nth: 0, first: l.opened });
+    }
+    let to_town: Vec<&ways::Line> = lines[..=k].iter().filter(|m| reaches(m)).collect();
+    let other = if l.a == t { l.b } else { l.a };
+    Some(CoalLine { opened: l.opened, colliery: false, from: (other != t).then_some(other), nth: to_town.len(), first: to_town[0].opened })
 }
 
 /// Facts about the network for the sweep's table, under "Railways". Those that
@@ -312,17 +340,25 @@ mod tests {
             line(1838.9, code("coalmine"), 2, 0),
             line(1840.1, code("industry"), 2, 2),
         ];
+        let opened = |l: Option<CoalLine>| l.map(|l| (l.opened, l.colliery));
         // the latest line that carries coal: the colliery branch, not the works' branch after it
-        assert_eq!(line_for_coal(&st, 2, 1835.0), Some((1838.9, true)));
+        assert_eq!(opened(line_for_coal(&st, 2, 1835.0)), Some((1838.9, true)));
         // since 1839 only the works' branch has opened, and that is no coal line
         assert_eq!(line_for_coal(&st, 2, 1839.0), None);
-        // before the branches, the line that reached the town
+        // before the branches, the line that reached the town: its first, from town 0
         st.rw.lines.truncate(3);
-        assert_eq!(line_for_coal(&st, 2, 1830.0), Some((1831.5, false)));
+        let first = CoalLine { opened: 1831.5, colliery: false, from: Some(0), nth: 1, first: 1831.5 };
+        assert_eq!(line_for_coal(&st, 2, 1830.0), Some(first));
         // a trunk is told of both its towns; the junction town of another's first line is not
-        assert_eq!(line_for_coal(&st, 1, 1830.0), Some((1833.2, false)));
-        assert_eq!(line_for_coal(&st, 0, 1830.0), Some((1833.2, false)));
+        assert_eq!(line_for_coal(&st, 1, 1830.0), Some(CoalLine { opened: 1833.2, colliery: false, from: Some(0), nth: 1, first: 1833.2 }));
+        assert_eq!(line_for_coal(&st, 0, 1830.0), Some(CoalLine { opened: 1833.2, colliery: false, from: Some(1), nth: 1, first: 1833.2 }));
         assert_eq!(line_for_coal(&st, 0, 1834.0), None);
+        // a second line to town 2, a trunk from town 1 in 1837: it is the second,
+        // and the first came in 1831 whatever year the story looks back to
+        st.rw.lines.push(line(1837.6, SERVES_TRUNK, 1, 2));
+        let second = CoalLine { opened: 1837.6, colliery: false, from: Some(1), nth: 2, first: 1831.5 };
+        assert_eq!(line_for_coal(&st, 2, 1830.0), Some(second));
+        assert_eq!(line_for_coal(&st, 2, 1835.0), Some(second));
         // and with the mechanism off the book is empty
         assert_eq!(line_for_coal(&State::default(), 2, 1700.0), None);
     }
