@@ -144,8 +144,26 @@ from the year's land (`isostate-viewer/src/world.rs`, "the lie of the land"),
 thick and tall in its depths, thinner toward its edge, with glades and rides,
 stands of taller and lower trees, conifers gathered on high and poor ground,
 clumps and lone trees in the fields beside it, and a tree line below the
-mountain's summer snow. The `woods` sheet shows the trees; the game's standard
-shots show the woods.
+mountain's summer snow. Where a wood's edge runs is the land's own rule too
+(two smooth fields of the year, `YearLand::field`), not a generator's. The
+`woods` sheet shows the trees; the game's shots show the woods, and the far
+views of the land have a set of their own, which is what to look at after a
+change to the land's rules or to the ground shader:
+
+```bash
+isostate-viewer --land-shots out/land --shots-compare out/land-before
+```
+
+Five cameras chosen from the run (the whole island, wooded lowland from 8 km
+up, a hill margin, the country round the home town, the snow line), each in
+the summers of 1800 and 1900, in October 1800 and in midwinter 1900: twenty
+pictures in about 40 seconds, on the standard shots' machinery, so
+`--shots-compare` and `--compare-shots` work on them. It prints where each
+camera looks, for pointing a `--view` at the same country. The pictures say
+whether the land looks right; `ISOSTATE_AREAS=1` says whether it is still the
+simulation's (each use as painted against the record, over the island and
+over districts of 12 km, and how much of it changes from one year to the
+next).
 
 ## Houses
 

@@ -123,18 +123,32 @@ shingle = "#a49c8a"
 # plain soil above is the loam between them
 soil_light = "#b39c74"
 soil_red = "#8f5f45"
-# rough grass and scrub: a glade or a ride in a wood, and the margin a wood or
-# a heath leaves along the fields
+# rough grass and scrub: a glade or a ride in a wood, the grassy floor under the
+# thin trees of its rim, and the rough ground just outside a wood or a heath
 rough_grass = "#86a856"
-# a wood's canopy seen from so far off that the trees cannot be told apart
-wood_canopy = "#447336"
+# a wood's canopy seen from so far off that the trees cannot be told apart:
+# between the sunlit crowns and the shade among them, so that the trees do not
+# show as light specks on it
+wood_canopy = "#52843e"
 # a river seen from far off, drawn as a thread that keeps a pixel or two of width
 river_thread = "#5b9dc6"
 # the line of sand ruled along the shore in the far view
 shore_far = "#f0e2b4"
 # the canopy of a broadleaf wood in October, from as far off: the gold of its
-# trees (tint_autumn over the broadleaf greens, in [foliage]), a little shaded
-wood_canopy_autumn = "#a8883e"
+# trees (tint_autumn over the broadleaf greens, in [foliage]) with the shade
+# among them and the oaks that have not yet turned, a bronze and not a bright
+# gold, so that a half-wooded island does not go yellow
+wood_canopy_autumn = "#96803f"
+# the rough grass of the hill margins: what a pasture's grass goes toward as it
+# nears the moor and as the ground rises, and what the moor's own edge goes
+# toward, so that the two meet without a line
+moor_grass = "#a3b36b"
+# bracken, which breaks the line between the intakes and the moor: green in
+# summer, rust from October to spring
+bracken = "#6f9044"
+bracken_autumn = "#a3804f"
+# rushes in the wet of a rough pasture
+rushes = "#6d8a50"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).

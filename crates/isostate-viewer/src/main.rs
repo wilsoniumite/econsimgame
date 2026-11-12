@@ -101,6 +101,8 @@ struct Args {
     class_map: bool,
     /// render the standard shots into this directory, then stop (shots.rs)
     shots: Option<String>,
+    /// (task C, the land) the shots are the far views of the land (`shots::land_views`), not the standard twelve
+    land_shots: bool,
     /// show each standard shot beside the one of the same name in this directory
     shots_compare: Option<String>,
     /// a line for the sheet of standard shots, such as the commit they were made from
@@ -186,6 +188,9 @@ Pictures and checks with no window:
 The standard shots (src/shots.rs) and the lab (src/lab.rs):
 
   --shots DIR          play the whole game, take the standard shots into DIR, and stop
+  --land-shots DIR     the same for the far views of the land: five cameras (the whole island,
+                       mid distance over lowland wood, a hill margin, a town's surroundings,
+                       the snow line) in 1800 and 1900, in summer, in October and in midwinter
   --shots-compare DIR  with --shots: set each beside the shot of the same name in DIR
   --shots-note TEXT    with --shots: a line for the sheet, such as the commit
   --compare-shots A B  compare two sets of standard shots already taken, and stop
@@ -270,6 +275,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         ground_debug: false,
         class_map: false,
         shots: None,
+        land_shots: false,
         shots_compare: None,
         shots_note: String::new(),
         compare_shots: None,
@@ -338,6 +344,8 @@ fn parse(v: &[String]) -> Result<Args, String> {
             }
             "--season" => { a.season = Some(number(opt, &next(i)?)?); i += 1; }
             "--shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); i += 1; }
+            // (task C, the land) the same machinery as --shots, with the far views of the land
+            "--land-shots" => { a.shots = Some(named(opt, next(i)?, "a directory")?); a.land_shots = true; i += 1; }
             "--shots-compare" => { a.shots_compare = Some(named(opt, next(i)?, "a directory")?); i += 1; }
             "--shots-note" => { a.shots_note = next(i)?; i += 1; }
             "--compare-shots" => {
@@ -433,6 +441,8 @@ impl Data {
 struct Handles {
     /// the year's land mix per cell, read by the ground shader
     year_cells: Handle<Image>,
+    /// (task C, the land) the year's wood and heath as smooth fields, read by the ground shader
+    year_field: Handle<Image>,
     /// the trees, a group to each: what is green all year, the leaves, and the bare limbs
     trees: Vec<[Handle<Mesh>; 3]>,
     houses: Handle<Mesh>,
@@ -774,7 +784,11 @@ fn main() {
             std::process::exit(1);
         }
         let seat = families.as_ref().and_then(|f| f.player()).map(|p| p.seat);
-        let standard = shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir);
+        let standard = if args.land_shots {
+            shots::land_views(&r, &g, &cen, seat, shots::island_view(&r, args.size), dir)
+        } else {
+            shots::standard_views(&r, &cen, &slots, seat, shots::island_view(&r, args.size), dir)
+        };
         // pictures of an earlier set in this directory would be taken for this run's
         shots::clear_pictures(&standard);
         views = standard.iter().map(|s| s.spec.clone()).collect();
@@ -938,7 +952,10 @@ fn setup_world(
     commands.insert_resource(UiFont(fonts.add(Font::from_bytes(FREDOKA.to_vec()))));
 
     // ground: one heightfield, its patchwork painted per pixel from the year's land mix
-    let year_cells = images.add(terrain::parcel_image(g, terrain::year_parcels(r, g, k)));
+    // (task C, the land) the year's land is worked out once, for its parcels and for its wood and heath
+    let land = world::year_land(r, g, k);
+    let year_cells = images.add(terrain::parcel_image(g, terrain::year_parcels(r, g, k, &land)));
+    let year_field = images.add(terrain::field_image(g, land.field));
     let fixed_cells = images.add(terrain::parcel_image(g, terrain::fixed_parcels(r, g)));
     let terrain_mat = ground_mats.add(terrain::GroundMaterial {
         base: StandardMaterial { perceptual_roughness: lk.surfaces.ground, reflectance: lk.surfaces.ground_reflectance, ..default() },
@@ -949,6 +966,7 @@ fn setup_world(
             paint: lk.land.uniform(),
             overlay: images.add(overlay::blank(r)),
             rivers: images.add(world::timed("far rivers", || terrain::river_far(g))),
+            field: year_field.clone(),
         },
     });
     for chunk in terrain::terrain_chunks(g) {
@@ -972,6 +990,7 @@ fn setup_world(
     let flat = vertex_coloured(&mut materials, lk, lk.surfaces.paths);
     let handles = Handles {
         year_cells,
+        year_field,
         trees: (0..LEAF_GROUPS).map(|_| [(); 3].map(|_| meshes.add(placeholder_mesh()))).collect(),
         houses: meshes.add(placeholder_mesh()),
         works: meshes.add(placeholder_mesh()),
@@ -1152,6 +1171,8 @@ struct Scenery {
     /// the camera its houses were built for
     lod: scatter::Lod,
     cells: Vec<u8>,
+    /// (task C, the land) the year's wood and heath (`world::YearLand::field`)
+    field: Vec<u8>,
     ym: scatter::YearMeshes,
     nets: network::Nets,
     rails: Vec<trains::TrainPath>,
@@ -1179,8 +1200,10 @@ struct Shown {
 
 fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
     let t0 = std::time::Instant::now();
-    let cells = terrain::year_parcels(r, g, k);
-    let ym = scatter::build_year(r, g, slots, cen, k, lk, &lod);
+    // (task C, the land) one reckoning of the year's land for the ground's textures and the scenery
+    let land = world::timed("year land", || world::year_land(r, g, k));
+    let cells = terrain::year_parcels(r, g, k, &land);
+    let ym = scatter::build_year_on(r, g, slots, cen, k, lk, &lod, &land);
     let t1 = t0.elapsed().as_secs_f32();
     let nets = network::year_nets(r, g, cen, k, lk);
     let rails = trains::rail_paths(r, g, cen, k);
@@ -1200,7 +1223,7 @@ fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f3
             .collect();
         eprintln!("year {} meshes: {}", r.y0 + k as i32, sums.join(", "));
     }
-    Scenery { k, lod, cells, ym, nets, rails }
+    Scenery { k, lod, cells, field: land.field, ym, nets, rails }
 }
 
 /// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
@@ -1260,6 +1283,9 @@ fn rebuild_year(
         if !for_camera {
             if let Some(mut img) = images.get_mut(&handles.year_cells) {
                 img.data = Some(sc.cells);
+            }
+            if let Some(mut img) = images.get_mut(&handles.year_field) {
+                img.data = Some(sc.field);
             }
             // trains: one for every eight units of line, up to three, spread along it
             for e in &old_trains {
@@ -2417,7 +2443,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--load", "--save", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }
