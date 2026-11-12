@@ -55,6 +55,9 @@ struct Run {
     /// the island's price, a mean over towns weighted by what each made.
     made: Vec<Vec<f64>>,
     final_use: Vec<Vec<f64>>,
+    /// `[year][good]`: bought by households, landlords and families; by works being
+    /// built; by railways and canals; and the merchants' stock at the year's end.
+    buyers: Vec<Vec<[f64; 4]>>,
     worked_up: Vec<Vec<f64>>,
     price: Vec<Vec<f64>>,
     /// `[year][sector]`: hands and output on the land.
@@ -85,6 +88,7 @@ struct Run {
     learned: Vec<Vec<f64>>,
     quality: Vec<f64>,
     learn_cap: f64,
+    quality_cap: f64,
 }
 
 struct Works {
@@ -130,6 +134,7 @@ fn gather(P: &Params, C: Content) -> Run {
         ann,
         made: Vec::new(),
         final_use: Vec::new(),
+        buyers: Vec::new(),
         worked_up: Vec::new(),
         price: Vec::new(),
         land_hands: Vec::new(),
@@ -153,10 +158,12 @@ fn gather(P: &Params, C: Content) -> Run {
         learned,
         quality,
         learn_cap: P.learn_cap,
+        quality_cap: P.machines.quality_cap,
     };
     for k in 0..n {
         let rec = st.acct.year(k).expect("the books of every year");
         let (mut made, mut fin, mut up, mut pv) = (vec![0.0; G], vec![0.0; G], vec![0.0; G], vec![0.0; G]);
+        let mut who = vec![[0.0f64; 4]; G];
         let (mut lh, mut lo) = (vec![0.0; NS], vec![0.0; NS]);
         let (mut mh, mut mo, mut mc) = (vec![0.0; M], vec![0.0; M], vec![0.0; M]);
         let (mut tp, mut tw, mut tm) = (vec![0.0; T], vec![0.0; T], vec![vec![0.0; G]; T]);
@@ -169,6 +176,10 @@ fn gather(P: &Params, C: Content) -> Run {
                 pv[g] += q * v[g_price] as f64;
                 fin[g] += g_use.iter().map(|&c| v[c] as f64).sum::<f64>();
                 up[g] += g_up.iter().map(|&c| v[c] as f64).sum::<f64>();
+                who[g][0] += (v[gc("households")] + v[gc("landlords")] + v[gc("families")]) as f64;
+                who[g][1] += v[gc("building")] as f64;
+                who[g][2] += v[gc("projects")] as f64;
+                who[g][3] += v[gc("stock")] as f64;
             }
             for s in 0..NS {
                 let v = &rec.land[(t * NS + s) * KL..][..KL];
@@ -193,6 +204,7 @@ fn gather(P: &Params, C: Content) -> Run {
         let price: Vec<f64> = (0..G).map(|g| if made[g] > 0.0 { pv[g] / made[g] } else { nat(g) }).collect();
         run.made.push(made);
         run.final_use.push(fin);
+        run.buyers.push(who);
         run.worked_up.push(up);
         run.price.push(price);
         run.land_hands.push(lh);
@@ -387,8 +399,8 @@ fn growth(runs: &[Run], C: &Content) {
     }
     let q: Vec<f64> = late.iter().map(|&(_, _, b)| mean(&runs.iter().map(|r| r.quality[(b - r.y0) as usize]).collect::<Vec<_>>())).collect();
     print_row("machines' quality", &q, 2);
-    let caps: Vec<String> = runs.iter().map(|r| r.quality.iter().position(|&x| x >= 0.999 * r.quality[r.n - 1] && r.quality[r.n - 1] > 1.0).map_or("-".into(), |k| format!("{}", r.y0 + k as i64))).collect();
-    println!("  the year machines' quality reached its last level, seed by seed: {}", caps.join(" "));
+    let caps: Vec<String> = runs.iter().map(|r| r.quality.iter().position(|&x| x >= 0.99 * r.quality_cap).map_or("-".into(), |k| format!("{}", r.y0 + k as i64))).collect();
+    println!("  the year machines' quality came within 1 per cent of its cap, seed by seed (- never): {}", caps.join(" "));
 
     // hands and output per hand
     println!("\n== Hands by where they work (share of all hands) and output per hand (1870s = 1), means over seeds");
@@ -619,6 +631,15 @@ fn worst(runs: &[Run], C: &Content) {
             r.town_founded[t],
             v / dw
         );
+        // the good that raised the cost of living most: what was made and who bought it, the two years before and the year itself
+        let g = parts[0].0;
+        let line: Vec<String> = (k.saturating_sub(2)..=k)
+            .map(|j| {
+                let b = r.buyers[j][g];
+                format!("{}: made {:.0}, households {:.0}, building {:.0}, ways {:.0}, stock at the end {:.0}, price {:.2}", r.y0 + j as i64, r.made[j][g], b[0], b[1], b[2], b[3], p(g, j))
+            })
+            .collect();
+        println!("          {}: {}", C.good_name[g], line.join("; "));
     }
     let mut avg: Vec<(usize, f64)> = by_good.iter().copied().enumerate().collect();
     avg.sort_by(|a, b| b.1.total_cmp(&a.1));
