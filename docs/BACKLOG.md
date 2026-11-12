@@ -30,7 +30,7 @@ Started before this file existed, and left to finish. The usage limit cut every 
 | Industry brought up to the houses; one kit, one scale, a test that holds it (viewer) | 14, 16 | `night/works-detail` | built; in review |
 | Winter, and loose ends reviewers found (viewer) | none | `night/winter-fixes` | built; in review |
 | Where frames stall: a recorder, measurements and a design, no fix yet (viewer) | 17 | `night/smooth-probe` | measured and designed; with its critic |
-| The documents a newcomer reads first: README, the plan's account of where we are (F23) | none | `night/docs-front` | written; being checked command by command |
+| Two small repairs after the morning's landings: the mines lose money under the commons regime (the game's own regime is sound); the READMEs still tell of a clock that steps by the year | none | `night/mines-commons`, `night/docs-clock` | being built |
 
 Queued behind one of these and already briefed: works laid out by what they do and hold (note 16), which starts on `night/works-detail` once that has been reviewed.
 
@@ -57,7 +57,7 @@ Nothing here is started until its trigger is met and the backlog has been gone t
 17. **The first stage of the run to 2050** (note 1; F22). *Trigger:* Stella has read the design and answered its questions.
 18. **Polish, in this order:** the clock, the cards and the present (F24); the news watched in the running game (F25); winter and the light (F26); a title screen and a start that shows something (F27); life and weather (F28). *Trigger:* each names the landing it follows on its own page.
 
-One piece could go at once and was taken up the same evening, since the repository was about to be read by someone new: **documents that still describe the Python port** (F23).
+One piece could go at once and was taken up the same evening, since the repository was about to be read by someone new: **documents that still describe the Python port** (F23). It landed on 12 November: the README is written again, with every command in it run on the merged build.
 
 ## Waiting on Stella
 
