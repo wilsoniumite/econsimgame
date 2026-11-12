@@ -1035,8 +1035,13 @@ pub fn close_at(g: &Ground, x: f32, z: f32) -> (u32, u8) {
 
 /// How much further a spot counts from the market place for each cell it lies off the road.
 const OFF_THE_ROAD: f32 = 3.0;
-/// The same in the cell of a town's market place.
-const OFF_THE_ROAD_AT_MARKET: f32 = 1.6;
+/// The same in the cell of a town's market place: there the way across the
+/// ground counts for hardly more than the way along a road, so the closes
+/// come in rings round the market place and the old middle of a town is a
+/// knot of streets, built up behind its roads as far as along them. (The
+/// second helper had 1.6, and the town of 1750 was houses strung along its
+/// roads to the edge of the cell with nothing behind them.)
+const OFF_THE_ROAD_AT_MARKET: f32 = 1.08;
 
 /// The order in which the closes of cell `c`'s town ground (its `parcels`)
 /// are built up. Each close has a way to the market place of the town the

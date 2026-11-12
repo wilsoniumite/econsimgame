@@ -45,6 +45,10 @@ struct PatchworkParams {
     // the first block of the parcel textures along each axis (world.rs Land)
     block_i0: i32,
     block_j0: i32,
+    // (task A) 1 in a run whose towns keep their ground: their built-up
+    // ground then reads as roofs from far off (0 leaves a town's ground
+    // exactly as it was drawn before)
+    town_kept: f32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
@@ -148,6 +152,7 @@ struct LandPaint {
     close_grass: vec4<f32>,
     orchard: vec4<f32>,
     orchard_blossom: vec4<f32>,
+    town_roofs_far: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
@@ -964,7 +969,15 @@ fn class_colour(cls0: u32, sp: Spot, margin: bool) -> vec3<f32> {
         case WORKS: { c = works_yard(sp); }
         case URBAN: {
             // (task A) built-up ground, or the open closes of the town's edge
-            if (sp.town_open) { c = town_edge(sp); } else { c = town(sp); }
+            if (sp.town_open) {
+                c = town_edge(sp);
+            } else {
+                c = town(sp);
+                // from across the island the houses are a pixel or less, and
+                // the ground stands for them: the roofs of the built-up
+                // closes run together, the more of them the fuller the cell
+                c = mix(c, paint.town_roofs_far.rgb, ground.town_kept * sp.far * (0.42 + 0.45 * sp.dense));
+            }
         }
         case DERELICT: { c = derelict(sp); }
         case SEA: {

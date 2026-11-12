@@ -141,6 +141,10 @@ wood_canopy_autumn = "#a8883e"
 close_grass = "#7fb257"
 orchard = "#55893c"
 orchard_blossom = "#ecdcd6"
+# the built-up ground of a town that keeps its ground, seen from across the
+# island, where its houses are too small to draw: their roofs of tile and
+# slate over brick and wash, run together
+town_roofs_far = "#b07f68"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).

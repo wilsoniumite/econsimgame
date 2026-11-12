@@ -154,6 +154,8 @@ pub struct PatchworkParams {
     /// the first block of the parcel textures along each axis (`world::Land`)
     pub block_i0: i32,
     pub block_j0: i32,
+    /// (task A) 1 in a run whose towns keep their ground (`Replay::kept`)
+    pub town_kept: f32,
 }
 
 impl MaterialExtension for Patchwork {
@@ -182,6 +184,8 @@ fn show_year(tl: Res<crate::Timeline>, data: Res<crate::Data>, sm: Option<Res<cr
     }
     if let Some(mut m) = mats.get_mut(&sm.terrain) {
         m.extension.params.year = year as f32;
+        // (task A) a live game knows whether its towns keep their ground once its first year is in
+        m.extension.params.town_kept = data.r.kept() as u8 as f32;
         *last = Some(year);
     }
 }
@@ -241,7 +245,7 @@ fn spawn_sea(mut commands: Commands, data: Res<crate::Data>, look: Res<crate::lo
 }
 
 pub fn patchwork_params(r: &Replay, g: &Ground, season: f32, debug: bool) -> PatchworkParams {
-    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0 }
+    PatchworkParams { season, width: r.w as f32, height: r.h as f32, debug: debug as u32, year: r.y0 as f32, overlay: 0.0, overlay_soft: 0.06, overlay_lines: 0.0, block_i0: g.land.bi0, block_j0: g.land.bj0, town_kept: r.kept() as u8 as f32 }
 }
 
 /// The year's land for every parcel, as the shader reads it: its class

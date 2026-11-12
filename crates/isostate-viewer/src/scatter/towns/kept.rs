@@ -268,6 +268,15 @@ struct Lot {
 /// street's plots.
 const OLDER_STREET: f32 = 0.055;
 
+/// The old middle of a town: this many closes, the first of its first cell's
+/// order (about 500 m round the market place). Its lanes were built up house
+/// by house, not a row at a time, so a plot there takes its own turn and the
+/// lanes behind the market place fill as soon as the roads out of it. (With
+/// rows everywhere a row waited for the last of its plots, three to six
+/// plots along the lane, and the town of 1750 was houses strung along its
+/// roads with nothing behind them.)
+const OLD_MIDDLE: u16 = 20;
+
 /// A house that stands this year.
 struct Stood {
     lot: Lot,
@@ -465,6 +474,19 @@ struct Laying<'a> {
     streets: Vec<Street>,
     /// the streets that run through or by each square of the map, `NEAR` squares to a cell's side
     by_cell: HashMap<(i32, i32), Vec<u32>>,
+    /// the ways (the roads and the lanes between cells, not the lanes behind
+    /// them): each one's ends, its number and the year it was first there
+    mains: Vec<(Vec2, Vec2, i32, u32)>,
+    /// a way among `mains`, by its number
+    main_at: HashMap<i32, u32>,
+    /// the ways that come within `FAR_LANE` and a little of each cell of the map
+    mains_by_cell: HashMap<(i32, i32), Vec<u32>>,
+}
+
+/// How far a spot is from the line between two others.
+fn off_line(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let t = ((p - a).dot(b - a) / a.distance_squared(b).max(1e-9)).clamp(0.0, 1.0);
+    p.distance(a + (b - a) * t)
 }
 
 impl Laying<'_> {
@@ -487,11 +509,35 @@ impl Laying<'_> {
             && (self.sq.iter().any(|s| p.distance(s.at) < s.radius + 0.012 || p.distance(station_at(s)) < 0.07) || self.parishes.iter().any(|c| c.crowded_by(p)))
     }
 
+    /// Whether a lane behind a way, or a cross street off it, has come at `p`
+    /// to ground that lies nearer another way: there it stops, and the other
+    /// way's lanes take the ground. So where ways meet, at a market place
+    /// above all, the lanes behind them make rings of streets round it and do
+    /// not run across one another. (As the second helper left it every way
+    /// laid its lanes the whole of its length, those of ways that met crossed
+    /// in the angle between them, and of the plots there whose turn came six
+    /// in ten were lost to a street that ran through them: the middle of a
+    /// town was the thinnest part of it.) A way that came later takes no
+    /// ground from the lanes of one that was there before it, so a new road
+    /// moves no house.
+    fn gives_way(&self, s: &Street, p: Vec2) -> bool {
+        let Some(&own) = self.main_at.get(&s.way.main) else { return false };
+        let (a, b, _, _) = self.mains[own as usize];
+        let off = off_line(p, a, b);
+        self.mains_by_cell.get(&(p.x.floor() as i32, p.y.floor() as i32)).is_some_and(|near| {
+            near.iter().any(|&j| {
+                let (a, b, _, since) = self.mains[j as usize];
+                j != own && since <= s.way.since && off_line(p, a, b) < off - 1e-3
+            })
+        })
+    }
+
     /// Whether street `i` is laid at one of its steps: over dry town ground,
     /// and, unless it is a road, clear of the works' yards, the churchyards,
     /// the water and the market places. A lane that came to ground already
     /// town ground also gives way to the streets that were there before it,
-    /// and to their plots.
+    /// and to their plots; and any lane gives way where another way is nearer
+    /// (`gives_way`).
     fn laid(&self, i: usize, step: usize) -> bool {
         let s = &self.streets[i];
         match s.state[step].get() {
@@ -501,7 +547,10 @@ impl Laying<'_> {
         let p = s.at(step);
         let at = self.town_at(p);
         let ok = at.is_some_and(|a| {
-            s.way.road || (!(self.near_plot)(p.x, p.y) && !self.in_square(p) && !(s.lane() && s.way.since > self.joined[&a.0] && self.in_street(p, OLDER_STREET, |o| o.way.since < s.way.since)))
+            s.way.road
+                || (!(self.near_plot)(p.x, p.y)
+                    && !self.in_square(p)
+                    && !(s.lane() && (self.gives_way(s, p) || s.way.since > self.joined[&a.0] && self.in_street(p, OLDER_STREET, |o| o.way.since < s.way.since))))
         });
         s.state[step].set(if !ok { 1 } else if at.is_some_and(|a| a.2) { 3 } else { 2 });
         ok
@@ -587,6 +636,9 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         joined: town.cells.keys().map(|&c| (c, joined_in(r, k, c as usize))).collect(),
         streets: Vec::new(),
         by_cell: HashMap::default(),
+        mains: Vec::new(),
+        main_at: HashMap::default(),
+        mains_by_cell: HashMap::default(),
     };
     for way in ways(r, g, cen, k, town, &sq) {
         let len = way.a.distance(way.b).max(1e-4);
@@ -602,6 +654,20 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 }
             }
         }
+        if way.kind == 0 {
+            // every cell of the map the way comes within its furthest lane of
+            let reach = FAR_LANE + 0.05;
+            let (lo, hi) = (way.a.min(way.b) - Vec2::splat(reach), way.a.max(way.b) + Vec2::splat(reach));
+            for cy in lo.y.floor() as i32..=hi.y.floor() as i32 {
+                for cx in lo.x.floor() as i32..=hi.x.floor() as i32 {
+                    if off_line(Vec2::new(cx as f32 + 0.5, cy as f32 + 0.5), way.a, way.b) < reach + 0.71 {
+                        lay.mains_by_cell.entry((cx, cy)).or_default().push(lay.mains.len() as u32);
+                    }
+                }
+            }
+            lay.main_at.insert(way.id, lay.mains.len() as u32);
+            lay.mains.push((way.a, way.b, way.id, way.since));
+        }
         lay.streets.push(Street { way, len, steps, state: vec![std::cell::Cell::new(0); steps + 1] });
     }
     let lay = lay;
@@ -609,11 +675,24 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
     // among the closes of the town's edge on the last)
     let built: HashMap<u32, f32> = town.cells.iter().map(|(&c, cell)| (c, cell.reach as f32)).collect();
     let built_of = |c: u32| built.get(&c).copied().unwrap_or(0.0);
+    // the towns' first cells, each with its market place
+    let nodes: std::collections::HashSet<u32> = r.header.towns.iter().map(|t| t.node as u32).collect();
     // the rows of one side of a street, each on one cell, with a plot on a close that is not built up
     let mut dead: Vec<(i32, u32)> = Vec::new();
     // (for ISOSTATE_TOWNS: why each plot that carries no house does not)
     let telling = std::env::var_os("ISOSTATE_TOWNS").is_some();
     let mut why: HashMap<((i32, u8), i32), u8> = HashMap::default();
+    // (ISOSTATE_TOWNS_CELL=X,Y: what became of every plot of one cell, by the kind of its street)
+    let watched: Option<u32> = std::env::var("ISOSTATE_TOWNS_CELL").ok().and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((y.trim().parse::<usize>().ok()? * r.w + x.trim().parse::<usize>().ok()?) as u32)
+    });
+    let fates = std::cell::RefCell::new([[0usize; 8]; 10]);
+    let note = |cell: u32, kind: u8, fate: u8| {
+        if watched == Some(cell) {
+            fates.borrow_mut()[kind as usize][fate as usize] += 1;
+        }
+    };
     let mut tell = |run: (i32, u8), index: i32, reason: u8| {
         if telling {
             why.insert((run, index), reason);
@@ -668,12 +747,15 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 // (its close is looked up where the plot would stand on a road of middling
                 // width, so that a road widened does not move its plots to another close)
                 let Some((c, rank, _)) = lay.close_at(p + n * side * (0.011 - s.width * 0.5)) else { continue };
+                // a plot on a lane is one of a row, but for those of a town's old middle
+                let in_row = s.kind != 0 && !(rank < OLD_MIDDLE && nodes.contains(&c));
                 if rank as f32 >= built_of(c) {
                     // its turn cannot have come, nor that of the row it is in
-                    if s.kind != 0 {
+                    if in_row {
                         dead.push((row, c));
                     }
                     tell((id, j), i, 1);
+                    note(c, s.kind, 1);
                     continue;
                 }
                 let (pu, pv) = (world::hash2(id, i, 24), world::hash2(id, i, 25));
@@ -698,7 +780,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                     }
                 }
                 let v = family.map_or(pv, |f| (f + 0.3 * (pv - 0.5)).clamp(0.0, 0.999));
-                let pl = Plot { p, yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 }, run: (id, j), row: (s.kind != 0).then_some(row), high: s.kind == 0, index: i, width: spacing, depth, need: 0.0, u: pu, v };
+                let pl = Plot { p, yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 }, run: (id, j), row: in_row.then_some(row), high: s.kind == 0, index: i, width: spacing, depth, need: 0.0, u: pu, v };
                 side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined), street: (0, 0.0) }, t_of(i)));
             }
             // a row goes up together: its turn is that of the last of its plots in the cell
@@ -716,6 +798,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 // a plot may be built on once its turn is under the count of its cell's built-up closes
                 if lot.turn >= built_of(lot.cell) || lot.pl.row.is_some_and(|ri| dead.contains(&(ri, lot.cell))) {
                     tell(lot.pl.run, lot.pl.index, 1);
+                note(lot.cell, lot.kind, 1);
                 } else {
                     // (whether its street is laid there is asked when its turn comes, if its
                     // cell still has houses to build: most plots are never asked)
@@ -774,6 +857,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         match row.map(|key| row_in.get(&key).copied()) {
             Some(Some(false)) => {
                 tell(lot.pl.run, lot.pl.index, 2);
+                note(lot.cell, lot.kind, 2);
                 continue;
             }
             Some(Some(true)) => {}
@@ -782,30 +866,36 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                     row_in.insert(key, false);
                 }
                 tell(lot.pl.run, lot.pl.index, 2);
+                note(lot.cell, lot.kind, 2);
                 continue;
             }
             _ => {}
         }
         if lot.kind != 9 && (!lay.laid_at(lot.street.0 as usize, lot.street.1) || lay.town_at(p).is_none()) {
             tell(lot.pl.run, lot.pl.index, 7);
+                note(lot.cell, lot.kind, 7);
             continue;
         }
         if near_plot(p.x, p.y) {
             tell(lot.pl.run, lot.pl.index, 3);
+                note(lot.cell, lot.kind, 3);
             continue;
         }
         if lay.in_square(p) {
             tell(lot.pl.run, lot.pl.index, 4);
+                note(lot.cell, lot.kind, 4);
             continue;
         }
         // in a way, or in a lane that is no younger than the plot (a later lane runs round the plots it finds)
         if lay.in_street(p, if lot.kind == 9 { 0.03 } else { 0.02 }, |o| !o.lane() || o.way.since <= lot.age) {
             tell(lot.pl.run, lot.pl.index, 5);
+                note(lot.cell, lot.kind, 5);
             continue;
         }
         let c = bucket(p);
         if (-1..=1).any(|dy| (-1..=1).any(|dx| taken.get(&(c.0 + dx, c.1 + dy)).is_some_and(|v| v.iter().any(|q| q.distance(p) < 0.042)))) {
             tell(lot.pl.run, lot.pl.index, 6);
+                note(lot.cell, lot.kind, 6);
             continue;
         }
         if let Some(key) = row {
@@ -817,6 +907,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         *built += 1;
         let year = story.year_of(r, k, before + 1, lot.pl.u);
         let roof = roof_in(r, k, lot.cell as usize, year, seed);
+        note(lot.cell, lot.kind, 0);
         standing.push(Stood { lot, before, year, roof, neighbours: (false, false) });
     }
     // a row shares the year and the place in the count of its first house
@@ -906,6 +997,16 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
             }
         }
     }
+    if let Some(c) = watched {
+        let cell = town.cells.get(&c);
+        eprintln!(
+            "towns {}: cell {},{}: {} houses, {} closes of {} built up and {} reached. Plots by street (way, back lane, outer lane, far lane, cross street, -, -, -, -, market place) as stands / turn not come / cell has its houses / yard or water / market place / a street / a house too near / street not laid:",
+            r.y0 + k as i32, c as usize % r.w, c as usize / r.w, cell.map_or(0, |c| c.houses), cell.map_or(0, |c| c.built), cell.map_or(0, |c| c.closes), cell.map_or(0, |c| c.reach)
+        );
+        for (kind, f) in fates.borrow().iter().enumerate().filter(|(_, f)| f.iter().any(|&n| n > 0)) {
+            eprintln!("towns   kind {kind}: {} / {} / {} / {} / {} / {} / {} / {}", f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7]);
+        }
+    }
     let t3 = std::time::Instant::now();
     let ms = |a: std::time::Instant, b: std::time::Instant| (b - a).as_secs_f64() * 1000.0;
     drop(lay);
@@ -951,6 +1052,12 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
             );
         }
     }
+    // ISOSTATE_TOWNS=towns says, town by town, how the houses drawn follow the people
+    if std::env::var("ISOSTATE_TOWNS").as_deref() == Ok("towns") {
+        for line in by_town(r, k, town, &on_cell) {
+            eprintln!("towns {}: {line}", r.y0 + k as i32);
+        }
+    }
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     let mut i = 0;
     while i < standing.len() {
@@ -994,6 +1101,34 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
         eprintln!("timing kept towns: streets {:.0} ms, plots {:.0} ms, turns {:.0} ms, houses {:.0} ms", laying[0], laying[1], laying[2], t3.elapsed().as_secs_f64() * 1000.0);
     }
     census
+}
+
+/// A line for each town with kept ground in year `k`: where its market place
+/// is, its squares, its residents, and the houses they ask for and those
+/// drawn (`on_cell`, by cell). A square counts to the town it trades in.
+fn by_town(r: &Replay, k: usize, town: &world::TownGround, on_cell: &HashMap<u32, usize>) -> Vec<String> {
+    // per town: squares, residents, houses wanted, houses drawn
+    let mut sums: std::collections::BTreeMap<usize, (usize, f32, usize, usize)> = Default::default();
+    for (&c, cell) in &town.cells {
+        let t = (r.catch[k * r.n + c as usize] as usize).wrapping_sub(1);
+        let e = sums.entry(t).or_default();
+        e.0 += 1;
+        e.1 += r.residents(k, c as usize);
+        e.2 += cell.houses as usize;
+        e.3 += on_cell.get(&c).copied().unwrap_or(0);
+    }
+    sums.into_iter()
+        .map(|(t, (squares, residents, wanted, drawn))| {
+            let (name, at, hill) = r.header.towns.get(t).map_or(("no town".to_string(), String::new(), false), |town| {
+                (town.name.clone(), format!(" at {},{}", town.node % r.w, town.node / r.w), r.terrain[town.node] >= 2)
+            });
+            format!(
+                "{name}{at}{}: {squares} squares, {residents:.0} residents, {wanted} houses wanted, {drawn} drawn ({:.1} people to a house)",
+                if hill { " (hills)" } else { "" },
+                residents / drawn.max(1) as f32
+            )
+        })
+        .collect()
 }
 
 /// With ISOSTATE_TOWNS set, say how steady the houses are from one year to
