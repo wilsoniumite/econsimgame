@@ -215,7 +215,8 @@ pub const WITHOUT_AIM: [&str; 24] = [
     "town_months_wage_moved_by_half",
     "carters_share_of_hands_1900",
     "carters_per_1000_weight_path_1900_vs_1750",
-    "works_hands_within_2_of_market_1900",
+    // 1800 and not 1900: by 1850 every island's works stand at their market (0.999 on sixteen)
+    "works_hands_within_2_of_market_1800",
     "works_closing_chance_age_3_5",
     "works_closing_chance_age_25_49",
     "news_emigration",
@@ -266,7 +267,8 @@ pub struct Judged {
     pub misses_by: f64,
     pub met: bool,
     /// Islands whose own value is on the aim's side (the islands' test where the aim
-    /// has one), of every island that finished: one with no value has not met it.
+    /// has one; within the tolerance where the aim is a point), of every island that
+    /// finished: one with no value has not met it.
     pub seeds_met: usize,
     /// Islands that finished.
     pub seeds: usize,
@@ -298,7 +300,12 @@ pub fn judge(values: &HashMap<String, Vec<(u64, f64)>>, reference: Option<&HashM
             } else {
                 0.0
             };
-            let each = aim.islands.map_or(aim.test, |(t, _)| t);
+            // an aim at a point is met by no island exactly, so an island meets it within its tolerance
+            let each = match (aim.islands, aim.test) {
+                (Some((t, _)), _) => t,
+                (None, Test::Between(lo, hi)) if lo == hi => Test::Between(lo - aim.tolerance, hi + aim.tolerance),
+                (None, t) => t,
+            };
             let seeds_met = own.iter().filter(|&&(_, v)| v.is_finite() && each.miss(v) == 0.0).count();
             let seeds_needed = aim.islands.map(|(_, of16)| (of16 * seeds).div_ceil(SEEDS_WANTED));
             let mean_met = !aim.on_mean || misses_by <= 1.0;
@@ -406,7 +413,8 @@ pub fn card(dir: &Path, spread_from: Option<&Path>) -> Result<String, String> {
              tolerance: the aim's own, held still (none: the mean must be on the aim's side); spread: the islands'\n  \
              standard deviation, from {}, for reading beside it\n\
              met: the mean misses by no more than one tolerance, and enough islands meet it where the aim asks that\n\
-             islands: how many meet the aim on their own (the islands' test where the aim has one)\n\
+             islands: how many meet the aim on their own (the islands' test where the aim has one; within the\n  \
+             tolerance where the aim is a point)\n\
              loss: the sum over the aims with a tolerance of (miss / tolerance) squared, where miss is how far the\n  \
              mean falls on the wrong side of the aim (an aim with no value counts as missed by ten)\n",
             match (spread_from, refset) {
@@ -592,6 +600,8 @@ mod tests {
             ("years_to_half_coke_furnace", &[10.0, 12.0, 10.0, 12.0]),
             // aim 16, of the islands only: one island short
             ("share_bessemer_1880", &[0.95, 0.95, 0.95, 0.5]),
+            // aim 2, a point: no island is on it, three are within its tolerance of 0.05
+            ("urban_share_1751_1770", &[0.21, 0.22, 0.28, 0.31]),
         ]);
         let j = judge(&v, None);
         let u = by(&j, 3, ' ');
@@ -606,12 +616,14 @@ mod tests {
         assert!(!c.met && c.misses_by.is_infinite() && !c.aim.in_loss, "{c:?}");
         let b = by(&j, 16, ' ');
         assert!(!b.met && b.seeds_needed == Some(4) && b.seeds_met == 3 && b.misses_by.is_nan(), "{b:?}");
+        let t = by(&j, 2, ' ');
+        assert!(t.met && (t.misses_by - 0.1).abs() < 1e-9 && t.seeds_met == 3 && t.seeds_needed.is_none(), "{t:?}");
         // a fact no island has: not met, and in the loss as missed by ten
         let p = by(&j, 1, ' ');
         assert!(p.spread.is_none() && !p.met);
         // the loss: the aims with a tolerance, those with no value at ten each
         let in_loss = AIMS.iter().filter(|a| a.in_loss).count();
-        let want = u.misses_by.powi(2) + w.misses_by.powi(2) + (in_loss - 4) as f64 * 100.0;
+        let want = u.misses_by.powi(2) + w.misses_by.powi(2) + t.misses_by.powi(2) + (in_loss - 5) as f64 * 100.0;
         assert!((loss(&j) - want).abs() < 1e-9, "{} against {want}", loss(&j));
         // the two parts of an aim are met together
         let met = aims_met(&j);

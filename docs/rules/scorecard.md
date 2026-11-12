@@ -53,8 +53,10 @@ have no aim.
   tenths of its steel in converters. On fewer islands the card asks as many in
   proportion, rounded up. The islands column counts the seeds whose own value
   meets the islands' test (the aim's test, where the aim asks nothing of the
-  islands), out of every island that finished: one with no value (coke iron
-  found and never reaching half) has not met it.
+  islands, and within the aim's tolerance where the aim is a point, such as
+  people five times 1750's, since no island is exactly on a point), out of
+  every island that finished: one with no value (coke iron found and never
+  reaching half) has not met it.
 - **Met** means the mean misses by no more than one tolerance (or not at all,
   where there is none) and, where the aim asks it, enough islands meet it.
   An aim asked only of the islands is met when enough of them meet it. An aim
@@ -340,7 +342,9 @@ from, and why:
   island is inside it on either reading.
 - **The works near their market** are 100 per cent from the 1850s, where
   `works.md` has 98 per cent from four seeds of an earlier game. The measure
-  is the census's own.
+  is the census's own. Since 1900 reads 0.999 to 1.000 on every one of
+  sixteen islands and can show nothing, the card reads the year 1800 (0.91,
+  between 0.73 and 0.98), when `works.walk` still has hands to place.
 - **The weight carried times its path cost** is reckoned from the year's
   flows at the year's last path costs. At the freight it comes to 1.03 to
   1.05 of what the carting cost less the handling (`tests/card.rs`), not
@@ -389,8 +393,8 @@ cargo build --release -p isostate-core
 
 | | Fact | Mean [least .. greatest] | Aim | Tolerance | Misses by | Met | Islands |
 |---|---|---|---|---|---|---|---|
-| 1 | `pop_1900_vs_1750` | 5.38 [5.08 .. 5.76] | about 5.0 | 0.5 | 0.75 | yes | |
-| 2 | `urban_share_1751_1770` | 0.215 [0.201 .. 0.224] | about 0.25 | 0.05 | 0.70 | yes | |
+| 1 | `pop_1900_vs_1750` | 5.38 [5.08 .. 5.76] | about 5.0 | 0.5 | 0.75 | yes | 14/16 |
+| 2 | `urban_share_1751_1770` | 0.215 [0.201 .. 0.224] | about 0.25 | 0.05 | 0.70 | yes | 16/16 |
 | 3 | `urban_share_1881_1900` | 0.421 [0.404 .. 0.434] | at least 0.50 | 0.03 | 2.63 | no | 0/16 |
 | 4 | `urban_share_1881_1900_less_1861_1880` | 0.011 [-0.004 .. 0.041] | at least 0.02 | 0.01 | 0.86 | yes | 3/16 |
 | 5 | `real_wage_1881_1900_vs_1750` | 2.68 [2.51 .. 2.91] | 2.5 to 3.5 | 0.15 | 0 | yes | 16/16 |
@@ -410,7 +414,7 @@ cargo build --release -p isostate-core
 | 17 | `share_steel_rolling_1890` | 0.036 [0.000 .. 0.248] | at least 0.5 on 14 of 16 | | | no | 0/16 |
 | 18a | `last_town_founded` | 1846 [1814 .. 1886] | after 1860 on 12 of 16 | | | no | 4/16 |
 | 18b | `towns_1900` | 17.2 [12 .. 20] | 18 to 26 | 2 | 0.41 | yes | 9/16 |
-| 19a | `carters_between_towns_share_of_hands_1750` | 0.014 [0.007 .. 0.023] | about 0.02 | 0.01 | 0.64 | yes | |
+| 19a | `carters_between_towns_share_of_hands_1750` | 0.014 [0.007 .. 0.023] | about 0.02 | 0.01 | 0.64 | yes | 15/16 |
 | 19b | `carters_between_towns_share_of_hands_1900` | 0.034 [0.026 .. 0.040] | at least 0.05 | 0.01 | 1.56 | no | 0/16 |
 | 20 | `years_to_half_coke_furnace` | 7.81 [6 .. 11] | at most 10 | none | 0 | yes | 15/16 |
 
@@ -430,9 +434,18 @@ zigzag 1.27, the first railway 1827 between 1809 and 1842, the last town 1846
 and 17.2 towns. One reads off it: steel rails are 0.036 of rails in 1890 here
 for the design's 0.002, which was seeds 1 to 8 (they read 0.002 on this card
 too); three of seeds 9 to 16 roll a tenth to a quarter of their rails in
-steel. The carters between towns in 1750 are the other (above). Aims 4, 12a
-and 19a are met inside their tolerance and missed by most islands one by one:
-read the islands column beside them.
+steel. The carters between towns in 1750 are the other (above). Aims 4 and 9
+are met on the mean, inside their tolerance, and missed by most islands one by
+one (3 and 2 of sixteen): read the islands column beside them.
+
+**How firm "eight" is.** Sixteen islands give each mean a standard error of
+its islands' spread over four. Three aims are met or missed by less than that:
+the towns' gain at the end (aim 4) is met by half a standard error, the
+famine years (12a) by a fifth of one, and iron's swing (9) by 1.2; the five
+worst years (7) are missed by 1.2. So another sixteen histories of the same
+island could read six aims met, or nine, and a stage that moves the count by
+one or two has not shown it until its null pair moves less (the design,
+section 3). The loss is no firmer: those four aims are 12 per cent of it.
 
 ## What worries me
 
@@ -443,9 +456,9 @@ read the islands column beside them.
   be steadier than sixteen islands are, and the stage's null pair is what says
   whether a move is real (the design, section 3).
 - **"Met" on the mean is still generous where an aim asks nothing of the
-  islands.** The towns' gain at the end, famine years and the carters of 1750
-  are met on the mean and missed by most islands. The islands column is
-  printed for every aim for that reason.
+  islands.** The towns' gain at the end and iron's swing are met on the mean
+  and missed by most islands. The islands column is printed for every aim for
+  that reason.
 - **Seven aims are not in the loss.** Those with no tolerance, and those asked
   only of the islands, are met or missed. A search that read only the loss
   would not see them: the steel rail (aim 17), every island's converter (16)
