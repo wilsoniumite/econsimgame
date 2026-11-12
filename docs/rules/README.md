@@ -485,3 +485,8 @@ One line each as they arrive: the name, its page, its switch.
   cells it works under and taking land by its hands, so the diggings hold a
   few cells of the island instead of a fifth of it. [mines.md](mines.md),
   `mines.enabled`.
+- **canals**: a canal age before the railways. Somebody surveys a canal once
+  enough coal and stone are dug, towns learn from the canals that work, and
+  promoters dig where the carting saved pays: a layer of water over the map
+  with wharves, locks that cost stone and navvies who are hands, until the
+  railway takes the traffic. [canals.md](canals.md), `canals.enabled`.
