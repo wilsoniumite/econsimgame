@@ -84,6 +84,10 @@
 //!     tab:NAME            a side panel: family, holdings, markets, news or none
 //!     markets:WORD        what the Markets panel shows: island, or open:GOOD for a good's chart
 //!     overlay:NAME        a map view: rent, areas, reach, price, price:coal, wages or plain
+//!     queue:N             wait until a year is on its way to the renderer and N of its meshes
+//!                         or fewer still wait (with ISOSTATE_HANDOVER=step:1 there is a second
+//!                         between one mesh and the next: time for a picture of a year half arrived)
+//!     shot:PATH           save a picture of what is on screen, and say what was still waiting
 //!     quit                write the files and stop (the end of the plan does the same)
 //!
 //! While a plan runs, a decision that opens is given its default and the clock
@@ -1138,6 +1142,8 @@ enum Step {
     Tab(Option<crate::ui::Tab>),
     Markets(String),
     Overlay(String),
+    Queue(usize),
+    Shot(String),
     Quit,
 }
 
@@ -1221,6 +1227,8 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "tab" => Step::Tab(crate::ui::Tab::parse(arg)),
             "markets" if crate::ui::markets_word(arg) => Step::Markets(arg.to_string()),
             "overlay" if crate::overlay::is_word(arg) => Step::Overlay(arg.to_string()),
+            "queue" => Step::Queue(arg.parse().map_err(|_| format!("{part}: how many meshes may still wait"))?),
+            "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
             "quit" => Step::Quit,
             _ => return Err(format!("{part}: not a step (see the top of frames.rs)")),
         });
@@ -1410,6 +1418,36 @@ fn step(world: &mut World, plan: &mut Plan) {
                 }
                 frame = true;
             }
+            Step::Queue(n) => {
+                if !plan.begun {
+                    plan.begun = true;
+                    plan.until = now + 120.0;
+                }
+                let hand = world.resource::<HandOver>();
+                done = (hand.year().is_some() && hand.waiting().0 <= n) || now >= plan.until;
+                // (the mesh that has just gone is in the picture of the frame after this one)
+                frame = done;
+            }
+            Step::Shot(path) => {
+                use bevy::camera::RenderTarget;
+                use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+                if let Some(parent) = std::path::Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty()) {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                // with no window the camera draws into a picture (a scripted run gives it one)
+                let mut q = world.query_filtered::<&RenderTarget, With<crate::MainCam>>();
+                let shot = match q.iter(world).next() {
+                    Some(RenderTarget::Image(target)) => Screenshot::image(target.handle.clone()),
+                    _ => Screenshot::primary_window(),
+                };
+                let (hand, y0) = (world.resource::<HandOver>(), world.resource::<Data>().r.y0);
+                let (n, bytes) = hand.waiting();
+                let of = hand.year().map_or("no year on its way".to_string(), |k| format!("{} on its way", y0 + k as i32));
+                let built = world.resource::<Timeline>().built.map_or("none".to_string(), |k| (y0 + k as i32).to_string());
+                eprintln!("frames: shot {path}: {of}, {n} of its meshes ({:.0} MB) still waiting ({}); the last year whole on screen is {built}", bytes as f32 / 1e6, hand.waiting_names(world.resource::<crate::Handles>()));
+                world.spawn(shot).observe(save_to_disk(path));
+                frame = true;
+            }
             Step::Quit => {
                 plan.tell(recording, "");
                 world.write_message(AppExit::Success);
@@ -1552,6 +1590,8 @@ mod tests {
         assert_eq!(parse("dance").err().unwrap(), "dance: not a step (see the top of frames.rs)");
         assert_eq!(parse("overlay:rents").err().unwrap(), "overlay:rents: not a step (see the top of frames.rs)");
         assert!(parse("pan:1,2,3").is_err());
+        assert_eq!(parse("queue:11;shot:out/half.png").unwrap(), vec![Step::Queue(11), Step::Shot("out/half.png".into())]);
+        assert!(parse("queue:some").is_err() && parse("shot").is_err());
     }
 
     #[test]

@@ -250,6 +250,18 @@ impl HandOver {
         self.year
     }
 
+    /// What still waits, by name and in the order it will go, for a picture's caption.
+    pub fn waiting_names(&self, handles: &crate::Handles) -> String {
+        let names = ["houses", "works", "smoke", "yards and lanes", "roads", "railway"];
+        let all = handles.year();
+        let name = |p: &Piece| match all.iter().position(|h| h.id() == p.handle.id()) {
+            Some(i) if i < names.len() => names[i].to_string(),
+            Some(i) => format!("trees {} {}", (i - names.len()) / 3, ["evergreen", "leaves", "bare limbs"][(i - names.len()) % 3]),
+            None => "?".to_string(),
+        };
+        self.queue.iter().map(name).collect::<Vec<_>>().join(", ")
+    }
+
     /// Queue a finished build's meshes for year `k`, in the order they are to go.
     pub fn fill(&mut self, k: usize, pieces: Vec<Piece>) {
         debug_assert!(self.queue.is_empty(), "a build was begun while the last was still going out");

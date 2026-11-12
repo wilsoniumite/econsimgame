@@ -1558,12 +1558,22 @@ fn rebuild_year(
     }
 }
 
-/// The order a whole year's meshes go to the renderer in: what the eye is on
-/// first (the houses, the works and their smoke), then the trees that show,
-/// then the trees the season has hidden, then what lies flat on the ground
-/// (the yards and lanes, the roads, the railway).
+/// The order a whole year's meshes go to the renderer in. While they go the
+/// picture holds two years at once, so what belongs together goes together,
+/// and what the eye is on goes first: the houses, with the ground's patchwork,
+/// which changes in the same frame; the works and the yards they stand in;
+/// their smoke; the roads; the railway, whose trains are on their new lines
+/// from the first frame; then the trees that show, group by group; and last
+/// the trees the season has hidden. What lies flat is a few megabytes and
+/// holds the trees up by a frame. It was tried last, as the first brief had
+/// it, and for as long as the trees took to go the new works stood on bare
+/// ground with no yard, the new roads were missing, and a train ran where no
+/// track was drawn (docs/probes/dx-smooth.md, section 12, says what the
+/// pictures of a year half arrived showed).
 fn hand_over_order(built: [handover::Piece; 3], flat: [handover::Piece; 3], showing: Vec<handover::Piece>, hidden: Vec<handover::Piece>) -> Vec<handover::Piece> {
-    built.into_iter().chain(showing).chain(hidden).chain(flat).collect()
+    let [houses, works, smoke] = built;
+    let [lanes, roads, rails] = flat;
+    [houses, works, lanes, smoke, roads, rails].into_iter().chain(showing).chain(hidden).collect()
 }
 
 /// The scenery shows the year on the clock (screenshots wait for it).
