@@ -124,12 +124,12 @@ fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Opt
                 }
             }
             let dir = if u < 0.5 { 1.0 } else { -1.0 };
-            let (pos, yaw) = p.at(s);
+            let (pos, rot) = pose(p, s, dir);
             let speed = if spots.is_some() { 0.0 } else { 0.10 + 0.06 * world::hash2(pi as i32, i as i32, 42) };
             commands.spawn((
                 Mesh3d(assets.mesh.clone()),
                 MeshMaterial3d(assets.mat.clone()),
-                Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw)),
+                Transform::from_translation(pos).with_rotation(rot),
                 bevy::light::NotShadowCaster,
                 Cart { path: pi, s, dir, speed },
             ));
@@ -149,11 +149,30 @@ fn drive(time: Res<Time>, roads: Res<Roads>, mut q: Query<(&mut Cart, &mut Trans
             c.s = 0.0;
             c.dir = 1.0;
         }
-        let (pos, yaw) = p.at(c.s);
-        tf.translation = pos + side(yaw, c.dir);
-        tf.rotation = Quat::from_rotation_y(yaw + if c.dir < 0.0 { std::f32::consts::PI } else { 0.0 });
+        (tf.translation, tf.rotation) = pose(p, c.s, c.dir);
     }
 }
+
+/// Where a cart `s` along its path, going forward (1) or back (-1), is drawn,
+/// and which way it faces. It is tipped to the line through its path under
+/// its wheels and under the horse's forefeet, so that it climbs a bridge's
+/// ramp and goes over its hump with its wheels and hooves on the roadway; a
+/// cart drawn level there would have its horse's legs in the deck.
+fn pose(p: &TrainPath, s: f32, dir: f32) -> (Vec3, Quat) {
+    let (pos, yaw) = p.at(s);
+    let (back, front) = (p.at(s - dir * AXLE).0.y, p.at(s + dir * FOREFEET).0.y);
+    let slope = (front - back) / (AXLE + FOREFEET);
+    let at = Vec3::new(pos.x, back + AXLE * slope, pos.z) + side(yaw, dir);
+    (at, Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 }) * Quat::from_rotation_z(slope.atan()))
+}
+
+/// How far behind a cart's middle its wheels are, and how far ahead the horse's forefeet (`trains::cart_mesh`).
+const AXLE: f32 = 0.012;
+const FOREFEET: f32 = 0.028;
+
+/// What a cart stands on, in the cart's own frame (`trains::cart_mesh`): the
+/// four corners of its wheels' foot and the horse's four hooves.
+const FEET: [(f32, f32); 8] = [(-0.018, WHEELS), (-0.018, -WHEELS), (-0.006, WHEELS), (-0.006, -WHEELS), (0.016, 0.0025), (0.016, -0.0025), (0.028, 0.0025), (0.028, -0.0025)];
 
 /// Carts going opposite ways pass on opposite sides of the road: how far a
 /// cart heading `yaw` along its path, forward (1) or back (-1), stands from
@@ -203,8 +222,17 @@ pub struct RoadCheck {
     pub off_ribbon: (f32, Vec2),
     /// on a bridge, how far a cart's wheels come past the inner face of a parapet (more than nought: through it)
     pub through_parapet: Option<(f32, Vec2)>,
-    /// the bridges a carters' round crosses: where, the river's half width there as the road crosses it
-    pub cart_bridges: Vec<(Vec2, f32)>,
+    /// the bridges a carters' round crosses
+    pub cart_bridges: Vec<isostate_gen::bridge::RoadBridge>,
+    /// the cart as drawn (`pose`, `FEET`): how far a wheel or a hoof sinks under the surface
+    /// beneath it, and how far one stands in the air above it beyond the lift, anywhere and with
+    /// the cart on a bridge or its ramps (a cart drawn level on a ramp has its horse's legs in
+    /// the ramp or in the air; anywhere, a cart turning a corner where the ground slopes across
+    /// it has its hooves over the next road, which is higher or lower)
+    pub feet_under: (f32, Vec2),
+    pub feet_over: (f32, Vec2),
+    pub feet_under_on_bridge: (f32, Vec2),
+    pub feet_over_on_bridge: (f32, Vec2),
 }
 
 
@@ -278,9 +306,24 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     c.rounds = routes.len();
     let mut crossed = vec![false; main.iter().map(|m| m.3.len()).sum()];
     // the main road nearest a point: the link whose middle line it is nearest, how far, and how far along
+    // (looked for among the links that pass within 0.1 of the point's cell, which hold the
+    // nearest wherever it is that near, as it always is for a cart; among all of them elsewhere)
+    let cell = |q: Vec2| (q.y.floor().clamp(0.0, r.h as f32 - 1.0) as usize) * r.w + q.x.floor().clamp(0.0, r.w as f32 - 1.0) as usize;
+    let mut near_cell: Vec<Vec<usize>> = vec![Vec::new(); r.n];
+    for (li, (a, b, _, _)) in main.iter().enumerate() {
+        let (lo, hi) = (a.min(*b) - Vec2::splat(0.1), a.max(*b) + Vec2::splat(0.1));
+        for y in lo.y.floor().max(0.0) as usize..=(hi.y.floor().max(0.0) as usize).min(r.h - 1) {
+            for x in lo.x.floor().max(0.0) as usize..=(hi.x.floor().max(0.0) as usize).min(r.w - 1) {
+                near_cell[y * r.w + x].push(li);
+            }
+        }
+    }
+    let all: Vec<usize> = (0..main.len()).collect();
     let nearest = |q: Vec2| -> Option<(f32, usize, f32)> {
         let mut near: Option<(f32, usize, f32)> = None;
-        for (li, (a, b, _, _)) in main.iter().enumerate() {
+        let here = &near_cell[cell(q)];
+        for &li in if here.is_empty() { &all } else { here } {
+            let (a, b) = (&main[li].0, &main[li].1);
             let ab = *b - *a;
             let t = ((q - *a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
             let d = q.distance(*a + ab * t);
@@ -311,6 +354,28 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
                 if off > c.off_ribbon.0 {
                     c.off_ribbon = (off, q);
                 }
+                // the cart as drawn: its wheels and hooves on the surface under each of them
+                let (drawn, rot) = pose(p, p.len * i as f32 / n as f32, dir);
+                let mut highest = f32::MIN;
+                let on_bridge = main[li].3.iter().any(|br| br.holds(q));
+                for (x, z) in FEET {
+                    let f = drawn + rot * Vec3::new(x, 0.0, z);
+                    let Some((_, fl, ft)) = nearest(Vec2::new(f.x, f.z)) else { continue };
+                    let gap = f.y - height_along(&main[fl].2, ft);
+                    if -gap > c.feet_under.0 {
+                        c.feet_under = (-gap, Vec2::new(f.x, f.z));
+                    }
+                    if on_bridge && -gap > c.feet_under_on_bridge.0 {
+                        c.feet_under_on_bridge = (-gap, Vec2::new(f.x, f.z));
+                    }
+                    highest = highest.max(gap);
+                }
+                if highest - LIFT > c.feet_over.0 {
+                    c.feet_over = (highest - LIFT, q);
+                }
+                if on_bridge && highest - LIFT > c.feet_over_on_bridge.0 {
+                    c.feet_over_on_bridge = (highest - LIFT, q);
+                }
                 if let Some((top, _)) = waters.at(g, q) {
                     if c.over_water.is_none_or(|w| at.y - top < w.0) {
                         c.over_water = Some((at.y - top, q));
@@ -332,7 +397,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             }
         }
     }
-    c.cart_bridges = main.iter().flat_map(|m| m.3.iter()).zip(&crossed).filter(|(_, x)| **x).map(|(br, _)| (br.at, br.half)).collect();
+    c.cart_bridges = main.iter().flat_map(|m| m.3.iter()).zip(&crossed).filter(|(_, x)| **x).map(|(br, _)| *br).collect();
     c
 }
 
@@ -373,11 +438,24 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
             c.cart_bridges.len(),
             t0.elapsed().as_secs_f64() * 1000.0
         );
+        eprintln!(
+            "  the cart as drawn: a wheel or hoof at most {:.4} under the surface at {} and {:.4} in the air beyond the lift at {}; with the cart on a bridge or its ramps, {:.4} under at {} and {:.4} in the air at {}",
+            c.feet_under.0,
+            at(c.feet_under.1),
+            c.feet_over.0,
+            at(c.feet_over.1),
+            c.feet_under_on_bridge.0,
+            at(c.feet_under_on_bridge.1),
+            c.feet_over_on_bridge.0,
+            at(c.feet_over_on_bridge.1)
+        );
         for p in &c.closed {
             eprintln!("  kept away from {}", at(*p));
         }
-        for (p, half) in &c.cart_bridges {
-            eprintln!("  bridge at {} over water {:.3} wide", at(*p), 2.0 * half);
+        // with the ends of its ramps, so that a picture can put a cart on a ramp, on the deck or off it
+        for br in &c.cart_bridges {
+            let (from, to) = (br.point(-br.ramp()), br.point(1.0 + br.ramp()));
+            eprintln!("  bridge at {} over water {:.3} wide, from the foot of one ramp at {:.3},{:.3} to the other's at {:.3},{:.3}", at(br.at), 2.0 * br.half, from.x, from.y, to.x, to.y);
         }
     }
     true
@@ -412,6 +490,11 @@ mod tests {
             if let Some((through, at)) = c.through_parapet {
                 assert!(through <= 0.0, "{year}: a cart's wheels are {through} into a parapet at {at}");
             }
+            // and as drawn, tipped up a ramp and over the hump, its wheels and hooves on the roadway:
+            // a cart drawn level there has a hoof 0.013 to 0.015 into the deck and one as far in the air
+            // (on island 7 it is at most 0.003 into it, and 0.007 in the air where a ramp meets the road)
+            assert!(c.feet_under_on_bridge.0 < 0.005, "{year}: a cart on a bridge has a wheel or hoof {} into the roadway at {}", c.feet_under_on_bridge.0, c.feet_under_on_bridge.1);
+            assert!(c.feet_over_on_bridge.0 < 0.01, "{year}: a cart on a bridge has a wheel or hoof {} in the air at {}", c.feet_over_on_bridge.0, c.feet_over_on_bridge.1);
             crossed += c.cart_bridges.len();
         }
         assert!(crossed >= 10, "the carts cross only {crossed} bridges in the three years");
