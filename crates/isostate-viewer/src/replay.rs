@@ -456,6 +456,12 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
             })
             .map_err(named)?;
             let oxbows = crate::newland::oxbows_from(&i32s("oxbow_start")?, &f32s("oxbow_xy")?, &f32s("oxbow_width")?, &f32s("oxbow_level")?).map_err(named)?;
+            // each node under a lake names it by its place in the header's list plus 1, and the
+            // ground looks the lake's level up by it: a lake the header does not list is refused
+            let lake = node_u8("land_lake")?;
+            if let Some(&id) = lake.iter().find(|&&id| id as usize > lh.lakes.len()) {
+                return Err(format!("{path}: its array land_lake puts a node under lake {id} (counting from 1), and its header lists {} lakes", lh.lakes.len()));
+            }
             Some(std::sync::Arc::new(crate::newland::NewLand {
                 w,
                 h,
@@ -464,7 +470,7 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
                 fh: lh.fh,
                 height: node_f32("land_height")?,
                 rock: node_u8("land_rock")?,
-                lake: node_u8("land_lake")?,
+                lake,
                 wet: node_u8("land_wet")?,
                 flow: node_f32("land_flow")?,
                 lines,
@@ -812,6 +818,9 @@ mod tests {
         // (the last array is two bytes and six of padding)
         let e = parse("cut.bin", &whole[..whole.len() - 7]).err().unwrap();
         assert!(e.contains("cut.bin is cut short: its array land_estuary should end"), "{e}");
+        // a node under a lake the header does not list (it has one)
+        let e = parse("odd.bin", &land_run(true, |n, bytes| if n == "land_lake" { bytes[9] = 2 })).err().unwrap();
+        assert_eq!(e, "odd.bin: its array land_lake puts a node under lake 2 (counting from 1), and its header lists 1 lakes");
         // a grid that does not fit the map
         let file = reheaded(&whole, |v| v["land"]["fw"] = serde_json::json!(9));
         assert_eq!(parse("odd.bin", &file).err().unwrap(), "odd.bin: its land is 9 by 4 nodes at 4 to a cell's side, which does not fit a map of 2 by 1 cells");
