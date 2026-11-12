@@ -14,6 +14,7 @@ use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use bevy::ui::{FocusPolicy, RelativeCursorPosition, ScrollPosition};
 
+use crate::clock;
 use crate::family::{self, FamilyView};
 use crate::replay::{self, Replay};
 use crate::{Data, Timeline, UiFont};
@@ -89,7 +90,13 @@ pub struct UiState {
     pub markets: MarketsShow,
     /// the good whose history is open in the Markets panel
     pub good: Option<usize>,
-    built: Option<(Option<Tab>, usize, NewsShow, u64)>,
+    /// the Markets panel's charts and figures go month by month, not year by year
+    pub by_month: bool,
+    /// months that have come from a live game's simulation, each of which may change what a panel shows
+    pub months: u64,
+    built: Option<(Option<Tab>, usize, NewsShow, u64, usize)>,
+    /// when the side panel was last drawn, in seconds: a panel that goes by the month is drawn a few times a second at most
+    drawn_at: f32,
 }
 
 /// The News panel lists this many items, and as many again for each Show more.
@@ -97,7 +104,7 @@ const NEWS_ROWS: usize = 120;
 
 impl Default for UiState {
     fn default() -> Self {
-        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, news_rows: NEWS_ROWS, markets: MarketsShow::Prices, good: None, built: None }
+        UiState { tab: Some(Tab::News), news: NewsShow::Major, hover: false, dirty: 0, expanded: None, rival: None, news_rows: NEWS_ROWS, markets: MarketsShow::Prices, good: None, by_month: false, months: 0, built: None, drawn_at: 0.0 }
     }
 }
 
@@ -109,9 +116,11 @@ pub enum MarketsShow {
 }
 
 /// Whether a word of a `--view` says what the Markets panel shows: "island",
-/// or "open:GOOD" for the goods with one good's history open.
+/// or "open:GOOD" for the goods with one good's history open; either may end
+/// in ":months" for the panel month by month ("island:months", "open:coal:months").
 pub fn markets_word(word: &str) -> bool {
     let w = word.to_ascii_lowercase();
+    let w = w.strip_suffix(":months").unwrap_or(&w);
     w == "island" || w.starts_with("open:")
 }
 
@@ -119,13 +128,18 @@ impl UiState {
     /// Set the Markets panel as a `markets_word` asks (for screenshots).
     pub fn show_markets(&mut self, word: &str, r: &Replay) {
         let w = word.to_ascii_lowercase();
+        let (w, by_month) = match w.strip_suffix(":months") {
+            Some(rest) => (rest, true),
+            None => (w.as_str(), false),
+        };
         let (show, good) = match w.strip_prefix("open:") {
             Some(g) => (MarketsShow::Prices, r.header.goods.iter().position(|x| x.name.eq_ignore_ascii_case(g) || x.label.eq_ignore_ascii_case(g))),
             None => (MarketsShow::Island, self.good),
         };
-        if self.markets != show || self.good != good {
+        if self.markets != show || self.good != good || self.by_month != by_month {
             self.markets = show;
             self.good = good;
+            self.by_month = by_month;
             self.dirty += 1;
         }
     }
@@ -133,30 +147,35 @@ impl UiState {
 
 #[derive(Component)]
 pub struct TabButton(pub Tab);
+/// The word on a tab's button, beside its icon: dropped in a window too narrow for it (`tabs_fit`).
+#[derive(Component)]
+pub struct TabLabel;
+/// The parts of the bar across the top, for `tabs_fit` to measure.
+#[derive(Component, Clone, Copy, PartialEq)]
+pub enum TopPart {
+    /// the whole bar, from edge to edge
+    Bar,
+    /// the family's card
+    Family,
+    /// the card with the date, the speeds and the steps
+    Clock,
+    /// the tabs' card
+    Tabs,
+}
 #[derive(Component, Clone, Copy, PartialEq)]
 pub enum SpeedButton {
     Pause,
     Speed(f32),
 }
-/// The clock's speeds, in years a second, under the labels on their buttons.
-/// The labels count against the slowest: 1x is a year every two seconds and
-/// 8x is eight times that, four years a second. (They do not count years a
-/// second; a test holds each label to its multiple.)
-pub const SPEEDS: [(&str, f32); 4] = [("1\u{00d7}", 0.5), ("2\u{00d7}", 1.0), ("4\u{00d7}", 2.0), ("8\u{00d7}", 4.0)];
-
-/// The next of the buttons' speeds above or below `speed`, for the Up and Down
-/// keys: the keys land on a button, so one of them is always lit.
-pub fn step_speed(speed: f32, faster: bool) -> f32 {
-    let (first, last) = (SPEEDS[0].1, SPEEDS[SPEEDS.len() - 1].1);
-    if faster {
-        SPEEDS.iter().map(|s| s.1).find(|&v| v > speed + 1e-3).unwrap_or(last)
-    } else {
-        SPEEDS.iter().rev().map(|s| s.1).find(|&v| v < speed - 1e-3).unwrap_or(first)
-    }
-}
-
 #[derive(Component)]
 pub struct DateText;
+/// The small bar under the date: how far through its month the clock stands.
+/// The simulation has no weeks or days, so it is a bar and not a number.
+#[derive(Component)]
+pub struct MonthBar;
+/// The part of it that has gone by.
+#[derive(Component)]
+pub struct MonthBarFill;
 /// One of the numbers under the family name.
 #[derive(Component)]
 pub struct FortuneSlot(pub usize);
@@ -198,12 +217,18 @@ pub struct TimelineFill;
 /// Clicking this opens a tab (the family card opens the family).
 #[derive(Component)]
 pub struct OpenTab(pub Tab);
-/// A live game: work out one more year and show it.
+/// One month on, then stop.
 #[derive(Component)]
-pub struct NextYearButton;
-/// A live game: says when the next year is being worked out.
+pub struct NextMonthButton;
+/// On to the year's turn, then stop.
+#[derive(Component)]
+pub struct YearEndButton;
+/// The line under the date: the clock's pace, a year turning, when an order given now would happen.
 #[derive(Component)]
 pub struct StepNote;
+/// By year or by month, in the Markets panel.
+#[derive(Component)]
+pub struct MonthsChip(pub bool);
 /// A good's row in the Markets panel: click to open its history, or close it.
 #[derive(Component)]
 pub struct GoodRow(pub usize);
@@ -219,7 +244,7 @@ pub struct RowHover {
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, tabs_fit, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
     );
 }
 
@@ -260,6 +285,50 @@ pub fn card(node: Node) -> impl Bundle {
     (node, BackgroundColor(PAPER), card_shadow(), Interaction::default(), FocusPolicy::Block, UiBlock, GlobalZIndex(10))
 }
 
+/// Room for the date: "September 1784", the longest it gets.
+const DATE_WIDTH: f32 = 166.0;
+
+/// The gap between the cards across the top.
+const TOP_GAP: f32 = 12.0;
+
+/// The padding either side of the word on one of the clock's buttons: there
+/// are eight of them in a game, so every pixel here is sixteen across the bar.
+const CLOCK_BUTTON_PAD: f32 = 7.0;
+
+/// Whether the tabs must drop their words for the three cards across the top
+/// to fit: `bar` is the room from edge to edge, `family` and `clock` the
+/// widths of those cards and `tabs` the tabs' card with its words, all in the
+/// same pixels.
+pub fn tabs_must_shrink(bar: f32, family: f32, clock: f32, tabs: f32) -> bool {
+    family + clock + tabs + 2.0 * TOP_GAP > bar + 0.5
+}
+
+/// In a window too narrow for the three cards across the top, the tabs keep
+/// their icons and drop their words, so that none of them is pushed off the
+/// edge. The clock's card is the widest of the three (a month and a year, five
+/// speeds and the two steps) and cannot give way: with the words kept, a
+/// window 1280 wide would lose the Markets and News tabs. The words come back
+/// when there is room for them again.
+fn tabs_fit(parts: Query<(&ComputedNode, &TopPart)>, mut labels: Query<&mut Node, With<TabLabel>>, mut short: Local<bool>, mut with_words: Local<f32>) {
+    let width = |part: TopPart| parts.iter().find(|(_, p)| **p == part).map_or(0.0, |(c, _)| c.size().x * c.inverse_scale_factor);
+    // the tabs' width with their words is measured while they have them
+    if !*short {
+        *with_words = width(TopPart::Tabs);
+    }
+    let (bar, family, clock) = (width(TopPart::Bar), width(TopPart::Family), width(TopPart::Clock));
+    // (before the first layout nothing has a width)
+    if bar <= 0.0 || clock <= 0.0 || *with_words <= 0.0 {
+        return;
+    }
+    let shrink = tabs_must_shrink(bar, family, clock, *with_words);
+    if shrink != *short {
+        *short = shrink;
+        for mut n in &mut labels {
+            n.display = if shrink { Display::None } else { Display::Flex };
+        }
+    }
+}
+
 pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam: Option<Res<FamilyView>>, icons: Res<crate::icons::Icons>) {
     let f = &font.0;
     let crest_col = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.47, 0.38));
@@ -268,12 +337,13 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
     // three cards across the top: the family, the date and the clock, the tabs
     commands
         .spawn((
-            Node { position_type: PositionType::Absolute, left: Val::Px(14.0), right: Val::Px(14.0), top: Val::Px(12.0), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Start, column_gap: Val::Px(12.0), ..default() },
+            Node { position_type: PositionType::Absolute, left: Val::Px(14.0), right: Val::Px(14.0), top: Val::Px(12.0), justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Start, column_gap: Val::Px(TOP_GAP), ..default() },
             GlobalZIndex(10),
+            TopPart::Bar,
         ))
         .with_children(|top| {
             // the side cards take what their contents need, the clock the rest, so a narrower window still fits
-            top.spawn(Node { flex_shrink: 0.0, ..default() }).with_children(|wrap| {
+            top.spawn((Node { flex_shrink: 0.0, ..default() }, TopPart::Family)).with_children(|wrap| {
                 wrap.spawn((
                     card(Node {
                         height: Val::Px(62.0),
@@ -329,34 +399,42 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 });
             });
             top.spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), ..default() }).with_children(|wrap| {
-                wrap.spawn(card(Node {
-                    height: Val::Px(62.0),
-                    padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(14.0),
-                    border_radius: BorderRadius::all(Val::Px(16.0)),
-                    ..default()
-                }))
+                wrap.spawn((
+                    card(Node {
+                        height: Val::Px(62.0),
+                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(14.0),
+                        border_radius: BorderRadius::all(Val::Px(16.0)),
+                        ..default()
+                    }),
+                    TopPart::Clock,
+                ))
                 .with_children(|mid| {
-                    // wide enough for the note under the year, so the buttons do not shift when it comes and goes
-                    mid.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(118.0), ..default() }).with_children(|col| {
-                        col.spawn((text(f, "", 25.0, INK), TextLayout::default().with_no_wrap(), DateText));
-                        if data.live {
-                            col.spawn((text(f, "", 12.0, MUTED), TextLayout::default().with_no_wrap(), StepNote, Node { margin: UiRect::top(Val::Px(-3.0)), ..default() }));
-                        }
+                    // as wide as the longest month and the note under it, so the buttons do not shift as the months go by
+                    mid.spawn(Node { flex_direction: FlexDirection::Column, width: Val::Px(DATE_WIDTH), ..default() }).with_children(|col| {
+                        col.spawn((text(f, "", 21.0, INK), TextLayout::default().with_no_wrap(), DateText));
+                        // how far through the month the clock stands
+                        col.spawn((Node { width: Val::Px(DATE_WIDTH - 8.0), height: Val::Px(3.0), margin: UiRect::vertical(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(RULE), MonthBar))
+                            .with_children(|bar| {
+                                bar.spawn((Node { width: Val::Percent(0.0), height: Val::Percent(100.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(crest_col), MonthBarFill));
+                            });
+                        col.spawn((text(f, "", 11.5, MUTED), TextLayout::default().with_no_wrap(), StepNote));
                     });
                     mid.spawn(Node { column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
-                        for (label, b) in std::iter::once(("Pause", SpeedButton::Pause)).chain(SPEEDS.iter().map(|&(label, v)| (label, SpeedButton::Speed(v)))) {
-                            row.spawn((button_node(10.0, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
+                        for (label, b) in std::iter::once(("Pause", SpeedButton::Pause)).chain(clock::SPEEDS.iter().map(|s| (s.name, SpeedButton::Speed(s.rate)))) {
+                            row.spawn((button_node(CLOCK_BUTTON_PAD, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, b)).with_children(|bt| {
                                 bt.spawn((text(f, label, 14.0, INK), TextLayout::default().with_no_wrap()));
                             });
                         }
                         if data.live {
-                            // one year on, then stop: the natural rhythm of a turn
-                            row.spawn((Node { margin: UiRect::left(Val::Px(6.0)), ..button_node(10.0, 5.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, NextYearButton))
-                                .with_children(|bt| {
-                                    bt.spawn((text(f, "Next year", 14.0, INK), TextLayout::default().with_no_wrap()));
-                                });
+                            // a month on, or on to the year's turn, then stop: the two rhythms of a turn
+                            row.spawn((Node { margin: UiRect::left(Val::Px(6.0)), ..button_node(CLOCK_BUTTON_PAD, 5.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, NextMonthButton)).with_children(|bt| {
+                                bt.spawn((text(f, "Next month", 14.0, INK), TextLayout::default().with_no_wrap()));
+                            });
+                            row.spawn((button_node(CLOCK_BUTTON_PAD, 5.0), BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, YearEndButton)).with_children(|bt| {
+                                bt.spawn((text(f, "To January", 14.0, INK), TextLayout::default().with_no_wrap()));
+                            });
                         }
                     });
                 });
@@ -376,7 +454,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     });
                 }
             });
-            top.spawn(Node { flex_shrink: 0.0, justify_content: JustifyContent::End, ..default() }).with_children(|wrap| {
+            top.spawn((Node { flex_shrink: 0.0, justify_content: JustifyContent::End, ..default() }, TopPart::Tabs)).with_children(|wrap| {
                 wrap.spawn(card(Node {
                     height: Val::Px(62.0),
                     padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
@@ -395,7 +473,7 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         };
                         right.spawn((Node { column_gap: Val::Px(6.0), ..button_node(11.0, 7.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, TabButton(t))).with_children(|bt| {
                             bt.spawn(crate::icons::icon(ic, 16.0, INK));
-                            bt.spawn(text(f, t.label(), 15.0, INK));
+                            bt.spawn((text(f, t.label(), 15.0, INK), TabLabel));
                         });
                     }
                 });
@@ -469,9 +547,10 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ("Scroll", "come closer or stand back"),
                     ("W A S D", "walk the view, Q and E to turn"),
                     ("Click", "ask about a works, a town or a square"),
-                    ("Next year", "in a game: play one year, then stop"),
-                    ("Space", "start or stop the years"),
-                    ("Left, Right", "one year back or on"),
+                    ("Space", "start or stop the clock"),
+                    ("Right", "one month on, then stop"),
+                    ("Page Up", "on to the year's turn, in January"),
+                    ("Left", "back a year (Page Down: ten)"),
                     ("Up, Down", "faster or slower"),
                     ("1 2 3 4", "family, holdings, markets, news"),
                     ("M", "map views: rent, markets, reach, prices, wages"),
@@ -591,7 +670,14 @@ fn markets_clicks(
     mut ov: ResMut<crate::overlay::MapOverlay>,
     rows: Query<(&Interaction, &GoodRow), Changed<Interaction>>,
     chips: Query<(&Interaction, &MarketsChip), Changed<Interaction>>,
+    months: Query<(&Interaction, &MonthsChip), Changed<Interaction>>,
 ) {
+    for (i, c) in &months {
+        if *i == Interaction::Pressed && ui.by_month != c.0 {
+            ui.by_month = c.0;
+            ui.dirty += 1;
+        }
+    }
     for (i, g) in &rows {
         if *i == Interaction::Pressed {
             ui.good = if ui.good == Some(g.0) { None } else { Some(g.0) };
@@ -710,6 +796,28 @@ fn news_more_click(mut ui: ResMut<UiState>, q: Query<&Interaction, (Changed<Inte
     }
 }
 
+/// The bar under the date fills as the month goes by; it is hidden where the
+/// date is a year and no month.
+fn month_bar(
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    live: Option<Res<crate::live::Live>>,
+    stills: Option<Res<crate::ShotPlanArgs>>,
+    mut bar: Query<&mut Visibility, With<MonthBar>>,
+    mut fill: Query<&mut Node, With<MonthBarFill>>,
+) {
+    let date = crate::shown_date(&tl, &data, live.as_deref(), stills.is_some());
+    for mut v in &mut bar {
+        v.set_if_neq(if date.is_some() { Visibility::Inherited } else { Visibility::Hidden });
+    }
+    let w = Val::Percent(date.map_or(0.0, |d| (d.part * 100.0).round()));
+    for mut n in &mut fill {
+        if n.width != w {
+            n.width = w;
+        }
+    }
+}
+
 fn timeline_drag(mut tl: ResMut<Timeline>, data: Res<Data>, q: Query<(&Interaction, &RelativeCursorPosition), With<TimelineTrack>>) {
     for (i, rel) in &q {
         if *i != Interaction::Pressed {
@@ -755,7 +863,8 @@ fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity,
     let span = (r.ny.max(2) - 1) as f32;
     commands.entity(e).with_children(|track| {
         for e in r.header.events.iter().filter(|e| e.major()) {
-            let x = ((e.year - r.y0 as f32) / span * 100.0).clamp(0.0, 100.0);
+            // where the knob stands when the clock is on the item's date (`clock::news_time`)
+            let x = ((e.year - r.y0 as f32 - 1.0) / span * 100.0).clamp(0.0, 100.0);
             let h = 6.0 + 10.0 * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
             track.spawn((
                 Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
@@ -774,6 +883,7 @@ fn season_name(ph: f32) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn topbar_text(
     tl: Res<Timeline>,
     data: Res<Data>,
@@ -781,6 +891,7 @@ fn topbar_text(
     clock: Res<crate::SeasonClock>,
     fam: Option<Res<FamilyView>>,
     live: Option<Res<crate::live::Live>>,
+    stills: Option<Res<crate::ShotPlanArgs>>,
     mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>, Without<FamilyNameText>)>,
     mut slots: Query<(&mut Text, &FortuneSlot), (Without<DateText>, Without<FamilyNameText>)>,
     mut name: Query<&mut Text, (With<FamilyNameText>, Without<DateText>, Without<FortuneSlot>)>,
@@ -788,11 +899,16 @@ fn topbar_text(
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let year = r.y0 + k as i32;
-    // the season is named only when it is the date's: the years going slowly
-    // enough for the seasons to keep up, or a still of a chosen season. The
-    // name is of the same phase the ground, the trees and the sun are showing.
+    // the month and the year, where the clock stands in a month; the year alone
+    // where it stands on a year gone by (and in every still). A still of a
+    // chosen season names the season, which is the phase the ground, the trees
+    // and the sun are showing.
     let forced = sm.as_ref().and_then(|m| m.forced);
-    let s = if forced.is_some() || clock.follows { format!("{} {}", season_name(crate::season_phase(&clock, forced)), year) } else { format!("{year}") };
+    let s = match (forced, crate::shown_date(&tl, &data, live.as_deref(), stills.is_some())) {
+        (Some(_), _) => format!("{} {}", season_name(crate::season_phase(&clock, forced)), year),
+        (None, Some(d)) => clock::month_year(d),
+        (None, None) => format!("{year}"),
+    };
     for mut t in &mut date {
         if t.0 != s {
             t.0 = s.clone();
@@ -884,12 +1000,26 @@ fn panel_rebuild(
     mut body: Query<(Entity, Option<&Children>, &mut ScrollPosition), With<PanelBody>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut last_list: Local<Option<(Tab, NewsShow)>>,
+    time: Res<Time>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (ui.tab, k, ui.news, ui.dirty);
+    // what in the panel goes by the month: the Markets panel month by month follows the
+    // clock's month, and the news is listed again when more of it has come
+    let month = match ui.tab {
+        Some(Tab::Markets) if ui.by_month => clock::series_month(tl.t),
+        Some(Tab::News) => data.r.header.events.len(),
+        _ => 0,
+    };
+    let key = (ui.tab, k, ui.news, ui.dirty, month);
     if ui.built == Some(key) {
         return;
     }
+    // while the clock runs, a panel whose month alone has moved on is drawn again a few times a second at most
+    let now = time.elapsed_secs();
+    if tl.playing && ui.built.is_some_and(|b| (b.0, b.1, b.2, b.3) == (key.0, key.1, key.2, key.3)) && now - ui.drawn_at < 0.25 {
+        return;
+    }
+    ui.drawn_at = now;
     ui.built = Some(key);
     let Some(tab) = ui.tab else { return };
     for mut t in &mut title {
@@ -910,12 +1040,19 @@ fn panel_rebuild(
     let r = &data.r;
     let fam = fam.as_deref();
     // the family is known as it stands today: its panels say so when the clock has been taken back
-    let past = live.is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
+    let past = live.as_ref().is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
     let accent = fam.and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
+    // the news of the year in progress is listed as it comes
+    let in_progress = live.is_some() && k >= data.latest() && r.filled < r.ny;
+    let news_to = r.y0 + k as i32 + in_progress as i32;
+    // the last month that is over, or the newest before it that the run has (a month that has
+    // come may wait a moment to go into the run, and the goods would have no price to show)
+    let by_month = ui.by_month.then(|| replay::month_reached(r, clock::series_month(tl.t).saturating_sub(1)));
+    let stands = live.as_ref().map(|l| &l.standing).filter(|_| !past);
     commands.entity(be).with_children(|p| match tab {
-        Tab::News => news_panel(p, &f, r, k, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
-        Tab::Markets => markets_panel(p, &f, &mut images, r, k, ui.markets, ui.good, accent),
-        Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival),
+        Tab::News => news_panel(p, &f, r, news_to, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
+        Tab::Markets => markets_panel(p, &f, &mut images, r, k, ui.markets, ui.good, by_month, accent),
+        Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival, stands),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k, past),
     });
 }
@@ -931,6 +1068,9 @@ pub fn kind_colour(kind: &str) -> Color {
         "harvest" => Color::srgb(0.62, 0.56, 0.24),
         "town" | "region" => Color::srgb(0.55, 0.40, 0.23),
         "family" => Color::srgb(0.62, 0.30, 0.45),
+        // what became of the player's own orders at a year's turn (`Toasts::say`): done, or not
+        "orders" => Color::srgb(0.62, 0.30, 0.45),
+        "orders_refused" => Color::srgb(0.70, 0.25, 0.22),
         _ => Color::srgb(0.45, 0.45, 0.45),
     }
 }
@@ -953,6 +1093,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "region" => "Town and country",
         "closure" => "Closure",
         "family" => "Families",
+        "orders" | "orders_refused" => "Your orders",
         _ => "News",
     }
 }
@@ -972,8 +1113,8 @@ fn news_foot(listed: usize, n: usize) -> Option<String> {
     (n > listed).then(|| format!("The newest {listed} of {n} are listed."))
 }
 
-fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usize, show: NewsShow, rows: usize, player: Option<usize>) {
-    let year = r.y0 + k as i32;
+/// The news up to the end of `year`, newest first.
+fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, year: i32, show: NewsShow, rows: usize, player: Option<usize>) {
     let wanted = |e: &replay::Event| match show {
         NewsShow::Major => e.major(),
         NewsShow::All => true,
@@ -981,7 +1122,7 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
     };
     let n = r.header.events.iter().filter(|e| (e.year.floor() as i32) <= year && wanted(e)).count();
     p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, margin: UiRect::bottom(Val::Px(4.0)), ..default() }).with_children(|row| {
-        row.spawn(text(f, &format!("{n} items up to {year}"), 13.0, MUTED));
+        row.spawn(text(f, &format!("{n} {} up to {year}", if n == 1 { "item" } else { "items" }), 13.0, MUTED));
         let label = match show {
             NewsShow::Major => "Showing major",
             NewsShow::All => "Showing all",
@@ -1009,7 +1150,7 @@ fn news_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, k: usi
                 };
                 chip(row, colour);
                 row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
-                    col.spawn(text(f, &format!("{}  \u{00b7}  {}", label, e.year.floor() as i32), 12.0, colour));
+                    col.spawn(text(f, &format!("{}  \u{00b7}  {}", label, clock::news_month(e.year)), 12.0, colour));
                     col.spawn(text(f, &e.title, 15.5, INK));
                     if !e.text.is_empty() {
                         col.spawn(text(f, &e.text, 12.5, MUTED));
@@ -1062,9 +1203,13 @@ fn key_dot(p: &mut ChildSpawnerCommands, c: Color) {
 
 /// The island as a whole, a chart each: its people, what a wage buys, how many
 /// live in towns, the railway and the works.
-fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, accent: Color) {
+fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, by_month: Option<usize>, accent: Color) {
     let year = r.y0 + k as i32;
-    p.spawn(text(f, &format!("The island as a whole, year by year. The marker and the figures are {year}."), 13.0, MUTED));
+    let span = by_month.map(|m| MonthSpan::of(r, m));
+    match &span {
+        Some(sp) => p.spawn(text(f, &format!("The island as a whole, month by month over five years. The marker and the figures are {}.", sp.marked()), 13.0, MUTED)),
+        None => p.spawn(text(f, &format!("The island as a whole, year by year. The marker and the figures are {year}."), 13.0, MUTED)),
+    };
     let acc = accent.to_srgba().to_u8_array();
     let pct = |v: f32| format!("{:.0}%", v * 100.0);
     let plain = |v: f32| format!("{v:.2}");
@@ -1079,26 +1224,64 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
         ("firms", "Works and shops", &people, &short_count),
     ];
     for (name, label, now, side) in rows {
-        let vals = replay::yearly(r, name);
+        let (vals, mark, first_year) = match &span {
+            Some(sp) => (sp.values(r, name), sp.mark, sp.first_year),
+            None => (replay::yearly(r, name), k, r.y0),
+        };
         if !vals.iter().any(|v| v.is_finite()) {
             continue;
         }
         p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|col| {
             col.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, padding: UiRect::right(Val::Px(4.0)), ..default() }).with_children(|row| {
                 row.spawn(text(f, label, 15.0, INK));
-                row.spawn(text(f, &vals.get(k).filter(|v| v.is_finite()).map(|&v| now(v)).unwrap_or_default(), 15.0, INK));
+                row.spawn(text(f, &vals.get(mark).filter(|v| v.is_finite()).map(|&v| now(v)).unwrap_or_default(), 15.0, INK));
             });
-            let c = crate::chart::Chart { width: CHART_W, height: 58.0, line: &vals, second: None, accent: [acc[0], acc[1], acc[2]], mark: k, years: vals.len(), first_year: r.y0 };
+            let c = crate::chart::Chart { width: CHART_W, height: 58.0, line: &vals, second: None, accent: [acc[0], acc[1], acc[2]], mark, years: vals.len(), first_year, months: span.is_some() };
             crate::chart::spawn(col, f, images, &c, side, side);
         });
     }
 }
 
+/// Five years of months along the bottom of a chart: the four calendar years
+/// before the marked month's and that year itself, the months still to come
+/// left bare.
+pub struct MonthSpan {
+    /// the place in the run of the first month shown (a January)
+    pub first: usize,
+    /// how many months are shown
+    pub n: usize,
+    /// the marked month, counted from the first shown: the last month over when the clock stands where it does
+    pub mark: usize,
+    pub first_year: i32,
+}
+
+impl MonthSpan {
+    /// The span for a marked month `m`, given as its place in the run (0 is the first January).
+    pub fn of(r: &Replay, m: usize) -> MonthSpan {
+        let m = m.min(r.series_len.saturating_sub(1));
+        let first = (m / 12).saturating_sub(4) * 12;
+        MonthSpan { first, n: 60.min(r.series_len.saturating_sub(first)), mark: m - first, first_year: r.y0 + (first / 12) as i32 }
+    }
+
+    pub fn values(&self, r: &Replay, name: &str) -> Vec<f32> {
+        replay::monthly(r, name, self.first, self.n)
+    }
+
+    /// "March 1784".
+    pub fn marked(&self) -> String {
+        format!("{} {}", clock::MONTHS[self.mark % 12], self.first_year + (self.mark / 12) as i32)
+    }
+}
+
 /// A good's history, under its row: its price in ink and how much of it is
 /// made in the family's colour, each with a scale of its own.
-fn good_chart(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, name: &str, accent: Color) {
-    let price = replay::yearly(r, &format!("price_{name}"));
-    let made = replay::yearly(r, &format!("out_{name}"));
+#[allow(clippy::too_many_arguments)]
+fn good_chart(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, by_month: Option<usize>, name: &str, accent: Color) {
+    let span = by_month.map(|m| MonthSpan::of(r, m));
+    let (price, made, k, first_year) = match &span {
+        Some(sp) => (sp.values(r, &format!("price_{name}")), sp.values(r, &format!("out_{name}")), sp.mark, sp.first_year),
+        None => (replay::yearly(r, &format!("price_{name}")), replay::yearly(r, &format!("out_{name}")), k, r.y0),
+    };
     let acc = accent.to_srgba().to_u8_array();
     let money = |v: f32| crate::overlay::coin(v);
     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), padding: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(2.0), Val::Px(8.0)), margin: UiRect::bottom(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() }, BorderColor::all(RULE))).with_children(|col| {
@@ -1110,27 +1293,41 @@ fn good_chart(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Asset
             let now = made.get(k).filter(|v| v.is_finite()).map(|&v| format!("{} a month", short_qty(v))).unwrap_or_else(|| "none".into());
             row.spawn(text(f, &format!("Made {now}"), 13.0, accent));
         });
-        let c = crate::chart::Chart { width: CHART_W, height: 88.0, line: &price, second: Some(&made), accent: [acc[0], acc[1], acc[2]], mark: k, years: price.len(), first_year: r.y0 };
+        let c = crate::chart::Chart { width: CHART_W, height: 88.0, line: &price, second: Some(&made), accent: [acc[0], acc[1], acc[2]], mark: k, years: price.len(), first_year, months: span.is_some() };
         crate::chart::spawn(col, f, images, &c, &money, &short_qty);
     });
 }
 
+/// `by_month` is the marked month's place in the run when the panel goes month by month.
 #[allow(clippy::too_many_arguments)]
-fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, show: MarketsShow, open: Option<usize>, accent: Color) {
-    // two halves, chosen by a chip: the goods, or the island as a whole
-    p.spawn(Node { column_gap: Val::Px(5.0), margin: UiRect::bottom(Val::Px(2.0)), ..default() }).with_children(|row| {
+fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, show: MarketsShow, open: Option<usize>, by_month: Option<usize>, accent: Color) {
+    // two halves, chosen by a chip: the goods, or the island as a whole; and either by the year or by the month
+    p.spawn(Node { column_gap: Val::Px(5.0), margin: UiRect::bottom(Val::Px(2.0)), align_items: AlignItems::Center, ..default() }).with_children(|row| {
         for (label, s) in [("Goods", MarketsShow::Prices), ("The island", MarketsShow::Island)] {
             family::chip_button(row, f, label, s == show, accent, MarketsChip(s));
         }
+        row.spawn(Node { flex_grow: 1.0, ..default() });
+        for (label, months) in [("By year", false), ("By month", true)] {
+            family::chip_button(row, f, label, months == by_month.is_some(), accent, MonthsChip(months));
+        }
     });
     if show == MarketsShow::Island {
-        return island_charts(p, f, images, r, k, accent);
+        return island_charts(p, f, images, r, k, by_month, accent);
     }
-    p.spawn(text(f, "Prices against 1750, and the change over the last ten years. Click a good for its history.", 13.0, MUTED));
+    let first_year = r.y0;
+    match by_month {
+        Some(m) => p.spawn(text(f, &format!("Prices in {} against {first_year}, and the change over the twelve months before. Click a good for its history.", MonthSpan::of(r, m).marked()), 13.0, MUTED)),
+        None => p.spawn(text(f, &format!("Prices against {first_year}, and the change over the last ten years. Click a good for its history."), 13.0, MUTED)),
+    };
     let back = k.saturating_sub(10);
     for (gi, g) in r.header.goods.iter().enumerate() {
         let name = format!("price_{}", g.name);
-        let (Some(now), Some(first), Some(then)) = (replay::annual(r, &name, k), replay::annual(r, &name, 0), replay::annual(r, &name, back)) else { continue };
+        // by the month: the month's price, and the price twelve months before it
+        let figures = match by_month {
+            Some(m) => (replay::month(r, &name, m), replay::annual(r, &name, 0), replay::month(r, &name, m.saturating_sub(12))),
+            None => (replay::annual(r, &name, k), replay::annual(r, &name, 0), replay::annual(r, &name, back)),
+        };
+        let (Some(now), Some(first), Some(then)) = figures else { continue };
         if !(first > 0.0 && now > 0.0) {
             continue;
         }
@@ -1162,7 +1359,7 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
             row.spawn((text(f, &s, 13.0, MUTED), Node { width: Val::Px(64.0), ..default() }));
         });
         if is_open {
-            good_chart(p, f, images, r, k, &g.name, accent);
+            good_chart(p, f, images, r, k, by_month, &g.name, accent);
         }
     }
     // what investors are building now
@@ -1206,33 +1403,15 @@ mod tests {
     }
 
     #[test]
-    fn the_speed_keys_land_on_the_buttons() {
-        // up and down through the buttons, stopping at the ends
-        assert_eq!(step_speed(0.5, true), 1.0);
-        assert_eq!(step_speed(1.0, true), 2.0);
-        assert_eq!(step_speed(2.0, true), 4.0);
-        assert_eq!(step_speed(4.0, true), 4.0);
-        assert_eq!(step_speed(4.0, false), 2.0);
-        assert_eq!(step_speed(1.0, false), 0.5);
-        assert_eq!(step_speed(0.5, false), 0.5);
-        // from a speed between two buttons (as the keys used to leave it), onto the next one
-        assert_eq!(step_speed(0.75, true), 1.0);
-        assert_eq!(step_speed(3.0, false), 2.0);
-        assert_eq!(step_speed(20.0, false), 4.0);
-        // whatever the keys do, a button has that speed
-        let mut v = 2.0;
-        for faster in [true, true, true, false, false, false, false, false, true] {
-            v = step_speed(v, faster);
-            assert!(SPEEDS.iter().any(|s| s.1 == v), "{v} is no button's speed");
-        }
-    }
-
-    #[test]
-    fn the_speed_labels_are_multiples_of_the_slowest() {
-        for (label, v) in SPEEDS {
-            let times: f32 = label.trim_end_matches('\u{00d7}').parse().unwrap();
-            assert_eq!(v / SPEEDS[0].1, times, "{label} is {} times 1x", v / SPEEDS[0].1);
-        }
+    fn the_tabs_drop_their_words_only_when_the_bar_is_too_narrow() {
+        // the cards about as they measure in a game: the family's 300, the clock's 720, the tabs' 400 with their words
+        let (family, clock, tabs) = (300.0, 720.0, 400.0);
+        // a window 1600 wide leaves 1572 between the margins, and one 1280 wide 1252
+        assert!(!tabs_must_shrink(1572.0, family, clock, tabs));
+        assert!(tabs_must_shrink(1252.0, family, clock, tabs));
+        // room for the three and the two gaps between them is room enough
+        assert!(!tabs_must_shrink(family + clock + tabs + 2.0 * TOP_GAP, family, clock, tabs));
+        assert!(tabs_must_shrink(family + clock + tabs + 2.0 * TOP_GAP - 1.0, family, clock, tabs));
     }
 
     #[test]

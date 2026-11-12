@@ -270,15 +270,13 @@ pub struct Rail {
     pub bank_grass: Colour,
     pub bank_grass_shade: Colour,
     pub sea_wall: Colour,
+    pub bank_scree: Colour,
     pub stone: Colour,
     pub viaduct_brick: Colour,
-    pub cutting_grass_lit: Colour,
-    pub cutting_grass_shade: Colour,
-    pub cutting_rock_lit: Colour,
-    pub cutting_rock_shade: Colour,
-    pub cutting_back: Colour,
     pub tunnel_mouth: Colour,
     pub girder: Colour,
+    pub rope: Colour,
+    pub buffer: Colour,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -454,22 +452,14 @@ impl Palette {
             FROST,
         );
         // what grows round a house, the wet bank of a river, and a railway's own ground
-        let (f, w, r) = (&mut self.foliage, &mut self.water, &mut self.rail);
+        let (f, w) = (&mut self.foliage, &mut self.water);
         mark(&mut [&mut f.hedge, &mut f.vegetables, &mut w.river_bank, &mut self.bridges.causeway], FROST);
-        mark(
-            &mut [
-                &mut r.bank_top,
-                &mut r.bank_grass,
-                &mut r.bank_grass_shade,
-                &mut r.sea_wall,
-                &mut r.cutting_grass_lit,
-                &mut r.cutting_grass_shade,
-                &mut r.cutting_rock_lit,
-                &mut r.cutting_rock_shade,
-                &mut r.cutting_back,
-            ],
-            FROST,
-        );
+        // the railway's tokens are all named here too, as the ground's are: its banks (of
+        // grass, of scree on the fells, pitched with stone by the sea) take frost; its track
+        // is run over every day and keeps clear, with the rope of an inclined plane between
+        // the rails; and snow lies on what is built of stone, brick and iron along it
+        let Rail { ballast, rails, earthworks, bank_top, bank_grass, bank_grass_shade, sea_wall, bank_scree, stone: _, viaduct_brick: _, tunnel_mouth, girder: _, rope, buffer: _ } = &mut self.rail;
+        mark(&mut [bank_top, bank_grass, bank_grass_shade, sea_wall, bank_scree], FROST);
         // a mill pond, a water butt
         mark(&mut [&mut w.river], ICE);
         // fires, and what is hot over one: a smouldering clamp, the top of a bank of coke ovens,
@@ -482,9 +472,10 @@ impl Palette {
             &mut [
                 road_gravel,
                 lane_dust,
-                &mut r.ballast,
-                &mut r.rails,
-                &mut r.earthworks,
+                ballast,
+                rails,
+                rope,
+                earthworks,
                 charcoal_clamp,
                 charcoal_clamp_top,
                 &mut self.roofs.coke_ovens,
@@ -494,7 +485,7 @@ impl Palette {
                 &mut self.glass.lighthouse_lamp,
                 &mut self.smoke.soot,
                 &mut self.smoke.stack_top,
-                &mut r.tunnel_mouth,
+                tunnel_mouth,
                 &mut self.bridges.arch_shadow,
             ],
             NOTHING,
