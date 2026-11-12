@@ -1,7 +1,7 @@
 //! The trades of the town: handloom weavers, smithies, millwrights, and the
 //! shops and trades the simulation calls services.
 
-use super::kit::{Ctx, Face, Shed, STOREY};
+use super::kit::{Ctx, Face, Fill, Shed, STOREY};
 use crate::colour::{pick, shade, Rgba};
 
 /// Handloom weavers: a cottage with the long window of the loomshop under
@@ -40,7 +40,7 @@ pub fn hand_loom(c: &mut Ctx) {
         let (len, d2) = ((0.1 * g).min(court * 1.7), 0.03 * g);
         let s = c.shed(0.0, z0 + 0.004 + d2 * 0.5, len, d2, floors as f32 * STOREY, false, wall, roof);
         for f in 0..floors {
-            c.window_band(&s, f as f32 * STOREY + 0.007, STOREY * 0.45, *pal.glass.window);
+            c.window_band(&s, f as f32 * STOREY + 0.007, STOREY * 0.45);
         }
         z0 += 0.012 + d2;
     }
@@ -50,7 +50,7 @@ pub fn hand_loom(c: &mut Ctx) {
         let rows = c.fit(depth, 0.011, 6);
         for i in 0..rows {
             let z = z0 + depth * (i as f32 + 0.5) / rows as f32;
-            c.pile(-court * 0.1, z, court * 1.3, 0.0012, 0.007, false, *pal.goods.cloth);
+            c.pile(-court * 0.1, z, court * 1.3, 0.0015, 0.007, false, *pal.goods.cloth);
         }
     }
 }
@@ -62,12 +62,18 @@ fn cottages(c: &mut Ctx, x: f32, z: f32, n: usize, uw: f32, dep: f32, storeys: u
     let pal = c.pal;
     let h = storeys as f32 * STOREY;
     let s = c.shed_pitched(x, z, n as f32 * uw, dep, h, 0.5, across, wall, roof);
-    c.windows(&s, storeys, 0, storeys - 1, uw * 0.5, false, *pal.glass.window);
-    c.window_band(&s, h - STOREY * 0.74, STOREY * 0.46, *pal.glass.window);
+    c.windows(&s, 0, storeys - 1, false);
+    // the long window of each loomshop, under the eaves
+    for i in 0..n {
+        let cx = -(n as f32) * uw * 0.5 + uw * (i as f32 + 0.5);
+        for face in [Face::Front, Face::Back] {
+            c.light(&s, face, cx - uw * 0.36, cx + uw * 0.36, h - STOREY * 0.7, h - STOREY * 0.24, false);
+        }
+    }
     for i in 0..n {
         let cx = -(n as f32) * uw * 0.5 + uw * (i as f32 + 0.5);
         if !c.going_up() {
-            c.panel(&s, if flip { Face::Back } else { Face::Front }, cx - 0.003, cx + 0.003, 0.0, 0.013, false, *pal.timber.door);
+            c.door(&s, if flip { Face::Back } else { Face::Front }, cx);
         }
         let (sx, sz) = s.local(cx + uw * 0.5 - 0.005, 0.0);
         c.stack(sx, sz, h + s.rise + 0.007, 0.0065, c.tone(*pal.brick.chimney), if i % 3 == 0 { 0.3 } else { 0.0 });
@@ -99,7 +105,7 @@ pub fn smithy(c: &mut Ctx) {
             let cx = -(n as f32) * bay * 0.5 + bay * (i as f32 + 0.5);
             // the open front, and the fire on the hearth
             if !c.going_up() {
-                c.panel(&s, Face::Front, cx - bay * 0.36, cx + bay * 0.08, 0.0, h * 0.78, false, *pal.smoke.soot);
+                c.mouth(&s, Face::Front, cx - bay * 0.36, cx + bay * 0.08, 0.0, h * 0.78, false);
                 c.glow(&s, Face::Front, cx + bay * 0.08, cx + bay * 0.36, 0.0, h * 0.78, false);
             }
             c.stack(cx, z - dep * 0.5 + 0.004 * g, h + s.rise + 0.022 * g, 0.012 * g, wall, 0.45);
@@ -141,8 +147,9 @@ pub fn millwright(c: &mut Ctx) {
             let z = -hd + 0.009 + dep * 0.5 + j as f32 * pitch;
             let len = if both { shop } else { unit };
             let s = c.shed(x0 + len * 0.5, z, len, dep, h, false, boards, roof);
+            c.fill(&s, Fill::Posts);
             if !c.going_up() {
-                c.panel(&s, Face::Front, -len * 0.2, len * 0.2, 0.0, h * 0.7, false, *pal.timber.door);
+                c.doors(&s, Face::Front, -len * 0.2, len * 0.2, 0.0, h * 0.7, false, *pal.timber.door);
             }
             first.get_or_insert(s);
             if both {
@@ -216,7 +223,7 @@ pub fn shops(c: &mut Ctx) {
             let n = c.fit(len, 0.016 * g, 20);
             for i in 0..n {
                 let cx = -len * 0.5 + len * (i as f32 + 0.5) / n as f32;
-                c.panel(&s, Face::Front, cx - len / n as f32 * 0.32, cx + len / n as f32 * 0.32, 0.0, h * 0.6, true, *pal.smoke.soot);
+                c.mouth(&s, Face::Front, cx - len / n as f32 * 0.32, cx + len / n as f32 * 0.32, 0.0, h * 0.6, true);
             }
         }
     }
@@ -230,14 +237,12 @@ fn shop_row(c: &mut Ctx, x: f32, z: f32, n: usize, sw: f32, dep: f32, storeys: u
     let pal = c.pal;
     let h = storeys as f32 * STOREY;
     let s = c.shed_pitched(x, z, n as f32 * sw, dep, h, 0.45, across, wall, roof);
-    c.windows(&s, storeys, 1, storeys, sw * 0.5, false, *pal.glass.window);
+    c.windows(&s, 1, storeys, false);
     let out = if face == Face::Front { 1.0 } else { -1.0 };
     for i in 0..n {
         let cx = -(n as f32) * sw * 0.5 + sw * (i as f32 + 0.5);
         if !c.going_up() {
-            let lit = if c.derelict() { *pal.smoke.soot } else { *pal.glass.window };
-            c.panel(&s, face, cx - sw * 0.38, cx + sw * 0.38, 0.002, STOREY * 0.56, false, lit);
-            c.panel(&s, face, cx - sw * 0.42, cx + sw * 0.42, STOREY * 0.56, STOREY * 0.74, false, c.tone(*pal.walls.shop_front));
+            c.shop_front(&s, face, cx - sw * 0.4, cx + sw * 0.4, *pal.walls.shop_front);
         }
         if c.stocked() {
             // the awning, out over the pavement

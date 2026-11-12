@@ -2,7 +2,7 @@
 
 use glam::Vec3;
 
-use super::kit::{Ctx, Face};
+use super::kit::{Ctx, Face, Fill};
 use super::State;
 
 /// How tall a furnace stands in the works' present state.
@@ -19,14 +19,32 @@ fn stands(c: &Ctx, h: f32) -> f32 {
 fn bank(c: &mut Ctx, x0: f32, x1: f32, z0: f32, z1: f32, h0: f32, h1: f32) {
     let grass = c.tone(*c.pal.ground.furnace_bank);
     let stone = c.tone(*c.pal.stone.yard_wall);
-    let p = |x: f32, z: f32, h: f32| c.at(x, z) + Vec3::Y * h;
-    let t = [p(x0, z0, h0), p(x1, z0, h0), p(x1, z1, h1), p(x0, z1, h1)];
+    let site = c.site;
+    let p = move |x: f32, z: f32, h: f32| site.at(x, z) + Vec3::Y * h;
+    // earth lies back at its natural slope on three sides; the face to the yard is walled
+    let (b0, b1) = (((h0 + 0.01) * 0.5).min((z1 - z0) * 0.4), ((h1 + 0.01) * 0.5).min((x1 - x0) * 0.2));
+    let t = [p(x0 + b0, z0 + b0, h0), p(x1 - b0, z0 + b0, h0), p(x1 - b1, z1, h1), p(x0 + b1, z1, h1)];
     let f = [p(x0, z0, -0.01), p(x1, z0, -0.01), p(x1, z1, -0.01), p(x0, z1, -0.01)];
     c.solid.quad(t[3], t[2], t[1], t[0], grass);
     c.solid.quad(f[3], f[2], t[2], t[3], stone);
     c.solid.quad(f[2], f[1], t[1], t[2], crate::colour::shade(grass, 0.9));
     c.solid.quad(f[1], f[0], t[0], t[1], crate::colour::shade(grass, 0.8));
     c.solid.quad(f[0], f[3], t[3], t[0], crate::colour::shade(grass, 0.92));
+    if c.far() {
+        return;
+    }
+    // buttresses against the weight of the bank, two bays apart
+    let n = (((x1 - x0) / (2.0 * super::kit::BAY)).round() as usize).max(1);
+    for i in 0..=n {
+        let x = x0 + (x1 - x0) * i as f32 / n as f32;
+        let (w, out) = (0.0034, 0.0028);
+        let (a, b, top) = (p(x - w * 0.5, z1 + out, -0.01), p(x + w * 0.5, z1 + out, -0.01), h1 * 0.9);
+        let (ta, tb) = (p(x - w * 0.5, z1, top), p(x + w * 0.5, z1, top));
+        let pier = crate::colour::shade(stone, 0.94);
+        c.solid.quad(a, b, tb, ta, pier);
+        c.solid.quad(p(x - w * 0.5, z1, -0.01), a, ta, ta, crate::colour::shade(pier, 0.9));
+        c.solid.quad(b, p(x + w * 0.5, z1, -0.01), tb, tb, crate::colour::shade(pier, 0.84));
+    }
 }
 
 /// A charcoal blast furnace: a square tapered stone stack against a bank,
@@ -57,18 +75,15 @@ pub fn charcoal_furnace(c: &mut Ctx) {
     }
     for i in 0..n {
         let x = x0 + side * 0.5 + i as f32 * pitch;
-        let p = c.at(x, zf);
         let h = stands(c, fh);
-        c.solid.frustum_turned(p, side * 0.707, side * 0.5, h, 4, std::f32::consts::FRAC_PI_4 - c.site.yaw, 0.02, stone, Some(*pal.smoke.soot));
+        let top = c.furnace_stack(x, zf, side, side * std::f32::consts::FRAC_1_SQRT_2, h, stone);
         if !c.going_up() {
             // the tunnel head, where the flame stands
-            c.solid.frustum_turned(p + Vec3::Y * h, 0.0085 * g, 0.0065 * g, 0.012 * g, 6, 0.0, 0.0, c.tone(*pal.brick.dark), Some(c.throat()));
-            c.plume(p + Vec3::Y * (h + 0.012 * g), 0.8);
+            c.solid.frustum_turned(top, 0.0085 * g, 0.0065 * g, 0.012 * g, 6, 0.0, 0.0, c.tone(*pal.brick.dark), Some(c.throat()));
+            c.plume(top + Vec3::Y * 0.012 * g, 0.8);
             if banked && !c.derelict() {
                 // the charging bridge
-                let from = c.at(x, b1) + Vec3::Y * (bank_h - 0.003 * g);
-                let to = c.at(x, zf - side * 0.3) + Vec3::Y * (h * 0.86);
-                c.solid.beam(from, to, 0.009 * g, *pal.timber.headframe);
+                c.barrow_way((x, b1, bank_h - 0.003 * g), (x, zf - side * 0.3, h * 0.86), 0.009 * g, *pal.timber.headframe);
             }
         }
         // the casting house, its arch open on the fire
@@ -107,8 +122,9 @@ pub fn charcoal_furnace(c: &mut Ctx) {
         for i in 0..cols {
             for j in 0..barns {
                 let barn = c.shed(xr + dep * 0.5 + i as f32 * (dep + lane), -hd + 0.008 + len * 0.5 + j as f32 * (len + lane), len, dep, 0.024 * g, true, c.tone(*pal.timber.boards), roof);
+                c.fill(&barn, Fill::Posts);
                 if !c.going_up() {
-                    c.panel(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.017 * g, false, *pal.timber.door);
+                    c.doors(&barn, Face::EndB, -dep * 0.25, dep * 0.25, 0.0, 0.017 * g, false, *pal.timber.door);
                 }
             }
         }
@@ -168,15 +184,12 @@ pub fn coke_furnace(c: &mut Ctx) {
         let x = fx(i);
         let p = c.at(x, zf);
         if square {
-            c.solid.frustum_turned(p, 0.0255 * g, 0.0185 * g, h, 4, std::f32::consts::FRAC_PI_4 - c.site.yaw, 0.02, shell, Some(*pal.smoke.soot));
+            c.furnace_stack(x, zf, 0.0255 * g * std::f32::consts::SQRT_2, 0.0185 * g * std::f32::consts::SQRT_2, h, shell);
         } else {
-            c.solid.frustum_turned(p, r, r * 0.72, h, 8, 0.0, 0.02, shell, Some(*pal.smoke.soot));
+            c.furnace_shell(x, zf, r, h, shell);
+            c.charging_gallery(x, zf, r * 0.98, h * 0.9);
         }
         if !c.going_up() && !c.derelict() {
-            if !square {
-                // the charging gallery round the throat
-                c.solid.frustum_turned(p + Vec3::Y * (h * 0.9), r * 0.98, r * 0.98, 0.006 * g, 8, 0.0, 0.0, plate, Some(plate));
-            }
             if closed {
                 // a closed top: the bell, and the downcomer that takes the gas to the stoves
                 c.solid.frustum_turned(p + Vec3::Y * h, r * 0.5, 0.0, 0.01 * g, 6, 0.0, 0.0, plate, None);
@@ -192,13 +205,15 @@ pub fn coke_furnace(c: &mut Ctx) {
             if c.w.founded >= 1860 {
                 for dx in [-0.0095 * g, 0.0095 * g] {
                     let top = c.flue(x + dx, zs, 0.068 * g, 0.008 * g, 0.008 * g, plate, plate, 0.0);
+                    c.hoops(x + dx, zs, top.y - c.at(x + dx, zs).y, 0.008 * g, 0.008 * g, &[0.2, 0.45, 0.7], crate::colour::shade(plate, 1.45));
                     if !c.going_up() && !c.derelict() {
                         c.solid.frustum_turned(top, 0.008 * g, 0.0, 0.007 * g, 6, 0.0, 0.0, plate, None);
                     }
                 }
                 c.plume(c.at(x, zs) + Vec3::Y * 0.075 * g, 0.6);
             } else {
-                c.flue(x, zs, 0.045 * g, 0.0095 * g, 0.0085 * g, c.tone(*pal.brick.dark), *pal.smoke.soot, if closed { 0.6 } else { 0.0 });
+                let top = c.flue(x, zs, 0.045 * g, 0.0095 * g, 0.0085 * g, c.tone(*pal.brick.dark), *pal.smoke.soot, if closed { 0.6 } else { 0.0 });
+                c.hoops(x, zs, top.y - c.at(x, zs).y, 0.0095 * g, 0.0085 * g, &[0.3, 0.6], crate::colour::shade(plate, 0.9));
             }
         }
         // the casting house
@@ -213,15 +228,10 @@ pub fn coke_furnace(c: &mut Ctx) {
     if !c.going_up() && !c.derelict() {
         let lx = xl + lift * 0.5;
         if square {
-            c.solid.beam(c.at(xl, zf + r * 0.4), c.at(fx(0) - r * 0.5, zf + r * 0.4) + Vec3::Y * h * 0.96, 0.008 * g, c.tone(*pal.timber.headframe));
+            c.barrow_way((xl, zf + r * 0.4, 0.0), (fx(0) - r * 0.5, zf + r * 0.4, h * 0.96), 0.008 * g, c.tone(*pal.timber.headframe));
         } else {
-            let top = h + 0.008 * g;
-            for (dx, dz) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-                let foot = c.at(lx + dx * lift * 0.42, zf + dz * lift * 0.42);
-                c.solid.beam(foot, foot + Vec3::Y * top, 0.003 * g, plate);
-            }
-            c.solid.block(c.at(lx, zf) + Vec3::Y * top, lift, lift, 0.004 * g, c.site.yaw, plate, Some(plate), 0.0);
-            c.solid.beam(c.at(lx, zf) + Vec3::Y * (h + 0.003 * g), c.at(fx(n - 1), zf) + Vec3::Y * (h + 0.003 * g), 0.006 * g, plate);
+            c.lift(lx, zf, lift, h + 0.008 * g);
+            c.barrow_way((lx, zf, h + 0.003 * g), (fx(n - 1), zf, h + 0.003 * g), 0.006 * g, plate);
         }
     }
     // the blowing engine's house and its chimney
@@ -229,7 +239,7 @@ pub fn coke_furnace(c: &mut Ctx) {
     if eng > 0.0 {
         let s = c.tower(xr + eng * 0.5, zf, eng, 0.05 * g, c.masonry(false), roof);
         if !c.going_up() {
-            c.panel(&s, Face::Front, -eng * 0.16, eng * 0.16, 0.012 * g, 0.034 * g, true, *pal.glass.window);
+            c.light(&s, Face::Front, -eng * 0.16, eng * 0.16, 0.012 * g, 0.034 * g, true);
         }
     }
     let tall = fh * 1.3 * size.max(1.0).powf(0.04);

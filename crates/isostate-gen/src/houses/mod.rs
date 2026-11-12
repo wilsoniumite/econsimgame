@@ -17,7 +17,7 @@
 
 mod cottage;
 mod farmhouse;
-mod kit;
+
 pub mod roof;
 mod terrace;
 mod townhouse;
@@ -25,7 +25,7 @@ mod villa;
 
 pub use cottage::{cottage, Cottage};
 pub use farmhouse::{farmhouse, Farmhouse, FARMHOUSE};
-pub use kit::{Detail, Era};
+pub use crate::kit::{Detail, Era};
 pub use roof::Roof;
 pub use terrace::{terrace, Terrace};
 pub use townhouse::{townhouse, Townhouse};
@@ -37,10 +37,10 @@ use crate::colour::{pick, shade, Rgba};
 use crate::hash::Seed;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::houses::kit::STOREY;
+use crate::kit::STOREY;
 use crate::site::Site;
 use crate::trees::{hedge_tree, Greenery};
-use kit::{Kit, Open, Opening, Over, Range, Wall, FOOT};
+use crate::kit::{Kit, Open, Opening, Over, Range, Wall, FOOT};
 
 /// The steps each kind of house takes as its ground is built up.
 pub mod storeys {

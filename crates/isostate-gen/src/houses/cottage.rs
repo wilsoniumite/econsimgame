@@ -1,11 +1,11 @@
 use crate::colour::shade;
 use crate::hash::Seed;
-use crate::houses::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, FOOT};
+use crate::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, FOOT};
 use crate::houses::roof::{Cover, Roof};
 use crate::houses::{door, door_at, garden_tree, hearth_smoke, timber_frame, window, window_at, Fabric, BACK_ROOM, SET_BACK};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::houses::kit::STOREY;
+use crate::kit::STOREY;
 use crate::site::Site;
 use crate::trees::Greenery;
 

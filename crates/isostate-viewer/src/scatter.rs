@@ -449,6 +449,8 @@ pub fn firm_works(r: &Replay, slots: &Slots, f: usize, k: usize) -> Option<Works
         state,
         water: slots.firm_water.get(f).copied().unwrap_or(false),
         rail: r.trans[k * r.n + firm.cell] & 4 != 0,
+        // the level is the camera's to choose: `build_year` sets it for each works
+        detail: Detail::Near,
         seed: firm_seed(f),
     })
 }
@@ -796,26 +798,27 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         let (hx, hz) = ((fw * cos.abs() + fd * sin.abs()) * 0.5 + 0.02, (fw * sin.abs() + fd * cos.abs()) * 0.5 + 0.02);
         plots.entry(firm.cell).or_default().push((p.0, p.1, hx, hz));
         let site = Site::on(ground(g, p.0, p.1), p.2, &height);
+        // as much of it as the camera can see, as for a house
+        let w = Works { detail: lod.at(p.0, p.1), ..w };
         works(&mut works_b, &mut smoke, &mut lanes, &site, &w, lk);
     }
     // the railway's banks, viaducts, portals and bridges and what stands by it, and a
     // bridge wherever a road crosses a river
-    let (rail_works, rail_smoke) = crate::rails::structures(&crate::rails::year(r, g, cen, k), g, lk);
-    works_b.append(rail_works);
-    smoke.append(rail_smoke);
+    let rail_year = crate::rails::year(r, g, cen, k);
+    works_b.append(crate::rails::structures(&rail_year, g, lk));
+    crate::rails::standing(&rail_year, lod, lk, &mut works_b, &mut smoke);
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
         let along = (b - a).normalize_or(bevy::math::Vec2::X);
         for (at, river, half, level) in crate::rivers::crossings(&g.rivers, &g.water, a, b) {
             // a road that crosses aslant has further to go from bank to bank (up to three times as far)
             let half = half / along.perp_dot(river).abs().max(0.34);
-            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3 }, &height, lk);
+            road_bridge(&mut works_b, &RoadBridge { at, along, half, level, main: lv == 3, detail: lod.at(at.x, at.y) }, &height, lk);
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }
-    let parishes = towns::landmarks(r, g, cen, k, lk, &mut houses, &mut plots);
+    let parishes = towns::landmarks(r, g, cen, k, lk, lod, &mut houses, &mut plots);
     // near a works or a market place, in a churchyard, or on the railway or its banks
-    let rail_year = crate::rails::year(r, g, cen, k);
     let near_plot = |x: f32, z: f32| -> bool {
         let c = (z.floor() as usize).min(r.h - 1) * r.w + (x.floor() as usize).min(r.w - 1);
         plots.get(&c).map(|v| v.iter().any(|&(px, pz, hx, hz)| (px - x).abs() < hx && (pz - z).abs() < hz)).unwrap_or(false)
@@ -965,7 +968,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             }
             let Some(kinds) = waiting.get_mut(&s.wcell) else { continue };
             let Some(kind) = kinds.pop() else { continue };
-            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v, detail: lod.at(s.x, s.z) }, lk);
         }
     } else {
         for s in &slots.mines {
@@ -975,7 +978,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
             if s.u > 0.7 || near_plot(s.x, s.z) {
                 continue;
             }
-            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v }, lk);
+            pit(&mut works_b, &Site::level(ground(g, s.x, s.z), s.yaw), &Pit { kind, v: s.v, detail: lod.at(s.x, s.z) }, lk);
         }
     }
 

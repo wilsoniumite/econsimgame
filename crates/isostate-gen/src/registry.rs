@@ -1,0 +1,519 @@
+//! Every generator of the island, in one list, so that each can be built at
+//! each level of detail and held to the scale (`scale::faults`).
+//!
+//! An entry names the generator functions it stands for and builds a few
+//! specimens of the thing: the sizes, ages and seeds that show what it can
+//! be. The tests here build every specimen at every level and measure it,
+//! and read the crate's own source for generator functions (public functions
+//! that write into a `MeshBuf`, a `Greenery` or a `Model`) that no entry
+//! covers: a new generator fails the tests until it is listed here. The
+//! lab's `scale` sheet stands the first specimen of every entry side by side
+//! at each level with its numbers under it.
+
+use glam::{Vec2, Vec3};
+
+use crate::bridge::{road_bridge, RoadBridge};
+use crate::farm::{farmstead, Farmstead};
+use crate::fence::fence;
+use crate::trees::{bush, hedge_tree, tree, Species, Tree};
+use crate::hash::Seed;
+use crate::houses::roof::Roof;
+use crate::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
+use crate::works::{pit, works, Kind, Pit, PitKind, Works};
+use crate::palette::Palette;
+use crate::rail;
+use crate::scale::{take_tally, Tally};
+use crate::site::{Model, Site};
+use crate::town;
+
+/// What kind of thing a generator makes, which settles what of the scale it answers to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Class {
+    /// walls under a roof: answers to all of the scale
+    Building,
+    /// built, but not a building (a bridge, a fence, a pit's heaps, a
+    /// market cross): its grain is held to the scale, its walls and roofs are not
+    Structure,
+    /// grown: held only to the grain of its level
+    Plant,
+}
+
+/// One thing a generator made, for measuring and for the `scale` sheet.
+pub struct Specimen {
+    pub label: String,
+    pub model: Model,
+    /// what the kit built of it: its walls and its roofs
+    pub tally: Tally,
+}
+
+/// A generator, or a family of them that share a struct of parameters.
+pub struct Entry {
+    pub name: &'static str,
+    pub class: Class,
+    /// the generator functions this entry builds, as `module::function`
+    pub covers: &'static [&'static str],
+    /// a few specimens at a level of detail; the first is the one the `scale` sheet shows
+    pub build: fn(Detail, &Palette) -> Vec<Specimen>,
+    /// whether the thing changes with the level at all (a tree does not: the
+    /// viewer leaves the island's trees as they are when the camera alone moves)
+    pub levels: bool,
+}
+
+fn specimen(label: impl Into<String>, build: impl FnOnce(&mut Model, &Site)) -> Specimen {
+    let mut model = Model::default();
+    take_tally();
+    build(&mut model, &Site::level(Vec3::ZERO, 0.0));
+    Specimen { label: label.into(), model, tally: take_tally() }
+}
+
+/// The years a house of each era is taken to have been built in, for its roof.
+fn year_of(era: Era) -> i32 {
+    match era {
+        Era::Old => 1700,
+        Era::Georgian => 1780,
+        Era::Brick => 1840,
+        Era::Late => 1875,
+    }
+}
+
+fn cottages(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (i, era) in Era::ALL.into_iter().enumerate() {
+        for n in 1..=3u8 {
+            for upland in [false, true] {
+                let seed = Seed::of(5 + i as u32 * 7 + n as u32);
+                let c = Cottage { era, upland, detail, ..Cottage::new(PLOT.0, PLOT.1, n, Roof::of(year_of(era), 1890, upland, false, seed), seed) };
+                out.push(specimen(format!("cottage, {}, {n} storeys", era.label()), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal)));
+            }
+        }
+    }
+    out
+}
+
+fn townhouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (i, era) in [Era::Georgian, Era::Old, Era::Brick, Era::Late].into_iter().enumerate() {
+        for n in 2..=4u8 {
+            for shop in [true, false] {
+                let seed = Seed::of(5 + i as u32 * 11 + n as u32);
+                let t = Townhouse { era, shop, detail, ..Townhouse::new(PLOT.0, PLOT.1, n, Roof::of(year_of(era), 1890, false, false, seed), seed) };
+                out.push(specimen(format!("townhouse, {}, {n} storeys", era.label()), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal)));
+            }
+        }
+    }
+    out
+}
+
+fn terraces(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (i, (houses, n, era, upland)) in [(4, 2, Era::Brick, false), (6, 3, Era::Brick, false), (3, 2, Era::Late, false), (5, 2, Era::Late, true)].into_iter().enumerate() {
+        let seed = Seed::of(5 + i as u32);
+        let t = Terrace { era, upland, detail, ..Terrace::new(houses, Terrace::length_of(houses, BACK_PLOT_WIDTH), PLOT.1, n, Roof::of(year_of(era), 1890, upland, era == Era::Late, seed), seed) };
+        out.push(specimen(format!("terrace of {houses}, {}", era.label()), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal)));
+    }
+    out
+}
+
+fn villas(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (i, (era, upland)) in [(Era::Late, false), (Era::Georgian, false), (Era::Brick, false), (Era::Late, true)].into_iter().enumerate() {
+        for s in 0..3 {
+            let seed = Seed::of(5 + i as u32 * 3 + s);
+            let v = Villa { era, upland, detail, ..Villa::new(PLOT.0, PLOT.1, Roof::of(year_of(era).max(1830), 1890, upland, true, seed), seed) };
+            out.push(specimen(format!("villa, {}", era.label()), |m, site| villa(&mut m.solid, &mut m.smoke, &mut m.green, site, &v, pal)));
+        }
+    }
+    out
+}
+
+fn farmhouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (i, (storeys, upland, thatch, wing)) in [(2, false, false, true), (1, false, true, false), (1, true, false, false), (2, true, false, true)].into_iter().enumerate() {
+        let f = Farmhouse { storeys, upland, thatch, wing, detail, seed: Seed::of(5 + i as u32) };
+        out.push(specimen(format!("farmhouse, {storeys} storeys"), |m, site| farmhouse(&mut m.solid, &mut m.smoke, site, &f, pal)));
+    }
+    out
+}
+
+/// Where a kind of works stands in `Kind::ALL`. (Every kind is named here, so
+/// that a new kind does not compile until it is given a place, and the tests
+/// then ask for its entry.)
+const fn slot(kind: Kind) -> usize {
+    match kind {
+        Kind::HandLoom => 0,
+        Kind::Smithy => 1,
+        Kind::Millwright => 2,
+        Kind::Shops => 3,
+        Kind::CharcoalBurning => 4,
+        Kind::Bloomery => 5,
+        Kind::CharcoalFurnace => 6,
+        Kind::CokeFurnace => 7,
+        Kind::ForgeRails => 8,
+        Kind::RollingMill => 9,
+        Kind::CrucibleSteel => 10,
+        Kind::Bessemer => 11,
+        Kind::SteelRolling => 12,
+        Kind::EngineWorks => 13,
+        Kind::TextileMill => 14,
+        Kind::Brickworks => 15,
+        Kind::Other => 16,
+    }
+}
+
+/// A kind of works at three times the standard size built about 1820 (what
+/// the `works-kinds` sheet shows), then small and great, early and late.
+fn works_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let kind = Kind::ALL[K];
+    debug_assert_eq!(slot(kind), K);
+    [(3.0, 1820, false), (0.4, 1760, true), (1.0, 1870, false), (10.0, 1760, false), (30.0, 1850, false), (100.0, 1870, false)]
+        .into_iter()
+        .map(|(size, founded, water)| {
+            let w = Works { founded, water, detail, seed: Seed::of(K as u32 * 16 + founded as u32), ..Works::new(kind, size) };
+            specimen(format!("{}, size {size}, {founded}", kind.label()), |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
+        })
+        .collect()
+}
+
+fn farmsteads(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    // a big arable farm in brick, a small one in tarred boards, a hill farm, a big farm of stock, and seeds at large
+    for (arable, upland, seed, name) in [(true, false, Seed::new(0.4, 0.7), "a big arable farm"), (true, false, Seed::new(0.1, 0.3), "a small boarded farm"), (false, true, Seed::new(0.5, 0.3), "a small hill farm"), (false, false, Seed::new(0.6, 0.8), "a big farm of stock"), (true, true, Seed::new(0.12, 0.9), "a big hill farm")] {
+        let f = Farmstead { arable, upland, detail, seed };
+        out.push(specimen(name, |m, site| farmstead(&mut m.solid, &mut m.smoke, &mut m.green, &site.moved(site.origin, std::f32::consts::PI), &f, pal)));
+    }
+    for n in 0..6 {
+        let f = Farmstead { arable: n % 2 == 0, upland: n % 3 == 0, detail, seed: Seed::of(n) };
+        out.push(specimen(format!("a farmstead, seed {n}"), |m, site| farmstead(&mut m.solid, &mut m.smoke, &mut m.green, site, &f, pal)));
+    }
+    out
+}
+
+fn churches(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    [(false, false, "a small town's church"), (false, true, "a small town's church with a spire"), (true, true, "a big town's church"), (true, false, "a big town's church without a spire")]
+        .into_iter()
+        .enumerate()
+        .map(|(i, (big, spire, name))| specimen(name, |m, site| town::church(&mut m.solid, site, &town::Church { big, spire, seed: Seed::of(i as u32 + 1) }, detail, pal)))
+        .collect()
+}
+
+fn stations(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("station", |m, site| town::station(&mut m.solid, site, detail, pal))]
+}
+
+fn market_halls(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("market hall", |m, site| town::market_hall(&mut m.solid, site, detail, pal))]
+}
+
+fn market_crosses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("market cross", |m, site| town::market_cross(&mut m.solid, site, detail, pal))]
+}
+
+fn lighthouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, detail, pal))]
+}
+
+fn bridges(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for main in [true, false] {
+        for half in [0.025, 0.012, 0.06, 0.1] {
+            let b = RoadBridge { at: Vec2::ZERO, along: Vec2::X, half, level: 0.002, main, detail };
+            out.push(specimen(format!("{} bridge over {} of river", if main { "a main road's" } else { "a lane's" }, half * 2.0), |m, _| road_bridge(&mut m.solid, &b, &|_, _| 0.0, pal)));
+        }
+    }
+    out
+}
+
+fn winding_houses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("winding engine house", |m, site| rail::winding_house(&mut m.solid, &mut m.smoke, site, detail, pal))]
+}
+
+fn banker_sheds(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("banking engine's shed", |m, site| rail::banker_shed(&mut m.solid, site, detail, pal))]
+}
+
+fn buffer_stops(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("buffer stop", |m, site| rail::buffer_stop(&mut m.solid, site, detail, pal))]
+}
+
+/// A family's fence round a field. (It is a mark of the game and the same at every level.)
+fn fences(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    vec![specimen("a fence round a field", |m, site| {
+        let (w, d) = (0.27, 0.18);
+        let mut line = Vec::new();
+        for (from, to, posts) in [((-w, -d), (w, -d), 6), ((w, -d), (w, d), 4), ((w, d), (-w, d), 6), ((-w, d), (-w, -d), 4)] {
+            for i in 0..posts {
+                let t = i as f32 / posts as f32;
+                line.push(site.at(0.5 * (from.0 + (to.0 - from.0) * t), 0.5 * (from.1 + (to.1 - from.1) * t)));
+            }
+        }
+        line.push(line[0]);
+        fence(&mut m.solid, &line, *pal.walls.lighthouse_red, pal);
+    })]
+}
+
+/// Trees and bushes. (The viewer leaves the island's trees as they are when the camera alone moves, so they have no levels.)
+fn trees(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (species, name) in [(Species::Broadleaf, "broadleaf"), (Species::Conifer, "conifer")] {
+        for (i, size) in [0.9, 0.6, 1.25].into_iter().enumerate() {
+            out.push(specimen(format!("{name}, size {size}"), |m, site| tree(&mut m.green, site, &Tree { species, size, tint: i as f32 / 3.0, turn: i as f32 }, pal)));
+        }
+    }
+    out
+}
+
+fn hedge_trees(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    [0.7, 0.55, 0.85].into_iter().map(|size| specimen(format!("hedgerow tree, size {size}"), |m, site| hedge_tree(&mut m.green, site, size, 0.3, 1.0, pal))).collect()
+}
+
+fn bushes(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    [(0.2, "gorse"), (0.8, "broom")].into_iter().map(|(v, name)| specimen(name, |m, site| bush(&mut m.green, site, v, 1.0, pal))).collect()
+}
+
+fn pits(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (kind, name) in [(PitKind::Coal, "colliery"), (PitKind::Ironstone, "iron mine"), (PitKind::Stone, "quarry"), (PitKind::Clay, "clay pit")] {
+        for v in [0.5, 0.0, 1.0] {
+            out.push(specimen(format!("{name}, heap {v}"), |m, site| pit(&mut m.solid, site, &Pit { kind, v, detail }, pal)));
+        }
+    }
+    out
+}
+
+/// Every generator. To add one: write its specimens and add a line here.
+pub static REGISTRY: &[Entry] = &[
+    Entry { name: "cottage", class: Class::Building, covers: &["houses/cottage::cottage"], build: cottages, levels: true },
+    Entry { name: "townhouse", class: Class::Building, covers: &["houses/townhouse::townhouse"], build: townhouses, levels: true },
+    Entry { name: "terrace", class: Class::Building, covers: &["houses/terrace::terrace"], build: terraces, levels: true },
+    Entry { name: "villa", class: Class::Building, covers: &["houses/villa::villa"], build: villas, levels: true },
+    Entry { name: "farmhouse", class: Class::Building, covers: &["houses/farmhouse::farmhouse"], build: farmhouses, levels: true },
+    Entry { name: "works: handloom weaver", class: Class::Building, covers: &["works/mod::works"], build: works_of::<0>, levels: true },
+    Entry { name: "works: smithy", class: Class::Building, covers: &["works/mod::works"], build: works_of::<1>, levels: true },
+    Entry { name: "works: millwright", class: Class::Building, covers: &["works/mod::works"], build: works_of::<2>, levels: true },
+    Entry { name: "works: shops and trades", class: Class::Building, covers: &["works/mod::works"], build: works_of::<3>, levels: true },
+    Entry { name: "works: charcoal burning", class: Class::Structure, covers: &["works/mod::works"], build: works_of::<4>, levels: true },
+    Entry { name: "works: bloomery", class: Class::Building, covers: &["works/mod::works"], build: works_of::<5>, levels: true },
+    Entry { name: "works: charcoal furnace", class: Class::Building, covers: &["works/mod::works"], build: works_of::<6>, levels: true },
+    Entry { name: "works: coke furnace", class: Class::Building, covers: &["works/mod::works"], build: works_of::<7>, levels: true },
+    Entry { name: "works: forged rails", class: Class::Building, covers: &["works/mod::works"], build: works_of::<8>, levels: true },
+    Entry { name: "works: rolling mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<9>, levels: true },
+    Entry { name: "works: crucible steel", class: Class::Building, covers: &["works/mod::works"], build: works_of::<10>, levels: true },
+    Entry { name: "works: converter", class: Class::Building, covers: &["works/mod::works"], build: works_of::<11>, levels: true },
+    Entry { name: "works: steel rail mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<12>, levels: true },
+    Entry { name: "works: engine works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<13>, levels: true },
+    Entry { name: "works: powered mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<14>, levels: true },
+    Entry { name: "works: brickworks", class: Class::Building, covers: &["works/mod::works"], build: works_of::<15>, levels: true },
+    Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<16>, levels: true },
+    Entry { name: "farmstead", class: Class::Building, covers: &["farm::farmstead"], build: farmsteads, levels: true },
+    Entry { name: "church", class: Class::Building, covers: &["town/church::church"], build: churches, levels: true },
+    Entry { name: "station", class: Class::Building, covers: &["town/station::station"], build: stations, levels: true },
+    Entry { name: "market hall", class: Class::Building, covers: &["town/market::market_hall"], build: market_halls, levels: true },
+    Entry { name: "market cross", class: Class::Structure, covers: &["town/market::market_cross"], build: market_crosses, levels: true },
+    Entry { name: "lighthouse", class: Class::Structure, covers: &["town/lighthouse::lighthouse"], build: lighthouses, levels: true },
+    Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
+    Entry { name: "road bridge", class: Class::Structure, covers: &["bridge::road_bridge"], build: bridges, levels: true },
+    Entry { name: "winding engine house", class: Class::Building, covers: &["rail::winding_house"], build: winding_houses, levels: true },
+    Entry { name: "banking engine's shed", class: Class::Building, covers: &["rail::banker_shed"], build: banker_sheds, levels: true },
+    Entry { name: "buffer stop", class: Class::Structure, covers: &["rail::buffer_stop"], build: buffer_stops, levels: true },
+    Entry { name: "fence", class: Class::Structure, covers: &["fence::fence"], build: fences, levels: false },
+    Entry { name: "tree", class: Class::Plant, covers: &["trees::tree"], build: trees, levels: false },
+    Entry { name: "hedgerow tree", class: Class::Plant, covers: &["trees::hedge_tree"], build: hedge_trees, levels: false },
+    Entry { name: "bush", class: Class::Plant, covers: &["trees::bush"], build: bushes, levels: false },
+];
+
+/// The houses: the entries the scale was read off, which the others are held to.
+pub const REFERENCE: [&str; 5] = ["cottage", "townhouse", "terrace", "villa", "farmhouse"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scale::{self, measure};
+
+    /// What of a specimen is measured: what is built of it, or for a plant what is grown.
+    fn built(m: &Model, class: Class) -> crate::mesh::MeshBuf {
+        if class != Class::Plant {
+            return m.solid.clone();
+        }
+        let mut all = crate::mesh::MeshBuf::default();
+        for b in [&m.green.evergreen, &m.green.leaves, &m.green.bare] {
+            all.merge(b);
+        }
+        all
+    }
+
+    #[test]
+    fn every_generator_keeps_to_the_scale_at_every_level() {
+        let pal = Palette::standard();
+        let mut wrong = Vec::new();
+        for e in REGISTRY {
+            let mut last: Option<Vec<usize>> = None;
+            for detail in Detail::ALL {
+                let specimens = (e.build)(detail, &pal);
+                assert!(!specimens.is_empty(), "{} has no specimens", e.name);
+                let mut walled = false;
+                for s in &specimens {
+                    assert!(s.model.is_sound() && !s.model.is_empty(), "{}: {} at the {} level", e.name, s.label, detail.label());
+                    let m = measure(&built(&s.model, e.class), &s.tally, &pal);
+                    let faults = match e.class {
+                        Class::Building => {
+                            walled |= m.wall_area > 0.0;
+                            scale::faults(&m, detail)
+                        }
+                        // what is not a building answers for its grain alone: nothing finer than its level allows
+                        _ => scale::faults(&scale::Measure { wall_area: 0.0, roof_area: 0.0, blank: 0.0, storey: None, smallest: m.smallest.min(scale::Level::of(detail).coarsest), ..m }, detail),
+                    };
+                    for f in faults {
+                        wrong.push(format!("{}: {} at the {} level: {f}", e.name, s.label, detail.label()));
+                    }
+                }
+                // a building's walls are the kit's: a chimney or a furnace may be most of what stands
+                // upright in a works, and a small brickworks is kilns alone, but among a kind's
+                // specimens there are walls, and the kit built them
+                assert!(walled || e.class != Class::Building, "{} is a building and the kit built none of its walls at the {} level: build walls with kit::Kit", e.name, detail.label());
+                // each level draws no less than the one before it, and the same things
+                let now: Vec<usize> = specimens.iter().map(|s| built(&s.model, e.class).triangles()).collect();
+                if let Some(was) = &last {
+                    assert_eq!(was.len(), now.len(), "{} has other specimens at the {} level", e.name, detail.label());
+                    for (i, s) in specimens.iter().enumerate() {
+                        assert!(now[i] >= was[i], "{}: {} has less to it at the {} level than at the one before", e.name, s.label, detail.label());
+                        assert!(e.levels || now[i] == was[i], "{}: {} says it has no levels and differs by level", e.name, s.label);
+                    }
+                }
+                last = Some(now);
+            }
+        }
+        assert!(wrong.is_empty(), "{} off the scale:\n{}", wrong.len(), wrong.join("\n"));
+    }
+
+    #[test]
+    fn the_houses_are_the_reference_and_in_the_registry() {
+        // and every kind of works has an entry of its own, named for it
+        for kind in Kind::ALL {
+            assert_eq!(Kind::ALL[slot(kind)], kind);
+            assert!(REGISTRY.iter().any(|e| e.name == format!("works: {}", kind.label())), "{kind:?} has no entry");
+        }
+        for name in REFERENCE {
+            assert!(REGISTRY.iter().any(|e| e.name == name && e.class == Class::Building), "{name}");
+        }
+        for (i, e) in REGISTRY.iter().enumerate() {
+            assert!(REGISTRY[..i].iter().all(|o| o.name != e.name), "two entries are called {}", e.name);
+            assert!(!e.covers.is_empty(), "{} covers no generator", e.name);
+        }
+    }
+
+    /// The public generator functions of the crate, read from its source: every
+    /// free `pub fn` that is handed a buffer to write into, as `file::function`.
+    fn generators_in_the_source() -> Vec<String> {
+        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, root, out);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let module = path.strip_prefix(root).unwrap().with_extension("").to_string_lossy().replace('\\', "/");
+                let text = std::fs::read_to_string(&path).unwrap();
+                let lines: Vec<&str> = text.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    // a free function: `pub fn` at the start of a line
+                    let Some(rest) = line.strip_prefix("pub fn ") else { continue };
+                    let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                    // its parameters may run over several lines
+                    let mut sig = String::new();
+                    for l in &lines[i..(i + 12).min(lines.len())] {
+                        sig.push_str(l);
+                        if l.contains('{') {
+                            break;
+                        }
+                    }
+                    if ["&mut MeshBuf", "&mut Greenery", "&mut Model"].iter().any(|b| sig.contains(b)) {
+                        out.push(format!("{module}::{name}"));
+                    }
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut out = Vec::new();
+        walk(&root, &root, &mut out);
+        out.sort();
+        out
+    }
+
+    /// Public functions that write into a buffer and are not generators of a thing.
+    const NOT_GENERATORS: &[(&str, &str)] = &[
+        ("works/kit::plume", "smoke, which every flue shares"),
+        ("scenes::street", "a lab scene of houses, each of which is listed"),
+        ("scenes::market", "a lab scene of houses and a church, each of which is listed"),
+        ("scenes::cover", "a lab scene of trees and bushes, each of which is listed"),
+    ];
+
+    #[test]
+    fn a_generator_that_is_not_in_the_registry_fails() {
+        let found = generators_in_the_source();
+        assert!(found.len() >= 10, "the source was not read: {found:?}");
+        let covered: Vec<&str> = REGISTRY.iter().flat_map(|e| e.covers.iter().copied()).collect();
+        let mut missing = Vec::new();
+        for g in &found {
+            if !covered.contains(&g.as_str()) && !NOT_GENERATORS.iter().any(|(n, _)| n == g) {
+                missing.push(g.clone());
+            }
+        }
+        assert!(missing.is_empty(), "these generators are not in registry::REGISTRY, so nothing holds them to the scale: {missing:?}");
+        // and nothing is listed that is not there
+        for c in covered.iter().chain(NOT_GENERATORS.iter().map(|(n, _)| n)) {
+            assert!(found.iter().any(|g| g == c), "{c} is listed and is not a generator in the source");
+        }
+    }
+
+    /// Prints how long every entry's specimens take to build at every level, and how
+    /// long that is for each thousand triangles: a generator that is slow for what it
+    /// draws shows here (`cargo test -p isostate-gen timings -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn timings() {
+        let pal = Palette::standard();
+        for e in REGISTRY {
+            for detail in Detail::ALL {
+                const ROUNDS: u32 = 20;
+                let tris: usize = (e.build)(detail, &pal).iter().map(|s| s.model.triangles()).sum();
+                let t0 = std::time::Instant::now();
+                for _ in 0..ROUNDS {
+                    std::hint::black_box((e.build)(detail, &pal));
+                }
+                let ms = t0.elapsed().as_secs_f64() * 1000.0 / ROUNDS as f64;
+                println!("timing {:<24} {:<5} {:>8.3} ms for {:>6} triangles, {:>6.3} ms a thousand", e.name, detail.label(), ms, tris, ms * 1000.0 / tris.max(1) as f64);
+            }
+        }
+    }
+
+    /// Prints what every specimen measures at every level
+    /// (`cargo test -p isostate-gen measures -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn measures() {
+        let pal = Palette::standard();
+        for e in REGISTRY {
+            for detail in Detail::ALL {
+                let (mut lo, mut hi) = (scale::Measure { smallest: f32::MAX, wall: f32::MAX, roof: f32::MAX, ..Default::default() }, scale::Measure::default());
+                for s in (e.build)(detail, &pal) {
+                    let m = measure(&s.model.solid, &s.tally, &pal);
+                    if std::env::var_os("EACH").is_some() {
+                        println!("    {:<40} {:>5} tris, finest {:.5}, wall {:>5.1} over {:>5.1}, roof {:>5.2} over {:>5.1}, bare {:.1}, storey {:?}", s.label, m.triangles, m.smallest, m.wall, m.wall_area, m.roof, m.roof_area, m.blank, m.storey);
+                    }
+                    lo.smallest = lo.smallest.min(m.smallest);
+                    hi.smallest = hi.smallest.max(m.smallest);
+                    lo.wall = lo.wall.min(m.wall);
+                    hi.wall = hi.wall.max(m.wall);
+                    lo.roof = lo.roof.min(m.roof);
+                    hi.roof = hi.roof.max(m.roof);
+                    hi.blank = hi.blank.max(m.blank);
+                    hi.triangles = hi.triangles.max(m.triangles);
+                }
+                println!("measure {:<18} {:<5} finest {:.5} to {:.5}, wall {:>5.1} to {:>5.1}, roof {:>5.2} to {:>5.2}, bare up to {:.1}, up to {} triangles", e.name, detail.label(), lo.smallest, hi.smallest, lo.wall, hi.wall, lo.roof, hi.roof, hi.blank, hi.triangles);
+            }
+        }
+    }
+}

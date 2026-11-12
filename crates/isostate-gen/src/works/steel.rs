@@ -37,11 +37,11 @@ pub fn crucible(c: &mut Ctx) {
     // the range across the front, with the way in under its arch
     if range {
         let len = 2.0 * hw - 0.02;
-        let s = c.shed(0.0, hd - 0.008 - fr * 0.5, len, fr, 0.04 * g, false, c.masonry(false), roof);
-        c.windows(&s, 2, 0, 2, 0.012 * g, false, *pal.glass.window);
+        let s = c.shed(0.0, hd - 0.008 - fr * 0.5, len, fr, c.storeys(2), false, c.masonry(false), roof);
+        c.windows(&s, 0, 2, false);
         if !c.going_up() {
             for face in [Face::Front, Face::Back] {
-                c.panel(&s, face, -0.007 * g, 0.007 * g, 0.0, 0.02 * g, true, *pal.smoke.soot);
+                c.mouth(&s, face, -0.007 * g, 0.007 * g, 0.0, 0.02 * g, true);
             }
         }
     }
@@ -82,9 +82,9 @@ pub fn crucible(c: &mut Ctx) {
 #[allow(clippy::too_many_arguments)]
 fn melting_shops(c: &mut Ctx, x: f32, z: f32, n: usize, ul: f32, dep: f32, across: bool, outer: Face, wall: Rgba, roof: Rgba) -> Shed {
     let (g, pal) = (c.g, c.pal);
-    let h = 0.036 * g;
+    let h = c.storeys(2);
     let s = c.shed(x, z, n as f32 * ul, dep, h, across, wall, roof);
-    c.windows(&s, 2, 0, 2, ul / 3.0, false, *pal.glass.window);
+    c.windows(&s, 0, 2, false);
     let out = if outer == Face::Front { 1.0 } else { -1.0 };
     let brick = c.tone(*pal.brick.chimney);
     for i in 0..n {
@@ -129,9 +129,9 @@ pub fn converter(c: &mut Ctx) {
             c.flue(cx, z - dep * 0.5 - cup * 0.5, 0.075 * g, 0.006 * g, 0.005 * g, plate, *pal.smoke.soot, 0.5);
             if !c.going_up() {
                 let u = cx - x;
-                c.panel(&s, Face::Front, u - ul * 0.32, u - ul * 0.1, 0.0, h * 0.62, false, *pal.smoke.soot);
+                c.mouth(&s, Face::Front, u - ul * 0.32, u - ul * 0.1, 0.0, h * 0.62, false);
                 c.glow(&s, Face::Front, u - ul * 0.1, u + ul * 0.1, 0.0, h * 0.62, false);
-                c.panel(&s, Face::Front, u + ul * 0.1, u + ul * 0.32, 0.0, h * 0.62, false, *pal.smoke.soot);
+                c.mouth(&s, Face::Front, u + ul * 0.1, u + ul * 0.32, 0.0, h * 0.62, false);
             }
         }
     }
@@ -140,7 +140,7 @@ pub fn converter(c: &mut Ctx) {
     let ex = -hw + 0.008 + (wanted.min(rows * per).min(per)) as f32 * ul + 0.004 + eng * 0.5;
     let e = c.tower(ex, front_z, eng, 0.06 * g, c.masonry(false), roof);
     if !c.going_up() {
-        c.panel(&e, Face::Front, -eng * 0.16, eng * 0.16, 0.014 * g, 0.042 * g, true, *pal.glass.window);
+        c.light(&e, Face::Front, -eng * 0.16, eng * 0.16, 0.014 * g, 0.042 * g, true);
     }
     c.chimney(ex, (front_z - eng * 0.5 - 0.016 * g).max(-hd + 0.008 + 0.014 * g), 0.17 * g, 0.008 * g, 1.2);
     // ingots cooling in the yard, and the crane that lifts them

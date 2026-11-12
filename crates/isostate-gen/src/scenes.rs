@@ -223,14 +223,14 @@ pub fn market(m: &mut Model, site: &Site, mk: &Market, pal: &Palette) {
         m.flat.tri(mid, ring[(i + 1) % n as usize], ring[i], *pal.ground.market_paving);
     }
     if mk.big {
-        town::market_hall(&mut m.solid, site, pal);
+        town::market_hall(&mut m.solid, site, mk.detail, pal);
     } else {
-        town::market_cross(&mut m.solid, site, pal);
+        town::market_cross(&mut m.solid, site, mk.detail, pal);
     }
     // the church stands off the east side, its tower and gate to the market place
     let church = town::Church { big: mk.big, spire: mk.big, seed: Seed::of(mk.id as u32) };
     let (church_at, church_yaw) = church.beside_square(Vec2::ZERO, Vec2::X);
-    town::church(&mut m.solid, &site.moved(site.at(church_at.x, church_at.y), site.yaw + church_yaw), &church, pal);
+    town::church(&mut m.solid, &site.moved(site.at(church_at.x, church_at.y), site.yaw + church_yaw), &church, mk.detail, pal);
     // houses round the market place, facing in
     let count = ((std::f32::consts::TAU * (radius + 0.03)) / PLOT.0).floor() as i32;
     let id = -1000 - mk.id;
