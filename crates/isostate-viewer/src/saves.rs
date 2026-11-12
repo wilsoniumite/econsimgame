@@ -133,7 +133,15 @@ pub fn plainly(e: &std::io::Error) -> String {
     e.to_string().replace(". (os error", " (os error")
 }
 
+/// The largest file that is read as a saved game. A save is a line for each
+/// order, a few hundred kilobytes after the busiest of centuries; anything
+/// near this size is some other file, and is not taken into memory to find out.
+pub const MOST_BYTES: u64 = 64 << 20;
+
 pub fn read(path: &Path) -> Result<Save, String> {
+    if let Some(len) = std::fs::metadata(path).ok().map(|m| m.len()).filter(|&len| len > MOST_BYTES) {
+        return Err(format!("{}: not a saved game: it is {} megabytes, and a saved game is a few hundred kilobytes at the most", path.display(), len >> 20));
+    }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path.display(), plainly(&e)))?;
     Save::from_text(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -721,6 +729,14 @@ mod tests {
         assert_eq!(std::fs::read_to_string(unread(&path)).unwrap(), "four");
         assert_eq!(std::fs::read_to_string(unread_before(&path, 2)).unwrap(), "three");
         assert_eq!(std::fs::read_to_string(unread_before(&path, 3)).unwrap(), "two");
+        // so is a file far too large to be a saved game: it is not read to find out, and it is kept
+        let huge = dir.join("huge.json");
+        std::fs::File::create(&huge).unwrap().set_len(MOST_BYTES + 1).unwrap();
+        let t0 = std::time::Instant::now();
+        assert!(read(&huge).unwrap_err().ends_with("not a saved game: it is 64 megabytes, and a saved game is a few hundred kilobytes at the most"));
+        assert!(may_keep(&huge).unwrap_err().contains("not a saved game"));
+        assert!(t0.elapsed().as_secs_f32() < 1.0, "a file that size was read");
+        std::fs::remove_file(&huge).unwrap();
         // a save that says what no game could is such a file: it is not played, and not written over
         let wild = save(9, 1790).to_text().replace("\"year\": 1790,", "\"year\": 5000,");
         std::fs::write(&path, &wild).unwrap();
