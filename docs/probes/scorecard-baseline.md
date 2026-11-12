@@ -275,8 +275,8 @@ check-main-chance`), chance alone goes beyond the five-history floor on 6
 and on 9 facts of 55: about one fact in ten, which is what a nine-in-ten
 yardstick gives. Most go beyond by a little, but where one island can tip
 the floor of five is far too narrow: the towns' share of 1811-1830 moved by
-7.2 floors in one history, because islands 1 and 13 each grew a town a few
-years early, and mill cloth's share of 1830 and coke iron's of 1800 by 4.5
+7.2 floors in one history, because on islands 1 and 13 it stood more than
+four points higher than in the first, and mill cloth's share of 1830 and coke iron's of 1800 by 4.5
 and 2.5 floors, each from one island. Over seven histories the floor of
 `pop_1900` is 5,057 rather than 2,082, of the wage of 1831-1850 0.087 rather
 than 0.054, and of the iron price's swing 0.0046 rather than 0.0038; the
@@ -307,8 +307,9 @@ doing when the mean moves by more than the floors of both the rules it left
 and the rules it made, and most islands move the same way (twelve of sixteen
 or more). Expect that rule to be fooled by chance on a fact or two of the
 card's fifty-odd: in the two extra histories the iron price's swing fell by
-1.2 floors with twelve islands of sixteen down, and the towns' share of
-1751-1770 by 1.3 floors with twelve down, and nothing had changed. A change
+1.2 floors with twelve islands of sixteen down, the towns' share of
+1751-1770 by 1.3 floors with twelve down, and under the tree the farm
+zigzag rose by 2.4 floors with twelve up, and nothing had changed. A change
 between one and one and a half floors is chance until more histories say
 otherwise, and so is a change in a fact that one island's early town or
 early method can carry. The surest test is the
