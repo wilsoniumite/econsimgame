@@ -14,6 +14,7 @@ use isostate_core::sim;
 struct Beside {
     town_months: usize,
     wild: usize,
+    greatest: f64,
     over_people: usize,
     compared: usize,
     moved: usize,
@@ -51,6 +52,7 @@ fn the_cards_facts_are_what_they_say() {
             for &t in &act {
                 b.town_months += 1;
                 b.wild += (st.wage[t] > 10.0 * middle) as usize;
+                b.greatest = b.greatest.max(st.wage[t] / middle);
                 b.over_people += (st.month_stats.employment[t] > P.participation * st.pop[t] * (1.0 + 1e-9)) as usize;
                 if month > 0 && last[t] > 0.0 {
                     b.compared += 1;
@@ -94,7 +96,12 @@ fn the_cards_facts_are_what_they_say() {
     let at = |name: &str, y: i64| annual(series(name), y0, y);
 
     // the town-months, counted the same way twice: an identity, to the town-month
+    // (on this island and these years there are no wild wages, overworked towns, wages moved by
+    // half or hungry months after a district, so the greatest wage against the middle one holds
+    // the middle town's definition here, and `each_town_month_count_counts_its_own_case` the counts)
+    eprintln!("town-months {}: wild {}, overworked {}, moved by half {} of {}, hungry after new cells {}, greatest {:.3}", b.town_months, b.wild, b.over_people, b.moved, b.compared, b.hungry_after, b.greatest);
     assert!(b.town_months > 1000 && b.compared > 1000, "{} town-months", b.town_months);
+    assert_eq!(get("town_wage_greatest_vs_middle"), b.greatest);
     assert_eq!(get("town_months_wage_over_ten_middle"), b.wild as f64);
     assert_eq!(get("town_months_more_at_work_than_people"), b.over_people as f64);
     assert!((get("town_months_wage_moved_by_half") - b.moved as f64 / b.compared as f64).abs() < 1e-12);
@@ -116,6 +123,20 @@ fn the_cards_facts_are_what_they_say() {
     for y in [1750, 1790] {
         let between = get(&format!("carters_between_towns_share_of_hands_{y}"));
         assert!(between > 0.0 && between < get(&format!("carters_share_of_hands_{y}")), "{y}: {between}");
+        // and they are each town's carters split by its own bill, from the year's books: the
+        // works' carting and the trade it sends, of all it paid to carry
+        let rec = st.acct.years.iter().position(|yr| yr.year == y).and_then(|k| st.acct.year(k)).expect("the year's books");
+        let col = |name: &str| TOWN_FIELDS.iter().position(|&c| c == name).unwrap();
+        let mut carters = 0.0;
+        for t in 0..st.T_max {
+            let v = |name: &str| rec.towns[t * KT + col(name)] as f64;
+            let bill = v("cart_land") + v("cart_works") + v("cart_trade");
+            if bill > 0.0 {
+                carters += v("carters") * (v("cart_works") + v("cart_trade")) / bill;
+            }
+        }
+        let want = carters / (r.params.participation * at("pop", y));
+        assert!((between / want - 1.0).abs() < 1e-6, "{y}: {between} against {want}");
     }
     // the weight carried times its path cost, at the freight, is about what the carting cost less
     // the handling: so the carters a unit of it are counted on the right units. Not exactly: the
@@ -187,6 +208,51 @@ fn the_cards_facts_are_what_they_say() {
     // timber's swing is read as iron's; the one from 1800 needs a run that reaches it
     assert!(get("price_swing_timber") > 0.0);
     assert!(f.facts.iter().all(|x| x.name != "price_swing_timber_from_1800"));
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn each_town_month_count_counts_its_own_case() {
+    // A real island has none of these cases in its first years, so a month is made from a real
+    // one by hand: one town paid eleven times the middle town's wage, one with a tenth more at work
+    // than its people of working age, one whose wage doubled on the month before, and one hungry
+    // in February after taking cells. Each count rises by one, and only by one.
+    let rules = Rules::Game;
+    let mut P = rules.params();
+    P.seed = 2;
+    P.n_families = 6;
+    P.end_year = Some(1750);
+    let mut s = sim::start(&P, rules.content());
+    let mut g = Gathered::default();
+    // a year's months, stopping before the year's end so that the people and the hands at work
+    // are of the same month
+    for month in 0..12 {
+        sim::run_month(&mut s, month).expect("money is conserved");
+        facts::gather_month(&mut g, &s, month);
+    }
+    let before = g.months.clone();
+    let participation = s.params.participation;
+    let st = &mut s.st;
+    let mut act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t] && st.pop[t] > 0.0).collect();
+    act.sort_by(|&a, &b| st.wage[a].total_cmp(&st.wage[b]));
+    assert!(act.len() >= 5, "{} towns", act.len());
+    let (top, busy, flip, hungry) = (act[act.len() - 1], act[0], act[1], act[2]);
+    let middle = st.wage[act[act.len() / 2]];
+    st.wage[top] = 11.0 * middle;
+    st.month_stats.employment[busy] = 1.1 * participation * st.pop[busy];
+    st.food_ratio[hungry] = 0.5;
+    g.months.took_cells = vec![false; st.T_max];
+    g.months.took_cells[hungry] = true;
+    g.months.last_wage = st.wage.clone();
+    g.months.last_wage[flip] = 0.5 * st.wage[flip];
+    facts::gather_month(&mut g, &s, 1);
+    let (a, b) = (&before, &g.months);
+    assert_eq!(b.town_months - a.town_months, act.len());
+    assert_eq!(b.wage_wild - a.wage_wild, 1);
+    assert!((b.wage_greatest_vs_middle - 11.0).abs() < 1e-9, "{}", b.wage_greatest_vs_middle);
+    assert_eq!(b.more_at_work_than_people - a.more_at_work_than_people, 1);
+    assert_eq!((b.wage_compared - a.wage_compared, b.wage_moved_by_half - a.wage_moved_by_half), (act.len(), 1));
+    assert_eq!(b.hungry_after_new_cells - a.hungry_after_new_cells, 1);
 }
 
 #[test]
