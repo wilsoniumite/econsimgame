@@ -208,11 +208,13 @@ fn the_books_balance_under_the_game() {
 
 #[test]
 fn the_books_keep_up_with_the_mines_and_the_canals() {
-    // the game as it is played, to 1800 on seed 7, where canals are dug
+    // the game as it is played, to 1797 on seed 7, where canals are dug
     // (tests/canals.rs) and workings are sunk: the sinkers' pay, a working's
     // royalty split among the cells of its lease, and navvies paid two shillings
-    // on every shilling of materials all pass through the books
-    const END: i64 = 1800;
+    // on every shilling of materials all pass through the books. (It ran to 1800
+    // before the production tree; with the tree no working is begun in 1799 on
+    // this island, and one is in 1796.)
+    const END: i64 = 1797;
     let r = run(Rules::Game, &params(Rules::Game, 7, 6, END, true));
     let (st, C) = (&r.state, &r.content);
     assert!(r.params.mines.enabled && r.params.canals.enabled && r.params.canals.wages > 0.3);

@@ -1012,6 +1012,8 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     }
 
     // ---- households, landlords and families; the markets
+    // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree)
+    let decay = crate::tree::decay(C, P);
     for t in (0..T).filter(|&t| st.town_active[t]) {
         // families spend through their seat's landlords: their part of what the
         // landlords bought is their part of the budget (`families::pay_spending`)
@@ -1046,10 +1048,10 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             // in store the floor makes up the difference: that is `oversold`.
             let sold = m.sold[(t, g)];
             let left = b.stock[(t, g)] - sold;
-            let v1 = left * (1.0 - P.decay[g]) + m.prod_TG[(t, g)];
+            let v1 = left * (1.0 - decay[g]) + m.prod_TG[(t, g)];
             let v2 = v1.max(0.0) + m.imports[(t, g)] - m.exports[(t, g)];
-            a.goods[k + G_SPOILED] += left.max(0.0) * P.decay[g];
-            a.goods[k + G_OVERSOLD] += (-left).max(0.0) * P.decay[g] + (-v1).max(0.0) + (-v2).max(0.0);
+            a.goods[k + G_SPOILED] += left.max(0.0) * decay[g];
+            a.goods[k + G_OVERSOLD] += (-left).max(0.0) * decay[g] + (-v1).max(0.0) + (-v2).max(0.0);
             let km = ((a.month.min(11) * T + t) * G + g) * KMO;
             a.months[km + 1] = m.prod_TG[(t, g)];
             a.months[km + 2] = sold;

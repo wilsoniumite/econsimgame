@@ -96,7 +96,12 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
     // rounding as money lost: in January 1762 with six families, in 1764 with
     // none. Both are played past that year here.
     for (families, end_year) in [(6, 1763), (0, 1765)] {
-        let P = commons(3, families, end_year);
+        // The production tree spares island 3 its bad year, and every other: with the
+        // tree laid no common fund on islands 1 to 10 is in debt for a single month
+        // to 1770, with six families or none. The rule is the commons' own and the
+        // tree does not touch it, so it is tried on the island as it was without it.
+        let mut P = commons(3, families, end_year);
+        P.tree = Default::default();
         let mut s = sim::start(&P, game_content());
         let money = s.st.money_start;
         let (mut months, mut deepest) = (0, 0.0f64);
