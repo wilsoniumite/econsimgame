@@ -68,7 +68,8 @@ what one thing looks like.
   snow on anything unmarked (a roof, a wall's top, a stack of goods); frost,
   and its green gone dull or to bare earth, on the `[ground]` tokens and what
   grows on them (`foliage.hedge`, `foliage.vegetables`) and on a railway's
-  banks and cuttings; ice on `water.river`; and nothing on a fire or what is
+  banks and cuttings (the stone pitching of a bank by the sea among them,
+  `rail.sea_wall`); ice on `water.river`; and nothing on a fire or what is
   hot over one (`iron.glow`, `iron.plate`, `iron.converter`, `smoke.soot`,
   `smoke.stack_top`, `roofs.coke_ovens`, the charcoal clamp), nor on what is
   trodden clear every day (`ground.road_gravel`, `ground.lane_dust`, the
@@ -77,7 +78,11 @@ what one thing looks like.
   throat drawn in soot keeps clear of snow and one drawn in a roof's slate
   would not. A new `[ground]` token must be named in `mark_for_winter` or the
   crate does not build; a new token for something hot or wet must be added
-  there by hand. Never write an alpha of your own into `solid` or `flat`.
+  there by hand. Never write an alpha of your own into `solid` or `flat`,
+  and mix two tokens with `lerp`, not by hand: the sheets' tests fail a cell
+  with a corner there whose alpha is none of the four marks. (How white the
+  snow is, how much of a roof it covers and how strong the frost is are the
+  viewer's, in the look file's `[winter]` table.)
 - **Append only.** A generator adds to the buffers it is given and never
   clears or reads them: the game hands it the one buffer all the island's
   houses share.
