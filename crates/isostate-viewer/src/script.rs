@@ -2,8 +2,12 @@
 //! timing. `--script "key:Space;wait:2;print"` runs the game with no window,
 //! plays the steps in order as a player's presses and clicks, prints what the
 //! clock, the cards and the order panel did, and stops. It takes its own
-//! pictures (`shot:PATH`), and leaves the saved game alone unless
-//! `ISOSTATE_SAVES` or `--save` gives it a place of its own.
+//! pictures (`shot:PATH`). Nobody is at a scripted game, so it is not kept and
+//! writes over no saved game: `--save FILE` keeps it in a file, and `--keep`
+//! in the island's autosave, which is for checks of the saving itself and
+//! wants `ISOSTATE_SAVES` to name the folder. Where `ISOSTATE_SAVES` names a
+//! folder a script goes on with the autosave it finds there, as a player's
+//! start would, and shows the card for it.
 //!
 //! Steps, separated by semicolons:
 //!
@@ -22,8 +26,9 @@
 //!                     frames' work took (those a month or a year came in apart)
 //!     run:SECONDS     the same, keeping the years going: a decision that opens
 //!                     is given its default and the clock is started again
-//!     print[:NOTE]    print the clock and its date, the cards, the orders that
-//!                     wait for the year's end and the order panel
+//!     print[:NOTE]    print the clock and its date, the cards (the opening card
+//!                     in its own words), the orders that wait for the year's
+//!                     end and the order panel
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none)
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
