@@ -469,7 +469,12 @@ and locks from the heights along the links, as map-viewer-ground suggests.
   that only want distances a bucket queue, as before.
 - **One river, one canal.** A canal along a navigable river is allowed and
   is cheap to route (it is a river's valley). Nothing says a river made
-  navigable is a different thing from a canal beside it.
+  navigable is a different thing from a canal beside it. On the land
+  mechanism's islands, which have a fifth more navigable water with the
+  first towns standing on it, there is more of this: a third of the canal
+  cells are river cells for a sixth here, and a sixth are on water boats
+  already use for a tenth (`land.md`, "On the integration branch";
+  `examples/land_canals.rs` counts it).
 - **Canals found no towns, and cost the island half of one.** A new town is
   founded where a market would save the most carting, so a canal that saves
   it first leaves less to found a town for ("On the integration branch",

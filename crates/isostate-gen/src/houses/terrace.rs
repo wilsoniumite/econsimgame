@@ -3,13 +3,13 @@ use glam::Vec3;
 use crate::colour::shade;
 use crate::hash::Seed;
 use crate::houses::cottage::back_door;
-use crate::houses::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, FOOT};
+use crate::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, FOOT};
 use crate::houses::roof::Roof;
 use crate::houses::{door_at, hearth_smoke, window_at, Fabric, BACK_ROOM};
 use crate::colour::pick;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
-use crate::houses::kit::STOREY;
+use crate::kit::STOREY;
 use crate::site::Site;
 
 /// A terraced row. It stands with its middle on the site, along the site's x.

@@ -290,6 +290,10 @@ pub struct Params {
     /// see docs/rules/canals.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub canals: crate::canals::CanalParams,
+    /// Land (not in the Python; see docs/rules/land.md): an island made by
+    /// uplift and erosion, with its water, in place of the port's.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub land: crate::landform::LandParams,
     /// Books that say who makes, moves, buys and earns what (not in the Python;
     /// see docs/rules/accounts.md). An observer: the economy never reads them.
     #[serde(default, skip_serializing_if = "is_default")]
@@ -496,6 +500,7 @@ pub fn default_params() -> Params {
         towns: TownsParams::default(),
         mines: crate::mines::MineParams::default(),
         canals: crate::canals::CanalParams::default(),
+        land: crate::landform::LandParams::default(),
         accounts: crate::accounts::AccountsParams::default(),
     }
 }
@@ -525,6 +530,10 @@ pub fn game_params() -> Params {
     P.towns = TownsParams::game();
     P.mines = crate::mines::MineParams::game();
     P.canals = crate::canals::CanalParams::game();
+    // land (docs/rules/land.md) is not switched on yet: the viewer cannot draw
+    // it. It stands beside the mines and the canals, and every test passes
+    // with it thrown ("On the integration branch" in its page). When it is,
+    // the line is `P.land = crate::landform::LandParams::game();`.
     P.accounts = crate::accounts::AccountsParams::game();
     P
 }

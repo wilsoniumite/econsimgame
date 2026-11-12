@@ -490,6 +490,11 @@ One line each as they arrive: the name, its page, its switch.
   promoters dig where the carting saved pays: a layer of water over the map
   with wharves, locks that cost stone and navvies who are hands, until the
   railway takes the traffic. [canals.md](canals.md), `canals.enabled`.
+- **land** (off: the viewer cannot draw it yet): an island made by uplift
+  and erosion in place of the port's noise, with rain, lakes, the flow of
+  every reach, river courses that meander and cut off, estuaries that carry
+  boats to the sea, and resource fields that come from the land.
+  [land.md](land.md), `land.enabled`.
 - **accounts**: books that say who makes, moves, buys and earns what: a
   year's books for every town and every works, and the island's income
   account (work's share, the owners' shares, ownership in years of wages).

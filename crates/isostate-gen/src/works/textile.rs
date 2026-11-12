@@ -13,9 +13,10 @@ pub fn mill(c: &mut Ctx) {
     c.ground(*pal.ground.yard_setts, false);
     c.wall(c.yard_wall(), 0.008, 0.024 * g);
     let (wall, roof) = (c.masonry(false), c.roofing());
-    let lit = if c.busy() { *pal.glass.mill_lit } else { *pal.glass.window };
+    // the gas is lit in a mill that is at work
+    c.lit = c.busy();
     let storeys = (2.6 + 1.6 * size.max(0.3).log10()).round().clamp(2.0, 6.0) as usize;
-    let h = storeys as f32 * 0.02 * g.sqrt();
+    let h = c.storeys(storeys);
     let (dep, ts) = (0.03 * g, 0.016 * g);
     let wheel = c.water_power();
     let tail = if wheel { 0.004 } else { 0.034 * g };
@@ -36,7 +37,11 @@ pub fn mill(c: &mut Ctx) {
             left -= 1;
             let (x, z) = (-hw + 0.008 + len * 0.5 + i as f32 * (len + 0.012), zrow(j));
             let m = c.shed_pitched(x, z, len, dep, h, 0.22, false, wall, roof);
-            c.windows(&m, storeys, 0, storeys, 0.011, size >= 1.0, lit);
+            c.windows(&m, 0, storeys, size >= 1.0);
+            // the taking-in doors, one above another under the hoist
+            if size >= 1.0 {
+                c.hoist(&m, Face::Front, len * 0.5 - 0.011, 0);
+            }
             c.tower(x - len * 0.2, z + dep * 0.5 + ts * 0.5 - 0.001, ts, h + 0.014 * g, wall, roof);
             if wheel && i == 0 {
                 let r = (0.02 * g).min(h * 0.55);
@@ -57,7 +62,7 @@ pub fn mill(c: &mut Ctx) {
             c.chimney(ex, zc, tall, r, 1.0 + 0.1 * storeys as f32);
             let e = c.shed(ex, zc + r * 1.75 + 0.002 + ed * 0.5, ew, ed, (0.04 * g).min(h), false, wall, roof);
             if !c.going_up() {
-                c.panel(&e, Face::Front, -ew * 0.16, ew * 0.16, 0.008 * g, 0.028 * g.min(1.3), true, lit);
+                c.light(&e, Face::Front, -ew * 0.16, ew * 0.16, 0.008 * g, 0.028 * g.min(1.3), true);
             }
             if c.stocked() && size >= 3.0 {
                 c.heap(ex, zc + r * 1.75 + ed + 0.014 * g, 0.008 * g, 0.006 * g, *pal.goods.coal);
