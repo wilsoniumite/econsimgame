@@ -13,13 +13,15 @@ The game's rules at a6ff0ec (12 November 2026), six families, 1750 to 1900, seed
 In short:
 
 - **Of the life cycle's nine settings only the year's room (`year_room`) moves the economy**, and
-  within a third either way what it moves is the century's steadiness and its start, not the
-  level of the wage. A smaller room makes iron and tools scarce and dear before 1800 and the
-  swings after it a seventh smaller; a larger room the other way round. Further out it costs at
-  both ends: at 0.05 the island hardly industrialises, at 0.4 the late wage is an eighth lower.
-- **Carting's `labor` moves the level of the first fifty years** (half the carters gives back
-  about half of what carting costs in 1800) and hardly anything after; the delay that carting
-  puts into the middle of the century does not follow its size.
+  within a third either way what it moves is the century's steadiness, its start and how the
+  late century's income is split, not the level of the real wage. A smaller room makes iron and
+  tools scarce and dear before 1800, the swings after it a seventh smaller and the works' share
+  of income after 1880 a sixth larger; a larger room the other way round. Further out it costs
+  at both ends: at 0.05 the island hardly industrialises, at 0.4 the late wage is an eighth lower.
+- **Carting's `labor` moves the level of the first fifty years** about in proportion (half the
+  carters gives back about half of what carting costs in 1800) and nothing in 1900; what it does
+  to the delay that carting puts into the middle of the century is lost in the spread between
+  islands.
 - **The rest of the life cycle shapes the map and the churn, not the economy**: the hands to a
   cell, the cell's limit, the size of a new works and a works' share of the room set how many
   works there are, how large and on how many cells; the merchant's spread at entry and the
@@ -49,8 +51,9 @@ own values. One year misleads, so the yearly series (`annual.csv`) are read as t
 year-on-year change of the series' logarithm over 1800 to 1899.
 
 How big a movement is, is said against the spread between islands: *d* is the change in the
-mean over the standard deviation of the fact across islands, so a *d* of 1 is a movement as large
-as the difference between one island and the next. Beside it, the islands on which the fact rose
+mean over the standard deviation of the fact across islands (that of the baseline and that of
+the setting, pooled), so a *d* of 1 is a movement as large as the difference between one island
+and the next. Beside it, the islands on which the fact rose
 and fell.
 
 **What chance gives.** The model is chaotic in its details: move any number by a millionth and
@@ -67,8 +70,8 @@ run's own luck shows up as the same movement under every setting. On seeds 1 to 
 late towns (5.1 a run) than most of the sweeps beside it (3 to 4.5 for most of them), the
 placebos included, so at first nearly every setting seemed to found fewer. The readings below
 are therefore against the mean, island by island, of the three runs at the game's own values
-(the baseline and the two placebos), with the spread between islands read from the baseline
-alone. That alone took away one apparent gain (a cell limit of 1.0 seemed to raise goods per
+(the baseline and the two placebos), with the spread between islands taken from the baseline
+(pooled with the setting's, as above). That alone took away one apparent gain (a cell limit of 1.0 seemed to raise goods per
 head in 1900 by 3.7 per cent on seven islands of eight; against the three runs it is 1.5 per
 cent on five).
 
@@ -76,7 +79,8 @@ In the tables, "of 8" is how many of seeds 1 to 8 moved the way the mean did and
 same over all sixteen; where a row has two values tried the counts are for each in turn. The
 numbers are sixteen-island means against the game's own values, which are given first. "Facts
 at 14/16" counts the facts and series (of about 560) on which fourteen or more islands agree;
-the placebos have 0 and 2.
+the placebos have 0 and 2 against the baseline, and 1 to 6 when each of the three runs at the
+game's values is read against the mean of the other two, so a count below about 6 is chance.
 
 ## The works' life cycle
 
@@ -89,7 +93,7 @@ and checked only as a set (R119, C34).
 | setting | game | tried | what moved, sixteen islands | of 8 | of 16 | facts at 14/16 |
 |---|---|---|---|---|---|---|
 | `enabled` | on | off | 6,782 works in 1900 for 720, the median one 0.52 usual sizes for 6.0, on 1,087 cells for 200; goods per head 1900 9.3 for 11.7 (-21%), baskets 7.9 for 8.9 (-11%), the real wage of 1880-99 -14%; the real wage's yearly swing 0.030 for 0.063, timber's 0.043 for 0.204; urban share 1900 0.379 for 0.419; people +4% | 8 | 16 | 227 |
-| `year_room` | 0.15 | 0.1125, 0.2 | iron made in 1780-99 -25% / +23%, its price +61% / -31%, tools +34% / -16%; the yearly swing of the real wage 1800-99 -14% / +15%, of the cost of living -20% / +17%, of timber -20% / +13%; works closed -13% / +10%, closures in the news 175 / 216 for 196; steel rails 0.13 / 0.01 of rails in 1890 for 0.05. At 0.1125 alone (at 0.2 the other way, on 11 and 12 islands): the money wage and the cost of living of 1880-99 both 17% lower, the real wage unmoved | 7-8, 6-8 | 13-16, 13-16 | 80, 50 |
+| `year_room` | 0.15 | 0.1125, 0.2 | iron made in 1780-99 -25% / +23%, its price +61% / -31%, tools +34% / -16%; the yearly swing of the real wage 1800-99 -14% / +15%, of the cost of living -20% / +17%, of timber -20% / +13%; works closed -13% / +10%, closures in the news 175 / 216 for 196; the works' share of income 1880-99 10.2% / 8.1% for 8.7% (16 and 15 of 16, the largest movement of the setting); steel rails 0.13 / 0.01 of rails in 1890 for 0.05. At 0.1125 alone (at 0.2 the other way, on 11 and 12 islands): the money wage and the cost of living of 1880-99 both 17% lower, the real wage unmoved | 7-8, 6-8 | 13-16, 13-16 | 80, 50 |
 | `room_share` | 0.34 | 0.255, 0.4533 | works 1900 770 / 647 for 720, in 1780-99 +17% / -9%; the ninth tenth of size 32 / 44 for 37 usual sizes | 7-8, 7-8 | 13-15, 13-16 | 28, 9 |
 | `entry_share` | 0.10 | 0.075, 0.1333 | industry cells 1900 177 / 216 for 200; at 0.075 the works' share of income 1880-99 9.2% for 8.7% | 8, 7 | 15-16, 14 | 9, 3 |
 | `hands_per_cell` | 2,000 | 1,500, 2,667 | industry cells 1900 283 / 140 for 200; works 802 / 621 for 720; median size 4.9 / 7.7 for 6.0, the largest 91 / 159 for 121 | 7-8, 8 | 15-16, 16 | 19, 18 |
@@ -102,9 +106,11 @@ and checked only as a set (R119, C34).
 The values tried are three quarters and four thirds of the game's, except `cell_limit`, where
 four thirds would be more than the whole cell and 1.0 was tried instead. Wages, goods per head,
 baskets, people and the towns' share do not move under any of the life cycle's numbers but the
-switch itself and the year's room (the largest *d* among them elsewhere is 0.5, with the islands
-split). In particular the real wage of 1880-99 is within 2 per cent of the game's under every
-value tried.
+switch itself and the year's room (the largest *d* among them elsewhere is about 0.6, and only
+two such movements hold on fourteen islands, both small: goods per head in 1850 +6 per cent with
+`count_spread` off, *d* 0.4, and the towns' share of 1900 0.416 for 0.419 at `entry_share`
+0.075). In particular the real wage of 1880-99 is within about 2 per cent of
+the game's under every value tried (2.2 at the most, at `room_share` 0.255).
 
 ## Carting
 
@@ -119,13 +125,18 @@ islands and `adjust` from 0.15 to 1 on two; `max_share` was never moved.
 | `adjust` | 0.25 | 0.1875, 0.333 | nothing in the yearly facts | | | 3, 1 |
 
 `labor` can only come down (it is the share of the carting bill that is wages, and a share stays
-a share), so its values are three quarters and a half. The early effects grow a little faster
-than the share comes down: a `labor` of 0.75 moves the urban share of 1780-99 by 3 per cent,
-0.5 by 9 and switching carting off by 18. Not so in the middle of the century, where carting off
-is worth a fifth of the baskets of 1850 and half the carters a twentieth (and that not on most
-islands).
+a share), so its values are three quarters and a half. The early effects follow the carters
+taken off the road about one for one. On seeds 1 to 8, where all four can be set side by side,
+a `labor` of 0.75, 0.5 and 0.25 and carting switched off take 20, 44, 71 and 100 per cent of
+the carters of 1800 away, and raise the urban share of 1780-99 by 3.4, 9.2, 12.1 and 18.1 per
+cent: 19, 51, 67 and 100 per cent of what carting costs it. The middle of the century cannot be
+read this way. Carting off is worth a fifth of the baskets of 1850 (fourteen islands of sixteen),
+but at 0.75 the baskets of 1850 rise 7.9 per cent (eleven islands) and at 0.5 only 2.7 (nine),
+the smaller cut giving the more, and the twenty-year means of 1830-49 are no clearer (real
+income +4.5 and +5.8 per cent on ten islands each, output per head +0.6 and -0.2): what a part
+of carting costs the middle of the century is inside the spread between islands.
 carting.md found 0.5 closing half the gap of 1850 on seeds 1 to 6 in the game of then; on these
-sixteen islands it closes about an eighth.
+sixteen islands it could be anything from none of it to a third.
 
 What `adjust` is for, the month-about flip of a town's wage, is not a yearly fact, and was not
 measured again here; `tests/carting.rs` holds it. Nor is the walk's own measure (the share of
@@ -171,7 +182,9 @@ trades cannot keep up with the people (0.1).
    (eight islands, 0.10 to 0.30) found 0.15 best for the wage of 1900, a tenth above 0.2; on
    sixteen islands, against three runs at 0.15, that does not show. So the choice is one of
    pacing and of how rough the ride is, not of how rich the island ends, and works.md's reason
-   for 0.15 ("the steadier place") is the one that holds. Two things it moves that nobody had tied to it: the
+   for 0.15 ("the steadier place") is the one that holds. What it does move besides is the split
+   of the late century's income: at 0.1125 the works take 10.2 per cent of it for 8.7, on every
+   island of sixteen, and at 0.2 8.1 per cent. Two more things it moves that nobody had tied to it: the
    steel rail (an eighth of rails in 1890 at 0.1125, almost none at 0.2: dearer iron makes steel
    worth rolling, which bears on R58), and the money level of the late century (the money wage
    and the cost of living both a sixth lower at 0.1125; not traced).
@@ -179,8 +192,8 @@ trades cannot keep up with the people (0.1).
    a fifth of the carters off the road and gives back a sixth to a quarter of what carting costs
    the island before 1800 (towns' share, industry's share, baskets in 1800, the money wage); at a
    half, about half of it. It is the number to move if the plan's targets for 1750 to 1800 (R13,
-   C92) are to be met with carting in. It does not move 1900, and it moves the middle of the century
-   much less than carting as a whole does.
+   C92) are to be met with carting in. It does not move 1900, and what it does to the middle of
+   the century is lost in the spread between islands.
 3. **`carting.enabled`**, for the size of what it costs: a fifth of the households' budget in
    1850, an eighth in 1800, a twentieth of the people in 1900, two and a half points of the
    towns' share in 1900, and
@@ -190,8 +203,8 @@ trades cannot keep up with the people (0.1).
    free of the economy from 1,500 to 8,000 hands and from a cell limit of 0.3 to 1.0, so they
    can be set for the picture; at 500 hands to a cell the island begins to pay (7 per cent of
    goods per head in 1900).
-5. **`works.count_spread` and `works.family_extends`** set the churn: switched off, each brings
-   back 800 to 900 more foundings and 700 to 850 more closures a run, and the second the
+5. **`works.count_spread` and `works.family_extends`** set the churn: switched off, they bring
+   back about 790 and 920 more foundings and 720 and 840 more closures a run, and the second the
    families' small works of the first half century (twice the works in 1800). Neither moves
    output or the wage.
 
@@ -244,7 +257,7 @@ for Sunhaven, "where a household's income goes more than eight times as far". Th
 1785 reads 4.0 times 1750's and that of 1786 is 71 per cent below it, which is the largest
 `real_wage_worst_year` of every run here.
 
-It is the same few islands (seed 6 seven times of thirteen) and always before 1800, most often in
+It is the same few islands (seed 6 six times of thirteen) and always before 1800, most often in
 the first fifteen years, under settings of both mechanisms and in both directions, so it is not
 these mechanisms' doing: these islands sit near an edge in the labour market and any small push
 can tip them over. (Carting is not needed for it: one of the thirteen is with carting switched
@@ -275,8 +288,9 @@ against one run, with that run's luck in it; a *d* of 1 is chance here):
   tenth more closures. carting.md traced the slow middle of the century to the room rationing a
   smaller trade; if that were the whole of it, a wider room should help more with carting than
   without, and it does not: the gain in the middle of the century from a room of 0.2 is if
-  anything larger without carting (goods per head in 1850 +23 per cent, eight islands of eight)
-  than with it (+10 per cent, eleven of sixteen). The two add; neither undoes the other.
+  anything larger without carting (goods per head in 1850 +23 per cent, eight islands of eight,
+  *d* 1.2 against the one run of carting off) than with it (+10 per cent, eleven of sixteen; on
+  the same eight islands +11 per cent, four of eight). The two add; neither undoes the other.
 - **The year's room with half the carters** (`carting.labor=0.5` with the room): the same again,
   adding. The small room's swings and its dear early iron are there at the same size; carters in
   1900 are a fifth more with the small room (seven of eight), where with full carting they are an
@@ -286,8 +300,10 @@ against one run, with that run's luck in it; a *d* of 1 is chance here):
   size of works (741, the median 6.1 usual sizes) spread over a quarter more cells (249 for 201);
   1.0 with 2,667 gives the fewest, largest works of any run here (615, the median 8.5, the largest
   193 usual sizes, on 127 cells) for the same goods, baskets and real wage as the game's. (1.0
-  with 1,500 has baskets per head in 1900 6 per cent lower on seven islands of eight, *d* 1.0,
-  which eight islands cannot tell from chance.)
+  with 1,500 has baskets per head in 1900 6 per cent below the game's values and 8 below 1.0
+  alone, on seven islands of eight, *d* 1.0 and 1.2, which eight islands cannot tell from
+  chance.) This pair's counts and sizes are set beside the game's own values, the better to see
+  the trade between the two numbers.
 
 Worth trying together in a pass over the rules, and not run here:
 
@@ -299,7 +315,7 @@ Worth trying together in a pass over the rules, and not run here:
 - `works.hands_per_cell` and `works.cell_limit` with kept town ground (`towns.works_room`), which
   decides how much of a town's ground the works may take; together the three set how much of the
   map is industry.
-- `works.count_spread` off with `works.family_extends` off: each alone brings back 800 to 900
+- `works.count_spread` off with `works.family_extends` off: each alone brings back 790 to 920
   foundings a run, and works.md's diagnosis names both among the causes of the port's thousands
   of small works; whether they add or overlap says how much of the churn each is answerable for.
 
@@ -314,23 +330,30 @@ Worth trying together in a pass over the rules, and not run here:
 2. **`works.year_room` as the dial for the building cycle.** It is the only number of the life
    cycle that moves how rough the ride is, and it does so without moving the level of the wage. If
    the building cycle (works.md, "in company") is too large for the game, the room is where to
-   turn, and the cost is a slower and dearer start in iron and tools. Its effect on the money level
+   turn, and the cost is a slower and dearer start in iron and tools. tr-works.md, which landed
+   while this page was being written, comes to the same from the other side: a room of 0.08 takes
+   the five worst years from 12 per cent down to 7.7, for an island a tenth poorer in the middle
+   of the century, and at 0.05 it barely grows; between them the two pages put the useful range
+   at about 0.1 to 0.2. Its effect on the money level
    of the late century (both wages and prices a sixth lower at 0.1125, the real wage unchanged) is
    unexplained and should be understood before anything is read off a money price.
-3. **`carting.labor` for the early targets.** The early economy answers to it steadily, a little
-   faster than the share comes down, and nothing after 1850 does, so it can be set to meet the
-   plan's early targets without moving the end of the century.
-4. **That the slow middle of the century is carting as a whole, not its size.** Half the carters
-   gives back half the early cost but only an eighth of the cost in 1850. That suggests a threshold
-   (a trade that must reach some size before the machine-makers start) more than a smooth cost, and
-   is worth a trace of one island through the 1830s and 1840s with and without carting.
+3. **`carting.labor` for the early targets.** The early economy answers to it steadily, about in
+   proportion to the carters it takes off the road, and 1900 does not, so it can be set to meet
+   the plan's early targets without moving the end of the century.
+4. **What carting costs the middle of the century, and why.** Carting as a whole costs a fifth of
+   the baskets of 1850; half or three quarters of it cost something these runs cannot tell from
+   nothing (and the smaller cut seemed to give more). Whether that is a threshold (a trade that
+   must reach some size before the machine-makers start) or only noise round a smooth cost wants
+   sixteen more islands at 0.5 and a trace of one island through the 1830s and 1840s with and
+   without carting.
 5. **The numbers that set only the map** (`hands_per_cell`, `cell_limit`, `entry_share`,
    `room_share`) can be chosen for the picture; nothing in the economy holds them where they are.
 6. **Facts the pass will need and does not have:** the share of hands within two cells of their
    market (for the walk), the share of town-months in which a town's wage moved by half (for the
    damper), and `mine_share_Y` without the carters in it (it is one less the farm and industry
    shares, so under carting it counts the carters: 0.216 in 1750 with carting and 0.109 without,
-   so half of "quarries, pits and mines" in 1750 is carters).
+   so half of "quarries, pits and mines" in 1750 is carters; engel.md, checked since, says so
+   too, but the fact itself is unchanged).
 
 ## Where the runs are
 
