@@ -33,9 +33,11 @@ same way on islands 1 to 8. The sweeps and the scripts that read them are under
   `hands_per_cell` moves only the land under the diggings, as 1/x. `memory` and `year_room` are at the
   noise floor. `reserve` does what its page says, a little more coal and fewer colliers late. `idle_years`
   shapes the workings the warm-up gives up and nothing after.
-- **Nothing breaks.** Every one of 528 runs finished and passed the monthly money check. The worst year for
-  the real wage, -0.40, is `reach` 1.5 on island 6 under the landlords: a town whose wage runs to sixteen
-  times the middle town's in April 1765, the bad year that `mines.md` already owns up to.
+- **Nothing breaks.** Every one of the 576 runs of the mines finished and passed the monthly money check.
+  The worst year for the real wage, -0.45, is a null history (island 9 under the landlords, where one town
+  pays 84.5 times the middle town's wage for a month in 1782): the bad year that `mines.md` already owns up
+  to is there at today's values, about one history in sixty-four, and no setting here clearly changes how
+  often.
 - The chronicle: (filled in below).
 
 ## How the runs were read, and why not against one baseline
@@ -97,7 +99,7 @@ sixteen. "1750" facts are where a setting shows cleanly; "late" is what beats th
 | `memory` | 0.3 | 0.225, 0.4 | woodland 1750 -0.2% (0/8); people 1850 +1.0% (8/0, z 3.4) | 6 |
 | `year_room` | 0.15 | 0.1125, 0.2 | quarries 1750 +1.2% (7/0); clay over the wage 1881-1900 +17% (7/1). Real income 1881-1900 -3.6% but 3/5 | 12 |
 | `reserve` | 20,000,000 | 15,000,000, 26,700,000 | coal a head 1881-1900 +7.2% (8/0); colliers' share 1900 -11% (0/8); ore a head 1841-60 -15% (0/8) | 9 |
-| `hands_per_cell` | 8,000 | 6,000, 10,667 | land under the diggings -57% of today's in every year (0/8): 1/x, as built. Nothing else | 15 |
+| `hands_per_cell` | 8,000 | 6,000, 10,667 | (sixteen) land under the diggings -58% of today's in every year (0/16): 1/x, as built. Baskets a head 1900 +4.4% (10/6): chance, see below | 15; 12 on sixteen |
 | `cell_limit` | 0.5 | 0.375, 0.667 | nothing: 13 of 16 runs byte for byte today's | 0 |
 | (null) | | `sink` 40.0001, 40.0002 | | 3 |
 
@@ -113,7 +115,7 @@ sixteen. "1750" facts are where a setting shows cleanly; "late" is what beats th
 | `memory` | 0.3 | 0.225, 0.4 | iron over the wage 1751-70 -4.2% (1/7) | 3 |
 | `year_room` | 0.15 | 0.1125, 0.2 | collieries 1900 -11% (1/7); works 1850 -14% (0/8, z -3.4) | 8 |
 | `reserve` | 20,000,000 | 15,000,000, 26,700,000 | clay a head 1900 -13% (1/7) | 1 |
-| `hands_per_cell` | 8,000 | 6,000, 10,667 | land under the diggings -55% of today's in every year (0/8). Nothing else | 12 |
+| `hands_per_cell` | 8,000 | 6,000, 10,667 | (sixteen) land under the diggings -55 to -59% of today's in every year (0/16). Nothing else | 12; 11 on sixteen |
 | `cell_limit` | 0.5 | 0.375, 0.667 | nothing: 14 of 16 runs byte for byte today's | 0 |
 | (null) | | `sink` 40.0001, 40.0002 | | 3 |
 
@@ -125,10 +127,10 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
 ## What the numbers do, in a sentence each
 
 - **`reach`** sets the number and size of the workings, as the page said it would with `sink`. A longer
-  lease gathers more deposit behind fewer pit heads; 1750's stone is cheaper because each quarry works more
-  rock from the foot of the hill, and the century's railway is shorter because the pit heads are fewer and
-  already stand where the carting is short (`mines.md` saw the branches to quarries go from 72 to 13 when
-  the mechanism came in; this is the same lever turned further).
+  lease gathers more deposit behind fewer pit heads, and 1750's stone is cheaper because each pit head
+  works more rock. The century's railway is shorter, I take it, because the pit heads are fewer and already
+  stand where the carting is short: `mines.md` saw the branches to quarries go from 72 to 13 when the
+  mechanism came in, and this is the same lever turned further. I did not trace it.
 - **`sink / payback`** is the price of opening: a lower threshold, more and smaller workings and cheaper
   stone in 1750. The wage bill of the sinkers, which is what `sink` alone would seem to be, does next to
   nothing: (`sink` 53, `payback` 5.33) against (30, 3), the same threshold with a third more sinking, beats
@@ -138,7 +140,11 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
   in 1749; clay is 13 per cent more a head in 1750 with 13 years than with 8. Nothing after 1800 moves.
 - **`reserve`** at a third either side of 20 million moves the late coal by 7 per cent, as the page found
   between 6, 20 and 40 million.
-- **`hands_per_cell`** is the diggings' surface and nothing else, which is what it was built to be.
+- **`hands_per_cell`** is the diggings' surface and nothing else, which is what it was built to be. On
+  sixteen islands under the landlords the late standard of living leans up with it (baskets a head in 1900
+  +4.4 per cent, 10/16; the real wage against 1750 +4.3, 12/16), but five cells' worth of land in five
+  thousand cannot carry four per cent of anything, and no island-by-island agreement says otherwise. I read
+  it as chance.
 - **`cell_limit`** binds only where one cell's workings would take more than half of it, which hardly
   happens: the largest share any working takes in 1900 is about a fifth on the typical island.
 - **`memory`** and **`year_room`** were chosen to steady the opening of pits from year to year; at a third
@@ -150,12 +156,108 @@ has half the railway and a railway that chance moves by 39 per cent, so it may b
 
 ## The settings that matter most
 
+1. **`mines.reach`**, which sets how many workings there are and how large, from the first year to the
+   last, and the only number of the mines whose effect after 1800 holds on sixteen islands (the railway
+   under the landlords).
+2. **`mines.sink / mines.payback`**, as one number: the count of workings by a ninth either way and 1750's
+   stone by 5 or 6 per cent. Nothing late.
+3. CHRONICLE
+
 ## The settings that do nothing at these sizes
+
+- **`mines.cell_limit`**: at 0.375 and 0.667 every fact is today's on 27 runs of 32; on the other five the
+  limit bound once and the island went down another history, with nothing that beats the noise.
+- **`mines.memory`** and **`mines.year_room`**: 3 to 12 facts beat the noise, against a floor of 3, and none
+  of them is a headline after 1750.
+- **`mines.hands_per_cell`** does what it says, the land under the diggings, and nothing else.
+- **`mines.haul`**, **`mines.idle_years`** and **`mines.reserve`** act on 1750 or on one good, by a few per
+  cent; nothing they do reaches the standard of living.
+- CHRONICLE
 
 ## Values at which a run breaks
 
+None of these. All 576 runs of the mines' sweeps finished and passed the monthly money check, under both
+regimes; so did every run of the chronicle's. No town emptied: the most famine years any run had was four
+(`haul` 0.0375, landlords, island 6), against three in the null histories, and famine years are chance (the
+spread between histories of one island is as large as the mean or larger).
+
+The worst year for the real wage is the one to watch, and it is chance too. Two runs went below -0.4. One
+is `reach` 1.5, landlords, island 6, at -0.40: Cranbourne, a town founded in 1749, pays sixteen times the
+middle town's wage in April 1765, and the island's wage goes from 4.35 in 1764 to 9.94 in 1765 and back to
+7.67 (`examples/wage_watch.rs game 6 on 6 6 mines.reach=1.5`). The other, and the worse, is a null
+history: `sink` 40.0002, landlords, island 9, at -0.45, where Iveldelf, founded in 1776, pays 84.5 times
+the middle town's wage in September 1782, with twelve town-months over four times it and eight in which a
+town has half as many hands again at work as it has people (`... game 6 on 9 9 mines.sink=40.0002`). So the
+bad year that `mines.md` names in its worries ("a working can ask for more hands than its town has") is
+there at today's values, in about one history in sixty-four under the landlords (`badyears.py`, below
+-0.3: 1 of 64 null histories, 1 of 240 runs at other values), and no setting here makes it clearly likelier.
+I did not trace whether Iveldelf's hiring is a mine's or a works'. Under the commons six runs of 240 went
+below -0.3, five of them on island 6, which sits at -0.25 to -0.30 in its null histories as well: that
+island has a bad year in every history, and the settings only move it a little.
+
 ## Pairs worth trying together
+
+- **`sink` with `payback`**, done here: they are one number for opening and almost nothing else. If the
+  pass wants fewer knobs, the rule could be stated as a threshold in wages a month (today 10) and a
+  sinking cost; the second could be left where it is.
+- **`reach` with `haul`**: a longer reach brings in cells further from the pit head, which `haul` then
+  discounts; the effective size of a lease is the two together. And `reach` with `reserve`, since a larger
+  lease has more deposit to tire.
+- **`reach` by sector**: `mines.md` suggests a longer reach for quarries alone, to keep them at the foot of
+  the hill in 1900. That is a rule change, not a setting, but it is where this table points.
+- **`idle_years` with `year_room`**: the one setting `mines.md` warns against is `idle_years` 1 with no
+  `year_room`, hasty closing and unlimited opening together. Each alone does nothing late at a third either
+  side; it is the pair that can ring.
+- **`hands_per_cell` with `cell_limit`**: the limit can only bind when the hands fill cells quickly, so a
+  small `hands_per_cell` is the only place it could be tested.
+- CHRONICLE
 
 ## What I would look at first in the pass over the rules
 
+1. **Measure chance before reading any fact after 1800.** For every table of this pass: a pair of null
+   changes per regime, each setting read high against low, sixteen islands, twenty-year means. On one
+   baseline and eight islands a sweep reads the commons' luck as an effect of whatever was moved; this
+   page's first two settings would have said that both directions of `reach` and `haul` cost the commons
+   4 to 9 per cent of its late real wage.
+2. **The regimes' own comparison** in the README (the commons with more people, a lower wage, half the
+   railway and two thirds of the canal) is one history per island; the railway alone moves by 39 per cent
+   by chance under the commons. It wants the same treatment before it is called a finding.
+3. **`reach` and the railway.** The one late effect of the mines that holds on sixteen islands is that
+   fewer, larger workings mean less railway; whether a large quarry now deserves a branch it does not get
+   is the question `mines.md` already hands to `railways.md`.
+4. **The bad year**, a town that hires past its people and pays eighty times the middle wage for a month.
+   It turns up at today's values in about one history of sixty-four under the landlords, so any sweep of
+   any setting will now and then meet it and blame the setting. The mend at the root that `mines.md`
+   describes (a working that hires no more than its town has to spare) would take that noise out of every
+   table of this pass.
+5. **`cell_limit` could go**, or stay as a guard that never fires.
+6. CHRONICLE
+
 ## How it was run
+
+The sweeps (each under `.claude/night/reports/opus/sens-mines/`, with its command in its `README.txt`):
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --out base-l --compare merged-game-f6-l --quiet
+isostate-core sweep --seeds 1-8 --rules game --families 6 --set rent_regime=commons --out base-c --quiet
+isostate-core sweep --seeds 1-8 --rules game --families 6 --set rent_regime=landlords,commons \
+    --set mines.reach=1.5,2.7 --out m-reach --quiet --jobs 16          # and so for each setting
+isostate-core sweep ... --set mines.reserve=20000001 --out m-null      # the null changes
+isostate-core sweep ... --set mines.sink=40.0001,40.0002 --out m-null2
+isostate-core sweep ... --set mines.sink=30,53 --set mines.payback=3,5.33 --out p-sink-payback
+isostate-core sweep --seeds 9-16 ...  --out base-16, m-null-16, m-null2-16, m-reach-16, m-haul-16, m-hands_per_cell-16
+```
+
+The first said "of the 446 facts both have, the seconds aside, 0 differ" against today's main. The
+chronicle's, one island a process so that each island's counts can be set against its own:
+
+```bash
+cargo run --release -p isostate-core --example chronicle -- --seed N --counts [--set chronicle.NAME=VALUE]
+```
+
+The scripts that read them (Python, not tracked; in `scripts/` beside the sweeps): `slope.py` (high
+against low against the null histories), `panel.py` (the headline facts), `noise.py` (chance against the
+islands), `same.py` (which runs are today's to the last digit), `extremes.py` (failures, worst years,
+famine), `chron_queue.py` and `chron_read.py` (the chronicle). The values tried were three quarters and
+four thirds of today's, rounded where a setting is a whole number (`idle_years` 8 and 13) and, for
+`reach`, chosen so that the lease changes: 1.5 cells is a lease of 9 cells, 2.0 of 13, 2.7 of 21.
