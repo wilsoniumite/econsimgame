@@ -76,6 +76,8 @@ fn a_tiny_sweep_writes_finite_facts() {
             "price_tools_dearest_vs_median",
             "price_tools_dearest_year",
             "price_tools_years_over_twice_median",
+            "real_wage_worst_year_median_town",
+            "farm_zigzag_beyond_weather",
             "news_total",
             "seconds",
         ] {

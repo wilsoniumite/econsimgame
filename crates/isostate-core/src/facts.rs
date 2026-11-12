@@ -216,6 +216,28 @@ pub fn annual_means(r: &RunResult) -> Vec<Vec<f64>> {
     r.state.series.data.iter().map(|d| (0..r.rec.n_years).map(|k| annual(d, y0, y0 + k as i64)).collect()).collect()
 }
 
+/// Each year's wage of the median town by people: the year's mean wage of the town
+/// in which, the towns taken from the lowest wage up, half the island's people have
+/// been counted. From the yearly snapshot; NaN for a year with nobody in a town.
+pub fn median_town_wage(rec: &crate::record::Record) -> Vec<f64> {
+    let T = rec.T;
+    (0..rec.n_years)
+        .map(|k| {
+            let mut towns: Vec<(f64, f64)> = (0..T)
+                .filter(|&t| rec.town_active[k * T + t] == 1 && rec.town_pop[k * T + t] > 0.0)
+                .map(|t| (rec.town_wage[k * T + t] as f64, rec.town_pop[k * T + t] as f64))
+                .collect();
+            towns.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let half = 0.5 * towns.iter().map(|&(_, p)| p).sum::<f64>();
+            let mut seen = 0.0;
+            towns.iter().find(|&&(_, p)| {
+                seen += p;
+                seen >= half
+            }).map_or(f64::NAN, |&(w, _)| w)
+        })
+        .collect()
+}
+
 /// numpy's default quantile of a sorted slice (linear between neighbours).
 fn quantile(sorted: &[f64], q: f64) -> f64 {
     if sorted.is_empty() {
@@ -740,6 +762,17 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         let dw = changes("real_wage");
         b.num("real_wage_worst_year".into(), Kind::Real, dw.iter().copied().fold(f64::NAN, f64::min).exp_m1());
         b.num("real_wage_swing".into(), Kind::Real, sd(&dw));
+        // The same fall read from the middle of the island and not its mean. The island's
+        // wage is every town's averaged by its people, so one town's wild wage coming back
+        // down reads as a fall for everyone (seed 11 with the new land: 2.29 then 1.00, read
+        // as -0.565). Here each year's wage is the median town's, by people (half the
+        // island's people live in towns that paid less that year), over the year's cost of
+        // living, and the fact is its largest fall on the year before.
+        let middle_wage = median_town_wage(rec);
+        let cpi = series("cpi");
+        let real: Vec<f64> = middle_wage.iter().zip(cpi).map(|(w, c)| w / c).collect();
+        let dm: Vec<f64> = real.get((from - y0) as usize..).unwrap_or(&[]).windows(2).map(|w| (w[1] / w[0]).ln()).filter(|d| d.is_finite()).collect();
+        b.num("real_wage_worst_year_median_town".into(), Kind::Real, dm.iter().copied().fold(f64::NAN, f64::min).exp_m1());
         // With harvests on: how large they were, and what a year's harvest does that
         // same year. Each `_on_harvest` is the slope of the yearly change in a log on
         // the log of the country's harvest (1 is an average year), over every year
