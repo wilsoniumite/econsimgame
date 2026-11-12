@@ -221,7 +221,7 @@ using the kit and not by copying numbers.
 | `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit, and `plant.rs`, the furnaces, lifts and kilns |
 | `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the threshing barn with its porch and great doors, a cart shed or a byre, a granary on staddle stones, a rick |
 | `town/` | each at three levels: `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
-| `rail.rs` | what stands by a railway where the ground was too steep for an ordinary line: `winding_house` (the stationary engine at the head of an inclined plane, before 1850), `banker_shed` (the banking engine's shed at the foot of a steep bank, after), and `buffer_stop`; `WINDING_HOUSE` and `BANKER_SHED` are the ground each keeps, and `TRACK_CLEAR` how far before its front the track runs |
+| `rail.rs` | each at three levels, what stands by a railway where the ground was too steep for an ordinary line: `winding_house` (the stationary engine at the head of an inclined plane, before 1850), `banker_shed` (the banking engine's shed at the foot of a steep bank, after), and `buffer_stop`; `WINDING_HOUSE` and `BANKER_SHED` are the ground each keeps, and `TRACK_CLEAR` how far before its front the track runs |
 | `trees.rs` | `tree` (broadleaf, conifer), `hedge_tree`, `bush`; `Greenery`, `in_leaf`, `leaf_group` |
 | `bridge.rs` | `road_bridge`, at three levels: stone, with open arches, parapets, ramps and cutwaters; as long as the river is wide where its road crosses, which the viewer works out for a road that crosses aslant |
 | `fence.rs` | `fence`: a family's post-and-rail fence along a line of ground points |
@@ -452,7 +452,11 @@ beside the line is here (`rail.rs`, and the station in `town/`), and the
 rails, on ground that lies within a little of that height and clear of every
 line (and builds a stone footing under it where the ground falls away), so a
 winding house or a shed must keep to the ground its constant says: the
-viewer sets that aside and nothing more.
+viewer sets that aside and nothing more. They are buildings like any other:
+their walls, roofs and openings are the kit's, at the scale, they are in the
+registry, and the viewer hands each the level the camera gives its place
+when it builds the year's scenery (`rails::standing`), while the banks and
+viaducts of a line are made once and kept.
 
 The sheets: `scale` (see "Looking at a generator"), `works-kinds` (every kind at size 3), `works-small` and
 `works-standard` (at 0.4 and 1, built early and late), `works-great` (at
@@ -567,9 +571,11 @@ tests in `registry.rs` stop that happening again:
 
 `cargo test -p isostate-gen measures -- --ignored --nocapture` prints what
 every entry measures at every level (`EACH=1` for every specimen), which is
-how the bands were read off the houses; `fingerprints` prints a hash of
-every sheet, to prove that a change that should leave some things as they
-were did.
+how the bands were read off the houses; `timings` prints how long every
+entry takes to build at every level and how long that is for each thousand
+triangles (a house is 0.06 to 0.07 ms a thousand close to, and nothing
+should be far off that); `fingerprints` prints a hash of every sheet, to
+prove that a change that should leave some things as they were did.
 
 ## Changing a generator the game already uses
 
