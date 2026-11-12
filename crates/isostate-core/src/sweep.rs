@@ -16,6 +16,8 @@
 //! - `facts.csv` and `facts.json`: one row or object per run;
 //! - `summary.txt`: the table it prints, each fact's mean and range across seeds,
 //!   one column per setting;
+//! - `scorecard.txt`: each setting read against the aims the documents state
+//!   (`scorecard.rs`, `docs/rules/scorecard.md`);
 //! - `README.txt`: the command line and what was run.
 //!
 //! `--set` takes any field of `Params` by name, and a dotted path into a
@@ -370,9 +372,44 @@ pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
 
 // ---------------------------------------------------------------- running
 
+/// The processor time this thread has had so far, in seconds (user and system
+/// together), where the platform says: on Windows. None elsewhere, for now.
+///
+/// A run is one thread from start to finish, so the difference across a run is
+/// the time the processor spent on it, which other work on the machine moves
+/// much less than it moves `seconds`, the time on the clock (R6), but still moves:
+/// threads that share a core, and a slower clock when the machine is hot.
+#[cfg(windows)]
+pub fn thread_cpu_seconds() -> Option<f64> {
+    #[repr(C)]
+    #[derive(Default)]
+    struct FileTime {
+        low: u32,
+        high: u32,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThread() -> *mut std::ffi::c_void;
+        fn GetThreadTimes(thread: *mut std::ffi::c_void, created: *mut FileTime, ended: *mut FileTime, system: *mut FileTime, user: *mut FileTime) -> i32;
+    }
+    let (mut created, mut ended, mut system, mut user) = (FileTime::default(), FileTime::default(), FileTime::default(), FileTime::default());
+    // SAFETY: GetCurrentThread gives a handle to this thread that needs no closing, and
+    // the four times written are ours, alive for the call
+    let ok = unsafe { GetThreadTimes(GetCurrentThread(), &mut created, &mut ended, &mut system, &mut user) };
+    // in hundreds of nanoseconds
+    let secs = |f: &FileTime| ((u64::from(f.high) << 32) | u64::from(f.low)) as f64 * 1e-7;
+    (ok != 0).then(|| secs(&system) + secs(&user))
+}
+
+#[cfg(not(windows))]
+pub fn thread_cpu_seconds() -> Option<f64> {
+    None
+}
+
 /// One run, stepped year by year so the facts' gathering can look in between.
 fn one_run(P: &Params, content: Content) -> Result<Done, String> {
     let t0 = Instant::now();
+    let cpu0 = thread_cpu_seconds();
     let mut s = sim::start(P, content);
     let mut gathered = facts::Gathered::default();
     while s.year <= s.end_year {
@@ -381,8 +418,15 @@ fn one_run(P: &Params, content: Content) -> Result<Done, String> {
     }
     let r = sim::finish(s);
     let seconds = t0.elapsed().as_secs_f64();
+    let cpu = match (cpu0, thread_cpu_seconds()) {
+        (Some(a), Some(b)) => Some(b - a),
+        _ => None,
+    };
+    let mut found = facts::stylised_facts(&r, &gathered, seconds);
+    // beside `seconds`, the time on the clock: the processor's time on this run (R6)
+    found.facts.push(Fact { name: "cpu_seconds".to_string(), group: SPEED, kind: Kind::Real, value: cpu });
     Ok(Done {
-        facts: facts::stylised_facts(&r, &gathered, seconds),
+        facts: found,
         annual: facts::annual_means(&r),
         names: r.state.series.names.clone(),
         start_year: r.content.start_year,
@@ -441,8 +485,9 @@ pub fn run(o: &Options, plan: Plan) -> Sweep {
                     let seconds = t.elapsed().as_secs_f64();
                     if !o.quiet {
                         let n = finished.fetch_add(1, Ordering::Relaxed) + 1;
+                        let cpu = |d: &Done| d.facts.get("cpu_seconds").map_or(String::new(), |c| format!(", {c:.1} s of processor"));
                         let how = match &outcome {
-                            Ok(_) => format!("{seconds:.1} s"),
+                            Ok(d) => format!("{seconds:.1} s on the clock{}", cpu(d)),
                             Err(e) => format!("FAILED: {e}"),
                         };
                         eprintln!("[{n}/{}] seed {seed}, {}: {how}", todo.len(), settings[k].label);
@@ -650,6 +695,13 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
          \x20            railway was never built), and the methods never built\n\
          facts.json   the same, one object per run under \"runs\"; what --compare reads\n\
          summary.txt  the table the sweep printed: each fact's mean and [least .. greatest] across seeds\n\
+         scorecard.txt  the aims the documents state, each against its fact's mean, with a tolerance from\n\
+         \x20            the spread across seeds and a loss (isostate-core scorecard DIR prints it again)\n\
+         \nSpeed: seconds is each run's time on the clock, with the others of the sweep running beside it and\n\
+         whatever else the machine was doing, so it says as much about the machine that day as about the\n\
+         code. cpu_seconds is the time the processor spent on the run's own thread, which other work\n\
+         moves much less but still moves: the same sixteen islands read 32 s and 48 s of it a run with\n\
+         the machine busy and busier (39 s and 172 s on the clock) (Windows only; empty elsewhere).\n\
          \nWhat each fact means is in docs/rules/README.md and at the top of crates/isostate-core/src/facts.rs.\n",
     );
     s
@@ -664,7 +716,13 @@ pub fn write_outputs(sw: &Sweep, o: &Options, summary: &str) -> Result<(), Strin
     put("facts.csv", facts_csv(sw))?;
     put("facts.json", serde_json::to_string_pretty(&facts_json(sw, &o.command, code.as_deref())).map_err(|e| e.to_string())? + "\n")?;
     put("summary.txt", summary.to_string())?;
-    put("README.txt", readme(sw, o, code.as_deref()))
+    put("README.txt", readme(sw, o, code.as_deref()))?;
+    // the scorecard (docs/rules/scorecard.md), read back from the facts.json just written;
+    // written and not printed, so the table and the comparison stay the last thing said
+    if sw.runs.iter().any(|r| r.outcome.is_ok()) {
+        put("scorecard.txt", crate::scorecard::card(dir, None)?)?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------- the table

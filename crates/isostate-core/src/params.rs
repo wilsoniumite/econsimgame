@@ -298,6 +298,15 @@ pub struct Params {
     /// see docs/rules/accounts.md). An observer: the economy never reads them.
     #[serde(default, skip_serializing_if = "is_default")]
     pub accounts: crate::accounts::AccountsParams,
+    /// Roads and bridges that somebody pays for (a probe, not in the Python; see
+    /// docs/probes/dx-roads.md). Off under both sets of rules.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub roads: crate::roads::RoadParams,
+    /// A common fund in debt that charges nobody and pays no dividend until its
+    /// rents repay it (not in the Python; see docs/rules/mines.md, "Under the
+    /// commons"). Under the landlords the fund never holds a penny.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub commons: crate::commons::CommonsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -502,6 +511,8 @@ pub fn default_params() -> Params {
         canals: crate::canals::CanalParams::default(),
         land: crate::landform::LandParams::default(),
         accounts: crate::accounts::AccountsParams::default(),
+        roads: crate::roads::RoadParams::default(),
+        commons: crate::commons::CommonsParams::default(),
     }
 }
 
@@ -535,6 +546,7 @@ pub fn game_params() -> Params {
     // with it thrown ("On the integration branch" in its page). When it is,
     // the line is `P.land = crate::landform::LandParams::game();`.
     P.accounts = crate::accounts::AccountsParams::game();
+    P.commons = crate::commons::CommonsParams::game();
     P
 }
 
@@ -600,12 +612,26 @@ fn merge_json(base: &mut serde_json::Value, over: &serde_json::Value) {
 impl Params {
     /// Defaults overridden by a partial TOML document, e.g. `seed = 3` and `land_theta = 2.5`.
     pub fn from_toml_str(text: &str) -> Result<Params, String> {
-        toml::from_str(text).map_err(|e| format!("params: {e}"))
+        toml::from_str(text).map_err(|e| format!("params: {e}")).and_then(Params::checked)
     }
 
     /// Defaults overridden by a partial JSON object, e.g. `{"seed": 3, "rent_regime": "commons"}`.
     pub fn from_json_str(text: &str) -> Result<Params, String> {
-        serde_json::from_str(text).map_err(|e| format!("params: {e}"))
+        serde_json::from_str(text).map_err(|e| format!("params: {e}")).and_then(Params::checked)
+    }
+
+    /// Settings that cannot be run together, refused in one sentence that names
+    /// the setting. A setting that is wrong on its own is refused as it is
+    /// read, by its mechanism's own struct; this is for the ones that lean on a
+    /// number somewhere else (`prices::check`: the brake on a glut and the
+    /// port's stock target and cap on shipments). Called by every reader in
+    /// this file. A `Params` built in code is not checked.
+    pub fn check(&self) -> Result<(), String> {
+        crate::prices::check(self).map_err(|e| format!("params: {e}"))
+    }
+
+    fn checked(self) -> Result<Params, String> {
+        self.check().map(|_| self)
     }
 
     /// These parameters overridden by a partial JSON object. A mechanism's
@@ -627,7 +653,7 @@ impl Params {
         }
         let mut base = serde_json::to_value(self).map_err(|e| format!("params: {e}"))?;
         merge_json(&mut base, over);
-        serde_json::from_value(base).map_err(|e| format!("params: {e}"))
+        serde_json::from_value(base).map_err(|e| format!("params: {e}")).and_then(Params::checked)
     }
 
     /// Load overrides from a `.toml` or `.json` file on top of the defaults.

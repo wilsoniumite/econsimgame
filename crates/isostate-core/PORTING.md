@@ -373,46 +373,74 @@ The obvious next steps, in order of payoff:
 
 ## Things in the Python that look like bugs
 
-Reported, not fixed: the Rust port does what the Python does in each case.
+Reported, not fixed: the Rust port does what the Python does in each case but
+the first. How each fares under the game's rules was traced on 12 November
+2026 (`docs/probes/tr-money.md`, sections 1 and 3), and is said at each item.
 
 1. **Results depend on the CPU at ties.** `np.argsort` without `kind` breaks
    ties in a CPU-dependent order (AVX-512, AVX2 and baseline builds differ), and
    the code sorts tied values in `firms.candidate_cells` (the eight cheapest
    sites), `land.py` (urban growth cells), `sim.py` (first roads, `firm_at`)
    and `rail.plan_spurs` (candidates by flow). The same seed can give a
-   different history on another machine. `kind="stable"` would fix it.
+   different history on another machine. `kind="stable"` would fix it. The
+   Rust does not share it, under either set of rules: `util::argsort` sorts
+   (key, index) pairs, so ties fall to the lower index on every machine.
 2. **Money grows more slowly than `money_growth`.** `econ.step_month` issues
    `money_growth / 12` times `money_total(st)`, but takes the total while the
-   month's dividends are in flight (taken from firms, merchants and the fund but
-   not yet added to households), so it undercounts the stock: seed 7's money
-   grows about 1.76 per cent a year rather than 2.
+   households' whole income for the month is in flight (their wages, their
+   carting and both kinds of dividend, held in `hh_inc` until after the
+   count), so it undercounts the stock: seed 7's money grows about 1.76 per
+   cent a year rather than 2. What is left out is 11.5 to 14.7 per cent of the
+   money, three quarters of it pay; dividends are a tenth to a seventh of it.
+   It runs under both sets of rules (1.74 to 1.78 per cent a year under the
+   game's), and under the game's the share left out also grows with what the
+   merchants owe, since the count is of the money net. The pass over all the
+   rules mends it for the game alone (`docs/designs/rules-pass.md`, 4.3).
 3. **Spur proximity test.** `rail.plan_spurs` skips a mine near a finished spur
    with `abs(c - d) % W <= 3 and abs(c // W - d // W) <= 3`. The first part is
    not the column distance (`abs(c % W - d % W)` would be); it is true for cells
-   whose flat indices differ by a multiple of `W` plus or minus up to 3.
+   whose flat indices differ by a multiple of `W` plus or minus up to 3. It
+   does not run under the game's rules, which build no spurs:
+   `rail::plan_spurs` returns at once when `railways.enabled` is on.
 4. **Entry capital.** `firms.entry` doubles `K` when the return is above 0.6
    but keeps the rent bid and the inspector's record of the undoubled firm; and
    `limit = 1 + int(roi > 0.8)` can never matter, since there is at most one
-   proposal per town and method.
+   proposal per town and method. It does not run under the game's rules: with
+   works sized to their market (`works::sized_entry`) the limit is one and
+   there is no doubling.
 5. **Footprint reservation.** `create_firm` adds the new firm's footprint to
    `cell_K_share`, but `after_transport` rebuilds `cell_K_share` from `f_K`
    (zero until built) at the end of the same year, so the reservation lasts
-   only until then. Possibly intended.
+   only until then. Possibly intended. Under the game's rules it is mended:
+   `works::land_held` counts capacity on order as well as built, so the
+   rebuild keeps the ground of a works being built.
 6. **Sister firm funding.** When `spawn_sister` cannot raise enough, the money
    taken from the parent firm goes to the town's households, not back to the
-   parent.
+   parent. It runs under both sets of rules for a works no family owns (a
+   family's goes back to the family). Counted on eight islands, a sister works
+   failed to be funded once in 2,174 under the game's rules with six families,
+   a family's, whose money went back to the family; and never in 25,286 under
+   the port with none.
 7. **Spur top-ups.** `rail.progress` tops up a project that ran short from the
    landlords of both its towns; a spur has the same town at both ends, so it
-   draws twice from one town.
+   draws twice from one town. It does not run under the game's rules: they
+   build no spurs, and their own top-up (`ways.rs`) skips the second town when
+   both ends are one.
 8. **Resettlement.** `people.resettle_new_towns` moves population, cash and
    inventories from the donor town to the new one but copies a share of the
    donor's `outflow` without reducing the donor's (perhaps intended, as
-   outflow is an expectation, not a stock).
+   outflow is an expectation, not a stock). It does not run under the game's
+   rules: households go with their cells (`peopling::move_with_cells`), which
+   moves the outflow from the old town to the new.
 9. **Unchecked donor.** `people.found_towns` takes `donor = catch[bc]`, which
    could be -1 for a cell outside every catchment; the site choice makes this
-   unreachable at present.
+   unreachable at present. It does not run under the game's rules, which
+   found towns by `peopling::found_towns`, only on cells that have a market.
 10. **Dead state.** `f_out_acc`, `month_stats["share"]`, `bids`, `ag_labor`,
     `cell_firms`, `traffic`, `migration_flow`, `m_merch_margin`,
     `m_trade_value`, `cumprod_1750` and `subcost` are written but never read by
     the simulation; `firm_at` is read only to update itself. The port keeps
-    them (some feed `run.bin` or the observer).
+    them (some feed `run.bin` or the observer). Under the game's rules three
+    are read: `migration_flow` by the chronicle, `bids` by the towns' rent
+    floor, and `traffic` by the railways' and canals' books (`ways::note_year`),
+    though nothing that decides reads the books.

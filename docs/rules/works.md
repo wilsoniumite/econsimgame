@@ -68,6 +68,16 @@ asked to hold more works than it has ground for; `tests/works.rs` checks that
 every year of a run (seed 7 to 1829, the port with the life cycle, no
 families).
 
+A sister works, or a family's second works of a kind in a town, takes the
+first one's name with a number: "Ashby Mill No. 2". The port numbers it by
+counting every works whose name begins with the first one's, so a family's
+"Ashby Mill" was numbered on from the town of Ashby's "Ashby Mills", and
+"Denton Steel" from "Denton Steelworks". Under the life cycle only the works
+of that very name count (`names::works_of_name`). Works that have closed
+still count, so no name is given twice in a run: when "Ashby Mill" has shut,
+the next is "Ashby Mill No. 2", as a colliery's third pit kept its number
+after the second was shut. Names move no number in a sweep.
+
 A works that grows needs more land, and pays for it: `State::works_lease` is
 the most land each works has taken so far, and an order that takes it past
 that adds to its monthly rent (`works::ordered`). The new ground costs what
@@ -694,10 +704,20 @@ district has forty works and not four hundred.
 - **Sister works are still about a quarter of all works** (186 of 699), most
   of them crucible steel in towns whose cells are full. A town that keeps its
   ground and grows should thin them.
-- **The viewer has not been looked at with these rules.** It builds. A works
-  can now be a hundred usual sizes and a cell can hold several large works,
-  so the tiers, the plots and the works list want a look, and so does the new
-  refusal in the site list ("the cell has no room left for ...").
+- **The viewer has been looked at with these rules for the works themselves,
+  not yet for the family's list.** A works can now be a hundred usual sizes
+  and a cell can hold several large works. The standard pictures play a game
+  under these rules and take the cell with the most works standing in 1900
+  from play distance and close up; the works' generators draw a works at any
+  size from 0.4 to a hundred usual sizes (the lab's works sheets show 0.4, 1,
+  3, 10, 30 and 100), and since the works' detail landed every works is made
+  from the houses' kit at every level of detail, so the tiers and plots this
+  worry once named are gone. What nobody has looked at on screen is the
+  family's Build list under the life cycle: it offers the first five works
+  the family may build there, deep markets and the best returns first, and a
+  works refused because "the cell has no
+  room left for ..." (`works::room_on_cell`) is left out of it without a word
+  (the viewer's `game.rs`).
 - **Numbers not swept**: `hands_per_cell` (the probe found 1,000 gives about
   250 industry cells and 1,050 works, 4,000 gives 55 and 510), `cell_limit`,
   `room_share`, `entry_share` and `walk` (0.01 leaves a third of hands more

@@ -263,3 +263,48 @@ fn the_wage_shortcut_agrees_with_the_plain_bisection() {
         }
     }
 }
+
+/// The brake on a glut leans on two numbers it does not own: the stock
+/// merchants mean to hold (`price_target_months`) and the most a town may ship
+/// in a month (`trade_cap`), which sets the least stock a town that only ships
+/// holds. A brake that is full on by the larger of the two is refused where the
+/// settings are read, in a sentence that names them; one that starts below it
+/// and is still easing off there is not, since such brakes measured as well as
+/// the game's.
+#[test]
+fn the_brake_moves_with_the_two_numbers_it_leans_on() {
+    let game = isostate_core::game_params();
+    // the game's brake is full on well above both
+    assert!((prices::brake_floor(&game) - 1.0 / 0.3).abs() < 1e-12, "the floor is 1 / trade_cap at the game's numbers");
+    assert!(game.prices.glut_stop_months > prices::brake_floor(&game));
+    assert_eq!(game.check(), Ok(()));
+    // a cap on shipments of an eighth means a town that only ships holds eight months,
+    // where the game's brake is full on: refused
+    let err = game.with_json_overrides(r#"{"trade_cap": 0.125}"#).expect_err("a brake full on at 8 months, on a floor of 8");
+    assert!(err.contains("prices.glut_stop_months is 8") && err.contains("above 8 months") && err.contains("trade_cap of 0.125 "), "{err}");
+    // and so is a stock target where the brake is full on
+    let err = game.with_toml_overrides("price_target_months = 8.0\n").expect_err("a brake full on at the target stock");
+    assert!(err.contains("prices.glut_stop_months") && err.contains("price_target_months (8)"), "{err}");
+    // and the brake the prices page saw choke every works, full on at 0.6 months
+    let err = game.with_json_overrides(r#"{"prices": {"glut_months": 0.5, "glut_stop_months": 0.6}}"#).expect_err("a brake full on under the target");
+    assert!(err.contains("prices.glut_stop_months is 0.6"), "{err}");
+    // brakes that start below the floor and still ease off above it are read: the
+    // page's 0.5 to 40, the sensitivity probe's 2 and 3, and the cliff at 4
+    for over in [r#"{"prices": {"glut_months": 0.5, "glut_stop_months": 40}}"#, r#"{"prices": {"glut_months": 2}}"#, r#"{"prices": {"glut_months": 3}}"#, r#"{"prices": {"glut_months": 2, "glut_stop_months": 4.5}}"#, r#"{"prices": {"glut_stop_months": 4}}"#] {
+        game.with_json_overrides(over).unwrap_or_else(|e| panic!("{over}: {e}"));
+    }
+    // moved together, it is read
+    let moved = game.with_json_overrides(r#"{"trade_cap": 0.125, "prices": {"glut_months": 9, "glut_stop_months": 12}}"#).expect("the brake moved with the cap");
+    assert!(moved.prices.glut_stop_months > prices::brake_floor(&moved));
+    // with the brake off, or the merchants' prices off, there is nothing to hold
+    game.with_json_overrides(r#"{"trade_cap": 0.125, "prices": {"glut_months": 0}}"#).expect("no brake");
+    default_params().with_json_overrides(r#"{"trade_cap": 0.125}"#).expect("the port has no brake");
+    // a file says which file it was
+    let dir = std::env::temp_dir().join(format!("isostate-prices-brake-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("cap.toml");
+    std::fs::write(&file, "trade_cap = 0.125\n").unwrap();
+    let err = game.load_over(&file).expect_err("the file's cap is under the brake");
+    assert!(err.contains("cap.toml") && err.contains("prices.glut_stop_months"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

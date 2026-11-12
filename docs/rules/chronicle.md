@@ -525,10 +525,24 @@ written where there is none.
   these sentences change with it, which is as it should be, but the
   thresholds (a 10 per cent fall, a 10-point margin) were chosen on today's
   towns.
-- **The succession is found by the port's wording.** `chronicle::succession`
-  looks for "head of the family, is buried at" in the year's family news. If
-  that sentence is reworded the two items simply stay two, as under the port;
-  the test would say so.
+- **The succession was found by the port's wording.** `chronicle::succession`
+  looked for "head of the family, is buried at" in the year's family news,
+  and read the dead head's name, age and resting place back out of the
+  burial's title and sentence. Now `families::people` hands it the facts as
+  it writes the burial (`chronicle::Burial`: which item is the burial, who,
+  his age, where, and whether that is the seat), and the new head's first
+  name, so the burial can be reworded and the succession still told. The
+  news of seeds 1 to 8 with six families is the same to the letter either
+  way. (`tests/chronicle.rs`,
+  `a_succession_holds_to_the_facts_not_to_the_burials_wording`.)
+- **The decades are the calendar's.** They were counted from the start year
+  in the ranking and at the decade's end, and named by the calendar, which
+  agree only for a start year that is a multiple of ten: a `--content` file
+  starting in 1755 would have closed "the 1760s" in 1764. Now a decade is
+  the calendar's everywhere, and a run from 1755 has a short first one, 1755
+  to 1759, whose new towns are counted from 1755 (`chronicle::decade_of`,
+  `decade_ends`; two tests in `tests/chronicle.rs` starting in 1755). For a
+  start in 1750 nothing moves.
 - **Other mechanisms' news.** Whatever a new mechanism files (a harvest, a
   canal, a strike) is ranked by its weight and kind like anything else: a new
   kind gets one place a decade. Nothing needs registering, but a mechanism
