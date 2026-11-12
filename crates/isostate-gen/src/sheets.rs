@@ -113,6 +113,11 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "seeds-terraces", about: "What a seed alone changes: twenty-four rows of four houses of two storeys built in 1840.", land: Land::Town, build: seeds_terraces },
     Sheet { name: "seeds-villas", about: "What a seed alone changes: twenty-four villas built in 1870 on the same plot.", land: Land::Town, build: seeds_villas },
     Sheet { name: "seeds-farmhouses", about: "What a seed alone changes: twenty-four lowland farmhouses, as a farmstead hands each its storeys, its thatch and its wing.", land: Land::Pasture, build: seeds_farmhouses },
+    Sheet { name: "streets-cottages", about: "What a street tells its houses: the same eight cottages of one storey built in 1780, seen in 1840, told nothing of their street in the first row and standing in each of five streets below.", land: Land::Town, build: streets_cottages },
+    Sheet { name: "streets-wide", about: "The same on the wide plots of a town's ways out and its furthest lanes, built in 1800: of one storey, and raised to two in 1850 (the later work shows above the old).", land: Land::Town, build: streets_wide },
+    Sheet { name: "streets-old", about: "The same for the oldest cottages, built in 1700 on a lane's plots: of one storey, and raised to two in 1790.", land: Land::Town, build: streets_old },
+    Sheet { name: "streets-townhouses", about: "The same eight townhouses built in 1700 between neighbours, seen in 1880: told nothing, in three streets, and in the last of them with those of three storeys given a new front in 1840.", land: Land::Town, build: streets_townhouses },
+    Sheet { name: "streets-terraces", about: "The same four rows of four houses built in 1840: told nothing, and in each of five streets.", land: Land::Town, build: streets_terraces },
     Sheet { name: "house-backs", about: "What is behind a house: cottages, townhouses, a villa and terraces seen from their yards and gardens.", land: Land::Town, build: house_backs },
     Sheet { name: "house-levels", about: "The three levels a house is drawn at, as the camera's distance chooses: far, play and near across; a cottage, a townhouse, a villa, a terrace and a farmstead down the rows.", land: Land::Town, build: house_levels },
     Sheet { name: "roofs", about: "What a cottage is roofed with by when and where it was built (thatch, tile, stone slate, blue slate), and how it has weathered by the year it is seen: twelve seeds across.", land: Land::Town, build: roofs },
@@ -301,6 +306,65 @@ fn seeds_farmhouses(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
         let big = seed.v > 0.55;
         let f = crate::houses::Farmhouse { storeys: 1 + big as u8, upland: false, thatch: seed.v < 0.45, wing: big, detail, seed };
         Cell::new(format!("seed {}", 420 + row * 8 + col), |m, site| crate::houses::farmhouse(&mut m.solid, &mut m.smoke, site, &f, pal))
+    })
+}
+
+// What a street tells its houses: the same houses told nothing of their
+// street in the first row (as every house was before the towns' second
+// pass), and standing in a street of a family in each row below.
+
+/// The street of a row of such a sheet: none for the first.
+fn street_of(row: usize) -> (crate::houses::Street, String) {
+    use crate::houses::Street;
+    if row == 0 { (Street::ALONE, "told nothing".into()) } else { (Street::of(Seed::of(800 + row as u32)), format!("street {row}")) }
+}
+
+fn streets_cottages(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(6, 8, |row, col| {
+        let (street, name) = street_of(row);
+        let seed = Seed::of(300 + col as u32);
+        let c = Cottage { detail, street, ..Cottage::new(PLOT.0, PLOT.1, 1, Roof::of(1780, 1840, false, false, seed), seed) };
+        Cell::new(format!("{name}\nseed {}", 300 + col), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+    })
+}
+
+fn streets_wide(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(6, 8, |row, col| {
+        let (street, name) = street_of(row);
+        let seed = Seed::of(308 + col as u32);
+        let n = 1 + (col % 2) as u8;
+        let c = Cottage { detail, street, era: Era::Georgian, raised: (n == 2 && row > 0).then_some(Era::Brick), ..Cottage::new(0.06, PLOT.1, n, Roof::of(1800, 1870, false, false, seed), seed) };
+        Cell::new(format!("{name}\n{}", storeys(n as usize)), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+    })
+}
+
+fn streets_old(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(6, 8, |row, col| {
+        let (street, name) = street_of(row);
+        let seed = Seed::of(316 + col as u32);
+        let n = 1 + (col % 2) as u8;
+        let c = Cottage { detail, street, era: Era::Old, raised: (n == 2 && row > 0).then_some(Era::Georgian), ..Cottage::new(BACK_PLOT_WIDTH, PLOT.1, n, Roof::of(1700, 1820, false, false, seed), seed) };
+        Cell::new(format!("{name}\n{}", storeys(n as usize)), |m, site| cottage(&mut m.solid, &mut m.smoke, &mut m.green, site, &c, pal))
+    })
+}
+
+fn streets_townhouses(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(5, 8, |row, col| {
+        let (street, name) = street_of(row.min(3));
+        let seed = Seed::of(330 + col as u32);
+        let n = 2 + (col % 2) as u8;
+        let fronted = (row == 4 && n == 3).then_some(Era::Brick);
+        let t = Townhouse { detail, street, fronted, era: Era::Old, neighbours: (true, true), ..Townhouse::new(PLOT.0, PLOT.1, n, Roof::of(1700, 1880, false, false, seed), seed) };
+        Cell::new(format!("{name}{}\n{}", if row == 4 { ", new fronts" } else { "" }, storeys(n as usize)), |m, site| townhouse(&mut m.solid, &mut m.smoke, site, &t, pal))
+    })
+}
+
+fn streets_terraces(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    grid(6, 4, |row, col| {
+        let (street, name) = street_of(row);
+        let seed = Seed::of(360 + col as u32);
+        let t = Terrace { detail, street, ..row_of(4, 2, Era::Brick, false, seed) };
+        Cell::new(format!("{name}\nseed {}", 360 + col), |m, site| terrace(&mut m.solid, &mut m.smoke, site, &t, pal))
     })
 }
 

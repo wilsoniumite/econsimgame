@@ -113,15 +113,16 @@ impl Street {
 
     /// One of `n` things (washes, bricks, tints of tile) as a number from 0
     /// to 1, for a house whose own choice would be `own`: in a street of a
-    /// family, six houses in ten take the street's (its `slot`th number
-    /// says which), a quarter the next to it, and the rest their own. `r`
-    /// is a number of the house's own.
+    /// family, half the houses take the street's (its `slot`th number says
+    /// which), a quarter the next to it, and a quarter their own, so that a
+    /// street is a family and not a uniform. `r` is a number of the house's
+    /// own.
     fn choice(&self, n: usize, slot: i32, own: f32, r: f32) -> f32 {
         let Some(f) = self.family else { return own };
         let base = (f.pick(slot) * n as f32) as usize % n;
-        if r < 0.62 {
+        if r < 0.5 {
             (base as f32 + 0.5) / n as f32
-        } else if r < 0.88 {
+        } else if r < 0.75 {
             ((base + 1) % n) as f32 / n as f32 + 0.5 / n as f32
         } else {
             own
@@ -129,12 +130,20 @@ impl Street {
     }
 
     /// A share (of houses in brick, of houses that show their stone) as a
-    /// street of a family has it: a street leans one way or the other, so
-    /// that some are all of one kind and most are mixed. A share of none or
-    /// of all is left alone: what cannot be had in a year is not built.
+    /// street of a family has it: a street leans one way or the other, by
+    /// up to `LEAN` either way, so that a few are nearly all of one kind
+    /// and most are mixed. A share of none or of all is left alone: what
+    /// cannot be had in a year is not built.
     fn lean(&self, share: f32, slot: i32) -> f32 {
+        self.leaning(share, slot, Self::LEAN)
+    }
+
+    /// How far a street's share of a material leans from the island's, at the most.
+    const LEAN: f32 = 0.45;
+
+    fn leaning(&self, share: f32, slot: i32, by: f32) -> f32 {
         match self.family {
-            Some(f) if share > 0.0 && share < 1.0 => (share + (f.pick(slot) - 0.5) * 1.3).clamp(0.0, 1.0),
+            Some(f) if share > 0.0 && share < 1.0 => (share + (f.pick(slot) - 0.5) * 2.0 * by).clamp(0.0, 1.0),
             _ => share,
         }
     }
@@ -142,11 +151,11 @@ impl Street {
     /// The share of a street's houses that take a form no house took
     /// before houses were told of their streets (a hipped roof, rooms in the
     /// roof, a stack in the middle of the ridge): `share` of them over all
-    /// the streets, leaning from street to street as `lean` does, so that a
-    /// form is one street's habit and is hardly seen in the next. A house
-    /// told nothing of its street takes none of them.
+    /// the streets, leaning from street to street further than a material
+    /// does, so that a form is one street's habit and is hardly seen in the
+    /// next. A house told nothing of its street takes none of them.
     fn habit(&self, share: f32, slot: i32) -> f32 {
-        if self.family.is_some() { self.lean(share, slot) } else { 0.0 }
+        if self.family.is_some() { self.leaning(share, slot, 0.65) } else { 0.0 }
     }
 }
 

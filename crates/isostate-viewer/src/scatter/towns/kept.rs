@@ -281,6 +281,18 @@ struct Lot {
     age: u32,
     /// its street among the year's streets, and how far along it the plot is (not for a market place)
     street: (u32, f32),
+    /// the two numbers its street's houses share (`family_of`): what the houses are told of their street
+    family: Seed,
+}
+
+/// The two numbers the houses of a street share, from the street's own
+/// number (a market place has one too). They are the street's for good: a
+/// street's number is that of the link between two cells it runs along, so
+/// it does not change with the year, with the road's level or with what is
+/// built on it. The houses' generators make of them a family of walls and
+/// roofs and the street's habits of building (`houses::Street`).
+fn family_of(street: i32) -> Seed {
+    Seed::new(world::hash2(street, 9, 31), world::hash2(street, 10, 31))
 }
 
 /// How near an older street a later lane may be laid: clear of the older
@@ -784,8 +796,14 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
         let yaw_along = (-u.y).atan2(u.x);
         let count = (len / spacing).floor() as i32;
         let t_of = |i: i32| (i as f32 + 0.5) * spacing / len;
-        // a family of colours to a street: most streets keep their houses' second number near one of their own
+        // most streets keep their houses' second number near one of their own. (It was the
+        // street's family of colours before the houses were told of their street, which now
+        // does that better, `family_of`. It is kept because the second number also settles
+        // how wide a cottage is and how soon a house is raised or rebuilt as a townhouse: so
+        // a street's houses are of a size and rise together, and every house is the size, and
+        // is raised in the year, it was before.)
         let family = (world::hash2(s.id, 7, 31) < 0.7).then(|| 0.16 + 0.68 * world::hash2(s.id, 8, 31));
+        let told = family_of(s.id);
         for (j, side) in [(0u8, -1.0f32), (1, 1.0)] {
             let id = s.id * 4 + j as i32;
             side_lots.clear();
@@ -831,7 +849,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 }
                 let v = family.map_or(pv, |f| (f + 0.3 * (pv - 0.5)).clamp(0.0, 0.999));
                 let pl = Plot { p, yaw: yaw_along + if side > 0.0 { std::f32::consts::PI } else { 0.0 }, run: (id, j), row: in_row.then_some(row), high: s.kind == 0, index: i, width: spacing, depth, need: 0.0, u: pu, v };
-                side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined), street: (0, 0.0) }, t_of(i)));
+                side_lots.push((Lot { pl, cell: c, turn, kind: s.kind, road: s.road, age: s.since.max(joined), street: (0, 0.0), family: told }, t_of(i)));
             }
             // a row goes up together: its turn is that of the last of its plots in the cell
             // (a row that runs over a cell's edge is two, one to each cell)
@@ -878,6 +896,7 @@ pub(super) fn lay_out(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, pari
                 road: true,
                 age: lay.joined[&c],
                 street: (0, 0.0),
+                family: family_of(id),
             });
         }
     }
@@ -1124,7 +1143,7 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
                 roof: first.roof,
                 era: Era::of(first.year),
                 upland: r.terrain[first.lot.cell as usize] >= 2,
-                street: houses::Street::ALONE,
+                street: houses::Street::of(first.lot.family),
                 detail: into.lod.at(mid.x, mid.y),
                 seed,
             };
@@ -1220,6 +1239,7 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
     let detail = into.lod.at(pl.p.x, pl.p.y);
     let site = Site::on(ground(g, pl.p.x, pl.p.y), pl.yaw, height);
     let (joined, both) = (s.neighbours.0 || s.neighbours.1, s.neighbours.0 && s.neighbours.1);
+    let street = houses::Street::of(s.lot.family);
     // villas: on the lanes and the ways out, on ground with little works on it, and never in a row
     let villa = pl.row.is_none() && s.lot.kind != 9 && !story.node && story.works < 0.15 && houses::villa_plot(s.year, seed);
     // rebuilt as a townhouse, the full width of its plot, once the cell has this many houses:
@@ -1227,14 +1247,19 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
     // streets (those of the brick years are terraces from the first)
     let rebuilt = s.before + if s.lot.road { 10 + (38.0 * pl.v) as usize } else { 28 + (56.0 * pl.v) as usize };
     if villa {
-        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, street: houses::Street::ALONE, detail, seed };
+        let v = Villa { plot_width: pl.width, plot_depth: pl.depth, roof: s.roof, era: Era::of(s.year), upland, street, detail, seed };
         houses::villa(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &v, lk);
         census.villas += 1;
         census.storeys[1] += 1;
     } else if joined && story.houses >= rebuilt && (s.lot.road || s.year < TERRACE_ERA) {
         // a third storey on a road where the frontage is whole and the cell has grown as much
         // again; a fourth only round the market place of a great town
-        let third = s.lot.road && both && story.houses >= rebuilt + 36 + (56.0 * pl.u) as usize;
+        let raised = rebuilt + 36 + (56.0 * pl.u) as usize;
+        let third = s.lot.road && both && story.houses >= raised;
+        // one in two of the houses given a third storey were given a new front with it, in
+        // the manner of the year the cell had the houses for it (the generator shows it only
+        // where that is a later age than the house's own)
+        let fronted = (third && seed.pick(50) < 0.5).then(|| Era::of(story.year_of(r, k, raised, pl.u).max(s.year)));
         let fourth = third && great && story.houses >= rebuilt + 120;
         let storeys = 2 + third as u8 + fourth as u8;
         let t = Townhouse {
@@ -1246,8 +1271,8 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
             upland,
             shop: s.lot.road && houses::shop_at(((story.houses - s.before) as f32 / 84.0).min(1.0), seed),
             neighbours: s.neighbours,
-            street: houses::Street::ALONE,
-            fronted: None,
+            street,
+            fronted,
             detail,
             seed,
         };
@@ -1257,8 +1282,12 @@ fn one_house(into: &mut Into, r: &Replay, k: usize, lk: &Look, g: &Ground, heigh
         census.tall_alone += (storeys >= 3 && !both) as usize;
     } else {
         // a cottage: one storey, and a second once the cell has grown well past it
-        let storeys = 1 + (story.houses >= s.before + 36 + (88.0 * pl.v) as usize) as u8;
-        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, street: houses::Street::ALONE, raised: None, detail, seed };
+        let second = s.before + 36 + (88.0 * pl.v) as usize;
+        let storeys = 1 + (story.houses >= second) as u8;
+        // raised in the year the cell first had the houses for it: the later work shows
+        // above the old where that is a later age than the cottage's own
+        let raised = (storeys == 2).then(|| Era::of(story.year_of(r, k, second, pl.u).max(s.year)));
+        let c = Cottage { plot_width: pl.width, plot_depth: pl.depth, storeys, roof: s.roof, era: Era::of(s.year), upland, neighbours: s.neighbours, street, raised, detail, seed };
         houses::cottage(into.houses, into.smoke, &mut into.trees[leaf_group(pl.v)], &site, &c, lk);
         census.cottages += 1;
         census.storeys[storeys as usize - 1] += 1;

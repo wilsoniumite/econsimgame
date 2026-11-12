@@ -33,8 +33,9 @@ pub struct Cottage {
     /// it was built lower and raised to the storeys it has now in this age.
     /// Where that is a later age than its own, the later work shows above
     /// the old: brick over wash once brick was to be had, sashes over
-    /// casements, and no frame or jetty above a framed ground storey. None
-    /// for a house built as it stands
+    /// casements, and, on a framed house raised in the brick years or
+    /// after, no frame or jetty above its framed ground storey. None for a
+    /// house built as it stands
     pub raised: Option<Era>,
     /// how much of it to draw
     pub detail: Detail,
@@ -196,7 +197,9 @@ pub fn cottage(solid: &mut MeshBuf, smoke: &mut MeshBuf, green: &mut Greenery, s
     let fabric = Fabric::of(pal, c.era, c.upland, 0.0, 0.6, c.seed, &c.street);
     let wall = fabric.wall;
     // the later work of a house that was raised: of brick where the later age built this house in brick
-    let later = c.raised.filter(|e| n >= 2 && *e > c.era);
+    // (a framed house raised before the brick years was raised in frame, and is as it
+    // always was: jettied, its frame to the eaves)
+    let later = c.raised.filter(|e| n >= 2 && *e > c.era && !(fabric.timber && *e < Era::Brick));
     let above = later.map(|e| Fabric::of(pal, e, c.upland, 0.0, 0.6, c.seed, &c.street)).filter(|f| f.brick && !fabric.brick).map_or(wall, |f| f.wall);
     let glazing = window(c.era);
     let glazing_above = later.map_or(glazing, window);
