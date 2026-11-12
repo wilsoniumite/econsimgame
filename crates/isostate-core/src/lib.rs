@@ -28,6 +28,7 @@ pub mod canals;
 pub mod carting;
 pub mod chronicle;
 pub mod cli;
+pub mod commons;
 pub mod content;
 pub mod econ;
 pub mod engel;

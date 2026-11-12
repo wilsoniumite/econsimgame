@@ -2,8 +2,9 @@
 //! the common fund, the month's rents, and every town's wage, people and
 //! households' cash. Written to find why an island under the commons stopped
 //! with "money not conserved" (docs/rules/mines.md, "Under the commons"), and
-//! the place to look the next time one does: the monthly check is switched off
-//! here, so the run goes on past the month it would have stopped in and says so.
+//! the place to look the next time one stops, on a leak or on its money going
+//! below nothing: the monthly check is switched off here, so the run goes on
+//! past the month it would have stopped in and says so.
 //!
 //!     cargo run --release -p isostate-core --example purses -- SEED [FAMILIES] [END_YEAR]
 //!         [port] [landlords] [monthly] [from=YEAR] [MECHANISM.NAME=VALUE]...
@@ -60,7 +61,9 @@ fn main() {
             let T = st.T_max;
             let act: Vec<usize> = (0..T).filter(|&t| st.town_active[t]).collect();
             let drift = st.money_now - (st.money_start + st.issued);
-            if stopped.is_empty() && drift.abs() >= 1e-6 * st.money_now.max(1.0) {
+            if stopped.is_empty() && st.money_now < 0.0 {
+                stopped = format!("; the check would have stopped it in {year}-{month}, the money below nothing ({:.6e})", st.money_now);
+            } else if stopped.is_empty() && drift.abs() >= 1e-6 * st.money_now.max(1.0) {
                 stopped = format!("; the check would have stopped it in {year}-{month} (drift {drift:.6e})");
             }
             for &t in &act {

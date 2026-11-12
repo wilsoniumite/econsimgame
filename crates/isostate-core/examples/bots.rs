@@ -101,7 +101,7 @@ fn decide_all(s: &mut Sim, bot: Bot) {
                 }
             }
         };
-        let _ = decide(&mut s.st, &s.content, 0, d.id, pick);
+        let _ = decide(&mut s.st, &s.content, &s.params, 0, d.id, pick, &mut s.events);
     }
 }
 

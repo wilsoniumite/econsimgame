@@ -13,7 +13,7 @@ use crate::econ::{firm_coefficients, heat_mix};
 use crate::families;
 use crate::land::{USE_DERELICT, USE_NAMES};
 use crate::mat::Mat;
-use crate::names::firm_name;
+use crate::names::{self, firm_name};
 use crate::ndimage::{self, Mode};
 use crate::params::Params;
 use crate::rng::{Rng, choice_without_replacement};
@@ -489,7 +489,9 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
     let reason = reason_record(st, i, m, cand[j], &ev, j, K, year, "expansion");
     let nm = &st.f_name[parent];
     let base = nm.split(" No.").next().unwrap_or(nm).to_string();
-    let count = st.f_name.iter().filter(|n| n.starts_with(&base)).count();
+    // works (docs/rules/works.md): only the works of this very name are counted;
+    // the port counts every name that starts with it, as the Python does
+    let count = if P.works.enabled { names::works_of_name(&st.f_name, &base) } else { st.f_name.iter().filter(|n| n.starts_with(&base)).count() };
     let name = format!("{base} No. {}", count + 1);
     let fid = create_firm(st, C, P, rng, i, m, cand[j], K, rent_bid_one, reason, year, fund, Some(name), Some(parent));
     if let Some(f) = fid {

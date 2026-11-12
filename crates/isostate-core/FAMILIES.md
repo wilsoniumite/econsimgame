@@ -240,7 +240,7 @@ Actions return `Result` with a readable error.
 
 ```rust
 pub fn pending(st: &State, family: usize) -> Vec<Decision>
-pub fn decide(st: &mut State, C: &Content, family: usize, id: u64, option: usize) -> Result<(), String>
+pub fn decide(st: &mut State, C: &Content, P: &Params, family: usize, id: u64, option: usize, events: &mut Vec<Event>) -> Result<(), String>   // a new head chosen is news
 pub fn post_member(st: &mut State, family: usize, member: usize, posting: Posting) -> Result<(), String>
 pub fn set_stance(st: &mut State, family: usize, group: Group, town: usize, stance: Stance) -> Result<(), String>
 pub fn move_seat(st: &mut State, family: usize, town: usize) -> Result<(), String>

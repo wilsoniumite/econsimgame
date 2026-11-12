@@ -68,6 +68,16 @@ asked to hold more works than it has ground for; `tests/works.rs` checks that
 every year of a run (seed 7 to 1829, the port with the life cycle, no
 families).
 
+A sister works, or a family's second works of a kind in a town, takes the
+first one's name with a number: "Ashby Mill No. 2". The port numbers it by
+counting every works whose name begins with the first one's, so a family's
+"Ashby Mill" was numbered on from the town of Ashby's "Ashby Mills", and
+"Denton Steel" from "Denton Steelworks". Under the life cycle only the works
+of that very name count (`names::works_of_name`). Works that have closed
+still count, so no name is given twice in a run: when "Ashby Mill" has shut,
+the next is "Ashby Mill No. 2", as a colliery's third pit kept its number
+after the second was shut. Names move no number in a sweep.
+
 A works that grows needs more land, and pays for it: `State::works_lease` is
 the most land each works has taken so far, and an order that takes it past
 that adds to its monthly rent (`works::ordered`). The new ground costs what

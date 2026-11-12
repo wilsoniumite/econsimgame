@@ -153,7 +153,7 @@ fn carry_out_on(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut
                 None => return Err(format!("there is no decision {id} waiting")),
             };
             match option {
-                Some(o) => families::decide(st, C, PLAYER, *id, o).map(|()| Done::Done),
+                Some(o) => families::decide(st, C, P, PLAYER, *id, o, events).map(|()| Done::Done),
                 None => Err(format!("decision {id} no longer offers that choice")),
             }
         }

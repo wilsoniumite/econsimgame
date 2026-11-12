@@ -22,8 +22,11 @@
 //! - B. what is left of the sale after the merchant, the carting, the machines
 //!   and the wages is the royalty. It is paid as rent is, to the owners of the
 //!   cells whose deposit is worked, each by what its cell gives. Where nobody
-//!   owns the ground it goes to the common fund, which carries a loss as a
-//!   debt against its rents and charges it to nobody (`fund_to_share`).
+//!   owns the ground it goes to the common fund, which is then the adventurer:
+//!   a working's sinkers and its bad months come out of it, as they come out
+//!   of a town's landlords. Under the game's rules the fund carries such a
+//!   loss as a debt against its rents and charges it to nobody
+//!   (`commons::fund_to_share`, on its own switch).
 //! - C. a working has to be sunk: `sink` hands for a year at the town's wage,
 //!   who raise nothing, paid out of the royalty (the landowner's outlay). So
 //!   nobody opens a pit head for a few tons, and the workings stand apart.
@@ -73,7 +76,11 @@ pub struct MineParams {
     /// sinking in this many years (so: `sink / payback` wages a month or more).
     pub payback: f64,
     /// D. A working is abandoned when it has stood idle (under one hand, on a
-    /// year's average) this many years running.
+    /// year's average) this many years running. A year's review counts the
+    /// year just ended before it asks, so 1 gives up a working at the end of
+    /// its first idle year, and 0 is taken as 1: read literally it would give
+    /// up every working at every review, those at work too. The count is
+    /// kept in a byte and stops at 255, so 256 or more is never.
     pub idle_years: u32,
     /// D. How much of this year's promise goes into what a site is believed to
     /// pay (the rest is what was believed last year). 1: this year's prices alone.
@@ -714,25 +721,6 @@ pub fn royalty_cells(st: &State, P: &Params, town: &[usize], cell: &[usize], ren
         }
     }
     Some((t, c, v))
-}
-
-/// B, where nobody owns the ground (`RentRegime::Commons`). The royalty of
-/// unowned deposit goes to the common fund with the land's rent, and the fund
-/// is the adventurer: a working's sinkers and its bad months come out of it,
-/// as they come out of a town's landlords. What it has to share out is what
-/// it holds, and never less than nothing. A fund in debt pays no dividend
-/// until the rents have made the debt good.
-///
-/// The port shares out nine tenths of the fund whatever its sign, so a fund in
-/// debt takes money from every household by head, whether the household has
-/// it or not. A farm's bad month is small beside the island's rents and the
-/// port's fund is hardly ever in debt. A working's can be large: a town
-/// founded on a coalfield has asked for over three times its hands at a wage
-/// that doubled every month (`docs/rules/mines.md`, "Under the commons"), the
-/// fund owed three times the island's money, and the levy emptied every
-/// purse on the island.
-pub fn fund_to_share(st: &State, P: &Params) -> f64 {
-    if P.mines.enabled { st.fund_cash.max(0.0) } else { st.fund_cash }
 }
 
 /// The month's books: hands (the sinkers among them), output and royalty of
