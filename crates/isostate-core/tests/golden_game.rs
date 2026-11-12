@@ -225,9 +225,10 @@ fn seed_7_under_the_games_rules_is_unchanged() {
              game_params()), take the new hashes on the merged tree with\n\n    \
              ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game\n\n\
              paste the four lines it gives into golden_game.txt, and say in the commit message which moved and why.\n\
-             If nothing was meant to move, this is the fault: a hook moved across a read or a write of the month \
-             (the comment above econ::step_month lists the order that must hold), a rule leaking where it should \
-             not, or the books touching the economy. ISOSTATE_GOLDEN_DUMP=DIR writes the run's files for a diff \
+             If nothing was meant to move, the change is at fault, not the file. Look for a hook moved across a \
+             read or a write of the month (the comment above econ::step_month lists the order that must hold), \
+             a rule acting where it should not, or, if the economy moved when only the books were touched, the \
+             books touching the economy. ISOSTATE_GOLDEN_DUMP=DIR writes the run's files for a diff \
              against the same from the commit before.\n",
             which(&first, &want),
             lines(&first),
