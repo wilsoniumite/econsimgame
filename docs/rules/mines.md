@@ -1044,20 +1044,23 @@ regimes (the second worry below).
   If the fund should carry its debt whatever is switched on, it wants a
   switch of its own in the game's rules, and `fund_to_share` is the one
   line to move.
-- **The money can go below nothing, and then the money check cries wolf.**
-  The port issues money each month as a share of what it counts before the
-  month's wages and dividends have reached the households. In a month when
-  those are many times the money, as they were in the years above, the
-  issue is less than nothing, and one such month can take the money below
-  nothing. The check allows a drift of a millionth of the money, and of a
-  millionth of one unit once the money is under one, so from that month
-  rounding alone is more than it allows and the run stops with "money not
-  conserved" though nothing was lost. Both are the port's and were left
-  alone (the check's half was already in the backlog:
-  `docs/backlog/sweep-2026-11-11/checked-core-reports.md`, row 12). An
+- **The money can go below nothing.** The port issues money each month as
+  a share of what it counts before the month's wages and dividends have
+  reached the households. In a month when those are many times the money,
+  as they were in the years above, the issue is less than nothing, and one
+  such month can take the money below nothing. The check allows a drift of
+  a millionth of the money, and of a millionth of one unit once the money is
+  under one, so from that month rounding alone was more than it allowed and
+  the run stopped with "money not conserved" though nothing was lost
+  (`docs/backlog/sweep-2026-11-11/checked-core-reports.md`, row 12). An
   island in that state is past saving, and it is as well that something
-  stops it. Read the purses before believing the message
-  (`examples/purses.rs`).
+  stops it; but the message misled. The check now stops such a run first,
+  with "the island's money went below nothing in 1764-0 (...), and a run
+  cannot go on from there", and leaves the check for leaks as it was
+  (`sim::run_month`; taking the drift's absolute value instead would have
+  let the run go on into nonsense). The issue itself is the port's and is
+  left alone. `examples/purses.rs` runs with the check off and says where
+  it would have stopped, and on which of the two.
 - **A town can be boxed in.** A town goes round a pit head at work, so
   workings on every side of a small town would stop it growing. Town cells
   are up with the mines on, not down, and I saw no town held; but nothing
