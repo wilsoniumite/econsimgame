@@ -276,7 +276,9 @@ pub fn coke_furnace(c: &mut Ctx) {
         let room = d - stock - 0.006;
         let batteries = if room >= 0.018 * g { c.fit(room, 0.034 * g, 4) } else { 0 };
         for j in 0..batteries {
-            coke_ovens(c, ox0, olen, z1 - 0.008 * g - j as f32 * 0.034 * g);
+            // (in a planned works, whose stock lies in yards of its own, the ovens stand up by the pig beds)
+            let z = if c.stock_apart { z0 + 0.012 * g + j as f32 * 0.034 * g } else { z1 - 0.008 * g - j as f32 * 0.034 * g };
+            coke_ovens(c, ox0, olen, z);
         }
     } else {
         // a small works: slag in the spare corner, the ovens along the front beside the casting houses

@@ -244,7 +244,7 @@ using the kit and not by copying numbers.
 | `scale.rs` | the scale: `STOREY`, `BAY`, what each level may and must draw (`LEVELS`), `measure` and `faults`, and the `Tally` the kit keeps of the walls and roofs it builds |
 | `registry.rs` | every generator, with specimens of each, and the tests that hold them to the scale |
 | `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
-| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit, and `plant.rs`, the furnaces, lifts and kilns |
+| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit, and `plant.rs`, the furnaces, lifts and kilns; `site.rs`, a works laid out on its plot from its process, the stages of its growth and what its plot faces (see "Works on their plots"), with its tests in `site_tests.rs` |
 | `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the threshing barn with its porch and great doors, a cart shed or a byre, a granary on staddle stones, a rick |
 | `town/` | each at three levels: `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
 | `rail.rs` | each at three levels, what stands by a railway where the ground was too steep for an ordinary line: `winding_house` (the stationary engine at the head of an inclined plane, before 1850), `banker_shed` (the banking engine's shed at the foot of a steep bank, after), and `buffer_stop`; `WINDING_HOUSE` and `BANKER_SHED` are the ground each keeps, and `TRACK_CLEAR` how far before its front the track runs |
@@ -431,7 +431,8 @@ with a life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
   falling in, stacks broken, weeds in the yard). The parts in `works/kit.rs`
   know the state, so a kind does not have to: it says what stands where.
 - **`water`, `rail`**: what the caller knows of the site. `rail` is taken
-  and not yet drawn.
+  and not drawn here: a planned works has its siding (see "Works on their
+  plots").
 - **`detail`**: the level it is drawn at, chosen by the camera as a house's
   is. Far: walls, roofs, the tall chimneys, the furnaces and the great
   heaps. Play: openings as flat panels, stacks, the yard's wall and gate
@@ -480,8 +481,9 @@ bands and a corbelled head close to), `stack` (short and square), `slab_stack`
 In the yard: `ground`, `patch`, `race` (these three lie flat and are the
 same at every level), `wall` (the yard's wall or fence with its gate:
 piers from the play distance; a coping, corner piers and the gate's leaves
-close to), `heap`, `pile`, `stacks` (goods in rows), `wheel`, `sheer_legs`,
-`scaffold`, `builders_yard`.
+close to), `heap`, `pile`, `stacks` (goods in rows; these three stand on
+the yard's ground, which is laid `LIFT` above the site), `wheel`,
+`sheer_legs`, `scaffold`, `builders_yard`.
 
 The plant of the fire trades (`works/plant.rs`, also methods of `Ctx`):
 `furnace_stack` (a blast furnace built of masonry: square and battered,
@@ -512,6 +514,205 @@ size, then make every count come from what fits (`c.fit`, `c.spread`), so
 that it fills its yard at 100 and still fits at 0.4: the tests build every
 kind at every size, founding year and state and check that the footprint
 holds it.
+
+## Works on their plots
+
+`works::works` draws a works of a kind and a size as one fixed arrangement
+in a rectangular yard. The game does not call it any more (the lab's
+`works-*` sheets and `ISOSTATE_WORKS=old` still do): it lays every works out
+on its own plot with `works::site`, which plans a works round its flow of
+material, fills its ground with what it holds, and builds it as it grew.
+
+```rust
+let plan = site::plan(kind, &process, &stages, &plot, year, seed, pal);   // once, and kept
+site::site(solid, smoke, flat, &site, &plan, &now, pal);                  // every year it is drawn
+```
+
+**What the planner is handed** (all of it is the simulation's, or a stated
+stand-in the viewer makes: `scatter::firm_site` lists them):
+
+- **`Process`**: what the method does: its goods in with how much of each
+  goes to a unit of output, its heat, its labour, the cost of its plant, its
+  good out. The game hands in the process as the run it is showing has it
+  (the viewer's `scatter::process_of`, from the record's header or a live
+  game's content), so a run with a content of its own, such as the deeper
+  production tree's, is laid out by its own. `Process::standard(method)`
+  reads the content shipped with the repository (`data/content.toml`, built
+  into the crate) for the lab and the tests, so there is no table of
+  processes here to fall out of step. A `Good` carries its name, its bulk
+  and its price, and `Keep::of` says from those how it is kept: heavy cheap
+  stuff in heaps in the open, heavy made things in stacks, timber in piles,
+  what is light or would spoil under a roof, and nothing at all of services
+  or of what is too heavy ever to be carried (a weight of 8 or more: the
+  tree's building work and town gas). A good nobody has heard of is kept by
+  its numbers. Fuel is a stand-in (`Process::fuel`): the record does not say
+  which fuel a works burned, so it is coal from 1790 (`COAL_FROM`) and
+  cordwood before.
+- **`Plot`**: the ground: a convex outline in the works' own frame, its
+  front (side 0) along x toward the road, and what each side faces
+  (`Edge::Road`, `Wall`, `Rail`, `Water { navigable }`, `Fed`, `Feeds`) with
+  the year it came to face it (`since`); and `line`, where the railway runs
+  by the plot, as points in the plot's frame. `Plot::rect`, `wedge` and
+  `cut` make the lab's three shapes, and a lab plot set to face the railway
+  has the line run straight along that side, `LINE_OFF` out.
+  `site::ground(kind, size)` is the ground a planned works asks for:
+  `footprint` and 15 per cent more each way (`GROUND`).
+- **`stages`**: how it grew. `site::stages(history)` reads a works' size in
+  every year it stood and gives the founding and each year it first stood at
+  `ENLARGED` (two and a half) times the size of the stage before.
+- **`Now`**: the year, its size now, its state, how busy it is (0 to 1), how
+  full its stock of what comes in and of what it makes is (0 to 1), and how
+  many years it has stood below its greatest size.
+- **the site**: its origin's height is the height the yard is levelled at.
+  The viewer hands in the highest land under the whole plot
+  (`scatter::Slots::firm_level`), and the land itself, so that the planner
+  can build the retaining wall (see "A yard is level" below).
+
+**What a plan holds.** Material comes in at one place, goes round the yard
+and leaves at another:
+
+- the **gate** in the front, off its middle, a cart yard inside it, and in a
+  works with ground enough a lane on into the yard;
+- the **counting house** beside the gate, from the stage at which the works
+  reaches one and a half times the standard size (its ground is kept for it
+  from the first);
+- for each stage, its **process buildings** (`Role::Core`): the kind's own
+  function builds them, in the style and with the technology of the stage's
+  year, on the ground they cover and no more (they are built once at plan
+  time and measured: `core_cover`). So a furnace is still a furnace, a mill
+  of 1760 keeps its wheel beside the engine house of 1870, and kinds read
+  apart as before. They are drawn at the size whose ground is `CORE` (0.65)
+  of the ground the stage added (`stage_size`): ground goes by size to the
+  power 0.64, so reckoned this way the buildings of all a works' stages
+  together stand on 0.65 of the ground one works of its size stands on,
+  however many stages it grew by. The first stands beside the gate (or by
+  the stream, its wheel to the water); an enlargement stands by what it
+  enlarges, within the ground already taken in where there is room, and
+  toward the line once the railway runs by. Where the ground left is broken
+  up, a stage is built as two, three or four groups before it is built
+  smaller. A kind the generators do not know (`Kind::Other`) is built from
+  its process alone (`plain::process`): a shop of storeys or a hall by how
+  heavy its stuff is; a boiler house and a chimney where it burns fuel;
+  hearth stacks where it burns much (1.5 units of heat to a unit made);
+  kilns in place of the boiler house where it burns more still (2.5); a
+  preparing shed for each further good that comes in;
+- a **store** for each good that came in at its founding and is kept under
+  a roof, by the way in, and a **warehouse** for what is made if that is, by
+  the way out: built when the works first reaches four fifths of the
+  standard size and again each time it has grown fourfold;
+- open **yards** for what lies in the open (`Hold`, `Yard`): heaps or
+  stacks of each such good that comes in, by the way in; stacks of what is
+  made, by the way out; a tip, a bank of heaps at the far corner of what
+  stands, where the process smelts or burns. Each has a floor stained by
+  what lies on it, so an empty yard still reads as where the ore lay. A
+  yard lies in one piece where there is room and in up to four where there
+  is not, in the bays between the buildings before any new ground; each
+  yard in turn is given a piece, and no piece is less than a seventh of its
+  yard. See "What a works holds" for how big and how full;
+- the **way in and the way out**: over a neighbour's wall where the plot is
+  `Fed` or `Feeds` (a way through the wall there); else a **siding** along
+  the `Rail` side, with its ballast, a loading bank, a stop and wagons (more
+  as the works is bigger and busier: a stand-in for traffic), **led out to
+  the line by a spur** (`Plan::spur`); else a **wharf** along navigable
+  water, with a quay and a crane; else the gate, in at its one side and out
+  at its other. A siding that cannot be led out is not laid: the line must
+  run within `JOIN` (0.16, 320 m) of the side, and the spur leaves the
+  siding's end in the way the track runs, curves across the open side and
+  runs in with the line at the nearest place ahead that it can reach at a
+  turnout's angle. A works has its siding or wharf only once it has built
+  to within `REACH` of that side, and a shop has neither;
+- lanes from the cart yard and the lane to every door, and where heavy stuff
+  is moved in a works of three times the standard size or more after 1800 a
+  **tramway** from the way in along the lane to each stage's buildings and
+  to each yard of loose stuff;
+- **the ground taken in so far** (`Plan::enclosed`): the part of the plot
+  that anything stands on, which is what is walled and what the yard's
+  ground is laid over. It grows with the works toward the plot's edges.
+
+**What a works holds, and how honestly.** The simulation keeps no stock at
+a works: it knows what a method takes in, burns and makes, and each works'
+capacity. So:
+
+- *which* yards a works has is the simulation's: one for each good its
+  process takes in that lies in the open (its fuel among them), one for
+  what it makes, a tip if it smelts or burns. A planned works draws nothing
+  else: a kind's own heaps are left out of its process buildings
+  (`Ctx::stock_apart`), so the limestone the old coke furnace kept, which
+  the simulation's coke furnace does not take, is gone;
+- *how much ground* each has is a rule of the plan's, stated in `site.rs`:
+  of the ground a works of its kind and size stands on, `STOCK_IN` (0.26)
+  for what comes in, shared by the bulk of each good; `STOCK_OUT` (0.13)
+  for what is made; up to `TIP` (0.11) for the tip, by the bulk that comes
+  in less the bulk that goes out. The size is the size the works can reach
+  before it must build again (`ENLARGED` times its last stage, or what its
+  plot was set aside for: `Plan::laid_for`);
+- *how full* they are is `Now::stock_in` and `Now::stock_out` (the viewer's
+  stand-ins) times how big the works is now against the size the yards were
+  laid out for. So a works that grows between two stages, which builds
+  nothing, has its yards fuller year by year;
+- the tip is higher and longer by the years the works has stood;
+- a kind's own stacks (pig beds before the casting houses, rails by the
+  mill door) are kept to the rows by its buildings and stand while it is at
+  work: what the process has just made.
+
+**A yard is level.** A planned works is built on a level site at the height
+of its site's origin, whatever the land does: the viewer hands in the height
+of the highest land under the plot, so nothing of the yard is under the
+land. Where the land falls away from that, a retaining wall in the works'
+own masonry runs under the edge of the ground taken in, down to the land,
+and where the gate stands above the land before it there is a way up to it
+(`terrace`; drawn at every level of detail, so that a works on a hillside
+does not float from far off). The viewer keeps works off ground that rises
+more than a storey and a half across the plot while there is other ground
+(`scatter::Room::rise`). Heaps and stacks stand on the yard's ground, which
+is laid `LIFT` above the site's height.
+
+**Nothing that stands moves.** A plan is built stage by stage, each stage's
+buildings placed by what the plot's sides faced that year, and nothing
+already placed is moved by what comes after: the plan of a works with a
+stage more is the plan without it and what that stage built, and a railway
+or a neighbour that comes later moves nothing (a siding takes the stretch of
+its side that is still free). Open yards hold stock, not buildings, and may
+shift: they are laid out afresh in what ground the buildings leave, and the
+fuel in them is the year's. The tests hold it to that.
+
+**The state of each part** follows the record: all of it going up in its
+first year; a stage built this year under scaffolding; a stage the works
+has shrunk out of standing idle (fires out) and, after eight years so,
+derelict (roofs falling in, glass gone), with weeds on its ground; the whole
+idle or derelict when the works is. A part weathers a step for each forty
+years it has stood (`Ctx::worn`: a tint toward soot, never a colour of its
+own).
+
+**A place for what comes after 1900.** `Edge` and `Role` are where a lorry
+bay (a way in and out by road for a works founded after about 1920) and a
+power line (a sub-station in place of the boiler house) would go; neither
+is drawn, and nothing in a plan stands for them now.
+
+To add something a plan places: a `Role` (a building) or a `Hold` (a yard),
+its ground and where it wants to stand in `plan`, and what it builds in
+`build`, from the works' kit. Everything is still held to the scale: the
+entry "works on its plot" in the registry builds eight planned works at
+every level.
+
+The sheets: `sites-kinds` (every kind at ten times the standard size in
+1880) and `sites-small` (at the standard size in 1800); one for each kind
+(`site-mill`, `site-coke-furnace`, ...) at sizes 0.4 to 100 as it stands in
+1890, founded in 1760 on a square plot by a stream, in 1820 on a plot with
+its back aslant along a railway, and in 1870 on a plot with a corner cut
+off; `site-history` and `site-history-iron` (one works through its own
+history on one plot, then shrunk, idle and derelict); `site-ways` (by the
+gate, a railway, navigable water, both, fed and feeding over the wall,
+slack and busy); `site-plots` (three kinds on six shapes of plot);
+`site-slope` (three works on land that falls 6 and 12 in 100);
+`site-unknown` (eight trades the generators have never heard of, each
+planned from its process alone); and `works-district` (a chain of
+ironworks, forge and rolling mill with three other works along a road, in
+1800, 1850 and 1890).
+`cargo test -p isostate-gen show_a_plan -- --ignored --nocapture` prints one
+plan, and draws it as a map in letters (`KIND`, `SIZE`, `PLOT`, `FOUNDED`
+and `SEED` choose which; `STAGES=1790:0.8,1815:2.4` gives the stages of its
+growth outright and `YEAR` the year it is planned for).
 
 The railway's banks, viaducts, girder bridges and tunnel mouths are not
 generators: they are made along a line from the difference between its level

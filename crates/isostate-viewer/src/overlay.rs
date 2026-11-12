@@ -853,7 +853,7 @@ mod tests {
     /// Ashby (which stands on the first of them), then one that trades at Brill.
     fn strip() -> Replay {
         let town = |name: &str, node: usize| Town { name: name.into(), node, founded: 1700 };
-        let good = |name: &str, label: &str| Good { name: name.into(), label: label.into() };
+        let good = |name: &str, label: &str| Good { name: name.into(), label: label.into(), weight: None, price: None };
         let header = Header {
             meta: Meta { label: String::new(), lite: false, seed: 1, w: 4, h: 1, start_year: 1750, n_years: 1 },
             goods: vec![good("grain", "Grain"), good("coal", "Coal")],
