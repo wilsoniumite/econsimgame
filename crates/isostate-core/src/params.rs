@@ -290,6 +290,10 @@ pub struct Params {
     /// see docs/rules/canals.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub canals: crate::canals::CanalParams,
+    /// Books that say who makes, moves, buys and earns what (not in the Python;
+    /// see docs/rules/accounts.md). An observer: the economy never reads them.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub accounts: crate::accounts::AccountsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -492,6 +496,7 @@ pub fn default_params() -> Params {
         towns: TownsParams::default(),
         mines: crate::mines::MineParams::default(),
         canals: crate::canals::CanalParams::default(),
+        accounts: crate::accounts::AccountsParams::default(),
     }
 }
 
@@ -520,6 +525,7 @@ pub fn game_params() -> Params {
     P.towns = TownsParams::game();
     P.mines = crate::mines::MineParams::game();
     P.canals = crate::canals::CanalParams::game();
+    P.accounts = crate::accounts::AccountsParams::game();
     P
 }
 

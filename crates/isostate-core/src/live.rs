@@ -280,6 +280,10 @@ pub struct LiveYear {
     /// while it is being dug). Empty unless the mechanism is on. The `trans`
     /// layer marks the same cells with 16 (open) and 32 (digging).
     pub canals: Vec<crate::canals::LinkOut>,
+    /// accounts: the island's income account for the year (None unless the books
+    /// are kept). One town's or one works' books are asked for when wanted, with
+    /// `accounts::town_books` and `accounts::works_books`.
+    pub accounts: Option<crate::accounts::IslandYear>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -454,5 +458,6 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
         workings: crate::mines::workings(st),
         canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
+        accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
     }
 }

@@ -490,3 +490,8 @@ One line each as they arrive: the name, its page, its switch.
   promoters dig where the carting saved pays: a layer of water over the map
   with wharves, locks that cost stone and navvies who are hands, until the
   railway takes the traffic. [canals.md](canals.md), `canals.enabled`.
+- **accounts**: books that say who makes, moves, buys and earns what: a
+  year's books for every town and every works, and the island's income
+  account (work's share, the owners' shares, ownership in years of wages).
+  They watch and never touch the economy. [accounts.md](accounts.md),
+  `accounts.enabled`.
