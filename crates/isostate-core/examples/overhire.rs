@@ -15,6 +15,10 @@
 //! than the town has for hire, the wage stops there and every hand wanted is
 //! hired, so a town can have more people at work than it has. For each run:
 //!
+//! - the town-months in which the wage is at the top of its month's range
+//!   (twice last month's, or the ceiling of 500): more hands were wanted than
+//!   the town had for hire. Not all of them are at work beyond the people,
+//!   since a works short of its materials lays some off again;
 //! - the town-months with more at work (in the fields, the works, the
 //!   workings, carting and digging canals) than the town's people of working
 //!   age, and those with a tenth, a half and twice as many again;
@@ -38,6 +42,7 @@ struct Watch {
     at_work: f64,
     worst: (f64, String),
     one_working: usize,
+    at_top: usize,
     failed: String,
 }
 
@@ -50,6 +55,7 @@ fn watch(P: &Params, port: bool) -> Watch {
     while sim.year <= sim.end_year {
         let year = sim.year;
         for month in 0..12 {
+            let last = sim.st.wage.clone();
             if let Err(e) = sim::run_month(&mut sim, month) {
                 w.failed = format!("; FAILED: {e}");
                 return w;
@@ -74,6 +80,9 @@ fn watch(P: &Params, port: bool) -> Watch {
                 }
                 w.excess += (work - have).max(0.0) / 12.0;
                 w.one_working += (largest[t] > have) as usize;
+                // the wage at the top of its month's range: more hands were wanted than there were
+                let top = (2.0 * last[t]).min(500.0);
+                w.at_top += (last[t] > 0.0 && (st.wage[t] - top).abs() <= 1e-9 * top) as usize;
                 if r > w.worst.0 {
                     let s = (0..C.NS).max_by(|&a, &b| by_sector[t * C.NS + a].total_cmp(&by_sector[t * C.NS + b])).unwrap();
                     w.worst = (
@@ -125,11 +134,11 @@ fn main() {
             .collect();
         handles.into_iter().map(|(seed, h)| (seed, h.join().unwrap())).collect()
     });
-    let (mut months, mut over, mut excess, mut at_work, mut one) = (0, [0; 4], 0.0, 0.0, 0);
+    let (mut months, mut over, mut excess, mut at_work, mut one, mut top) = (0, [0; 4], 0.0, 0.0, 0, 0);
     for (seed, w) in &runs {
         println!(
-            "seed {seed:2}: over its people in {:3} town-months of {} ({} by a tenth, {} by half, {} twice); {:.0} hand-years beyond them of {:.0}; one working over the town in {}; worst {:.2}x ({}){}",
-            w.over[0], w.months, w.over[1], w.over[2], w.over[3], w.excess, w.at_work, w.one_working, w.worst.0, w.worst.1, w.failed
+            "seed {seed:2}: wage at its limit in {:3} town-months; over its people in {:3} town-months of {} ({} by a tenth, {} by half, {} twice); {:.0} hand-years beyond them of {:.0}; one working over the town in {}; worst {:.2}x ({}){}",
+            w.at_top, w.over[0], w.months, w.over[1], w.over[2], w.over[3], w.excess, w.at_work, w.one_working, w.worst.0, w.worst.1, w.failed
         );
         months += w.months;
         for k in 0..4 {
@@ -138,9 +147,10 @@ fn main() {
         excess += w.excess;
         at_work += w.at_work;
         one += w.one_working;
+        top += w.at_top;
     }
     println!(
-        "all {} runs: over its people in {} town-months of {months} ({} by a tenth, {} by half, {} twice); {excess:.0} hand-years beyond them of {at_work:.0} ({:.2e}); one working over the town in {one}",
+        "all {} runs: wage at its limit in {top} town-months; over its people in {} town-months of {months} ({} by a tenth, {} by half, {} twice); {excess:.0} hand-years beyond them of {at_work:.0} ({:.2e}); one working over the town in {one}",
         runs.len(),
         over[0],
         over[1],
