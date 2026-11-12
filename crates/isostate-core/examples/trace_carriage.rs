@@ -10,7 +10,9 @@
 //! `--set` takes any parameter by its dotted name, as the sweep does, and every
 //! combination of the values given is a setting. `--out` writes `years.csv` (a row
 //! for every run and year) and `hunger.csv` (a row for every town and year in
-//! which a town that counts went hungry, with the grain it had) for reading
+//! which a town that counts went hungry, with the grain it had), and
+//! `hunger_months.csv` (those towns month by month, from the January of the year
+//! before: months -11 to 0 are that year, 1 to 12 the hungry one) for reading
 //! further. The books are switched on whatever the rules say; they change
 //! nothing in the run (docs/rules/accounts.md).
 #![allow(non_snake_case)]
@@ -253,7 +255,11 @@ fn one_run(P: &Params, rules: Rules, setting: usize) -> Run {
         for &t in &hungry {
             let v = &rec.goods[(t * G + g) * KG..][..KG];
             hunger.push(Hunger {
-                months_seen: watch[k][t * 12..(t + 1) * 12].to_vec(),
+                // the year before (months -11 to 0; nothing before the first year), then the year
+                months_seen: (if k > 0 { watch[k - 1][t * 12..(t + 1) * 12].to_vec() } else { vec![[0.0; MW]; 12] })
+                    .into_iter()
+                    .chain(watch[k][t * 12..(t + 1) * 12].iter().copied())
+                    .collect(),
                 year,
                 town: t,
                 name: st.town_name[t].clone(),
@@ -374,7 +380,7 @@ fn main() {
         for r in &runs {
             for x in &r.hunger {
                 for (m, v) in x.months_seen.iter().enumerate() {
-                    let _ = write!(hm, "{},{},{},{},{}", r.setting, r.seed, x.year, x.town, m + 1);
+                    let _ = write!(hm, "{},{},{},{},{}", r.setting, r.seed, x.year, x.town, m as i64 - 11);
                     for c in v {
                         let _ = write!(hm, ",{c:.6}");
                     }
