@@ -91,7 +91,8 @@ fn nearest_on(paths: &[TrainPath], at: Vec2) -> Option<(usize, f32)> {
     best.map(|b| (b.1, b.2))
 }
 
-fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>, mut last: Local<Option<usize>>) {
+#[allow(clippy::too_many_arguments)]
+fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Option<Res<CartAssets>>, mut roads: ResMut<Roads>, old: Query<Entity, With<Cart>>, mut last: Local<Option<usize>>, mut memo: Local<Option<trains::RoadMemo>>) {
     let _frames = crate::frames::span(crate::frames::Sys::Traffic);
     let Some(assets) = assets else { return };
     let r = &data.r;
@@ -103,7 +104,11 @@ fn place(mut commands: Commands, tl: Res<Timeline>, data: Res<Data>, assets: Opt
     for e in &old {
         commands.entity(e).despawn();
     }
-    roads.0 = world::timed("year carts", || trains::road_routes(r, &data.g, &data.cen, k));
+    // what is the same in every year is kept from one to the next (`trains::RoadMemo`)
+    roads.0 = world::timed("year carts", || {
+        let memo = memo.get_or_insert_with(|| trains::RoadMemo::new(r, &data.g));
+        trains::road_routes(r, &data.g, &data.cen, k, memo)
+    });
     // a cart asked for at a spot, for a picture: the first of the round nearest it, held still there
     let spots = pinned_spots();
     let pins: Vec<(usize, f32)> = spots.iter().flatten().filter_map(|&at| nearest_on(&roads.0, at)).collect();
@@ -266,9 +271,10 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
         at_cell[a].push((a, b, lv));
         at_cell[b].push((a, b, lv));
     }
-    c.closed = (0..r.n).filter(|&cell| at_cell[cell].iter().any(|l| l.2 == 3) && trains::middle_under_bridge(g, cen, &at_cell[cell], cell)).map(|cell| v2(cen[cell])).collect();
+    let mut found = Default::default();
+    c.closed = (0..r.n).filter(|&cell| at_cell[cell].iter().any(|l| l.2 == 3) && trains::middle_under_bridge(g, cen, &at_cell[cell], cell, &mut found)).map(|cell| v2(cen[cell])).collect();
     // every cart's path, both ways, every 0.005 cells
-    let routes = trains::road_routes(r, g, cen, k);
+    let routes = trains::road_routes(r, g, cen, k, &mut trains::RoadMemo::new(r, g));
     c.rounds = routes.len();
     let mut crossed = vec![false; main.iter().map(|m| m.3.len()).sum()];
     // the main road nearest a point: the link whose middle line it is nearest, how far, and how far along

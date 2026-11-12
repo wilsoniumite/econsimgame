@@ -249,12 +249,25 @@ impl Waters {
         top.filter(|&t| t > ground).map(|t| (t, false))
     }
 
+    /// Whether any river's water lies near the straight road from `a` to `b`
+    /// (in the cells under it: those its two ends lie in and, on a diagonal,
+    /// the two beside them). Only a river can drown a road, as the ribbon lies
+    /// at least `ROAD_LIFT` above the sea, and most roads have none near.
+    pub fn near(&self, a: Vec2, b: Vec2) -> bool {
+        let (lo, hi) = (a.min(b), b.max(a));
+        (lo.y.floor().max(0.0) as usize..=(hi.y.floor().max(0.0) as usize).min(self.h - 1))
+            .any(|y| (lo.x.floor().max(0.0) as usize..=(hi.x.floor().max(0.0) as usize).min(self.w - 1)).any(|x| self.cells.contains_key(&(y * self.w + x))))
+    }
+
     /// Whether a road's line from `driven` goes under the water anywhere:
     /// where it runs along a river's channel inside its water, with no bridge
     /// or causeway to carry it, the ribbon lies on the channel's bed. Looked
     /// at every 0.01 cells.
     pub fn drowns(&self, g: &Ground, pts: &[Vec3]) -> bool {
         let (a, b) = (Vec2::new(pts[0].x, pts[0].z), Vec2::new(pts[pts.len() - 1].x, pts[pts.len() - 1].z));
+        if !self.near(a, b) {
+            return false;
+        }
         let n = ((a.distance(b) / 0.01).ceil() as usize).max(1);
         (0..=n).any(|i| {
             let t = i as f32 / n as f32;

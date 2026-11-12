@@ -44,7 +44,7 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 /// above the road there (a river running through the middle of the cell, so
 /// that the other roads come out from under the bridge, and a cart going on
 /// from the bridge would drop through it).
-pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
+pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &mut RoadMemo) -> Vec<TrainPath> {
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); r.n];
     let mut links: Vec<Vec<(usize, usize, u8)>> = vec![Vec::new(); r.n];
     for (c, m, lv) in network::road_segments(r, k) {
@@ -55,20 +55,24 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<
         links[c].push((c, m, lv));
         links[m].push((c, m, lv));
     }
+    let RoadMemo { waters, ways, dry, bridges } = memo;
+    // a link's surface, from the lower-numbered cell (the way it is drawn)
+    fn surface<'a>(ways: &'a mut std::collections::HashMap<(usize, usize), Vec<Vec3>>, g: &Ground, cen: &[(f32, f32)], lo: usize, hi: usize) -> &'a Vec<Vec3> {
+        ways.entry((lo, hi)).or_insert_with(|| network::driven(g, cen[lo], cen[hi], true))
+    }
     let mut covered: std::collections::HashMap<usize, bool> = Default::default();
-    let mut under_bridge = |cell: usize| -> bool { *covered.entry(cell).or_insert_with(|| middle_under_bridge(g, cen, &links[cell], cell)) };
-    // each link's surface as drawn, from the lower-numbered cell (the way it is drawn), worked
-    // out when a round first comes to it; none where a cart cannot go
-    let waters = network::Waters::new(r, g);
-    let mut ways: std::collections::HashMap<(usize, usize), Option<Vec<Vec3>>> = Default::default();
+    // a link a cart may take: worked out when a round first comes to it (its surface is only
+    // needed for that where a river is near)
     let mut way = |u: usize, v: usize| -> bool {
         let (lo, hi) = (u.min(v), u.max(v));
-        if !ways.contains_key(&(lo, hi)) {
-            let open = !under_bridge(lo) && !under_bridge(hi);
-            let pts = open.then(|| network::driven(g, cen[lo], cen[hi], true)).filter(|pts| !waters.drowns(g, pts));
-            ways.insert((lo, hi), pts);
+        let mut under_bridge = |cell: usize| *covered.entry(cell).or_insert_with(|| middle_under_bridge(g, cen, &links[cell], cell, bridges));
+        if under_bridge(lo) || under_bridge(hi) {
+            return false;
         }
-        ways[&(lo, hi)].is_some()
+        *dry.entry((lo, hi)).or_insert_with(|| {
+            let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
+            !waters.near(a, b) || !waters.drowns(g, surface(ways, g, cen, lo, hi))
+        })
     };
     let mut rounds = Vec::new();
     for start in 0..r.n {
@@ -93,8 +97,7 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<
     for cells in rounds {
         let mut pts: Vec<Vec3> = Vec::new();
         for w in cells.windows(2) {
-            let Some(Some(link)) = ways.get(&(w[0].min(w[1]), w[0].max(w[1]))) else { continue };
-            let mut link = link.clone();
+            let mut link = surface(ways, g, cen, w[0].min(w[1]), w[0].max(w[1])).clone();
             if w[0] > w[1] {
                 link.reverse();
             }
@@ -117,17 +120,40 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<
     out
 }
 
+/// What the carters' rounds need to know of the roads that is the same in
+/// every year, kept from one year to the next so that a year's rounds are
+/// quick to find on the main thread (the ground and the rivers never change,
+/// so neither does the way a road between two cells is drawn): the water on
+/// the map, each main-road link's surface, whether it keeps out of the water,
+/// and each link's bridges.
+pub struct RoadMemo {
+    waters: network::Waters,
+    ways: std::collections::HashMap<(usize, usize), Vec<Vec3>>,
+    dry: std::collections::HashMap<(usize, usize), bool>,
+    bridges: std::collections::HashMap<(usize, usize, bool), Vec<isostate_gen::bridge::RoadBridge>>,
+}
+
+impl RoadMemo {
+    pub fn new(r: &Replay, g: &Ground) -> RoadMemo {
+        RoadMemo { waters: network::Waters::new(r, g), ways: Default::default(), dry: Default::default(), bridges: Default::default() }
+    }
+}
+
 /// Whether, at a cell's middle, the roadway of one of the bridges of the
 /// roads that meet there (`links`, as from `network::road_segments`) stands
 /// above the road's ribbon, by more than a cart's lift: the foot of a ramp
-/// lies a little under the ribbon, and does not count.
-pub fn middle_under_bridge(g: &Ground, cen: &[(f32, f32)], links: &[(usize, usize, u8)], cell: usize) -> bool {
+/// lies a little under the ribbon, and does not count. `bridges` keeps each
+/// link's bridges once found.
+#[allow(clippy::type_complexity)]
+pub fn middle_under_bridge(g: &Ground, cen: &[(f32, f32)], links: &[(usize, usize, u8)], cell: usize, bridges: &mut std::collections::HashMap<(usize, usize, bool), Vec<isostate_gen::bridge::RoadBridge>>) -> bool {
     let middle = |c: usize| bevy::math::Vec2::new(cen[c].0, cen[c].1);
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     let p = middle(cell);
     let ribbon = height(p.x, p.y).max(0.0) + network::ROAD_LIFT;
     links.iter().any(|&(c, m, lv)| {
-        network::road_bridges(g, middle(c), middle(m), lv == 3, |_| isostate_gen::houses::Detail::Play)
+        bridges
+            .entry((c, m, lv == 3))
+            .or_insert_with(|| network::road_bridges(g, middle(c), middle(m), lv == 3, |_| isostate_gen::houses::Detail::Play))
             .iter()
             .any(|b| b.holds(p) && b.roadway_at(b.t_of(p), &height).is_some_and(|h| h > ribbon + crate::carts::LIFT))
     })
