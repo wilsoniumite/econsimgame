@@ -174,6 +174,38 @@ pub fn marks(y0: i64, y1: i64) -> Vec<i64> {
     v
 }
 
+/// How many years a mean over years spans (R11 in the backlog's sweep of findings).
+/// A single year's real wage moves by more than most changes to the rules do: it
+/// read 0.2 lower on every island of eight and 0.05 higher on the next eight
+/// (`docs/rules/towns.md`). Twenty years take out the weather and the building
+/// cycle and keep the century's shape.
+pub const SPAN: i64 = 20;
+
+/// The spans of years the means are taken over, as (first, last): twenty years
+/// ending twenty, forty, sixty years after the first year, and so on, then the
+/// twenty ending in the run's last year if that is not already one of them.
+/// 1751-1770, 1771-1790 ... 1871-1890 and 1881-1900 for a whole run; none for a
+/// run of under twenty years after its first.
+pub fn spans(y0: i64, y1: i64) -> Vec<(i64, i64)> {
+    let mut v = Vec::new();
+    let mut end = y0 + SPAN;
+    while end <= y1 {
+        v.push((end - SPAN + 1, end));
+        end += SPAN;
+    }
+    if y1 - y0 >= SPAN && v.last().map(|s| s.1) != Some(y1) {
+        v.push((y1 - SPAN + 1, y1));
+    }
+    v
+}
+
+/// The mean of a yearly series over the years `a..=b`, leaving out years with no
+/// value (a share whose total was empty all year); NaN if none has one.
+fn span_mean(v: &[f64], y0: i64, a: i64, b: i64) -> f64 {
+    let vals: Vec<f64> = (a..=b).filter_map(|y| v.get((y - y0) as usize).copied()).filter(|x| x.is_finite()).collect();
+    mean(&vals)
+}
+
 /// Every observer series averaged over each year's twelve months: `[series][year]`,
 /// in the registry's order. NaN where a share had an empty total all year.
 pub fn annual_means(r: &RunResult) -> Vec<Vec<f64>> {
@@ -258,6 +290,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for &y in &marks {
         b.num(format!("urban_share_{y}"), Kind::Share, at("urban_share", y));
     }
+    // twenty-year means (SPAN): urban_share_1881_1900 is the mean of the twenty years' yearly means
+    for &(a, z) in &spans(y0, y1) {
+        b.num(format!("urban_share_{a}_{z}"), Kind::Share, span_mean(series("urban_share"), y0, a, z));
+    }
     for &y in &marks {
         b.num(format!("towns_{y}"), Kind::Count, at("towns", y));
     }
@@ -329,6 +365,31 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     // accounts (docs/rules/accounts.md): who earns what, only of a run that kept books
     for (name, kind, v) in crate::accounts::facts(r) {
         b.num(name, kind, v);
+    }
+    // twenty-year means (SPAN) of what a scorecard reads: what a wage buys and output per
+    // head against the first year (real_wage_1881_1900_vs_1750), the shares of work, and
+    // work's share of the island's income where the books are kept
+    let spans = spans(y0, y1);
+    let mut against_first = vec![("real_wage", "real_wage"), ("output_per_head", "gdp_pc")];
+    if st.series.index.contains_key("real_wage_chained") {
+        against_first.push(("real_wage_chained", "real_wage_chained"));
+    }
+    for (label, name) in against_first {
+        for &(a, z) in &spans {
+            b.num(format!("{label}_{a}_{z}_vs_{y0}"), Kind::Ratio, span_mean(series(name), y0, a, z) / at(name, y0));
+        }
+    }
+    let (ag, ind) = (series("ag_share"), series("ind_share"));
+    let mines: Vec<f64> = ag.iter().zip(ind).map(|(a, i)| 1.0 - a - i).collect();
+    for (label, v) in [("farm_share", ag), ("industry_share", ind), ("mine_share", &mines[..])] {
+        for &(a, z) in &spans {
+            b.num(format!("{label}_{a}_{z}"), Kind::Share, span_mean(v, y0, a, z));
+        }
+    }
+    if st.series.index.contains_key("acct_share_work") {
+        for &(a, z) in &spans {
+            b.num(format!("income_share_work_{a}_{z}"), Kind::Share, span_mean(series("acct_share_work"), y0, a, z));
+        }
     }
 
     // ---- railways
@@ -566,4 +627,25 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     b.num("seconds".into(), Kind::Real, seconds);
 
     Facts { facts: b.facts, never_built, news }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_spans_are_twenty_years_and_the_last_ends_with_the_run() {
+        assert_eq!(spans(1750, 1900), vec![(1751, 1770), (1771, 1790), (1791, 1810), (1811, 1830), (1831, 1850), (1851, 1870), (1871, 1890), (1881, 1900)]);
+        // a run that ends on a span's end has no extra one
+        assert_eq!(spans(1750, 1790), vec![(1751, 1770), (1771, 1790)]);
+        assert_eq!(spans(1750, 1785), vec![(1751, 1770), (1766, 1785)]);
+        assert_eq!(spans(1750, 1770), vec![(1751, 1770)]);
+        assert!(spans(1750, 1769).is_empty() && spans(1750, 1750).is_empty());
+        assert_eq!(spans(1750, 2050).last(), Some(&(2031, 2050)));
+        // a year with no value is left out of the mean, not counted as nought
+        let v = [1.0, 2.0, f64::NAN, 4.0, 5.0];
+        assert_eq!(span_mean(&v, 1750, 1751, 1753), 3.0);
+        assert_eq!(span_mean(&v, 1750, 1750, 1754), 3.0);
+        assert!(span_mean(&v, 1750, 1752, 1752).is_nan());
+    }
 }
