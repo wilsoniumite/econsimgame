@@ -36,8 +36,11 @@ use crate::state::State;
 /// A price moves by at most this much (in logs) a month, as in the port's rule.
 pub const MAX_STEP: f64 = 0.12;
 
+/// Read through [`PriceSettings`], so that a setting that makes no sense on its
+/// own is refused as it is read, by every road (a file, an override, the
+/// sweep's `--set`, a params.json read back).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[serde(try_from = "PriceSettings")]
 pub struct PriceParams {
     /// Merchants mark prices with their stock and stop buying into a glut.
     pub enabled: bool,
@@ -49,10 +52,10 @@ pub struct PriceParams {
     pub markup: f64,
     /// Merchants take all a works makes while the town's stock of its good is
     /// under this many months of sales and shipments. 0: they always take all.
-    /// It has to stand well above `price_target_months`, the stock merchants
-    /// mean to hold: a brake that bites at the target chokes every trade.
     pub glut_months: f64,
     /// At this many months they take only `glut_floor` of the works' capacity.
+    /// It has to stand above [`brake_floor`], which two numbers of the port's
+    /// set, and a setting that does not is refused where it is read ([`check`]).
     pub glut_stop_months: f64,
     /// The least share of a works' capacity merchants go on taking in the worst glut.
     pub glut_floor: f64,
@@ -69,6 +72,54 @@ impl PriceParams {
     /// The game's merchants.
     pub fn game() -> PriceParams {
         PriceParams { enabled: true, ..PriceParams::default() }
+    }
+}
+
+/// [`PriceParams`] as written in a file, before it is checked. The same fields;
+/// what is left out takes the default.
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PriceSettings {
+    enabled: bool,
+    markup: f64,
+    glut_months: f64,
+    glut_stop_months: f64,
+    glut_floor: f64,
+}
+
+impl Default for PriceSettings {
+    fn default() -> PriceSettings {
+        let PriceParams { enabled, markup, glut_months, glut_stop_months, glut_floor } = PriceParams::default();
+        PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor }
+    }
+}
+
+impl TryFrom<PriceSettings> for PriceParams {
+    type Error = String;
+
+    /// Refuse a setting that makes no sense whatever else is set, in one
+    /// sentence that names it. Whether the switch is on does not matter: a
+    /// file that says a nonsense number has a mistake in it either way.
+    fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
+        let PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor } = s;
+        for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months), ("glut_floor", glut_floor)] {
+            if !x.is_finite() {
+                return Err(format!("prices.{name} is {x}, and it has to be an ordinary number"));
+            }
+        }
+        if markup < 0.0 {
+            return Err(format!("prices.markup is {markup}, and a negative markup asks more as the shelves fill, which wrecks the island: give 0 (the port's rule) or more, 0.3 to 0.8 being where it steadies prices"));
+        }
+        if glut_months < 0.0 {
+            return Err(format!("prices.glut_months is {glut_months}, and it has to be a number of months of stock, or 0 for merchants who always take all"));
+        }
+        if glut_months > 0.0 && glut_stop_months < glut_months {
+            return Err(format!("prices.glut_stop_months is {glut_stop_months}, under glut_months ({glut_months}), and merchants cannot stop taking before they start to take less: give it glut_months or more (the same is a brake that drops from all to glut_floor at once)"));
+        }
+        if !(0.0..=1.0).contains(&glut_floor) {
+            return Err(format!("prices.glut_floor is {glut_floor}, and it is a share of a works' capacity, from 0 to 1"));
+        }
+        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, glut_floor })
     }
 }
 
@@ -159,6 +210,53 @@ pub fn anchor_follows(st: &mut State, C: &Content, P: &Params, t: usize, g: usiz
     st.price_anchor[(t, g)] = (st.price_anchor[(t, g)] * st.price[(t, g)] / was).clamp(lo, hi);
 }
 
+/// The stock, in months of sales and shipments, at or under which the brake on
+/// a glut must not yet be fully on. It leans on two numbers the brake does not
+/// own. Merchants mean to hold `price_target_months` of a good (2), so a brake
+/// that is full on by then falls on every trade: from 0.5 to 0.6 months every
+/// works is on short time for ever (docs/rules/prices.md). And a town may ship
+/// at most `trade_cap` of its stock a month (0.3), so a town that only ships a
+/// good never holds less than `1 / trade_cap` months of it (3.3), and a brake
+/// full on by then falls on every exporter. The brake may start below the floor,
+/// as long as it is still easing off there: from 0.5 to 40 months, and from 2
+/// to 8, measure as well as the game's 4 to 8 (docs/rules/prices.md,
+/// docs/probes/sens-prices.md). Whoever moves either number moves this floor
+/// with it, and [`check`] refuses a `glut_stop_months` left at or under it.
+pub fn brake_floor(P: &Params) -> f64 {
+    let ships = if P.trade_cap > 0.0 { 1.0 / P.trade_cap } else { 0.0 };
+    P.price_target_months.max(ships)
+}
+
+/// Settings of the merchants' prices that cannot be run with the rest of the
+/// parameters, refused in one sentence that names the setting. Called by
+/// `Params::check` wherever parameters are read from a file or an override; a
+/// `Params` built in code is not checked, so a test may still try a brake that
+/// bites where the game's never would.
+pub fn check(P: &Params) -> Result<(), String> {
+    let pp = &P.prices;
+    if !pp.enabled || pp.glut_months == 0.0 {
+        return Ok(());
+    }
+    let floor = brake_floor(P);
+    if !(pp.glut_stop_months > floor) {
+        return Err(format!(
+            "prices.glut_stop_months is {}, and the brake on a glut must still be easing off above {} months of stock, the larger of price_target_months ({}) and the stock a town that only ships holds at a trade_cap of {} (1 / trade_cap): raise glut_stop_months with them",
+            pp.glut_stop_months,
+            short(floor),
+            P.price_target_months,
+            P.trade_cap
+        ));
+    }
+    Ok(())
+}
+
+/// A number worked out, as a person would write it: at most two decimals, none
+/// trailing. (Settings are written as they were given.)
+fn short(x: f64) -> String {
+    let s = format!("{x:.2}");
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
+}
+
 /// The share of capacity merchants will take at a stock of `stock` against
 /// smoothed monthly sales and shipments of `outflow`: 1 up to `glut_months` of
 /// sales, falling in a straight line to `glut_floor` at `glut_stop_months`.
@@ -233,6 +331,48 @@ mod tests {
         let mut off = State { price: crate::mat::Mat::filled(2, C.G, base), ..State::default() };
         anchor_follows(&mut off, &C, &crate::default_params(), 1, 0, 2.0 * base);
         assert_eq!(off.price_anchor.rows, 0);
+    }
+
+    /// Nonsense settings are refused as they are read, each in one sentence
+    /// naming it; sense, the edges included, is read as written.
+    #[test]
+    fn nonsense_settings_are_refused_where_they_are_read() {
+        let read = |text: &str| crate::game_params().with_toml_overrides(text);
+        for (text, name) in [
+            ("prices = { markup = -0.5 }", "prices.markup is -0.5"),
+            ("prices = { glut_months = -1.0 }", "prices.glut_months is -1"),
+            ("prices = { glut_stop_months = 3.0 }", "prices.glut_stop_months is 3"),
+            ("prices = { glut_floor = 1.5 }", "prices.glut_floor is 1.5"),
+            ("prices = { glut_floor = -0.1 }", "prices.glut_floor is -0.1"),
+        ] {
+            let err = read(text).expect_err(text);
+            assert!(err.contains(name), "{text}: {err}");
+            assert_eq!(err.matches(". ").count(), 0, "{text}: more than one sentence: {err}");
+        }
+        // nonsense is nonsense with the switch off too, and a number that is
+        // not one (TOML can write it; it reaches the struct only when TOML is read
+        // straight into the parameters, as here: a --params file goes by way of
+        // JSON, which has no such numbers, and is refused there as "invalid type: null")
+        assert!(crate::default_params().with_json_overrides(r#"{"prices": {"markup": -1}}"#).is_err());
+        let err = crate::Params::from_toml_str("[prices]\nmarkup = nan\n").expect_err("a markup that is not a number");
+        assert!(err.contains("prices.markup is NaN, and it has to be an ordinary number"), "{err}");
+        let err = crate::Params::from_toml_str("[prices]\nglut_stop_months = inf\n").expect_err("a brake that never stops");
+        assert!(err.contains("prices.glut_stop_months is inf, and it has to be an ordinary number"), "{err}");
+        // the sweep's own reader meets the same refusal
+        let err = crate::sweep::set_field(&crate::game_params(), "prices.markup", &serde_json::json!(-1.0)).expect_err("a negative markup by --set");
+        assert!(err.contains("prices.markup is -1"), "{err}");
+        // the edges are sense: no markup, a brake that is off, a cliff at the start, any floor from 0 to 1
+        for text in ["prices = { markup = 0.0 }", "prices = { glut_months = 0.0, glut_stop_months = 0.0 }", "prices = { glut_stop_months = 4.0 }", "prices = { glut_floor = 1.0 }"] {
+            read(text).unwrap_or_else(|e| panic!("{text}: {e}"));
+        }
+        // and what is written is what is read, with the rest the game's
+        let p = read("prices = { markup = 0.8 }").unwrap().prices;
+        assert_eq!(p, PriceParams { markup: 0.8, ..PriceParams::game() });
+        // the port's and the game's numbers go out and come back unchanged
+        for P in [crate::default_params(), crate::game_params()] {
+            let back: crate::Params = serde_json::from_value(serde_json::to_value(&P).unwrap()).unwrap();
+            assert_eq!(back.prices, P.prices);
+        }
     }
 
     #[test]
