@@ -130,7 +130,8 @@ pub struct Header {
     pub events: Vec<Event>,
     /// the names of the display classes of `mix_a` and `mix_b`, and of the land
     /// uses of `use`, in the order of their numbers: checked against the order
-    /// the viewer draws them in (`known_names`). A Python run has no `disp`.
+    /// the viewer draws them in (`known_names`). Both recorders, the Python's
+    /// and the core's, have always written both.
     #[serde(default)]
     pub disp: Vec<String>,
     pub uses: Vec<String>,
@@ -282,7 +283,7 @@ fn typed<'a>(path: &str, buf: &'a [u8], base: usize, a: &ArrayInfo, want: &str) 
 /// Whether the run numbers its display classes and its land uses as the
 /// viewer does: the ground's shader, the inspector and the towns read them by
 /// their numbers, so a run that numbered them otherwise would be drawn wrong
-/// without a word. A list the run does not give (a Python run has no `disp`)
+/// without a word. A list the run does not give (as in the tests' tiny runs)
 /// is taken on trust.
 fn known_names(path: &str, header: &Header) -> Result<(), String> {
     let lists: [(&str, &[String], &[&str]); 2] = [
@@ -712,7 +713,7 @@ mod tests {
     #[test]
     fn a_run_that_numbers_its_land_otherwise_is_an_error() {
         let ours = |names: &[&str]| serde_json::json!(names);
-        // the lists as the core writes them are read, and so is a run that gives none (the Python has no `disp`)
+        // the lists as the core writes them are read, and so is a run that gives none (the tiny run here)
         let same = with_header(|v| {
             v["disp"] = ours(&isostate_core::record::DISP);
             v["uses"] = ours(&isostate_core::land::USE_NAMES);
