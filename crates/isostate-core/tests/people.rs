@@ -349,17 +349,20 @@ fn in_company_no_wage_runs_away_or_flips() {
 /// People who take ship after a hungry year are news of their own kind, and not
 /// hunger news (R195 in the backlog's sweep of findings; docs/rules/scorecard.md):
 /// the sweep counts them apart, as `news_emigration` and `emigration_years`.
-/// Island 2 under the game's rules has the one sailing of sixteen islands, in 1827.
+/// Island 26 under the game's rules has a sailing, in 1821. (The test was
+/// written on island 2's of 1827, the one sailing of sixteen islands; its
+/// history went another way when towns stopped hiring hands they do not have,
+/// docs/rules/hands.md.)
 #[test]
 fn a_sailing_is_news_of_its_own_kind() {
     let rules = isostate_core::params::Rules::Game;
     let mut P = rules.params();
-    P.seed = 2;
+    P.seed = 26;
     P.n_families = 6;
-    P.end_year = Some(1827);
+    P.end_year = Some(1821);
     let r = sim::run_with(&P, rules.content(), false, false).expect("the run finishes");
     let sailed: Vec<&String> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| &e.title).collect();
-    assert!(!sailed.is_empty(), "the case is gone: nobody took ship on island 2 by 1827");
+    assert!(!sailed.is_empty(), "the case is gone: nobody took ship on island 26 by 1821");
     assert!(sailed.iter().all(|t| t.contains("leave the island")), "{sailed:?}");
     let hunger: Vec<&String> = r.events.iter().filter(|e| e.kind == "famine").map(|e| &e.title).collect();
     assert!(hunger.iter().all(|t| !t.contains("leave the island")), "a sailing filed as hunger: {hunger:?}");

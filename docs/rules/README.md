@@ -534,3 +534,8 @@ One line each as they arrive: the name, its page, its switch.
   turnpikes and bridges that somebody pays for, a parish out of its rate and
   a turnpike trust out of its tolls. [dx-roads.md](../probes/dx-roads.md),
   `roads.enabled`.
+- **hands**: a town cannot hire hands it does not have. When even the
+  highest wage the month allows leaves more hands wanted than the town has
+  to spare, the wage stays there and every employer in the town is cut by
+  the same share to the hands there are, and carries forward what it got.
+  [hands.md](hands.md), `hands.ration`.
