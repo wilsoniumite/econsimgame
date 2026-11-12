@@ -611,8 +611,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
     }
     // tree (docs/rules/tree.md, "Plant waits"): what households and the works
-    // at work ask for, before the orders for new plant and for railways are added
-    let R_now = P.tree.plant_waits.then(|| R.clone());
+    // at work ask for, before the orders for new plant and for railways are
+    // added. Only with the tree laid: without it nothing that plant is built of
+    // is a works' daily input, and the rule measured as no gain
+    let R_now = (P.tree.plant_waits && C.stage > 0).then(|| R.clone());
     add_by_town(&mut R, &ot, &req_inv);
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for pr in &st.projects {

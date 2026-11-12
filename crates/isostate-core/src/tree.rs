@@ -50,7 +50,8 @@ pub struct TreeParams {
     /// share what is left (`econ::step_month`). Under the port everyone is cut
     /// alike, which is harmless while nothing that plant is built of is also a
     /// works' daily input; with the tree bricks, sawn timber, lime and glass
-    /// are both, and each spring's orders for plant stopped the builders.
+    /// are both, and each spring's orders for plant stopped the builders. It
+    /// acts only with a stage laid: at stage 0 a run is the run without the tree.
     pub plant_waits: bool,
 }
 

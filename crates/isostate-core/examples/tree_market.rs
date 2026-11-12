@@ -410,7 +410,7 @@ fn main() {
         println!("{line}");
     }
     if !time {
-        println!("\nFILL: how much of what was asked for the market had (1: every order filled), January to March and the rest of the year");
+        println!("\nFILL: how much of what was asked for the market had (1: every order filled; with plant waiting, of what households and the works at work asked for), January to March and the rest of the year");
         println!("{:<12}  Jan-Mar  1750-99  1800-49    1850-  Apr-Dec  1750-99  1800-49    1850-", "good");
         for g in 0..C.G {
             let mut line = format!("{:<12}", C.good_name[g]);
