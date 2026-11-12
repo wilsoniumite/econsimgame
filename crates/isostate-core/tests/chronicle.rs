@@ -342,7 +342,8 @@ fn kept_titles(events: &[Event]) -> Vec<&str> {
 #[test]
 fn ranking_a_decade() {
     let P = game_params();
-    // caps: two inventions, one of any other kind, four in all; ties to the earlier
+    // caps: two inventions, two turning points, one of any other kind, four in
+    // all; ties to the earlier
     let mut ev = vec![
         item(1761.5, "discovery", 0.9, "invention a"),
         item(1762.5, "discovery", 0.9, "invention b"),
@@ -354,7 +355,7 @@ fn ranking_a_decade() {
         item(1768.8, "town", 0.6, "town"),
     ];
     chronicle::rank(&mut ev, &P, 1750, 1900, 1900);
-    assert_eq!(kept_titles(&ev), ["invention a", "invention b", "crossing a", "boom"]);
+    assert_eq!(kept_titles(&ev), ["invention a", "invention b", "crossing a", "crossing b"]);
     // the player's own great moment has a place, whatever else happened
     let mut own = item(1769.95, "family", 0.7, "the family takes up iron");
     own.family = Some(0);
@@ -685,6 +686,27 @@ fn towns_and_districts_have_stories() {
         let peak_year: i64 = note.split("the peak of ").nth(1).and_then(|s| s.get(..4)).and_then(|y| y.parse().ok()).unwrap_or_else(|| panic!("a year in: {note}"));
         assert!(peak_year > r.state.town_founded[e.town.unwrap()], "{}: {}", e.title, e.text);
     }
+    // a town told as the island's first or second is truly in that place that
+    // year, and a town it is said to overtake is below it (docs/probes/news-read.md,
+    // fault 1: "Kelside overtakes Melbourne as the island's first town" was once
+    // told of a town in fourth place, as if it were second)
+    let mut places = 0;
+    for e in stories.iter().filter(|e| e.title.ends_with("the island's first town") || e.title.ends_with("the island's second town")) {
+        let k = (e.year.floor() as i64 - 1750) as usize;
+        let pop = &r.state.chron.pop[k];
+        let mut order: Vec<usize> = (0..pop.len()).filter(|&t| pop[t] > 0.0).collect();
+        order.sort_by(|&a, &b| pop[b].total_cmp(&pop[a]).then(a.cmp(&b)));
+        let place = if e.title.ends_with("first town") { 0 } else { 1 };
+        let t = e.town.unwrap();
+        assert_eq!(order[place], t, "{} in {}", e.title, e.year.floor());
+        if let Some(rest) = e.title.split(" overtakes ").nth(1) {
+            let other = rest.split(" as the island's").next().unwrap();
+            let o = r.state.town_name.iter().position(|n| n == other).expect("a town of that name");
+            assert!(pop[o] < pop[t], "{}: {} has {} to {}", e.title, other, pop[o], pop[t]);
+        }
+        places += 1;
+    }
+    assert!(places >= 5, "seed 7 tells its first and second places: {places} stories");
     // the same town is not said to decline twice within a few years
     let mut told: BTreeMap<&str, f64> = BTreeMap::new();
     for e in stories.iter().filter(|e| e.title.ends_with("in decline")) {

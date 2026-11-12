@@ -1149,7 +1149,7 @@ fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, yea
     ev.cell2 = from.map(|b| st.town_node[b]);
     ev.why = why(
         P,
-        "the island's towns in order",
+        "one town's people against another's",
         &format!("people in {a} and its district"),
         st.pop[now],
         (1.0 + Q.overtake_margin) * st.pop[next],
