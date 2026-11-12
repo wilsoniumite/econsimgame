@@ -684,6 +684,159 @@ mod tests {
         }
     }
 
+    /// A game with `n` orders in it: the size of a busy game's save, so that
+    /// a write of it takes long enough to be killed in.
+    fn busy(started: u64, n: usize) -> Save {
+        let orders = (0..n).map(|i| Given { year: 1750 + (i as i64 / 40).min(150), month: 0, order: Order::MoveSeat { town: i } }).collect();
+        Save { orders, year: 1750 + (n as i64 / 40).min(150), ..save(started, 1750) }
+    }
+
+    /// Not a check of its own: the copy of the game that
+    /// `a_game_killed_while_it_saves_leaves_a_whole_latest_save` starts and
+    /// kills. It takes the place as a game does, goes on with the newest save
+    /// that can be read (or begins a new game over it, if told to), and saves
+    /// without rest, an order and then a year's end, until it is killed.
+    #[test]
+    #[ignore = "started, and killed, by a_game_killed_while_it_saves_leaves_a_whole_latest_save"]
+    fn the_copy_that_is_killed() {
+        let Some(dir) = std::env::var_os("ISOSTATE_KILLED_IN").filter(|v| !v.is_empty()) else { return };
+        let path = PathBuf::from(dir).join("game.json");
+        let mut s = match Saver::claim(path.clone()) {
+            Ok(s) => s,
+            Err(held) => {
+                eprintln!("the copy before this one was killed, and its place is still held: {held:?}");
+                std::process::exit(3);
+            }
+        };
+        let (was, _, passed) = read_latest(&path).expect("there is a save to go on with");
+        assert!(passed.is_empty(), "the latest could not be read: {passed:?}");
+        let new = std::env::var_os("ISOSTATE_KILLED_NEW").is_some();
+        let (started, mut n) = if new { (was.started + 1, 1500) } else { (was.started, was.orders.len()) };
+        loop {
+            n += 1;
+            s.write(&busy(started, n), false).unwrap();
+            s.write(&busy(started, n), true).unwrap();
+        }
+    }
+
+    #[test]
+    fn saving_a_busy_game_takes_a_small_part_of_a_year() {
+        // a year at the clock's fastest is half a second, and the simulation's thread writes the save
+        // after it has handed the year over: what the writing costs (a file written and put on the
+        // disk, the latest copied aside and put on the disk, four renames) must stay a small part of that
+        let dir = scratch("timed");
+        let path = dir.join("game.json");
+        let game = busy(1, 8000);
+        let size = game.to_text().len();
+        assert!(size > 300_000, "{size}");
+        let mut s = Saver::new(path.clone());
+        s.write(&game, true).unwrap();
+        let (mut year_ends, mut orders) = (Vec::new(), Vec::new());
+        for n in 0..40 {
+            let t0 = std::time::Instant::now();
+            s.write(&busy(1, 8001 + n), true).unwrap();
+            year_ends.push(t0.elapsed().as_secs_f32() * 1000.0);
+            let t0 = std::time::Instant::now();
+            s.write(&busy(1, 8001 + n), false).unwrap();
+            orders.push(t0.elapsed().as_secs_f32() * 1000.0);
+        }
+        // and reading one, which a start does once and a save's first write once more
+        let t0 = std::time::Instant::now();
+        read(&path).unwrap();
+        let reading = t0.elapsed().as_secs_f32() * 1000.0;
+        let middle = |v: &mut Vec<f32>| {
+            v.sort_by(|a, b| a.total_cmp(b));
+            (v[v.len() / 2], v[v.len() - 1])
+        };
+        let (year_end, year_end_worst) = middle(&mut year_ends);
+        let (order, order_worst) = middle(&mut orders);
+        println!("a save of {} kilobytes: at a year's end {year_end:.1} ms (the slowest {year_end_worst:.1}), after an order {order:.1} ms (the slowest {order_worst:.1}), read in {reading:.1} ms", size / 1000);
+        assert!(year_end < 100.0 && order < 100.0, "a save takes {year_end:.0} ms at a year's end and {order:.0} ms after an order");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_game_killed_while_it_saves_leaves_a_whole_latest_save() {
+        let dir = scratch("killed");
+        let path = dir.join("game.json");
+        Saver::new(path.clone()).write(&busy(1, 1500), true).unwrap();
+        let mut last = read(&path).unwrap();
+        let mut aside: Vec<Save> = Vec::new();
+        let mut in_a_write = 0;
+        // thirty-six copies of the game, each killed where it stands a few milliseconds after it has got
+        // going; every third begins a new game over the one before, more of them than games are kept
+        for round in 0..36u64 {
+            let new = round % 3 == 2;
+            let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+            cmd.args(["--ignored", "--exact", "saves::tests::the_copy_that_is_killed", "--nocapture"]).env("ISOSTATE_KILLED_IN", &dir).env_remove("ISOSTATE_KILLED_NEW");
+            cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            if new {
+                cmd.env("ISOSTATE_KILLED_NEW", "1");
+            }
+            let mut child = cmd.spawn().unwrap();
+            // it has the place and is saving when the latest is no longer the one it found
+            let t0 = std::time::Instant::now();
+            while read(&path).is_ok_and(|now| now == last) {
+                assert!(child.try_wait().unwrap().is_none(), "round {round}: the copy ended by itself: a lock left by the one killed before it kept it out, or it could not go on with what was left");
+                assert!(t0.elapsed().as_secs() < 60, "round {round}: the copy never saved");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            // (a time that differs from round to round, and is not a round number of saves)
+            let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos() as u64;
+            std::thread::sleep(std::time::Duration::from_micros(500 + (nanos / 7 + round * 2_113) % 40_000));
+            child.kill().unwrap();
+            child.wait().unwrap();
+
+            let when = format!("round {round}{}", if new { ", a new game" } else { "" });
+            // the latest is whole, and is the game that was being played, no further back than it had been seen
+            let latest = read(&path).unwrap_or_else(|e| panic!("{when}: there is no latest save ({e})"));
+            assert_eq!(latest, busy(latest.started, latest.orders.len()), "{when}: the latest is not a save the game wrote");
+            // every file set aside is whole
+            let there: Vec<Save> = (1..=GAMES_KEPT).filter(|&n| game_before(&path, n).exists()).map(|n| read(&game_before(&path, n)).unwrap_or_else(|e| panic!("{when}: a game set aside is not whole ({e})"))).collect();
+            if new {
+                // the game before it is the latest still, or is set aside whole, exactly as it was left
+                assert!(latest.started == last.started + 1 || latest == last, "{when}: the latest is neither game");
+                assert!(latest == last || there.first() == Some(&last), "{when}: the game that was there was not set aside as it stood");
+                // (it may have been set aside and the copy killed before the new game took its place)
+                if there.first() == Some(&last) && aside.first() != Some(&last) {
+                    aside.insert(0, last.clone());
+                }
+            } else {
+                assert!(latest.started == last.started && latest.orders.len() >= last.orders.len(), "{when}: the game went back, from {} orders to {}", last.orders.len(), latest.orders.len());
+            }
+            // the games set aside before are all still there, in their order; a copy killed while it made
+            // room among as many as are kept may have let the oldest go, and no more than that
+            assert!(there.len() <= aside.len() && there.len() + 1 >= aside.len().min(GAMES_KEPT), "{when}: {} games had been set aside and {} are there", aside.len(), there.len());
+            assert!(there[..] == aside[..there.len()], "{when}: the games set aside are not the ones that were, in their order");
+            aside.truncate(there.len());
+            // every earlier year kept is whole, and of the game in the latest's place
+            for n in 1..=KEPT {
+                if earlier(&path, n).exists() {
+                    let year = read(&earlier(&path, n)).unwrap_or_else(|e| panic!("{when}: an earlier year is not whole ({e})"));
+                    assert_eq!(year.started, latest.started, "{when}: an earlier year of another game is beside the latest");
+                }
+            }
+            // nothing is in the folder but what a game keeps there, and at most what one write was in the middle of
+            let known = |name: &str| name == "game.json" || name == "game.json.lock" || name == "game.writing.json" || name.ends_with(".copying.json")
+                || (1..=KEPT).any(|n| name == format!("game.{n}.json")) || name == "game.previous.json" || (2..=GAMES_KEPT).any(|n| name == format!("game.previous.{n}.json"));
+            let there = files(&dir);
+            assert!(there.iter().all(|name| known(name)), "{when}: {there:?}");
+            if there.iter().any(|name| name == "game.writing.json" || name.ends_with(".copying.json")) {
+                in_a_write += 1;
+            }
+            last = latest;
+        }
+        assert!(aside.len() >= 5, "few of the new games got as far as their first save: {}", aside.len());
+        // (not every kill lands in the middle of a write, but if none did this showed nothing)
+        assert!(in_a_write >= 3, "only {in_a_write} of 36 copies were killed in the middle of a write");
+        // what the last one left in the middle of is cleared by the next save, and the game goes on
+        let mut s = Saver::claim(path.clone()).unwrap();
+        s.write(&busy(last.started, last.orders.len() + 1), true).unwrap();
+        assert!(!files(&dir).iter().any(|name| name == "game.writing.json"));
+        drop(s);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_second_copy_cannot_take_the_place_and_a_crash_does_not_keep_it() {
         let dir = scratch("lock");
