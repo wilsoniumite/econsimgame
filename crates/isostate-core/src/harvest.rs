@@ -74,7 +74,9 @@ pub struct HarvestParams {
     /// 0.15 is one and a half times what the price of grain moves in a year
     /// with the game's other rules beside it (0.10: households that lean off
     /// bread as they grow richer make it jumpier than the 0.08 this was first
-    /// set against, at 0.12; docs/rules/harvest.md, "In company").
+    /// set against, at 0.12; docs/rules/harvest.md, "In company"). A dearth is
+    /// told only while `prices.enabled`: under the port's price rule grain's
+    /// price swings by itself and would trip the line with no weather at all.
     pub dearth_rise: f64,
 }
 
@@ -329,7 +331,8 @@ pub fn snapshot(rec: &mut Record, st: &State, P: &Params, k: usize) {
 ///   country's own harvest is not news;
 /// - a dearth, when the year's price of grain stands `dearth_rise` above its
 ///   trend (the mean of the five years before, carried forward at the drift of
-///   the last twenty), at most once in `DEARTH_QUIET` years.
+///   the last twenty), at most once in `DEARTH_QUIET` years, and only with the
+///   merchants' prices on (`prices.enabled`).
 fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Event>) {
     let H = &P.harvest;
     let Some(fs) = farm_sector(C) else { return };
@@ -504,9 +507,12 @@ fn news(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut Vec<Eve
         }
     }
 
-    // dearth: the price of grain far above its trend
+    // dearth: the price of grain far above its trend. Told only beside the
+    // merchants' prices: the dearth reads the price and nothing else, and under
+    // the port's price rule that price swings by itself, so with no weather at
+    // all the line was tripped fifteen times a run (docs/rules/harvest.md)
     let k = year - y0;
-    if price.is_some() && k >= 6 && year - st.harvest_dearth_year >= DEARTH_QUIET {
+    if P.prices.enabled && price.is_some() && k >= 6 && year - st.harvest_dearth_year >= DEARTH_QUIET {
         let lp = |y: i64| price_at(y).ln();
         let level = (1..=5).map(|j| lp(year - j)).sum::<f64>() / 5.0;
         let m = (k - 1).min(20);
