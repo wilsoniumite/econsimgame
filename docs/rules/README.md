@@ -28,6 +28,7 @@ command line (`crates/isostate-core/FAMILIES.md`).
 | the viewer, a new game | game | (a replay shows whatever was recorded) |
 | `examples/bots.rs`, `examples/live.rs` | game | `--rules port` |
 | `tests/parity.rs`, `tests/golden.rs`, `tests/run.rs`, `tests/families.rs` | port | |
+| `tests/golden_game.rs` | game, with six families | |
 
 In code, `Rules::Port` and `Rules::Game` name the two; `rules.params()` and
 `rules.content()` give what a run needs. A `--params FILE` (TOML or JSON) is
@@ -65,8 +66,10 @@ rules, invisible in a port run's files.
    after, and what worries you. Add a line to the list at the end of this
    page.
 7. **Check it.** `cargo test -p isostate-core --release` must pass with the
-   golden constants untouched. Then run a sweep under the game's rules against
-   the port's baseline (below) and read what moved.
+   port's golden constants untouched. Then run a sweep under the game's rules
+   against the port's baseline (below) and read what moved. Switching the
+   mechanism on in `game_params()` moves the game's golden hashes, which are
+   anchored again when it lands ("The game's golden test", below).
 
 In code, for canals:
 
@@ -141,6 +144,105 @@ diff the two.
 
 The golden test watches one seed for any change at all. Whether a change is
 for the better is the sweep's question.
+
+## The game's golden test
+
+The port's golden test cannot see the game: under `default_params()` nearly
+every hook of the game's rules returns on its first line. `tests/golden_game.rs`
+holds the game in the same way. It runs seed 7 to 1900 under `game_params()`
+and `game_content()` with six families, as the viewer plays it, and hashes
+four things apart (64-bit FNV-1a), so that a failure says which moved:
+
+| name | what is hashed |
+|---|---|
+| `economy` | `series_monthly.csv` as `isostate-core run` writes it, less the books' own columns |
+| `books` | the books' own columns (`acct_`), with the year and month |
+| `news` | `events.json` |
+| `run.bin` | the record the viewer draws, with the date it was written set to `0000-00-00` |
+
+The four hashes are kept in `tests/golden_game.txt`, beside the test, not in
+its code. The island is run twice, side by side on two threads, and the two
+runs must agree before they are set against the file. So a failure is one of
+two things, and the message says which:
+
+- **The run is not repeatable.** The two runs disagree. Something in the run
+  reads what is not the rules and the island (a clock, a thread, an
+  environment variable, a hash map walked in its own order). That is a fault
+  whatever the file says, and no hash may be taken until it is found.
+- **The game moved.** The two runs agree with each other and not with the
+  file. The message names which of the four moved.
+
+Unlike the port's, these hashes are meant to move. The game's rules are
+changed on purpose often (every stage of the rules pass, a rule mended or
+retuned, a new rule switched on), and the economy, the news and `run.bin`
+move with them. That is what the test is for: a change that says it moves
+nothing must leave all four as they were, and a change that moves the game
+says so and anchors them again. A change to the books alone moves `books`,
+`run.bin` (which carries the books' tables) or both, and never `economy` or
+`news`: the economy moving when only the books were touched means the books
+touched the economy. (Moving the books' note of the works' dividends below
+the families' take of theirs moves `run.bin` alone, since those tables are
+not among the monthly `acct_` columns.) Like the port's, these hashes are this machine's (see
+"What worries me").
+
+**Anchoring them again.** On the tree that will land: the branch with the
+newest main merged into it as its last step, or the merge into main itself.
+Two branches that both move the game must meet here, and the hashes of
+either alone are nobody's. In practice the builder of a stage takes them on
+the branch, so that its commits pass their tests; whoever merges main into it
+afterwards (its checker, or whoever lands it if main has moved again) takes
+them once more after the merge, and that is the commit that counts. When
+two such branches have both changed `golden_game.txt`, the merge conflicts on
+its four lines: keep neither side's, but settle the conflict with either and
+then paste in what the command prints on the merged tree. The command,
+
+```bash
+ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
+```
+
+checks nothing and stops with the four lines to paste into
+`tests/golden_game.txt`, after checking that the two runs agree. Who may do
+it: whoever builds, checks or lands a change that moves the game's rules on
+purpose, or what `run.bin` records for the viewer (the works' site planner
+moved `run.bin` alone by writing each good's price into its header), as
+above, and only after the sweep under the game's rules has been
+read and what moved is what was meant. A stage behind its own switch can
+show that nothing else moved: with the switch turned off in `game_params()`
+for one run (and not committed so), the test must pass on the old four. Who
+may not: a change that claims to move nothing. If the test fails on such a
+change, the change is wrong, not the file. The commit that anchors them says, in its message, which of the four
+moved and why ("economy, news and run.bin: stage 2 of the rules pass, the
+ration"), and the line `# Taken:` in the file is changed to say the same in
+a few words.
+
+To see what moved,
+
+```bash
+ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --release --test golden_game
+```
+
+writes `game6/` under that directory with the three files of the run, before
+and after, for a diff.
+
+The test makes two runs of the game at once, which costs about one run's
+time on a machine with a core to spare. On 12 November 2026, with other
+helpers' builds running beside it, it took 52 seconds within `cargo test -p
+isostate-core --release` (the port's two golden runs took 49 beside it), 70
+seconds alone, and 174 seconds at the busiest hour; its check that evening
+saw 71 seconds within the suite and 24 to 128 alone. It is in the default run,
+like the port's, and not behind `#[ignore]`: the gate is the release run, and
+a guard that is skipped by default guards nothing. A debug build gives the same
+four hashes in about the same time (76 seconds, `cargo test -p isostate-core
+--test golden_game`), since the core is optimised in the debug profile too
+(`Cargo.toml`).
+
+What it cannot see: another seed, another number of families, a player's
+orders (`tests/families.rs` and the viewer's `live_tests.rs` hold those), and
+the land, which is off in the game's rules for now. What it sees and cannot
+explain is the order of the month: a hook moved across a read or a write of
+another fails it without saying why. That order is written down in the
+comment above `econ::step_month`: what is read from last month, the order the
+four takers of hands come in, and where chance enters.
 
 ## The sweep
 
@@ -438,7 +540,8 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   suspect this first.
 - **The golden test watches the economy, not the map.** It hashes the monthly
   series and the news. A change that only moves what `run.bin` records for
-  the viewer (a map layer, the works' table) passes it.
+  the viewer (a map layer, the works' table) passes it. The game's golden
+  test hashes `run.bin` as well, but only under the game's rules.
 - **Without the Python dumps the golden test stands alone.** `tests/parity.rs`
   compares each step with the Python, but only against fixtures made by
   `parity/dump_state.py`, which are not in the repository; with none there
