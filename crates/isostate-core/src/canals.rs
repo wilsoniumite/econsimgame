@@ -76,30 +76,13 @@ pub struct CanalParams {
     pub wages: f64,
     /// The navvies are hands taken from the town that supplies the works.
     pub navvies: bool,
-    /// At most this share of a town's hands can be digging.
-    pub navvy_max_share: f64,
-    /// Each month a town's navvies move this much of the way to the number
-    /// last month's wage bill pays for (1 would be all at once; the carters'
-    /// `adjust` is a quarter too, and farms and works take on hands at 0.15
-    /// and 0.35 of the way a month).
-    pub navvy_adjust: f64,
     /// Months a canal takes if the market fills every order.
     pub build_months: f64,
-    /// The yearly return on cost a canal must promise, on the carting it saves...
+    /// The yearly return on cost a canal must promise, on the carting it saves
+    /// at today's traffic. (It had a second dial, `induced`, a multiple of the
+    /// saving for the traffic a canal would draw, at 1; stage 5 of the pass
+    /// over the rules folded it in here, docs/rules/canals.md.)
     pub hurdle: f64,
-    /// ...today's saving multiplied by this for the traffic a canal will draw.
-    pub induced: f64,
-    /// Canals that may be digging at once.
-    pub max_projects: usize,
-    /// Districts looked at each year: those with the largest carting bill.
-    pub districts: usize,
-    /// A district is looked at only this many cells or more from a canal, a
-    /// town or a navigable river...
-    pub branch_gap: f64,
-    /// ...and this far from the other districts looked at that year.
-    pub district_spacing: f64,
-    /// Years a refused branch is left alone.
-    pub cool_years: i64,
     /// The first canal can be thought of once this much coal and this much
     /// stone have been dug since the run began (as the content's `discover`
     /// for a method: the chance in a year is `discovery_rate * p^4 / (1 + p^4)`,
@@ -130,16 +113,8 @@ impl Default for CanalParams {
             lock_cells: 80.0,
             wages: 2.0,
             navvies: true,
-            navvy_max_share: 0.2,
-            navvy_adjust: 0.25,
             build_months: 36.0,
             hurdle: 0.1,
-            induced: 1.0,
-            max_projects: 12,
-            districts: 6,
-            branch_gap: 3.0,
-            district_spacing: 6.0,
-            cool_years: 5,
             discover_coal: 3.0e6,
             discover_stone: 3.0e6,
             know: 0.25,
@@ -154,6 +129,32 @@ impl CanalParams {
         CanalParams { enabled: true, ..CanalParams::default() }
     }
 }
+
+// Numbers that were settings until stage 5 of the pass over the rules
+// (docs/designs/rules-pass.md, section 4.5): the sweeps of
+// docs/probes/sens-ways.md found that none of them moved anything across the
+// range they tried, so each is a constant with the value it had.
+
+/// At most this share of a town's hands can be digging (the navvies are at
+/// most some 1,300 people on an island of 200,000).
+pub const NAVVY_MAX_SHARE: f64 = 0.2;
+/// Each month a town's navvies move this much of the way to the number last
+/// month's wage bill pays for (1 would be all at once; the carters' `adjust`
+/// is a quarter too, and farms and works take on hands at 0.15 and 0.35 of
+/// the way a month).
+pub const NAVVY_ADJUST: f64 = 0.25;
+/// Canals that may be digging at once: a backstop, which binds for a year on
+/// a few islands.
+pub const MAX_PROJECTS: usize = 12;
+/// Districts looked at each year: those with the largest carting bill.
+pub const DISTRICTS: usize = 6;
+/// A district is looked at only this many cells or more from a canal, a town
+/// or a navigable river...
+pub const BRANCH_GAP: f64 = 3.0;
+/// ...and this far from the other districts looked at that year.
+pub const DISTRICT_SPACING: f64 = 6.0;
+/// Years a refused branch is left alone.
+pub const COOL_YEARS: i64 = 5;
 
 /// One link of canal between two neighbouring cells.
 #[derive(Clone, Debug, PartialEq)]
@@ -392,13 +393,15 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
         knows: canal_knows,
         know: K.know,
         hurdle: K.hurdle,
-        induced: K.induced,
+        // on today's traffic and no more: the canals' own `induced` was 1, and
+        // is folded into the hurdle (1 times the saving is the saving, to the bit)
+        induced: 1.0,
         order_book: None,
-        max_projects: K.max_projects,
-        districts: K.districts,
-        branch_gap: K.branch_gap,
-        district_spacing: K.district_spacing,
-        cool_years: K.cool_years,
+        max_projects: MAX_PROJECTS,
+        districts: DISTRICTS,
+        branch_gap: BRANCH_GAP,
+        district_spacing: DISTRICT_SPACING,
+        cool_years: COOL_YEARS,
         layer: canal_layer,
         layer_mut: canal_layer_mut,
         book_mut: canal_book_mut,
@@ -461,7 +464,7 @@ pub fn progress(st: &mut State, C: &Content, P: &Params, year_float: f64, events
 /// (`carting.adjust`): a canal's orders are filled in lumps, so its wage bill
 /// is large one month and small the next, and a town that lost a sixth of its
 /// hands in a month and had them back the month after saw its wage rise and
-/// fall by half. The navvies move `navvy_adjust` of the way to what the bill
+/// fall by half. The navvies move `NAVVY_ADJUST` of the way to what the bill
 /// pays for; over the life of a canal that comes to the same hands.
 pub fn take_navvies(st: &mut State, P: &Params, supply: &mut [f64]) {
     if !P.canals.enabled || !P.canals.navvies {
@@ -478,11 +481,11 @@ pub fn take_navvies(st: &mut State, P: &Params, supply: &mut [f64]) {
             want[pr.town] += pr.navvy_pay / st.wage[pr.town];
         }
     }
-    let k = P.canals.navvy_adjust.clamp(0.0, 1.0);
+    let k = NAVVY_ADJUST;
     let was = if st.cn.navvies.len() == T { std::mem::take(&mut st.cn.navvies) } else { vec![0.0; T] };
     let mut hands = vec![0.0; T];
     for t in 0..T {
-        let most = (P.canals.navvy_max_share * supply[t]).max(0.0);
+        let most = (NAVVY_MAX_SHARE * supply[t]).max(0.0);
         hands[t] = (was[t] + k * (want[t].min(most) - was[t])).clamp(0.0, most);
         // (the last hundredth of a man goes at once, so that a town's gang ends)
         if hands[t] < 0.01 {

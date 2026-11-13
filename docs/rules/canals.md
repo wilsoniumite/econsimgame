@@ -61,11 +61,11 @@ seeds 3 and 7 the locks are half of all the stone, bricks and timber.
 materials delivered a canal pays two in wages (a railway pays three tenths),
 and the navvies are hands: last month's wage bill of each canal, at the wage
 of the town that supplies it, is that many people who are not there to be
-hired by farms and works this month, up to a fifth (`navvy_max_share`) of the
+hired by farms and works this month, up to a fifth (`canals::NAVVY_MAX_SHARE`) of the
 hands the town still has for hire once its carters and its sinkers are
 counted out ("On the integration branch", below). They are counted as
 employed. They are taken on and let go by degrees, a quarter
-of the way each month (`navvy_adjust`), as the carters are: a canal's orders
+of the way each month (`canals::NAVVY_ADJUST`), as the carters are: a canal's orders
 are filled in lumps, its wage bill halves or doubles from one month to the
 next in one town-month in twenty, and when the hands followed the bill at
 once a town's wage rose and fell by half with it (see the review, below).
@@ -91,8 +91,15 @@ valued by the same sum as every railway: the cost graph is copied, the canal
 is laid on the copy (as links of water), every cell's cost to market and the
 served towns' cost to every other town are measured again, and the fall
 times the traffic times `freight` is the saving. Canal promoters reckon on
-today's traffic alone (`induced` is 1, where the railway's is 2.5) and want
-ten per cent on it (`hurdle`). Three things differ from the railway's
+today's traffic alone (where the railway's promoters multiply the saving by
+`rail_induced`, 2.5, for the traffic a line will draw) and want ten per cent
+on it (`hurdle`): a canal goes ahead when saving / cost is 0.1 or more. (It
+had an `induced` of its own, at 1, until stage 5 of the pass over the rules
+folded it into the hurdle: the test was `induced * saving / cost` against
+`hurdle`, so the two were one dial, and the sweeps of `sens-ways.md` found
+the hurdle at 0.133 and `induced` at 0.75 the same promoter to a quarter of
+a per cent, with nearly the same canals.) Three things
+differ from the railway's
 promoters, and each is a field of `Way`:
 
 - A branch may start from any town or any cell of navigable river, as well
@@ -190,19 +197,31 @@ these.
 | `lock_cells` | 80 | cells' worth of stone, bricks and timber per unit of height; the route search charges the same |
 | `wages` | 2 | wages on every shilling of materials |
 | `navvies` | true | the navvies are hands taken from the supplying town |
-| `navvy_max_share` | 0.2 | of a town's hands, at most |
-| `navvy_adjust` | 0.25 | of the way each month to the navvies the wage bill pays for |
 | `build_months` | 36 | if every order is filled |
-| `hurdle` | 0.1 | the yearly return a canal must promise |
-| `induced` | 1 | on today's traffic and no more |
-| `max_projects` | 12 | canals digging at once: meant as a backstop, but the most at once is 6 to 12, so in some runs it binds for a year |
-| `districts` | 6 | districts looked at each year |
-| `branch_gap` | 3 | a district is this many cells from town, canal and navigable river |
-| `district_spacing` | 6 | and this far from the year's other districts |
-| `cool_years` | 5 | years a refused branch is left alone |
+| `hurdle` | 0.1 | the yearly return a canal must promise, on today's traffic and no more |
 | `discover_coal`, `discover_stone` | 3,000,000 each | dug since 1750 before a survey is likely |
 | `know` | 0.25 | how well a town must know canals to dig one |
 | `hearsay` | 0.2 | what a town with no canal counts for when the know-how spreads |
+
+Seven more were settings until stage 5 of the pass over the rules
+(`docs/designs/rules-pass.md`, section 4.5), and are constants in `canals.rs`
+now, with the values they had; the sweeps of `sens-ways.md` found that none
+of them moved anything across the range they tried, and a settings file or a
+`--set` that names one is refused with a sentence that says what it became.
+`induced` went the other way, into the hurdle (above).
+
+| constant | value | |
+|---|---|---|
+| `NAVVY_MAX_SHARE` | 0.2 | of a town's hands, at most: the navvies are at most some 1,300 people on an island of 200,000 |
+| `NAVVY_ADJUST` | 0.25 | of the way each month to the navvies the wage bill pays for |
+| `MAX_PROJECTS` | 12 | canals digging at once: meant as a backstop; the most at once is 6 to 12, so in some runs it binds for a year, and at 9 and 16 it moved nothing clear |
+| `DISTRICTS` | 6 | districts looked at each year |
+| `BRANCH_GAP` | 3 | a district is this many cells from town, canal and navigable river |
+| `DISTRICT_SPACING` | 6 | and this far from the year's other districts |
+| `COOL_YEARS` | 5 | years a refused branch is left alone |
+
+The last four are the branch planner's, and the canals are nearly all
+trunks, so they have little to work on.
 
 None of these was searched for. The cost of a cell and the wharf are the
 middle of what dx-rail suggested. The materials and wages make a level cell

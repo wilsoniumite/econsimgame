@@ -159,7 +159,7 @@ names and gives no number, and the pass reads with every stage without an aim:
   `seconds` are read without an aim: a search over the economy's numbers
   should not be steered by the machine.
 - Two to four items a decade in the major feed (PLAN.md 1.4). The chronicle's
-  own rule holds that (`per_decade` and `at_least`), so there is nothing to
+  own rule holds that (`per_decade` and `chronicle::AT_LEAST`), so there is nothing to
   calibrate.
 
 The card's list of facts without an aim is the README's headlines, the

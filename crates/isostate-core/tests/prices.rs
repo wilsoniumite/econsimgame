@@ -82,7 +82,7 @@ fn a_price_stands_off_its_anchor_with_the_stock() {
         let mut st = s.st.clone();
         st.price_anchor[(t, g)] = 6.0;
         st.price[(t, g)] = 6.0;
-        prices::mark(&mut st, P, t, g, gap, imbalance, lo, hi);
+        prices::mark(&mut st, P, t, g, gap, imbalance, lo, hi, P.decay[g]);
         (st.price_anchor[(t, g)], st.price[(t, g)])
     };
     // the anchor moves as the port's price does
@@ -106,6 +106,44 @@ fn a_price_stands_off_its_anchor_with_the_stock() {
     flat.prices.markup = 0.0;
     let (a, p) = mark(&flat, 0.4, 0.2);
     assert!((p - a).abs() < 1e-12 && a.to_bits() == port_step(0.4, 0.2).to_bits());
+}
+
+/// Under `prices.no_spoil_markup` a good that spoils (services, half a month)
+/// is priced at its anchor whatever the shelves hold, while a good that keeps
+/// (iron) is marked as before; with the switch off services are marked too.
+#[test]
+fn a_good_that_spoils_carries_no_markup() {
+    let P = params(3, 1752, PriceParams::game());
+    assert!(P.prices.no_spoil_markup, "the game's merchants");
+    let s = run_to(&P, 1751);
+    let C = &s.content;
+    let t = 0;
+    let mark = |P: &Params, g: usize, gap: f64| -> (f64, f64) {
+        let mut st = s.st.clone();
+        st.price_anchor[(t, g)] = 6.0;
+        st.price[(t, g)] = 6.0;
+        let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
+        prices::mark(&mut st, P, t, g, gap, 0.0, lo, hi, P.decay[g]);
+        (st.price_anchor[(t, g)], st.price[(t, g)])
+    };
+    // which goods spoil, under the game's content: services alone
+    let spoil: Vec<&str> = (0..C.G).filter(|&g| P.decay[g] > prices::SPOILS).map(|g| C.good_name[g].as_str()).collect();
+    assert_eq!(spoil, ["services"]);
+    let (services, iron) = (C.gi("services"), C.gi("iron"));
+    // (gaps small enough that the month's step of at most 12 per cent does not bind)
+    for gap in [0.2, -0.2] {
+        let (a, p) = mark(&P, services, gap);
+        assert_eq!(p.to_bits(), a.to_bits(), "services at gap {gap}: priced at the anchor");
+        let (a, p) = mark(&P, iron, gap);
+        assert!((p / a - (0.5 * gap).exp()).abs() < 1e-12, "iron at gap {gap}: marked as before");
+    }
+    // the switch off: services are marked with the rest
+    let mut off = P.clone();
+    off.prices.no_spoil_markup = false;
+    let (a, p) = mark(&off, services, 0.2);
+    assert!((p / a - 0.1f64.exp()).abs() < 1e-12);
+    // and the anchor moves the same way either way
+    assert_eq!(mark(&off, services, 0.2).0.to_bits(), mark(&P, services, 0.2).0.to_bits());
 }
 
 #[test]
@@ -228,7 +266,9 @@ fn merchants_with_long_stocks_take_less_and_the_works_hire_less() {
 #[test]
 fn the_wage_shortcut_agrees_with_the_plain_bisection() {
     // a brake that bites often, to give the check something to chew on, and the game's
-    let harsh = PriceParams { glut_months: 1.0, glut_stop_months: 2.5, glut_floor: 0.1, ..PriceParams::game() };
+    // (the harsh one had a floor of a tenth of capacity until the floor became a
+    // constant, nothing, in stage 5 of the pass over the rules)
+    let harsh = PriceParams { glut_months: 1.0, glut_stop_months: 2.5, ..PriceParams::game() };
     for (pp, families) in [(harsh, 0), (PriceParams::game(), 0), (PriceParams::game(), 6)] {
         let mut P = params(11, 1760, pp);
         P.n_families = families;
