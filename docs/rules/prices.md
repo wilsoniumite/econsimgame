@@ -92,6 +92,7 @@ other towns, so a town that makes for export is not taken for a glutted one.
 | `glut_months` | 4 | merchants take everything under this many months of stock; 0: always |
 | `glut_stop_months` | 8 | at this many they take only `glut_floor` |
 | `glut_floor` | 0 | the least share of capacity they go on taking |
+| `no_spoil_markup` | true | a good that spoils carries no markup ("Goods that spoil", below); off under the port |
 
 A markup of 0.3 is weaker on the zigzag (1.17 against 0.80) and no better
 elsewhere; 0.8 measures like 0.5. A floor of 0.2 measures like 0. I kept the
@@ -440,6 +441,140 @@ average then replaces that for every good the district makes or buys.
 People's is the finer rule (cell by cell, and the buyers' side too); the
 line above is left standing for goods nobody there trades, and for a game
 with people switched off.
+
+## Goods that spoil
+
+Added on 13 November 2026 as a mend of the pass over the rules
+(`docs/designs/rules-pass.md`, section 5), behind `prices.no_spoil_markup`:
+on in the game's rules, off under the port.
+
+**The fault.** Under the markup the island's merchants came to owe 47 to 60
+per cent of all its money by 1900, and nobody lent it: a purse may go below
+nothing, and the money is counted net. `docs/probes/tr-loose-a.md` (section
+1) found where it came from. The merchants as a whole take in more than they
+pay out and pay it away as dividends; the debt is the losses of three to
+seven towns that make no services of their own and bring them in, and in
+every one of them the good that lost most was services. Services lose half
+a stock a month. In such a town the price saws on a three-month beat: thin
+shelves mark the price up, the trade rule, which ships a share of each
+sender's stock on the price gap of the moment, sends seven months of services
+from a dozen towns at once, the full shelves mark the price down, and half of
+what is left rots each month at the merchants' cost. The markup reads the
+shelves, and on a good that cannot be kept the shelves say nothing about
+what it is worth.
+
+**The rule.** A good spoils when more than a tenth of a stock of it is lost
+in a month (`prices::SPOILS`), and a good that spoils carries no markup: its
+price goes to its anchor, which still learns from shortages and gluts that
+last, as every price did under the port (`prices::markup_for`, read by
+`prices::mark`). A tenth because merchants mean to hold two months of sales
+(`price_target_months`), and a good of which more than a tenth spoils each
+month loses a fifth of that stock or more before it is sold: that is not a
+stock that can be held. It is a constant, not a setting, since any line from
+three hundredths to a half picks the same good today.
+
+Which goods that is:
+
+- under the game's content (the port's goods, `P.decay`): **services alone**
+  (0.5 a month). Grain loses 0.03, wool and charcoal 0.01, the rest 0.002 to
+  0.005.
+- under the production tree's content (`data/game.toml` on its branch,
+  stage 1): **services and town gas** (0.15; gas is not carted between towns).
+  Building work loses exactly a tenth and keeps its markup; beer, 0.06, keeps
+  it too. The tree's draft for later stages would add fish (0.12) and dairy,
+  meat and garden produce (0.15). The tree reads a good's rate from its
+  content (`tree::decay`), so whoever lands it passes that rate to
+  `prices::mark` at its one call in `econ::step_month`, where the port's
+  `P.decay[g]` is passed now.
+
+**What it did** (sixteen islands, six families, the game's rules, against
+today's game and three histories of it with a number moved by a millionth;
+`examples/loose_ends.rs merchants --seeds 1-16 --rules game --families 6`,
+with `--set '{"prices":{"no_spoil_markup":false}}'` for today's):
+
+| | today | no markup on services | with the land's mend as well |
+|---|---|---|---|
+| what the merchants below nothing owe in 1900, as a share of the money | 0.395 (0.002 to 1.13) | 0.030 (0.000 to 0.106) | 0.012 (0.000 to 0.043) |
+| towns whose merchants are below nothing in 1900 | 4.6 (1 to 8) | 1.9 (0 to 4) | 1.1 (0 to 2) |
+| town-years whose merchants end the year below nothing, 1750 to 1900 | 352 (38 to 597) | 96 (10 to 261) | 78 (3 to 261) |
+| the merchants' cash, net, as a share of the money in 1900 | 0.01 (-0.53 to 0.29) | 0.28 | 0.29 |
+
+*The check* ran the same on islands 17 to 24, which the build did not use:
+the debt of 1900 is 0.0032 of the money for 0.344, and 0.0145 with the land's
+mend as well; the town-years below nothing 38 and 69 for 319. So the mend does
+as much there, and the land's mend beside it does not help the merchants: the
+0.012 against 0.030 above is the islands' luck.
+
+The towns still below nothing are small ones that still lose on services,
+brought in by the lump and spoiling, by a few hundred thousand a town where
+they lost millions; the decade by decade debt is a thousandth or two of the
+money until 1850 and about a hundredth after. *The check* followed one of
+them, Glendale on island 7 (`loose_ends market --seeds 7 --town Glendale
+--from 1880 --to 1884`), which makes no services and brings them all in. It
+gets them: every month but one its households are sold all they ask for
+(about 430 a month), at the anchor, 8.0 to 9.4, which is 1 to 10 per cent over
+what the cheapest town's services cost landed. But the saw is not gone, only
+smaller: the anchor still rises and falls about 6 per cent on a two-month
+beat with the stock, so four to six months of services still arrive every
+other month and half of what comes in rots. Its merchants lose some 40,000 a
+year where Ormgate's, the deepest debtor of the same island in today's game,
+lost 95,000 over the same five years. The anchor's own step, which reads the stock as
+the port's price did, is what is left of the road; a rule that ships on the
+buyer's need rather than the price of the moment would close it, and
+`tr-loose-a.md` found that rule too dear for the bulk goods. Services' price in the towns
+falls to its anchor: in 1881 to 1900 it is 8.6 on the islands' average where
+it was 11.5 to 12.8, since half of a stock rots and the shelves are thin most
+months, so the markup had held services about a third over their anchor all
+century.
+
+**What else moved, and why.** One thing, by one road. The money is issued on
+its true total (`money.md`) and is the same on every island, and the
+merchants' debt was an overdraft at a bank that does not exist: every coin
+of it was a coin in some other purse, spent. Without it the purses above
+nothing hold less, and the island's prices and money wages fall by about as
+much as the debt was: the cost of living is 0.98 of today's in the 1800s,
+0.87 in the 1860s and 0.75 in the 1890s, and the money wage the same (the
+three null histories 1.06 to 1.14 in the 1890s). On sixteen islands what a
+wage buys looked unmoved (1.00 of today's in the 1890s; 2.63 times 1750's in
+1881 to 1900, for 2.61, the nulls 2.68). *The check* read forty islands
+(seeds 1 to 40, the same six sweeps on each) and found it a little lower:
+2.61 times 1750's for 2.65 to 2.67 (26 islands of 40 lower), the chained
+measure 2.9 per cent under today's, and with the land's mend as well the real
+income a head in 1900 2.9 per cent under (30 of 40), with 0.7 per cent more
+people. That is the same road, below: the hands that cart make nothing. The
+freight is a fixed number of coins a ton and a
+cell, so a load costs more hands when wages are lower: carters are 0.079 of
+all hands in 1900 for 0.064 to 0.067 (14 islands of 16 more), the carting
+bill 0.055 of output for 0.044 to 0.047, and with them a point fewer hands in
+works and a point more in what the facts call the diggings, which counts the
+carters. The count of town people reads the works' hands, so the towns' share
+of 1881 to 1900 is 0.414 for 0.419 to 0.422 (13 islands of 16 lower; 0.411
+and 16 of 16 with the land's mend as well, which moves nothing by itself).
+Railway fares over capital in 1900 are higher for the same reason. The
+trial in `tr-loose-a.md` saw the same on eight islands (the towns' share
+0.410 for 0.419, the carters 0.076 for 0.064) without the road; it is the
+road `docs/designs/rules-pass.md` (section 4.6) means to close by making the
+freight follow the wage, and that stage should read the towns' share again
+with this in. Nothing else moved beyond what three histories of today move
+by chance: of the facts outside the null histories by more than twice their
+spread, those with thirteen islands or more one way are all of the carters,
+the works' and diggings' shares, the towns' share and the railway's fares.
+On forty islands the same road shows in two more places: stone, the
+heaviest good for its price, is quarried less (296.9 quarries in 1900 become
+286.9, 33 islands of 40 fewer; stone a head 4.5 per cent less), since a
+cell's freight is 5.2 per cent of stone's price in the 1890s where it was 3.8;
+and the land given to works in 1900 is 5 per cent less (30 of 40). One more
+fact moved that I cannot put on the road with certainty: the share of
+town-years whose people increase at the port's old cap is 0.20 for 0.23 (32
+of 40), which the slightly lower real income would explain.
+
+
+**The tests.** `prices.rs`, `a_good_that_spoils_carries_no_markup`: no
+markup above a tenth, the markup at a tenth and at grain's 0.03, and none of
+this with the switch off. `tests/prices.rs`, of the same name: under the
+game's content the goods that spoil are services and nothing else; their
+price is the anchor whatever the shelves say, while iron is marked as
+before, and with the switch off services are marked too.
 
 ## What worries me
 

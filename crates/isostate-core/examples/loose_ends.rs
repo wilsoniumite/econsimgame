@@ -357,6 +357,18 @@ fn merchants(o: &Opts) {
             println!("    {name:>14} founded {founded}, {pop:7.0} people, merchants hold {:+.0}k; their worst goods over its life, imports and spoilage: {}", cash / 1e3, w.join(", "));
         }
     }
+    // the measure of `prices.no_spoil_markup` (docs/rules/prices.md, "Goods that spoil")
+    println!("\nthe merchants' share of the money at the end of the last year, and the town-years whose merchants ended the year below nothing");
+    println!("{:>6} {:>12} {:>12} {:>14} {:>12}", "seed", "cash/money", "debt/money", "towns in debt", "town-years");
+    let (mut sc, mut sd, mut st_, mut sy) = (0.0, 0.0, 0usize, 0usize);
+    for (seed, r) in &runs {
+        let last = r.years.last().unwrap();
+        let ty: usize = r.years.iter().map(|y| y.debtors).sum();
+        println!("{seed:>6} {:>12.4} {:>12.4} {:>14} {:>12}", last.cash / last.money, last.debt / last.money, last.debtors, ty);
+        (sc, sd, st_, sy) = (sc + last.cash / last.money, sd + last.debt / last.money, st_ + last.debtors, sy + ty);
+    }
+    let n = runs.len() as f64;
+    println!("{:>6} {:>12.4} {:>12.4} {:>14.2} {:>12.1}", "mean", sc / n, sd / n, st_ as f64 / n, sy as f64 / n);
     if o.decades {
         println!("\ndecade by decade, mean of the islands (thousands): cash, debt, debt/money, stock value, net, dividends, at the year's turns, of which closed works' debts");
         let y0 = runs[0].1.years[0].year;
