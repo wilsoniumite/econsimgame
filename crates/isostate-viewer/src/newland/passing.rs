@@ -12,8 +12,10 @@
 //! So here a new line finds its way through its cells by the ground
 //! (`choose`). The ground of the cells is read every 125 m, and the way from
 //! one end of the line to the other is the one that costs least, stepping
-//! from one such spot to the next and keeping to the line's own cells in
-//! their order. What a way costs is its length, and then:
+//! from one such spot to the next and keeping to the line's own cells, in
+//! their order, give or take 500 m (`MARGIN`: the room a length's curve has
+//! always had to one side of the straight way between two cells). What a way
+//! costs is its length, and then:
 //!
 //! - **what it climbs and falls beyond the ruling gradient.** A line may rise
 //!   or fall along its way as fast as its rules allow and no faster; whatever
@@ -23,12 +25,14 @@
 //!   or a hollow takes the saddle and the valley's head;
 //! - **standing water**, so much that a line goes round a lake or a tideway
 //!   wherever its cells have dry ground to go round by;
-//! - **a valley's floor, marsh and ground too low to build on**, a little;
+//! - **a valley's floor, marsh, the water's edge and ground too low to build
+//!   on**, a little;
 //! - **a river crossed**, and the more the further from square.
 //!
 //! A cell is passed at the middle of the way's run through it (by a town,
-//! where the way comes nearest the market place without crossing it), and
-//! the line runs there as the way does. Cells whose track is laid already
+//! where the way comes nearest the market place without crossing it; where a
+//! line stops, as near the cell's meeting place as the ground makes worth
+//! while), and the line runs there as the way does. Cells whose track is laid already
 //! stay where they are, as on the old island, so a branch moves nothing.
 //! `rails::draft` then lays each length's curve along the way found.
 //!
