@@ -27,6 +27,37 @@ impl TrainPath {
     }
 }
 
+/// `ISOSTATE_TRAINS_AT=X,Z;X,Z`: for pictures of trains on the line. Each
+/// spot of the map named is answered with the line that passes nearest it
+/// and how far along that line the spot is, so that a train can be put
+/// there; and with the variable set every train is held still. None when it
+/// is not set, and the trains run as they always do. (As `ISOSTATE_CARTS_AT`
+/// does for the carts; a line under 4 km long has no train to put anywhere.)
+pub fn pinned(paths: &[TrainPath]) -> Option<Vec<(usize, f32)>> {
+    let asked = std::env::var("ISOSTATE_TRAINS_AT").ok()?;
+    let mut out = Vec::new();
+    for spot in asked.split(';') {
+        let mut it = spot.split(',').map(|v| v.trim().parse::<f32>());
+        let (Some(Ok(x)), Some(Ok(z))) = (it.next(), it.next()) else { continue };
+        let at = bevy::math::Vec2::new(x, z);
+        // the nearest place on any line: which line, and how far along it
+        let mut best: Option<(f32, usize, f32)> = None;
+        for (pi, p) in paths.iter().enumerate() {
+            for i in 1..p.pts.len() {
+                let (a, b) = (bevy::math::Vec2::new(p.pts[i - 1].x, p.pts[i - 1].z), bevy::math::Vec2::new(p.pts[i].x, p.pts[i].z));
+                let ab = b - a;
+                let u = ((at - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
+                let d = at.distance(a + ab * u);
+                if best.is_none_or(|known| d < known.0) {
+                    best = Some((d, pi, p.cum[i - 1] + (p.cum[i] - p.cum[i - 1]) * u));
+                }
+            }
+        }
+        out.extend(best.map(|b| (b.1, b.2)));
+    }
+    Some(out)
+}
+
 /// Railway lines for year k, along the graded track of rails.rs, so the trains
 /// run on the embankments and viaducts and vanish into the tunnels.
 pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {
@@ -37,7 +68,9 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 /// starting from a few cells picked by hash and turning by hash at junctions.
 /// The rounds keep to the main roads as they are drawn (`network::road_segments`),
 /// and each runs along its road's surface (`network::driven`): the ribbon,
-/// and over a river the bridge. Three kinds of link are left out, where the
+/// and over a river the bridge. A link that is not in the picture is no way
+/// for a cart (`network::link_shown`: on the new land, a road that would lie
+/// under a lake or along tidewater). Three more kinds are left out, where the
 /// map shows no way a cart could go and a carter turns back: one whose road
 /// goes under a river's water with nothing to carry it, one where a bridge's
 /// ramp ends in a step above the road (`steps`), and one that ends in
@@ -72,10 +105,12 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
         }
         *dry.entry((lo, hi)).or_insert_with(|| {
             let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
-            !waters.near(a, b) || {
-                let way = surface(ways, g, cen, lo, hi);
-                !waters.drowns(g, way) && !steps(way)
-            }
+            // (on the new land a road left out of the picture, under a lake or along tidewater, is no way for a cart)
+            network::link_shown(g, a, b)
+                && (!waters.near(a, b) || {
+                    let way = surface(ways, g, cen, lo, hi);
+                    !waters.drowns(g, way) && !steps(way)
+                })
         })
     };
     let mut rounds = Vec::new();
