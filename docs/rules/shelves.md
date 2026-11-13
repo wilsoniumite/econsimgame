@@ -185,6 +185,41 @@ the null pair and not on twelve islands, so it is read as chance; aim 18
 is missed by far either way, and stage 6, whose founding test it is, should
 read it again with the shelves in.
 
+### With stage 2 in
+
+Stage 2 (towns hire only the hands they have, [hands.md](hands.md)) landed
+while this page was being checked, and gives every island another history, so
+the stage's sweep and its null pair were made again on top of it (the same
+commands; sixteen islands):
+
+| sixteen islands, with stage 2 | today | null, walk | null, adjust | the rule | islands up/down |
+|---|---|---|---|---|---|
+| famine years, in sixteen runs | 5 | 7 | 8 | 1 | 0/4 |
+| January and February town-months short after a district came, a run | 0.31 | 0.31 | 0.25 | 0, on every island | 0/4 |
+| emigrants, a run | 74.0 | 90.4 | 83.7 | 8.2 | 1/9 |
+| aims met, of twenty; the loss | 8; 32.0 | 8; 34.5 | 8; 38.8 | 9; 32.9 | |
+| facts leaning twelve islands or more against today | | 38 | 45 | 29 | |
+| the last town founded | 1850 | 1852 | 1846 | 1844 | 5/10 |
+
+Aim 12 is met again, and no town goes short after taking a district
+(`spring_hunger --seeds 1-24`: today 9 town-years short of food on islands 1
+to 24, four of them that January; with the rule 3, none of them that January
+in a town that stood before). The one famine year left is the kind "What
+worries me" names below: Elmgate, island 9, which gave a district away at the
+end of 1831 (2,609 people to 1,948) and got 0.77 of its food in April 1832. On
+island 21 Blackgate is the same, and deeper: 5,623 people to 1,671 at the end
+of 1775 and 0.18 of its food in March 1776. So with stage 2 in, the town that
+gives its farmland away is the hunger the rule leaves. Ten facts besides the
+books move beyond the null pair on twelve islands; none of them is one of the
+five of the first reading, and eight do not lean the same way there (the
+largest, the works standing in 1850, 494 for 524, were 532 for 528 before
+stage 2), so they are read as chance. Two lean the same way both times and
+are worth a look by whoever reads the works next: the works opened over the
+run, 1,868 for 1,921 (and 1,874 for 1,940 before), though today stands above
+both its null histories each time, and the works' share of what the canals
+carry in 1840, up on twelve islands (eleven before). The last town leans
+earlier in both readings, on ten islands of sixteen each time.
+
 ### The books
 
 `books_goods_worst`, the books' worst goods balance of the run as a share of
