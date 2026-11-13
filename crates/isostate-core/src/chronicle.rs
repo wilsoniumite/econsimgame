@@ -1148,6 +1148,10 @@ fn overtakings(st: &State, C: &Content, P: &Params, ch: &mut ChronicleState, yea
     // (the town that lost the place is compared only when it was grown past: a
     // district cut by a founding "grew by 1%" since, which reads as nonsense)
     let since = match from {
+        // a district changed market at this year's end: say so, since that is why
+        // no earlier year is set beside it (island 7 with the shelves going with
+        // the district, docs/rules/shelves.md, tells Glenbrook's second place so)
+        _ if back == 0 && redrawn >= year => " The districts were drawn again this year, so no earlier year is set beside it.".to_string(),
         _ if back == 0 => String::new(),
         Some(b) if overtook => format!(" In {} {a} has {} and {} has {}.", years(back), grown(now), st.town_name[b], grown(b)),
         _ => format!(" In {} {a} has {}.", years(back), grown(now)),

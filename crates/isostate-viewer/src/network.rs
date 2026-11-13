@@ -302,16 +302,22 @@ impl Waters {
     /// Whether a road's line from `driven` goes under the water anywhere:
     /// where it runs along a river's channel inside its water, with no bridge
     /// or causeway to carry it, the ribbon lies on the channel's bed. Looked
-    /// at every 0.01 cells.
+    /// at every 0.01 cells, on the middle line and where a cart keeps to
+    /// either side of it (`carts::SIDE`): the edge of a river's water can
+    /// stand over the road beside the middle line and not on it (island 7
+    /// with the shelves going with the district, docs/rules/shelves.md, has
+    /// a cart 0.0009 under the water at 94.05,28.53 in 1850 otherwise).
     pub fn drowns(&self, g: &Ground, pts: &[Vec3]) -> bool {
         let (a, b) = (Vec2::new(pts[0].x, pts[0].z), Vec2::new(pts[pts.len() - 1].x, pts[pts.len() - 1].z));
         if !self.near(a, b) {
             return false;
         }
+        let across = (b - a).normalize_or(Vec2::X).perp() * crate::carts::SIDE;
         let n = ((a.distance(b) / 0.01).ceil() as usize).max(1);
         (0..=n).any(|i| {
             let t = i as f32 / n as f32;
-            self.at(g, a + (b - a) * t).is_some_and(|(top, _)| height_along(pts, t) < top)
+            let p = a + (b - a) * t;
+            [p, p + across, p - across].into_iter().any(|q| self.at(g, q).is_some_and(|(top, _)| height_along(pts, t) < top))
         })
     }
 }
