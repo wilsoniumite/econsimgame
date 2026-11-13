@@ -13,8 +13,8 @@
 //! table, `MESHES`, a row to each kind of mesh, and every one of those places
 //! reads it. A new mesh is a row here and a maker (`Make`).
 //!
-//! Four orders of the same meshes are kept, and three of them can be seen, so
-//! the table says each:
+//! Three orders of the same meshes can be seen, in the pictures or in what is
+//! printed, so the table says each:
 //!
 //! - the table's own order, which is the order of the list everything else
 //!   indexes (`list`), of `ISOSTATE_MESH_SUMS`'s line and of the bench's count;
@@ -143,6 +143,15 @@ pub enum Goes {
 
 /// The meshes of a year's scenery. The trees come first, because the
 /// fingerprints' line has always begun with them.
+///
+/// A new mesh is a row at the foot, with a maker of its own
+/// (`Make::Own(canals::year)`, a function from `Inputs` to a `Builder`), or a
+/// mesh taken from what a shared maker already makes. Give it a word of its
+/// own, so that the fingerprints of the other words stay as they were; a
+/// `made` past the last, so that every handle made before it keeps its
+/// number; and the place in the hand-over where it belongs with what it is
+/// seen beside (put between two, the places after it move up by one). The test
+/// `a_row_in_the_table_is_all_a_new_mesh_needs` does exactly this.
 pub const MESHES: &[YearMesh] = &[
     YearMesh { name: "evergreen", word: "trees", each_group: true, make: Make::Scatter(|m, g| std::mem::take(&mut m.trees[g].evergreen)), drawn: Drawn::Evergreen, camera: false, goes: Goes::WithTrees, made: 0 },
     YearMesh { name: "leaves", word: "trees", each_group: true, make: Make::Scatter(|m, g| std::mem::take(&mut m.trees[g].leaves)), drawn: Drawn::Leaves, camera: false, goes: Goes::WithTrees, made: 0 },
