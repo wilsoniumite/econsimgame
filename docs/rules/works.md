@@ -245,7 +245,36 @@ small works, a few thousand each (steel rail works that a family's branch
 grew in a town that soon had several, millwrights and rail forges in the
 1810s to 1830s). With both mends on, 111 orders worth 0.15 million.
 
-What the two moved beyond the faults is in "In the game" below.
+**What else they move.** Read as the pass reads a stage (its design,
+section 3): sixteen islands under the game's rules with six families, today's
+game beside a null pair (`works.walk=0.0200001`, `carting.adjust=0.2500001`),
+each mend alone and both (`.claude/night/reports/opus/rules-5c-works/s16-*`,
+not in the repository). With both switches off the game is today's: 0 facts
+of 626 differ.
+
+| sixteen islands | today | null pair | G alone | H alone | both |
+|---|---|---|---|---|---|
+| aims of the card met; its loss | 8; 41.4 | 9, 9; 31.1, 38.7 | 9; 30.1 | 9; 32.0 | 9; 29.7 |
+| facts moved island by island by a paired t over 3 | | 4, 6 | 11 | 4 | 13 |
+| the works' share of income, 1800 / 1900 | 0.075 / 0.087 | 0.086, 0.092 / 0.093, 0.090 | 0.081 / 0.088 | 0.090 / 0.087 | 0.097 / 0.089 |
+| works standing in 1800 / 1900 | 233 / 739 | 245, 248 / 720, 721 | 235 / 717 | 246 / 725 | 260 / 718 |
+| the families' worth in 1900, island by island against today (the player's) | | +19, +9 per cent (+22, +19) | +11 (+32) | +1 (+11) | +5 (+8) |
+
+The card moves no more than the null pair does, nor do the works' share of
+income and the families' worth. H moves nothing beyond the null pair at all.
+`tr-loose-a.md`'s trial of it found 9 per cent more works in 1800 on eight
+islands of eight; on sixteen that is today's history lying low, since both
+null histories have 5 and 6 per cent more too, and H alone 5. G moves one
+thing clear of the null pair, which nobody foresaw and which follows from
+what it does: the building trades of 1750. With a town's brickworks of 1749 no longer all on the one cell where
+clay is cheapest, fewer clay pits are sunk in the warm-up (79 for 87 in 1750,
+fewer on fifteen islands of sixteen), a sixth fewer hands dig clay in 1750
+and a tenth less clay a head is dug, and stone takes its place (2.7 per cent
+more a head, on all sixteen). It is gone by 1800. (The road from where the
+brickworks went to the clay pits is read from the facts, not traced.) With both on, a few late
+facts stand at the edge of the null pair: the clay pits' hands in 1900 (0.017
+of all hands for 0.020), the farms' share of hands in 1881 to 1900 (a fifth of
+a point lower) and the cells wholly the works' in 1800 (15 for 18.5).
 
 ## What was tried and left out
 
@@ -819,7 +848,20 @@ cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules port --set wor
 cargo run --release -p isostate-core --example works_census -- --decades --families 6 --set '{"works":{"enabled":true}}' 3 7 11 21
 cargo run --release -p isostate-core --example bots -- --rules game
 cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --out DIR/game
+cargo run --release -p isostate-core --example works_mends -- --seeds 1-16 --list 3
+cargo run --release -p isostate-core --example works_mends -- --seeds 1-16 --set '{"works":{"spread_first":false,"keep_order":false}}'
 ```
+
+`works_mends` is the measure of parts G and H: the exact twins by where they
+came from and by the decade they opened, the works of 1749 that share a cell
+with one of their trade in their town, the orders of more capacity for
+standing works and those whose works closed within three years, and the
+families' worth at the end. Under the game's rules on sixteen islands
+(13 November 2026) expect no works of 1749 sharing a cell, about 1,350
+twins, and about 110 orders worth about 0.15 million closing within three
+years (one history only); with both switches off, about 1,250 works of 1749 sharing, 2,400 to
+2,450 twins and 200 to 215 such orders worth 4.5 to 6.4 million (the second
+line, and the null pair).
 
 The census prints, for each method, the works standing, their sizes, their
 hands and where they stand, and decade by decade the works founded, the
