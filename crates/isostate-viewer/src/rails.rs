@@ -1986,9 +1986,10 @@ pub fn maybe_check(r: &Replay, g: &Ground) -> bool {
             "rail check {}, standing water: {} stretches of line stand over the sea, a tideway or a lake ({:.1} cells), {} of them ({:.1} cells) where their cells have dry ground to go round by",
             r.y0 + k as i32,
             wet.len(),
-            wet.iter().map(|w| w.cells).sum::<f32>(),
+            wet.iter().map(|w| w.cells).sum::<f32>() + 0.0,
             wet.iter().filter(|w| w.way_round).count(),
-            wet.iter().filter(|w| w.way_round).map(|w| w.cells).sum::<f32>()
+            // (an empty sum is -0.0, which would print as "-0.0 cells")
+            wet.iter().filter(|w| w.way_round).map(|w| w.cells).sum::<f32>() + 0.0
         );
         let (beyond, over) = beyond_the_gradient(&ry, g);
         eprintln!(

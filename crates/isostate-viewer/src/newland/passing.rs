@@ -339,6 +339,9 @@ fn thread(lie: &Lie, asked: &Asked, cells: &[usize], from: Option<Vec2>, to: Opt
         }
     }
     let goal = to.map(|p| nearest(n - 1, p));
+    // (the place a cell was passed in an earlier year can lie in its margin, nearer the cell
+    // before it in this line than its own; its square is still the last cell's to arrive at)
+    let goal_square = goal.map(square_of);
     while let Some(Reach(cost, id)) = heap.pop() {
         let id = id as usize;
         if cost > best[id] {
@@ -356,7 +359,8 @@ fn thread(lie: &Lie, asked: &Asked, cells: &[usize], from: Option<Vec2>, to: Opt
             if tx < 0 || ty < 0 || tx >= fw || ty >= fh {
                 continue;
             }
-            let Some(cj) = owner(ci, tx, ty) else { continue };
+            let owned = if goal_square == Some((tx, ty)) && ci + 2 >= n { Some(n - 1) } else { owner(ci, tx, ty) };
+            let Some(cj) = owned else { continue };
             let len = ((dx * dx + dy * dy) as f32).sqrt() / f;
             let mut step = len * (1.0 + 0.5 * (here + dear(cj, tx, ty)));
             step += CLIMB * ((lie.at(asked.g, tx as usize, ty as usize).0 - ground).abs() - asked.rules.ruling * len).max(0.0);

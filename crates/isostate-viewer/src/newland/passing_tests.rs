@@ -128,6 +128,34 @@ fn a_line_goes_round_a_spur_and_not_over_it() {
 }
 
 #[test]
+fn a_new_line_finds_its_way_to_a_cell_passed_in_its_margin_in_an_earlier_year() {
+    // A line laid one year along row 3 from x = 2 to x = 4, to meet track of an earlier year at
+    // 5,3, which was passed then at 4.8,3.5: 200 m outside its own cell, inside the cell before
+    // it on this line. The way must still arrive there, or the new cells are left at their
+    // meeting places facing east and their lengths have no way to be laid along.
+    let (_, g, cen) = made_up(|_| 63.0, |_| false, 0.0, &[]);
+    let cell = |x: usize| 3 * W + x;
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); W * H];
+    for x in 2..5 {
+        adj[cell(x)].push(cell(x + 1));
+        adj[cell(x + 1)].push(cell(x));
+    }
+    let rules = rails::laws(&g).rules;
+    let towns = std::collections::HashSet::new();
+    let asked = super::passing::Asked { g: &g, cen: &cen, adj: &adj, towns: &towns, rules: &rules };
+    let mut lie = super::passing::Lie::new(&g);
+    let fresh = [cell(2), cell(3), cell(4)];
+    let links = [(cell(2), cell(3)), (cell(3), cell(4)), (cell(4), cell(5))];
+    let settled = |c: usize| (c == cell(5)).then_some(Vec2::new(4.8, 3.5));
+    let chosen = super::passing::choose(&mut lie, &asked, &fresh, &links, &settled);
+    for link in links {
+        assert!(chosen.ways.get(&link).is_some_and(|w| w.len() > 1), "no way was found for the length {link:?}");
+    }
+    let last = chosen.ways[&(cell(4), cell(5))].last().copied().unwrap();
+    assert!(last.distance(Vec2::new(4.8, 3.5)) < 1e-4, "the way ends at {last}, not where the cell was passed");
+}
+
+#[test]
 fn the_rules_in_metres_are_the_old_island_s_at_three_times_the_relief() {
     let (_, new_land, _) = made_up(|_| 60.0, |_| false, 0.0, &[]);
     let got = rails::laws(&new_land);
