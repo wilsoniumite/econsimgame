@@ -43,6 +43,7 @@ mod terrain;
 mod trains;
 mod ui;
 mod world;
+mod year;
 
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::camera::{Exposure, Hdr, RenderTarget};
