@@ -2032,6 +2032,33 @@ pub fn maybe_check(r: &Replay, g: &Ground) -> bool {
             }
         }
         section(&ry);
+        // the lines over the hardest ground, the hardest first: the ten that have most to make up
+        let mut hard: Vec<(f32, f32, usize)> = ry
+            .lines
+            .iter()
+            .enumerate()
+            .map(|(li, line)| {
+                let one = RailYear { lines: vec![Line { pts: line.pts.clone(), ground: line.ground.clone(), kind: line.kind.clone(), worked: line.worked.clone(), upland: line.upland.clone() }], building: Vec::new(), stops: HashMap::new(), stands: Vec::new(), works: OnceLock::new(), room: OnceLock::new() };
+                let (beyond, over) = beyond_the_gradient(&one, g);
+                (beyond, over, li)
+            })
+            .collect();
+        hard.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for &(beyond, over, li) in hard.iter().take(10) {
+            let line = &ry.lines[li];
+            let (a, b) = (line.pts[0], line.pts[line.pts.len() - 1]);
+            let count = |k: Kind| runs_of(line.pts.len(), |q| line.kind[q] == k).len();
+            eprintln!(
+                "line {li}: from {:.2},{:.2} to {:.2},{:.2}, the ground along it rises and falls {beyond:.2} beyond the ruling gradient over {over:.1} cells of its way; it has {} viaducts, {} tunnels and {} inclines",
+                a.x,
+                a.z,
+                b.x,
+                b.z,
+                count(Kind::Viaduct),
+                count(Kind::Tunnel),
+                runs_of(line.pts.len(), |q| line.worked[q] != Worked::Plain).len()
+            );
+        }
         for w in over_water(&ry, g) {
             eprintln!(
                 "line {}: over standing water from {:.2},{:.2} to {:.2},{:.2}, {:.2} long, {}",

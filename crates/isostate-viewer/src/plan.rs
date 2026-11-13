@@ -431,6 +431,15 @@ pub fn maybe_write(r: &Replay, g: &Ground, slots: &Slots) -> bool {
                 }
             }
         };
+        // (and, for a plan of a few cells, which of them have track: the cells are the simulation's)
+        let railed: Vec<String> = (z0.floor().max(0.0) as usize..(z1.ceil() as usize).min(r.h))
+            .flat_map(|y| (x0.floor().max(0.0) as usize..(x1.ceil() as usize).min(r.w)).map(move |x| (x, y)))
+            .filter(|&(x, y)| r.trans[k * r.n + y * r.w + x] & 4 != 0)
+            .map(|(x, y)| format!("{x},{y}"))
+            .collect();
+        if railed.len() <= 60 {
+            eprintln!("the cells of the plan with track: {}", railed.join(" "));
+        }
         let half = if ppc >= 60.0 || ppc <= 16.0 { 1 } else { 0 };
         for line in &ry.lines {
             for q in 0..line.pts.len().saturating_sub(1) {

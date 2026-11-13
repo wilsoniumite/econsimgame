@@ -549,3 +549,121 @@ Under `.claude/night/shots/opus/map-01/views/` (island 7, the summer of 1850, ea
 ### Checked
 
 Gone over on `night/map-01-check` the same night, with main merged in twice (the towns' second pass, then the news's mends). The builder's numbers came out again to the digit (the tests on islands 2, 3 and 7, both stage 1 sets at their head at 0 pixels), the old island's twelve are at 0 pixels against main's retaken reference, and the sweep differs from main in nothing. The tests that guard the lakes and the middles fail when what they guard is taken out. A game on the new land played by script and saved in a named file goes on again on the new land; nothing of it reaches the island's autosave, and an ordinary game started against the same folder is on the old island. Counted by the node under them, as the critic counted, the land cells' middles on tidewater, in a lake and on marsh went from 108, 3 and 103 to 2, 0 and 8 on island 2, from 80, 4 and 106 to 0, 0 and 3 on island 3, and from 101, 5 and 85 to 0, 0 and 7 on island 7 (`ISOSTATE_LAND_REPORT=1`); of the first towns of the three islands only Glenwick's market place is still on marsh, its cell having nothing higher. Two things were mended: the lakes' shores above (`world.rs`, one condition, on the new land only), and a recorded run whose nodes name a lake its header does not list is refused by name, where the ground would have stopped at an index out of range. The notes, with every command, are `.claude/night/reports/opus/map-01/check.md`.
+
+## What was built: stage 3
+
+Branch `night/map-03` (13 November 2026, cut from `main` at 5449ca7): item 3 of the verdict, the railways on the real relief. The code is `crates/isostate-viewer/src/newland/passing.rs` with its tests in `newland/passing_tests.rs`, and hooks in `rails.rs`, `network.rs`, `trains.rs`, `plan.rs` and a few lines of `main.rs`; `course.rs` and `profile.rs` are as they were. The viewer's README ("The new land", and "Railways" under "How the picture is made") says how it works and how to check it. Measurements are on the machine only, with every command and every variant tried, in `.claude/night/reports/opus/map-03/build.md`; the rail check's whole output for six runs, before and after, is beside it as `rail-before-*.txt` and `rail-after-*.txt`; pictures are under `.claude/night/shots/newland-stage3-before/`, `.claude/night/shots/newland-stage3/` and `.claude/night/shots/opus/map-03/`. The machine was shared throughout.
+
+**In one paragraph.** A line now finds its way through its cells by the ground, and the ground along the lines asks two fifths less of them than it did. On islands 2 and 3 the new land's railways have fewer viaducts, by count, than the old island's, and on island 3 fewer inclines; no line has a step; and the lines stand over less standing water than the old island's own. The gate as it was set is not met: on every island the viaducts are longer than the old island's, island 7 has more of everything, and the highest viaduct stands 0.26 to 0.43 over its ground against the old island's 0.21 to 0.22. What is left is in the cells the simulation chose, which cross ridges, gorges and one lake that no way through them can avoid; the last part of this section says which lines and what the simulation would have to know.
+
+### Built as written
+
+- **The course chooses where in each cell it passes by the ground.** Each new line seeks its way through its cells, in their order, over squares of 125 m (half the step of the ground's mesh), and takes the way that costs least. A way costs its length, and then: what the ground along it rises and falls beyond the ruling gradient (16 cells of way round for each unit of height, so a spur 30 m high is worth a cell and a half of detour); standing water (40 for each cell of length); the square next to standing water, ground under the building line, marsh and a valley's floor (2, 3, 1.5 and 0.3); and a river crossed (0.4, and 2.5 more by how far from square). That one rule gives the five things asked for: the level it will have, because a way that keeps its level costs nothing more than its length; a valley's side above its floor; round a spur and not over it; clear of lakes and tidewater where there is dry ground; and across a river squarely.
+- **The rules in metres through the land's one conversion.** `rails::metres` has the ruling gradient as 1 in 35.3, an incline's as 1 in 6.67, a tunnel where the ground stands 67 m over the line, a line no more than 133 m over its ground and 47 m for a long stretch (which is the rule for how long a viaduct may be), and a bank of more than 47 m as a viaduct. `newland::rise` turns a rise in metres into the viewer's height, and `rails::laws` gives the rules for a ground: the old island's constants, untouched, where the ground is the viewer's own, and these where it is the core's. At three times relief each is within a hundredth of the old island's (tested), and when the relief's factor changes they will go on meaning what they say.
+- **No cutting.** The ground is still built once.
+- **The gate's checks.** `ISOSTATE_RAIL_CHECK=1` now adds two lines under each year's, leaving the old line as it was printed: the stretches of line over the sea, a tideway or a lake, with how many have dry ground to go round by inside the cells they lie in (a search over squares of 125 m from the stretch's one dry end to its other); and how far the ground under the lines rises and falls beyond the ruling gradient, in all. `=list` names each stretch over water and the ten lines over the hardest ground.
+
+### Built differently, and why
+
+- **A way through the cells, not a passing point in each.** The critic's words were "shift the passing point across the cell to where the ground lies nearest the level the line will have". That was built first (a grid of seven spots by seven in each cell, and the chain of spots that agrees best in level, commit c0c43f0): it took a seventh off island 7's viaducts and added a third to its tunnels, because the straight way between two well-chosen spots still crosses every spur and hollow between them. The relief is on the scale of 500 m and has to be answered on that scale. The passing place of a cell is now where the way found passes it (the middle of its run through the cell; by a town, where it comes nearest the market place and clear of it), and each length's curve is laid along the way, at nine places a length where the old island has five.
+- **A line keeps to its cells give or take 500 m.** Held exactly inside its cells a way must cross whatever fills a cell's edge, or the one point where two cells joined corner to corner meet. A length's curve has always been free to lie 600 m to one side of the straight way, so the way is given the same room. It was the largest single gain after the search itself: a quarter of island 7's viaducts.
+- **A length that crosses a hollow is not made an incline.** The profile winds a length to find more length, and makes it an incline if winding does not bring it down to the ground. On real relief many of the inclines that made were lengths crossing a hollow between two ends at one level, an incline down into it and up the other side: at one point 33 of island 7's 75 inclines rose less than 0.1 (67 m) from end to end. On the new land a length whose two ends stand at levels a straight length can join is left straight, on what viaduct the hollow asks for. The mean rise of an incline went from 0.17 to 0.24, the old island's figure. This is the one place where the profile is applied differently on the new land, and the old island does not pass through it.
+- **A lake is ground to a line at its water's level** (`rails::lie`). A lake is "under nought" to whoever asks the ground's height, which keeps houses out of it; a line's profile took that for ground at sea level, so stage 1's line at Carford was "0.520 over the ground" and could as well have been drawn under the water. A girder bridge is still only for a river.
+- **How high a line may stand was tried harder and taken out.** Measuring the rule from the lowest ground under a stretch, not at the settled points, made the profile give up on more cells and the highest viaduct higher. `profile.rs` is unchanged.
+
+### The two small things
+
+- **A road that would lie under a lake or along tidewater is left out of the picture** (`network::link_shown`): where a tenth of a cell or more of the straight link is under standing water it has no ribbon, no bridge or causeway, and no cart takes it. On the old island every link is drawn as before.
+- Nothing else of roads.
+
+### What was measured
+
+Islands 7, 2 and 3 with six families under the game's rules, each recorded on the old island and on the new land at this branch's base, and read with `ISOSTATE_RAIL_CHECK=list isostate-viewer RUN/run.bin` by the base's build and by this one. "Before" is the new land at the base; the old island is the gate. Lengths are in cells of 2 km; heights are as drawn.
+
+| island, year | | km of line | viaducts | tunnels | inclines and banks | highest over its ground |
+|---|---|---|---|---|---|---|
+| 7, 1850 | old island | 2,109 | 70 (35.1) | 12 (4.1) | 16 (24.6) | 0.208 |
+| | before | 1,922 | 134 (83.0) | 26 (21.9) | 43 (67.7) | 0.520 |
+| | after | 1,833 | 88 (61.5) | 22 (14.5) | 36 (58.5) | 0.263 |
+| 7, 1900 | old island | 3,120 | 92 (45.5) | 30 (15.7) | 26 (38.2) | 0.208 |
+| | before | 3,201 | 186 (117.2) | 36 (25.8) | 56 (87.6) | 0.520 |
+| | after | 3,066 | 111 (75.2) | 32 (20.3) | 46 (74.7) | 0.263 |
+| 2, 1850 | old island | 1,839 | 72 (34.6) | 21 (9.0) | 31 (43.0) | 0.183 |
+| | before | 1,632 | 127 (80.1) | 26 (20.2) | 33 (48.7) | 0.448 |
+| | after | 1,568 | 83 (54.4) | 19 (10.6) | 29 (49.4) | 0.429 |
+| 2, 1900 | old island | 2,853 | 130 (65.7) | 38 (15.1) | 56 (79.1) | 0.222 |
+| | before | 3,133 | 193 (122.5) | 44 (29.5) | 53 (83.0) | 0.448 |
+| | after | 2,997 | 126 (82.4) | 37 (20.6) | 48 (80.8) | 0.429 |
+| 3, 1850 | old island | 2,115 | 101 (59.1) | 12 (8.4) | 39 (52.0) | 0.217 |
+| | before | 1,286 | 137 (91.9) | 31 (31.6) | 21 (32.2) | 0.333 |
+| | after | 1,239 | 77 (51.5) | 20 (16.6) | 18 (25.4) | 0.213 |
+| 3, 1900 | old island | 2,869 | 134 (75.2) | 27 (15.6) | 51 (67.8) | 0.217 |
+| | before | 2,791 | 213 (136.1) | 47 (39.8) | 43 (71.5) | 0.384 |
+| | after | 2,681 | 115 (75.0) | 35 (24.7) | 40 (61.0) | 0.365 |
+
+Against the gate, part by part:
+
+- **No step along any line: met.** 0.000 in every year of all six runs, and 0.000 where lines meet.
+- **No more viaducts, tunnels and inclines than the old island: met in half the eighteen counts.** By count the new land has no more viaducts than the old island on island 2 in 1900 and island 3 in both years; no more tunnels on island 2 in both years; no more inclines on island 2 in both years and island 3 in both. Island 7 fails all six: it has a fifth more viaducts, a tenth more tunnels and three quarters more inclines than its old island in 1900.
+- **No greater length of them: met in four of eighteen.** Island 3's viaducts in both years and its inclines in both. Elsewhere the new land's are longer: island 7's viaducts 75.2 cells against 45.5.
+- **No line higher over its ground than the old island's worst: met once**, on island 3 in 1850 (0.213 against 0.217). The highest are forced crossings of gorges, below.
+- **No viaduct over a lake or a tideway where the cell has a dry way round: four short stretches fail.** Of the stretches of line over standing water in 1900 (15, 21 and 6 on the three islands, 4.1, 6.8 and 2.5 cells of line; the old island's own lines have 9, 5 and 6 over its invented estuaries, 7.2, 5.5 and 6.2 cells), three on island 7 and one on island 2 have dry ground to go round by: 0.37, 0.09 and 0.06 of a cell on island 7 and 0.24 on island 2 (740 m at the longest). They are across a lobe of a tideway on the north coast (34.8,10.5), over the 180 m tip of an upland lake (91.9,36.2), at the water's edge by Carford's station (74.4,33.4), and at a junction on island 2 where a branch comes round to join the line it meets (98.9,32.4). Two of the four are on viaducts. Pricing water five times dearer changed none of them, so it is not the way found that crosses but the curve laid along it, which may bend no tighter than a train takes and cuts the corner the way went round. Each cell passed beside its middle, as before this stage, gave seven, nine and one.
+
+**How hard a country the lines cross.** The second new line of the check is the fairest single figure, because it does not depend on what the profile then builds:
+
+| the ground rises and falls beyond the ruling gradient, 1900 | island 7 | island 2 | island 3 |
+|---|---|---|---|
+| the old island | 30.3 | 40.4 | 38.7 |
+| the new land, each cell passed beside its middle | 58.0 | 57.8 | 53.0 |
+| the new land now | 35.3 | 34.3 | 31.9 |
+
+So on two islands of three the new land's lines now have less to make up than the old island's, and on island 7 a sixth more. They make it up with longer and higher structures because the new land's hard ground is steeper: on island 7 the same sort of total lies under 288 cells of line where the old island's lies under 340.
+
+Other things measured:
+
+| | |
+|---|---|
+| the old island's rail check | the same as the base's to the digit on islands 7, 2 and 3: every line of `=list` (258, 376 and 358 lines: each year's summary and every viaduct, tunnel, incline, bridge, tight curve and engine house of 1900), the lines this stage adds left out. One thing varies from run to run of one program and is left out too: where lines meet with no step, the check names a place, and which it names comes from a hash table's order |
+| the old island's twelve standard pictures | 0 pixels in all twelve against the base's own. Against `merged-15-town-ground` the base itself differs in every picture: that reference is older than the works' site planner and wants retaking |
+| the core | untouched: no file under `crates/isostate-core` differs from the base, and the sweep of eight islands has 0 facts of 626 differing from the base's (`merged-game-f6-m-before-rules-2`; main has moved on since, by the rules pass's stage 2) |
+| the new land's two named sets | at the base, two takes: all 24 pictures the same to the pixel. With this stage, four takes of the standard twelve and two of the land's twelve: all the same to the pixel but one picture in one take (`works-1900`, 13 pixels, the largest difference 15 of 255, at one spot in a wood). Its cause was not found |
+| the pictures that changed | all 24, by 0.15 to 92% of pixels. In 1750 and 1800, before any railway, only the roads left out under lakes and along tideways (0.15 to 1.3%). After that the railways, the stations and sidings, a church that moved for a line (Sandmere's, `street-1850`), the works that keep clear of a line, and with them the camera of the two works' views, which looks at where the works stand (so those two differ everywhere, by a few pixels' shift) |
+| the time it takes | the whole railway of island 7 to 1900, 1,237 cells and 1,250 lengths, with every check between: 126 to 257 ms over a dozen runs on a loaded machine, where the base took 144 (`rail check: ... settled in`). A year's rebuild on the new land (`ISOSTATE_BENCH=1`, two takes each, turn about): the base 702 and 663 ms a year, this build 665 and 619 |
+| tests | five new (`cargo test -p isostate-viewer passing_tests`): a line goes round a lake where its cells have dry ground, by the edge of its cells where only that is dry, and crosses one that fills them, over its water; it goes round a spur with no tunnel, viaduct or incline; the rules in metres are the old island's at three times; a road under a lake is left out; and a line ruled straight across each of three islands in three places has no step, passes every cell within 500 m of it, stands over no water it could go round, and has under it between a third and three quarters of what the straight way between the cells' middles has. The first two failed with the old passing places, while a switch for them was in the tree |
+
+### What is left, and what the simulation would have to know
+
+**The lines that cannot meet the gate.** `=list` names the ten lines over the hardest ground. On island 7 in 1900 they hold 12.5 of the 35.3 between them, a third of it on ten lines of 334:
+
+- **Line 329, from 56.8,76.8 to 60.8,79.9** in the south of the belt (`plans/hard-329.png`, `plans/section-329.png`): 1.66 over 8 cells. It crosses the main valley of that country on arches, bores a narrow ridge that stands some 270 m over it, and ends over a hollow 175 m deep, which is the island's highest viaduct (0.263, at 60.2,79.4).
+- **Line 106, south from Carford** (74.3,33.2 to 75.0,42.0; `plans/section-106.png`): 1.51. Its cells go over a pass: from 0.23 as drawn at Carford to 1.03 in five cells, some 530 m in 10 km, which is 1 in 19 where the ruling gradient is 1 in 35.3. It is inclines nearly all the way up and one long one down.
+- **Line 235, from 59.0,55.9 to 67.6,61.2** (`plans/section-235.png`): 1.35. It goes over the crest of the belt, from 0.20 as drawn to 1.13 and down to 0.20 again, some 620 m up and as much down in 24 km, on inclines, a tunnel under the summit and viaducts coming down.
+- **Carford's lake (line 98, from 74.7,32.7 to 75.0,33.5).** The branch from the east runs along the lake's north shore and joins at Carford on its south-west shore. The two cells it joins there (75,32 and Carford's, 74,33) meet only at a corner, and the corner is in the lake: there is no dry way between them inside those cells, and the check says so (`plans/final-carford.png`). The line crosses with 0.95 of a cell of it over the water, 0.21 over the water where it leaves the north shore and coming down to the station. At the base it crossed as much lake higher up, which the check then gave as 0.52 because it took the lake's bed for sea level. It is the viaduct that remains (`views/carford-after.png`).
+- **Island 2's tableland (line 258, from 91.7,59.5 to 93.2,60.2)**: 0.95 in 1.1 cells and the highest viaduct of the three islands, 0.429. Two cells on the tableland's top, joined corner to corner, with a canyon nearly 300 m deep through the corner (`plans/final-2-canyon.png`; the cells with track are 92,59 and 93,60).
+
+**What the simulation would have to know.** It chooses a line's cells by the cells' mean heights (`rail.rs`) and prices the slope between two means. What a mean hides is the relief inside the cell and between two cells.
+
+1. **What the ground between two cells asks of a line**: for each cell and each of its eight neighbours, how far the best way from the one to the other rises and falls beyond the ruling gradient. It is the figure this stage's search already finds, link by link; made once with the land and kept as a static array, it would be the slope a railway pays for, where today that is the difference of two means. A line that paid it would go up a valley and not across its sides, and lines 106 and 235 would be priced as the mountain railways they are, or not built.
+2. **Whether that way crosses standing water, and how much**: the same array's second column. It is stage 4's list for roads (what each link crosses), and a railway needs it as much: Carford's branch would have gone to the cell west of the lake.
+3. **That a link between two cells that meet at a corner passes through the corner.** Both the lake at Carford and the canyon on island 2 are at one.
+
+Until then the viewer could let a diagonal link use the two cells beside its corner, which would take Carford's line round the west end of its lake beside the line already there. It was not done: it draws track through cells the simulation has none in.
+
+**Faults this stage leaves.**
+
+- **Hooks at junctions.** Every length leaves a cell along the cell's one line, so a branch that arrives from the side comes round in a loop, sometimes a loop in a tunnel (`plans/try13-carford-close.png`). The old island does the same (18 to 26 curves tighter than a train should take; the new land 20 to 33). It is the next thing wrong with the railways on either land.
+- **A mineral line may stop short of its pit.** A line that ends in a cell leans to the cell's meeting place and stops where the climb to it is not worth the way: 700 m short in `views/hills-after.png`.
+- **Banks on steep hillsides are drawn as green slabs** down to wherever their foot is; on real relief there are more of them. A cutting would halve them, and is the design's next step for the railways.
+- **Inclines.** The new land still has 46, 48 and 40 where the old island has 26, 56 and 51. Each now has a hill to go up, but an incline every 60 to 70 km of line is more than a railway had.
+
+### The pictures
+
+Under `.claude/night/shots/opus/map-03/`. Every one named was opened and looked at.
+
+- `views/valley-before.png` and `valley-after.png` (the valley above Carford, 1900): before, the line strides down the valley on two long viaducts through the town; after, it runs down the valley floor beside the river on a low bank, over one small bridge, with a train on it.
+- `views/carford-before.png` and `carford-after.png`: the lake. Before, a viaduct across the middle of the lake at 0.52 and more through the town; after, the line from the north comes down the lake's west shore, and the branch still crosses the lake's west end on arches.
+- `views/hills-before.png` and `hills-after.png`: a pit's branch. Before, on a viaduct and a high bank across the valley to the pit on the hill; after, up the valley's side with one short viaduct and a train, stopping below the pit.
+- `views/southbelt-before.png` and `southbelt-after.png`: a line through hill villages. Before, a double loop on viaducts above the town; after, the line winds down with the valley, with one viaduct over a side valley that deserves it.
+- `views/belt-1850-*.png` and `belt-1900-*.png`: the belt from 28 km up, the cameras of stage 1's `belt-play`.
+- `plans/try1-c.png` and `plans/try12-c.png`: one hill district in plan on the ground's height, with the first version's course and the last's (`ISOSTATE_PLAN_RAILS=1`): red is viaduct, white tunnel, yellow incline.
+- `newland-stage3-before/` and `newland-stage3/`: the two named sets. `standard/street-1850.png`: Sandmere's railway came through the town on a high bank and now crosses the river on a girder bridge; its church has moved for the line. `standard/works-1900.png`: Skelford's line crossed its lake on a viaduct and now goes round the shore.
