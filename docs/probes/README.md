@@ -19,6 +19,9 @@ their own pages under `docs/rules/`. They are of four kinds:
   are for the pass over all the rules, piece 18 of the same page.
 - **A reading**: the news read item by item as a player meets it.
 
+And one page is the baseline of the scorecard, with the floor of chance that the pass over
+the rules is read against.
+
 Every page from 12 November was done by one helper and checked by a second, who ran its
 numbers again and mended what did not hold in place.
 
@@ -185,6 +188,22 @@ an answer was leaned on.
   it), why founding stops in the 1840s (carting saved at a freight fixed in money, weighed
   against money wages that treble), and what limits a town in its fastest decade (its market
   area and a weak pull, not housing). Example `examples/tr_urban.rs`.
+- `tr-loose-a.md` (at 8bf4505): four loose ends the traces and tables left. The merchants'
+  debts are the price rule's stock markup acting on services, which spoil: a town that brings
+  its services in gets months of them at once and loses what rots, and with no markup on
+  services the debt is 1.4 per cent of the money and not 45. The runaway wages are a mine
+  hiring past its town's hands after a price jumps at a year's turn, which rationing hires to
+  the hands there are ends (the pass's stage 2 since). Two in five twin works are the works of
+  1749 put on one cell; and a family's mill was closed by the cash of its own extension, sent
+  back as dividends before the plant was paid for. Example `examples/loose_ends.rs`.
+- `tr-loose-b.md` (at 8bf4505, and on up to 64 islands): four more. Kept town ground's sure
+  costs are output per head and works, and its cost to the real wage is mostly the 1750
+  basket's; crucible steel found late stalls because cheap iron has already made tools cheap;
+  railways leave fewer people because they put more of them in towns, where they die faster,
+  and the port's merchants take their share of the gain through a wider margin the game's
+  rules compete away; and the shortages later in the year are the bottom of the merchants'
+  stock cycle, a month's buyers drawing only on the store as the month began. Examples
+  `crucible_late.rs`, `spring_hunger.rs`, `kept_ground.rs` and `merchants_take.rs`.
 
 ## The tables of sensitivity (12 November 2026)
 
@@ -227,6 +246,17 @@ island, and not against one baseline.
   `labor` moves the first fifty years about in proportion and not 1900; the rest set the map or
   the churn. Thirteen runs had one town's wage run away for a few months, early in the century
   and on the same few islands.
+
+## The scorecard's baseline (12 November 2026)
+
+- `scorecard-baseline.md` (at aa9f158, sixteen islands with six families): three cards of the
+  scorecard (`docs/rules/scorecard.md`), for the game's rules on `main`, for the port's, and
+  for the game's rules with the deeper production tree, and the floor under them: how far a
+  sweep's facts move when only chance has changed, from five histories of each side. A fact
+  that a single island can tip can move several floors by chance alone, which the page warns
+  of. Its example, `examples/chance_floor.rs`, measures the floor. The cards are those of the
+  first scorecard, before the pass's twenty aims; the card of the pass is in
+  `docs/rules/scorecard.md`, "The card before the pass".
 
 ## A reading (12 November 2026)
 

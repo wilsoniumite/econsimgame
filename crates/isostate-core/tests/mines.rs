@@ -247,7 +247,7 @@ fn the_land_arithmetic_holds_every_year() {
             // a working's surface is what its row of the land shares says, and no more than its limit
             let surface: f64 = (0..st.mine_sectors.len()).map(|r| st.mine_surface[(r, c)]).sum();
             let rows: f64 = st.mine_sectors.iter().map(|&sec| st.lam[(sec, c)]).sum();
-            assert!((surface - rows).abs() < 1e-12 && surface <= P.mines.cell_limit + 1e-12);
+            assert!((surface - rows).abs() < 1e-12 && surface <= isostate_core::mines::CELL_LIMIT + 1e-12);
         }
         for (r, &sec) in st.mine_sectors.iter().enumerate() {
             for h in (0..N).filter(|&h| st.mine_opened[r * N + h] != 0) {

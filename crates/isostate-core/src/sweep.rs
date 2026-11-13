@@ -328,6 +328,11 @@ pub fn set_field<T: Serialize + DeserializeOwned>(base: &T, key: &str, value: &V
         // a mechanism left at its default is not written out: start it from there
         cur = obj.entry(part.to_string()).or_insert_with(|| json!({}));
     }
+    // a setting retired in stage 5 of the pass over the rules is refused by
+    // what it became, not as a name nobody has heard of
+    if let Some(why) = crate::params::retired(&doc) {
+        return Err(format!("--set {key}: {why}"));
+    }
     serde_json::from_value(doc).map_err(|e| explain(key, value, &e.to_string()))
 }
 

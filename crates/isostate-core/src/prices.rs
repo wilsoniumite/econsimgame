@@ -24,6 +24,9 @@
 //!   the town's wage sees it too. Works only: farms, pits and quarries still
 //!   sell all they raise.
 //!
+//! And under `no_spoil_markup` a good that spoils carries no markup: its price
+//! is its anchor ([`markup_for`]).
+//!
 //! Nothing here draws a random number, and no money changes hands that did not
 //! before: a works on short time simply makes, buys and pays less.
 
@@ -53,25 +56,34 @@ pub struct PriceParams {
     /// Merchants take all a works makes while the town's stock of its good is
     /// under this many months of sales and shipments. 0: they always take all.
     pub glut_months: f64,
-    /// At this many months they take only `glut_floor` of the works' capacity.
+    /// At this many months they take only `GLUT_FLOOR` of the works' capacity.
     /// It has to stand above [`brake_floor`], which two numbers of the port's
     /// set, and a setting that does not is refused where it is read ([`check`]).
     pub glut_stop_months: f64,
-    /// The least share of a works' capacity merchants go on taking in the worst glut.
-    pub glut_floor: f64,
+    /// A good that spoils (more than [`SPOILS`] of a stock lost each month)
+    /// carries no stock markup: its price is its anchor. Off: the markup falls
+    /// on every good, services among them, and the towns that bring services in
+    /// lose what rots on their shelves (docs/rules/prices.md, "Goods that spoil").
+    pub no_spoil_markup: bool,
 }
 
 impl Default for PriceParams {
     /// Off: what the port runs with.
     fn default() -> PriceParams {
-        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, glut_floor: 0.0 }
+        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false }
     }
 }
+
+/// The least share of a works' capacity merchants go on taking in the worst
+/// glut: nothing. A setting, `glut_floor`, until stage 5 of the pass over the
+/// rules: at 0.1, 0.25 and 0.5 it moved nothing beyond chance
+/// (docs/probes/sens-prices.md).
+pub const GLUT_FLOOR: f64 = 0.0;
 
 impl PriceParams {
     /// The game's merchants.
     pub fn game() -> PriceParams {
-        PriceParams { enabled: true, ..PriceParams::default() }
+        PriceParams { enabled: true, no_spoil_markup: true, ..PriceParams::default() }
     }
 }
 
@@ -84,13 +96,13 @@ pub struct PriceSettings {
     markup: f64,
     glut_months: f64,
     glut_stop_months: f64,
-    glut_floor: f64,
+    no_spoil_markup: bool,
 }
 
 impl Default for PriceSettings {
     fn default() -> PriceSettings {
-        let PriceParams { enabled, markup, glut_months, glut_stop_months, glut_floor } = PriceParams::default();
-        PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor }
+        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup } = PriceParams::default();
+        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup }
     }
 }
 
@@ -101,8 +113,8 @@ impl TryFrom<PriceSettings> for PriceParams {
     /// sentence that names it. Whether the switch is on does not matter: a
     /// file that says a nonsense number has a mistake in it either way.
     fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
-        let PriceSettings { enabled, markup, glut_months, glut_stop_months, glut_floor } = s;
-        for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months), ("glut_floor", glut_floor)] {
+        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup } = s;
+        for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months)] {
             if !x.is_finite() {
                 return Err(format!("prices.{name} is {x}, and it has to be an ordinary number"));
             }
@@ -114,12 +126,9 @@ impl TryFrom<PriceSettings> for PriceParams {
             return Err(format!("prices.glut_months is {glut_months}, and it has to be a number of months of stock, or 0 for merchants who always take all"));
         }
         if glut_months > 0.0 && glut_stop_months < glut_months {
-            return Err(format!("prices.glut_stop_months is {glut_stop_months}, under glut_months ({glut_months}), and merchants cannot stop taking before they start to take less: give it glut_months or more (the same is a brake that drops from all to glut_floor at once)"));
+            return Err(format!("prices.glut_stop_months is {glut_stop_months}, under glut_months ({glut_months}), and merchants cannot stop taking before they start to take less: give it glut_months or more (the same is a brake that drops from all to nothing at once)"));
         }
-        if !(0.0..=1.0).contains(&glut_floor) {
-            return Err(format!("prices.glut_floor is {glut_floor}, and it is a share of a works' capacity, from 0 to 1"));
-        }
-        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, glut_floor })
+        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup })
     }
 }
 
@@ -145,16 +154,44 @@ fn ensure_anchor(st: &mut State) {
 /// answering the price with elasticity e (supply and demand together), the
 /// damping ratio is `markup / 2 * sqrt(e / (price_target_months * price_speed))`,
 /// about 0.65 for iron and 1.7 for grain at a markup of 0.5, against 0.1 before.
+///
+/// `decay` is the share of the good's stock that spoils in a month (the port's
+/// `P.decay[g]`; once the production tree is in, the content's rate as
+/// `tree::decay` gives it). It only matters under `no_spoil_markup` ([`markup_for`]).
 #[allow(clippy::too_many_arguments)]
-pub fn mark(st: &mut State, P: &Params, t: usize, g: usize, gap: f64, imbalance: f64, lo_p: f64, hi_p: f64) {
+pub fn mark(st: &mut State, P: &Params, t: usize, g: usize, gap: f64, imbalance: f64, lo_p: f64, hi_p: f64, decay: f64) {
     ensure_anchor(st);
     let a0 = st.price_anchor[(t, g)];
     let a = (a0 * (P.price_speed * gap + P.price_flow * imbalance).clamp(-MAX_STEP, MAX_STEP).exp()).clamp(lo_p, hi_p);
     st.price_anchor[(t, g)] = a;
     let p0 = st.price[(t, g)];
-    let want = a * (P.prices.markup * gap).exp();
+    let want = a * (markup_for(&P.prices, decay) * gap).exp();
     let newp = p0 * (want / p0).ln().clamp(-MAX_STEP, MAX_STEP).exp();
     st.price[(t, g)] = newp.clamp(lo_p, hi_p);
+}
+
+/// A good spoils when more than this share of a stock of it is lost in a month.
+/// Merchants who hold the two months of sales they aim at (`price_target_months`)
+/// lose a fifth of it or more to spoiling, which is no longer a stock that can be
+/// held. Under the game's content that is services alone (half a month); grain
+/// loses 0.03 and every other good a hundredth or less. Under the production tree's
+/// content (`data/game.toml` on its branch) town gas is the other (0.15, and not
+/// traded between towns), and building work at exactly 0.1 is not one.
+pub const SPOILS: f64 = 0.1;
+
+/// The markup a good's price stands off its anchor by: the merchants' `markup`,
+/// or none under `no_spoil_markup` for a good that spoils ([`SPOILS`]).
+///
+/// The stock markup reads the shelves, and on a good that halves every month the
+/// shelves swing from empty to glut every three months: thin shelves mark the
+/// price up, the trade rule ships on the price of the moment and sends seven
+/// months of the good at once, and what is not sold rots at the merchants' cost.
+/// Towns that make no services of their own and bring them in lost that way for
+/// a century, and the island's merchants came to owe half its money by 1900
+/// (docs/probes/tr-loose-a.md, section 1). With no markup the price is the
+/// anchor, which still learns from shortages and gluts that last.
+pub fn markup_for(pp: &PriceParams, decay: f64) -> f64 {
+    if pp.no_spoil_markup && decay > SPOILS { 0.0 } else { pp.markup }
 }
 
 /// A new town takes its mother town's anchors along with her prices
@@ -259,7 +296,7 @@ fn short(x: f64) -> String {
 
 /// The share of capacity merchants will take at a stock of `stock` against
 /// smoothed monthly sales and shipments of `outflow`: 1 up to `glut_months` of
-/// sales, falling in a straight line to `glut_floor` at `glut_stop_months`.
+/// sales, falling in a straight line to `GLUT_FLOOR` at `glut_stop_months`.
 /// A stock nobody is buying from at all counts as the worst glut; no stock is
 /// no glut.
 pub fn take_at(pp: &PriceParams, stock: f64, outflow: f64) -> f64 {
@@ -268,7 +305,7 @@ pub fn take_at(pp: &PriceParams, stock: f64, outflow: f64) -> f64 {
     }
     let months = stock / outflow.max(1e-12);
     let width = (pp.glut_stop_months - pp.glut_months).max(1e-9);
-    (1.0 - (months - pp.glut_months) / width).clamp(pp.glut_floor.clamp(0.0, 1.0), 1.0)
+    (1.0 - (months - pp.glut_months) / width).clamp(GLUT_FLOOR, 1.0)
 }
 
 /// For each works (its town in `ft`, its good in `out`): the share of its
@@ -298,9 +335,9 @@ mod tests {
         assert_eq!(take_at(&pp, 300.0, 100.0), 1.0);
         assert_eq!(take_at(&pp, 400.0, 100.0), 1.0);
         assert!((take_at(&pp, 600.0, 100.0) - 0.5).abs() < 1e-12);
-        assert_eq!(take_at(&pp, 800.0, 100.0), pp.glut_floor);
-        assert_eq!(take_at(&pp, 5000.0, 100.0), pp.glut_floor);
-        assert_eq!(take_at(&pp, 5.0, 0.0), pp.glut_floor, "a stock nobody buys from is the worst glut");
+        assert_eq!(take_at(&pp, 800.0, 100.0), GLUT_FLOOR);
+        assert_eq!(take_at(&pp, 5000.0, 100.0), GLUT_FLOOR);
+        assert_eq!(take_at(&pp, 5.0, 0.0), GLUT_FLOOR, "a stock nobody buys from is the worst glut");
         // never rising with the stock
         let mut last = 1.0;
         for k in 0..200 {
@@ -342,8 +379,6 @@ mod tests {
             ("prices = { markup = -0.5 }", "prices.markup is -0.5"),
             ("prices = { glut_months = -1.0 }", "prices.glut_months is -1"),
             ("prices = { glut_stop_months = 3.0 }", "prices.glut_stop_months is 3"),
-            ("prices = { glut_floor = 1.5 }", "prices.glut_floor is 1.5"),
-            ("prices = { glut_floor = -0.1 }", "prices.glut_floor is -0.1"),
         ] {
             let err = read(text).expect_err(text);
             assert!(err.contains(name), "{text}: {err}");
@@ -361,8 +396,8 @@ mod tests {
         // the sweep's own reader meets the same refusal
         let err = crate::sweep::set_field(&crate::game_params(), "prices.markup", &serde_json::json!(-1.0)).expect_err("a negative markup by --set");
         assert!(err.contains("prices.markup is -1"), "{err}");
-        // the edges are sense: no markup, a brake that is off, a cliff at the start, any floor from 0 to 1
-        for text in ["prices = { markup = 0.0 }", "prices = { glut_months = 0.0, glut_stop_months = 0.0 }", "prices = { glut_stop_months = 4.0 }", "prices = { glut_floor = 1.0 }"] {
+        // the edges are sense: no markup, a brake that is off, a cliff at the start
+        for text in ["prices = { markup = 0.0 }", "prices = { glut_months = 0.0, glut_stop_months = 0.0 }", "prices = { glut_stop_months = 4.0 }"] {
             read(text).unwrap_or_else(|e| panic!("{text}: {e}"));
         }
         // and what is written is what is read, with the rest the game's
@@ -373,6 +408,23 @@ mod tests {
             let back: crate::Params = serde_json::from_value(serde_json::to_value(&P).unwrap()).unwrap();
             assert_eq!(back.prices, P.prices);
         }
+    }
+
+    #[test]
+    fn a_good_that_spoils_carries_no_markup() {
+        let on = PriceParams::game();
+        assert!(on.no_spoil_markup && !PriceParams::default().no_spoil_markup);
+        assert_eq!(markup_for(&on, 0.5), 0.0, "services");
+        assert_eq!(markup_for(&on, 0.15), 0.0);
+        assert_eq!(markup_for(&on, SPOILS), on.markup, "at a tenth a month a good still keeps");
+        assert_eq!(markup_for(&on, 0.03), on.markup, "grain");
+        assert_eq!(markup_for(&on, 0.002), on.markup);
+        let off = PriceParams { no_spoil_markup: false, ..on };
+        assert_eq!(markup_for(&off, 0.5), off.markup);
+        // a file that does not name the switch has it off; one that does is read
+        let read = |text: &str| crate::default_params().with_toml_overrides(text).unwrap().prices;
+        assert!(!read("prices = { enabled = true }").no_spoil_markup);
+        assert!(read("prices = { no_spoil_markup = true }").no_spoil_markup);
     }
 
     #[test]
