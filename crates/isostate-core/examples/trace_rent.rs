@@ -21,6 +21,9 @@
 //! nothing been foreseen, the third the rent an average year would really have
 //! paid. It takes three times as long. After the islands one by one it prints
 //! them pooled by the country's harvest, the table of docs/probes/tr-rent.md.
+//! Under `harvest.rent_as_paid` (on in the game's rules since 13 November 2026)
+//! the figure land is priced on is the rent paid, so `est` is `paid` and the
+//! old figure is had with `--set '{"harvest":{"rent_as_paid":false}}'`.
 //!
 //! Part (d) ends with the town-years short of food sorted by what came before
 //! them, the counts the page gives.
@@ -213,7 +216,8 @@ fn run(seed: u64, P: &Params, rules: Rules, parts: &str, from: i64, to: i64, fol
         let (mut est_c, mut est0_c, mut paid0_c, mut avg_c) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         if let Some((hire, none)) = &twins {
             let st = &sim.st;
-            let gap = |s: &State, c: usize| s.harvest_rent_gap.get(c).copied().unwrap_or(0.0);
+            // under `harvest.rent_as_paid` the families price land on the rent paid alone
+            let gap = |s: &State, c: usize| if P.harvest.rent_as_paid { 0.0 } else { s.harvest_rent_gap.get(c).copied().unwrap_or(0.0) };
             est_c = (0..st.N).map(|c| st.cell_rent_paid[c] + gap(st, c)).collect();
             est0_c = (0..st.N).map(|c| hire.st.cell_rent_paid[c] + gap(&hire.st, c)).collect();
             paid0_c = hire.st.cell_rent_paid.clone();
