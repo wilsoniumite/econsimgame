@@ -85,7 +85,10 @@ less deaths. What each part stands for:
   leave to `merch_cash` of the port), so `econ::money_total` is unchanged.
   When a thousandth of the island goes in one year the news says so.
 
-Births less deaths never fall below `growth_floor`. And whatever the numbers
+Births less deaths never fall below -6 per cent a year (`peopling::GROWTH_FLOOR`,
+-0.06, a setting called `growth_floor` until stage 5 of the pass over the
+rules): it is a guard, and in no town of the sweeps has the rate come near
+it. And whatever the numbers
 are set to, deaths and sailings together never take more than half a town in
 a year: with `dearth` and `emigration` both at 1 a town's people went below
 nothing and the money check failed, and a town with nobody in it is not
@@ -220,7 +223,6 @@ they go is the market's business.
 | `dearth_from`, `dearth_full` | 1.0, 0.6 | the worst month's food over need at which dearth begins and is complete |
 | `dearth` | 0.03 | deaths a year per head in a complete dearth |
 | `emigration` | 0.02 | share who leave the island in a complete dearth |
-| `growth_floor` | -0.06 | births less deaths never fall below this |
 | `arrivals_max` | 0.1 | migrants a town can take in a year, as a share of its people |
 | `found_saving` | 0.08 | carting saved in a year over the district's yearly wages |
 | `found_cells`, `found_people` | 40, 3,000 | the least district that can keep a market |

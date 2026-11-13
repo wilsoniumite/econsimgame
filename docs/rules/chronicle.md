@@ -85,7 +85,8 @@ inventions (`inventions`) and two turning points (`turning_points`), and
 nothing lighter than 0.6 (`floor`). One place is the
 player's: the heaviest of the family's own items at 0.6 or more is kept
 whatever else happened. A decade that is over and still has fewer than two
-(`at_least`) takes the best of what is left above 0.45. A dated slump is
+(`chronicle::AT_LEAST`) takes the best of what is left above 0.45
+(`chronicle::FILL_FLOOR`). A dated slump is
 ranked by its weight and its depth, since the observer weighs a slump of 5 per
 cent and a depression of 20 the same. An alarm ("Output falls: is this a
 slump?") is kept while it is the latest word and gives way to the verdict
@@ -146,7 +147,7 @@ one hit hardest leads and the others are named in its last sentence.
   Now every town has them; a later one is told more quietly (0.45 and up,
   against 0.55 and up) with the towns that got there first.
 - Doublings were measured against 1750 alone, whatever kind of year that was.
-  Now against the mean of the first `base_years` (5), and the title says so
+  Now against the mean of the first five (`chronicle::BASE_YEARS`), and the title says so
   ("Real output doubles since 1750–54"). Nothing doubles while that mean is
   forming.
 - A rival's "first works of its kind" was counted again after it sold its
@@ -160,11 +161,10 @@ one hit hardest leads and the others are named in its last sentence.
 | | default | |
 |---|---|---|
 | `enabled` | false (true in a game) | |
-| `per_decade`, `at_least` | 4, 2 | most and fewest kept in a decade |
+| `per_decade` | 4 | most kept in a decade |
 | `per_kind`, `inventions`, `turning_points` | 1, 2, 2 | most of one kind; of inventions; of turning points |
-| `floor`, `fill_floor` | 0.6, 0.45 | lightest item kept; lightest kept to fill a thin decade |
+| `floor` | 0.6 | lightest item kept, but to fill a thin decade; the player's place is kept at it and above, so it must stay under `own_great` |
 | `own_great`, `own_small`, `own_summary` | 0.7, 0.5, 0.45 | weights of the player's own news |
-| `base_years` | 5 | years a doubling's baseline is the mean of |
 | `boom_years`, `boom_growth`, `boom_share` | 5, 1.5, 0.15 | coalfield boom (`boom_growth` was 2 until the chronicle met the game's other rules: "In company") |
 | `decline_years`, `decline_fall` | 8, 0.1 | town in decline |
 | `overtake_years`, `overtake_margin` | 3, 0.05 | one town overtaking another |
@@ -172,6 +172,20 @@ one hit hardest leads and the others are named in its last sentence.
 | `closures_min`, `closures_share` | 5, 0.1 | a district's works closing together (ten before the life cycle for works; "Beside the life cycle for works", below) |
 | `new_towns_min` | 3 | a decade of new towns |
 | `min_people`, `quiet_years` | 5,000, 15 | no stories of smaller towns; years before a story repeats |
+
+Three more were settings until stage 5 of the pass over the rules
+(`docs/designs/rules-pass.md`, section 4.5), and are constants in
+`chronicle.rs` now, with the values they had: `AT_LEAST` (2), the fewest kept
+in a finished decade; `FILL_FLOOR` (0.45), the lightest kept to fill a thin
+one; and `BASE_YEARS` (5), the years a doubling's baseline is the mean of.
+`sens-mines.md` tried them at 1 and 3, 0.34 and 0.6, and 4 and 7: no decade
+was thin enough for the first two to act, and the third moved one milestone
+on one island.
+A settings file or a `--set` that names one is refused with a sentence that
+says so. `floor` and `own_great` stay settings, on one condition: the player's
+place in the feed is kept at `floor` and above, so a `floor` at or above
+`own_great` empties it, and `tests/chronicle.rs` holds `floor` under
+`own_great`.
 
 No random number is drawn anywhere in it.
 

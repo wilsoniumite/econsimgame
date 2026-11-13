@@ -83,8 +83,9 @@ landowners' outlay, and it is why nobody opens a pit head for a few tons.
 stand is reckoned up: the royalty a working there would pay, in the town's
 wages, from the deposit within its reach that nobody has, at the hands that
 suit the year's prices. A site is a prospect when that promise, believed
-over the last few years (`memory`) and held by this year's prices too, would
-repay the sinking in `payback` years (4, so ten wages a month). The best
+over the last few years (`memory`) and held by this year's prices too, comes
+to `open_at` wages a month or more (10: the sinking's forty hands for a year
+repaid in four years). The best
 prospects are opened first; none within two reaches of another opened the
 same year; and in each town only until the new workings would add
 `year_room` (0.15) of what its market takes of the good in a month, though one
@@ -123,7 +124,7 @@ without the century's growth being spent on it.
 
 **F. The surface.** A working takes land by its hands, as a works does
 (`works.md`, B): `hands_per_cell` (8,000) fill a cell with pit heads, yards
-and spoil, and no cell gives its workings more than `cell_limit` (half). A
+and spoil, and no cell gives its workings more than half (`mines::CELL_LIMIT`). A
 quarry of sixty men takes three hectares; a colliery of a thousand, fifty.
 That surface is taken out of the pit head's cell before the land rule shares
 the rest between farm, pasture, wood and wild, and written back into the land
@@ -166,16 +167,34 @@ these.
 | `reach` | 2.0 | cells from the pit head a lease reaches (a cell is 2 km) |
 | `haul` | 0.05 | richness lost per cell of haul underground: `1 / (1 + haul * d)` |
 | `sink` | 40 | hands for a year to sink a working; 0 and a pit head costs nothing |
-| `payback` | 4 | years in which the promised royalty must repay the sinking |
+| `open_at` | 10 | the royalty, in the town's wages a month, a site must promise to be opened; 0 and every site is a prospect |
 | `idle_years` | 10 | years idle before a working is abandoned |
 | `memory` | 0.3 | how much of this year's promise goes into what a site is believed to pay |
 | `year_room` | 0.15 | new workings a year, as a share of the town's monthly trade in the good; 0 for no limit |
 | `reserve` | 20,000,000 | output, per unit of richness, at which a cell's richness has halved; 0 and a deposit never tires |
 | `hands_per_cell` | 8,000 | hands that fill a cell with pit heads, yards and spoil |
-| `cell_limit` | 0.5 | the most of a cell its workings' surface may take |
+
+Two settings went in stage 5 of the pass over the rules
+(`docs/designs/rules-pass.md`, section 4.5). `payback` (4) was the years in
+which the promised royalty had to repay the sinking, so a site opened at
+`sink / payback` wages a month: one number made of two, and `sens-mines.md`
+found that moving `sink` and `payback` together moved nothing on sixteen
+islands. It is restated as `open_at`, the ten wages a month that 40 / 4 came
+to (the same number to the last bit, so no run moved), and `sink` now means
+only what it costs to sink a working; to set the old rule's `payback` p, set
+`open_at` to `sink / p`. And `cell_limit` (0.5), the most of a cell the
+workings' surface may take, is the constant `mines::CELL_LIMIT`: at 0.375
+and 0.667, and at 0.25 and 0.833, it moved nothing. A settings file or a
+`--set` that names either is refused with a sentence that says what it
+became. Where the page below tells of `payback` or `cell_limit` being tried,
+that was before.
 
 `--set mines.reserve=0` measures everything but depth. `reach` and `sink`
 between them set how many workings there are; neither has been swept.
+(Since swept, in `sens-mines.md`. And since stage 5, `sink` no longer moves
+the threshold for opening, which is `open_at`'s alone; moved by itself it is
+what `sink` and `payback` moved together were, which moved nothing on sixteen
+islands.)
 
 `idle_years` of 0 and of 1 give the same runs, to the last bit, and that is
 meant. The year's review adds the year just ended to a working's idle count
@@ -279,11 +298,12 @@ game's rules to the last digit. Three things were mended.
 
 Extreme settings, two seeds each to 1900 under the game's rules with six
 families (`mines-review/x-*`): `sink` 0 and 400, `reach` 0, 2 and 4,
-`payback` 0, 0.5 and 20, `memory` 0 and 1, `idle_years` 0, 1 and 300,
+`payback` 0, 0.5 and 20 (`open_at` 0, 80 and 2 today, at `sink` 40), `memory` 0 and 1, `idle_years` 0, 1 and 300,
 `year_room` 0 and 5, `reserve` 0 and 100,000, `haul` 0 and 1,
 `hands_per_cell` 0 and 200, `cell_limit` 0 and 1, in the combinations that
 made 68 runs. None failed the money check and none ran away. `sink` 0 with
-`reach` 0 is the port's pattern again (4,000 workings in 1900), as "what I
+`reach` 0 (which also made the threshold nothing; today that takes `open_at`
+0 as well) is the port's pattern again (4,000 workings in 1900), as "what I
 tried first" says it should be. A `reserve` two hundred times smaller makes
 coal ten times as dear in 1900 and halves the baskets a head, so depth can
 be made to bite; nothing breaks. The one setting to keep away from
@@ -977,7 +997,7 @@ was merged (branch `night/mines-commons-review`; sweeps under
   ("Checking it").
 - **Extreme settings under both regimes**, as the mines' own review tried
   them under the landlords: `sink` 0 and 400 with `reach` 0 and 4,
-  `payback` 0, 0.5 and 20, `idle_years` 0, 1 and 300, `memory` 0 and 1 with
+  `payback` 0, 0.5 and 20 (`open_at` 0, 80 and 2 today, at `sink` 40), `idle_years` 0, 1 and 300, `memory` 0 and 1 with
   `year_room` 0 and 5, `reserve` 0 and 100,000 with `haul` 0 and 1, and
   `hands_per_cell` 0 and 200 with `cell_limit` 0 and 1, each on eight seeds
   with six families (`x-f6-*`). That is 352 runs, half of them under the
@@ -1229,8 +1249,8 @@ town is short of hands, which moves more.
 - **A run starts with more workings than it needs** and abandons the ones
   that never found a hand in 1749. The record never sees it, but a mechanism
   that reads the workings during the warm-up would.
-- **`reach`, `sink`, `haul`, `payback`, `year_room` and `hands_per_cell`
-  were set by judgment and a few runs on two seeds**, not swept. The sweeps
+- **`reach`, `sink`, `haul`, `payback` (now `open_at`), `year_room` and `hands_per_cell`
+  were set by judgment and a few runs on two seeds**, not swept here (`sens-mines.md` swept them since). The sweeps
   here are of the mechanism on and off with the numbers in the table, and of
   `reserve`.
 - **Speed** is not a worry after all: timed one run at a time, the mines

@@ -273,6 +273,15 @@ before the start, more than 10,000 seeds, a `DIR` that cannot be made.
 --set land_thetta: there is no parameter "land_thetta". Did you mean land_theta?
 ```
 
+A setting that has been retired is refused by what it became, the same way
+from `--set`, from a `--params` file and from the readers in code
+(`params::RETIRED`; stage 5 of the pass over the rules made sixteen settings
+that moved nothing into constants, and folded two pairs that were one number):
+
+```text
+--set canals.max_projects: canals.max_projects is no longer a setting since stage 5 of the pass over the rules (docs/designs/rules-pass.md, section 4.5): it is the constant canals::MAX_PROJECTS, 12 canals digging at once
+```
+
 It writes into `DIR`, replacing a sweep that is already there (so the same
 command makes a baseline again):
 

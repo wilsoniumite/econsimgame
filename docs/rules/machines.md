@@ -1,5 +1,10 @@
 # Machines
 
+**`machines.adopt_wagonways` stays off: switched on, it leaves every island
+with no railway** (all sixteen in `sens-machines.md`), because the rails the
+collieries lay at a loss in their first wagonways are what teach the island
+to roll rails at all ("Decisions", below).
+
 Machines that are bought where they pay, that keep getting better, and steel
 that matters. None of it is in the Python. Off under the port
 (`machines.enabled = false`), on under the game's rules; the code is
@@ -128,7 +133,7 @@ the port's content file: `--rules game --content data/content.toml`
 |---|---|---|
 | `enabled` | false; true in the game | |
 | `adopt_span` | 6 | a machine is taken by all only where it earns its cost seven times over |
-| `adopt_pumps`, `adopt_wagonways` | false | the mines buy as the port does |
+| `adopt_pumps`, `adopt_wagonways` | false | the mines buy as the port does; `adopt_wagonways` on leaves the island with no railway (above) |
 | `life_months` | 96 | a machine stands eight years |
 | `quality_Q0`, `quality_b`, `quality_cap` | 1,000,000; 0.6; 4 | quality 2 at 2.2 million of steel, 4 at 9 million |
 | `quarry_reach` | 1 | a quarry's machine adds q - 1 |
