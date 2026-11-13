@@ -271,9 +271,11 @@ spoil, which is a fault of its own and not a district's to carry away.
   households' cash are each the same to the penny, with the rule and without;
   without it the old town's shelves are exactly as they were;
 - merchants who owe keep the debt, and the stock goes all the same;
-- island 14 to 1771, played both ways: without the rule Wyrside, two and a
-  half times its people at the end of 1769, gets 0.79 of its food in February
-  1770; with it no town that took a district goes short in January to March;
+- island 4 to 1771, played both ways: without the rule Penfell, 1.9 times its
+  people at the end of 1769, gets 0.78 of its food in February 1770; with it
+  no town that took a district goes short in January to March (the test was
+  written on island 14's Wyrside in the same winter, whose case went another
+  way when towns stopped hiring hands they do not have, [hands.md](hands.md));
 - three harder redraws, each holding that nothing is made or lost (every
   good's stock and measure of sales to a part in a million million of the
   island's total, no shelf below nothing, money and the merchants', the

@@ -299,18 +299,20 @@ fn a_district_that_goes_and_comes_back() {
     );
 }
 
-/// The January the rule was made for. On island 14 under the game's rules
-/// Wyrside takes a district at the end of 1769 and has two and a half times its
-/// people in January 1770, with the grain its old people needed: without the
-/// rule its households get 0.79 of their food in February (docs/probes/tr-rent.md,
-/// section 4; `examples/spring_hunger.rs`). With it, no town that took a district
-/// goes short in the first three months after. The run is played twice, the
-/// second time without the rule, to show that the case is still there to mend.
+/// The January the rule was made for. On island 4 under the game's rules
+/// Penfell takes a district at the end of 1769 and has 1.9 times its people in
+/// January 1770, with the grain its old people needed: without the rule its
+/// households get 0.78 of their food in February (`examples/spring_hunger.rs`;
+/// the case was island 14's Wyrside in the same winter, docs/probes/tr-rent.md,
+/// section 4, until towns stopped hiring hands they do not have,
+/// docs/rules/hands.md). With it, no town that took a district goes short in the
+/// first three months after. The run is played twice, the second time without
+/// the rule, to show that the case is still there to mend.
 #[test]
 fn no_hungry_january_after_a_town_takes_a_district() {
     let run = |shelves: bool| {
         let mut P = game_params();
-        P.seed = 14;
+        P.seed = 4;
         P.n_families = 6;
         P.end_year = Some(1771);
         P.people.shelves_go = shelves;
