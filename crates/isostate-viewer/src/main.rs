@@ -805,8 +805,7 @@ fn main() {
                 eprintln!("  the {} family of {} ({:.1},{:.1})", fr.name, fr.seat_name, at.0, at.1);
             }
         }
-        for &f in &me.rep.firms {
-            let firm = &r.header.firms[f];
+        for firm in me.rep.firms.iter().filter_map(|&f| r.header.firms.get(f)) {
             eprintln!("  {} at {},{}", firm.name, firm.cell % r.w, firm.cell / r.w);
         }
     }
