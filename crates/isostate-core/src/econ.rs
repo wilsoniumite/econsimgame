@@ -378,6 +378,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.m_rent = 0.0;
     // accounts (docs/rules/accounts.md): the books open on the month's stocks
     crate::accounts::open_month(st);
+    // money (docs/rules/money.md): the month's issue is reckoned on the money
+    // there is now, before any of it is between purses
+    let money_base = crate::money::month_base(st, P);
 
     // ---------------- households: what they want to buy
     let (share, unit) = service_mix(&st.price, &C.props, P.logit_theta);
@@ -1146,8 +1149,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // commons: a common fund in debt pays no dividend, and asks nobody for one
     let fund_div = 0.9 * crate::commons::fund_to_share(st, P);
     st.fund_cash -= fund_div;
-    let m_tot = money_total(st);
-    let issue = P.money_growth / 12.0 * m_tot;
+    // the port counts here, while the month's incomes are in `hh_inc` and the
+    // dividends just taken out are in `fdiv` and `mdiv`, and so counts short
+    let m_tot = match money_base {
+        Some(m) => m,
+        None => money_total(st),
+    };
+    let issue = crate::money::rate(P) / 12.0 * m_tot;
     st.issued += issue;
     for t in 0..T {
         let popshare = st.pop[t] / pop_total;

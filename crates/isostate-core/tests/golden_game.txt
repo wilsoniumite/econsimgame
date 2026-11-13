@@ -16,8 +16,11 @@
 # run.bin by the works' site planner, which writes each good's price and each
 # method's capital into its header (5449ca7); and all four by the rules pass's
 # stage 2, a town cannot hire hands it does not have (ca56cf2). With that
-# stage's switch off the hashes before it held.
-economy  0x1593e952999895f1
-books    0x07b856720f41e028
-news     0xc01bc094fde6e0f0
-run.bin  0x34af819d79f14fff
+# stage's switch off the hashes before it held. Then all four by the rules
+# pass's stage 4, money issued on the true total (money.true_total), taken on
+# night/o-rules-4-money-check with main at 5d2de4d merged in; with that
+# switch off for one run the four before it held.
+economy  0x95511652f1f563cb
+books    0xe15ed9dcf45495a4
+news     0xa25f636a3981f9e4
+run.bin  0x7a105584df3bb886

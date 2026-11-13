@@ -93,7 +93,9 @@ fn below_by_kind(st: &State) -> [f64; 6] {
 fn run(P: &Params, rules: Rules, check: bool, months: Option<(i64, i64)>) -> (Vec<Year>, Option<Fail>, String) {
     let mut sim = sim::start(P, rules.content());
     sim.check_money = false;
-    let g = P.money_growth / 12.0;
+    // the rate the issue is reckoned at: `money.growth` under the money rule
+    // (docs/rules/money.md), the port's `money_growth` without it
+    let g = money::rate(P) / 12.0;
     let mut years = Vec::new();
     let mut fail: Option<Fail> = None;
     let (mut neg_issue_months, mut first_neg_money) = (0usize, None);
@@ -223,7 +225,15 @@ fn main() {
         hs.into_iter().map(|h| h.join().expect("a run panicked")).collect()
     });
 
-    println!("{} rules, {} families, seeds {:?}, money_growth {}; sets {:?}", rules.as_str(), families, seeds, P.money_growth, sets);
+    println!(
+        "{} rules, {} families, seeds {:?}, issue at {} a year on {}; sets {:?}",
+        rules.as_str(),
+        families,
+        seeds,
+        money::rate(&P),
+        if P.money.true_total { "the true total (money.true_total)" } else { "the port's count (money_growth)" },
+        sets
+    );
     for ((_, fail, log), seed) in runs.iter().zip(&seeds) {
         if !log.is_empty() {
             println!("seed {seed}:\n{log}");

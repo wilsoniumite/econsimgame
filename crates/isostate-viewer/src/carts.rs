@@ -375,12 +375,25 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
             let (pos, yaw) = p.at(p.len * i as f32 / n as f32);
             // the road the cart is on, from its path's own point on the middle line; the
             // ribbon and the roadway are level from side to side, so this is its height to the side too
-            let Some((_, li, t)) = nearest(Vec2::new(pos.x, pos.z)) else { continue };
+            let q0 = Vec2::new(pos.x, pos.z);
+            let Some((d0, li, t)) = nearest(q0) else { continue };
             // (where the surface steps, at the foot of a ramp that ends above the road, a cart
             // going down the step is between the heights on either side of it)
-            let around = [surface_at(li, (t - 3e-4).max(0.0)), surface_at(li, t), surface_at(li, (t + 3e-4).min(1.0))];
-            let (lo, hi) = (around.into_iter().reduce(f32::min).unwrap_or(0.0), around.into_iter().reduce(f32::max).unwrap_or(0.0));
-            let off = (lo - (pos.y - LIFT)).max(pos.y - LIFT - hi).max(0.0);
+            let off_on = |lj: usize, tj: f32| -> f32 {
+                let around = [surface_at(lj, (tj - 3e-4).max(0.0)), surface_at(lj, tj), surface_at(lj, (tj + 3e-4).min(1.0))];
+                let (lo, hi) = (around.into_iter().reduce(f32::min).unwrap_or(0.0), around.into_iter().reduce(f32::max).unwrap_or(0.0));
+                (lo - (pos.y - LIFT)).max(pos.y - LIFT - hi).max(0.0)
+            };
+            // where roads meet, every road that meets there is as near as the nearest, and
+            // their ribbons may end a little apart in height: the cart rides the one it is on
+            let mut off = off_on(li, t);
+            for &lj in &near_cell[cell(q0)] {
+                let (a, b) = (main[lj].0, main[lj].1);
+                let tj = ((q0 - a).dot(b - a) / (b - a).length_squared().max(1e-9)).clamp(0.0, 1.0);
+                if lj != li && q0.distance(a + (b - a) * tj) <= d0 + 1e-6 {
+                    off = off.min(off_on(lj, tj));
+                }
+            }
             if off > c.off_surface.0 {
                 c.off_surface = (off, Vec2::new(pos.x, pos.z));
             }

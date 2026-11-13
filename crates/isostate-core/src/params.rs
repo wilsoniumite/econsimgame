@@ -311,6 +311,10 @@ pub struct Params {
     /// docs/rules/hands.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub hands: crate::hands::HandsParams,
+    /// New money issued on the island's true total, at the rate it has had (not
+    /// in the Python; see docs/rules/money.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub money: crate::money::MoneyParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -518,6 +522,7 @@ pub fn default_params() -> Params {
         roads: crate::roads::RoadParams::default(),
         commons: crate::commons::CommonsParams::default(),
         hands: crate::hands::HandsParams::default(),
+        money: crate::money::MoneyParams::default(),
     }
 }
 
@@ -553,6 +558,7 @@ pub fn game_params() -> Params {
     P.accounts = crate::accounts::AccountsParams::game();
     P.commons = crate::commons::CommonsParams::game();
     P.hands = crate::hands::HandsParams::game();
+    P.money = crate::money::MoneyParams::game();
     P
 }
 
