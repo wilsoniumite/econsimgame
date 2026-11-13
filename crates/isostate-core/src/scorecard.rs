@@ -190,7 +190,7 @@ pub const UNREAD: [&str; 5] = [
     "iron stock near 2 months with under 4 per cent of orders unfilled (docs/rules/prices.md, Measuring it again): no fact gives either",
     "iron and rails no longer cycling with a period of a few years (PLAN.md 1.2): no number; read price_swing_iron and price_swing_rails",
     "150 years in under 15 seconds (PLAN.md 1.1): set for the port of the Python; the speed of the code is read below and not judged, so that a search over the economy's numbers is not steered by the machine",
-    "two to four items a decade in the major feed (PLAN.md 1.4): held by the chronicle's own rule (per_decade and at_least), so not a thing to calibrate",
+    "two to four items a decade in the major feed (PLAN.md 1.4): held by the chronicle's own rule (per_decade and AT_LEAST), so not a thing to calibrate",
 ];
 
 /// Facts a scorecard should be read with that have no aim: the README's

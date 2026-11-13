@@ -158,7 +158,7 @@ fn a_decade_keeps_a_handful() {
     }
     assert_eq!(by_decade.len(), 15, "every decade has something");
     for (d, kept) in &by_decade {
-        assert!((Q.at_least..=Q.per_decade).contains(&kept.len()), "decade {d} keeps {}", kept.len());
+        assert!((isostate_core::chronicle::AT_LEAST..=Q.per_decade).contains(&kept.len()), "decade {d} keeps {}", kept.len());
         let mut of_class: BTreeMap<String, usize> = BTreeMap::new();
         for e in kept {
             *of_class.entry(class(e)).or_insert(0) += 1;
@@ -402,6 +402,42 @@ fn ranking_a_decade() {
     assert_eq!(off[0].kept, None);
 }
 
+/// The player's place in the feed is kept for the family's own items at
+/// `floor` or above, and its great moments weigh `own_great`. So `floor` has
+/// to stay under `own_great`: above it the place is empty, and a full decade
+/// keeps none of the family's news (docs/designs/rules-pass.md, section 4.5,
+/// where both numbers are kept as settings on that condition). No run is
+/// played; the rules of the chronicle alone.
+#[test]
+fn the_floor_stays_under_the_players_great_moments() {
+    for P in [game_params(), default_params()] {
+        let Q = &P.chronicle;
+        assert!(Q.floor < Q.own_great, "chronicle.floor {} is not under own_great {}: the player's place in the feed would be empty", Q.floor, Q.own_great);
+    }
+    // what it guards: a full decade, and the family's great moment at own_great
+    let P = game_params();
+    let full = || {
+        let mut ev = vec![
+            item(1761.5, "discovery", 0.9, "invention a"),
+            item(1762.5, "discovery", 0.9, "invention b"),
+            item(1764.8, "crossing", 0.85, "crossing a"),
+            item(1765.8, "crossing", 0.85, "crossing b"),
+        ];
+        let mut own = item(1769.95, "family", P.chronicle.own_great, "the family takes up iron");
+        own.family = Some(0);
+        ev.push(own);
+        ev
+    };
+    let mut ev = full();
+    chronicle::rank(&mut ev, &P, 1750, 1900, 1900);
+    assert!(kept_titles(&ev).contains(&"the family takes up iron"), "{:?}", kept_titles(&ev));
+    let mut above = P.clone();
+    above.chronicle.floor = P.chronicle.own_great + 0.05;
+    let mut ev = full();
+    chronicle::rank(&mut ev, &above, 1750, 1900, 1900);
+    assert!(!kept_titles(&ev).contains(&"the family takes up iron"), "with the floor above own_great the place is lost: {:?}", kept_titles(&ev));
+}
+
 /// The succession is told from the facts the families hand over, not read back
 /// out of the burial's sentence: a burial worded any way at all still gives
 /// way to the succession, which says whom the new head follows.
@@ -582,7 +618,7 @@ fn a_run_without_families_has_its_history_too() {
     }
     let Q = &r.params.chronicle;
     assert_eq!(by_decade.len(), 15);
-    assert!(by_decade.values().all(|n| (Q.at_least..=Q.per_decade).contains(n)), "{by_decade:?}");
+    assert!(by_decade.values().all(|n| (isostate_core::chronicle::AT_LEAST..=Q.per_decade).contains(n)), "{by_decade:?}");
 }
 
 #[test]

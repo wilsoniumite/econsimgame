@@ -90,9 +90,14 @@ other towns, so a town that makes for export is not taken for a glutted one.
 | `enabled` | true | off under the port |
 | `markup` | 0.5 | how far the price stands off its anchor; 0 is the port's rule |
 | `glut_months` | 4 | merchants take everything under this many months of stock; 0: always |
-| `glut_stop_months` | 8 | at this many they take only `glut_floor` |
-| `glut_floor` | 0 | the least share of capacity they go on taking |
+| `glut_stop_months` | 8 | at this many they take nothing of the works' make |
 | `no_spoil_markup` | true | a good that spoils carries no markup ("Goods that spoil", below); off under the port |
+
+The least share of capacity merchants go on taking in the worst glut was a
+setting, `glut_floor`, at 0, until stage 5 of the pass over the rules made it
+the constant `prices::GLUT_FLOOR`, nothing: at 0.1, 0.25 and 0.5 it moved
+nothing beyond chance (`sens-prices.md`). A settings file or a `--set` that
+names `prices.glut_floor` is refused with a sentence that says so.
 
 A markup of 0.3 is weaker on the zigzag (1.17 against 0.80) and no better
 elsewhere; 0.8 measures like 0.5. A floor of 0.2 measures like 0. I kept the
@@ -125,8 +130,9 @@ the port's, not this mechanism's.) So a negative markup is refused where the
 settings are read, by every road (a file, an override, the sweep's `--set`),
 in one sentence that names it, and so are a negative `glut_months`, a
 `glut_stop_months` under `glut_months` (equal is allowed: a brake that drops
-at once), a `glut_floor` outside 0 to 1, and any of the four that is not a
-number, whether the switch is on or off (`PriceSettings` in `prices.rs`; a
+at once), and any of the three that is not a number (a `glut_floor`
+outside 0 to 1 was refused too, while the floor was a setting), whether the
+switch is on or off (`PriceSettings` in `prices.rs`; a
 `nan` or `inf` in a file is refused before it gets there, as "invalid type:
 null", since a file is read by way of JSON, which has no such numbers).
 The brake must not be full on by `price_target_months` (2), the

@@ -19,7 +19,7 @@
 //! switched on, or with `--rules game` the game's as they stand (kept ground
 //! beside everything else, as it is played); `--set` lays a JSON object of
 //! overrides over them, as the census does:
-//! `--set '{"towns":{"works_room":0,"decline_years":0}}'`. A run that fails the
+//! `--set '{"towns":{"works_room":0,"empty":0}}'`. A run that fails the
 //! monthly money check says so and reports what it had.
 #![allow(non_snake_case)]
 

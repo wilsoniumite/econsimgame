@@ -273,6 +273,21 @@ before the start, more than 10,000 seeds, a `DIR` that cannot be made.
 --set land_thetta: there is no parameter "land_thetta". Did you mean land_theta?
 ```
 
+A setting that has been retired is refused by what it became, the same way
+from `--set`, from a `--params` file and from the readers in code
+(`params::RETIRED`; stage 5 of the pass over the rules made sixteen settings
+that moved nothing into constants, and folded two pairs that were one number):
+
+```text
+--set canals.max_projects: canals.max_projects is no longer a setting since stage 5 of the pass over the rules (docs/designs/rules-pass.md, section 4.5): it is the constant canals::MAX_PROJECTS, 12 canals digging at once
+```
+
+The `params.json` of a game's run made before stage 5 names them too (a
+mechanism that is on is written out whole), so given back with `--params` it
+is refused in the same words. Take out the lines it names (setting
+`canals.hurdle` or `mines.open_at` as the refusal says, where `induced` was not
+1 or `payback` was not 4) and the run is the one it was.
+
 It writes into `DIR`, replacing a sweep that is already there (so the same
 command makes a baseline again):
 
