@@ -1485,6 +1485,13 @@ fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f3
             .map(|(name, b)| format!("{name} {:016x}", mesh_sum(b)))
             .collect();
         eprintln!("year {} meshes: {}", r.y0 + k as i32, sums.join(", "));
+        // (`ISOSTATE_MESH_SUMS=each` adds a line for every mesh the year hands to the card, by
+        // its own name: its corners, its indices and its fingerprint)
+        if std::env::var("ISOSTATE_MESH_SUMS").is_ok_and(|v| v == "each") {
+            for (name, b) in year_parts(&ym, &nets) {
+                eprintln!("year {} mesh {name}: {} corners, {} indices, {:016x}", r.y0 + k as i32, b.pos.len(), b.idx.len(), mesh_sum(b));
+            }
+        }
     }
     // (a scripted run that checks what is on screen: each mesh's fingerprint, taken here,
     // off the main thread, and kept as the record of what the renderer was handed)
