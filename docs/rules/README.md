@@ -348,7 +348,10 @@ added since (below the table) are in neither check.
 | News | `news_KIND`, the number of news items of each kind, and `news_total` |
 | Speed | `seconds` of wall time for the run, with the others running beside it |
 
-Those are the facts the sweep began with, which every run has. Each mechanism
+Those are the facts the sweep began with, which every run has. One more is
+there only when it happens: `works_table_full`, the year the works' table
+filled (all `F_max` of its places taken; no works can be founded after, and
+the summary says so in a line beginning `FULL run`). Each mechanism
 of the game's rules has since added facts of its own, under the same headings
 and one more, Canals; what each means is on the mechanism's page and at the
 top of `facts.rs`. Some have a value under the port too (the workings, the
@@ -523,6 +526,14 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **commons**: under the commons the common fund in debt pays no dividend
+  until its rents repay it, and charges nobody, where the port shares out its
+  debt as a levy on every household. Under the landlords it does nothing.
+  [commons.md](commons.md), `commons.carry_debt`.
+- **roads** (off under both sets of rules: a probe's prototype): roads,
+  turnpikes and bridges that somebody pays for, a parish out of its rate and
+  a turnpike trust out of its tolls. [dx-roads.md](../probes/dx-roads.md),
+  `roads.enabled`.
 - **hands**: a town cannot hire hands it does not have. When even the
   highest wage the month allows leaves more hands wanted than the town has
   to spare, the wage stays there and every employer in the town is cut by

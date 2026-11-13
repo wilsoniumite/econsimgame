@@ -173,7 +173,10 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     };
     check_end_year(&P, &content)?;
     let t0 = std::time::Instant::now();
-    run_scenario(&P, content, &out, !quiet, lite)?;
+    let result = run_scenario(&P, content, &out, !quiet, lite)?;
+    if let Some(y) = crate::firms::table_full(&result.state) {
+        eprintln!("{}", crate::firms::table_full_message(y, result.state.f_alive.len()));
+    }
     if !quiet {
         eprintln!("ran in {:.2} s", t0.elapsed().as_secs_f64());
     }
