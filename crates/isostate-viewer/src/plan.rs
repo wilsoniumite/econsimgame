@@ -89,22 +89,22 @@ pub fn maybe_bench(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)]) ->
     for round in 0..3 {
         for &k in &years {
             let t0 = seconds();
-            let ym = crate::scatter::build_year(r, g, slots, cen, k, &lk, &lod);
+            let land = crate::world::year_land(r, g, k);
+            let mut ym = crate::scatter::build_year_on(r, g, slots, cen, k, &lk, &lod, &land);
             let t1 = seconds();
-            let nets = crate::network::year_nets(r, g, cen, k, &lk);
+            let mut nets = crate::network::year_nets(r, g, cen, k, &lk);
             let paths = crate::trains::rail_paths(r, g, cen, k);
             let t2 = seconds();
-            let trees: usize = ym.trees.iter().flat_map(|t| t.parts()).map(|b| b.pos.len()).sum();
-            let bare: usize = ym.trees.iter().map(|t| t.bare.pos.len()).sum();
-            let verts = trees + ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len() + ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len();
+            // the year's meshes as the table of them has them (`year::MESHES`), each counted and made
+            let table = crate::year::MESHES;
+            let built = crate::year::take(table, &mut ym, &mut nets, &crate::year::Inputs { r, g, slots, cen, k, lk: &lk, lod: &lod, land: &land });
+            let verts: usize = built.iter().map(|b| b.pos.len()).sum();
             if round == 0 {
-                eprintln!("bench {} vertices: trees {} (of them bare limbs {}), houses {}, works {}, smoke {}, lanes {}, roads {}, rails {}", r.y0 + k as i32,
-                    trees, bare, ym.houses.pos.len(), ym.works.pos.len(), ym.smoke.pos.len(), ym.lanes.pos.len(), nets.roads.pos.len(), nets.rails.pos.len());
+                eprintln!("bench {} vertices: {}", r.y0 + k as i32, crate::year::counts(table, &built));
             }
-            let tree_meshes: Vec<_> = ym.trees.into_iter().flat_map(|t| [t.evergreen, t.leaves, t.bare]).map(crate::meshkit::into_mesh).collect();
-            let meshes = [ym.houses, ym.works, ym.smoke, ym.lanes, nets.roads, nets.rails].map(crate::meshkit::into_mesh);
+            let meshes: Vec<_> = built.into_iter().map(crate::meshkit::into_mesh).collect();
             let t3 = seconds();
-            drop((meshes, tree_meshes));
+            drop(meshes);
             if round > 0 {
                 total += t3 - t0;
                 n += 1;

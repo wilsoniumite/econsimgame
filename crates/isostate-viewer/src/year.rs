@@ -271,33 +271,58 @@ pub fn take(table: &[YearMesh], ym: &mut scatter::YearMeshes, nets: &mut network
         .collect()
 }
 
-/// `ISOSTATE_MESH_SUMS`'s line for a year's meshes (in the order of the
-/// list): each word of the table, in the table's order, with a fingerprint of
-/// its meshes, those that share a word put together in the list's order.
-pub fn sums(table: &[YearMesh], meshes: &[Builder]) -> String {
-    let parts = list(table);
-    let mut words: Vec<&str> = Vec::new();
-    for m in table {
-        if !words.contains(&m.word) {
-            words.push(m.word);
+/// A year's meshes (in the order of the list) by the words of the table, in
+/// the table's order: each word with its meshes, in the list's order, and the
+/// row of each.
+fn by_word<'a>(table: &[YearMesh], meshes: &'a [Builder]) -> Vec<(&'static str, Vec<(usize, &'a Builder)>)> {
+    let mut out: Vec<(&'static str, Vec<(usize, &'a Builder)>)> = Vec::new();
+    for (p, b) in list(table).into_iter().zip(meshes) {
+        let word = table[p.row].word;
+        match out.iter_mut().find(|(w, _)| *w == word) {
+            Some((_, of)) => of.push((p.row, b)),
+            None => out.push((word, vec![(p.row, b)])),
         }
     }
-    let sums: Vec<String> = words
-        .iter()
-        .map(|&word| {
-            let of: Vec<&Builder> = parts.iter().zip(meshes).filter(|(p, _)| table[p.row].word == word).map(|(_, b)| b).collect();
-            let sum = if of.len() == 1 {
-                crate::mesh_sum(of[0])
-            } else {
-                crate::mesh_sum(&of.iter().fold(Builder::default(), |mut all, b| {
+    out
+}
+
+/// `ISOSTATE_MESH_SUMS`'s line for a year's meshes (in the order of the
+/// list): each word of the table with a fingerprint of its meshes, those that
+/// share a word put together in the list's order.
+pub fn sums(table: &[YearMesh], meshes: &[Builder]) -> String {
+    let sums: Vec<String> = by_word(table, meshes)
+        .into_iter()
+        .map(|(word, of)| {
+            let sum = match of.as_slice() {
+                [(_, one)] => crate::mesh_sum(one),
+                _ => crate::mesh_sum(&of.iter().fold(Builder::default(), |mut all, (_, b)| {
                     all.merge(b);
                     all
-                }))
+                })),
             };
             format!("{word} {sum:016x}")
         })
         .collect();
     sums.join(", ")
+}
+
+/// The bench's count of a year's vertices (`ISOSTATE_BENCH`), by the same
+/// words as `sums`; where meshes of more than one row share a word, the bare
+/// limbs among them are counted apart as well ("trees 3412 (of them bare
+/// limbs 802)").
+pub fn counts(table: &[YearMesh], meshes: &[Builder]) -> String {
+    let counts: Vec<String> = by_word(table, meshes)
+        .into_iter()
+        .map(|(word, of)| {
+            let all: usize = of.iter().map(|(_, b)| b.pos.len()).sum();
+            let bare = of.iter().find(|&&(row, _)| table[row].drawn == Drawn::Bare && of.iter().any(|&(other, _)| other != row)).map(|&(row, _)| row);
+            match bare {
+                Some(bare) => format!("{word} {all} (of them {} {})", table[bare].name, of.iter().filter(|&&(row, _)| row == bare).map(|(_, b)| b.pos.len()).sum::<usize>()),
+                None => format!("{word} {all}"),
+            }
+        })
+        .collect();
+    counts.join(", ")
 }
 
 /// The meshes a year built again for the camera alone sends, by name, as a
