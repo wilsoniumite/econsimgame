@@ -77,6 +77,8 @@ const ASKEW: f32 = 2.5;
 /// keeps this far off the square itself.
 const TOWN_REACH: f32 = 0.3;
 const TOWN_CLEAR: f32 = 0.14;
+/// Where a line stops, what each cell of distance from the cell's meeting place costs it.
+const END_LEAN: f32 = 1.5;
 
 /// The ground of one cell as a way finds it, at the middles of `FINE` by `FINE` squares.
 struct Patch {
@@ -302,6 +304,11 @@ fn thread(lie: &Lie, asked: &Asked, cells: &[usize], from: Option<Vec2>, to: Opt
         }
         e
     };
+    // what it costs a way to begin or end at a spot of an end cell that is not settled: it
+    // leans to the cell's meeting place, and more where the line stops there (the end of a
+    // mineral line: what it was built to reach is about the meeting place, but a pit's line
+    // that stops in the valley under the pit is a line, and one that climbs to it on arches is not)
+    let lean = |ci: usize, p: Vec2| -> f32 { p.distance(mids[ci]) * if asked.adj[cells[ci]].len() == 1 { END_LEAN } else { 0.6 } };
     let nearest = |ci: usize, p: Vec2| -> usize {
         let (ox, oy) = origin(ci);
         let (sx, sy) = (((p.x * f).floor() as isize).clamp(ox.max(0), (ox + side - 1).min(fw - 1)), ((p.y * f).floor() as isize).clamp(oy.max(0), (oy + side - 1).min(fh - 1)));
@@ -322,7 +329,7 @@ fn thread(lie: &Lie, asked: &Asked, cells: &[usize], from: Option<Vec2>, to: Opt
                 if sx < 0 || sy < 0 || sx >= fw || sy >= fh || owner(0, sx, sy) != Some(0) {
                     continue;
                 }
-                best[id] = 0.6 * spot(sx, sy).distance(mids[0]) + 0.1 * dear(0, sx, sy);
+                best[id] = lean(0, spot(sx, sy)) + 0.1 * dear(0, sx, sy);
                 heap.push(Reach(best[id], id as u32));
             }
         }
@@ -367,7 +374,7 @@ fn thread(lie: &Lie, asked: &Asked, cells: &[usize], from: Option<Vec2>, to: Opt
     let end = goal.unwrap_or_else(|| {
         let ending = |id: usize| {
             let (sx, sy) = square_of(id);
-            best[id] + 0.6 * spot(sx, sy).distance(mids[n - 1])
+            best[id] + lean(n - 1, spot(sx, sy))
         };
         ((n - 1) * size..n * size).min_by(|&a, &b| ending(a).total_cmp(&ending(b))).unwrap_or((n - 1) * size)
     });

@@ -73,15 +73,17 @@ fn a_line_goes_round_a_lake_where_its_cells_have_dry_ground_and_crosses_one_that
     assert!(line.kind.iter().all(|&k| k != Kind::Viaduct && k != Kind::Tunnel), "a plain asks for no viaduct and no tunnel");
 
     // a lake that fills the line's cells from side to side and stops at their southern edge: the
-    // line goes round by the edge of the next row, which is within the room it has outside its cells
-    let (r, g, cen) = made_up(plain, |p| (6.0..9.0).contains(&p.x) && (1.0..4.0).contains(&p.y), 58.0, &row(3, 2, 13));
+    // line goes round by the edge of the next row, which is within the room it has outside its cells.
+    // (Each case has a plain of its own height: a ground's railway is kept by a fingerprint that
+    // looks at a hundred of the ground's heights, which a lake a few cells across can slip between.)
+    let (r, g, cen) = made_up(|_| 61.0, |p| (6.0..9.0).contains(&p.x) && (1.0..4.0).contains(&p.y), 58.0, &row(3, 2, 13));
     let ry = rails::year(&r, &g, &cen, 0);
     let wet = rails::over_water(&ry, &g);
     assert!(wet.is_empty(), "the line stands over a lake it could pass by the edge of its cells: {wet:?}");
     assert!(ry.lines[0].pts.iter().all(|p| p.z < 4.3), "the line strays further from its cells than it may");
 
     // the same lake from the top of the map to the bottom: there is no way round, and the line crosses it
-    let (r, g, cen) = made_up(plain, |p| (6.0..9.0).contains(&p.x), 58.0, &row(3, 2, 13));
+    let (r, g, cen) = made_up(|_| 62.0, |p| (6.0..9.0).contains(&p.x), 58.0, &row(3, 2, 13));
     let ry = rails::year(&r, &g, &cen, 0);
     let wet = rails::over_water(&ry, &g);
     assert_eq!(wet.len(), 1, "{wet:?}");
