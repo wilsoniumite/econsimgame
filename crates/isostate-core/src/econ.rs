@@ -280,6 +280,93 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
     }
 }
 
+/// One month of the economy: demand, the labour market, requests to each town's
+/// market, production, money, stocks, trade, prices, dividends and the issue of
+/// money, then the month's bookkeeping.
+///
+/// The order of what follows is part of the result, and nothing but the order
+/// says so. A read moved across a write below makes a different island without
+/// failing any rule's own test; the game's golden test (`tests/golden_game.rs`)
+/// is what sees it, and the port's (`tests/golden.rs`) only where the port is
+/// touched.
+///
+/// Last month's numbers. These are read before this month writes them, and are
+/// meant to be last month's:
+/// - `st.wage`, until it is replaced near the end. The labour market's bracket
+///   for each town's wage is half to twice it (kept within 0.02 and 500), and
+///   the carters, the navvies and the menders are last month's money divided
+///   by it, each only where it is above nothing (`carting::take_carters`,
+///   `canals::take_navvies`, `roads::take_menders`).
+/// - `st.fill`, until it is replaced beside the wage. Under the port the inputs
+///   that lift the land's output (`sector_tfp`) are counted at last month's
+///   fill. Under the game's machines (`machines::sector_tfp`) the lift is the
+///   machines standing, `st.machine_stock`, which `machines::end_month` moved
+///   at the end of last month on that month's fill. Either way the lift also
+///   reads `st.tools_mult`, written in the bookkeeping at the month's end.
+/// - `st.hh_income_prev` and `st.lord_income_prev`, which set this month's
+///   budgets and are written only once this month's incomes are paid.
+/// - `st.f_fill` (`phi_prev`), each works' smoothed fill, read before execution
+///   writes this month's into it.
+/// - `st.ex_Lprev` and `st.f_labor`, the hands each of the land's units and each
+///   works had last month, from which this month's demand for hands moves only
+///   part of the way (`labor_adjust_ex`, `labor_adjust_firm`).
+/// - `st.pexp`, the prices expected, at which the land's units reckon what their
+///   crop and their machines are worth; it follows this month's prices only in
+///   "prices respond".
+/// - `st.cart_bill`, read and emptied by `take_carters` at the start of the
+///   labour market and filled again after it by the works', the land's and the
+///   trade's carting; and each project's `navvy_pay`, set when the project pays
+///   this month and read by the navvies and menders next month.
+///
+/// The labour market. The four takers of hands come in this order before the
+/// wage is sought: carters, sinkers (`mines::take_crews`), navvies, menders.
+/// The order is part of the result, since each of the last three caps itself
+/// on the hands the ones before it left. The merchants' take
+/// (`prices::merchants_take`) is fixed before the wage is sought and does not
+/// depend on it. Once the wage is found, and before the hands are counted at
+/// it, a town short of hands even at the top of its bracket is held there
+/// (`hands::short_towns`, reading the bracket and the supply the four takers
+/// left); after the hands are counted its employers are cut to the hands it has
+/// (`hands::ration`), and only then is `st.ex_Lprev` written.
+///
+/// Within the month:
+/// - Prices are read all month and move only in "prices respond", after trade
+///   and after the books have taken the month: everything bought is paid at the
+///   prices the month began with, and `st.pexp` follows the new price.
+/// - The fill is the stock at the start of the month against all that was
+///   asked of it, so `st.requests` is copied only once every request is in
+///   (households, landlords, works, the land's machines and rails, orders for
+///   capacity, projects). Production joins the stocks after the sales leave
+///   and decay is taken, and trade moves the stocks after that.
+/// - The harvest is half foreseen before the hands are hired
+///   (`harvest::foreseen`) and felt after the machines and rails are asked for
+///   on an average year's yield (`harvest::brought_in`); from there on `Y` is
+///   the crop brought in.
+/// - The sinkers are paid before the royalty is worked out (`mines::pay_crews`)
+///   and counted as hands after `st.ex_labor` is written (`mines::add_crews`).
+/// - The issue of new money is a share of `money_total` counted after the
+///   works', the merchants' and the common fund's dividends have left their
+///   purses and before the households' income is credited (see the money check
+///   in `sim::run_month`).
+/// - `towns::month` reads `st.f_labor` after it is written; `machines::end_month`
+///   comes last because it reads this month's `st.fill` and `st.pexp`.
+/// - The books only watch. `accounts::open_month` opens them before anything
+///   moves, and every other call into `accounts` comes before what it reads is
+///   changed: the trade inside the trade, the month before prices move, the
+///   dividends before the families take theirs out of the list, the incomes
+///   before the purses are credited.
+/// - The families' hooks stand inside the port's own steps (the budgets, the
+///   land's yield, the works' inputs, rents, spending, hired managers,
+///   dividends), each where the port's arithmetic it shares out stands, and
+///   `families::end_month` comes after the purses are credited.
+///
+/// Chance. The month draws no random number and is handed no stream. What
+/// chance it feels was drawn in the year (`sim::yearly`), from the streams of
+/// `rng.rs`: the harvest's weather is drawn by `harvest::yearly` from its own
+/// stream and read here from `st.harvest_mult`. A rule that wants chance in
+/// the month draws it there and keeps it in the state, as the harvest does; a
+/// draw made here, or moved within the year, would change every draw after it
+/// on that stream.
 pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let T = st.T_max;
     let G = C.G;
@@ -291,6 +378,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.m_rent = 0.0;
     // accounts (docs/rules/accounts.md): the books open on the month's stocks
     crate::accounts::open_month(st);
+    // money (docs/rules/money.md): the month's issue is reckoned on the money
+    // there is now, before any of it is between purses
+    let money_base = crate::money::month_base(st, P);
 
     // ---------------- households: what they want to buy
     let (share, unit) = service_mix(&st.price, &C.props, P.logit_theta);
@@ -545,6 +635,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             w[t] = 0.0;
         }
     }
+    // hands (docs/rules/hands.md): a town still short of hands at the month's
+    // highest wage is held at that wage, and below its employers are cut to the
+    // hands it has (no town is short, and nothing is asked, while the rule is off)
+    let short = crate::hands::short_towns(st, P, &hi, &supply, &|t, x| town_demand(t, x, false).0, &mut w);
     // final demand at the clearing wage, unit by unit. Python evaluates
     // lam * (Cc / w)^(1/alpha); lam * Cc^(1/alpha) * w^(-1/alpha) is the same number
     // (to an ulp or two) and reuses the power already taken for the bisection.
@@ -555,7 +649,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             wpow[t * NS + s] = wq[t].powf(-sector_inv_alpha[s]);
         }
     }
-    let Lex: Vec<f64> = (0..NE)
+    let mut Lex: Vec<f64> = (0..NE)
         .map(|u| (Lprev_ex[u] + kx * (x_pow[u] * wpow[et[u] * NS + sec[u]] - Lprev_ex[u])).max(0.0))
         .collect();
     let mut Lf = vec![0.0; NFI];
@@ -565,6 +659,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         Lf[i] = x;
         ufirm[i] = u;
     }
+    // hands: every employer of a short town gets the same share of what it asked
+    // for, and carries into next month what it got
+    crate::hands::ration(&short, &supply, &et, &ft, &mut Lex, &mut Lf);
     st.ex_Lprev = Lex.clone();
     // Python: A * f * lam**alpha * Lex**(1 - alpha). lam > 0 on every unit, so
     // lam * (Lex / lam)**(1 - alpha) is the same number with one power instead of two.
@@ -1052,8 +1149,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // commons: a common fund in debt pays no dividend, and asks nobody for one
     let fund_div = 0.9 * crate::commons::fund_to_share(st, P);
     st.fund_cash -= fund_div;
-    let m_tot = money_total(st);
-    let issue = P.money_growth / 12.0 * m_tot;
+    // the port counts here, while the month's incomes are in `hh_inc` and the
+    // dividends just taken out are in `fdiv` and `mdiv`, and so counts short
+    let m_tot = match money_base {
+        Some(m) => m,
+        None => money_total(st),
+    };
+    let issue = crate::money::rate(P) / 12.0 * m_tot;
     st.issued += issue;
     for t in 0..T {
         let popshare = st.pop[t] / pop_total;

@@ -471,6 +471,44 @@ pub fn test_dir(name: &str) -> PathBuf {
     dir
 }
 
+/// How long a test waits for something that takes a moment (another copy to
+/// let go of its place, the simulation's thread to write a save): `secs`, which
+/// is many times what a quiet machine needs, times `ISOSTATE_TEST_PATIENCE` if
+/// that is set (2 doubles every wait). A test waits for the thing itself and
+/// goes on the moment it is there; the limit is only so that a test which
+/// would otherwise wait for ever stops.
+#[cfg(test)]
+pub fn patience(secs: f32) -> std::time::Duration {
+    let times = std::env::var("ISOSTATE_TEST_PATIENCE").ok().and_then(|v| v.trim().parse::<f32>().ok()).filter(|t| t.is_finite() && *t > 0.0).unwrap_or(1.0);
+    std::time::Duration::from_secs_f32(secs * times)
+}
+
+/// Look every millisecond or so until `there` is true, for as long as
+/// `patience(secs)`: false if it never was.
+#[cfg(test)]
+pub fn waited_for(secs: f32, mut there: impl FnMut() -> bool) -> bool {
+    let (t0, limit) = (std::time::Instant::now(), patience(secs));
+    loop {
+        if there() {
+            return true;
+        }
+        if t0.elapsed() > limit {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+/// What a test says when a wait ran out: that it gave up waiting, which is
+/// not the same as having seen a wrong answer.
+#[cfg(test)]
+pub fn gave_up(secs: f32, what: &str) -> String {
+    format!(
+        "timed out after {:.0} s waiting: {what}. No wrong answer was seen; a machine busy enough can run a wait out, and ISOSTATE_TEST_PATIENCE=3 waits three times as long",
+        patience(secs).as_secs_f32()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,6 +543,24 @@ mod tests {
         let mut v: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         v.sort();
         v
+    }
+
+    /// A file of `len` bytes that cannot be opened while what this returns is
+    /// held, though its size can be asked: whatever opens it to read is told
+    /// so, and fails. (On Windows it is held open and shared with nobody; elsewhere
+    /// nobody may read it, which a program run as root does not mind.)
+    fn unopenable(path: &Path, len: u64) -> std::fs::File {
+        let mut open = std::fs::OpenOptions::new();
+        open.write(true).create(true).truncate(true);
+        #[cfg(windows)]
+        std::os::windows::fs::OpenOptionsExt::share_mode(&mut open, 0);
+        let file = open.open(path).unwrap();
+        file.set_len(len).unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o000)).unwrap();
+        #[cfg(windows)]
+        assert!(std::fs::read(path).is_err(), "{} can still be opened", path.display());
+        file
     }
 
     #[test]
@@ -742,6 +798,36 @@ mod tests {
     }
 
     #[test]
+    fn a_write_does_only_the_work_it_must() {
+        // what a write costs is counted here in what it does to the folder, which no busy machine
+        // changes (the time it takes is measured by the test below, run by hand): after its first
+        // write, which may find another game to set aside, a game's write puts one new file in the
+        // latest's place, and at a year's end first copies the latest aside, moving the years kept
+        // up a place to make room for it
+        let dir = scratch("work");
+        let path = dir.join("game.json");
+        let mut s = Saver::new(path.clone());
+        s.write(&busy(1, 75), true).unwrap();
+        let mut year_ends = Vec::new();
+        for n in 1..=6 {
+            s.write(&busy(1, 75 + n), true).unwrap();
+            year_ends.push(s.steps);
+            s.write(&busy(1, 75 + n), false).unwrap();
+            // an order: the new file written, and renamed into the latest's place
+            assert_eq!(s.steps, 2, "after an order in write {n}");
+        }
+        // a year's end, as the years kept fill: the new file, the copy and the rename (3) with none
+        // kept yet, then a rename more for each kept, until KEPT (3) are and the oldest is let go
+        assert_eq!(year_ends, [3, 4, 5, 5, 5, 5]);
+        assert_eq!(files(&dir), ["game.1.json", "game.2.json", "game.3.json", "game.json"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A measurement of speed, so not run with the rest: a machine busy enough
+    /// fails it whatever the code does. Run it alone, by hand:
+    /// `cargo test -p isostate-viewer saving_a_busy_game -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "a measurement of speed: run alone with cargo test -p isostate-viewer saving_a_busy_game -- --ignored --nocapture"]
     fn saving_a_busy_game_takes_a_small_part_of_a_year() {
         // a year at the clock's fastest is half a second, and the simulation's thread writes the save
         // after it has handed the year over: what the writing costs (a file written and put on the
@@ -799,11 +885,16 @@ mod tests {
             }
             let mut child = cmd.spawn().unwrap();
             // it has the place and is saving when the latest is no longer the one it found
-            let t0 = std::time::Instant::now();
-            while read(&path).is_ok_and(|now| now == last) {
-                assert!(child.try_wait().unwrap().is_none(), "round {round}: the copy ended by itself: a lock left by the one killed before it kept it out, or it could not go on with what was left");
-                assert!(t0.elapsed().as_secs() < 60, "round {round}: the copy never saved");
-                std::thread::sleep(std::time::Duration::from_millis(1));
+            let saving = waited_for(300.0, || {
+                if read(&path).is_ok_and(|now| now == last) {
+                    assert!(child.try_wait().unwrap().is_none(), "round {round}: the copy ended by itself: a lock left by the one killed before it kept it out, or it could not go on with what was left");
+                    return false;
+                }
+                true
+            });
+            if !saving {
+                let _ = child.kill();
+                panic!("{}", gave_up(300.0, &format!("round {round}: for the copy to begin saving")));
             }
             // (a time that differs from round to round, and is not a round number of saves)
             let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos() as u64;
@@ -877,11 +968,18 @@ mod tests {
         // a place beside it is another place
         assert!(Saver::claim(dir.join("deep").join("other.json")).is_ok());
         // the first copy closes while a second waits for it (New game): the second gets the place
+        // (the first lets go a moment after the second has begun to wait; the second waits for that,
+        // and is given so long that only a fault, or a machine all but stopped, runs the wait out)
         let closing = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(300));
             drop(first);
         });
-        let second = Saver::claim_within(path.clone(), std::time::Duration::from_secs(20)).unwrap();
+        // (only a place still held by another runs the wait out: any other refusal comes at once, and is wrong)
+        let second = match Saver::claim_within(path.clone(), patience(120.0)) {
+            Ok(s) => s,
+            Err(Held::ByAnother) => panic!("{}", gave_up(120.0, "for the place the first copy let go of")),
+            Err(e) => panic!("the place was refused, and not because the first copy held it: {e:?}"),
+        };
         closing.join().unwrap();
         assert!(second.locked());
         // the lock's file is left behind when a game ends, as a crash leaves it; it keeps nobody out
@@ -913,13 +1011,17 @@ mod tests {
         assert_eq!(std::fs::read_to_string(unread(&path)).unwrap(), "four");
         assert_eq!(std::fs::read_to_string(unread_before(&path, 2)).unwrap(), "three");
         assert_eq!(std::fs::read_to_string(unread_before(&path, 3)).unwrap(), "two");
-        // so is a file far too large to be a saved game: it is not read to find out, and it is kept
+        // so is a file far too large to be a saved game: it is not read to find out, and it is kept.
+        // (Held so that nothing can open it, while its size can still be asked: a read of it would
+        // fail and say something else. This used to be timed, and reading 64 megabytes of nothing
+        // takes well under the second it was given.)
         let huge = dir.join("huge.json");
-        std::fs::File::create(&huge).unwrap().set_len(MOST_BYTES + 1).unwrap();
-        let t0 = std::time::Instant::now();
-        assert!(read(&huge).unwrap_err().ends_with("not a saved game: it is 64 megabytes, and a saved game is a few hundred kilobytes at the most"));
-        assert!(may_keep(&huge).unwrap_err().contains("not a saved game"));
-        assert!(t0.elapsed().as_secs_f32() < 1.0, "a file that size was read");
+        let held = unopenable(&huge, MOST_BYTES + 1);
+        let said = read(&huge).unwrap_err();
+        assert!(said.ends_with("not a saved game: it is 64 megabytes, and a saved game is a few hundred kilobytes at the most"), "a file that size was opened: {said}");
+        let said = may_keep(&huge).unwrap_err();
+        assert!(said.contains("not a saved game: it is 64 megabytes"), "a file that size was opened: {said}");
+        drop(held);
         std::fs::remove_file(&huge).unwrap();
         // a save that says what no game could is such a file: it is not played, and not written over
         let wild = save(9, 1790).to_text().replace("\"year\": 1790,", "\"year\": 5000,");

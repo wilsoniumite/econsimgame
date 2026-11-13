@@ -303,10 +303,18 @@ pub struct Params {
     #[serde(default, skip_serializing_if = "is_default")]
     pub roads: crate::roads::RoadParams,
     /// A common fund in debt that charges nobody and pays no dividend until its
-    /// rents repay it (not in the Python; see docs/rules/mines.md, "Under the
-    /// commons"). Under the landlords the fund never holds a penny.
+    /// rents repay it (not in the Python; see docs/rules/commons.md). Under the
+    /// landlords the fund never holds a penny.
     #[serde(default, skip_serializing_if = "is_default")]
     pub commons: crate::commons::CommonsParams,
+    /// A town cannot hire hands it does not have (not in the Python; see
+    /// docs/rules/hands.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub hands: crate::hands::HandsParams,
+    /// New money issued on the island's true total, at the rate it has had (not
+    /// in the Python; see docs/rules/money.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub money: crate::money::MoneyParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -513,6 +521,8 @@ pub fn default_params() -> Params {
         accounts: crate::accounts::AccountsParams::default(),
         roads: crate::roads::RoadParams::default(),
         commons: crate::commons::CommonsParams::default(),
+        hands: crate::hands::HandsParams::default(),
+        money: crate::money::MoneyParams::default(),
     }
 }
 
@@ -547,6 +557,8 @@ pub fn game_params() -> Params {
     // the line is `P.land = crate::landform::LandParams::game();`.
     P.accounts = crate::accounts::AccountsParams::game();
     P.commons = crate::commons::CommonsParams::game();
+    P.hands = crate::hands::HandsParams::game();
+    P.money = crate::money::MoneyParams::game();
     P
 }
 

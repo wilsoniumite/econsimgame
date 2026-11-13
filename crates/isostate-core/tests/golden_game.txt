@@ -1,0 +1,26 @@
+# The game's golden hashes (tests/golden_game.rs): seed 7 to 1900 under
+# game_params() and game_content(), six families. 64-bit FNV-1a of
+#   economy  series_monthly.csv less the books' own columns
+#   books    the books' own columns (acct_), with the year and month
+#   news     events.json
+#   run.bin  run.bin, its date set to 0000-00-00
+#
+# These move whenever the game's rules are changed on purpose. Take them again
+# on the merged tree with
+#   ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
+# paste the four lines it gives below, and say in the commit which moved and why
+# (docs/rules/README.md, "The game's golden test").
+#
+# Taken: on main at ca56cf2 with the test merged in. Since the first taking
+# (5d843c0), news and run.bin moved by the news's plain faults mended (9aaaf7f);
+# run.bin by the works' site planner, which writes each good's price and each
+# method's capital into its header (5449ca7); and all four by the rules pass's
+# stage 2, a town cannot hire hands it does not have (ca56cf2). With that
+# stage's switch off the hashes before it held. Then all four by the rules
+# pass's stage 4, money issued on the true total (money.true_total), taken on
+# night/o-rules-4-money-check with main at 5d2de4d merged in; with that
+# switch off for one run the four before it held.
+economy  0x95511652f1f563cb
+books    0xe15ed9dcf45495a4
+news     0xa25f636a3981f9e4
+run.bin  0x7a105584df3bb886
