@@ -67,6 +67,26 @@ pub fn road_width(lv: u8) -> f32 {
     if lv == 3 { 0.034 } else { 0.022 }
 }
 
+/// Whether the road between two cells' middles is in the picture. On the old
+/// island every road is. On the new land the water is where the core put it,
+/// and a road drawn straight between two middles can lie under a lake's
+/// sheet, where it is not seen, or along a tideway on a causeway. Until the
+/// roads' stage chooses where roads cross water, such a link is left out: its
+/// ribbon is not drawn, it has no bridge or causeway, and no cart takes it.
+/// A link is left out when a tenth of a cell of it or more (200 m) lies under
+/// standing water, looked at every fortieth of a cell.
+pub fn link_shown(g: &Ground, a: Vec2, b: Vec2) -> bool {
+    if g.laid.is_none() {
+        return true;
+    }
+    let n = ((a.distance(b) / 0.025).ceil() as usize).max(1);
+    let under = (0..=n).filter(|&i| {
+        let p = a.lerp(b, i as f32 / n as f32);
+        world::height_at(g, p.x, p.y) < 0.0
+    });
+    under.count() < 4
+}
+
 /// The middle line of the ribbon of the road from `a` to `b` (two cells'
 /// middles), as it is drawn: straight in plan, and at the ground's height
 /// plus `ROAD_LIFT` every 0.08 cells or less, straight from one point to the next.
@@ -78,6 +98,9 @@ pub fn road_line(g: &Ground, a: (f32, f32), b: (f32, f32)) -> Vec<Vec3> {
 /// river's middle line, as long as the river is wide where the road crosses
 /// it, each built at the level of detail `detail` gives for its place.
 pub fn road_bridges(g: &Ground, a: Vec2, b: Vec2, main: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
+    if !link_shown(g, a, b) {
+        return Vec::new();
+    }
     let along = (b - a).normalize_or(Vec2::X);
     crate::rivers::crossings(&g.rivers, &g.water, a, b)
         .into_iter()
@@ -94,6 +117,9 @@ pub fn road_bridges(g: &Ground, a: Vec2, b: Vec2, main: bool, detail: impl Fn(Ve
 /// as how far along the road it starts and ends (0 at `a`, 1 at `c`), from
 /// one dry end to the other and a little past each.
 pub fn causeway_runs(g: &Ground, a: Vec2, c: Vec2) -> Vec<(f32, f32)> {
+    if !link_shown(g, a, c) {
+        return Vec::new();
+    }
     let len = a.distance(c);
     let n = ((len / 0.02).ceil() as usize).max(2);
     let wet = |t: f32| {
@@ -374,7 +400,10 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
     let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g, lk, &sidings(r, cen, k));
     let (lane, main) = (*lk.ground.lane_dust, *lk.ground.road_gravel);
     for (c, m, lv) in road_segments(r, k) {
-        roads.ribbon(&road_line(g, cen[c], cen[m]), road_width(lv), if lv == 3 { main } else { lane });
+        // (on the new land a road that would lie under a lake or along tidewater is left out)
+        if link_shown(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1)) {
+            roads.ribbon(&road_line(g, cen[c], cen[m]), road_width(lv), if lv == 3 { main } else { lane });
+        }
     }
     Nets { roads, rails }
 }

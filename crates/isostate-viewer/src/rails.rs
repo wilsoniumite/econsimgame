@@ -393,11 +393,14 @@ impl Net {
         let fresh_set: HashSet<usize> = fresh.iter().copied().collect();
         let mut placed: HashSet<usize> = HashSet::new();
         let mut queue: VecDeque<usize> = fresh.iter().copied().filter(|&c| adj[c].iter().any(|m| self.cells.contains_key(m))).collect();
-        if g.laid.is_some() {
-            // on the new land, where the ground suits the line's level (newland/passing.rs)
+        // on the new land, by the ground: each new line finds its way through its cells
+        // (newland/passing.rs), a cell is passed where that way passes it, and each new
+        // length is laid along the way found for it (`ways`; there are none on the old island)
+        let mut ways: HashMap<(usize, usize), Vec<Vec2>> = HashMap::new();
+        if g.laid.is_some() && std::env::var_os("ISOSTATE_RAIL_MIDDLES").is_none() {
             queue.clear();
             placed.extend(fresh.iter().copied());
-            self.place_by_the_ground(g, cen, &adj, &fresh, &towns, &laws);
+            ways = self.place_by_the_ground(g, cen, &adj, &fresh, &new_links, &towns, &laws);
         }
         loop {
             while let Some(c) = queue.pop_front() {
@@ -460,7 +463,7 @@ impl Net {
             .zip(&signs)
             .map(|(&(a, b), &signs)| {
                 let (ca, cb) = (self.cells[&a], self.cells[&b]);
-                draft(g, &laws, a, b, &ca, &cb, signs, first_level(a), first_level(b), 0, &squares)
+                draft(g, &laws, ways.get(&(a, b)).map(|w| w.as_slice()), a, b, &ca, &cb, signs, first_level(a), first_level(b), 0, &squares)
             })
             .collect();
         // 3. the levels of the new cells and of the points along the new lengths, among the
@@ -482,6 +485,8 @@ impl Net {
         let mut round = 0;
         // the lengths that winding did not bring down to the ground, which are inclines instead
         let mut steep = vec![false; drafts.len()];
+        // and, on the new land, those that winding could not help and that have no hill to go up: straight
+        let mut held = vec![false; drafts.len()];
         loop {
             let last = round >= 6;
             let mut nodes: Vec<profile::Node> = region
@@ -517,7 +522,13 @@ impl Net {
                 let whole = self.cells[&d.a].at.distance(self.cells[&d.b].at) * 1.02;
                 let len = whole / (SUBS + 1) as f32;
                 // an incline only where the ground between the two cells is steeper than winding climbs
-                let top = if steep[di] || (first_level(d.a) - first_level(d.b)).abs() > rules.cap(whole, rules.wind_steps) { rules.incline() } else { rules.wind_steps };
+                let top = if held[di] {
+                    0
+                } else if steep[di] || (first_level(d.a) - first_level(d.b)).abs() > rules.cap(whole, rules.wind_steps) {
+                    rules.incline()
+                } else {
+                    rules.wind_steps
+                };
                 for k in 0..=SUBS {
                     let a = if k == 0 { index[&d.a] } else { first + k - 1 };
                     let b = if k == SUBS { index[&d.b] } else { first + k };
@@ -540,14 +551,24 @@ impl Net {
                 let over = (0..SUBS).filter(|&k| settled.level[first + k] - d.sub_ground[k] > laws.viaduct).count();
                 let short = stage == d.stage && d.len < 0.92 * self.cells[&d.a].at.distance(self.cells[&d.b].at) * 1.02 * rules.wound(stage);
                 if !last && stage > 0 && stage < rules.incline() && (over * 2 > SUBS || short) {
-                    steep[di] = true;
-                    stage = rules.incline();
+                    // (on the new land only if it has a hill to go up: a length whose two ends
+                    // stand at levels a straight length can join is crossing a hollow, and an
+                    // incline down into it and up again is no way to cross one. It runs
+                    // straight, on what viaduct the hollow asks for.)
+                    let whole = self.cells[&d.a].at.distance(self.cells[&d.b].at) * 1.02;
+                    if g.laid.is_some() && (settled.level[index[&d.a]] - settled.level[index[&d.b]]).abs() <= rules.cap(whole, 0) {
+                        held[di] = true;
+                        stage = 0;
+                    } else {
+                        steep[di] = true;
+                        stage = rules.incline();
+                    }
                 }
                 if stage != d.stage {
                     changed = true;
                     let (ca, cb) = (self.cells[&d.a], self.cells[&d.b]);
                     let level = |c: usize| settled.level[index[&c]];
-                    *d = draft(g, &laws, d.a, d.b, &ca, &cb, d.signs, level(d.a), level(d.b), stage, &squares);
+                    *d = draft(g, &laws, ways.get(&(d.a, d.b)).map(|w| w.as_slice()), d.a, d.b, &ca, &cb, d.signs, level(d.a), level(d.b), stage, &squares);
                 }
             }
             if !changed || last {
@@ -571,7 +592,7 @@ impl Net {
             let stage = (0..d.stage).find(|&s| rules.cap(part, s) >= climb - 1e-5).unwrap_or(d.stage);
             if stage != d.stage {
                 let (ca, cb) = (self.cells[&d.a], self.cells[&d.b]);
-                *d = draft(g, &laws, d.a, d.b, &ca, &cb, d.signs, levels[0], levels[SUBS + 1], stage, &squares);
+                *d = draft(g, &laws, ways.get(&(d.a, d.b)).map(|w| w.as_slice()), d.a, d.b, &ca, &cb, d.signs, levels[0], levels[SUBS + 1], stage, &squares);
             }
         }
         let mut under: HashSet<usize> = HashSet::new();
@@ -672,23 +693,21 @@ impl Net {
         Cell { at, dir, ground: bed_ground(g, at, perp).max(about).max(0.03), level: 0.0, slope: 0.0, town }
     }
 
-    /// On the new land: where the line passes each new cell, chosen by the
-    /// ground along the whole of each new line (newland/passing.rs), and the
-    /// way it runs there, which is the straightest way through between the
-    /// spots its neighbours are passed at.
-    fn place_by_the_ground(&mut self, g: &Ground, cen: &[(f32, f32)], adj: &[Vec<usize>], fresh: &[usize], towns: &HashSet<usize>, laws: &Laws) {
+    /// On the new land: where the line passes each new cell and the way it
+    /// runs there, from the way each new line finds through its cells by the
+    /// ground (newland/passing.rs). The ways are handed back, each from the
+    /// lower-numbered cell of its length to the other.
+    #[allow(clippy::too_many_arguments)]
+    fn place_by_the_ground(&mut self, g: &Ground, cen: &[(f32, f32)], adj: &[Vec<usize>], fresh: &[usize], links: &[(usize, usize)], towns: &HashSet<usize>, laws: &Laws) -> HashMap<(usize, usize), Vec<Vec2>> {
         use crate::newland::passing;
         let Net { lie, cells, .. } = self;
         let lie = lie.get_or_insert_with(|| passing::Lie::new(g));
-        let asked = passing::Asked { g, cen, adj, towns, rules: &laws.rules, viaduct: laws.viaduct };
-        let at = passing::choose(lie, &asked, fresh, &|c| cells.get(&c).map(|cell| (cell.at, cell.level)));
-        let passes = |c: usize| at.get(&c).copied().or_else(|| cells.get(&c).map(|cell| cell.at)).unwrap_or(v2(cen[c]));
+        let asked = passing::Asked { g, cen, adj, towns, rules: &laws.rules };
+        let chosen = passing::choose(lie, &asked, fresh, links, &|c| cells.get(&c).map(|cell| cell.at));
         let placed: Vec<(usize, Cell)> = fresh
             .iter()
             .map(|&c| {
-                let here = passes(c);
-                let dirs: Vec<Vec2> = adj[c].iter().map(|&m| (passes(m) - here).normalize_or(Vec2::X)).collect();
-                let dir = through(&dirs);
+                let (here, dir) = chosen.at.get(&c).copied().unwrap_or((v2(cen[c]), Vec2::X));
                 let perp = Vec2::new(-dir.y, dir.x);
                 // the line clears the ground a little way along it either way, so that a length
                 // does not start under the ground: every length leaves a cell along its one line.
@@ -699,6 +718,7 @@ impl Net {
             })
             .collect();
         cells.extend(placed);
+        chosen.ways
     }
 }
 
@@ -756,7 +776,7 @@ struct Draft {
 /// levels are `la` and `lb` for now. `signs` is which way along each cell's
 /// line the length leaves it.
 #[allow(clippy::too_many_arguments)]
-fn draft(g: &Ground, laws: &Laws, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, signs: (f32, f32), la: f32, lb: f32, stage: u8, squares: &[Vec2]) -> Draft {
+fn draft(g: &Ground, laws: &Laws, way: Option<&[Vec2]>, a_cell: usize, b_cell: usize, a: &Cell, b: &Cell, signs: (f32, f32), la: f32, lb: f32, stage: u8, squares: &[Vec2]) -> Draft {
     let rules = &laws.rules;
     let chord = a.at.distance(b.at).max(1e-3);
     let (sa, sb) = signs;
@@ -779,7 +799,13 @@ fn draft(g: &Ground, laws: &Laws, a_cell: usize, b_cell: usize, a: &Cell, b: &Ce
         // on the new land the sea's arms and the lakes are where the core put them, and a line
         // goes round them wherever it can
         if new_land && world::height_at(g, p.x, p.y) < 0.0 {
-            c += 1.0;
+            c += 3.0;
+        }
+        // and it keeps to the way it found through its cells by the ground (unless it is to
+        // wind, which is to leave that way from side to side to find length)
+        if let Some(way) = way {
+            let off = crate::newland::passing::off_way(way, p);
+            c += 6.0 * off * off;
         }
         c
     };
@@ -816,6 +842,34 @@ fn draft(g: &Ground, laws: &Laws, a_cell: usize, b_cell: usize, a: &Cell, b: &Ce
     while course::tightest(&course::curve(&ends, swing, &lie, 48), CURVE_OVER) < easy - 1e-4 {
         reach *= 0.5;
         lie = course::seek(&ends, swing, stations, if reach < 0.03 { 0.0 } else { reach }, &cost);
+    }
+    // On the new land a curve laid so, a station every 400 m and nine places to lie at each,
+    // can still cut the corner of a bay that the way it follows went round. Where it lies over
+    // standing water, each station in turn is moved a little either way if that takes more of
+    // the curve off the water and bends it no tighter than a train takes easily.
+    if new_land {
+        let over_water = |lie: &[f32]| course::curve(&ends, swing, lie, 96).iter().filter(|p| world::height_at(g, p.x, p.y) < 0.0).count();
+        let mut wet = over_water(&lie);
+        for _ in 0..2 {
+            if wet == 0 {
+                break;
+            }
+            for k in 0..lie.len() {
+                let here = lie[k];
+                let mut best = (wet, here);
+                for shift in [-0.02f32, 0.02, -0.04, 0.04, -0.06, 0.06, -0.08, 0.08] {
+                    lie[k] = here + shift;
+                    if course::tightest(&course::curve(&ends, swing, &lie, 48), CURVE_OVER) < easy - 1e-4 {
+                        continue;
+                    }
+                    let now = over_water(&lie);
+                    if now < best.0 {
+                        best = (now, here + shift);
+                    }
+                }
+                (wet, lie[k]) = best;
+            }
+        }
     }
     let rough = course::length(&course::curve(&ends, swing, &lie, 24));
     let n = ((rough / STEP).ceil() as usize).max(2 * (SUBS + 1));
@@ -1740,6 +1794,31 @@ pub fn check(ry: &RailYear, g: &Ground) -> Checked {
     c
 }
 
+/// How much the ground under the year's lines rises and falls beyond what
+/// the ruling gradient climbs, in all (in the viewer's heights), and the
+/// length of line over ground that steep, in cells. It is what the viaducts,
+/// tunnels and inclines have to make up between them, so it says how hard a
+/// country the lines were given to cross, whatever the profile then made of
+/// it. The ground is looked at every tenth of a cell along each line (200 m).
+pub fn beyond_the_gradient(ry: &RailYear, g: &Ground) -> (f32, f32) {
+    let ruling = laws(g).rules.ruling;
+    let (mut beyond, mut over) = (0.0, 0.0);
+    for line in &ry.lines {
+        let every = (0.1 / STEP).round() as usize;
+        let mut q = 0;
+        while q + every < line.pts.len() {
+            let run: f32 = (q..q + every).map(|i| Vec2::new(line.pts[i + 1].x - line.pts[i].x, line.pts[i + 1].z - line.pts[i].z).length()).sum();
+            let more = (line.ground[q + every] - line.ground[q]).abs() - ruling * run;
+            if more > 0.0 {
+                beyond += more;
+                over += run;
+            }
+            q += every;
+        }
+    }
+    (beyond, over)
+}
+
 /// A stretch of line that stands over the sea, a tideway or a lake.
 #[derive(Clone, Copy, Debug)]
 pub struct OverWater {
@@ -1884,7 +1963,7 @@ pub fn maybe_check(r: &Replay, g: &Ground) -> bool {
             "rail check {}: {} lines, {:.0} km; step along a line {}; step where lines meet {}; steepest {}; steepest incline {}; highest over the ground {}; deepest under it outside a tunnel {}; trains off the track's level {}; a dead end off the ground {}; {} viaducts ({:.1} cells), {} tunnels ({:.1} cells, {:.1} of them roofed, the longest {}; in a tunnel yet over the ground {}), {} inclines and banks ({:.1} cells); the tightest curve has a radius of {:.3} at {:.1},{:.1}, {} curves tighter than {TIGHT}; {} engine houses and sheds, {} of them on a line, the ground furthest from the rails {}",
             r.y0 + k as i32, c.lines, c.km, at(c.step), at(c.meet), at(c.steepest), at(c.steepest_incline), at(c.tallest), at(c.buried), at(c.train_off), at(c.end_off), c.viaducts, c.viaduct_cells, c.tunnels, c.tunnel_cells, c.roofed_cells, at(c.longest_tunnel), at(c.tunnel_in_air), c.inclines, c.incline_cells, 1.0 / c.curve.0.max(1e-6), c.curve.1, c.curve.2, c.hooks, c.stands, c.stands_on_track, at(c.stand_off)
         );
-        // (a line of its own, so that the line above stays as it has always been printed)
+        // (lines of their own, so that the line above stays as it has always been printed)
         let wet = over_water(&ry, g);
         eprintln!(
             "rail check {}, standing water: {} stretches of line stand over the sea, a tideway or a lake ({:.1} cells), {} of them ({:.1} cells) where their cells have dry ground to go round by",
@@ -1893,6 +1972,14 @@ pub fn maybe_check(r: &Replay, g: &Ground) -> bool {
             wet.iter().map(|w| w.cells).sum::<f32>(),
             wet.iter().filter(|w| w.way_round).count(),
             wet.iter().filter(|w| w.way_round).map(|w| w.cells).sum::<f32>()
+        );
+        let (beyond, over) = beyond_the_gradient(&ry, g);
+        eprintln!(
+            "rail check {}, the ground: along the lines as they run the ground rises and falls {:.1} in all beyond what the ruling gradient climbs (some {:.1} m for each km of line), and {:.1} cells of line run over ground that steep",
+            r.y0 + k as i32,
+            beyond,
+            beyond * 2000.0 / 3.0 / c.km.max(1e-3),
+            over
         );
     }
     if let Some(net) = NET.lock().unwrap().as_ref() {

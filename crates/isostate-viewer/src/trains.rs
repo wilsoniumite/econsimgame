@@ -37,7 +37,9 @@ pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<T
 /// starting from a few cells picked by hash and turning by hash at junctions.
 /// The rounds keep to the main roads as they are drawn (`network::road_segments`),
 /// and each runs along its road's surface (`network::driven`): the ribbon,
-/// and over a river the bridge. Three kinds of link are left out, where the
+/// and over a river the bridge. A link that is not in the picture is no way
+/// for a cart (`network::link_shown`: on the new land, a road that would lie
+/// under a lake or along tidewater). Three more kinds are left out, where the
 /// map shows no way a cart could go and a carter turns back: one whose road
 /// goes under a river's water with nothing to carry it, one where a bridge's
 /// ramp ends in a step above the road (`steps`), and one that ends in
@@ -72,10 +74,12 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
         }
         *dry.entry((lo, hi)).or_insert_with(|| {
             let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
-            !waters.near(a, b) || {
-                let way = surface(ways, g, cen, lo, hi);
-                !waters.drowns(g, way) && !steps(way)
-            }
+            // (on the new land a road left out of the picture, under a lake or along tidewater, is no way for a cart)
+            network::link_shown(g, a, b)
+                && (!waters.near(a, b) || {
+                    let way = surface(ways, g, cen, lo, hi);
+                    !waters.drowns(g, way) && !steps(way)
+                })
         })
     };
     let mut rounds = Vec::new();
