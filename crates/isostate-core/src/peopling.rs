@@ -81,6 +81,12 @@ pub struct PeopleParams {
     pub donor_max: f64,
     /// Years a town that gave people to a founding is left alone.
     pub donor_rest: i64,
+
+    // ---- the shelves (docs/rules/shelves.md)
+    /// When a district changes market, its merchants' stock, their cash above
+    /// nothing and their measure of sales go with it to whichever town takes it,
+    /// as its people do. Off, they go only to a town founded that year.
+    pub shelves_go: bool,
 }
 
 impl Default for PeopleParams {
@@ -105,6 +111,7 @@ impl Default for PeopleParams {
             found_spacing: 8.0,
             donor_max: 0.2,
             donor_rest: 8,
+            shelves_go: false,
         }
     }
 }
@@ -112,7 +119,7 @@ impl Default for PeopleParams {
 impl PeopleParams {
     /// The game's people.
     pub fn game() -> PeopleParams {
-        PeopleParams { enabled: true, ..PeopleParams::default() }
+        PeopleParams { enabled: true, shelves_go: true, ..PeopleParams::default() }
     }
 }
 
@@ -603,7 +610,8 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
 /// After the catchments are worked out again: the households of every cell that
 /// now trades through another town go to that town, with their cash and their
 /// landlords' cash. A town founded this year gets its people this way, and with
-/// them a share of the old market's stocks and its merchants' cash.
+/// them a share of the old market's stocks, its merchants' cash and their
+/// measure of sales; under `shelves_go` so does any town that takes a district.
 ///
 /// The share of a town's people on a group of cells is the share of its labour at
 /// work there, so a town keeps the people whose cells it keeps.
@@ -674,8 +682,11 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                     st.carters[i] -= carters[i] * frac;
                     st.carters[j] += carters[i] * frac;
                 }
-                if st.town_new[j] {
-                    // a new market starts with its share of the old one's trade
+                if st.town_new[j] || P.people.shelves_go {
+                    // a new market starts with its share of the old one's trade; under
+                    // `shelves_go` an old market that takes a district takes its share
+                    // too, so that it opens January with bread for its new people and
+                    // orders for them after (docs/rules/shelves.md)
                     let cash = merch[i].max(0.0) * frac;
                     st.merch_cash[i] -= cash;
                     st.merch_cash[j] += cash;

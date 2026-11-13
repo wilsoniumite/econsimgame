@@ -12,10 +12,12 @@ use isostate_core::*;
 /// the port's island (`y_still` 1.5, `growth_top` 0.0165). The game's are 1.3
 /// and 0.016, set where its own island stands in 1750 (docs/rules/people.md, "In
 /// company"). The histories below (Kelrigg, the hemmed-in sites) are the port's
-/// island's under the first pair, so they are kept on it.
+/// island's under the first pair, so they are kept on it, and on the shelves as
+/// they were when the histories were written (docs/rules/shelves.md has its own
+/// tests, in tests/shelves.rs).
 fn params(end_year: i64) -> Params {
     let mut P = default_params();
-    P.people = PeopleParams { y_still: 1.5, growth_top: 0.0165, ..PeopleParams::game() };
+    P.people = PeopleParams { y_still: 1.5, growth_top: 0.0165, shelves_go: false, ..PeopleParams::game() };
     P.end_year = Some(end_year);
     P
 }
@@ -34,7 +36,7 @@ fn apart(st: &State, a: usize, b: usize) -> f64 {
 fn off_by_default_and_on_in_the_game() {
     assert!(!default_params().people.enabled);
     assert!(game_params().people.enabled);
-    assert_eq!(PeopleParams::game(), PeopleParams { enabled: true, ..PeopleParams::default() });
+    assert_eq!(PeopleParams::game(), PeopleParams { enabled: true, shelves_go: true, ..PeopleParams::default() });
 }
 
 #[test]
@@ -353,7 +355,9 @@ fn in_company_no_wage_runs_away_or_flips() {
 /// written on island 2's of 1827, the one sailing of sixteen islands; its
 /// history went another way when towns stopped hiring hands they do not have,
 /// docs/rules/hands.md, and island 26's sailing of 1821 moved to 1824 when the
-/// money was issued on its true total, docs/rules/money.md.)
+/// money was issued on its true total, docs/rules/money.md. The shelves going
+/// with the district, docs/rules/shelves.md, end that sailing too, as they ended
+/// island 2's, so the case is played with that rule off.)
 #[test]
 fn a_sailing_is_news_of_its_own_kind() {
     let rules = isostate_core::params::Rules::Game;
@@ -361,6 +365,7 @@ fn a_sailing_is_news_of_its_own_kind() {
     P.seed = 26;
     P.n_families = 6;
     P.end_year = Some(1824);
+    P.people.shelves_go = false;
     let r = sim::run_with(&P, rules.content(), false, false).expect("the run finishes");
     let sailed: Vec<&String> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| &e.title).collect();
     assert!(!sailed.is_empty(), "the case is gone: nobody took ship on island 26 by 1824");

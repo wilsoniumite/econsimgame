@@ -11,16 +11,14 @@
 # paste the four lines it gives below, and say in the commit which moved and why
 # (docs/rules/README.md, "The game's golden test").
 #
-# Taken: on main at ca56cf2 with the test merged in. Since the first taking
-# (5d843c0), news and run.bin moved by the news's plain faults mended (9aaaf7f);
-# run.bin by the works' site planner, which writes each good's price and each
-# method's capital into its header (5449ca7); and all four by the rules pass's
-# stage 2, a town cannot hire hands it does not have (ca56cf2). With that
-# stage's switch off the hashes before it held. Then all four by the rules
-# pass's stage 4, money issued on the true total (money.true_total), taken on
-# night/o-rules-4-money-check with main at 5d2de4d merged in; with that
-# switch off for one run the four before it held.
-economy  0x95511652f1f563cb
-books    0xe15ed9dcf45495a4
-news     0xa25f636a3981f9e4
-run.bin  0x7a105584df3bb886
+# Taken: on main with stages 4 and 3 of the rules pass merged in, in that
+# order (13 November 2026). All four moved by stage 4, money issued on the
+# true total (docs/rules/money.md): with its switch off the hashes before it
+# held. All four moved again by stage 3, the shelves go with the district
+# (docs/rules/shelves.md): with its switch off the economy and the books are
+# as they were, and the news and run.bin still move, because a sentence of the
+# chronicle that it mends is not behind the switch.
+economy  0x3d8a450efeca7955
+books    0xd1158e1b9eccd3a4
+news     0x482bf0c9d24dd7aa
+run.bin  0x28e1aa840b831519
