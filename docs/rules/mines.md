@@ -297,7 +297,8 @@ game's rules to the last digit. Three things were mended.
   believed promise is, and when a town is kept off).
 
 Extreme settings, two seeds each to 1900 under the game's rules with six
-families (`mines-review/x-*`): `sink` 0 and 400, `reach` 0, 2 and 4,
+families (`mines-review/x-*`): `sink` 0 and 400 (which then moved the
+threshold for opening too, to 0 and 100 wages a month), `reach` 0, 2 and 4,
 `payback` 0, 0.5 and 20 (`open_at` 0, 80 and 2 today, at `sink` 40), `memory` 0 and 1, `idle_years` 0, 1 and 300,
 `year_room` 0 and 5, `reserve` 0 and 100,000, `haul` 0 and 1,
 `hands_per_cell` 0 and 200, `cell_limit` 0 and 1, in the combinations that

@@ -250,7 +250,8 @@ anywhere, of any size, every year (`found_saving`, `found_people`,
 all 48 town slots by 1791 and ends with a real wage of 1.19, no run failing;
 `growth_top` doubled to 0.033 gives 2.2 million people and a real wage of
 0.63, which is Malthus and not a crash, no run failing; and the hardest
-dearth the numbers allow (`dearth` and `emigration` 1, `growth_floor` -1)
+dearth the numbers allow (`dearth` and `emigration` 1, `growth_floor` -1,
+while it was a setting)
 leaves 330,000 people in 1900, no run failing. One edge does break:
 `growth_top` 0.05 with `y_still` 0.5 and no limit on arrivals puts six to
 eight million people on the island, and three runs of four then fail the

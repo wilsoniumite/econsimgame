@@ -282,6 +282,12 @@ that moved nothing into constants, and folded two pairs that were one number):
 --set canals.max_projects: canals.max_projects is no longer a setting since stage 5 of the pass over the rules (docs/designs/rules-pass.md, section 4.5): it is the constant canals::MAX_PROJECTS, 12 canals digging at once
 ```
 
+The `params.json` of a game's run made before stage 5 names them too (a
+mechanism that is on is written out whole), so given back with `--params` it
+is refused in the same words. Take out the lines it names (setting
+`canals.hurdle` or `mines.open_at` as the refusal says, where `induced` was not
+1 or `payback` was not 4) and the run is the one it was.
+
 It writes into `DIR`, replacing a sweep that is already there (so the same
 command makes a baseline again):
 
