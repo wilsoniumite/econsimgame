@@ -99,7 +99,8 @@ The step inside the engine that varies with time was not pinned down further tha
   same main, and a five-pixel difference at that farm in island-1900 should be read as above.
 - The cure is to fix the order the trees are drawn in, which moves a few dozen pixels of the
   island views once (where trees tie with other things) and then holds them. With the trees
-  drawn outside the batches it takes one component on twelve entities in `main.rs`; done more
+  drawn outside the batches it takes one component on twelve entities (spawned in `main.rs`
+  at 973396e, and in `year.rs` since the table of a year's meshes landed); done more
   carefully, the trees would keep a batch of their own whose order nothing else can disturb, so
   that ties between trees and the ground or the houses go as they go today. Either way the
   standard pictures must be taken again when it lands.
