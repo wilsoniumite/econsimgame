@@ -21,8 +21,11 @@ mod ground;
 mod middles;
 #[cfg(test)]
 mod on_islands;
+pub mod passing;
+#[cfg(test)]
+mod passing_tests;
 
-pub use ground::{ground, metres, Laid, RELIEF};
+pub use ground::{ground, metres, rise, Laid, CELL_M, RELIEF};
 
 use bevy::math::Vec2;
 
