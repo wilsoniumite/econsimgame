@@ -10,13 +10,14 @@ use isostate_core::mat::Mat;
 use isostate_core::works::{self, WorksParams};
 use isostate_core::*;
 
-/// The port with the life cycle switched on, as `--set works.enabled=true` runs it.
+/// The port with the life cycle switched on, as `--set works.enabled=true` runs it:
+/// the two mends of the pass over the rules (parts G and H) stay off.
 fn params(seed: u64, n_families: usize, end_year: i64) -> Params {
     let mut P = default_params();
     P.seed = seed;
     P.n_families = n_families;
     P.end_year = Some(end_year);
-    P.works = WorksParams::game();
+    P.works = WorksParams { enabled: true, ..WorksParams::default() };
     P
 }
 
@@ -44,7 +45,10 @@ fn off_is_the_port_and_on_is_the_game() {
     assert!(!default_params().works.enabled, "the port has no life cycle");
     assert!(game_params().works.enabled, "the game has");
     // the numbers are the same either way, so --set works.enabled=true measures the game's
-    assert_eq!(WorksParams { enabled: false, ..WorksParams::game() }, WorksParams::default());
+    // life cycle; the two mends G and H are switches of their own, on in the game alone
+    assert_eq!(WorksParams { enabled: false, spread_first: false, keep_order: false, ..WorksParams::game() }, WorksParams::default());
+    assert!(game_params().works.spread_first && game_params().works.keep_order);
+    assert!(!default_params().works.spread_first && !default_params().works.keep_order);
     // and a port run never fills the state's tables
     let r = sim::run_with(&port(3, 0, 1752), default_content(), false, true).expect("money is conserved");
     assert_eq!(r.state.works_added.rows, 0);
@@ -498,4 +502,90 @@ fn a_works_is_numbered_among_the_works_of_its_own_name() {
     // and the port's count, which is the Python's, takes the other in
     let both = [format!("{first}s"), first.clone()];
     assert_eq!((names::works_of_name(&both, &first), both.iter().filter(|n| n.starts_with(&first)).count()), (1, 2));
+}
+
+/// The works of 1749 (`sim::seed_firms`, the reason "old"): how many there are,
+/// how many stand on a cell that another of their method in their town already
+/// holds, and the capacity each town has of each good.
+fn first_works(st: &State, C: &Content) -> (usize, usize, std::collections::BTreeMap<(usize, usize), f64>) {
+    let mut on_cell: std::collections::BTreeMap<(usize, usize, usize), usize> = Default::default();
+    let mut capacity: std::collections::BTreeMap<(usize, usize), f64> = Default::default();
+    let mut n = 0;
+    for f in (0..st.F_count).filter(|&f| st.f_reason[f].kind == "old") {
+        n += 1;
+        *on_cell.entry((st.f_town[f], st.f_method[f], st.f_cell[f])).or_default() += 1;
+        *capacity.entry((st.f_town[f], C.method_out[st.f_method[f]])).or_default() += st.f_K[f];
+    }
+    (n, on_cell.values().map(|&k| k - 1).sum(), capacity)
+}
+
+#[test]
+fn the_works_of_1749_stand_on_cells_of_their_own() {
+    // G. Played under the game's rules on islands 1, 4 and 7 as `init_state` makes
+    // them: the world and the works of 1749, before the warm-up. Only
+    // works.spread_first is moved; no other rule of the game acts before the warm-up.
+    let C = game_content();
+    for seed in [1, 4, 7] {
+        let mut P = game_params();
+        P.seed = seed;
+        P.works.spread_first = true;
+        let (on, _) = init_state(&P, &C);
+        P.works.spread_first = false;
+        let (off, _) = init_state(&P, &C);
+        let (n_on, shared_on, cap_on) = first_works(&on, &C);
+        let (n_off, shared_off, cap_off) = first_works(&off, &C);
+        assert!(n_on > 100 && n_on == n_off, "island {seed}: {n_on} works of 1749 with the rule, {n_off} without");
+        assert_eq!(shared_on, 0, "island {seed}: with the rule no works of 1749 shares its cell with one of its trade in its town");
+        assert!(shared_off > 20, "island {seed}: without it {shared_off} do (the port's twins)");
+        // the same need is met: each town has as much of each good's capacity as before
+        assert_eq!(cap_on.len(), cap_off.len());
+        for (key, k) in &cap_on {
+            assert!((k - cap_off[key]).abs() <= 1e-9 * k, "island {seed}, town and good {key:?}: {k} against {}", cap_off[key]);
+        }
+    }
+}
+
+#[test]
+fn a_works_pays_for_its_order_before_its_owners() {
+    // H. Played under the game's rules on island 7 with no families, in the first
+    // month of 1750, on two copies of one island that differ only in works.keep_order.
+    let mut P = game_params();
+    P.seed = 7;
+    P.n_families = 0;
+    P.end_year = Some(1750);
+    P.works.keep_order = true;
+    let mut on = sim::start(&P, game_content());
+    let C = on.content.clone();
+    let f = (0..on.st.F_count)
+        .find(|&f| on.st.f_alive[f] && on.st.f_K[f] > 0.0 && on.st.f_order_K[f] == 0.0 && on.st.f_owner.get(f).is_none_or(|&o| o < 0))
+        .expect("a standing works with nothing on order and no owner");
+    let (t, m) = (on.st.f_town[f], on.st.f_method[f]);
+    // an order of ten times its size, its money paid into its cash at once, as a
+    // family pays for an extension (`works::extend_for_family`)
+    let K = 10.0 * on.st.f_K[f];
+    let cost: f64 = (0..C.G).map(|g| K * C.m_cap[(m, g)] * on.st.price[(t, g)]).sum();
+    for g in 0..C.G {
+        on.st.f_order[(f, g)] += K * C.m_cap[(m, g)];
+    }
+    on.st.f_order_K[f] += K;
+    on.st.f_cash[f] += cost;
+    assert!((works::kept_for_order(&on.st, &C, &on.params, f) - cost).abs() <= 1e-9 * cost, "it keeps back the whole order at its town's prices");
+    let mut off = on.clone();
+    off.params.works.keep_order = false;
+    assert_eq!(works::kept_for_order(&off.st, &C, &off.params, f), 0.0, "and nothing with the switch off");
+
+    econ::step_month(&mut on.st, &C, &on.params);
+    econ::step_month(&mut off.st, &C, &off.params);
+    // the two months are the same up to the dividend: the cash before it, c, is
+    // what the switch off leaves plus the 0.4 of c above four months' costs it paid out
+    let (rate, buffer) = (P.firm_div_rate, P.firm_buffer_months * off.st.f_cost_m[f]);
+    assert_eq!(on.st.f_cost_m[f].to_bits(), off.st.f_cost_m[f].to_bits());
+    let c = (off.st.f_cash[f] - rate * buffer) / (1.0 - rate);
+    assert!(c > buffer, "without the rule it paid a dividend");
+    let left = works::kept_for_order(&on.st, &C, &on.params, f);
+    assert!(left > 0.5 * cost, "most of the order is still to come after a month: {left} of {cost}");
+    let expected = c - rate * (c - buffer - left).max(0.0);
+    assert!((on.st.f_cash[f] - expected).abs() <= 1e-9 * c, "with it the dividend is 0.4 of what stands above the costs and the order: {} against {expected}", on.st.f_cash[f]);
+    assert!(on.st.f_cash[f] >= left.min(c), "so the works still holds the money for what is to come");
+    assert!(off.st.f_cash[f] < left, "where without it the owners took part of it: {} for {left} to come", off.st.f_cash[f]);
 }

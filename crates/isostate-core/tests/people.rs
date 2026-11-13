@@ -357,7 +357,8 @@ fn in_company_no_wage_runs_away_or_flips() {
 /// docs/rules/hands.md, and island 26's sailing of 1821 moved to 1824 when the
 /// money was issued on its true total, docs/rules/money.md. The shelves going
 /// with the district, docs/rules/shelves.md, end that sailing too, as they ended
-/// island 2's, so the case is played with that rule off.)
+/// island 2's, so the case is played with that rule off. The works' two mends,
+/// docs/rules/works.md, parts G and H, end it as well, and are off here too.)
 #[test]
 fn a_sailing_is_news_of_its_own_kind() {
     let rules = isostate_core::params::Rules::Game;
@@ -366,6 +367,8 @@ fn a_sailing_is_news_of_its_own_kind() {
     P.n_families = 6;
     P.end_year = Some(1824);
     P.people.shelves_go = false;
+    P.works.spread_first = false;
+    P.works.keep_order = false;
     let r = sim::run_with(&P, rules.content(), false, false).expect("the run finishes");
     let sailed: Vec<&String> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| &e.title).collect();
     assert!(!sailed.is_empty(), "the case is gone: nobody took ship on island 26 by 1824");

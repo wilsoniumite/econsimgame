@@ -1818,14 +1818,14 @@ pub fn pick_class(r: &Replay, k: usize, c: usize, u255: f32) -> u8 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A made-up island of 14 squares by 12: sea round the rim, the land in
     /// ridges that run north and south, four squares from crest to crest,
     /// arable and wood in the west half (six to four) and pasture and heath in
     /// the east (four to six).
-    fn island() -> Replay {
+    pub(crate) fn island() -> Replay {
         let (w, h) = (14usize, 12usize);
         let n = w * h;
         let header: crate::replay::Header =

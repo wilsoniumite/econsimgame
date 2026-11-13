@@ -272,6 +272,10 @@ pub fn after_transport(st: &mut State, C: &Content, P: &Params) {
 }
 
 /// The artisans of 1750: enough smiths, weavers, colliers and furnaces for local demand.
+/// A town's need for a trade is split into up to six works, each sited in turn at the
+/// best of its candidate cells. Under the port nothing in that choice sees the works
+/// already put down, so they often land on one cell as twins; under the game's rules
+/// each takes a cell no works of its trade in its town has (`works::first_sites`).
 pub fn seed_firms(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, pbar: &Mat, wbar: &[f64]) {
     let T = st.T_max;
     let (share, unit) = econ::service_mix(pbar, &C.props, P.logit_theta);
@@ -314,10 +318,15 @@ pub fn seed_firms(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, pbar:
             let Some((_, m)) = best else { continue };
             let n_firms = ((target / (2.0 * C.m_K0[m])).ceil().clamp(1.0, 6.0)) as usize;
             let K_each = target / n_firms as f64;
+            // works (docs/rules/works.md, part G): the cells this trade has taken in this town
+            let mut taken: Vec<usize> = Vec::new();
             for _ in 0..n_firms {
-                let cells = firms::candidate_cells(st, C, P, i, m, &mut rng.firms);
+                let mut cells = firms::candidate_cells(st, C, P, i, m, &mut rng.firms);
                 if cells.is_empty() {
                     break;
+                }
+                if P.works.spread_first {
+                    cells = crate::works::first_sites(st, i, cells, &taken);
                 }
                 let ev = firms::evaluate_sites(st, C, P, i, m, &cells, K_each, pbar, wbar);
                 let j = crate::util::argmax(&ev.roi);
@@ -346,6 +355,7 @@ pub fn seed_firms(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, pbar:
                 st.f_order.row_mut(fid).iter_mut().for_each(|v| *v = 0.0);
                 st.f_order_K[fid] = 0.0;
                 st.f_u[fid] = 0.8;
+                taken.push(cells[j]);
             }
             st.same_counts = firms::same_method_counts(st, C);
         }
