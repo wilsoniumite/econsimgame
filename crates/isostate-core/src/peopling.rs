@@ -60,8 +60,6 @@ pub struct PeopleParams {
     /// Share of a town's people who leave the island in a complete dearth, if a
     /// port can be reached. Their cash is spent at that port on the passage.
     pub emigration: f64,
-    /// Births less deaths never fall below this (those who sail are counted besides).
-    pub growth_floor: f64,
 
     // ---- migration
     /// Migrants a town can take in a year, as a share of its own people.
@@ -103,7 +101,6 @@ impl Default for PeopleParams {
             dearth_full: 0.6,
             dearth: 0.03,
             emigration: 0.02,
-            growth_floor: -0.06,
             arrivals_max: 0.1,
             found_saving: 0.08,
             found_cells: 40,
@@ -166,6 +163,13 @@ pub fn dearth_depth(pp: &PeopleParams, food_min: f64) -> f64 {
 /// together, however the numbers are set. The game's numbers stop at -0.08.
 const WORST_YEAR: f64 = -0.5;
 
+/// Births less deaths never fall below this (those who sail are counted
+/// besides). A guard: in no town of the sweeps does the rate come near it. A
+/// setting, `growth_floor`, until stage 5 of the pass over the rules
+/// (docs/probes/sens-people.md: at -0.03 and -0.12 every fact of every island
+/// is as it was).
+pub const GROWTH_FLOOR: f64 = -0.06;
+
 /// The year's rate of increase for every town, in place of the port's capped rule.
 /// Emigrants' cash is moved here; the caller applies the rate to `st.pop`.
 pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec<Event>) -> Vec<f64> {
@@ -185,7 +189,7 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         let depth = dearth_depth(pp, st.food_min_acc[t]);
         // whatever the numbers are set to, no town loses more than half its people in a
         // year (a town with nobody in it is not something the markets can price)
-        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(pp.growth_floor).max(WORST_YEAR);
+        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR);
         if depth > 0.0 && pp.emigration > 0.0 {
             let port = ports.iter().copied().filter(|&j| st.town_cost[(t, j)].is_finite()).min_by(|&a, &b| st.town_cost[(t, a)].total_cmp(&st.town_cost[(t, b)]));
             if let Some(j) = port {

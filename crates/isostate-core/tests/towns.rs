@@ -252,7 +252,7 @@ fn a_town_keeps_its_ground_and_grows_from_it() {
         let list = &s.st.town_ground[i];
         assert!(list.len() >= 3, "{} stands on {} cells", s.st.town_name[i], list.len());
         assert!(list.iter().all(|&c| s.st.town_built[c] <= y0 - P.towns.back_years));
-        assert_eq!(s.st.town_built[list[0]], y0 - P.towns.back_years - P.towns.back_span);
+        assert_eq!(s.st.town_built[list[0]], y0 - P.towns.back_years - isostate_core::towns::BACK_SPAN);
         // and the town fits its people, to within the little the dating moves: without
         // its newest cell it would be short of room
         let (room, U): (f64, f64) = (list.iter().map(|&c| s.st.town_room[c]).sum(), s.st.urban_pop[i]);
@@ -330,11 +330,11 @@ fn a_long_deep_decline_gives_ground_up_one_cell_a_year() {
     st.pop[i] *= 0.5;
     st.ind_labor[i] *= 0.5;
     let mut year = C.start_year;
-    for k in 0..P.towns.decline_years {
+    for k in 0..isostate_core::towns::DECLINE_YEARS {
         // smoothing takes a year or two to show the fall, so it holds a little longer than the count says
         land::update_land_use(st, &C, &P, year, &pbar, &wbar, false);
         year += 1;
-        assert_eq!(st.town_ground[i].len(), n, "year {k}: the ground is kept through the first {} lean years", P.towns.decline_years);
+        assert_eq!(st.town_ground[i].len(), n, "year {k}: the ground is kept through the first {} lean years", isostate_core::towns::DECLINE_YEARS);
     }
     let mut sizes = Vec::new();
     for _ in 0..6 {

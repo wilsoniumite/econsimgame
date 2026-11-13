@@ -621,15 +621,67 @@ fn merge_json(base: &mut serde_json::Value, over: &serde_json::Value) {
     }
 }
 
+/// Settings that are no longer settings, by the dotted name `--set` gives them,
+/// and what each became. Stage 5 of the pass over the rules
+/// (`docs/designs/rules-pass.md`, section 4.5) made sixteen numbers that the
+/// sweeps found to move nothing into constants of their modules, with the
+/// values they had, and folded two pairs of settings that were one number
+/// under two names. A file or a `--set` that still names one is refused with
+/// this, rather than as a name nobody has heard of.
+pub const RETIRED: &[(&str, &str)] = &[
+    ("railways.max_projects", "it is the constant railways::MAX_PROJECTS, 40 lines building at once"),
+    ("canals.max_projects", "it is the constant canals::MAX_PROJECTS, 12 canals digging at once"),
+    ("canals.districts", "it is the constant canals::DISTRICTS, 6 districts looked at a year"),
+    ("canals.branch_gap", "it is the constant canals::BRANCH_GAP, 3 cells"),
+    ("canals.district_spacing", "it is the constant canals::DISTRICT_SPACING, 6 cells"),
+    ("canals.cool_years", "it is the constant canals::COOL_YEARS, 5 years"),
+    ("canals.navvy_max_share", "it is the constant canals::NAVVY_MAX_SHARE, a fifth of a town's hands"),
+    ("canals.navvy_adjust", "it is the constant canals::NAVVY_ADJUST, a quarter of the way a month"),
+    (
+        "canals.induced",
+        "it was folded into canals.hurdle, and a canal goes ahead when the carting it saves in a year over its cost reaches the hurdle, as it did with induced at 1 (for induced x, set canals.hurdle to the hurdle over x)",
+    ),
+    (
+        "mines.payback",
+        "it is restated as mines.open_at, the royalty in the town's wages a month that a site must promise to be opened, 10 (which was sink over payback, 40 over 4; for payback p, set mines.open_at to the sink over p)",
+    ),
+    ("mines.cell_limit", "it is the constant mines::CELL_LIMIT, half a cell"),
+    ("people.growth_floor", "it is the constant peopling::GROWTH_FLOOR, -0.06 a year"),
+    ("towns.decline_years", "it is the constant towns::DECLINE_YEARS, 15 years"),
+    ("towns.back_span", "it is the constant towns::BACK_SPAN, 40 years"),
+    ("prices.glut_floor", "it is the constant prices::GLUT_FLOOR, nothing: in the worst glut merchants take none of a works' make"),
+    ("chronicle.at_least", "it is the constant chronicle::AT_LEAST, 2 items in a finished decade"),
+    ("chronicle.fill_floor", "it is the constant chronicle::FILL_FLOOR, a weight of 0.45"),
+    ("chronicle.base_years", "it is the constant chronicle::BASE_YEARS, 5 years"),
+];
+
+/// The first retired setting `doc` names, said in a sentence: that it is no
+/// longer a setting, and what it became. None if it names none.
+pub fn retired(doc: &serde_json::Value) -> Option<String> {
+    RETIRED.iter().find_map(|(key, became)| {
+        let named = key.split('.').try_fold(doc, |at, part| at.get(part)).is_some();
+        named.then(|| format!("{key} is no longer a setting since stage 5 of the pass over the rules (docs/designs/rules-pass.md, section 4.5): {became}"))
+    })
+}
+
+/// A reader's refusal, put in the words of [`retired`] when what was refused
+/// names a retired setting (serde would call it a field it does not know).
+fn or_retired(e: String, doc: impl FnOnce() -> Option<serde_json::Value>) -> String {
+    match doc().as_ref().and_then(retired) {
+        Some(why) => format!("params: {why}"),
+        None => e,
+    }
+}
+
 impl Params {
     /// Defaults overridden by a partial TOML document, e.g. `seed = 3` and `land_theta = 2.5`.
     pub fn from_toml_str(text: &str) -> Result<Params, String> {
-        toml::from_str(text).map_err(|e| format!("params: {e}")).and_then(Params::checked)
+        toml::from_str(text).map_err(|e| or_retired(format!("params: {e}"), || toml::from_str(text).ok())).and_then(Params::checked)
     }
 
     /// Defaults overridden by a partial JSON object, e.g. `{"seed": 3, "rent_regime": "commons"}`.
     pub fn from_json_str(text: &str) -> Result<Params, String> {
-        serde_json::from_str(text).map_err(|e| format!("params: {e}")).and_then(Params::checked)
+        serde_json::from_str(text).map_err(|e| or_retired(format!("params: {e}"), || serde_json::from_str(text).ok())).and_then(Params::checked)
     }
 
     /// Settings that cannot be run together, refused in one sentence that names
@@ -662,6 +714,9 @@ impl Params {
     fn with_overrides(&self, over: &serde_json::Value) -> Result<Params, String> {
         if !over.is_object() {
             return Err("params: overrides must be a JSON object or a TOML table".to_string());
+        }
+        if let Some(why) = retired(over) {
+            return Err(format!("params: {why}"));
         }
         let mut base = serde_json::to_value(self).map_err(|e| format!("params: {e}"))?;
         merge_json(&mut base, over);
