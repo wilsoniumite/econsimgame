@@ -652,3 +652,11 @@ One line each as they arrive: the name, its page, its switch.
   year on every island, the rate today's islands had, where the port's count
   left the month's incomes out and the rate wandered. [money.md](money.md),
   `money.true_total`.
+- **the works of 1749 spread out**: the works a game starts with stand on
+  cells of their own, where the port put up to six of one trade on a town's
+  one best cell as twins with one history. [works.md](works.md), part G,
+  `works.spread_first`.
+- **orders paid for first**: a works keeps back what its order for plant
+  still costs before it pays a dividend, so the money for an extension is not
+  paid out to its owners while the plant is still to come and the works then
+  closed for the debt. [works.md](works.md), part H, `works.keep_order`.

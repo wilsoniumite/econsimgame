@@ -132,12 +132,14 @@ pub fn site_roi(K: f64, margin: f64, rent_bid: f64, cap_cost: f64) -> f64 {
     12.0 * (K * 0.85 * margin - rent_bid) / cap_cost.max(1e-9)
 }
 
+/// A cell a new works may stand on: not nine tenths built over, and neither
+/// sea (use 0) nor derelict.
+pub fn can_stand(st: &State, c: usize) -> bool {
+    st.cell_K_share[c] < 0.9 && st.land_use[c] != 0 && st.land_use[c] != USE_DERELICT
+}
+
 pub fn candidate_cells(st: &State, C: &Content, P: &Params, i: usize, m: usize, rng: &mut Rng) -> Vec<usize> {
-    let cells: Vec<usize> = st.town_cells[i]
-        .iter()
-        .copied()
-        .filter(|&c| st.cell_K_share[c] < 0.9 && st.land_use[c] != 0 && st.land_use[c] != USE_DERELICT)
-        .collect();
+    let cells: Vec<usize> = st.town_cells[i].iter().copied().filter(|&c| can_stand(st, c)).collect();
     if cells.is_empty() {
         return cells;
     }

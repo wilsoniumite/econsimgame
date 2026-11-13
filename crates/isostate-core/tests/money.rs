@@ -145,13 +145,16 @@ fn the_issue_is_never_below_nothing() {
     // docs/rules/hands.md, which slowed the road and did not close it. The
     // shelves going with the district, docs/rules/shelves.md, give the island
     // another history, in which the port's count has not gone below nothing
-    // by 1846, so the case is played with that rule off.)
+    // by 1846, so the case is played with that rule off, and so for the same
+    // reason are the works' two mends, works.md, parts G and H.)
     fn extreme(true_total: bool) -> Params {
         let mut P = params(7, true_total, 6);
         P.machines.quality_b = 2.0;
         P.machines.quality_cap = 50.0;
         P.machines.quality_Q0 = 0.0;
         P.people.shelves_go = false;
+        P.works.spread_first = false;
+        P.works.keep_order = false;
         P.end_year = Some(1846);
         P
     }

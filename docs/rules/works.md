@@ -168,6 +168,85 @@ every function in `works.rs` that the port reaches returns the port's number
 functions that are) and the two state tables stay empty; `tests/golden.rs`
 holds the port to the byte.
 
+## Two mends from the pass over the rules
+
+Two faults that `docs/probes/tr-loose-a.md` traced (sections 3 and 4) are
+mended here, each behind a switch of its own in `WorksParams`, off under the
+port and on under the game's rules. Unlike parts A to F they act whether or
+not the life cycle is on, and `--set works.enabled=true` alone leaves them
+off. Their measure is `examples/works_mends.rs` (below, under "Measuring it"),
+on sixteen islands under the game's rules with six families, 13 November 2026.
+
+**G. The works of 1749 stand on cells of their own** (`spread_first`). The
+artisans a game starts with are the port's (`sim::seed_firms`): each town's
+need for a trade is split into up to six works, and each is sited in turn at
+the best of its candidate cells. Nothing in that choice sees the works already
+put down, and eight of the candidates are the same every time (where the
+trade's bulkiest input is cheapest), so the six often land on one cell, with
+one size and one history: two to six smithies, brickworks or charcoal burnings
+side by side in a town of 1750, closing in the same year and told in the news
+one by one ("Crowther's Forge closes" twice in one month). The rule: each
+works of 1749 takes the best of its candidates that no works of its trade in
+its town already stands on; if every candidate has one, the best of the
+town's other cells where a works could stand (`firms::can_stand`, the
+candidates' own test); and only if the town has no such cell left, the
+candidates as they were (`works::first_sites`). It draws no chance, so it is
+the same in every run of an island, and it sizes nothing: each town has the
+same capacity of each trade as before (`tests/works.rs`).
+
+| sixteen islands | today | the rule |
+|---|---|---|
+| works of 1749 sharing a cell with one of their trade in their town | 1,254 of 2,599 | none |
+| exact twins in a run (the same cell, method, year opened and year closed) | 2,450 | 1,543 |
+| of them works of 1749 | 953 | none |
+| sister works | 834 of 4,276 | 873 of 4,236 |
+| investors' works | 403 of 23,841 | 451 of 23,542 |
+| families' works | 260 of 3,832 | 219 of 3,637 |
+
+The other three in five twins are not the works of 1749 and the rule leaves
+them alone. They are sister works (`firms::spawn_sister`), investors' works
+and families' works that a later year's choice puts on the same best cell as
+another of their kind in the same year: on sixteen islands 10 in the 1760s,
+rising to 200 to 220 a decade in the 1880s and 1890s, and about as many with
+the rule as without (`works_mends`'s count by decade).
+The same words would not cover them: they are sited by three other rules, in
+years when the cell they share already has works of other kinds on it, and
+the rule for 1749 knows its town's whole list of works because it makes them
+all at once. In the picture each works of 1749 now has a yard on its own
+cell, where before the site planner fitted two to six yards of one trade into
+one cell (`.claude/night/shots/opus/rules-5c-works/`, not in the repository:
+Brambridge and Granness on island 7 in 1750, before and after).
+
+**H. A works pays for its order before its owners** (`keep_order`). A works'
+plant is delivered a quarter of what is still on order each month, and paid
+for as it comes, while its dividend is 0.4 a month of all its cash above four
+months of costs (`econ::step_month`). So money put in for an order (a
+family's extension, paid into the works' cash at once by
+`works::extend_for_family`; or a new works' founding money) went straight back
+out to the owners while the plant was still to come, and the works then paid
+for the deliveries out of nothing. `tr-loose-a.md` followed Ashby Mill No. 5
+on island 4: extended for 230,970 in 1888, it paid 157,767 of it back to the
+family as dividends within the year, ran its cash to -118,688 paying for the
+plant, and the review closed it, sound, as insolvent. The rule: the cash a
+dividend is reckoned on is less what the works' order still costs, the goods
+to come at its town's prices as the month leaves them (`works::kept_for_order`).
+It is a rule for every works, the player's among them; what a family is
+offered and how it decides are as they were.
+
+| sixteen islands | today | the rule |
+|---|---|---|
+| orders of more capacity for standing works | 302,515, worth 1,971 million | 297,761, worth 1,886 million |
+| of them for works that closed within three years | 212, worth 5.53 million | 100, worth 0.14 million |
+| of those a family's | 118, worth 3.91 million | 62, worth 0.12 million |
+| the largest such order | 254,087 | 8,026 |
+
+What still closes within three years of an order is the ordinary failure of
+small works, a few thousand each (steel rail works that a family's branch
+grew in a town that soon had several, millwrights and rail forges in the
+1810s to 1830s). With both mends on, 111 orders worth 0.15 million.
+
+What the two moved beyond the faults is in "In the game" below.
+
 ## What was tried and left out
 
 - **Amalgamating small works, stopping economies of scale at four sizes,

@@ -309,7 +309,9 @@ fn a_district_that_goes_and_comes_back() {
 /// first three months after. The run is played twice, the second time without
 /// the rule, to show that the case is still there to mend. (Money issued on its
 /// true total, docs/rules/money.md, gives the island another history, in which
-/// Penfell's winter does not come, so both runs are played with that rule off.)
+/// Penfell's winter does not come, so both runs are played with that rule off,
+/// and for the same reason with the works' two mends off, docs/rules/works.md,
+/// parts G and H.)
 #[test]
 fn no_hungry_january_after_a_town_takes_a_district() {
     let run = |shelves: bool| {
@@ -318,6 +320,8 @@ fn no_hungry_january_after_a_town_takes_a_district() {
         P.n_families = 6;
         P.end_year = Some(1771);
         P.money.true_total = false;
+        P.works.spread_first = false;
+        P.works.keep_order = false;
         P.people.shelves_go = shelves;
         let mut s = sim::start(&P, game_content());
         let T = s.st.T_max;

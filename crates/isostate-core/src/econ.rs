@@ -348,6 +348,9 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
 ///   works', the merchants' and the common fund's dividends have left their
 ///   purses and before the households' income is credited (see the money check
 ///   in `sim::run_month`).
+/// - A works' dividend is reckoned after the month's deliveries of plant and
+///   after prices move, so what it keeps back for its order
+///   (`works::kept_for_order`) is what is still to come, at the new prices.
 /// - `towns::month` reads `st.f_labor` after it is written; `machines::end_month`
 ///   comes last because it reads this month's `st.fill` and `st.pexp`.
 /// - The books only watch. `accounts::open_month` opens them before anything
@@ -1128,7 +1131,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     if NFI > 0 {
         let mut div = vec![0.0; NFI];
         for (k, &i) in fi.iter().enumerate() {
-            let excess = st.f_cash[i] - P.firm_buffer_months * st.f_cost_m[i];
+            // works: the plant still on order is paid for before the owners are (part H)
+            let excess = st.f_cash[i] - P.firm_buffer_months * st.f_cost_m[i] - crate::works::kept_for_order(st, C, P, i);
             div[k] = P.firm_div_rate * excess.max(0.0);
             st.f_cash[i] -= div[k];
         }

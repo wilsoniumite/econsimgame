@@ -98,10 +98,14 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
     // none. Both are played past that year here. Under the game's rules a
     // town can no longer hire hands it does not have (docs/rules/hands.md),
     // which spares island 3 its bad year at the root, so the fund's rule is
-    // held here with that rule off, on the bad year it was written for.
+    // held here with that rule off, on the bad year it was written for. The
+    // works' two mends of the pass (works.md, parts G and H) give the island
+    // another history from the warm-up on, so they are off here too.
     for (families, end_year) in [(6, 1763), (0, 1765)] {
         let mut P = commons(3, families, end_year);
         P.hands.ration = false;
+        P.works.spread_first = false;
+        P.works.keep_order = false;
         let mut s = sim::start(&P, game_content());
         let money = s.st.money_start;
         let (mut months, mut deepest) = (0, 0.0f64);

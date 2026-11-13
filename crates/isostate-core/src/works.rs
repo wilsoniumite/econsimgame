@@ -26,6 +26,14 @@
 //!   path cost between the works and its market, so light trades stand in and
 //!   by the town and only what is tied to coal or clay stays out on it.
 //!
+//! Two mends from the pass over the rules have switches of their own here and
+//! act whether or not the life cycle is on:
+//!
+//! - G. the works a game starts with stand on cells of their own, not up to six
+//!   of a trade on the one best cell (`spread_first`, in `sim::seed_firms`);
+//! - H. a works keeps back what its order still costs before it pays a dividend
+//!   (`keep_order`, `kept_for_order`, read in `econ::step_month`).
+//!
 //! Nothing here pays or charges anyone outside the purses `econ::money_total`
 //! counts: an order is paid from the works' cash, its backers' or its family's,
 //! as before, and the land a works grows onto is rented at the cell's rent that
@@ -73,11 +81,21 @@ pub struct WorksParams {
     /// F. Labour per unit rises by this for each unit of path cost from the works
     /// to its market. 0: hands cost the same anywhere.
     pub walk: f64,
+    /// G. The works a game starts with, the artisans of 1749, stand on cells of
+    /// their own: no two of one trade in one town on one cell where the town has
+    /// another cell a works of the trade could stand on (`sim::seed_firms`). Off:
+    /// the port's, which puts up to six of them on one cell.
+    pub spread_first: bool,
+    /// H. A works keeps back what its order for capacity still costs, at its
+    /// town's prices, before it pays a dividend (`kept_for_order`). Off: the
+    /// port's, which pays out the cash meant for plant still on its way.
+    pub keep_order: bool,
 }
 
 impl Default for WorksParams {
     /// Off: what the port runs with. The numbers are the game's, so that
-    /// `--set works.enabled=true` alone measures the mechanism as it is played.
+    /// `--set works.enabled=true` alone measures the mechanism as it is played;
+    /// the two mends G and H are switches of their own and stay off with it.
     fn default() -> WorksParams {
         WorksParams {
             enabled: false,
@@ -90,14 +108,16 @@ impl Default for WorksParams {
             entry_share: 0.10,
             family_extends: true,
             walk: 0.02,
+            spread_first: false,
+            keep_order: false,
         }
     }
 }
 
 impl WorksParams {
-    /// The game's life cycle.
+    /// The game's life cycle, with the two mends of the pass over the rules.
     pub fn game() -> WorksParams {
-        WorksParams { enabled: true, ..WorksParams::default() }
+        WorksParams { enabled: true, spread_first: true, keep_order: true, ..WorksParams::default() }
     }
 }
 
@@ -485,4 +505,47 @@ pub fn extend_for_family(st: &mut State, C: &Content, P: &Params, k: usize, f: u
         e.family = Some(k);
         events.push(e);
     }
+}
+
+// ---------------------------------------------------------------- G. the works of 1749 spread out
+
+/// The sites one of the works of 1749 may take in town i (`sim::seed_firms`),
+/// given its candidates and the cells its trade has already `taken` in the
+/// town: the candidates no works of its trade stands on; if every candidate
+/// has one, the town's other cells where a works could stand that none has
+/// taken; and only if the town has no such cell left, the candidates as they
+/// were, so that it shares a cell rather than going unbuilt. No chance is
+/// drawn here, so the rule is the same in every run of an island.
+pub fn first_sites(st: &State, i: usize, candidates: Vec<usize>, taken: &[usize]) -> Vec<usize> {
+    if taken.is_empty() {
+        return candidates;
+    }
+    let free: Vec<usize> = candidates.iter().copied().filter(|c| !taken.contains(c)).collect();
+    if !free.is_empty() {
+        return free;
+    }
+    let others: Vec<usize> = st.town_cells[i].iter().copied().filter(|&c| firms::can_stand(st, c) && !taken.contains(&c)).collect();
+    if !others.is_empty() {
+        return others;
+    }
+    candidates
+}
+
+// ---------------------------------------------------------------- H. the order is paid for first
+
+/// What works f keeps back from its dividend for the capacity it has on order:
+/// the goods still to come, at its town's prices as they stand. A works'
+/// capital goods arrive a quarter of what is left each month and are paid for
+/// as they arrive, so the money for an order (a family's extension, a new
+/// works' founding money) sits in the works' cash for a year or two; without
+/// this the dividend, which pays out 0.4 a month of all the cash above four
+/// months of costs, sends it back to the owners while the plant is still to be
+/// paid for, and the works ends below nothing (`docs/rules/works.md`, part H).
+/// Nothing under the port, or with `keep_order` off.
+pub fn kept_for_order(st: &State, C: &Content, P: &Params, f: usize) -> f64 {
+    if !P.works.keep_order || st.f_order_K[f] <= 0.0 {
+        return 0.0;
+    }
+    let t = st.f_town[f];
+    pairwise_sum_by(C.G, |g| st.f_order[(f, g)] * st.price[(t, g)])
 }

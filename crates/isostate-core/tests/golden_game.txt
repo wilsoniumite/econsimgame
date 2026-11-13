@@ -18,7 +18,11 @@
 # (docs/rules/shelves.md): with its switch off the economy and the books are
 # as they were, and the news and run.bin still move, because a sentence of the
 # chronicle that it mends is not behind the switch.
-economy  0x3d8a450efeca7955
-books    0xd1158e1b9eccd3a4
-news     0x482bf0c9d24dd7aa
-run.bin  0x28e1aa840b831519
+# Then on night/o-rules-5c-works (13 November 2026): all four moved by the
+# works' two mends of the pass (docs/rules/works.md, parts G and H: the works
+# of 1749 spread out, and an order paid for before a dividend); with both
+# switches off the four before held.
+economy  0x29e97ac1329c3331
+books    0x4c58014814fad990
+news     0xdabd1794e12d6632
+run.bin  0x459451c73d6f1533
