@@ -168,6 +168,138 @@ every function in `works.rs` that the port reaches returns the port's number
 functions that are) and the two state tables stay empty; `tests/golden.rs`
 holds the port to the byte.
 
+## Two mends from the pass over the rules
+
+Two faults that `docs/probes/tr-loose-a.md` traced (sections 3 and 4) are
+mended here, each behind a switch of its own in `WorksParams`, off under the
+port and on under the game's rules. Unlike parts A to F they act whether or
+not the life cycle is on, and `--set works.enabled=true` alone leaves them
+off. Their measure is `examples/works_mends.rs` (below, under "Measuring it"),
+on sixteen islands under the game's rules with six families, 13 November 2026.
+
+**G. The works of 1749 stand on cells of their own** (`spread_first`). The
+artisans a game starts with are the port's (`sim::seed_firms`): each town's
+need for a trade is split into up to six works, and each is sited in turn at
+the best of its candidate cells. Nothing in that choice sees the works already
+put down, and eight of the candidates are the same every time (where the
+trade's bulkiest input is cheapest), so the six often land on one cell, with
+one size and one history: two to six smithies, brickworks or charcoal burnings
+side by side in a town of 1750, closing in the same year and told in the news
+one by one ("Crowther's Forge closes" twice in one month). The rule: each
+works of 1749 takes the best of its candidates that no works of its trade in
+its town already stands on; if every candidate has one, the best of the
+town's other cells where a works could stand (`firms::can_stand`, the
+candidates' own test); and only if the town has no such cell left, the
+candidates as they were (`works::first_sites`). It draws no chance, so it is
+the same in every run of an island, and it sizes nothing: each town has the
+same capacity of each trade as before (`tests/works.rs`).
+
+| sixteen islands | today | the rule |
+|---|---|---|
+| works of 1749 sharing a cell with one of their trade in their town | 1,254 of 2,599 | none |
+| exact twins in a run (the same cell, method, year opened and year closed) | 2,450 | 1,543 |
+| of them works of 1749 | 953 | none |
+| sister works | 834 of 4,276 | 873 of 4,236 |
+| investors' works | 403 of 23,841 | 451 of 23,542 |
+| families' works | 260 of 3,832 | 219 of 3,637 |
+
+The other three in five twins are not the works of 1749 and the rule leaves
+them alone. They are sister works (`firms::spawn_sister`), investors' works
+and families' works that a later year's choice puts on the same best cell as
+another of their kind in the same year: on sixteen islands 10 in the 1760s,
+rising to 200 to 220 a decade in the 1880s and 1890s, and about as many with
+the rule as without (`works_mends`'s count by decade).
+The same words would not cover them: they are sited by three other rules, in
+years when the cell they share already has works of other kinds on it, and
+the rule for 1749 knows its town's whole list of works because it makes them
+all at once. In the picture each works of 1749 now has a yard on its own
+cell, where before the site planner fitted two to six yards of one trade into
+one cell (`.claude/night/shots/opus/rules-5c-works/`, not in the repository:
+Brambridge and Granness on island 7 in 1750, before and after).
+
+**H. A works pays for its order before its owners** (`keep_order`). A works'
+plant is delivered a quarter of what is still on order each month, and paid
+for as it comes, while its dividend is 0.4 a month of all its cash above four
+months of costs (`econ::step_month`). So money put in for an order (a
+family's extension, paid into the works' cash at once by
+`works::extend_for_family`; or a new works' founding money) went straight back
+out to the owners while the plant was still to come, and the works then paid
+for the deliveries out of nothing. `tr-loose-a.md` followed Ashby Mill No. 5
+on island 4: extended for 230,970 in 1888, it paid 157,767 of it back to the
+family as dividends within the year, ran its cash to -118,688 paying for the
+plant, and the review closed it, sound, as insolvent. The rule: the cash a
+dividend is reckoned on is less what the works' order still costs, the goods
+to come at its town's prices as the month leaves them (`works::kept_for_order`).
+It is a rule for every works, the player's among them; what a family is
+offered and how it decides are as they were.
+
+| sixteen islands | today | the rule |
+|---|---|---|
+| orders of more capacity for standing works | 302,515, worth 1,971 million | 297,761, worth 1,886 million |
+| of them for works that closed within three years | 212, worth 5.53 million | 100, worth 0.14 million |
+| of those a family's | 118, worth 3.91 million | 62, worth 0.12 million |
+| the largest such order | 254,087 | 8,026 |
+
+What still closes within three years of an order is the ordinary failure of
+small works, a few thousand each (steel rail works that a family's branch
+grew in a town that soon had several, millwrights and rail forges in the
+1810s to 1830s). With both mends on, 111 orders worth 0.15 million.
+
+**What else they move.** Read as the pass reads a stage (its design,
+section 3): sixteen islands under the game's rules with six families, today's
+game beside a null pair (`works.walk=0.0200001`, `carting.adjust=0.2500001`),
+each mend alone and both (`.claude/night/reports/opus/rules-5c-works/s16-*`,
+not in the repository). With both switches off the game is today's: 0 facts
+of 626 differ.
+
+| sixteen islands | today | null pair | G alone | H alone | both |
+|---|---|---|---|---|---|
+| aims of the card met; its loss | 8; 41.4 | 9, 9; 31.1, 38.7 | 9; 30.1 | 9; 32.0 | 9; 29.7 |
+| facts moved island by island by a paired t over 3 | | 4, 6 | 11 | 4 | 13 |
+| the works' share of income, 1800 / 1900 | 0.075 / 0.087 | 0.086, 0.092 / 0.093, 0.090 | 0.081 / 0.088 | 0.090 / 0.087 | 0.097 / 0.089 |
+| works standing in 1800 / 1900 | 233 / 739 | 245, 248 / 720, 721 | 235 / 717 | 246 / 725 | 260 / 718 |
+| the families' worth in 1900, island by island against today (the player's) | | +19, +9 per cent (+22, +19) | +11 (+32) | +1 (+11) | +5 (+8) |
+
+The card moves no more than the null pair does, nor do the works' share of
+income and the families' worth. H moves nothing beyond the null pair at all.
+`tr-loose-a.md`'s trial of it found 9 per cent more works in 1800 on eight
+islands of eight; on sixteen that is today's history lying low, since both
+null histories have 5 and 6 per cent more too, and H alone 5. G moves one
+thing clear of the null pair, which nobody foresaw and which follows from
+what it does: the building trades of 1750. With a town's brickworks of 1749 no longer all on the one cell where
+clay is cheapest, fewer clay pits are sunk in the warm-up (79 for 87 in 1750,
+fewer on fifteen islands of sixteen), a sixth fewer hands dig clay in 1750
+and a tenth less clay a head is dug, and stone takes its place (2.7 per cent
+more a head, on all sixteen). It is gone by 1800. (The road from where the
+brickworks went to the clay pits is read from the facts, not traced.) With both on, a few late
+facts stand at the edge of the null pair: the clay pits' hands in 1900 (0.017
+of all hands for 0.020), the farms' share of hands in 1881 to 1900 (a fifth of
+a point lower) and the cells wholly the works' in 1800 (15 for 18.5).
+
+**The check.** A second reader made the measures again on the tree with
+stage 5 of the pass merged in. `works_mends` gave the builder's sixteen
+islands to the digit; with both switches off 0 facts of 627 differ from
+main's on islands 1 to 8, and the game's four golden hashes are main's. On
+islands 17 to 24, which the build did not use, the faults answer the same
+way: works of 1749 sharing a cell 550 of 1,303 before and none after, twins
+1,196 and 782 (737 with both), orders for works that closed within three
+years 120 worth 1.38 million and 49 worth 0.18 million (77 worth 0.16
+million with both). Read again with the null pair: the building trades of
+1750 move as above, and one thing more is G's. The works of 1749 that the
+rule moves off their trade's best cell stand on a second-best one, and more
+of them close in the first decade: 429 of 1,899 by 1760 for 348 of 1,944,
+so that works three to five years old close at 0.050 a year for 0.042
+(the null pair 0.046 and 0.046); by 1800 fewer of them have closed than
+before (1,569 for 1,629). The commons scenario runs to 1900 on all sixteen
+islands with both on. Two things a player meets. The trade a new game offers
+the player first is the best prospect at the seat, which reads where the
+works of 1749 stand, so G changes it on 7 islands of 24 (island 7's from
+building materials to engineering). And a game saved before these mends is
+played again from the new start: it opens, says the island has drifted, and
+refuses the orders the new start does not allow (on island 7, three
+brickworks of a save's four orders, the family no longer knowing building
+materials), as `save.rs` says a save made under other rules does.
+
 ## What was tried and left out
 
 - **Amalgamating small works, stopping economies of scale at four sizes,
@@ -740,7 +872,20 @@ cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules port --set wor
 cargo run --release -p isostate-core --example works_census -- --decades --families 6 --set '{"works":{"enabled":true}}' 3 7 11 21
 cargo run --release -p isostate-core --example bots -- --rules game
 cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --out DIR/game
+cargo run --release -p isostate-core --example works_mends -- --seeds 1-16 --list 3
+cargo run --release -p isostate-core --example works_mends -- --seeds 1-16 --set '{"works":{"spread_first":false,"keep_order":false}}'
 ```
+
+`works_mends` is the measure of parts G and H: the exact twins by where they
+came from and by the decade they opened, the works of 1749 that share a cell
+with one of their trade in their town, the orders of more capacity for
+standing works and those whose works closed within three years, and the
+families' worth at the end. Under the game's rules on sixteen islands
+(13 November 2026) expect no works of 1749 sharing a cell, about 1,350
+twins, and about 110 orders worth about 0.15 million closing within three
+years (one history only); with both switches off, about 1,250 works of 1749 sharing, 2,400 to
+2,450 twins and 200 to 215 such orders worth 4.5 to 6.4 million (the second
+line, and the null pair).
 
 The census prints, for each method, the works standing, their sizes, their
 hands and where they stand, and decade by decade the works founded, the

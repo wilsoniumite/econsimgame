@@ -17,7 +17,13 @@
 # docs/rules/prices.md) and land priced on the rent it paid
 # (harvest.rent_as_paid, docs/rules/harvest.md) each give the island another
 # history. With both switches off the hashes before them held.
-economy  0x5d5a70d5584b75b2
-books    0x2e612e79916129a0
-news     0xe01dfad7fa33dbc9
-run.bin  0x5c84d2a6cbf7a767
+# Then on night/o-rules-5c-works with that main merged in (13 November
+# 2026): all four moved again by the works' two mends of the pass
+# (docs/rules/works.md, parts G and H: the works of 1749 spread out, and an
+# order paid for before a dividend); with both switches off the four of
+# stage 5b held. Held again on its check with stage 5 merged in, which
+# moves nothing.
+economy  0xf10bff35a0766927
+books    0x72b059f24108b664
+news     0x6de2e12697026f85
+run.bin  0x5c488515dd413b02

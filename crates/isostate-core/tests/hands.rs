@@ -131,9 +131,16 @@ fn a_town_with_no_hands_left_hires_nobody() {
 fn brambank_hires_no_more_than_it_has() {
     // island 3 with six families: Brambank, founded on the coalfield at the end
     // of 1750, asks in January 1751 for half as many hands again as it has
-    // (docs/rules/mines.md, "When a working hires more hands than its town has")
+    // (docs/rules/mines.md, "When a working hires more hands than its town has").
+    // That is island 3's history under the game's rules as they stood before the
+    // works' two mends of the pass (works.md, parts G and H), which change it from
+    // the warm-up on: the case is played with works.spread_first and
+    // works.keep_order off, and every other rule as the game has it.
     for ration in [false, true] {
-        let mut s = started(&params(ration, 6, 1751));
+        let mut P = params(ration, 6, 1751);
+        P.works.spread_first = false;
+        P.works.keep_order = false;
+        let mut s = started(&P);
         sim::run_year(&mut s).expect("money is conserved through 1750");
         let mut worst = (0.0f64, String::new());
         for month in 0..3 {
