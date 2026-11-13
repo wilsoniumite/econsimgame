@@ -243,22 +243,30 @@ pub struct Materials {
 }
 
 /// At the start: a handle for each of a year's meshes, holding a stand-in
-/// until the first year is built (`rebuild_year` fills them), and an entity to
-/// draw it in its material. Both are made in the order `made` says; the
-/// handles are given back in the order of the list.
-pub fn spawn(commands: &mut Commands, meshes: &mut Assets<Mesh>, table: &[YearMesh], mats: &Materials) -> Vec<Handle<Mesh>> {
-    let parts = list(table);
-    let order = made_order(table);
-    let mut handles = vec![Handle::default(); parts.len()];
-    for &i in &order {
+/// until the first year is built (`rebuild_year` fills them), made in the
+/// order `made` says and given back in the order of the list.
+pub fn handles(meshes: &mut Assets<Mesh>, table: &[YearMesh]) -> Vec<Handle<Mesh>> {
+    let mut handles = vec![Handle::default(); list(table).len()];
+    for i in made_order(table) {
         handles[i] = meshes.add(crate::placeholder_mesh());
     }
+    handles
+}
+
+/// At the start: an entity to draw each of a year's meshes whose `made` is in
+/// `made`, in its material, in the order `made` says. (`setup_world` spawns
+/// them in three runs, with the resources it queued between them where they
+/// always were: in this Bevy a resource is an entity of its own, and the
+/// stores the entities are kept in are made in the order the commands are
+/// carried out.)
+pub fn spawn(commands: &mut Commands, handles: &[Handle<Mesh>], table: &[YearMesh], mats: &Materials, made: impl std::ops::RangeBounds<u8>) {
+    let parts = list(table);
     // (the year's meshes span the island and are never out of view, so none is ever culled,
     // and the engine need not read every corner of one to find its box in the frame it
     // goes on screen: `bevy_camera::visibility::calculate_bounds` passes these by)
     use bevy::camera::visibility::NoFrustumCulling as Whole;
     use bevy::light::NotShadowCaster;
-    for &i in &order {
+    for i in made_order(table).into_iter().filter(|&i| made.contains(&table[parts[i].row].made)) {
         let (h, group) = (handles[i].clone(), parts[i].group);
         match table[parts[i].row].drawn {
             Drawn::Evergreen => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.evergreen.clone()), Evergreen, Whole)),
@@ -269,7 +277,6 @@ pub fn spawn(commands: &mut Commands, meshes: &mut Assets<Mesh>, table: &[YearMe
             Drawn::Flat => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.flat.clone()), NotShadowCaster, Whole)),
         };
     }
-    handles
 }
 
 /// A finished build's meshes (in the order of the list), made ready for the
@@ -848,7 +855,8 @@ mod tests {
             bare: plain.add(StandardMaterial::default()),
         };
         let mut queue = CommandQueue::default();
-        let handles = spawn(&mut Commands::new(&mut queue, &world), &mut meshes, table, &mats);
+        let handles = super::handles(&mut meshes, table);
+        spawn(&mut Commands::new(&mut queue, &world), &handles, table, &mats, ..);
         queue.apply(&mut world);
         let parts = list(table);
         let mut q = world.query::<(Entity, &Mesh3d, Option<&MeshMaterial3d<StandardMaterial>>, Option<&MeshMaterial3d<BuiltMaterial>>, Has<bevy::light::NotShadowCaster>, Has<Evergreen>, Option<&Leaves>, Option<&BareLimbs>, Option<&Visibility>)>();

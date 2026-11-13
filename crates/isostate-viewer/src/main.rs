@@ -1151,9 +1151,10 @@ fn setup_world(
     let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.river, reflectance: lk.surfaces.river_reflectance, ..default() });
     commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat.clone()), bevy::light::NotShadowCaster));
 
-    // year meshes start empty; rebuild_year fills them (`year::spawn` makes their handles and
-    // entities, from the table of a year's meshes)
+    // year meshes start empty; rebuild_year fills them (`year::handles` makes their handles and
+    // `year::spawn` their entities, from the table of a year's meshes)
     let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
+    let meshes_of_year = year::handles(&mut meshes, year::MESHES);
     // trees: what is green all year as it is; the leaves of the broadleaves under a material
     // that turns with the seasons; their bare limbs, flat blades seen from both sides. The
     // leaves and the limbs of a group are shown turn about (`seasons`), so winter costs no rebuild.
@@ -1172,10 +1173,15 @@ fn setup_world(
     // over the other there is not the same from one run of the program to the next
     let yards_mat = built_mats.add(built::material(lk, phase, lk.surfaces.paths));
     let smoke_mat = materials.add(smoke_material(lk));
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat.clone(), rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
-    let mats = year::Materials { built: built_mat, flat: yards_mat, smoke: smoke_mat, evergreen: evergreen_mat, leaves: tree_mat, bare: bare_mat };
-    let meshes_of_year = year::spawn(&mut commands, &mut meshes, year::MESHES, &mats);
+    // the year's entities go in three runs, with the season's materials and the train's queued
+    // between them where they always were: the trees (made first), then the houses and the
+    // works (made second and third), then the rest
+    let mats = year::Materials { built: built_mat.clone(), flat: yards_mat.clone(), smoke: smoke_mat.clone(), evergreen: evergreen_mat, leaves: tree_mat.clone(), bare: bare_mat };
+    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, ..1);
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
+    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, 1..3);
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
+    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, 3..);
     commands.insert_resource(Handles { year_cells, year_field, meshes: meshes_of_year });
 
     // a warm low sun from the south-west, and soft sky light; the seasons
