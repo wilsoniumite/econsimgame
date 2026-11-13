@@ -501,17 +501,6 @@ struct Handles {
     meshes: Vec<Handle<Mesh>>,
 }
 
-impl Handles {
-    /// The handles of a year's meshes, in the order of `year_parts`.
-    fn year(&self) -> Vec<&Handle<Mesh>> {
-        // (for now: the rebuild still indexes `year_parts`, and reads the table next)
-        let parts = year::list(year::MESHES);
-        let empty = scatter::YearMeshes { trees: Default::default(), houses: Default::default(), works: Default::default(), smoke: Default::default(), lanes: Default::default() };
-        let nets = network::Nets { roads: Default::default(), rails: Default::default() };
-        year_parts(&empty, &nets).iter().map(|(n, _)| &self.meshes[parts.iter().position(|&p| year::name(year::MESHES, p) == *n).unwrap()]).collect()
-    }
-}
-
 #[derive(Resource)]
 struct Timeline {
     t: f32,
@@ -1367,10 +1356,10 @@ struct Scenery {
     cells: Vec<u8>,
     /// (task C, the land) the year's wood and heath (`world::YearLand::field`)
     field: Vec<u8>,
-    ym: scatter::YearMeshes,
-    nets: network::Nets,
+    /// the year's meshes, one to each of the table's list (`year::list`)
+    meshes: Vec<meshkit::Builder>,
     rails: Vec<trains::TrainPath>,
-    /// each mesh's corners and fingerprint in the order of `year_parts`, where a
+    /// each mesh's corners and fingerprint in the order of the list, where a
     /// scripted run checks what is on screen (`PRINT_YEAR_MESHES`)
     prints: Option<Vec<(usize, u64)>>,
 }
@@ -1378,6 +1367,7 @@ struct Scenery {
 /// A year's meshes by name, in one fixed order (`Handles::year` gives their
 /// handles in the same): the six that are one of a kind, then the three of
 /// each group of trees.
+#[cfg(test)]
 fn year_parts<'a>(ym: &'a scatter::YearMeshes, nets: &'a network::Nets) -> Vec<(String, &'a meshkit::Builder)> {
     let mut parts = vec![
         ("houses".to_string(), &ym.houses),
@@ -1396,12 +1386,19 @@ fn year_parts<'a>(ym: &'a scatter::YearMeshes, nets: &'a network::Nets) -> Vec<(
 }
 
 /// Where each of a year's meshes stands in `year_parts`' order.
+#[cfg(test)]
 const HOUSES: usize = 0;
+#[cfg(test)]
 const WORKS: usize = 1;
+#[cfg(test)]
 const SMOKE: usize = 2;
+#[cfg(test)]
 const LANES: usize = 3;
+#[cfg(test)]
 const ROADS: usize = 4;
+#[cfg(test)]
 const RAILS: usize = 5;
+#[cfg(test)]
 const TREES: usize = 6;
 
 /// The year's scenery being built off the main thread, so a new year never
@@ -1437,42 +1434,38 @@ struct Shown {
     last: Option<(bool, usize, f32)>,
 }
 
-fn build_scenery(r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
+/// Build a year's scenery: the meshes `table` lists (the game's is `year::MESHES`).
+#[allow(clippy::too_many_arguments)]
+fn build_scenery(table: &[year::YearMesh], r: &Replay, g: &Ground, slots: &scatter::Slots, cen: &[(f32, f32)], k: usize, lk: &Look, lod: scatter::Lod) -> Scenery {
     let t0 = std::time::Instant::now();
     // (task C, the land) one reckoning of the year's land for the ground's textures and the scenery
     let land = world::timed("year land", || world::year_land(r, g, k));
     let cells = terrain::year_parcels(r, g, k, &land);
-    let ym = scatter::build_year_on(r, g, slots, cen, k, lk, &lod, &land);
+    let mut ym = scatter::build_year_on(r, g, slots, cen, k, lk, &lod, &land);
     let t1 = t0.elapsed().as_secs_f32();
-    let nets = network::year_nets(r, g, cen, k, lk);
+    let mut nets = network::year_nets(r, g, cen, k, lk);
     let rails = trains::rail_paths(r, g, cen, k);
     if std::env::var_os("ISOSTATE_TIMING").is_some() {
         eprintln!("year {}: scatter {:.0} ms, networks {:.0} ms (off the main thread); {} vertices of houses for a camera {:.1} off", r.y0 + k as i32, t1 * 1e3, (t0.elapsed().as_secs_f32() - t1) * 1e3, ym.houses.pos.len(), lod.dist);
     }
+    // each mesh the table lists, taken from what the makers made, or made by its own maker
+    let meshes = year::take(table, &mut ym, &mut nets, &year::Inputs { r, g, slots, cen, k, lk, lod: &lod, land: &land });
     if std::env::var_os("ISOSTATE_MESH_SUMS").is_some() {
         // a fingerprint of the year's geometry: two builds of the viewer that print the
         // same line for a year build exactly the same scenery for it, to the last bit
-        let trees = ym.trees.iter().flat_map(|t| t.parts()).fold(meshkit::Builder::default(), |mut all, b| {
-            all.merge(b);
-            all
-        });
-        let sums: Vec<String> = [("trees", &trees), ("houses", &ym.houses), ("works", &ym.works), ("smoke", &ym.smoke), ("lanes", &ym.lanes), ("roads", &nets.roads), ("rails", &nets.rails)]
-            .iter()
-            .map(|(name, b)| format!("{name} {:016x}", mesh_sum(b)))
-            .collect();
-        eprintln!("year {} meshes: {}", r.y0 + k as i32, sums.join(", "));
+        eprintln!("year {} meshes: {}", r.y0 + k as i32, year::sums(table, &meshes));
         // (`ISOSTATE_MESH_SUMS=each` adds a line for every mesh the year hands to the card, by
         // its own name: its corners, its indices and its fingerprint)
         if std::env::var("ISOSTATE_MESH_SUMS").is_ok_and(|v| v == "each") {
-            for (name, b) in year_parts(&ym, &nets) {
-                eprintln!("year {} mesh {name}: {} corners, {} indices, {:016x}", r.y0 + k as i32, b.pos.len(), b.idx.len(), mesh_sum(b));
+            for (p, b) in year::list(table).into_iter().zip(&meshes) {
+                eprintln!("year {} mesh {}: {} corners, {} indices, {:016x}", r.y0 + k as i32, year::name(table, p), b.pos.len(), b.idx.len(), mesh_sum(b));
             }
         }
     }
     // (a scripted run that checks what is on screen: each mesh's fingerprint, taken here,
     // off the main thread, and kept as the record of what the renderer was handed)
-    let prints = PRINT_YEAR_MESHES.load(std::sync::atomic::Ordering::Relaxed).then(|| year_parts(&ym, &nets).iter().map(|(_, b)| print_of(b)).collect());
-    Scenery { k, lod, cells, field: land.field, ym, nets, rails, prints }
+    let prints = PRINT_YEAR_MESHES.load(std::sync::atomic::Ordering::Relaxed).then(|| meshes.iter().map(print_of).collect());
+    Scenery { k, lod, cells, field: land.field, meshes, rails, prints }
 }
 
 /// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
@@ -1549,23 +1542,27 @@ fn rebuild_year(
         // the year's corners), and the trains run on from where they are
         let for_camera = shown.whole == Some((sc.k, run));
         shown.whole = Some((sc.k, run));
-        let (ym, nets) = (sc.ym, sc.nets);
-        let mut corners = ym.houses.pos.len() + ym.works.pos.len() + ym.smoke.pos.len();
-        if !for_camera {
-            corners += ym.lanes.pos.len() + nets.roads.pos.len() + nets.rails.pos.len() + ym.trees.iter().flat_map(|t| t.parts()).map(|b| b.pos.len()).sum::<usize>();
-        }
-        let hs = handles.year();
-        let print = |i: usize| sc.prints.as_ref().map(|p| p[i]);
         // (task B, one scale of detail: the works, the pits and the bridges take their level
         // from the camera as the houses do, so their mesh goes on screen again with the houses';
-        // their yards' ground, in `lanes`, is the same at every level and stays)
-        let built = [piece(hs[HOUSES], ym.houses, print(HOUSES)), piece(hs[WORKS], ym.works, print(WORKS)), piece(hs[SMOKE], ym.smoke, print(SMOKE))];
-        let mut pieces = Vec::new();
+        // their yards' ground, in `lanes`, is the same at every level and stays. Which meshes
+        // go again for the camera is the table's to say: `year::YearMesh::camera`)
+        let parts = year::list(year::MESHES);
+        let sends = |i: usize| !for_camera || year::MESHES[parts[i].row].camera;
+        let corners: usize = sc.meshes.iter().enumerate().filter(|&(i, _)| sends(i)).map(|(_, b)| b.pos.len()).sum();
+        let print = |i: usize| sc.prints.as_ref().map(|p| p[i]);
+        let (mut going, mut rest) = (Vec::new(), Vec::new());
+        for (i, b) in sc.meshes.into_iter().enumerate() {
+            if sends(i) {
+                going.push(Some(piece(&handles.meshes[i], b, print(i))));
+            } else {
+                going.push(None);
+                rest.push(b);
+            }
+        }
         if for_camera {
-            pieces.extend(built);
             // the rest of what was built is not wanted. It is 300 MB of trees and more, and
             // letting go of it here cost the frame 10 ms: it is let go of off the main thread
-            let rest = (ym.trees, ym.lanes, nets, sc.cells, sc.field, sc.rails);
+            let rest = (rest, sc.cells, sc.field, sc.rails);
             AsyncComputeTaskPool::get().spawn(async move { drop(rest) }).detach();
         } else {
             // the ground's patchwork changes with the first mesh
@@ -1604,27 +1601,19 @@ fn rebuild_year(
                     }
                 }
             }
-            let flat = [piece(hs[LANES], ym.lanes, print(LANES)), piece(hs[ROADS], nets.roads, print(ROADS)), piece(hs[RAILS], nets.rails, print(RAILS))];
-            // of each group of trees: what is green all year and whichever of its leaves and
-            // its bare limbs the season has out show; the other is hidden until the season turns
-            let phase = season_phase(&season, forced.0);
-            let (mut showing, mut hidden) = (Vec::new(), Vec::new());
-            for (group, t) in ym.trees.into_iter().enumerate() {
-                let at = TREES + 3 * group;
-                showing.push(piece(hs[at], t.evergreen, print(at)));
-                let (leaves, bare) = (piece(hs[at + 1], t.leaves, print(at + 1)), piece(hs[at + 2], t.bare, print(at + 2)));
-                let (out, away) = if in_leaf(phase, group) { (leaves, bare) } else { (bare, leaves) };
-                showing.push(out);
-                hidden.push(away);
-            }
-            pieces = hand_over_order(built, flat, showing, hidden);
         }
+        // in the hand-over's order (`year::hand_over`); of each group of trees, what is green all
+        // year and whichever of its leaves and its bare limbs the season has out show, and the
+        // other is hidden until the season turns
+        let phase = season_phase(&season, forced.0);
+        let pieces = year::hand_over(year::MESHES, phase, !for_camera).into_iter().filter_map(|i| going[i].take()).collect();
         hand.fill(sc.k, run, pieces);
         let ms = began.elapsed().as_secs_f32() * 1e3;
         if for_camera { shown.swaps.1 += 1 } else { shown.swaps.0 += 1 }
         shown.last = Some((for_camera, corners, ms));
         if timing() {
-            eprintln!("year {} built: {} ({corners} corners) queued for the renderer in {ms:.1} ms on the main thread", data.r.y0 + sc.k as i32, if for_camera { "its houses, works and smoke alone, for the camera" } else { "the whole year" });
+            let what = if for_camera { format!("its {} alone, for the camera", year::camera_names(year::MESHES)) } else { "the whole year".to_string() };
+            eprintln!("year {} built: {what} ({corners} corners) queued for the renderer in {ms:.1} ms on the main thread", data.r.y0 + sc.k as i32);
         }
     }
     // the year on screen, if it is neither shown nor being built; a build for another year
@@ -1633,7 +1622,7 @@ fn rebuild_year(
     // the years come faster than they can be shown some are skipped and none is left half sent
     if tl.built != Some(k) && builds.task.is_none() && hand.is_empty() {
         let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(&r, &g, &slots, &cen, k, &lk, lod) });
+        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(year::MESHES, &r, &g, &slots, &cen, k, &lk, lod) });
         builds.task = Some((k, shown.run, task));
     }
 }
@@ -1650,6 +1639,7 @@ fn rebuild_year(
 /// ground with no yard, the new roads were missing, and a train ran where no
 /// track was drawn (docs/probes/dx-smooth.md, section 12, "Stage one, as
 /// built", says what the pictures of a year half arrived showed).
+#[cfg(test)]
 fn hand_over_order(built: [handover::Piece; 3], flat: [handover::Piece; 3], showing: Vec<handover::Piece>, hidden: Vec<handover::Piece>) -> Vec<handover::Piece> {
     let [houses, works, smoke] = built;
     let [lanes, roads, rails] = flat;
@@ -1720,11 +1710,12 @@ fn check_scenery(world: &mut World) -> Result<String, String> {
         return Err(format!("the scenery on screen is of {:?}, not of the year on the clock ({k}): settle first", tl.built));
     }
     let year = data.r.y0 + k as i32;
-    let fresh = build_scenery(&data.r, &data.g, &data.slots, &data.cen, k, &look.0, lod);
+    let fresh = build_scenery(year::MESHES, &data.r, &data.g, &data.slots, &data.cen, k, &look.0, lod);
     let (handles, hand) = (world.resource::<Handles>(), world.resource::<handover::HandOver>());
     let mut corners = 0;
     let mut wrong = Vec::new();
-    for ((name, b), h) in year_parts(&fresh.ym, &fresh.nets).into_iter().zip(handles.year()) {
+    for ((p, b), h) in year::list(year::MESHES).into_iter().zip(&fresh.meshes).zip(&handles.meshes) {
+        let name = year::name(year::MESHES, p);
         let want = print_of(b);
         let have = hand.on_screen.get(&h.id()).copied();
         corners += want.0;

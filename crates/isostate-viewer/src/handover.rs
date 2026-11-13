@@ -252,14 +252,13 @@ impl HandOver {
 
     /// What still waits, by name and in the order it will go, for a picture's caption.
     pub fn waiting_names(&self, handles: &crate::Handles) -> String {
-        let names = ["houses", "works", "smoke", "yards and lanes", "roads", "railway"];
-        let all = handles.year();
-        let name = |p: &Piece| match all.iter().position(|h| h.id() == p.handle.id()) {
-            Some(i) if i < names.len() => names[i].to_string(),
-            Some(i) => format!("trees {} {}", (i - names.len()) / 3, ["evergreen", "leaves", "bare limbs"][(i - names.len()) % 3]),
+        use crate::year::{list, name, MESHES};
+        let parts = list(MESHES);
+        let named = |p: &Piece| match handles.meshes.iter().position(|h| h.id() == p.handle.id()) {
+            Some(i) => name(MESHES, parts[i]),
             None => "?".to_string(),
         };
-        self.queue.iter().map(name).collect::<Vec<_>>().join(", ")
+        self.queue.iter().map(named).collect::<Vec<_>>().join(", ")
     }
 
     /// Queue a finished build's meshes for year `k`, built from the run as it

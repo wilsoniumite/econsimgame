@@ -22,9 +22,6 @@
 //!   at one height (a lane where it meets a road);
 //! - `goes`, the order of the hand-over, which was hard won (`hand_over`).
 
-// (until the places that list the meshes read the table, the next commits)
-#![allow(dead_code)]
-
 use bevy::prelude::*;
 use isostate_gen::trees::{in_leaf, LEAF_GROUPS};
 
@@ -81,7 +78,9 @@ pub enum Make {
     Own(fn(&Inputs, usize) -> Builder),
 }
 
-/// What a year's scenery is built from: everything its makers read.
+/// What a year's scenery is built from: everything its makers read. (Only a
+/// maker of its own is handed it whole, and today only the test's has one.)
+#[allow(dead_code)]
 pub struct Inputs<'a> {
     pub r: &'a Replay,
     pub g: &'a Ground,
@@ -270,6 +269,46 @@ pub fn take(table: &[YearMesh], ym: &mut scatter::YearMeshes, nets: &mut network
             Make::Own(f) => f(inputs, p.group),
         })
         .collect()
+}
+
+/// `ISOSTATE_MESH_SUMS`'s line for a year's meshes (in the order of the
+/// list): each word of the table, in the table's order, with a fingerprint of
+/// its meshes, those that share a word put together in the list's order.
+pub fn sums(table: &[YearMesh], meshes: &[Builder]) -> String {
+    let parts = list(table);
+    let mut words: Vec<&str> = Vec::new();
+    for m in table {
+        if !words.contains(&m.word) {
+            words.push(m.word);
+        }
+    }
+    let sums: Vec<String> = words
+        .iter()
+        .map(|&word| {
+            let of: Vec<&Builder> = parts.iter().zip(meshes).filter(|(p, _)| table[p.row].word == word).map(|(_, b)| b).collect();
+            let sum = if of.len() == 1 {
+                crate::mesh_sum(of[0])
+            } else {
+                crate::mesh_sum(&of.iter().fold(Builder::default(), |mut all, b| {
+                    all.merge(b);
+                    all
+                }))
+            };
+            format!("{word} {sum:016x}")
+        })
+        .collect();
+    sums.join(", ")
+}
+
+/// The meshes a year built again for the camera alone sends, by name, as a
+/// sentence says them ("houses, works and smoke").
+pub fn camera_names(table: &[YearMesh]) -> String {
+    let names: Vec<&str> = table.iter().filter(|m| m.camera).map(|m| m.name).collect();
+    match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        Some((last, _)) => last.to_string(),
+        None => "nothing".to_string(),
+    }
 }
 
 #[cfg(test)]
