@@ -126,6 +126,14 @@ them are those of a5ea2ea.
   half as many, lenders get 5 per cent at the median and 113 bridges an island are built, with
   the carting bill and the wage inside chance. Its order of work starts with railway and canal
   companies that are paid their fares.
+- `dx-five-pixels.md` (a probe, of the viewer at 973396e, 13 November 2026, island 7 with six
+  families): why five pixels of the standard picture `island-1900` moved when the new island's
+  railways landed, though nothing drawn on the old island changed. Two trees of different leaf
+  groups by a farm have crowns that cross exactly at one pixel, and which of the two the card
+  shows there hangs on the order the engine draws the leaf groups in, which is not fixed from
+  run to run; both the code before the merge and after it give both pictures. What that means
+  for anyone comparing pictures, and what a fixed order would cost (a few dozen pixels of the
+  island views, once). It changes no code.
 
 ## The traces with the books (12 November 2026)
 
