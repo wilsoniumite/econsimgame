@@ -61,7 +61,7 @@ use std::sync::Arc;
 use bevy::window::{ExitCondition, WindowResolution};
 use bevy::winit::WinitPlugin;
 
-use isostate_gen::trees::{in_leaf, LEAF_GROUPS};
+use isostate_gen::trees::in_leaf;
 use look::{Look, TheLook, ToColor};
 use replay::Replay;
 use ui::{kind_colour, kind_label, text, UiState, INK, MUTED, PAPER};
@@ -497,20 +497,18 @@ struct Handles {
     year_cells: Handle<Image>,
     /// (task C, the land) the year's wood and heath as smooth fields, read by the ground shader
     year_field: Handle<Image>,
-    /// the trees, a group to each: what is green all year, the leaves, and the bare limbs
-    trees: Vec<[Handle<Mesh>; 3]>,
-    houses: Handle<Mesh>,
-    works: Handle<Mesh>,
-    smoke: Handle<Mesh>,
-    roads: Handle<Mesh>,
-    rails: Handle<Mesh>,
-    lanes: Handle<Mesh>,
+    /// a year's meshes, one to each of the table's list (`year::list`)
+    meshes: Vec<Handle<Mesh>>,
 }
 
 impl Handles {
     /// The handles of a year's meshes, in the order of `year_parts`.
     fn year(&self) -> Vec<&Handle<Mesh>> {
-        [&self.houses, &self.works, &self.smoke, &self.lanes, &self.roads, &self.rails].into_iter().chain(self.trees.iter().flatten()).collect()
+        // (for now: the rebuild still indexes `year_parts`, and reads the table next)
+        let parts = year::list(year::MESHES);
+        let empty = scatter::YearMeshes { trees: Default::default(), houses: Default::default(), works: Default::default(), smoke: Default::default(), lanes: Default::default() };
+        let nets = network::Nets { roads: Default::default(), rails: Default::default() };
+        year_parts(&empty, &nets).iter().map(|(n, _)| &self.meshes[parts.iter().position(|&p| year::name(year::MESHES, p) == *n).unwrap()]).collect()
     }
 }
 
@@ -1192,34 +1190,15 @@ fn setup_world(
     let river_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: lk.surfaces.river, reflectance: lk.surfaces.river_reflectance, ..default() });
     commands.spawn((Mesh3d(meshes.add(non_empty(network::rivers(g, lk)))), MeshMaterial3d(river_mat.clone()), bevy::light::NotShadowCaster));
 
-    // year meshes start empty; rebuild_year fills them
+    // year meshes start empty; rebuild_year fills them (`year::spawn` makes their handles and
+    // entities, from the table of a year's meshes)
     let vc = vertex_coloured(&mut materials, lk, lk.surfaces.buildings);
-    let handles = Handles {
-        year_cells,
-        year_field,
-        trees: (0..LEAF_GROUPS).map(|_| [(); 3].map(|_| meshes.add(placeholder_mesh()))).collect(),
-        houses: meshes.add(placeholder_mesh()),
-        works: meshes.add(placeholder_mesh()),
-        smoke: meshes.add(placeholder_mesh()),
-        roads: meshes.add(placeholder_mesh()),
-        rails: meshes.add(placeholder_mesh()),
-        lanes: meshes.add(placeholder_mesh()),
-    };
     // trees: what is green all year as it is; the leaves of the broadleaves under a material
     // that turns with the seasons; their bare limbs, flat blades seen from both sides. The
     // leaves and the limbs of a group are shown turn about (`seasons`), so winter costs no rebuild.
     let evergreen_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
     let tree_mat = vertex_coloured(&mut materials, lk, lk.surfaces.foliage);
     let bare_mat = materials.add(bare_limb_material(lk));
-    // (the year's meshes span the island and are never out of view, so none is ever culled,
-    // and the engine need not read every corner of one to find its box in the frame it
-    // goes on screen: `bevy_camera::visibility::calculate_bounds` passes these by)
-    use bevy::camera::visibility::NoFrustumCulling as Whole;
-    for (group, [evergreen, leaves, bare]) in handles.trees.iter().enumerate() {
-        commands.spawn((Mesh3d(evergreen.clone()), MeshMaterial3d(evergreen_mat.clone()), Evergreen, Whole));
-        commands.spawn((Mesh3d(leaves.clone()), MeshMaterial3d(tree_mat.clone()), Leaves(group), Whole));
-        commands.spawn((Mesh3d(bare.clone()), MeshMaterial3d(bare_mat.clone()), BareLimbs(group), Visibility::Hidden, Whole));
-    }
     // houses and works (churches, farm buildings and bridges among them) are drawn in a
     // material that winter lies on; the trains keep the plain one, an engine being warm
     let phase = season_phase(&SeasonClock::default(), forced.0);
@@ -1232,15 +1211,11 @@ fn setup_world(
     // over the other there is not the same from one run of the program to the next
     let yards_mat = built_mats.add(built::material(lk, phase, lk.surfaces.paths));
     let smoke_mat = materials.add(smoke_material(lk));
-    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
-    commands.spawn((Mesh3d(handles.houses.clone()), MeshMaterial3d(built_mat.clone()), Whole));
-    commands.spawn((Mesh3d(handles.works.clone()), MeshMaterial3d(built_mat), Whole));
+    commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat.clone(), rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
+    let mats = year::Materials { built: built_mat, flat: yards_mat, smoke: smoke_mat, evergreen: evergreen_mat, leaves: tree_mat, bare: bare_mat };
+    let meshes_of_year = year::spawn(&mut commands, &mut meshes, year::MESHES, &mats);
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
-    commands.spawn((Mesh3d(handles.smoke.clone()), MeshMaterial3d(smoke_mat), bevy::light::NotShadowCaster, Whole));
-    commands.spawn((Mesh3d(handles.roads.clone()), MeshMaterial3d(yards_mat.clone()), bevy::light::NotShadowCaster, Whole));
-    commands.spawn((Mesh3d(handles.rails.clone()), MeshMaterial3d(yards_mat.clone()), bevy::light::NotShadowCaster, Whole));
-    commands.spawn((Mesh3d(handles.lanes.clone()), MeshMaterial3d(yards_mat), bevy::light::NotShadowCaster, Whole));
-    commands.insert_resource(handles);
+    commands.insert_resource(Handles { year_cells, year_field, meshes: meshes_of_year });
 
     // a warm low sun from the south-west, and soft sky light; the seasons
     // move it from the first frame on, so this is only where it starts
@@ -2748,6 +2723,7 @@ fn move_trains(time: Res<Time>, rails: Res<Rails>, mut q: Query<(&mut Train, &mu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use isostate_gen::trees::LEAF_GROUPS;
 
     #[test]
     fn a_year_is_written_in_before_its_scenery_is_looked_at_and_handed_over() {

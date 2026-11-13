@@ -25,13 +25,15 @@
 // (until the places that list the meshes read the table, the next commits)
 #![allow(dead_code)]
 
+use bevy::prelude::*;
 use isostate_gen::trees::{in_leaf, LEAF_GROUPS};
 
+use crate::built::BuiltMaterial;
 use crate::look::Look;
 use crate::meshkit::Builder;
 use crate::replay::Replay;
 use crate::world::{Ground, YearLand};
-use crate::{network, scatter};
+use crate::{network, scatter, BareLimbs, Evergreen, Leaves};
 
 /// One kind of mesh a year's scenery hands to the card.
 pub struct YearMesh {
@@ -217,6 +219,46 @@ pub fn hand_over(table: &[YearMesh], phase: f32, whole: bool) -> Vec<usize> {
     order
 }
 
+/// The materials a year's meshes are drawn in (`Drawn`), made once at the start.
+pub struct Materials {
+    pub built: Handle<BuiltMaterial>,
+    pub flat: Handle<BuiltMaterial>,
+    pub smoke: Handle<StandardMaterial>,
+    pub evergreen: Handle<StandardMaterial>,
+    pub leaves: Handle<StandardMaterial>,
+    pub bare: Handle<StandardMaterial>,
+}
+
+/// At the start: a handle for each of a year's meshes, holding a stand-in
+/// until the first year is built (`rebuild_year` fills them), and an entity to
+/// draw it in its material. Both are made in the order `made` says; the
+/// handles are given back in the order of the list.
+pub fn spawn(commands: &mut Commands, meshes: &mut Assets<Mesh>, table: &[YearMesh], mats: &Materials) -> Vec<Handle<Mesh>> {
+    let parts = list(table);
+    let order = made_order(table);
+    let mut handles = vec![Handle::default(); parts.len()];
+    for &i in &order {
+        handles[i] = meshes.add(crate::placeholder_mesh());
+    }
+    // (the year's meshes span the island and are never out of view, so none is ever culled,
+    // and the engine need not read every corner of one to find its box in the frame it
+    // goes on screen: `bevy_camera::visibility::calculate_bounds` passes these by)
+    use bevy::camera::visibility::NoFrustumCulling as Whole;
+    use bevy::light::NotShadowCaster;
+    for &i in &order {
+        let (h, group) = (handles[i].clone(), parts[i].group);
+        match table[parts[i].row].drawn {
+            Drawn::Evergreen => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.evergreen.clone()), Evergreen, Whole)),
+            Drawn::Leaves => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.leaves.clone()), Leaves(group), Whole)),
+            Drawn::Bare => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.bare.clone()), BareLimbs(group), Visibility::Hidden, Whole)),
+            Drawn::Built => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.built.clone()), Whole)),
+            Drawn::Smoke => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.smoke.clone()), NotShadowCaster, Whole)),
+            Drawn::Flat => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.flat.clone()), NotShadowCaster, Whole)),
+        };
+    }
+    handles
+}
+
 /// Take a year's meshes from what its makers made, in the order of the list,
 /// running the makers of their own.
 pub fn take(table: &[YearMesh], ym: &mut scatter::YearMeshes, nets: &mut network::Nets, inputs: &Inputs) -> Vec<Builder> {
@@ -295,5 +337,70 @@ mod tests {
         // each is drawn in what `setup_world` drew it in
         let drawn = |n: &str| MESHES.iter().find(|m| m.name == n).unwrap().drawn;
         assert_eq!(["houses", "works", "smoke", "yards and lanes", "roads", "railway", "evergreen", "leaves", "bare limbs"].map(drawn), [Drawn::Built, Drawn::Built, Drawn::Smoke, Drawn::Flat, Drawn::Flat, Drawn::Flat, Drawn::Evergreen, Drawn::Leaves, Drawn::Bare]);
+    }
+
+    /// Spawn a table's meshes into a world of their own: for each entity in the
+    /// order it was spawned, the mesh's name, what it is drawn in and what it
+    /// carries beside; and whether the meshes' handles were made in that order.
+    pub(super) fn spawned(table: &[YearMesh]) -> (Vec<String>, bool, Vec<Handle<Mesh>>) {
+        use bevy::ecs::world::CommandQueue;
+        let mut world = World::new();
+        let (mut meshes, mut plain, mut built) = (Assets::<Mesh>::default(), Assets::<StandardMaterial>::default(), Assets::<BuiltMaterial>::default());
+        let lk = Look::standard();
+        let mats = Materials {
+            built: built.add(crate::built::material(&lk, 0.5, 0.4)),
+            flat: built.add(crate::built::material(&lk, 0.5, 0.9)),
+            smoke: plain.add(StandardMaterial::default()),
+            evergreen: plain.add(StandardMaterial::default()),
+            leaves: plain.add(StandardMaterial::default()),
+            bare: plain.add(StandardMaterial::default()),
+        };
+        let mut queue = CommandQueue::default();
+        let handles = spawn(&mut Commands::new(&mut queue, &world), &mut meshes, table, &mats);
+        queue.apply(&mut world);
+        let parts = list(table);
+        let mut q = world.query::<(Entity, &Mesh3d, Option<&MeshMaterial3d<StandardMaterial>>, Option<&MeshMaterial3d<BuiltMaterial>>, Has<bevy::light::NotShadowCaster>, Has<Evergreen>, Option<&Leaves>, Option<&BareLimbs>, Option<&Visibility>)>();
+        let mut rows: Vec<_> = q.iter(&world).collect();
+        rows.sort_by_key(|r| r.0.index());
+        let mut said = Vec::new();
+        let mut ids = Vec::new();
+        for (_, mesh, plain, built, no_shadow, evergreen, leaves, bare, vis) in rows {
+            let at = handles.iter().position(|h| h.id() == mesh.0.id()).unwrap();
+            ids.push(mesh.0.id());
+            let id = |h: &Handle<StandardMaterial>| plain.is_some_and(|m| m.0.id() == h.id());
+            let mat = match built.map(|m| m.0.id()) {
+                Some(b) if b == mats.built.id() => "built",
+                Some(b) if b == mats.flat.id() => "flat",
+                Some(_) => "?",
+                None if id(&mats.smoke) => "smoke",
+                None if id(&mats.evergreen) => "evergreen",
+                None if id(&mats.leaves) => "leaves",
+                None if id(&mats.bare) => "bare",
+                None => "?",
+            };
+            let mut s = format!("{} in {mat}", name(table, parts[at]));
+            if no_shadow { s += ", no shadow" }
+            if evergreen { s += ", Evergreen" }
+            if let Some(l) = leaves { s += &format!(", Leaves({})", l.0) }
+            if let Some(b) = bare { s += &format!(", BareLimbs({})", b.0) }
+            if vis == Some(&Visibility::Hidden) { s += ", hidden" }
+            said.push(s);
+        }
+        let in_order = ids.windows(2).all(|w| w[0] < w[1]);
+        (said, in_order, handles)
+    }
+
+    #[test]
+    fn the_meshes_are_made_and_spawned_as_setup_world_made_them() {
+        let (said, in_order, handles) = spawned(MESHES);
+        // as `setup_world` spawned them before the table: each group of trees, then the houses
+        // and the works in the material winter lies on, the smoke, and what lies flat (the
+        // roads, the railway and the yards and lanes last), casting no shadow
+        let mut want: Vec<String> = (0..LEAF_GROUPS).flat_map(|g| [format!("trees {g} evergreen in evergreen, Evergreen"), format!("trees {g} leaves in leaves, Leaves({g})"), format!("trees {g} bare limbs in bare, BareLimbs({g}), hidden")]).collect();
+        want.extend(["houses in built", "works in built", "smoke in smoke, no shadow", "roads in flat, no shadow", "railway in flat, no shadow", "yards and lanes in flat, no shadow"].map(String::from));
+        assert_eq!(said, want);
+        // and their handles were made in the same order, so the meshes' numbers are as they were
+        assert!(in_order);
+        assert_eq!(handles.len(), list(MESHES).len());
     }
 }
