@@ -15,11 +15,11 @@ use super::NewLand;
 use crate::replay::Replay;
 use crate::world::{self, Ground, FARM, HEATH, PASTURE, SEA, VRES, WOOD};
 
-struct Island {
-    seed: u64,
-    r: Replay,
-    g: Ground,
-    cen: Vec<(f32, f32)>,
+pub(super) struct Island {
+    pub(super) seed: u64,
+    pub(super) r: Replay,
+    pub(super) g: Ground,
+    pub(super) cen: Vec<(f32, f32)>,
 }
 
 impl Island {
@@ -34,7 +34,7 @@ impl Island {
 }
 
 /// The three islands, made the first time a test asks for them.
-fn islands() -> &'static [Island] {
+pub(super) fn islands() -> &'static [Island] {
     static MADE: OnceLock<Vec<Island>> = OnceLock::new();
     MADE.get_or_init(|| {
         use rayon::prelude::*;
@@ -42,19 +42,22 @@ fn islands() -> &'static [Island] {
     })
 }
 
-fn make(seed: u64) -> Island {
-    let (w, h) = (120usize, 84usize);
-    let world = isostate_core::landcells::generate_land(seed, w, h, 6, &isostate_core::landform::LandParams::game());
-    let lf = world.landform.as_deref().expect("the generator keeps its land");
+/// A run of one year with no economy in it, on a map of `w` by `h` cells
+/// whose classes are `terrain` (0 for water), with first towns at `towns`
+/// and the land given (none for the old kind of island): every cell bare,
+/// no roads and no track. `elev`, `river` and `down` are the record's bytes
+/// of each cell, which the old kind of island is drawn from.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn bare_run(seed: u64, w: usize, h: usize, terrain: Vec<u8>, elev: Vec<u8>, river: Vec<u8>, down: Vec<i32>, towns: &[usize], land: Option<NewLand>) -> Replay {
     let n = w * h;
-    let towns: Vec<String> = world.town_sites.iter().enumerate().map(|(t, c)| format!(r#"{{"name":"Town {t}","node":{c},"founded":1700}}"#)).collect();
+    let towns: Vec<String> = towns.iter().enumerate().map(|(t, c)| format!(r#"{{"name":"Town {t}","node":{c},"founded":1700}}"#)).collect();
     let header: crate::replay::Header = serde_json::from_str(&format!(
         r#"{{"meta":{{"W":{w},"H":{h},"start_year":1750,"n_years":1,"seed":{seed}}},"goods":[],"methods":[],"towns":[{}],"firms":[],"events":[],"uses":[],"arrays":[]}}"#,
         towns.join(",")
     ))
     .unwrap();
     let nt = towns.len();
-    let mut r = Replay {
+    Replay {
         header,
         w,
         h,
@@ -62,10 +65,10 @@ fn make(seed: u64) -> Island {
         ny: 1,
         y0: 1750,
         n_towns: nt,
-        elev: isostate_core::record::elev_bytes(&world),
-        terrain: world.terrain.clone(),
-        river: isostate_core::record::river_bytes(&world),
-        down: world.down.iter().map(|&d| d as i32).collect(),
+        elev,
+        terrain,
+        river,
+        down,
         use_: vec![0; n],
         inten: vec![0; n],
         trans: vec![0; n],
@@ -93,8 +96,26 @@ fn make(seed: u64) -> Island {
         res: Vec::new(),
         works: Vec::new(),
         workings: Vec::new(),
-        land: Some(Arc::new(NewLand::from_core(lf, w, h))),
-    };
+        land: land.map(Arc::new),
+    }
+}
+
+fn make(seed: u64) -> Island {
+    let (w, h) = (120usize, 84usize);
+    let world = isostate_core::landcells::generate_land(seed, w, h, 6, &isostate_core::landform::LandParams::game());
+    let lf = world.landform.as_deref().expect("the generator keeps its land");
+    let n = w * h;
+    let mut r = bare_run(
+        seed,
+        w,
+        h,
+        world.terrain.clone(),
+        isostate_core::record::elev_bytes(&world),
+        isostate_core::record::river_bytes(&world),
+        world.down.iter().map(|&d| d as i32).collect(),
+        &world.town_sites,
+        Some(NewLand::from_core(lf, w, h)),
+    );
     // open land of all four kinds, two to a cell as the record keeps them: corn and grass or
     // corn and wood in the lowland, grass with wood or heath in the hills, wood and heath above
     for c in (0..n).filter(|&c| world.terrain[c] > 0) {

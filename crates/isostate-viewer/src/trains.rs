@@ -27,6 +27,37 @@ impl TrainPath {
     }
 }
 
+/// `ISOSTATE_TRAINS_AT=X,Z;X,Z`: for pictures of trains on the line. Each
+/// spot of the map named is answered with the line that passes nearest it
+/// and how far along that line the spot is, so that a train can be put
+/// there; and with the variable set every train is held still. None when it
+/// is not set, and the trains run as they always do. (As `ISOSTATE_CARTS_AT`
+/// does for the carts; a line under 4 km long has no train to put anywhere.)
+pub fn pinned(paths: &[TrainPath]) -> Option<Vec<(usize, f32)>> {
+    let asked = std::env::var("ISOSTATE_TRAINS_AT").ok()?;
+    let mut out = Vec::new();
+    for spot in asked.split(';') {
+        let mut it = spot.split(',').map(|v| v.trim().parse::<f32>());
+        let (Some(Ok(x)), Some(Ok(z))) = (it.next(), it.next()) else { continue };
+        let at = bevy::math::Vec2::new(x, z);
+        // the nearest place on any line: which line, and how far along it
+        let mut best: Option<(f32, usize, f32)> = None;
+        for (pi, p) in paths.iter().enumerate() {
+            for i in 1..p.pts.len() {
+                let (a, b) = (bevy::math::Vec2::new(p.pts[i - 1].x, p.pts[i - 1].z), bevy::math::Vec2::new(p.pts[i].x, p.pts[i].z));
+                let ab = b - a;
+                let u = ((at - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
+                let d = at.distance(a + ab * u);
+                if best.is_none_or(|known| d < known.0) {
+                    best = Some((d, pi, p.cum[i - 1] + (p.cum[i] - p.cum[i - 1]) * u));
+                }
+            }
+        }
+        out.extend(best.map(|b| (b.1, b.2)));
+    }
+    Some(out)
+}
+
 /// Railway lines for year k, along the graded track of rails.rs, so the trains
 /// run on the embankments and viaducts and vanish into the tunnels.
 pub fn rail_paths(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<TrainPath> {

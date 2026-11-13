@@ -26,6 +26,23 @@
 //! The drawn track, the earthworks and the trains all read the one level.
 //! What is settled is kept for the run (`Net`), so a year only strings its
 //! lines together from lengths already made.
+//!
+//! **On the new land** (the core's second island generator, newland.rs) the
+//! relief is real, and two things differ, each only where the ground is the
+//! core's; on the old island every number and every line of track is as it
+//! was.
+//!
+//! - Step 1 chooses where a line passes each cell by the ground, not beside
+//!   the cell's middle: each new line finds its way through its cells on
+//!   squares of 125 m (newland/passing.rs), keeping its level along a valley's
+//!   side, going round a spur, a lake or a tideway where its cells let it and
+//!   crossing a river squarely; a cell is passed where that way passes it, and
+//!   a length's curve is laid along the way. A length that crosses a hollow
+//!   between two ends at one level is never made an incline.
+//! - The rules of step 2 are stated in metres (`metres`) and read through
+//!   the land's one conversion, so that they go on meaning what they mean on
+//!   the old island whatever the relief is raised by (`laws`). A lake's water
+//!   is ground to a line at the lake's own level (`lie`).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -397,7 +414,7 @@ impl Net {
         // (newland/passing.rs), a cell is passed where that way passes it, and each new
         // length is laid along the way found for it (`ways`; there are none on the old island)
         let mut ways: HashMap<(usize, usize), Vec<Vec2>> = HashMap::new();
-        if g.laid.is_some() && std::env::var_os("ISOSTATE_RAIL_MIDDLES").is_none() {
+        if g.laid.is_some() {
             queue.clear();
             placed.extend(fresh.iter().copied());
             ways = self.place_by_the_ground(g, cen, &adj, &fresh, &new_links, &towns, &laws);
