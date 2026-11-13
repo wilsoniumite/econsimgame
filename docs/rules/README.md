@@ -652,3 +652,13 @@ One line each as they arrive: the name, its page, its switch.
   year on every island, the rate today's islands had, where the port's count
   left the month's incomes out and the rate wandered. [money.md](money.md),
   `money.true_total`.
+- **goods that spoil**: a good of which more than a tenth of a stock rots in
+  a month (services) carries no stock markup and is priced at its anchor, so
+  the towns that bring services in no longer lose what rots on their shelves
+  and the merchants no longer owe two fifths of the money by 1900.
+  [prices.md](prices.md), "Goods that spoil", `prices.no_spoil_markup`.
+- **the price of land**: land is priced on the rent it paid, not on an
+  average year's rent worked out by adding back the crop the weather took,
+  which put it a tenth too high after a bad harvest and a tenth too low
+  after a good one. [harvest.md](harvest.md), "The price of land",
+  `harvest.rent_as_paid`.
