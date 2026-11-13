@@ -139,3 +139,7 @@ viewer built from the source before the merge (38425b2) and one built from 97339
   rail check (`ISOSTATE_RAIL_CHECK=list`) agrees to the digit in every line the older one
   prints, timings apart; the roads check (`ISOSTATE_ROADS=1`) the same; and the far views
   (`--land-shots`, sixteen pictures) are the same to the pixel.
+- On main at 5ad5417, against `merged-15-town-ground`, one take of the standard pictures had
+  island-1850 differ in three pixels at x 1062 to 1064, y 234 to 235, by up to 23 levels, in
+  the middle of a wood; the next take of the same binary was twelve at 0. That is a second
+  place of the same kind, and a difference confined to it is not a change either.
