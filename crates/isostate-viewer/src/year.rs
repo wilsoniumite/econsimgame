@@ -33,6 +33,7 @@ use crate::world::{Ground, YearLand};
 use crate::{network, scatter, BareLimbs, Evergreen, Leaves};
 
 /// One kind of mesh a year's scenery hands to the card.
+#[derive(Clone, Copy)]
 pub struct YearMesh {
     /// what it is called in a scripted check (`scenery`) and in the caption of
     /// a picture of a year half arrived; a mesh to each group of trees is
@@ -74,7 +75,7 @@ pub enum Make {
     /// for a mesh to each group). None of today's meshes has one; the test's
     /// does, and so will the next mesh that is not made in the same pass as
     /// another.
-    #[allow(dead_code)]
+    #[cfg_attr(not(test), allow(dead_code))]
     Own(fn(&Inputs, usize) -> Builder),
 }
 
@@ -258,6 +259,55 @@ pub fn spawn(commands: &mut Commands, meshes: &mut Assets<Mesh>, table: &[YearMe
     handles
 }
 
+/// A finished build's meshes (in the order of the list), made ready for the
+/// card under their handles (`handles`, in the same order) and in the order of
+/// the hand-over, with their fingerprints where the build took them. A year
+/// built again for the camera alone (`whole` false) sends only the meshes
+/// whose row says so, and gives back the others to be let go of; and how many
+/// corners are sent.
+pub fn queue(table: &[YearMesh], meshes: Vec<Builder>, handles: &[Handle<Mesh>], prints: Option<&[(usize, u64)]>, whole: bool, phase: f32) -> (Vec<crate::handover::Piece>, Vec<Builder>, usize) {
+    let parts = list(table);
+    let sends = |i: usize| whole || table[parts[i].row].camera;
+    let corners = meshes.iter().enumerate().filter(|&(i, _)| sends(i)).map(|(_, b)| b.pos.len()).sum();
+    let (mut going, mut rest) = (Vec::new(), Vec::new());
+    for (i, b) in meshes.into_iter().enumerate() {
+        if sends(i) {
+            going.push(Some(crate::piece(&handles[i], b, prints.map(|p| p[i]))));
+        } else {
+            going.push(None);
+            rest.push(b);
+        }
+    }
+    let pieces = hand_over(table, phase, whole).into_iter().filter_map(|i| going[i].take()).collect();
+    (pieces, rest, corners)
+}
+
+/// Set a year built afresh (its meshes in the order of the list) against what
+/// was last handed over under each handle (`HandOver::on_screen`): how many
+/// corners the fresh build has, and each mesh on screen that is not the fresh
+/// build's, by name, with its corners on screen and in the build.
+pub fn compare(table: &[YearMesh], fresh: &[Builder], handles: &[Handle<Mesh>], on_screen: &std::collections::HashMap<AssetId<Mesh>, (usize, u64)>) -> (usize, Vec<String>) {
+    let mut corners = 0;
+    let mut wrong = Vec::new();
+    for ((p, b), h) in list(table).into_iter().zip(fresh).zip(handles) {
+        let want = crate::print_of(b);
+        let have = on_screen.get(&h.id()).copied();
+        corners += want.0;
+        if have != Some(want) {
+            wrong.push(format!("{} ({} corners on screen, {} in the year's own)", name(table, p), have.map_or(0, |p| p.0), want.0));
+        }
+    }
+    (corners, wrong)
+}
+
+/// The name of the year's mesh under `handle`, for a picture's caption.
+pub fn named(table: &[YearMesh], handles: &[Handle<Mesh>], handle: &Handle<Mesh>) -> String {
+    match handles.iter().position(|h| h.id() == handle.id()) {
+        Some(i) => name(table, list(table)[i]),
+        None => "?".to_string(),
+    }
+}
+
 /// Take a year's meshes from what its makers made, in the order of the list,
 /// running the makers of their own.
 pub fn take(table: &[YearMesh], ym: &mut scatter::YearMeshes, nets: &mut network::Nets, inputs: &Inputs) -> Vec<Builder> {
@@ -349,55 +399,85 @@ mod tests {
         groups.flat_map(|g| parts.iter().map(move |p| format!("trees {g} {p}"))).collect()
     }
 
-    #[test]
-    fn the_table_agrees_with_the_lists_it_replaces() {
-        let empty = || scatter::YearMeshes { trees: Default::default(), houses: Builder::default(), works: Builder::default(), smoke: Builder::default(), lanes: Builder::default() };
-        let (ym, nets) = (empty(), network::Nets { roads: Builder::default(), rails: Builder::default() });
-        let old: Vec<String> = crate::year_parts(&ym, &nets).into_iter().map(|(n, _)| n).collect();
-        let parts = list(MESHES);
-        let new: Vec<String> = parts.iter().map(|&p| name(MESHES, p)).collect();
-        // the same meshes by name, each once
-        let (mut a, mut b) = (old.clone(), new.clone());
-        a.sort();
-        b.sort();
-        assert_eq!(a, b);
-        b.dedup();
-        assert_eq!(a.len(), b.len());
-        // the index constants point at the names they always did
-        for (at, n) in [(crate::HOUSES, "houses"), (crate::WORKS, "works"), (crate::SMOKE, "smoke"), (crate::LANES, "yards and lanes"), (crate::ROADS, "roads"), (crate::RAILS, "railway"), (crate::TREES, "trees 0 evergreen")] {
-            assert_eq!(old[at], n);
+    /// The hand-over as it was written out before the table (`hand_over_order`
+    /// in `main.rs` until 13 November 2026): the houses, the works, the yards
+    /// and lanes, the smoke, the roads, the railway; then group by group what
+    /// is green all year and whichever of the leaves and the bare limbs the
+    /// season shows; then, group by group, the other.
+    fn todays_hand_over(phase: f32) -> Vec<String> {
+        let mut want: Vec<String> = ["houses", "works", "yards and lanes", "smoke", "roads", "railway"].map(String::from).to_vec();
+        for g in 0..LEAF_GROUPS {
+            want.push(format!("trees {g} evergreen"));
+            want.push(format!("trees {g} {}", if in_leaf(phase, g) { "leaves" } else { "bare limbs" }));
         }
-        // the handles are made and the entities spawned as `setup_world` makes them: each
+        for g in 0..LEAF_GROUPS {
+            want.push(format!("trees {g} {}", if in_leaf(phase, g) { "bare limbs" } else { "leaves" }));
+        }
+        want
+    }
+
+    /// What a queue holds, by name.
+    fn queued(table: &[YearMesh], handles: &[Handle<Mesh>], pieces: &[crate::handover::Piece]) -> Vec<String> {
+        pieces.iter().map(|p| named(table, handles, &p.handle)).collect()
+    }
+
+    /// Meshes with something in them: one triangle each, told apart by where it stands.
+    fn meshes_of(table: &[YearMesh]) -> Vec<Builder> {
+        (0..list(table).len())
+            .map(|i| {
+                let mut b = Builder::default();
+                let x = i as f32;
+                b.tri(Vec3::new(x, 0.0, 0.0), Vec3::new(x, 0.0, 0.1), Vec3::new(x + 0.1, 0.0, 0.0), [0.5, 0.5, 0.5, 1.0]);
+                b
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_table_keeps_the_orders_the_lists_had() {
+        // every mesh by name, each once
+        let mut all: Vec<String> = list(MESHES).into_iter().map(|p| name(MESHES, p)).collect();
+        all.sort();
+        let mut want = trees(0..LEAF_GROUPS, &["evergreen", "leaves", "bare limbs"]);
+        want.extend(["houses", "works", "smoke", "yards and lanes", "roads", "railway"].map(String::from));
+        want.sort();
+        assert_eq!(all, want);
+        // the handles are made and the entities spawned as `setup_world` made them: each
         // group of trees, then the houses, the works, the smoke, the roads, the railway and
         // the yards and lanes last
         let mut made = trees(0..LEAF_GROUPS, &["evergreen", "leaves", "bare limbs"]);
         made.extend(["houses", "works", "smoke", "roads", "railway", "yards and lanes"].map(String::from));
         assert_eq!(names(&made_order(MESHES)), made);
-        // the hand-over is `hand_over_order`'s, at every phase of the year
-        let mut assets = bevy::asset::Assets::<bevy::mesh::Mesh>::default();
-        let handles: Vec<_> = old.iter().map(|_| assets.add(crate::placeholder_mesh())).collect();
-        let piece = |i: usize| crate::handover::Piece { handle: handles[i].clone(), mesh: crate::placeholder_mesh(), bytes: 0, print: None };
-        let of = |pieces: Vec<crate::handover::Piece>| -> Vec<String> { pieces.iter().map(|p| old[handles.iter().position(|h| h.id() == p.handle.id()).unwrap()].clone()).collect() };
+        // the hand-over is as it was, at every phase of the year, and so is the queue
+        let mut assets = Assets::<Mesh>::default();
+        let handles: Vec<_> = list(MESHES).iter().map(|_| assets.add(crate::placeholder_mesh())).collect();
         for i in 0..96 {
             let phase = i as f32 / 96.0;
-            let (mut showing, mut hidden) = (Vec::new(), Vec::new());
-            for group in 0..LEAF_GROUPS {
-                let at = crate::TREES + 3 * group;
-                showing.push(piece(at));
-                let (out, away) = if in_leaf(phase, group) { (at + 1, at + 2) } else { (at + 2, at + 1) };
-                showing.push(piece(out));
-                hidden.push(piece(away));
-            }
-            let built = [piece(crate::HOUSES), piece(crate::WORKS), piece(crate::SMOKE)];
-            let flat = [piece(crate::LANES), piece(crate::ROADS), piece(crate::RAILS)];
-            assert_eq!(names(&hand_over(MESHES, phase, true)), of(crate::hand_over_order(built, flat, showing, hidden)), "phase {phase}");
-            // and a year built again for the camera sends its houses, works and smoke, in that order
+            assert_eq!(names(&hand_over(MESHES, phase, true)), todays_hand_over(phase), "phase {phase}");
+            let (pieces, rest, corners) = queue(MESHES, meshes_of(MESHES), &handles, None, true, phase);
+            assert_eq!(queued(MESHES, &handles, &pieces), todays_hand_over(phase), "phase {phase}");
+            assert_eq!((rest.len(), corners), (0, 3 * handles.len()));
+            // and a year built again for the camera sends its houses, works and smoke, in that
+            // order, and gives back the rest to be let go of
             assert_eq!(names(&hand_over(MESHES, phase, false)), ["houses", "works", "smoke"]);
+            let (pieces, rest, corners) = queue(MESHES, meshes_of(MESHES), &handles, None, false, phase);
+            assert_eq!(queued(MESHES, &handles, &pieces), ["houses", "works", "smoke"]);
+            assert_eq!((rest.len(), corners), (handles.len() - 3, 9));
         }
+        assert_eq!(camera_names(MESHES), "houses, works and smoke");
         // the fingerprints' line and the bench's count go by these words, in this order
         let mut words: Vec<&str> = MESHES.iter().map(|m| m.word).collect();
         words.dedup();
         assert_eq!(words, ["trees", "houses", "works", "smoke", "lanes", "roads", "rails"]);
+        let line = counts(MESHES, &meshes_of(MESHES));
+        assert_eq!(line, format!("trees {} (of them bare limbs {}), houses 3, works 3, smoke 3, lanes 3, roads 3, rails 3", 9 * LEAF_GROUPS, 3 * LEAF_GROUPS));
+        // the trees are fingerprinted as one mesh, group by group
+        let meshes = meshes_of(MESHES);
+        let trees: Builder = meshes[..3 * LEAF_GROUPS].iter().fold(Builder::default(), |mut all, b| {
+            all.merge(b);
+            all
+        });
+        assert!(sums(MESHES, &meshes).starts_with(&format!("trees {:016x}, houses {:016x}, ", crate::mesh_sum(&trees), crate::mesh_sum(&meshes[3 * LEAF_GROUPS]))));
         // each is drawn in what `setup_world` drew it in
         let drawn = |n: &str| MESHES.iter().find(|m| m.name == n).unwrap().drawn;
         assert_eq!(["houses", "works", "smoke", "yards and lanes", "roads", "railway", "evergreen", "leaves", "bare limbs"].map(drawn), [Drawn::Built, Drawn::Built, Drawn::Smoke, Drawn::Flat, Drawn::Flat, Drawn::Flat, Drawn::Evergreen, Drawn::Leaves, Drawn::Bare]);
@@ -466,5 +546,66 @@ mod tests {
         // and their handles were made in the same order, so the meshes' numbers are as they were
         assert!(in_order);
         assert_eq!(handles.len(), list(MESHES).len());
+    }
+
+    /// The maker of a mesh that exists only in this test: a short reach of
+    /// canal, as one triangle, in the middle of the island and further north
+    /// each year.
+    fn canal(at: &Inputs, _group: usize) -> Builder {
+        let mut b = Builder::default();
+        let (x, z) = (at.r.w as f32 * 0.5, at.r.h as f32 * 0.5 - at.k as f32);
+        b.tri(Vec3::new(x, 0.1, z), Vec3::new(x, 0.1, z + 0.2), Vec3::new(x + 0.2, 0.1, z), [0.3, 0.4, 0.5, 1.0]);
+        b
+    }
+
+    #[test]
+    fn a_row_in_the_table_is_all_a_new_mesh_needs() {
+        // the table with one more row: canals, made by a maker of their own, lying flat, left as
+        // they are when the year is built again for the camera, and going to the card after the
+        // railway; their handle is made after every other
+        let mut table = MESHES.to_vec();
+        table.push(YearMesh { name: "canals", word: "canals", each_group: false, make: Make::Own(canal), drawn: Drawn::Flat, camera: false, goes: Goes::Before(6), made: 7 });
+        let table = &table[..];
+        let parts = list(table);
+        let at = parts.len() - 1;
+        assert_eq!((name(table, parts[at]), parts.len()), ("canals".to_string(), list(MESHES).len() + 1));
+        // at the start: a handle and an entity in the yards' material, casting no shadow, after
+        // every other, which are made and spawned as they were
+        let (said, in_order, handles) = spawned(table);
+        assert!(in_order);
+        assert_eq!(said.last().unwrap(), "canals in flat, no shadow");
+        assert_eq!(said[..at], spawned(MESHES).0[..]);
+        // each year: built by its maker from what the year is built from, beside the rest,
+        // which are built as they are without it
+        let r = crate::world::tests::island();
+        let g = crate::world::build_ground(&r);
+        let (slots, cen, lk) = (scatter::make_slots(&r, &g), network::centres(&r), Look::standard());
+        let lod = scatter::Lod::of_camera((1.0, 0.5), 14.0);
+        let sc = crate::build_scenery(table, &r, &g, &slots, &cen, 0, &lk, lod);
+        let without = crate::build_scenery(MESHES, &r, &g, &slots, &cen, 0, &lk, lod);
+        assert_eq!(sc.meshes.len(), parts.len());
+        assert_eq!(sc.meshes[at], canal(&Inputs { r: &r, g: &g, slots: &slots, cen: &cen, k: 0, lk: &lk, lod: &lod, land: &crate::world::year_land(&r, &g, 0) }, 0));
+        assert_eq!(sc.meshes[..at], without.meshes[..]);
+        // fingerprinted and counted under its own word
+        assert_eq!(sums(table, &sc.meshes), format!("{}, canals {:016x}", sums(MESHES, &without.meshes), crate::mesh_sum(&sc.meshes[at])));
+        assert_eq!(counts(table, &sc.meshes), format!("{}, canals 3", counts(MESHES, &without.meshes)));
+        // queued for the card under its handle after the railway, and kept back from a build
+        // for the camera, to be let go of with the trees
+        let prints: Vec<(usize, u64)> = sc.meshes.iter().map(crate::print_of).collect();
+        let (pieces, _, corners) = queue(table, sc.meshes.clone(), &handles, Some(&prints), true, 0.5);
+        let mut want = todays_hand_over(0.5);
+        want.insert(6, "canals".to_string());
+        assert_eq!(queued(table, &handles, &pieces), want);
+        assert_eq!(corners, sc.meshes.iter().map(|b| b.pos.len()).sum::<usize>());
+        let (camera, rest, _) = queue(table, sc.meshes.clone(), &handles, None, false, 0.5);
+        assert_eq!(queued(table, &handles, &camera), ["houses", "works", "smoke"]);
+        assert_eq!(rest.last(), Some(&sc.meshes[at]));
+        // the scripted check finds it on screen as it was handed over, and names it when it is not
+        let mut on_screen: std::collections::HashMap<_, _> = pieces.iter().map(|p| (p.handle.id(), p.print.unwrap())).collect();
+        assert_eq!(compare(table, &sc.meshes, &handles, &on_screen), (prints.iter().map(|p| p.0).sum(), vec![]));
+        on_screen.insert(handles[at].id(), (3, 0));
+        assert_eq!(compare(table, &sc.meshes, &handles, &on_screen).1, ["canals (3 corners on screen, 3 in the year's own)"]);
+        // and a picture of a year half arrived names it in its caption
+        assert_eq!(named(table, &handles, &handles[at]), "canals");
     }
 }

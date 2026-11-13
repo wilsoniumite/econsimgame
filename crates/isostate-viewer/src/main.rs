@@ -1364,43 +1364,6 @@ struct Scenery {
     prints: Option<Vec<(usize, u64)>>,
 }
 
-/// A year's meshes by name, in one fixed order (`Handles::year` gives their
-/// handles in the same): the six that are one of a kind, then the three of
-/// each group of trees.
-#[cfg(test)]
-fn year_parts<'a>(ym: &'a scatter::YearMeshes, nets: &'a network::Nets) -> Vec<(String, &'a meshkit::Builder)> {
-    let mut parts = vec![
-        ("houses".to_string(), &ym.houses),
-        ("works".to_string(), &ym.works),
-        ("smoke".to_string(), &ym.smoke),
-        ("yards and lanes".to_string(), &ym.lanes),
-        ("roads".to_string(), &nets.roads),
-        ("railway".to_string(), &nets.rails),
-    ];
-    for (group, t) in ym.trees.iter().enumerate() {
-        for (b, part) in t.parts().into_iter().zip(["evergreen", "leaves", "bare limbs"]) {
-            parts.push((format!("trees {group} {part}"), b));
-        }
-    }
-    parts
-}
-
-/// Where each of a year's meshes stands in `year_parts`' order.
-#[cfg(test)]
-const HOUSES: usize = 0;
-#[cfg(test)]
-const WORKS: usize = 1;
-#[cfg(test)]
-const SMOKE: usize = 2;
-#[cfg(test)]
-const LANES: usize = 3;
-#[cfg(test)]
-const ROADS: usize = 4;
-#[cfg(test)]
-const RAILS: usize = 5;
-#[cfg(test)]
-const TREES: usize = 6;
-
 /// The year's scenery being built off the main thread, so a new year never
 /// stops the picture. One build at a time; the year on screen keeps its
 /// scenery until the next is ready, and the ground changes with it.
@@ -1545,20 +1508,12 @@ fn rebuild_year(
         // (task B, one scale of detail: the works, the pits and the bridges take their level
         // from the camera as the houses do, so their mesh goes on screen again with the houses';
         // their yards' ground, in `lanes`, is the same at every level and stays. Which meshes
-        // go again for the camera is the table's to say: `year::YearMesh::camera`)
-        let parts = year::list(year::MESHES);
-        let sends = |i: usize| !for_camera || year::MESHES[parts[i].row].camera;
-        let corners: usize = sc.meshes.iter().enumerate().filter(|&(i, _)| sends(i)).map(|(_, b)| b.pos.len()).sum();
-        let print = |i: usize| sc.prints.as_ref().map(|p| p[i]);
-        let (mut going, mut rest) = (Vec::new(), Vec::new());
-        for (i, b) in sc.meshes.into_iter().enumerate() {
-            if sends(i) {
-                going.push(Some(piece(&handles.meshes[i], b, print(i))));
-            } else {
-                going.push(None);
-                rest.push(b);
-            }
-        }
+        // go again for the camera is the table's to say: `year::YearMesh::camera`). They are
+        // queued in the hand-over's order (`year::hand_over`); of each group of trees, what is
+        // green all year and whichever of its leaves and its bare limbs the season has out
+        // show, and the other is hidden until the season turns
+        let phase = season_phase(&season, forced.0);
+        let (pieces, rest, corners) = year::queue(year::MESHES, sc.meshes, &handles.meshes, sc.prints.as_deref(), !for_camera, phase);
         if for_camera {
             // the rest of what was built is not wanted. It is 300 MB of trees and more, and
             // letting go of it here cost the frame 10 ms: it is let go of off the main thread
@@ -1602,11 +1557,6 @@ fn rebuild_year(
                 }
             }
         }
-        // in the hand-over's order (`year::hand_over`); of each group of trees, what is green all
-        // year and whichever of its leaves and its bare limbs the season has out show, and the
-        // other is hidden until the season turns
-        let phase = season_phase(&season, forced.0);
-        let pieces = year::hand_over(year::MESHES, phase, !for_camera).into_iter().filter_map(|i| going[i].take()).collect();
         hand.fill(sc.k, run, pieces);
         let ms = began.elapsed().as_secs_f32() * 1e3;
         if for_camera { shown.swaps.1 += 1 } else { shown.swaps.0 += 1 }
@@ -1625,25 +1575,6 @@ fn rebuild_year(
         let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(year::MESHES, &r, &g, &slots, &cen, k, &lk, lod) });
         builds.task = Some((k, shown.run, task));
     }
-}
-
-/// The order a whole year's meshes go to the renderer in. While they go the
-/// picture holds two years at once, so what belongs together goes together,
-/// and what the eye is on goes first: the houses, with the ground's patchwork,
-/// which changes in the same frame; the works and the yards they stand in;
-/// their smoke; the roads; the railway, whose trains are on their new lines
-/// from the first frame; then the trees that show, group by group; and last
-/// the trees the season has hidden. What lies flat is a few megabytes and
-/// holds the trees up by a frame. It was tried last, as the first brief had
-/// it, and for as long as the trees took to go the new works stood on bare
-/// ground with no yard, the new roads were missing, and a train ran where no
-/// track was drawn (docs/probes/dx-smooth.md, section 12, "Stage one, as
-/// built", says what the pictures of a year half arrived showed).
-#[cfg(test)]
-fn hand_over_order(built: [handover::Piece; 3], flat: [handover::Piece; 3], showing: Vec<handover::Piece>, hidden: Vec<handover::Piece>) -> Vec<handover::Piece> {
-    let [houses, works, smoke] = built;
-    let [lanes, roads, rails] = flat;
-    [houses, works, lanes, smoke, roads, rails].into_iter().chain(showing).chain(hidden).collect()
 }
 
 /// The scenery shows the year on the clock (screenshots wait for it).
@@ -1712,17 +1643,7 @@ fn check_scenery(world: &mut World) -> Result<String, String> {
     let year = data.r.y0 + k as i32;
     let fresh = build_scenery(year::MESHES, &data.r, &data.g, &data.slots, &data.cen, k, &look.0, lod);
     let (handles, hand) = (world.resource::<Handles>(), world.resource::<handover::HandOver>());
-    let mut corners = 0;
-    let mut wrong = Vec::new();
-    for ((p, b), h) in year::list(year::MESHES).into_iter().zip(&fresh.meshes).zip(&handles.meshes) {
-        let name = year::name(year::MESHES, p);
-        let want = print_of(b);
-        let have = hand.on_screen.get(&h.id()).copied();
-        corners += want.0;
-        if have != Some(want) {
-            wrong.push(format!("{name} ({} corners on screen, {} in the year's own)", have.map_or(0, |p| p.0), want.0));
-        }
-    }
+    let (corners, wrong) = year::compare(year::MESHES, &fresh.meshes, &handles.meshes, &hand.on_screen);
     if wrong.is_empty() {
         Ok(format!("all {corners} corners on screen are {year}'s own, built afresh for the same camera"))
     } else {

@@ -252,13 +252,7 @@ impl HandOver {
 
     /// What still waits, by name and in the order it will go, for a picture's caption.
     pub fn waiting_names(&self, handles: &crate::Handles) -> String {
-        use crate::year::{list, name, MESHES};
-        let parts = list(MESHES);
-        let named = |p: &Piece| match handles.meshes.iter().position(|h| h.id() == p.handle.id()) {
-            Some(i) => name(MESHES, parts[i]),
-            None => "?".to_string(),
-        };
-        self.queue.iter().map(named).collect::<Vec<_>>().join(", ")
+        self.queue.iter().map(|p| crate::year::named(crate::year::MESHES, &handles.meshes, &p.handle)).collect::<Vec<_>>().join(", ")
     }
 
     /// Queue a finished build's meshes for year `k`, built from the run as it
