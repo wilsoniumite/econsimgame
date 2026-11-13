@@ -47,8 +47,6 @@ pub struct ChronicleParams {
     // ---- ranking
     /// At most this many items of a decade are kept.
     pub per_decade: usize,
-    /// A finished decade keeps at least this many, if it has them above `fill_floor`.
-    pub at_least: usize,
     /// At most this many of one kind in a decade (railways planned and opened
     /// count as one kind, as do a harvest and its dearth).
     pub per_kind: usize,
@@ -57,10 +55,11 @@ pub struct ChronicleParams {
     /// And so are the turning points: the 1840s that saw more hands in workshops
     /// than on the land also saw rolling mills overtake the rail forges.
     pub turning_points: usize,
-    /// An item lighter than this is kept only to fill a thin decade.
+    /// An item lighter than this is kept only to fill a thin decade. The
+    /// player's own place in the feed is kept at this weight and above, so it
+    /// has to stay under `own_great`, or the family's great moments lose their
+    /// place (`tests/chronicle.rs` holds that).
     pub floor: f64,
-    /// And one lighter than this is never kept.
-    pub fill_floor: f64,
 
     // ---- the player's own news
     /// Weight of the family's great moments: a new head, a new trade, the head's death.
@@ -71,8 +70,6 @@ pub struct ChronicleParams {
     pub own_summary: f64,
 
     // ---- regional stories
-    /// Doublings are measured from the mean of this many first years.
-    pub base_years: i64,
     /// A coalfield booms when it raises `boom_growth` times the coal of
     /// `boom_years` earlier and at least `boom_share` of the island's. One
     /// and a half times is the line beside the game's other rules: with the
@@ -114,16 +111,13 @@ impl Default for ChronicleParams {
         ChronicleParams {
             enabled: false,
             per_decade: 4,
-            at_least: 2,
             per_kind: 1,
             inventions: 2,
             turning_points: 2,
             floor: 0.6,
-            fill_floor: 0.45,
             own_great: 0.7,
             own_small: 0.5,
             own_summary: 0.45,
-            base_years: 5,
             boom_years: 5,
             boom_growth: 1.5,
             boom_share: 0.15,
@@ -147,6 +141,17 @@ impl ChronicleParams {
         ChronicleParams { enabled: true, ..ChronicleParams::default() }
     }
 }
+
+// Three numbers that were settings until stage 5 of the pass over the rules
+// (docs/probes/sens-mines.md: no decade is thin enough for the first two to
+// act, and the third moves one milestone on one island of eight at 4 and 7).
+
+/// A finished decade keeps at least this many, if it has them above `FILL_FLOOR`.
+pub const AT_LEAST: usize = 2;
+/// An item lighter than this is never kept, even to fill a thin decade.
+pub const FILL_FLOOR: f64 = 0.45;
+/// Doublings are measured from the mean of this many first years.
+pub const BASE_YEARS: i64 = 5;
 
 // ---------------------------------------------------------------- provenance
 
@@ -495,13 +500,13 @@ pub fn succession(P: &Params, family: usize, items: &mut [Option<Event>], first:
 // ---------------------------------------------------------------- the observer's faults
 
 /// The level a doubling is measured from. The port takes the first year alone;
-/// here it is the mean of the first `base_years`, and nothing doubles while
+/// here it is the mean of the first `BASE_YEARS`, and nothing doubles while
 /// that mean is still forming. `when` and `v0` are the port's.
 pub fn baseline(P: &Params, series: &[f64], y0: i64, year: i64, when: i64, v0: f64) -> Option<(String, f64)> {
     if !P.chronicle.enabled {
         return Some((when.to_string(), v0));
     }
-    let n = P.chronicle.base_years.max(1);
+    let n = BASE_YEARS;
     if year < when + n {
         return None;
     }
@@ -1489,8 +1494,8 @@ fn standing(e: &Event) -> f64 {
 /// `per_decade` in all, and nothing lighter
 /// than `floor`. One place is the player's: the heaviest of the family's own
 /// items at `floor` or above is kept whatever else happened. A decade that is
-/// over and still has fewer than `at_least` takes the best of what is left
-/// above `fill_floor`. An alarm gives way to the verdict that later dates its
+/// over and still has fewer than `AT_LEAST` takes the best of what is left
+/// above `FILL_FLOOR`. An alarm gives way to the verdict that later dates its
 /// slump. Ties go to the earlier item.
 ///
 /// `upto` is the last year simulated: a decade is over when its last year is.
@@ -1522,7 +1527,7 @@ pub fn rank(events: &mut [Event], P: &Params, start_year: i64, end_year: i64, up
     }
     let mut by_decade: BTreeMap<i64, Vec<usize>> = BTreeMap::new();
     for (i, e) in events.iter().enumerate() {
-        if !dated[i] && standing(e) >= Q.fill_floor {
+        if !dated[i] && standing(e) >= FILL_FLOOR {
             by_decade.entry(decade(e)).or_default().push(i);
         }
     }
@@ -1555,7 +1560,7 @@ pub fn rank(events: &mut [Event], P: &Params, start_year: i64, end_year: i64, up
         }
         if over {
             for &i in items.iter().filter(|&&i| standing(&events[i]) < Q.floor) {
-                if kept.len() >= Q.at_least {
+                if kept.len() >= AT_LEAST {
                     break;
                 }
                 keep(i, &mut kept, events);

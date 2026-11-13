@@ -228,7 +228,9 @@ fn merchants_with_long_stocks_take_less_and_the_works_hire_less() {
 #[test]
 fn the_wage_shortcut_agrees_with_the_plain_bisection() {
     // a brake that bites often, to give the check something to chew on, and the game's
-    let harsh = PriceParams { glut_months: 1.0, glut_stop_months: 2.5, glut_floor: 0.1, ..PriceParams::game() };
+    // (the harsh one had a floor of a tenth of capacity until the floor became a
+    // constant, nothing, in stage 5 of the pass over the rules)
+    let harsh = PriceParams { glut_months: 1.0, glut_stop_months: 2.5, ..PriceParams::game() };
     for (pp, families) in [(harsh, 0), (PriceParams::game(), 0), (PriceParams::game(), 6)] {
         let mut P = params(11, 1760, pp);
         P.n_families = families;

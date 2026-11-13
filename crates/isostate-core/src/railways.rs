@@ -46,10 +46,6 @@ pub struct RailwayParams {
     /// Promoters price rails at the year's price times one plus the rails all
     /// lines have on order over a year's make of rails.
     pub order_book: bool,
-    /// Lines that may be building at once. A backstop, not the pace: at the
-    /// height of the rush 19 to 37 lines are building, held there by the money
-    /// their towns can raise and the price of rails (one run of 56 reached 40).
-    pub max_projects: usize,
     /// Districts looked at each year: those with the largest carting bill.
     pub districts: usize,
     /// A district is looked at only this many cells or more from track...
@@ -69,7 +65,6 @@ impl Default for RailwayParams {
             cost_mult: 5.0,
             build_months: 24.0,
             order_book: true,
-            max_projects: 40,
             districts: 8,
             branch_gap: 3.0,
             district_spacing: 6.0,
@@ -84,6 +79,14 @@ impl RailwayParams {
         RailwayParams { enabled: true, ..RailwayParams::default() }
     }
 }
+
+/// Lines that may be building at once. A backstop, not the pace: at the
+/// height of the rush 19 to 37 lines are building, held there by the money
+/// their towns can raise and the price of rails (one run of 56 reached 40).
+/// A setting until stage 5 of the pass over the rules: it never binds above
+/// 30, and at 80 every fact of eight islands is what it was at 40
+/// (docs/probes/sens-ways.md).
+pub const MAX_PROJECTS: usize = 40;
 
 fn rail_layer(st: &State) -> &[u8] {
     &st.rail
@@ -127,7 +130,7 @@ pub fn way(_st: &State, C: &Content, P: &Params) -> Way {
         hurdle: P.rail_hurdle,
         induced: P.rail_induced,
         order_book: R.order_book.then(|| C.gi("rails")),
-        max_projects: R.max_projects,
+        max_projects: MAX_PROJECTS,
         districts: R.districts,
         branch_gap: R.branch_gap,
         district_spacing: R.district_spacing,
