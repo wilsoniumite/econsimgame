@@ -557,7 +557,14 @@ against today's game and three histories of it with a number moved by a
 millionth, it is outside the three by more than twice their spread on 19
 facts, which is what one history of today does against the other three (19
 to 43), and none of them moves the same way on thirteen islands of sixteen
-(`docs/rules/prices.md`, "Goods that spoil", has the sweeps).
+(`docs/rules/prices.md`, "Goods that spoil", has the sweeps). *The check*
+read it island by island on forty islands (seeds 1 to 40, the mend alone
+against today's and the same two null histories): one fact of 629 changes by
+a paired t over 3, where the null histories have none and one. (The sweep has
+no fact of the families' land; the table above is where that is measured.)
+The table came out again to the last digit
+(`trace_rent --seeds 1-16 --families 6 --part c`, run again on the checked
+build).
 
 **What could change it.** `tr-rent.md`: were `foreseen` set to 0, the rent
 as paid would be 8 per cent short after the worst harvests and a correction

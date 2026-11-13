@@ -499,10 +499,29 @@ with `--set '{"prices":{"no_spoil_markup":false}}'` for today's):
 | town-years whose merchants end the year below nothing, 1750 to 1900 | 352 (38 to 597) | 96 (10 to 261) | 78 (3 to 261) |
 | the merchants' cash, net, as a share of the money in 1900 | 0.01 (-0.53 to 0.29) | 0.28 | 0.29 |
 
+*The check* ran the same on islands 17 to 24, which the build did not use:
+the debt of 1900 is 0.0032 of the money for 0.344, and 0.0145 with the land's
+mend as well; the town-years below nothing 38 and 69 for 319. So the mend does
+as much there, and the land's mend beside it does not help the merchants: the
+0.012 against 0.030 above is the islands' luck.
+
 The towns still below nothing are small ones that still lose on services,
 brought in by the lump and spoiling, by a few hundred thousand a town where
 they lost millions; the decade by decade debt is a thousandth or two of the
-money until 1850 and about a hundredth after. Services' price in the towns
+money until 1850 and about a hundredth after. *The check* followed one of
+them, Glendale on island 7 (`loose_ends market --seeds 7 --town Glendale
+--from 1880 --to 1884`), which makes no services and brings them all in. It
+gets them: every month but one its households are sold all they ask for
+(about 430 a month), at the anchor, 8.0 to 9.4, which is 1 to 10 per cent over
+what the cheapest town's services cost landed. But the saw is not gone, only
+smaller: the anchor still rises and falls about 6 per cent on a two-month
+beat with the stock, so four to six months of services still arrive every
+other month and half of what comes in rots. Its merchants lose some 40,000 a
+year where Ormgate's, the deepest debtor of the same island in today's game,
+lost 95,000 over the same five years. The anchor's own step, which reads the stock as
+the port's price did, is what is left of the road; a rule that ships on the
+buyer's need rather than the price of the moment would close it, and
+`tr-loose-a.md` found that rule too dear for the bulk goods. Services' price in the towns
 falls to its anchor: in 1881 to 1900 it is 8.6 on the islands' average where
 it was 11.5 to 12.8, since half of a stock rots and the shelves are thin most
 months, so the markup had held services about a third over their anchor all
@@ -515,9 +534,15 @@ of it was a coin in some other purse, spent. Without it the purses above
 nothing hold less, and the island's prices and money wages fall by about as
 much as the debt was: the cost of living is 0.98 of today's in the 1800s,
 0.87 in the 1860s and 0.75 in the 1890s, and the money wage the same (the
-three null histories 1.06 to 1.14 in the 1890s). What a wage buys does not
-move (1.00 of today's in the 1890s; 2.63 times 1750's in 1881 to 1900, for
-2.61, the nulls 2.68). But the freight is a fixed number of coins a ton and a
+three null histories 1.06 to 1.14 in the 1890s). On sixteen islands what a
+wage buys looked unmoved (1.00 of today's in the 1890s; 2.63 times 1750's in
+1881 to 1900, for 2.61, the nulls 2.68). *The check* read forty islands
+(seeds 1 to 40, the same six sweeps on each) and found it a little lower:
+2.61 times 1750's for 2.65 to 2.67 (26 islands of 40 lower), the chained
+measure 2.9 per cent under today's, and with the land's mend as well the real
+income a head in 1900 2.9 per cent under (30 of 40), with 0.7 per cent more
+people. That is the same road, below: the hands that cart make nothing. The
+freight is a fixed number of coins a ton and a
 cell, so a load costs more hands when wages are lower: carters are 0.079 of
 all hands in 1900 for 0.064 to 0.067 (14 islands of 16 more), the carting
 bill 0.055 of output for 0.044 to 0.047, and with them a point fewer hands in
@@ -534,6 +559,15 @@ with this in. Nothing else moved beyond what three histories of today move
 by chance: of the facts outside the null histories by more than twice their
 spread, those with thirteen islands or more one way are all of the carters,
 the works' and diggings' shares, the towns' share and the railway's fares.
+On forty islands the same road shows in two more places: stone, the
+heaviest good for its price, is quarried less (296.9 quarries in 1900 become
+286.9, 33 islands of 40 fewer; stone a head 4.5 per cent less), since a
+cell's freight is 5.2 per cent of stone's price in the 1890s where it was 3.8;
+and the land given to works in 1900 is 5 per cent less (30 of 40). One more
+fact moved that I cannot put on the road with certainty: the share of
+town-years whose people increase at the port's old cap is 0.20 for 0.23 (32
+of 40), which the slightly lower real income would explain.
+
 
 **The tests.** `prices.rs`, `a_good_that_spoils_carries_no_markup`: no
 markup above a tenth, the markup at a tenth and at grain's 0.03, and none of
