@@ -131,7 +131,7 @@ Four more switches are not mechanisms of the economy, or not yet. The books of a
 
 Families are older than this convention. They are off under both sets of rules until a run says how many there are: the viewer asks for six, and `--families 6` does it on the command line ([crates/isostate-core/FAMILIES.md](crates/isostate-core/FAMILIES.md)).
 
-What the two give, as means over islands 1 to 8 with six families. The port's column is from its sweep above as run on 12 November 2026 (its last row from the books' own example, `cargo run --release -p isostate-core --example accounts -- --rules port`, since the port's sweep keeps no books); nothing since has changed the port, which its golden test holds byte for byte. The game's column is from the sweep of `main` at 38425b2 on 13 November 2026, with the pass's stages 1 to 4 in, which gave the island a new history:
+What the two give, as means over islands 1 to 8 with six families. The port's column is from its sweep above as run on 12 November 2026 (its last row from the books' own example, `cargo run --release -p isostate-core --example accounts -- --rules port`, since the port's sweep keeps no books); the sweep was run again on `main` at 973396e on 13 November and gave every figure above the same, since none of the newer switches is on under the port. The game's column is from the sweep of `main` at 38425b2 on 13 November 2026, with the pass's stages 1 to 4 in, which gave the island a new history:
 
 | | the port | the game's rules |
 |---|---|---|
@@ -275,7 +275,7 @@ python -m isostate html runs/seed11 runs/seed11c --out dist/seed11.html    # fir
 
 ## Where it stands
 
-The game's numbers below are means over islands 1 to 8 with six families, from the sweep of `main` at 38425b2 on 13 November 2026, with the first four stages of the pass over the rules in, unless a page is named; the port's are from 12 November, and nothing has changed the port since.
+The game's numbers below are means over islands 1 to 8 with six families, from the sweep of `main` at 38425b2 on 13 November 2026, with the first four stages of the pass over the rules in, unless a page is named; the port's are from 12 November, and the same when run again on 13 November.
 
 **What exists.** The simulation in Rust under both sets of rules, with a sweep to measure a change on many islands and a scorecard of twenty aims to read it against. A game that can be played through the century and saved: decisions, a seat, branches, works built and land bought, four panels, seven map views, charts, the news. A picture drawn entirely by code, with no model or image files, from the whole island down to a street. On 12 November came canals, books of account, a clock that tells the month, towns drawn from the ground they keep, works built from the houses' kit at one scale of detail, winter on what is built, saved games that a test start cannot lose, and a second island generator with real rivers and lakes. On the night of 12 to 13 November came:
 
