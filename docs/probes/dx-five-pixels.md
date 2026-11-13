@@ -25,23 +25,27 @@ nothing on the old island.
    behind `g.laid` (the new land) or an environment variable, and gives the old numbers on the
    old island.
 2. **The five pixels are a tie.** At the centre of pixel (762, 870) two trees by a farm stand
-   so close that their crowns cross, 22 km south of the middle of the island at about 57.14,
-   77.79 in map cells. One is in leaf group 1 and the other in leaf group 0, and the four leaf
-   groups are four separate meshes (they come into leaf and drop their leaves at different
-   times). Through the island camera the two crowns' surfaces meet exactly at that pixel's
-   centre: their depths, 117.196430 and 117.196433 from the camera, agree to 3 parts in a
-   thousand million, which a 32-bit depth cannot tell apart. Where two things lie at one depth
+   so close that their crowns cross, at about 57.14, 77.79 in map cells, some 57 km south of
+   the point the island view looks at. One is in leaf group 1 and the other in leaf group 0,
+   and the four leaf groups are four separate meshes (they come into leaf and drop their leaves
+   at different times). Through the island camera the two crowns' surfaces meet exactly at that
+   pixel's centre: their depths along the view, 117.196430 and 117.196433 cells, differ by
+   three millionths of a cell (6 mm), about one part in forty million of the depth, which is
+   finer than a 32-bit depth can tell apart at that distance. Where two things lie at one depth
    the card shows whichever of them it is given in the order that wins, and the order the
    engine hands the four leaf groups over in is not fixed from one run to the next. Before the
    merge the picture showed group 1's lighter leaf (140,192,101), after it group 0's darker one
-   (134,183,96). The other four pixels move by one level, the lens's bloom and the edge
+   (134,183,96). The other four pixels move by one or two levels, the lens's bloom and the edge
    smoothing carrying a little of the one pixel to its neighbours.
 3. **Both versions give both pictures.** The code from before the merge gives the "after"
    picture whenever its timing is disturbed a little (a few lines of logging, `ISOSTATE_TIMING=1`,
    `ISOSTATE_MESH_SUMS=1`, a pause added to each year's build), and the merged code, with a pause
    of 20 ms added to each year's build, gives all twelve pictures of the set from before the
    merge (`trial-night-rules-4-and-3`) to the pixel. So the merge did not move the picture. It
-   changed which way a coin usually falls on this machine.
+   changed which way a coin usually falls on this machine. The check of this page (below) found
+   the coin plainer still: the merged viewer, built once and run twice in a row with nothing
+   altered, gave the picture from before the merge the first time and the one from after it
+   the second.
 4. **The new land's two named sets** (`newland-stage3/standard` and `/land`) are unchanged on
    this branch: all twenty-four pictures at 0 pixels.
 
@@ -113,6 +117,25 @@ ISOSTATE_SAVES=<scratch> ./target/debug/isostate-viewer.exe --advance 200 --size
     --view <dir>/the-two-trees.png,1900,57.15,77.78,0,52,1.2,0.5,none
 ```
 
-The whole island is seen in island-1900 from (59.5, 1.572, 49.24) in map cells, turned 0
-degrees, tilted 52 degrees and 133.78 cells back, through a lens of 30 degrees; that is what a
-pixel of it was traced back to the trees through.
+The whole island is seen in island-1900 looking at (59.5, 1.572, 49.24) in map cells, turned 0
+degrees, tilted 52 degrees and from 133.78 cells back, through a lens of 30 degrees (so from
+about (59.5, 107.0, 131.6)); that is what a pixel of it was traced back to the trees through.
+The point (57.14, 0.316, 77.79) lies 117.19 cells deep along that view, 23.28 below its middle
+and 2.36 to its left, which is pixel (762.4, 870.7) of 1600 by 1000.
+
+## The check (13 November 2026)
+
+Checked on `night/o-five-pixels-check` with the same island and the dev profile, against a
+viewer built from the source before the merge (38425b2) and one built from 973396e:
+
+- The viewer of 973396e, run twice in a row unaltered: twelve at 0 against
+  `trial-night-rules-4-and-3` the first time; island-1900 at five pixels (largest 9) the
+  second, which is then 0 against the sets after the merge. The five pixels and their values
+  are the ones above.
+- The viewer from before the merge: twelve at 0 twice, and twice more with 60 and 80 ms added
+  to each year's build; under `ISOSTATE_TIMING=1` it gives island-1900 of the sets after the
+  merge, with town-1850-winter and works-1900-close one pixel by one level.
+- The two viewers' mesh fingerprints (`ISOSTATE_MESH_SUMS=1`, twelve builds) are identical; the
+  rail check (`ISOSTATE_RAIL_CHECK=list`) agrees to the digit in every line the older one
+  prints, timings apart; the roads check (`ISOSTATE_ROADS=1`) the same; and the far views
+  (`--land-shots`, sixteen pictures) are the same to the pixel.
