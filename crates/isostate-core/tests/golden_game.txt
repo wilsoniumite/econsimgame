@@ -16,8 +16,13 @@
 # run.bin by the works' site planner, which writes each good's price and each
 # method's capital into its header (5449ca7); and all four by the rules pass's
 # stage 2, a town cannot hire hands it does not have (ca56cf2). With that
-# stage's switch off the hashes before it held.
-economy  0x1593e952999895f1
-books    0x07b856720f41e028
-news     0xc01bc094fde6e0f0
-run.bin  0x34af819d79f14fff
+# stage's switch off the hashes before it held. Taken again on the rules pass's
+# stage 3 with main (5d2de4d) merged in: all four move by the shelves going
+# with the district (people.shelves_go). With that switch off, economy and
+# books hold and news and run.bin move by the story of first or second place
+# that now says when the districts were drawn again that year
+# (chronicle::overtakings; two stories on this island, in 1803 and 1815).
+economy  0x93211c0e904d2c11
+books    0x5542c3589b6c4078
+news     0x197d722fe4e2d1df
+run.bin  0x19f35f54aea8a00d
