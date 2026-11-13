@@ -1603,17 +1603,20 @@ fn rebuild_year(
                     commands.entity(e).despawn();
                 }
                 rails.0 = sc.rails;
+                // (ISOSTATE_TRAINS_AT, for pictures: a train at each spot named, and every train held still)
+                let pins = trains::pinned(&rails.0);
                 for (pi, p) in rails.0.iter().enumerate() {
                     let count = (1 + (p.len / 8.0) as usize).min(3);
                     for i in 0..count {
-                        let s = p.len * (i as f32 + 0.5) / count as f32;
+                        let pin = pins.as_ref().and_then(|v| v.iter().find(|q| q.0 == pi)).filter(|_| i == 0);
+                        let s = pin.map_or(p.len * (i as f32 + 0.5) / count as f32, |q| q.1);
                         let (pos, yaw) = p.at(s);
                         let dir = if (pi + i) % 2 == 0 { 1.0 } else { -1.0 };
                         commands.spawn((
                             Mesh3d(ta.mesh.clone()),
                             MeshMaterial3d(ta.mat.clone()),
                             Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(yaw + if dir < 0.0 { std::f32::consts::PI } else { 0.0 })),
-                            Train { path: pi, s, dir, speed: 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) },
+                            Train { path: pi, s, dir, speed: if pins.is_some() { 0.0 } else { 0.5 + 0.3 * world::hash2(pi as i32, i as i32, 3) } },
                         ));
                     }
                 }
