@@ -11,18 +11,18 @@
 # paste the four lines it gives below, and say in the commit which moved and why
 # (docs/rules/README.md, "The game's golden test").
 #
-# Taken: on main with stages 4 and 3 of the rules pass merged in, in that
-# order (13 November 2026). All four moved by stage 4, money issued on the
-# true total (docs/rules/money.md): with its switch off the hashes before it
-# held. All four moved again by stage 3, the shelves go with the district
-# (docs/rules/shelves.md): with its switch off the economy and the books are
-# as they were, and the news and run.bin still move, because a sentence of the
-# chronicle that it mends is not behind the switch.
-# Then on night/o-rules-5c-works (13 November 2026): all four moved by the
-# works' two mends of the pass (docs/rules/works.md, parts G and H: the works
-# of 1749 spread out, and an order paid for before a dividend); with both
-# switches off the four before held.
-economy  0x29e97ac1329c3331
-books    0x4c58014814fad990
-news     0xdabd1794e12d6632
-run.bin  0x459451c73d6f1533
+# Taken: on the branch of stage 5b of the rules pass, two mends on the
+# merchants' side, cut from main after stages 4 and 3 (13 November 2026). All
+# four moved: no stock markup on a good that spoils (prices.no_spoil_markup,
+# docs/rules/prices.md) and land priced on the rent it paid
+# (harvest.rent_as_paid, docs/rules/harvest.md) each give the island another
+# history. With both switches off the hashes before them held.
+# Then on night/o-rules-5c-works with that main merged in (13 November
+# 2026): all four moved again by the works' two mends of the pass
+# (docs/rules/works.md, parts G and H: the works of 1749 spread out, and an
+# order paid for before a dividend); with both switches off the four of
+# stage 5b held.
+economy  0xf10bff35a0766927
+books    0x72b059f24108b664
+news     0x6de2e12697026f85
+run.bin  0x5c488515dd413b02

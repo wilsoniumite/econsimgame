@@ -327,8 +327,9 @@ pub fn land_price(st: &State, P: &Params, cell: usize) -> f64 {
     let t = st.catch[cell];
     let floor = if t >= 0 { 12.0 * P.land_rent_floor * st.wage[t as usize] } else { 0.0 };
     // harvest: the rent an average year would have paid, so that a failed crop
-    // does not put the district's land on sale at half price
-    let rent = crate::harvest::average_rent(st, cell, st.cell_rent_year[cell]);
+    // does not put the district's land on sale at half price; under
+    // `harvest.rent_as_paid` the rent paid, which is nearer it
+    let rent = crate::harvest::average_rent(st, P, cell, st.cell_rent_year[cell]);
     P.years_purchase * rent.max(floor)
 }
 

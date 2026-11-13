@@ -473,8 +473,13 @@ fn a_run_from_1755_tells_its_decades_by_the_calendar() {
     let mut C = game_content();
     C.start_year = 1755;
     // (to 1800: with the hands rationed, docs/rules/hands.md, seed 7 has no
-    // decade's item to tell before the 1790s)
-    let r = sim::run_with(&game(0, 1800), C, false, true).expect("money is conserved every month");
+    // decade's item to tell before the 1790s; with the works' two mends,
+    // docs/rules/works.md, parts G and H, it has none to 1800 either, so the
+    // case is played with them off)
+    let mut P = game(0, 1800);
+    P.works.spread_first = false;
+    P.works.keep_order = false;
+    let r = sim::run_with(&P, C, false, true).expect("money is conserved every month");
     let of_decade: Vec<&Event> = r.events.iter().filter(|e| e.title.contains("fastest-growing town of the") || e.title.contains(" new towns in the ")).collect();
     assert!(!of_decade.is_empty(), "no decade's end was told in 1755 to 1800");
     for e in &of_decade {

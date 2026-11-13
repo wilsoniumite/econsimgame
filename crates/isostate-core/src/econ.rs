@@ -1107,8 +1107,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                 let hi_p = P.price_ceiling * C.base_price[g];
                 if P.prices.enabled {
                     // prices: the rule below moves a slow anchor, and the price
-                    // stands above or below it with the merchants' stock
-                    prices::mark(st, P, t, g, gap, imbalance, lo_p, hi_p);
+                    // stands above or below it with the merchants' stock (none
+                    // on a good that spoils, under `prices.no_spoil_markup`)
+                    prices::mark(st, P, t, g, gap, imbalance, lo_p, hi_p, P.decay[g]);
                 } else {
                     let p0 = st.price[(t, g)];
                     let newp = p0 * (P.price_speed * gap + P.price_flow * imbalance).clamp(-0.12, 0.12).exp();
