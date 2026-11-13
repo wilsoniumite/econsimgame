@@ -276,6 +276,30 @@ facts stand at the edge of the null pair: the clay pits' hands in 1900 (0.017
 of all hands for 0.020), the farms' share of hands in 1881 to 1900 (a fifth of
 a point lower) and the cells wholly the works' in 1800 (15 for 18.5).
 
+**The check.** A second reader made the measures again on the tree with
+stage 5 of the pass merged in. `works_mends` gave the builder's sixteen
+islands to the digit; with both switches off 0 facts of 627 differ from
+main's on islands 1 to 8, and the game's four golden hashes are main's. On
+islands 17 to 24, which the build did not use, the faults answer the same
+way: works of 1749 sharing a cell 550 of 1,303 before and none after, twins
+1,196 and 782 (737 with both), orders for works that closed within three
+years 120 worth 1.38 million and 49 worth 0.18 million (77 worth 0.16
+million with both). Read again with the null pair: the building trades of
+1750 move as above, and one thing more is G's. The works of 1749 that the
+rule moves off their trade's best cell stand on a second-best one, and more
+of them close in the first decade: 429 of 1,899 by 1760 for 348 of 1,944,
+so that works three to five years old close at 0.050 a year for 0.042
+(the null pair 0.046 and 0.046); by 1800 fewer of them have closed than
+before (1,569 for 1,629). The commons scenario runs to 1900 on all sixteen
+islands with both on. Two things a player meets. The trade a new game offers
+the player first is the best prospect at the seat, which reads where the
+works of 1749 stand, so G changes it on 7 islands of 24 (island 7's from
+building materials to engineering). And a game saved before these mends is
+played again from the new start: it opens, says the island has drifted, and
+refuses the orders the new start does not allow (on island 7, three
+brickworks of a save's four orders, the family no longer knowing building
+materials), as `save.rs` says a save made under other rules does.
+
 ## What was tried and left out
 
 - **Amalgamating small works, stopping economies of scale at four sizes,

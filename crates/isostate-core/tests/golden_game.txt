@@ -21,7 +21,8 @@
 # 2026): all four moved again by the works' two mends of the pass
 # (docs/rules/works.md, parts G and H: the works of 1749 spread out, and an
 # order paid for before a dividend); with both switches off the four of
-# stage 5b held.
+# stage 5b held. Held again on its check with stage 5 merged in, which
+# moves nothing.
 economy  0xf10bff35a0766927
 books    0x72b059f24108b664
 news     0x6de2e12697026f85
