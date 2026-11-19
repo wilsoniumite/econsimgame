@@ -134,12 +134,16 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         Some("sweep") => return crate::sweep::main_with_args(&args[1..]),
         Some("scorecard") => return crate::scorecard::main_with_args(&args[1..]),
         Some("lab") => return crate::lab::main_with_args(&args[1..]),
+        Some("ablate") => return crate::ablate::main_with_args(&args[1..]),
         Some("atlas") => return crate::atlas::main_with_args(&args[1..]),
         Some("-h") | Some("--help") | None => {
-            println!("{USAGE}\n{}\n{}\n{}\n{}", crate::sweep::USAGE, crate::scorecard::USAGE, crate::lab::USAGE, crate::atlas::USAGE);
+            println!("{USAGE}\n{}\n{}\n{}\n{}\n{}", crate::sweep::USAGE, crate::scorecard::USAGE, crate::lab::USAGE, crate::ablate::USAGE, crate::atlas::USAGE);
             return Ok(());
         }
-        Some(other) => return Err(format!("unknown command {other:?}\n{USAGE}\n{}\n{}\n{}", crate::sweep::USAGE, crate::scorecard::USAGE, crate::lab::USAGE)),
+        Some(other) => {
+            let all = [crate::sweep::USAGE, crate::scorecard::USAGE, crate::lab::USAGE, crate::ablate::USAGE, crate::atlas::USAGE].join("\n");
+            return Err(format!("unknown command {other:?}\n{USAGE}\n{all}"));
+        }
     }
     let mut seed: Option<u64> = None;
     let mut rules = Rules::Port;
