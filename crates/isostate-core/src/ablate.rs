@@ -545,6 +545,16 @@ impl Role {
         }
     }
 
+    /// As the page counts them: "4 hold up the century".
+    pub fn plural(self) -> &'static str {
+        match self {
+            Role::HoldsUp => "hold up the century",
+            Role::Shapes => "shape the island",
+            Role::Idle => "are idle",
+            Role::LeanedOn => "are leaned on",
+        }
+    }
+
     pub const ALL: [Role; 4] = [Role::HoldsUp, Role::Shapes, Role::Idle, Role::LeanedOn];
 }
 
@@ -711,6 +721,70 @@ pub fn fmt_apart(a: &Apart) -> String {
     format!("{} {} to {} ({})", a.name, sweep::fmt_fact(a.kind, a.control), sweep::fmt_fact(a.kind, a.arm), fmt_size(a.size))
 }
 
+/// The same, for the page: the fact's name as code.
+fn md_apart(a: &Apart) -> String {
+    format!("`{}` {} to {} ({})", a.name, sweep::fmt_fact(a.kind, a.control), sweep::fmt_fact(a.kind, a.arm), fmt_size(a.size))
+}
+
+fn md_largest(r: &Reading) -> String {
+    r.facts.apart.iter().take(LARGEST).map(md_apart).collect::<Vec<_>>().join("; ")
+}
+
+/// What one arm of the second pass did, in a line for the page.
+fn md_arm(r: &Reading) -> String {
+    match role(r) {
+        Role::LeanedOn => format!("runs fail ({})", r.failed.iter().map(|(s, w)| format!("island {s}: {w}")).chain(r.refused.clone()).collect::<Vec<_>>().join("; ")),
+        Role::HoldsUp => format!(
+            "the century does not stand ({} not inside); {} apart{}",
+            held_up(r).iter().map(|(f, v)| format!("`{f}` {}", v.as_str())).collect::<Vec<_>>().join(", "),
+            r.facts.apart.len(),
+            if r.facts.apart.is_empty() { String::new() } else { format!(", the largest {}", md_largest(r)) }
+        ),
+        Role::Shapes => format!("{} apart, the largest {}", r.facts.apart.len(), md_largest(r)),
+        Role::Idle => "the same island".to_string(),
+    }
+}
+
+/// The second pass, for the page.
+fn second_md(t: &Table) -> String {
+    let Some(s) = t.second.as_ref() else { return "The second pass was not played (`--no-second`).\n".to_string() };
+    let find = |set: &[String]| t.second_readings.iter().find(|r| r.off.len() == set.len() && set.iter().all(|n| r.off.contains(n)));
+    let mut out = String::new();
+    match s.joint_same {
+        None if s.idle.is_empty() => out.push_str("**The second pass**: no rule is idle, so there is nothing to turn off together.\n"),
+        None => {
+            let _ = writeln!(out, "**The second pass**: one rule is idle, `{}`, so there is nothing to turn off together.", s.idle.join(""));
+        }
+        Some(true) => {
+            let _ = writeln!(out, "**The second pass**: all {} idle rules turned off together are the same island. That island is the same island with fewer rules.", s.idle.len());
+        }
+        Some(false) => {
+            let joint = find(&s.idle).map_or(String::new(), |r| format!(" With all of them off: {}.", md_arm(r)));
+            let _ = writeln!(out, "**The second pass**: the {} idle rules turned off together are not the same island.{joint} The smallest groups that must not go off together, each idle alone:\n", s.idle.len());
+            for g in &s.groups {
+                let what = find(g).map_or(String::new(), |r| format!(": with {} off, {}", if g.len() == 2 { "both" } else { "all of them" }, md_arm(r)));
+                let _ = writeln!(out, "- {}{what}.", g.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(" with "));
+            }
+            let kept: Vec<String> = s.idle.iter().filter(|n| !s.together.contains(n)).map(|n| format!("`{n}`")).collect();
+            let _ = writeln!(
+                out,
+                "\nWith {} kept on, the other {} go off together and the island is the same: {}.",
+                kept.join(" and "),
+                s.together.len(),
+                s.together.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
+            );
+        }
+    }
+    if !s.tried.is_empty() {
+        let _ = writeln!(out, "\nThe arms the second pass played, in order:\n");
+        for (set, same) in &s.tried {
+            let _ = writeln!(out, "- {} off: {}", plural(set.len(), "rule", "rules"), if *same { "the same island" } else { "not the same island" });
+            let _ = writeln!(out, "  ({})", set.join(", "));
+        }
+    }
+    out
+}
+
 fn fmt_growth(k: usize, v: Option<f64>) -> String {
     match v {
         None => "-".to_string(),
@@ -741,6 +815,8 @@ pub struct Table {
     pub control: Reading,
     pub readings: Vec<Reading>,
     pub second: Option<Second>,
+    /// The arms the second pass played, read against the control.
+    pub second_readings: Vec<Reading>,
     pub left_out: Vec<LeftOut>,
     pub found: usize,
     pub seeds: Vec<u64>,
@@ -752,6 +828,32 @@ pub struct Table {
     pub seconds_first: f64,
     pub seconds_second: f64,
     pub command: String,
+    /// The command as the page shows it, with no path of this machine.
+    pub shown: String,
+}
+
+/// The command line as the page shows it: `--out`'s directory as DIR and an
+/// absolute `--page` as FILE, so that no path of the machine it ran on is kept.
+pub fn shown(args: &[String]) -> String {
+    let mut out = vec!["isostate-core ablate".to_string()];
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        out.push(a.clone());
+        match a.as_str() {
+            "--out" => {
+                it.next();
+                out.push("DIR".to_string());
+            }
+            "--page" => {
+                if let Some(p) = it.next() {
+                    let absolute = Path::new(p).is_absolute() || p.starts_with('/') || p.contains(':');
+                    out.push(if absolute { "FILE".to_string() } else { p.replace('\\', "/") });
+                }
+            }
+            _ => {}
+        }
+    }
+    out.join(" ")
 }
 
 fn standing_cell(r: &Reading) -> String {
@@ -955,7 +1057,7 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
         code.map_or("an unknown commit".to_string(), |c| format!("`{c}`"))
     );
     let _ = writeln!(p, "```text\nisostate-core ablate --out DIR --page docs/core.md\n```\n");
-    let _ = writeln!(p, "This one was made by `{}`.\n", t.command.replace('\\', "/"));
+    let _ = writeln!(p, "This one was made by `{}`.\n", t.shown);
     let _ = writeln!(
         p,
         "Every rule the game switches on is turned off from {}, one at a time, and the island is played again: islands {} under the game's rules with {} families, {} to {}. Each such arm is set against the control, the islands as they are, island by island. {} runs were played, {} failed.\n",
@@ -967,8 +1069,19 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
         t.runs,
         t.failed
     );
-    let counts: Vec<String> = Role::ALL.iter().map(|&r| format!("{} {}", by(r).len(), r.as_str())).collect();
+    let counts: Vec<String> = Role::ALL.iter().map(|&r| format!("{} {}", by(r).len(), r.plural())).collect();
     let _ = writeln!(p, "Of the {} rules asked, {}.\n", t.readings.len(), counts.join(", "));
+    let n = t.seeds.len();
+    if n >= STAR_RUNS {
+        // two sets of n islands drawn from one spread lie wholly apart with chance 2 / C(2n, n)
+        let ways = (0..n).fold(1.0f64, |c, k| c * (2 * n - k) as f64 / (k + 1) as f64);
+        let _ = writeln!(
+            p,
+            "With {n} islands a side, a fact the rule does not move at all, only stirs, stands apart by chance once in {} facts: among the four hundred or so facts a rule stirs, {:.2} would stand apart by chance alone.\n",
+            sweep::fmt_fact(Kind::Count, (ways / 2.0).round()),
+            400.0 * 2.0 / ways
+        );
+    }
     let _ = writeln!(p, "![Facts that stand apart with each rule off](core.svg)\n");
 
     let _ = writeln!(p, "## Every rule, by kind\n");
@@ -1007,7 +1120,7 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
         let list: Vec<String> = held_up(x).iter().map(|(f, v)| format!("`{f}` ({})", v.as_str())).collect();
         let _ = writeln!(p, "- **`{}`**: {}.", x.label, list.join(", "));
         if !x.facts.apart.is_empty() {
-            let _ = writeln!(p, "  Largest apart: {}.", x.facts.apart.iter().take(LARGEST).map(fmt_apart).collect::<Vec<_>>().join("; "));
+            let _ = writeln!(p, "  Largest apart: {}.", md_largest(x));
         }
     }
     p.push('\n');
@@ -1018,7 +1131,7 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
         let _ = writeln!(p, "None.\n");
     }
     for x in shapes {
-        let _ = writeln!(p, "- **`{}`**, {} apart: {}.", x.label, x.facts.apart.len(), x.facts.apart.iter().take(LARGEST).map(fmt_apart).collect::<Vec<_>>().join("; "));
+        let _ = writeln!(p, "- **`{}`**, {} apart: {}.", x.label, x.facts.apart.len(), md_largest(x));
     }
     p.push('\n');
 
@@ -1028,13 +1141,19 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
         let _ = writeln!(p, "No rule is idle.\n");
     }
     for x in &idle {
-        let watches = if x.facts.gone.is_empty() { String::new() } else { format!("; it keeps {} that the island does not keep without it, so it watches", plural(x.facts.gone.len(), "fact", "facts")) };
-        let _ = writeln!(p, "- **`{}`**: {} of the {} facts both keep differ, none apart{watches}.", x.label, x.facts.differ, x.facts.both);
+        let how = if x.facts.differ == 0 && !x.facts.gone.is_empty() {
+            format!("no fact both keep differs on any island, and it keeps {} the island does not keep without it: it watches", plural(x.facts.gone.len(), "fact", "facts"))
+        } else if x.facts.differ == 0 {
+            "no fact differs on any island".to_string()
+        } else {
+            format!("it stirs the island ({} of the {} facts both keep differ) and moves no fact clear of the spread", x.facts.differ, x.facts.both)
+        };
+        let _ = writeln!(p, "- **`{}`**: {how}.", x.label);
     }
     if !idle.is_empty() {
         p.push('\n');
     }
-    let _ = writeln!(p, "{}", second_text(t.second.as_ref()).lines().map(|l| if l.starts_with("  ") { format!("    {}", l.trim_start()) } else { l.to_string() }).collect::<Vec<_>>().join("\n"));
+    p.push_str(&second_md(t));
     p.push('\n');
 
     let leaned = by(Role::LeanedOn);
@@ -1188,10 +1307,10 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
 
     // the second pass: the idle rules off together, and halved if they are not the same island
     let t1 = Instant::now();
+    let mut more: Vec<Reading> = Vec::new();
     let second = if o.second {
         let idle: Vec<String> = readings.iter().filter(|r| same_island(r)).map(|r| r.label.clone()).collect();
         let mut next_dir = arms.len();
-        let mut more: Vec<Value> = Vec::new();
         let mut errors: Vec<String> = Vec::new();
         let mut test = |sets: &[Vec<String>]| -> Vec<bool> {
             let batch: Vec<Arm> = sets.iter().map(|s| Arm { label: s.join(" + "), off: s.clone(), params: off(&plan.base, s) }).collect();
@@ -1207,8 +1326,9 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
                 .zip(&sw)
                 .map(|(a, s)| {
                     let r = read(&sweeps[0], a, s);
-                    more.push(reading_json(&r));
-                    same_island(&r)
+                    let same = same_island(&r);
+                    more.push(r);
+                    same
                 })
                 .collect()
         };
@@ -1216,7 +1336,7 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         if let Some(e) = errors.first() {
             return Err(e.clone());
         }
-        put(&o.out, "second.json", &(serde_json::to_string_pretty(&Value::Array(more)).map_err(|e| e.to_string())? + "\n"))?;
+        put(&o.out, "second.json", &(serde_json::to_string_pretty(&Value::Array(more.iter().map(reading_json).collect())).map_err(|e| e.to_string())? + "\n"))?;
         Some(s)
     } else {
         None
@@ -1227,6 +1347,7 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         control,
         readings,
         second,
+        second_readings: more,
         left_out: plan.left_out.clone(),
         found: plan.found.len(),
         seeds: o.seeds.clone(),
@@ -1238,6 +1359,7 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         seconds_first,
         seconds_second,
         command: o.command.clone(),
+        shown: shown(args),
     };
     let txt = text(&table);
     let md = page(&table, &date, code.as_deref());

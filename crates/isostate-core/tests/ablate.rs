@@ -76,6 +76,9 @@ fn an_arm_is_the_sweep_with_the_same_set() {
     let md = std::fs::read_to_string(&page).unwrap();
     assert_eq!(md, std::fs::read_to_string(ad.join("core.md")).unwrap());
     assert!(md.starts_with("# The core of the island\n\nWritten by `isostate-core ablate` on "), "{md}");
+    // the page keeps no path of the machine it was made on
+    assert!(md.contains("This one was made by `isostate-core ablate --seeds 1,2 --families 6 --end-year 1800 --quiet --out DIR --only works.keep_order --page FILE`."), "{md}");
+    assert!(!md.contains(ad.to_str().unwrap()) && !md.contains(&ad.to_str().unwrap().replace('\\', "/")));
     for part in ["## Every rule, by kind", "## The idle rules, and the second pass", "## What was left out, and why", "`tree.stage`", "`land.enabled`"] {
         assert!(md.contains(part), "the page has no {part}");
     }
