@@ -668,6 +668,8 @@ fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String)
         Edit::Discover { tech, town: t } => format!("By hand: {tech} found in {}", town(*t)),
         Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
+        Edit::BuildWorks { method, cell } => format!("By hand: a works ({method}) built on square {cell}"),
+        Edit::CloseWorks { works } => format!("By hand: works {works} closed"),
     }
 }
 
@@ -683,7 +685,27 @@ fn waits_words(game: &Game, order: &Order) -> String {
         Order::Post { .. } => format!("Told. It takes effect at the end of {year}."),
         Order::Stance { .. } => format!("Told. The branch goes by it from the end of {year}."),
         Order::MoveSeat { .. } => format!("Told. The seat moves at the end of {year}."),
-        // (never: an edit is carried out at once)
+        // an edit that waits (a works built or closed); one carried out at once never waits.
+        // (not "By hand", which the Hand tab takes for an edit carried out)
+        Order::ByHand { edit } if edit.at_turn() => {
+            let s = &game.sim;
+            let what = match edit {
+                isostate_core::edits::Edit::BuildWorks { method, cell } => {
+                    let label = s.content.method_name.iter().position(|n| n == method).map_or(method.clone(), |m| s.content.method_label[m].to_lowercase());
+                    let at = s.st.catch.get(*cell).and_then(|&t| (t >= 0).then(|| s.st.town_name[t as usize].clone()));
+                    match at {
+                        Some(town) => format!("a works ({label}) built by {town}"),
+                        None => format!("a works ({label}) built on square {cell}"),
+                    }
+                }
+                isostate_core::edits::Edit::CloseWorks { works } => {
+                    let name = s.st.f_name.get(*works).cloned().unwrap_or_else(|| format!("works {works}"));
+                    format!("{name} closed")
+                }
+                other => edit_words(other, &|t| s.st.town_name.get(t).cloned().unwrap_or_default()),
+            };
+            format!("Ordered by hand: {what}, at the year's turn, in January {}.", year + 1)
+        }
         Order::ByHand { .. } => "Done by hand.".to_string(),
     }
 }
