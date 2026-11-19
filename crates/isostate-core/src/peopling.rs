@@ -181,6 +181,9 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
     st.pp_income_term = vec![0.0; T];
     // who sailed this year: from each town, and through each port
     let (mut left, mut sailed) = (vec![0.0; T], vec![0.0; T]);
+    // transition (docs/rules/transition.md): each town's share of its income term kept
+    // and how far its drains have come, None while the rule is off
+    let fs = crate::transition::year(st, P, y, year);
     for t in 0..T {
         if !st.town_active[t] {
             continue;
@@ -189,7 +192,12 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         let depth = dearth_depth(pp, st.food_min_acc[t]);
         // whatever the numbers are set to, no town loses more than half its people in a
         // year (a town with nobody in it is not something the markets can price)
-        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR);
+        let mut rate = if let Some(fs) = &fs {
+            let (f, s) = fs[t];
+            (inc * f - crowding_term(pp, st.urban_pop[t], st.pop[t]) * (1.0 - s) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR)
+        } else {
+            (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR)
+        };
         if depth > 0.0 && pp.emigration > 0.0 {
             let port = ports.iter().copied().filter(|&j| st.town_cost[(t, j)].is_finite()).min_by(|&a, &b| st.town_cost[(t, a)].total_cmp(&st.town_cost[(t, b)]));
             if let Some(j) = port {
@@ -506,6 +514,8 @@ pub fn open_town(st: &mut State, C: &Content, P: &Params, cell: usize, donor: us
     }
     st.tools_mult[n] = st.tools_mult[donor];
     st.imp_pc[n] = st.imp_pc[donor];
+    // transition (docs/rules/transition.md): and its donor's measure of how well townsfolk live
+    crate::transition::open_town(st, P, n, donor);
     n
 }
 
@@ -705,6 +715,9 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                 }
             }
         }
+        // transition (docs/rules/transition.md): the newcomers bring their towns' measure
+        // of how well townsfolk live, as they bring their cash
+        crate::transition::move_with_cells(st, P, &pop, &share);
         // the town's wage starts the year as the average of what its old hands and its
         // new were paid (a new town has no old hands: it starts at the newcomers' wage)
         for j in 0..T {

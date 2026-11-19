@@ -36,7 +36,14 @@
 # islands, may now fall below 1750's floor, and that gives the island another
 # history. With the switch off the four above held. Taken again on
 # night/g-to2050-2-standing with main (the production tree) merged in.
-economy  0x866ef92616c866dd
-books    0xaabf9b3dff62c184
-news     0x0907b3d068199cdb
-run.bin  0x54f76330c610503e
+# Then on night/g-to2050-2-standing (19 November 2026): all four moved by
+# step one of the demographic transition (transition.enabled,
+# docs/rules/transition.md): births follow how well each town's townsfolk
+# live, and crowding falls as drains come with income, so the island has
+# other people and so another history. With the switch off in game_params()
+# the four of the merged tree held. (Its z_half is 4.5, raised from 4 so that
+# the towns' share of 1900 stays within the spread of seeds.)
+economy  0x31f9be4ca4c2eee9
+books    0xd60961a050d1589c
+news     0xcc48fe3dfff18c36
+run.bin  0x7206c1699de827fb

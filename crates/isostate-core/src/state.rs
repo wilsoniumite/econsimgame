@@ -540,4 +540,8 @@ pub struct State {
     /// What edits by hand have made and unmade: the money in it is added to
     /// the right side of the monthly money check (`sim::run_month`).
     pub by_hand: crate::edits::Ledger,
+
+    // ---------------- transition (docs/rules/transition.md; empty while `transition.enabled` is off)
+    /// Each town's slow measure of how well its townsfolk live, which its births follow.
+    pub transition: crate::transition::TransitionState,
 }

@@ -3,7 +3,7 @@
 //! ```text
 //! isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
 //!                     [--set key=v1[,v2...]]... [--params FILE] [--content FILE] [--jobs N]
-//!                     [--compare OTHER_DIR] [--quiet]
+//!                     [--compare OTHER_DIR] [--standing] [--quiet]
 //! ```
 //!
 //! One island proves little: a claim about the model should hold in most seeds.
@@ -26,7 +26,10 @@
 //! names to keep up to date here. `--compare OTHER_DIR` sets the new means beside
 //! those of an earlier sweep, seed for seed where the two have seeds in common,
 //! counts the seeds in which each fact rose and fell, and marks the facts whose
-//! seed ranges do not overlap.
+//! seed ranges do not overlap. `--standing` adds the standing check
+//! (`standing.rs`): twelve facts of the played century, each later setting (or,
+//! with one setting, this sweep against `--compare`'s) set against the first's
+//! spread across seeds, printed last and written to `standing.txt`.
 //!
 //! Whatever is wrong with the command line is refused before the first run and
 //! before anything is written. A sweep already in `DIR` is replaced; `--compare`
@@ -55,7 +58,7 @@ use crate::util::{fmt_g6, fmt_thousands_f0};
 
 pub const USAGE: &str = "usage: isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
                            [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json] [--content content.toml]
-                           [--jobs N] [--compare OTHER_DIR] [--quiet]";
+                           [--jobs N] [--compare OTHER_DIR] [--standing] [--quiet]";
 
 /// What the command line asked for.
 #[derive(Clone, Debug)]
@@ -71,6 +74,8 @@ pub struct Options {
     pub content_file: Option<PathBuf>,
     pub jobs: Option<usize>,
     pub compare: Option<PathBuf>,
+    /// The standing check (`standing.rs`) after the runs.
+    pub standing: bool,
     pub quiet: bool,
     /// The command line, for README.txt.
     pub command: String,
@@ -195,6 +200,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         content_file: None,
         jobs: None,
         compare: None,
+        standing: false,
         quiet: false,
         command: format!("isostate-core sweep {}", args.join(" ")),
     };
@@ -234,6 +240,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
                 o.jobs = Some(n.max(1));
             }
             "--compare" => o.compare = Some(PathBuf::from(value("--compare")?)),
+            "--standing" => o.standing = true,
             "--quiet" => o.quiet = true,
             other => return Err(format!("unknown option {other:?}\n{USAGE}")),
         }
@@ -704,6 +711,8 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
          summary.txt  the table the sweep printed: each fact's mean and [least .. greatest] across seeds\n\
          scorecard.txt  the aims the documents state, each against its fact's mean, with a tolerance from\n\
          \x20            the spread across seeds and a loss (isostate-core scorecard DIR prints it again)\n\
+         standing.txt  with --standing: the standing check, twelve facts of the played century against\n\
+         \x20            the first setting's spread across seeds (docs/rules/README.md)\n\
          \nSpeed: seconds is each run's time on the clock, with the others of the sweep running beside it and\n\
          whatever else the machine was doing, so it says as much about the machine that day as about the\n\
          code. cpu_seconds is the time the processor spent on the run's own thread, which other work\n\
@@ -746,7 +755,7 @@ pub struct Stat {
 /// One fact's values across the runs of a setting, each with its run's seed.
 type Seeded = Vec<(u64, f64)>;
 
-fn stat(values: &[(u64, f64)]) -> Option<Stat> {
+pub(crate) fn stat(values: &[(u64, f64)]) -> Option<Stat> {
     if values.is_empty() {
         return None;
     }
@@ -834,7 +843,7 @@ fn ok_runs(sw: &Sweep, k: usize) -> usize {
 
 /// Which side of its column a cell is set against.
 #[derive(Clone, Copy, PartialEq)]
-enum Side {
+pub(crate) enum Side {
     Left,
     Right,
 }
@@ -842,7 +851,7 @@ enum Side {
 /// Rows under their headings, the columns padded to line up. The first column is
 /// the fact's name, indented under its heading; `sides` says how each of the
 /// others is set.
-fn layout(head: &[String], sides: &[Side], rows: &[(Option<&'static str>, Vec<String>)]) -> String {
+pub(crate) fn layout(head: &[String], sides: &[Side], rows: &[(Option<&'static str>, Vec<String>)]) -> String {
     let cols = head.len();
     let mut width: Vec<usize> = head.iter().map(|h| h.chars().count()).collect();
     for (_, cells) in rows.iter().filter(|(h, _)| h.is_none()) {
@@ -1119,6 +1128,9 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         None => None,
     };
     let plan = plan(&o)?;
+    if o.standing && plan.settings.len() < 2 && o.compare.is_none() {
+        return Err(format!("--standing needs something to set the sweep against: two settings (--set key=a,b) or --compare OTHER_DIR\n{USAGE}"));
+    }
     std::fs::create_dir_all(&o.out).map_err(|e| format!("--out {}: {e}", o.out.display()))?;
     let sw = run(&o, plan);
     let mut text = table(&sw);
@@ -1126,9 +1138,17 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         text.push_str(&compare(&sw, then, dir));
     }
     write_outputs(&sw, &o, &text)?;
+    // the standing check (standing.rs): printed last, and written beside summary.txt
+    let standing = if o.standing { crate::standing::for_sweep(&sw, then.as_deref().zip(o.compare.as_deref())) } else { None };
+    if let Some(s) = &standing {
+        std::fs::write(o.out.join("standing.txt"), s).map_err(|e| format!("{}: {e}", o.out.join("standing.txt").display()))?;
+    }
     if print {
         // not print!, which panics when the reader has gone (sweep ... | head)
         let _ = std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes());
+        if let Some(s) = &standing {
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("\n{s}").as_bytes());
+        }
     }
     let failed = sw.runs.iter().filter(|r| r.outcome.is_err()).count();
     if failed > 0 {
