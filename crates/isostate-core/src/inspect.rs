@@ -424,10 +424,11 @@ fn cell(sim: &Sim, c: usize) -> Result<(String, Vec<Group>), String> {
     if let Some(&paid) = st.cell_rent_year.get(c) {
         g.row(format!("rent it paid in {}", sim.year - 1), amount(paid));
     }
-    if P.harvest.enabled && st.harvest_mult.cols == N {
+    // the weather on the sectors that feel it and work some of the square
+    if P.harvest.enabled && st.harvest_mult.cols == N && st.lam.cols == N && !st.urban[c] {
         for (s, label) in C.sector_label.iter().enumerate() {
             let k = st.harvest_mult[(s, c)];
-            if k != 1.0 {
+            if k != 1.0 && st.lam[(s, c)] >= 0.005 {
                 g.row(format!("this year on its {}", lower(label)), format!("{} of an average year", pct(k)));
             }
         }
