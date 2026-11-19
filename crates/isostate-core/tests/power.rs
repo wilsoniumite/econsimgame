@@ -110,6 +110,9 @@ fn at_stage_one_the_island_is_the_island_as_it_was() {
     // series of the woods' cover and timber's price are in the fingerprint, though they
     // touch nothing, and its invention is stage 6's
     P.woods = Default::default();
+    // and on the old island, which the fingerprint was taken on: since the game's rules
+    // took the new land (docs/rules/land.md, "The switch") island 7 is another island
+    P.land = Default::default();
     let mut s = sim::start(&P, game_content());
     while s.year <= 1900 {
         sim::run_year(&mut s).unwrap();

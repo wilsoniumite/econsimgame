@@ -253,7 +253,7 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
     let made = game(&saves, &["--new", "--save", &text(&good), "--describe", "30,30"]);
     assert_eq!(made.code, Some(0), "{}", made.err);
     let whole = std::fs::read_to_string(&good).unwrap();
-    assert!(whole.contains("\"year\": 1750,") && whole.contains("\"families\": 6,") && whole.contains("\"format\": 2,"), "{whole}");
+    assert!(whole.contains("\"year\": 1750,") && whole.contains("\"families\": 6,") && whole.contains("\"format\": 3,"), "{whole}");
     let what_to_do = "; name another saved game after --load, or leave --load out to play the island's own";
     let try_file = |name: &str, contents: Option<String>| {
         let file = dir.join(name);
@@ -284,8 +284,8 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
     assert!(said.contains("not a saved game: "), "{said}");
     let said = try_file("notes.json", Some("{\"shopping\": [\"eggs\"]}".to_string()));
     assert!(said.contains("not a saved game: it does not say which layout it is in"), "{said}");
-    let said = try_file("later.json", Some(whole.replace("\"format\": 2,", "\"format\": 9,")));
-    assert!(said.contains("saved by a later version of the game (layout 9; this one reads up to 2)"), "{said}");
+    let said = try_file("later.json", Some(whole.replace("\"format\": 3,", "\"format\": 9,")));
+    assert!(said.contains("saved by a later version of the game (layout 9; this one reads up to 3)"), "{said}");
     try_file("not-there.json", None);
     let said = try_file("empty.json", Some(String::new()));
     assert!(said.contains("not a saved game: "), "{said}");
@@ -590,8 +590,10 @@ fn a_save_in_the_first_layout_still_loads() {
     let whole = std::fs::read_to_string(&file).unwrap();
     let now = Save::from_text(&whole).unwrap();
     // as the game wrote it before the clock told the month: no months played, nothing waiting, layout 1
-    assert!(whole.contains("\"format\": 2,") && whole.contains("  \"month\": 0,\n") && whole.contains(",\n  \"waiting\": []\n"), "{whole}");
-    let first = whole.replace("\"format\": 2,", "\"format\": 1,").replace("  \"month\": 0,\n", "").replace(",\n  \"waiting\": []\n", "\n");
+    // (its line for the land is kept, so that it is the same game on the new land: a file of the first
+    // layout without it is the old island's, which the core's tests/save.rs holds)
+    assert!(whole.contains("\"format\": 3,") && whole.contains("  \"month\": 0,\n") && whole.contains(",\n  \"waiting\": []\n"), "{whole}");
+    let first = whole.replace("\"format\": 3,", "\"format\": 1,").replace("  \"month\": 0,\n", "").replace(",\n  \"waiting\": []\n", "\n");
     assert!(!first.contains("month") && !first.contains("waiting"), "{first}");
     let old = dir.join("first-layout.json");
     std::fs::write(&old, &first).unwrap();
@@ -602,7 +604,7 @@ fn a_save_in_the_first_layout_still_loads() {
     assert!(ran.err.contains(&format!("playing 3 years again, with {} orders", now.orders.len())) && ran.err.contains("back at the end of 1752"), "{}", ran.err);
     assert!(!ran.err.contains("does not stand quite as it was saved") && !ran.err.contains("could not be given again") && !ran.err.contains("saved under other rules"), "{}", ran.err);
     let back = Save::from_text(&std::fs::read_to_string(&again).unwrap()).unwrap();
-    assert_eq!((back.format, back.year, back.month, &back.check, &back.orders, back.waiting.len(), back.started), (2, now.year, 0, &now.check, &now.orders, 0, now.started));
+    assert_eq!((back.format, back.year, back.month, &back.check, &back.orders, back.waiting.len(), back.started), (3, now.year, 0, &now.check, &now.orders, 0, now.started));
     // and the file in the first layout is as it was
     assert_eq!(std::fs::read_to_string(&old).unwrap(), first);
     let _ = std::fs::remove_dir_all(&dir);

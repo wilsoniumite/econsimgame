@@ -334,10 +334,11 @@ pub struct Opening {
     /// for a game begun some years in that is to be the island's own, and for
     /// checks of the saving itself, which name their own folder
     pub keep: bool,
-    /// a new game on the second island generator's land (`--new-land`), which
-    /// the game's rules do not switch on yet: a preview, kept only in a file
-    /// that is named
-    pub new_land: bool,
+    /// a new game on the port's island (`--old-land`), the one every game was
+    /// played on before the game's rules took the new land (docs/rules/land.md,
+    /// "The switch"). It is kept where any new game would be: its save says
+    /// its land, and is played on it again
+    pub old_land: bool,
     /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
     /// family in, changed by hand. It never goes on with the island's autosave
     /// nor writes it: it has a session of its own (`saves::session`), which a
@@ -374,7 +375,7 @@ impl Opening {
     /// the switches that ask for a game of a certain shape or kept in a certain
     /// place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.new_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.old_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
@@ -414,9 +415,6 @@ impl Opening {
     }
 }
 
-/// What a game on the new land says when no file was named to keep it in.
-const NEW_LAND_NOT_KEPT: &str = "this game is on the new land, which is a preview the game's rules do not switch on yet: it is not kept, and the island's own saved game is left as it is (--save FILE keeps this game in a file of its own, and --load FILE --save FILE goes on with it there)";
-
 /// How long a game started by New game waits for the one that started it to
 /// close and let go of the place the game is kept in.
 const RESTART_PATIENCE: std::time::Duration = std::time::Duration::from_secs(15);
@@ -427,18 +425,8 @@ const RESTART_PATIENCE: std::time::Duration = std::time::Duration::from_secs(15)
 /// refused: the first copy's game is the one in the file, and a second
 /// writing there would put its own in that game's place. A trial that finds
 /// another copy keeping one is played without being kept, and says so.
-///
-/// A game on the new land (`on_new_land`: started with `--new-land`, or gone
-/// on with from a save that says so) is a preview of land the game's rules do
-/// not switch on yet. It is never kept in the island's autosave or among its
-/// trials, where it would set aside or stand beside a game played on the old
-/// island under the same name: it is kept where `--save` names a file, and
-/// otherwise not at all, and says so.
-fn take_place(o: &Opening, seed: u64, families: usize, on_new_land: bool) -> Result<(Option<Saver>, Option<String>), String> {
-    if on_new_land && !matches!(o.keeping(), Keeping::Named(_) | Keeping::Nowhere) {
-        eprintln!("{}", NEW_LAND_NOT_KEPT);
-        return Ok((None, None));
-    }
+/// (Which land the game is on does not matter here: a save says its land.)
+fn take_place(o: &Opening, seed: u64, families: usize) -> Result<(Option<Saver>, Option<String>), String> {
     let claim = |path: std::path::PathBuf| if o.restarted { Saver::claim_within(path, RESTART_PATIENCE) } else { Saver::claim(path) };
     let second = |path: &std::path::Path| {
         format!(
@@ -535,13 +523,18 @@ pub fn trade_goods(c: &iso::content::Content) -> Vec<Vec<usize>> {
 /// `families`, played under the game's rules with `tree.stage` set as given,
 /// its first year and `advance` more, as `start` fills the board of a new game
 /// (as `ISOSTATE_NO_BOOKS` does, the game's own simulation is started again on
-/// the changed rules). Docs/rules/tree.md, "After 1900: electricity".
+/// the changed rules). Docs/rules/tree.md, "After 1900: electricity". With
+/// `old_land` it is played on the old island, which the game's rules left on 19
+/// November 2026 (docs/rules/land.md, "The switch").
 #[cfg(test)]
-pub(crate) fn played_at_stage(seed: u64, families: usize, advance: usize, stage: u32) -> Result<Replay, String> {
+pub(crate) fn played_at_stage(seed: u64, families: usize, advance: usize, stage: u32, old_land: bool) -> Result<Replay, String> {
     let rules = iso::params::Rules::Game;
     let mut game = Game::under_to(rules, seed, families, 0, iso::save::content_last_year(rules))?;
     let mut P = game.sim.params.clone();
     P.tree.stage = stage;
+    if old_land {
+        P.land = Default::default();
+    }
     game.sim = iso::sim::start(&P, game.rules.content());
     let mut board = Board::new(&game.sim);
     for _ in 0..advance + 1 {
@@ -820,8 +813,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     // the place the game is kept in is taken before a year is played, and before
     // the island's own save is read: a second copy does not get as far as either
     let (seed, families) = named.as_ref().map_or((o.seed, o.families), |(save, _)| (save.seed, save.families));
-    let on_new_land = o.new_land || named.as_ref().is_some_and(|(save, _)| save.land);
-    let (mut saver, cannot_save) = take_place(o, seed, families, on_new_land)?;
+    let (mut saver, cannot_save) = take_place(o, seed, families)?;
     let mut passed_over = 0;
     let from = match named {
         Some(found) => Some(found),
@@ -847,9 +839,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             // (a sandbox's session has a family 0 that nobody plays: it is not named)
             let whose = if o.sandbox { "the session".to_string() } else { format!("the {} family's game", save.family) };
             eprintln!("going on with {whose} on island {} ({}), saved {} in {}: {}", save.seed, crate::families_words(save.families), save.saved, save.year, file.display());
-            if save.land {
-                eprintln!("  it was begun on the new land, and is played again there");
-            }
+            // (a save from before the game's rules took the new land has no line, and is the old island's)
+            eprintln!("  it is on {}, and is played again there", if save.land { "the new land" } else { "the old island" });
             // (its last year is its own, whatever --to says: it was chosen when the game was begun)
             eprintln!("  it is played to {}", save.last_year_of_game());
             if !save.same_rules() {
@@ -891,10 +882,10 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         None => {
             let rules = iso::params::Rules::Game;
             let to = o.to.unwrap_or_else(|| iso::save::content_last_year(rules));
-            eprintln!("making island {} with {}{}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.new_land { ", on the new land" } else { "" });
-            // the new land is switched off under the game's rules until the viewer can draw
-            // all of it (docs/rules/land.md): `--new-land` starts a game on it all the same
-            let mut game = if o.new_land { Game::on_new_land_to(rules, o.seed, o.families, saves::now(), to)? } else { Game::under_to(rules, o.seed, o.families, saves::now(), to)? };
+            eprintln!("making island {} with {}{}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.old_land { ", on the old island" } else { "" });
+            // the game's rules take the new land (docs/rules/land.md, "The switch"); `--old-land`
+            // starts a game on the port's island all the same
+            let mut game = if o.old_land { Game::on_old_land_to(rules, o.seed, o.families, saves::now(), to)? } else { Game::under_to(rules, o.seed, o.families, saves::now(), to)? };
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
             // month for month, and a save of it is one the game with books goes on with.

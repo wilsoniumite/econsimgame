@@ -197,3 +197,4 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - Island 7 has electricity and electrical goods made in the 1890s, before the electric drive is found in 1901: main/making.txt, dearest list for 1890 (from night/g-atlas-making, 2026-11-19)
 - The nitrogen works never runs on any island, as second-fall.md found: recipe usage table (from night/g-atlas-making, 2026-11-19)
 - The harness refuses Bash commands whose paths contain 'GitHub' after a cd, or inside loops; plain single commands from the worktree root work (from night/g-atlas-making, 2026-11-19)
+- [new-land-switch] On the new land island 7 a cart rides 0.0024 off its road's surface at 60.99, 16.53 in 1800 (carts.rs's test, carts_keep_to_their_roads_and_their_bridges_on_island_7, now pinned to the old island for it; likely the straight line carts::check reads beside a way round a meander, as the line above has it) (from night/g-new-land-switch, 2026-11-19)

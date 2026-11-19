@@ -465,7 +465,8 @@ mod tests {
         assert_eq!(figure(&serde_json::json!([1500.0, 9000.0])), "1500, 9000");
         assert!(same(&serde_json::json!(1), &serde_json::json!(1.0)));
         let land = book.iter().find(|e| e.name == "land.enabled").unwrap();
-        assert_eq!(switch_state(land), "off: fixed when the island is made");
+        // (on under the game's rules since 19 November 2026: docs/rules/land.md, "The switch")
+        assert_eq!(switch_state(land), "on: fixed when the island is made");
         let ration = book.iter().find(|e| e.name == "hands.ration").unwrap();
         assert_eq!(switch_state(ration), "on");
     }
