@@ -754,3 +754,8 @@ One line each as they arrive: the name, its page, its switch.
   costs fewer lives as drains come with income. It slows the people on an
   island that stops growing richer, and does not level them off.
   [transition.md](transition.md), `transition.enabled`.
+- **owners**: whoever put money into a works no family owns holds a share of
+  it and is paid by it, so the landlords, who put up part of every works the
+  town's pool pays for, are paid their part of its dividends and of its cash
+  when it closes, where under the port every penny went to the households.
+  [owners.md](owners.md), `owners.enabled`.
