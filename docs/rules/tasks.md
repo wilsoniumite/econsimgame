@@ -391,6 +391,20 @@ A town with no electricity now holds its drives and runs them on nothing,
 its hands doing their part; their plant wears out and is not replaced, the
 town's target giving the drive nothing.
 
+**On the land, the same rule** (since 19 November 2026; before, the land
+had the trace's form, its crop cut by the machines' part and no hands for
+it). Each town's sector keeps last month's fill of its machines' run goods
+(`land_run_fill`); its units hire, for an hour of work, the mixture's hands
+and the machines' part that fill left idle, `hands + machine_work * (1 -
+last fill)`; and the work done is all that was hired where this month's
+fill is no worse, and `hired / (hired + machine_work * (last fill - fill))`
+of it where it is worse, the crop being that share to the power `1 - alpha`
+(`Mix::done`). So a town with no station holds its cutters, and its hands
+dig the coal they would have cut. On islands 1 to 16 to 2050 it moved
+nothing beyond the islands' spread (on islands 1 to 8, 1900 to 1970, 0.58
+per cent a year with it against 0.61 without; 2050 over 1970, 1.12 against
+1.10): it was done so that the works and the land run on one rule.
+
 **Before 1901 nothing here acts**: no works holds a machine, so every works
 is made as the port makes it, to the byte (the played century did move on
 the same branch, by the merchants' crumb: prices.md, "A crumb is no glut").
@@ -728,6 +742,50 @@ stops improving by the 1970s (the tractor's quality reaches its cap of 6 in
 the 1970s, the cutter's about 1990, nitrogen and breeding are fixed), people
 go on growing, and the farm's tending waits for the combine.
 
+## The combine
+
+The combine and the milking machine: the land's first machine for tending,
+on the farms and the pastures (reaping, threshing, milking, driving the
+field's machines), from the content after 1900, as the design's table of
+machines has it.
+
+| | the combine |
+|---|---|
+| class | tend, from 0 to 0.6: judging when to reap, and the beasts' care, stay with hands |
+| on | farms, pastures |
+| plant | 20.2 machinery and 14.8 steel (six tenths and four tenths by value, as the tractor; motor vehicles are a later stage's good); life 12 years |
+| run | 0.123 oil a month |
+| minders | 0.025 of a hand (a tenth of its cost when found) |
+| quality | 4 per cent a year to a cap of 6 |
+| found | from 1935, at 100,000 units of oil made (islands 1 to 16 had made that between 1932 and 1951) |
+| scale | 0.96 |
+
+Sized as the tractor was, to the design's first share: when found a unit
+costs a quarter of a month's wage, six tenths of it return and wear on 8.85
+months' wages of plant, a tenth its minders and the rest oil, read from
+island 7's means of 1940 (wage 10.55, machinery 2.77, steel 2.53, oil 6.42).
+At that cost a hand is worth four units, so it takes `ln(4) / ln(1000)` =
+0.20 of tending. At a `scale` of 1 the towns' share in the year found was
+0.194 on islands 1 to 16 (0.162 to 0.214), so the unit was made 0.96 times
+as dear.
+
+On islands 1 to 16 to 2050 it is found in 1938 on the mean island (1935 to
+1952) and does 0.18 of the farms' tending in 1950, 0.33 in 1970 and 0.45 in
+2000. Against the same code without it (islands 1 to 8, means; grain a farm
+hand is the farms' output over their hands, 1900 = 1):
+
+| | without | with the combine |
+|---|---|---|
+| chained wage 1970, 2050 | 8.83, 9.66 | 9.08, 9.98 |
+| growth 1900 to 1970 | 0.57 per cent a year | 0.61 |
+| hands on the land 1970, 2050 | 0.219, 0.223 | 0.202, 0.199 |
+| grain a farm hand 1950, 1970, 1980 | 1.29, 1.54, 1.73 | 1.39, 1.75, 2.03 |
+
+It takes hands off the land, as the tractor does, and adds a twentieth to
+the growth to 1970: the century's gain does not come from the tasks the
+land's machines take but from what the ground yields, which is the land
+machines' ceiling ([machines.md](machines.md), "The ceiling's ramp").
+
 ## What a sweep showed, with the hoist in the works
 
 What the hoist did in the works, before the drive; with the tree laid to
@@ -849,7 +907,8 @@ machine names its sector:
   count them among the land's inputs as they count the port's farm machinery.
   The return on the plant is never paid to anyone: it stays in the rent, so
   whoever holds the land holds its machines. Where the run goods are short
-  the machines stand for that part of their work and the crop is the smaller.
+  the machines stand for that part of their work and the hands do it, as in
+  the works ("A machine short of its run good", above).
 - **The rent's split.** The gauges split the farms' and pits' rent in two:
   the return on the land's machines, `hurdle` a year on their plant's worth,
   and the ground's part, the rest (`rent_machines` and `rent_ground` in the

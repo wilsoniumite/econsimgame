@@ -2197,8 +2197,9 @@ mod tests {
         let goods = crate::live::trade_goods(&c);
         let names = |g: Group| goods[g.index()].iter().map(|&i| c.good_name[i].as_str()).collect::<Vec<_>>();
         // the trades whose names no longer say all they make: gas and soap are with coal, beer with the estates
-        // (and, at the content after 1900, the stations' electricity and the oil made from coal: docs/rules/tree.md)
-        assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals", "electricity", "oil"]);
+        // (and, at the content after 1900, the stations' electricity, the oil made from coal and the nitrogen
+        // works' fertiliser: docs/rules/tree.md)
+        assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals", "electricity", "oil", "fertiliser"]);
         assert!(names(Group::Estates).contains(&"beer"), "{:?}", names(Group::Estates));
         assert_eq!(names(Group::Iron), ["iron", "steel", "rails"]);
         // every good is some one trade's, but what the shops sell, which no family trade makes

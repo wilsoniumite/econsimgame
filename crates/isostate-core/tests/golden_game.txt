@@ -15,16 +15,16 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: 1750-1900 and 1901-2050, all four in each: the merchants' crumb (a
-# stock under a hundredth of a works' month at capacity is no glut) acts in
-# the played century too, and from 1901 a works short of power idles its
-# machines and not itself, with the idling rule taken out
-# (docs/rules/tasks.md, A machine short of its run good)
-1750-1900 economy  0x32542d13a9d59398
+# Taken: the land's century: 1750-1900 economy and run.bin by the new good
+# fertiliser's columns alone (no fact of the played century moved on islands 1
+# to 16); 1901-2050 all four by the combine, the land's machines idling as the
+# works' do, the nitrogen works making fertiliser, breeding's threshold and
+# the ceiling's ramp
+1750-1900 economy  0xefc17706705963b2
 1750-1900 books    0x0d23676ac137c9ec
 1750-1900 news     0x16b5e31f3dcc95e3
-1750-1900 run.bin  0xfed3274ae91d1865
-1901-2050 economy  0x621d1e98662f7fec
-1901-2050 books    0xe914e863361a9419
-1901-2050 news     0x2b9e51573e612454
-1901-2050 run.bin  0x09d4883f3c57909d
+1750-1900 run.bin  0x0bd46c20e8412df7
+1901-2050 economy  0xd4c1844dca7052f0
+1901-2050 books    0x89aeae64a0306841
+1901-2050 news     0x9afeb91e2ab7d367
+1901-2050 run.bin  0x50155a88bb2b6a75

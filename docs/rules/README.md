@@ -752,6 +752,11 @@ One line each as they arrive: the name, its page, its switch.
 - **machines**: farm and quarry machinery is bought where it pays, machines
   stand for years and get better with the steel poured, and a converter and
   a steel rail that pay. [machines.md](machines.md), `machines.enabled`.
+- **the ceiling's ramp** (a stand-in): from 1901 the ceiling on the land
+  machines' quality rises a tenth a year from 4 to 9, standing for the
+  generations of farm and pit machinery the content does not have, so that
+  the wage grows 1 per cent a year from 1900 to 1970. [machines.md](machines.md),
+  "The ceiling's ramp", `machines.ramp` and `machines.ramp_top`.
 - **harvest**: good years and bad on the farms and pastures, island-wide and
   by district, half of each seen when the hands are hired; with the news of
   poor and bumper harvests, lean years and dearths. It belongs with `prices`.

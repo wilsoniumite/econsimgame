@@ -601,12 +601,18 @@ Two improvements of the ground join this table with the content after 1900
 table has its old rows only, to the byte). Each is bought by the rule of
 point 1, where it pays, by the share of farms (or pastures) that know of it,
 and each stands for years as a machine does (point 2). They are bought with
-soap and chemicals, which now stands for fertiliser and sprays too:
+the nitrogen works' fertiliser (nitrogen) and with soap and chemicals, which
+stands for sprays too (breeding):
 
-| | where | known as | adds | chemicals a unit of output |
+| | where | known as | adds | bought a unit of output |
 |---|---|---|---|---|
-| nitrogen | farms | the nitrogen works is known in the town (found on chemicals made, aimed at 1915) | up to 0.6: yield up to 1.6 times | 0.03 |
-| breeding and sprays | farms; pastures | the invention `breeding` is known in the town (found on chemicals made, aimed at 1950) | up to 0.5 on the farm, 0.4 on the pasture | 0.02 |
+| nitrogen | farms | the nitrogen works is known in the town (found on chemicals made, aimed at 1915) | up to 0.6: yield up to 1.6 times | 0.03 fertiliser |
+| breeding and sprays | farms; pastures | the invention `breeding` is known in the town (found on chemicals made, aimed at 1950) | up to 0.5 on the farm, 0.4 on the pasture | 0.02 chemicals |
+
+Until 19 November 2026 nitrogen too was bought as soap and chemicals, and
+the nitrogen works that was to make them was never built; it now makes
+fertiliser, a good of its own ([tree.md](tree.md), "Oil, nitrogen and the
+land"). The table below is from before that.
 
 **They multiply; the machines add.** The machines of this table add their
 boosts to one another: a farm with every machine it knows makes `1 + sum of
@@ -640,11 +646,104 @@ breeding in 1945 (1928 to 1974). Neither is taken by all who know it: at the
 island's prices of the 1930s (grain about 0.27, chemicals about 0.85, on
 island 7) a farm gains `0.27 * 0.6 / 1.6` = 0.10 a unit of grain for 0.026 of
 chemicals, four times its cost, which the rule of point 1 (all farms only at
-seven times) turns into half of the farms that know of it. The nitrogen works itself is never built (on eight islands of eight): at
-1.2 of electricity and 1.5 of coal a unit it cannot make chemicals at the
-price the soda works sell them for. The farms buy their chemicals from
-whoever makes them; it is the nitrogen works' know-how that a town needs.
+seven times) turns into half of the farms that know of it. The nitrogen works itself was never built (on eight islands of eight): at
+1.2 of electricity and 1.5 of coal a unit it could not make chemicals at the
+price the soda works sell them for. The farms bought their chemicals from
+whoever made them; it was the nitrogen works' know-how that a town needed.
+With fertiliser of its own the works stand on every island the year after
+they are found, and fertiliser costs about what chemicals did (0.85 a unit
+in 1940, 0.98 in 1970), so nitrogen is kept as before: 0.45 of the farms'
+output in 1950 and 1970 on islands 1 to 8. What holds it there is the rule
+of point 1 at these prices, not the works. Kept by every farm that knows of
+it (the lab below), it lifts the farms' output a hand but hardly the wage.
 `tests/land_century.rs` holds the table at both stages and the sums above.
+
+## The ceiling's ramp: a stand-in
+
+`machines.ramp` and `machines.ramp_top`: no ramp under the port (`ramp` 0),
+and under the game's rules a tenth a year from 1901 to a top of 9. **It is a
+stand-in**, for the generations of farm and pit machinery after the steam age
+that the content does not have (the motor-drawn implements behind the tractor,
+the combine's own later generations, the cutter's successors at the face). It
+should go when they come, each lifting the ceiling where it is found.
+
+**What it does.** The land machines' quality (point 2) follows the steel the
+island has poured, up to `quality_cap`, 4. From 1901 that ceiling is
+`quality_cap + ramp * (year - 1900)`, up to `ramp_top`: 4.1 in 1901, 5 in
+1910, 7 in 1930, 9 from 1950 (`machines::close_year`, at each year's turn from
+`sim::end_year`, into `State::machine_cap_lift`). Before 1901 it does nothing,
+so the played century stands as it was. It lifts the farm machinery, the
+pumps, the wagonways and the quarries' engines together.
+
+**Why the ceiling, and why a ramp.** From 1900 to 1970 the chained wage grew
+0.57 per cent a year on islands 1 to 8, where the design asks 1. The decline's
+judge found four fifths of the shortfall in this ceiling: it has bound since
+about 1895, and the steel curve under it would give a quality of 6.3 in 1900,
+10 in 1920 and 19.5 in 1970 (the mean of islands 1 to 16, worked out from the
+steel made). The design meant the land's century to be carried by real things
+instead, each with its own date and quality: the tractor, the cutter, the
+combine ([tasks.md](tasks.md)), nitrogen and breeding (above). Measured one by
+one on islands 1 to 8 to 2050, means (growth is that of the chained wage from
+1900 to 1970, per cent a year; grain a farm hand is the farms' output over
+their hands against 1900's):
+
+| | growth | grain a farm hand 1970 | hands on the land 1970 |
+|---|---|---|---|
+| as it was (the tractor, the cutter, nitrogen bought as chemicals, breeding) | 0.57 | 1.54 | 0.219 |
+| and the combine | 0.61 | 1.75 | 0.202 |
+| and the land's machines idle as the works' do | 0.58 | 1.74 | 0.203 |
+| and the nitrogen works built, breeding found on time | 0.63 | 1.82 | 0.199 |
+| every farm that knows nitrogen and breeding keeping them (a lab from 1901, not adopted) | 0.65 | 2.73 | 0.180 |
+| **and the ramp** (the game's rules) | 1.07 | 3.80 | 0.174 |
+
+The real things carry about a seventh of the gap (0.57 to 0.63); even with
+every farm keeping both improvements they would carry a sixth. Nitrogen and
+breeding act on the farms alone, and the tractor and the combine take the
+farms' hands without making the ground yield more; the ceiling holds the
+farms, the pastures and the pits alike. So the ramp is needed, and it carries
+the rest.
+
+**Its numbers.** On islands 1 to 8, with every real thing above (the ramp a
+tenth a year in every row):
+
+| top | growth [least .. greatest island] | 2050 over 1970 | grain a farm hand, 1975 (between 1970 and 1980) |
+|---|---|---|---|
+| none | 0.63 [0.44 .. 0.82] | 1.08 | 1.9 |
+| 8 | 1.02 [0.87 .. 1.10] | 1.13 | 3.6 |
+| 9 | 1.07 [0.94 .. 1.13] | 1.13 | 4.0 |
+| 10 | 1.10 [0.94 .. 1.20] | 1.14 | 4.3 |
+| 12 | 1.11 [0.97 .. 1.23] | 1.18 | 5.0 |
+
+(The row for 12 was measured before the nitrogen works were built, which
+moved the growth without the ramp by a twentieth of a point.)
+
+The design reckons a farm hand's output four times 1900's by 1975, and the
+decline's brief asks 3.5 to 4; 9 gives the growth with a margin and stays in
+that band. A faster ramp adds little: at two or three tenths a year to 12 the
+growth is 1.16 and 1.15, since the steel curve sits above the ceiling only
+until the 1920s.
+
+**Islands 9 to 16, and the new land.** The same rules on islands 9 to 16,
+which nobody tuned on: growth 1.16 per cent a year of the means (0.99 to
+1.38 by island), 2050 over 1970 1.13 (1.07 to 1.25), hands on the land 0.248
+in 1900 and 0.178 in 2050, grain a farm hand 3.7 times 1900's in 1975 (5.71,
+12.83 and 14.53 for the wage in 1900, 1970 and 2050; main had 0.67 per cent
+and 1.05, with island 9 falling after 1990 to 0.93 of its 1970). Island 9
+now climbs to 13.6 by 2000 and stays there (13.3 to 13.8) to 2050, 1.07 times
+its 1970: the late century's stall is still there, as a plateau and not a
+fall. On the new land (`--set land.enabled=true`, islands 1 to 8): 1.12 per
+cent a year (0.71 to 1.53), 2050 over 1970 1.13, hands on the land 0.250 to
+0.174, against 0.63 per cent and 1.03 on main's new land; its island 7 grows
+0.71 and its island 4 0.94.
+
+```bash
+isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year 2050 --standing --growth --compare MAIN --out DIR
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set land.enabled=true --standing --growth --compare MAIN_NEW_LAND --out DIR
+```
+
+Both end clean: the standing check 12 of 12 inside against main, and the
+three asks of growth after 1900 met (on islands 1 to 16, 1.12 per cent a
+year as the check reads it, the mean of the islands' own rates).
 
 ## What worries me
 
@@ -674,7 +773,9 @@ whoever makes them; it is the nitrogen works' know-how that a town needs.
   grow less. Past the cap the land's old arithmetic returns: more people on
   the same ground, and nothing getting better. The cap is `learn_cap`'s twin
   and was left; a curve that flattens without stopping would be more honest
-  than a ceiling, and wants its own calibration.
+  than a ceiling, and wants its own calibration. Since 19 November 2026 a
+  stand-in ramp lifts it from 1901 ("The ceiling's ramp"); the ceiling of
+  the played century is unchanged.
 - **A steel rail's worth is taken at the mill, so it cheapens new track
   too.** A steel rail outlasts iron ones, which is worth something to a
   railway that must relay its line; a mile of new line needs the same weight

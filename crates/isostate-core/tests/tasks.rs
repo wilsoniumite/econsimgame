@@ -51,10 +51,14 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
         assert!((s - 1.0).abs() < 1e-9, "{} has shares summing to {s}", C.method_name[m]);
     }
     assert_eq!(C.M, 48, "the 44 of the tree's stage 1 and the four of stage 6 (docs/rules/tree.md, \"After 1900: electricity\" and \"Oil, nitrogen and the land\")");
-    // the content after 1900 lays the electric drive, the tractor and the cutter;
-    // the drive takes the works from the hoist and the cutter the pits (`replaces`)
+    // the content after 1900 lays the electric drive, the tractor, the cutter and
+    // the combine; the drive takes the works from the hoist and the cutter the pits
+    // (`replaces`); the combine tends the farms and the pastures, three fifths of it
     let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
-    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter"]);
+    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine"]);
+    let combine = &C.tasks.uses[4];
+    assert_eq!((combine.class, combine.from, combine.reach), (tasks::TEND, 0.0, 0.6));
+    assert!(!combine.on_works && combine.on_sector.iter().enumerate().all(|(s, &b)| b == (C.sector_name[s] == "farm" || C.sector_name[s] == "pasture")));
     let sector = |n: &str| C.sector_name.iter().position(|x| x == n).unwrap();
     let (hoist, drive, tractor, cutter) = (&C.tasks.uses[0], &C.tasks.uses[1], &C.tasks.uses[2], &C.tasks.uses[3]);
     assert!(!hoist.on_works && hoist.on_sector.iter().all(|&b| !b), "the hoist leaves the works to the drive and the pits to the cutter");
@@ -105,7 +109,8 @@ fn the_drive_is_laid_only_with_its_goods() {
     assert_eq!(pits(&one, hoist), ["claypit", "coalmine", "ironmine", "quarry"]);
     assert_eq!(one.tasks.plant_goods, [one.good_index["machinery"]]);
     // stage 6: the drive in the works, the cutter at the pits, the hoist nowhere
-    assert_eq!(six.tasks.uses.len(), 4);
+    // (and the tractor and the combine on the fields)
+    assert_eq!(six.tasks.uses.len(), 5);
     let (hoist, drive, cutter) = (&six.tasks.uses[0], &six.tasks.uses[1], &six.tasks.uses[3]);
     assert_eq!(drive.name, "electric_drive");
     assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
@@ -314,12 +319,14 @@ fn island_7_to_1925_on_the_land() {
     assert_ne!(on, off, "the hoist at the pits moved nothing");
 }
 
-/// The year island 7 has found every use of the table (the drive for the
-/// works, the hoist for the pits) under `params(true)`, as the tests below
-/// lean on it: they stop ten years on.
+/// The year island 7 has found every machine of the table for hauling (the
+/// drive for the works, the hoist for the pits, and the tractor and the
+/// cutter) under `params(true)`, as the tests below lean on it: they stop ten
+/// years on. The combine, which tends and comes from 1935, is not waited for.
 fn starts(s: &sim::Sim) -> Option<i64> {
     let f = &s.st.tasks.found;
-    if f.is_empty() || f.iter().any(|&y| y < 0) { None } else { f.iter().copied().max() }
+    let haul: Vec<i64> = s.content.tasks.uses.iter().zip(f).filter(|(u, _)| u.class == tasks::HAUL).map(|(_, &y)| y).collect();
+    if haul.is_empty() || haul.iter().any(|&y| y < 0) { None } else { haul.iter().copied().max() }
 }
 
 /// The drive runs on electricity, which goes no further than a town's own
