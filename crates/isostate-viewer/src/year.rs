@@ -812,7 +812,8 @@ pub fn rebuild_year(
     // (the clock moved on) finishes first and is shown on the way. And none is begun while
     // the last is still going to the renderer: a year is shown whole or not at all, so when
     // the years come faster than they can be shown some are skipped and none is left half sent
-    if tl.built != Some(k) && builds.task.is_none() && hand.is_empty() {
+    // (nor while the year that came last is on its way into the run: `game::pump`)
+    if tl.built != Some(k) && builds.task.is_none() && hand.is_empty() && data.arriving.is_none() {
         let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
         let pieces = hand.in_pieces();
         let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(MESHES, &r, &g, &slots, &cen, k, &lk, lod).cut_up(MESHES, pieces) });
@@ -822,7 +823,7 @@ pub fn rebuild_year(
 
 /// The scenery shows the year on the clock (screenshots wait for it).
 pub fn scenery_ready(tl: &Timeline, data: &Data) -> bool {
-    tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1))
+    tl.built == Some((tl.t.floor() as usize).min(data.r.ny - 1)) && data.arriving.is_none()
 }
 
 /// For a scripted run's `print`: what scenery is on screen, how it got there

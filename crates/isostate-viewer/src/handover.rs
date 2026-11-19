@@ -645,7 +645,7 @@ mod tests {
         let r = crate::world::tests::island();
         let g = crate::world::build_ground(&r);
         let (slots, cen) = (crate::scatter::make_slots(&r, &g), crate::network::centres(&r));
-        world.insert_resource(crate::Data { r: std::sync::Arc::new(r), g: std::sync::Arc::new(g), slots: std::sync::Arc::new(slots), cen: std::sync::Arc::new(cen), live: false });
+        world.insert_resource(crate::Data { r: std::sync::Arc::new(r), g: std::sync::Arc::new(g), slots: std::sync::Arc::new(slots), cen: std::sync::Arc::new(cen), live: false, arriving: None });
         world.insert_resource(meshes);
         world.insert_resource(crate::Handles { year_cells: Handle::default(), year_field: Handle::default(), meshes: vec![h.clone()], drawers: Drawers(vec![vec![e]]) });
         world.insert_resource(crate::Timeline { t: 0.0, built: None, playing: false, speed: 1.0 });

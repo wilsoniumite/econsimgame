@@ -1372,6 +1372,7 @@ fn step(world: &mut World, plan: &mut Plan) {
                 let live = world.get_resource::<crate::live::Live>();
                 let quiet = !live.is_some_and(|l| l.stepping())
                     && !world.resource::<crate::game::Game>().busy
+                    && world.resource::<crate::game::Game>().marks_built()
                     && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>())
                     && world.resource::<Builds>().task.is_none()
                     && world.resource::<HandOver>().is_empty();

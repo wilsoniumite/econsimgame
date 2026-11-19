@@ -601,6 +601,9 @@ struct Data {
     cen: Arc<Vec<(f32, f32)>>,
     /// the years are being simulated as we watch, not read from a file
     live: bool,
+    /// the year that came last on its way into the run off the main thread, with its works'
+    /// ground (`game::pump`): until it is in, no scenery is built and no next year is read
+    arriving: Option<bevy::tasks::Task<game::Arrived>>,
 }
 
 impl Data {
@@ -1051,7 +1054,7 @@ fn main() {
     app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
-        .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
+        .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some(), arriving: None })
         .init_resource::<Builds>()
         .init_resource::<Shown>()
         .insert_resource(Timeline { t: t0, built: None, playing: false, speed: speed0 })
