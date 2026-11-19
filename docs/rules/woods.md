@@ -235,6 +235,16 @@ What is left of the fall is not the woods' and not the pits'
 - **The wage after 1970 is noisy.** Island by island the 2050 wage over
   1970's runs from 0.54 to 1.25 with the woods on. Eight islands tell a fall
   of 8 per cent from no fall only at about one standard error.
+- **It draws from the knowledge stream.** With the rule on, managed woodland
+  takes a number from the stream every invention is found by, each year from
+  1895 until it is found, so every invention not yet found by 1895 is drawn
+  for with other numbers from then on. On the eight islands the coal power
+  station is found on the mean island in 1897 with it and 1899 without (the
+  latest island 1911 against 1923), oil from coal in 1918 against 1924.
+  So the sweep's on against off is the woods and a reshuffle of the later
+  inventions' dates; the lab's arms part in the year each island finds the
+  craft for the same reason. A stream of its own (`rng.rs`) would part them;
+  it touches the saved games' streams and was left.
 - **`run.bin` moves with the rule off.** The record lists every invention in
   the content, and managed woodland is in stage 6's content whatever its
   switch says. Only the record moves; the economy does not.
