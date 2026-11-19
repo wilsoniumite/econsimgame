@@ -238,7 +238,8 @@ fn main() {
         P = P.with_json_overrides(text).unwrap_or_else(|e| panic!("{e}"));
     }
     P.n_families = families;
-    let C = rules.content();
+    // tree: the content the runs are played on, with the game's overlay laid as P.tree says
+    let C = isostate_core::tree::content(&P, rules.content()).unwrap_or_else(|e| panic!("{e}"));
     if trace {
         TRACE.store(seeds[0], std::sync::atomic::Ordering::Relaxed);
     }

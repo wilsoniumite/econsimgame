@@ -220,6 +220,22 @@ impl<A: Bin, B: Bin, C: Bin> Bin for (A, B, C) {
     }
 }
 
+// the observer's crossings with the production tree laid (`tree::share_groups`)
+impl<A: Bin, B: Bin, C: Bin, D: Bin> Bin for (A, B, C, D) {
+    fn put(&self, w: &mut Vec<u8>) {
+        self.0.put(w);
+        self.1.put(w);
+        self.2.put(w);
+        self.3.put(w);
+    }
+    fn get(r: &mut &[u8]) -> Self {
+        let a = A::get(r);
+        let b = B::get(r);
+        let c = C::get(r);
+        (a, b, c, D::get(r))
+    }
+}
+
 impl<K: Bin + Ord, V: Bin> Bin for BTreeMap<K, V> {
     fn put(&self, w: &mut Vec<u8>) {
         self.len().put(w);
@@ -282,7 +298,7 @@ bin_struct!(MonthStats { prod, method_out, hh_got, lord_got, share, hh_spend, lo
 bin_struct!(World { W, H, land, h, terrain, down, acc, river, navigable, coast, fertility, pasture, forest_pot, rock, clay, ore, coal, jitter, town_sites, forest0, landform });
 bin_struct!(Graph { N, W, H, w, railed, min_w, max_w, boat, wharf });
 bin_struct!(SeriesMeta { label, group, unit });
-bin_struct!(ObserverState { cross_state, milestones, last_alarm, peak, in_slump, slump_start, trough, first_output, base });
+bin_struct!(ObserverState { cross_state, milestones, last_alarm, peak, in_slump, slump_start, trough, first_output, base, groups, crossings });
 bin_struct!(EngelState { need_spend, real_income, chain, base_p, base_q, acc_p, acc_q, months });
 bin_struct!(ChronicleState {
     kinds, reached, branch_opened, branch_extended, city_passed, pop, urban, coal, wage, moved, prices, peak, decline_told, leaders, challenger, lead_years, held,
@@ -599,7 +615,8 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     let (year, end_year, t): (i64, i64, usize) = Bin::get(&mut r);
     assert!(r.is_empty(), "{} bytes left over", r.len());
     let params = save::params(rules, seed, families);
-    let mut content = rules.content();
+    // (with the production tree laid as the rules lay it, as `save.rs` does)
+    let mut content = isostate_core::tree::content(&params, rules.content()).expect("the tree lays on the rules' content");
     content.end_year = params.end_year.unwrap_or(content.end_year);
     Sim { st, content, params, rngs, events, rec, year, end_year, t, check_money: true }
 }

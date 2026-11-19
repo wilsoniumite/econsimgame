@@ -644,6 +644,12 @@ One line each as they arrive: the name, its page, its switch.
   every reach, river courses that meander and cut off, estuaries that carry
   boats to the sea, and resource fields that come from the land.
   [land.md](land.md), `land.enabled`.
+- **tree**: a deeper production tree, laid over the port's content from
+  `data/game.toml` up to a stage. Stage 1 is the building trades, sawn timber,
+  lime, beer, pottery, town gas, soap, glass and paper, with the later
+  generations of iron, tools, machinery and bricks; where a market is short,
+  plant on order waits behind the day's trade. [tree.md](tree.md),
+  `tree.stage` (0 is none of it).
 - **accounts**: books that say who makes, moves, buys and earns what: a
   year's books for every town and every works, and the island's income
   account (work's share, the owners' shares, ownership in years of wages).

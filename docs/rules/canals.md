@@ -199,7 +199,7 @@ these.
 | `navvies` | true | the navvies are hands taken from the supplying town |
 | `build_months` | 36 | if every order is filled |
 | `hurdle` | 0.1 | the yearly return a canal must promise, on today's traffic and no more |
-| `discover_coal`, `discover_stone` | 3,000,000 each | dug since 1750 before a survey is likely |
+| `discover_coal`, `discover_stone` | 3,000,000 each | dug since 1750 before a survey is likely (with the production tree laid the stone asked for is 0.35 of this, because builders make the same houses of a third of the stone: [tree.md](tree.md), "In company with the canals") |
 | `know` | 0.25 | how well a town must know canals to dig one |
 | `hearsay` | 0.2 | what a town with no canal counts for when the know-how spreads |
 

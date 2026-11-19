@@ -23,13 +23,20 @@
 # order paid for before a dividend); with both switches off the four of
 # stage 5b held. Held again on its check with stage 5 merged in, which
 # moves nothing.
+# Then on night/g-tree-land with main merged in (19 November 2026): all four
+# moved by the production tree's first stage, switched on under the game's
+# rules (tree.stage = 1, docs/rules/tree.md), with its thresholds fitted again
+# on the island stage 5 leaves: nine more goods, so another economy, other
+# books, other news and another run.bin. With the tree off in game_params()
+# the four before held.
 # Then on night/g-to2050-1-longrun (19 November 2026): all four moved by
 # stage 1 of the run to 2050, the bounds on prices and the wage riding on
 # the island's own cost of living (longrun.enabled, docs/rules/longrun.md):
 # iron ore's price, which stood at its floor in a few town-months on most
 # islands, may now fall below 1750's floor, and that gives the island another
-# history. With the switch off the four above held.
-economy  0x663e74785fe2f2e2
-books    0x8d94b4c5ae8be5ec
-news     0x732c6febbe81d699
-run.bin  0xe6920637a59ba9bf
+# history. With the switch off the four above held. Taken again on
+# night/g-to2050-2-standing with main (the production tree) merged in.
+economy  0x866ef92616c866dd
+books    0xaabf9b3dff62c184
+news     0x0907b3d068199cdb
+run.bin  0x54f76330c610503e

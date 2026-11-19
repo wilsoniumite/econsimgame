@@ -25,6 +25,12 @@ pub fn sigmoid(x: f64) -> f64 {
 /// Returns share (T, G * S), the fraction of a service bought from each good
 /// (`share[(t, g * S + s)]`), and unit (T, S), the average price of one unit of service.
 pub fn service_mix(price: &Mat, props: &Mat, theta: f64) -> (Mat, Mat) {
+    service_mix_widths(price, props, &vec![theta; props.cols])
+}
+
+/// `service_mix` with a width of the logit for each need (tree: household goods
+/// are less alike than fuels are). With one width for all it is `service_mix`.
+pub fn service_mix_widths(price: &Mat, props: &Mat, widths: &[f64]) -> (Mat, Mat) {
     let (T, G, S) = (price.rows, price.cols, props.cols);
     let mut share = Mat::zeros(T, G * S);
     let mut unit = Mat::zeros(T, S);
@@ -32,6 +38,7 @@ pub fn service_mix(price: &Mat, props: &Mat, theta: f64) -> (Mat, Mat) {
     let mut z = vec![0.0; G];
     for t in 0..T {
         for s in 0..S {
+            let theta = widths[s];
             // price per unit of service; goods without the property cannot supply it
             let mut smin = f64::INFINITY;
             for g in 0..G {
@@ -389,7 +396,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let freight = crate::longrun::freight(st, P);
 
     // ---------------- households: what they want to buy
-    let (share, unit) = service_mix(&st.price, &C.props, P.logit_theta);
+    // tree: a width for each need where the content gives one, else the port's one
+    let (share, unit) = service_mix_widths(&st.price, &C.props, &crate::tree::widths(C, P));
     let mut urban_pay = vec![0.0; T];
     let mut pc = vec![0.0; T];
     for t in 0..T {
@@ -714,6 +722,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             req_inv[(r, g)] = st.f_order[(i, g)] * 0.25;
         }
     }
+    // tree (docs/rules/tree.md, "Plant waits"): what households and the works
+    // at work ask for, before the orders for new plant and for railways and
+    // canals are added. Only with the tree laid: without it nothing that plant
+    // is built of is a works' daily input, and the rule measured as no gain
+    let R_now = (P.tree.plant_waits && C.stage > 0).then(|| R.clone());
     add_by_town(&mut R, &ot, &req_inv);
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for pr in &st.projects {
@@ -741,6 +754,17 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             fill[(t, g)] = if r > 1e-12 { (st.inv[(t, g)] / r.max(1e-12)).min(1.0) } else { 1.0 };
         }
     }
+    // tree: plant waits. Where the market is short, the day's trade is served
+    // first (households, the works' own inputs and fuel, the land's machines)
+    // and the orders for plant and for the materials of railways and canals
+    // share what is left. A works half built can wait a season for its bricks;
+    // a bricklayer with a house half up cannot. `fill` is then the day's
+    // trade's and `fill_plant` the orders'; without the rule both are the
+    // port's one number.
+    let fill_plant = match &R_now {
+        Some(now) => crate::tree::plant_waits(&st.inv, now, &R, &mut fill),
+        None => fill.clone(),
+    };
 
     // ---------------- execute: firms produce what their scarcest input allows
     let mut q = vec![0.0; NFI];
@@ -783,7 +807,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut inv_got = Mat::zeros(oi.len(), G);
     for r in 0..oi.len() {
         for g in 0..G {
-            inv_got[(r, g)] = req_inv[(r, g)] * fill[(ot[r], g)];
+            inv_got[(r, g)] = req_inv[(r, g)] * fill_plant[(ot[r], g)]; // tree: plant waits
         }
     }
     // per good: sold += bincount(ft, use_f[:, g]); sold += bincount(ot, inv_got[:, g])
@@ -797,7 +821,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
     let mut proj_got: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for (pr, rq) in st.projects.iter().zip(&proj_req) {
-        let got: Vec<f64> = (0..G).map(|g| rq[g] * fill[(pr.town, g)]).collect();
+        let got: Vec<f64> = (0..G).map(|g| rq[g] * fill_plant[(pr.town, g)]).collect(); // tree: plant waits
         for g in 0..G {
             sold[(pr.town, g)] += got[g];
         }
@@ -957,11 +981,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     for (x, y) in prod_TG.data.iter_mut().zip(&prod_firms.data) {
         *x += y;
     }
+    let decay = crate::tree::decay(C, P); // tree: the content's rate for a good the port's table does not have
     for t in 0..T {
         for g in 0..G {
             let v = &mut st.inv[(t, g)];
             *v -= sold[(t, g)];
-            *v *= 1.0 - P.decay[g];
+            *v *= 1.0 - decay[g];
             *v += prod_TG[(t, g)];
             *v = v.max(0.0);
         }
@@ -985,11 +1010,15 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         // tau, want and qt are (na, na, G), indexed [(i * na + j) * G + g]
         let mut tau = vec![0.0; na * na * G];
         let mut want = vec![0.0; na * na * G];
+        // tree: a good made where it is used (building work, town gas) is not
+        // carried: nothing is wanted of it and it is left out of the sums. Under
+        // the port every good is carried and `tg` is all of them in their order
+        let tg = crate::tree::traded_goods(C);
         for (i, &ti) in A_idx.iter().enumerate() {
             for (j, &tj) in A_idx.iter().enumerate() {
                 let c0 = st.town_cost[(ti, tj)];
                 let c = if c0.is_finite() { c0 } else { 1e9 };
-                for g in 0..G {
+                for &g in &tg {
                     let k = (i * na + j) * G + g;
                     tau[k] = freight * C.weight[g] * c + P.handling * p[(ti, g)];
                     let gap = p[(tj, g)] - p[(ti, g)] - tau[k];
@@ -1000,7 +1029,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         let mut scale = vec![0.0; na * G];
         for i in 0..na {
-            for g in 0..G {
+            for &g in &tg {
                 let mut tot = 0.0;
                 for j in 0..na {
                     tot += want[(i * na + j) * G + g];
@@ -1012,7 +1041,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let mut qt = want;
         for i in 0..na {
             for j in 0..na {
-                for g in 0..G {
+                for &g in &tg {
                     qt[(i * na + j) * G + g] *= scale[i * G + g];
                 }
             }
@@ -1021,7 +1050,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let mut im_q = Mat::zeros(na, G);
         for i in 0..na {
             for j in 0..na {
-                for g in 0..G {
+                for &g in &tg {
                     let v = qt[(i * na + j) * G + g];
                     ex_q[(i, g)] += v;
                     im_q[(j, g)] += v;
@@ -1113,7 +1142,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                     // prices: the rule below moves a slow anchor, and the price
                     // stands above or below it with the merchants' stock (none
                     // on a good that spoils, under `prices.no_spoil_markup`)
-                    prices::mark(st, P, t, g, gap, imbalance, lo_p, hi_p, P.decay[g]);
+                    prices::mark(st, P, t, g, gap, imbalance, lo_p, hi_p, decay[g]);
                 } else {
                     let p0 = st.price[(t, g)];
                     let newp = p0 * (P.price_speed * gap + P.price_flow * imbalance).clamp(-0.12, 0.12).exp();
