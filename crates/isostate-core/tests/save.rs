@@ -143,8 +143,9 @@ fn thirty_years_saved_and_loaded_are_the_same_to_the_last_digit() {
     // the file: readable, a line an order, and it reads back to the same save
     let saved = a.save(1_794_366_765);
     let text = saved.to_text();
-    assert_eq!(text.lines().count(), 15 + 2 + saved.orders.len() + 1, "{text}");
-    assert!(text.contains("\"format\": 2,") && text.contains("\"seed\": 7,") && text.contains("\"year\": 1779,"));
+    // (sixteen lines of fields, the land's among them since layout 3)
+    assert_eq!(text.lines().count(), 16 + 2 + saved.orders.len() + 1, "{text}");
+    assert!(text.contains("\"format\": 3,") && text.contains("\"land\": true,") && text.contains("\"seed\": 7,") && text.contains("\"year\": 1779,"));
     assert!(text.contains("\"month\": 0,") && text.contains("\"waiting\": []"), "{text}");
     assert!(text.contains("\"saved\": \"2026-11-11 03:12 UTC\""), "{text}");
     let read = Save::from_text(&text).unwrap();
@@ -152,7 +153,9 @@ fn thirty_years_saved_and_loaded_are_the_same_to_the_last_digit() {
     assert!(read.same_rules());
 
     // a file in the first layout, which had no months and nothing waiting, reads as the same game
-    let first_layout: String = text.replace("\"format\": 2,", "\"format\": 1,").lines().filter(|l| !l.contains("\"month\": 0,") && !l.contains("\"waiting\": []")).collect::<Vec<_>>().join("\n");
+    // (its line for the land is kept, so that the game is the one on the new land: a file of the
+    // first layout without it is the old island's, as `a_save_made_before_the_switch_...` holds)
+    let first_layout: String = text.replace("\"format\": 3,", "\"format\": 1,").lines().filter(|l| !l.contains("\"month\": 0,") && !l.contains("\"waiting\": []")).collect::<Vec<_>>().join("\n");
     // (the orders were not the last field then, and now end the file)
     let first_layout = first_layout.replace("],\n}", "]\n}");
     assert!(!first_layout.contains("month") && !first_layout.contains("waiting"), "{first_layout}");
@@ -242,7 +245,7 @@ fn a_save_the_rules_no_longer_agree_with_says_so() {
     assert!(!odd_rules.same_rules());
 
     // a later layout is refused by name; rubbish is not a save
-    let later = saved.to_text().replace("\"format\": 2,", "\"format\": 3,");
+    let later = saved.to_text().replace("\"format\": 3,", "\"format\": 4,");
     assert!(Save::from_text(&later).unwrap_err().contains("later version"));
     assert!(Save::from_text("{\"seed\": 7}").unwrap_err().contains("not a saved game"));
     assert!(Save::from_text("").unwrap_err().contains("not a saved game"));
@@ -586,29 +589,91 @@ fn a_game_with_as_many_families_as_there_are_names_starts_and_plays() {
 }
 
 #[test]
-fn a_game_started_on_the_new_land_is_saved_and_played_again_on_it() {
-    // the usual game is on the old island, and its save does not mention the land
-    let old = Game::new(7, 2, 0);
-    assert!(!old.on_land() && old.sim.st.world.landform.is_none());
-    assert!(!old.save(0).to_text().contains("\"land\""), "a game started in the usual way writes the save it always wrote");
-    // a game started on the new land has the land, under the same rules, and its save says so
-    let mut g = Game::on_new_land(params::Rules::Game, 7, 2, 0);
+fn every_save_says_its_land_and_is_played_again_on_it() {
+    // the usual game is on the new land since the game's rules took it, and its save says so
+    let mut g = Game::new(7, 2, 0);
     assert!(g.on_land() && g.sim.st.world.landform.is_some());
-    assert_eq!(g.rules, params::Rules::Game);
-    assert_ne!(g.sim.st.world.terrain, old.sim.st.world.terrain, "the new land is another island");
+    assert_eq!(Game::on_new_land(params::Rules::Game, 7, 2, 0).sim.params, g.sim.params, "under the game's rules the new land is the usual game");
     g.year().unwrap();
     let saved = g.save(0);
-    assert!(saved.land && saved.same_rules());
+    assert!(saved.land && saved.same_rules() && saved.format == save::FORMAT);
     let text = saved.to_text();
-    assert!(text.contains("\"land\": true"), "{text}");
-    // played again it is the same island to the last digit, not the old one
+    assert!(text.contains("\"land\": true") && text.contains("\"format\": 3"), "{text}");
+    // played again it is the same island to the last digit
     let back = save::load(&Save::from_text(&text).unwrap(), |_| {}).unwrap();
     assert!(back.game.on_land() && !back.drifted && back.refused.is_empty());
     assert_eq!(back.game.sim.st.world.terrain, g.sim.st.world.terrain);
     assert_eq!(save::check(&back.game.sim), save::check(&g.sim));
-    // and the same save with the mark struck out would be the old island, which the check catches
-    let struck = Save { land: false, ..saved };
-    assert!(save::load(&struck, |_| {}).unwrap().drifted);
+
+    // a game begun on the old island has none, under the same rules, and its save says that too
+    let mut old = Game::on_old_land(params::Rules::Game, 7, 2, 0);
+    assert!(!old.on_land() && old.sim.st.world.landform.is_none());
+    assert_eq!(old.rules, params::Rules::Game);
+    assert_ne!(old.sim.st.world.terrain, g.sim.st.world.terrain, "the old island is another island");
+    old.year().unwrap();
+    let saved_old = old.save(0);
+    assert!(!saved_old.land && saved_old.to_text().contains("\"land\": false"), "{}", saved_old.to_text());
+    let back = save::load(&Save::from_text(&saved_old.to_text()).unwrap(), |_| {}).unwrap();
+    assert!(!back.game.on_land() && !back.drifted && back.refused.is_empty());
+    assert_eq!(save::check(&back.game.sim), save::check(&old.sim));
+
+    // a save with the line struck out (as one made before layout 3) is the old island's, which
+    // the check catches for a game on the new land
+    let mut struck: serde_json::Value = serde_json::from_str(&text).unwrap();
+    struck.as_object_mut().unwrap().remove("land");
+    let struck = Save::from_text(&struck.to_string()).unwrap();
+    assert!(!struck.land);
+    let played = save::load(&struck, |_| {}).unwrap();
+    assert!(!played.game.on_land() && played.drifted);
+    // and under the port's rules a game is on the port's island unless begun on the new land
+    let port = Game::under(params::Rules::Port, 7, 2, 0);
+    assert!(!port.on_land() && !port.save(0).land);
+    assert!(Game::on_new_land(params::Rules::Port, 7, 2, 0).save(0).land);
+}
+
+/// A save made before the game's rules took the new land, by main's own build
+/// of 19 November 2026 (c21ab02) in the layout of the day (2), with no line for
+/// the land: island 7, six families, the family choosing its trade, building,
+/// buying land, moving its seat, two edits by hand (a town's people halved at a
+/// turn, the harvest cut in the middle of a year), saved five months into 1775
+/// with the seat's move waiting. It is played again on the old island, and it
+/// reached there the island main reached, to the last digit (`check`).
+///
+/// That last holds only while the old island's history under the game's rules
+/// is the one of that day. A later change that moves the game's history on
+/// purpose (it anchors `golden_game.txt` again) moves the old island's too, so
+/// the island is then held to the check only while the game's golden hashes of
+/// the played century are the ones taken when this file was put here
+/// (`GOLDEN_WHEN_MADE`); after that the test says so and holds the rest: that
+/// the save is played on the old island, and repeats.
+#[test]
+fn a_save_made_before_the_switch_is_played_again_on_the_old_island() {
+    /// `golden_game.txt`'s "1750-1900 economy" when the switch was anchored.
+    const GOLDEN_WHEN_MADE: &str = "1750-1900 economy  0x48f46c787bceb833";
+    let text = include_str!("data/old_island_1775.json");
+    assert!(!text.contains("\"land\""), "the file is as main wrote it, with no line for the land");
+    let saved = Save::from_text(text).unwrap();
+    assert_eq!((saved.format, saved.land, saved.seed, saved.families, saved.year, saved.month), (2, false, 7, 6, 1774, 5));
+    assert_eq!(saved.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).count(), 2);
+    let back = save::load(&saved, |_| {}).unwrap();
+    let g = &back.game;
+    assert!(!g.on_land() && g.sim.st.world.landform.is_none(), "a save with no line for the land is played on the old island");
+    assert_eq!(g.sim.st.world.terrain, Game::on_old_land(params::Rules::Game, 7, 6, 0).sim.st.world.terrain);
+    assert_eq!((g.last_year(), g.month, g.waiting.len()), (1774, 5, 1));
+    // it repeats
+    assert_eq!(save::check(&save::load(&saved, |_| {}).unwrap().game.sim), save::check(&g.sim));
+    // and saved again it says its land, and is played on the same island
+    let again = g.save(0);
+    assert!(!again.land && again.format == save::FORMAT && again.to_text().contains("\"land\": false"));
+    assert_eq!(save::check(&save::load(&again, |_| {}).unwrap().game.sim), save::check(&g.sim));
+
+    let golden = include_str!("golden_game.txt");
+    if golden.lines().any(|l| l == GOLDEN_WHEN_MADE) {
+        assert!(back.refused.is_empty(), "{:?}", back.refused);
+        assert!(!back.drifted, "the old save does not reach the island main reached: its check is {}, now {}", saved.check, save::check(&g.sim));
+    } else {
+        eprintln!("the game's history has moved since the old save was put here (golden_game.txt's played century is not {GOLDEN_WHEN_MADE:?}): it is held to the old island, not to its own check");
+    }
 }
 
 /// A game past 1900 (docs/rules/longrun.md, "A game past 1900"): begun to 2050

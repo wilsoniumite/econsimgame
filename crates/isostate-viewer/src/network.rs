@@ -1,12 +1,13 @@
 //! Rivers, roads and railways as ribbons over the terrain. The rivers are
 //! made in rivers.rs and the railways in rails.rs; the roads are draped here.
 //!
-//! A road between two cells is drawn as one straight line in plan, between
-//! the two cells' middles (`centres`), and everything that goes with it is
-//! read from here: the ribbon on the ground (`road_line`), the bridges where
-//! it crosses a river (`road_bridges`), the causeway where it runs over
-//! drowned ground (`causeway_runs`), and the surface a cart rides along it,
-//! which is whichever of those is on top (`driven`).
+//! A road between two cells is drawn between the two cells' middles
+//! (`centres`), straight in plan, or round the meanders its straight line
+//! cuts and, on the new land, round a lake or a tideway (`route`); and
+//! everything that goes with it is read from here: the ribbon on the ground
+//! (`way_line`), the bridges where it crosses a river (`road_bridges`), the
+//! causeway where it runs over drowned ground (`causeways`), and the surface
+//! a cart rides along it, which is whichever of those is on top (`driven`).
 
 use bevy::math::{Vec2, Vec3};
 use isostate_gen::bridge::{RoadBridge, RoadFord};
@@ -67,24 +68,22 @@ pub fn road_width(lv: u8) -> f32 {
     if lv == 3 { 0.034 } else { 0.022 }
 }
 
-/// Whether the road between two cells' middles is in the picture. On the old
-/// island every road is. On the new land the water is where the core put it,
-/// and a road drawn straight between two middles can lie under a lake's
-/// sheet, where it is not seen, or along a tideway on a causeway. Until the
-/// roads' stage chooses where roads cross water, such a link is left out: its
-/// ribbon is not drawn, it has no bridge or causeway, and no cart takes it.
-/// A link is left out when a tenth of a cell of it or more (200 m) lies under
-/// standing water, looked at every fortieth of a cell.
-pub fn link_shown(g: &Ground, a: Vec2, b: Vec2) -> bool {
+/// Whether the picture before the ways' second stage left the road between
+/// two cells' middles out: on the new land, where a tenth of a cell of its
+/// straight line or more (200 m) lay under standing water (a lake or the
+/// tide), looked at every fortieth of a cell. Every road is in the picture
+/// now (`route` takes it round the water, or over it on a causeway); this is
+/// kept for the roads' check (`ISOSTATE_ROADS`), to count what was left out.
+pub fn was_left_out(g: &Ground, a: Vec2, b: Vec2) -> bool {
     if g.laid.is_none() {
-        return true;
+        return false;
     }
     let n = ((a.distance(b) / 0.025).ceil() as usize).max(1);
     let under = (0..=n).filter(|&i| {
         let p = a.lerp(b, i as f32 / n as f32);
         world::height_at(g, p.x, p.y) < 0.0
     });
-    under.count() < 4
+    under.count() >= 4
 }
 
 /// The middle line of the ribbon of the road from `a` to `b` (two cells'
@@ -107,12 +106,45 @@ pub struct Way {
     /// river's direction there, its half width, its water level, and the way
     /// the road runs across it
     pub crossings: Vec<(Vec2, Vec2, f32, f32, Vec2)>,
+    /// what it does about standing water (a lake or the tide) on its line
+    pub water: OnWater,
 }
 
 impl Way {
     /// Whether the way is the straight line between the two middles.
     pub fn straight(&self) -> bool {
         self.pts.len() == 2
+    }
+}
+
+/// What a road's way does about standing water, a lake or the tide, on the
+/// line it would otherwise take (the new land only).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OnWater {
+    /// there is none on its line
+    #[default]
+    None,
+    /// it goes round on dry ground, along the shore
+    Round,
+    /// it cannot get round inside its cells without crossing water the run
+    /// keeps no crossing for, and is carried over on a causeway: the
+    /// simulation carries a road over water no rule of its own has priced
+    /// (docs/rules/crossings.md, "Lakes and tideways")
+    Causeway,
+}
+
+/// The ways found round standing water, kept by the two middles (as bits)
+/// and whether the run keeps its crossings (`Ground::detours`).
+#[derive(Default)]
+#[allow(clippy::type_complexity)]
+pub struct Detours(std::sync::Mutex<std::collections::HashMap<(u32, u32, u32, u32, bool), Way>>);
+
+impl Detours {
+    /// Forget every way found, so that the next are found afresh (for timing them).
+    pub fn forget(&self) {
+        if let Ok(mut m) = self.0.lock() {
+            m.clear();
+        }
     }
 }
 
@@ -126,12 +158,345 @@ impl Way {
 /// far bank. This is the core's way (`crossings::links_for`, "going round"),
 /// which finds the same points: a drawn road crosses a drawn river only where
 /// the simulation has a bridge or a ford.
+///
+/// On the new land the way then keeps off standing water, a lake or the tide
+/// (`round_water`): where its line runs over some, it goes round on dry
+/// ground inside its two cells (or the cells beside them), along the shore,
+/// and where it cannot, it crosses on a causeway. What it finds is kept in
+/// `Ground::detours`, since finding it takes a few milliseconds.
 pub fn route(g: &Ground, a: Vec2, b: Vec2, round: bool) -> Way {
+    let way = route_rivers(g, a, b, round);
+    if g.laid.is_none() || !standing_on(g, &way.pts) {
+        return way;
+    }
+    let key = (a.x.to_bits(), a.y.to_bits(), b.x.to_bits(), b.y.to_bits(), round);
+    if let Some(kept) = g.detours.0.lock().ok().and_then(|m| m.get(&key).cloned()) {
+        return kept;
+    }
+    let found = round_water(g, a, b, way);
+    if let Ok(mut m) = g.detours.0.lock() {
+        m.insert(key, found.clone());
+    }
+    found
+}
+
+/// How finely a way is looked along for standing water, in cells (as the
+/// picture before looked along a link to leave it out).
+const LOOK: f32 = 0.025;
+
+/// Whether any of a line of points stands in a lake or the tide, looked at every `LOOK`.
+fn standing_on(g: &Ground, pts: &[Vec2]) -> bool {
+    standing_every(g, pts, LOOK)
+}
+
+/// Whether any of a line of points stands in a lake or the tide, looked at every `step`.
+fn standing_every(g: &Ground, pts: &[Vec2], step: f32) -> bool {
+    pts.windows(2).any(|w| {
+        let n = ((w[0].distance(w[1]) / step).ceil() as usize).max(1);
+        (0..=n).any(|i| {
+            let p = w[0].lerp(w[1], i as f32 / n as f32);
+            world::height_at(g, p.x, p.y) < 0.0
+        })
+    })
+}
+
+/// How high ground must stand for a way to go over it with no causeway
+/// under it (the causeway's own test, `causeway_runs`).
+const DRY: f32 = 0.004;
+/// The squares of the grid a way round water is looked for on, a cell's side
+/// divided (some 60 m).
+const GRID: usize = 32;
+/// What a step over water costs a way going round, against one over dry
+/// ground: it goes round wherever the cells give it ground to, and over the
+/// water only where they do not.
+const OVER_WATER: f32 = 30.0;
+/// What a step in a cell beside the two the road joins costs, against one in
+/// them: a third cell is used where the shore asks for it.
+const THIRD_CELL: f32 = 1.25;
+/// What a step onto a point beside the water (a grid's square from it) or on
+/// the beach (below `BEACH`) costs, against one further back: the way keeps
+/// a field's breadth back from the shore where it can, and runs along the
+/// water's edge where it must.
+const SHORE: f32 = 4.0;
+/// The top of the beach the ground is painted with, in the viewer's height.
+const BEACH: f32 = 0.022;
+/// How much dry ground a way drawn straight between two of its points keeps
+/// on either hand of its middle line, in cells (40 m: a main road's ribbon
+/// is 0.034 wide).
+const CLEAR: f32 = 0.02;
+
+/// `route` on the new land, for a way whose line runs over standing water:
+/// each stretch of it over the water is replaced by the cheapest way between
+/// the dry ground before and after it (`shore_way`), over a grid of the
+/// cells the road joins and, for two cells side by side, the cells beside
+/// them. The way never crosses a river there that its line did not cross,
+/// so a drawn road still crosses a river only where the simulation has a
+/// crossing; where nothing dry is left, it goes over the water by the
+/// shortest crossing it can find, on a causeway.
+fn round_water(g: &Ground, a: Vec2, b: Vec2, way: Way) -> Way {
+    // the way, looked along every LOOK: each point, and whether it is one of the way's own
+    let mut look: Vec<(Vec2, bool, bool)> = Vec::new();
+    for w in way.pts.windows(2) {
+        let n = ((w[0].distance(w[1]) / LOOK).ceil() as usize).max(1);
+        for i in 0..n {
+            let p = w[0].lerp(w[1], i as f32 / n as f32);
+            look.push((p, i == 0, world::height_at(g, p.x, p.y) < 0.0));
+        }
+    }
+    let last = *way.pts.last().unwrap();
+    look.push((last, true, world::height_at(g, last.x, last.y) < 0.0));
+    // the stretches over water, as the points of dry ground either side (two closer than a tenth of a cell are one)
+    let mut stretches: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i < look.len() {
+        if !look[i].2 {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j + 1 < look.len() && look[j + 1].2 {
+            j += 1;
+        }
+        let (from, to) = (i.saturating_sub(1), (j + 1).min(look.len() - 1));
+        match stretches.last_mut() {
+            Some(s) if from <= s.1 + 4 => s.1 = to,
+            _ => stretches.push((from, to)),
+        }
+        i = j + 1;
+    }
+    let area = Area::of(g, a, b);
+    let mut pts = Vec::new();
+    let mut wet = false;
+    let mut next = 0;
+    for (from, to) in stretches {
+        pts.extend(look[next..from].iter().filter(|l| l.1).map(|l| l.0));
+        let (p, q) = (look[from].0, look[to].0);
+        pts.push(p);
+        match area.shore_way(g, p, q) {
+            Some((inner, over)) => {
+                pts.extend(inner);
+                wet |= over;
+            }
+            None => wet = true,
+        }
+        pts.push(q);
+        next = to + 1;
+    }
+    pts.extend(look[next..].iter().filter(|l| l.1).map(|l| l.0));
+    pts.dedup_by(|x, y| x.distance(*y) < 1e-6);
+    // where the way turns back on itself (where it leaves its line for the grid's nearest
+    // point), it goes straight on, so long as that keeps out of standing water and crosses no river
+    let mut i = 1;
+    while i + 1 < pts.len() {
+        let (u, v, w) = (pts[i - 1], pts[i], pts[i + 1]);
+        let back = (v - u).normalize_or(Vec2::X).dot((w - v).normalize_or(Vec2::X)) < 0.0;
+        if back && !standing_every(g, &[u, w], 0.01) && crate::rivers::crossing_points(&g.rivers, &g.water, u, w).is_empty() {
+            pts.remove(i);
+            i = i.saturating_sub(1).max(1);
+        } else {
+            i += 1;
+        }
+    }
+    // (a point found again after going round water is still the way's end)
+    if pts.len() < 2 {
+        pts = vec![a, b];
+    }
+    // it crosses water on a causeway if any of it still stands in water, looked at as closely as the check looks
+    let wet = wet && standing_every(g, &pts, 0.01);
+    Way { pts, crossings: way.crossings, water: if wet { OnWater::Causeway } else { OnWater::Round } }
+}
+
+/// The grid a way round water is looked for on: the cells the road joins and,
+/// for two cells side by side, the cells beside them on either hand.
+struct Area {
+    /// the corner of the grid, and its size in points
+    x0: f32,
+    y0: f32,
+    nx: usize,
+    ny: usize,
+    /// the two cells the road joins (and, on a diagonal, the two its line passes between), as the box of them
+    own: (usize, usize, usize, usize),
+}
+
+impl Area {
+    fn of(g: &Ground, a: Vec2, b: Vec2) -> Area {
+        let (ax, ay, bx, by) = (a.x.floor() as isize, a.y.floor() as isize, b.x.floor() as isize, b.y.floor() as isize);
+        let (mut x0, mut x1, mut y0, mut y1) = (ax.min(bx), ax.max(bx), ay.min(by), ay.max(by));
+        let own = (x0.max(0) as usize, x1.max(0) as usize, y0.max(0) as usize, y1.max(0) as usize);
+        if ay == by {
+            (y0, y1) = (y0 - 1, y1 + 1);
+        }
+        if ax == bx {
+            (x0, x1) = (x0 - 1, x1 + 1);
+        }
+        let (x0, x1) = (x0.max(0), x1.min(g.w as isize - 1));
+        let (y0, y1) = (y0.max(0), y1.min(g.h as isize - 1));
+        Area { x0: x0 as f32, y0: y0 as f32, nx: (x1 - x0 + 1) as usize * GRID + 1, ny: (y1 - y0 + 1) as usize * GRID + 1, own }
+    }
+
+    fn at(&self, i: usize) -> Vec2 {
+        Vec2::new(self.x0 + (i % self.nx) as f32 / GRID as f32, self.y0 + (i / self.nx) as f32 / GRID as f32)
+    }
+
+    fn nearest(&self, p: Vec2) -> usize {
+        let i = (((p.x - self.x0) * GRID as f32).round().max(0.0) as usize).min(self.nx - 1);
+        let j = (((p.y - self.y0) * GRID as f32).round().max(0.0) as usize).min(self.ny - 1);
+        j * self.nx + i
+    }
+
+    /// The way from `p` to `q`, two points of dry ground either side of
+    /// water: the points between, and whether it still goes over water. The
+    /// cheapest way over the grid's points, a step costing its length, times
+    /// `OVER_WATER` where it ends in water and `THIRD_CELL` outside the two
+    /// cells, and never across a river's line; then drawn straight from
+    /// point to point wherever the straight line keeps as dry, so that it
+    /// follows the shore and no grid. None if no way is found at all.
+    fn shore_way(&self, g: &Ground, p: Vec2, q: Vec2) -> Option<(Vec<Vec2>, bool)> {
+        use std::cmp::Reverse;
+        let n = self.nx * self.ny;
+        let step = 1.0 / GRID as f32;
+        let hi = Vec2::new(self.x0 + (self.nx - 1) as f32 * step, self.y0 + (self.ny - 1) as f32 * step);
+        let rivers = crate::rivers::lengths_in(&g.rivers, &g.water, Vec2::new(self.x0, self.y0), hi);
+        let heights: Vec<f32> = (0..n).map(|i| {
+            let s = self.at(i);
+            world::height_at(g, s.x, s.y)
+        }).collect();
+        let wet: Vec<bool> = heights.iter().map(|&h| h < DRY).collect();
+        // the dry points on the beach or beside the water
+        let shore: Vec<bool> = (0..n).map(|i| {
+            let (x, y) = ((i % self.nx) as isize, (i / self.nx) as isize);
+            !wet[i] && (heights[i] < BEACH || (-1..=1isize).any(|dy| (-1..=1isize).any(|dx| {
+                let (u, v) = (x + dx, y + dy);
+                u >= 0 && v >= 0 && (u as usize) < self.nx && (v as usize) < self.ny && wet[v as usize * self.nx + u as usize]
+            })))
+        }).collect();
+        // the points near a river's line, whose steps are looked at for crossing it
+        let mut near = vec![false; n];
+        for &(r0, r1, half) in &rivers {
+            let reach = half + 1.5 * step;
+            let (lo, top) = (r0.min(r1) - Vec2::splat(reach), r0.max(r1) + Vec2::splat(reach));
+            let (i0, j0) = (((lo.x - self.x0) * GRID as f32).floor().max(0.0) as usize, ((lo.y - self.y0) * GRID as f32).floor().max(0.0) as usize);
+            let (i1, j1) = ((((top.x - self.x0) * GRID as f32).ceil().max(0.0) as usize).min(self.nx - 1), (((top.y - self.y0) * GRID as f32).ceil().max(0.0) as usize).min(self.ny - 1));
+            for j in j0..=j1 {
+                for i in i0..=i1 {
+                    near[j * self.nx + i] = true;
+                }
+            }
+        }
+        let crosses_river = |u: Vec2, v: Vec2| rivers.iter().any(|&(r0, r1, _)| meets(u, v, r0, r1));
+        let third = |s: Vec2| {
+            let (cx, cy) = (s.x.floor().max(0.0) as usize, s.y.floor().max(0.0) as usize);
+            !(self.own.0..=self.own.1).contains(&cx) || !(self.own.2..=self.own.3).contains(&cy)
+        };
+        let (start, goal) = (self.nearest(p), self.nearest(q));
+        let goal_at = self.at(goal);
+        let mut cost = vec![f32::MAX; n];
+        let mut came = vec![usize::MAX; n];
+        let mut heap = std::collections::BinaryHeap::new();
+        cost[start] = 0.0;
+        heap.push((Reverse(self.at(start).distance(goal_at).to_bits()), start));
+        while let Some((_, u)) = heap.pop() {
+            if u == goal {
+                break;
+            }
+            let (ui, uj) = ((u % self.nx) as isize, (u / self.nx) as isize);
+            let at_u = self.at(u);
+            for (di, dj) in [(1isize, 0isize), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                let (vi, vj) = (ui + di, uj + dj);
+                if vi < 0 || vj < 0 || vi as usize >= self.nx || vj as usize >= self.ny {
+                    continue;
+                }
+                let v = vj as usize * self.nx + vi as usize;
+                let at_v = self.at(v);
+                if (near[u] || near[v]) && crosses_river(at_u, at_v) {
+                    continue;
+                }
+                let len = if di != 0 && dj != 0 { std::f32::consts::SQRT_2 * step } else { step };
+                let c = cost[u] + len * if wet[v] { OVER_WATER } else if shore[v] { SHORE } else { 1.0 } * if third(at_v) { THIRD_CELL } else { 1.0 };
+                if c < cost[v] {
+                    cost[v] = c;
+                    came[v] = u;
+                    // (costs are never below nought, so their bits order as they do)
+                    heap.push((Reverse((c + at_v.distance(goal_at)).to_bits()), v));
+                }
+            }
+        }
+        if cost[goal] == f32::MAX {
+            return None;
+        }
+        let mut path = vec![goal];
+        while *path.last().unwrap() != start {
+            path.push(came[*path.last().unwrap()]);
+        }
+        path.reverse();
+        // the points, from p to q, and whether each is in water
+        let mut way: Vec<(Vec2, bool)> = vec![(p, false)];
+        way.extend(path.iter().map(|&i| (self.at(i), wet[i])));
+        way.push((q, false));
+        // straight wherever it keeps dry, with `CLEAR` of dry ground either hand, and off the
+        // beach unless it is on the beach at either end already, and crosses no river; over water
+        // straight from shore to shore
+        let height = |t: Vec2| world::height_at(g, t.x, t.y);
+        let dry_line = |u: Vec2, v: Vec2| {
+            let k = ((u.distance(v) / 0.01).ceil() as usize).max(1);
+            let side = (v - u).normalize_or(Vec2::X).perp() * CLEAR;
+            let least = BEACH.min(height(u)).min(height(v));
+            (0..=k).all(|i| {
+                let s = u.lerp(v, i as f32 / k as f32);
+                height(s) >= least && height(s + side) >= DRY && height(s - side) >= DRY
+            }) && !crosses_river(u, v)
+        };
+        let mut out: Vec<Vec2> = Vec::new();
+        let mut over = false;
+        let mut i = 0;
+        while i + 1 < way.len() {
+            if way[i + 1].1 {
+                // into the water: on to the first dry point after it
+                let mut j = i + 1;
+                while j + 1 < way.len() && way[j].1 {
+                    j += 1;
+                }
+                over = true;
+                if crosses_river(way[i].0, way[j].0) {
+                    out.extend(way[i + 1..=j].iter().map(|w| w.0));
+                } else {
+                    out.push(way[j].0);
+                }
+                i = j;
+                continue;
+            }
+            let mut j = i + 1;
+            while j + 1 < way.len() && !way[j + 1].1 && dry_line(way[i].0, way[j + 1].0) {
+                j += 1;
+            }
+            out.push(way[j].0);
+            i = j;
+        }
+        // (the last is q, which the caller puts in)
+        out.pop();
+        Some((out, over))
+    }
+}
+
+/// Whether the lengths from `a` to `b` and from `p` to `q` meet.
+fn meets(a: Vec2, b: Vec2, p: Vec2, q: Vec2) -> bool {
+    let (d, e) = (b - a, q - p);
+    let den = d.perp_dot(e);
+    if den.abs() < 1e-12 {
+        return false;
+    }
+    let w = p - a;
+    let (t, u) = (w.perp_dot(e) / den, w.perp_dot(d) / den);
+    (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)
+}
+
+/// `route` before the water: round the meanders, as the crossings' stage drew it.
+fn route_rivers(g: &Ground, a: Vec2, b: Vec2, round: bool) -> Way {
     use crate::rivers::River;
     let straight = || {
         let along = (b - a).normalize_or(Vec2::X);
         let crossings = crate::rivers::crossings(&g.rivers, &g.water, a, b).into_iter().map(|(at, river, half, level)| (at, river, half, level, along)).collect();
-        Way { pts: vec![a, b], crossings }
+        Way { pts: vec![a, b], crossings, water: OnWater::None }
     };
     if !round {
         return straight();
@@ -210,7 +575,7 @@ pub fn route(g: &Ground, a: Vec2, b: Vec2, round: bool) -> Way {
         }
     }
     pts.push(b);
-    Way { pts, crossings }
+    Way { pts, crossings, water: OnWater::None }
 }
 
 /// The middle line of the ribbon of the road along `way`, as `road_line` drapes a straight one.
@@ -226,7 +591,7 @@ pub fn way_line(g: &Ground, way: &Way) -> Vec<Vec3> {
 /// (`crossed`, from `Replay::crossed`: the core's docs/rules/crossings.md);
 /// with `round`, only where its way crosses (`route`).
 pub fn road_bridges(g: &Ground, a: Vec2, b: Vec2, main: bool, crossed: Crossed, round: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
-    if crossed != Crossed::Bridge || !link_shown(g, a, b) {
+    if crossed != Crossed::Bridge {
         return Vec::new();
     }
     bridges_on(&route(g, a, b, round), main, detail)
@@ -248,7 +613,7 @@ fn bridges_on(way: &Way, main: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<Roa
 /// run says it crosses its water with no bridge: one wherever its way
 /// crosses a river's middle line, reaching along the road as far as the water does.
 pub fn road_fords(g: &Ground, a: Vec2, b: Vec2, main: bool, crossed: Crossed, round: bool) -> Vec<RoadFord> {
-    if crossed == Crossed::Bridge || !link_shown(g, a, b) {
+    if crossed == Crossed::Bridge {
         return Vec::new();
     }
     fords_on(&route(g, a, b, round), main, crossed)
@@ -271,11 +636,13 @@ fn fords_on(way: &Way, main: bool, crossed: Crossed) -> Vec<RoadFord> {
 /// as how far along the road it starts and ends (0 at `a`, 1 at `c`), from
 /// one dry end to the other and a little past each.
 pub fn causeway_runs(g: &Ground, a: Vec2, c: Vec2) -> Vec<(f32, f32)> {
-    if !link_shown(g, a, c) {
-        return Vec::new();
-    }
+    causeway_runs_every(g, a, c, 0.02)
+}
+
+/// `causeway_runs`, looked at every `step` along the road.
+fn causeway_runs_every(g: &Ground, a: Vec2, c: Vec2, step: f32) -> Vec<(f32, f32)> {
     let len = a.distance(c);
-    let n = ((len / 0.02).ceil() as usize).max(2);
+    let n = ((len / step).ceil() as usize).max(2);
     let wet = |t: f32| {
         let p = a + (c - a) * t;
         world::height_at(g, p.x, p.y) < 0.004
@@ -297,6 +664,32 @@ pub fn causeway_runs(g: &Ground, a: Vec2, c: Vec2) -> Vec<(f32, f32)> {
     out
 }
 
+/// The causeways along a road's way: on each of its straight lengths, where
+/// it runs over drowned ground (`causeway_runs`), from where to where, and how
+/// high its top stands: `CAUSEWAY_TOP` over the tide, and as much over a
+/// lake's water where the way crosses a lake (`OnWater::Causeway`).
+pub fn causeways(g: &Ground, way: &Way) -> Vec<(Vec2, Vec2, f32)> {
+    let mut out = Vec::new();
+    // (a way that meets standing water is looked along twice as closely, so that no narrow
+    // reach of water slips between two looks)
+    let step = if way.water == OnWater::None { 0.02 } else { 0.01 };
+    for w in way.pts.windows(2) {
+        for (t0, t1) in causeway_runs_every(g, w[0], w[1], step) {
+            let (p, q) = (w[0].lerp(w[1], t0), w[0].lerp(w[1], t1));
+            out.push((p, q, water_top(g, p.lerp(q, 0.5)) + CAUSEWAY_TOP));
+        }
+    }
+    out
+}
+
+/// The height of the water's surface at a spot under standing water: a
+/// lake's sheet where one lies over it, else the sea's, nought.
+fn water_top(g: &Ground, p: Vec2) -> f32 {
+    let Some(laid) = &g.laid else { return 0.0 };
+    let h = world::grid_at(&g.hgt, g.gw, g.gh, p.x, p.y);
+    laid.lake_over(h, p.x, p.y).unwrap_or(0.0)
+}
+
 /// The road from `a` to `b` as a cart drives it: its ribbon's middle line,
 /// at the height of whatever is on top there, the ribbon itself, a bridge's
 /// roadway (up its ramp, over the hump and down again) or a causeway. Each
@@ -307,11 +700,10 @@ pub fn causeway_runs(g: &Ground, a: Vec2, c: Vec2) -> Vec<(f32, f32)> {
 /// roadway is drawn in fewer lengths, and the cart rides a shade above it.
 pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool, crossed: Crossed, round: bool) -> Vec<Vec3> {
     let (pa, pb) = (Vec2::new(a.0, a.1), Vec2::new(b.0, b.1));
-    let shown = link_shown(g, pa, pb);
     let way = route(g, pa, pb, round);
     let height = |x: f32, z: f32| world::height_at(g, x, z);
-    let bridges = if crossed == Crossed::Bridge && shown { bridges_on(&way, main, |_| Detail::Play) } else { Vec::new() };
-    let fords = if crossed != Crossed::Bridge && shown { fords_on(&way, main, crossed) } else { Vec::new() };
+    let bridges = if crossed == Crossed::Bridge { bridges_on(&way, main, |_| Detail::Play) } else { Vec::new() };
+    let fords = if crossed != Crossed::Bridge { fords_on(&way, main, crossed) } else { Vec::new() };
     if !way.straight() {
         return driven_round(g, &way, &bridges, &fords);
     }
@@ -330,8 +722,8 @@ pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool, crossed: Cro
     for f in &fords {
         layers.push(vec![(t_of(f.point(0.0)), f.wade()), (t_of(f.point(1.0)), f.wade())]);
     }
-    for (t0, t1) in causeway_runs(g, pa, pb) {
-        layers.push(vec![(t0, CAUSEWAY_TOP), (t1, CAUSEWAY_TOP)]);
+    for (p, q, top) in causeways(g, &way) {
+        layers.push(vec![(t_of(p), top), (t_of(q), top)]);
     }
     envelope(&layers).into_iter().map(|(t, h)| {
         let p = pa + dir * (len * t);
@@ -339,9 +731,9 @@ pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool, crossed: Cro
     }).collect()
 }
 
-/// `driven` for a way that goes round a meander: the same layers, read along
-/// the way by how far along it they lie (no causeway: a way that goes round
-/// is inland).
+/// `driven` for a way that goes round a meander, or round a lake's shore or
+/// a tideway's: the same layers, read along the way by how far along it they
+/// lie.
 fn driven_round(g: &Ground, way: &Way, bridges: &[RoadBridge], fords: &[RoadFord]) -> Vec<Vec3> {
     let pts = &way.pts;
     let mut cum = vec![0.0f32];
@@ -378,6 +770,10 @@ fn driven_round(g: &Ground, way: &Way, bridges: &[RoadBridge], fords: &[RoadFord
     for f in fords {
         let (t0, t1) = (t_of(f.point(0.0)), t_of(f.point(1.0)));
         layers.push(vec![(t0.min(t1), f.wade()), (t0.max(t1), f.wade())]);
+    }
+    for (p, q, top) in causeways(g, way) {
+        let (t0, t1) = (t_of(p), t_of(q));
+        layers.push(vec![(t0.min(t1), top), (t0.max(t1), top)]);
     }
     for l in layers.iter_mut() {
         l.sort_by(|x, y| x.0.total_cmp(&y.0));
@@ -624,6 +1020,116 @@ fn sidings(r: &Replay, cen: &[(f32, f32)], k: usize) -> Vec<crate::rails::Siding
     out
 }
 
+/// What the roads of year `k` do about standing water (`ISOSTATE_ROADS`,
+/// from `carts::maybe_check`), as lines to print: how many links the picture
+/// before this stage left out, how many now go round and how many cross on a
+/// causeway (with the longest), how those links cross rivers, and how many
+/// lie on standing water with nothing under them (none, if all is well);
+/// and how long it takes to find every link's way that year with none of the
+/// ways round water kept from before.
+pub fn water_check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> Vec<String> {
+    g.detours.forget();
+    let t0 = std::time::Instant::now();
+    let segs = road_segments(r, k);
+    for &(c, m, _) in &segs {
+        route(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1), r.round());
+    }
+    let cold = t0.elapsed().as_secs_f64() * 1000.0;
+    let t0 = std::time::Instant::now();
+    for &(c, m, _) in &segs {
+        route(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1), r.round());
+    }
+    let warm = t0.elapsed().as_secs_f64() * 1000.0;
+    let (mut links, mut main) = (0, 0);
+    let (mut left, mut left_main) = (0, 0);
+    let (mut wet, mut wet_main, mut roundw, mut round_main, mut over, mut over_main) = (0, 0, 0, 0, 0, 0);
+    let (mut bare, mut bare_main, mut bare_len) = (0, 0, 0.0f32);
+    let mut kinds = [0usize; 3];
+    let mut extra = 0.0f32;
+    let mut faults: Vec<(f32, Vec2, Vec2, bool, bool)> = Vec::new();
+    let mut over_lake = 0;
+    let mut rounds: Vec<(f32, Vec2, bool)> = Vec::new();
+    let mut bares: Vec<(f32, Vec2, OnWater)> = Vec::new();
+    for (c, m, lv) in segs {
+        let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
+        links += 1;
+        main += (lv == 3) as usize;
+        if was_left_out(g, a, b) {
+            left += 1;
+            left_main += (lv == 3) as usize;
+        }
+        let way = route(g, a, b, r.round());
+        if way.water == OnWater::None {
+            continue;
+        }
+        wet += 1;
+        wet_main += (lv == 3) as usize;
+        let len = |pts: &[Vec2]| pts.windows(2).map(|w| w[0].distance(w[1])).sum::<f32>();
+        let further = len(&way.pts) - len(&route_rivers(g, a, b, r.round()).pts);
+        if !way.crossings.is_empty() {
+            kinds[r.crossed(c, m, k) as usize] += 1;
+        }
+        let runs = causeways(g, &way);
+        match way.water {
+            OnWater::Round => {
+                roundw += 1;
+                round_main += (lv == 3) as usize;
+                extra += further;
+                rounds.push((further, a.lerp(b, 0.5), lv == 3));
+            }
+            _ => {
+                over += 1;
+                over_main += (lv == 3) as usize;
+                let water: f32 = runs.iter().map(|(p, q, _)| p.distance(*q)).sum();
+                // (over a lake where a causeway's top stands above the sea's)
+                let lake = runs.iter().any(|r| r.2 > CAUSEWAY_TOP + 1e-4);
+                over_lake += lake as usize;
+                faults.push((water, runs.first().map_or(a, |x| x.0), a.lerp(b, 0.5), lv == 3, lake));
+            }
+        }
+        // on standing water with no causeway under it, looked at every 0.01 of a cell
+        let mut here = 0.0f32;
+        for w in way.pts.windows(2) {
+            let n = ((w[0].distance(w[1]) / 0.01).ceil() as usize).max(1);
+            for i in 0..=n {
+                let p = w[0].lerp(w[1], i as f32 / n as f32);
+                let carried = runs.iter().any(|&(s, e, _)| {
+                    let se = e - s;
+                    let u = (p - s).dot(se) / se.length_squared().max(1e-12);
+                    (-1e-3..=1.0 + 1e-3).contains(&u) && p.distance(s + se * u.clamp(0.0, 1.0)) < 1e-3
+                });
+                if world::height_at(g, p.x, p.y) < 0.0 && !carried {
+                    here += w[0].distance(w[1]) / n as f32;
+                }
+            }
+        }
+        if here > 0.0 {
+            bares.push((here, a.lerp(b, 0.5), way.water));
+            bare += 1;
+            bare_main += (lv == 3) as usize;
+            bare_len += here;
+        }
+    }
+    faults.sort_by(|x, y| y.0.total_cmp(&x.0));
+    let at = |p: Vec2| format!("{:.2},{:.2}", p.x, p.y);
+    let year = r.y0 + k as i32;
+    let mut out = vec![
+        format!("water {year}: {links} links ({main} main); the picture before left out {left} ({left_main} main); standing water on the way of {wet} ({wet_main} main): {roundw} ({round_main} main) go round on dry ground, {:.1} cells further in all, and {over} ({over_main} main) cross on a causeway ({over_lake} of them over a lake), {:.2} cells of it; of those links, {} also cross a river on a bridge, {} by a ford, {} by a ferry; on standing water with nothing under them: {bare} links ({bare_main} main), {bare_len:.3} cells; every link's way found in {cold:.1} ms with no way round water kept, {warm:.1} ms with them kept",
+            extra, faults.iter().map(|f| f.0).sum::<f32>(), kinds[Crossed::Bridge as usize], kinds[Crossed::Ford as usize], kinds[Crossed::Ferry as usize]),
+    ];
+    for (water, p, mid, is_main, lake) in &faults {
+        out.push(format!("  causeway at {} for {:.3} cells over {}, on the link through {}{}", at(*p), water, if *lake { "a lake" } else { "the tide" }, at(*mid), if *is_main { ", a main road" } else { "" }));
+    }
+    for (len, mid, water) in &bares {
+        out.push(format!("  on standing water with nothing under it for {:.3} cells, the link through {} ({water:?})", len, at(*mid)));
+    }
+    rounds.sort_by(|x, y| y.0.total_cmp(&x.0));
+    for (further, mid, is_main) in &rounds {
+        out.push(format!("  round the water on the link through {}, {:.3} cells further{}", at(*mid), further, if *is_main { ", a main road" } else { "" }));
+    }
+    out
+}
+
 pub fn year_nets(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Look) -> Nets {
     world::timed("year nets", || year_nets_inner(r, g, cen, k, lk))
 }
@@ -634,12 +1140,10 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
     let rails = crate::rails::track(&crate::rails::year(r, g, cen, k), g, lk, &sidings(r, cen, k));
     let (lane, main) = (*lk.ground.lane_dust, *lk.ground.road_gravel);
     for (c, m, lv) in road_segments(r, k) {
-        // (on the new land a road that would lie under a lake or along tidewater is left out)
         let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
-        if link_shown(g, a, b) {
-            // (crossings: round the meanders its straight line cuts, where the run keeps its crossings)
-            roads.ribbon(&way_line(g, &route(g, a, b, r.round())), road_width(lv), if lv == 3 { main } else { lane });
-        }
+        // (crossings: round the meanders its straight line cuts, where the run keeps its crossings;
+        // on the new land round a lake or a tideway, or over it on a causeway)
+        roads.ribbon(&way_line(g, &route(g, a, b, r.round())), road_width(lv), if lv == 3 { main } else { lane });
     }
     Nets { roads, rails }
 }

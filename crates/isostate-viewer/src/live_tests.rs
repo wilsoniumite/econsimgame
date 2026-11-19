@@ -437,7 +437,7 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
 
     // the save was written with the last order: the month, and what waits
     let saved = saves::read(&file).unwrap();
-    assert_eq!((saved.format, saved.year, saved.month, saved.waiting.len()), (2, 1753, 5, 3));
+    assert_eq!((saved.format, saved.year, saved.month, saved.waiting.len()), (iso::save::FORMAT, 1753, 5, 3));
     assert_eq!(saved.orders, before.orders, "nothing has been carried out since the turn");
     // two more months, and the game is left: the thread saves them on its way out
     assert!(!a.month() && !a.month());
@@ -644,21 +644,24 @@ fn the_thread_tells_the_rules_and_a_rule_set_by_hand_is_in_its_next_answer() {
 fn a_works_by_hand_is_offered_with_the_square_waits_with_its_stake_and_is_taken_back() {
     // The sandbox's Works tool (docs/designs/sandbox.md, 4.4 and 6.7, stage 7b).
     // On island 7 in January 1791, the answer about a farm square of
-    // Melbourne's district near the town holds the hand's list
+    // the first town's district near it holds the hand's list
     // (`edits::works_offered`) with a method that may be built there; given
     // five months on, it is answered "Ordered by hand", stands among what
     // waits for the turn and pegs its square; `Cmd::Cancel(0)` takes it away.
     // Given again, it is carried out at the turn, told in the line it wrote in
     // the news, and its square stays pegged until the year's picture has it.
     // Played under the game's rules as they stand, six families, nobody at the
-    // first: it asks of the island's history only that Melbourne stands and
-    // that some square near it takes a works, and it looks for that square
-    // rather than naming one.
+    // first: it asks of the island's history only that the island's first town
+    // stands and that some square near it takes a works, and it looks for that
+    // square rather than naming one. (It was written to Melbourne on the old
+    // island; since the game's rules took the new land, docs/rules/land.md, "The
+    // switch", island 7's towns have other names, and the first town is taken.)
     use isostate_core::edits::Edit;
     let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() });
     assert_eq!(a.year(), 1790);
     let (k, w, n) = (a.r.filled - 1, a.r.w as i64, a.r.n);
-    let town = a.r.header.towns.iter().position(|t| t.name == "Melbourne").expect("Melbourne stands on island 7");
+    let town = 0;
+    let name = a.r.header.towns[town].name.clone();
     let node = a.r.header.towns[town].node as i64;
     // the squares of its district round the town, the nearest first
     let mut near: Vec<usize> = (-5..=5i64)
@@ -675,7 +678,7 @@ fn a_works_by_hand_is_offered_with_the_square_waits_with_its_stake_and_is_taken_
             let best = hand.into_iter().filter(|o| o.allowed.is_ok()).filter_map(|o| o.sums.ok().map(|s| (o.name, s.capital_cost, s.expected_return))).max_by(|x, y| x.2.total_cmp(&y.2))?;
             Some((c, best.0, best.1))
         })
-        .expect("a square near Melbourne takes a works");
+        .unwrap_or_else(|| panic!("a square near {name} takes a works"));
     assert!(cost > 0.0);
     // five months on, it is ordered, and waits with its stake
     for _ in 0..5 {
@@ -684,7 +687,7 @@ fn a_works_by_hand_is_offered_with_the_square_waits_with_its_stake_and_is_taken_
     let build = Edit::BuildWorks { method: method.clone(), cell };
     assert!(a.order("by_hand", Cmd::ByHand(build.clone())), "{}", a.said);
     assert!(a.said.starts_with("Ordered by hand: a works ("), "{}", a.said);
-    assert!(a.said.contains("in Melbourne's district") && a.said.ends_with("at the year's turn, in January 1792."), "{}", a.said);
+    assert!(a.said.contains(&format!("in {name}'s district")) && a.said.ends_with("at the year's turn, in January 1792."), "{}", a.said);
     assert_eq!(a.live.standing.waiting, vec![Order::ByHand { edit: build.clone() }]);
     assert!(a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing.pegs);
     // the Hand tab's row: its words, with no "By hand" before them
@@ -1183,28 +1186,25 @@ fn a_month_leaves_what_scenery_is_built_from_as_it_was() {
 }
 
 #[test]
-fn a_game_on_the_new_land_has_its_land_and_is_kept_only_where_a_file_is_named() {
-    // By the rule for any other game, a new game with somebody at it is the island's own, and
-    // one begun some years in is a trial. On the new land neither is kept: the place is not
-    // even looked at, so the game played there on the old island is never set aside for it.
+fn a_new_game_is_on_the_new_land_and_old_land_starts_one_on_the_old_island() {
+    // Since the game's rules took the new land (docs/rules/land.md, "The switch"), a new game is
+    // on it; `--old-land` starts one on the port's island. Either is a new game, kept where any
+    // new game is: with somebody at it the island's own, begun some years in a trial.
     for o in [
-        Opening { seed: 7, families: 2, fresh: true, new_land: true, ..default() },
-        Opening { seed: 7, families: 2, fresh: true, new_land: true, advance: 3, ..default() },
-        Opening { seed: 7, families: 2, fresh: true, new_land: true, keep: true, ..default() },
+        Opening { seed: 7, families: 2, fresh: true, old_land: true, ..default() },
+        Opening { seed: 7, families: 2, fresh: true, old_land: true, advance: 3, ..default() },
     ] {
-        assert!(!o.plain(), "a game on the new land is a new game: {o:?}");
+        assert!(!o.plain(), "a game on the old island is a new game: {o:?}");
         assert!(matches!(o.keeping(), Keeping::Autosave | Keeping::Trial(_)));
-        let (saver, why) = take_place(&o, 7, 2, true).unwrap();
-        assert!(saver.is_none() && why.is_none(), "{o:?}");
     }
 
-    // A file that is named is the place. The game there has the land in an `Arc` of its own,
-    // which a year arriving does not copy, and the thread's save says which land it is on.
+    // A new game has the land in an `Arc` of its own, which a year arriving does not copy, and
+    // the thread's save says which land it is on.
     let dir = saves::test_dir("new-land-test");
     let file = dir.join("game.json");
     let name = file.to_string_lossy().into_owned();
-    let mut a = Table::open(&Opening { seed: 7, families: 2, fresh: true, shots: true, new_land: true, save: Some(name.clone()), ..default() });
-    let land = a.r.land.clone().expect("a game on the new land has its land");
+    let mut a = Table::open(&Opening { seed: 7, families: 2, fresh: true, shots: true, save: Some(name.clone()), ..default() });
+    let land = a.r.land.clone().expect("a new game is on the new land");
     assert_eq!((land.w, land.h, land.fw, land.fh), (a.r.w, a.r.h, a.r.w * land.fine, a.r.h * land.fine));
     assert_eq!(land.height.len(), land.fw * land.fh);
     assert!(land.lines.len() > 100 && land.lakes.len() >= 2, "{} lines and {} lakes", land.lines.len(), land.lakes.len());
@@ -1215,20 +1215,30 @@ fn a_game_on_the_new_land_has_its_land_and_is_kept_only_where_a_file_is_named() 
     assert!(std::sync::Arc::ptr_eq(&land, a.r.land.as_ref().unwrap()) && std::sync::Arc::ptr_eq(&land, copy.land.as_ref().unwrap()), "a copy of the run copies a pointer to the land");
     assert!(a.live.kept);
     drop(a);
-    assert!(saves::read(&file).unwrap().land, "the save says the game is on the new land");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("\"land\": true") && saves::read(&file).unwrap().land, "the save says the game is on the new land: {text}");
 
-    // gone on with as --load goes on with it, it is on the same land; with no file named for it, it is not kept
-    let b = Table::open(&Opening { load: Some(name), ..default() });
-    assert!(!b.live.kept);
+    // gone on with as --load goes on with it, it is on the same land
+    let b = Table::open(&Opening { load: Some(name.clone()), save: Some(name), ..default() });
+    assert!(b.live.kept);
     let again = b.r.land.clone().expect("a game gone on with from a save on the new land has its land");
     assert_eq!(bits(&again.height), bits(&land.height));
     assert_eq!(b.r.terrain, copy.terrain);
     drop(b);
 
-    // and a game started in the usual way has none
-    let c = Table::open(&Opening { seed: 7, families: 2, fresh: true, shots: true, ..default() });
+    // and a game begun with --old-land has none, is another island, and its save says so
+    let old = dir.join("old.json");
+    let old_name = old.to_string_lossy().into_owned();
+    let c = Table::open(&Opening { seed: 7, families: 2, fresh: true, shots: true, old_land: true, save: Some(old_name.clone()), ..default() });
     assert!(c.r.land.is_none());
     assert_ne!(c.r.terrain, copy.terrain, "the old island is another island");
+    let old_terrain = c.r.terrain.clone();
+    drop(c);
+    let text = std::fs::read_to_string(&old).unwrap();
+    assert!(text.contains("\"land\": false") && !saves::read(&old).unwrap().land, "the save says the game is on the old island: {text}");
+    let d = Table::open(&Opening { load: Some(old_name.clone()), save: Some(old_name), ..default() });
+    assert!(d.r.land.is_none() && d.r.terrain == old_terrain, "gone on with, it is on the old island again");
+    drop(d);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1242,10 +1252,13 @@ fn the_work_charts_hold_what_the_core_kept() {
     // figure from the game's own state, to the bit in every month, and the charts' year
     // figures (an f32 mean of the months) to a millionth; hauling by machine is above
     // nothing in the last year. Played under the game's rules with the books, the gauges,
-    // the owners and the machines for tasks (and their land) on, which it says by name.
+    // the owners and the machines for tasks (and their land) on, which it says by name; and
+    // on the old island, which the case was written to: since the game's rules took the new
+    // land (docs/rules/land.md, "The switch") island 7 is another island, on which nothing is
+    // hauled by machine in the year after the hoist's find (1909).
     use crate::work_charts::{charts, MACHINE_ROWS, OWNED_ROWS};
     let t0 = std::time::Instant::now();
-    let mut game = Game::under_to(iso::params::Rules::Game, 7, 6, 0, 2050).unwrap();
+    let mut game = Game::on_old_land_to(iso::params::Rules::Game, 7, 6, 0, 2050).unwrap();
     let p = &game.sim.params;
     assert!(p.accounts.enabled && p.gauges.enabled && p.owners.enabled && p.tasks.enabled && p.tasks.land, "the case is played with the books, gauges, owners and tasks on");
     let hoist = game.sim.content.tasks.uses.iter().position(|u| u.name == "hoist").expect("the hoist is a machine for a task");

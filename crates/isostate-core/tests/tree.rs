@@ -222,12 +222,17 @@ fn year_mean(r: &RunResult, name: &str, year: i64) -> f64 {
 
 #[test]
 fn the_island_opens_with_builders_and_they_take_the_quarries_work() {
-    // stage 1 by name: the game's own ceiling, 6, adds the content after 1900
+    // stage 1 by name: the game's own ceiling, 6, adds the content after 1900;
+    // and on the old island, which the shares below were measured on: since the
+    // game's rules took the new land (docs/rules/land.md, "The switch") island 3 is
+    // another island, where builders make 0.76 of shelter in 1759
     let mut Pon = game(3, 0, 1760);
     Pon.tree.stage = 1;
+    Pon.land = Default::default();
     let on = run(&Pon);
     let mut P = game(3, 0, 1760);
     P.tree.stage = 0;
+    P.land = Default::default();
     let off = run(&P);
     assert_eq!((off.content.G, on.content.G), (16, 25));
     assert!(!off.state.series.index.contains_key("out_building"), "without the tree a run does not know of building work");

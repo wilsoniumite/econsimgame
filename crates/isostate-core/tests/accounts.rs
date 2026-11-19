@@ -220,11 +220,14 @@ fn the_books_keep_up_with_the_mines_and_the_canals() {
     // landlords paid their dividends no working is being sunk in 1796. And with
     // the tree's ceiling at 1 (docs/rules/tree.md): the inventions of the land's
     // twentieth century are sought from 1750, and with them in the draw no
-    // working is being sunk in 1796 either.
+    // working is being sunk in 1796 either. And on the old island: since the
+    // game's rules took the new land (docs/rules/land.md, "The switch") seed 7
+    // is another island, so the case is played with the land off.
     const END: i64 = 1797;
     let mut P = params(Rules::Game, 7, 6, END, true);
     P.owners.enabled = false;
     P.tree.stage = 1;
+    P.land = Default::default();
     let r = run(Rules::Game, &P);
     let (st, C) = (&r.state, &r.content);
     assert!(r.params.mines.enabled && r.params.canals.enabled && r.params.canals.wages > 0.3);

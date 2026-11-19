@@ -314,7 +314,10 @@ fn a_district_that_goes_and_comes_back() {
 /// parts G and H, with longrun off, docs/rules/longrun.md, and with the
 /// production tree off, docs/rules/tree.md, under which no town goes short
 /// after taking a district on this island even without the rule, and with
-/// owners off, docs/rules/owners.md, under which none does either.)
+/// owners off, docs/rules/owners.md, under which none does either. Penfell is
+/// the old island's, and since the game's rules took the new land,
+/// docs/rules/land.md, "The switch", island 4 is another island, so both runs
+/// are played with the land off.)
 #[test]
 fn no_hungry_january_after_a_town_takes_a_district() {
     let run = |shelves: bool| {
@@ -328,6 +331,7 @@ fn no_hungry_january_after_a_town_takes_a_district() {
         P.longrun.enabled = false;
         P.tree = Default::default();
         P.owners.enabled = false;
+        P.land = Default::default();
         P.people.shelves_go = shelves;
         let mut s = sim::start(&P, game_content());
         let T = s.st.T_max;

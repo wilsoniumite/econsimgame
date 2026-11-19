@@ -179,19 +179,45 @@ fn the_rules_in_metres_are_the_old_island_s_at_three_times_the_relief() {
 }
 
 #[test]
-fn a_road_under_a_lake_is_left_out_of_the_picture_on_the_new_land() {
-    let (_, g, _) = made_up(|_| 60.0, |p| (6.0..9.0).contains(&p.x) && (1.0..3.6).contains(&p.y), 58.0, &[]);
+fn a_road_goes_round_a_lake_where_its_cells_have_ground_and_over_it_on_a_causeway_where_not() {
+    use crate::network::{causeways, route, OnWater};
     let v = |x: f32, y: f32| Vec2::new(x, y);
-    // across the lake, and across a corner of it: left out; south of it, and one that only touches its edge: drawn
-    assert!(!crate::network::link_shown(&g, v(5.5, 2.5), v(9.5, 2.5)));
-    assert!(!crate::network::link_shown(&g, v(5.5, 3.0), v(6.5, 3.5)));
-    assert!(crate::network::link_shown(&g, v(5.5, 3.8), v(9.5, 3.8)));
-    assert!(crate::network::link_shown(&g, v(5.5, 3.0), v(5.95, 3.0)));
-    // a link that is left out has no bridge and no causeway
-    assert!(crate::network::causeway_runs(&g, v(5.5, 2.5), v(9.5, 2.5)).is_empty());
-    // and on the old island every road is in the picture, whatever it lies on
+    // every point of a way: on dry ground, or on a causeway's length
+    let carried = |g: &Ground, way: &crate::network::Way| {
+        let runs = causeways(g, way);
+        way.pts.windows(2).all(|w| {
+            (0..=100).all(|i| {
+                let p = w[0].lerp(w[1], i as f32 / 100.0);
+                world::height_at(g, p.x, p.y) >= 0.0
+                    || runs.iter().any(|&(s, e, _)| {
+                        let u = ((p - s).dot(e - s) / s.distance_squared(e).max(1e-12)).clamp(0.0, 1.0);
+                        p.distance(s.lerp(e, u)) < 1e-3
+                    })
+            })
+        })
+    };
+    // a lake in the middle of the cells 5,2 and 6,2, with dry ground north and south of it in them
+    let (_, g, _) = made_up(|_| 60.0, |p| (5.3..6.7).contains(&p.x) && (2.25..2.75).contains(&p.y), 58.0, &[]);
+    let (a, b) = (v(5.15, 2.5), v(6.85, 2.5));
+    let way = route(&g, a, b, true);
+    assert_eq!(way.water, OnWater::Round, "{way:?}");
+    assert!(way.pts.len() > 2 && way.pts[0] == a && *way.pts.last().unwrap() == b, "{way:?}");
+    assert!(causeways(&g, &way).is_empty() && carried(&g, &way), "{way:?}");
+    // inside the two cells, and no further than round the lake's end (some 0.6 of a cell)
+    assert!(way.pts.iter().all(|p| (5.0..7.0).contains(&p.x) && (2.0..3.0).contains(&p.y)), "{way:?}");
+    let len: f32 = way.pts.windows(2).map(|w| w[0].distance(w[1])).sum();
+    assert!(len < a.distance(b) + 0.9, "{len} against {}", a.distance(b));
+    // a lake across the cells 5 and 6 and the rows beside them: nothing dry to go round by, so a causeway
+    let (_, g, _) = made_up(|_| 60.0, |p| (5.3..6.7).contains(&p.x) && (0.5..4.5).contains(&p.y), 58.0, &[]);
+    let way = route(&g, a, b, true);
+    assert_eq!(way.water, OnWater::Causeway, "{way:?}");
+    let runs = causeways(&g, &way);
+    assert!(!runs.is_empty() && carried(&g, &way), "{way:?} {runs:?}");
+    // its top stands over the lake's water, which is above the sea's
+    assert!(runs.iter().all(|r| r.2 > crate::network::CAUSEWAY_TOP + 0.01), "{runs:?}");
+    // and on the old island the way is as it always was, straight
     let old_island = world::build_ground(&bare_run(1, W, H, vec![0; W * H], vec![0; W * H], vec![0; W * H], vec![-1; W * H], &[], None));
-    assert!(crate::network::link_shown(&old_island, v(5.5, 2.5), v(9.5, 2.5)));
+    assert!(route(&old_island, a, b, true).straight());
 }
 
 #[test]

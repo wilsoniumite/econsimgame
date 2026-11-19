@@ -43,8 +43,11 @@ use crate::state::{Event, State};
 /// The layout of the file. A reader refuses a later one. Layout 2 added the
 /// months played of the year in progress, the orders waiting for the year's
 /// end, and the month an order was carried out in; a file in layout 1 has none
-/// of them and reads as a game saved at a year's turn.
-pub const FORMAT: u32 = 2;
+/// of them and reads as a game saved at a year's turn. Layout 3 (19 November
+/// 2026, when the game's rules took the new land) writes in every save which
+/// land the game is on (`Save::land`); a file in layout 1 or 2 without the
+/// line was made on the port's island and is played there again.
+pub const FORMAT: u32 = 3;
 
 /// The player's family is always the first.
 pub const PLAYER: usize = 0;
@@ -227,10 +230,6 @@ fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 
-fn is_false(b: &bool) -> bool {
-    !*b
-}
-
 /// What became of an order that waited for the year's end.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Outcome {
@@ -319,14 +318,25 @@ impl Game {
 
     /// A new game under these rules on the second island generator's land
     /// (docs/rules/land.md), whatever the rules say of it: the rules as they
-    /// stand, with the land switched on and its numbers the game's. It is how
-    /// a game is started on the new land before the switch is thrown under
-    /// the game's rules, and it changes nothing for a game started any other
-    /// way. A save of such a game says so (`Save::land`) and is played again
+    /// stand, with the land switched on and its numbers the game's. The game's
+    /// rules take the land themselves since 19 November 2026, so under them
+    /// this is `under`; under the port's it puts a game on the new land. A
+    /// save says which land its game is on (`Save::land`) and is played again
     /// on the same land.
     pub fn on_new_land(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
         let mut P = params(rules, seed, families);
         P.land = crate::landform::LandParams::game();
+        Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+    }
+
+    /// A new game under these rules on the port's island, whatever the rules
+    /// say of the land: the rules as they stand, with the land switched off.
+    /// It is the way back to the island every game was played on before 19
+    /// November 2026 (the viewer's `--old-land`), and it is where a save that
+    /// does not say its land is played again.
+    pub fn on_old_land(rules: Rules, seed: u64, families: usize, started: u64) -> Game {
+        let mut P = params(rules, seed, families);
+        P.land = crate::landform::LandParams::default();
         Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
     }
 
@@ -342,6 +352,13 @@ impl Game {
     pub fn on_new_land_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
         let mut P = params_to(rules, seed, families, to)?;
         P.land = crate::landform::LandParams::game();
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+    }
+
+    /// `on_old_land`, played to the year `to` (as `under_to`).
+    pub fn on_old_land_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
+        let mut P = params_to(rules, seed, families, to)?;
+        P.land = crate::landform::LandParams::default();
         Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
     }
 
@@ -523,7 +540,7 @@ impl Game {
             seat: me.as_ref().map(|r| r.seat_name.clone()).unwrap_or_default(),
             worth: me.as_ref().map(|r| r.net_worth.round() as i64).unwrap_or(0),
             check: check(&self.sim),
-            land: self.on_land() && !self.rules.params().land.enabled,
+            land: self.on_land(),
             to: (self.to() != content_last_year(self.rules)).then_some(self.to()),
             orders: self.orders.clone(),
             waiting: self.waiting.clone(),
@@ -561,11 +578,14 @@ pub struct Save {
     /// A fingerprint of the island as it stood (`check`).
     #[serde(default)]
     pub check: String,
-    /// The game was started on the second island generator's land though its
-    /// rules do not switch it on (`Game::on_new_land`), and is played again
-    /// there. Left out of the file otherwise, so every other save is written
-    /// as it always was.
-    #[serde(default, skip_serializing_if = "is_false")]
+    /// Whether the game is on the second island generator's land
+    /// (docs/rules/land.md), which the game's rules take since 19 November
+    /// 2026, or on the port's island; it is played again on the same. Written
+    /// in every save from layout 3, `"land": true` or `"land": false`. A save
+    /// without the line is in layout 1 or 2, made before the switch, and so on
+    /// the port's island: before the switch only a game begun on the new land
+    /// (`Game::on_new_land`, the viewer's `--new-land`) wrote the line.
+    #[serde(default)]
     pub land: bool,
     /// The last year the game is played to, when it is not the content's
     /// (`Game::under_to`; docs/rules/longrun.md, "A game past 1900"). Left
@@ -701,13 +721,14 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     }
     // a save made in memory has not been through `from_text`
     save.sound()?;
-    // a game started on the new land before its rules switch it on is played again there
-    // and played to the year it was begun to (a save that does not say is a game to 1900)
+    // played again on the land it says, whatever today's rules take (a save without the
+    // line was made on the port's island before the game's rules took the new land), and
+    // played to the year it was begun to (a save that does not say is a game to 1900)
     let to = save.last_year_of_game();
     let mut game = if save.land {
         Game::on_new_land_to(save.played_under(), save.seed, save.families, save.started, to)?
     } else {
-        Game::under_to(save.played_under(), save.seed, save.families, save.started, to)?
+        Game::on_old_land_to(save.played_under(), save.seed, save.families, save.started, to)?
     };
     let mut refused = Vec::new();
     let mut next = 0;
