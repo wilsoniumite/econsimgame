@@ -892,7 +892,8 @@ One line each as they arrive: the name, its page, its switch.
   without a station. Under `tasks.land` the land's units pay their share for
   work to hands and machine units alike, and a stand-in, a coal-fired hoist,
   hauls at the pits and quarries (in the works too with the tree at stage
-  1); the fields wait for a tractor. A ceiling on yield
+  1); with the content after 1900 the tractor hauls on the fields, the
+  combine tends them and the cutter hauls at the pits. A ceiling on yield
   (`tasks.yield_cap`) and a control that holds the machine still
   (`tasks.freeze_from`) are for sweeps. [tasks.md](tasks.md),
   `tasks.enabled`, `tasks.land`.
