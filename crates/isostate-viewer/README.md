@@ -10,10 +10,13 @@ The game, and a 3D viewer for Isolated State runs, in Bevy 0.20. It draws the is
 cargo run -p isostate-viewer --release                                    # the game on island 7 with six families: a new one, or the one you left
 cargo run -p isostate-viewer --release -- --new                           # a new game, whatever is saved
 cargo run -p isostate-viewer --release -- --seed 11 --families 4          # another island, fewer rivals
+cargo run -p isostate-viewer --release -- --new --to 1900                 # a new game that ends in 1900, as every game did before
 cargo run -p isostate-viewer --release -- --new-land                      # a new game on the new land, to look at it (see The new land)
 cargo run -p isostate-core --release -- run --seed 7 --out runs/rust7     # record a run (or use the Python package)
 cargo run -p isostate-viewer --release -- runs/rust7/run.bin              # and watch it
 ```
+
+A new game is played to 2050, or to the year `--to YEAR` gives (1900 to 2050). The last year is chosen when the game is begun and kept in its save, so a game gone on with is played to its own last year whatever `--to` says, and a save made before there was a choice is a game to 1900 (`docs/rules/longrun.md`, "A game past 1900"). Past 1900 the island is the hungry island of the long run's first stage: people go on multiplying and what a wage buys falls, since nothing after steel has been written yet; that is expected until the later stages of the run to 2050 land. The standard shots (`--shots`) always play a game to 1900.
 
 The first build compiles Bevy and takes a while. On Linux you need `pkg-config`, `libwayland-dev` and `libxkbcommon-dev` to build; Windows and macOS need nothing extra. Other options: `--year 1846` opens a replay on a year, `--advance 20` starts a game twenty years in, `--size 1600x1000` sets the window, `--at 31.5,29.5` points the camera at a spot in map cells, `--yaw 25`, `--pitch 38` and `--dist 10` turn it, tilt it and set it back (degrees, degrees above the horizon, and map cells; a game opens looking north at a tilt of 52 from a distance of 14 over the home town, a replay over the whole island), `--overlay rent` opens on a map view, `--no-tilt` starts without the miniature focus, `--look FILE` lays a look file of your own over the standard one (`assets/look.toml`: every colour of the scenery, the light and the lens; a partial file is enough, and a misspelt key is refused with the nearest name), and `--load FILE` and `--save FILE` name a saved game (see Saved games). `--help` lists every option, those of the standard shots (`--shots`) and of the generators' lab (`--lab`) among them. An option that is not one, an option with no value after it, or a value that cannot be read (`--advance 3O`, `--season summer`, `--overlay rents`) stops the viewer with the reason and the list (exit code 2), rather than running as if it had not been given. A `run.bin` that is cut short or damaged is refused with a message naming the file and the array; the "make a run first" hint follows only a file that is not there.
 
@@ -137,7 +140,8 @@ Refused before anything is played, each in one sentence:
 
 - `--load` or `--save` with nothing after it, or with another option after it;
 - `--families` outside 1 to 30;
-- a file to load that is not a saved game, is a folder, is not text, is from a later version, is over 64 megabytes, or says what no game could have written (a year outside 1750 to 1900, families outside 1 to 30, more than eleven months played, an order dated more than twelve months into a year);
+- `--to` outside 1900 to 2050;
+- a file to load that is not a saved game, is a folder, is not text, is from a later version, is over 64 megabytes, or says what no game could have written (a year outside 1750 to the game's last year, a last year outside 1900 to 2050 or past 1900 under the port's rules, families outside 1 to 30, more than eleven months played, an order dated more than twelve months into a year);
 - a `--save` place that is a folder, holds something that is not a saved game, or cannot be written.
 
 A value that is missing, or that is the next option (`--shot --new`), is refused in the same way for `--shot`, `--look`, `--view` and `--shots-note` as it is for `--load` and `--save`, and a map view naming a good the game does not have (`price:cole`) is refused before the island is made, under the option it came from.

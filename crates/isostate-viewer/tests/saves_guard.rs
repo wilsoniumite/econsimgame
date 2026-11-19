@@ -269,7 +269,9 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
     };
     // a save doctored to the year 5000 was once accepted and announced as 3,251 years to play
     let said = try_file("year-5000.json", Some(whole.replace("\"year\": 1750,", "\"year\": 5000,")));
-    assert!(said.contains("not a saved game the game wrote: it says the game had reached the year 5000, and the island's years are 1750 to 1900"), "{said}");
+    // (a new game is played to 2050 and its save says so, so its years are 1750 to 2050)
+    assert!(whole.contains("\"to\": 2050,"), "{whole}");
+    assert!(said.contains("not a saved game the game wrote: it says the game had reached the year 5000, and the island's years are 1750 to 2050"), "{said}");
     let said = try_file("year-1066.json", Some(whole.replace("\"year\": 1750,", "\"year\": 1066,")));
     assert!(said.contains("the year 1066"), "{said}");
     // a number of families no game has

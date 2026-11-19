@@ -522,6 +522,46 @@ fn an_edit_by_hand_goes_through_the_thread_and_comes_back_from_the_save() {
 }
 
 #[test]
+fn a_game_begun_to_1910_plays_past_1900_through_the_thread_and_its_save_says_so() {
+    // A game past 1900 (docs/rules/longrun.md, "A game past 1900"): begun with
+    // a last year of 1910, played to 1899 before it opens and on through the
+    // thread, as the interface plays it, into 1901; its save says it is played
+    // to 1910, and loads again to the same island and the same last year; and
+    // the thread says no more when 1910 is played. Under the game's rules as
+    // they stand, three families: it leans on no one island's history.
+    let dir = saves::test_dir("to-1910-test");
+    let file = dir.join("game.json");
+    let name = file.to_string_lossy().into_owned();
+    let mut a = Table::open(&Opening { seed: 7, families: 3, fresh: true, shots: true, advance: 149, to: Some(1910), save: Some(name.clone()), ..default() });
+    assert_eq!((a.year(), a.r.ny, a.r.y0 + a.r.ny as i32 - 1), (1899, 161, 1910));
+    a.step();
+    a.step();
+    assert_eq!(a.year(), 1901);
+    // (the thread writes the year's save after it has sent the year)
+    let kept = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| s.year == 1901));
+    assert!(kept, "{}", saves::gave_up(120.0, "the year was to be saved"));
+    let saved = saves::read(&file).unwrap();
+    assert_eq!((saved.year, saved.to, saved.last_year_of_game()), (1901, Some(1910), 1910));
+    let b = Table::open(&Opening { load: Some(name), shots: true, ..default() });
+    let back = b.live.resumed.as_ref().expect("the game is gone on with");
+    assert!(!back.drifted && back.refused == 0, "{back:?}");
+    assert_eq!((b.year(), b.r.ny), (1901, 161));
+    same(&a, &b, "a game to 1910, two years past 1900");
+    drop(b);
+    // played to its last year, and no further
+    while a.year() < 1910 {
+        a.step();
+    }
+    a.live.step();
+    match a.wait() {
+        Msg::Failed(why) => assert_eq!(why, "1910 was the last year."),
+        _ => panic!("a month past the game's last year was played"),
+    }
+    drop(a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
     // The books' series (the shares of income, ownership in years of wages)
     // have one figure for a year, known when the year's books close: after

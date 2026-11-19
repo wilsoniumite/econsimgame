@@ -443,7 +443,10 @@ pub fn now() -> u64 {
 /// being played: the ones it was started with, less the save it was told to
 /// load and the years it was told to play first, and with the island and the
 /// number of families of the game on the table (a save that was loaded may
-/// be of another island than the one the arguments name).
+/// be of another island than the one the arguments name). The last year that
+/// was asked for (`--to`) is kept, so the new game runs to it; with none asked
+/// for it runs to 2050, as every new game does, whatever the game on the table
+/// was played to (an old save's game to 1900 does not hold the new one there).
 pub fn new_game_args(args: &[String], seed: u64, families: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -530,6 +533,7 @@ mod tests {
             worth: 0,
             check: String::new(),
             land: false,
+            to: None,
             orders: vec![Given { year: 1750, month: 0, order: Order::MoveSeat { town: 1 } }],
             waiting: Vec::new(),
         }
@@ -1233,5 +1237,8 @@ mod tests {
         // a place that was named goes on being the place
         let args: Vec<String> = ["--save", "mine.json", "--seed", "9"].iter().map(|s| s.to_string()).collect();
         assert_eq!(new_game_args(&args, 9, 6), ["--save", "mine.json", "--seed", "9", "--families", "6", "--new"]);
+        // and the last year that was asked for goes on being asked for (with none, a new game runs to 2050)
+        let args: Vec<String> = ["--to", "1950", "--load", "old.json"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(new_game_args(&args, 7, 6), ["--to", "1950", "--seed", "7", "--families", "6", "--new"]);
     }
 }
