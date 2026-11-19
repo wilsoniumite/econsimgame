@@ -2215,7 +2215,7 @@ mod tests {
         // and the line a decision shows is the content's labels, in the content's order
         let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None, weight: None, price: None }).collect();
         let fam = FamilyView { trade_goods: goods.clone(), ..default() };
-        assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals \u{00b7} Electricity \u{00b7} Oil"));
+        assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals \u{00b7} Electricity \u{00b7} Oil \u{00b7} Fertiliser"));
         // a recorded run, which does not say what each trade makes, shows no line
         assert_eq!(goods_of_trade(&FamilyView::default(), &all, Group::CoalMining), None);
         // the Markets panel's three heads, where the content leaves no doubt (charcoal it does: see live::good_kinds)

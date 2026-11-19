@@ -723,6 +723,21 @@ that band. A faster ramp adds little: at two or three tenths a year to 12 the
 growth is 1.16 and 1.15, since the steel curve sits above the ceiling only
 until the 1920s.
 
+**How much of it is fewer births.** A richer island has fewer children
+([transition.md](transition.md)): with the ramp there are 1.00 million people
+in 1970 and 1.10 million in 2050, against 1.17 and 1.55 without it. To part
+the two, the lab played islands 1 to 8 with the transition switched off from
+1901, so that births no longer fall as the towns grow richer, once without
+the ramp and once with it (`isostate-core lab --rule
+transition.enabled=false@1901 --rule machines.ramp_top=4,9.0001@1901`; a top
+of 4 is no lift). With births held to the incomes of 1900 the ramp lifts
+growth from 0.52 to 0.88 per cent a year, where with the transition it lifts
+it from 0.63 to 1.07: about four fifths of the ramp's gain to 1970 is more
+output a hand, and a fifth is fewer people to share it. (People are 1.49 and
+1.47 million in 1970 in those two arms, and in 2050 3.6 and 3.5 million, the
+wage halving after 1970 in both: past 1970 the transition is what keeps the
+island from crowding its land again, with the ramp or without it.)
+
 **Islands 9 to 16, and the new land.** The same rules on islands 9 to 16,
 which nobody tuned on: growth 1.16 per cent a year of the means (0.99 to
 1.38 by island), 2050 over 1970 1.13 (1.07 to 1.25), hands on the land 0.248
