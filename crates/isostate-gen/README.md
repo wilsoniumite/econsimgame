@@ -244,7 +244,7 @@ using the kit and not by copying numbers.
 | `scale.rs` | the scale: `STOREY`, `BAY`, what each level may and must draw (`LEVELS`), `measure` and `faults`, and the `Tally` the kit keeps of the walls and roofs it builds |
 | `registry.rs` | every generator, with specimens of each, and the tests that hold them to the scale |
 | `houses/` | `cottage`, `townhouse`, `terrace`, `villa`, `farmhouse`, each at three levels of detail; the density at which each adds a storey, `shop_at` and `villa_plot`; and `roof.rs`: what a house is roofed with by when and where it was built, when it is roofed again, how it weathers, and how each covering lies (see "Houses") |
-| `works/` | `works` (seventeen kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit, and `plant.rs`, the furnaces, lifts and kilns; `site.rs`, a works laid out on its plot from its process, the stages of its growth and what its plot faces (see "Works on their plots"), with its tests in `site_tests.rs` |
+| `works/` | `works` (twenty kinds, at any size, of any founding year, in five states, at three levels of detail), `footprint`, `rung` and `rung_size`, `flag_point`, `plume`; `pit`; `kit.rs`, the works' own parts, built on the kit, and `plant.rs`, the furnaces, lifts and kilns, and the cooling towers, tanks, columns and pipe racks of the twentieth century; `site.rs`, a works laid out on its plot from its process, the stages of its growth and what its plot faces (see "Works on their plots"), with its tests in `site_tests.rs` |
 | `farm.rs` | `farmstead`: a `houses::farmhouse` looking into its yard, the threshing barn with its porch and great doors, a cart shed or a byre, a granary on staddle stones, a rick |
 | `town/` | each at three levels: `church` (in its walled churchyard; `Church` also says where it stands off a market place and what ground it keeps clear), `station`, `market_cross`, `market_hall`, `lighthouse` |
 | `rail.rs` | each at three levels, what stands by a railway where the ground was too steep for an ordinary line: `winding_house` (the stationary engine at the head of an inclined plane, before 1850), `banker_shed` (the banking engine's shed at the foot of a steep bank, after), and `buffer_stop`; `WINDING_HOUSE` and `BANKER_SHED` are the ground each keeps, and `TRACK_CLEAR` how far before its front the track runs |
@@ -424,7 +424,8 @@ with a life: `works::works(solid, smoke, flat, site, &Works { .. }, pal)`.
 - **`founded`**: the year sets the style for good. Before 1790 stone, stone
   slates and timber, and a waterwheel where `water` is set (a powered mill
   then has its pond in the yard); then brick and slate; from 1840 iron and
-  glass (north lights, lanterns, iron-cased furnaces, a continuous kiln).
+  glass (north lights, lanterns, iron-cased furnaces, a continuous kiln); and
+  from 1930 a power station built large is of a class of its own (below).
 - **`state`**: `GoingUp` (walls part of the way up, scaffolding, no roofs,
   no smoke), `Extending` (at work, scaffolding round its newest part),
   `Working`, `Idle` (whole, fires out, gate shut) and `Derelict` (roofs
@@ -485,6 +486,10 @@ close to), `heap`, `pile`, `stacks` (goods in rows; these three stand on
 the yard's ground, which is laid `LIFT` above the site), `wheel`,
 `sheer_legs`, `scaffold`, `builders_yard`.
 
+On the yard's ground besides: `drums` (oil and varnish, standing on end in
+rows while there is stock), and `steam` (a white plume, as a cooling tower
+gives off).
+
 The plant of the fire trades (`works/plant.rs`, also methods of `Ctx`):
 `furnace_stack` (a blast furnace built of masonry: square and battered,
 with its blowing arches, string courses and tie plates), `furnace_shell`
@@ -494,13 +499,60 @@ round a furnace's throat, railed close to), `lift` (the four-legged tower
 barrows go up in, braced close to), `barrow_way` (a gantry, a charging
 bridge or an incline: a beam with a rail either side close to), `hoops`
 (for a `flue`: a stove's, a cupola's) and `bottle_kiln` (wicket to the
-front of the yard, firing holes, iron bands). Each is the plain shape from
+front of the yard, firing holes, iron bands). And the plant of the twentieth
+century, which more than one kind stands in its yard: `cooling_tower` (a
+shell of concrete with a waist, on a ring of raking legs, a lip at its rim),
+`tank` (round, of iron plate under a shallow cone, with hoops, a ladder and
+a rail round its roof close to), `column` (a slim iron tower under a domed
+head, ringed by platforms, with their rails and a ladder close to) and
+`pipe_rack` (frames of two legs and a beam carrying two to four pipes; none
+from far off). Each is the plain shape from
 far off, shows its openings as dark panels and one band from the play
 distance, and has the rest close to. The little a kind still draws for
 itself (a converter's vessel, a tunnel head, the bell of a closed furnace
 top) it draws straight into `c.solid`, asking `c.far()` and `c.near()` what
 the level wants; anything that more than one kind could use belongs in the
 kit as a part.
+
+**The kinds of the twentieth century** (`power.rs`, `electrical.rs`,
+`chemical.rs`), drawn for the methods of the run to 2050, which are the
+game's overlay's (`data/game.toml`) and not the port's content, so the lab
+and the tests take their processes from a table of their own
+(`sheets::LATER`, which `Process::of` falls back on):
+
+- **`PowerStation`** (`coal_power_station`): sets of buildings in rows from
+  the back of the yard, each the tall round chimneys behind (one, or two from
+  two and a half times the standard size), the sooty boiler house with
+  louvres along its ridge, and the engine hall before it with tall arched
+  windows, a great window in its gable, doors for a boiler and a lantern;
+  one set to the standard size, three at four times it, seven at twenty; a
+  switch house by the gate, and the coal in heaps down the side. Founded from
+  1930 (`power::GREAT_FROM`) at five times the standard size or more
+  (`power::GREAT`), the great class: fewer, longer sets with a turbine hall of
+  concrete glazed to its eaves under a low roof, a tall boiler house, one
+  very tall chimney (two from forty times the size), the cooling towers in a
+  column or two at the right of the yard (one at five times the size, two at
+  twenty, five at a hundred) with their steam, and great heaps of coal before
+  the halls. A works on its plot is drawn stage by stage in the style of each
+  stage's year, so a station of 1900 enlarged in 1950 has its towers beside
+  the old brick hall. Concrete has no token of its own yet: it is
+  `stone.works` lightened.
+- **`ElectricalWorks`** (`electrical_works`): long workshops of brick and
+  glass under north lights (`sawtooth`; before 1840, which the game never
+  asks for, pitched roofs with roof lights) in rows from the back, as much
+  length of them as the size wants; a narrow range of offices of two
+  storeys (three from ten times the size) along the road, to the left of
+  the gate and, from twice the size, to its right; the boiler house in the
+  far corner with its modest square stack; crates and drums in the yard.
+- **`ChemicalPlant`** (`nitrogen_works`, `oil_from_coal`, and
+  `ammonia_soda`, whose story pumps brine through towers; the alkali works
+  of 1815 roasts salt in furnaces and is left to the planner's process
+  alone): trains in rows from the back, each a house of sooty brick where
+  the compressors run, a row of iron columns, a rack of pipes before them
+  with a branch from the house, and pale round tanks before the rack; one
+  train to twice the standard size, two at four times it, four at twenty,
+  as many as the yard holds; a tall slim stack in the far corner, and coal
+  by the gate.
 
 To add a kind: a line in `Kind` (and in `of_method`, `method`, `label`,
 `plot` and `ALL`; `registry::slot` will not compile until it has a place
@@ -542,10 +594,12 @@ stand-in the viewer makes: `scatter::firm_site` lists them):
   processes here to fall out of step. A `Good` carries its name, its bulk
   and its price, and `Keep::of` says from those how it is kept: heavy cheap
   stuff in heaps in the open, heavy made things in stacks, timber in piles,
-  what is light or would spoil under a roof, and nothing at all of services
-  or of what is too heavy ever to be carried (a weight of 8 or more: the
-  tree's building work and town gas). A good nobody has heard of is kept by
-  its numbers. Fuel is a stand-in (`Process::fuel`): the record does not say
+  what is light or would spoil under a roof, oil in round tanks (the one
+  thing a good's numbers do not say: it is known by its name), and nothing
+  at all of services or of what is too heavy ever to be carried (a weight of
+  8 or more: the tree's building work, town gas and electricity, so a power
+  station has a yard for its coal and none for what it makes). A good nobody
+  has heard of is kept by its numbers. Fuel is a stand-in (`Process::fuel`): the record does not say
   which fuel a works burned, so it is coal from 1790 (`COAL_FROM`) and
   cordwood before.
 - **`Plot`**: the ground: a convex outline in the works' own frame, its
@@ -700,7 +754,9 @@ The sheets: `sites-kinds` (every kind at ten times the standard size in
 (`site-mill`, `site-coke-furnace`, ...) at sizes 0.4 to 100 as it stands in
 1890, founded in 1760 on a square plot by a stream, in 1820 on a plot with
 its back aslant along a railway, and in 1870 on a plot with a corner cut
-off; `site-history` and `site-history-iron` (one works through its own
+off (and for the kinds of the twentieth century, `site-power`,
+`site-electrical` and `site-chemical`, as they stand in 1960, founded in
+1890, 1910 and 1935); `site-history` and `site-history-iron` (one works through its own
 history on one plot, then shrunk, idle and derelict); `site-ways` (by the
 gate, a railway, navigable water, both, fed and feeding over the wall,
 slack and busy); `site-plots` (three kinds on six shapes of plot);
@@ -733,7 +789,9 @@ The sheets: `scale` (see "Looking at a generator"), `works-kinds` (every kind at
 `works-standard` (at 0.4 and 1, built early and late), `works-great` (at
 30), `works-states` and `works-states-great`, and one for each kind
 (`works-mill`, `works-coke-furnace`, ...) at sizes 0.4, 1, 3, 10, 30 and 100,
-built in 1760 and in 1870.
+built in 1760 and in 1870; and for the kinds of the twentieth century
+`works-power`, `works-electrical` and `works-chemical`, at sizes 0.4, 1, 4
+and 20, founded in 1890 and in 1935, at work and derelict.
 
 ## Looking at a generator
 

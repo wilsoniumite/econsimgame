@@ -693,3 +693,22 @@ fn trades_nobody_has_drawn_get_plans_of_their_own_from_what_the_run_says_of_them
         assert!(kilns.0 < less.0 * 0.7 && kilns.1 > no_fire, "{name}: {kilns:?} with its kilns, {less:?} burning less");
     }
 }
+
+#[test]
+fn oil_is_kept_in_tanks_and_electricity_nowhere() {
+    let pal = Palette::standard();
+    // oil made from coal goes out to round tanks in a yard by the way out
+    let oil = crate::sheets::later_process("oil_from_coal").unwrap();
+    assert_eq!(Keep::of(&oil.output), Keep::Tank);
+    let (w, d) = ground(Kind::ChemicalPlant, 8.0);
+    let p = plan(Kind::ChemicalPlant, &oil, &stages(&history(1925, 1950, 8.0)), &Plot::rect(w, d), 1950, Seed::of(4), &pal);
+    assert!(p.yards.iter().any(|y| y.hold == Hold::Out), "no yard for the oil");
+    let m = draw(&p, &Now::working(&p, 1950), 0.3);
+    assert!(m.solid.is_sound() && !m.solid.is_empty());
+    // a station takes in coal, which lies in heaps, and keeps nothing of what it makes
+    let station = crate::sheets::later_process("coal_power_station").unwrap();
+    let (w, d) = ground(Kind::PowerStation, 8.0);
+    let q = plan(Kind::PowerStation, &station, &stages(&history(1900, 1950, 8.0)), &Plot::rect(w, d), 1950, Seed::of(4), &pal);
+    assert!(!q.yards.iter().any(|y| y.hold == Hold::Out) && !q.parts.iter().any(|x| x.role == Role::Warehouse), "electricity is kept nowhere");
+    assert!(q.yards.iter().any(|y| matches!(y.hold, Hold::In(i) if q.held[i].0.name == "coal")), "the station has no coal yard");
+}
