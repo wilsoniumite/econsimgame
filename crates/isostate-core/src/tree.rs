@@ -673,6 +673,10 @@ mod tests {
     fn written_out_and_read_back_the_content_is_itself() {
         for mut C in [default_content(), game_content()] {
             let mut back = content_from_raw(&raw_of(&C)).unwrap();
+            // the classes of task come from a file of their own, laid again by name
+            if !C.tasks.is_empty() {
+                crate::tasks::fill(&mut back);
+            }
             // the one table with no order of its own
             C.good_index.clear();
             back.good_index.clear();
