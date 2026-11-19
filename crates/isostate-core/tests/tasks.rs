@@ -207,6 +207,110 @@ fn island_7_to_1925_on_the_land() {
     assert_ne!(on, off, "the hoist at the pits moved nothing");
 }
 
+/// The year island 7 finds the hoist under `params(true)`, as the tests below
+/// lean on it: they stop ten years on.
+fn starts(s: &sim::Sim) -> Option<i64> {
+    s.st.tasks.found.first().copied().filter(|&y| y >= 0)
+}
+
+/// A machine works once it stands, on island 7 played a month at a time to
+/// ten years past the find (under the game's rules with `tasks.enabled` and
+/// `tasks.land` set by name). Every month: no works and no town's sector
+/// holds more than it means to (`f_held` against `f_auto`, `land_held`
+/// against `land_auto`); a works whose hands a unit fell had plant in place
+/// when the month began; and a works founded after the find, which means to
+/// hold its town's target, works its first month by hand at its recipe and
+/// holds nothing then. Some of those come to hold part of their hauling once
+/// their plant is delivered.
+#[test]
+fn machines_work_once_they_stand() {
+    let P = params(true);
+    let mut s = sim::start(&P, content(&P));
+    let mut fresh: Vec<usize> = Vec::new();
+    let (mut first_months, mut came) = (0, 0);
+    let mut seen: Vec<usize> = Vec::new();
+    while s.year <= s.end_year && starts(&s).is_none_or(|y| s.year <= y + 10) {
+        let year = s.year;
+        for month in 0..12 {
+            let plant: Vec<bool> = s.st.tasks.f_plant.iter().map(|p| p.iter().any(|&v| v > 0.0)).collect();
+            sim::run_month(&mut s, month).expect("money is conserved every month");
+            let st = &s.st;
+            for f in 0..st.F_count.min(st.tasks.f_held.len()) {
+                let (held, auto) = (st.tasks.f_held[f], st.tasks.f_auto[f]);
+                assert!((0..tasks::K).all(|k| held[k] <= auto[k]), "{year}-{month}: works {f} holds {held:?}, more than it means to, {auto:?}");
+                if st.f_alive[f] && st.tasks.f_factor[f] < 1.0 {
+                    assert!(plant.get(f) == Some(&true), "{year}-{month}: works {f}'s hands fell with no plant in place");
+                }
+            }
+            for f in fresh.drain(..) {
+                if st.f_alive[f] {
+                    assert_eq!(st.tasks.f_factor[f], 1.0, "{year}-{month}: works {f}'s first month is not by hand");
+                    assert_eq!(st.tasks.f_held[f], [0.0; tasks::K]);
+                    first_months += 1;
+                }
+            }
+            for (t, row) in st.tasks.land_held.iter().enumerate() {
+                for (k, held) in row.iter().enumerate() {
+                    let auto = st.tasks.land_auto[t][k];
+                    assert!((0..tasks::K).all(|c| held[c] <= auto[c]), "{year}-{month}: sector {k} of town {t} holds {held:?} over {auto:?}");
+                }
+            }
+        }
+        sim::end_year(&mut s);
+        let st = &s.st;
+        for &f in &st.new_firms_year {
+            if st.f_alive[f] && starts(&s).is_some() && st.tasks.f_auto.get(f).is_some_and(|a| a[tasks::HAUL] > 0.0) {
+                fresh.push(f);
+                seen.push(f);
+            }
+        }
+    }
+    let y = starts(&s).expect("island 7 finds the hoist (if a later rule stops that, this test must be set again)");
+    for &f in &seen {
+        if s.st.f_alive[f] && s.st.tasks.f_held[f][tasks::HAUL] > 0.0 {
+            came += 1;
+        }
+    }
+    assert!(first_months > 0, "no works was founded meaning to hold machines after {y}");
+    assert!(came > 0, "no works founded after {y} came to hold any of its hauling");
+}
+
+/// With the plant starved by hand (every delivery to the works and the land
+/// taken away again before the next month, in code), no works and no town's
+/// sector holds any part of any class in the ten years after the find, while
+/// what they mean to hold rises. Island 7, played under the game's rules with
+/// `tasks.enabled` and `tasks.land` set by name.
+#[test]
+fn starved_of_plant_nothing_is_held() {
+    let P = params(true);
+    let mut s = sim::start(&P, content(&P));
+    let (mut most_auto, mut most_land): (f64, f64) = (0.0, 0.0);
+    while s.year <= s.end_year && starts(&s).is_none_or(|y| s.year <= y + 10) {
+        let year = s.year;
+        for month in 0..12 {
+            sim::run_month(&mut s, month).expect("money is conserved every month");
+            let st = &mut s.st;
+            assert!(st.tasks.f_held.iter().all(|h| *h == [0.0; tasks::K]), "{year}-{month}: a works holds machines it was never given");
+            assert!(st.tasks.land_held.iter().flatten().all(|h| *h == [0.0; tasks::K]), "{year}-{month}: a pit holds machines it was never given");
+            for f in 0..st.F_count.min(st.tasks.f_auto.len()) {
+                if st.f_alive[f] {
+                    most_auto = most_auto.max(st.tasks.f_auto[f][tasks::HAUL]);
+                }
+            }
+            most_land = st.tasks.land_auto.iter().flatten().fold(most_land, |m, a| m.max(a[tasks::HAUL]));
+            // the starving: what was delivered is taken away again
+            st.tasks.f_plant.iter_mut().flatten().for_each(|v| *v = 0.0);
+            st.tasks.land_plant.iter_mut().flatten().flatten().for_each(|v| *v = 0.0);
+        }
+        sim::end_year(&mut s);
+    }
+    let y = starts(&s).expect("island 7 finds the hoist (if a later rule stops that, this test must be set again)");
+    assert!(most_auto > 0.05 && most_land > 0.05, "in the ten years after {y} what was meant rose only to {most_auto} in the works and {most_land} on the land");
+    let last = s.st.tasks.years.last().unwrap();
+    assert_eq!(last.held[tasks::HAUL], 0.0);
+    assert!(last.aim[tasks::HAUL] > 0.0, "{last:?}");
+}
+
 /// The ceiling on yield is inert before 1950 by construction: island 7 to
 /// 1949, played under the game's rules with `tasks.yield_cap` set by name to
 /// 2, is the run with it unset to the last digit; and by then the ground
