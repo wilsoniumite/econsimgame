@@ -24,6 +24,7 @@
 #![allow(non_snake_case)]
 
 pub mod accounts;
+pub mod atlas;
 pub mod canals;
 pub mod carting;
 pub mod chronicle;
