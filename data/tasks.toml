@@ -86,6 +86,16 @@ tasks = [0.15, 0.55, 0.05, 0.25, 0.0]
 methods = ["electrical_works"]
 
 [[kind]]
+name = "oil from coal"
+tasks = [0.25, 0.50, 0.05, 0.20, 0.0]
+methods = ["oil_from_coal"]
+
+[[kind]]
+name = "nitrogen works"
+tasks = [0.10, 0.50, 0.05, 0.35, 0.0]
+methods = ["nitrogen_works"]
+
+[[kind]]
 name = "shops and trades"
 tasks = [0.15, 0.25, 0.25, 0.25, 0.10]
 methods = ["services", "emporium"]
@@ -93,8 +103,9 @@ methods = ["services", "emporium"]
 # ----------------------------------------------------------------------------------------------------
 # The land's seven sectors and the carters. Under `tasks.land` a land unit pays its share for work to a
 # mixture of hands and machine units, in these classes, wherever a machine below names its sector in
-# `on`. No machine yet names the farms, the pastures or the woods (the tractor is a later stage's), nor
-# the carters, so their shares wait; the land's machines of docs/rules/machines.md stand beside these.
+# `on`. With the content after 1900 the tractor names the farms, the pastures and the woods, and the
+# cutter the pits; no machine names the carters yet, so their shares wait. The land's machines of
+# docs/rules/machines.md (farm machinery, nitrogen, breeding) stand beside these.
 # ----------------------------------------------------------------------------------------------------
 
 [[sector]]
@@ -131,17 +142,18 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #                   longer reaches the places this one is `on`
 #
 # A use that names a good the content lacks (a good of a later stage of the tree's overlay) is not laid,
-# as the overlay drops an input of a later stage; so the electric drive, made of electrical goods and
-# run on electricity, is in the table only with `tree.stage` at 6 or more, and where it is not the hoist
-# keeps the works.
+# as the overlay drops an input of a later stage, and replaces nothing; so the electric drive and the
+# cutter, made of electrical goods and run on electricity, and the tractor, run on oil, are in the table
+# only with `tree.stage` at 6 or more, and where they are not the hoist keeps the works and the pits.
 # ----------------------------------------------------------------------------------------------------
 
 # The hoist: a STAND-IN, poor history and a fair test. It is made of machinery and burns coal, so it could
-# be proved on the island before there was anything after 1900 in the content. Where the electric drive
-# is laid (stage 6 of the tree, the game's own) the drive takes the works from it, and the hoist hauls only
-# at the quarries, the clay pits and the mines, under `tasks.land`: winding, hauling underground, lifting
-# stone and clay. It is to go from there too when the cutter and conveyor of the next stage comes. With
-# the tree laid only to stage 1 it hauls in the works as well, as it did before the drive.
+# be proved on the island before there was anything after 1900 in the content. It hauls in the works and,
+# under `tasks.land`, at the quarries, the clay pits and the mines: winding, hauling underground, lifting
+# stone and clay. Where the content after 1900 is laid (stage 6 of the tree, the game's own) the electric
+# drive takes the works from it and the cutter below the pits, so it hauls nowhere. It stays in this file
+# as the machine of the island without the content after 1900, so that the run at `tree.stage = 1` is the
+# earlier island's to the byte.
 #
 # Sized from island 7's prices and wage of 1900 under the game's rules with six families (wage 8.18 a
 # month, machinery 4.40, coal 0.494): when found, a unit costs 1.04 of a month's wage, of which six
@@ -220,4 +232,50 @@ discover = { electricals = 15000.0 }
 # On the three islands with a station working in the year found (1, 5 and 7) the towns' target that year
 # was 0.220, 0.201 and 0.204 at 0.80.
 scale = 0.77
+replaces = "hoist"
+
+# The tractor: hauling on the farms, the pastures and the woods (ploughing, carting the crop, dragging
+# timber), from the content after 1900 (`tree.stage` 6). It is made of machinery and steel, six tenths
+# and four tenths by value (motor vehicles are a later stage's good; when they come its plant moves to
+# them), and it runs on oil. The island has no oilfield, so its oil is made from coal at about three
+# times the price of the same heat from coal, and the tractor is found on oil made, not on a date: an
+# island with no oil of its own mechanises its fields late.
+#
+# PROVISIONAL: sized below from a first run.
+[[use]]
+name = "tractor"
+class = "haul"
+on = ["farm", "pasture", "forestry"]
+from = 0.0
+reach = 1.0
+plant = { machinery = 54.2, steel = 41.7 }
+run = { oil = 0.36 }
+minders = 0.117
+life = 10.0
+pace = 0.04
+cap = 6.0
+found_after = 1915
+discover = { oil = 300.0 }
+scale = 0.87
+
+# The cutter and conveyor: hauling at the quarries, the clay pits and the mines (cutting the face,
+# carrying it out, winding), from the content after 1900. Made of machinery and electrical goods, six
+# tenths and four tenths by value, and run on electricity. It takes the hoist's place in the pits.
+#
+# PROVISIONAL: sized below from a first run.
+[[use]]
+name = "cutter"
+class = "haul"
+on = ["quarry", "claypit", "ironmine", "coalmine"]
+from = 0.0
+reach = 1.0
+plant = { machinery = 87.7, electricals = 11.0 }
+run = { electricity = 1.10 }
+minders = 0.104
+life = 15.0
+pace = 0.03
+cap = 6.0
+found_after = 1920
+discover = { electricals = 600000.0 }
+scale = 1.0
 replaces = "hoist"

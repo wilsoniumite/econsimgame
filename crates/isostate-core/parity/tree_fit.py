@@ -41,6 +41,8 @@ import sys
 import tomllib
 
 DISCOVERY_RATE = 0.18  # params.rs
+# The last year counted is the sweep's own last year (1900 for a played century; a sweep run on to 2050
+# fits the inventions aimed after 1900), set when the sweep is read.
 START, END = 1750, 1900
 
 # invention: [(good, share of what the island has made by year Y, or "keep")]. The first is the clock.
@@ -68,15 +70,22 @@ SPEC = {
     # stage 6, the content after 1900 (docs/rules/tree.md, "After 1900: electricity")
     "electrical_works": [("steel", 1.0), ("machinery", 0.85)],
     "coal_power_station": [("electricals", 1.0), ("coal", 0.85)],
+    # stage 6, the land's twentieth century (docs/rules/tree.md, "Oil, nitrogen and the land"): clocks
+    # that every island runs at much the same pace (coal and chemicals), with electricity kept as a guard
+    "nitrogen_works": [("chemicals", 1.0), ("electricity", "keep")],
+    "oil_from_coal": [("coal", 1.0), ("electricity", "keep")],
+    "breeding": [("chemicals", 1.0)],
 }
 
 
 def load(sweep):
     """seed -> good -> list over years of cumulative output at the end of the year."""
+    global END
     rows = {}
     with open(sweep + "/annual.csv", newline="") as f:
         for r in csv.DictReader(f):
             rows.setdefault(int(r["seed"]), {})[int(r["year"])] = r
+    END = min(max(years) for years in rows.values())
     cum, first = {}, {}
     for seed, years in rows.items():
         goods = [c[4:] for c in years[START] if c.startswith("out_")]

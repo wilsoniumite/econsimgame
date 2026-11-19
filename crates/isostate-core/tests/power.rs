@@ -25,8 +25,11 @@ fn the_overlay_at_stage_six_parses_and_every_name_resolves() {
     assert_eq!(game_params().tree.stage, 6);
     let one = tree::game_content_at(1);
     let six = tree::game_content_at(6);
-    // two goods, two methods, nothing else; the tree's stages 2 to 5 have no entries
-    assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 2, one.S, one.NS, one.M + 2));
+    // three goods (electricity, electrical goods and oil), four methods and an invention
+    // (breeding: docs/rules/tree.md, "Oil, nitrogen and the land"), nothing else; the
+    // tree's stages 2 to 5 have no entries
+    assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 3, one.S, one.NS, one.M + 4));
+    assert_eq!(six.tech_name.len() - six.M, one.tech_name.len() - one.M + 1);
     for k in 2..=5 {
         assert_eq!(format!("{:?}", tree::game_content_at(k).good_name), format!("{:?}", one.good_name), "stage {k}");
         assert_eq!(tree::game_content_at(k).M, one.M, "stage {k}");
@@ -34,7 +37,7 @@ fn the_overlay_at_stage_six_parses_and_every_name_resolves() {
     // stage 1's goods and methods keep their numbers
     assert_eq!(six.good_name[..one.G], one.good_name[..]);
     assert_eq!(six.method_name[..one.M], one.method_name[..]);
-    assert_eq!(six.tech_name[six.M..], one.tech_name[one.M..]);
+    assert_eq!(six.tech_name[six.M..six.M + one.tech_name.len() - one.M], one.tech_name[one.M..]);
     for name in ["electricity", "electricals", "coal_power_station", "electrical_works"] {
         assert!(!one.good_index.contains_key(name) && !one.method_name.iter().any(|n| n == name), "{name} is not there at stage 1");
     }
