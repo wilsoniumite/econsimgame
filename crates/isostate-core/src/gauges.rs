@@ -159,6 +159,14 @@ pub struct GaugeYear {
     // ---- plant
     /// Every works at its book value over the year's income.
     pub plant_years: f64,
+    /// The land's rent (farms' and pits') split in two: the return on the
+    /// land's machines for tasks (`hurdle` a year on their plant), and the
+    /// ground's part, the rest; each over income (`tasks`, "On the land";
+    /// none while no machine reaches the land).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rent_machines: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rent_ground: Option<f64>,
     /// Of a unit of machinery's price, what comes to rest as wages and as rent.
     pub labour_in_machinery: f64,
     pub land_in_machinery: f64,
@@ -393,6 +401,11 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
         // the land: value = spread + wages + carting + machinery and rails + rent
         let (mq, rq) = (good(t, gm, g_land) * price(t, gm), good(t, gr, g_land) * price(t, gr));
         let mshare = ratio(mq, mq + rq);
+        // tasks (docs/rules/tasks.md, "On the land"): where the land's machines
+        // for tasks bought other goods too (the hoist's coal), the inputs are
+        // shared among all the goods the land bought, by what each cost
+        let others: Vec<(usize, f64)> = (0..G).filter(|&g| g != gm && g != gr).map(|g| (g, good(t, g, g_land) * price(t, g))).filter(|x| x.1 > 0.0).collect();
+        let all_land = mq + rq + others.iter().map(|x| x.1).sum::<f64>();
         for s in 0..NS {
             let r = &rec.land[(t * NS + s) * KL..(t * NS + s + 1) * KL];
             let g = C.sector_good[s];
@@ -402,7 +415,13 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
             rent[g] += f(r[lcol("rent")]);
             rest[g] += v * spread;
             let inp = f(r[lcol("inputs")]);
-            if inp != 0.0 {
+            if inp != 0.0 && !others.is_empty() {
+                inputs[g * G + gm] += inp * ratio(mq, all_land);
+                inputs[g * G + gr] += inp * ratio(rq, all_land);
+                for &(h, v) in &others {
+                    inputs[g * G + h] += inp * ratio(v, all_land);
+                }
+            } else if inp != 0.0 {
                 let ms = if mshare.is_finite() { mshare } else { 1.0 };
                 inputs[g * G + gm] += inp * ms;
                 inputs[g * G + gr] += inp * (1.0 - ms);
@@ -538,6 +557,8 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
         wear_total += wear;
     }
     let net_income = isl.income - wear_total;
+    // tasks: the land's rent, the return on its machines and the ground's part
+    let land_split = crate::tasks::land_return_of(st, year).map(|(ret, _)| (ratio(ret, isl.income), ratio(isl.rent_farm + isl.rent_pits - ret, isl.income)));
     let build_total: f64 = build_g.iter().sum();
 
     // ---- what a wage buys: chained Fisher indexes on what households bought
@@ -659,6 +680,8 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
         floor,
         presence_today,
         plant_years: ratio(works_value, isl.income),
+        rent_machines: land_split.map(|(m, _)| m),
+        rent_ground: land_split.map(|(_, g)| g),
         labour_in_machinery: lam(gm),
         land_in_machinery: rho(gm),
         labour_in_plant: ratio(dot(&build_g, &lam), build_total),
