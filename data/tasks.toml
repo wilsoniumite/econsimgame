@@ -140,6 +140,10 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #                   refitted once in its first sweep so that it takes its first share when found
 #   replaces        (may be left out) the name of another use: where this one is laid, that one no
 #                   longer reaches the places this one is `on`
+#   switch          (may be left out) a switch of the rule the use stands behind, by name: while it is
+#                   off the use is never found, and has no cost, no part, no order and no plant, so the
+#                   run is the run without it. Today the one name is "computing" (`tasks.computing`);
+#                   the file refuses any other
 #
 # A use that names a good the content lacks (a good of a later stage of the tree's overlay) is not laid,
 # as the overlay drops an input of a later stage, and replaces nothing; so the electric drive and the
@@ -313,3 +317,48 @@ discover = { oil = 100000.0 }
 # islands 1 to 16 (0.162 to 0.214), so the unit was made exp(ln(1000) * (0.194 - 0.2)) = 0.96 times as
 # dear, to bring the mean to 0.20.
 scale = 0.96
+
+# ----------------------------------------------------------------------------------------------------
+# Machines that reckon (docs/rules/computing.md), behind their own switch, `tasks.computing`.
+# ----------------------------------------------------------------------------------------------------
+
+# Office computing: machines that reckon, taking clerks' tasks in the works (records, reckoning, routine
+# dealing), from the easiest to the hardest. A THIN SLICE: no computing good stands behind it yet, so it
+# is made of electrical goods and its running cost, which the full stage puts on computing and
+# electricity, goes on electricity alone; and its cost falls only by its pace, a twentieth a year in
+# quality, not by a falling price of computing. The land has no clerking, so it is used in the works.
+#
+# Sized from island 7's prices and wage of 1960 under the game's rules with six families, on the new land
+# (the game's island), the year it finds it (the year's island means: a wage of 16.69 a month, electrical
+# goods 10.74, electricity 4.86). When found, a unit costs 0.135 of a month's wage (2.253), of which six
+# tenths is the return a works must see and the wear on its plant ((0.12 + 1/8) / 12 a month on 3.97
+# months' wages of plant, 66.2, which is 6.17 electrical goods), a tenth is its minders (0.0135 of a hand)
+# and the rest, three tenths, is electricity (0.139 a month). At that cost a hand is worth 7.4 units, so
+# it takes ln(7.4) / ln(3000) = 0.25 of clerking. It starts from the easiest task (`from = 0`), not above
+# the office machines of the design, which are not built: when they come, the cheaper unit holds the class
+# from the bottom, as the computer took the typewriter's tasks.
+#
+# Found from 1955, on electrical goods made: island 7 has made 10.39 million by the end of 1958 and 10.58
+# million by the end of 1959 (the sweep's yearly output, summed), so at 10.5 million it finds it in 1960.
+# The other islands make electrical goods at very different rates, and find it from 1960 (island 5) to
+# 1986 (island 3) on islands 1 to 8.
+[[use]]
+name = "office_computing"
+class = "clerk"
+on = ["works"]
+from = 0.0
+reach = 1.0
+plant = { electricals = 6.17 }
+run = { electricity = 0.139 }
+minders = 0.0135
+life = 8.0
+pace = 0.05
+cap = 100.0
+found_after = 1955
+discover = { electricals = 10500000.0 }
+switch = "computing"
+# Refitted once (19 November 2026): at 1.0 the towns' target in the year found was 0.262 on the mean of
+# islands 1 to 8 (0.259 to 0.266; found 1960 on islands 5 and 7, 1965 on 2, 1975 on 4 and 6, 1982 on 8,
+# 1983 on 1, 1986 on 3), so the unit was made exp(ln(3000) * (0.262 - 0.25)) = 1.10 times as dear, to
+# bring the mean to 0.25.
+scale = 1.10

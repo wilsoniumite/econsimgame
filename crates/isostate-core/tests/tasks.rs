@@ -2,10 +2,11 @@
 //! With the switch off the golden test (tests/golden.rs) covers that the port
 //! did not move.
 //!
-//! The island runs here are played on island 7 to 1925 (and to 1949 for the
-//! ceiling on yield) under the game's rules with six families, with the
-//! switches they lean on set by name (`tasks.enabled`, `tasks.land`,
-//! `tasks.yield_cap`) and every other rule as the game has it. What they check
+//! The island runs here are played on island 7 to 1925 (to 1949 for the
+//! ceiling on yield, and to 1975 for office computing) under the game's rules
+//! with six families, with the switches they lean on set by name
+//! (`tasks.enabled`, `tasks.land`, `tasks.yield_cap`, `tasks.computing`) and
+//! every other rule as the game has it. What they check
 //! holds on any island's history (a run against another run, a new works
 //! against its town, shares within their bounds, money that adds up), so a
 //! later rule that changes island 7's history cannot break them; only one
@@ -55,7 +56,7 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
     // the combine; the drive takes the works from the hoist and the cutter the pits
     // (`replaces`); the combine tends the farms and the pastures, three fifths of it
     let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
-    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine"]);
+    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter", "combine", "office_computing"]);
     let combine = &C.tasks.uses[4];
     assert_eq!((combine.class, combine.from, combine.reach), (tasks::TEND, 0.0, 0.6));
     assert!(!combine.on_works && combine.on_sector.iter().enumerate().all(|(s, &b)| b == (C.sector_name[s] == "farm" || C.sector_name[s] == "pasture")));
@@ -109,8 +110,9 @@ fn the_drive_is_laid_only_with_its_goods() {
     assert_eq!(pits(&one, hoist), ["claypit", "coalmine", "ironmine", "quarry"]);
     assert_eq!(one.tasks.plant_goods, [one.good_index["machinery"]]);
     // stage 6: the drive in the works, the cutter at the pits, the hoist nowhere
-    // (and the tractor and the combine on the fields)
-    assert_eq!(six.tasks.uses.len(), 5);
+    // (and the tractor and the combine on the fields, and office computing in
+    // the works' clerking)
+    assert_eq!(six.tasks.uses.len(), 6);
     let (hoist, drive, cutter) = (&six.tasks.uses[0], &six.tasks.uses[1], &six.tasks.uses[3]);
     assert_eq!(drive.name, "electric_drive");
     assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
@@ -492,6 +494,139 @@ fn starved_of_plant_nothing_is_held() {
     let last = s.st.tasks.years.last().unwrap();
     assert_eq!(last.held[tasks::HAUL], 0.0);
     assert!(last.aim[tasks::HAUL] > 0.0, "{last:?}");
+}
+
+/// Office computing (docs/rules/computing.md) stands behind a switch of its
+/// own, `tasks.computing`: off under the port's rules and left out of their
+/// file, on under the game's; it clerks in the works, from the easiest task to
+/// the hardest; it is laid only with the content after 1900, whose goods it is
+/// made of; and a use naming a switch the rule does not have is refused.
+#[test]
+fn computing_stands_behind_its_switch() {
+    let (port, game) = (default_params(), game_params());
+    assert!(!port.tasks.computing && game.tasks.computing);
+    let mut off = game.clone();
+    off.tasks.computing = false;
+    let json = serde_json::to_string(&off).unwrap();
+    assert!(json.contains("\"tasks\"") && !json.contains("computing"), "a run with the switch off writes the file it wrote before the switch");
+    assert!(serde_json::to_string(&game).unwrap().contains("\"computing\":true"));
+    let C = content(&game);
+    let us = &C.tasks.uses[use_of(&C, "office_computing")];
+    assert_eq!(us.switch.as_deref(), Some("computing"));
+    assert_eq!((us.class, us.from, us.reach), (tasks::CLERK, 0.0, 1.0));
+    assert!(us.on_works && us.on_sector.iter().all(|&b| !b), "office computing clerks in the works alone");
+    assert!(us.allowed(&game) && !us.allowed(&off));
+    // every other use stands behind no switch
+    assert!(C.tasks.uses.iter().filter(|u| u.name != "office_computing").all(|u| u.switch.is_none() && u.allowed(&off)));
+    // without the content after 1900 it is not laid
+    let mut one = game.clone();
+    one.tree.stage = 1;
+    assert!(content(&one).tasks.uses.iter().all(|u| u.name != "office_computing"));
+    // a switch the rule does not have is refused
+    let bad = tasks::TASKS_TOML.replace("switch = \"computing\"", "switch = \"telepathy\"");
+    assert_ne!(bad, tasks::TASKS_TOML);
+    assert!(tasks::table_from(&C, &bad).is_err());
+}
+
+/// Office computing on island 7 to 1975, under the game's rules with
+/// `tasks.enabled`, `tasks.land` and `tasks.computing` set by name and every
+/// other rule as the game has it. Three runs side by side:
+///
+/// - with the switch on: money is conserved every month, through the find
+///   (`run_year` checks); the use is found, from 1955 (nothing is found
+///   before); no works' clerking meant for machines is ever below nothing or
+///   above the use's reach, and none held is above what is meant; a works
+///   whose method has no clerking (the hand trades) holds none; the land,
+///   which has no clerking, holds none; and some works comes to hold part of
+///   its clerking;
+/// - with the switch off: the same run as the first to the end of 1940, by
+///   `save::check` (nothing is found before 1955);
+/// - with the switch on and the use taken out of the table in code: the same
+///   run as with the switch off, to the end (the switch touches that use and
+///   nothing else).
+///
+/// What it checks holds on any island's history, but for the find by 1975:
+/// a later rule that stopped island 7 finding it by then breaks the test, and
+/// the test says so.
+#[test]
+fn computing_off_is_off_and_on_stays_in_reach() {
+    const TO: i64 = 1975;
+    let comp = |on: bool| {
+        let mut P = params(true);
+        P.end_year = Some(TO);
+        P.tasks.computing = on;
+        P
+    };
+    // a run to TO, with save::check at the end of 1940 and at the end
+    let played = |P: Params, C: Content| {
+        std::thread::spawn(move || {
+            let mut s = sim::start(&P, C);
+            let mut at1940 = String::new();
+            while s.year <= s.end_year {
+                let year = s.year;
+                sim::run_year(&mut s).expect("money is conserved every month");
+                if year == 1940 {
+                    at1940 = save::check(&s);
+                }
+            }
+            (at1940, save::check(&s))
+        })
+    };
+    let on = std::thread::spawn(move || {
+        let P = comp(true);
+        let mut s = sim::start(&P, content(&P));
+        let c = use_of(&s.content, "office_computing");
+        let us = s.content.tasks.uses[c].clone();
+        let k = us.class;
+        let (mut at1940, mut most, mut hand) = (String::new(), 0.0f64, 0);
+        while s.year <= s.end_year {
+            let year = s.year;
+            sim::run_year(&mut s).expect("money is conserved every month, through the find");
+            if year == 1940 {
+                at1940 = save::check(&s);
+            }
+            let (st, C) = (&s.st, &s.content);
+            let found = st.tasks.found[c];
+            assert!(found < 0 || found >= us.found_after.max(1955), "{year}: found in {found}");
+            for f in 0..st.F_count.min(st.tasks.f_auto.len()) {
+                let (x, h) = (st.tasks.f_auto[f][k], st.tasks.f_held[f][k]);
+                assert!((0.0..=us.reach).contains(&x), "{year}: works {f} means to hold {x} of its clerking");
+                assert!((0.0..=x).contains(&h), "{year}: works {f} holds {h} of its clerking, meaning {x}");
+                if C.tasks.method[st.f_method[f]][k] == 0.0 {
+                    assert!(x == 0.0 && h == 0.0, "{year}: works {f}, a {}, has no clerking and holds {h} of it", C.method_name[st.f_method[f]]);
+                    if st.f_alive[f] {
+                        hand += 1;
+                    }
+                }
+                if st.f_alive[f] {
+                    most = most.max(h);
+                }
+            }
+            assert!(st.tasks.land_auto.iter().flatten().all(|a| a[k] == 0.0), "{year}: the land holds clerking");
+        }
+        let y = s.st.tasks.found[c];
+        assert!(y >= 1955, "island 7 finds office computing by {TO} (if a later rule stops that, this test must be set again)");
+        assert!(most > 0.0, "no works came to hold any of its clerking by {TO}, found in {y}");
+        eprintln!("office computing found in {y}; the most a works held of its clerking by {TO}: {most:.3}; {hand} works-years of hand trades held none");
+        (at1940, save::check(&s))
+    });
+    let off = played(comp(false), content(&comp(false)));
+    let P = comp(true);
+    let mut out = content(&P);
+    let c = use_of(&out, "office_computing");
+    out.tasks.uses.remove(c);
+    let pg: Vec<usize> = {
+        let mut v: Vec<usize> = out.tasks.uses.iter().flat_map(|u| u.plant.iter().map(|p| p.0)).collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+    out.tasks.plant_goods = pg;
+    let out = played(P, out);
+    let (on, off, out) = (on.join().unwrap(), off.join().unwrap(), out.join().unwrap());
+    assert_eq!(on.0, off.0, "the switch on moved the run before 1941, though nothing is found before 1955");
+    assert_eq!(out.1, off.1, "with the switch off the run to {TO} is not the run with office computing taken out of the table");
+    assert_ne!(on.1, off.1, "office computing moved nothing by {TO}");
 }
 
 /// The ceiling on yield is inert before 1950 by construction: island 7 to
