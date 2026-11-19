@@ -1540,8 +1540,9 @@ fn end_card(
                 FocusPolicy::Block,
             ))
             .with_children(|c| {
-                c.spawn(text(&f, &format!("{}", r.y0 + r.ny as i32 - 1), 40.0, INK));
-                c.spawn(text(&f, "The century is over.", 18.0, INK));
+                let last = r.y0 + r.ny as i32 - 1;
+                c.spawn(text(&f, &format!("{last}"), 40.0, INK));
+                c.spawn(text(&f, &end_words(r.y0, last), 18.0, INK));
                 if let Some(me) = me {
                     let place = rank.iter().position(|x| x.name == me.name).unwrap_or(0) + 1;
                     c.spawn(text(&f, &format!("The {} family finished {} of {}, worth {}.", me.name, place, rank.len(), money(me.net_worth)), 15.0, MUTED));
@@ -1556,6 +1557,27 @@ fn end_card(
                 c.spawn((text(&f, "The timeline still takes you back through the years. Esc closes this.", 13.0, MUTED), Node { margin: UiRect::top(Val::Px(10.0)), ..default() }));
             });
         });
+}
+
+/// What the end card says under the year a game ends on: the century is over
+/// in a game to 1900, as it always was, and a game played on past it
+/// (docs/rules/longrun.md, "A game past 1900") says how far it came.
+pub fn end_words(first: i32, last: i32) -> String {
+    if last <= 1900 {
+        "The century is over.".to_string()
+    } else {
+        format!("The game is played out, from {first} to {last}.")
+    }
+}
+
+/// The last sentence of a new game's opening card: whose the years are, to the
+/// year the game is played to.
+fn yours_words(last: i32) -> String {
+    if last <= 1900 {
+        "The century is yours to make something of.".to_string()
+    } else {
+        format!("The years to {last} are yours to make something of.")
+    }
 }
 
 /// A new game opens on a card saying who the player is and how to begin; the
@@ -1616,11 +1638,12 @@ fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: 
                 c.spawn(text(
                     &f,
                     &format!(
-                        "{} of the family, {} in hand and land around {}. {} other great families already hold land and works across the island. The century is yours to make something of.",
+                        "{} of the family, {} in hand and land around {}. {} other great families already hold land and works across the island. {}",
                         family::capitalised(&family::number_word(living)),
                         money(me.cash),
                         me.seat_name,
-                        family::capitalised(&family::number_word(rivals))
+                        family::capitalised(&family::number_word(rivals)),
+                        yours_words(data.r.y0 + data.r.ny as i32 - 1)
                     ),
                     15.0,
                     INK,
@@ -1843,6 +1866,13 @@ fn close_welcome(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_end_card_says_the_century_is_over_only_in_a_game_to_1900() {
+        assert_eq!(end_words(1750, 1900), "The century is over.");
+        assert_eq!(end_words(1750, 2050), "The game is played out, from 1750 to 2050.");
+        assert_eq!(yours_words(1910), "The years to 1910 are yours to make something of.");
+    }
 
     #[test]
     fn the_present_is_the_newest_year_and_the_past_is_what_was_left_behind() {

@@ -7,8 +7,10 @@ island can be run on to 2050 with no price or wage standing at a bound that
 was fixed in 1750's money. **It does not make the island live well after
 1900.** Run on, the island still goes hungry: people near four million by
 2050 and what a wage buys falling back below 1750's, because there is no fall
-in births and no technology after steel. Those are later stages. A game is
-still played to 1900; the long run is had with `--end-year 2050`.
+in births and no technology after steel. Those are later stages. A sweep is
+still run to 1900 unless it is given `--end-year 2050`; a new game in the
+viewer is played to 2050 unless it is told otherwise ("A game past 1900",
+below), and so is the hungry island after 1900 until the later stages land.
 
 ## What was wrong
 
@@ -231,6 +233,38 @@ dated to the even year before it.
     cargo run --release -p isostate-core -- run --seed 7 --rules game --families 6 --end-year 2050 --out runs/to2050-7
     cargo run -p isostate-viewer -- runs/to2050-7/run.bin --year 2050
 
+## A game past 1900
+
+A game's last year is chosen when the game is begun, and kept in its save.
+Nothing in the rules' parameters says it: `game_params()` is the same with
+or without it, so neither golden test moves.
+
+- A new game the viewer begins is played to 2050, or to the year `--to`
+  gives (1900 to 2050). The standard pictures (`--shots`) always play a game
+  to 1900, so that they and their time are as they were.
+- In the core, `save::Game::under_to(rules, seed, families, started, to)` and
+  `Game::on_new_land_to` set the parameters' `end_year` before the island is
+  made; `Game::under` and `Game::on_new_land` keep the content's last year,
+  1900, as before.
+- The save says the year (`"to": 2050`) only when it is not 1900. A save
+  that does not say it is a game to 1900, so every save made before is
+  played as it was. `Save::sound` checks the year the save had reached
+  against its own last year: a save of 1950 that does not say it is played
+  past 1900 is refused as doctored, as it always was.
+- Only rules with the long run on may be played past 1900. Under the port's
+  rules, where `longrun.enabled` is off, a last year past 1900 is refused in a
+  sentence, whether a game is begun with it or a save says it; so is any
+  year outside 1900 to 2050 (`save::last_year_allowed`).
+- A game past 1900 keeps its record in the second layout (above), as a run
+  past 1900 does: the live view packs its towns by the game's own last year.
+
+Past 1900 the island is the hungry island of "The runs that show it": people
+go on multiplying and what a wage buys falls, since there is no content after
+steel yet. That is expected until the later stages of the run to 2050 land.
+
+    cargo run -p isostate-viewer -- --new --seed 7 --to 1950
+    cargo run -p isostate-viewer -- --sandbox --seed 7 --advance 150
+
 ## The works' table
 
 Every works the island has ever had keeps its place in the table (its slot)
@@ -281,6 +315,12 @@ arithmetic, and the first's is the old arithmetic to the byte) and a run to
 1900 writes no `rent_scale`; the viewer's
 `a_run_past_1900_reads_its_towns_in_two_year_steps_and_its_rent_in_its_own_money`;
 and `facts::tests::the_marks_are_fifty_years_apart_to_1900_and_ten_after`.
+A game past 1900 has `tests/save.rs`,
+`a_game_to_2050_saved_after_1900_loads_again_to_the_same_island` (island 7
+begun to 2050, saved six months into 1906, played again to the same island
+to the last digit) and `a_games_last_year_is_kept_in_its_save_and_checked`;
+and the viewer's
+`a_game_begun_to_1910_plays_past_1900_through_the_thread_and_its_save_says_so`.
 The port's and the game's golden tests hold the rest: the works' passes that
 now stop at the places taken give the same island to the byte.
 

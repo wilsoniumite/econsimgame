@@ -313,6 +313,11 @@ pub struct Opening {
     /// family in, changed by hand. It never goes on with the island's autosave
     /// nor writes it: with somebody at it, it is kept among the trials
     pub sandbox: bool,
+    /// the last year a new game is played to (`--to`; docs/rules/longrun.md,
+    /// "A game past 1900"); None: the content's, 1900. The command line asks
+    /// for 2050 unless it says otherwise, and the standard pictures for 1900.
+    /// A game gone on with from a save is played to the save's own last year.
+    pub to: Option<i64>,
 }
 
 /// Where a game is kept as it is played.
@@ -718,6 +723,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             if save.land {
                 eprintln!("  it was begun on the new land, and is played again there");
             }
+            // (its last year is its own, whatever --to says: it was chosen when the game was begun)
+            eprintln!("  it is played to {}", save.last_year_of_game());
             if !save.same_rules() {
                 eprintln!("  it was saved under other rules (version {}), so the years may play out differently", save.version);
             }
@@ -754,10 +761,12 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             loaded.game
         }
         None => {
-            eprintln!("making island {} with {}{}\u{2026}", o.seed, crate::families_words(o.families), if o.new_land { ", on the new land" } else { "" });
+            let rules = iso::params::Rules::Game;
+            let to = o.to.unwrap_or_else(|| iso::save::content_last_year(rules));
+            eprintln!("making island {} with {}{}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.new_land { ", on the new land" } else { "" });
             // the new land is switched off under the game's rules until the viewer can draw
             // all of it (docs/rules/land.md): `--new-land` starts a game on it all the same
-            let mut game = if o.new_land { Game::on_new_land(iso::params::Rules::Game, o.seed, o.families, saves::now()) } else { Game::new(o.seed, o.families, saves::now()) };
+            let mut game = if o.new_land { Game::on_new_land_to(rules, o.seed, o.families, saves::now(), to)? } else { Game::under_to(rules, o.seed, o.families, saves::now(), to)? };
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
             // month for month, and a save of it is one the game with books goes on with.

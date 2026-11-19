@@ -113,6 +113,8 @@ struct Args {
     keep: bool,
     /// a sandbox: nobody plays a family, and the island is changed by hand (sandbox.rs)
     sandbox: bool,
+    /// the last year of a new game (`--to`); None: `isostate_core::save::LATEST_YEAR`
+    to: Option<i64>,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -183,6 +185,9 @@ With no run named, a new game starts.
                        a year, ten or twenty-five. Never the island's own saved game: it is
                        kept among the trials
   --families N         how many great families (6; from 1 to 30)
+  --to YEAR            the last year a new game is played to (2050; from 1900 to 2050). Kept in
+                       its save: a game gone on with is played to its own. Past 1900 the island
+                       is hungry until the content after 1900 is written
   --advance N          play N years before the game opens (a trial: it is kept among the
                        trials, apart from the island's own saved game)
   --demo               the family builds a works and buys land in its first year (a trial too)
@@ -312,6 +317,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         save: None,
         keep: false,
         sandbox: false,
+        to: None,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -372,6 +378,13 @@ fn parse(v: &[String]) -> Result<Args, String> {
                 i += 1;
             }
             "--advance" => { a.advance = number(opt, &next(i)?)?; i += 1; }
+            "--to" => {
+                let to = number(opt, &next(i)?)?;
+                // refused here, before an island is made, as --families is (a new game is under the game's rules)
+                isostate_core::save::last_year_allowed(isostate_core::params::Rules::Game, to).map_err(|why| format!("{opt}: {why}; give a year in that range"))?;
+                a.to = Some(to);
+                i += 1;
+            }
             "--demo" => a.demo = true,
             "--pick" => { a.pick = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--ground-debug" => a.ground_debug = true,
@@ -480,6 +493,15 @@ fn parse(v: &[String]) -> Result<Args, String> {
     if a.shots.is_some() {
         // the standard shots run from the first year to the last, so play the whole game first
         a.advance = usize::MAX - 1;
+        // and that game ends in 1900, so that the standard pictures and their time are as they were
+        if a.to.is_some_and(|y| y != isostate_core::save::content_last_year(isostate_core::params::Rules::Game)) {
+            eprintln!("--shots plays a game to 1900 for the standard pictures: --to is passed over beside it");
+        }
+        a.to = Some(isostate_core::save::content_last_year(isostate_core::params::Rules::Game));
+    }
+    // a last year is chosen when a game is begun: a save keeps its own, and a recorded run is what it is
+    if a.to.is_some() && a.shots.is_none() && (a.load.is_some() || !a.new) {
+        eprintln!("--to is for a new game: {} keeps the last year it has", a.load.as_deref().unwrap_or(&a.run));
     }
     Ok(a)
 }
@@ -762,6 +784,8 @@ fn main() {
             keep: args.keep,
             new_land: args.new_land,
             sandbox: args.sandbox,
+            // every new game runs to 2050 unless --to says otherwise (and --shots plays to 1900)
+            to: Some(args.to.unwrap_or(isostate_core::save::LATEST_YEAR)),
         };
         // a check may write an autosave, but never among the player's own saved games
         if let Some(why) = opening.keep_refused(std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty())) {
@@ -2767,6 +2791,13 @@ mod tests {
         assert_eq!(args("--families 31").err().unwrap(), "--families: a game has from 1 to 30 families, not 31; give a number in that range");
         assert_eq!(args("--families 4000000000").err().unwrap(), "--families: a game has from 1 to 30 families, not 4000000000; give a number in that range");
         assert_eq!((args("--families 1").unwrap().families, args("--families 30").unwrap().families), (1, 30));
+        // and so is a last year no game can be played to; with none asked for, a new game runs to 2050
+        // (the default is the Opening's), and the standard pictures always play a game to 1900
+        assert_eq!(args("--to 2051").err().unwrap(), "--to: a game is played to a year from 1900 to 2050, not 2051; give a year in that range");
+        assert_eq!(args("--to 1899").err().unwrap(), "--to: a game is played to a year from 1900 to 2050, not 1899; give a year in that range");
+        assert_eq!(args("--to").err().unwrap(), "--to needs a value after it");
+        assert_eq!((args("--to 1950").unwrap().to, args("--new").unwrap().to), (Some(1950), None));
+        assert_eq!((args("--shots out --to 2050").unwrap().to, args("--shots out").unwrap().to), (Some(1900), Some(1900)));
         assert_eq!(args("--seed seven").err().unwrap(), "--seed: seven is not a number it can take");
         assert_eq!(args("--size 800").err().unwrap(), "--size: 800 should be two numbers with an x between them");
         assert_eq!(args("--size 0x600").err().unwrap(), "--size: a picture needs a width and a height");
@@ -2788,7 +2819,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--sandbox", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--sandbox", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

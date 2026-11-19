@@ -66,6 +66,35 @@ pub fn families_allowed(n: usize) -> Result<(), String> {
     }
 }
 
+/// The last year a game may be played to (docs/rules/longrun.md, "A game past
+/// 1900"). A game's last year is chosen when it is begun and kept in its save.
+pub const LATEST_YEAR: i64 = 2050;
+
+/// The last year of the island's content under these rules: 1900. A game that
+/// says nothing else ends there, as every game did before the run to 2050.
+pub fn content_last_year(rules: Rules) -> i64 {
+    rules.content().end_year
+}
+
+/// Whether a game under these rules may be played to the year `to`: from the
+/// content's last year to `LATEST_YEAR`, and past the content's last year only
+/// under rules with the long run on (`longrun.enabled`), whose bounds on prices
+/// and the wage ride on the island's own cost of living and so can last.
+/// Said as a clause, as `families_allowed` is.
+pub fn last_year_allowed(rules: Rules, to: i64) -> Result<(), String> {
+    let first = content_last_year(rules);
+    if to < first || to > LATEST_YEAR {
+        return Err(format!("a game is played to a year from {first} to {LATEST_YEAR}, not {to}"));
+    }
+    if to > first && !rules.params().longrun.enabled {
+        return Err(format!(
+            "a game under the {} rules ends in {first}, because the long run (docs/rules/longrun.md) is off under them, and so it cannot be played to {to}",
+            rules.as_str()
+        ));
+    }
+    Ok(())
+}
+
 /// Something the player told the family to do. Everything that changes the
 /// simulation from outside is one of these.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -242,6 +271,18 @@ pub fn params(rules: Rules, seed: u64, families: usize) -> Params {
     P
 }
 
+/// The parameters of a game played to the year `to` (`last_year_allowed`).
+/// The last year is set in `end_year` only when it is not the content's, so a
+/// game to 1900 begun this way has the very parameters `params` gives.
+pub fn params_to(rules: Rules, seed: u64, families: usize, to: i64) -> Result<Params, String> {
+    last_year_allowed(rules, to)?;
+    let mut P = params(rules, seed, families);
+    if to != content_last_year(rules) {
+        P.end_year = Some(to);
+    }
+    Ok(P)
+}
+
 /// A game being played: the simulation, and every order carried out so far.
 #[derive(Clone, Debug)]
 pub struct Game {
@@ -285,6 +326,27 @@ impl Game {
         let mut P = params(rules, seed, families);
         P.land = crate::landform::LandParams::game();
         Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() }
+    }
+
+    /// A new game under these rules, played to the year `to` (1900 to 2050;
+    /// past 1900 only under rules with the long run on: `last_year_allowed`).
+    /// Its save keeps the year (`Save::to`), and loading plays it to the same.
+    pub fn under_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
+        let P = params_to(rules, seed, families, to)?;
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+    }
+
+    /// `on_new_land`, played to the year `to` (as `under_to`).
+    pub fn on_new_land_to(rules: Rules, seed: u64, families: usize, started: u64, to: i64) -> Result<Game, String> {
+        let mut P = params_to(rules, seed, families, to)?;
+        P.land = crate::landform::LandParams::game();
+        Ok(Game { sim: sim::start(&P, rules.content()), rules, orders: Vec::new(), started, month: 0, waiting: Vec::new(), outcomes: Vec::new() })
+    }
+
+    /// The last year the game is played to: the content's (1900) unless it was
+    /// begun with another (`under_to`).
+    pub fn to(&self) -> i64 {
+        self.sim.end_year
     }
 
     /// Whether the game is played on the second island generator's land.
@@ -443,6 +505,7 @@ impl Game {
             worth: me.as_ref().map(|r| r.net_worth.round() as i64).unwrap_or(0),
             check: check(&self.sim),
             land: self.on_land() && !self.rules.params().land.enabled,
+            to: (self.to() != content_last_year(self.rules)).then_some(self.to()),
             orders: self.orders.clone(),
             waiting: self.waiting.clone(),
         }
@@ -485,6 +548,12 @@ pub struct Save {
     /// as it always was.
     #[serde(default, skip_serializing_if = "is_false")]
     pub land: bool,
+    /// The last year the game is played to, when it is not the content's
+    /// (`Game::under_to`; docs/rules/longrun.md, "A game past 1900"). Left
+    /// out of the file otherwise, so a game to 1900 is written as it always
+    /// was, and a save that does not say is a game to 1900.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<i64>,
     pub orders: Vec<Given>,
     /// Orders given since the year's turn, waiting for the year's end (layout 2).
     #[serde(default)]
@@ -547,11 +616,18 @@ impl Save {
             return Err(format!("not a saved game the game wrote: it names {} families, and {why}", self.families));
         }
         let C = self.played_under().content();
+        // the year it is played to is its own (a game past 1900), or the content's
+        if let Some(to) = self.to {
+            if let Err(why) = last_year_allowed(self.played_under(), to) {
+                return Err(format!("not a saved game the game wrote: it says it is played to {to}, and {why}"));
+            }
+        }
+        let last = self.to.unwrap_or(C.end_year);
         // (a game saved before its first year was played says the year before the first)
-        if self.year < C.start_year - 1 || self.year > C.end_year {
+        if self.year < C.start_year - 1 || self.year > last {
             return Err(format!(
                 "not a saved game the game wrote: it says the game had reached the year {}, and the island's years are {} to {}",
-                self.year, C.start_year, C.end_year
+                self.year, C.start_year, last
             ));
         }
         if self.month > 11 {
@@ -562,6 +638,11 @@ impl Save {
             return Err(format!("not a saved game the game wrote: it has an order dated {} months into {}, and a year has twelve", given.month, given.year + 1));
         }
         Ok(())
+    }
+
+    /// The last year the game is played to: its own (`to`), or the content's.
+    pub fn last_year_of_game(&self) -> i64 {
+        self.to.unwrap_or_else(|| content_last_year(self.played_under()))
     }
 
     /// The rules it was played under. A name this version does not know is
@@ -602,10 +683,12 @@ pub fn load(save: &Save, mut each_year: impl FnMut(&Sim)) -> Result<Loaded, Stri
     // a save made in memory has not been through `from_text`
     save.sound()?;
     // a game started on the new land before its rules switch it on is played again there
+    // and played to the year it was begun to (a save that does not say is a game to 1900)
+    let to = save.last_year_of_game();
     let mut game = if save.land {
-        Game::on_new_land(save.played_under(), save.seed, save.families, save.started)
+        Game::on_new_land_to(save.played_under(), save.seed, save.families, save.started, to)?
     } else {
-        Game::under(save.played_under(), save.seed, save.families, save.started)
+        Game::under_to(save.played_under(), save.seed, save.families, save.started, to)?
     };
     let mut refused = Vec::new();
     let mut next = 0;
