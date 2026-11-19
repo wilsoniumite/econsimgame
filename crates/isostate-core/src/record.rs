@@ -706,6 +706,11 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     if let Some(lf) = &world.landform {
         header["land"] = crate::landcells::static_header(lf);
     }
+    // crossings (docs/rules/crossings.md): every link whose way crosses water,
+    // with the year its bridge was built (null where it is forded or ferried)
+    if crate::crossings::active(st, P) {
+        header["crossings"] = serde_json::to_value(crate::crossings::links_out(st)).unwrap();
+    }
     // accounts: the tables' columns and the island's account of every year
     // towns (and longrun): how the towns' layers and the rent are packed, written
     // only for the second layout, so that a run to 1900 is the same file it was;

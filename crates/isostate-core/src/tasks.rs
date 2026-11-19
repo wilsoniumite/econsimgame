@@ -32,6 +32,11 @@
 //!   minders of the machines held)`, and the machines' run goods join its
 //!   inputs a unit, for the share held. A new works holds nothing until its
 //!   plant comes.
+//! - **A machine short of its run good** idles, in the measure it is short,
+//!   and nothing else does: the works' recipe is held to its own inputs, the
+//!   hands do the idle machines' part at the labour it took before them, and
+//!   the run goods are paid for what was used (`Running`, and the execute step
+//!   of `econ::step_month`). The works hires its hands for last month's fill.
 //! - **Sites and reviews.** `firms::evaluate_sites`, `firms::review` and
 //!   `firms::entry` see the works at its town's target: the machines' plant
 //!   for a unit of capacity is part of what the capacity costs, and the run
@@ -569,6 +574,10 @@ pub struct TasksState {
     /// and its hands a unit over what they would be by hand.
     pub f_fill: Vec<f64>,
     pub f_factor: Vec<f64>,
+    /// By works: how well its machines' run goods were filled last month (1
+    /// where it has none), which its hands for this month are hired on ("A
+    /// machine short of its run good").
+    pub f_run_fill: Vec<f64>,
     /// By town and class, this month: the uses that would hold it, cheapest
     /// first, each with the part it holds (`parts`).
     parts: Vec<[Vec<(usize, f64, f64)>; K]>,
@@ -626,6 +635,7 @@ fn fit(st: &mut State, C: &Content) {
         s.f_order.resize(n, vec![0.0; np]);
         s.f_fill.resize(n, 1.0);
         s.f_factor.resize(n, 1.0);
+        s.f_run_fill.resize(n, 1.0);
     }
 }
 
@@ -742,10 +752,10 @@ fn hold<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K],
 /// part they cannot fill is held to the top those machines reach
 /// (`top_for_units`), and nothing above it. Never above `auto`; nothing at
 /// all where `auto` is nothing, so a run with no use found reads nothing.
-/// The machines of a use that cannot run in town `t` this month (`idle`) are
-/// counted as none.
+/// Machines whose run goods are short this month still stand, and are held;
+/// they idle in the execute step ("A machine short of its run good").
 #[allow(clippy::too_many_arguments)]
-fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, t: usize, sh: &[f64; K], auto: &[f64; K], hours: f64, plant: &[f64], ps_of: &dyn Fn(usize) -> &'a [(usize, f64, f64)]) -> [f64; K] {
+fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K], hours: f64, plant: &[f64], ps_of: &dyn Fn(usize) -> &'a [(usize, f64, f64)]) -> [f64; K] {
     let mut out = [0.0; K];
     if !(hours > 0.0) || auto.iter().all(|&x| x <= 0.0) {
         return out;
@@ -771,7 +781,7 @@ fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, t: usize, sh: &[f64; K
             // machines for one machine unit an hour of the class, and for the part
             let per = hours * sh[k] / qeff(st, C, P, u);
             let want = per * units(&tb.spread[k], a, e);
-            let have = if idle(st, C, t, u) { 0.0 } else { us.plant.iter().filter(|p| p.1 > 0.0).filter_map(|&(g, v)| col(g).map(|c| left[c] / v)).fold(f64::INFINITY, f64::min) };
+            let have = us.plant.iter().filter(|p| p.1 > 0.0).filter_map(|&(g, v)| col(g).map(|c| left[c] / v)).fold(f64::INFINITY, f64::min);
             let got = have.min(want).max(0.0);
             for &(g, v) in &us.plant {
                 if let Some(c) = col(g) {
@@ -789,16 +799,6 @@ fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, t: usize, sh: &[f64; K
         }
     }
     out
-}
-
-/// The machines of use `u` stand idle in town `t` this month: one of its run
-/// goods is not carried between towns (electricity, which goes no further
-/// than a town's own wires) and the town has none of it to sell, its station
-/// having made none last month. Their part is then done by hand. A good that
-/// is carried between towns (the hoist's coal) never idles a machine, so with
-/// the hoist alone nothing here acts.
-fn idle(st: &State, C: &Content, t: usize, u: usize) -> bool {
-    C.tasks.uses[u].run.iter().any(|&(g, _)| !C.traded.get(g).copied().unwrap_or(true) && !(st.inv[(t, g)] > 0.0))
 }
 
 /// `adjust` for method `m` at town `t`'s target: what a new works there would
@@ -828,29 +828,39 @@ pub fn plant_cost(a: &Adjust, l: f64, price: &dyn Fn(usize) -> f64) -> f64 {
 /// its order for their plant is what its capacity needs at the share it means
 /// to hold (`f_auto`) less what it has. `fi` are the works, `cap` their
 /// capacity.
-pub fn works_month(st: &mut State, C: &Content, P: &Params, fi: &[usize], cap: &[f64], a: &mut Mat, l: &mut [f64]) {
+pub fn works_month(st: &mut State, C: &Content, P: &Params, fi: &[usize], cap: &[f64], a: &mut Mat, l: &mut [f64]) -> Vec<Running> {
     if !active(st, P) {
-        return;
+        return Vec::new();
     }
     fit(st, C);
     let pg = C.tasks.plant_goods.clone();
+    let mut running = vec![Running::default(); fi.len()];
     for (i, &f) in fi.iter().enumerate() {
         let (t, m) = (st.f_town[f], st.f_method[f]);
         let auto = st.tasks.f_auto[f];
         let base = l[i];
         // what stands: the machines in place, at this month's capacity and hands a unit
         let sh = C.tasks.method.get(m).copied().unwrap_or([0.0; K]);
-        let held = held_by_plant(st, C, P, t, &sh, &auto, cap[i] * base, &st.tasks.f_plant[f], &|k| parts(st, t, k));
+        let held = held_by_plant(st, C, P, &sh, &auto, cap[i] * base, &st.tasks.f_plant[f], &|k| parts(st, t, k));
         let now = adjust(st, C, P, t, m, &held);
         let aim = adjust(st, C, P, t, m, &auto);
         let s = &mut st.tasks;
         s.f_held[f] = held;
         match now {
             Some(adj) => {
-                l[i] = base * adj.factor;
-                s.f_factor[f] = adj.factor;
+                let r = &mut running[i];
+                r.share = (0..K).map(|k| sh[k] * adj.held[k]).sum();
+                r.factor = adj.factor;
+                r.planned = s.f_run_fill[f];
+                // hands a unit: the work left to hands and the minders, and the
+                // machines' part that last month's run goods left idle, which
+                // hands do at the labour it took before the machines
+                let factor = adj.factor + r.share * (1.0 - r.planned);
+                l[i] = base * factor;
+                s.f_factor[f] = factor;
                 for &(g, v) in &adj.run {
                     a[(i, g)] += base * v;
+                    r.run.push((g, base * v));
                 }
             }
             None => s.f_factor[f] = 1.0,
@@ -865,6 +875,45 @@ pub fn works_month(st: &mut State, C: &Content, P: &Params, fi: &[usize], cap: &
             }
             None => s.f_order[f].iter_mut().for_each(|v| *v = 0.0),
         }
+    }
+    running
+}
+
+/// What a works' machines in place ask of this month (`works_month`), for the
+/// execute step of `econ::step_month` ("A machine short of its run good").
+/// The default, with no run goods, is a works whose machines hold nothing.
+#[derive(Clone, Debug, Default)]
+pub struct Running {
+    /// The share of the works' hours by hand that its machines in place do:
+    /// the sum over classes of the class's share times the part held.
+    pub share: f64,
+    /// Its hands a unit over its hands a unit by hand, with every machine
+    /// running: the work left to hands, and the minders.
+    pub factor: f64,
+    /// The machines' run goods a unit of output, as `works_month` added them
+    /// to the works' inputs.
+    pub run: Vec<(usize, f64)>,
+    /// The fill of the run goods its hands were hired for: last month's.
+    pub planned: f64,
+}
+
+impl Running {
+    /// What the machines' run goods add to the works' inputs of good `g`.
+    pub fn of(&self, g: usize) -> f64 {
+        self.run.iter().find(|r| r.0 == g).map_or(0.0, |r| r.1)
+    }
+
+    /// The share of what its recipe allows that the works makes when its
+    /// machines' run goods are filled `fr`. The machines stand idle in the
+    /// measure their run goods are short, and the hands do their part at the
+    /// labour it took before them: a unit then takes `factor + share * (1 -
+    /// fr)` of its hands by hand. The works hired its hands for last month's
+    /// fill, so it makes all its recipe allows where the fill is no worse than
+    /// that, and as much as those hands can where it is worse.
+    pub fn output(&self, fr: f64) -> f64 {
+        let hired = self.factor + self.share * (1.0 - self.planned);
+        let now = self.factor + self.share * (1.0 - fr);
+        if now > 0.0 { (hired / now).min(1.0) } else { 1.0 }
     }
 }
 
@@ -954,6 +1003,7 @@ pub fn opened(st: &mut State, C: &Content, P: &Params, f: usize) {
     s.f_order[f].iter_mut().for_each(|v| *v = 0.0);
     s.f_fill[f] = 1.0;
     s.f_factor[f] = 1.0;
+    s.f_run_fill[f] = 1.0;
 }
 
 // ---------------------------------------------------------------- the land
@@ -1090,7 +1140,7 @@ pub fn land_month(st: &mut State, C: &Content, P: &Params, price: &Mat, ex: &[us
                 let sh = C.tasks.sector.get(s).copied().unwrap_or([0.0; K]);
                 let auto = st.tasks.land_auto[t][s];
                 let hours = st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0);
-                let held = held_by_plant(st, C, P, t, &sh, &auto, hours, &st.tasks.land_plant[t][s], &|k| land_parts(st, t, s, k));
+                let held = held_by_plant(st, C, P, &sh, &auto, hours, &st.tasks.land_plant[t][s], &|k| land_parts(st, t, s, k));
                 st.tasks.land_held[t][s] = held;
                 if let Some(m) = mix_with(st, C, P, t, s, &auto, &|g| price[(t, g)]) {
                     aim[t * NS + s] = Some(m.plant);

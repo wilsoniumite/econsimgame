@@ -471,6 +471,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     }
     update_roads(st, C, P);
     crate::roads::yearly(st, C, P, year, warm);
+    // crossings (docs/rules/crossings.md): the year's traffic over water, and the bridges it pays for
+    crate::crossings::yearly(st, C, P, year, warm);
     // canals (docs/rules/canals.md): what the year's goods put on the water, on the
     // paths they took (before the paths are worked out again)
     crate::canals::year_traffic(st, C, P, year, warm);
@@ -663,6 +665,8 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     crate::canals::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     // roads (docs/probes/dx-roads.md): tolls taken, road works opened
     crate::roads::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
+    // crossings (docs/rules/crossings.md): bridges that are built open
+    crate::crossings::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
         check_money(st, sim.year, month)?;

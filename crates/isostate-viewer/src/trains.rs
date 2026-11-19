@@ -5,7 +5,7 @@ use bevy::math::Vec3;
 use crate::look::Look;
 use crate::meshkit::Builder;
 use crate::network;
-use crate::replay::Replay;
+use crate::replay::{Crossed, Replay};
 use crate::world::{self, Ground};
 
 pub struct TrainPath {
@@ -91,24 +91,25 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
     }
     let RoadMemo { waters, ways, dry, bridges } = memo;
     // a link's surface, from the lower-numbered cell (the way it is drawn)
-    fn surface<'a>(ways: &'a mut std::collections::HashMap<(usize, usize), Vec<Vec3>>, g: &Ground, cen: &[(f32, f32)], lo: usize, hi: usize) -> &'a Vec<Vec3> {
-        ways.entry((lo, hi)).or_insert_with(|| network::driven(g, cen[lo], cen[hi], true))
+    fn surface<'a>(ways: &'a mut std::collections::HashMap<(usize, usize, Crossed), Vec<Vec3>>, r: &Replay, k: usize, g: &Ground, cen: &[(f32, f32)], lo: usize, hi: usize) -> &'a Vec<Vec3> {
+        let crossed = r.crossed(lo, hi, k);
+        ways.entry((lo, hi, crossed)).or_insert_with(|| network::driven(g, cen[lo], cen[hi], true, crossed, r.round()))
     }
     let mut covered: std::collections::HashMap<usize, bool> = Default::default();
     // a link a cart may take: worked out when a round first comes to it (its surface is only
     // needed for that where a river is near)
     let mut way = |u: usize, v: usize| -> bool {
         let (lo, hi) = (u.min(v), u.max(v));
-        let mut under_bridge = |cell: usize| *covered.entry(cell).or_insert_with(|| middle_under_bridge(g, cen, &links[cell], cell, bridges));
+        let mut under_bridge = |cell: usize| *covered.entry(cell).or_insert_with(|| middle_under_bridge(r, k, g, cen, &links[cell], cell, bridges));
         if under_bridge(lo) || under_bridge(hi) {
             return false;
         }
-        *dry.entry((lo, hi)).or_insert_with(|| {
+        *dry.entry((lo, hi, r.crossed(lo, hi, k))).or_insert_with(|| {
             let (a, b) = (bevy::math::Vec2::new(cen[lo].0, cen[lo].1), bevy::math::Vec2::new(cen[hi].0, cen[hi].1));
             // (on the new land a road left out of the picture, under a lake or along tidewater, is no way for a cart)
             network::link_shown(g, a, b)
                 && (!waters.near(a, b) || {
-                    let way = surface(ways, g, cen, lo, hi);
+                    let way = surface(ways, r, k, g, cen, lo, hi);
                     !waters.drowns(g, way) && !steps(way)
                 })
         })
@@ -136,7 +137,7 @@ pub fn road_routes(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, memo: &
     for cells in rounds {
         let mut pts: Vec<Vec3> = Vec::new();
         for w in cells.windows(2) {
-            let mut link = surface(ways, g, cen, w[0].min(w[1]), w[0].max(w[1])).clone();
+            let mut link = surface(ways, r, k, g, cen, w[0].min(w[1]), w[0].max(w[1])).clone();
             if w[0] > w[1] {
                 link.reverse();
             }
@@ -176,9 +177,10 @@ fn steps(pts: &[Vec3]) -> bool {
 /// and each link's bridges.
 pub struct RoadMemo {
     waters: network::Waters,
-    ways: std::collections::HashMap<(usize, usize), Vec<Vec3>>,
-    dry: std::collections::HashMap<(usize, usize), bool>,
-    bridges: std::collections::HashMap<(usize, usize, bool), Vec<isostate_gen::bridge::RoadBridge>>,
+    // (by link, and how the run says it crosses its water that year: a ford may become a bridge)
+    ways: std::collections::HashMap<(usize, usize, Crossed), Vec<Vec3>>,
+    dry: std::collections::HashMap<(usize, usize, Crossed), bool>,
+    bridges: std::collections::HashMap<(usize, usize, bool, Crossed), Vec<isostate_gen::bridge::RoadBridge>>,
 }
 
 impl RoadMemo {
@@ -193,15 +195,16 @@ impl RoadMemo {
 /// lies a little under the ribbon, and does not count. `bridges` keeps each
 /// link's bridges once found.
 #[allow(clippy::type_complexity)]
-pub fn middle_under_bridge(g: &Ground, cen: &[(f32, f32)], links: &[(usize, usize, u8)], cell: usize, bridges: &mut std::collections::HashMap<(usize, usize, bool), Vec<isostate_gen::bridge::RoadBridge>>) -> bool {
+pub fn middle_under_bridge(r: &Replay, k: usize, g: &Ground, cen: &[(f32, f32)], links: &[(usize, usize, u8)], cell: usize, bridges: &mut std::collections::HashMap<(usize, usize, bool, Crossed), Vec<isostate_gen::bridge::RoadBridge>>) -> bool {
     let middle = |c: usize| bevy::math::Vec2::new(cen[c].0, cen[c].1);
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     let p = middle(cell);
     let ribbon = height(p.x, p.y).max(0.0) + network::ROAD_LIFT;
     links.iter().any(|&(c, m, lv)| {
+        let crossed = r.crossed(c, m, k);
         bridges
-            .entry((c, m, lv == 3))
-            .or_insert_with(|| network::road_bridges(g, middle(c), middle(m), lv == 3, |_| isostate_gen::houses::Detail::Play))
+            .entry((c, m, lv == 3, crossed))
+            .or_insert_with(|| network::road_bridges(g, middle(c), middle(m), lv == 3, crossed, r.round(), |_| isostate_gen::houses::Detail::Play))
             .iter()
             .any(|b| b.holds(p) && b.roadway_at(b.t_of(p), &height).is_some_and(|h| h > ribbon + crate::carts::LIFT))
     })

@@ -25,11 +25,11 @@ fn the_overlay_at_stage_six_parses_and_every_name_resolves() {
     assert_eq!(game_params().tree.stage, 6);
     let one = tree::game_content_at(1);
     let six = tree::game_content_at(6);
-    // three goods (electricity, electrical goods and oil), four methods and an invention
-    // (breeding: docs/rules/tree.md, "Oil, nitrogen and the land"), nothing else; the
-    // tree's stages 2 to 5 have no entries
+    // three goods (electricity, electrical goods and oil), four methods and two inventions
+    // (breeding: docs/rules/tree.md, "Oil, nitrogen and the land"; managed woodland:
+    // docs/rules/woods.md), nothing else; the tree's stages 2 to 5 have no entries
     assert_eq!((six.G, six.S, six.NS, six.M), (one.G + 3, one.S, one.NS, one.M + 4));
-    assert_eq!(six.tech_name.len() - six.M, one.tech_name.len() - one.M + 1);
+    assert_eq!(six.tech_name.len() - six.M, one.tech_name.len() - one.M + 2);
     for k in 2..=5 {
         assert_eq!(format!("{:?}", tree::game_content_at(k).good_name), format!("{:?}", one.good_name), "stage {k}");
         assert_eq!(tree::game_content_at(k).M, one.M, "stage {k}");
@@ -106,6 +106,13 @@ fn at_stage_one_the_island_is_the_island_as_it_was() {
     // the game at stage 1 on purpose, it takes this again (ISOSTATE_GOLDEN_PRINT=1)
     let mut P = game(7, 6, 1900);
     P.tree.stage = 1;
+    // played with the woods' rule off (docs/rules/woods.md), which came after: its two
+    // series of the woods' cover and timber's price are in the fingerprint, though they
+    // touch nothing, and its invention is stage 6's
+    P.woods = Default::default();
+    // and with the merchants' crumb off (docs/rules/prices.md, "A crumb is no glut"),
+    // which came after and acts before 1900
+    P.prices.crumb = 0.0;
     let mut s = sim::start(&P, game_content());
     while s.year <= 1900 {
         sim::run_year(&mut s).unwrap();

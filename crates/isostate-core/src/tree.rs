@@ -171,6 +171,8 @@ struct OverMethod {
     group: Option<String>,
     seed: Option<bool>,
     target: Option<i64>,
+    /// The first year it may be found (`Content::tech_after`).
+    found_after: Option<i64>,
     /// Where the works must stand. Read from stage 2; kept so that a stage 1
     /// method may already say it.
     #[allow(dead_code)]
@@ -213,6 +215,7 @@ fn raw_of(C: &Content) -> RawContent {
             group: m.and_then(|m| C.method_group.get(m)).filter(|g| !g.is_empty()).cloned(),
             seed: m.and_then(|m| C.method_seed.get(m)).copied().unwrap_or(false),
             target: C.tech_target.get(t).copied().filter(|&y| y != 0),
+            found_after: C.tech_after.get(t).copied().filter(|&y| y != 0),
         }
     };
     RawContent {
@@ -417,6 +420,7 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
             r.seed = o.seed.unwrap_or(r.seed);
             r.group = o.group.clone().or(r.group.take());
             r.target = o.target.or(r.target);
+            r.found_after = o.found_after.or(r.found_after);
             if let Some(v) = &o.headline {
                 r.headline = v.clone();
             }

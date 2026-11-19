@@ -25,12 +25,14 @@
 
 pub mod ablate;
 pub mod accounts;
+pub mod atlas;
 pub mod canals;
 pub mod carting;
 pub mod chronicle;
 pub mod cli;
 pub mod commons;
 pub mod content;
+pub mod crossings;
 pub mod econ;
 pub mod edits;
 pub mod engel;
@@ -80,6 +82,7 @@ pub mod transport;
 pub mod tree;
 pub mod util;
 pub mod ways;
+pub mod woods;
 pub mod works;
 pub mod world;
 

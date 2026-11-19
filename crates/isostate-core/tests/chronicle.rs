@@ -803,6 +803,9 @@ fn towns_and_districts_have_stories() {
     // inventions are sought every year from 1750, and each draw of the dice moves
     // every draw after it
     P.tree.stage = 1;
+    // and with the merchants' crumb off (docs/rules/prices.md, "A crumb is no glut"),
+    // which came after it and moves the island's history from its first month
+    P.prices.crumb = 0.0;
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(digests_of_new_towns(&early) >= 1, "seed 3 has a decade of new towns before 1800");
 }

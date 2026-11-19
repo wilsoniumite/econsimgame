@@ -1020,3 +1020,26 @@ target = 1950
 stage = 6
 headline = "New strains and sprays at {town}"
 story = "Farmers around {town} sow wheat bred to stand and yield, and spray against rust and fly. The same field gives half as much again, and the flocks are heavier."
+
+# ====================================================================================================
+# Stage 6, the woods (docs/rules/woods.md): managed woodland, the forester's craft. Not a works: woods
+# planted, thinned and felled in rotation, known in a town as an invention is; where it is known the woods
+# of the town's market area grow back faster (`woods.regrow`, three times the port's rate where the whole
+# town knows it). Sought only with `woods.enabled`.
+# The tree finds an invention on what the island has made and cannot make a finding likelier when a good
+# is dear, so this one is dated as the tree dates the others: on timber made since 1750 (an island that has
+# cut little wood learns the craft late), with a floor (`found_after`: no draw is made before it). Islands
+# 1 to 8 had cut 53 to 62 million units of timber by 1890 on main's sweep of 19 November 2026, so at 40
+# million the clock has run out by 1895 everywhere and the hazard is near its most, 0.15 to 0.18 a year:
+# found from 1895, about 1901 on the mean island, and by 1910 on some nine islands in ten.
+# ====================================================================================================
+
+[[tech]]
+name = "managed_woodland"
+label = "Managed woodland"
+discover = { timber = 40000000.0 }
+target = 1902
+found_after = 1895
+stage = 6
+headline = "Woods planted in rotation at {town}"
+story = "{who} fences the cut-over hills about {town} and plants them in rows of larch and oak, thinned every few years and felled a block at a time. Where the old woods were cut and left to the scrub, these are cut and grown again."

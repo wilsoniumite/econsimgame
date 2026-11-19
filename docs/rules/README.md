@@ -843,6 +843,11 @@ One line each as they arrive: the name, its page, its switch.
   the towns that bring services in no longer lose what rots on their shelves
   and the merchants no longer owe two fifths of the money by 1900.
   [prices.md](prices.md), "Goods that spoil", `prices.no_spoil_markup`.
+- **a crumb is no glut**: a stock under a hundredth of a month of the works'
+  make at full time does not turn the works away, so a town whose sales
+  stopped, its stock decaying for ever and never reaching nothing, is no
+  longer frozen as the worst glut. [prices.md](prices.md), "A crumb is no
+  glut", `prices.crumb`.
 - **the price of land**: land is priced on the rent it paid, not on an
   average year's rent worked out by adding back the crop the weather took,
   which put it a tenth too high after a bad harvest and a tenth too low
@@ -886,3 +891,15 @@ One line each as they arrive: the name, its page, its switch.
   (`tasks.yield_cap`) and a control that holds the machine still
   (`tasks.freeze_from`) are for sweeps. [tasks.md](tasks.md),
   `tasks.enabled`, `tasks.land`.
+- **woods**: managed woodland, an invention of the tree's stage 6 found from
+  1895 and spreading as every invention does, grows the woods back three times
+  as fast where it is known, so that the island no longer runs out of timber
+  after 1950; and the woods' cover and timber's price in months of the wage
+  recorded (`woods.record`). [woods.md](woods.md), `woods.enabled`.
+- **crossings** (acts on the new land only, and does nothing on the old
+  island): crossing water costs a ford's charge by its width, or a ferry's
+  over 25 m, and a parish builds a bridge out of its rate, with its own men,
+  where the carting it saves pays for it; the cells of a valley meet on one
+  bank, a way goes round the meanders its straight line cuts, and the
+  picture draws a bridge, a ford or a ferry only where the simulation has
+  one. [crossings.md](crossings.md), `crossings.enabled`.

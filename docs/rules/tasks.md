@@ -146,7 +146,9 @@ some part of a class (below, "A machine works once it stands"):
 - its hands a unit are the port's times the sum over classes of `share *
   (1 - held + minders of the machines held)`;
 - the machines' run goods join its inputs a unit, so it buys them each
-  month and is held back as any works is when they run short;
+  month; where they run short its machines idle in that measure and its
+  hands do their part, and nothing else is held back ("A machine short of
+  its run good", below);
 - the machines' plant, sized to its capacity at the share it means to hold,
   is ordered through a table of its own (the works' order for capacity is wiped when no capacity is on
   order, so it cannot hold them): a quarter of what is missing a month,
@@ -329,17 +331,94 @@ from 1901 it read 0.194 at 0.80, so 0.77. As run now it is 0.200 (0.137 to
 
 **No station, no drive.** Electricity goes no further than a town's own
 wires. Where a town has no station it stands at its ceiling price, and the
-town's target gives the drive nothing. Where a station closes, the works
-there still have their drives; but a machine whose run good is not carried
-between towns stands idle in a town that has none of it to sell this month
-(none made there the month before), and its part is done by hand (`idle` in
-`tasks.rs`). Without that the works kept electricity in their recipe a unit
-and, with none to be had, stood: on island 7 in the first runs the town of
-the first station lost it in 1898 and its wage fell from 8.4 to 3.3 by 1902.
-Coal is carried between towns, so the hoist never idles, and with the tree
-at stage 1 nothing here acts. A test holds island 7 for the ten years after
-the find: no works in a town with no electricity holds any of its hauling,
-whatever plant it has in place.
+town's target gives the drive nothing. Where a station closes, or its
+stations make less than the town wants, the works there still have their
+drives, and the drives idle in the measure the electricity is short, as the
+next section says. A test holds island 7 for the ten years after the find:
+a works with drives in a town with no electricity runs them on none of it,
+and the month after hires its hands for all its work by hand.
+
+### A machine short of its run good
+
+**The rule.** A machine whose run good is short idles, in the measure it is
+short, and nothing else does. In the month's execute step a works makes what
+the scarcest input of its own recipe allows, as the port has it; the
+machines' run goods are no longer among those inputs. Where they are filled
+`fr` (the least fill of the machines' run goods in the town that month), the
+machines do `fr` of their part, the hands do the rest of it at the labour it
+took before the machines, and the run goods are paid for what was used, `fr`
+of what was asked. The hands are hired before the month's fill is known, so a
+works hires for last month's: its hands a unit are the port's times `factor +
+share * (1 - last month's fill)`, where `factor` is its hands a unit with
+every machine running and `share` the part of its hours by hand its machines
+do. Where this month's fill is no worse than last month's it makes all its
+recipe allows; where it is worse it makes as much as the hands it hired can,
+`(factor + share * (1 - last)) / (factor + share * (1 - fr))` of it. A town
+whose stations have all shut runs its works by hand, its drives standing,
+from the month after (`Running` in `tasks.rs`, and the execute step of
+`econ::step_month`).
+
+**Why.** Before, the drive's electricity was an input of the works' whole
+output: a works with drives in a town short of power made what that
+electricity allowed, and nothing more. Power stations hold drives (three
+tenths of their hours are hauling), and so do the builders whose work is a
+station's plant, so a town whose stations fell short of what its works
+wanted stopped every works in it, the stations among them, and each month's
+shortage made the next one's. The electricity made fell about a hundredfold a
+year (island 7, town 6: 37,100 in 1945, 28,700, 5,290, 103 and 0.00004 in
+1949), the town's wage fell to a fifth, and the island's chained wage halved
+for a decade, the price index pricing the whole island at the stricken
+town's prices. The rule that was meant to catch it, `idle`, idled a town's
+drives only when the town had no electricity at all in stock, and a fall by
+a factor never reaches nothing while a station stands. The trace that found
+this is `.claude/night/reports/decline/second-fall.md` (not in the
+repository); on the eight islands it counted 26 such collapses.
+
+**Two forms were tried.** The trace's own, the land's rule for the works:
+output times `1 - share * (1 - fr)`, the machines' part simply not done. And
+the one above, where the hands do it. They measured alike (islands 1 to 16,
+1970 and 2050: 9.00 and 9.76 against 8.97 and 9.59 with the idling rule
+kept; no collapse in either), and the one above is what this page always
+said ("its part is done by hand"), costs a dozen lines more and one number a
+works (`f_run_fill`), and does the idling rule's work too, so it is the one
+kept.
+
+**The idling rule is gone.** With the soft run `idle` had nothing left to
+do. Without it, with either form, nothing moved beyond the islands' own
+spread (islands 1 to 16, the trace's form: 1970 9.06 against 9.00, 2050
+9.73 against 9.76; no collapse and no town left without work), so it went.
+A town with no electricity now holds its drives and runs them on nothing,
+its hands doing their part; their plant wears out and is not replaced, the
+town's target giving the drive nothing.
+
+**Before 1901 nothing here acts**: no works holds a machine, so every works
+is made as the port makes it, to the byte (the played century did move on
+the same branch, by the merchants' crumb: prices.md, "A crumb is no glut").
+
+```bash
+isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year 2050 --standing --compare MAIN --out DIR
+```
+
+As run on 19 November 2026 against main as it was (5bfd60d), with the crumb;
+"no drive" is the same branch with the drive left out of the table (a
+temporary switch, not in the tree). Means, [least .. greatest] island:
+
+| islands 1 to 8 | main | this rule | no drive |
+|---|---|---|---|
+| chained wage 1970 (1750 = 1) | 7.88 [4.95 .. 10.04] | 8.83 [7.61 .. 9.45] | 8.83 [7.50 .. 9.49] |
+| chained wage 2050 | 7.21 [4.17 .. 10.06] | 9.66 [8.63 .. 10.36] | 9.68 [8.53 .. 10.80] |
+| 2050 over 1970, island by island | 0.54 .. 1.25, five below 1 | 1.04 .. 1.19 | |
+| towns whose electricity fell a hundredfold with a station standing | 21 | 0 | |
+| spells of more than ten years in which a town had no station and no work | 19 | 0 | |
+| trades standing still in a town for more than ten years, islands 1 to 16 | 191 | 1 | |
+
+On islands 9 to 16, which nobody had played with the cure: 1970 9.12 and
+2050 9.62 (main 8.19 and 6.72), no collapse, no town frozen; island 9 is the
+one with 2050 below 1970 (0.93), and it is so with the drive left out too
+(its wage tops out about 1990 and falls on every arm). Collapses are counted
+with the decline check's `episodes.py` from a town probe; a town without
+work is one with no station, builders standing and under a hundredth of its
+best year's building work.
 
 ### What the drive does, to 2050
 
@@ -974,11 +1053,19 @@ oil and nitrogen works standing.
   finds the drive in 1922. A gate on electrical goods alone cannot put the
   find after the first station on every island; the drive simply holds
   nothing until one stands, and the refit reads the towns that can run it.
-- **Only a good not carried between towns idles a machine.** Where coal
-  runs short a works with hoists is held back as by any input; where a
-  town's electricity is gone its drives and its cutters stand and hands do
-  their part. A machine whose run good is carried but scarce (the tractor's
-  oil) gets no such mercy.
+- **The works and the land idle their machines in two ways.** A works'
+  hands do its idle machines' part ("A machine short of its run good"); a
+  land unit short of its machines' run goods (the tractor's oil, the
+  cutter's electricity) loses that part of its crop and hires no more hands
+  for it (`Y *= (1 - machine_work * (1 - fr))^(1 - alpha)`). Since the
+  idling rule went, a town with no electricity at all holds its cutters too,
+  and they do nothing. The two should be one rule; the land's is the next
+  piece of the run to 2050.
+- **A works with idle drives still reckons their power at its price.** Its
+  margin counts the machines' run goods a unit at the town's price, short or
+  not, so a works in a town without a station reckons its drives' electricity
+  at the ceiling price until they wear out. Measured, it moved nothing (the
+  idling rule's removal), but it leans against the works there.
 - **The hoist is a stand-in.** It is made of the island's own machinery and
   burns its own coal, and with the content after 1900 it hauls nowhere. With
   the hoist in the works, machinery was a tenth cheaper with the rule (3.19

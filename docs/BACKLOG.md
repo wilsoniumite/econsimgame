@@ -71,6 +71,11 @@ Its design was written on 12 November by a panel, and the backlog said that noth
 6. **Electricity, and what follows it.** Waited on the production tree's first stage (4, below), which landed on 19 November. Being built in three parts, as a chain after the mending of stage 5. The design's later stages each wait on the one before.
 7. **The land's machines.** Queued behind electricity's first part. By the first step back (above) it is judged by whether wages grow and never fall after 1950; if they do not, the stage that gives people ages and causes of death comes before anything else, and computing and AI are brought forward once wages grow.
 
+*The second fall, found and mended on 19 November* (`night/g-drive-soft-run`; [rules/tasks.md](rules/tasks.md), "A machine short of its run good"; [rules/prices.md](rules/prices.md), "A crumb is no glut"):
+- **Found.** A works counted its drives' electricity as an input of its whole output, so a town short of power stopped every works in it, its stations and builders among them, and its electricity fell a hundredfold a year (21 such collapses on islands 1 to 8); the idling rule meant to stop it acted only at exactly no electricity, and the merchants' glut floor, which a decaying stock never leaves, then kept the towns without stations frozen for decades.
+- **Mended.** A short run good now idles the machines in its measure and the hands do their part; the idling rule is gone; and a stock under a hundredth of a works' month at capacity is no glut. On islands 1 to 8 the wage is 8.83 in 1970 and 9.66 in 2050 (main 7.88 and 7.21, the island with the drive left out 8.83 and 9.68), above 1970 on all eight, with no collapse and no frozen town on sixteen islands.
+- **Left.** Island 9 still ends below its 1970 (0.93; so it does with no drive); the crumb moved the played century (12 of 12 still inside); the land idles its cutters and tractors by its own older rule; growth from 1900 to 1970 is 0.57 per cent a year against the 1 asked, which is the land machines' ceiling, the next piece.
+
 What the backlog had gathered for it before 19 November, when it was Ready next 17: *the day's pages of 12 November:* the island grows 5.4-fold by 1900 where the people's numbers were set for five ([rules/people.md](rules/people.md)), and `growth_top` and `y_still` are the strongest numbers in either mechanism ([probes/sens-people.md](probes/sens-people.md)); the record to 2050 is 112 MB, with residents past their byte in 316 cells and every cell that joined after 1900 dated 1900 ([probes/dx-record.md](probes/dx-record.md)); and the state a save would keep ([probes/dx-save-state.md](probes/dx-save-state.md)). *The night's landings:* the review of the architecture counted the works' table for it: island 7 uses 2,320 of its 20,000 places by 1900 and 6,944 by 2050, and a full table stopped all founding without a word; a run whose table fills now says so (7589952). It names the record and the save together as the first truly large piece if the run to 2050 needs the record's bytes widened ([designs/architecture.md](designs/architecture.md), section 8).
 
 ### 2. The sandbox (her note of 19 November)
@@ -88,6 +93,15 @@ The island as a thing to watch, to look into and to change by hand, as WorldBox 
 
 Stages 4 to 8 also waited for the production tree to land, since they rewrite the parts of the viewer that the tree's panels work in; it landed at 04:43 on 19 November. The sandbox takes up the inspector (Ready next 7): stage 2 is the core's half of it and stage 5 draws it.
 
+**The atlas (her notes of 19 November, evening, at the foot; note 13).** She asked to see, and to change by hand, four things the sandbox does not yet show whole: where the deposits lie, when each idea is found, how goods are made from goods, and who trades with whom. Each has a seed in the game already. A square's card says what the square holds, the Idea tool gives an idea early, the Markets panel charts a good's price and how much of it is made, and a town's card gives the year's trade by good and counts the towns it came from. What is missing is the whole of each on one plate, and a hand on it. They are ranked as one design with four plates, in this order. None is built before the century after 1900 grows and the new land is the default, except the first plate's chart, which is a tool for that work.
+
+1. **The making.** The production tree as an island lives it: goods and works, with a works' plant drawn as well as its inputs, each line as wide as what flows along it in a decade and coloured by the good's price against the wage, the kinds of works nobody runs greyed, and the things that moved most named. The plant is there because the wood famine of 19 November sat in the plant of mills and breweries, where a chart of inputs alone would not have shown it. First a page that a command writes from a sweep, eight islands by decade; then a panel of the game. By hand: a kind of works forbidden from a date; later a recipe's numbers, kept with the session as the hand's other edits are. The stage that lets a works build its plant another way (note 8, third item) makes each way a named thing that can be switched, so that this has something to hold. *Built on 19 November: the page* (`isostate-core atlas making`, [atlas.md](atlas.md)): eight islands and their middle, every town, a slider over the decades, plant drawn dashed beside what is used up and what households buy, each good coloured by its price against the wage, the five that moved most followed down to the needs, and the recipe usage, in which only the nitrogen works never runs. Island 7 without managed woods shows timber as the one red good from the 1920s, held as plant by the mills, sawmills and builders, and sawn timber after it in the breweries' and gasworks' plant. Still to build: the panel in the game, and the hand.
+2. **The moving.** What each way carries, by good, added up from the carting. The record that reaches the picture carries no traffic today, and the look of 1900 to 2050 (cars and lorries) and the ways (who builds a bypass) wait on the same figures: one record, three uses. Then ribbons along the ways as wide as what they carry, and a town's card naming its largest partners. By hand: a way closed, or tolled.
+3. **The ideas.** A chart of when each idea was found and how it spread from town to town, with a tick where our own history had it. Drawn for eight islands at once it is the picture of how the run to 2050 keeps its dates. By hand: an idea pinned to a year, or held back. The laboratory needs the same, since an experiment that moves one finding can reshuffle the dates of the others.
+4. **The ground.** A map view of what the land holds and what is left of it: the deposits, the standing timber, the soil, with what has been worked marked. By hand: a brush that lays a deposit down or takes it away. It answers note 2 in part.
+
+One thing more is worth having once the plates exist: the island played twice from the month of an edit, with it and without, and the plates showing the difference. The laboratory does this today from the command line ([lab.md](lab.md)).
+
 ### 3. The look of 1900 to 2050 (her note of 19 November, on the look of 2050)
 
 She had been told that the island of 2050 looks like the island of 1900 with more houses, and answered that medium-density housing, highways and skyscrapers will have to be in for 2050 to look at all right, and probably more (the note is at the foot). On 19 November three designers each took one direction and drew it with the game's own viewer, in its lab, with new generators built from the houses' kit. Every picture shows a stand-in town on flat ground, laid out from a made-up record; none is the real island. Their board and its nine best pictures are kept with the night's reports on her machine, out of the repository. The three directions:
@@ -103,6 +117,10 @@ Four things hold whichever is chosen. **She chooses by looking:** the board asks
 **What else 2050 needs, beyond housing, highways and towers.** Power stations, pylons and substations; schools and hospitals; parks, squares, playing fields and street trees; cars and lorries, parked and moving, and petrol stations; sheds, shopping malls and data halls at the edge of town; lit windows and street lamps at dusk; old mills standing empty and then turned into flats; wind turbines and fields of solar panels; reservoirs and water towers; a changed countryside of fewer, larger fields, with the old spoil heaps going green; the railway electrified, some of its lines closed, a bigger station and a tram depot; and allotments, cemeteries, a football ground and a high street given over to people on foot. None of the three showed the real island with its coast and hills, the countryside of 2050, the game's far view, a town at night, or any sign of the age of computing beyond a mention of data halls, so each of those is still to be drawn for the first time.
 
 **What the simulation must come to know first.** For each square and each year, a figure for how densely it is built and a rank for its rent; the year it was built on, running on past 1900, where the record's byte for the year a square joined its town stops today; and a count of its people that does not stop at 2,040, where the record's byte for its residents stops today. It needs the traffic each way carries, which means adding up the carting flows along each route; the record carries no traffic today. Later it needs the number of cars a household keeps. And if the stone heart of a town is to be kept, it needs some notion of a listed building. Most of this belongs with what the record carries for the viewer (Ready next 6), and the power stations with the run to 2050's stage 6, electricity.
+
+### Ways, beside the look of 1900 to 2050 (her notes of 19 November, on roads and rivers)
+
+What governs a road, and how to make the island's roads honest, natural and emergent (her note is at the foot). Its first stage is built: one bank, one bridge. On the new land a crossing of water costs a ford or a ferry, a parish builds a bridge where the carting it saves pays for it, the meeting places of a valley's cells keep to one bank, a way goes round the meanders its straight line cuts, and the picture draws a bridge, a ford or a ferry only where the simulation has one ([rules/crossings.md](rules/crossings.md)). A design page for the rest follows: what a way carries; who builds it and when; bypasses and motorways as new works rather than worn tracks; streets inside towns laid out from the fields they were built over; who owns a way and in which era; and the rules a hand can turn in the sandbox. It waits on the new land becoming the default, which is being measured.
 
 ### 4. The production tree (note 8, in part; F21)
 
@@ -301,7 +319,11 @@ Not her notes: what helpers and reviewers reported and left open. On the evening
 5. "forests and farms look too regular when zooming out. I think there was a good fff on the topic" (Factorio's Friday Facts 390).
 6. "lakes and large rivers and canyons and plateaus and that sort of thing would be really nice."
 7. "Watersheds and water industry. Probably need a water cycle for that. floods, and dams and reservoirs and irrigation."
-8. "logging industry"
+8. "logging industry" Since 19 November the woods are managed: an invention of the game's tree, managed woodland, is found about 1900 and spreads from town to town, and where it is known the woods grow back three times as fast ([rules/woods.md](rules/woods.md)). It is a craft that makes the woods last, so that the island no longer runs out of timber after 1950. It is not yet an industry: nobody plants a wood because timber pays, and nothing is drawn. Left for later, each its own item:
+   - woods as a use of land that an owner plants when timber pays, beside the farm and the pasture;
+   - a cut held to what grows back, where today the woodmen cut as the price bids;
+   - timber taken out of the twentieth century's plant for steel, brick and concrete (the powered mill's timber 10 a unit of capacity, the brewery's sawn timber 2, the paper mill's timber 10), the truer cure of the wood famine (`docs/rules/woods.md`, "What it does not mend");
+   - planted conifers drawn in the picture, in rows, where a square's woods are managed.
 9. "canals, prior to railroads."
 
 **11 November, afternoon, after playing again.** "don't read too much into it right now":
@@ -355,6 +377,42 @@ These two are two points of one longer note about how we work. They are "How we 
 > Well, it feels like medium density housing, highways, skyscrapers all of that sort of stuff will have to be in for 2050 to look at least somewhat right. Probably more
 
 Three directions were drawn the same day, and the look of 1900 to 2050 is third in the order of work, just below the run to 2050 and the sandbox.
+
+**19 November 2026, on roads.**
+
+> I think roads will need some work? Like, not every city has ringroads, and they aren't perfect rings. A while ago, we talked about how roads crossing meandering rivers 4 times in a row doesn't make much sense, nobody would build that many bridges. I feel like the roads system will need some work. What governs roads in the countryside, a city, a highway, grids, terrain, year they were built, policy, that sort of thing? How can we make the most honest, natural, emergent road system?
+
+It is "Ways", beside the look of 1900 to 2050 in the order of work; its first stage, one bank and one bridge, is built ([rules/crossings.md](rules/crossings.md)).
+
+**19 November 2026, the same afternoon.**
+
+> Oh and perhaps just a thing to tune to make that easier: I think rivers meander too much, the curves are a tad too tight
+
+Answered by the stage before the ways' first on the same line (`night/g-rivers-gentler`): the old island's and the new land's rivers wind less, and no bend is tighter than about three widths ([rules/land.md](rules/land.md)).
+
+**19 November 2026, a few minutes later.**
+
+> the meandering looks better on the new land (btw, why isn't that default yet?) but still in some spots I think it meanders too much
+
+What making the new land the default would take is being measured, and it is ranked beside "Ways", whose rules act on the new land only.
+
+**19 November 2026, evening.**
+
+> small notes for the backlog, if not done already:
+>
+> Can I see where resource deposits are? Can I edit them?
+>
+> Can I see a tech timeline? Move things around in it?
+>
+> Can I see a production flowchart? See recipe usage, edit recipes and enable or disable them?
+>
+> Can I see town markets, largest trading partners or flows or things like that?
+>
+> All of these are just ideas, ponder them, and they don't need to be done now at all.
+>
+> Can I see the backlog somewhere?
+
+They are "The atlas", under the sandbox in the order of work: four plates (the making, the moving, the ideas, the ground), ranked there with note 13, which first asked for flowcharts. The last line was answered by pointing to this file.
 
 **19 November 2026, on the simple core.**
 

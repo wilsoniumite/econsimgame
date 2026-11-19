@@ -292,6 +292,11 @@ pub struct LiveYear {
     /// while it is being dug). Empty unless the mechanism is on. The `trans`
     /// layer marks the same cells with 16 (open) and 32 (digging).
     pub canals: Vec<crate::canals::LinkOut>,
+    /// crossings (docs/rules/crossings.md): every link between two
+    /// neighbouring cells whose way crosses water, with the year its bridge
+    /// was built (none where it is forded or ferried). Empty unless the rule
+    /// acts, which it does on the new land only.
+    pub crossings: Vec<crate::crossings::LinkOut>,
     /// accounts: the island's income account for the year (None unless the books
     /// are kept). One town's or one works' books are asked for when wanted, with
     /// `accounts::town_books` and `accounts::works_books`.
@@ -501,8 +506,9 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
     let projects = st
         .projects
         .iter()
-        // canals: a canal being dug is not on the list of railways building
-        .filter(|pr| pr.way != crate::ways::CANAL)
+        // canals: a canal being dug is not on the list of railways building;
+        // crossings (docs/rules/crossings.md): nor is a road works or a bridge
+        .filter(|pr| pr.way != crate::ways::CANAL && pr.way != crate::ways::ROAD)
         .map(|pr| {
             let order: f64 = crate::util::pairwise_sum(&pr.order);
             let need: f64 = crate::util::pairwise_sum(&pr.need);
@@ -529,6 +535,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         harvest: (!st.harvest_town.is_empty()).then_some(st.harvest_year as f32),
         workings: crate::mines::workings(st),
         canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
+        crossings: if crate::crossings::active(st, P) { crate::crossings::links_out(st) } else { Vec::new() },
         accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
         year_series: crate::accounts::year_series(st, year).into_iter().chain(crate::gauges::year_series(st, year)).collect(),
         gauges: crate::gauges::gauge_year(st).filter(|y| y.year == year),

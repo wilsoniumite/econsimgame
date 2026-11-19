@@ -533,3 +533,37 @@ fn the_lakes_sheets_lie_over_their_lakes_and_stop_short_of_lower_ground() {
         assert!(squares >= l.lake.iter().filter(|&&k| k > 0).count() * per * per);
     }
 }
+
+#[test]
+fn a_drawn_road_crosses_a_drawn_river_only_where_the_simulation_has_a_crossing() {
+    // the core's table of crossings (the core's docs/rules/crossings.md) and the
+    // ways the viewer draws, with the run keeping its crossings: between every two
+    // neighbouring land cells, as many crossings drawn as the simulation has, and
+    // where the straight line cut a meander, a way that goes round it
+    use isostate_core::crossings::{self, CrossingParams};
+    for isl in islands() {
+        let l = isl.land();
+        let land: Vec<bool> = isl.r.terrain.iter().map(|&t| t > 0).collect();
+        let table = crossings::table(l, &land, &isl.r.terrain, &CrossingParams::game());
+        assert!(table.middles == isl.cen, "island {}: the core's meeting places are the viewer's", isl.seed);
+        let (mut links, mut round, mut crossed) = (0usize, 0usize, 0usize);
+        for a in (0..isl.r.n).filter(|&c| land[c]) {
+            let (x, y) = ((a % l.w) as isize, (a / l.w) as isize);
+            for (dx, dy) in crossings::FORWARD {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx < 0 || nx >= l.w as isize || ny >= l.h as isize || !land[ny as usize * l.w + nx as usize] {
+                    continue;
+                }
+                let b = ny as usize * l.w + nx as usize;
+                let way = crate::network::route(&isl.g, Vec2::new(isl.cen[a].0, isl.cen[a].1), Vec2::new(isl.cen[b].0, isl.cen[b].1), true);
+                let n = table.between(l.w, a, b).map_or(0, |li| table.links[li].n as usize);
+                assert_eq!(way.crossings.len(), n, "island {}: the way from cell {a} to cell {b} is drawn crossing water {} times, and the simulation has {n}", isl.seed, way.crossings.len());
+                links += 1;
+                round += !way.straight() as usize;
+                crossed += n;
+            }
+        }
+        eprintln!("island {}: {links} ways between neighbouring cells, {crossed} crossings of water, {round} ways going round a meander", isl.seed);
+        assert!(round > 0 && crossed > 0);
+    }
+}

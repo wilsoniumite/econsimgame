@@ -574,7 +574,8 @@ pub fn month(st: &mut State, C: &Content, P: &Params, year_float: f64, events: &
     let mut keep = Vec::with_capacity(projects.len());
     let mut width: Option<Vec<f64>> = None;
     for mut pr in projects {
-        if pr.way != crate::ways::ROAD || pr.serves == REPAIRS {
+        // (crossings: a bridge works opens in crossings.rs)
+        if pr.way != crate::ways::ROAD || pr.serves == REPAIRS || pr.serves == crate::crossings::BRIDGE {
             keep.push(pr);
             continue;
         }
@@ -655,7 +656,9 @@ pub fn month(st: &mut State, C: &Content, P: &Params, year_float: f64, events: &
 /// farms and works this month, moved part of the way each month as the canals'
 /// navvies are.
 pub fn take_menders(st: &mut State, P: &Params, supply: &mut [f64]) {
-    if !P.roads.enabled || st.rd.cell_trust.is_empty() {
+    // crossings (docs/rules/crossings.md): the parishes' bridges are built by menders too
+    let bridging = crate::crossings::active(st, P) && (!st.rd.menders.is_empty() || st.projects.iter().any(|pr| pr.way == crate::ways::ROAD));
+    if (!P.roads.enabled || st.rd.cell_trust.is_empty()) && !bridging {
         return;
     }
     let T = supply.len();
@@ -681,7 +684,7 @@ pub fn take_menders(st: &mut State, P: &Params, supply: &mut [f64]) {
 
 /// Menders are at work: count them in each town's employment.
 pub fn count_menders(st: &State, P: &Params, employment: &mut [f64]) {
-    if !P.roads.enabled {
+    if !P.roads.enabled && !crate::crossings::active(st, P) {
         return;
     }
     for (e, n) in employment.iter_mut().zip(&st.rd.menders) {

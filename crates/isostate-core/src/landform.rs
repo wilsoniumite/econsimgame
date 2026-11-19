@@ -68,6 +68,13 @@ pub struct LandParams {
     pub stream_flow: f64,
     /// Steps of meander migration given to the lowland reaches.
     pub meander_steps: usize,
+    /// The tightest bend the migration lets stand, as a radius in widths of
+    /// the river as drawn (`river_width`): a point on a tighter bend is moved
+    /// towards the chord across it. 0 lets bends grow as tight as they will.
+    pub bend_radius: f64,
+    /// Two parts of a course that come within this many widths of each other
+    /// meet, and the loop between them is cut off.
+    pub neck: f64,
     /// Height in metres that counts as 1 in the world's `h`.
     pub h_ref: f64,
 }
@@ -93,7 +100,9 @@ impl Default for LandParams {
             nav_flow: 12.0,
             nav_slope: 0.0015,
             stream_flow: 0.3,
-            meander_steps: 230,
+            meander_steps: 260,
+            bend_radius: 3.0,
+            neck: 2.5,
             h_ref: 1500.0,
         }
     }
