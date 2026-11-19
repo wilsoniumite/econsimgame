@@ -217,10 +217,14 @@ fn the_books_keep_up_with_the_mines_and_the_canals() {
     // before the production tree; with the tree no working is begun in 1799 on
     // this island, and one is in 1796.) It is played with owners off
     // (docs/rules/owners.md), the island whose workings it was set to: with the
-    // landlords paid their dividends no working is being sunk in 1796.
+    // landlords paid their dividends no working is being sunk in 1796. And with
+    // the tree's ceiling at 1 (docs/rules/tree.md): the inventions of the land's
+    // twentieth century are sought from 1750, and with them in the draw no
+    // working is being sunk in 1796 either.
     const END: i64 = 1797;
     let mut P = params(Rules::Game, 7, 6, END, true);
     P.owners.enabled = false;
+    P.tree.stage = 1;
     let r = run(Rules::Game, &P);
     let (st, C) = (&r.state, &r.content);
     assert!(r.params.mines.enabled && r.params.canals.enabled && r.params.canals.wages > 0.3);

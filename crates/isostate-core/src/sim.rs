@@ -152,6 +152,15 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
     for t in 0..T {
         st.price.row_mut(t).copy_from_slice(&C.base_price);
     }
+    // tree: a good nobody has in 1750 and that would be bought at its base price
+    // as if it could be (electricity, electrical goods) opens at its ceiling
+    // (`tree::opening_price`); every other good at its base price
+    for g in (0..G).filter(|&g| C.opens_dear.get(g).copied().unwrap_or(false)) {
+        let p = crate::tree::opening_price(&st, C, P, g);
+        for t in 0..T {
+            st.price[(t, g)] = p;
+        }
+    }
     st.pexp = st.price.clone();
     st.lam = Mat::zeros(C.NS + 1, N);
     let guess = [1.3, 0.06, 0.45, 0.06, 0.03, 0.02, 0.03, 0.04, 0.01, 0.0, 0.006, 0.02, 0.02, 0.0, 0.0, 0.05];

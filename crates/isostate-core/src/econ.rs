@@ -454,6 +454,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // sector_tfp depends only on (sector, town): evaluate it once per pair
     let mut tfp = vec![(0.0, 0.0, 0.0, 0.0); T * NS];
     let mut tfp_done = vec![false; T * NS];
+    // machines (docs/rules/machines.md, "Nitrogen and breeding"): what the land
+    // buys a unit beside machinery and rails, by town and sector; empty without
+    // the content after 1900
+    let mut more_unit: Vec<Vec<(usize, f64)>> = vec![Vec::new(); T * NS];
     let mut g_s = vec![0usize; NE];
     let mut alpha = vec![0.0; NE];
     let mut f = vec![0.0; NE];
@@ -470,6 +474,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         if !tfp_done[t * NS + s] {
             tfp[t * NS + s] = sector_tfp(st, C, P, s, t, &pe, &st.fill);
             tfp_done[t * NS + s] = true;
+            if P.machines.enabled {
+                more_unit[t * NS + s] = crate::machines::bought_more(st, C, P, s, t, &pe);
+            }
         }
         let (mult, mu, ru, in_unit) = tfp[t * NS + s];
         mach_unit[u] = mu;
@@ -810,6 +817,28 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mine_rail: Vec<f64> = (0..NE).map(|u| Y[u] * rail_unit[u]).collect();
     add_column(&mut R, gm, &bincount(&et, &mine_mach, T));
     add_column(&mut R, gr, &bincount(&et, &mine_rail, T));
+    // machines: the land's other goods (the chemicals of nitrogen and breeding),
+    // asked for with the machinery, by town and sector; and each unit's output
+    // they were asked on, for what it pays
+    let more_req: Option<(Mat, Vec<f64>)> = more_unit.iter().any(|m| !m.is_empty()).then(|| {
+        let mut q = Mat::zeros(T * NS, G);
+        for u in 0..NE {
+            let r = et[u] * NS + sec[u];
+            for &(g, x) in &more_unit[r] {
+                q[(r, g)] += Y[u] * x;
+            }
+        }
+        (q, Y.clone())
+    });
+    if let Some((q, _)) = &more_req {
+        for t in 0..T {
+            for s in 0..NS {
+                for g in 0..G {
+                    R[(t, g)] += q[(t * NS + s, g)];
+                }
+            }
+        }
+    }
     // tasks: the land's machines ask for their run goods with the day's trade,
     // and for their plant (below) beside the works' orders
     let lbuy = lt.as_ref().and_then(|l| crate::tasks::land_orders(st, C, l, &et, &sec, &Lex));
@@ -986,6 +1015,19 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     });
     add_column(&mut sold, gm, &bincount(&et, &mach_got, T));
     add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
+    // machines: the land's other goods got, at the day's trade's fill
+    let more_got: Option<Mat> = more_req.as_ref().map(|(q, _)| {
+        let mut got = Mat::zeros(T * NS, G);
+        for t in 0..T {
+            for s in 0..NS {
+                for g in 0..G {
+                    got[(t * NS + s, g)] = q[(t * NS + s, g)] * fill[(t, g)];
+                    sold[(t, g)] += got[(t * NS + s, g)];
+                }
+            }
+        }
+        got
+    });
     if let Some((got, _)) = &land_got {
         for t in 0..T {
             for s in 0..NS {
@@ -1054,6 +1096,15 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let p = &st.price;
     let value: Vec<f64> = (0..NE).map(|u| p[(et[u], g_s[u])] * Y[u]).collect();
     let mut in_paid: Vec<f64> = (0..NE).map(|u| mach_got[u] * p[(et[u], gm)] + rail_got[u] * p[(et[u], gr)]).collect();
+    // machines: each unit pays for the other goods it asked for, as it got them
+    if let Some((_, y_asked)) = &more_req {
+        for u in 0..NE {
+            let t = et[u];
+            for &(g, x) in &more_unit[t * NS + sec[u]] {
+                in_paid[u] += y_asked[u] * x * fill[(t, g)] * p[(t, g)];
+            }
+        }
+    }
     // tasks: each unit pays for its sector's machines' goods by its part of the
     // work; the return on their plant stays in the rent
     if let (Some(b), Some((got, _))) = (&lbuy, &land_got) {
@@ -1181,11 +1232,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         *x += y;
     }
     let decay = crate::tree::decay(C, P); // tree: the content's rate for a good the port's table does not have
+    // tree: and all that is left of a good that does not keep (electricity)
+    let loss = crate::tree::month_loss(C, P);
     for t in 0..T {
         for g in 0..G {
             let v = &mut st.inv[(t, g)];
             *v -= sold[(t, g)];
-            *v *= 1.0 - decay[g];
+            *v *= 1.0 - loss[g];
             *v += prod_TG[(t, g)];
             *v = v.max(0.0);
         }
@@ -1318,6 +1371,18 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             Some((a, b, c)) => (&a[..], &b[..], c),
             None => (&oi[..], &ot[..], &inv_got),
         };
+        // machines: the books count the land's other goods (nitrogen's and
+        // breeding's chemicals) as they count what its machines for tasks got,
+        // bought out of its revenue
+        let land_books: Option<Mat> = more_got.as_ref().map(|m| {
+            let mut a = m.clone();
+            if let Some((g, _)) = &land_got {
+                for (x, y) in a.data.iter_mut().zip(&g.data) {
+                    *x += *y;
+                }
+            }
+            a
+        });
         #[rustfmt::skip]
         crate::accounts::note_month(st, C, P, &crate::accounts::Month {
             et: &et, sec: &sec, Y: &Y, Lex: &Lex, cart_ex: &cart_ex, mach_got: &mach_got, rail_got: &rail_got,
@@ -1332,7 +1397,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
             q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
             oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got,
-            land_tasks: land_got.as_ref().map(|g| &g.0),
+            land_tasks: land_books.as_ref().or(land_got.as_ref().map(|g| &g.0)),
             R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
         });
     }
@@ -1344,11 +1409,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             let outflow = sold[(t, g)] + exports[(t, g)];
             let of = 0.8 * st.outflow[(t, g)] + 0.2 * outflow;
             st.outflow[(t, g)] = of;
-            let target = P.price_target_months * of;
-            let iv = st.inv[(t, g)];
-            let gap = (target - iv) / target.max(iv).max(1e-9);
-            let arriving = prod_TG[(t, g)] + imports[(t, g)];
             let r = R[(t, g)];
+            // tree: the stock's gap from the months of sales held, or, for a good
+            // that does not keep, the month's asking against its making
+            let gap = crate::tree::price_gap(C, P, g, st.inv[(t, g)], of, r, prod_TG[(t, g)]);
+            let arriving = prod_TG[(t, g)] + imports[(t, g)];
             let imbalance = if r + arriving > 1e-9 { (r - arriving) / (r + arriving).max(1e-9) } else { 0.0 };
             if st.town_active[t] {
                 let lo_p = crate::longrun::floor(st, P, C, g);

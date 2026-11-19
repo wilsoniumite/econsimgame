@@ -19,15 +19,19 @@
 //!   `c` falls on the class's schedule, kept between the use's `from` and
 //!   `reach`: every task at which a hand is worth fewer units than the wage
 //!   buys is cheaper done by machine.
-//! - **The works.** A new works is built at its town's target. A standing
+//! - **The works.** A new works means to hold its town's target. A standing
 //!   works moves toward it by `1 / (12 * adopt_years)` of the gap a month,
 //!   times how well last month's order for its machines was filled, and falls
-//!   no faster than its machines wear out (`f_auto`). Its hands a unit are
-//!   the port's times `sum over classes of share * (1 - held + minders of the
-//!   machines held)`; the machines' run goods join its inputs a unit; and the
-//!   machines' plant, sized to its capacity, is ordered through a table of its
-//!   own (`f_order`), a quarter of what is missing a month, paid from its cash
-//!   and by its backers when it is short (`firms::back_firm`).
+//!   no faster than its machines wear out (`f_auto`). The machines' plant,
+//!   sized to that and to its capacity, is ordered through a table of its own
+//!   (`f_order`), a quarter of what is missing a month, paid from its cash and
+//!   by its backers when it is short (`firms::back_firm`).
+//! - **A machine works once it stands.** What the plant in place can do this
+//!   month is a second share (`f_held`, never above `f_auto`); its hands a
+//!   unit are the port's times `sum over classes of share * (1 - held +
+//!   minders of the machines held)`, and the machines' run goods join its
+//!   inputs a unit, for the share held. A new works holds nothing until its
+//!   plant comes.
 //! - **Sites and reviews.** `firms::evaluate_sites`, `firms::review` and
 //!   `firms::entry` see the works at its town's target: the machines' plant
 //!   for a unit of capacity is part of what the capacity costs, and the run
@@ -38,8 +42,9 @@
 //! with the switch off the state stays empty.
 //!
 //! **On the land** (`tasks.land`): where a use names a land sector, each
-//! town's sector holds a share of each class (`land_auto`), moving toward the
-//! town's target for it as a works' does, and its units pay their share for
+//! town's sector means to hold a share of each class (`land_auto`), moving
+//! toward the town's target for it as a works' does, and holds what its plant
+//! in place can do (`land_held`); its units pay their share for
 //! work to a mixture of hands and machine units: work wanted is `lam * (Cc /
 //! cL)^(1/alpha)` at `cL = hands * w + cost` (`Mix`, `land_month`), and the
 //! units buy their machines' run goods and plant out of their revenue, the
@@ -151,6 +156,9 @@ pub struct Use {
     pub discover: Vec<(usize, f64)>,
     /// Multiplies everything one machine takes.
     pub scale: f64,
+    /// The use this one takes the place of (`replaces`): where this one is
+    /// laid, the use named no longer reaches the places this one is used.
+    pub replaces: Option<String>,
 }
 
 /// The classes of task of a content (`Content::tasks`): empty in the port's.
@@ -231,11 +239,16 @@ struct RawUse {
     found_after: i64,
     discover: BTreeMap<String, f64>,
     scale: f64,
+    #[serde(default)]
+    replaces: Option<String>,
 }
 
 /// The table of `text` for content `C`: methods and sectors by name (a name the
 /// content lacks, as a method of a later stage of the tree, is passed over),
-/// and the uses' goods by name (one the content lacks is an error).
+/// and the uses by their goods: a use naming a good the content lacks (one of
+/// a later stage of the tree's overlay) is not laid, as the overlay drops an
+/// input of a later stage. A use laid that `replaces` another takes the
+/// places it is used from the one it names.
 pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
     let raw: RawFile = toml::from_str(text).map_err(|e| format!("tasks: {e}"))?;
     if raw.tasks.classes != CLASSES {
@@ -291,6 +304,10 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
     let good = |n: &str| C.good_index.get(n).copied().ok_or_else(|| format!("tasks: no good {n:?}"));
     let goods = |m: &BTreeMap<String, f64>| -> Result<Vec<(usize, f64)>, String> { m.iter().map(|(n, &v)| Ok((good(n)?, v))).collect() };
     for u in &raw.uses {
+        // laid only where its goods exist (the tree's stage: docs/rules/tasks.md)
+        if u.plant.keys().chain(u.run.keys()).chain(u.discover.keys()).any(|n| !C.good_index.contains_key(n)) {
+            continue;
+        }
         let k = class(&u.class)?;
         if t.closed[k] {
             return Err(format!("tasks: {:?} works in {:?}, which is closed to machines", u.name, u.class));
@@ -325,7 +342,22 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             found_after: u.found_after,
             discover: goods(&u.discover)?,
             scale: u.scale,
+            replaces: u.replaces.clone(),
         });
+    }
+    // a use laid takes the places it is used from the use it replaces
+    for i in 0..t.uses.len() {
+        let Some(n) = t.uses[i].replaces.clone() else { continue };
+        if !raw.uses.iter().any(|r| r.name == n) || n == t.uses[i].name {
+            return Err(format!("tasks: {:?} replaces {n:?}, which is no other use", t.uses[i].name));
+        }
+        let Some(j) = t.uses.iter().position(|x| x.name == n) else { continue };
+        let (works, sectors) = (t.uses[i].on_works, t.uses[i].on_sector.clone());
+        let r = &mut t.uses[j];
+        r.on_works &= !works;
+        for (b, &here) in r.on_sector.iter_mut().zip(&sectors) {
+            *b &= !here;
+        }
     }
     let mut pg: Vec<usize> = t.uses.iter().flat_map(|u| u.plant.iter().map(|&(g, _)| g)).collect();
     pg.sort_unstable();
@@ -414,10 +446,12 @@ fn top_for_units(kn: &[(f64, f64)], a: f64, u: f64) -> f64 {
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct TasksYear {
     pub year: i64,
-    /// Each class's work in the works (by hand or by machine), and the part
-    /// of it machines did.
+    /// Each class's work in the works (by hand or by machine), the part of it
+    /// machines in place did, and the part the works meant them to do (the
+    /// difference waits on machines not yet delivered).
     pub work: [f64; K],
     pub held: [f64; K],
+    pub aim: [f64; K],
     /// Hands at each class's tasks, and minding the machines.
     pub hands: [f64; K],
     pub minders: f64,
@@ -434,10 +468,11 @@ pub struct TasksYear {
     pub town_work: Vec<[f64; K]>,
     pub town_held: Vec<[f64; K]>,
     pub town_wage: Vec<f64>,
-    /// The land, by sector: each class's work and the part machines did
-    /// (empty unless `land`).
+    /// The land, by sector: each class's work, the part machines in place
+    /// did, and the part meant (empty unless `land`).
     pub land_work: Vec<[f64; K]>,
     pub land_held: Vec<[f64; K]>,
+    pub land_aim: Vec<[f64; K]>,
     /// The return on the land's machines over the year (`hurdle` a year on
     /// their plant at each month's prices), and their plant's worth at the
     /// year's end.
@@ -447,6 +482,15 @@ pub struct TasksYear {
     /// towns' prices (while `yield_cap` is set).
     pub capped_value: f64,
     pub land_value: f64,
+    /// The farms over the year, for the facts of the land's twentieth century
+    /// (docs/rules/machines.md, "Nitrogen and breeding"): their output and
+    /// hands a month, and the output of the farms that keep nitrogen and
+    /// breeding (each unit's output times the share of its town's farms whose
+    /// improvement stands).
+    pub farm_out: f64,
+    pub farm_hands: f64,
+    pub nitrogen_out: f64,
+    pub breeding_out: f64,
 }
 
 /// The year so far.
@@ -455,6 +499,7 @@ struct Acc {
     months: f64,
     work: [f64; K],
     held: [f64; K],
+    aim: [f64; K],
     hands: [f64; K],
     minders: f64,
     target: [[f64; 2]; K],
@@ -466,9 +511,12 @@ struct Acc {
     town_wage: Vec<f64>,
     land_work: Vec<[f64; K]>,
     land_held: Vec<[f64; K]>,
+    land_aim: Vec<[f64; K]>,
     land_return: f64,
     capped_value: f64,
     land_value: f64,
+    /// The farms: output, hands, and output with nitrogen and with breeding.
+    farm: [f64; 4],
 }
 
 /// What the rule keeps (`st.tasks`). Empty while it is off.
@@ -483,9 +531,15 @@ pub struct TasksState {
     pub share: Vec<Vec<f64>>,
     /// By town and class: the share machines would hold at this month's prices.
     pub target: Vec<[f64; K]>,
-    /// By works: the share of each class its machines hold, and their book.
+    /// By works: the share of each class it means to hold (moving toward its
+    /// town's target, and what its order for machines is sized to), and their
+    /// book.
     pub f_auto: Vec<[f64; K]>,
     pub f_mach: Vec<f64>,
+    /// By works: the share of each class its machines in place can do this
+    /// month, never above `f_auto` ("A machine works once it stands"; set in
+    /// `works_month` from `f_plant`). The month's hands and run goods read it.
+    pub f_held: Vec<[f64; K]>,
     /// By works and plant good (`TaskTable::plant_goods`): the machines'
     /// plant in place, and what is on order for it. A table of its own: the
     /// works' plant order is wiped when no capacity is on order.
@@ -500,11 +554,14 @@ pub struct TasksState {
     parts: Vec<[Vec<(usize, f64, f64)>; K]>,
     // ---- the land ("On the land"; empty unless `land`)
     /// By town and land sector: the share of each class machines would hold
-    /// (from the uses that reach the sector), the uses that would hold it, and
-    /// the share they do hold.
+    /// (from the uses that reach the sector), the uses that would hold it, the
+    /// share the sector means to hold (what its order for plant is sized to),
+    /// and the share its plant in place can do this month (never above
+    /// `land_auto`; set in `land_month`).
     pub land_target: Vec<Vec<[f64; K]>>,
     land_parts: Vec<Vec<[Vec<(usize, f64, f64)>; K]>>,
     pub land_auto: Vec<Vec<[f64; K]>>,
+    pub land_held: Vec<Vec<[f64; K]>>,
     /// By town, land sector and plant good (`TaskTable::plant_goods`): the
     /// machines' plant in place, and the share of last month's order for it
     /// that was delivered.
@@ -523,6 +580,10 @@ pub struct TasksState {
     pub at_ceiling: Vec<bool>,
     /// The year now running, set at each year's turn (0 before the first).
     pub year_now: i64,
+    /// By use, for a use of the land alone: the share of its class the towns
+    /// would give it at the end of the year it was found, each town weighted
+    /// by the work of the sectors it reaches (NaN until then).
+    pub land_share_found: Vec<f64>,
     /// Every year's record.
     pub years: Vec<TasksYear>,
     acc: Acc,
@@ -539,6 +600,7 @@ fn fit(st: &mut State, C: &Content) {
     let s = &mut st.tasks;
     if s.f_auto.len() < n {
         s.f_auto.resize(n, [0.0; K]);
+        s.f_held.resize(n, [0.0; K]);
         s.f_mach.resize(n, 0.0);
         s.f_plant.resize(n, vec![0.0; np]);
         s.f_order.resize(n, vec![0.0; np]);
@@ -650,6 +712,62 @@ fn hold<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K],
     Some((mach, held))
 }
 
+/// The share of each class the plant in place (`plant`, by plant good) can do
+/// for `hours` of work whose classes are `sh` (worker-months a month by hand),
+/// where `auto` is what is meant to be held and `ps_of(k)` are the uses that
+/// would hold class `k` ("A machine works once it stands"). The parts are
+/// taken as `hold` takes them, class by class and the cheapest use first:
+/// the machines of a use in place are the least, over its plant goods, of the
+/// plant not yet given to a part below over the plant one machine takes; a
+/// part they cannot fill is held to the top those machines reach
+/// (`top_for_units`), and nothing above it. Never above `auto`; nothing at
+/// all where `auto` is nothing, so a run with no use found reads nothing.
+fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K], hours: f64, plant: &[f64], ps_of: &dyn Fn(usize) -> &'a [(usize, f64, f64)]) -> [f64; K] {
+    let mut out = [0.0; K];
+    if !(hours > 0.0) || auto.iter().all(|&x| x <= 0.0) {
+        return out;
+    }
+    let tb = &C.tasks;
+    let col = |g: usize| tb.plant_goods.iter().position(|&p| p == g);
+    let mut left: Vec<f64> = tb.plant_goods.iter().enumerate().map(|(j, _)| plant.get(j).copied().unwrap_or(0.0).max(0.0)).collect();
+    for k in 0..K {
+        let x = auto[k];
+        if x <= 0.0 || sh[k] == 0.0 {
+            continue;
+        }
+        let ps = ps_of(k);
+        let n = ps.len();
+        for (j, &(u, a, b)) in ps.iter().enumerate() {
+            // as `hold`: the dearest use holds whatever is meant above the town's top
+            let b = if j + 1 == n { b.max(x) } else { b };
+            let e = b.min(x);
+            if e <= a {
+                continue;
+            }
+            let us = &tb.uses[u];
+            // machines for one machine unit an hour of the class, and for the part
+            let per = hours * sh[k] / qeff(st, C, P, u);
+            let want = per * units(&tb.spread[k], a, e);
+            let have = us.plant.iter().filter(|p| p.1 > 0.0).filter_map(|&(g, v)| col(g).map(|c| left[c] / v)).fold(f64::INFINITY, f64::min);
+            let got = have.min(want).max(0.0);
+            for &(g, v) in &us.plant {
+                if let Some(c) = col(g) {
+                    left[c] = (left[c] - got * v).max(0.0);
+                }
+            }
+            if got >= want {
+                out[k] = e;
+            } else {
+                if got > 0.0 {
+                    out[k] = top_for_units(&tb.spread[k], a, got / per).min(e);
+                }
+                break;
+            }
+        }
+    }
+    out
+}
+
 /// `adjust` for method `m` at town `t`'s target: what a new works there would
 /// be built with (`firms::evaluate_sites`, `entry`, `review`). None while the
 /// rule is off or nothing would be held.
@@ -670,10 +788,13 @@ pub fn plant_cost(a: &Adjust, l: f64, price: &dyn Fn(usize) -> f64) -> f64 {
 // ---------------------------------------------------------------- the month
 
 /// The works at work this month (`econ::step_month`, after their recipes are
-/// made): where a works' machines hold some part of a class, its hands a unit
-/// `l` are cut to the work left and the minders, the machines' run goods join
-/// its inputs a unit `a`, and its order for their plant is what its capacity
-/// needs less what it has. `fi` are the works, `cap` their capacity.
+/// made). First, the share its machines in place can do (`f_held`, from
+/// `f_plant` at its capacity and its hands a unit by hand). Where they hold
+/// some part of a class, its hands a unit `l` are cut to the work left and
+/// the minders, and the machines' run goods join its inputs a unit `a`; and
+/// its order for their plant is what its capacity needs at the share it means
+/// to hold (`f_auto`) less what it has. `fi` are the works, `cap` their
+/// capacity.
 pub fn works_month(st: &mut State, C: &Content, P: &Params, fi: &[usize], cap: &[f64], a: &mut Mat, l: &mut [f64]) {
     if !active(st, P) {
         return;
@@ -681,23 +802,35 @@ pub fn works_month(st: &mut State, C: &Content, P: &Params, fi: &[usize], cap: &
     fit(st, C);
     let pg = C.tasks.plant_goods.clone();
     for (i, &f) in fi.iter().enumerate() {
+        let (t, m) = (st.f_town[f], st.f_method[f]);
         let auto = st.tasks.f_auto[f];
-        let adj = adjust(st, C, P, st.f_town[f], st.f_method[f], &auto);
-        let s = &mut st.tasks;
-        let Some(adj) = adj else {
-            s.f_factor[f] = 1.0;
-            s.f_order[f].iter_mut().for_each(|v| *v = 0.0);
-            continue;
-        };
         let base = l[i];
-        l[i] = base * adj.factor;
-        s.f_factor[f] = adj.factor;
-        for &(g, v) in &adj.run {
-            a[(i, g)] += base * v;
+        // what stands: the machines in place, at this month's capacity and hands a unit
+        let sh = C.tasks.method.get(m).copied().unwrap_or([0.0; K]);
+        let held = held_by_plant(st, C, P, &sh, &auto, cap[i] * base, &st.tasks.f_plant[f], &|k| parts(st, t, k));
+        let now = adjust(st, C, P, t, m, &held);
+        let aim = adjust(st, C, P, t, m, &auto);
+        let s = &mut st.tasks;
+        s.f_held[f] = held;
+        match now {
+            Some(adj) => {
+                l[i] = base * adj.factor;
+                s.f_factor[f] = adj.factor;
+                for &(g, v) in &adj.run {
+                    a[(i, g)] += base * v;
+                }
+            }
+            None => s.f_factor[f] = 1.0,
         }
-        for (j, &g) in pg.iter().enumerate() {
-            let need = adj.plant.iter().find(|p| p.0 == g).map_or(0.0, |p| cap[i] * base * p.1);
-            s.f_order[f][j] = (need - s.f_plant[f][j]).max(0.0);
+        // the order: the machines it means to have
+        match aim {
+            Some(adj) => {
+                for (j, &g) in pg.iter().enumerate() {
+                    let need = adj.plant.iter().find(|p| p.0 == g).map_or(0.0, |p| cap[i] * base * p.1);
+                    s.f_order[f][j] = (need - s.f_plant[f][j]).max(0.0);
+                }
+            }
+            None => s.f_order[f].iter_mut().for_each(|v| *v = 0.0),
         }
     }
 }
@@ -770,7 +903,9 @@ pub fn order_value(st: &State, C: &Content, f: usize) -> f64 {
     C.tasks.plant_goods.iter().enumerate().map(|(j, &g)| o[j] * st.price[(t, g)]).sum()
 }
 
-/// A works founded (`firms::create_firm`): it is built at its town's target.
+/// A works founded (`firms::create_firm`): it means to hold its town's target,
+/// and holds nothing until its machines' plant comes ("A machine works once it
+/// stands"): its first months are worked by hand at its recipe.
 pub fn opened(st: &mut State, C: &Content, P: &Params, f: usize) {
     if !active(st, P) {
         return;
@@ -780,6 +915,7 @@ pub fn opened(st: &mut State, C: &Content, P: &Params, f: usize) {
     let target = st.tasks.target.get(t).copied().unwrap_or([0.0; K]);
     let s = &mut st.tasks;
     s.f_auto[f] = target;
+    s.f_held[f] = [0.0; K];
     s.f_mach[f] = 0.0;
     s.f_plant[f].iter_mut().for_each(|v| *v = 0.0);
     s.f_order[f].iter_mut().for_each(|v| *v = 0.0);
@@ -819,10 +955,17 @@ impl Mix {
     }
 }
 
-/// The mixture on sector `s` of town `t` at the part its machines hold now,
-/// at prices `price`; None where they hold nothing.
+/// The mixture on sector `s` of town `t` at the part it means to hold
+/// (`land_auto`), at prices `price`; None where that is nothing. (What the
+/// sector's bids and a prospect's review read: `land_cost`.)
 pub fn mix_at(st: &State, C: &Content, P: &Params, t: usize, s: usize, price: &dyn Fn(usize) -> f64) -> Option<Mix> {
     let auto = st.tasks.land_auto.get(t)?.get(s)?;
+    mix_with(st, C, P, t, s, auto, price)
+}
+
+/// The mixture on sector `s` of town `t` where machines hold `auto` of each
+/// class; None where they hold nothing.
+fn mix_with(st: &State, C: &Content, P: &Params, t: usize, s: usize, auto: &[f64; K], price: &dyn Fn(usize) -> f64) -> Option<Mix> {
     let sh = C.tasks.sector.get(s)?;
     let (mach, held) = hold(st, C, P, sh, auto, &|k| land_parts(st, t, s, k))?;
     let tb = &C.tasks;
@@ -870,9 +1013,13 @@ fn ceiling_live(st: &State, P: &Params) -> bool {
 /// where no machine holds any part of any land sector and no ceiling is in
 /// force, so that the month is the first half's to the byte.
 pub struct LandMonth {
-    /// By town and sector (`t * NS + s`): the mixture, where machines hold
-    /// some part of the sector's work.
+    /// By town and sector (`t * NS + s`): the mixture, where the machines in
+    /// place hold some part of the sector's work (`land_held`).
     pub mix: Vec<Option<Mix>>,
+    /// By town and sector: the plant an hour of work takes at the share the
+    /// sector means to hold (`land_auto`), where that is something: what its
+    /// order for plant is sized to.
+    pub aim: Vec<Option<Vec<(usize, f64)>>>,
     /// By unit: hands an hour of work (1 where no machine holds any part).
     pub hands: Vec<f64>,
     /// By unit: the ceiling on its output this month (infinite where none),
@@ -889,27 +1036,38 @@ impl LandMonth {
     }
 }
 
-/// The land's month: the mixture on each town's sectors at prices `price`,
-/// and each unit's ceiling. The unit's output is `A * f * lam * (L / lam)^(1 -
-/// alpha)` with `L` its work.
+/// The land's month: what the plant in place on each town's sectors can do
+/// (`land_held`, from `land_plant` over last month's work), the mixture there
+/// at prices `price`, the plant an hour at the share meant, and each unit's
+/// ceiling. The unit's output is `A * f * lam * (L / lam)^(1 - alpha)` with
+/// `L` its work.
 #[allow(clippy::too_many_arguments)]
-pub fn land_month(st: &State, C: &Content, P: &Params, price: &Mat, ex: &[usize], sec: &[usize], et: &[usize], A: &[f64], f: &[f64], lam: &[f64], alpha: &[f64]) -> Option<LandMonth> {
+pub fn land_month(st: &mut State, C: &Content, P: &Params, price: &Mat, ex: &[usize], sec: &[usize], et: &[usize], A: &[f64], f: &[f64], lam: &[f64], alpha: &[f64]) -> Option<LandMonth> {
     let (T, NS, N) = (st.T_max, C.NS, st.N);
     let mut mix: Vec<Option<Mix>> = vec![None; T * NS];
+    let mut aim: Vec<Option<Vec<(usize, f64)>>> = vec![None; T * NS];
     let mut any = false;
-    if land_on(P) && active(st, P) {
-        for t in 0..T.min(st.tasks.land_auto.len()) {
+    if land_on(P) && active(st, P) && !st.tasks.land_auto.is_empty() {
+        fit_land(st, C);
+        for t in 0..T {
             if !st.town_active[t] {
                 continue;
             }
             for s in 0..NS {
-                if let Some(m) = mix_at(st, C, P, t, s, &|g| price[(t, g)]) {
-                    mix[t * NS + s] = Some(m);
+                let sh = C.tasks.sector.get(s).copied().unwrap_or([0.0; K]);
+                let auto = st.tasks.land_auto[t][s];
+                let hours = st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0);
+                let held = held_by_plant(st, C, P, &sh, &auto, hours, &st.tasks.land_plant[t][s], &|k| land_parts(st, t, s, k));
+                st.tasks.land_held[t][s] = held;
+                if let Some(m) = mix_with(st, C, P, t, s, &auto, &|g| price[(t, g)]) {
+                    aim[t * NS + s] = Some(m.plant);
                     any = true;
                 }
+                mix[t * NS + s] = mix_with(st, C, P, t, s, &held, &|g| price[(t, g)]);
             }
         }
     }
+    let st = &*st;
     let cap = ceiling_live(st, P);
     if !any && !cap {
         return None;
@@ -941,7 +1099,7 @@ pub fn land_month(st: &State, C: &Content, P: &Params, price: &Mat, ex: &[usize]
             }
         }
     }
-    Some(LandMonth { mix, hands, ceiling, capped, cap_work })
+    Some(LandMonth { mix, aim, hands, ceiling, capped, cap_work })
 }
 
 /// The land machines' goods asked for in a month, by town and sector
@@ -957,10 +1115,11 @@ pub struct LandBuy {
 }
 
 /// What the land's machines ask for this month, once the hands are hired:
-/// their run goods for the work, and a quarter of what their plant lacks for
-/// it. None where no machine holds any part of the land.
+/// the run goods of the machines in place for the work, and a quarter of
+/// what their plant lacks for it at the share the sector means to hold. None
+/// where no sector means to hold any part of its work.
 pub fn land_orders(st: &State, C: &Content, lm: &LandMonth, et: &[usize], sec: &[usize], Lex: &[f64]) -> Option<LandBuy> {
-    if lm.mix.iter().all(|m| m.is_none()) {
+    if lm.aim.iter().all(|m| m.is_none()) {
         return None;
     }
     let (T, NS, G) = (st.T_max, C.NS, C.G);
@@ -973,15 +1132,17 @@ pub fn land_orders(st: &State, C: &Content, lm: &LandMonth, et: &[usize], sec: &
     for t in 0..T.min(st.tasks.land_plant.len()) {
         for s in 0..NS {
             let (r, w) = (t * NS + s, work[t * NS + s]);
-            let Some(m) = lm.mix_of(t, s, NS) else { continue };
+            let Some(aim) = &lm.aim[r] else { continue };
             if w <= 0.0 {
                 continue;
             }
-            for &(g, v) in &m.run {
-                run[(r, g)] += w * v;
+            if let Some(m) = lm.mix_of(t, s, NS) {
+                for &(g, v) in &m.run {
+                    run[(r, g)] += w * v;
+                }
             }
             for (j, &g) in C.tasks.plant_goods.iter().enumerate() {
-                let need = m.plant.iter().find(|p| p.0 == g).map_or(0.0, |p| w * p.1);
+                let need = aim.iter().find(|p| p.0 == g).map_or(0.0, |p| w * p.1);
                 plant[(r, g)] = 0.25 * (need - st.tasks.land_plant[t][s][j]).max(0.0);
             }
         }
@@ -1125,16 +1286,33 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
     for t in 0..T {
         acc.town_wage[t] += st.wage[t];
     }
+    // the farms' month, for the facts: output, hands, and the output of those
+    // whose nitrogen and breeding stand (machines.rs's stock, by town)
+    if let Some(farm) = C.sector_name.iter().position(|n| n == "farm") {
+        let stock = |t: usize, slot: usize| {
+            let ms = &st.machine_stock;
+            if ms.cols == NS * crate::machines::SLOTS && t < ms.rows { ms[(t, farm * crate::machines::SLOTS + slot)].max(0.0) } else { 0.0 }
+        };
+        for u in (0..st.ex_sector.len().min(st.ex_out.len())).filter(|&u| st.ex_sector[u] == farm) {
+            let (t, y) = (st.ex_town[u], st.ex_out[u]);
+            acc.farm[0] += y;
+            acc.farm[1] += st.ex_labor.get(u).copied().unwrap_or(0.0);
+            acc.farm[2] += y * stock(t, crate::machines::FARM_NITROGEN_SLOT);
+            acc.farm[3] += y * stock(t, crate::machines::FARM_BREEDING_SLOT);
+        }
+    }
     for f in 0..st.F_count {
         if !st.f_alive[f] {
             continue;
         }
         let (t, m) = (st.f_town[f], st.f_method[f]);
         let sh = tb.method.get(m).copied().unwrap_or([0.0; K]);
-        // what the works did this month, by class: its hands over its hands a unit's factor
+        // what the works did this month, by class: its hands over its hands a unit's
+        // factor; what its machines in place did, and what it meant them to
         let base = st.f_labor[f] / st.tasks.f_factor[f].max(1e-12);
-        let adj = if on { adjust(st, C, P, t, m, &st.tasks.f_auto[f]) } else { None };
+        let adj = if on { adjust(st, C, P, t, m, &st.tasks.f_held[f]) } else { None };
         let held = adj.as_ref().map_or([0.0; K], |a| a.held);
+        let aim = if on { hold(st, C, P, &sh, &st.tasks.f_auto[f], &|k| parts(st, t, k)).map_or([0.0; K], |h| h.1) } else { [0.0; K] };
         for k in 0..K {
             let wk = base * sh[k];
             if wk <= 0.0 {
@@ -1142,6 +1320,7 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             }
             acc.work[k] += wk;
             acc.held[k] += wk * held[k];
+            acc.aim[k] += wk * aim[k];
             acc.hands[k] += wk * (1.0 - held[k]);
             acc.town_work[t][k] += wk;
             acc.town_held[t][k] += wk * held[k];
@@ -1153,9 +1332,9 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
                     acc.water[k][0] += wk * st.wage[t] / st.tasks.cost[t][u0];
                     acc.water[k][1] += wk;
                 }
-                let x = st.tasks.f_auto[f][k];
+                let x = st.tasks.f_held[f][k];
                 if x > 0.0 {
-                    // the use holding the works' last task
+                    // the use holding the works' last task done by machine
                     let u = ps.iter().rev().find(|p| p.1 < x).or(ps.last()).map(|p| p.0);
                     if let Some(u) = u {
                         let gap = st.wage[t] / (st.tasks.cost[t][u] * worth(&tb.spread[k], x));
@@ -1178,6 +1357,8 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
             let target = st.tasks.target[t][k];
             let x = st.tasks.f_auto[f][k];
             st.tasks.f_auto[f][k] = toward(tb, parts(st, t, k), k, x, target, step, st.tasks.f_fill[f]);
+            // what stands is never more than is meant
+            st.tasks.f_held[f][k] = st.tasks.f_held[f][k].min(st.tasks.f_auto[f][k]);
         }
         // the machines in place wear by their life's twelfth a month
         if st.tasks.f_mach[f] > 0.0 || st.tasks.f_plant[f].iter().any(|&v| v > 0.0) {
@@ -1203,6 +1384,9 @@ fn fit_land(st: &mut State, C: &Content) {
         s.land_plant = vec![vec![vec![0.0; np]; NS]; T];
         s.land_fill = vec![vec![1.0; NS]; T];
     }
+    if s.land_held.len() != T {
+        s.land_held = vec![vec![[0.0; K]; NS]; T];
+    }
 }
 
 /// The uses that would hold class `k` on sector `s` of town `t`, cheapest first.
@@ -1227,6 +1411,7 @@ fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: 
     if acc.land_work.len() != NS {
         acc.land_work.resize(NS, [0.0; K]);
         acc.land_held.resize(NS, [0.0; K]);
+        acc.land_aim.resize(NS, [0.0; K]);
     }
     for t in 0..T {
         if !st.town_active[t] {
@@ -1236,15 +1421,19 @@ fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: 
             let sh = tb.sector.get(s).copied().unwrap_or([0.0; K]);
             let work = st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0);
             if work > 0.0 {
-                let held = hold(st, C, P, &sh, &st.tasks.land_auto[t][s], &|k| land_parts(st, t, s, k)).map_or([0.0; K], |h| h.1);
+                // what the plant in place did this month, and what was meant
+                let held = hold(st, C, P, &sh, &st.tasks.land_held[t][s], &|k| land_parts(st, t, s, k)).map_or([0.0; K], |h| h.1);
+                let aim = hold(st, C, P, &sh, &st.tasks.land_auto[t][s], &|k| land_parts(st, t, s, k)).map_or([0.0; K], |h| h.1);
                 for k in 0..K {
                     acc.land_work[s][k] += work * sh[k];
                     acc.land_held[s][k] += work * sh[k] * held[k];
+                    acc.land_aim[s][k] += work * sh[k] * aim[k];
                 }
             }
             for k in 0..K {
                 let (x, target) = (st.tasks.land_auto[t][s][k], st.tasks.land_target[t][s][k]);
                 st.tasks.land_auto[t][s][k] = toward(tb, land_parts(st, t, s, k), k, x, target, step, st.tasks.land_fill[t][s]);
+                st.tasks.land_held[t][s][k] = st.tasks.land_held[t][s][k].min(st.tasks.land_auto[t][s][k]);
             }
             let plant = &mut st.tasks.land_plant[t][s];
             if plant.iter().any(|&v| v > 0.0) {
@@ -1320,6 +1509,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         year,
         work: acc.work.map(|v| v / n),
         held: acc.held.map(|v| v / n),
+        aim: acc.aim.map(|v| v / n),
         hands: acc.hands.map(|v| v / n),
         minders: acc.minders / n,
         target: mean2(&acc.target),
@@ -1332,11 +1522,37 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         town_wage: acc.town_wage.iter().map(|v| v / n).collect(),
         land_work: acc.land_work.iter().map(|r| r.map(|v| v / n)).collect(),
         land_held: acc.land_held.iter().map(|r| r.map(|v| v / n)).collect(),
+        land_aim: acc.land_aim.iter().map(|r| r.map(|v| v / n)).collect(),
         land_return: acc.land_return,
         land_book: land_book(st, C),
         capped_value: acc.capped_value,
         land_value: acc.land_value,
+        farm_out: acc.farm[0] / n,
+        farm_hands: acc.farm[1] / n,
+        nitrogen_out: acc.farm[2] / n,
+        breeding_out: acc.farm[3] / n,
     });
+    // a use of the land alone, in the year it was found: the towns' share for it
+    if st.tasks.land_share_found.len() != nu {
+        st.tasks.land_share_found = vec![f64::NAN; nu];
+    }
+    let NS = C.NS;
+    for u in 0..nu {
+        let us = &C.tasks.uses[u];
+        if st.tasks.found[u] != year || us.on_works || st.tasks.share.len() < st.T_max {
+            continue;
+        }
+        let (mut a, mut b) = (0.0, 0.0);
+        for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+            let work: f64 = (0..NS).filter(|&s| us.on_sector[s]).map(|s| st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0)).sum();
+            let x = st.tasks.share[t][u];
+            if work > 0.0 && x.is_finite() {
+                a += work * x;
+                b += work;
+            }
+        }
+        st.tasks.land_share_found[u] = ratio(a, b);
+    }
     // found at this turn of the year, for the next
     let next = year + 1;
     for u in 0..nu {
@@ -1421,7 +1637,9 @@ pub fn rank_correlation(x: &[f64], y: &[f64]) -> f64 {
 }
 
 /// The rule's facts. `auto_haul_works_Y` (the share of the works' hauling
-/// machines do), `hours_CLASS_Y` (hands at each class's tasks in works, and
+/// machines in place do), `aim_haul_works_Y` (the share the works mean them
+/// to do), `waiting_haul_works_Y` (the difference: hauling meant for machines
+/// not yet delivered), the same three for the pits under `land`, `hours_CLASS_Y` (hands at each class's tasks in works, and
 /// `hours_minders_Y`), `waterline_haul_Y`, `margin_gap_haul_Y`,
 /// `machines_years_Y` (the machines' book over the year's wage bill), at the
 /// sweep's marks; and for each use, the year it was found, the year its
@@ -1442,6 +1660,14 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     let at = |y: i64| st.tasks.years.iter().find(|t| t.year == y);
     for &y in &marks {
         out.push((format!("auto_haul_works_{y}"), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.held[HAUL], t.work[HAUL]))));
+    }
+    // "A machine works once it stands": what the works meant their machines to
+    // do, and the part of that waiting on machines not delivered
+    for &y in &marks {
+        out.push((format!("aim_haul_works_{y}"), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.aim[HAUL], t.work[HAUL]))));
+    }
+    for &y in &marks {
+        out.push((format!("waiting_haul_works_{y}"), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.aim[HAUL] - t.held[HAUL], t.work[HAUL]))));
     }
     for k in 0..K {
         for &y in &marks {
@@ -1466,12 +1692,37 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     // land's rent split into the return on its machines and the ground's part
     if r.params.tasks.land {
         let pits: Vec<usize> = (0..C.NS).filter(|&s| crate::mines::is_extractive(&C.sector_name[s])).collect();
+        // the pits' hauling: done by the plant in place, meant, and waiting
+        let pits_of = |t: &TasksYear| pits.iter().filter(|&&s| s < t.land_work.len() && s < t.land_aim.len()).fold((0.0, 0.0, 0.0), |(h, a, w), &s| (h + t.land_held[s][HAUL], a + t.land_aim[s][HAUL], w + t.land_work[s][HAUL]));
         for &y in &marks {
             let v = at(y).map_or(f64::NAN, |t| {
-                let (h, w) = pits.iter().filter(|&&s| s < t.land_work.len()).fold((0.0, 0.0), |(h, w), &s| (h + t.land_held[s][HAUL], w + t.land_work[s][HAUL]));
+                let (h, _, w) = pits_of(t);
                 ratio(h, w)
             });
             out.push((format!("auto_haul_pits_{y}"), Kind::Share, v));
+        }
+        for &y in &marks {
+            let v = at(y).map_or(f64::NAN, |t| {
+                let (_, a, w) = pits_of(t);
+                ratio(a, w)
+            });
+            out.push((format!("aim_haul_pits_{y}"), Kind::Share, v));
+        }
+        for &y in &marks {
+            let v = at(y).map_or(f64::NAN, |t| {
+                let (h, a, w) = pits_of(t);
+                ratio(a - h, w)
+            });
+            out.push((format!("waiting_haul_pits_{y}"), Kind::Share, v));
+        }
+        // the fields and the woods (the tractor): each one's hauling done by
+        // the machines in place, over its hauling
+        for name in ["farm", "pasture", "forestry"] {
+            let Some(s) = C.sector_name.iter().position(|n| n == name) else { continue };
+            for &y in &marks {
+                let v = at(y).filter(|t| s < t.land_work.len()).map_or(f64::NAN, |t| ratio(t.land_held[s][HAUL], t.land_work[s][HAUL]));
+                out.push((format!("auto_haul_{name}_{y}"), Kind::Share, v));
+            }
         }
         let books = |y: i64| st.acct.years.iter().find(|a| a.year == y);
         for &y in &marks {
@@ -1502,7 +1753,9 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         out.push((format!("{name}_found_year"), Kind::Year, found.map_or(f64::NAN, |y| y as f64)));
         let half = st.tasks.years.iter().find(|t| ratio(t.held[k], t.work[k]) >= 0.5).map(|t| t.year);
         out.push((format!("{name}_half_year"), Kind::Year, half.map_or(f64::NAN, |y| y as f64)));
-        let share = found.and_then(at).map_or(f64::NAN, |t| t.target[k]);
+        // the towns' target in the year found: the works' for a use of the works,
+        // the land's sectors' for a use of the land alone
+        let share = if us.on_works { found.and_then(at).map_or(f64::NAN, |t| t.target[k]) } else { st.tasks.land_share_found.get(u).copied().unwrap_or(f64::NAN) };
         out.push((format!("{name}_share_found"), Kind::Share, share));
         let auto10 = found.and_then(|y| at(y + 10)).map_or(f64::NAN, |t| ratio(t.held[k], t.work[k]));
         out.push((format!("{name}_auto_after10"), Kind::Share, auto10));
@@ -1523,6 +1776,57 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             _ => f64::NAN,
         };
         out.push((format!("{name}_dearer_first"), Kind::Real, dearer));
+    }
+    out.extend(land_century_facts(r, &marks));
+    out
+}
+
+/// The land's twentieth century (docs/rules/machines.md, "Nitrogen and
+/// breeding"; docs/rules/tree.md, "Oil, nitrogen and the land"), at the marks
+/// from 1900; nothing for a content without oil. `nitrogen_share_Y` and
+/// `breeding_share_Y`: of the farms' output, the share from farms whose
+/// improvement stands; `grain_a_hand_Y`: the farms' output over their hands,
+/// against 1900's; `oil_made_Y`: oil made in the year; `oil_over_coal_heat_Y`:
+/// oil's price over coal's for a unit of heat, each the year's mean price in
+/// the towns that bought oil, weighted by what they bought of it.
+fn land_century_facts(r: &RunResult, marks: &[i64]) -> Vec<(String, Kind, f64)> {
+    use crate::accounts::{GOODS_FIELDS, KG};
+    let (st, C) = (&r.state, &r.content);
+    let mut out = Vec::new();
+    let (Some(&go), Some(&gc)) = (C.good_index.get("oil"), C.good_index.get("coal")) else { return out };
+    let years: Vec<i64> = marks.iter().copied().filter(|&y| y >= 1900).collect();
+    let at = |y: i64| st.tasks.years.iter().find(|t| t.year == y);
+    for (name, f) in [("nitrogen_share", 0), ("breeding_share", 1)] {
+        for &y in &years {
+            let v = at(y).map_or(f64::NAN, |t| ratio(if f == 0 { t.nitrogen_out } else { t.breeding_out }, t.farm_out));
+            out.push((format!("{name}_{y}"), Kind::Share, v));
+        }
+    }
+    let a_hand = |y: i64| at(y).map_or(f64::NAN, |t| ratio(t.farm_out, t.farm_hands));
+    for &y in &years {
+        out.push((format!("grain_a_hand_{y}"), Kind::Ratio, ratio(a_hand(y), a_hand(1900))));
+    }
+    let col = |name: &str| GOODS_FIELDS.iter().position(|&n| n == name).expect("a goods column");
+    let (c_made, c_price) = (col("made"), col("price"));
+    let c_use = [col("households"), col("landlords"), col("families"), col("building"), col("land"), col("projects"), col("works_inputs"), col("works_fuel")];
+    let (T, G) = (st.T_max, C.G);
+    for &y in &years {
+        let book = st.acct.years.iter().position(|b| b.year == y).and_then(|k| st.acct.year(k));
+        let (mut made, mut bought, mut po, mut pc) = (0.0, 0.0, 0.0, 0.0);
+        if let Some(b) = &book {
+            let v = |t: usize, g: usize, c: usize| b.goods[(t * G + g) * KG + c] as f64;
+            for t in 0..T {
+                made += v(t, go, c_made);
+                let x: f64 = c_use.iter().map(|&c| v(t, go, c)).sum();
+                bought += x;
+                po += x * v(t, go, c_price);
+                pc += x * v(t, gc, c_price);
+            }
+        }
+        let n = book.is_some();
+        out.push((format!("oil_made_{y}"), Kind::Count, if n { made } else { f64::NAN }));
+        let per_heat = ratio(ratio(po, bought) / C.heat[go], ratio(pc, bought) / C.heat[gc]);
+        out.push((format!("oil_over_coal_heat_{y}"), Kind::Ratio, if n { per_heat } else { f64::NAN }));
     }
     out
 }

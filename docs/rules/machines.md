@@ -594,6 +594,58 @@ other: the pumps, wagonways, farm machinery and the quarries' machinery are
 bought and boost as before, and a unit's work is then done by hands and
 machine units together.
 
+## Nitrogen and breeding
+
+Two improvements of the ground join this table with the content after 1900
+(stage 6 of the tree's overlay, `tree.stage` 6; with `tree.stage = 1` the
+table has its old rows only, to the byte). Each is bought by the rule of
+point 1, where it pays, by the share of farms (or pastures) that know of it,
+and each stands for years as a machine does (point 2). They are bought with
+soap and chemicals, which now stands for fertiliser and sprays too:
+
+| | where | known as | adds | chemicals a unit of output |
+|---|---|---|---|---|
+| nitrogen | farms | the nitrogen works is known in the town (found on chemicals made, aimed at 1915) | up to 0.6: yield up to 1.6 times | 0.03 |
+| breeding and sprays | farms; pastures | the invention `breeding` is known in the town (found on chemicals made, aimed at 1950) | up to 0.5 on the farm, 0.4 on the pasture | 0.02 |
+
+**They multiply; the machines add.** The machines of this table add their
+boosts to one another: a farm with every machine it knows makes `1 + sum of
+boosts` times what a bare farm makes. By 1900 farm machinery is at quality 4
+and adds 3.2, so another 0.6 added to it would lift a farm's yield by a
+seventh, not by the 1.6 times nitrogen is meant to give. So an improvement of
+the ground multiplies what the farm makes with its machines, `1 + boost *
+standing` for each, and what it is owed of a unit of its output, for the
+rule of point 1, is `boost / (1 + boost)` of it. Neither boost is multiplied
+by the machines' quality: each has its own fixed ceiling (`machines::NITROGEN`,
+`machines::BREEDING`). A farm or pasture that keeps one up buys its chemicals
+for its own output, which is that of a farm with everything it knows, so the
+town's demand counts what the improved farms grow, as for farm machinery.
+The land buys the chemicals with its machinery, at the day's fill, out of its
+revenue; the books count them among the land's inputs. Each sector has three
+columns in the machines standing now (`SLOTS`): the farm's machinery,
+nitrogen and breeding, and the pasture's breeding.
+
+On islands 1 to 8, six families, to 2050 (`isostate-core sweep --seeds 1-8
+--rules game --families 6 --end-year 2050`), the share of the farms' output
+grown where each stands, the eight islands' means:
+
+| | 1920 | 1930 | 1940 | 1950 | 1960 | 1970 | 2000 | 2050 |
+|---|---|---|---|---|---|---|---|---|
+| nitrogen | 0.060 | 0.202 | 0.338 | 0.391 | 0.429 | 0.457 | 0.476 | 0.497 |
+| breeding and sprays | 0 | 0 | 0.031 | 0.148 | 0.326 | 0.504 | 0.671 | 0.712 |
+| the farms' output a hand, 1900 = 1 (with the tractor, tasks.md) | 0.94 | 1.05 | 1.22 | 1.29 | 1.49 | 1.62 | 1.68 | 1.39 |
+
+The nitrogen works is found in 1920 on the mean island (1910 to 1943) and
+breeding in 1945 (1928 to 1974). Neither is taken by all who know it: at the
+island's prices of the 1930s (grain about 0.27, chemicals about 0.85, on
+island 7) a farm gains `0.27 * 0.6 / 1.6` = 0.10 a unit of grain for 0.026 of
+chemicals, four times its cost, which the rule of point 1 (all farms only at
+seven times) turns into half of the farms that know of it. The nitrogen works itself is never built (on eight islands of eight): at
+1.2 of electricity and 1.5 of coal a unit it cannot make chemicals at the
+price the soda works sell them for. The farms buy their chemicals from
+whoever makes them; it is the nitrogen works' know-how that a town needs.
+`tests/land_century.rs` holds the table at both stages and the sums above.
+
 ## What worries me
 
 - **A town can still hire more hands than it has.** The mend above stops the

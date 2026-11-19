@@ -105,7 +105,10 @@ fn stage_one_adds_to_the_port_and_moves_nothing_of_it() {
         assert!(C.m_K0[m] > 0.0 && C.m_labor[m] > 0.0 && (0..C.G).any(|g| C.m_cap[(m, g)] > 0.0), "{}", C.method_name[m]);
         assert!(C.tech_known[m] || (0..C.G).any(|g| C.tech_disc[(m, g)] != 0.0), "{} can be found", C.method_name[m]);
     }
-    // laying it twice is laying it once
+    // laying it twice is laying it once (with the game's ceiling at this stage: the
+    // game's own, 6, lays the content after 1900 over it, docs/rules/tree.md)
+    let mut P = P;
+    P.tree.stage = 1;
     assert_eq!(printed(&tree::content(&P, C.clone()).unwrap()), printed(&C));
     assert_eq!(printed(&tree::lay(&C, GAME_OVERLAY_TOML, 1).unwrap()), printed(&C));
 }
@@ -219,7 +222,10 @@ fn year_mean(r: &RunResult, name: &str, year: i64) -> f64 {
 
 #[test]
 fn the_island_opens_with_builders_and_they_take_the_quarries_work() {
-    let on = run(&game(3, 0, 1760));
+    // stage 1 by name: the game's own ceiling, 6, adds the content after 1900
+    let mut Pon = game(3, 0, 1760);
+    Pon.tree.stage = 1;
+    let on = run(&Pon);
     let mut P = game(3, 0, 1760);
     P.tree.stage = 0;
     let off = run(&P);
