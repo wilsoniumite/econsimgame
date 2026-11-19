@@ -659,7 +659,9 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
                 sim.year, st.money_now
             ));
         }
-        let drift = st.money_now - (st.money_start + st.issued);
+        // the hand (docs/designs/sandbox.md): money made or unmade by an edit is
+        // booked in its own account, which is 0.0 in a run with no edits
+        let drift = st.money_now - (st.money_start + st.issued + st.by_hand.money);
         if drift.abs() >= 1e-6 * st.money_now.max(1.0) {
             return Err(format!("money not conserved: drift {drift:.6e} in {}-{month}", sim.year));
         }

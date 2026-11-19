@@ -31,6 +31,7 @@ pub mod cli;
 pub mod commons;
 pub mod content;
 pub mod econ;
+pub mod edits;
 pub mod engel;
 pub mod facts;
 pub mod families;
