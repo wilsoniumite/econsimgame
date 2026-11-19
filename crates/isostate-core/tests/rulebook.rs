@@ -34,15 +34,48 @@ fn every_name_walked_holds_the_value_the_rules_hold_and_comes_in_their_order() {
         assert_eq!(names.len(), book.len(), "a name is walked twice");
         for e in &book {
             // a field the serialiser leaves out and the walk could not fill would be null:
-            // only a name that is truly "nothing" may be (end_year, the content's)
-            assert!(!e.value.is_null() || e.name == "end_year", "{} was not found: add its line to rulebook::skipped", e.name);
+            // only a name that is truly "nothing" may be (end_year, the content's; the tasks
+            // stage's ceiling on yield and freeze year, unset unless a sweep sets them)
+            let nothing = ["end_year", "tasks.yield_cap", "tasks.freeze_from"];
+            assert!(!e.value.is_null() || nothing.contains(&e.name.as_str()), "{} was not found: add its line to rulebook::skipped", e.name);
             let again = set_field(&P, &e.name, &e.value).unwrap_or_else(|why| panic!("{}: {why}", e.name));
             assert!(again == P, "{} set to its own value {} changes the rules", e.name, e.value);
         }
         // the rules that are off under the port are walked with their numbers too
         assert!(entry(&book, "canals.enabled").is_some() && entry(&book, "roads.enabled").is_some());
         assert!(book.iter().filter(|e| e.rule == "money").count() >= 2);
+        // the numbers a rule's own serialiser leaves out while unset are walked too
+        for name in ["tasks.land", "tasks.yield_cap", "tasks.freeze_from"] {
+            assert!(entry(&book, name).is_some(), "{name} is not walked");
+        }
     }
+}
+
+#[test]
+fn a_number_the_run_does_not_read_is_not_walked() {
+    // under the game's rules money is issued at money.growth, and the port's money_growth
+    // is read by nothing (money::rate), so the tab must not offer it
+    let book = rulebook(&game_params());
+    assert!(entry(&book, "money_growth").is_none(), "money_growth is offered though it does nothing");
+    assert!(entry(&book, "money.growth").is_some());
+    // under the port's rules it is the rate, and is walked
+    let port = rulebook(&default_params());
+    assert!(entry(&port, "money_growth").is_some_and(|e| !e.offers.is_empty()));
+    // and money's switch thrown off in a running game brings it back
+    let mut P = game_params();
+    P.money.true_total = false;
+    assert!(entry(&rulebook(&P), "money_growth").is_some());
+    // the tasks stage's ceiling and freeze year are walked as nothing, and say so
+    for name in ["tasks.yield_cap", "tasks.freeze_from"] {
+        let e = entry(&book, name).unwrap();
+        assert!(e.value.is_null() && e.game.is_null() && e.offers.is_empty(), "{name}: {e:?}");
+    }
+    let mut P = game_params();
+    P.tasks.yield_cap = Some(3.0);
+    P.tasks.freeze_from = Some(1960);
+    let book = rulebook(&P);
+    assert_eq!(entry(&book, "tasks.yield_cap").map(|e| e.value.as_f64()), Some(Some(3.0)));
+    assert_eq!(entry(&book, "tasks.freeze_from").map(|e| e.value.as_i64()), Some(Some(1960)));
 }
 
 #[test]

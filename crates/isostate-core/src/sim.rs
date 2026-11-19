@@ -656,29 +656,85 @@ pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     crate::roads::month(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     st.money_now = econ::money_total(st);
     if sim.check_money {
-        // A money stock below nothing is no leak: the month's issue of new money
-        // is a share of the money counted before the month's wages and dividends
-        // reach the households, and in a month when those run to many times the
-        // money it is less than nothing (docs/rules/mines.md, "What worries me").
-        // An island in that state is past saving, so the run stops here and says
-        // so, where the check below would allow a millionth of one unit and read
-        // the purses' rounding as money lost.
-        if st.money_now < 0.0 {
-            return Err(format!(
-                "the island's money went below nothing in {}-{month} ({:.6e}), and a run cannot go on from there",
-                sim.year, st.money_now
-            ));
-        }
-        // the hand (docs/designs/sandbox.md): money made or unmade by an edit is
-        // booked in its own account, which is 0.0 in a run with no edits
-        let drift = st.money_now - (st.money_start + st.issued + st.by_hand.money);
-        if drift.abs() >= 1e-6 * st.money_now.max(1.0) {
-            return Err(format!("money not conserved: drift {drift:.6e} in {}-{month}", sim.year));
-        }
+        check_money(st, sim.year, month)?;
     }
     observer::record_month(st, C, P, sim.t);
     sim.t += 1;
     Ok(())
+}
+
+/// The month's money check, on `st.money_now` as `run_month` has just counted it:
+/// the island's money is what it started with, and what was issued, and what the
+/// hand made or unmade, and nothing else.
+pub fn check_money(st: &State, year: i64, month: usize) -> Result<(), String> {
+    // A value that is not a number (NaN) compares false with everything, so the
+    // two tests below would let it through, and an island whose money had become
+    // one would run on with it. Every term is looked at first, and a purse that
+    // is not a finite number is named.
+    if !st.money_now.is_finite() {
+        let place = money_not_finite(st).unwrap_or_else(|| "the island's money".into());
+        return Err(format!("{place} is {} in {year}-{month}, and a run cannot go on from there", not_finite(st.money_now)));
+    }
+    for (what, v) in [("the island's money at the start", st.money_start), ("the money issued", st.issued), ("the hand's account of money", st.by_hand.money)] {
+        if !v.is_finite() {
+            return Err(format!("{what} is {} in {year}-{month}, and a run cannot go on from there", not_finite(v)));
+        }
+    }
+    // A money stock below nothing is no leak: the month's issue of new money
+    // is a share of the money counted before the month's wages and dividends
+    // reach the households, and in a month when those run to many times the
+    // money it is less than nothing (docs/rules/mines.md, "What worries me").
+    // An island in that state is past saving, so the run stops here and says
+    // so, where the check below would allow a millionth of one unit and read
+    // the purses' rounding as money lost.
+    if st.money_now < 0.0 {
+        return Err(format!(
+            "the island's money went below nothing in {year}-{month} ({:.6e}), and a run cannot go on from there",
+            st.money_now
+        ));
+    }
+    // the hand (docs/designs/sandbox.md): money made or unmade by an edit is
+    // booked in its own account, which is 0.0 in a run with no edits
+    let drift = st.money_now - (st.money_start + st.issued + st.by_hand.money);
+    if drift.abs() >= 1e-6 * st.money_now.max(1.0) {
+        return Err(format!("money not conserved: drift {drift:.6e} in {year}-{month}"));
+    }
+    Ok(())
+}
+
+/// "not a number (NaN)" or "infinite (inf)", for a value that is not finite.
+fn not_finite(v: f64) -> String {
+    if v.is_nan() { "not a number (NaN)".into() } else { format!("infinite ({v})") }
+}
+
+/// The first purse `econ::money_total` counts whose value is not a finite number, named.
+fn money_not_finite(st: &State) -> Option<String> {
+    let town = |t: usize| st.town_name.get(t).cloned().unwrap_or_else(|| format!("{t}"));
+    let pools: [(&str, &[f64]); 5] = [
+        ("the households' cash", &st.hh_cash),
+        ("the landlords' cash", &st.lord_cash),
+        ("the merchants' cash", &st.merch_cash),
+        ("the households' income", &st.hh_income),
+        ("the landlords' income", &st.lord_income),
+    ];
+    for (what, v) in pools {
+        if let Some(t) = v.iter().position(|x| !x.is_finite()) {
+            return Some(format!("{what} of town {t} ({})", town(t)));
+        }
+    }
+    if let Some(f) = st.f_cash.iter().position(|x| !x.is_finite()) {
+        return Some(format!("the cash of works {f}"));
+    }
+    if !st.fund_cash.is_finite() {
+        return Some("the fund's cash".into());
+    }
+    if let Some(k) = st.projects.iter().position(|pr| !pr.cash.is_finite()) {
+        return Some(format!("the cash of project {k}"));
+    }
+    if let Some(k) = st.families.iter().position(|f| !f.cash.is_finite()) {
+        return Some(format!("the cash of family {k}"));
+    }
+    None
 }
 
 /// Twelve months, then the yearly step, the observer's detectors and the yearly snapshot.
