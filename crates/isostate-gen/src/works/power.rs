@@ -60,24 +60,25 @@ impl Parts {
     }
 }
 
-/// Lay out a station's sets in rows from the back of the yard, as many as its
-/// size wants and its yard holds, leaving `aside` of the yard's width on the
-/// right for what stands beside them; and give back where the front of the
-/// last row is.
-fn sets(c: &mut Ctx, p: &Parts, longest: f32, aside: f32, concrete: bool) -> f32 {
-    let (hw, hd, g, size) = (c.hw, c.hd, c.g, c.w.size);
+/// Lay out `wanted` sets of a station's buildings in rows from the back of
+/// the yard, as many as its yard holds, leaving `aside` of the yard's width
+/// on the right for what stands beside them; and give back where the front
+/// of the last row is. A row of fewer sets than it has room for has them
+/// longer, up to a quarter more than `longest`.
+fn sets(c: &mut Ctx, p: &Parts, wanted: usize, longest: f32, aside: f32, concrete: bool) -> f32 {
+    let (hw, hd, g) = (c.hw, c.hd, c.g);
     let room = (2.0 * hw - 0.016 - aside).max(0.03);
-    // a set of buildings to so much capacity: one to the standard size, two at four times it, five at twenty
-    let wanted = (0.95 * size.max(0.4).sqrt()).ceil().max(1.0) as usize;
-    let (per, len) = c.spread(room, longest, 0.008 * g, 8);
-    let depth = 2.0 * hd - 0.016;
+    let (per, _) = c.spread(room, longest, 0.008 * g, 8);
+    // (and room before the gate for a cart to turn)
+    let depth = 2.0 * hd - 0.016 - 0.018 * g;
     let k = (depth / p.depth()).min(1.0);
-    let rows = c.fit(depth, p.depth() * k + 0.014 * g, 3).min(wanted.div_ceil(per));
+    let rows = c.fit(depth, p.depth() * k + 0.014 * g, 4).min(wanted.div_ceil(per));
     let mut left = wanted.min(per * rows).max(1);
     let mut front = -hd + 0.008;
     for j in 0..rows {
         let n = left.min(per);
         left -= n;
+        let len = ((room - 0.008 * g * (n as f32 - 1.0)) / n as f32).min(longest * 1.25);
         let z0 = -hd + 0.008 + j as f32 * (p.depth() * k + 0.014 * g);
         for i in 0..n {
             let x = -hw + 0.008 + len * 0.5 + i as f32 * (len + 0.008 * g);
@@ -126,7 +127,10 @@ fn set(c: &mut Ctx, p: &Parts, s: &Set, concrete: bool) {
     c.doors(&e, Face::Front, s.len * 0.5 - 0.004 - 0.016 * g, s.len * 0.5 - 0.004, 0.0, (0.022 * g).min(p.eh - 0.006), !concrete, *pal.timber.door);
     let half = (ed * 0.22).min(0.012);
     c.light(&e, Face::EndB, -half, half, FOOT + 0.006, p.eh - 0.004, !concrete);
-    c.ridge_vent(&e, 0.6, true);
+    // (the lantern on all but the shortest hall: on that one it would be most of its roof)
+    if s.len >= 0.07 {
+        c.ridge_vent(&e, 0.6, true);
+    }
 }
 
 /// A station of the brick age, of any size.
@@ -143,7 +147,10 @@ fn brick(c: &mut Ctx) {
     };
     // (the coal lies down the right of the yard, which a station on its plot leaves to the plan)
     let aside = if c.stock_apart { 0.0 } else { 0.034 * g };
-    let front = sets(c, &parts, 0.12 * g, aside, false);
+    // a set of buildings to so much capacity, as the ground grows: one to the standard size, three at
+    // four times it, seven at twenty, sixteen at a hundred
+    let wanted = size.max(0.4).powf(0.6).ceil().max(1.0) as usize;
+    let front = sets(c, &parts, wanted, 0.12 * g, aside, false);
     coal(c, hw - 0.008 - aside * 0.5, aside * 0.5);
     switch_house(c, front, hd);
 }
@@ -154,7 +161,7 @@ fn concrete(c: &mut Ctx) {
     let (hw, hd, g, size, pal) = (c.hw, c.hd, c.g, c.w.size, c.pal);
     let col = c.tone(shade(*pal.stone.works, 1.12));
     // the towers: one at five times the standard size, two at twenty, five at a hundred
-    let (tr, th) = (0.03 * g, 0.12 * g);
+    let (tr, th) = (0.036 * g, 0.14 * g);
     let wanted = ((size / 5.0).sqrt().ceil() as usize).clamp(1, 8);
     let pitch = 2.0 * tr + 0.006 * g;
     let per = c.fit(2.0 * hd - 0.016, pitch, 4);
@@ -164,24 +171,33 @@ fn concrete(c: &mut Ctx) {
         let (i, j) = (k / per, k % per);
         let (x, z) = (hw - 0.008 - tr - i as f32 * pitch, -hd + 0.008 + tr + j as f32 * pitch);
         let top = c.cooling_tower(x, z, tr, th, col);
-        c.steam(top, 2.0 * g);
+        c.steam(top, 1.4 * g);
     }
     let aside = cols as f32 * pitch + 0.004;
     let parts = Parts {
         cr: 0.0085 * g,
-        tall: 0.24 * g,
-        chimneys: if size >= 20.0 { 2 } else { 1 },
+        tall: 0.2 * g,
+        chimneys: if size >= 40.0 { 2 } else { 1 },
         bd: 0.04 * g,
         bh: 0.07 * g,
         ed: 0.042 * g,
         eh: 0.046 * g,
     };
-    let front = sets(c, &parts, 0.17 * g, aside, true);
-    // the coal before the halls
+    // a set to nine times the standard size: one at five, two at twenty, four at a hundred
+    let wanted = (size / 9.0).sqrt().ceil().max(1.0) as usize;
+    let front = sets(c, &parts, wanted, 0.17 * g, aside, true);
+    // the coal in a row of great heaps before the halls
     let room = hd - 0.012 - front;
-    if room > 0.016 {
+    let r = (room * 0.5 - 0.002).min(0.024 * g);
+    if r >= 0.006 {
         let w = 2.0 * hw - 0.016 - aside;
-        coal(c, -hw + 0.008 + w * 0.5, (room * 0.5).min(w * 0.5));
+        let n = c.fit(w, 2.0 * r + 0.004, 10);
+        for i in 0..n {
+            let x = -hw + 0.008 + w * (i as f32 + 0.5) / n as f32;
+            if c.stocked() || i == 0 {
+                c.heap(x, front + 0.004 + r, r * 0.95, r * 0.6, *pal.goods.coal);
+            }
+        }
     }
 }
 
