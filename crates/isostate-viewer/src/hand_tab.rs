@@ -6,7 +6,10 @@
 //! a tool in hand is not used by it. An edit's news comes with the next month
 //! or year; until then the line of its answer heads the list (`Pending`). At
 //! the foot stands the ledger (4.6): the island's group "By hand" as the
-//! simulation tells it (`inspect`), asked while the tab is open.
+//! simulation tells it (`inspect`), asked while the tab is open. From stage 7
+//! (7b) the edits that wait for the year's turn head the tab, each with a
+//! Take back chip (`TakeBack`, `Cmd::Cancel`), and an edit carried out at the
+//! turn heads the list until its news comes.
 //!
 //! `panel` is called by `ui::panel_rebuild` with `HandParams`, which this file
 //! owns: what the tab reads is added there and does not come into ui.rs.
