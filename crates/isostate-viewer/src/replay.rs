@@ -24,6 +24,11 @@ pub struct Meta {
     pub h: usize,
     pub start_year: i32,
     pub n_years: usize,
+    /// How the towns' layers and the rent are packed (the core's
+    /// `record::TownBytes`): 2 for a run past 1900, and 0 or 1, the first
+    /// layout, for a run to 1900 and every record made before there were two.
+    #[serde(default)]
+    pub town_bytes: u8,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -215,10 +220,10 @@ pub struct Replay {
     pub owner: Vec<i8>,
     /// Town ground that is kept (docs/rules/towns.md), `[year, cell]`; all three
     /// are empty in a run whose towns do not keep their ground (the port's rules).
-    /// The year the cell joined its town less `BUILT_YEAR0`, 1 to 255; 0 where
-    /// the cell is not town ground.
+    /// The year the cell joined its town less `BUILT_YEAR0`, in steps of
+    /// `built_step` years, 1 to 255; 0 where the cell is not town ground.
     pub built: Vec<u8>,
-    /// the cell's residents, in units of `RES_UNIT` people
+    /// the cell's residents, in units of `res_unit` people
     pub res: Vec<u8>,
     /// the share of the cell under works, 0 to 255, on every cell
     pub works: Vec<u8>,
@@ -233,11 +238,16 @@ pub struct Replay {
     /// live game does when a year arrives while a scenery build holds it)
     /// copies a pointer and not four megabytes.
     pub land: Option<std::sync::Arc<crate::newland::NewLand>>,
+    /// In a run past 1900, what each year's rent byte was taken over (the
+    /// core's longrun anchor, docs/rules/longrun.md); empty for a run to 1900,
+    /// whose rent bytes are in 1750's money.
+    pub rent_scale: Vec<f32>,
 }
 
 /// `Replay::built` counts years from here (`isostate_core::record::BUILT_YEAR0`).
 pub const BUILT_YEAR0: i32 = 1645;
-/// People to one step of `Replay::res` (`isostate_core::record::RES_UNIT`).
+/// People to one step of `Replay::res` in a run to 1900 (`isostate_core::record::RES_UNIT`);
+/// twice as many in one past it (`Replay::res_unit`).
 pub const RES_UNIT: f32 = 8.0;
 
 impl Replay {
@@ -247,14 +257,36 @@ impl Replay {
         !self.built.is_empty() && !self.res.is_empty()
     }
 
+    /// Whether the record packs its towns as a run past 1900 does: `built` in
+    /// steps of two years and residents in sixteens (the core's `record::TownBytes`).
+    fn second_layout(&self) -> bool {
+        self.header.meta.town_bytes >= 2
+    }
+
+    /// The year a `built` byte stands for (the first year of its step); a byte
+    /// of 0, not town ground, is read as the year before the first.
+    pub fn built_year(&self, b: u8) -> i32 {
+        BUILT_YEAR0 + if self.second_layout() { 2 } else { 1 } * b as i32
+    }
+
+    /// People to one step of `res`.
+    pub fn res_unit(&self) -> f32 {
+        if self.second_layout() { 2.0 * RES_UNIT } else { RES_UNIT }
+    }
+
     /// The year cell `c` joined its town, if it is town ground in year `k` of a run that keeps it.
     pub fn joined(&self, k: usize, c: usize) -> Option<i32> {
-        self.built.get(k * self.n + c).filter(|&&b| b > 0).map(|&b| BUILT_YEAR0 + b as i32)
+        self.built.get(k * self.n + c).filter(|&&b| b > 0).map(|&b| self.built_year(b))
     }
 
     /// The residents of cell `c` in year `k` (nothing in a run that does not record them).
     pub fn residents(&self, k: usize, c: usize) -> f32 {
-        self.res.get(k * self.n + c).map_or(0.0, |&b| b as f32 * RES_UNIT)
+        self.res.get(k * self.n + c).map_or(0.0, |&b| b as f32 * self.res_unit())
+    }
+
+    /// What year `k`'s rent bytes were taken over: 1 in a run to 1900.
+    pub fn rent_scale(&self, k: usize) -> f32 {
+        self.rent_scale.get(k).copied().unwrap_or(1.0)
     }
 
     /// The share of cell `c` under works in year `k`, 0 to 1.
@@ -396,6 +428,8 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
     // what the map overlays read; a run without them still plays, and the overlays say so
     let has = |name: &str| header.arrays.iter().any(|a| a.name == name);
     let rent = if has("rent") { u8s("rent")? } else { Vec::new() };
+    // a run past 1900 takes each year's rent bytes over that year's anchor
+    let rent_scale = if has("rent_scale") { f32s("rent_scale")? } else { Vec::new() };
     let dist = if has("dist") { u8s("dist")? } else { Vec::new() };
     let town_wage = if has("town_wage") { f32s("town_wage")? } else { Vec::new() };
     let town_price = if has("town_price") { f32s("town_price")? } else { Vec::new() };
@@ -555,11 +589,13 @@ fn parse(path: &str, buf: &[u8]) -> Result<Replay, String> {
         res,
         works,
         workings,
+        rent_scale,
     })
 }
 
 /// The rent a cell's land earns in a month, from the record's byte: 0 is no
-/// rent, and 1 to 255 run from 0.001 to 1000 on a log scale (`record::layers`).
+/// rent, and 1 to 255 run from 0.001 to 1000 on a log scale (`record::layers`),
+/// in the money of the year's `Replay::rent_scale`.
 pub fn rent_of(byte: u8) -> f32 {
     if byte == 0 { 0.0 } else { 10f32.powf(byte as f32 / 255.0 * 6.0 - 3.0) }
 }
@@ -701,6 +737,25 @@ mod tests {
         assert_eq!(r.series_names, ["pop"]);
         assert_eq!(annual(&r, "pop", 0), Some(5.5));
         assert_eq!(firm_k(&r, 0, 0), 2.5);
+    }
+
+    #[test]
+    fn a_run_past_1900_reads_its_towns_in_two_year_steps_and_its_rent_in_its_own_money() {
+        // a record without the layout's number (every run to 1900, and every
+        // record made before there were two) reads as it always has
+        let mut r = parse("tiny.bin", &tiny_run()).unwrap();
+        (r.built, r.res) = (vec![255, 0], vec![10, 0]);
+        assert_eq!(r.header.meta.town_bytes, 0);
+        assert_eq!((r.joined(0, 0), r.joined(0, 1), r.residents(0, 0)), (Some(1900), None, 80.0));
+        assert_eq!(r.rent_scale(0), 1.0);
+        // the second layout: steps of two years from 1645, sixteens, and the rent over the anchor
+        r.header.meta.town_bytes = 2;
+        r.rent_scale = vec![3.0];
+        assert_eq!((r.joined(0, 0), r.residents(0, 0)), (Some(2155), 160.0));
+        r.built[0] = 178;
+        assert_eq!(r.joined(0, 0), Some(2001));
+        assert_eq!(r.rent_scale(0), 3.0);
+        assert_eq!(r.rent_scale(1), 1.0, "a year the record has no scale for is read in 1750's money");
     }
 
     #[test]

@@ -21,16 +21,76 @@ pub const LAYERS: [&str; 9] = ["use", "inten", "rent", "trans", "catch", "dist",
 /// towns: three more layers, kept only by a run with `towns.enabled` (a port
 /// run's file has none of them). One byte per cell and year, as the nine above:
 ///
-/// - `built`: the year the cell joined its town less `BUILT_YEAR0`, held to 1 to
-///   255; 0 where the cell is not town ground;
-/// - `res`: the cell's residents, in units of `RES_UNIT` people (255 at the most);
+/// - `built`: the year the cell joined its town less `BUILT_YEAR0`, in steps
+///   of `TownBytes::built_step` years, held to 1 to 255; 0 where the cell is
+///   not town ground;
+/// - `res`: the cell's residents, in units of `TownBytes::res_unit` people (255
+///   at the most);
 /// - `works`: the share of the cell under works, 0 to 255, on every cell, town
 ///   ground included.
 pub const TOWN_LAYERS: [&str; 3] = ["built", "res", "works"];
 /// `built` counts years from here.
 pub const BUILT_YEAR0: i64 = 1645;
-/// People to one step of `res`.
+/// People to one step of `res` in a record of the first layout (to 1900).
 pub const RES_UNIT: f64 = 8.0;
+
+/// How a record packs the towns' layers and the rent into their bytes, by the
+/// year its run ends (`meta.town_bytes` in `run.bin`; longrun,
+/// docs/rules/longrun.md, "The record past 1900").
+///
+/// The first layout, for a run to 1900 (every game, and every record made
+/// before the layout had a number): `built` in single years from
+/// `BUILT_YEAR0`, which reach 1900; residents in eights, which reach 2,040;
+/// the rent byte in 1750's money. The second, for a run past 1900: `built` in
+/// steps of two years, which reach 2155; residents in sixteens, which reach
+/// 4,080; and the rent byte on the rent over the year's anchor
+/// (`longrun::anchor`), which the record keeps as `rent_scale` so that a
+/// reader can give the rent in money.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TownBytes {
+    /// 1 or 2; 0 is read as 1.
+    pub version: u8,
+}
+
+impl TownBytes {
+    pub const FIRST: TownBytes = TownBytes { version: 1 };
+    pub const SECOND: TownBytes = TownBytes { version: 2 };
+
+    /// The layout of a record that ends in `end_year`.
+    pub fn of(end_year: i64) -> TownBytes {
+        if end_year <= BUILT_YEAR0 + 255 { TownBytes::FIRST } else { TownBytes::SECOND }
+    }
+
+    pub fn second(self) -> bool {
+        self.version >= 2
+    }
+
+    /// Years to one step of `built`.
+    pub fn built_step(self) -> i64 {
+        if self.second() { 2 } else { 1 }
+    }
+
+    /// People to one step of `res`.
+    pub fn res_unit(self) -> f64 {
+        if self.second() { 2.0 * RES_UNIT } else { RES_UNIT }
+    }
+
+    /// The `built` byte of a cell that joined its town in `year`: a year that
+    /// falls between two steps is written as the step before it.
+    pub fn built_byte(self, year: i64) -> u8 {
+        (year - BUILT_YEAR0).div_euclid(self.built_step()).clamp(1, 255) as u8
+    }
+
+    /// The year a `built` byte stands for (None for 0, not town ground).
+    pub fn built_year(self, b: u8) -> Option<i64> {
+        (b > 0).then(|| BUILT_YEAR0 + self.built_step() * b as i64)
+    }
+
+    /// The `res` byte of a cell with `people` on it.
+    pub fn res_byte(self, people: f64) -> u8 {
+        to_u8((people / self.res_unit()).round_ties_even().clamp(0.0, 255.0))
+    }
+}
 
 /// Display classes for the map. Each cell is drawn as a patchwork of its two
 /// largest classes, so mixed land shows as mixed land instead of one colour.
@@ -164,6 +224,11 @@ pub struct Record {
     /// mines: every working there is or has been, year by year. Empty unless the
     /// mechanism is on.
     pub workings: Vec<Vec<crate::mines::Working>>,
+    /// How the towns' layers and the rent are packed (by the run's end year).
+    pub town_bytes: TownBytes,
+    /// Under the second layout: each year's anchor, which that year's rent
+    /// byte was taken over (empty under the first).
+    pub rent_scale: Vec<f32>,
 }
 
 impl Record {
@@ -198,6 +263,8 @@ pub fn init(st: &State, C: &Content, P: &Params, n_years: usize) -> Record {
         town_harvest: Vec::new(),
         harvest: Vec::new(),
         workings: Vec::new(),
+        town_bytes: TownBytes::of(C.end_year),
+        rent_scale: if TownBytes::of(C.end_year).second() { vec![1.0; n_years] } else { Vec::new() },
     }
 }
 
@@ -206,8 +273,9 @@ fn to_u8(x: f64) -> u8 {
 }
 
 /// The nine map layers of the current year, one byte per cell each, in `LAYERS`
-/// order (what `snapshot` records for the year).
-pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
+/// order (what `snapshot` records for the year). The rent byte is taken on
+/// the rent over `rent_scale`, which is 1 in a record of the first layout.
+pub fn layers(st: &State, C: &Content, rent_scale: f64) -> Vec<Vec<u8>> {
     let N = st.N;
     let mut inten: Vec<f64> = st.cell_labor.iter().map(|&l| (l / 45.0).clamp(0.0, 1.0)).collect();
     for c in 0..N {
@@ -243,7 +311,7 @@ pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
     }
     let mut out: Vec<Vec<u8>> = (0..LAYERS.len()).map(|_| vec![0u8; N]).collect();
     for c in 0..N {
-        let rent = st.cell_rent[c];
+        let rent = st.cell_rent[c] / rent_scale;
         let lr = rent.max(1e-3).log10();
         let rent_byte = if rent > 1e-3 { to_u8((((lr + 3.0) / 6.0).clamp(0.0, 1.0) * 255.0).round_ties_even()) } else { 0 };
         let d = if st.dcatch[c].is_finite() { st.dcatch[c] } else { 63.75 };
@@ -265,15 +333,15 @@ pub fn layers(st: &State, C: &Content) -> Vec<Vec<u8>> {
     out
 }
 
-/// towns: the three `TOWN_LAYERS` of the current year, or None in a run whose
-/// towns do not keep their ground.
-pub fn town_layers(st: &State) -> Option<Vec<Vec<u8>>> {
+/// towns: the three `TOWN_LAYERS` of the current year, packed as `tb` says, or
+/// None in a run whose towns do not keep their ground.
+pub fn town_layers(st: &State, tb: TownBytes) -> Option<Vec<Vec<u8>>> {
     if !crate::towns::kept(st) {
         return None;
     }
     let N = st.N;
-    let built = (0..N).map(|c| if st.urban[c] { (st.town_built[c] - BUILT_YEAR0).clamp(1, 255) as u8 } else { 0 }).collect();
-    let res = (0..N).map(|c| to_u8((st.urban_res[c] / RES_UNIT).round_ties_even().clamp(0.0, 255.0))).collect();
+    let built = (0..N).map(|c| if st.urban[c] { tb.built_byte(st.town_built[c]) } else { 0 }).collect();
+    let res = (0..N).map(|c| tb.res_byte(st.urban_res[c])).collect();
     let works = (0..N).map(|c| to_u8((st.cell_K_share[c].clamp(0.0, 1.0) * 255.0).round_ties_even())).collect();
     Some(vec![built, res, works])
 }
@@ -283,15 +351,20 @@ pub fn know_byte(x: f64) -> u8 {
     to_u8((x.clamp(0.0, 1.0) * 255.0).round_ties_even())
 }
 
-pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize) {
+pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize) {
     let (N, T, G, NT) = (st.N, st.T_max, C.G, C.NT);
     let base = k * N;
-    for (dst, src) in rec.layers.iter_mut().zip(layers(st, C)) {
+    // longrun: a record past 1900 takes the rent over the year's anchor
+    let scale = rent_scale(rec.town_bytes, st, P);
+    if let Some(v) = rec.rent_scale.get_mut(k) {
+        *v = scale as f32;
+    }
+    for (dst, src) in rec.layers.iter_mut().zip(layers(st, C, scale)) {
         dst[base..base + N].copy_from_slice(&src);
     }
     // towns: when each cell joined its town, its residents, and the works' share of it
     if !rec.town_layers.is_empty() {
-        for (dst, src) in rec.town_layers.iter_mut().zip(town_layers(st).unwrap_or_default()) {
+        for (dst, src) in rec.town_layers.iter_mut().zip(town_layers(st, rec.town_bytes).unwrap_or_default()) {
             dst[base..base + N].copy_from_slice(&src);
         }
     }
@@ -325,6 +398,12 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, _P: &Params, k: usize
             })
             .collect(),
     );
+}
+
+/// What the rent byte is taken over in a record of layout `tb`: 1 under the
+/// first, the year's anchor (`longrun::anchor`) under the second.
+pub fn rent_scale(tb: TownBytes, st: &State, P: &Params) -> f64 {
+    if tb.second() { crate::longrun::anchor(st, P) } else { 1.0 }
 }
 
 /// Python's `_clean`: floats rounded to 5 decimals, non-finite floats as null.
@@ -449,6 +528,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         // towns: three more, only in a run that kept them
         for (name, layer) in TOWN_LAYERS.iter().zip(&rec.town_layers) {
             arrays.push(u8_array(name, vec![n_years, N], layer.clone()));
+        }
+        // longrun: what each year's rent byte was taken over, in a record past 1900
+        if !rec.rent_scale.is_empty() {
+            arrays.push(f32_array("rent_scale", vec![n_years], &rec.rent_scale));
         }
     }
     let T = rec.T;
@@ -624,6 +707,12 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         header["land"] = crate::landcells::static_header(lf);
     }
     // accounts: the tables' columns and the island's account of every year
+    // towns (and longrun): how the towns' layers and the rent are packed, written
+    // only for the second layout, so that a run to 1900 is the same file it was;
+    // a reader takes a record without it for the first
+    if rec.town_bytes.second() {
+        header["meta"]["town_bytes"] = json!(rec.town_bytes.version);
+    }
     if let Some(books) = crate::accounts::header(st) {
         header["accounts"] = books;
     }

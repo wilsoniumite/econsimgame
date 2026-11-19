@@ -16,7 +16,7 @@
 use bevy::math::Vec2;
 
 use crate::fields;
-use crate::replay::{self, Replay};
+use crate::replay::Replay;
 use crate::rivers::{self, HeightGrid, River, WaterIndex};
 
 /// Terrain vertices per map cell along each axis.
@@ -1349,7 +1349,7 @@ pub fn town_parent(r: &Replay, k: usize, c: usize) -> Option<usize> {
         return None;
     }
     let (x, y) = ((c % r.w) as isize, (c / r.w) as isize);
-    let joined = ((replay::BUILT_YEAR0 + own as i32 - r.y0).max(0) as usize).min(k);
+    let joined = ((r.built_year(own) - r.y0).max(0) as usize).min(k);
     let mut best: Option<((bool, bool, u8, bool, usize), usize)> = None;
     for (dx, dy) in [(1isize, 0isize), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
         let (nx, ny) = (x + dx, y + dy);
@@ -1429,7 +1429,7 @@ const OFF_THE_ROAD_AT_MARKET: f32 = 1.08;
 /// along the roads, from the town's end of them outward. With no road by,
 /// it is the distance to the market place alone.
 fn town_order(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, c: usize, parcels: &[u32]) -> Order {
-    let joined = ((replay::BUILT_YEAR0 + r.built[k * r.n + c] as i32 - r.y0).max(0) as usize).min(k);
+    let joined = ((r.built_year(r.built[k * r.n + c]) - r.y0).max(0) as usize).min(k);
     let key = (c as u32, joined as u32, parcels.len() as u32);
     if let Some(known) = g.land.closes.orders.lock().unwrap().get(&key) {
         return known.clone();
@@ -1873,6 +1873,7 @@ pub(crate) mod tests {
             res: Vec::new(),
             works: Vec::new(),
             workings: Vec::new(),
+            rent_scale: Vec::new(),
             land: None,
         };
         for c in (0..n).filter(|&c| land(c)) {

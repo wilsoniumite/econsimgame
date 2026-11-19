@@ -1087,7 +1087,7 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
     let n = w * h;
     let ny = (stat.end_year - stat.start_year + 1).max(1) as usize;
     let header = Header {
-        meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny },
+        meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny, town_bytes: 0 },
         // (each good's bulk and price and each method's process are the run's own content's:
         // the works' site planner lays a works out from them)
         goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32) }).collect(),
@@ -1157,6 +1157,7 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         res: Vec::new(),
         works: Vec::new(),
         workings: Vec::new(),
+        rent_scale: Vec::new(),
         // the second island generator's land, in a game played on it (newland.rs)
         land: stat.land.as_deref().map(|lf| std::sync::Arc::new(crate::newland::NewLand::from_core(lf, w, h))),
     }
@@ -1274,6 +1275,15 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         (&mut r.mix_s, &l.mix_s),
     ] {
         dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
+    }
+
+    // a game past 1900 packs its towns and rent as a record past 1900 does (the core's longrun)
+    r.header.meta.town_bytes = l.town_bytes;
+    if l.town_bytes >= 2 {
+        if r.rent_scale.len() < ny {
+            r.rent_scale.resize(ny, 1.0);
+        }
+        r.rent_scale[k] = l.rent_scale;
     }
 
     // town ground that is kept: three more layers, in a game whose towns keep their ground
