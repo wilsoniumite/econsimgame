@@ -254,11 +254,14 @@ fn money_is_conserved_and_runs_are_deterministic_with_the_tree_laid() {
         assert!(x.iter().zip(y).all(|(p, q)| p.to_bits() == q.to_bits()), "series {name} differs between identical runs");
     }
     assert_eq!(a.events.len(), b.events.len());
-    // no price of a good that is made stands at its floor at the end
+    // no price of a good that is made stands at its floor at the end (the floor as
+    // the run has it: under longrun it rides on the island's cost of living,
+    // docs/rules/longrun.md)
     let (st, C) = (&a.state, &a.content);
     for g in (0..C.G).filter(|&g| st.month_stats.prod[g] > 0.0) {
+        let floor = isostate_core::longrun::floor(st, &a.params, C, g);
         for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
-            assert!(st.price[(t, g)] > 1.01 * a.params.price_floor * C.base_price[g], "{} in town {t}", C.good_name[g]);
+            assert!(st.price[(t, g)] > 1.01 * floor, "{} in town {t}: {} against a floor of {floor}", C.good_name[g], st.price[(t, g)]);
         }
     }
 }

@@ -527,6 +527,9 @@ pub struct State {
     /// The books: the year now running, and every complete year's. Nothing in
     /// the economy reads them.
     pub acct: crate::accounts::Books,
+    /// The gauges read off the books (docs/rules/gauges.md; empty while
+    /// `gauges` is off). Nothing in the economy reads them either.
+    pub gauges: crate::gauges::Gauges,
 
     // ---------------- roads (a probe, docs/probes/dx-roads.md; empty while `roads` is off)
     /// Who pays for the roads: the trusts, the bridges built, the menders.
@@ -540,4 +543,8 @@ pub struct State {
     /// What edits by hand have made and unmade: the money in it is added to
     /// the right side of the monthly money check (`sim::run_month`).
     pub by_hand: crate::edits::Ledger,
+
+    // ---------------- transition (docs/rules/transition.md; empty while `transition.enabled` is off)
+    /// Each town's slow measure of how well its townsfolk live, which its births follow.
+    pub transition: crate::transition::TransitionState,
 }

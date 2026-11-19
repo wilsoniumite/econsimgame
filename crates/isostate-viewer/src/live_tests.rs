@@ -706,7 +706,8 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
     }
     let st = &g.sim.st;
     let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n)).collect();
-    assert_eq!(own.len(), 8);
+    // the books' eight, and the gauges' read off them (docs/rules/gauges.md), which come the same way
+    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
     for name in own {
         let held = replay::monthly(&a.r, name, 0, 48);
         let there = st.series.get(name);
@@ -715,7 +716,8 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
             assert_eq!(held[t].to_bits(), (there[t] as f32).to_bits(), "{name} in month {t}");
         }
         assert!(held[36..].iter().all(|v| v.is_nan()) && there[36..48].iter().all(|v| v.is_nan()), "{name}: the year in progress has no figure yet");
-        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && held[11] != held[12], "{name}: a year's figure, the same in its twelve months");
+        // (a gauge can read the same two years running, new work at nothing before anything is found)
+        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && (held[11] != held[12] || name.starts_with("gauge_")), "{name}: a year's figure, the same in its twelve months");
     }
     // which is the island's account of the year, and what a chart by the year shows
     let shares: Vec<f32> = st.acct.years.iter().map(|y| y.share_work as f32).collect();

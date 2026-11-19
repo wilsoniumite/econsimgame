@@ -716,6 +716,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
     if let Some(books) = crate::accounts::header(st) {
         header["accounts"] = books;
     }
+    // gauges: every year's, read off the books
+    if let Some(gauges) = crate::gauges::header(st) {
+        header["gauges"] = gauges;
+    }
     clean(&mut header);
     let hjson = ensure_ascii(&serde_json::to_string(&header).unwrap()).into_bytes();
     let pad = (8 - (4 + hjson.len()) % 8) % 8;
