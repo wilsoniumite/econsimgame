@@ -12,6 +12,15 @@
 //! (`Told::as_of`). The year's trade and a works' last year are the books' of
 //! the last year they closed (`accounts`), and are left out while the books are
 //! off. Money is in the island's units, quantities in each good's units.
+//!
+//! A thing is asked for by the number the simulation keeps it under, which is
+//! also the number the record gives it: a town by its slot, a works by its slot
+//! in the record's list of works (`record.rs`, the header's `firms`, one entry
+//! for every works that has ever stood, in order), so the viewer asks
+//! `Thing::Works(f)` for its `Pick::Firm(f)`. A square is `y * W + x`. `Thing`
+//! is `Copy`, `Eq` and `Hash`, so a card can be kept by what it tells of, and
+//! both `Thing` and `Told` are `Send`, so the question goes to the simulation's
+//! thread and the card comes back (`tests/inspect.rs` holds both to that).
 
 use crate::accounts;
 use crate::econ;
@@ -20,11 +29,12 @@ use crate::sim::Sim;
 use crate::util::{fmt_g6, fmt_pct, fmt_thousands_f0};
 
 /// A thing that can be asked about.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Thing {
     /// A town, by its slot (`State::town_name`).
     Town(usize),
-    /// A works, by its slot (`State::f_name`).
+    /// A works, by its slot (`State::f_name`), which is its place in the
+    /// record's list of works.
     Works(usize),
     /// A square of land, by its index (`y * W + x`).
     Cell(usize),
@@ -94,6 +104,22 @@ fn amount(x: f64) -> String {
         format!("{x:.2}")
     } else {
         format!("{x:.3}")
+    }
+}
+
+/// A quantity of a good: whole units from ten up, one place from one, two
+/// below, so that a millwright's plant of a third of a unit of machinery a
+/// month does not read as nothing (the tree's dearer goods come in small
+/// numbers).
+fn qty(x: f64) -> String {
+    if x.abs() >= 10.0 {
+        fmt_thousands_f0(x)
+    } else if x == 0.0 {
+        "0".to_string()
+    } else if x.abs() >= 1.0 {
+        format!("{x:.1}")
+    } else {
+        format!("{x:.2}")
     }
 }
 
@@ -269,8 +295,8 @@ fn works(sim: &Sim, f: usize) -> Result<(String, Vec<Group>), String> {
     groups.push(g);
 
     let mut g = Group::new("Plant and hands");
-    g.row("plant", format!("makes up to {} {good} a month", whole(st.f_K[f])));
-    g.row("plant on order", format!("{} a month more", whole(st.f_order_K[f])));
+    g.row("plant", format!("makes up to {} {good} a month", qty(st.f_K[f])));
+    g.row("plant on order", format!("{} a month more", qty(st.f_order_K[f])));
     g.row("worth, at today's prices", whole(families::works_value(st, C, f)));
     g.row("hands", whole(st.f_labor[f]));
     g.row("how full it runs", format!("{} of its plant", pct(st.f_u[f])));
@@ -288,7 +314,7 @@ fn works(sim: &Sim, f: usize) -> Result<(String, Vec<Group>), String> {
     // last year's, from the books (`accounts::works_books`), when they kept it
     let last = sim.year - 1;
     if let Some(y) = accounts::works_books(st, C, f).and_then(|wb| wb.years.into_iter().find(|y| y.year == last)) {
-        g.row(format!("made in {last}"), format!("{} {good}, worth {}", whole(y.out), whole(y.value)));
+        g.row(format!("made in {last}"), format!("{} {good}, worth {}", qty(y.out), whole(y.value)));
         g.row(format!("profit in {last}"), whole(y.profit));
         g.row(format!("paid out in {last}"), whole(y.dividends));
     }
@@ -469,5 +495,47 @@ fn island(sim: &Sim) -> (String, Vec<Group>) {
         g.row("the island's harvest", format!("{} of an average year", pct(st.harvest_now)));
         groups.push(g);
     }
+
+    groups.push(by_hand(sim));
     ("The island".to_string(), groups)
+}
+
+/// What the hand has done to the island (`State::by_hand`, the ledger of
+/// `edits.rs`), always there, so that the Hand tab's foot has its rows from the
+/// first month: "none yet" until an edit is carried out.
+fn by_hand(sim: &Sim) -> Group {
+    let hand = &sim.st.by_hand;
+    let mut g = Group::new("By hand");
+    if hand.count == 0 {
+        for name in ["edits carried out", "money made by hand", "people made by hand"] {
+            g.row(name, "none yet");
+        }
+        return g;
+    }
+    g.row("edits carried out", whole(hand.count as f64));
+    // the share is of the island's money as it stands, the made money in it;
+    // money unmade by a levy is a share of what is left, given without a sign
+    let total = econ::money_total(&sim.st);
+    g.row("money made by hand", if signed(hand.money) == "0" {
+        "none".to_string()
+    } else if total > 0.0 {
+        format!("{}, {} of the island's money", signed(hand.money), pct(hand.money.abs() / total))
+    } else {
+        signed(hand.money)
+    });
+    g.row("people made by hand", if signed(hand.people) == "0" { "none".to_string() } else { signed(hand.people) });
+    g
+}
+
+/// A sum with its sign, "+12,400" or "-6,200"; "0" for less than half a unit
+/// either way.
+fn signed(x: f64) -> String {
+    let w = whole(x.abs());
+    if w == "0" {
+        w
+    } else if x > 0.0 {
+        format!("+{w}")
+    } else {
+        format!("-{w}")
+    }
 }
