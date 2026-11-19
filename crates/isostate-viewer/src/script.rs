@@ -30,11 +30,13 @@
 //!                     year (until:0.95 is just before the year turns)
 //!     print[:NOTE]    print the clock and its date, the cards (the opening card
 //!                     in its own words), the orders that wait for the year's
-//!                     end, the order panel, and what scenery is on screen and
-//!                     what putting it there cost
+//!                     end, the order panel, what scenery is on screen and
+//!                     what putting it there cost, the side panel's title and
+//!                     text, and every text of the note about what was clicked
 //!     scenery[:NOTE]  build the year on the clock afresh and say whether what
 //!                     is on screen is that; stops the run if it is not
-//!     tab:NAME        open a side panel (family, holdings, markets, news, none)
+//!     tab:NAME        open a side panel (family, holdings, markets, news, none;
+//!                     a sandbox's hand and rules, and families for its family tab)
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
@@ -181,6 +183,7 @@ fn key_code(name: &str) -> Option<KeyCode> {
         "2" => KeyCode::Digit2,
         "3" => KeyCode::Digit3,
         "4" => KeyCode::Digit4,
+        "5" => KeyCode::Digit5,
         "a" => KeyCode::KeyA,
         "d" => KeyCode::KeyD,
         "e" => KeyCode::KeyE,
@@ -227,7 +230,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "scenery" => Step::Scenery(arg.to_string()),
             // a panel that is none of these is refused, and not taken for closing the panel
             "tab" if ui::Tab::parse(arg).is_some() || arg.eq_ignore_ascii_case("none") => Step::Tab(ui::Tab::parse(arg)),
-            "tab" => return Err(format!("{part}: the panels are family, holdings, markets, news and none")),
+            "tab" => return Err(format!("{part}: the panels are family, holdings, markets, news, hand, rules, families and none")),
             "pick" => match nums()?.as_slice() {
                 [x, z] => Step::Pick(*x, *z),
                 _ => return Err(format!("{part}: pick takes x,z")),
@@ -458,6 +461,34 @@ fn print_state(world: &mut World, note: &str) {
         texts(world, e, &mut t);
         let tail: Vec<String> = t.iter().rev().take(3).rev().map(|s| s.chars().take(60).collect()).collect();
         println!("script:   {tab:?} panel: {rows} rows, scrolled {y:.0} of {max:.0}; first line \"{}\"; ends \"{}\"", t.first().cloned().unwrap_or_default(), tail.join(" | "));
+        // and what it says, so that a log can be read where a picture would otherwise be needed
+        let mut q = world.query_filtered::<&Text, With<ui::PanelTitle>>();
+        let title = q.iter(world).next().map(|t| t.0.clone()).unwrap_or_default();
+        println!("script:   the panel says: {title}: {}", said_in_one_line(&t, PANEL_SAID));
+    }
+    // the note about what was clicked, every text of it, while it shows
+    let mut q = world.query_filtered::<Entity, With<crate::InspectPanel>>();
+    let cards: Vec<Entity> = q.iter(world).filter(|&e| world.get::<InheritedVisibility>(e).is_some_and(|v| v.get())).collect();
+    let mut note = Vec::new();
+    for e in cards {
+        texts(world, e, &mut note);
+    }
+    if note.iter().any(|s| !s.trim().is_empty()) {
+        println!("script:   the inspector says: {}", said_in_one_line(&note, usize::MAX));
+    }
+}
+
+/// How much of the side panel's text `print` gives, in characters.
+const PANEL_SAID: usize = 600;
+
+/// Texts joined by " | " on one line (a text's own line breaks become " / "),
+/// the empty ones left out, cut at `most` characters with an ellipsis.
+fn said_in_one_line(texts: &[String], most: usize) -> String {
+    let joined = texts.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).map(|s| s.replace('\n', " / ")).collect::<Vec<_>>().join(" | ");
+    if joined.chars().count() > most {
+        format!("{}\u{2026}", joined.chars().take(most).collect::<String>())
+    } else {
+        joined
     }
 }
 
@@ -900,9 +931,15 @@ mod tests {
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
         assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island or half:goods");
         // a panel that is no panel was once taken for closing the panel
-        assert_eq!(parse("tab:famly").err().unwrap(), "tab:famly: the panels are family, holdings, markets, news and none");
-        assert_eq!(parse("tab").err().unwrap(), "tab: the panels are family, holdings, markets, news and none");
+        assert_eq!(parse("tab:famly").err().unwrap(), "tab:famly: the panels are family, holdings, markets, news, hand, rules, families and none");
+        assert_eq!(parse("tab").err().unwrap(), "tab: the panels are family, holdings, markets, news, hand, rules, families and none");
         assert_eq!(parse("tab:none;tab:None;tab:Holdings").unwrap(), [Step::Tab(None), Step::Tab(None), Step::Tab(Some(ui::Tab::Holdings))]);
+        // what print says of a panel: on one line, the empty texts left out, cut where asked
+        let said: Vec<String> = ["March 1791", "", "By hand: the people\nof Garside halved", " "].map(String::from).to_vec();
+        assert_eq!(said_in_one_line(&said, 600), "March 1791 | By hand: the people / of Garside halved");
+        assert_eq!(said_in_one_line(&said, 5), "March\u{2026}");
+        // a sandbox's tabs, and its name for the family's (key 5 is its fifth tab)
+        assert_eq!(parse("tab:hand;tab:Rules;tab:families;key:5").unwrap(), [Step::Tab(Some(ui::Tab::Hand)), Step::Tab(Some(ui::Tab::Rules)), Step::Tab(Some(ui::Tab::Family)), Step::Key(KeyCode::Digit5, false)]);
         // steps are parted by semicolons: commas belong to pick and look
         assert!(parse("key:M,key:M").is_err());
     }

@@ -20,6 +20,10 @@ pub struct Icons {
     pub markets: Handle<Image>,
     pub news: Handle<Image>,
     pub map: Handle<Image>,
+    /// the sandbox's Hand tab
+    pub pen: Handle<Image>,
+    /// the sandbox's Rules tab
+    pub scales: Handle<Image>,
 }
 
 const N: usize = 64;
@@ -50,6 +54,17 @@ impl Canvas {
                     d[i] = (col[i] * a + d[i] * d[3] * (1.0 - a)) / out_a.max(1e-6);
                 }
                 d[3] = out_a;
+            }
+        }
+    }
+
+    /// Cut the shape out of what is painted, with the same soft edge.
+    fn erase(&mut self, sdf: &Sdf) {
+        for y in 0..N {
+            for x in 0..N {
+                let (u, v) = ((x as f32 + 0.5) / N as f32, (y as f32 + 0.5) / N as f32);
+                let a = (0.5 - sdf(u, v) * N as f32).clamp(0.0, 1.0);
+                self.px[y * N + x][3] *= 1.0 - a;
             }
         }
     }
@@ -114,6 +129,49 @@ fn poly(pts: Vec<(f32, f32)>) -> impl Fn(f32, f32) -> f32 {
 
 fn ring(cx: f32, cy: f32, r: f32, t: f32) -> impl Fn(f32, f32) -> f32 {
     move |x, y| (((x - cx).powi(2) + (y - cy).powi(2)).sqrt() - r).abs() - t
+}
+
+/// A stroke of width `2 t` from (ax, ay) to (bx, by), with round ends.
+fn segment(ax: f32, ay: f32, bx: f32, by: f32, t: f32) -> impl Fn(f32, f32) -> f32 {
+    move |x, y| {
+        let (px, py, ex, ey) = (x - ax, y - ay, bx - ax, by - ay);
+        let h = ((px * ex + py * ey) / (ex * ex + ey * ey).max(1e-9)).clamp(0.0, 1.0);
+        ((px - ex * h).powi(2) + (py - ey * h).powi(2)).sqrt() - t
+    }
+}
+
+/// The lower half of a circle: a pan of the scales.
+fn bowl(cx: f32, cy: f32, r: f32) -> impl Fn(f32, f32) -> f32 {
+    let disc = circle(cx, cy, r);
+    move |x, y| disc(x, y).max(cy - y)
+}
+
+fn pen() -> Image {
+    let mut c = Canvas::new();
+    // a dip pen held slanting: the holder, the nib to the lower left, and the line it has drawn
+    c.fill(&poly(vec![(0.52, 0.30), (0.80, 0.02), (0.98, 0.20), (0.70, 0.48)]), WHITE);
+    c.fill(&poly(vec![(0.50, 0.32), (0.68, 0.50), (0.22, 0.78)]), WHITE);
+    // the slit down the nib
+    c.erase(&segment(0.38, 0.62, 0.56, 0.44, 0.022));
+    // and the break between holder and nib
+    c.erase(&segment(0.47, 0.29, 0.73, 0.55, 0.018));
+    c.fill(&rbox(0.36, 0.90, 0.30, 0.03, 0.03), [1.0, 1.0, 1.0, 0.6]);
+    c.image()
+}
+
+fn scales() -> Image {
+    let mut c = Canvas::new();
+    // a pair of scales: the post on its foot, the beam, and a pan hung from each end
+    c.fill(&rbox(0.5, 0.52, 0.035, 0.36, 0.02), WHITE);
+    c.fill(&rbox(0.5, 0.90, 0.20, 0.04, 0.03), WHITE);
+    c.fill(&circle(0.5, 0.15, 0.06), WHITE);
+    c.fill(&rbox(0.5, 0.22, 0.40, 0.025, 0.02), WHITE);
+    for x in [0.18, 0.82] {
+        c.fill(&segment(x, 0.22, x - 0.12, 0.56, 0.014), WHITE);
+        c.fill(&segment(x, 0.22, x + 0.12, 0.56, 0.014), WHITE);
+        c.fill(&bowl(x, 0.56, 0.16), WHITE);
+    }
+    c.image()
 }
 
 fn coin() -> Image {
@@ -219,6 +277,8 @@ pub fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         markets: add(markets()),
         news: add(news()),
         map: add(map()),
+        pen: add(pen()),
+        scales: add(scales()),
     };
     commands.insert_resource(icons);
 }
