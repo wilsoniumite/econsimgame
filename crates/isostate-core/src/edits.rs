@@ -92,6 +92,8 @@ pub const SWITCHES: &[&str] = &[
     "longrun.enabled",
     "transition.enabled",
     "gauges.enabled",
+    "owners.enabled",
+    "tasks.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -109,6 +111,9 @@ pub const SWITCHES: &[&str] = &[
 /// does not promise. The run to 2050's three switches (longrun, the
 /// transition, the gauges) joined both lists when they met the sandbox's
 /// stage 3 on night/g-batch-1, and were tried there as above: all came through.
+/// Its owners and tasks (`owners.enabled`, `tasks.enabled`) joined both on
+/// night/g-batch-2, where they met the Rules tab; both came through, tasks
+/// tried a third time from 1905, after island 7 finds its first machine.
 pub const SWITCHABLE: &[&str] = &[
     "prices.enabled",
     "engel.enabled",
@@ -126,6 +131,8 @@ pub const SWITCHABLE: &[&str] = &[
     "longrun.enabled",
     "transition.enabled",
     "gauges.enabled",
+    "owners.enabled",
+    "tasks.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",

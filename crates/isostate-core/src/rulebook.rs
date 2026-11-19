@@ -153,6 +153,8 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "longrun" => to_json(&P.longrun),
         "gauges" => to_json(&P.gauges),
         "transition" => to_json(&P.transition),
+        "owners" => to_json(&P.owners),
+        "tasks" => to_json(&P.tasks),
         _ => None,
     }
 }
