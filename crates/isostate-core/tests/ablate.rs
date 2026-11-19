@@ -75,7 +75,7 @@ fn an_arm_is_the_sweep_with_the_same_set() {
     assert!(txt.contains(rule));
     let md = std::fs::read_to_string(&page).unwrap();
     assert_eq!(md, std::fs::read_to_string(ad.join("core.md")).unwrap());
-    assert!(md.starts_with("# The core of the island\n\nWritten by `isostate-core ablate` on "), "{md}");
+    assert!(md.starts_with("# The core of the island\n\nWritten by `isostate-core ablate`, played on "), "{md}");
     // the page keeps no path of the machine it was made on
     assert!(md.contains("This one was made by `isostate-core ablate --seeds 1,2 --families 6 --end-year 1800 --quiet --out DIR --only works.keep_order --page FILE`."), "{md}");
     assert!(!md.contains(ad.to_str().unwrap()) && !md.contains(&ad.to_str().unwrap().replace('\\', "/")));
@@ -88,6 +88,12 @@ fn an_arm_is_the_sweep_with_the_same_set() {
     // with two islands a side nothing can stand apart (it takes four a side)
     assert_eq!(doc["rules"][0]["facts_apart"].as_array().map(|a| a.len()), Some(0));
     assert_eq!(doc["rules"][0]["label"], rule);
+
+    // --again reads the table back from its files and gives the same table, playing nothing
+    ablate::command(&strings(&["--again", ad.to_str().unwrap()]), false).expect("the table is read again");
+    assert_eq!(std::fs::read_to_string(ad.join("again").join("ablate.txt")).unwrap(), txt);
+    let again = std::fs::read_to_string(ad.join("again").join("core.md")).unwrap();
+    assert!(again.contains("and read again from its files on "), "{again}");
 }
 
 #[test]

@@ -6,6 +6,7 @@
 //! ```text
 //! isostate-core ablate --out DIR [--only NAME,...] [--seeds 1-8] [--families N] [--end-year Y]
 //!                      [--jobs N] [--no-second] [--page FILE] [--quiet]
+//! isostate-core ablate --again DIR [--page FILE]
 //! ```
 //!
 //! When the paper's model was calibrated, it was gone through every so often
@@ -48,6 +49,19 @@
 //! off together are found: a group is found, one of it is kept on, and the rest
 //! are tried together again, until they are idle.
 //!
+//! Two refinements of the four kinds, both read from the same numbers. A fact
+//! of the twelve that the arm keeps no value of (the books' work's share, with
+//! the books off) holds nothing up: the rule measures it, and is listed as not
+//! keeping it. And with eight islands a side a fact the rule only stirs stands
+//! apart by chance once in 6,435, so among the 2,700 or so facts a rule stirs
+//! about 0.4 stand apart by chance alone ([`chance`]); a rule that shapes the
+//! island with no more than chance gives one time in twenty is marked faint
+//! ([`faint`]).
+//!
+//! `--again DIR` reads a finished table back from the files it wrote and
+//! writes its page anew with this code's reading, playing nothing (a table to
+//! 2050 takes hours on a shared machine); the second pass stays the one played.
+//!
 //! What it writes in `DIR`: `ablate.txt` (the table it prints), `core.md` and
 //! `core.svg` (the page and its chart), `ablate.json` (every arm's numbers),
 //! `README.txt`, and for each arm a directory (`control/`, `off-1/` ...) with
@@ -74,7 +88,8 @@ use crate::standing::{self, FACTS, GROWTH, Verdict};
 use crate::sweep::{self, Run, STAR_RUNS, Setting, Side, Sweep, Then, stat};
 
 pub const USAGE: &str = "usage: isostate-core ablate --out DIR [--only NAME,...] [--seeds 1-8] [--families N] [--end-year Y]
-                            [--jobs N] [--no-second] [--page FILE] [--quiet]";
+                            [--jobs N] [--no-second] [--page FILE] [--quiet]
+       isostate-core ablate --again DIR [--page FILE]";
 
 /// How many of the largest facts apart are named for each rule.
 pub const LARGEST: usize = 5;
@@ -167,6 +182,8 @@ pub struct Options {
     pub jobs: Option<usize>,
     pub second: bool,
     pub page: Option<PathBuf>,
+    /// `--again DIR`: read a finished table in DIR anew and write its page; nothing is played.
+    pub again: bool,
     pub quiet: bool,
     /// The command line, for README.txt and the page.
     pub command: String,
@@ -182,6 +199,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         jobs: None,
         second: true,
         page: None,
+        again: false,
         quiet: false,
         command: format!("isostate-core ablate {}", args.join(" ")),
     };
@@ -208,6 +226,10 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             }
             "--no-second" => o.second = false,
             "--page" => o.page = Some(PathBuf::from(value("--page")?)),
+            "--again" => {
+                out = Some(PathBuf::from(value("--again")?));
+                o.again = true;
+            }
             "--quiet" => o.quiet = true,
             "--rules" => return Err("--rules: the command asks the game's rules, one at a time; under the port's nothing is switched on to turn off".to_string()),
             other => return Err(format!("unknown option {other:?}\n{USAGE}")),
@@ -363,6 +385,8 @@ pub struct Apart {
     pub control: f64,
     pub arm: f64,
     pub size: f64,
+    /// The control or the arm is the same on every island, which chance cannot give.
+    pub certain: bool,
 }
 
 /// What an arm does to the facts, against the control.
@@ -420,7 +444,7 @@ pub fn read_facts(control: &Then, arm: &Then, index: &Index) -> Facts {
             let spread = if sc.max > sc.min { sc.max - sc.min } else { sa.max - sa.min };
             let d = (sa.mean - sc.mean).abs();
             let size = if spread > 0.0 { d / spread } else { f64::INFINITY };
-            f.apart.push(Apart { name: name.clone(), kind, control: sc.mean, arm: sa.mean, size });
+            f.apart.push(Apart { name: name.clone(), kind, control: sc.mean, arm: sa.mean, size, certain: sc.max == sc.min || sa.max == sa.min });
         }
     }
     f.apart.sort_by(|a, b| b.size.total_cmp(&a.size).then_with(|| a.name.cmp(&b.name)));
@@ -445,6 +469,8 @@ pub struct Reading {
     /// Mean processor seconds and seconds on the clock of a run.
     pub cpu: Option<f64>,
     pub clock: Option<f64>,
+    /// The islands both arms finished.
+    pub islands: usize,
 }
 
 /// The growth after 1900 of an arm: each of the three's mean and whether it is met.
@@ -507,19 +533,59 @@ pub fn read(control: &Sweep, arm: &Arm, sw: &Sweep) -> Reading {
     for (n, g, k) in control.fact_index.iter().chain(&sw.fact_index) {
         index.entry(n.clone()).or_insert((*g, *k));
     }
-    let (c, a) = (then_of(control), then_of(sw));
-    let refused = arm.params.as_ref().err().cloned();
+    let failed = sw.runs.iter().filter_map(|r| r.outcome.as_ref().err().map(|e| (r.seed, e.clone()))).collect();
+    let mut r = read_thens(&then_of(control), &then_of(sw), &index, arm.params.as_ref().err().cloned(), failed);
+    (r.label, r.off, r.cpu, r.clock) = (arm.label.clone(), arm.off.clone(), mean_fact(sw, "cpu_seconds"), mean_clock(sw));
+    r
+}
+
+/// An arm read against the control from each one's facts by island (the
+/// label, the names off and the times are left for the caller).
+pub fn read_thens(c: &Then, a: &Then, index: &Index, refused: Option<String>, failed: Vec<(u64, String)>) -> Reading {
     Reading {
-        label: arm.label.clone(),
-        off: arm.off.clone(),
-        failed: sw.runs.iter().filter_map(|r| r.outcome.as_ref().err().map(|e| (r.seed, e.clone()))).collect(),
-        standing: if refused.is_some() { Vec::new() } else { standing_of(&c, &a) },
-        growth: growth_of(&a),
-        facts: if refused.is_some() { Facts::default() } else { read_facts(&c, &a, &index) },
-        cpu: mean_fact(sw, "cpu_seconds"),
-        clock: mean_clock(sw),
+        label: String::new(),
+        off: Vec::new(),
+        failed,
+        standing: if refused.is_some() { Vec::new() } else { standing_of(c, a) },
+        growth: growth_of(a),
+        facts: if refused.is_some() { Facts::default() } else { read_facts(c, a, index) },
+        islands: c.seeds.iter().filter(|s| a.seeds.contains(s)).count(),
+        cpu: None,
+        clock: None,
         refused,
     }
+}
+
+/// How many facts would stand apart by chance alone among those an arm stirs:
+/// two sets of n islands drawn from one spread lie wholly apart with chance
+/// 2 / C(2n, n) (1 in 6,435 with eight a side), for each fact that differs.
+/// Facts move together, so chance gives them in clusters and this is a floor.
+pub fn chance(r: &Reading) -> f64 {
+    let n = r.islands;
+    if n < STAR_RUNS {
+        return 0.0;
+    }
+    let ways = (0..n).fold(1.0f64, |c, k| c * (2 * n - k) as f64 / (k + 1) as f64);
+    r.facts.differ as f64 * 2.0 / ways
+}
+
+/// The chance of `k` or more facts apart by chance alone, as if each stood
+/// apart alone (a Poisson count of mean [`chance`]).
+pub fn chance_of(k: usize, mean: f64) -> f64 {
+    let mut term = (-mean).exp();
+    let mut below = 0.0;
+    for j in 0..k {
+        below += term;
+        term *= mean / (j + 1) as f64;
+    }
+    (1.0 - below).max(0.0)
+}
+
+/// A rule that shapes the island only faintly: no more facts stand apart
+/// than chance alone gives one time in twenty, and none of them is one whose
+/// control or arm is the same on every island (which chance cannot give).
+pub fn faint(r: &Reading) -> bool {
+    role(r) == Role::Shapes && chance_of(r.facts.apart.len(), chance(r)) >= 0.05 && r.facts.apart.iter().all(|a| a.size.is_finite() && !a.certain)
 }
 
 /// The four kinds a rule is sorted into.
@@ -562,7 +628,7 @@ impl Role {
 pub fn role(r: &Reading) -> Role {
     if r.refused.is_some() || !r.failed.is_empty() {
         Role::LeanedOn
-    } else if r.standing.iter().any(|(_, v)| *v != Verdict::Inside) {
+    } else if !held_up(r).is_empty() {
         Role::HoldsUp
     } else if !r.facts.apart.is_empty() {
         Role::Shapes
@@ -571,9 +637,16 @@ pub fn role(r: &Reading) -> Role {
     }
 }
 
-/// The twelve facts not inside, with their verdicts.
+/// The twelve facts that move out of their band, moved or OUTSIDE. A fact the
+/// arm keeps no value of is not counted: the rule measures it, and with the
+/// rule off it is not measured (`unkept`), which says nothing of the century.
 pub fn held_up(r: &Reading) -> Vec<(&'static str, Verdict)> {
-    r.standing.iter().copied().filter(|(_, v)| *v != Verdict::Inside).collect()
+    r.standing.iter().copied().filter(|(_, v)| matches!(v, Verdict::Moved | Verdict::Outside)).collect()
+}
+
+/// The twelve facts the arm keeps no value of.
+pub fn unkept(r: &Reading) -> Vec<&'static str> {
+    r.standing.iter().filter(|(_, v)| *v == Verdict::Missing).map(|(f, _)| *f).collect()
 }
 
 /// Whether an arm is the same island as the control, as far as the command
@@ -735,7 +808,7 @@ fn md_arm(r: &Reading) -> String {
     match role(r) {
         Role::LeanedOn => format!("runs fail ({})", r.failed.iter().map(|(s, w)| format!("island {s}: {w}")).chain(r.refused.clone()).collect::<Vec<_>>().join("; ")),
         Role::HoldsUp => format!(
-            "the century does not stand ({} not inside); {} apart{}",
+            "the century does not stand ({}); {} apart{}",
             held_up(r).iter().map(|(f, v)| format!("`{f}` {}", v.as_str())).collect::<Vec<_>>().join(", "),
             r.facts.apart.len(),
             if r.facts.apart.is_empty() { String::new() } else { format!(", the largest {}", md_largest(r)) }
@@ -774,6 +847,23 @@ fn second_md(t: &Table) -> String {
                 s.together.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
             );
         }
+    }
+    // a table read again (--again) with a reading that sorts the rules otherwise
+    let now: Vec<&str> = t.readings.iter().filter(|r| role(r) == Role::Idle).map(|r| r.label.as_str()).collect();
+    let missing: Vec<String> = now.iter().filter(|n| !s.idle.iter().any(|m| m == *n)).map(|n| format!("`{n}`")).collect();
+    let no_longer: Vec<String> = s.idle.iter().filter(|m| !now.contains(&m.as_str())).map(|n| format!("`{n}`")).collect();
+    if !missing.is_empty() {
+        let _ = writeln!(
+            out,
+            "\n{} {} idle as this page reads the table, and {} not among the rules the second pass turned off together, since the pass was played with the reading of its day; the next table puts {} there.",
+            missing.join(" and "),
+            if missing.len() == 1 { "is" } else { "are" },
+            if missing.len() == 1 { "was" } else { "were" },
+            if missing.len() == 1 { "it" } else { "them" }
+        );
+    }
+    if !no_longer.is_empty() {
+        let _ = writeln!(out, "\n{} {} in the second pass and {} not idle as this page reads the table.", no_longer.join(" and "), if no_longer.len() == 1 { "was" } else { "were" }, if no_longer.len() == 1 { "is" } else { "are" });
     }
     if !s.tried.is_empty() {
         let _ = writeln!(out, "\nThe arms the second pass played, in order:\n");
@@ -830,6 +920,8 @@ pub struct Table {
     pub command: String,
     /// The command as the page shows it, with no path of this machine.
     pub shown: String,
+    /// When the table was read again (`--again`): the day and the code it was read with.
+    pub again: Option<(String, Option<String>)>,
 }
 
 /// The command line as the page shows it: `--out`'s directory as DIR and an
@@ -858,13 +950,24 @@ pub fn shown(args: &[String]) -> String {
 
 fn standing_cell(r: &Reading) -> String {
     let h = held_up(r);
-    if r.standing.is_empty() {
+    let gone = unkept(r);
+    let mut s = if r.standing.is_empty() {
         "-".to_string()
     } else if h.is_empty() {
-        format!("all {} inside", r.standing.len())
+        format!("all {} inside", r.standing.len() - gone.len())
     } else {
         h.iter().map(|(f, v)| format!("{f} {}", v.as_str())).collect::<Vec<_>>().join(", ")
+    };
+    if !gone.is_empty() {
+        let _ = write!(s, "; not kept: {}", gone.join(", "));
     }
+    s
+}
+
+/// A rule's kind as the table names it: "shapes the island (faint)" where
+/// no more stand apart than chance often gives.
+fn kind_word(r: &Reading) -> String {
+    if faint(r) { format!("{} (faint)", role(r).as_str()) } else { role(r).as_str().to_string() }
 }
 
 /// The text the command prints and writes to ablate.txt.
@@ -874,7 +977,8 @@ pub fn text(t: &Table) -> String {
         "The core of the island: {} of the {} rules on under the game's rules, each turned off from {} alone, against the control;\n\
          islands {}, {} families, {} to {}; {} runs, {} failed\n\
          apart: every island of the arm above, or below, every island of the control ({STAR_RUNS} or more a side), of the facts both keep\n\
-         outside Speed and News; size: the change of the means over the control's spread from island to island\n\n",
+         outside Speed and News; size: the change of the means over the control's spread from island to island;\n\
+         chance: how many would stand apart by chance alone among the facts that differ (faint: no more than chance gives one time in twenty)\n\n",
         t.readings.len(),
         t.found,
         t.years.0,
@@ -885,8 +989,8 @@ pub fn text(t: &Table) -> String {
         t.runs,
         t.failed,
     );
-    let head: Vec<String> = ["", "kind", "apart", "differ", "gone", "time", "the twelve"].iter().map(|s| s.to_string()).collect();
-    let sides = [Side::Left, Side::Left, Side::Right, Side::Right, Side::Right, Side::Right, Side::Left];
+    let head: Vec<String> = ["", "kind", "apart", "chance", "differ", "gone", "time", "the twelve"].iter().map(|s| s.to_string()).collect();
+    let sides = [Side::Left, Side::Left, Side::Right, Side::Right, Side::Right, Side::Right, Side::Right, Side::Left];
     let mut rows: Vec<(Option<&'static str>, Vec<String>)> = Vec::new();
     for role_ in Role::ALL {
         let these: Vec<&Reading> = t.readings.iter().filter(|r| role(r) == role_).collect();
@@ -899,8 +1003,9 @@ pub fn text(t: &Table) -> String {
                 None,
                 vec![
                     r.label.clone(),
-                    role_.as_str().to_string(),
+                    kind_word(r),
                     r.facts.apart.len().to_string(),
+                    format!("{:.2}", chance(r)),
                     format!("{}/{}", r.facts.differ, r.facts.both),
                     r.facts.gone.len().to_string(),
                     time_against(r, &t.control),
@@ -1028,7 +1133,13 @@ pub fn chart(t: &Table) -> String {
         let _ = writeln!(s, "<text x=\"{}\" y=\"{}\" text-anchor=\"end\" fill=\"#0b0b0b\">{}</text>", label_w - 8.0, y + 15.0, xml(&r.label));
         // an idle rule or one leaned on has a mark at the axis so its colour shows
         let _ = writeln!(s, "<rect x=\"{label_w}\" y=\"{}\" width=\"{}\" height=\"14\" rx=\"2\" fill=\"{}\"/>", y + 4.0, w.max(4.0), colour(role(r)));
-        let what = if role(r) == Role::LeanedOn { "fails".to_string() } else { n.to_string() };
+        let what = if role(r) == Role::LeanedOn {
+            "fails".to_string()
+        } else if faint(r) {
+            format!("{n}, faint: chance gives {:.1}", chance(r))
+        } else {
+            n.to_string()
+        };
         let _ = writeln!(s, "<text x=\"{}\" y=\"{}\" fill=\"#52514e\">{what}</text>", label_w + w.max(4.0) + 6.0, y + 15.0);
     }
     let base = top + row_h * rows.len() as f64 + 4.0;
@@ -1053,8 +1164,12 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
     let _ = writeln!(p, "# The core of the island\n");
     let _ = writeln!(
         p,
-        "Written by `isostate-core ablate` on {date} (UTC), from the code at {}. Nothing on this page is written by hand: to make it again, run\n",
-        code.map_or("an unknown commit".to_string(), |c| format!("`{c}`"))
+        "Written by `isostate-core ablate`, played on {date} (UTC) from the code at {}{}. Nothing on this page is written by hand: to make it again, run\n",
+        code.map_or("an unknown commit".to_string(), |c| format!("`{c}`")),
+        t.again.as_ref().map_or(String::new(), |(d, c)| format!(
+            ", and read again from its files on {d} with the code at {} (`--again`, which plays nothing)",
+            c.as_deref().map_or("an unknown commit".to_string(), |c| format!("`{c}`"))
+        ))
     );
     let _ = writeln!(p, "```text\nisostate-core ablate --out DIR --page docs/core.md\n```\n");
     let _ = writeln!(p, "This one was made by `{}`.\n", t.shown);
@@ -1075,28 +1190,36 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
     if n >= STAR_RUNS {
         // two sets of n islands drawn from one spread lie wholly apart with chance 2 / C(2n, n)
         let ways = (0..n).fold(1.0f64, |c, k| c * (2 * n - k) as f64 / (k + 1) as f64);
+        let stirred: Vec<f64> = t.readings.iter().filter(|r| r.facts.differ > 0).map(|r| r.facts.differ as f64).collect();
+        let typical = if stirred.is_empty() { 0.0 } else { stirred.iter().sum::<f64>() / stirred.len() as f64 };
         let _ = writeln!(
             p,
-            "With {n} islands a side, a fact the rule does not move at all, only stirs, stands apart by chance once in {} facts: among the four hundred or so facts a rule stirs, {:.2} would stand apart by chance alone.\n",
+            "Read the small counts with care. With {n} islands a side, a fact the rule does not move, only stirs (a rule that changes anything sends each island down another path), stands apart by chance once in {} facts; a rule that stirs the island stirs some {} facts, so {:.2} of them would stand apart by chance alone, and more than that where facts move together. A rule with no more facts apart than chance gives one time in twenty is marked *faint*, unless one of its facts is the same on every island of one arm, which chance cannot give.\n",
             sweep::fmt_fact(Kind::Count, (ways / 2.0).round()),
-            400.0 * 2.0 / ways
+            sweep::fmt_fact(Kind::Count, (typical / 100.0).round() * 100.0),
+            typical * 2.0 / ways
         );
     }
     let _ = writeln!(p, "![Facts that stand apart with each rule off](core.svg)\n");
 
     let _ = writeln!(p, "## Every rule, by kind\n");
-    let _ = writeln!(p, "| rule | kind | facts apart | differ, of those both keep | not kept | the twelve not inside | time of a run |");
-    let _ = writeln!(p, "|---|---|---:|---:|---:|---|---:|");
+    let _ = writeln!(p, "| rule | kind | facts apart | by chance alone | differ, of those both keep | not kept | the twelve out of their band | time of a run |");
+    let _ = writeln!(p, "|---|---|---:|---:|---:|---:|---|---:|");
     for r in Role::ALL {
         for x in by(r) {
             let held = held_up(x);
-            let twelve = if x.standing.is_empty() { "-".to_string() } else if held.is_empty() { "none".to_string() } else { held.iter().map(|(f, _)| format!("`{f}`")).collect::<Vec<_>>().join(", ") };
+            let mut twelve = if x.standing.is_empty() { "-".to_string() } else if held.is_empty() { "none".to_string() } else { held.iter().map(|(f, _)| format!("`{f}`")).collect::<Vec<_>>().join(", ") };
+            let gone = unkept(x);
+            if !gone.is_empty() {
+                let _ = write!(twelve, " (not kept without it: {})", gone.iter().map(|f| format!("`{f}`")).collect::<Vec<_>>().join(", "));
+            }
             let _ = writeln!(
                 p,
-                "| `{}` | {} | {} | {} of {} | {} | {} | {} |",
+                "| `{}` | {} | {} | {:.2} | {} of {} | {} | {} | {} |",
                 x.label,
-                r.as_str(),
+                kind_word(x),
                 x.facts.apart.len(),
+                chance(x),
                 x.facts.differ,
                 x.facts.both,
                 x.facts.gone.len(),
@@ -1107,7 +1230,7 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
     }
     let _ = writeln!(
         p,
-        "\nThe time of a run is the processor's time on a run with the rule off, against the control's ({} s on the clock for a run of the control): under a hundred per cent, the rule costs that much to run.\n",
+        "\nThe time of a run is the processor's time on a run with the rule off, against the control's ({} s on the clock for a run of the control): under a hundred per cent, the rule costs that much to run. It is taken on a machine shared with other work, whose load changed through the table, so only a time far from a hundred per cent says much.\n",
         t.control.clock.map_or("-".to_string(), |c| format!("{c:.0}"))
     );
 
@@ -1275,6 +1398,146 @@ fn write_arms(dir: &Path, arms: &[Arm], sweeps: &[Sweep], first: usize, command:
 
 // ---------------------------------------------------------------- the command
 
+/// One arm's facts read back from its directory's facts.json: each fact by
+/// island, each fact's group and kind, the failed runs, and the mean
+/// processor seconds and seconds on the clock of a run.
+pub struct ArmFile {
+    pub then: Then,
+    pub index: Index,
+    pub failed: Vec<(u64, String)>,
+    pub cpu: Option<f64>,
+    pub clock: Option<f64>,
+}
+
+fn kind_named(s: &str) -> Kind {
+    match s {
+        "year" => Kind::Year,
+        "count" => Kind::Count,
+        "share" => Kind::Share,
+        "ratio" => Kind::Ratio,
+        _ => Kind::Real,
+    }
+}
+
+pub fn read_arm_file(sub: &Path) -> Result<ArmFile, String> {
+    let path = sub.join("facts.json");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let doc: Value = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut index: Index = HashMap::new();
+    for f in doc["facts"].as_array().into_iter().flatten() {
+        let group = match f["group"].as_str().unwrap_or("") {
+            g if g == SPEED => SPEED,
+            g if g == NEWS => NEWS,
+            _ => "",
+        };
+        index.insert(f["name"].as_str().unwrap_or("").to_string(), (group, kind_named(f["kind"].as_str().unwrap_or(""))));
+    }
+    let mut then = Then { label: sub.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()), ..Then::default() };
+    let (mut failed, mut cpu, mut clock) = (Vec::new(), Vec::new(), Vec::new());
+    for run in doc["runs"].as_array().into_iter().flatten() {
+        let seed = run["seed"].as_u64().unwrap_or(0);
+        if run["ok"].as_bool() != Some(true) {
+            failed.push((seed, run["error"].as_str().unwrap_or("failed").to_string()));
+            continue;
+        }
+        then.seeds.push(seed);
+        clock.push((seed, run["seconds"].as_f64().unwrap_or(f64::NAN)));
+        for (name, v) in run["facts"].as_object().into_iter().flatten() {
+            if let Some(v) = v.as_f64() {
+                then.values.entry(name.clone()).or_default().push((seed, v));
+                if name == "cpu_seconds" {
+                    cpu.push((seed, v));
+                }
+            }
+        }
+    }
+    Ok(ArmFile { then, index, failed, cpu: stat(&cpu).map(|s| s.mean), clock: stat(&clock).map(|s| s.mean) })
+}
+
+/// `--again DIR`: a finished table read anew from the files it wrote, with
+/// this code's reading, and its page written again (in `DIR/again/`, and at
+/// `--page`). Nothing is played: the second pass is the one that was played,
+/// and a rule this reading calls idle that the pass did not have is named.
+pub fn again(o: &Options, print: bool) -> Result<(), String> {
+    let dir = &o.out;
+    let path = dir.join("ablate.json");
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).map_err(|e| format!("--again: {}: {e}", path.display()))?).map_err(|e| format!("--again: {}: {e}", path.display()))?;
+    let played_args: Vec<String> = doc["command"].as_str().unwrap_or("").split_whitespace().skip(2).map(String::from).collect();
+    let played = parse_args(&played_args)?;
+    let rules = doc["rules"].as_array().cloned().unwrap_or_default();
+    let control_file = read_arm_file(&dir.join(arm_dir(0)))?;
+    let mut all = Vec::new();
+    let mut k = 1;
+    while dir.join(arm_dir(k)).join("off.txt").exists() {
+        let sub = dir.join(arm_dir(k));
+        let off_text = std::fs::read_to_string(sub.join("off.txt")).map_err(|e| format!("{}: {e}", sub.display()))?;
+        let off: Vec<String> = off_text.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+        let file = read_arm_file(&sub)?;
+        let refused = rules.get(k - 1).and_then(|r| r["refused"].as_str()).map(String::from);
+        let mut index = control_file.index.clone();
+        for (n, g) in &file.index {
+            index.entry(n.clone()).or_insert(*g);
+        }
+        let mut r = read_thens(&control_file.then, &file.then, &index, refused, file.failed.clone());
+        (r.label, r.off, r.cpu, r.clock) = (off.join(" + "), off, file.cpu, file.clock);
+        all.push(r);
+        k += 1;
+    }
+    let first = rules.len().min(all.len());
+    let second_readings = all.split_off(first);
+    let mut control = read_thens(&control_file.then, &control_file.then, &control_file.index, None, control_file.failed.clone());
+    (control.label, control.cpu, control.clock) = ("control".to_string(), control_file.cpu, control_file.clock);
+    let strings = |v: &Value| -> Vec<String> { v.as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from)).collect() };
+    let second = doc["second"].as_object().map(|s| Second {
+        idle: strings(&s["idle"]),
+        joint_same: s["joint_same"].as_bool(),
+        groups: s["groups"].as_array().into_iter().flatten().map(strings).collect(),
+        together: strings(&s["together"]),
+        tried: s["tried"].as_array().into_iter().flatten().map(|t| (strings(&t["off"]), t["same"].as_bool().unwrap_or(false))).collect(),
+    });
+    let mut runs = control_file.then.seeds.len() + control_file.failed.len();
+    let mut failed = control_file.failed.len();
+    for r in all.iter().chain(&second_readings) {
+        runs += r.islands + r.failed.len();
+        failed += r.failed.len();
+    }
+    let found = if played.only.is_some() { asked(&game_params(), &default_params()).0.len() } else { all.len() };
+    let table = Table {
+        control,
+        readings: all,
+        second,
+        second_readings,
+        left_out: doc["left_out"].as_array().into_iter().flatten().map(|l| LeftOut { name: l["name"].as_str().unwrap_or("").to_string(), why: l["why"].as_str().unwrap_or("").to_string() }).collect(),
+        found,
+        seeds: played.seeds.clone(),
+        families: played.families,
+        years: (Rules::Game.content().start_year, played.end_year),
+        runs,
+        failed,
+        jobs: doc["jobs"].as_u64().unwrap_or(0) as usize,
+        seconds_first: doc["seconds_first"].as_f64().unwrap_or(0.0),
+        seconds_second: doc["seconds_second"].as_f64().unwrap_or(0.0),
+        command: played.command.clone(),
+        shown: shown(&played_args),
+        again: Some((crate::record::today(), git_describe())),
+    };
+    let txt = text(&table);
+    let md = page(&table, doc["date"].as_str().unwrap_or("an unknown day"), doc["code"].as_str());
+    let svg = chart(&table);
+    put(dir, "again/ablate.txt", &txt)?;
+    put(dir, "again/core.md", &md)?;
+    put(dir, "again/core.svg", &svg)?;
+    if let Some(p) = &o.page {
+        std::fs::write(p, &md).map_err(|e| format!("--page {}: {e}", p.display()))?;
+        let svg_path = p.with_file_name("core.svg");
+        std::fs::write(&svg_path, &svg).map_err(|e| format!("--page: {}: {e}", svg_path.display()))?;
+    }
+    if print {
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), txt.as_bytes());
+    }
+    Ok(())
+}
+
 /// The `ablate` subcommand: check, play, read, write the files and the page.
 pub fn main_with_args(args: &[String]) -> Result<(), String> {
     command(args, true)
@@ -1288,6 +1551,9 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         return Ok(());
     }
     let o = parse_args(args)?;
+    if o.again {
+        return again(&o, print);
+    }
     let plan = plan(&o)?;
     std::fs::create_dir_all(&o.out).map_err(|e| format!("--out {}: {e}", o.out.display()))?;
     let code = git_describe();
@@ -1360,6 +1626,7 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         seconds_second,
         command: o.command.clone(),
         shown: shown(args),
+        again: None,
     };
     let txt = text(&table);
     let md = page(&table, &date, code.as_deref());
@@ -1444,8 +1711,13 @@ mod tests {
             facts: f,
             cpu: Some(60.0),
             clock: Some(60.0),
+            islands: 4,
         };
         assert_eq!(role(&r), Role::Idle);
+        // a fact of the twelve that the arm does not keep (the rule measures it) holds nothing up
+        let mut watches = r.clone();
+        watches.standing[9].1 = Verdict::Missing;
+        assert_eq!((role(&watches), unkept(&watches)), (Role::Idle, vec!["income_share_work_1850"]));
         // a fact that moves inside the spread keeps it idle; one that stands apart makes it shape the island
         let inside = then("off", &[("pop_1900", [7.1e5, 7.2e5, 7.4e5, 7.5e5]), ("towns_1900", [14.0, 17.0, 18.0, 20.0])]);
         let f2 = read_facts(&control, &inside, &index());
@@ -1455,7 +1727,18 @@ mod tests {
         assert_eq!(f3.apart.len(), 1);
         // 22.75 against 17.25, over the control's spread of 6: 0.92 spreads
         assert!((f3.apart[0].size - 5.5 / 6.0).abs() < 1e-12, "{:?}", f3.apart);
-        assert_eq!(role(&Reading { facts: f3, ..r.clone() }), Role::Shapes);
+        let one = Reading { facts: f3, ..r.clone() };
+        assert_eq!(role(&one), Role::Shapes);
+        // one fact apart among a thousand stirred, on eight islands a side, is what chance gives: faint
+        let mut stirred = one.clone();
+        (stirred.islands, stirred.facts.differ) = (8, 1000);
+        assert!((chance(&stirred) - 1000.0 * 2.0 / 12870.0).abs() < 1e-12 && faint(&stirred));
+        // four apart among them is not, nor is one whose control is the same on every island
+        stirred.facts.apart = vec![stirred.facts.apart[0].clone(); 4];
+        assert!(chance_of(4, chance(&stirred)) < 0.05 && !faint(&stirred));
+        stirred.facts.apart.truncate(1);
+        stirred.facts.apart[0].certain = true;
+        assert!(!faint(&stirred));
         // a standing fact outside its band holds up the century; a failed run is leaned on
         let mut held = r.clone();
         held.standing[2].1 = Verdict::Moved;
