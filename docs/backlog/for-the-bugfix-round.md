@@ -11,3 +11,4 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - Emigrants rise from 17.4 to 63.3 a run with the tree, with one island at 280 (from night/g-tree-land, 2026-11-19)
 - Canal km in 1800 falls from 712 to 523 with the tree (from night/g-tree-land, 2026-11-19)
 - The books' copy of the island grows to 4.3 MB with the tree; the bound in tests/accounts.rs was raised from 3 MB to 5 MB (from night/g-tree-land, 2026-11-19)
+- The square card's line 'the way to market 0.424, as many squares of open lowland' reads stiffly (crates/isostate-core/src/inspect.rs, Market group); seen in the printed card for the square at 43,75 (from night/g-sandbox-2-tell, 2026-11-19)
