@@ -927,13 +927,14 @@ pub(crate) const UNKNOWN: [Unknown; 8] = [
 /// so the lab and the tests take them from here and draw them without a run.
 /// The station and the electrical works are stage 6's as data/game.toml has
 /// them on 19 November 2026; the nitrogen works and oil from coal are stage
-/// 7's, as its own branch had them that day. The plant is the `capital` line
+/// 7's, as its own branch had them that day, the nitrogen works making
+/// fertiliser at a tenth of its old unit since the land's century. The plant is the `capital` line
 /// at the goods' base prices (building 2.2, steel 30, machinery 70). The game
 /// itself hands the planner each method's process as the run has it.
 pub(crate) const LATER: [Unknown; 4] = [
     ("coal_power_station", &[("coal", 1.6, 0.9, 1.1)], 0.0, 0.1, 72.2, ("electricity", 20.0, 1.2)),
     ("electrical_works", &[("steel", 1.0, 30.0, 0.25), ("chemicals", 0.9, 4.5, 0.1), ("glass", 1.0, 9.0, 0.05)], 1.0, 0.45, 100.5, ("electricals", 0.5, 7.0)),
-    ("nitrogen_works", &[("coal", 1.6, 0.9, 1.5), ("electricity", 20.0, 1.2, 1.2)], 0.0, 0.1, 135.2, ("chemicals", 0.9, 4.5)),
+    ("nitrogen_works", &[("coal", 1.6, 0.9, 0.15), ("electricity", 20.0, 1.2, 0.12)], 0.0, 0.01, 13.5, ("fertiliser", 1.0, 1.0)),
     ("oil_from_coal", &[("coal", 1.6, 0.9, 4.0), ("electricity", 20.0, 1.2, 0.5)], 0.0, 0.05, 36.1, ("oil", 1.0, 1.0)),
 ];
 

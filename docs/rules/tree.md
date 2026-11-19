@@ -844,8 +844,32 @@ seconds aside, 0 differ").
 |---|---|
 | `oil`, Oil | weight 1, base price 1, decay 0.002 a month, no opening stock, keeps; fuel and light at 3.5 a unit, and a fuel a works may burn at 3.5 a unit of heat. Opens at its ceiling price (`opens_dear`), as electricity does: at its base price it would be the island's cheapest warmth in 1750, and nobody has any until it is made |
 | `oil_from_coal`, Oil from coal | coal 4 and electricity 0.5 a unit, labour 0.05, no heat of its own; plant 3 years of its output, kind M; usual size 400; the coal trade; aimed at 1925 |
-| `nitrogen_works`, Nitrogen works | makes soap and chemicals from coal 1.5 and electricity 1.2, labour 0.1; plant 2.5 years of its output, kind M; usual size 150; the coal trade, as the alkali works; aimed at 1915 |
+| `fertiliser`, Fertiliser | weight 1, base price 1, decay 0.002 a month, no opening stock, keeps; opens at its ceiling price as oil does. Only the nitrogen works make it and only the farms that keep nitrogen buy it (below) |
+| `nitrogen_works`, Nitrogen works | makes fertiliser from coal 0.15 and electricity 0.12, labour 0.01; plant 2.5 years of its output, kind M; usual size 1,500; the coal trade, as the alkali works; aimed at 1915 |
 | `breeding`, Breeding and sprays | an invention, not a works; aimed at 1950 |
+
+**The nitrogen works make fertiliser** (since the land's century was made to
+work, 19 November 2026). They made soap and chemicals at coal 1.5 and
+electricity 1.2 a unit, and no island ever built one: at the island's prices
+that running cost alone was six to eleven times what the ammonia-soda works
+sold chemicals for. Two things were wrong. The good: fixed nitrogen is not
+soda, and a nitrogen works cheap enough to sell chemicals would have taken the
+soda works' whole market (soap, glass, the electrical works' chemicals). And
+the numbers: the farms buy 0.03 of the works' good a unit of grain, and at
+the old recipe that good could never pay. So the works now make a good of
+their own, which nothing but the farms' nitrogen buys
+(`machines::NITROGEN_GOOD`; breeding's sprays are still soap and chemicals),
+and a unit of it is a tenth of the old unit: the recipe, the plant and the
+usual size are the old ones over ten, so a farm's 0.03 a unit of grain is
+fertiliser a tenth as dear. On islands 1 to 16 the works are built on every
+island, the year after they are found (first output 1906 to 1929), and
+fertiliser costs 0.85 a unit in 1940 and 0.98 in 1970, about what chemicals
+cost, so the farms keep nitrogen about as they did (0.45 of the farms' output
+in 1950 and 1970, against 0.42): the knot was the works, not the farms'
+nitrogen, which they had always bought from the soda works. Breeding is found
+on chemicals made, among which the farms' nitrogen had been counted; its
+threshold was lowered from 110 to 75 million to aim it at 1950 again
+([machines.md](machines.md), "Nitrogen and breeding").
 
 Each method has its row of classes of task in `data/tasks.toml` (oil from
 coal .25 .50 .05 .20 0, the nitrogen works .10 .50 .05 .35 0) and names

@@ -757,9 +757,10 @@ fn a_copy_of_the_island_shares_the_years_put_away() {
     // what does go with a copy is the year in progress, whose works' rows are for the works there are
     // (a few hundred here), not for the twenty thousand there is room for, which were 11 MB of nothing;
     // with the production tree's 25 goods and 44 methods the year in progress is 4.3 MB on this island
-    // (it was under 3 with the port's 16 goods), so the bound is 5 MB
+    // (it was under 3 with the port's 16 goods), so the bound was 5 MB; with the content after
+    // 1900's four goods, the last of them fertiliser, it is 5.13 MB, so the bound is 5.5 MB
     let copied = g.sim.st.acct.copied_bytes();
-    assert!(copied < 5_000_000, "a copy takes {copied} bytes of the books");
+    assert!(copied < 5_500_000, "a copy takes {copied} bytes of the books");
 
     // the copies an order makes come and go, and the game's history is where it was
     let seat = g.sim.st.families[0].seat;

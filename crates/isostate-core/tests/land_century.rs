@@ -69,14 +69,18 @@ fn the_land_machines_table_has_its_old_rows_at_stage_one() {
 }
 
 /// Nitrogen multiplies what the farm makes with its machines, and the farms
-/// that keep it buy chemicals for their whole output.
+/// that keep it buy fertiliser, the nitrogen works' own good, for their whole
+/// output.
 #[test]
-fn nitrogen_multiplies_the_crop_and_is_paid_for_in_chemicals() {
+fn nitrogen_multiplies_the_crop_and_is_paid_for_in_fertiliser() {
     let (mut s, town) = at_start(6);
     let (C, P) = (s.content.clone(), s.params.clone());
     let farm = sector(&C, "farm");
     let nitrogen = C.tech_name.iter().position(|n| n == machines::NITROGEN.0).unwrap();
-    let gc = C.gi("chemicals");
+    let gc = C.gi(machines::NITROGEN_GOOD);
+    // and only the nitrogen works makes it
+    let makers: Vec<&str> = (0..C.M).filter(|&m| C.method_out[m] == gc).map(|m| C.method_name[m].as_str()).collect();
+    assert_eq!(makers, [machines::NITROGEN.0]);
     s.st.machine_stock = Mat::default(); // no month counted yet: the improvements standing are those kept up
     // chemicals for nothing: every farm that knows keeps it
     let mut price = s.st.price.clone();

@@ -771,6 +771,8 @@ pub fn end_year(sim: &mut Sim) {
     // tasks (docs/rules/tasks.md): the year's machines, before the gauges read
     // their book; and what is found for the next year
     crate::tasks::close_year(st, C, P, year);
+    // machines: the ceiling's ramp for the next year (a stand-in, off unless set)
+    crate::machines::close_year(st, P, year + 1);
     // gauges: read off the books just closed
     crate::gauges::close_year(st, C, P, year);
     // owners: who holds the works and who was paid by them (docs/rules/owners.md)

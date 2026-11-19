@@ -65,6 +65,7 @@ goods = [
   { name = "electricity", label = "Electricity", weight = 20.0, price = 1.2, color = "#8cc4ea", stock0 = 0.0, traded = false, stock_months = 0.0, opens_dear = true, stage = 6 },
   { name = "electricals", label = "Electrical goods", weight = 0.5, price = 7.0, color = "#b8733b", decay = 0.003, stock0 = 0.0, opens_dear = true, stage = 6 },
   { name = "oil", label = "Oil", weight = 1.0, price = 1.0, color = "#5a4a2e", decay = 0.002, stock0 = 0.0, opens_dear = true, stage = 6 },
+  { name = "fertiliser", label = "Fertiliser", weight = 1.0, price = 1.0, color = "#9fb86a", decay = 0.002, stock0 = 0.0, opens_dear = true, stage = 6 },
 ]
 # The sixteen goods of the port take decay and stock0 from the tables they have always been in
 # (P.decay in params.rs, `guess` in sim.rs). Building work and town gas are not carried between
@@ -78,6 +79,9 @@ goods = [
 # island has no oilfield, so its oil is made from coal. It keeps, and it opens at its ceiling price as
 # electricity does: at its base price of 1 it would be the cheapest warmth on the island in 1750, a good
 # nobody has until oil is made from coal.
+# Fertiliser (stage 6, the land's twentieth century: docs/rules/tree.md, "Oil, nitrogen and the land"):
+# nitrogen fixed from the air, which only the nitrogen works make and only the farms that keep nitrogen
+# buy. It keeps, and it opens at its ceiling price, as oil does: nobody has it until a works makes it.
 
 [services]
 # Two needs are added. "warmth" keeps its name and is shown as "Fuel and light": gas sells into it, and
@@ -990,17 +994,26 @@ headline = "Oil distilled from coal at {town}"
 story = "{who} heats coal under hydrogen in steel retorts at {town} and draws off oil by the barrel. It is dear oil, three times the price of the same heat in coal, but a tractor cannot burn coal."
 
 # UNIT SUMS: see below.
-# Plant 135.0 a unit of monthly capacity at base prices (2.5 years of output: building 40.5, steel 13.5,
-# machinery 81.0).
+# RUN (19 November 2026): it made chemicals, at coal 1.5 and electricity 1.2 a unit, and was never built on
+# any island: at the island's prices its running cost alone was 6 to 11 times the price of chemicals, which
+# the ammonia-soda works sell at about 1. Now it makes a good of its own, fertiliser, which the farms that
+# keep nitrogen buy and nobody else does; and a unit of fertiliser is a tenth of the design's unit of fixed
+# nitrogen, so that its recipe, its plant and its works' size are the design's over ten, and the farms'
+# 0.03 a unit of grain is fertiliser a tenth as dear as the design's chemicals. At island 7's mean prices of
+# 1930 (coal 0.44, electricity about 3 where a station stands, wage 10.1) a unit costs some 0.6 to run,
+# where nitrogen pays a farm at any price below 12.5 times grain's (about 2.7) and pays every farm below
+# about 0.4.
+# Plant 13.5 a unit of monthly capacity at the design's base prices (2.5 years of output: building 4.05,
+# steel 1.35, machinery 8.1).
 [[method]]
 name = "nitrogen_works"
 label = "Nitrogen works"
-output = "chemicals"
-inputs = { coal = 1.5, electricity = 1.2 }
+output = "fertiliser"
+inputs = { coal = 0.15, electricity = 0.12 }
 heat = 0.0
-labor = 0.1
-capital = { building = 18.4, steel = 0.45, machinery = 1.16 }
-K0 = 150.0
+labor = 0.01
+capital = { building = 1.84, steel = 0.045, machinery = 0.116 }
+K0 = 1500.0
 known = false
 A0 = 1.0
 discover = { chemicals = 34000000.0, electricity = 100000.0 }
@@ -1015,7 +1028,11 @@ story = "{who} fixes the nitrogen of the air with coal and electric power at {to
 [[tech]]
 name = "breeding"
 label = "Breeding and sprays"
-discover = { chemicals = 110000000.0 }
+# RUN (19 November 2026): 110 million while the farms' nitrogen was bought as chemicals and counted among
+# the chemicals made; once it is fertiliser of its own the islands made about 83 million by 1950 (59 to 96
+# on islands 1 to 16), and breeding came in 1958 on the mean island (1925 to 1981). At 75 million it is
+# aimed at 1950 again.
+discover = { chemicals = 75000000.0 }
 target = 1950
 stage = 6
 headline = "New strains and sprays at {town}"

@@ -103,8 +103,8 @@ methods = ["services", "emporium"]
 # ----------------------------------------------------------------------------------------------------
 # The land's seven sectors and the carters. Under `tasks.land` a land unit pays its share for work to a
 # mixture of hands and machine units, in these classes, wherever a machine below names its sector in
-# `on`. With the content after 1900 the tractor names the farms, the pastures and the woods, and the
-# cutter the pits; no machine names the carters yet, so their shares wait. The land's machines of
+# `on`. With the content after 1900 the tractor names the farms, the pastures and the woods, the combine
+# the farms' and the pastures' tending, and the cutter the pits; no machine names the carters yet, so their shares wait. The land's machines of
 # docs/rules/machines.md (farm machinery, nitrogen, breeding) stand beside these.
 # ----------------------------------------------------------------------------------------------------
 
@@ -279,3 +279,37 @@ found_after = 1920
 discover = { electricals = 600000.0 }
 scale = 1.0
 replaces = "hoist"
+
+# The combine and the milking machine: tending on the farms and the pastures (reaping, threshing,
+# milking, driving the field's machines), from the content after 1900. Made of machinery and steel,
+# six tenths and four tenths by value (motor vehicles are a later stage's good, as for the tractor), and
+# run on oil. It may hold the easier three fifths of tending, never the whole of it: judging when to
+# reap, and the beasts' care, stay with hands.
+#
+# Sized as the tractor was, to the design's first share: when found a unit costs a quarter of a month's
+# wage, of which six tenths is return and wear ((0.12 + 1/12) / 12 a month on 8.85 months' wages of
+# plant), a tenth its minders (0.025 of a hand) and the rest oil. At that cost a hand is worth four
+# units, so the combine takes ln(4) / ln(1000) = 0.20 of tending. Read from island 7's means of 1940 under
+# the game's rules with six families (wage 10.55 a month, machinery 2.77, steel 2.53, oil 6.42): plant
+# 20.2 machinery and 14.8 steel, oil 0.123 a month.
+#
+# Found on oil made, from 1935: at 100,000 units of oil, which islands 1 to 16 had made between 1932
+# and 1951 (island 13, the last to make oil, is the late one); found from 1935 on the rest.
+[[use]]
+name = "combine"
+class = "tend"
+on = ["farm", "pasture"]
+from = 0.0
+reach = 0.6
+plant = { machinery = 20.2, steel = 14.8 }
+run = { oil = 0.123 }
+minders = 0.025
+life = 12.0
+pace = 0.04
+cap = 6.0
+found_after = 1935
+discover = { oil = 100000.0 }
+# Refitted once (19 November 2026): at 1.0 the towns' share in the year found was 0.194 on the mean of
+# islands 1 to 16 (0.162 to 0.214), so the unit was made exp(ln(1000) * (0.194 - 0.2)) = 0.96 times as
+# dear, to bring the mean to 0.20.
+scale = 0.96
