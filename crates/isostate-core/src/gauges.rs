@@ -47,15 +47,6 @@ impl GaugesParams {
     }
 }
 
-/// The share of a method's hands whose work no machine may do, by the
-/// method's name; every method and land sector not named has none. Until the
-/// classes of task are built (`tasks`, stage 5 of the run to 2050), this is
-/// the one number of them the floor needs, and it stands here: the first
-/// value for shops and trades, a tenth. The land, the carters, the navvies and
-/// the managers have none. When the classes are in the content, the floor
-/// reads them from there and this table goes.
-pub const PRESENCE: [(&str, f64); 1] = [("services", 0.10)];
-
 /// Years a method counts as new work after it is found.
 pub const NEW_WORK_YEARS: i64 = 40;
 
@@ -160,7 +151,7 @@ pub struct GaugeYear {
     /// all spending: the part of spending paid for out of pay.
     pub spend_by_pay: f64,
     /// Work's share of spending if every hand's work but that which no
-    /// machine may do (`PRESENCE`) cost nothing, each good's price falling
+    /// machine may do (the class of presence, `tasks`) cost nothing, each good's price falling
     /// with it, with recipes and the money shares of spending held.
     pub floor: f64,
     /// That work's part of spending at today's prices.
@@ -219,10 +210,21 @@ pub struct Gauges {
     last: Option<(Vec<f64>, Vec<f64>)>,
     level: [f64; 3],
     wage0: f64,
+    /// The methods that hold any presence, and their share (for the run file).
+    presence: Vec<(String, f64)>,
 }
 
+/// The share of a method's hands whose work no machine may do: its share of
+/// the class of presence in the content's classes of task (`tasks`,
+/// `data/tasks.toml`; the shops and trades hold a tenth). A content without
+/// them, as the port's, has none.
 fn presence(C: &Content, m: usize) -> f64 {
-    PRESENCE.iter().find(|(n, _)| *n == C.method_name[m]).map_or(0.0, |&(_, v)| v)
+    C.tasks.method.get(m).map_or(0.0, |s| s[crate::tasks::PRESENCE])
+}
+
+/// Each method that holds any presence, with its share, for the run file.
+fn presence_list(C: &Content) -> Vec<(String, f64)> {
+    (0..C.M).filter(|&m| presence(C, m) > 0.0).map(|m| (C.method_name[m].clone(), presence(C, m))).collect()
 }
 
 /// The hand method of each good: of the methods known in the first year that
@@ -306,6 +308,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         return;
     }
     let mut ga = std::mem::take(&mut st.gauges);
+    if ga.presence.is_empty() {
+        ga.presence = presence_list(C);
+    }
     let y = reckon(st, C, P, year, &mut ga);
     let k0 = ((year - st.acct.start_year).max(0) as usize) * 12;
     for (name, v) in headline(&y) {
@@ -525,7 +530,13 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
     let presence_today = ratio((0..G).map(|g| final_g[g] * x[g * 4 + 3]).sum(), total_final);
 
     // ---- plant
-    let works_value = isl.works_value;
+    let mut works_value = isl.works_value;
+    // tasks (docs/rules/tasks.md): the machines for tasks are plant too, at
+    // their book, and what of them wore out in the year is wear
+    if let Some((book, wear)) = crate::tasks::book_of(st, year) {
+        works_value += book;
+        wear_total += wear;
+    }
     let net_income = isl.income - wear_total;
     let build_total: f64 = build_g.iter().sum();
 
@@ -631,7 +642,7 @@ fn reckon(st: &State, C: &Content, P: &Params, year: i64, ga: &mut Gauges) -> Ga
             }
         }
     }
-    let families_works = fam_works.iter().map(|&v| ratio(v, works_value)).collect();
+    let families_works = fam_works.iter().map(|&v| ratio(v, isl.works_value)).collect();
     let families_land = isl.to_families.iter().map(|fam| ratio(P.years_purchase * fam.rents, isl.land_value)).collect();
 
     GaugeYear {
@@ -706,7 +717,7 @@ pub fn header(st: &State) -> Option<serde_json::Value> {
         return None;
     }
     Some(serde_json::json!({
-        "presence": PRESENCE,
+        "presence": st.gauges.presence,
         "years": serde_json::to_value(&st.gauges.years).expect("the gauges serialise"),
     }))
 }

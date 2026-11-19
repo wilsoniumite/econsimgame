@@ -422,6 +422,11 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
 
     let mut C = content_from_raw(&raw).map_err(|e| format!("tree: {e}"))?;
     C.stage = stage;
+    // tasks (docs/rules/tasks.md): the game's table, laid again on the new
+    // methods by name, where the content laid over had it
+    if !base.tasks.is_empty() {
+        crate::tasks::fill(&mut C);
+    }
     Ok(C)
 }
 

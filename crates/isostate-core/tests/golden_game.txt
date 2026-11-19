@@ -58,7 +58,15 @@
 # are paid their part of the dividends of the works they put money into, so
 # the households have less and the landlords more, which is another history.
 # With the switch off in game_params() the four above held.
+# Then on night/g-to2050-5-tasks (19 November 2026): books and run.bin moved,
+# economy and news held. The machines for tasks (tasks.enabled,
+# docs/rules/tasks.md) are switched on, but nothing can be found before 1901,
+# so the economy to 1900 is the owners' to the byte. What moved is the
+# gauges' floor, which now reads the class of presence from the content's
+# classes of task, where the emporium holds a tenth as the services do (its
+# series is among the books' columns), and in run.bin the gauges' list of
+# presence and the params, which now carry the switch.
 economy  0x9a6b3ba24a097bd1
-books    0x53d14f1e67f42dc0
+books    0xfa5dd1db28f62894
 news     0x9f83de6e9e162ab1
-run.bin  0x9efa7a65e544e248
+run.bin  0xdb99a5e2a2c197f3
