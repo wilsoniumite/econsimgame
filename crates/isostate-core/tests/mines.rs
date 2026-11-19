@@ -106,11 +106,15 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
         // tree laid no common fund on islands 1 to 10 is in debt for a single month
         // to 1770, with six families or none. The rule is the commons' own and the
         // tree does not touch it, so it is tried on the island as it was without it.
+        // And on the old island: since the game's rules took the new land
+        // (docs/rules/land.md, "The switch") island 3 is another island, so the
+        // case is played with the land off.
         let mut P = commons(3, families, end_year);
         P.hands.ration = false;
         P.works.spread_first = false;
         P.works.keep_order = false;
         P.tree = Default::default();
+        P.land = Default::default();
         let mut s = sim::start(&P, game_content());
         let money = s.st.money_start;
         let (mut months, mut deepest) = (0, 0.0f64);

@@ -599,10 +599,11 @@ pub fn game_params() -> Params {
     P.towns = TownsParams::game();
     P.mines = crate::mines::MineParams::game();
     P.canals = crate::canals::CanalParams::game();
-    // land (docs/rules/land.md) is not switched on yet: the viewer cannot draw
-    // it. It stands beside the mines and the canals, and every test passes
-    // with it thrown ("On the integration branch" in its page). When it is,
-    // the line is `P.land = crate::landform::LandParams::game();`.
+    // land (docs/rules/land.md, "The switch"): the island made by uplift,
+    // erosion and water, the game's own since 19 November 2026. The port's
+    // island is reached with `--set land.enabled=false` (a sweep, the
+    // laboratory) or `save::Game::on_old_land` (the viewer's `--old-land`).
+    P.land = crate::landform::LandParams::game();
     P.tree = crate::tree::TreeParams::game();
     P.accounts = crate::accounts::AccountsParams::game();
     P.gauges = crate::gauges::GaugesParams::game();

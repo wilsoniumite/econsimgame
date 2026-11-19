@@ -803,6 +803,10 @@ fn towns_and_districts_have_stories() {
     // inventions are sought every year from 1750, and each draw of the dice moves
     // every draw after it
     P.tree.stage = 1;
+    // and on the old island: since the game's rules took the new land
+    // (docs/rules/land.md, "The switch") seed 3 is another island, so this half is
+    // played with the land off (seed 7's half above is played on the new land)
+    P.land = Default::default();
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(digests_of_new_towns(&early) >= 1, "seed 3 has a decade of new towns before 1800");
 }
