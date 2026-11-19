@@ -410,6 +410,7 @@ fn a_new_edit_refused_leaves_no_trace() {
         Edit::Rule { name: "T_max".into(), value: serde_json::json!(60) },
         Edit::Rule { name: "land.enabled".into(), value: serde_json::json!(true) },
         Edit::Rule { name: "accounts.works".into(), value: serde_json::json!(false) },
+        Edit::Rule { name: "tree.stage".into(), value: serde_json::json!(0) },
         Edit::Rule { name: "no_such_rule".into(), value: serde_json::json!(1) },
         Edit::Rule { name: "money.growth".into(), value: serde_json::json!("a lot") },
         Edit::Rule { name: "prices".into(), value: serde_json::json!({"enabled": false}) },

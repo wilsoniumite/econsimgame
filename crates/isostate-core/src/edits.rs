@@ -42,9 +42,14 @@ const PEOPLE_BOUNDS: (f64, f64) = (0.1, 10.0);
 const HARVEST_BOUNDS: (f64, f64) = (0.2, 2.0);
 
 /// The rules' names a `Rule` edit may not set (section 2.7 of the design): those
-/// that size the run or are read only at its start. A name is refused when its
-/// first part is one of these, so `land` and `accounts` are refused whole.
+/// that size the run or are read only at its start. A name is refused when it
+/// is one of these or its first part is, so `land` and `accounts` are refused
+/// whole. The production tree's stage, its file and its seeded trades are laid
+/// over the content as the run begins (`tree::content`), and are refused too.
 pub const FIXED_AT_START: &[&str] = &[
+    "tree.stage",
+    "tree.file",
+    "tree.seed_trades",
     "seed",
     "W",
     "H",
@@ -374,7 +379,7 @@ fn discover(sim: &mut Sim, name: &str, town: usize) -> Result<((String, String, 
 /// section 2.7 of the design.
 fn rule(sim: &mut Sim, name: &str, value: &serde_json::Value) -> Result<(String, String, Option<usize>), String> {
     let first = name.split('.').next().unwrap_or_default();
-    if FIXED_AT_START.contains(&first) {
+    if FIXED_AT_START.contains(&first) || FIXED_AT_START.contains(&name) {
         return Err(format!("the rule {name} sizes the island or is read only as a run begins, and cannot be changed in the middle of one"));
     }
     if SWITCHES.contains(&name) && !SWITCHABLE.contains(&name) {
