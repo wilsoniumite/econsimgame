@@ -885,6 +885,172 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
     Water { k: g.k, w: g.w, h: g.h, z, sea, rt, lake_id, lakes, flow, hand, wet, owner, rivers, oxbows, rain, runoff, drowned }
 }
 
+/// The shape of a river's bends, for measuring: what `river_shape` finds on the
+/// stretches of a line it is asked about, added up over as many lines as are
+/// given it. Every length is in widths of the river where it is measured.
+#[derive(Clone, Debug, Default)]
+pub struct Shape {
+    /// Length along the channel, and along the valley (the sum of straight
+    /// chords over pieces of the channel 30 widths long).
+    pub channel: f64,
+    pub valley: f64,
+    /// Each bend between two inflections: its tightest radius of curvature.
+    pub radius: Vec<f64>,
+    /// Each pair of bends: the straight distance from the first's start to the second's end.
+    pub wavelength: Vec<f64>,
+    /// Places where the channel comes back within two widths of itself after
+    /// running at least eight widths away: loops near cutting themselves off.
+    pub necks: usize,
+}
+
+impl Shape {
+    pub fn sinuosity(&self) -> f64 {
+        if self.valley > 0.0 { self.channel / self.valley } else { 0.0 }
+    }
+
+    pub fn add(&mut self, o: &Shape) {
+        self.channel += o.channel;
+        self.valley += o.valley;
+        self.radius.extend_from_slice(&o.radius);
+        self.wavelength.extend_from_slice(&o.wavelength);
+        self.necks += o.necks;
+    }
+}
+
+/// Measure the bends of one line (`pts` and `width` in the same units, a
+/// river's points from the source down) over the stretches where `keep` is
+/// true. Curvature is read through three points a width apart along the
+/// channel, so a wiggle smaller than the river is not a bend; a bend begins
+/// where the curvature changes side and grows to a radius of 25 widths or less.
+pub fn river_shape(pts: &[(f64, f64)], width: &[f64], keep: &[bool]) -> Shape {
+    let mut out = Shape::default();
+    let n = pts.len();
+    let mut i = 0;
+    while i < n {
+        if !keep[i] {
+            i += 1;
+            continue;
+        }
+        let a = i;
+        while i < n && keep[i] {
+            i += 1;
+        }
+        if i - a >= 3 {
+            out.add(&stretch_shape(&pts[a..i], &width[a..i]));
+        }
+    }
+    out
+}
+
+fn stretch_shape(pts: &[(f64, f64)], width: &[f64]) -> Shape {
+    let mut s = Shape::default();
+    // the stretch resampled every quarter of its narrowest width
+    let wmin = width.iter().cloned().fold(f64::INFINITY, f64::min).max(1e-9);
+    let h = 0.25 * wmin;
+    let (mut p, mut w) = (vec![pts[0]], vec![width[0]]);
+    let mut need = h;
+    for k in 1..pts.len() {
+        let (a, b) = (pts[k - 1], pts[k]);
+        let seg = (b.0 - a.0).hypot(b.1 - a.1);
+        let mut at = 0.0;
+        while seg - at >= need {
+            at += need;
+            let t = at / seg;
+            p.push((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+            w.push(width[k - 1] + (width[k] - width[k - 1]) * t);
+            need = h;
+        }
+        need -= seg - at;
+    }
+    let m = p.len();
+    let wmean = w.iter().sum::<f64>() / m as f64;
+    if (m as f64) * h < 4.0 * wmean {
+        return s;
+    }
+    // sinuosity: channel over chords, pieces of 30 widths (a last piece under 10 left out)
+    let mut start = 0;
+    let mut run = 0.0;
+    for k in 1..m {
+        run += h / w[k];
+        if run >= 30.0 || k == m - 1 {
+            if run >= 10.0 {
+                let chord = (p[k].0 - p[start].0).hypot(p[k].1 - p[start].1);
+                let wm = w[start..=k].iter().sum::<f64>() / (k - start + 1) as f64;
+                s.channel += run;
+                s.valley += chord / wm;
+            }
+            start = k;
+            run = 0.0;
+        }
+    }
+    // signed curvature times width, through points a width either side
+    let mut kw = vec![0.0f64; m];
+    for k in 0..m {
+        let off = ((w[k] / h).round() as usize).max(1);
+        if k < off || k + off >= m {
+            continue;
+        }
+        let (a, b, c) = (p[k - off], p[k], p[k + off]);
+        let (ux, uy, vx, vy) = (b.0 - a.0, b.1 - a.1, c.0 - b.0, c.1 - b.1);
+        let (la, lb, lc) = (ux.hypot(uy), vx.hypot(vy), (c.0 - a.0).hypot(c.1 - a.1));
+        if la * lb * lc > 0.0 {
+            kw[k] = 2.0 * (ux * vy - uy * vx) / (la * lb * lc) * w[k];
+        }
+    }
+    // bends: a change of side counts once the new side's curvature reaches 1/25
+    let mut infl: Vec<usize> = Vec::new();
+    let (mut side, mut zero) = (0.0f64, 0usize);
+    for k in 1..m {
+        if kw[k] * kw[k - 1] <= 0.0 {
+            zero = k;
+        }
+        if kw[k].abs() >= 0.04 && kw[k].signum() != side {
+            if side != 0.0 {
+                infl.push(zero);
+            }
+            side = kw[k].signum();
+        }
+    }
+    for j in 1..infl.len() {
+        let tight = kw[infl[j - 1]..infl[j]].iter().map(|v| v.abs()).fold(0.0, f64::max);
+        s.radius.push(1.0 / tight.max(1e-9));
+        if j >= 2 {
+            let (a, b) = (p[infl[j - 2]], p[infl[j]]);
+            let wm = w[infl[j - 2]..=infl[j]].iter().sum::<f64>() / (infl[j] - infl[j - 2] + 1) as f64;
+            s.wavelength.push((b.0 - a.0).hypot(b.1 - a.1) / wm);
+        }
+    }
+    // necks: a point that has run 8 widths or more along the channel and is back within 2 of an earlier one
+    let mut along = vec![0.0f64; m];
+    for k in 1..m {
+        along[k] = along[k - 1] + h / w[k];
+    }
+    let mut k = 0;
+    while k < m {
+        let mut found = None;
+        for j in (k + 1)..m {
+            if along[j] - along[k] < 8.0 {
+                continue;
+            }
+            if along[j] - along[k] > 200.0 {
+                break;
+            }
+            if (p[j].0 - p[k].0).hypot(p[j].1 - p[k].1) < 2.0 * w[k] {
+                found = Some(j);
+                break;
+            }
+        }
+        match found {
+            Some(j) => {
+                s.necks += 1;
+                k = j;
+            }
+            None => k += 1,
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

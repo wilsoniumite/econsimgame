@@ -400,6 +400,98 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
     rivers.into_iter().filter(|rv| rv.pts.len() >= 2).collect()
 }
 
+/// `ISOSTATE_RIVER_REPORT=1`: measure the bends of the old island's rivers as
+/// drawn (`isostate_core::landwater::river_shape`, in widths of the ribbon of
+/// water), and stop. True if it was asked for. The plains are where the water
+/// falls less than 0.012 a cell, below which the bends are given their full
+/// swing, the steep reaches where it falls more than 0.09, where they are
+/// given their least; the plains are split at a ribbon 0.05 of a cell wide
+/// (100 m). The new land's rivers are the core's lines, measured by the core's
+/// `river_shape` example.
+pub fn maybe_report(r: &Replay, rivers: &[River]) -> bool {
+    use isostate_core::landwater::{Shape, river_shape};
+    if std::env::var_os("ISOSTATE_RIVER_REPORT").is_none_or(|v| v.is_empty()) {
+        return false;
+    }
+    if r.land.is_some() {
+        println!("river report: this run is on the new land, whose rivers are the core's lines: cargo run --release -p isostate-core --example river_shape");
+        return true;
+    }
+    let mut by = [Shape::default(), Shape::default(), Shape::default(), Shape::default()];
+    let mut long: Vec<(f32, Vec2, Vec2, Vec2)> = Vec::new();
+    for rv in rivers {
+        let n = rv.pts.len();
+        let s = arclen(&rv.pts);
+        let pts: Vec<(f64, f64)> = rv.pts.iter().map(|p| (p.x as f64, p.y as f64)).collect();
+        let width: Vec<f64> = rv.half.iter().map(|&h| 2.0 * h as f64).collect();
+        let class: Vec<usize> = (0..n)
+            .map(|k| {
+                // the sea, and the estuary's flare before it, are not river
+                if rv.level[k] <= 0.004 || (rv.mouth && s[k] > rv.coast - 0.5) {
+                    return 9;
+                }
+                let a = (0..=k).rev().find(|&j| s[k] - s[j] >= 0.5).unwrap_or(0);
+                let b = (k..n).find(|&j| s[j] - s[k] >= 0.5).unwrap_or(n - 1);
+                let fall = if b > a { (rv.level[a] - rv.level[b]) / (s[b] - s[a]) } else { 0.0 };
+                if fall > 0.09 {
+                    3
+                } else if fall >= 0.012 {
+                    2
+                } else if width[k] >= 0.05 {
+                    1
+                } else {
+                    0
+                }
+            })
+            .collect();
+        for (c, sh) in by.iter_mut().enumerate() {
+            let keep: Vec<bool> = class.iter().map(|&k| k == c).collect();
+            sh.add(&river_shape(&pts, &width, &keep));
+        }
+        // the big rivers' stretches on the plains, for pointing a camera at
+        let mut k = 0;
+        while k < n {
+            if class[k] != 1 {
+                k += 1;
+                continue;
+            }
+            let a = k;
+            while k < n && class[k] == 1 {
+                k += 1;
+            }
+            long.push((s[k - 1] - s[a], rv.pts[a], rv.pts[(a + k - 1) / 2], rv.pts[k - 1]));
+        }
+    }
+    long.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (len, a, m, b) in long.iter().take(6) {
+        println!("a big river on the plains: {len:.1} cells along it, from {:.1},{:.1} by {:.1},{:.1} to {:.1},{:.1}", a.x, a.y, m.x, m.y, b.x, b.y);
+    }
+    let pct = |v: &[f64], q: f64| -> f64 {
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.total_cmp(b));
+        if s.is_empty() { f64::NAN } else { s[((s.len() - 1) as f64 * q).round() as usize] }
+    };
+    println!("river report: {} rivers; lengths in widths of the ribbon; radius: the tightest bend, the 5th percentile, the median; tight: bends under 2.5 widths", rivers.len());
+    println!("reach   channel  sinu.  wavel.  r.min  r.p5 r.med  bends tight  necks");
+    for (c, name) in ["small", "big", "middle", "steep"].iter().enumerate() {
+        let sh = &by[c];
+        let tight = sh.radius.iter().filter(|&&v| v < 2.5).count();
+        println!(
+            "{name:>6}  {:>7.0}  {:>5.2}  {:>6.1}  {:>5.1} {:>5.1} {:>5.1}  {:>5} {:>5.1}%  {:>5}",
+            sh.channel,
+            sh.sinuosity(),
+            pct(&sh.wavelength, 0.5),
+            pct(&sh.radius, 0.0),
+            pct(&sh.radius, 0.05),
+            pct(&sh.radius, 0.5),
+            sh.radius.len(),
+            100.0 * tight as f64 / sh.radius.len().max(1) as f64,
+            sh.necks
+        );
+    }
+    true
+}
+
 /// Cut the valleys into the heightfield, and say for every vertex how much it
 /// lies on a valley floor (1) or not (0).
 pub fn carve(rivers: &[River], hgt: &mut [f32], gw: usize, gh: usize, res: f32) -> Vec<f32> {
