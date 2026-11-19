@@ -6,7 +6,10 @@
 //! whether the charts are true. It only reads.
 //!
 //!     cargo run --release -p isostate-core --example work_charts -- [--seed 7] [--to 2050]
-//!         [--rule tasks.dial=10 --at 1901]
+//!         [--rule tasks.dial=10 --at 1901] [--every 50]
+//!
+//! `--every N` prints a line every N years from 1750 (50, the viewer's marks,
+//! unless said) and the last year.
 //!
 //! The game is begun as the viewer begins a sandbox of six families
 //! (`save::Game::under_to` under the game's rules). `--rule NAME=VALUE --at
@@ -81,7 +84,7 @@ fn line(g: &Game, y: i64) -> String {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (mut seed, mut to, mut rule, mut at) = (7u64, 2050i64, None::<(String, serde_json::Value)>, None::<i64>);
+    let (mut seed, mut to, mut rule, mut at, mut every) = (7u64, 2050i64, None::<(String, serde_json::Value)>, None::<i64>, 50i64);
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
@@ -94,6 +97,7 @@ fn main() {
                 rule = Some((name.to_string(), serde_json::from_str(value).unwrap_or_else(|_| serde_json::json!(value))));
             }
             "--at" => at = Some(next().parse().expect("a year")),
+            "--every" => every = next().parse::<i64>().expect("a number of years").max(1),
             other => panic!("unknown option {other}"),
         }
         i += 2;
@@ -115,7 +119,7 @@ fn main() {
         g.year().expect("the year is played");
         g.turn();
         let y = g.last_year();
-        if (y - y0) % 50 == 0 || g.over() {
+        if (y - y0) % every == 0 || g.over() {
             println!("{}", line(&g, y));
         }
     }
