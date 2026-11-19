@@ -394,7 +394,7 @@ fn cell(sim: &Sim, c: usize) -> Result<(String, Vec<Group>), String> {
             // the path's cost is in squares of open lowland with no road; a
             // unit of a good pays `freight` times its bulk on each
             let d = st.dcatch[c];
-            g.row("the way to market", format!("{}, as many squares of open lowland", amount(d)));
+            g.row("the way to market", if d < 0.05 { "none: the market is here".to_string() } else { format!("as costly as {d:.1} squares of open lowland") });
             if let Some(&grain) = C.good_index.get("grain") {
                 g.row("carting grain there", format!("{} a unit", amount(P.freight * C.weight[grain] * d)));
             }
@@ -516,16 +516,20 @@ fn by_hand(sim: &Sim) -> Group {
     // the share is of the island's money as it stands, the made money in it;
     // money unmade by a levy is a share of what is left, given without a sign
     let total = econ::money_total(&sim.st);
+    // (a figure the edits have left at nothing, or brought back to it, is none on balance)
     g.row("money made by hand", if signed(hand.money) == "0" {
-        "none".to_string()
+        NONE_ON_BALANCE.to_string()
     } else if total > 0.0 {
         format!("{}, {} of the island's money", signed(hand.money), pct(hand.money.abs() / total))
     } else {
         signed(hand.money)
     });
-    g.row("people made by hand", if signed(hand.people) == "0" { "none".to_string() } else { signed(hand.people) });
+    g.row("people made by hand", if signed(hand.people) == "0" { NONE_ON_BALANCE.to_string() } else { signed(hand.people) });
     g
 }
+
+/// A figure of the ledger the edits carried out have left at nothing.
+const NONE_ON_BALANCE: &str = "none, on balance";
 
 /// A sum with its sign, "+12,400" or "-6,200"; "0" for less than half a unit
 /// either way.

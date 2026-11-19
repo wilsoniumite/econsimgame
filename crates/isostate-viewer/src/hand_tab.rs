@@ -4,11 +4,12 @@
 //! the view there and opens the note about it, as a works in the holdings list
 //! does (`game::goto_clicks`), without counting as a click on the map, so that
 //! a tool in hand is not used by it. An edit's news comes with the next month
-//! or year; until then the line of its answer heads the list (`Pending`).
+//! or year; until then the line of its answer heads the list (`Pending`). At
+//! the foot stands the ledger (4.6): the island's group "By hand" as the
+//! simulation tells it (`inspect`), asked while the tab is open.
 //!
 //! `panel` is called by `ui::panel_rebuild` with `HandParams`, which this file
-//! owns: a later stage (the ledger at the foot, stage 5) adds what it needs to
-//! read there and does not come into ui.rs.
+//! owns: what the tab reads is added there and does not come into ui.rs.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
@@ -17,6 +18,8 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
+
+use isostate_core::inspect::{Thing, Told};
 
 use crate::game::Game;
 use crate::live::Live;
@@ -32,6 +35,9 @@ pub struct HandParams<'w> {
     pub sandbox: Option<Res<'w, crate::sandbox::Sandbox>>,
     /// edits done whose news has not come yet
     pub pending: Option<Res<'w, Pending>>,
+    /// what the simulation has said of things, among them the island, whose
+    /// group "By hand" is the tab's foot (`inspect`, the hand's ledger)
+    pub told: Option<Res<'w, crate::inspector::Answers>>,
 }
 
 /// Edits the simulation has carried out whose news has not come yet. An
@@ -58,8 +64,42 @@ pub fn plugin(app: &mut App) {
         Update,
         // (in the frame the answer comes, as the tray reads it, before a question about the
         // clicked square puts the note away)
-        (order_out.before(crate::game::pump), catch_answers.after(crate::game::pump).before(crate::game::ask_site)).run_if(resource_exists::<crate::sandbox::Sandbox>).run_if(resource_exists::<Live>),
+        (order_out.before(crate::game::pump), catch_answers.after(crate::game::pump).before(crate::game::ask_site), ask_island.after(crate::game::pump))
+            .run_if(resource_exists::<crate::sandbox::Sandbox>)
+            .run_if(resource_exists::<Live>),
     );
+}
+
+/// The foot's ledger is the island's group "By hand", asked of the simulation
+/// while the tab is open: when it opens, and again when a month, a year or an
+/// order's answer comes. The tab is drawn again when the answer changes.
+#[allow(clippy::too_many_arguments)]
+fn ask_island(
+    tl: Res<crate::Timeline>,
+    data: Res<Data>,
+    live: Res<Live>,
+    game: Res<Game>,
+    mut answers: ResMut<crate::inspector::Answers>,
+    mut ui: ResMut<UiState>,
+    mut seen: Local<Option<((u64, usize, u64), std::time::Instant)>>,
+    mut drawn: Local<Option<Result<Told, String>>>,
+) {
+    if ui.tab != Some(crate::ui::Tab::Hand) {
+        // asked afresh when the tab opens again
+        *seen = None;
+        return;
+    }
+    // (while the clock runs, no more often than the inspector asks: inspector::RUNNING_EVERY)
+    let key = crate::inspector::news_key(&ui, &data, &game);
+    if seen.is_none_or(|s| s.0 != key) && !live.turning() && crate::inspector::at_present(&tl, &data, &live) && !crate::inspector::too_soon(&tl, seen.map(|s| s.1)) {
+        *seen = Some((key, std::time::Instant::now()));
+        answers.ask(&live, Thing::Island);
+    }
+    let now = answers.get(Thing::Island);
+    if now != drawn.as_ref() {
+        *drawn = now.cloned();
+        ui.dirty += 1;
+    }
 }
 
 /// Whether an order is out before the frame's messages are read: an answer
@@ -132,6 +172,14 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, _k: usi
     }
     if shown == 0 {
         p.spawn(text(f, if hand.sandbox.is_some() { NOTHING_YET } else { NO_HAND }, 14.0, MUTED));
+    }
+    // the foot: the ledger, as the simulation tells it of the island
+    let ledger = hand.told.as_ref().and_then(|t| t.get(Thing::Island)).and_then(|t| t.as_ref().ok()).filter(|_| hand.sandbox.is_some());
+    if let Some(told) = ledger {
+        if let Some(g) = told.groups.iter().find(|g| g.name == "By hand") {
+            p.spawn((Node { height: Val::Px(1.0), margin: UiRect::top(Val::Px(10.0)), ..default() }, BackgroundColor(RULE)));
+            crate::inspector::group(p, f, &format!("The ledger, as it stands in {}", told.as_of), &g.rows);
+        }
     }
 }
 

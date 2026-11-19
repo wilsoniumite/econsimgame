@@ -24,6 +24,7 @@ mod game;
 mod hand_tab;
 mod handover;
 mod icons;
+mod inspector;
 mod lab;
 mod live;
 mod look;
@@ -1054,6 +1055,7 @@ fn main() {
         .add_plugins(game::plugin)
         .add_plugins(sandbox::plugin)
         .add_plugins(hand_tab::plugin)
+        .add_plugins(inspector::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
@@ -1086,6 +1088,8 @@ fn main() {
             eprintln!("--script: {e}");
             std::process::exit(2);
         }
+        // a sandbox's inspector prints each new answer the simulation gives it
+        app.insert_resource(inspector::Answers::printing());
     } else if headless {
         // a picture waits for what it needs, its year's scenery and the renderer's shaders, and then
         // some frames for it to settle (take_shot); for the shaders no longer than this, which a busy
@@ -1849,6 +1853,8 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                 ui::scroll_list(p, card, Node::default(), Node { row_gap: Val::Px(4.0), padding: UiRect::right(Val::Px(ui::THUMB_ROOM)), ..default() }, InspectBody, |p| {
                     p.spawn((text(f, "", 14.0, MUTED), InspectText));
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
+                    // in a sandbox, what the simulation knows of the thing (inspector.rs)
+                    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, inspector::InspectorBlock));
                 });
             });
         });
