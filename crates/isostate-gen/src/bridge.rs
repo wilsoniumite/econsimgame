@@ -292,7 +292,7 @@ impl RoadFord {
     /// How high a cart wading the ford rides: a hair over the water, on the
     /// gravel of the ford's bar (none for a ferry, which carries it).
     pub fn wade(&self) -> f32 {
-        self.surface + 0.0006
+        self.surface + 0.0016
     }
 
     /// The point of the map `t` of the way across, 0 at one bank and 1 at the other.
@@ -330,7 +330,7 @@ pub fn road_ford(solid: &mut MeshBuf, f: &RoadFord, pal: &Palette) {
     }
     // the bar of gravel, a shade paler than the road where the water has washed it
     let gravel = shade(if f.main { *pal.ground.road_gravel } else { *pal.ground.lane_dust }, 1.08);
-    let y = f.wade() - 0.0004;
+    let y = f.wade() - 0.0003;
     solid.quad(at(0.0, half, y), at(1.0, half, y), at(1.0, -half, y), at(0.0, -half, y), gravel);
     // the stepping stones, one every so far along its downstream side
     let stone = *pal.bridges.lane_stone;
@@ -526,7 +526,7 @@ mod tests {
         // the bar of gravel a hair over the water, the stepping stones standing out of it
         assert!(m.is_sound() && lo.y >= 0.097 && hi.y < 0.103, "{lo} {hi}");
         assert!((hi.x - lo.x - 0.04).abs() < 0.004, "it reaches as far as the water does: {lo} {hi}");
-        assert!((f.wade() - 0.1006).abs() < 1e-6);
+        assert!((f.wade() - 0.1016).abs() < 1e-6);
         let mut ferry = MeshBuf::default();
         road_ford(&mut ferry, &RoadFord { ferry: true, ..f }, &pal);
         assert!(ferry.is_sound() && ferry.triangles() > m.triangles() / 4 && ferry.triangles() > 10);
