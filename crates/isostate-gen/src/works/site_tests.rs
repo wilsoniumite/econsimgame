@@ -132,14 +132,19 @@ fn draw(plan: &Plan, now: &Now, yaw: f32) -> Model {
 fn all(mut each: impl FnMut(&Plan, Now)) {
     let pal = Palette::standard();
     for kind in Kind::ALL {
+        // (the kinds of the twentieth century founded in their own years, and seen in 1960)
+        let (years, seen): (&[i32], i32) = match kind {
+            Kind::PowerStation | Kind::ElectricalWorks | Kind::ChemicalPlant => (&[1890, 1910, 1935], 1960),
+            _ => (&[1760, 1820, 1870], 1890),
+        };
         for (i, size) in SIZES.into_iter().enumerate() {
-            for founded in [1760, 1820, 1870] {
+            for &founded in years {
                 for (j, plot) in plots(kind, size).into_iter().enumerate() {
                     // (not every plot at every size and year, to keep the tests quick)
                     if (i + j + founded as usize / 10) % 2 == 0 && j > 0 {
                         continue;
                     }
-                    let (plan, now) = specimen(kind, founded, 1890, size, &plot, Seed::of(kind as u32 * 31 + i as u32 + j as u32), &pal);
+                    let (plan, now) = specimen(kind, founded, seen, size, &plot, Seed::of(kind as u32 * 31 + i as u32 + j as u32), &pal);
                     each(&plan, now);
                 }
             }
@@ -151,10 +156,18 @@ fn all(mut each: impl FnMut(&Plan, Now)) {
 fn the_shipped_content_gives_every_kind_its_process() {
     for kind in Kind::ALL {
         if kind != Kind::Other {
-            let p = Process::standard(kind.method()).unwrap_or_else(|| panic!("{kind:?} has no method in data/content.toml"));
+            // (the kinds of the twentieth century are the game's overlay's methods, which the lab keeps a table of)
+            let p = Process::standard(kind.method()).or_else(|| crate::sheets::later_process(kind.method())).unwrap_or_else(|| panic!("{kind:?} has no method in data/content.toml or sheets::LATER"));
             assert!(p.labour > 0.0 && p.capital > 0.0 && !p.output.name.is_empty(), "{kind:?}: {p:?}");
+            assert_eq!(Process::of(kind), p);
         }
     }
+    // the lab's table holds every method the twentieth century's kinds are drawn for, and the port has none of them
+    for u in crate::sheets::LATER {
+        assert!(Kind::of_method(u.0) != Kind::Other && Process::standard(u.0).is_none(), "{}", u.0);
+    }
+    let station = Process::of(Kind::PowerStation);
+    assert!(station.output.name == "electricity" && Keep::of(&station.output) == Keep::Nothing, "electricity is kept nowhere");
     let coke = Process::of(Kind::CokeFurnace);
     assert_eq!(coke.output.name, "iron");
     assert!(coke.inputs.iter().any(|(g, a)| g.name == "iron_ore" && *a == 2.0) && coke.inputs.iter().any(|(g, _)| g.name == "coal"));

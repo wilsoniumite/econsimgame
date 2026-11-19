@@ -1,7 +1,9 @@
 //! The plant of the fire trades: what stands in a yard that is not a
 //! building. A blast furnace's stack, built of stone or cased in brick or
 //! iron; the gallery it is charged from; hoops and bands; a lift's tower; a
-//! bottle kiln.
+//! bottle kiln. And the plant of the twentieth century, which more than one
+//! kind stands in its yard: a cooling tower, a round tank, a column with its
+//! platforms and ladder, a rack of pipes.
 //!
 //! These are parts of the works' kit like the sheds and chimneys in `kit`
 //! (methods of `Ctx`; each knows the state and the level), and they are
@@ -341,6 +343,211 @@ impl Ctx<'_, '_> {
             hovel.band(self.solid, tall - 0.0019, 0.0016, 0.0008, true, shade(brick, 0.9));
         }
         top
+    }
+
+    // ------------------------------------------------------------------ the plant of the twentieth century
+
+    /// A cooling tower: a shell of concrete `r` across at its foot and `h`
+    /// high, that narrows to a waist two thirds of the way up and flares a
+    /// little to its rim, standing on a ring of raking legs. From far off the
+    /// shell in two lengths, on the ground; from the play distance in four,
+    /// lifted on the dark of the open ring under it, with a lip at its rim;
+    /// close to in six, with the legs themselves, two to each side, crossing
+    /// as they rise. Going up, the legs and the first lifts of the shell, the
+    /// same at every level. The caller tones `col`. It gives back the middle
+    /// of its rim, where the steam rises.
+    pub fn cooling_tower(&mut self, x: f32, z: f32, r: f32, h: f32, col: Rgba) -> Vec3 {
+        let p = self.at(x, z);
+        let inside = shade(col, 0.42);
+        // the shell's profile: shares of its height, and of its radius at the foot
+        const SHAPE: [(f32, f32); 6] = [(0.0, 1.0), (0.2, 0.86), (0.45, 0.72), (0.7, 0.64), (0.88, 0.645), (1.0, 0.68)];
+        if self.going_up() {
+            let c = Column { p, r0: r, r1: r * 0.86, h: h * 0.2, sink: SINK, sides: 8, turn: 0.0 };
+            c.build(self.solid, col, Some(inside));
+            return p + Vec3::Y * h * 0.2;
+        }
+        let (sides, steps): (usize, &[usize]) = if self.far() { (8, &[0, 3, 5]) } else if self.near() { (14, &[0, 1, 2, 3, 4, 5]) } else { (10, &[0, 2, 3, 5]) };
+        // (from the play distance the shell stands on its legs: the open ring under it is dark)
+        let foot = if self.far() { 0.0 } else { 0.07 * h };
+        let at = |k: usize| (foot + (h - foot) * SHAPE[k].0, r * SHAPE[k].1);
+        for w in steps.windows(2) {
+            let ((y0, r0), (y1, r1)) = (at(w[0]), at(w[1]));
+            let last = w[1] == 5;
+            let sink = if y0 == 0.0 { SINK } else { 0.0 };
+            self.solid.frustum_turned(p + Vec3::Y * y0, r0, r1, y1 - y0, sides, 0.0, sink, col, last.then_some(inside));
+        }
+        if self.far() {
+            return p + Vec3::Y * h;
+        }
+        // the open ring under the shell, in shadow, and the lip at its rim
+        self.solid.frustum_turned(p, r * 0.9, r * 0.9, foot, sides, 0.0, SINK, *self.pal.smoke.soot, None);
+        let rim = r * SHAPE[5].1;
+        self.solid.frustum_turned(p + Vec3::Y * (h - 0.0016), rim + 0.0007, rim + 0.0007, 0.0016, sides, 0.0, 0.0, shade(col, 1.06), None);
+        if self.near() {
+            // the raking legs, two to each side of the shell, crossing as they rise
+            let leg = shade(col, 0.86);
+            for i in 0..sides {
+                let a = |k: f32| (k / sides as f32) * TAU;
+                let ground = |k: f32| p + Vec3::new(a(k).cos() * r * 0.97, -0.002, a(k).sin() * r * 0.97);
+                let under = |k: f32| p + Vec3::new(a(k).cos() * r * 0.97, foot, a(k).sin() * r * 0.97);
+                let i = i as f32;
+                self.solid.beam(ground(i), under(i + 0.5), 0.0012, leg);
+                self.solid.beam(ground(i + 0.5), under(i), 0.0012, leg);
+            }
+        }
+        p + Vec3::Y * h
+    }
+
+    /// A round tank of iron plate `r` across and `h` to its eaves, under a
+    /// shallow cone: from the play distance with a band at its eaves and the
+    /// dark of its foot; close to with its hoops, the ladder up its side
+    /// toward the front of the yard, and the rail round its roof. Going up,
+    /// half its plating, open, the same at every level. The caller tones
+    /// `col`. It gives back the top of its roof.
+    pub fn tank(&mut self, x: f32, z: f32, r: f32, h: f32, col: Rgba) -> Vec3 {
+        let p = self.at(x, z);
+        if self.going_up() {
+            Column { p, r0: r, r1: r, h: h * 0.5, sink: SINK, sides: 8, turn: 0.0 }.build(self.solid, col, Some(shade(col, 0.5)));
+            return p + Vec3::Y * h * 0.5;
+        }
+        let sides = if self.far() { 8 } else if self.near() { 14 } else { 10 };
+        let shell = Column { p, r0: r, r1: r, h, sink: SINK, sides, turn: 0.0 };
+        shell.build(self.solid, col, None);
+        let rise = r * 0.2;
+        self.solid.frustum_turned(p + Vec3::Y * h, r + 0.0006, 0.0, rise, sides, 0.0, 0.0, shade(col, 1.12), None);
+        let top = p + Vec3::Y * (h + rise);
+        if self.far() {
+            return top;
+        }
+        let dark = shade(col, 0.7);
+        shell.band(self.solid, h - 0.0018, 0.0016, 0.0005, true, shade(col, 0.9));
+        shell.band(self.solid, 0.0, 0.0014, 0.0006, true, dark);
+        if !self.near() {
+            return top;
+        }
+        for t in [0.36, 0.68] {
+            shell.band(self.solid, h * t, 0.0008, 0.0003, false, shade(col, 0.92));
+        }
+        // the ladder, on the side toward the front of the yard
+        let front = Quat::from_rotation_y(self.site.yaw) * Vec3::Z;
+        self.ladder(p, front, r, h, dark);
+        // the rail round the roof
+        for i in 0..8 {
+            let a = i as f32 / 8.0 * TAU;
+            let foot = p + Vec3::new(a.cos() * (r - 0.0006), h, a.sin() * (r - 0.0006));
+            self.solid.beam(foot, foot + Vec3::Y * 0.0036, 0.0006, dark);
+        }
+        self.solid.frustum_turned(p + Vec3::Y * (h + 0.003), r - 0.0003, r - 0.0003, 0.0006, sides, 0.0, 0.0, dark, None);
+        top
+    }
+
+    /// A ladder up the outside of something round, `r` out from `p` on the
+    /// side toward `dir`, from the ground to `h`: two stiles and their rungs. Close to only.
+    fn ladder(&mut self, p: Vec3, dir: Vec3, r: f32, h: f32, col: Rgba) {
+        let out = Vec3::new(dir.x, 0.0, dir.z).normalize_or_zero();
+        let side = Vec3::new(-out.z, 0.0, out.x) * 0.0012;
+        let base = p + out * (r + 0.0009);
+        for s in [-1.0f32, 1.0] {
+            self.solid.beam(base + side * s - Vec3::Y * 0.002, base + side * s + Vec3::Y * (h + 0.003), 0.0005, col);
+        }
+        let rungs = ((h / 0.003).floor() as usize).clamp(2, 40);
+        for k in 1..rungs {
+            let y = Vec3::Y * (h * k as f32 / rungs as f32);
+            self.solid.beam(base - side + y, base + side + y, 0.00045, col);
+        }
+    }
+
+    /// A column of a chemical works: a slim tower of iron plate `r` across
+    /// and `h` high under a domed head. From the play distance the platforms
+    /// that ring it, one to each lift of its height; close to their posts and
+    /// rails, the ladder that climbs it toward the front of the yard, and the
+    /// seams of its plates. Going up, its lower half, open, the same at every
+    /// level. The caller tones `col`. It gives back the top of its head.
+    pub fn column(&mut self, x: f32, z: f32, r: f32, h: f32, col: Rgba) -> Vec3 {
+        let p = self.at(x, z);
+        if self.going_up() {
+            Column { p, r0: r, r1: r, h: h * 0.5, sink: SINK, sides: 6, turn: 0.0 }.build(self.solid, col, Some(shade(col, 0.5)));
+            return p + Vec3::Y * h * 0.5;
+        }
+        let sides = if self.far() { 6 } else if self.near() { 10 } else { 8 };
+        let shell = Column { p, r0: r, r1: r, h, sink: SINK, sides, turn: 0.0 };
+        shell.build(self.solid, col, None);
+        let head = r * 0.7;
+        self.solid.frustum_turned(p + Vec3::Y * h, r, r * 0.55, head * 0.6, sides, 0.0, 0.0, shade(col, 1.1), Some(shade(col, 1.16)));
+        let top = p + Vec3::Y * (h + head * 0.6);
+        if self.far() {
+            return top;
+        }
+        let deck = shade(col, 0.78);
+        let lifts = ((h / 0.032).round() as usize).clamp(1, 4);
+        let reach = r + 0.0035;
+        for k in 1..=lifts {
+            let y = h * k as f32 / (lifts as f32 + 0.6);
+            self.solid.frustum_turned(p + Vec3::Y * y, reach, reach, 0.0014, 8, 0.0, 0.0, deck, Some(deck));
+            if self.near() {
+                for i in 0..8 {
+                    let a = (i as f32 + 0.5) / 8.0 * TAU;
+                    let foot = p + Vec3::new(a.cos() * (reach - 0.0004), y + 0.0014, a.sin() * (reach - 0.0004));
+                    self.solid.beam(foot, foot + Vec3::Y * 0.0034, 0.0005, deck);
+                }
+                self.solid.frustum_turned(p + Vec3::Y * (y + 0.0042), reach - 0.0002, reach - 0.0002, 0.0005, 8, 0.0, 0.0, deck, None);
+            }
+        }
+        if self.near() {
+            for t in [0.2, 0.5, 0.8] {
+                shell.band(self.solid, h * t, 0.0007, 0.0003, false, shade(col, 0.9));
+            }
+            let front = Quat::from_rotation_y(self.site.yaw + 0.6) * Vec3::Z;
+            self.ladder(p, front, r, h, deck);
+        }
+        top
+    }
+
+    /// A rack of pipes from one place in the yard to another, `h` above the
+    /// ground: frames of two legs and a beam, about a bay and a half apart,
+    /// carrying `pipes` pipes along their tops. Not drawn from far off; close
+    /// to, thinner and braced. Going up, the frames alone; derelict, the frames
+    /// and the lowest pipe, the others taken down for scrap.
+    pub fn pipe_rack(&mut self, a: (f32, f32), b: (f32, f32), h: f32, pipes: usize) {
+        if self.far() {
+            return;
+        }
+        let (pa, pb) = (self.at(a.0, a.1), self.at(b.0, b.1));
+        let run = Vec3::new(pb.x - pa.x, 0.0, pb.z - pa.z);
+        let len = run.length();
+        if len < 0.004 {
+            return;
+        }
+        let dir = run / len;
+        let across = Vec3::new(-dir.z, 0.0, dir.x);
+        let pipes = pipes.clamp(1, 4);
+        let wide = 0.0012 + 0.0026 * pipes as f32;
+        let near = self.near();
+        let (t, pipe) = if near { (0.0009, 0.0014) } else { (0.0013, 0.0017) };
+        let iron = self.tone(*self.pal.iron.plate);
+        let frames = ((len / 0.021).ceil() as usize).max(1);
+        for i in 0..=frames {
+            let f = i as f32 / frames as f32;
+            let foot = pa + (pb - pa) * f;
+            let (l, r) = (foot - across * wide * 0.5, foot + across * wide * 0.5);
+            self.solid.beam(l - Vec3::Y * 0.002, l + Vec3::Y * h, t, iron);
+            self.solid.beam(r - Vec3::Y * 0.002, r + Vec3::Y * h, t, iron);
+            self.solid.beam(l + Vec3::Y * h, r + Vec3::Y * h, t, iron);
+            if near {
+                // the knee braces under the beam
+                self.solid.beam(l + Vec3::Y * (h - 0.003), l + across * 0.002 + Vec3::Y * h, 0.0006, shade(iron, 0.85));
+                self.solid.beam(r + Vec3::Y * (h - 0.003), r - across * 0.002 + Vec3::Y * h, 0.0006, shade(iron, 0.85));
+            }
+        }
+        if self.going_up() {
+            return;
+        }
+        let shown = if self.derelict() { 1 } else { pipes };
+        for k in 0..shown {
+            let off = across * (-wide * 0.5 + 0.0006 + 0.0026 * (k as f32 + 0.5));
+            let y = Vec3::Y * (h + t * 0.5 + pipe * 0.5);
+            self.solid.beam(pa + off + y, pb + off + y, pipe, shade(iron, 1.2 - 0.12 * k as f32));
+        }
     }
 }
 

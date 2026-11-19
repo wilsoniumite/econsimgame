@@ -914,6 +914,33 @@ pub(crate) const UNKNOWN: [Unknown; 8] = [
     ("masons", &[("stone", 2.2, 0.6, 1.1), ("lumber", 1.2, 2.2, 0.2), ("lime", 1.5, 2.0, 0.1)], 0.0, 0.25, 2.8, ("building", 12.0, 2.2)),
 ];
 
+/// The processes of the methods of the twentieth century that are drawn as
+/// kinds of their own (`Kind::PowerStation`, `ElectricalWorks`,
+/// `ChemicalPlant`), in the same form: they are the game's overlay's
+/// (data/game.toml), not the port's content that `Process::standard` reads,
+/// so the lab and the tests take them from here and draw them without a run.
+/// The station and the electrical works are stage 6's as data/game.toml has
+/// them on 19 November 2026; the nitrogen works and oil from coal are stage
+/// 7's, as its own branch had them that day. The plant is the `capital` line
+/// at the goods' base prices (building 2.2, steel 30, machinery 70). The game
+/// itself hands the planner each method's process as the run has it.
+pub(crate) const LATER: [Unknown; 4] = [
+    ("coal_power_station", &[("coal", 1.6, 0.9, 1.1)], 0.0, 0.1, 72.2, ("electricity", 20.0, 1.2)),
+    ("electrical_works", &[("steel", 1.0, 30.0, 0.25), ("chemicals", 0.9, 4.5, 0.1), ("glass", 1.0, 9.0, 0.05)], 1.0, 0.45, 100.5, ("electricals", 0.5, 7.0)),
+    ("nitrogen_works", &[("coal", 1.6, 0.9, 1.5), ("electricity", 20.0, 1.2, 1.2)], 0.0, 0.1, 135.2, ("chemicals", 0.9, 4.5)),
+    ("oil_from_coal", &[("coal", 1.6, 0.9, 4.0), ("electricity", 20.0, 1.2, 0.5)], 0.0, 0.05, 36.1, ("oil", 1.0, 1.0)),
+];
+
+/// A process of the table above, or of `UNKNOWN`, as the planner takes it.
+fn process_from(&(_, inputs, heat, labour, capital, out): &Unknown) -> site::Process {
+    site::Process { inputs: inputs.iter().map(|&(g, w, p, a)| (site::Good::new(g, w, p), a)).collect(), heat, labour, capital, output: site::Good::new(out.0, out.1, out.2) }
+}
+
+/// The process of a method of the twentieth century, from `LATER`, if it is one of them.
+pub fn later_process(method: &str) -> Option<site::Process> {
+    LATER.iter().find(|u| u.0 == method).map(process_from)
+}
+
 fn site_unknown(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     [(1.0f32, 1790, 1830), (8.0, 1800, 1885)]
         .into_iter()
@@ -921,8 +948,8 @@ fn site_unknown(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
             UNKNOWN
                 .iter()
                 .enumerate()
-                .map(|(n, &(name, inputs, heat, labour, capital, out))| {
-                    let process = site::Process { inputs: inputs.iter().map(|&(g, w, p, a)| (site::Good::new(g, w, p), a)).collect(), heat, labour, capital, output: site::Good::new(out.0, out.1, out.2) };
+                .map(|(n, u)| {
+                    let (name, process) = (u.0, process_from(u));
                     let (w, d) = site::ground(Kind::Other, size);
                     let record = site::history(founded, year, size);
                     let plan = site::plan(Kind::Other, &process, &site::stages(&record), &Plot::rect(w, d), year, Seed::of(n as u32 + 90), pal);

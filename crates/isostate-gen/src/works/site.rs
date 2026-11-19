@@ -73,6 +73,9 @@ pub enum Keep {
     Logs,
     /// under a roof: wool, cloth, charcoal, grain, tools
     Cover,
+    /// in round tanks in the open: oil. (A liquid: the one thing a good's bulk
+    /// and price do not say, so the rule knows it by name.)
+    Tank,
     /// nothing to keep: what is sold is work, not goods (the content's
     /// "services"), or is made where it is used and not carried at all
     Nothing,
@@ -90,6 +93,8 @@ impl Keep {
             Keep::Nothing
         } else if g.name == "timber" {
             Keep::Logs
+        } else if g.name == "oil" {
+            Keep::Tank
         } else if g.weight >= 1.5 && g.price < 1.5 {
             Keep::Heap
         } else if g.weight >= 0.95 && g.name != "grain" {
@@ -113,6 +118,7 @@ fn good_colour(g: &Good, pal: &Palette) -> Rgba {
         "bricks" => *pal.goods.bricks,
         "wool" => *pal.goods.bales,
         "cloth" => *pal.goods.cloth,
+        "oil" => *pal.iron.plate,
         _ => match Keep::of(g) {
             Keep::Heap => *pal.ground.spoil_stone,
             Keep::Logs => *pal.timber.logs,
@@ -178,9 +184,11 @@ impl Process {
     }
 
     /// The process of a kind of works the generators know, from the shipped
-    /// content; for any other, a works that makes something of nothing known.
+    /// content (or, for the kinds of the twentieth century, whose methods are
+    /// the game's overlay's, from the lab's table of them: `sheets::LATER`);
+    /// for any other, a works that makes something of nothing known.
     pub fn of(kind: Kind) -> Process {
-        Process::standard(kind.method()).unwrap_or(Process { inputs: Vec::new(), heat: 0.0, labour: 1.0, capital: 10.0, output: Good::new("goods", 1.0, 3.0) })
+        Process::standard(kind.method()).or_else(|| crate::sheets::later_process(kind.method())).unwrap_or(Process { inputs: Vec::new(), heat: 0.0, labour: 1.0, capital: 10.0, output: Good::new("goods", 1.0, 3.0) })
     }
 
     /// The fuel it burns, with how much to a unit of output, if it burns any.
@@ -1199,10 +1207,10 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         wants.push((Hold::Tip, TIP * standard * (process.waste(year) / 3.0).clamp(0.15, 1.0), far));
     }
     // (then what is made, which is the less ground and says what the works is; then what comes in)
-    if matches!(Keep::of(&process.output), Keep::Heap | Keep::Stack | Keep::Logs) {
+    if matches!(Keep::of(&process.output), Keep::Heap | Keep::Stack | Keep::Logs | Keep::Tank) {
         wants.push((Hold::Out, STOCK_OUT * standard, dispatch));
     }
-    wants.extend(held.iter().enumerate().filter(|(_, (g, _))| matches!(Keep::of(g), Keep::Heap | Keep::Stack | Keep::Logs)).map(|(n, (_, share))| (Hold::In(n), STOCK_IN * standard * share.max(0.3), receive)));
+    wants.extend(held.iter().enumerate().filter(|(_, (g, _))| matches!(Keep::of(g), Keep::Heap | Keep::Stack | Keep::Logs | Keep::Tank)).map(|(n, (_, share))| (Hold::In(n), STOCK_IN * standard * share.max(0.3), receive)));
     for (x, z, w, d) in strips {
         field.take(x, z, w, d);
     }
@@ -1777,6 +1785,20 @@ fn yard(c: &mut Ctx, plan: &Plan, now: &Now, y: &Yard, n: usize, ground: Rgba) {
                 // the last heap is the one being drawn on
                 let k_last = if k + 1 == shown { 0.45 + 0.55 * (full * (cols * rows) as f32).fract().max(0.3) } else { 1.0 };
                 c.heap(x, z, r * 0.97 * k_last, r * 0.62 * k_last, col);
+            }
+        }
+        (Some(Keep::Tank), Some(g)) => {
+            // round tanks in rows, as many as the yard holds: they stand full or empty
+            let col = c.tone(good_colour(g, pal));
+            let r = (y.w.min(y.d) * 0.5 - 0.002).min(0.013 * c.g);
+            if r >= 0.004 {
+                let pitch = 2.0 * r + 0.004;
+                let (cols, rows) = (((y.w / pitch).floor() as usize).clamp(1, 6), ((y.d / pitch).floor() as usize).clamp(1, 4));
+                for k in 0..cols * rows {
+                    let (i, j) = (k % cols, k / cols);
+                    let (x, z) = (y.x + (i as f32 - (cols as f32 - 1.0) * 0.5) * pitch, y.z + (j as f32 - (rows as f32 - 1.0) * 0.5) * pitch);
+                    c.tank(x, z, r, (r * 1.3).max(0.008), col);
+                }
             }
         }
         (Some(keep), Some(g)) => {
