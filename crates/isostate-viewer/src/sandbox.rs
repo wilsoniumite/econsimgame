@@ -401,7 +401,7 @@ fn answers(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: Res<
     sb.waiting = false;
     let when = clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11))));
     if let Some((ok, line)) = &game.note {
-        // (grey and labelled News until the tray's own colour comes, in stage 4)
+        // (in the hand's ink and labelled "By hand", from stage 4)
         toasts.say(if *ok { "hand" } else { "orders_refused" }, line, &when, time.elapsed_secs());
         println!("sandbox: {} {when}: {line}", if *ok { "by hand," } else { "refused," });
     }
