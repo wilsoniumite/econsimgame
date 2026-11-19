@@ -641,6 +641,68 @@ fn the_thread_tells_the_rules_and_a_rule_set_by_hand_is_in_its_next_answer() {
 }
 
 #[test]
+fn a_works_by_hand_is_offered_with_the_square_waits_with_its_stake_and_is_taken_back() {
+    // The sandbox's Works tool (docs/designs/sandbox.md, 4.4 and 6.7, stage 7b).
+    // On island 7 in January 1791, the answer about a farm square of
+    // Melbourne's district near the town holds the hand's list
+    // (`edits::works_offered`) with a method that may be built there; given
+    // five months on, it is answered "Ordered by hand", stands among what
+    // waits for the turn and pegs its square; `Cmd::Cancel(0)` takes it away.
+    // Given again, it is carried out at the turn, told in the line it wrote in
+    // the news, and its square stays pegged until the year's picture has it.
+    // Played under the game's rules as they stand, six families, nobody at the
+    // first: it asks of the island's history only that Melbourne stands and
+    // that some square near it takes a works, and it looks for that square
+    // rather than naming one.
+    use isostate_core::edits::Edit;
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() });
+    assert_eq!(a.year(), 1790);
+    let (k, w, n) = (a.r.filled - 1, a.r.w as i64, a.r.n);
+    let town = a.r.header.towns.iter().position(|t| t.name == "Melbourne").expect("Melbourne stands on island 7");
+    let node = a.r.header.towns[town].node as i64;
+    // the squares of its district round the town, the nearest first
+    let mut near: Vec<usize> = (-5..=5i64)
+        .flat_map(|dz| (-5..=5i64).map(move |dx| node + dz * w + dx))
+        .filter(|&c| c >= 0 && (c as usize) < n && c != node)
+        .map(|c| c as usize)
+        .filter(|&c| a.r.catch[k * n + c] as usize == town + 1)
+        .collect();
+    near.sort_by_key(|&c| ((c as i64 % w - node % w).pow(2) + (c as i64 / w - node / w).pow(2), c));
+    let (cell, method, cost) = near
+        .iter()
+        .find_map(|&c| {
+            let hand = a.site(c).hand.ok()?;
+            let best = hand.into_iter().filter(|o| o.allowed.is_ok()).filter_map(|o| o.sums.ok().map(|s| (o.name, s.capital_cost, s.expected_return))).max_by(|x, y| x.2.total_cmp(&y.2))?;
+            Some((c, best.0, best.1))
+        })
+        .expect("a square near Melbourne takes a works");
+    assert!(cost > 0.0);
+    // five months on, it is ordered, and waits with its stake
+    for _ in 0..5 {
+        assert!(!a.month());
+    }
+    let build = Edit::BuildWorks { method: method.clone(), cell };
+    assert!(a.order("by_hand", Cmd::ByHand(build.clone())), "{}", a.said);
+    assert!(a.said.starts_with("Ordered by hand: a works ("), "{}", a.said);
+    assert!(a.said.contains("in Melbourne's district") && a.said.ends_with("at the year's turn, in January 1792."), "{}", a.said);
+    assert_eq!(a.live.standing.waiting, vec![Order::ByHand { edit: build.clone() }]);
+    assert!(a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing.pegs);
+    // the Hand tab's row: its words, with no "By hand" before them
+    let row = crate::hand_tab::waiting_words(&a.live.standing.waiting[0], &a.r);
+    assert!(row.starts_with("a works (") && row.contains(&format!("at {}, {}", cell % a.r.w, cell / a.r.w)), "{row}");
+    // taken back: nothing waits, and the stake is gone
+    assert!(a.order("cancel", Cmd::Cancel(0)), "{}", a.said);
+    assert!(a.live.standing.waiting.is_empty() && !a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing);
+    // given again, it is carried out at the turn, in the line it wrote in the news
+    assert!(a.order("by_hand", Cmd::ByHand(build)), "{}", a.said);
+    a.step();
+    assert_eq!(a.year(), 1791);
+    let line = a.turned.iter().find(|t| t.1.starts_with("By hand")).unwrap_or_else(|| panic!("{:?}", a.turned));
+    assert!(line.0 && line.1.contains("built for"), "{line:?}");
+    assert!(a.live.standing.waiting.is_empty() && a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing);
+}
+
+#[test]
 fn a_game_begun_to_1910_plays_past_1900_through_the_thread_and_its_save_says_so() {
     // A game past 1900 (docs/rules/longrun.md, "A game past 1900"): begun with
     // a last year of 1910, played to 1899 before it opens and on through the
