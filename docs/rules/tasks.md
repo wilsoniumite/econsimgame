@@ -1,17 +1,22 @@
-# Hands and machines in the works
+# Hands and machines in the works and at the pits
 
 Not in the Python. `crates/isostate-core/src/tasks.rs` and
-`data/tasks.toml`, switched by `tasks.enabled`: off under the port's rules,
-on under the game's. It is the first half of the fifth stage of the run to
-2050. **The one machine in it, the hoist, is a stand-in**: made of
-machinery and burning coal, so that the rule can be proved on the island as
-it stands, with nothing after 1900 in the content; the electric drive takes
-its place when that content lands. **This half leaves the land out of the
-machines' reach**: farms, pastures, woods, quarries, pits and mines keep the
-machines of [machines.md](machines.md) and nothing else, and some hands go
-back to the fields because of it. Nothing can be found before 1901, so the
-played century is untouched: every fact of the standing check is the same to
-the digit with the rule on and off.
+`data/tasks.toml`, switched by `tasks.enabled`, and on the land by
+`tasks.land`: both off under the port's rules, on under the game's. It is
+the fifth stage of the run to 2050, in two halves: the works first, then the
+land ("On the land", below). **The one machine in it, the hoist, is a
+stand-in**: made of machinery and burning coal, so that the rule can be
+proved on the island as it stands, with nothing after 1900 in the content;
+the electric drive takes its place when that content lands. It hauls in the
+works and at the quarries, clay pits and mines. **The fields are still out
+of reach**: no machine names the farms, the pastures or the woods (the
+tractor is a later stage's), nor the carters, so they keep the machines of
+[machines.md](machines.md) and nothing else, and some of the hands the works
+and the pits let go find work on them. Nothing can be found before 1901, so
+the played century is untouched: every fact of the standing check is the
+same to the digit with either switch on and off. Two more settings are for
+sweeps and are unset under both rules: a ceiling on what the ground may
+yield, and a control that holds the machine still.
 
 ## The standing check
 
@@ -44,6 +49,20 @@ Set seed by seed, of the 896 facts of a run to 1900 the only ones that
 differ between the two arms are the rule's own, which a run with the rule
 off does not have.
 
+The land's switch passes the same check:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --set tasks.land=false,true --standing --out DIR
+```
+
+```text
+standing check: 12 of 12 inside (0 moved, 0 OUTSIDE, 0 without a value): tasks.land=true against tasks.land=false
+```
+
+and of the 908 facts, seed by seed, the only ones that differ are the land's
+own (`land_rent_machines_Y` and `income_share_ground_Y`, which a run with the
+switch off does not have).
+
 ## What it does
 
 **Classes of task.** Every hour of a works' labour is of one of five
@@ -62,8 +81,8 @@ method's labour is split between them by kind (`data/tasks.toml`):
 | builders | masons, carpenters, bricklayers, contract builders | .40 | .40 | .02 | .18 | 0 |
 | shops and trades | services, the emporium | .15 | .25 | .25 | .25 | .10 |
 
-The land's seven sectors and the carters have their shares in the file too,
-for the second half; nothing reads them yet.
+The land's seven sectors and the carters have their shares in the file too
+(below, "On the land"); the carters' wait, since no machine reaches them.
 
 **The schedule.** Within a class the tasks run from the easiest for a
 machine to the hardest. At task `z` (0 to 1) a hand is worth `worth(z)`
@@ -128,7 +147,7 @@ machines' book is counted in the plant behind a year's income
 
 | | |
 |---|---|
-| class | haul, from 0 to 1 of it, in works only |
+| class | haul, from 0 to 1 of it, in works and (under `tasks.land`) at the quarries, clay pits, iron mines and collieries |
 | plant | 82 machinery a machine; life 20 years |
 | run | 5.2 coal a month |
 | minders | 0.104 of a hand a month (a tenth of its cost when found) |
@@ -153,7 +172,9 @@ isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set 
 ```
 
 As run on 19 November 2026 on the owners' branch, with the long run's
-anchors in. Means over islands 1 to 8, [least .. greatest] where it helps.
+anchors in, before the land was in reach (the "rule on" column is the run
+with `tasks.land=false` today, to the digit). Means over islands 1 to 8,
+[least .. greatest] where it helps.
 
 | | rule off | rule on |
 |---|---|---|
@@ -213,11 +234,171 @@ island finds the hoist (1913 on island 1 at 0.09, 1919 on island 3 at
 (islands 5, 6 and 8), where the unit's cost alone (0.894 and 1.106 times as
 much) moves the target by +0.019 and -0.017 of the class.
 
+## On the land
+
+`tasks.land`, true under `game()` and false by default. A land unit (a
+farm's, a pasture's or a wood's share of a cell, or a working at a pit head)
+hires work as the port's recipe says, `lam * (Cc / w)^(1/alpha)`, and pays
+`1 - alpha` of what its crop is worth to it for that work. Under this switch
+it pays that share to a mixture of hands and machine units, wherever a
+machine names its sector:
+
+- **The classes.** Each sector's work is split between the classes like a
+  method's: the farm .45 hauling, .40 tending, .15 judging; the pasture .30,
+  .50, .20; the woods, the quarries, the clay pits and the mines .60, .30,
+  .10; the carters .70, .20, .10 (`data/tasks.toml`).
+- **What machines hold.** In each town each sector has a target for each
+  class, worked out as the works' is from the machines that reach it, and
+  the share its machines hold (`land_auto`) moves toward it by the same rule
+  as a works' share: a ninety-sixth of the gap a month, times the fill of
+  the sector's last order for plant, and down no faster than wear. It starts
+  from nothing in the year the machine is found.
+- **The cost of an hour's work.** Where machines hold part of a sector's
+  work, an hour of it costs `cL = hands * w + cost`: `hands` is the work left
+  to hands, `sum over classes of share * (1 - held)`, and the minders of the
+  machine units held; `cost` is those units' return and wear on their plant,
+  `(hurdle + 1/life) / 12` of its worth, and their run goods, at the prices
+  the unit expects. The unit hires `lam * (Cc / cL)^(1/alpha)` of work, which
+  takes `hands` hands an hour, and makes its crop from the work. The wage
+  search keeps its shape (one sum a town and sector, read at `cL` for `w`),
+  and the land's bids (`land::sector_bids`) and a prospective pit head's
+  sums (`mines::review`) read the same `cL`.
+- **The machines' goods.** Each sector asks each month for its machines'
+  run goods with the day's trade, and for a quarter of what its plant lacks
+  beside the works' plant orders; each unit pays for them by its part of the
+  sector's work, out of its revenue, so they come off the rent, and the books
+  count them among the land's inputs as they count the port's farm machinery.
+  The return on the plant is never paid to anyone: it stays in the rent, so
+  whoever holds the land holds its machines. Where the run goods are short
+  the machines stand for that part of their work and the crop is the smaller.
+- **The rent's split.** The gauges split the farms' and pits' rent in two:
+  the return on the land's machines, `hurdle` a year on their plant's worth,
+  and the ground's part, the rest (`rent_machines` and `rent_ground` in the
+  gauges' year; the facts `land_rent_machines_Y`, the return over that rent,
+  and `income_share_ground_Y`, the ground's part over income).
+
+The hauling boosts of [machines.md](machines.md) (pumps, wagonways, farm
+machinery and the quarries' machinery) stay as they are. A run in which no
+machine holds any part of any land sector (every run to 1900) passes none of
+this and is the same run to the byte: with `tasks.land=false` the eight
+islands to 1960 give the first half's 1,523 facts with none differing.
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.land=false,true --out DIR
+```
+
+As run on 19 November 2026 (the first half's branch with this half on top).
+Means over islands 1 to 8; "none" is the first half's sweep with
+`tasks.enabled=false`, "works" is `tasks.land=false`, "land" is
+`tasks.land=true`.
+
+| | none | works | land |
+|---|---|---|---|
+| hands on the land (farms, pastures, woods), 1950, 1980, 2000, 2050 | .271, .308, .345, .453 | .290, .320, .342, .471 | .290, .335, .355, .465 |
+| hands in the pits and quarries, 1950, 1980, 2000, 2050 | .131, .129, .121, .140 | .140, .136, .133, .152 | .124, .114, .117, .143 |
+| hands in works, 1950, 1980, 2000, 2050 | .519, .485, .455, .308 | .490, .460, .440, .275 | .504, .469, .441, .287 |
+| the towns' share, 1950, 1980, 2000, 2050 | .448, .424, .396, .287 | .432, .400, .379, .260 | .442, .413, .394, .270 |
+| the works' hauling done by machine, 1950, 1980, 2050 | | .426, .545, .515 | .441, .574, .537 |
+| the pits' hauling done by machine, 1920, 1950, 1980, 2050 | | | .261, .454, .596, .563 |
+| work's share, gross, 1950, 1980, 2000, 2050 | .659, .652, .609, .572 | .646, .623, .598, .575 | .650, .632, .587, .577 |
+| work's share, net of wear, 1950, 1980, 2000, 2050 | .680, .680, .657, .596 | .671, .659, .651, .598 | .675, .668, .639, .601 |
+| what a wage buys (chained), 1950, 2000, 2050 (1750 = 1) | 6.88, 5.84, 3.29 | 7.13, 5.53, 3.23 | 7.37, 5.72, 3.45 |
+| the land machines' return over the land's rent, 1950, 2000, 2050 | | | .026, .029, .021 |
+
+**The pits let hands go; the fields take some of them.** At the pits the
+hoist takes hauling as fast as in the works (0.454 of it in 1950, 0.596 in
+1980), and the share of hands in the pits falls below even the island with
+no machine at all from 1950 to 2000. The fields are out of reach, and the
+share of hands on them is no lower than with the works alone: the same in
+1950, higher in 1980 and 2000. Counted together, of the hands the first
+half sent to the land and the pits this half takes back three fifths in
+1950 (0.016 of 0.027), a third in 1980 and a half in 2050; it gives the
+towns back two thirds of the share the first half took in 1950 and nearly
+all of it in 2000. The towns' share is higher with the land on than without
+at every mark from 1920, though still below the island with no machines.
+
+**Work's share hardly moves.** Gross and net, it is within a point of the
+works-only run at most marks. With one machine that hauls, a cap on its
+quality of 8 and the fields out of reach, nothing in this stage could move
+it much; the stage is a test of the plumbing, and of the direction hands
+go. **What a wage buys** is higher with the land on at every mark (7.37
+against 7.13 in 1950, 3.45 against 3.23 in 2050; not traced).
+
+## The ceiling on yield
+
+`tasks.yield_cap`, unset under both rules: a setting for sweeps (the
+question whether land limits what the island can make is the designer's,
+and the played game has no ceiling, as the land has never had one). While
+it is set, a unit's output may not pass `yield_cap` times what the same
+ground yielded in its best year before 1950, for each share of the cell it
+holds. Ground with no year before 1950 (a field ploughed or a pit sunk
+since) is held to its sector's mean best. Where the ceiling binds, the unit
+hires only the work it needs, and the good's price rises until what is
+wanted fits; which units stand at the ceiling is taken from last month
+(whether the work a unit wanted at last month's wage would have taken it
+there), so in the wage search a town's sum is still two numbers a sector.
+Before 1950 nothing acts and the run is the run without it (a test holds
+island 7 to 1949 to the digit).
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.yield_cap=null,2 --out DIR
+```
+
+| | unset | 2 |
+|---|---|---|
+| the land's output at the ceiling, by value, 1960, 2000, 2020, 2050 | | .001, .013, .043, .142 |
+| the land's share of income, 1960, 2000, 2020, 2050 | .171, .163, .161, .184 | .171, .157, .171, .307 |
+| the wage over the price of the land's goods (the gauges' fork), 1960, 2000, 2020, 2050 | 6.68, 5.58, 4.73, 3.83 | 6.67, 5.54, 4.44, 2.61 |
+| work's share, gross, 2000, 2020, 2050 | .587, .559, .577 | .581, .534, .434 |
+| hands on the land, 2000, 2050 | .355, .465 | .336, .346 |
+| what a wage buys (chained), 2000, 2050 | 5.72, 3.45 | 5.65, 2.57 |
+
+The island's yields grow slowly after 1950 (no machine reaches the fields,
+and nothing new makes ground yield more), so twice the best year before
+1950 is far off for decades: a
+thousandth of the land's output stands at it in 1960 and a hundredth in
+2000. It bites as the people double after 2000: by 2050 a seventh of the
+land's output is at the ceiling, the land takes 0.31 of income where it
+took 0.18, work 0.43 where it took 0.58, and the wage buys two thirds of the
+land's goods it bought without the ceiling. That is the repository's world
+on the island's own terms, arriving late because the island's yields were
+never pushed before 1950.
+
+## The control
+
+`tasks.freeze_from`, unset under both rules: every machine's quality is
+held still from that year, so that the machines in place stay and spread no
+further than the prices of 1950 would take them.
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 1980 --set tasks.freeze_from=null,1950 --out DIR
+```
+
+| | growing | held from 1950 |
+|---|---|---|
+| the works' hauling done by machine, 1950, 1960, 1970, 1980 | .441, .492, .540, .574 | .441, .464, .461, .456 |
+| the pits' hauling done by machine, 1950, 1980 | .454, .596 | .454, .479 |
+| work's share, net of wear, 1950, 1960, 1970, 1980 | .675, .672, .666, .668 | .675, .672, .669, .664 |
+| work's share, gross, 1950, 1980 | .650, .632 | .650, .629 |
+| investment's share of spending, 1950, 1960, 1970, 1980 | .048, .044, .064, .057 | .048, .039, .060, .058 |
+
+From 1950 to 1980 the machines' share of hauling rises by 0.13 in the works
+and 0.14 at the pits in one arm and stays put in the other, and work's share
+net of wear falls by 0.006 in the first and 0.010 in the second. The frozen
+arm's share does not come back: whatever lowered it from 1950 was not the
+machine. Investment's share of spending rose by about a point in both arms,
+which on the long run's own measure (a point of investment takes about a
+point off work's measured share) is about the size of the fall; so it was
+investment, and the island going on, not the margin.
+
 ## The numbers
 
 `TasksParams`, in `tasks.rs`: `enabled`, false by default and true under
-`game()`; `adopt_years`, 8; `dial`, 1, which multiplies every machine's
-quality. The classes, the spreads, the shares and the machine are content,
+`game()`; `land`, likewise; `adopt_years`, 8; `dial`, 1, which multiplies
+every machine's quality; `yield_cap` and `freeze_from`, unset under both
+(for sweeps). `land`, `yield_cap` and `freeze_from` are left out of a run's
+`params.json` while off or unset, so a run with them so writes the first
+half's file. The classes, the spreads, the shares and the machine are content,
 in `data/tasks.toml`, and only the game's content has them
 (`content::game_content`, laid again by name when the tree's overlay
 rebuilds the content).
@@ -230,12 +411,18 @@ over the cheapest unit's cost, work-weighted), `margin_gap_haul_Y`,
 `machines_years_Y` (their book over the year's wage bill); and for each
 machine `NAME_found_year`, `NAME_half_year`, `NAME_share_found`,
 `NAME_auto_after10`, `NAME_margin_gap_after40` and `NAME_dearer_first`.
-The shares of hands on the land and in the works are the sweep's own
-`farm_share_Y` and `industry_share_Y`.
+Under `tasks.land`: `auto_haul_pits_Y` (the share of the quarries', clay
+pits' and mines' hauling done by machine, each weighted by its work),
+`land_rent_machines_Y` and `income_share_ground_Y` (above); while
+`yield_cap` is set, `yield_capped_share_Y` (the value of the land's planned
+output that stands at the ceiling, over all of it). The shares of hands on
+the land, in the pits and quarries and in the works are the sweep's own
+`farm_share_Y`, `diggings_share_Y` and `industry_share_Y`.
 
 `cargo run --release -p isostate-core --example tasks -- --seeds 1-8
 --end-year 2050` prints a line a year from 1895 for each island: the
-machine's quality, the share of hauling held and the target, the waterline,
+machine's quality, the share of hauling held in works and at the pits and
+the works' target, the waterline,
 the gap, the book, the hands on the land and in works, the towns' share,
 the wage and the prices of machinery and coal.
 
@@ -247,9 +434,22 @@ the wage and the prices of machinery and coal.
   rule (3.19 against 3.53 in 1940), perhaps because the hoists' orders take
   its makers further down their learning curves (not traced). The electric drive will run on power from stations that
   are themselves works with classes of task.
-- **The land is out of reach**, so mechanising the works sends hands back to
-  the fields, and the towns' share falls. Read nothing about the island's
-  twentieth century from this half alone.
+- **The fields are out of reach.** The pits let hands go, but the farms,
+  pastures and woods take as many hands as with the works alone, or more,
+  and the towns' share is still below the island with no machines. Read
+  nothing about the island's twentieth century until a tractor exists.
+- **The land's machines are bought as inputs.** A sector's plant is bought
+  out of its revenue and counted with its inputs, as the port's farm
+  machinery is, not as investment; the books balance, but the gauges' plant
+  behind a year's income does not count it. Its return is reckoned at the
+  month's prices on the plant in place, not on what it cost.
+- **A sector holds machines it has not been delivered**, as a works does,
+  and a town founded after the find starts its land from nothing where its
+  works start at the target.
+- **The ceiling's best years are of a unit's planned crop** (an average
+  year's), by sector and cell, per share of the cell the use held; how that
+  behaves on a cell whose use changed a great deal before 1950 is not looked
+  at.
 - **The hoist stops improving at a quality of 8**, about 1973, and the wage
   falls after 2000 on an island with nothing new to make, so the works'
   share of hauling stalls at 0.55 and eases back to 0.52 by 2050.

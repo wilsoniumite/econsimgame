@@ -764,5 +764,9 @@ One line each as they arrive: the name, its page, its switch.
   machine units than the town's wage buys; works are built with the town's
   machines and move toward them as their orders for plant are filled. Proved
   with one stand-in, a coal-fired hoist found from 1901, so nothing in the
-  played century moves; the land is out of the machines' reach in this first
-  half. [tasks.md](tasks.md), `tasks.enabled`.
+  played century moves. Under `tasks.land` the land's units pay their share
+  for work to hands and machine units alike, so the hoist hauls at the pits
+  and quarries too; the fields wait for a tractor. A ceiling on yield
+  (`tasks.yield_cap`) and a control that holds the machine still
+  (`tasks.freeze_from`) are for sweeps. [tasks.md](tasks.md),
+  `tasks.enabled`, `tasks.land`.

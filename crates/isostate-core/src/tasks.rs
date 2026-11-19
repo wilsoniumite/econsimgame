@@ -35,9 +35,18 @@
 //!
 //! Nothing acts where no works holds any part of any class, so a run in which
 //! no machine is found (every run to 1900) is the same run to the byte, and
-//! with the switch off the state stays empty. The land is out of the machines'
-//! reach in this first half: `land_auto` is the next field of the state, and
-//! the land's machines of `machines.rs` stand as they are.
+//! with the switch off the state stays empty.
+//!
+//! **On the land** (`tasks.land`): where a use names a land sector, each
+//! town's sector holds a share of each class (`land_auto`), moving toward the
+//! town's target for it as a works' does, and its units pay their share for
+//! work to a mixture of hands and machine units: work wanted is `lam * (Cc /
+//! cL)^(1/alpha)` at `cL = hands * w + cost` (`Mix`, `land_month`), and the
+//! units buy their machines' run goods and plant out of their revenue, the
+//! return on the plant staying in the rent. The land's machines of
+//! `machines.rs` stand beside these as they are. For sweeps, a ceiling on
+//! what the ground yields (`yield_cap`, from 1950) and a control that holds
+//! every use's quality still (`freeze_from`).
 
 use std::collections::BTreeMap;
 

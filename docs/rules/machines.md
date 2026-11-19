@@ -583,6 +583,17 @@ works had joined. The worry above about the
 converter's numbers and the quality curve wanting tuning together, with the
 works rules on, now covers the steel rail as well.
 
+## Beside the machines for tasks
+
+The machines here make ground yield more, or a pit's hauling go further: a
+boost to the land's output, bought by the unit of output. The machines for
+tasks of [tasks.md](tasks.md) are another kind: from 1901, under
+`tasks.land`, they take part of a land sector's work itself and are paid out
+of the share for work. The two stand side by side and neither changes the
+other: the pumps, wagonways, farm machinery and the quarries' machinery are
+bought and boost as before, and a unit's work is then done by hands and
+machine units together.
+
 ## What worries me
 
 - **A town can still hire more hands than it has.** The mend above stops the
