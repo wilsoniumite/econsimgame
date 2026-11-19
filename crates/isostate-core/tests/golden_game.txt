@@ -19,11 +19,18 @@
 # branch's stage 6 content (oil from coal, nitrogen, breeding, the tractor and
 # the cutter) gives the island under the game's rules another history; the
 # hashes are taken again on the merged tree.
+# Taken again on night/g-batch-to2050-a (19 November 2026), the batch of the
+# run to 2050's stages 5c and 6 (machines that work once they stand; the
+# electric drive; the new works drawn) with main at 5348171 (stage 7a, the
+# land's twentieth century, on 5c and 6a) merged in: the first era's four
+# held, and the second era's four moved, by the electric drive, found from
+# 1901, which takes the works' hauling from the hoist; the drawing is the
+# generators' and moves none of them.
 1750-1900 economy  0xdebd478051ee16be
 1750-1900 books    0x3cc8889c1caf36c4
 1750-1900 news     0x2427b8a15d4c901e
 1750-1900 run.bin  0x57f3dcbc5c19828d
-1901-2050 economy  0xd958a560c9ba3a9b
-1901-2050 books    0x5f66c48c5194dd5d
-1901-2050 news     0x98e775c75634129b
-1901-2050 run.bin  0xf0ca8497e7fd7c62
+1901-2050 economy  0x54973a87faf54f7f
+1901-2050 books    0x45bd0d1c58249e35
+1901-2050 news     0xc1c1c82fbda321ec
+1901-2050 run.bin  0x5421964efe72e32c
