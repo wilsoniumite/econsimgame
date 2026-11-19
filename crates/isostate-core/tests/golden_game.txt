@@ -50,8 +50,12 @@
 # Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
 # books and run.bin moved again by the gauges, economy and news are the
 # tree's as they stood.
-# (hashes to be taken again on the batch night/g-batch-1)
+# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
+# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
+# 4b and 5a together: against main all four moved, by longrun and the
+# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
+# economy and news are stage 2's own, and the sandbox's pieces move nothing.
 economy  0x31f9be4ca4c2eee9
-books    0xd60961a050d1589c
+books    0x7668c76a13f68b80
 news     0xcc48fe3dfff18c36
-run.bin  0x7206c1699de827fb
+run.bin  0x0443b91e78ee6c47
