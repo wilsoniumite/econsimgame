@@ -62,11 +62,14 @@ pub struct Known {
     open: Option<String>,
     /// an edit from this tab is out, and its answer goes up as a toast
     waiting: bool,
+    /// a question is out and its answer has not come (a script's `settle` waits for it)
+    out: bool,
 }
 
 impl Known {
     /// Keep an answer (`game::pump`). The version is raised only when it differs.
     pub fn keep(&mut self, now: RulesNow) {
+        self.out = false;
         if self.now.as_ref() != Some(&now) {
             self.now = Some(now);
             self.version += 1;
@@ -86,6 +89,11 @@ impl Known {
 
     pub fn entry(&self, name: &str) -> Option<&Entry> {
         self.entries().iter().find(|e| e.name == name)
+    }
+
+    /// A question is out and its answer has not come.
+    pub fn out(&self) -> bool {
+        self.out
     }
 
     /// The rule open to its numbers.
@@ -130,7 +138,7 @@ pub fn plugin(app: &mut App) {
 
 /// The rules are asked for when the tab opens and after any order's answer
 /// (`Game::answered`), and the tab is drawn again when the answer kept changes.
-fn ask(live: Res<Live>, game: Res<Game>, known: Res<Known>, mut ui: ResMut<UiState>, mut asked: Local<Option<u64>>, mut drawn: Local<u64>) {
+fn ask(live: Res<Live>, game: Res<Game>, mut known: ResMut<Known>, mut ui: ResMut<UiState>, mut asked: Local<Option<u64>>, mut drawn: Local<u64>) {
     if ui.tab != Some(crate::ui::Tab::Rules) {
         // asked afresh when the tab opens again
         *asked = None;
@@ -139,6 +147,7 @@ fn ask(live: Res<Live>, game: Res<Game>, known: Res<Known>, mut ui: ResMut<UiSta
     if *asked != Some(game.answered) {
         *asked = Some(game.answered);
         live.send(Cmd::Rules);
+        known.out = true;
     }
     if *drawn != known.version {
         *drawn = known.version;

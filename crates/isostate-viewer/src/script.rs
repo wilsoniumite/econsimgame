@@ -505,6 +505,17 @@ fn print_state(world: &mut World, note: &str) {
                 println!("script:   {line}");
             }
         }
+        // the island's money from the record, each December of the last dozen years and the
+        // newest month there is, so that a rule of money set by hand can be read in a log
+        let r = &world.resource::<Data>().r;
+        let newest = (0..r.series_len).rev().find(|&t| crate::replay::month(r, "money", t).is_some());
+        if let Some(t) = newest {
+            let decembers: Vec<String> = (t.saturating_sub(12 * 12)..=t)
+                .filter(|m| m % 12 == 11 || *m == t)
+                .filter_map(|m| crate::replay::month(r, "money", m).map(|v| format!("{} {} {:.6e}", &crate::clock::MONTHS[m % 12][..3], r.y0 + (m / 12) as i32, v)))
+                .collect();
+            println!("script:   the island's money (the record's series): {}", decembers.join(", "));
+        }
     }
 }
 
@@ -861,7 +872,9 @@ fn step(world: &mut World, sc: &mut Script) {
                 let game = world.resource::<Game>();
                 // (a sandbox's run on lets go of the clock for a frame between one year and the next)
                 let running = world.get_resource::<crate::sandbox::Sandbox>().is_some_and(|s| s.running());
-                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
+                // (and the Rules tab's question answered)
+                let asking = world.get_resource::<crate::rulebook::Known>().is_some_and(|k| k.out());
+                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
                 if !quiet && now >= sc.until {
                     fail("the game did not settle in two minutes");
                 }
