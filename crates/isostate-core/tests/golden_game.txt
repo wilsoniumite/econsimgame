@@ -26,11 +26,22 @@
 # held, and the second era's four moved, by the electric drive, found from
 # 1901, which takes the works' hauling from the hoist; the drawing is the
 # generators' and moves none of them.
-1750-1900 economy  0xdebd478051ee16be
+# Taken again on night/g-woods-managed: the woods' rule (docs/rules/woods.md) on in
+# game_params: its two series (woods_cover, timber_in_wages) join
+# series_monthly.csv in both eras, managed woodland is in stage 6's content
+# and in run.bin, and from 1895 the woods grow back faster where it is known.
+# Taken again on night/g-batch-cures-a (19 November 2026), the batch of
+# the cures for the wage after 1950, with main at 94b35ea:
+# night/g-woods-managed's woods' rule on in game_params. The first era's
+# economy moved by the two new series' columns (woods_cover, timber_in_wages)
+# alone and its run.bin by managed woodland in the record (seed 7 finds it in
+# 1902, not before 1900: its books and news held); the second era's four
+# moved, the woods managed from 1902.
+1750-1900 economy  0x467503720738c438
 1750-1900 books    0x3cc8889c1caf36c4
 1750-1900 news     0x2427b8a15d4c901e
-1750-1900 run.bin  0x57f3dcbc5c19828d
-1901-2050 economy  0x54973a87faf54f7f
-1901-2050 books    0x45bd0d1c58249e35
-1901-2050 news     0xc1c1c82fbda321ec
-1901-2050 run.bin  0x5421964efe72e32c
+1750-1900 run.bin  0xcb5d0016dcd11bb3
+1901-2050 economy  0xf242ea0baab0a53d
+1901-2050 books    0x2cfb3012bb42c72d
+1901-2050 news     0xc58e7853c559b74b
+1901-2050 run.bin  0x64c9e8ac8c7af045

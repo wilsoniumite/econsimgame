@@ -167,6 +167,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     }
     // gauges: read off the books, after their series, only when both are on
     crate::gauges::add_series(&mut reg, P, n_months);
+    // woods (docs/rules/woods.md): the woods' cover and timber in months of the wage
+    crate::woods::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
     st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);
@@ -269,6 +271,8 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     if P.engel.enabled {
         crate::engel::record_month(st, C, &mut s, t, wage, &P_nat);
     }
+    // woods (docs/rules/woods.md): nothing while it does not record
+    crate::woods::record_month(st, C, P, &mut s, t, wage, &P_nat);
     st.series = s;
 }
 

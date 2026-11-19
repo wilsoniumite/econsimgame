@@ -304,7 +304,11 @@ Not her notes: what helpers and reviewers reported and left open. On the evening
 5. "forests and farms look too regular when zooming out. I think there was a good fff on the topic" (Factorio's Friday Facts 390).
 6. "lakes and large rivers and canyons and plateaus and that sort of thing would be really nice."
 7. "Watersheds and water industry. Probably need a water cycle for that. floods, and dams and reservoirs and irrigation."
-8. "logging industry"
+8. "logging industry" Since 19 November the woods are managed: an invention of the game's tree, managed woodland, is found about 1900 and spreads from town to town, and where it is known the woods grow back three times as fast ([rules/woods.md](rules/woods.md)). It is a craft that makes the woods last, so that the island no longer runs out of timber after 1950. It is not yet an industry: nobody plants a wood because timber pays, and nothing is drawn. Left for later, each its own item:
+   - woods as a use of land that an owner plants when timber pays, beside the farm and the pasture;
+   - a cut held to what grows back, where today the woodmen cut as the price bids;
+   - timber taken out of the twentieth century's plant for steel, brick and concrete (the powered mill's timber 10 a unit of capacity, the brewery's sawn timber 2, the paper mill's timber 10), the truer cure of the wood famine (`docs/rules/woods.md`, "What it does not mend");
+   - planted conifers drawn in the picture, in rows, where a square's woods are managed.
 9. "canals, prior to railroads."
 
 **11 November, afternoon, after playing again.** "don't read too much into it right now":

@@ -345,6 +345,11 @@ pub struct Params {
     /// the Python; see docs/rules/tasks.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub tasks: crate::tasks::TasksParams,
+    /// Managed woodland, an invention that grows the woods back faster where
+    /// it is known, and the woods' cover recorded (not in the Python; see
+    /// docs/rules/woods.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub woods: crate::woods::WoodsParams,
     /// Crossing water costs a ford's or a ferry's charge, and a parish
     /// builds a bridge where the carting it saves pays for it; on the new land
     /// only (not in the Python; see docs/rules/crossings.md).
@@ -564,6 +569,7 @@ pub fn default_params() -> Params {
         transition: crate::transition::TransitionParams::default(),
         owners: crate::owners::OwnersParams::default(),
         tasks: crate::tasks::TasksParams::default(),
+        woods: crate::woods::WoodsParams::default(),
         crossings: crate::crossings::CrossingParams::default(),
     }
 }
@@ -611,6 +617,7 @@ pub fn game_params() -> Params {
     P.transition = crate::transition::TransitionParams::game();
     P.owners = crate::owners::OwnersParams::game();
     P.tasks = crate::tasks::TasksParams::game();
+    P.woods = crate::woods::WoodsParams::game();
     // crossings (docs/rules/crossings.md): acts on the new land only, and does
     // nothing on the old island, whose rivers the core does not draw
     P.crossings = crate::crossings::CrossingParams::game();
