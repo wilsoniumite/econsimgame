@@ -193,7 +193,89 @@ true under `game()`. The constants beside it: `PRESENCE` (services 0.10),
 
 ## What a sweep showed
 
-(Filled in below from the measurements.)
+**They change nothing.** Seeds 1 to 8 under the game's rules with six
+families, set beside the same sweep of `main` before the gauges: "of the 624
+facts both have, the seconds aside, 0 differ". The game's golden test moves
+`books` and `run.bin` (the gauges' series and their years in the header)
+and holds `economy` and `news`; with the gauges switched off in
+`game_params()` it holds all four.
+
+**On the island as it is**, seeds 1 to 8, six families, as run on 19
+November 2026 (the mean across seeds, then the least and greatest):
+
+```bash
+cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --out runs/gauges
+```
+
+| | 1750 | 1800 | 1850 | 1900 |
+|---|---|---|---|---|
+| work's share of income, gross (the books') | 0.710 | 0.690 | 0.652 | 0.691 [0.647 .. 0.715] |
+| net of wear | 0.713 | 0.699 | 0.670 | 0.712 [0.674 .. 0.734] |
+| investment's share of spending | 0.005 | 0.036 | 0.064 | 0.043 [0.014 .. 0.073] |
+| spending paid out as wages | 0.678 | 0.689 | 0.671 | 0.686 [0.653 .. 0.712] |
+| households' basket | 0.661 | 0.681 | 0.664 | 0.677 [0.652 .. 0.700] |
+| spending paid for out of pay | 0.712 | 0.684 | 0.642 | 0.686 [0.642 .. 0.711] |
+| the floor | 0.033 | 0.037 | 0.053 | 0.097 [0.094 .. 0.100] |
+| works in years of income | 0.12 | 0.36 | 0.74 | 0.75 [0.53 .. 1.02] |
+| labour inside new plant | 0.77 | 0.75 | 0.67 | 0.69 [0.52 .. 0.80] |
+| what a wage buys of made goods (1750 = 1) | 1 | 1.88 | 3.10 | 4.03 [3.58 .. 4.32] |
+| of the land's goods | 1 | 2.08 | 3.08 | 5.51 [4.87 .. 6.22] |
+| of both | 1 | 2.08 | 3.05 | 4.60 [4.31 .. 4.93] |
+| hours worked over hours by hand | 1.35 | 0.77 | 0.35 | 0.35 [0.34 .. 0.36] |
+| services made and lost | 0.21 | 0.17 | 0.16 | 0.17 [0.14 .. 0.19] |
+| the families' share of the works | 0.07 | 0.44 | 0.43 | 0.52 [0.43 .. 0.61] |
+| and of the land | 0.13 | 0.19 | 0.24 | 0.24 [0.16 .. 0.29] |
+
+What I would say from them:
+
+- **Wear moves work's share by two points at most** before 1900, since the
+  works are less than a year of income. Net and gross part as the works
+  grow: by under half a point in 1750, two points in 1900.
+- **Spending and income tell the same story.** The share of spending paid
+  out as wages, reckoned through every chain, stands within about three
+  points of the books' share of income at the marks (a test holds six in
+  every year of a run to 1800),
+  and the share of spending paid for out of pay within one.
+- **Labour inside machinery** averages 0.635 over 1775 to 1900 [0.560 ..
+  0.673] (`gauge_labour_in_machinery_1775_1900`), inside the band of 0.4 to
+  0.75 the design for the run to 2050 reckoned for a century of strong and
+  stupid machines, on all eight islands. A single year's figure swings from
+  0.2 to 0.9 with the engine works' profit; in 1750 it is 0.06, because the
+  first millwrights' price stands far above their costs and most of it is
+  profit.
+- **The floor is small**: a twentieth of income in 1850 and a tenth in
+  1900, all of it the shops' tenth, through the bread and cloth and iron
+  in everything a shop sells. On today's island almost no work is closed to
+  machines.
+- **A wage buys the land's goods better than made ones** after 1850: on
+  the island the machines' gains reach the farms, quarries and pits (the
+  machines mechanism) more than the works.
+- **Hours worked are a third of hours by hand** from 1850 and stay there:
+  the methods found in the first century do their work with a third of the
+  hands, and nothing after the converter does better.
+- **Services lose a sixth of what is made**, a fifth in the first years,
+  as the merchants' rule for goods that spoil was expected to show.
+
+**Run on to 2050**, island 7 alone (`--seeds 7 --end-year 2050`; the island
+is still the hungry one, with neither stage 1 nor 2 of the run to 2050 in):
+
+| | 1900 | 1950 | 2000 | 2050 |
+|---|---|---|---|---|
+| work's share of income, gross | 0.715 | 0.715 | 0.655 | 0.554 |
+| net of wear | 0.734 | 0.738 | 0.689 | 0.598 |
+| investment's share of spending | 0.031 | 0.022 | 0.065 | 0.082 |
+| spending paid out as wages | 0.712 | 0.706 | 0.641 | 0.593 |
+| the floor | 0.100 | 0.103 | 0.069 | 0.062 |
+| works in years of income | 0.64 | 0.76 | 1.35 | 2.22 |
+| labour inside machinery | 0.90 | 0.92 | 0.66 | 0.56 |
+| what a wage buys of everything (1750 = 1) | 4.93 | 4.42 | 3.49 | 2.49 |
+| the families' share of the works | 0.48 | 0.59 | 0.62 | 0.62 |
+
+Work's share falls sixteen points after 1950, and the works' owners (0.07
+to 0.19 of income) and the merchants take it, with no machine taking any
+task: the island invests more and grows poorer, and its works stand at two
+years of income by 2050. Measured work's share moves with investment, which
+is why the net share and investment's share stand beside it.
 
 ## What worries me
 
