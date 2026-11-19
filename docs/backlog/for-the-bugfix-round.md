@@ -227,3 +227,8 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - Atlas page labels a build from a clean checkout of main as f31efb3-dirty: shots atlas-island7-1970s-before.png header (from night/g-land-century, 2026-11-19)
 - docs/rules/tasks.md older tables (the tractor's eight islands, the dial) predate the drive and the woods; not rerun (from night/g-land-century, 2026-11-19)
 - My chart's pixel font has no capital letters (footer reads ' -2050'): land-century-1-8.png (from night/g-land-century, 2026-11-19)
+- PostUpdate spikes of 10-19 ms about every 0.2 s at Fast on the grown island, both lands, before and after; no span names them: frames csv post_ms (R/frames/*-1880-a.csv) (from night/g-year-turn-new-land, 2026-11-19)
+- One frame with 15 ms of 'main update' in no timed system: b8-new-1880-a.txt, 1892 (from night/g-year-turn-new-land, 2026-11-19)
+- The frames plan's shot: loses the picture if quit follows at once ('sending on a closed channel'): seen taking strip-main-new-1885.png (from night/g-year-turn-new-land, 2026-11-19)
+- Nothing of the hand-over has been measured in a window, before or after (no window may be opened here) (from night/g-year-turn-new-land, 2026-11-19)
+- With no window a year takes ~1.5 s to go out, so the new year's buildings stand among the old year's trees for longer: b8 summaries (from night/g-year-turn-new-land, 2026-11-19)
