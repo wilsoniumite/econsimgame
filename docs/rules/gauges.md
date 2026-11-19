@@ -182,8 +182,21 @@ hours by hand.
 - **In the run file**, the header's `gauges` holds every year's, with the
   table of work only a person may do it was reckoned with.
 
-Nothing draws them yet. The three dials and the ledger that would show them
-to a player are a later piece of work; what they need (the share of
+- **On screen**, the viewer's Markets panel has a third half, Work
+  (`crates/isostate-viewer/src/work_charts.rs`), which draws some of them
+  year by year beside the books' shares: work's share of income net of wear
+  (`gauge_work_net`) and of spending (`gauge_spend_work`) with the books'
+  share of income, and the fork of what a wage buys (`gauge_fork_made`,
+  `_raw`, `_all`) under the chained wage. With them it draws the part of each
+  class of task machines do and who owns the works, which are not series:
+  the core hands them over in `LiveYear::tasks` and `LiveYear::owners`.
+
+The rest are not drawn and stay in sweeps and in the example above: the
+floor under work's share, labour inside machinery and inside new plant,
+hours worked over hours by hand, investment's share, the works in years of
+income, the hands in new methods, services lost, and the families' shares
+of the works and the land. The three dials and the ledger that would show a
+player what is left are a later piece of work; what they need (the share of
 spending paid out as wages, ownership in years of wages, which the books
 keep, and each family's share of the works and the land, each year and for
 any town) is in `GaugeYear`, the books and the series.

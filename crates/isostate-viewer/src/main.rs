@@ -46,6 +46,7 @@ mod shots;
 mod terrain;
 mod trains;
 mod ui;
+mod work_charts;
 mod world;
 mod year;
 

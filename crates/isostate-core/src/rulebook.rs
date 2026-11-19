@@ -27,7 +27,7 @@ use crate::params::{game_params, Params};
 use crate::sim::Sim;
 
 /// The numbers that matter most, pinned at the head of the tab (section 4.6).
-pub const PINNED: [&str; 11] = [
+pub const PINNED: [&str; 12] = [
     "money.growth",
     "rent_regime",
     "hurdle",
@@ -39,6 +39,7 @@ pub const PINNED: [&str; 11] = [
     "harvest.foreseen",
     "people.found_saving",
     "rail_hurdle",
+    "tasks.dial",
 ];
 
 /// The word a name fixed when the island is made carries in place of offers.
@@ -47,6 +48,15 @@ pub const FIXED: &str = "fixed when the island is made";
 /// A number's offers: the word on the chip and the share of the game's value
 /// it sets.
 pub const NUMBER_OFFERS: [(&str, f64); 5] = [("None", 0.0), ("Half", 0.5), ("As set", 1.0), ("Half again", 1.5), ("Double", 2.0)];
+
+/// The numbers turned in multiples rather than by halves: the dial on the
+/// machines for tasks (docs/rules/tasks.md), which the research turns a
+/// hundredfold. The rules hold no tax yet; a rate joins it in one line when
+/// the state's purse lands.
+pub const WIDE: [&str; 1] = ["tasks.dial"];
+
+/// A wide number's offers, as `NUMBER_OFFERS` are a number's.
+pub const WIDE_OFFERS: [(&str, f64); 6] = [("A tenth", 0.1), ("A third", 1.0 / 3.0), ("As set", 1.0), ("Threefold", 3.0), ("Tenfold", 10.0), ("Hundredfold", 100.0)];
 
 /// One name the sweep can set.
 #[derive(Clone, Debug, PartialEq)]
@@ -212,8 +222,9 @@ fn offers_of(run: &Params, name: &str, kind: Kind, game: &Value) -> Vec<Offer> {
         Kind::Switch { .. } | Kind::Flag => vec![offer("On", json!(true)), offer("Off", json!(false))],
         Kind::Choice => vec![offer("Landlords", json!("landlords")), offer("Commons", json!("commons"))],
         Kind::Number => {
-            // 0, a half, as set, half as much again and double the game's figure, rounded for
-            // a whole number; a figure two words give is offered once (As set keeps its own)
+            // 0, a half, as set, half as much again and double the game's figure (a wide
+            // number's: a tenth to a hundredfold), rounded for a whole number; a figure two
+            // words give is offered once (As set keeps its own)
             let Some(g) = game.as_f64().filter(|g| *g != 0.0) else { return Vec::new() };
             let whole = game.is_u64() || game.is_i64();
             let at = |share: f64| -> (f64, Value) {
@@ -229,7 +240,8 @@ fn offers_of(run: &Params, name: &str, kind: Kind, game: &Value) -> Vec<Offer> {
             let as_set = at(1.0).0;
             let mut seen: Vec<f64> = Vec::new();
             let mut out = Vec::new();
-            for (word, share) in NUMBER_OFFERS {
+            let table: &[(&str, f64)] = if WIDE.contains(&name) { &WIDE_OFFERS } else { &NUMBER_OFFERS };
+            for &(word, share) in table {
                 let (x, value) = at(share);
                 if seen.contains(&x) || (x == as_set && word != "As set") {
                     continue;

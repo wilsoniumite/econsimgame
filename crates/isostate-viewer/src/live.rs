@@ -1626,6 +1626,7 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
             }
         }
     }
+    crate::work_charts::take_year(r, y);
 
     // the year's quarries, pits and mines, where the rules keep them as workings
     if !y.workings.is_empty() {
