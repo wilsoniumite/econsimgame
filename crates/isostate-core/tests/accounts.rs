@@ -120,7 +120,7 @@ fn balances(rules: Rules, seed: u64, families: usize, end: i64) {
         assert!(y.balance_income < 1e-9, "{}: incomes off by {:e}", y.year, y.balance_income);
         // and over the year
         let rents = y.rent_farm + y.rent_pits + y.rent_sites + y.rent_town;
-        let paid = y.wage_bill + y.div_households + y.div_families + y.merchants_div + rents + y.fund_div + y.issue;
+        let paid = y.wage_bill + y.div_households + y.div_families + y.div_landlords + y.merchants_div + rents + y.fund_div + y.issue;
         let got = y.to_households + y.to_landlords + y.to_fund + y.to_families.iter().map(|f| f.dividends + f.rents).sum::<f64>();
         assert!((paid - got).abs() < 1e-9 * paid, "{}: {paid} paid as income and {got} received", y.year);
         // what the island earned is what it spent on goods, house rent and building
@@ -193,7 +193,7 @@ fn balances(rules: Rules, seed: u64, families: usize, end: i64) {
         for name in ["out", "value", "wages", "inputs", "fuel", "cart_in", "cart_out", "rent", "managers", "profit", "dividends"] {
             assert!(near(works(name), method(name)), "{} {name}: {} over the works, {} over the methods", y.year, works(name), method(name));
         }
-        assert!(near(works("dividends"), y.div_households + y.div_families));
+        assert!(near(works("dividends"), y.div_households + y.div_families + y.div_landlords));
         assert!(near(works("wages"), y.pay_works) && near(works("invest"), y.invest));
     }
 }
@@ -215,9 +215,13 @@ fn the_books_keep_up_with_the_mines_and_the_canals() {
     // royalty split among the cells of its lease, and navvies paid two shillings
     // on every shilling of materials all pass through the books. (It ran to 1800
     // before the production tree; with the tree no working is begun in 1799 on
-    // this island, and one is in 1796.)
+    // this island, and one is in 1796.) It is played with owners off
+    // (docs/rules/owners.md), the island whose workings it was set to: with the
+    // landlords paid their dividends no working is being sunk in 1796.
     const END: i64 = 1797;
-    let r = run(Rules::Game, &params(Rules::Game, 7, 6, END, true));
+    let mut P = params(Rules::Game, 7, 6, END, true);
+    P.owners.enabled = false;
+    let r = run(Rules::Game, &P);
     let (st, C) = (&r.state, &r.content);
     assert!(r.params.mines.enabled && r.params.canals.enabled && r.params.canals.wages > 0.3);
     for y in &st.acct.years {

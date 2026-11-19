@@ -251,7 +251,21 @@ pub fn extend_sister(st: &mut State, C: &Content, P: &Params, parent: usize, dK:
         // tried either.
         return true;
     }
-    let backed = if own < cost { firms::back_firm(st, P, parent, cost - own) } else { 0.0 };
+    let backed = if P.owners.enabled && families::owner_of_firm(st, parent).is_none() {
+        // owners (docs/rules/owners.md): the works that grows is paid into by
+        // the parent's holders, for the parent's cash, and by the pool; the
+        // parent's own shares do not move
+        let s = crate::owners::shares(st, P, parent);
+        let mut x = s.map(|v| v * own);
+        let (got, y) = if own < cost { firms::draw_pool_parts(st, P, i, cost - own) } else { (0.0, [0.0; 4]) };
+        (0..4).for_each(|h| x[h] += y[h]);
+        crate::owners::paid_in(st, C, P, f, x);
+        got
+    } else if own < cost {
+        firms::back_firm(st, C, P, parent, cost - own)
+    } else {
+        0.0
+    };
     st.f_cash[parent] -= own;
     st.f_cash[f] += own + backed;
     for g in 0..C.G {
@@ -541,11 +555,15 @@ pub fn first_sites(st: &State, i: usize, candidates: Vec<usize>, taken: &[usize]
 /// this the dividend, which pays out 0.4 a month of all the cash above four
 /// months of costs, sends it back to the owners while the plant is still to be
 /// paid for, and the works ends below nothing (`docs/rules/works.md`, part H).
-/// Nothing under the port, or with `keep_order` off.
+/// Nothing under the port, or with `keep_order` off. Under `tasks` the works
+/// also keeps back what the plant of its machines on order still costs
+/// (`docs/rules/tasks.md`), whatever `keep_order` says.
 pub fn kept_for_order(st: &State, C: &Content, P: &Params, f: usize) -> f64 {
+    let machines = if P.tasks.enabled { crate::tasks::order_value(st, C, f) } else { 0.0 };
     if !P.works.keep_order || st.f_order_K[f] <= 0.0 {
-        return 0.0;
+        return machines;
     }
     let t = st.f_town[f];
-    pairwise_sum_by(C.G, |g| st.f_order[(f, g)] * st.price[(t, g)])
+    let plant = pairwise_sum_by(C.G, |g| st.f_order[(f, g)] * st.price[(t, g)]);
+    if machines > 0.0 { plant + machines } else { plant }
 }

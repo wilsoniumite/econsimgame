@@ -55,7 +55,30 @@
 # 4b and 5a together: against main all four moved, by longrun and the
 # transition (economy, books, news, run.bin) and the gauges (books, run.bin);
 # economy and news are stage 2's own, and the sandbox's pieces move nothing.
-economy  0x31f9be4ca4c2eee9
-books    0x7668c76a13f68b80
-news     0xcc48fe3dfff18c36
-run.bin  0x0443b91e78ee6c47
+# Then on night/g-to2050-4-owners, merging the gauges into stage 2 (19
+# November 2026): books and run.bin moved by the gauges, economy and news
+# are stage 2's as they stood.
+# Then on night/g-to2050-4-owners (19 November 2026): all four moved by
+# step one of owners (owners.enabled, docs/rules/owners.md): the landlords
+# are paid their part of the dividends of the works they put money into, so
+# the households have less and the landlords more, which is another history.
+# With the switch off in game_params() the four above held.
+# Then on night/g-to2050-5-tasks (19 November 2026): books and run.bin moved,
+# economy and news held. The machines for tasks (tasks.enabled,
+# docs/rules/tasks.md) are switched on, but nothing can be found before 1901,
+# so the economy to 1900 is the owners' to the byte. What moved is the
+# gauges' floor, which now reads the class of presence from the content's
+# classes of task, where the emporium holds a tenth as the services do (its
+# series is among the books' columns), and in run.bin the gauges' list of
+# presence and the params, which now carry the switch.
+# Then on night/g-batch-2 (19 November 2026), the batch that lands the run
+# to 2050's stages 4 and 5 (owners; tasks in the works, on the land and in
+# the pits) with the sandbox's stages 5b, 6a and 6b: taken again on the
+# merged tree, and against main all four moved, by the owners (economy,
+# books, news, run.bin) and the tasks (books, run.bin). The four are the
+# tasks' second half's own to the digit: the sandbox's pieces, and the
+# owners' and tasks' switches joining the Rules tab, move nothing.
+economy  0x9a6b3ba24a097bd1
+books    0xfa5dd1db28f62894
+news     0x9f83de6e9e162ab1
+run.bin  0xdb99a5e2a2c197f3

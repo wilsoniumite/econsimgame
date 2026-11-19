@@ -24,6 +24,7 @@ mod game;
 mod hand_tab;
 mod handover;
 mod icons;
+mod inspector;
 mod lab;
 mod live;
 mod look;
@@ -1054,6 +1055,8 @@ fn main() {
         .add_plugins(game::plugin)
         .add_plugins(sandbox::plugin)
         .add_plugins(hand_tab::plugin)
+        .add_plugins(inspector::plugin)
+        .add_plugins(rulebook::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
@@ -1086,6 +1089,8 @@ fn main() {
             eprintln!("--script: {e}");
             std::process::exit(2);
         }
+        // a sandbox's inspector prints each new answer the simulation gives it
+        app.insert_resource(inspector::Answers::printing());
     } else if headless {
         // a picture waits for what it needs, its year's scenery and the renderer's shaders, and then
         // some frames for it to settle (take_shot); for the shaders no longer than this, which a busy
@@ -1849,32 +1854,39 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
                 ui::scroll_list(p, card, Node::default(), Node { row_gap: Val::Px(4.0), padding: UiRect::right(Val::Px(ui::THUMB_ROOM)), ..default() }, InspectBody, |p| {
                     p.spawn((text(f, "", 14.0, MUTED), InspectText));
                     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
+                    // in a sandbox, what the simulation knows of the thing (inspector.rs)
+                    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }, inspector::InspectorBlock));
                 });
             });
         });
-    // town labels
+    // town labels (a town founded later in a live game gets its own in `labels`)
     for t in 0..data.r.header.towns.len().min(data.r.n_towns) {
-        commands
-            .spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: Val::Px(220.0),
-                    justify_content: JustifyContent::Center,
-                    ..default()
-                },
-                Visibility::Hidden,
-                TownLabel(t),
-            ))
-            .with_children(|p| {
-                p.spawn((
-                    Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(9.0)), ..default() },
-                    BackgroundColor(Color::srgba(0.99, 0.97, 0.92, 0.82)),
-                ))
-                .with_children(|q| {
-                    q.spawn(text(f, &data.r.header.towns[t].name, 15.0, INK));
-                });
-            });
+        town_label(&mut commands, f, t, &data.r.header.towns[t].name);
     }
+}
+
+/// A town's label, hidden until `labels` places it.
+fn town_label(commands: &mut Commands, f: &Handle<Font>, t: usize, name: &str) {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(220.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            Visibility::Hidden,
+            TownLabel(t),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(9.0)), ..default() },
+                BackgroundColor(Color::srgba(0.99, 0.97, 0.92, 0.82)),
+            ))
+            .with_children(|q| {
+                q.spawn(text(f, name, 15.0, INK));
+            });
+        });
 }
 
 /// "1 family", "6 families": what the terminal and the sheet of pictures say of a game.
@@ -1895,7 +1907,10 @@ fn fmt_pop(p: f32) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn labels(
+    mut commands: Commands,
+    font: Res<UiFont>,
     data: Res<Data>,
     tl: Res<Timeline>,
     o: Res<Orbit>,
@@ -1906,8 +1921,13 @@ fn labels(
     mut fonts: Query<&mut TextFont>,
 ) {
     let _frames = frames::span(frames::Sys::Hud);
-    let Ok((cam, cam_t)) = cams.single() else { return };
     let r = &data.r;
+    // a town founded in a live game since the labels were made (by the rule or by hand) gets one
+    let have = q.iter().count();
+    for t in have..r.header.towns.len().min(r.n_towns) {
+        town_label(&mut commands, &font.0, t, &r.header.towns[t].name);
+    }
+    let Ok((cam, cam_t)) = cams.single() else { return };
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     // rank towns by size so only the bigger ones are named when zoomed out
     let mut order: Vec<(usize, f32)> = (0..r.n_towns).filter(|&t| r.town_active[k * r.n_towns + t] > 0).map(|t| (t, r.town_urban[k * r.n_towns + t])).collect();

@@ -547,4 +547,14 @@ pub struct State {
     // ---------------- transition (docs/rules/transition.md; empty while `transition.enabled` is off)
     /// Each town's slow measure of how well its townsfolk live, which its births follow.
     pub transition: crate::transition::TransitionState,
+
+    // ---------------- owners (docs/rules/owners.md; empty while `owners.enabled` is off)
+    /// Each works' shares held by its town's households, its landlords, the
+    /// savers' fund and the public; and each year's holdings, for the facts.
+    pub owners: crate::owners::OwnersState,
+
+    // ---------------- tasks (docs/rules/tasks.md; empty while `tasks.enabled` is off)
+    /// The machines for tasks found, each town's target, and each works'
+    /// share of each class its machines hold, their book and their orders.
+    pub tasks: crate::tasks::TasksState,
 }

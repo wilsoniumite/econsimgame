@@ -559,8 +559,13 @@ fn which_switches_can_be_thrown_in_a_running_island() {
     }
     let plain = save::check(&plain.sim);
     // a switch that changes nothing in the 1790s (no railway is planned yet,
-    // no town is short of hands) is tried again from 1850, where it may
+    // no town is short of hands) is tried again from 1850, where it may; and
+    // one that changes nothing in the 1850s either is tried a third time from
+    // 1905, after island 7 has found the first machine for tasks (1903,
+    // docs/rules/tasks.md), so that tasks.enabled is thrown where it acts (on a
+    // game made to be played to 1920, since one made to 1900 cannot go past it)
     let mut later: Option<(Game, String)> = None;
+    let mut latest: Option<(Game, String)> = None;
     let mut through = Vec::new();
     for &name in edits::SWITCHES {
         if name.starts_with("land.") || name.starts_with("accounts.") {
@@ -597,7 +602,35 @@ fn which_switches_can_be_thrown_in_a_running_island() {
             assert_eq!(base.last_year(), 1849);
             for months in [0, 5] {
                 let r = switch_trial(base, name, months);
+                moved |= matches!(&r, Ok(check) if check != plain);
                 eprintln!("{name:20} thrown {months} months into 1850: {}", match &r {
+                    Ok(check) if check == plain => "came through, and the island stands as it would have".to_string(),
+                    Ok(_) => "came through, with another history".to_string(),
+                    Err(why) => why.chars().take(200).collect::<String>(),
+                });
+                ok &= r.is_ok();
+            }
+        }
+        if ok && !moved {
+            let (base, plain) = latest.get_or_insert_with(|| {
+                // (a game played past 1900 is made so from its start: `Game::under_to`)
+                let mut g = Game::under_to(Rules::Game, 7, 6, 1_000, 1920).unwrap();
+                for _ in 0..155 {
+                    g.year().unwrap();
+                    g.turn();
+                }
+                let mut p = g.clone();
+                for _ in 0..10 {
+                    p.year().unwrap();
+                    p.turn();
+                }
+                let check = save::check(&p.sim);
+                (g, check)
+            });
+            assert_eq!(base.last_year(), 1904);
+            for months in [0, 5] {
+                let r = switch_trial(base, name, months);
+                eprintln!("{name:20} thrown {months} months into 1905: {}", match &r {
                     Ok(check) if check == plain => "came through, and the island stands as it would have".to_string(),
                     Ok(_) => "came through, with another history".to_string(),
                     Err(why) => why.chars().take(200).collect::<String>(),

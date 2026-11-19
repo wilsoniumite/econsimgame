@@ -1,0 +1,153 @@
+# Isolated State: the classes of task, and the machines that can do them (docs/rules/tasks.md).
+#
+# Read by crates/isostate-core/src/tasks.rs into a table on the game's content (`Content::tasks`). Only
+# the game's content has it: under the port's content the table is empty and nothing here is read.
+#
+# Every hour of work in a works or on the land is of one of five classes:
+#   haul      lifting, carrying, turning a shaft, hewing, ploughing
+#   tend      feeding and minding a process, fitting, driving, milking, reaping
+#   clerk     records, reckoning, routine dealing
+#   judge     design, selling, managing, knowing when to sow
+#   presence  work that only a person may do, by its nature or by law: no machine may take it
+#
+# Within a class the tasks run from the easiest for a machine to the hardest. `spread` says, for each
+# class a machine may enter, how many machine units a hand is worth at the easiest task (the knot at 0)
+# and at the hardest (the knot at 1). With two knots the tasks lie evenly in the logarithm between
+# them; more knots bend the schedule, and the code reads any number of them.
+#
+# A machine of quality q does the work of q units. Where a unit costs less a month than a hand is paid,
+# divided by what the hand is worth there, the machine takes the task; so the share of a class that
+# machines would hold in a town is where the town's wage over a unit's cost falls on the schedule.
+
+[tasks]
+classes = ["haul", "tend", "clerk", "judge", "presence"]
+closed = ["presence"]
+
+[tasks.spread]
+haul = [[0.0, 0.3], [1.0, 100.0]]
+tend = [[0.0, 1.0], [1.0, 1000.0]]
+clerk = [[0.0, 1.0], [1.0, 3000.0]]
+judge = [[0.0, 10.0], [1.0, 30000.0]]
+
+# ----------------------------------------------------------------------------------------------------
+# The works: each method's labour as shares of the five classes (haul, tend, clerk, judge, presence),
+# by kind. Every one of the game's 44 methods is in one kind. A method this file does not name has
+# no classes, and no machine for a task ever touches it.
+# ----------------------------------------------------------------------------------------------------
+
+[[kind]]
+name = "furnaces, forges and rolling mills"
+tasks = [0.45, 0.40, 0.03, 0.12, 0.0]
+methods = ["bloomery", "charcoal_furnace", "coke_furnace", "hot_blast", "crucible_steel", "bessemer",
+           "forge_rails", "rolling_mill", "steel_rolling"]
+# Unsure: the bloomery is as much a hand trade as a furnace; it is gone by 1800 on every island, so
+# nothing hangs on it.
+
+[[kind]]
+name = "mills and factories"
+tasks = [0.20, 0.60, 0.05, 0.15, 0.0]
+methods = ["textile_mill", "brickworks", "continuous_kiln", "steam_sawmill", "lime_kiln", "cement_works",
+           "brewhouse", "steam_brewery", "potbank", "pottery_works", "gasworks", "edge_tool_works",
+           "tool_factory", "soap_boilers", "alkali_works", "ammonia_soda", "glasshouse", "sheet_glass",
+           "tank_furnace", "paper_mill", "machine_paper"]
+# Unsure: the older works of the tree that make a good in a plant but mostly by hand (the port's
+# brickworks, the brewhouse, the potbank, the soap boilers, the glasshouse, the paper mill, the lime
+# kiln). They are put here, as the brief for this stage says every works that makes a good in a plant
+# is; a later reading may move them nearer the hand trades, with more hauling.
+
+[[kind]]
+name = "engine and machine works"
+tasks = [0.25, 0.50, 0.05, 0.20, 0.0]
+methods = ["millwright", "engine_works", "machine_shop", "engineering_works"]
+# Unsure: the millwright is a hand trade in 1750 (wood and a few castings, no plant to speak of); it is
+# put with the engine works because it makes their good.
+
+[[kind]]
+name = "hand trades"
+tasks = [0.30, 0.45, 0.0, 0.25, 0.0]
+methods = ["smithy", "hand_loom", "saw_pit", "charcoal_burning"]
+# Unsure: charcoal burning is woodland work, nearer forestry (.60 .30 0 .10) than the smithy; it is
+# a method of the works' table, so it is here.
+
+[[kind]]
+name = "builders"
+tasks = [0.40, 0.40, 0.02, 0.18, 0.0]
+methods = ["masons", "carpenters", "bricklayers", "contract_builders"]
+
+[[kind]]
+name = "shops and trades"
+tasks = [0.15, 0.25, 0.25, 0.25, 0.10]
+methods = ["services", "emporium"]
+
+# ----------------------------------------------------------------------------------------------------
+# The land's seven sectors and the carters. Under `tasks.land` a land unit pays its share for work to a
+# mixture of hands and machine units, in these classes, wherever a machine below names its sector in
+# `on`. No machine yet names the farms, the pastures or the woods (the tractor is a later stage's), nor
+# the carters, so their shares wait; the land's machines of docs/rules/machines.md stand beside these.
+# ----------------------------------------------------------------------------------------------------
+
+[[sector]]
+names = ["farm"]
+tasks = [0.45, 0.40, 0.0, 0.15, 0.0]
+
+[[sector]]
+names = ["pasture"]
+tasks = [0.30, 0.50, 0.0, 0.20, 0.0]
+
+[[sector]]
+names = ["forestry", "quarry", "claypit", "ironmine", "coalmine"]
+tasks = [0.60, 0.30, 0.0, 0.10, 0.0]
+
+[[sector]]
+names = ["carting"]
+tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
+
+# ----------------------------------------------------------------------------------------------------
+# Machines for tasks. Each `[[use]]` is one machine:
+#   class           the class it works in; it may hold the tasks from `from` to `reach` of it
+#   on              where it is used: "works", and the land's sectors it reaches by name ("carting" is
+#                   read and passed over: no machine reaches the carters yet)
+#   plant, run      goods bought once for one machine, and goods a month to keep one working
+#   minders         worker-months a month of minding one machine
+#   life            years a machine stands: a twelfth of this many years' part wears out a month
+#   pace, cap       quality grows by `pace` a year from the year found, up to `cap`
+#   found_after     nothing is found before this year
+#   discover        the island finds it at the first year's turn (from `found_after`) when it has made
+#                   at least this much of each good named, counted from 1750
+#   scale           one number, multiplying everything one machine takes (plant, run and minders),
+#                   refitted once in its first sweep so that it takes its first share when found
+# ----------------------------------------------------------------------------------------------------
+
+# The hoist: a STAND-IN, poor history and a fair test. It is made of machinery and burns coal, so it can
+# be proved on the island as it stands, with nothing after 1900 in the content. It is to be replaced by
+# the electric drive when the content after 1900 lands. It hauls in the works and, under `tasks.land`,
+# at the quarries, the clay pits and the mines: winding, hauling underground, lifting stone and clay.
+#
+# Sized from island 7's prices and wage of 1900 under the game's rules with six families (wage 8.18 a
+# month, machinery 4.40, coal 0.494): when found, a unit costs 1.04 of a month's wage, of which six
+# tenths is the return a works must see and the wear on its plant ((0.12 + 1/20) / 12 a month on 44
+# months' wages, 82 machinery), a tenth is its minders (0.104 of a hand) and the rest is coal (5.2 a
+# month). At that cost a hand is worth 0.96 units, so the hoist takes the hauling where a hand is worth
+# fewer: ln(0.96 / 0.3) / ln(100 / 0.3) = 0.20 of the class.
+#
+# The threshold: island 7 has made 4.07 million units of machinery by the end of 1901 and 4.18 million
+# by the end of 1902 (from the owners' sweep), so it finds the hoist in 1903. Islands 1, 2, 5, 6 and 8
+# have made more than that by 1900 and find it in 1901; islands 3 and 4 some years later.
+[[use]]
+name = "hoist"
+class = "haul"
+on = ["works", "quarry", "claypit", "ironmine", "coalmine"]
+from = 0.0
+reach = 1.0
+plant = { machinery = 82.0 }
+run = { coal = 5.2 }
+minders = 0.104
+life = 20.0
+pace = 0.03
+cap = 8.0
+found_after = 1901
+discover = { machinery = 4100000.0 }
+# Refitted once (19 November 2026): at 1.0 the towns' target in the year found was 0.223 on the mean of
+# islands 1 to 8 (0.196 to 0.244; found 1901 on five islands, 1903 on island 7, 1907 on islands 3 and 4),
+# so the unit was made exp(ln(100 / 0.3) * (0.223 - 0.2)) = 1.14 times as dear, to bring the mean to 0.20.
+scale = 1.14

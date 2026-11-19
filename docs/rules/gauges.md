@@ -119,12 +119,16 @@ its land's rent or a works' profit is below nothing.
 ### The floor under work's share
 
 What would be left to hands if every task a machine could do cost nothing.
-The classes of task (hauling, tending, clerking, judging, and work only a
-person may do) are not built yet; until they are, the floor needs only the
-last of them, and takes it from one small table (`PRESENCE`): the shops and
-trades (`services`) hold a tenth of their hands' work in it, and nothing
-else on today's island holds any. The land's hands, the carters, the
-navvies and the managers hold none.
+The floor needs only the last of the classes of task (hauling, tending,
+clerking, judging, and work only a person may do), and since the classes
+were built ([tasks.md](tasks.md)) it reads each method's share of it from
+the game's classes of task (`data/tasks.toml`): the shops and trades (the
+port's `services` and the tree's `emporium`) hold a tenth of their hands'
+work in it, and nothing else on today's island holds any. The land's hands,
+the carters, the navvies and the managers hold none. (Before, a table in
+the code, `PRESENCE`, named the services alone; reading the emporium too
+lifted `gauge_floor_1900` from 0.023 to 0.065 on islands 1 to 4, and moved
+nothing else.)
 
 The reckoning: every other hand's work is made to cost nothing. Each good's
 price falls by all of that work inside it, through its whole chain; what it
@@ -187,8 +191,7 @@ any town) is in `GaugeYear`, the books and the series.
 ## The numbers
 
 `GaugesParams`, in `gauges.rs`: one switch, `enabled`, false by default and
-true under `game()`. The constants beside it: `PRESENCE` (services 0.10),
-`MADE_AT_LEAST` (1e-5), `NEW_WORK_YEARS` (40), `MACHINERY_SPAN` (1775 to
+true under `game()`. The constants beside it: `MADE_AT_LEAST` (1e-5), `NEW_WORK_YEARS` (40), `MACHINERY_SPAN` (1775 to
 1900).
 
 ## What a sweep showed

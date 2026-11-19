@@ -1483,12 +1483,15 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
     let km = |v: f32| format!("{} km", thousands(v));
     let people = |v: f32| thousands(v);
     type Fig<'a> = &'a dyn Fn(f32) -> String;
-    let rows: [(&str, &str, Fig, Fig); 5] = [
+    let pounds = |v: f32| money(v);
+    let rows: [(&str, &str, Fig, Fig); 6] = [
         ("pop", "People", &people, &short_count),
         ("real_wage", "What a wage buys (1750 = 1)", &plain, &plain),
         ("urban_share", "Living in towns", &pct, &pct),
         ("rail_km", "Railway", &km, &short_count),
         ("firms", "Works and shops", &people, &short_count),
+        // (the island's money: a rule of money set by hand shows here first, docs/designs/sandbox.md 6.6)
+        ("money", "The island's money", &pounds, &pounds),
     ];
     for (name, label, now, side) in rows {
         let (vals, mark, first_year) = match &span {

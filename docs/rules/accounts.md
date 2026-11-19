@@ -162,7 +162,7 @@ One for every complete year (`Books::years`). Its fields, in four groups.
 | `pay_works`, `pay_land`, `pay_projects` | wages in works, on the land (sinkers included), on the railways and canals |
 | `carting` | carters' pay |
 | `managers` | hired managers |
-| `div_households`, `div_families`, `works_kept` | works' dividends to their town's households (works no family owns) and to families; profit the works kept |
+| `div_households`, `div_families`, `div_landlords`, `works_kept` | works' dividends to their town's households (works no family owns) and to families; under `owners` the landlords' part of the dividends of works no family owns ([owners.md](owners.md)), left out of the run file while it is nothing; profit the works kept |
 | `merchants_div`, `merchants_kept` | the merchants' dividend (to their town's households), and what they kept |
 | `rent_farm`, `rent_pits`, `rent_sites`, `rent_town`, `rent_by_sector` | rents of farms, pastures and woods; of quarries, clay pits, iron mines and collieries (their royalties, under `mines`); of works' sites; of town houses; and the land's seven sectors one by one |
 | `issue`, `fund_div` | new money and the common fund's dividend, both paid to households by head |
@@ -187,14 +187,18 @@ up to one:
 
 - `share_work`: the wage bill.
 - `share_works`: works' profit after the managers (`div_households +
-  div_families + works_kept`).
+  div_families + div_landlords + works_kept`).
 - `share_merchants`: `merchants_div + merchants_kept`.
 - `share_land`: the four rents.
 
 `pay_share` is the wage bill over everything households received (pay,
 dividends, the fund's dividend and new money): the share of household income
 that is pay. Landlords and families receive no pay at all: a landlord's income
-is rent, a family's is dividends and rent.
+is rent, a family's is dividends and rent. Under `owners` a landlord is also
+paid the dividends his money earned in the works: they stand in the books as
+`div_landlords`, among the works' profit and not among the rents, and
+`to_landlords` counts them with the rent while the month's check of the rents
+leaves them out.
 
 **Who owns what**, at the year's end:
 

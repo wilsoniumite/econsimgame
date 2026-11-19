@@ -197,6 +197,39 @@ impl Canvas {
     }
 }
 
+/// How far the lines keep from the plot's left and right edges, in image pixels.
+const PAD_X: f32 = 6.0 * SS;
+
+/// Where figure `i` of `years` stands across a plot `w` image pixels wide.
+fn x_at(w: usize, years: usize, i: usize) -> f32 {
+    let last = years.max(2) - 1;
+    PAD_X + i as f32 / last as f32 * (w as f32 - 2.0 * PAD_X)
+}
+
+/// Mark figures of a painted chart with a short tick at the foot of the plot,
+/// in `col`: the months the hand touched, under the sandbox's inspector.
+pub fn ticks(pl: &mut Plot, c: &Chart, at: &[usize], col: [u8; 3]) {
+    let (w, h) = (pl.w, pl.h);
+    let half = 0.9 * SS;
+    // from the foot, half of the way up
+    let (top, foot) = ((h as f32 * 0.5).round() as usize, h.saturating_sub((2.0 * SS) as usize));
+    for &i in at.iter().filter(|&&i| i < c.years) {
+        let x = x_at(w, c.years, i);
+        for xi in (x - half - 1.0).floor().max(0.0) as usize..=((x + half + 1.0).ceil() as usize).min(w.saturating_sub(1)) {
+            let a = (half + 0.5 - (xi as f32 + 0.5 - x).abs()).clamp(0.0, 1.0);
+            if a <= 0.0 {
+                continue;
+            }
+            for y in top..foot {
+                let d = &mut pl.px[(y * w + xi) * 4..(y * w + xi) * 4 + 3];
+                for k in 0..3 {
+                    d[k] = (d[k] as f32 + (col[k] as f32 - d[k] as f32) * a).round() as u8;
+                }
+            }
+        }
+    }
+}
+
 /// A colour a share `k` of the way from the ground to `col`.
 fn faint(col: [f32; 3], k: f32) -> [f32; 3] {
     [0, 1, 2].map(|i| GROUND[i] + (col[i] - GROUND[i]) * k)
@@ -217,9 +250,9 @@ pub fn plot(c: &Chart) -> Plot {
         }
     }
     // the lines keep clear of the edge by their own width and a little more
-    let (pad_x, pad_y) = (6.0 * SS, 7.0 * SS);
+    let pad_y = 7.0 * SS;
     let last = c.years.max(2) - 1;
-    let x_of = |i: usize| pad_x + i as f32 / last as f32 * (w as f32 - 2.0 * pad_x);
+    let x_of = |i: usize| x_at(w, c.years, i);
     let y_of = |v: f32, (lo, hi): (f32, f32)| h as f32 - pad_y - (v - lo) / (hi - lo) * (h as f32 - 2.0 * pad_y);
 
     // the grid: the low and high levels, the quarters between, and the round years
@@ -301,7 +334,11 @@ fn image(p: &Plot) -> Image {
 /// (written by `figure`, and by `figure2` for the second line) and the first
 /// and last years underneath.
 pub fn spawn(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, c: &Chart, figure: &dyn Fn(f32) -> String, figure2: &dyn Fn(f32) -> String) {
-    let pl = plot(c);
+    spawn_painted(p, f, images, c, plot(c), figure, figure2);
+}
+
+/// `spawn`, with a plot already painted (and marked, `ticks`).
+pub fn spawn_painted(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, c: &Chart, pl: Plot, figure: &dyn Fn(f32) -> String, figure2: &dyn Fn(f32) -> String) {
     let handle = images.add(image(&pl));
     let pw = c.plot_width();
     let accent = Color::srgb_u8(c.accent[0], c.accent[1], c.accent[2]);

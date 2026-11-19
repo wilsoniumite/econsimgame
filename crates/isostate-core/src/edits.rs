@@ -92,6 +92,8 @@ pub const SWITCHES: &[&str] = &[
     "longrun.enabled",
     "transition.enabled",
     "gauges.enabled",
+    "owners.enabled",
+    "tasks.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -109,6 +111,9 @@ pub const SWITCHES: &[&str] = &[
 /// does not promise. The run to 2050's three switches (longrun, the
 /// transition, the gauges) joined both lists when they met the sandbox's
 /// stage 3 on night/g-batch-1, and were tried there as above: all came through.
+/// Its owners and tasks (`owners.enabled`, `tasks.enabled`) joined both on
+/// night/g-batch-2, where they met the Rules tab; both came through, tasks
+/// tried a third time from 1905, after island 7 finds its first machine.
 pub const SWITCHABLE: &[&str] = &[
     "prices.enabled",
     "engel.enabled",
@@ -126,6 +131,8 @@ pub const SWITCHABLE: &[&str] = &[
     "longrun.enabled",
     "transition.enabled",
     "gauges.enabled",
+    "owners.enabled",
+    "tasks.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -382,12 +389,18 @@ fn discover(sim: &mut Sim, name: &str, town: usize) -> Result<((String, String, 
     Ok(((title, text, Some(town)), t))
 }
 
-/// One of the rules' numbers or switches set by hand: `sweep::set_field` on
-/// the run's own parameters, then `Params::check`, and the refusals of
-/// section 2.7 of the design.
-fn rule(sim: &mut Sim, name: &str, value: &serde_json::Value) -> Result<(String, String, Option<usize>), String> {
+/// Whether a name is fixed when the island is made (section 2.7): it is on
+/// [`FIXED_AT_START`], or its first part is.
+pub fn fixed_at_start(name: &str) -> bool {
     let first = name.split('.').next().unwrap_or_default();
-    if FIXED_AT_START.contains(&first) || FIXED_AT_START.contains(&name) {
+    FIXED_AT_START.contains(&first) || FIXED_AT_START.contains(&name)
+}
+
+/// The rules as they would stand with `name` set to `value` by hand, or the
+/// sentence that refuses it: `sweep::set_field` on the run's own parameters,
+/// then `Params::check`, and the refusals of section 2.7 of the design.
+fn rule_set(params: &Params, name: &str, value: &serde_json::Value) -> Result<Params, String> {
+    if fixed_at_start(name) {
         return Err(format!("the rule {name} sizes the island or is read only as a run begins, and cannot be changed in the middle of one"));
     }
     if SWITCHES.contains(&name) && !SWITCHABLE.contains(&name) {
@@ -396,11 +409,25 @@ fn rule(sim: &mut Sim, name: &str, value: &serde_json::Value) -> Result<(String,
     if value.is_object() {
         return Err(format!("{name} cannot be set to {value}: set a rule's numbers one at a time"));
     }
-    let P = crate::sweep::set_field(&sim.params, name, value).map_err(|e| e.replacen("--set ", "the rule ", 1))?;
+    let P = crate::sweep::set_field(params, name, value).map_err(|e| e.replacen("--set ", "the rule ", 1))?;
     P.check()?;
-    if P == sim.params {
+    if P == *params {
         return Err(format!("the rule {name} is {value} already"));
     }
+    Ok(P)
+}
+
+/// Why a `Rule` edit setting `name` to `value` would be refused under these
+/// rules, in the sentence the edit itself refuses it with; None if it would
+/// be carried out. The Rules tab draws its chips by this (`rulebook`), and the
+/// edit is refused by the same function, so the two cannot disagree.
+pub fn rule_refused(params: &Params, name: &str, value: &serde_json::Value) -> Option<String> {
+    rule_set(params, name, value).err()
+}
+
+/// One of the rules' numbers or switches set by hand (`rule_set`).
+fn rule(sim: &mut Sim, name: &str, value: &serde_json::Value) -> Result<(String, String, Option<usize>), String> {
+    let P = rule_set(&sim.params, name, value)?;
     // the value before, as the rules write it (a rule that stands at its
     // default is not written out, so its numbers are not there to read), and
     // the value as it was given

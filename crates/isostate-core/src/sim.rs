@@ -635,6 +635,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     crate::accounts::init(&mut st, &C, P);
     // gauges: read off the books at each year's end (docs/rules/gauges.md)
     crate::gauges::init(&mut st, P);
+    // owners: the year's sums begin here, as the books do (the warm-up's shares stand)
+    crate::owners::start(&mut st);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
@@ -697,8 +699,13 @@ pub fn end_year(sim: &mut Sim) {
     yearly(st, C, P, rngs, year, events, false);
     // accounts: the year's books close on the year's prices, works and owners
     crate::accounts::close_year(st, C, P, year);
+    // tasks (docs/rules/tasks.md): the year's machines, before the gauges read
+    // their book; and what is found for the next year
+    crate::tasks::close_year(st, C, P, year);
     // gauges: read off the books just closed
     crate::gauges::close_year(st, C, P, year);
+    // owners: who holds the works and who was paid by them (docs/rules/owners.md)
+    crate::owners::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);
