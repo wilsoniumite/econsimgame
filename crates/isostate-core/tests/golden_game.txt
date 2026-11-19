@@ -15,21 +15,15 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: on night/g-guard-2050 (19 November 2026), the guard on the century
-# after 1900: the test runs on to 2050 and hashes two eras. The first era's
-# four are main's to the digit (the run to 1900 is untouched); the second
-# era's four are new. Taken again on night/g-batch-mends-1 (guard-2050 and
-# small-mends-1 merged on main at 00ebc6d): none of the eight moved; the
-# money check and the books' checks only read.
-# Taken again on night/g-batch-sandbox-a (19 November 2026), the batch of
-# the sandbox's stages 8a, 7a and 7b (sessions kept and gone on with; works
-# built or closed by hand) with main at 1085e2f merged in: none of the eight
-# moved. Edits by hand are not rules, and the game's run gives none.
-1750-1900 economy  0x9a6b3ba24a097bd1
-1750-1900 books    0xfa5dd1db28f62894
-1750-1900 news     0x9f83de6e9e162ab1
-1750-1900 run.bin  0xdb99a5e2a2c197f3
-1901-2050 economy  0xb153d14a5b19c1d6
-1901-2050 books    0x6f91523b5179f105
-1901-2050 news     0x583924bb590ee673
-1901-2050 run.bin  0x02d22253b4aa2ca4
+# Taken: Main's golden test now runs seed 7 on to 2050 in two eras, and this
+# branch's stage 6 content (oil from coal, nitrogen, breeding, the tractor and
+# the cutter) gives the island under the game's rules another history; the
+# hashes are taken again on the merged tree.
+1750-1900 economy  0xdebd478051ee16be
+1750-1900 books    0x3cc8889c1caf36c4
+1750-1900 news     0x2427b8a15d4c901e
+1750-1900 run.bin  0x57f3dcbc5c19828d
+1901-2050 economy  0xd958a560c9ba3a9b
+1901-2050 books    0x5f66c48c5194dd5d
+1901-2050 news     0x98e775c75634129b
+1901-2050 run.bin  0xf0ca8497e7fd7c62
