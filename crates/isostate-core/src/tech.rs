@@ -25,6 +25,12 @@ pub fn discovery(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i
         if st.tech_year[t] >= 0 {
             continue;
         }
+        // nothing is sought before the year the content says (the overlay's
+        // `found_after`; never in the port's content), and managed woodland only
+        // with its rule on (woods, docs/rules/woods.md): no number is drawn for it
+        if year < C.tech_after.get(t).copied().unwrap_or(0) ||!crate::woods::sought(C, P, t) {
+            continue;
+        }
         let X0 = st.disc_X0.row(t).to_vec();
         let req: Vec<usize> = (0..C.G).filter(|&g| X0[g] > 0.0).collect();
         if req.is_empty() {
