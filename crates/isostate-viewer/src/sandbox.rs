@@ -494,28 +494,29 @@ fn answers(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: Res<
     }
     let when = clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11))));
     if let Some((ok, line)) = &game.note {
-        let mut line = line.clone();
+        let mut when = when;
         if *ok && tool == Tool::Town {
             // the order is taken: one founding waits for each year's end, so the tool is put down
-            line = founded_in(&line);
+            if let Some(january) = stands_from(line) {
+                // (said beside the date: the line itself stays the news's title, which the toasts
+                // match so that the news of it does not go up a second time)
+                when = format!("{when}: the town stands from January {january}");
+            }
             if sb.tool == Tool::Town {
                 sb.tool = Tool::Look;
                 sb.version += 1;
             }
         }
         // (in the hand's ink and labelled "By hand", from stage 4)
-        toasts.say(if *ok { "hand" } else { "orders_refused" }, &line, &when, time.elapsed_secs());
+        toasts.say(if *ok { "hand" } else { "orders_refused" }, line, &when, time.elapsed_secs());
         println!("sandbox: {} {when}: {line}", if *ok { "by hand," } else { "refused," });
     }
 }
 
-/// A town's order, as the core words it ("... at the end of 1791"), with the
-/// January it stands from.
-fn founded_in(line: &str) -> String {
-    match line.rsplit(' ').next().and_then(|w| w.parse::<i32>().ok()) {
-        Some(year) => format!("{line}: it stands from January {}.", year + 1),
-        None => line.to_string(),
-    }
+/// The January a town ordered by hand stands from: the year after the one its
+/// order names ("... at the end of 1791").
+fn stands_from(line: &str) -> Option<i32> {
+    line.rsplit_once("at the end of ").and_then(|(_, y)| y.trim().parse::<i32>().ok()).map(|y| y + 1)
 }
 
 /// With Idea in hand, the ideas not yet found are asked of the game's thread
@@ -766,7 +767,8 @@ mod tests {
         assert_eq!(sb.edit(Some(1), Some(Pick::Firm(12))), Err("Click open land, not a works."));
         assert!(sb.edit(None, None).is_err());
         assert_eq!(Tool::Town.rows(), &[&["Found a town here"]]);
-        assert_eq!(founded_in("By hand: a town to be founded at 31, 40, in Melbourne's district, at the end of 1791"), "By hand: a town to be founded at 31, 40, in Melbourne's district, at the end of 1791: it stands from January 1792.");
+        assert_eq!(stands_from("By hand: a town to be founded at 31, 40, in Melbourne's district, at the end of 1791"), Some(1792));
+        assert_eq!(stands_from("a town is already to be founded this year, at 31, 40"), None);
         // the words scripts click by
         assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town"]);
         // every row's chips have a factor and a word
