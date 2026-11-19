@@ -99,7 +99,11 @@ function fmt(v, d) {
   if (d == null) d = a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3;
   return v.toLocaleString("en-GB", { maximumFractionDigits: d, minimumFractionDigits: 0 });
 }
-function times(r) { return r == null || !isFinite(r) ? "" : (r >= 10 ? "×" + fmt(r, 0) : "×" + fmt(r, 2)); }
+function times(r) {
+  if (r == null || !isFinite(r)) return "";
+  // two significant figures at least, so a good a hundred times cheaper does not read "×0"
+  return "×" + (r >= 10 ? fmt(r, 0) : r >= 0.1 ? fmt(r, 2) : Number(r.toPrecision(2)).toString());
+}
 function periodName(p) {
   const y = A.periods[p];
   return A.step === 1 ? String(y) : (y + A.step - 1 > lastYear() ? String(y) : (A.step === 10 && y % 10 === 0 ? y + "s" : y + "–" + (y + A.step - 1)));
@@ -285,7 +289,8 @@ function details(i) {
 // ---- what moved most, and the dearest
 function downstream(g, f) {
   // from a good, through the works that use or hold it and what they make, to the needs households buy
-  const seenG = new Set([g]), works = [], needs = new Map();
+  // works: those that use or hold the good itself; through: for each good one step on, those that use or hold it
+  const seenG = new Set([g]), works = [], through = new Map(), needs = new Map();
   let frontier = [g];
   for (let depth = 0; depth < 4 && frontier.length; depth++) {
     const next = [];
@@ -295,13 +300,19 @@ function downstream(g, f) {
       if (e[2] === 3) needs.set(to.label, (needs.get(to.label) || 0) + f.edge[j]);
       if ((e[2] === 1 || e[2] === 2) && to.k === "works") {
         if (depth === 0 && !works.some((w) => w.m === to.i)) works.push({ m: to.i, kind: e[2], v: f.edge[j] });
+        if (depth === 1 && e[3] !== g) {
+          const l = through.get(e[3]) || [];
+          l.push({ m: to.i, kind: e[2], v: f.edge[j] });
+          through.set(e[3], l);
+        }
         const out = A.methods[to.i].out;
         if (!seenG.has(out)) { seenG.add(out); next.push(out); }
       }
     });
     frontier = next;
   }
-  return { works: works.sort((a, b) => b.v - a.v), needs: [...needs.entries()].sort((a, b) => b[1] - a[1]).map((x) => x[0]) };
+  const on = [...through.entries()].map(([h, l]) => ({ g: h, works: l.sort((a, b) => b.v - a.v), v: l.reduce((s, w) => s + w.v, 0) })).sort((a, b) => b.v - a.v);
+  return { works: works.sort((a, b) => b.v - a.v), through: on, needs: [...needs.entries()].sort((a, b) => b[1] - a[1]).map((x) => x[0]) };
 }
 function moved() {
   const f = fig(per(), st.p), prev = fig(per(), st.p - 1), B = bases();
@@ -326,6 +337,11 @@ function moved() {
       " <span class='num'>(" + fmt(x.a) + " → " + fmt(x.b) + " months of a wage)</span>";
     if (held.length) h += "<div class='chain'>held as plant by " + held.join(", ") + "</div>";
     if (used.length) h += "<div class='chain'>used up by " + used.join(", ") + "</div>";
+    for (const t of d.through.slice(0, 2)) {
+      const th = t.works.filter((w) => w.kind === 2).slice(0, 5).map((w) => A.methods[w.m].label);
+      const tu = t.works.filter((w) => w.kind === 1).slice(0, 4).map((w) => A.methods[w.m].label);
+      h += "<div class='chain'>through " + A.goods[t.g].label.toLowerCase() + ": " + [th.length ? "held as plant by " + th.join(", ") : "", tu.length ? "used up by " + tu.join(", ") : ""].filter((x) => x).join("; ") + "</div>";
+    }
     if (d.needs.length) h += "<div class='chain'>down to what households buy: " + d.needs.slice(0, 6).join(", ") + "</div>";
     h += "</div>";
   }

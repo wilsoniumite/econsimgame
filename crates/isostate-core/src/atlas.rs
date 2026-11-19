@@ -543,6 +543,8 @@ struct Acc {
     price_q: Vec<f64>,
     bought: Vec<f64>,
     price_pop: Vec<f64>,
+    /// each year's price (the towns' weighted mean, for the island), added up over the years
+    price_yr: Vec<f64>,
     made: Vec<f64>,
     m_out: Vec<f64>,
     m_hands: Vec<f64>,
@@ -558,6 +560,7 @@ impl Acc {
             price_q: vec![0.0; k.G],
             bought: vec![0.0; k.G],
             price_pop: vec![0.0; k.G],
+            price_yr: vec![0.0; k.G],
             made: vec![0.0; k.G],
             m_out: vec![0.0; k.M],
             m_hands: vec![0.0; k.M],
@@ -571,7 +574,8 @@ impl Acc {
     fn add(&mut self, o: &Acc) {
         self.wage_pop += o.wage_pop;
         self.pop += o.pop;
-        let pairs: [(&mut Vec<f64>, &Vec<f64>); 10] = [
+        let pairs: [(&mut Vec<f64>, &Vec<f64>); 11] = [
+            (&mut self.price_yr, &o.price_yr),
             (&mut self.price_q, &o.price_q),
             (&mut self.bought, &o.bought),
             (&mut self.price_pop, &o.price_pop),
@@ -595,9 +599,8 @@ impl Acc {
         }
         let n = self.years;
         let per = |v: &Vec<f64>| v.iter().map(|x| x / n).collect::<Vec<f64>>();
-        let price = (0..self.bought.len())
-            .map(|g| if self.bought[g] > 0.0 { self.price_q[g] / self.bought[g] } else { self.price_pop[g] / self.pop })
-            .collect();
+        // the mean of the years' prices: a year of famine prices counts as a year, however little was bought in it
+        let price = per(&self.price_yr);
         Some(Figures {
             wage: self.wage_pop / self.pop,
             pop: self.pop / n,
@@ -621,8 +624,9 @@ pub struct Figures {
     /// A month's wage: the towns' mean wage weighted by their people.
     pub wage: f64,
     pub pop: f64,
-    /// Each good's price: the towns' mean price weighted by what was bought
-    /// there (by people where nothing was).
+    /// Each good's price: the mean of the period's years, each year's the
+    /// towns' mean price weighted by what was bought in each (by people where
+    /// nothing was).
     pub price: Vec<f64>,
     pub made: Vec<f64>,
     pub m_out: Vec<f64>,
@@ -779,6 +783,7 @@ pub fn read_run(r: &RunResult, seed: u64, step: i64, towns: bool, seconds: f64) 
                 a.bought[g] = bought;
                 a.price_q[g] = price[g] * bought;
                 a.price_pop[g] = price[g] * pop;
+                a.price_yr[g] = price[g];
                 a.made[g] = r[g_made] as f64;
             }
             for s in 0..NS {
@@ -884,8 +889,12 @@ pub fn read_run(r: &RunResult, seed: u64, step: i64, towns: bool, seconds: f64) 
                 slot.years += 1.0;
             }
         }
-        // the island's year is one year, whatever the number of its towns
+        // the island's year is one year, whatever the number of its towns, and its price
+        // the towns' weighted by what was bought in each (by people where nothing was)
         year_acc.years = 1.0;
+        for g in 0..G {
+            year_acc.price_yr[g] = if year_acc.bought[g] > 0.0 { year_acc.price_q[g] / year_acc.bought[g] } else { year_acc.price_pop[g] / year_acc.pop };
+        }
         island_acc[p].add(&year_acc);
         island_acc[p].years += 1.0;
     }
@@ -1103,7 +1112,7 @@ pub fn summary(a: &Atlas) -> String {
             let three: Vec<String> = top.iter().take(3).map(|&(g, r)| format!("{} x{}", C.good_label[g], fmt_ratio(r))).collect();
             let g0 = top.first().map(|x| x.0);
             let held = g0.map_or(String::new(), |g| {
-                let h: Vec<String> = holders(&a.layout, f, g, EdgeKind::Plant).iter().take(4).map(|&(m, _)| C.method_label[m].clone()).collect();
+                let h: Vec<String> = holders(&a.layout, f, g, EdgeKind::Plant).iter().take(6).map(|&(m, _)| C.method_label[m].clone()).collect();
                 if h.is_empty() { String::new() } else { format!("; held as plant by {}", h.join(", ")) }
             });
             let _ = writeln!(s, "  {y}  wage {:>9.3}  dearest: {}{held}", f.wage, three.join(", "));
