@@ -371,6 +371,59 @@ The pits are slower than at stage 1: the cutter takes them from the hoist in
 1929 where the hoist had them from 1903, and at stage 6 they hold nothing by
 machine for those twenty-six years.
 
+### The dial, and what holds the wage
+
+`tasks.dial` multiplies every machine's quality. Nobody had turned it; here
+it is at 1, 3, 10, 30 and 100 on the same eight islands to 2050 (`--set
+tasks.dial=3,10,30,100`):
+
+| dial | wage 1950 | wage 1970 | wage 2050 | growth 1900 to 1970 | land 1970 | land 2050 | works 1970 | farms' hauling 1970 | farms' output a hand 1970 | people 2050 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 8.36 | 8.79 | 5.21 | 0.48 % | 0.239 | 0.340 | 0.559 | 0.47 | 1.62 | 1.94 M |
+| 3 | 8.76 | 9.03 | 5.51 | 0.52 % | 0.243 | 0.334 | 0.557 | 0.68 | 1.76 | 1.86 M |
+| 10 | 9.59 | 9.35 | 5.95 | 0.57 % | 0.274 | 0.330 | 0.545 | 0.90 | 1.99 | 1.79 M |
+| 30 | 10.3 | 9.49 | 6.37 | 0.59 % | 0.260 | 0.333 | 0.559 | 0.98 | 2.16 | 1.77 M |
+| 100 | 10.9 | 9.57 | 6.58 | 0.60 % | 0.269 | 0.332 | 0.552 | 0.99 | 2.22 | 1.77 M |
+
+(The wage is the chained real wage, 1750 = 1, 6.27 in 1900 on every arm;
+land and works are shares of all hands.) The dial does what it says to the
+hauling: at 30 the works, the pits and the fields have nearly all of it by
+machine by 1970. It lifts the wage of 1950 by nearly a third at a
+hundredfold, and then the wage falls from 1960 on every arm. Hands on the
+land do not fall at all, and work's share of income (books) is 0.617 to
+0.644 in 1970 on every arm, and higher at the higher settings by 2050 (0.634
+at a hundredfold for 0.586). Hauling is all that is
+in reach on the land: the farm's tending (four tenths of its work) and
+judging wait for the combine of a later stage, and a land unit spends the
+same share of its revenue on work however cheap its work becomes, so where
+the hauling is cheaper the farm takes more work, not fewer hands.
+
+Two cheap levers inside the design's own ranges, each measured against this
+part (dial 1):
+
+| | wage 1900 | wage 1970 | wage 2050 | growth 1900 to 1970 | land 1900 | land 1970 | land 2050 | people 2050 |
+|---|---|---|---|---|---|---|---|---|
+| this part | 6.27 | 8.79 | 5.21 | 0.48 % | 0.245 | 0.239 | 0.340 | 1.94 M |
+| `machines.quality_cap` 12 (the pass over the rules' stage 8) | 7.41 | 12.7 | 11.2 | 0.77 % | 0.222 | 0.206 | 0.296 | 0.94 M |
+| `transition.z_half` 4.0 (the design's first value; the game has 4.5) | 5.91 | 9.35 | 7.01 | 0.66 % | 0.245 | 0.228 | 0.294 | 1.30 M |
+| both | 6.88 | 13.0 | 12.0 | 0.91 % | 0.226 | 0.197 | 0.259 | 0.84 M |
+
+The machines' ceiling of 4 on farm machinery, pumps and the quarries' engines
+is what holds the wage most: lifted to 12, the farms' output a hand is 2.7
+times 1900's by 1970 and the wage grows three fifths faster. But it lifts the
+played century too (the wage of 1900 is 7.41, outside the spread of the
+island as it stands, 5.10 to 6.94), so it is the pass over the rules' change
+to make, not this part's. Fewer births lift the wage after 1970 most of all
+(7.01 in 2050 for 5.21) and bring people into the design's 1.0 to 1.5
+million; it lowers 1900's people by 5 per cent, which is why the game's line
+was set at 4.5. Neither alone gives 1 per cent a year; both together give
+0.91 per cent, with people stalling at 0.84 million, below the design's
+peak. On every arm the wage of 2050 is below 1970's and the land holds more
+of the hands in 2050 than in 1900: what the land can be given in this part
+stops improving by the 1970s (the tractor's quality reaches its cap of 6 in
+the 1970s, the cutter's about 1990, nitrogen and breeding are fixed), people
+go on growing, and the farm's tending waits for the combine.
+
 ## What a sweep showed
 
 ```bash
