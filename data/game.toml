@@ -12,14 +12,20 @@
 # Every entry carries `stage` (one without it is of stage 1), and the stages are numbered in the order
 # they are built, so a ceiling is enough: P.tree.stage = N keeps the entries with stage <= N. A good
 # of a later stage does not exist, and any input, capital line, threshold or row of props that names
-# it is dropped. This file holds stage 1. The stages after it are designed in
+# it is dropped. This file holds stage 1, and stage 6, the first content after 1900 (electricity and
+# electrical goods: docs/rules/tree.md, "After 1900: electricity"). The content after 1900 is numbered on
+# from the tree's own five stages so that the ceiling still works; stages 2 to 5 are designed in
 # docs/designs/production-tree.md and written out in docs/designs/production-tree-draft.toml; each
 # waits for an engine change (sites, foreign trade, improvements as data, fleets) and joins this file
-# when that change is built.
+# when that change is built. Until then stage 6 lays stage 1 and its own entries, and nothing else.
 #
 # Keys the port's file does not use:
 #   goods:    decay (monthly loss of stock), stock0 (opening stock a head; also the opening guess of a
-#             month's trade), traded (false: made where it is used and not carried between towns)
+#             month's trade), traded (false: made where it is used and not carried between towns),
+#             stock_months (the months of sales merchants mean to hold; absent is the island's
+#             price_target_months, 2; 0 is a good that does not keep: what is not sold in a month is lost
+#             at its end, and its price moves on the month's asking against its making), opens_dear (true:
+#             the good opens at its ceiling price in every town, for a good nobody has until it is found)
 #   services: theta (the logit's width within each need; the port has 0.25 for all)
 #   method:   group (the family trade, one of iron, textiles, coal, engineering, building, estates:
 #             without it no family can own the works), seed (opened in 1750 where its good is wanted),
@@ -56,10 +62,22 @@ goods = [
   { name = "chemicals", label = "Soap and chemicals", weight = 0.9, price = 4.5, color = "#c9c23a", decay = 0.003, stock0 = 0.006, stage = 1 },
   { name = "glass", label = "Glass", weight = 1.0, price = 9.0, color = "#9fd0c8", decay = 0.003, stock0 = 0.003, stage = 1 },
   { name = "paper", label = "Paper", weight = 0.5, price = 4.6, color = "#f2ecd9", decay = 0.004, stock0 = 0.004, stage = 1 },
+  { name = "electricity", label = "Electricity", weight = 20.0, price = 1.2, color = "#8cc4ea", stock0 = 0.0, traded = false, stock_months = 0.0, opens_dear = true, stage = 6 },
+  { name = "electricals", label = "Electrical goods", weight = 0.5, price = 7.0, color = "#b8733b", decay = 0.003, stock0 = 0.0, opens_dear = true, stage = 6 },
+  { name = "oil", label = "Oil", weight = 1.0, price = 1.0, color = "#5a4a2e", decay = 0.002, stock0 = 0.0, opens_dear = true, stage = 6 },
 ]
 # The sixteen goods of the port take decay and stock0 from the tables they have always been in
 # (P.decay in params.rs, `guess` in sim.rs). Building work and town gas are not carried between
 # towns: a house is built where it stands, and gas goes as far as its pipes.
+# Stage 6, after 1900 (docs/rules/tree.md, "After 1900: electricity"): electricity goes as far as its wires,
+# and there is no grid between towns yet, so every town that wants it builds its own station. It does not
+# keep (`stock_months = 0`): what is made and not sold in a month is lost at its end. Both new goods open
+# at their ceiling price (`opens_dear`): nobody has them for more than a century, and at their base prices
+# they are the cheapest fuel and the cheapest household good on the island.
+# Oil (stage 6, the land's twentieth century: docs/rules/tree.md, "Oil, nitrogen and the land"): the
+# island has no oilfield, so its oil is made from coal. It keeps, and it opens at its ceiling price as
+# electricity does: at its base price of 1 it would be the cheapest warmth on the island in 1750, a good
+# nobody has until oil is made from coal.
 
 [services]
 # Two needs are added. "warmth" keeps its name and is shown as "Fuel and light": gas sells into it, and
@@ -89,9 +107,25 @@ gas = { warmth = 4.5 }   # light is worth more than heat: the number gas's whole
 chemicals = { wares = 1.3 }   # soap, candles and washing soda
 glass = { wares = 2.5 }   # bottles, tableware and the window pane
 paper = { wares = 1.3 }
+# stage 6. Light is worth more than heat, as it is for gas (4.5); electrical goods are lamps, bells, irons
+# and the first wireless sets, five times what a unit of pottery serves.
+# RUN: the design's first value for electricity was 9. On islands 1 to 8 to 2050 it gave electricity 0.090
+# of fuel and light in 1930 (0.034 to 0.191 by island), under the tenth the design's pass allows, with a
+# unit of warmth from it about half as dear again as one from coal. Refitted once, to 11, a fifth more,
+# which by the logit's width of 0.25 brings the mean in 1930 to about a fifth. Heat (5) was left: a tenth of
+# a per cent to two per cent of the works' heat to 1930, far inside its bound of a half by 1910.
+electricity = { warmth = 11.0 }
+electricals = { wares = 5.0 }
+oil = { warmth = 3.5 }   # stage 6: lamp oil and paraffin; the travel it serves is a later stage's
 
 [heat]
-# Unchanged: none of the new goods is burnt for heat in a works. Gas warms and lights houses only.
+# None of stage 1's goods is burnt for heat in a works: gas warms and lights houses only. Electricity
+# (stage 6) is a fuel a works may take: at 5 a unit, where coal gives 2.4, it carries the 1.1 of coal its
+# station burns at about twice the heat, and it pays for that in hands and plant.
+electricity = 5.0
+# Oil (stage 6) burns at 3.5, a half again of coal's 2.4; made from coal, it costs several times as much
+# for the same heat, so a works takes little of it.
+oil = 3.5
 
 # ====================================================================================================
 # The port's methods that the game changes.
@@ -856,3 +890,133 @@ stage = 1
 headline = "Paper in an endless web at {town}"
 story = "{who} pours pulp onto a moving wire at {town} and reels off paper by the mile, bleached with chlorine. The vatmen who dipped each sheet by hand are out of work, and a newspaper becomes a thing a clerk can buy."
 
+# ====================================================================================================
+# Stage 6: the first content after 1900. Electricity and electrical goods (docs/rules/tree.md, "After
+# 1900: electricity"). No hydro station: it needs the tree's water sites (stage 2), which are not built.
+# No grid: electricity is not carried between towns, and every town that wants it builds its own station.
+# Plant follows the design's rule for the content after 1900: so many years of the works' own output at
+# base prices, of kind M (three tenths building work, a tenth steel, six tenths machinery, by value at
+# base prices), written out here as the `capital` line.
+# ====================================================================================================
+
+# At base prices: sells 7.00; inputs 8.40 (steel 7.50, chemicals 0.45, glass 0.45), heat 0.38, labour 1.12
+# (0.45 at a wage of 2.5); cost 9.90; margin -2.90 (-41%). No margin can be had at base prices: the steel
+# alone is worth more than the unit, because steel's base price is the crucible's of 1750 (30), where the
+# island of 1885 sells it at about 4. So the heat and labour are set by the tree's rule (a fifth) at the
+# island's prices of 1885, the year it is aimed at (means of islands 1 to 4 under the game's rules with six
+# families, on the build this stage was cut from: wage 8.52, steel 4.05, chemicals 1.68, glass 3.97, coal
+# 0.467): inputs 1.38, heat 0.19, labour 3.83; cost 5.41 against 7.00, a margin of +1.59 (23%). At 7 a
+# unit its five of household goods cost 1.4 apiece, beside pottery's 1.54 and paper's 1.48 that year.
+# Plant 100.5 a unit of monthly capacity at base prices (1.2 years of output: building 30.1, steel 10.2,
+# machinery 60.2); at 1885's prices 52.7, 7.5 months of output. About 18 hands at K0.
+# K0 on the engine works' pattern: the same worth of output a month at base prices (4 units of machinery,
+# 280; here 40 units), so that a first works, at 0.4 of it, is a small part of its town's trade.
+# A new good, so it starts as good as its recipe and learns nothing (the tree's rule for the content after
+# 1900: A0 1, no curve).
+[[method]]
+name = "electrical_works"
+label = "Electrical works"
+output = "electricals"
+inputs = { steel = 0.25, chemicals = 0.1, glass = 0.05 }
+heat = 1.0
+labor = 0.45
+capital = { building = 13.7, steel = 0.34, machinery = 0.86 }
+K0 = 40.0
+known = false
+A0 = 1.0
+discover = { steel = 9800000.0, machinery = 1900000.0 }
+target = 1885
+group = "engineering"
+stage = 6
+headline = "Lamps and dynamos made at {town}"
+story = "{who} winds copper on iron at {town} and sells dynamos, arc lamps, bells and telephones by the crate. A room can now be lit without a flame wherever a wire can reach it."
+
+# At base prices: sells 1.20; inputs 0.99 (coal 1.1), heat 0.00, labour 0.25 (0.1 at a wage of 2.5); cost
+# 1.24; margin -0.04 (-3%). At the island's prices of 1888 (coal 0.459, wage 8.61, as above): inputs 0.50,
+# labour 0.86, cost 1.37; at warmth's parity with coal (9 / 2.4 of coal's price, 1.72) a margin of +0.35
+# (20%), and it is the plant that decides it.
+# Plant 72.2 a unit of monthly capacity at base prices (5 years of output: building 21.6, steel 7.2,
+# machinery 43.4); at 1888's prices 34.8, 29 months of output. About 150 hands at K0.
+# K0 on the gasworks' pattern, which is sized to the town it lights since gas cannot be carted: a middling
+# town of 1900 (some 25,000 people) takes about three units of fuel and light a head a month, and a fifth
+# of that at 9 to the unit is some 1,700 units of electricity; 1,500. A first station, at 0.4 of it, is
+# then a third of what its town would buy at that share.
+# No heat of its own: the coal is its fuel, and it is in its inputs.
+[[method]]
+name = "coal_power_station"
+label = "Coal power station"
+output = "electricity"
+inputs = { coal = 1.1 }
+heat = 0.0
+labor = 0.1
+capital = { building = 9.8, steel = 0.24, machinery = 0.62 }
+K0 = 1500.0
+known = false
+A0 = 1.0
+discover = { electricals = 630.0, coal = 190000000.0 }
+target = 1888
+group = "coal"
+stage = 6
+headline = "Electric light at {town}"
+story = "{who} sets steam engines and dynamos in a brick hall at {town} and runs copper mains under the streets. The lamps come on at dusk with no match and no smell, and the gas company lowers its price."
+
+# ====================================================================================================
+# Stage 6, the land's twentieth century: oil made from coal, and the nitrogen works (docs/rules/tree.md,
+# "Oil, nitrogen and the land"), with the invention of breeding and sprays. The tractor and the cutter
+# that run on oil and electricity are machines for tasks (data/tasks.toml); nitrogen and breeding are
+# improvements of the ground in the land machines' table in code (docs/rules/machines.md, "Nitrogen and
+# breeding"). Plant as for electricity's works: years of output at base prices, of kind M.
+# ====================================================================================================
+
+# UNIT SUMS: see below.
+# Plant 36.0 a unit of monthly capacity at base prices (3 years of output: building 10.8, steel 3.6,
+# machinery 21.6). No heat of its own: the coal is its fuel and its stuff, and it is in its inputs.
+[[method]]
+name = "oil_from_coal"
+label = "Oil from coal"
+output = "oil"
+inputs = { coal = 4.0, electricity = 0.5 }
+heat = 0.0
+labor = 0.05
+capital = { building = 4.9, steel = 0.12, machinery = 0.31 }
+K0 = 400.0
+known = false
+A0 = 1.0
+discover = { coal = 960000000.0, electricity = 1000000.0 }
+target = 1925
+group = "coal"
+stage = 6
+headline = "Oil distilled from coal at {town}"
+story = "{who} heats coal under hydrogen in steel retorts at {town} and draws off oil by the barrel. It is dear oil, three times the price of the same heat in coal, but a tractor cannot burn coal."
+
+# UNIT SUMS: see below.
+# Plant 135.0 a unit of monthly capacity at base prices (2.5 years of output: building 40.5, steel 13.5,
+# machinery 81.0).
+[[method]]
+name = "nitrogen_works"
+label = "Nitrogen works"
+output = "chemicals"
+inputs = { coal = 1.5, electricity = 1.2 }
+heat = 0.0
+labor = 0.1
+capital = { building = 18.4, steel = 0.45, machinery = 1.16 }
+K0 = 150.0
+known = false
+A0 = 1.0
+discover = { chemicals = 34000000.0, electricity = 100000.0 }
+target = 1915
+group = "coal"
+stage = 6
+headline = "Nitrogen from the air at {town}"
+story = "{who} fixes the nitrogen of the air with coal and electric power at {town} and sells it to the farms by the sack. Spread on the fields, it makes the same ground bear half as much again."
+
+# Not a works: the improvement of seed and stock, and sprays against blight and pests, known in a town as
+# an invention is and taken up by the farms and pastures where it pays (docs/rules/machines.md).
+[[tech]]
+name = "breeding"
+label = "Breeding and sprays"
+discover = { chemicals = 110000000.0 }
+target = 1950
+stage = 6
+headline = "New strains and sprays at {town}"
+story = "Farmers around {town} sow wheat bred to stand and yield, and spray against rust and fly. The same field gives half as much again, and the flocks are heavier."

@@ -311,11 +311,11 @@ pub fn cash_total(st: &State) -> f64 {
     pairwise_sum(&cash)
 }
 
-fn prices(st: &State) -> &Mat {
+pub(crate) fn prices(st: &State) -> &Mat {
     if st.pbar.rows > 0 { &st.pbar } else { &st.price }
 }
 
-fn wages(st: &State) -> &[f64] {
+pub(crate) fn wages(st: &State) -> &[f64] {
     if st.wbar.is_empty() { &st.wage } else { &st.wbar }
 }
 
@@ -980,7 +980,7 @@ fn check_family(st: &State, family: usize) -> Result<(), String> {
 }
 
 /// Why nothing can be built on a cell, if so; otherwise its town.
-fn buildable(st: &State, cell: usize) -> Result<usize, String> {
+pub(crate) fn buildable(st: &State, cell: usize) -> Result<usize, String> {
     if cell >= st.N {
         return Err(format!("cell {cell} is off the map"));
     }

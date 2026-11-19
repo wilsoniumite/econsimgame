@@ -112,7 +112,8 @@ pub enum Order {
     MoveSeat { town: usize },
     /// An edit by hand (docs/designs/sandbox.md): not word to the family but a
     /// change to the island, carried out at once in any month and logged with
-    /// the month it was made in. The edit is a field of its own, so a line of
+    /// the month it was made in; a works built or closed by hand waits for the
+    /// year's turn and is logged at month 0. The edit is a field of its own, so a line of
     /// the log reads `{"year":1820,"month":3,"kind":"by_hand","edit":{"what":"people","town":4,"factor":0.5}}`.
     ByHand { edit: crate::edits::Edit },
 }
@@ -145,8 +146,9 @@ impl Order {
     /// of a year, such an order is carried out when December has been played,
     /// before the books are closed. The others (a works to build, land to buy)
     /// change the island at once, and wait for the turn itself. An edit by
-    /// hand never waits (`Game::give` carries it out at once), and is named
-    /// here so that it is never taken for word to the family.
+    /// hand is named here so that it is never taken for word to the family:
+    /// most are carried out at once (`Game::give`), and those that wait
+    /// (`Edit::at_turn`, a works built or closed) wait for the turn itself.
     pub fn for_year_end(&self) -> bool {
         !matches!(self, Order::Found { .. } | Order::BuyLand { .. } | Order::ByHand { .. })
     }
@@ -438,6 +440,9 @@ impl Game {
 
     /// The island as it would stand if the waiting orders were carried out
     /// today, one after another; those that could not be are passed over.
+    /// An edit by hand that waits is passed over too (`carry_out_on` never
+    /// carries one out on a copy), so a family's order is tried as it would
+    /// have been without it.
     fn with_waiting(&self) -> State {
         let Sim { content: C, params: P, year, .. } = &self.sim;
         let mut st = self.sim.st.clone();
@@ -465,13 +470,27 @@ impl Game {
     /// is not kept, and changes nothing. An edit by hand (`Order::ByHand`) is
     /// carried out at once in any month, after whatever waited for a turn it
     /// is given at, and logged with the months played so far, so that `load`
-    /// carries it out again before the same month.
+    /// carries it out again before the same month. An edit of the kind that
+    /// waits (`Edit::at_turn`: a works built or closed) is carried out at once
+    /// only at a turn: given in the middle of a year it is checked on the run
+    /// itself (`edits::check`, which only reads; the island is never copied
+    /// for an edit) and waits, to be carried out at the next turn after the
+    /// orders given before it, and logged at month 0.
     pub fn give(&mut self, order: Order) -> Result<Done, String> {
-        if self.month == 0 || matches!(order, Order::ByHand { .. }) {
+        let at_once = match &order {
+            Order::ByHand { edit } => !edit.at_turn(),
+            _ => false,
+        };
+        if self.month == 0 || at_once {
             self.settle();
             let done = carry_out(&mut self.sim, &order)?;
             self.orders.push(Given { year: self.last_year(), month: self.month, order });
             return Ok(done);
+        }
+        if let Order::ByHand { edit } = &order {
+            crate::edits::check(&self.sim, edit)?;
+            self.waiting.push(order);
+            return Ok(Done::Waits);
         }
         let mut st = self.with_waiting();
         carry_out_on(&mut st, &self.sim.content, &self.sim.params, self.sim.year + 1, &mut Vec::new(), &order)?;

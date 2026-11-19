@@ -17,7 +17,8 @@ cargo run -p isostate-core --release -- --help
 cargo run -p isostate-core --release -- run --seed 7 --out runs/port7                             # the port of the Python
 cargo run -p isostate-core --release -- run --seed 7 --rules game --families 6 --out runs/game7  # what a game is played under
 cargo run -p isostate-core --release -- sweep --seeds 1-8 --rules game --families 6 --out runs/sweep-game
-cargo test -p isostate-core --release    # 210 tests, four to six minutes once built
+python crates/isostate-core/run_tests.py   # the tests, every test program at once, in about four minutes
+cargo test -p isostate-core --test money   # one file of tests
 ```
 
 A run to 1900 takes 15 to 20 seconds on a quiet machine and writes `run.bin`,

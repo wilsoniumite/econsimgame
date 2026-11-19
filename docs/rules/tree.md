@@ -2,7 +2,9 @@
 
 A deeper production tree, first stage. Not in the Python. The switch is
 `tree.stage`: 0 is the content as it was, 1 lays the first stage of the
-game's overlay, `data/game.toml`, over it. The code is `tree.rs`, with hooks
+game's overlay, `data/game.toml`, over it, and 6 (the game's) lays the first
+content after 1900 on top, electricity and electrical goods ("After 1900:
+electricity", below). The code is `tree.rs`, with hooks
 marked "tree" in `content.rs`, `econ::step_month`, `sim.rs`, `land.rs`,
 `observer.rs`, `families.rs`, `names.rs`, `save.rs`, `util.rs` and
 `canals.rs`.
@@ -200,7 +202,7 @@ built.
 
 | | default | game | |
 |---|---|---|---|
-| `stage` | 0 | 1 | how much of the overlay is laid: every entry with a stage no greater |
+| `stage` | 0 | 6 | how much of the overlay is laid: every entry with a stage no greater (1 was the game's until the content after 1900, and is the island as it was then) |
 | `file` | "" | "" | an overlay file to read in place of the one built in, for trying numbers without building again |
 | `seed_trades` | true | true | open 1750 with the new goods' trades in place |
 | `plant_waits` | false | true | households and the works at work are served before orders for plant; acts only with a stage laid |
@@ -502,7 +504,7 @@ with the tree has 976,000 people in 1900 and the island without it 955,000:
 two per cent more, where with the towns' deaths it has six per cent fewer.
 
 **Odd settings.** A stage above the file's highest (`tree.stage = 9`) is
-stage 1 to the last digit. `tree.seed_trades = false` runs: 1750 opens with
+stage 1 to the last digit (as the file then was; it is stage 6 now). `tree.seed_trades = false` runs: 1750 opens with
 0.251 of its people in towns where the seeded trades give 0.292, and by 1900
 the two islands are the same inside the spread. An overlay file that is
 missing or wrong stops the run with a sentence that says what is wrong.
@@ -649,6 +651,251 @@ The tests that hold a case found on main's island (`tests/hands.rs`,
 `money.rs`, `shelves.rs`, `card.rs`, `mines.rs`, `people.rs`) play it with the
 tree off and say so, as the pass's own tests do with the rules that came
 after them.
+
+## After 1900: electricity
+
+**The standing check passes: twelve of twelve inside.** This is the first
+content after 1900, and the first time the overlay goes past its stage 1.
+Electricity and electrical goods, with a coal power station and an electrical
+works, are found in the 1880s, so the played century could have moved; it did
+not. Islands 1 to 8 with six families, to 1900, `--set tree.stage=1,6
+--standing` (on the final build, after the refit below):
+
+| | stage 1 [least .. greatest] | stage 6 | |
+|---|---|---|---|
+| people in 1800, 1850, 1900 | 202,320, 364,624, 673,962 | 200,790, 361,951, 664,089 | inside |
+| chained real wage, 1850 and 1900 (1750 = 1) | 3.00 [2.51 .. 3.46], 6.03 [5.10 .. 6.94] | 3.13, 5.87 | inside |
+| towns in 1900; living in towns | 19.4 [13 .. 23]; 0.465 [0.457 .. 0.489] | 17.9; 0.467 | inside |
+| railway in 1900; first line | 2,482 km; 1832 | 2,581 km; 1827 | inside |
+| work's share of income, 1850 and 1900; land's in 1900 | 0.660, 0.670; 0.165 | 0.657, 0.662; 0.162 | inside |
+
+There is no hydro station: it wants the tree's water sites (its stage 2),
+which are not built. And there is no grid: electricity is not carried between
+towns, so every town that wants it builds its own station.
+
+**The switch is the overlay's stage.** The content after 1900 is numbered on
+from the tree's own five stages, so its entries in `data/game.toml` carry
+`stage = 6`; the tree's stages 2 to 5 have no entries yet, so stage 6 lays
+stage 1 and these and nothing else. `tree::GAME_STAGE` is 6 and the game's
+rules lay it. `--set tree.stage=1` is the island as it was, to the byte: a
+sweep of islands 1 to 4 against the build this stage was cut from gives "of
+the 888 facts both have, the seconds aside, 0 differ", and `tests/power.rs`
+holds island 7's fingerprint at stage 1 to 1900 to the one that build gives.
+
+### What is in the file
+
+| | |
+|---|---|
+| `electricity`, Electricity | weight 20, base price 1.2, not carried (`traded = false`), no opening stock, does not keep (`stock_months = 0`). Fuel and light at 9 for the design's first value and 11 as refitted (light is worth more than heat, as gas's 4.5 is); a fuel a works may burn, at 5 a unit of heat where coal gives 2.4 |
+| `electricals`, Electrical goods | weight 0.5, base price 7, decay 0.003 a month, no opening stock; household goods at 5 a unit |
+| `electrical_works`, Electrical works | steel 0.25, chemicals 0.1, glass 0.05; heat 1.0, labour 0.45; plant 1.2 years of its output; usual size 40; the engineering trade |
+| `coal_power_station`, Coal power station | coal 1.1, labour 0.1, no heat of its own; plant 5 years of its output; usual size 1,500; the coal trade, as the gasworks are |
+
+Plant follows the design's rule for the content after 1900: so many years of
+a works' own output at base prices, of kind M (three tenths building work, a
+tenth steel, six tenths machinery, by value), written out as the `capital`
+line: the station's 72 a unit of monthly capacity at base prices is building
+work 9.8, steel 0.24 and machinery 0.62. The electrical works cannot leave the
+tree's fifth at base prices, because its steel alone (0.25 at 30, the price of
+1750's crucible steel) is worth more than the unit; its heat and labour leave
+a fifth at the island's prices of 1885 instead. The file's comments give both
+sums. Each starts as good as its recipe and learns nothing (`A0` 1, no curve).
+The station's usual size is the electricity a middling town of 1900 (some
+25,000 people, three units of fuel and light a head a month) would buy at a
+fifth of its fuel and light; the works' is the engine works' worth of output.
+Each method has its own row of classes of task in `data/tasks.toml` (the
+station .30 .50 .05 .15 0, the works .15 .55 .05 .25 0), and names of its own
+("Glenbrook Electric Light Co.", "Jowett Electrical Co.").
+
+The works are found by thresholds on what the island has made, fitted with
+`parity/tree_fit.py` in two passes as the rest of the tree's were, with a new
+`--only` so that stage 1's thresholds are left as written: the electrical
+works on steel (the clock) and machinery, aimed at 1885; the station on
+electrical goods and coal, aimed at 1888.
+
+### Goods that do not keep
+
+A good with `stock_months = 0` (electricity alone) is made to be used in the
+month. What is left in store at a month's end, once the month's sales are
+taken out, is lost, and the month's make is what the next month sells
+(`tree::month_loss`; the books count the loss as spoiled, and the gauges'
+column for what is made and lost with them). Its price cannot move on the
+merchants' stock, which never holds two months: by that rule it would settle
+only where a quarter of what is made is lost. So it moves on the month's gap
+between what was asked and what was made, `(asked - made) / max(asked, made)`,
+with the same step, markup and bounds as every other good's (`tree::price_gap`).
+`stock_months` read as any other number is the months of sales merchants mean
+to hold, so a later good may keep a month; absent, it is the island's
+`price_target_months`, 2, and no other good's price moves.
+
+Both new goods open at their ceiling price in every town (`opens_dear`, a key
+on a good). Nobody has either for more than a century, and at their base
+prices electricity would be the cheapest fuel on the island by a factor of
+three and electrical goods the cheapest household good: every works would put
+most of its heat on a fuel it could not get, and a works makes what its
+scarcest input allows. The price rule would carry them to the ceiling anyway,
+but only after some forty months of hunger for them. Gas is not given the key,
+which would move stage 1.
+
+### The eight islands to 2050
+
+Islands 1 to 8, six families, `isostate-core sweep --seeds 1-8 --rules game
+--families 6 --end-year 2050`, the build this stage was cut from against this
+one (which is stage 1 against stage 6, since stage 1 is that build to the
+byte). The design's pass is electricity a fifth of fuel and light by 1930.
+With the design's first values (fuel and light 9, heat 5) it was 0.090 in 1930
+(0.034 to 0.191 by island), under a tenth, with a unit of warmth from it about
+half as dear again as one from coal. Fuel and light was refitted once, from 9
+to 11, a fifth more, which at the logit's width of 0.25 brings it near the
+aim. Heat was left at 5: electricity gave at most two per cent of the works'
+heat before 1930, far from the half by 1910 that would call for a refit.
+
+| | 1900 | 1910 | 1920 | 1930 | 1940 | 1950 | 1970 | 2000 | 2050 |
+|---|---|---|---|---|---|---|---|---|---|
+| share of fuel and light (units of warmth) | 0.023 | 0.070 | 0.128 | **0.172** | 0.220 | 0.257 | 0.296 | 0.352 | 0.556 |
+| least and greatest island | 0 .. 0.113 | 0 .. 0.159 | 0 .. 0.190 | 0.004 .. 0.252 | 0.142 .. 0.295 | 0.201 .. 0.315 | 0.242 .. 0.351 | 0.283 .. 0.444 | 0.427 .. 0.649 |
+| share of the works' heat | 0.000 | 0.001 | 0.005 | 0.012 | 0.024 | 0.037 | 0.043 | 0.032 | 0.063 |
+| towns with a station (of the towns there are) | 6.1 (17.9) | 14.8 (18.4) | 15.4 (18.6) | 18.1 (18.6) | 17.6 (18.8) | 18.5 (18.8) | 18.1 (18.9) | 18.8 (19.0) | 18.9 (19.1) |
+| electricity made and lost at a month's end | 0.33 (4 islands) | 0.23 | 0.11 | 0.11 | 0.09 | 0.06 | 0.07 | 0.08 | 0.06 |
+| its price over coal's for a unit of heat | 21.7 | 8.1 | 7.6 | 2.0 | 1.8 | 1.7 | 1.6 | 1.7 | 1.4 |
+
+The electrical works is found in 1888 on the mean island (1872 to 1914) and
+the station in 1900 (1876 to 1927): the station waits on the works'
+electrical goods, and an island poor in steel finds the works late (the
+tree's "Discovery dates scatter", above). The fitter reads sweeps to 1900 and
+counts an island that has not found an invention by then as finding it in
+1905, so it thought the station's mean was 1889. The price over coal's is
+high until about 1925 because it is weighted over the towns that bought any,
+some of them with a first station and a price still coming down from the
+ceiling.
+
+Of electrical goods, households (with landlords and families) bought all:
+nothing yet has them in its plant (the electric drive is the next part).
+Household goods, in units of the need, in 1930: soap and chemicals 0.284,
+glass 0.258, pottery 0.179, paper 0.175, electrical goods 0.103; in 1950
+0.284, 0.261, 0.174, 0.153 and 0.128. Fuel and light in 1930: coal 0.697, gas
+0.131, electricity 0.172; in 1950: 0.598, 0.145, 0.257.
+
+Against stage 1:
+
+| | 1900 | 1930 | 1950 | 2000 | 2050 |
+|---|---|---|---|---|---|
+| chained real wage (1750 = 1), stage 1 | 6.03 | 7.10 | 7.43 | 5.77 | 3.45 |
+| stage 6 | 5.87 | 7.56 | 8.00 | 6.67 | 3.97 |
+| work's share of income, gross, stage 1 / 6 | 0.670 / 0.662 | 0.662 / 0.665 | 0.654 / 0.668 | 0.586 / 0.597 | 0.578 / 0.578 |
+| the same net of wear, stage 1 / 6 | 0.688 / 0.679 | 0.684 / 0.686 | 0.677 / 0.691 | 0.638 / 0.649 | 0.602 / 0.605 |
+| people, stage 1 | 673,962 | 889,022 | 1,054,043 | 1,659,405 | 2,781,755 |
+| stage 6 | 664,089 | 867,373 | 1,017,810 | 1,536,340 | 2,489,623 |
+
+So the island with electricity lives better after 1930 (the chained wage a
+sixth higher in 2000 and 2050) and has fewer people (a tenth fewer in 2050).
+Clear of the spread between islands, on every island: more of the people in
+towns from 1940 (0.468 against 0.448 in 1940, 0.321 against 0.271 in 2050),
+more of the hands in works and fewer in the diggings after 2000, and a smaller
+share of the budget on fuel and light from 1950 (0.075 against 0.081). Work's
+share of income does not move beyond chance.
+
+**What a run costs.** The same sweep, eight runs at a time, one after the
+other on the same machine: a run to 2050 took 82 seconds on the mean island
+with 25 goods (72 to 88) and 87 with 27 (82 to 91), six per cent more, against
+the design's reckoning of 55 to 105 seconds at thirty goods.
+
+**In the viewer**, a recorded run of island 7 to 2050 shows electricity in the
+Markets panel at its ceiling until the first station and coming down to
+about three in the 1930s. The stations and electrical works are drawn as any
+other works until they have drawings of their own.
+
+`tests/power.rs` holds the overlay at stage 6, the island at stage 1, a good
+that keeps nothing from one month to the next with money conserved every
+month, and a town with no station that has none to buy.
+
+### What worries me here
+
+- **Works burn their fuel mix whatever each fuel's fill.** The engine shares
+  a works' heat over its fuels by price and charges it for each, and where a
+  fuel is short the works makes less but still takes its full share of it,
+  the excess counted in the books as oversold. With electricity, which has no
+  stock to fall back on, that is a few hundred-thousandths of a unit in a town
+  whose station has just closed, and more where a station is short.
+- **A district that changes town takes its electricity with it**, as its
+  merchants' stock of every good: January may sell December's make in a town
+  that has no station.
+- **The fitter stops at 1900.** It counts a late island as finding the
+  invention in 1905, so it reckons the station seven years earlier than the
+  sweep to 2050 finds it. Fitting the content after 1900 wants the fitter to
+  read to the sweep's last year.
+- **Electricity's share keeps rising to 2050**, past half of fuel and light,
+  with coal's falling, because nothing else after 1900 competes; oil and gas,
+  and the grid, are later parts.
+
+## Oil, nitrogen and the land
+
+The second part of stage 6 is the land's twentieth century: oil, two methods
+and an invention in `data/game.toml`, all with `stage = 6`; the tractor and
+the cutter that run on oil and electricity, in `data/tasks.toml`
+([tasks.md](tasks.md), "The tractor and the cutter"); and nitrogen and
+breeding in the land machines' table ([machines.md](machines.md), "Nitrogen
+and breeding"). The switch is the overlay's stage, as for electricity:
+`--set tree.stage=1` is the island before this part to the byte (islands 1 to
+4 against the build it was cut from: "of the 888 facts both have, the
+seconds aside, 0 differ").
+
+| | |
+|---|---|
+| `oil`, Oil | weight 1, base price 1, decay 0.002 a month, no opening stock, keeps; fuel and light at 3.5 a unit, and a fuel a works may burn at 3.5 a unit of heat. Opens at its ceiling price (`opens_dear`), as electricity does: at its base price it would be the island's cheapest warmth in 1750, and nobody has any until it is made |
+| `oil_from_coal`, Oil from coal | coal 4 and electricity 0.5 a unit, labour 0.05, no heat of its own; plant 3 years of its output, kind M; usual size 400; the coal trade; aimed at 1925 |
+| `nitrogen_works`, Nitrogen works | makes soap and chemicals from coal 1.5 and electricity 1.2, labour 0.1; plant 2.5 years of its output, kind M; usual size 150; the coal trade, as the alkali works; aimed at 1915 |
+| `breeding`, Breeding and sprays | an invention, not a works; aimed at 1950 |
+
+Each method has its row of classes of task in `data/tasks.toml` (oil from
+coal .25 .50 .05 .20 0, the nitrogen works .10 .50 .05 .35 0) and names
+of its own ("Melbourne Coal Oil Co.", "Glenbrook Nitrogen Co."). **There is no
+oilfield**: the design's oilfield wants the second land generator, which the
+game's rules do not use. So the island's oil is made from coal, and it is
+dear: on the eight islands a unit of heat from oil costs six to eight times
+one from coal (`oil_over_coal_heat_Y`: 7.5 in 1930, 8.6 in 1950, 6.0 in
+1970), where the design reckoned three. Four of coal for 3.5 of heat is 2.7
+times coal's heat on its own; the half unit of electricity, at about three a
+unit where it is sold, costs as much again as the coal. So oil warms nobody
+and fires no works: it is made for the tractors.
+
+**The thresholds** were fitted with `parity/tree_fit.py`, which now reads the
+sweep's own last year (it stopped at 1900, which counted every island that
+had not found an invention by then as finding it in 1905): oil from coal on
+coal made, with electricity kept as a guard; the nitrogen works and breeding
+on chemicals made, the nitrogen works with electricity kept as a guard.
+Electricity is a poor clock: island 4 makes none until the 1920s. On a sweep
+to 2050 (`isostate-core sweep --seeds 1-8 --rules game --families 6
+--end-year 2050`, then `python crates/isostate-core/parity/tree_fit.py DIR
+--only oil_from_coal,nitrogen_works,breeding`):
+
+| | aimed at | found, mean of 8 | least .. greatest |
+|---|---|---|---|
+| nitrogen works | 1915 | 1916 | 1901 .. 1943 |
+| oil from coal | 1925 | 1926 | 1899 .. 1949 |
+| breeding and sprays | 1950 | 1945 | 1928 .. 1974 |
+
+Island 8 finds oil from coal in 1899, by the hazard's long tail; the standing
+check holds all the same (twelve of twelve inside, `--set tree.stage=1,6
+--standing`). Nothing else of this part is found before 1901.
+
+**A tractor waits on oil, and oil waits on the tractor.** Nobody buys oil at
+its ceiling price, so an oil works is built where it is found, sells its
+first months' make into a market with no buyer, sees the price fall below
+its costs and closes (island 4, on a first build whose tractor waited for
+2,000 units: two works, 935 units made by 1923, and then none for a decade;
+on six islands of eight the tractor was not found by 1960). The tractor is found on oil made, not on a date: at the
+first year's turn from 1915 at which the island has made 300 units of oil,
+about what its first works make in their first months. Once it is found the
+farms ask for oil and the works stay: oil made is 2,700 a year on the mean
+island in 1920, 8,000 in 1930, 22,000 in 1950 and 49,000 in 1970. On island 1,
+the last to light a town (its first station in 1933), oil from coal is found
+in 1949 and the tractor in 1951. An island with no oil of its own mechanises
+its fields late.
+
+**What a run costs.** A run to 2050 took 110 seconds on the mean island (102
+to 120) with 28 goods, against 93 (89 to 97) for the base's 27, eight at a
+time on a machine shared with other builds.
 
 ## What worries me
 

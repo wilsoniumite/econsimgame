@@ -302,6 +302,7 @@ pub(crate) fn pump(
     sandbox: Option<Res<crate::sandbox::Sandbox>>,
     mut told: Option<ResMut<crate::inspector::Answers>>,
     mut rules: Option<ResMut<crate::rulebook::Known>>,
+    mut hand_rows: Option<ResMut<crate::hand_tab::Pending>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Pump);
     // the months the books kept from before the window opened, ahead of any that come
@@ -381,7 +382,25 @@ pub(crate) fn pump(
                 // carried out as the year ended and works and land as the next began, so the line
                 // over each says the turn, which is both
                 for (ok, line) in &end.carried {
-                    toasts.say(if *ok { "orders" } else { "orders_refused" }, line, "the year's turn", time.elapsed_secs());
+                    // an edit by hand that waited goes up in the hand's ink, done or refused (sandbox 7b)
+                    let hand = sandbox.is_some() && line.starts_with("By hand");
+                    let kind = match (hand, *ok) {
+                        (true, _) => "hand",
+                        (false, true) => "orders",
+                        (false, false) => "orders_refused",
+                    };
+                    toasts.say(kind, line, "the year's turn", time.elapsed_secs());
+                    if hand {
+                        println!("sandbox: at the year's turn, {} {line}", if *ok { "done:" } else { "refused:" });
+                    }
+                }
+                // and its row heads the Hand tab until its news comes with the next month
+                if let Some(pending) = hand_rows.as_mut() {
+                    let when = clock::news_time(data.r.y0, clock::at(data.latest(), 0)) + 0.5 / 12.0;
+                    let in_news = crate::hand_tab::done_by_hand(&data.r).count();
+                    for (_, line) in end.carried.iter().filter(|c| c.0 && sandbox.is_some() && c.1.starts_with("By hand")) {
+                        pending.add(when, line, in_news);
+                    }
                 }
                 // the world has moved on: ask about the picked square again
                 game.asked = None;
@@ -1615,8 +1634,18 @@ fn yours_words(last: i32) -> String {
 fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>, sandbox: Option<Res<crate::sandbox::Sandbox>>) {
     // works ordered since the last year (in a game gone on with) keep their pegs
     game.pending = live.ordered.clone();
-    // screenshots skip it unless asked for, and a sandbox opens on the island itself
-    if (shots.is_some() && !cards_in_shots()) || sandbox.is_some() {
+    // screenshots skip it unless asked for
+    if shots.is_some() && !cards_in_shots() {
+        return;
+    }
+    // a new sandbox opens on the island itself; one gone on with, on a short card of its own
+    if sandbox.is_some() {
+        if let Some(back) = &live.resumed {
+            game.welcoming = true;
+            let over = data.r.filled >= data.r.ny;
+            let edits = back.orders + back.refused > 0 || !live.standing.waiting.is_empty();
+            session_card(&mut commands, &font.0, data.r.header.meta.seed, back, over, &begin_again_hint(data.r.header.meta.seed, data.r.y0, edits));
+        }
         return;
     }
     let Some(me) = fam.player() else { return };
@@ -1801,6 +1830,93 @@ fn welcome_back(c: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, 
     ));
 }
 
+/// What a sandbox's card says of the session gone on with: when it was left,
+/// and how much in it was done by hand.
+pub fn session_left_words(back: &live::Resumed, over: bool) -> String {
+    let done = match back.by_hand {
+        0 => "with nothing done by hand".to_string(),
+        1 => "with one edit by hand".to_string(),
+        n => format!("with {} edits by hand", family::number_word(n)),
+    };
+    format!("As you left it in {}, {done}.", back.date(over))
+}
+
+/// What a sandbox's card says under Begin again: what becomes of the session
+/// on the table. One with an edit in it is set aside whole; one with none is
+/// not kept, since the same island makes it again (`saves::holds_orders`).
+pub fn begin_again_hint(seed: u64, first_year: i32, has_edits: bool) -> String {
+    if has_edits {
+        format!("Begin again makes island {seed} anew in {first_year} and keeps this session beside it.")
+    } else {
+        format!("Begin again makes island {seed} anew in {first_year}. Nothing was done by hand in this session, so it is not kept beside the new one: the same island makes it again.")
+    }
+}
+
+/// The card a sandbox gone on with opens on (docs/designs/sandbox.md,
+/// section 5): smaller than the family's, in the hand's ink, saying which
+/// island and where it was left, with Go on and Begin again. The buttons are
+/// the family card's own (`ContinueButton`, `NewGameButton`), so that what
+/// they do, `ISOSTATE_WELCOME` and `close_welcome` are as they are there.
+fn session_card(commands: &mut Commands, f: &Handle<Font>, seed: u64, back: &live::Resumed, over: bool, hint: &str) {
+    let ink = crate::sandbox::HAND_INK;
+    commands
+        .spawn((
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
+            BackgroundColor(Color::srgba(0.18, 0.14, 0.10, 0.18)),
+            GlobalZIndex(50),
+            Interaction::default(),
+            FocusPolicy::Block,
+            Welcome,
+        ))
+        .with_children(|wrap| {
+            wrap.spawn((
+                Node { flex_direction: FlexDirection::Column, width: Val::Px(400.0), padding: UiRect::axes(Val::Px(26.0), Val::Px(20.0)), row_gap: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() },
+                BackgroundColor(crate::ui::PAPER),
+                BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.28), Val::Px(0.0), Val::Px(6.0), Val::Px(0.0), Val::Px(22.0)),
+            ))
+            .with_children(|c| {
+                c.spawn(text(f, &format!("Island {seed}"), 24.0, ink));
+                c.spawn(text(f, &session_left_words(back, over), 15.0, INK));
+                if let Some(note) = resumed_note(back) {
+                    c.spawn((
+                        Node { margin: UiRect::top(Val::Px(4.0)), padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
+                        BackgroundColor(Color::srgb(0.97, 0.89, 0.74)),
+                    ))
+                    .with_children(|n| {
+                        n.spawn(text(f, &note, 13.5, Color::srgb(0.45, 0.29, 0.10)));
+                    });
+                }
+                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(5.0)), ..default() }, BackgroundColor(RULE)));
+                c.spawn(Node { column_gap: Val::Px(10.0), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                    // (two words and a date, so that a script's click:Go on finds the button by its own words)
+                    row.spawn((
+                        Node { column_gap: Val::Px(4.5), padding: UiRect::axes(Val::Px(15.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+                        BackgroundColor(ink),
+                        Interaction::default(),
+                        FocusPolicy::Block,
+                        ContinueButton,
+                    ))
+                    .with_children(|b| {
+                        b.spawn(text(f, "Go on", 15.0, Color::WHITE));
+                        b.spawn(text(f, &format!("from {}", back.date(over)), 15.0, Color::WHITE));
+                    });
+                    row.spawn((
+                        Node { padding: UiRect::axes(Val::Px(15.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+                        BackgroundColor(BTN),
+                        Interaction::default(),
+                        FocusPolicy::Block,
+                        crate::ui::Hoverable,
+                        NewGameButton,
+                    ))
+                    .with_children(|b| {
+                        b.spawn(text(f, "Begin again", 15.0, INK));
+                    });
+                });
+                c.spawn((text(f, hint, 12.5, MUTED), Node { margin: UiRect::top(Val::Px(5.0)), ..default() }, WelcomeHint));
+            });
+        });
+}
+
 /// Nobody at the pointer: ISOSTATE_WELCOME=continue or =new presses that
 /// button of the opening card, once, so that what the buttons do can be
 /// checked from the terminal (in a screenshot run, or with a window).
@@ -1831,6 +1947,8 @@ fn new_game_clicks(
     data: Res<Data>,
     // there is none in a replay, which has no such button either
     fam: Option<Res<FamilyView>>,
+    // Begin again on a sandbox's card begins a sandbox again
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
     mut hint: Query<&mut Text, With<WelcomeHint>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -1841,10 +1959,11 @@ fn new_game_clicks(
     // on the island on the table, with as many families: a save that was loaded may be of another than the arguments name
     let args: Vec<String> = std::env::args().skip(1).collect();
     let scripted = args.iter().any(|a| a == "--script");
-    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len());
+    let args = crate::saves::new_game_args(&args, data.r.header.meta.seed, fam.families.len(), sandbox.is_some());
+    let button = if sandbox.is_some() { "Begin again" } else { "New game" };
     if scripted {
         // a scripted run is one program from start to end: say what would be started, and stop
-        println!("script: New game would start the program again with: {}", args.join(" "));
+        println!("script: {button} would start the program again with: {}", args.join(" "));
         exit.write(AppExit::Success);
         return;
     }
@@ -1852,13 +1971,13 @@ fn new_game_clicks(
     let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).args(args).env("ISOSTATE_RESTARTED", "1").spawn());
     match started {
         Ok(_) => {
-            eprintln!("starting again on a new game");
+            eprintln!("starting again on a new {}", if sandbox.is_some() { "session" } else { "game" });
             exit.write(AppExit::Success);
         }
         Err(e) => {
             eprintln!("a new game could not be started: {e}");
             for mut t in &mut hint {
-                t.0 = "A new game could not be started from here. Close the game and start it again with --new.".to_string();
+                t.0 = if sandbox.is_some() { "A new session could not be started from here. Close the game and start it again with --new." } else { "A new game could not be started from here. Close the game and start it again with --new." }.to_string();
             }
         }
     }
@@ -2078,7 +2197,8 @@ mod tests {
         let goods = crate::live::trade_goods(&c);
         let names = |g: Group| goods[g.index()].iter().map(|&i| c.good_name[i].as_str()).collect::<Vec<_>>();
         // the trades whose names no longer say all they make: gas and soap are with coal, beer with the estates
-        assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals"]);
+        // (and, at the content after 1900, the stations' electricity and the oil made from coal: docs/rules/tree.md)
+        assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals", "electricity", "oil"]);
         assert!(names(Group::Estates).contains(&"beer"), "{:?}", names(Group::Estates));
         assert_eq!(names(Group::Iron), ["iron", "steel", "rails"]);
         // every good is some one trade's, but what the shops sell, which no family trade makes
@@ -2094,7 +2214,7 @@ mod tests {
         // and the line a decision shows is the content's labels, in the content's order
         let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None, weight: None, price: None }).collect();
         let fam = FamilyView { trade_goods: goods.clone(), ..default() };
-        assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals"));
+        assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals \u{00b7} Electricity \u{00b7} Oil"));
         // a recorded run, which does not say what each trade makes, shows no line
         assert_eq!(goods_of_trade(&FamilyView::default(), &all, Group::CoalMining), None);
         // the Markets panel's three heads, where the content leaves no doubt (charcoal it does: see live::good_kinds)

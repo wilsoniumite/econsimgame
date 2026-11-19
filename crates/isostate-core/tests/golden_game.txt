@@ -1,84 +1,29 @@
-# The game's golden hashes (tests/golden_game.rs): seed 7 to 1900 under
-# game_params() and game_content(), six families. 64-bit FNV-1a of
+# The game's golden hashes (tests/golden_game.rs): seed 7 under game_params()
+# and game_content(), six families, in two eras. 64-bit FNV-1a of
 #   economy  series_monthly.csv less the books' own columns
 #   books    the books' own columns (acct_), with the year and month
 #   news     events.json
 #   run.bin  run.bin, its date set to 0000-00-00
+# 1750-1900 is the run that ends in 1900, hashed whole, as before 2050 was
+# added. 1901-2050 is the same island run on to 2050: its months and news
+# from 1901 on, and its whole run.bin. A change that acts only after 1900
+# moves the second era alone.
 #
 # These move whenever the game's rules are changed on purpose. Take them again
-# on the merged tree with
-#   ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
-# paste the four lines it gives below, and say in the commit which moved and why
-# (docs/rules/README.md, "The game's golden test").
+# on the merged tree with one command, which writes them here itself:
+#   ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --test golden_game -- --nocapture
+# and say in the commit which moved and why (docs/rules/README.md, "The
+# game's golden test").
 #
-# Taken: on the branch of stage 5b of the rules pass, two mends on the
-# merchants' side, cut from main after stages 4 and 3 (13 November 2026). All
-# four moved: no stock markup on a good that spoils (prices.no_spoil_markup,
-# docs/rules/prices.md) and land priced on the rent it paid
-# (harvest.rent_as_paid, docs/rules/harvest.md) each give the island another
-# history. With both switches off the hashes before them held.
-# Then on night/o-rules-5c-works with that main merged in (13 November
-# 2026): all four moved again by the works' two mends of the pass
-# (docs/rules/works.md, parts G and H: the works of 1749 spread out, and an
-# order paid for before a dividend); with both switches off the four of
-# stage 5b held. Held again on its check with stage 5 merged in, which
-# moves nothing.
-# Then on night/g-tree-land with main merged in (19 November 2026): all four
-# moved by the production tree's first stage, switched on under the game's
-# rules (tree.stage = 1, docs/rules/tree.md), with its thresholds fitted again
-# on the island stage 5 leaves: nine more goods, so another economy, other
-# books, other news and another run.bin. With the tree off in game_params()
-# the four before held.
-# Then on night/g-to2050-1-longrun (19 November 2026): all four moved by
-# stage 1 of the run to 2050, the bounds on prices and the wage riding on
-# the island's own cost of living (longrun.enabled, docs/rules/longrun.md):
-# iron ore's price, which stood at its floor in a few town-months on most
-# islands, may now fall below 1750's floor, and that gives the island another
-# history. With the switch off the four above held. Taken again on
-# night/g-to2050-2-standing with main (the production tree) merged in.
-# Then on night/g-to2050-2-standing (19 November 2026): all four moved by
-# step one of the demographic transition (transition.enabled,
-# docs/rules/transition.md): births follow how well each town's townsfolk
-# live, and crowding falls as drains come with income, so the island has
-# other people and so another history. With the switch off in game_params()
-# the four of the merged tree held. (Its z_half is 4.5, raised from 4 so that
-# the towns' share of 1900 stays within the spread of seeds.)
-# Then on night/g-to2050-3-gauges (19 November 2026): books and run.bin
-# moved, economy and news held. The gauges (docs/rules/gauges.md) add their
-# series beside the books' and their years to the run file's header; with
-# the gauges switched off the four above held.
-# Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
-# books and run.bin moved again by the gauges, economy and news are the
-# tree's as they stood.
-# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
-# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
-# 4b and 5a together: against main all four moved, by longrun and the
-# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
-# economy and news are stage 2's own, and the sandbox's pieces move nothing.
-# Then on night/g-to2050-4-owners, merging the gauges into stage 2 (19
-# November 2026): books and run.bin moved by the gauges, economy and news
-# are stage 2's as they stood.
-# Then on night/g-to2050-4-owners (19 November 2026): all four moved by
-# step one of owners (owners.enabled, docs/rules/owners.md): the landlords
-# are paid their part of the dividends of the works they put money into, so
-# the households have less and the landlords more, which is another history.
-# With the switch off in game_params() the four above held.
-# Then on night/g-to2050-5-tasks (19 November 2026): books and run.bin moved,
-# economy and news held. The machines for tasks (tasks.enabled,
-# docs/rules/tasks.md) are switched on, but nothing can be found before 1901,
-# so the economy to 1900 is the owners' to the byte. What moved is the
-# gauges' floor, which now reads the class of presence from the content's
-# classes of task, where the emporium holds a tenth as the services do (its
-# series is among the books' columns), and in run.bin the gauges' list of
-# presence and the params, which now carry the switch.
-# Then on night/g-batch-2 (19 November 2026), the batch that lands the run
-# to 2050's stages 4 and 5 (owners; tasks in the works, on the land and in
-# the pits) with the sandbox's stages 5b, 6a and 6b: taken again on the
-# merged tree, and against main all four moved, by the owners (economy,
-# books, news, run.bin) and the tasks (books, run.bin). The four are the
-# tasks' second half's own to the digit: the sandbox's pieces, and the
-# owners' and tasks' switches joining the Rules tab, move nothing.
-economy  0x9a6b3ba24a097bd1
-books    0xfa5dd1db28f62894
-news     0x9f83de6e9e162ab1
-run.bin  0xdb99a5e2a2c197f3
+# Taken: Main's golden test now runs seed 7 on to 2050 in two eras, and this
+# branch's stage 6 content (oil from coal, nitrogen, breeding, the tractor and
+# the cutter) gives the island under the game's rules another history; the
+# hashes are taken again on the merged tree.
+1750-1900 economy  0xdebd478051ee16be
+1750-1900 books    0x3cc8889c1caf36c4
+1750-1900 news     0x2427b8a15d4c901e
+1750-1900 run.bin  0x57f3dcbc5c19828d
+1901-2050 economy  0xd958a560c9ba3a9b
+1901-2050 books    0x5f66c48c5194dd5d
+1901-2050 news     0x98e775c75634129b
+1901-2050 run.bin  0xf0ca8497e7fd7c62

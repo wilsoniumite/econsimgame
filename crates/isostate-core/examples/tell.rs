@@ -3,7 +3,7 @@
 //! the viewer's inspector will show, with how long it took to make.
 //!
 //!     cargo run --release -p isostate-core --example tell -- [--seed 7] [--year 1800]
-//!         [--month 1] (--town NAME | --works N | --cell X,Y | --island | --list)
+//!         [--month 1] [--edits FILE] (--town NAME | --works N | --cell X,Y | --island | --list)
 //!
 //! A game of six families under the game's rules (`save::Game`, as the viewer
 //! starts one) is played to January of `--year`, or `--month` months on into
@@ -12,15 +12,20 @@
 //! choose from. Several of the four may be given; each card is printed in turn.
 //! The island's card ends with what the hand has done ("By hand"), which in a
 //! game played here with no edits reads "none yet".
+//!
+//! `--edits FILE` gives the game a list of dated edits on the way, in the
+//! form `edits::play` reads (`[{"before": [1800, 1], "edit": {...}}]`), each
+//! as an edit given before its month is played; the line of each is printed.
 #![allow(non_snake_case)]
+use isostate_core::edits::Dated;
 use isostate_core::families;
 use isostate_core::inspect::{self, Thing, Told};
-use isostate_core::save::Game;
+use isostate_core::save::{Game, Order};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (mut seed, mut year, mut month) = (7u64, 1800i64, 1usize);
-    let (mut things, mut list) = (Vec::<(String, String)>::new(), false);
+    let (mut things, mut list, mut edits) = (Vec::<(String, String)>::new(), false, None::<String>);
     let mut i = 0;
     while i < args.len() {
         let next = || args.get(i + 1).cloned().expect("a value after the option");
@@ -31,6 +36,7 @@ fn main() {
             "--town" | "--works" | "--cell" => things.push((args[i].clone(), next())),
             "--island" => things.push(("--island".into(), String::new())),
             "--list" => list = true,
+            "--edits" => edits = Some(next()),
             other => panic!("unknown option {other}"),
         }
         i += if matches!(args[i].as_str(), "--island" | "--list") { 1 } else { 2 };
@@ -38,13 +44,38 @@ fn main() {
     assert!((1..=12).contains(&month), "--month is 1 to 12");
     let t0 = std::time::Instant::now();
     let mut g = Game::new(seed, 6, 0);
+    // the edits of a list, each given before its month is played, as `edits::play` carries them out
+    let mut dated: Vec<Dated> = match &edits {
+        Some(file) => serde_json::from_str(&std::fs::read_to_string(file).expect("the list of edits can be read")).expect("a JSON list of dated edits"),
+        None => Vec::new(),
+    };
+    dated.sort_by_key(|d| d.before);
+    let mut next = 0;
+    let mut give_due = |g: &mut Game| {
+        while next < dated.len() && dated[next].before <= (g.sim.year, g.month + 1) {
+            let d = &dated[next];
+            next += 1;
+            match g.give(Order::ByHand { edit: d.edit.clone() }) {
+                // (a works built or closed by hand is named by its number, for --works)
+                Ok(_) => match g.sim.events.last() {
+                    Some(e) => println!("{}{}", e.title, e.firm.map_or(String::new(), |f| format!(" (works {f})"))),
+                    None => {}
+                },
+                Err(why) => panic!("the edit before month {} of {}, {:?}, was refused: {why}", d.before.1, d.before.0, d.edit),
+            }
+        }
+    };
     while g.sim.year < year && !g.over() {
-        g.year().expect("a year is played");
-        g.turn();
+        give_due(&mut g);
+        if g.month().expect("a month is played") {
+            g.turn();
+        }
     }
     for _ in 1..month {
+        give_due(&mut g);
         g.month().expect("a month is played");
     }
+    give_due(&mut g);
     println!("island {seed}, the game's rules, six families, played to {} in {:.1} s", inspect::as_of(&g.sim), t0.elapsed().as_secs_f64());
     let st = &g.sim.st;
 

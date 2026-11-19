@@ -4,15 +4,16 @@ Not in the Python. `crates/isostate-core/src/tasks.rs` and
 `data/tasks.toml`, switched by `tasks.enabled`, and on the land by
 `tasks.land`: both off under the port's rules, on under the game's. It is
 the fifth stage of the run to 2050, in two halves: the works first, then the
-land ("On the land", below). **The one machine in it, the hoist, is a
+land ("On the land", below). **The first machine in it, the hoist, is a
 stand-in**: made of machinery and burning coal, so that the rule can be
-proved on the island as it stands, with nothing after 1900 in the content;
-the electric drive takes its place when that content lands. It hauls in the
-works and at the quarries, clay pits and mines. **The fields are still out
-of reach**: no machine names the farms, the pastures or the woods (the
-tractor is a later stage's), nor the carters, so they keep the machines of
-[machines.md](machines.md) and nothing else, and some of the hands the works
-and the pits let go find work on them. Nothing can be found before 1901, so
+proved on the island as it stands, with nothing after 1900 in the content.
+Without that content (`tree.stage = 1`) it hauls in the works and at the
+quarries, clay pits and mines. **With the content after 1900** (`tree.stage`
+6, the game's) two machines of the land's twentieth century join it ("The
+tractor and the cutter", below): the tractor hauls on the farms, the
+pastures and in the woods, and the cutter at the quarries, clay pits and
+mines, where it takes the hoist's place; the electric drive is to take the
+hoist's place in the works. The carters are still out of reach. Nothing can be found before 1901, so
 the played century is untouched: every fact of the standing check is the
 same to the digit with either switch on and off. Two more settings are for
 sweeps and are unset under both rules: a ceiling on what the ground may
@@ -108,18 +109,19 @@ cheaper done by machine. Where a class has more than one machine they are
 taken cheapest first, each holding what lies above the one before it (only
 one exists in this half).
 
-**The works.** A new works is built at its town's target: new plant is
-today's technique. A standing works moves toward it by `1 / (12 *
-adopt_years)` of the gap a month (`adopt_years` 8), times how well last
-month's order for its machines was filled, and falls no faster than its
-machines wear out. Where a works' machines hold some part of a class:
+**The works.** A new works means to hold its town's target: new plant is
+today's technique. A standing works moves the share it means to hold toward
+it by `1 / (12 * adopt_years)` of the gap a month (`adopt_years` 8), times
+how well last month's order for its machines was filled, and lets it fall no
+faster than its machines wear out. Where the machines it has in place hold
+some part of a class (below, "A machine works once it stands"):
 
 - its hands a unit are the port's times the sum over classes of `share *
   (1 - held + minders of the machines held)`;
 - the machines' run goods join its inputs a unit, so it buys them each
   month and is held back as any works is when they run short;
-- the machines' plant, sized to its capacity, is ordered through a table of
-  its own (the works' order for capacity is wiped when no capacity is on
+- the machines' plant, sized to its capacity at the share it means to hold,
+  is ordered through a table of its own (the works' order for capacity is wiped when no capacity is on
   order, so it cannot hold them): a quarter of what is missing a month,
   served after the day's trade as the plant orders are, paid from its cash
   and by its backers when it is short (`firms::back_firm`), and kept back
@@ -143,27 +145,284 @@ lifted `gauge_floor_1900` from 0.023 to 0.065 and moved nothing else), the
 machines' book is counted in the plant behind a year's income
 (`gauge_plant_years`), and their wear in the wear (`gauge_work_net`).
 
+## A machine works once it stands
+
+Each works keeps two shares of each class, not one. The share it **means**
+to hold (`f_auto`) moves toward its town's target as above, and its order
+for plant is sized to it: a works orders the machines it means to have. The
+share it **holds** (`f_held`) is what the machines it has in place can do
+this month, worked out at the start of the month from its plant in place.
+For each part of a class a machine would hold, the machines standing are
+the least, over the goods its plant is made of, of the plant in place over
+the plant one machine takes (shared out from the cheapest part up); the
+machines a part takes are reckoned at the works' capacity and its hands a
+unit by hand, as the order is; and a part the standing machines cannot fill
+is held only as far as they reach. The share held is never above the share
+meant.
+
+The month reads the share held: the cut in hands a unit, the machines' run
+goods and their minders, the year's record of what machines did, and the
+margin's gap. The gauges were already reading what stands, since the
+machines' book is the plant delivered and their wear is taken on it. **A
+works founded after a machine is found** means to hold its town's target
+and holds nothing until its plant comes: its first months are worked by
+hand at its recipe. Its plant is still drawn from the pool with its
+capacity when it is founded, so it is paid for and on order from its first
+month, and its hands fall as the machines are delivered.
+
+**The land likewise.** Under `tasks.land`, `land_auto` is what a town's
+sector means to hold, and `land_held` what its plant in place can do, the
+machines reckoned on the sector's work of last month; the mixture of hands
+and machine units in the month's hiring reads the share held, and the order
+for plant the share meant. The land's bids and a prospective pit's sums
+(`land::sector_bids`, `mines::review`) still read the share meant, as a
+works' site reads its town's target.
+
+There is **no switch**. This mends a rule that is on only under
+`tasks.enabled`, and while no machine has been found both shares are
+nothing, so every run to 1900 is as it was to the byte: with
+`tasks.enabled=false` islands 1 to 4 give the 840 facts of the binary
+before it with none differing; the standing check is 12 of 12 inside with
+the rule on and off, and of the 918 facts seed by seed only the rule's own
+differ; and the game's golden hashes did not move.
+
+The facts: `auto_haul_works_Y` and `auto_haul_pits_Y` are the share held;
+`aim_haul_works_Y` and `aim_haul_pits_Y` the share meant (each weighted by
+its work, as the share held is); and `waiting_haul_works_Y` and
+`waiting_haul_pits_Y` the difference, the hauling meant for machines that
+have not yet come.
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --out DIR
+```
+
+As run on 19 November 2026, means over islands 1 to 8, "before" the binary
+whose machines worked from the month they were meant:
+
+| | before | now |
+|---|---|---|
+| the works' hauling done by machines in place, 1910, 1920, 1950, 1980, 2050 | .148, .262, .441, .574, .537 | .143, .260, .439, .570, .535 |
+| the works' hauling meant for machines, the same years | | .148, .263, .441, .573, .537 |
+| waiting on machines not yet delivered, the same years | | .0051, .0032, .0022, .0026, .0022 |
+| the pits' hauling done by machines in place, 1910, 1950, 1980, 2050 | .141, .454, .596, .563 | .136, .451, .591, .560 |
+| waiting at the pits, the same years | | .0059, .0028, .0032, .0028 |
+| the margin's gap forty years after the find | 1.27 [1.21 .. 1.31] | 1.28 [1.22 .. 1.33] |
+| hands in works, 1950, 1980, 2050 | .504, .469, .287 | .510, .473, .288 |
+| hands on the land, 1950, 1980, 2050 | .290, .335, .465 | .285, .326, .465 |
+| hands in the pits and quarries, 1950, 1980, 2050 | .124, .114, .143 | .124, .117, .141 |
+| the towns' share, 1950, 1980, 2050 | .442, .413, .270 | .442, .414, .271 |
+| work's share, gross, 1950, 1980, 2020, 2050 | .650, .632, .559, .577 | .654, .628, .549, .578 |
+| work's share, net of wear, the same years | .675, .668, .595, .601 | .677, .665, .586, .602 |
+
+**Little waits, because machinery is easy to get.** The hoist is made of
+machinery alone, a good the island makes in many works, and its order is
+served a quarter of what is missing a month, while wear opens the gap by a
+two-hundred-and-fortieth a month: so after the first years some 0.2 to 0.3
+per cent of the hauling class waits, about 0.4 per cent of what the
+machines do. The first years are different. Measured on the run before
+(the same run, with the plant in place reckoned beside it but not used), in
+the year of the find half of what the machines were said to do was done by
+machines not yet delivered, and in the second year a fifth to a quarter on
+every island (0.006 to 0.008 of the class). With this rule those years are
+worked by hand. A machine made of goods that are new, or scarce, will wait
+far longer, which is why this mending comes before one.
+
+**The margin's gap** forty years after the find is a hundredth wider read
+at what stands (1.28 against 1.27): with 0.002 of the class waiting, a gap
+read at the share held is `(100 / 0.3)^0.002`, 1.01 times one read at the
+share meant. The gap of a quarter is the works trailing a target that rises
+with the machine's quality, as "The margin" says below; machines on order
+were none of it.
+
 ## The hoist
 
-| | |
-|---|---|
-| class | haul, from 0 to 1 of it, in works and (under `tasks.land`) at the quarries, clay pits, iron mines and collieries |
-| plant | 82 machinery a machine; life 20 years |
-| run | 5.2 coal a month |
-| minders | 0.104 of a hand a month (a tenth of its cost when found) |
-| quality | grows 3 per cent a year from the year found, to a cap of 8 |
-| found | at the first year's turn from 1901 at which the island has made 4.1 million units of machinery since 1750 |
-| scale | 1.14 |
+The hoist is the machine of the island without the content after 1900
+(`tree.stage = 1`), where it hauls in the works and, under `tasks.land`, at
+the quarries, clay pits and mines, and it stays in `data/tasks.toml` for that
+island alone, so that its run is the earlier island's to the byte. It is 82
+machinery a machine with a life of 20 years, runs on 5.2 coal a month with a
+tenth of a hand to mind it, improves 3 per cent a year to a quality of 8, and
+is found at the first year's turn from 1901 at which the island has made 4.1
+million units of machinery (`scale` 1.14). It was sized from island 7's wage
+and prices of 1900 (a wage of 8.18 a month, machinery 4.40, coal 0.494) so
+that a unit costs 1.04 of a month's wage when found, six tenths of it return
+and wear, a tenth its minders and the rest its coal, which takes `ln(0.96 /
+0.3) / ln(100 / 0.3)` = 0.20 of hauling; the sweep below is of that island.
+With the content after 1900 the cutter takes the pits from it, and on this
+branch it still hauls in the works until the electric drive takes them.
 
-It was sized from island 7's wage and prices of 1900 (a wage of 8.18 a
-month, machinery 4.40, coal 0.494): when found a unit costs 1.04 of a
-month's wage, of which six tenths is return and wear on its plant (44
-months' wages of plant), a tenth its minders and the rest its coal. At that
-cost a hand is worth 0.96 units, which takes `ln(0.96 / 0.3) / ln(100 /
-0.3)` = 0.20 of hauling. The threshold was set so that island 7 finds it in
-1903. `scale` multiplies everything one machine takes; it was refitted once,
-from a sweep at 1.0, in which the towns' target in the year found was 0.223
-on the mean island, so that the mean is a fifth.
+## The tractor and the cutter
+
+Two machines of the land's twentieth century, laid only with the content
+after 1900 (`tree.stage` 6): a use whose plant, run goods or threshold name a
+good the content lacks is left out of the table, so at `tree.stage = 1` the
+table is the hoist's alone.
+
+| | the tractor | the cutter and conveyor |
+|---|---|---|
+| class | haul, from 0 to 1 | haul, from 0 to 1 |
+| on | farms, pastures, woods | quarries, clay pits, iron mines, collieries |
+| plant | 54.2 machinery and 41.7 steel (six tenths and four tenths by value); life 10 years | 87.7 machinery and 11.0 electrical goods (six tenths and four tenths by value); life 15 years |
+| run | 0.36 oil a month | 1.10 electricity a month |
+| minders | 0.117 of a hand (0.15 of its cost when found) | 0.104 of a hand (a tenth of its cost) |
+| quality | 4 per cent a year to a cap of 6 | 3 per cent a year to a cap of 6 |
+| found | at the first year's turn from 1915 at which the island has made 300 units of oil | from 1920, at 600,000 units of electrical goods made |
+| scale | 0.87 | 1.0 |
+| takes the place of | | the hoist, in the pits (`replaces = "hoist"`) |
+
+The tractor is made of machinery and steel because motor vehicles are a later
+stage's good; when they come its plant moves to them. It is found on oil
+made, not on a date, and the island's oil is made from coal ([tree.md](tree.md),
+"Oil, nitrogen and the land"): nobody else buys it, so the first oil works'
+first months of output are what finds the tractor, and an island that lights
+its towns late (island 1, its first station in 1933) finds oil from coal late
+and mechanises its fields late (1951).
+
+**`replaces`.** A use may carry `replaces = "NAME"`: where it is laid (its
+goods exist), the use it names no longer reaches the places this one is `on`,
+in the works or on a sector, and keeps the rest. The cutter replaces the hoist
+on the four pits; the hoist's own entry is unchanged. The key is read in
+`tasks::table_from`; a name that is no use of the file is an error.
+
+**Sized as the hoist was**, from island 7's wage and prices in the year each
+was found there (`cargo run --release -p isostate-core --example land --
+--seeds 7 --end-year 1945 --from 1918`, which prints, for each machine of the
+land and each year, a unit's return and wear, its run goods and its minders,
+each over the wage). Island 7 finds the tractor in 1915 and the cutter in
+1923. The tractor was read in 1918, once the first oil works had brought
+oil down from its ceiling to 5.6 (wage 10.6, machinery 3.0, steel 2.4): a
+unit costs 0.78 of a month's wage, 0.468 of it return and wear on 25.5
+months' wages of plant (`(0.12 + 1/10) / 12` a month), 0.117 its minders and
+0.195 its oil, so a hand is worth 1.28 units and the tractor takes
+`ln(1.28 / 0.3) / ln(100 / 0.3)` = 0.25 of hauling. The cutter in 1923 (wage
+10.8, machinery 3.0, electrical goods 14.9, electricity 3.1): 1.04 of a month's
+wage, 0.624 of it return and wear on 40 months' wages of plant, 0.104 its
+minders and 0.312 its electricity: 0.20 of hauling.
+
+`scale` was refitted once, from the sweep to 2050 at 1.0, in which the
+towns' share for the tractor in the year it was found, each town weighted by
+the work of the sectors it reaches, was 0.226 on the mean island, where 0.25
+was meant: `exp(ln(100 / 0.3) * (0.226 - 0.25))` = 0.87. The cutter's was
+0.201 for 0.20 and was left. On the refitted build: the tractor 0.256 (0.211
+to 0.302), the cutter 0.200 (0.187 to 0.212). (`NAME_share_found` is the
+works' target for a use of the works, as before, and the land's for a use of
+the land alone.)
+
+### What the eight islands showed
+
+Islands 1 to 8, six families, to 2050:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tree.stage=1 --out S1
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --out S6
+```
+
+Stage 1 is the island without the content after 1900 (the hoist in the works
+and the pits, nothing on the fields); "6 before" is stage 6 as it was before
+this part (electricity alone, the build it was cut from, at its own
+settings); "6" is this part. Means of the eight islands:
+
+| | | 1900 | 1920 | 1930 | 1950 | 1970 | 2000 | 2050 |
+|---|---|---|---|---|---|---|---|---|
+| chained real wage, 1750 = 1 | 1 | 6.03 | 6.90 | 7.10 | 7.43 | 7.33 | 5.77 | 3.45 |
+| | 6 before | 5.87 | 7.02 | 7.56 | 8.00 | 8.02 | 6.67 | 3.97 |
+| | 6 | 6.27 | 7.26 | 7.62 | 8.36 | 8.79 | 7.27 | 5.21 |
+| hands on the land | 1 | 0.247 | 0.265 | 0.271 | 0.285 | 0.318 | 0.355 | 0.465 |
+| | 6 before | 0.249 | 0.263 | 0.269 | 0.276 | 0.303 | 0.360 | 0.439 |
+| | 6 | 0.245 | 0.254 | 0.249 | 0.252 | 0.239 | 0.272 | 0.340 |
+| hands in the pits | 1 | 0.129 | 0.123 | 0.124 | 0.124 | 0.115 | 0.114 | 0.141 |
+| | 6 | 0.124 | 0.124 | 0.127 | 0.121 | 0.122 | 0.114 | 0.125 |
+| hands in works | 1 | 0.542 | 0.532 | 0.523 | 0.510 | 0.484 | 0.443 | 0.288 |
+| | 6 | 0.547 | 0.543 | 0.544 | 0.548 | 0.559 | 0.530 | 0.443 |
+| towns' share | 1 | 0.465 | 0.460 | 0.456 | 0.442 | 0.426 | 0.397 | 0.271 |
+| | 6 | 0.465 | 0.466 | 0.469 | 0.477 | 0.483 | 0.471 | 0.391 |
+| people | 1 | 673,962 | 814,630 | 889,022 | 1,054,043 | 1,253,099 | 1,659,405 | 2,781,755 |
+| | 6 | 663,610 | 799,661 | 870,033 | 1,014,182 | 1,157,004 | 1,367,041 | 1,940,362 |
+| farms' hauling by machine | 6 | | 0.126 | 0.177 | 0.309 | 0.472 | 0.569 | 0.567 |
+| pits' hauling by machine | 1 | | 0.258 | 0.336 | 0.451 | 0.556 | 0.595 | 0.560 |
+| | 6 | | 0.004 | 0.117 | 0.302 | 0.397 | 0.524 | 0.533 |
+| works' hauling by machine | 6 | | 0.262 | 0.330 | 0.444 | 0.550 | 0.597 | 0.573 |
+| farms' output a hand, 1900 = 1 | 6 | 1 | 0.94 | 1.05 | 1.29 | 1.62 | 1.68 | 1.39 |
+| work's share of income (books) | 6 | 0.670 | 0.677 | 0.665 | 0.664 | 0.644 | 0.592 | 0.586 |
+| land's share of income (books) | 6 | 0.161 | 0.164 | 0.164 | 0.166 | 0.160 | 0.159 | 0.168 |
+
+The tractor is found in 1930 on the mean island (1915 to 1951) and the cutter
+in 1929 (1920 to 1956). The land's machines lift the island: the chained wage
+is a tenth higher in 1970 than before them and a third higher in 2050, hands
+on the land are fewer from 1930 and a fifth fewer by 1970 (0.239 against
+0.303), the towns hold their share to 1970 and lose less after, and there
+are 1.94 million people in 2050 for 2.49. **But they do not lift it enough.**
+The chained wage grows 0.48 per cent a year from 1900 to 1970 (6.27 to 8.79),
+not one, and falls after 1970 on every arm, to 5.21 by 2050; hands on the
+land fall by less than a point to 1970 and are 0.340 in 2050, more than in
+1900. The design's bands for 1900 to 1970, as a sweep reads them:
+
+| band | the design | this part | |
+|---|---|---|---|
+| hauling half done by machine, works | 1925 to 1950 | about 1961 (0.495 in 1960, 0.550 in 1970) | fail (the works' machine is the hoist until the electric drive) |
+| hauling half done by machine, pits | 1925 to 1950 | about 1993 (0.456 in 1980, 0.524 in 2000) | fail |
+| hands on the land | from about 0.27 toward 0.12 by 1975 | 0.245 in 1900, 0.239 in 1970, 0.253 in 1980 | fail |
+| the chained real wage | 1 per cent a year or better, 1900 to 1970 | 0.48 per cent | fail |
+| work's share of income | 0.58 to 0.72 throughout | 0.644 to 0.677 | pass |
+| land's share of income | 0.08 to 0.13 by 1950 | 0.166 | fail |
+| the towns' share | must not fall | 0.465 in 1900, 0.483 in 1970 (0.391 in 2050) | pass to 1970 |
+
+The pits are slower than at stage 1: the cutter takes them from the hoist in
+1929 where the hoist had them from 1903, and at stage 6 they hold nothing by
+machine for those twenty-six years.
+
+### The dial, and what holds the wage
+
+`tasks.dial` multiplies every machine's quality. Nobody had turned it; here
+it is at 1, 3, 10, 30 and 100 on the same eight islands to 2050 (`--set
+tasks.dial=3,10,30,100`):
+
+| dial | wage 1950 | wage 1970 | wage 2050 | growth 1900 to 1970 | land 1970 | land 2050 | works 1970 | farms' hauling 1970 | farms' output a hand 1970 | people 2050 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 8.36 | 8.79 | 5.21 | 0.48 % | 0.239 | 0.340 | 0.559 | 0.47 | 1.62 | 1.94 M |
+| 3 | 8.76 | 9.03 | 5.51 | 0.52 % | 0.243 | 0.334 | 0.557 | 0.68 | 1.76 | 1.86 M |
+| 10 | 9.59 | 9.35 | 5.95 | 0.57 % | 0.274 | 0.330 | 0.545 | 0.90 | 1.99 | 1.79 M |
+| 30 | 10.3 | 9.49 | 6.37 | 0.59 % | 0.260 | 0.333 | 0.559 | 0.98 | 2.16 | 1.77 M |
+| 100 | 10.9 | 9.57 | 6.58 | 0.60 % | 0.269 | 0.332 | 0.552 | 0.99 | 2.22 | 1.77 M |
+
+(The wage is the chained real wage, 1750 = 1, 6.27 in 1900 on every arm;
+land and works are shares of all hands.) The dial does what it says to the
+hauling: at 30 the works, the pits and the fields have nearly all of it by
+machine by 1970. It lifts the wage of 1950 by nearly a third at a
+hundredfold, and then the wage falls from 1960 on every arm. Hands on the
+land do not fall at all, and work's share of income (books) is 0.617 to
+0.644 in 1970 on every arm, and higher at the higher settings by 2050 (0.634
+at a hundredfold for 0.586). Hauling is all that is
+in reach on the land: the farm's tending (four tenths of its work) and
+judging wait for the combine of a later stage, and a land unit spends the
+same share of its revenue on work however cheap its work becomes, so where
+the hauling is cheaper the farm takes more work, not fewer hands.
+
+Two cheap levers inside the design's own ranges, each measured against this
+part (dial 1):
+
+| | wage 1900 | wage 1970 | wage 2050 | growth 1900 to 1970 | land 1900 | land 1970 | land 2050 | people 2050 |
+|---|---|---|---|---|---|---|---|---|
+| this part | 6.27 | 8.79 | 5.21 | 0.48 % | 0.245 | 0.239 | 0.340 | 1.94 M |
+| `machines.quality_cap` 12 (the pass over the rules' stage 8) | 7.41 | 12.7 | 11.2 | 0.77 % | 0.222 | 0.206 | 0.296 | 0.94 M |
+| `transition.z_half` 4.0 (the design's first value; the game has 4.5) | 5.91 | 9.35 | 7.01 | 0.66 % | 0.245 | 0.228 | 0.294 | 1.30 M |
+| both | 6.88 | 13.0 | 12.0 | 0.91 % | 0.226 | 0.197 | 0.259 | 0.84 M |
+
+The machines' ceiling of 4 on farm machinery, pumps and the quarries' engines
+is what holds the wage most: lifted to 12, the farms' output a hand is 2.7
+times 1900's by 1970 and the wage grows three fifths faster. But it lifts the
+played century too (the wage of 1900 is 7.41, outside the spread of the
+island as it stands, 5.10 to 6.94), so it is the pass over the rules' change
+to make, not this part's. Fewer births lift the wage after 1970 most of all
+(7.01 in 2050 for 5.21) and bring people into the design's 1.0 to 1.5
+million; it lowers 1900's people by 5 per cent, which is why the game's line
+was set at 4.5. Neither alone gives 1 per cent a year; both together give
+0.91 per cent, with people stalling at 0.84 million, below the design's
+peak. On every arm the wage of 2050 is below 1970's and the land holds more
+of the hands in 2050 than in 1900: what the land can be given in this part
+stops improving by the 1970s (the tractor's quality reaches its cap of 6 in
+the 1970s, the cutter's about 1990, nitrogen and breeding are fixed), people
+go on growing, and the farm's tending waits for the combine.
 
 ## What a sweep showed
 
@@ -171,53 +430,57 @@ on the mean island, so that the mean is a fifth.
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.enabled=false,true --out DIR
 ```
 
-As run on 19 November 2026 on the owners' branch, with the long run's
-anchors in, before the land was in reach (the "rule on" column is the run
-with `tasks.land=false` today, to the digit). Means over islands 1 to 8,
+The "rule off" column as run on 19 November 2026 on the owners' branch,
+with the long run's anchors in (a run with the switch off has not moved
+since, to the digit). The "rule on" column, before the land was in reach,
+is the run with `tasks.land=false`, run again the same day once machines
+worked only when they stood
+(`--set tasks.land=false,true`, the first arm). Means over islands 1 to 8,
 [least .. greatest] where it helps.
 
 | | rule off | rule on |
 |---|---|---|
 | the hoist found | | 1903 [1901 .. 1907] |
-| the towns' target in the year found | | 0.200 [0.173 .. 0.221] |
-| share of the works' hauling done by machine, 1910, 1920, 1930, 1940 | | 0.148, 0.256, 0.322, 0.375 |
-| the same, 1950, 1960, 1970, 1980 | | 0.426, 0.473, 0.518, 0.545 |
-| the same, 2000, 2020, 2050 | | 0.546, 0.536, 0.515 |
-| the year half of it is done by machine | | 1967 [1958 .. 1977] |
-| the margin's gap, 1920, 1950, 1980, 2000, 2050 | | 1.39, 1.23, 1.11, 1.06, 1.02 |
-| the margin's gap forty years after the find | | 1.25 [1.21 .. 1.28] |
-| the machines' book in years of the wage bill, 1950, 2000, 2050 | | 0.051, 0.040, 0.019 |
-| hands on the land, 1920, 1950, 1980 | 0.263, 0.271, 0.308 | 0.266, 0.290, 0.320 |
-| the same, 2000, 2020, 2050 | 0.345, 0.360, 0.453 | 0.342, 0.385, 0.471 |
-| hands in works, 1950, 2000, 2050 | 0.519, 0.455, 0.308 | 0.490, 0.440, 0.275 |
-| hands in the diggings, 1950, 2000, 2050 | 0.131, 0.121, 0.140 | 0.139, 0.133, 0.152 |
-| the towns' share, 1950, 2000, 2050 | 0.448, 0.396, 0.287 | 0.432, 0.379, 0.260 |
-| work's share of income, gross, 1950, 2000, 2050 | 0.659, 0.609, 0.572 | 0.646, 0.598, 0.575 |
-| work's share, net of wear, 1950, 2000, 2050 | 0.680, 0.657, 0.596 | 0.671, 0.651, 0.598 |
+| the towns' target in the year found | | 0.200 [0.172 .. 0.221] |
+| share of the works' hauling done by machine, 1910, 1920, 1930, 1940 | | 0.143, 0.254, 0.320, 0.374 |
+| the same, 1950, 1960, 1970, 1980 | | 0.424, 0.471, 0.517, 0.544 |
+| the same, 2000, 2020, 2050 | | 0.543, 0.535, 0.514 |
+| the year half of it is done by machine | | 1967 [1959 .. 1976] |
+| the margin's gap, 1920, 1950, 1980, 2000, 2050 | | 1.41, 1.25, 1.12, 1.09, 1.05 |
+| the margin's gap forty years after the find | | 1.26 [1.21 .. 1.30] |
+| the machines' book in years of the wage bill, 1950, 2000, 2050 | | 0.049, 0.040, 0.020 |
+| hands on the land, 1920, 1950, 1980 | 0.263, 0.271, 0.308 | 0.265, 0.287, 0.339 |
+| the same, 2000, 2020, 2050 | 0.345, 0.360, 0.453 | 0.352, 0.383, 0.471 |
+| hands in works, 1950, 2000, 2050 | 0.519, 0.455, 0.308 | 0.496, 0.436, 0.275 |
+| hands in the diggings, 1950, 2000, 2050 | 0.131, 0.121, 0.140 | 0.139, 0.128, 0.152 |
+| the towns' share, 1950, 2000, 2050 | 0.448, 0.396, 0.287 | 0.433, 0.383, 0.261 |
+| work's share of income, gross, 1950, 2000, 2050 | 0.659, 0.609, 0.572 | 0.658, 0.593, 0.575 |
+| work's share, net of wear, 1950, 2000, 2050 | 0.680, 0.657, 0.596 | 0.681, 0.648, 0.599 |
 
 **Dearer towns first.** On each island, across the towns whose works haul
 in both years, the rank correlation between a town's wage in the year the
 hoist is found and the share of its works' hauling held ten years on
-(`hoist_dearer_first`): 0.58, 0.69, 0.29, 0.32, 0.74, 0.61, 0.68 and 0.65,
+(`hoist_dearer_first`): 0.63, 0.67, 0.26, 0.32, 0.76, 0.60, 0.66 and 0.68,
 mean 0.57. Positive on every island.
 
 **The margin.** The wage over the machine's cost at the last task each
 works holds is 1 when the works stand at their town's target. It falls from
-1.88 in 1910 to 1.23 by 1950 and is **not within a tenth of one forty years
-after the find** (1.21 to 1.28 on every island). The works trail a target
+1.94 in 1910 to 1.25 by 1950 and is **not within a tenth of one forty years
+after the find** (1.21 to 1.30 on every island). The works trail a target
 that rises with the hoist's quality, 3 per cent a year, by about
 `adopt_years` years of its rise (some 0.04 of the class, which is a factor
 of `(100 / 0.3)^0.04` = 1.26 in the gap), and part of each month's step
 waits on the machine order's fill. Once the quality stops at its cap, about
-1973, the gap closes: 1.11 in 1980, 1.06 in 2000, 1.02 in 2050. The rule
-comes to rest where it should; at these settings it cannot keep up with a
-machine that is still improving.
+1973, the gap closes: 1.12 in 1980, 1.09 in 2000, 1.05 in 2050. The rule
+comes to rest near where it should; at these settings it cannot keep up
+with a machine that is still improving. (Machines on order are not part of
+the quarter: see "A machine works once it stands".)
 
 **Hands go back to the fields.** With the works mechanising and the land
 not, the share of hands on the land is higher with the rule at every mark
-but 2000 (0.290 against 0.271 in 1950, 0.471 against 0.453 in 2050), the
-works' share lower and the towns' share lower by 0.016 to 0.027. The second
-half of the stage, the machines on the land, exists to undo this.
+(0.287 against 0.271 in 1950, 0.471 against 0.453 in 2050), the works'
+share lower and the towns' share lower by 0.013 to 0.026. The second half
+of the stage, the machines on the land, exists to undo this.
 
 **The required return.**
 
@@ -225,14 +488,19 @@ half of the stage, the machines on the land, exists to undo this.
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 1960 --set hurdle=0.09,0.12,0.15 --out DIR
 ```
 
-The share of the works' hauling done by machine in 1950 is 0.431, 0.426 and
-0.369 at a hurdle of 0.09, 0.12 and 0.15. `hurdle` is every works' required
-return, so it changes the whole played century and with it the year each
-island finds the hoist (1913 on island 1 at 0.09, 1919 on island 3 at
-0.15). On the islands that find it in 1901 in both arms the steps are
-+0.016 from 0.12 to 0.09 (islands 2, 5 and 8) and -0.036 from 0.12 to 0.15
-(islands 5, 6 and 8), where the unit's cost alone (0.894 and 1.106 times as
-much) moves the target by +0.019 and -0.017 of the class.
+Run again on 19 November 2026 with the land in reach and machines working
+only once they stand: the share of the works' hauling done by machine in
+1950 is 0.449, 0.439 and 0.383 at a hurdle of 0.09, 0.12 and 0.15.
+`hurdle` is every works' required return, so it changes the whole played
+century and with it the year each island finds the hoist (1913 on island 1
+at 0.09, 1919 on island 3 at 0.15). On the islands that find it in the same
+year in both arms the steps are +0.025 from 0.12 to 0.09 (islands 2, 5 and
+8) and -0.037 from 0.12 to 0.15 (islands 5 and 6), where the unit's cost
+alone (0.894 and 1.106 times as much) moves the target by +0.019 and -0.017
+of the class. The uneven step is not machines waiting: 0.002 of the class
+waits in 1950 in every arm, and the binary before this mending gave +0.021
+and -0.036 on the same islands. (The first half, with the land out of
+reach, measured +0.016 and -0.036.)
 
 ## On the land
 
@@ -249,10 +517,12 @@ machine names its sector:
   .10; the carters .70, .20, .10 (`data/tasks.toml`).
 - **What machines hold.** In each town each sector has a target for each
   class, worked out as the works' is from the machines that reach it, and
-  the share its machines hold (`land_auto`) moves toward it by the same rule
-  as a works' share: a ninety-sixth of the gap a month, times the fill of
-  the sector's last order for plant, and down no faster than wear. It starts
-  from nothing in the year the machine is found.
+  the share it means its machines to hold (`land_auto`) moves toward it by
+  the same rule as a works' share: a ninety-sixth of the gap a month, times
+  the fill of the sector's last order for plant, and down no faster than
+  wear. It starts from nothing in the year the machine is found. What the
+  plant in place can do (`land_held`) is what the month's hiring reads ("A
+  machine works once it stands").
 - **The cost of an hour's work.** Where machines hold part of a sector's
   work, an hour of it costs `cL = hands * w + cost`: `hands` is the work left
   to hands, `sum over classes of share * (1 - held)`, and the minders of the
@@ -260,12 +530,12 @@ machine names its sector:
   `(hurdle + 1/life) / 12` of its worth, and their run goods, at the prices
   the unit expects. The unit hires `lam * (Cc / cL)^(1/alpha)` of work, which
   takes `hands` hands an hour, and makes its crop from the work. The wage
-  search keeps its shape (one sum a town and sector, read at `cL` for `w`),
-  and the land's bids (`land::sector_bids`) and a prospective pit head's
-  sums (`mines::review`) read the same `cL`.
+  search keeps its shape (one sum a town and sector, read at `cL` for `w`).
+  The land's bids (`land::sector_bids`) and a prospective pit head's sums
+  (`mines::review`) read `cL` at the share the sector means to hold.
 - **The machines' goods.** Each sector asks each month for its machines'
   run goods with the day's trade, and for a quarter of what its plant lacks
-  beside the works' plant orders; each unit pays for them by its part of the
+  for the share it means to hold, beside the works' plant orders; each unit pays for them by its part of the
   sector's work, out of its revenue, so they come off the rent, and the books
   count them among the land's inputs as they count the port's farm machinery.
   The return on the plant is never paid to anyone: it stays in the rent, so
@@ -287,42 +557,44 @@ islands to 1960 give the first half's 1,523 facts with none differing.
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.land=false,true --out DIR
 ```
 
-As run on 19 November 2026 (the first half's branch with this half on top).
+Run again on 19 November 2026 once machines worked only when they stood.
 Means over islands 1 to 8; "none" is the first half's sweep with
-`tasks.enabled=false`, "works" is `tasks.land=false`, "land" is
-`tasks.land=true`.
+`tasks.enabled=false` (a run with the switch off has not moved since),
+"works" is `tasks.land=false`, "land" is `tasks.land=true`.
 
 | | none | works | land |
 |---|---|---|---|
-| hands on the land (farms, pastures, woods), 1950, 1980, 2000, 2050 | .271, .308, .345, .453 | .290, .320, .342, .471 | .290, .335, .355, .465 |
-| hands in the pits and quarries, 1950, 1980, 2000, 2050 | .131, .129, .121, .140 | .140, .136, .133, .152 | .124, .114, .117, .143 |
-| hands in works, 1950, 1980, 2000, 2050 | .519, .485, .455, .308 | .490, .460, .440, .275 | .504, .469, .441, .287 |
-| the towns' share, 1950, 1980, 2000, 2050 | .448, .424, .396, .287 | .432, .400, .379, .260 | .442, .413, .394, .270 |
-| the works' hauling done by machine, 1950, 1980, 2050 | | .426, .545, .515 | .441, .574, .537 |
-| the pits' hauling done by machine, 1920, 1950, 1980, 2050 | | | .261, .454, .596, .563 |
-| work's share, gross, 1950, 1980, 2000, 2050 | .659, .652, .609, .572 | .646, .623, .598, .575 | .650, .632, .587, .577 |
-| work's share, net of wear, 1950, 1980, 2000, 2050 | .680, .680, .657, .596 | .671, .659, .651, .598 | .675, .668, .639, .601 |
-| what a wage buys (chained), 1950, 2000, 2050 (1750 = 1) | 6.88, 5.84, 3.29 | 7.13, 5.53, 3.23 | 7.37, 5.72, 3.45 |
-| the land machines' return over the land's rent, 1950, 2000, 2050 | | | .026, .029, .021 |
+| hands on the land (farms, pastures, woods), 1950, 1980, 2000, 2050 | .271, .308, .345, .453 | .287, .339, .352, .471 | .285, .326, .355, .465 |
+| hands in the pits and quarries, 1950, 1980, 2000, 2050 | .131, .129, .121, .140 | .139, .134, .128, .152 | .124, .117, .114, .141 |
+| hands in works, 1950, 1980, 2000, 2050 | .519, .485, .455, .308 | .496, .446, .436, .275 | .510, .473, .444, .288 |
+| the towns' share, 1950, 1980, 2000, 2050 | .448, .424, .396, .287 | .433, .405, .383, .261 | .442, .414, .397, .271 |
+| the works' hauling done by machine, 1950, 1980, 2050 | | .424, .544, .514 | .439, .570, .535 |
+| the pits' hauling done by machine, 1920, 1950, 1980, 2050 | | | .258, .451, .591, .560 |
+| work's share, gross, 1950, 1980, 2000, 2050 | .659, .652, .609, .572 | .658, .624, .593, .575 | .654, .628, .586, .578 |
+| work's share, net of wear, 1950, 1980, 2000, 2050 | .680, .680, .657, .596 | .681, .660, .648, .599 | .677, .665, .638, .602 |
+| what a wage buys (chained), 1950, 2000, 2050 (1750 = 1) | 6.88, 5.84, 3.29 | 7.21, 5.57, 3.24 | 7.43, 5.77, 3.45 |
+| the land machines' return over the land's rent, 1950, 2000, 2050 | | | .026, .028, .021 |
 
 **The pits let hands go; the fields take some of them.** At the pits the
-hoist takes hauling as fast as in the works (0.454 of it in 1950, 0.596 in
+hoist takes hauling as fast as in the works (0.451 of it in 1950, 0.591 in
 1980), and the share of hands in the pits falls below even the island with
 no machine at all from 1950 to 2000. The fields are out of reach, and the
-share of hands on them is no lower than with the works alone: the same in
-1950, higher in 1980 and 2000. Counted together, of the hands the first
-half sent to the land and the pits this half takes back three fifths in
-1950 (0.016 of 0.027), a third in 1980 and a half in 2050; it gives the
-towns back two thirds of the share the first half took in 1950 and nearly
-all of it in 2000. The towns' share is higher with the land on than without
-at every mark from 1920, though still below the island with no machines.
+share of hands on them is much as with the works alone: a little lower in
+1950, 1980 and 2050, a little higher in 2000. Counted together, of the
+hands the first half sent to the land and the pits this half takes back
+three quarters in 1950 (0.017 of 0.023), five sixths in 1980 and a half in
+2050; it gives the towns back three fifths of the share the first half took
+in 1950 and all of it in 2000. The towns' share is higher with the land on
+than without at every mark shown, and below the island with no machines
+but in 2000, where it is level.
 
 **Work's share hardly moves.** Gross and net, it is within a point of the
-works-only run at most marks. With one machine that hauls, a cap on its
-quality of 8 and the fields out of reach, nothing in this stage could move
-it much; the stage is a test of the plumbing, and of the direction hands
-go. **What a wage buys** is higher with the land on at every mark (7.37
-against 7.13 in 1950, 3.45 against 3.23 in 2050; not traced).
+works-only run at every mark (gross 0.586 against 0.593 in 2000; net
+0.638 against 0.648). With one machine that hauls, a cap on its quality of
+8 and the fields out of reach, nothing in this stage could move it much;
+the stage is a test of the plumbing, and of the direction hands go. **What
+a wage buys** is higher with the land on at every mark (7.43 against 7.21
+in 1950, 3.45 against 3.24 in 2050; not traced).
 
 ## The ceiling on yield
 
@@ -344,19 +616,21 @@ island 7 to 1949 to the digit).
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.yield_cap=null,2 --out DIR
 ```
 
+Run again on 19 November 2026 once machines worked only when they stood:
+
 | | unset | 2 |
 |---|---|---|
-| the land's output at the ceiling, by value, 1960, 2000, 2020, 2050 | | .001, .013, .043, .142 |
-| the land's share of income, 1960, 2000, 2020, 2050 | .171, .163, .161, .184 | .171, .157, .171, .307 |
-| the wage over the price of the land's goods (the gauges' fork), 1960, 2000, 2020, 2050 | 6.68, 5.58, 4.73, 3.83 | 6.67, 5.54, 4.44, 2.61 |
-| work's share, gross, 2000, 2020, 2050 | .587, .559, .577 | .581, .534, .434 |
-| hands on the land, 2000, 2050 | .355, .465 | .336, .346 |
-| what a wage buys (chained), 2000, 2050 | 5.72, 3.45 | 5.65, 2.57 |
+| the land's output at the ceiling, by value, 1960, 2000, 2020, 2050 | | .0002, .009, .044, .143 |
+| the land's share of income, 1960, 2000, 2020, 2050 | .173, .163, .158, .183 | .174, .160, .174, .307 |
+| the wage over the price of the land's goods (the gauges' fork), 1960, 2000, 2020, 2050 | 6.68, 5.61, 4.72, 3.84 | 6.68, 5.59, 4.45, 2.61 |
+| work's share, gross, 2000, 2020, 2050 | .586, .549, .578 | .595, .537, .431 |
+| hands on the land, 2000, 2050 | .355, .465 | .351, .345 |
+| what a wage buys (chained), 2000, 2050 | 5.77, 3.45 | 5.74, 2.55 |
 
 The island's yields grow slowly after 1950 (no machine reaches the fields,
 and nothing new makes ground yield more), so twice the best year before
 1950 is far off for decades: a
-thousandth of the land's output stands at it in 1960 and a hundredth in
+five-thousandth of the land's output stands at it in 1960 and a hundredth in
 2000. It bites as the people double after 2000: by 2050 a seventh of the
 land's output is at the ceiling, the land takes 0.31 of income where it
 took 0.18, work 0.43 where it took 0.58, and the wage buys two thirds of the
@@ -374,22 +648,24 @@ further than the prices of 1950 would take them.
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 1980 --set tasks.freeze_from=null,1950 --out DIR
 ```
 
+Run again on 19 November 2026 once machines worked only when they stood:
+
 | | growing | held from 1950 |
 |---|---|---|
-| the works' hauling done by machine, 1950, 1960, 1970, 1980 | .441, .492, .540, .574 | .441, .464, .461, .456 |
-| the pits' hauling done by machine, 1950, 1980 | .454, .596 | .454, .479 |
-| work's share, net of wear, 1950, 1960, 1970, 1980 | .675, .672, .666, .668 | .675, .672, .669, .664 |
-| work's share, gross, 1950, 1980 | .650, .632 | .650, .629 |
-| investment's share of spending, 1950, 1960, 1970, 1980 | .048, .044, .064, .057 | .048, .039, .060, .058 |
+| the works' hauling done by machine, 1950, 1960, 1970, 1980 | .439, .488, .539, .570 | .439, .462, .460, .451 |
+| the pits' hauling done by machine, 1950, 1980 | .451, .591 | .451, .472 |
+| work's share, net of wear, 1950, 1960, 1970, 1980 | .677, .675, .672, .665 | .677, .674, .670, .665 |
+| work's share, gross, 1950, 1980 | .654, .628 | .654, .631 |
+| investment's share of spending, 1950, 1960, 1970, 1980 | .041, .043, .050, .061 | .041, .042, .042, .056 |
 
 From 1950 to 1980 the machines' share of hauling rises by 0.13 in the works
-and 0.14 at the pits in one arm and stays put in the other, and work's share
-net of wear falls by 0.006 in the first and 0.010 in the second. The frozen
-arm's share does not come back: whatever lowered it from 1950 was not the
-machine. Investment's share of spending rose by about a point in both arms,
-which on the long run's own measure (a point of investment takes about a
-point off work's measured share) is about the size of the fall; so it was
-investment, and the island going on, not the margin.
+and 0.14 at the pits in one arm and slips a little in the other, and work's
+share net of wear falls by 0.012 in both. The frozen arm's share falls as
+far: whatever lowered it from 1950 was not the machine. Investment's share
+of spending rose by two points in the growing arm and one and a half in the
+frozen one, which on the long run's own measure (a point of investment
+takes about a point off work's measured share) is about the size of the
+fall; so it was investment, and the island going on, not the margin.
 
 ## The numbers
 
@@ -406,27 +682,40 @@ in `data/tasks.toml`, and only the game's content has them
 rebuilds the content).
 
 The facts, at the sweep's marks: `auto_haul_works_Y` (the share of the
-works' hauling done by machine, each class weighted by its work in each
-works), `hours_CLASS_Y` for the five classes (hands at their tasks in works,
+works' hauling done by machines in place, each class weighted by its work
+in each works), `aim_haul_works_Y` (the share meant) and
+`waiting_haul_works_Y` (meant less done), `hours_CLASS_Y` for the five classes (hands at their tasks in works,
 worker-months a month) and `hours_minders_Y`, `waterline_haul_Y` (the wage
 over the cheapest unit's cost, work-weighted), `margin_gap_haul_Y`,
 `machines_years_Y` (their book over the year's wage bill); and for each
 machine `NAME_found_year`, `NAME_half_year`, `NAME_share_found`,
 `NAME_auto_after10`, `NAME_margin_gap_after40` and `NAME_dearer_first`.
 Under `tasks.land`: `auto_haul_pits_Y` (the share of the quarries', clay
-pits' and mines' hauling done by machine, each weighted by its work),
+pits' and mines' hauling done by machines in place, each weighted by its
+work), `aim_haul_pits_Y` and `waiting_haul_pits_Y`,
 `land_rent_machines_Y` and `income_share_ground_Y` (above); while
 `yield_cap` is set, `yield_capped_share_Y` (the value of the land's planned
-output that stands at the ceiling, over all of it). The shares of hands on
+output that stands at the ceiling, over all of it); and `auto_haul_farm_Y`,
+`auto_haul_pasture_Y` and `auto_haul_forestry_Y` (each sector's hauling done
+by machines in place, over its hauling). With oil in the content, from 1900:
+`nitrogen_share_Y`, `breeding_share_Y` and `grain_a_hand_Y`
+([machines.md](machines.md), "Nitrogen and breeding"), `oil_made_Y` and
+`oil_over_coal_heat_Y` ([tree.md](tree.md), "Oil, nitrogen and the land").
+The shares of hands on
 the land, in the pits and quarries and in the works are the sweep's own
 `farm_share_Y`, `diggings_share_Y` and `industry_share_Y`.
 
 `cargo run --release -p isostate-core --example tasks -- --seeds 1-8
 --end-year 2050` prints a line a year from 1895 for each island: the
-machine's quality, the share of hauling held in works and at the pits and
-the works' target, the waterline,
+machine's quality, the share of hauling held in works and at the pits, the
+share of each meant, the works' target, the waterline,
 the gap, the book, the hands on the land and in works, the towns' share,
-the wage and the prices of machinery and coal.
+the wage and the prices of machinery and coal. `cargo run --release -p
+isostate-core --example land -- --seeds 7 --end-year 1960` prints, a line a
+year, each machine of the land's cost over the wage in its parts and its
+share, nitrogen's and breeding's shares, the farms' output a hand, the
+prices of oil, coal, electricity and the rest where they are sold, and the
+oil and nitrogen works standing.
 
 ## What worries me
 
@@ -436,18 +725,24 @@ the wage and the prices of machinery and coal.
   rule (3.19 against 3.53 in 1940), perhaps because the hoists' orders take
   its makers further down their learning curves (not traced). The electric drive will run on power from stations that
   are themselves works with classes of task.
-- **The fields are out of reach.** The pits let hands go, but the farms,
-  pastures and woods take as many hands as with the works alone, or more,
-  and the towns' share is still below the island with no machines. Read
-  nothing about the island's twentieth century until a tractor exists.
+- **The fields are in reach, and the island still grows poorer after
+  1970.** With the tractor, nitrogen and breeding the wage grows half as fast
+  as the design asks from 1900 to 1970 and falls after it, and hands go back
+  to the fields after 1980 ("What the eight islands showed", above).
+- **Oil waits on the tractor.** Nobody buys oil made from coal until a
+  tractor runs on it, so the tractor's threshold is the first oil works'
+  first months: a threshold much above 300 units leaves most islands with
+  no tractor at all.
+- **The pits go without a machine from the hoist's year to the cutter's**
+  under the content after 1900, which the design did not mean: its cutter is
+  aimed at 1925 and the hoist was never in its pits.
 - **The land's machines are bought as inputs.** A sector's plant is bought
   out of its revenue and counted with its inputs, as the port's farm
   machinery is, not as investment; the books balance, but the gauges' plant
   behind a year's income does not count it. Its return is reckoned at the
   month's prices on the plant in place, not on what it cost.
-- **A sector holds machines it has not been delivered**, as a works does,
-  and a town founded after the find starts its land from nothing where its
-  works start at the target.
+- **A town founded after the find starts its land from nothing**, where
+  its works mean to hold the target from the start.
 - **The ceiling's best years are of a unit's planned crop** (an average
   year's), by sector and cell, per share of the cell the use held; how that
   behaves on a cell whose use changed a great deal before 1950 is not looked
@@ -455,13 +750,19 @@ the wage and the prices of machinery and coal.
 - **The hoist stops improving at a quality of 8**, about 1973, and the wage
   falls after 2000 on an island with nothing new to make, so the works'
   share of hauling stalls at 0.55 and eases back to 0.52 by 2050.
-- **A works may hold machines it has not been delivered.** Its share rises
-  each month by a step times the fill of its last order, and its hands fall
-  at once; the plant follows a quarter of what is missing a month. Where
-  machinery is short for years the hands fall ahead of the plant.
-- **One machine for each class is all the code has been tried with.** With
-  several, the town's uses are taken cheapest first, and a works holding
-  more than its town would has the dearest of them hold the rest.
+- **What stands is reckoned at full capacity.** A works' machines are
+  sized to its capacity, not to what it makes this month, so a works whose
+  capacity grows holds a smaller share until more plant comes, and one
+  working below capacity holds no more for it. A sector's are reckoned on
+  last month's work, so its share held moves a little with the seasons.
+- **One machine for each class in each place is all the code has been tried
+  with.** There are three for hauling now, but each in places of its own
+  (the hoist the works, the tractor the fields, the cutter the pits). With
+  several in one place, the town's uses are taken cheapest first, and a works holding
+  more than its town would has the dearest of them hold the rest. Where two
+  machines are made of the same goods the plant in place is given to the
+  cheapest part first, and a part not filled leaves every part above it in
+  that class unheld (the share is a top, not a set of tasks).
 - The plant a unit of capacity takes is reckoned at the sites' mean hands a
   unit in `evaluate_sites`, so every site of one method in one town is
   charged the same for its machines.

@@ -30,7 +30,10 @@ use crate::params::Params;
 pub const GAME_OVERLAY_TOML: &str = include_str!("../../../data/game.toml");
 
 /// The highest stage the overlay has that runs soundly (docs/rules/tree.md).
-pub const GAME_STAGE: u32 = 1;
+/// Stage 6 is the first content after 1900, electricity and electrical goods
+/// ("After 1900: electricity"); the tree's own stages 2 to 5 have no entries
+/// in the file yet, so 6 lays stage 1 and the content after 1900.
+pub const GAME_STAGE: u32 = 6;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -107,6 +110,8 @@ struct OverGood {
     decay: Option<f64>,
     stock0: Option<f64>,
     traded: Option<bool>,
+    stock_months: Option<f64>,
+    opens_dear: Option<bool>,
     stage: Option<u32>,
 }
 
@@ -224,6 +229,8 @@ fn raw_of(C: &Content) -> RawContent {
                     decay: C.decay.get(g).copied().flatten(),
                     stock0: C.stock0.get(g).copied().flatten(),
                     traded: C.traded.get(g).copied().filter(|&t| !t),
+                    stock_months: C.stock_months.get(g).copied().flatten(),
+                    opens_dear: C.opens_dear.get(g).copied().filter(|&d| d),
                 })
                 .collect(),
         },
@@ -282,6 +289,8 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
                 r.decay = g.decay.or(r.decay);
                 r.stock0 = g.stock0.or(r.stock0);
                 r.traded = g.traded.or(r.traded);
+                r.stock_months = g.stock_months.or(r.stock_months);
+                r.opens_dear = g.opens_dear.or(r.opens_dear);
             }
             None => raw.meta.goods.push(RawGood {
                 name: g.name.clone(),
@@ -292,6 +301,8 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
                 decay: g.decay,
                 stock0: g.stock0,
                 traded: g.traded,
+                stock_months: g.stock_months,
+                opens_dear: g.opens_dear,
             }),
         }
     }
@@ -504,6 +515,65 @@ pub fn decay(C: &Content, P: &Params) -> Vec<f64> {
     (0..C.G).map(|g| C.decay.get(g).copied().flatten().unwrap_or_else(|| P.decay.get(g).copied().unwrap_or(0.0))).collect()
 }
 
+/// What is lost of each good's stock left at a month's end, once the month's
+/// sales are taken out of it: its decay, and all of it for a good that does
+/// not keep (`stock_months = 0`, electricity), whose month's make is what the
+/// next month sells and no more. `econ::step_month` and the books
+/// (`accounts::note_month`) both read this, so the books count the loss as
+/// spoiled. With no such good it is `decay`, to the bit.
+pub fn month_loss(C: &Content, P: &Params) -> Vec<f64> {
+    let mut d = decay(C, P);
+    for (g, v) in d.iter_mut().enumerate() {
+        if !keeps(C, g) {
+            *v = 1.0;
+        }
+    }
+    d
+}
+
+/// False for a good that does not keep from one month to the next
+/// (`stock_months = 0` in the content: electricity).
+pub fn keeps(C: &Content, g: usize) -> bool {
+    C.stock_months.get(g).copied().flatten() != Some(0.0)
+}
+
+/// The gap the month's price of good `g` in a town moves on (`econ::step_month`,
+/// read as the port's rule reads it: above nothing while the market wants more).
+/// For a good that keeps, how far the merchants' stock `stock` is below the
+/// months of sales they mean to hold (`stock_months`, or the island's
+/// `price_target_months`) times the smoothed sales `outflow`, as a share of the
+/// larger. For a good that does not keep, the month's asking against its
+/// making, `(asked - made) / max(asked, made)`, and nothing where neither.
+pub fn price_gap(C: &Content, P: &Params, g: usize, stock: f64, outflow: f64, asked: f64, made: f64) -> f64 {
+    match C.stock_months.get(g).copied().flatten() {
+        Some(m) if m == 0.0 => {
+            let big = asked.max(made);
+            if big > 1e-12 { (asked - made) / big } else { 0.0 }
+        }
+        Some(m) => {
+            let target = m * outflow;
+            (target - stock) / target.max(stock).max(1e-9)
+        }
+        None => {
+            let target = P.price_target_months * outflow;
+            (target - stock) / target.max(stock).max(1e-9)
+        }
+    }
+}
+
+/// The price a good opens at in every town: its base price, or its ceiling for
+/// a good the overlay marks `opens_dear`. Such a good is had nowhere in 1750
+/// and cannot be made for a century, and at its base price it would be bought
+/// as if it could: electricity is then the cheapest fuel on the island, and
+/// every works would put most of its heat on a fuel it could not get (a works
+/// makes what its scarcest input allows); electrical goods the cheapest of the
+/// household goods. The price rule would carry either to its ceiling anyway,
+/// where nobody makes it (the stock's gap, or the asking's, is 1 while it is
+/// asked for and not had), but only after some forty months of hunger for it.
+pub fn opening_price(st: &crate::state::State, C: &Content, P: &Params, g: usize) -> f64 {
+    if C.opens_dear.get(g).copied().unwrap_or(false) { crate::longrun::ceiling(st, P, C, g) } else { C.base_price[g] }
+}
+
 /// Opening stock a head of good `g`: the content's where it says, else the
 /// port's table (`port`, in the order of the port's goods).
 pub fn stock0(C: &Content, g: usize, port: &[f64]) -> f64 {
@@ -621,7 +691,97 @@ pub fn share_groups(C: &Content, port: &[(&str, &str, &[&str])]) -> Vec<ShareGro
         let makers: Vec<String> = (0..C.M).filter(|&m| C.method_out[m] == g).map(|m| C.method_name[m].clone()).collect();
         merge_group(&mut groups, good, "method", makers);
     }
+    // the works' heat, with any fuel the overlay adds (electricity, from stage 6;
+    // stage 1 adds none, and the group is the port's)
+    let fuels: Vec<String> = C.fuel_goods.iter().map(|&g| C.good_name[g].clone()).collect();
+    merge_group(&mut groups, "heat", "heat", fuels);
     groups
+}
+
+/// Facts of the content after 1900 (docs/rules/tree.md, "After 1900:
+/// electricity"), for the sweep's table under "Work and wages": nothing for a
+/// content without electricity. In 1890 and at the marks from 1900:
+///
+/// - `electricity_warmth_share_Y`: of the fuel and light households and
+///   landlords bought, in units of warmth, the share electricity gave (the
+///   observer's `share_warmth_electricity`);
+/// - `electricity_heat_share_Y`: of the works' heat, the share electricity gave;
+/// - `stations_towns_Y`: towns with a coal power station standing at the year's end;
+/// - `electricity_lost_Y`: of the electricity made in the year, the share lost
+///   at the months' ends (the books' `spoiled` over `made`);
+/// - `electricity_over_coal_heat_Y`: electricity's price over coal's for a unit
+///   of heat, each the year's mean price in the towns that bought electricity,
+///   weighted by what they bought of it;
+/// - `electricals_to_households_Y` and `electricals_to_plant_Y`: of the
+///   electrical goods bought in the year, the shares households (with landlords
+///   and families) and plant (works being built, the land's machines, railways
+///   and canals) took.
+///
+/// And `found_year_coal_power_station`, `found_year_electrical_works`.
+pub fn facts(r: &crate::sim::RunResult) -> Vec<(String, crate::facts::Kind, f64)> {
+    use crate::facts::Kind;
+    use crate::accounts::{GOODS_FIELDS, KG};
+    let (st, C) = (&r.state, &r.content);
+    let mut out = Vec::new();
+    let (Some(&ge), Some(&gx), Some(&gc)) = (C.good_index.get("electricity"), C.good_index.get("electricals"), C.good_index.get("coal")) else {
+        return out;
+    };
+    let y0 = C.start_year;
+    let y1 = y0 + r.rec.n_years as i64 - 1;
+    let mut years: Vec<i64> = crate::facts::marks(y0, y1).into_iter().filter(|&y| y >= 1900).collect();
+    if (y0..=y1).contains(&1890) {
+        years.insert(0, 1890);
+    }
+    let at = |name: &str, y: i64| st.series.index.get(name).map_or(f64::NAN, |&k| crate::observer::annual(&st.series.data[k], y0, y));
+    let ratio = |a: f64, b: f64| if b > 0.0 { a / b } else { f64::NAN };
+    let station = C.method_name.iter().position(|n| n == "coal_power_station");
+    let col = |name: &str| GOODS_FIELDS.iter().position(|&n| n == name).expect("a goods column");
+    let (c_made, c_spoiled, c_price) = (col("made"), col("spoiled"), col("price"));
+    let c_hh = [col("households"), col("landlords"), col("families")];
+    let c_plant = [col("building"), col("land"), col("projects")];
+    let c_use = [col("works_inputs"), col("works_fuel")];
+    let (T, G) = (st.T_max, C.G);
+    let heat = |g: usize| C.heat[g];
+    for &y in &years {
+        out.push((format!("electricity_warmth_share_{y}"), Kind::Share, at("share_warmth_electricity", y)));
+        out.push((format!("electricity_heat_share_{y}"), Kind::Share, at("share_heat_electricity", y)));
+        let towns: std::collections::BTreeSet<usize> = (0..st.F_count)
+            .filter(|&f| Some(st.f_method[f]) == station && st.f_born[f] <= y && (st.f_alive[f] || st.f_died[f] > y))
+            .map(|f| st.f_town[f])
+            .collect();
+        out.push((format!("stations_towns_{y}"), Kind::Count, if station.is_some() { towns.len() as f64 } else { f64::NAN }));
+        // the books of the year, where they were kept
+        let book = st.acct.years.iter().position(|b| b.year == y).and_then(|k| st.acct.year(k));
+        let (mut made, mut lost, mut bought_e, mut pe, mut pc) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        let (mut x_hh, mut x_plant, mut x_all) = (0.0, 0.0, 0.0);
+        if let Some(b) = &book {
+            let v = |t: usize, g: usize, c: usize| b.goods[(t * G + g) * KG + c] as f64;
+            for t in 0..T {
+                made += v(t, ge, c_made);
+                lost += v(t, ge, c_spoiled);
+                let e: f64 = c_hh.iter().chain(&c_plant).chain(&c_use).map(|&c| v(t, ge, c)).sum();
+                bought_e += e;
+                pe += e * v(t, ge, c_price);
+                pc += e * v(t, gc, c_price);
+                let hh: f64 = c_hh.iter().map(|&c| v(t, gx, c)).sum();
+                let plant: f64 = c_plant.iter().map(|&c| v(t, gx, c)).sum();
+                x_hh += hh;
+                x_plant += plant;
+                x_all += hh + plant + c_use.iter().map(|&c| v(t, gx, c)).sum::<f64>();
+            }
+        }
+        let (n, kn) = (book.is_some(), f64::NAN);
+        out.push((format!("electricity_lost_{y}"), Kind::Share, if n { ratio(lost, made) } else { kn }));
+        let per_heat = ratio(ratio(pe, bought_e) / heat(ge), ratio(pc, bought_e) / heat(gc));
+        out.push((format!("electricity_over_coal_heat_{y}"), Kind::Ratio, if n { per_heat } else { kn }));
+        out.push((format!("electricals_to_households_{y}"), Kind::Share, if n { ratio(x_hh, x_all) } else { kn }));
+        out.push((format!("electricals_to_plant_{y}"), Kind::Share, if n { ratio(x_plant, x_all) } else { kn }));
+    }
+    for name in ["coal_power_station", "electrical_works"] {
+        let found = C.tech_name.iter().position(|n| n == name).map(|t| st.tech_year[t]).filter(|&y| y >= y0);
+        out.push((format!("found_year_{name}"), Kind::Year, found.map_or(f64::NAN, |y| y as f64)));
+    }
+    out
 }
 
 fn merge_group(groups: &mut Vec<ShareGroup>, name: &str, kind: &str, members: Vec<String>) {

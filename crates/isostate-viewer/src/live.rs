@@ -109,6 +109,10 @@ pub struct SiteInfo {
     /// whether the player may buy it (cash aside), or why not
     pub land_allowed: Result<(), String>,
     pub options: Result<Vec<SiteOption>, String>,
+    /// what the hand could build on it (the sandbox's Works tool,
+    /// `edits::works_offered`): every method at the size and cost a works by
+    /// hand would have, each with the refusal a `BuildWorks` of it would meet
+    pub hand: Result<Vec<SiteOption>, String>,
 }
 
 pub enum Msg {
@@ -192,6 +196,8 @@ pub struct Resumed {
     pub drifted: bool,
     /// newer saves that could not be read, so that this is an earlier one
     pub passed_over: usize,
+    /// of the orders given again, the edits by hand: what a sandbox's card counts
+    pub by_hand: usize,
 }
 
 impl Resumed {
@@ -334,7 +340,8 @@ pub struct Opening {
     pub new_land: bool,
     /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
     /// family in, changed by hand. It never goes on with the island's autosave
-    /// nor writes it: with somebody at it, it is kept among the trials
+    /// nor writes it: it has a session of its own (`saves::session`), which a
+    /// plain start goes on with and which keeps it while somebody is at it
     pub sandbox: bool,
     /// the last year a new game is played to (`--to`; docs/rules/longrun.md,
     /// "A game past 1900"); None: the content's, 1900. The command line asks
@@ -350,33 +357,42 @@ pub enum Keeping {
     Named(std::path::PathBuf),
     /// in its island's autosave: a game somebody is playing
     Autosave,
-    /// in its island's trial file, apart from the game played there: somebody
-    /// is at it, but the start was not plain play. With the option that says so.
+    /// in its island's trial file, apart from the game played there: a family
+    /// game somebody is at, whose start was not plain play. With the option
+    /// that says so.
     Trial(&'static str),
+    /// in its island's sandbox session (`saves::session`): a sandbox somebody
+    /// is at, whatever its start, or one nobody is at that `--keep` asked for
+    Session,
     /// nowhere: nobody is at it
     Nowhere,
 }
 
 impl Opening {
-    /// Nothing was asked for but the game: the island's autosave, if there is
-    /// one, is gone on with. Screenshots, and the switches that ask for a game
-    /// of a certain shape or kept in a certain place, get a new one.
+    /// Nothing was asked for but the game: the island's autosave, or in a
+    /// sandbox its session, is gone on with if there is one. Screenshots, and
+    /// the switches that ask for a game of a certain shape or kept in a certain
+    /// place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.new_land && !self.shots && !self.demo && !self.sandbox && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.new_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
-    /// a start that nobody is at (pictures, a script) keeps nothing, and one
-    /// that is not plain play (years played before it opens, the demo's
-    /// orders) keeps its game among the trials, so that neither can set a
-    /// played game aside. A place that was named is the place, whatever the
-    /// start, and so is the autosave when it was asked for by name (`keep`).
+    /// a start that nobody is at (pictures, a script) keeps nothing, and a
+    /// family game's start that is not plain play (years played before it
+    /// opens, the demo's orders) keeps its game among the trials, so that
+    /// neither can set a played game aside. A sandbox somebody is at is kept in
+    /// its session whatever its start: any start but a plain one makes the
+    /// island anew, and the session there is set aside by the new one's first
+    /// save, as a new family game sets the autosave aside. A place that was
+    /// named is the place, whatever the start, and so is the autosave or the
+    /// session when it was asked for by name (`keep`).
     pub fn keeping(&self) -> Keeping {
         match &self.save {
             Some(file) => Keeping::Named(file.into()),
             // a sandbox never touches the family's saved game, whatever else was asked
-            None if self.sandbox && (self.shots || self.unattended) => Keeping::Nowhere,
-            None if self.sandbox => Keeping::Trial("--sandbox"),
+            None if self.sandbox && (self.shots || self.unattended) && !self.keep => Keeping::Nowhere,
+            None if self.sandbox => Keeping::Session,
             None if self.keep => Keeping::Autosave,
             None if self.shots || self.unattended => Keeping::Nowhere,
             None if self.advance > 0 => Keeping::Trial("--advance"),
@@ -388,8 +404,9 @@ impl Opening {
 
 impl Opening {
     /// Why `--keep` is refused, if it is: with nobody at the game it writes
-    /// an autosave only in a folder that was named for it (`ISOSTATE_SAVES`),
-    /// never in the player's own, where the games somebody played are kept.
+    /// an autosave (or a sandbox's session) only in a folder that was named
+    /// for it (`ISOSTATE_SAVES`), never in the player's own, where the games
+    /// somebody played are kept.
     pub fn keep_refused(&self, folder_named: bool) -> Option<String> {
         (self.keep && self.save.is_none() && (self.shots || self.unattended) && !folder_named).then(|| {
             "--keep with nobody at the game (a script, pictures) writes an autosave only in a folder named for it, so set ISOSTATE_SAVES to that folder or name a file with --save".to_string()
@@ -435,8 +452,9 @@ fn take_place(o: &Opening, seed: u64, families: usize, on_new_land: bool) -> Res
             Err(saves::Held::ByAnother) => Err(second(&path)),
             Err(saves::Held::Unwritable(why)) => Err(format!("a game cannot be kept in {} ({why}): name a file in a folder that can be written", path.display())),
         },
-        Keeping::Autosave => {
-            let path = saves::autosave(seed, families);
+        // (a sandbox's session is kept as the autosave is, in its own place)
+        kept @ (Keeping::Autosave | Keeping::Session) => {
+            let path = if kept == Keeping::Session { saves::session(seed, families) } else { saves::autosave(seed, families) };
             match claim(path.clone()) {
                 Ok(saver) => Ok((Some(saver), None)),
                 Err(saves::Held::ByAnother) => Err(second(&path)),
@@ -513,6 +531,30 @@ pub fn trade_goods(c: &iso::content::Content) -> Vec<Vec<usize>> {
         .collect()
 }
 
+/// For a test that holds one island's history: a new game of island `seed` with
+/// `families`, played under the game's rules with `tree.stage` set as given,
+/// its first year and `advance` more, as `start` fills the board of a new game
+/// (as `ISOSTATE_NO_BOOKS` does, the game's own simulation is started again on
+/// the changed rules). Docs/rules/tree.md, "After 1900: electricity".
+#[cfg(test)]
+pub(crate) fn played_at_stage(seed: u64, families: usize, advance: usize, stage: u32) -> Result<Replay, String> {
+    let rules = iso::params::Rules::Game;
+    let mut game = Game::under_to(rules, seed, families, 0, iso::save::content_last_year(rules))?;
+    let mut P = game.sim.params.clone();
+    P.tree.stage = stage;
+    game.sim = iso::sim::start(&P, game.rules.content());
+    let mut board = Board::new(&game.sim);
+    for _ in 0..advance + 1 {
+        if game.over() {
+            break;
+        }
+        game.year()?;
+        board.year(&game.sim);
+        game.turn();
+    }
+    Ok(board.r)
+}
+
 /// The island as the viewer holds it, filled in year by year.
 struct Board {
     cursor: LiveCursor,
@@ -557,8 +599,17 @@ fn standing(game: &Game, begun: &[usize]) -> Standing {
         (Some(seen), Ok(now)) => (now.cash - seen.cash).max(0.0),
         _ => 0.0,
     };
-    let waiting_works = game.waiting.iter().filter_map(|o| if let Order::Found { cell, .. } = o { Some(*cell) } else { None });
+    let waiting_works = game.waiting.iter().filter_map(works_square);
     Standing { waiting: game.waiting.clone(), promised, pegs: begun.iter().copied().chain(waiting_works).collect() }
+}
+
+/// The square a works is to stand on by this order: a family's works, or one
+/// built by hand (the sandbox's Works tool), whose stakes stand alike.
+fn works_square(order: &Order) -> Option<usize> {
+    match order {
+        Order::Found { cell, .. } | Order::ByHand { edit: isostate_core::edits::Edit::BuildWorks { cell, .. } } => Some(*cell),
+        _ => None,
+    }
 }
 
 /// The player's family for the panels: as it stands, and in what the family
@@ -584,13 +635,10 @@ fn family_now(game: &Game) -> Option<FamilyReport> {
 }
 
 /// The squares where works were begun at the last year's turn: by an order
-/// carried out there, which the year's own picture does not show yet.
+/// carried out there (a family's, or a works built by hand), which the year's
+/// own picture does not show yet.
 fn begun_at_turn(game: &Game) -> Vec<usize> {
-    game.orders
-        .iter()
-        .filter(|g| g.year == game.last_year() && g.month == 0)
-        .filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None })
-        .collect()
+    game.orders.iter().filter(|g| g.year == game.last_year() && g.month == 0).filter_map(|g| works_square(&g.order)).collect()
 }
 
 /// What an order is, in a few words, for the list of those that wait.
@@ -631,15 +679,65 @@ pub fn order_words(order: &Order, r: &Replay, rep: Option<&FamilyReport>) -> Str
             format!("{} at {} {does}", crate::family::short_group(*group), town(*t))
         }
         Order::MoveSeat { town: t } => format!("Move the seat to {}", town(*t)),
-        // (an edit never waits; this is for a list that might hold one)
-        Order::ByHand { edit } => edit_words(edit, &town),
+        // (a works built or closed by hand waits; the other edits are carried out at once)
+        Order::ByHand { edit } => {
+            let method = |m: &str| r.header.methods.iter().find(|x| x.name == m).map_or(m.to_string(), |x| x.label.to_lowercase());
+            let works = |f: usize| r.header.firms.get(f).map_or_else(|| format!("works {f}"), |x| x.name.clone());
+            let near = |c: usize| r.filled.checked_sub(1).and_then(|k| r.catch.get(k * r.n + c)).and_then(|&t| (t as usize).checked_sub(1)).map(town);
+            edit_words(edit, &Names { town: &town, method: &method, works: &works, near: &near, width: r.w })
+        }
+    }
+}
+
+/// The names an edit's words need, as the thread's simulation or the
+/// viewer's record has them.
+struct Names<'a> {
+    town: &'a dyn Fn(usize) -> String,
+    /// a method's label by its name, in small letters
+    method: &'a dyn Fn(&str) -> String,
+    /// a works' name by its slot
+    works: &'a dyn Fn(usize) -> String,
+    /// the town whose district a square is in, if any
+    near: &'a dyn Fn(usize) -> Option<String>,
+    /// the island's width in squares, to give a square as "31, 40"
+    width: usize,
+}
+
+/// The names of the simulation on the thread.
+fn sim_words(s: &iso::Sim, edit: &isostate_core::edits::Edit) -> String {
+    let town = |t: usize| s.st.town_name.get(t).cloned().unwrap_or_else(|| format!("town {t}"));
+    let method = |m: &str| s.content.method_name.iter().position(|n| n == m).map_or(m.to_string(), |i| s.content.method_label[i].to_lowercase());
+    let works = |f: usize| s.st.f_name.get(f).cloned().unwrap_or_else(|| format!("works {f}"));
+    let near = |c: usize| s.st.catch.get(c).and_then(|&t| (t >= 0).then(|| town(t as usize)));
+    edit_words(edit, &Names { town: &town, method: &method, works: &works, near: &near, width: s.st.world.W })
+}
+
+/// A works built or closed by hand, in a few words with no "By hand" before
+/// them: "a works (brickworks) at 31, 40, in Melbourne's district", "Fairfax
+/// Mill closed". Other edits are not of the kind that waits, and have none.
+fn waiting_what(edit: &isostate_core::edits::Edit, n: &Names) -> Option<String> {
+    use isostate_core::edits::Edit;
+    match edit {
+        Edit::BuildWorks { method, cell } => {
+            let at = format!("{}, {}", cell % n.width.max(1), cell / n.width.max(1));
+            Some(match (n.near)(*cell) {
+                Some(town) => format!("a works ({}) at {at}, in {town}'s district", (n.method)(method)),
+                None => format!("a works ({}) at {at}", (n.method)(method)),
+            })
+        }
+        Edit::CloseWorks { works } => Some(format!("{} closed", (n.works)(*works))),
+        _ => None,
     }
 }
 
 /// An edit by hand in a few words, for a list.
-fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String) -> String {
+fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
     use isostate_core::edits::{Edit, Purse};
+    let town = n.town;
     let place = |t: Option<usize>, all: &str| t.map_or_else(|| all.to_string(), |t| town(t));
+    if let Some(what) = waiting_what(edit, n) {
+        return format!("By hand: {what}");
+    }
     match edit {
         Edit::Money { purse, town: t, factor } => {
             let whose = match purse {
@@ -654,6 +752,8 @@ fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String)
         Edit::Discover { tech, town: t } => format!("By hand: {tech} found in {}", town(*t)),
         Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
+        // (said by `waiting_what`)
+        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } => String::new(),
     }
 }
 
@@ -669,7 +769,13 @@ fn waits_words(game: &Game, order: &Order) -> String {
         Order::Post { .. } => format!("Told. It takes effect at the end of {year}."),
         Order::Stance { .. } => format!("Told. The branch goes by it from the end of {year}."),
         Order::MoveSeat { .. } => format!("Told. The seat moves at the end of {year}."),
-        // (never: an edit is carried out at once)
+        // an edit that waits (a works built or closed); one carried out at once never waits.
+        // (not "By hand", which the Hand tab takes for an edit carried out)
+        Order::ByHand { edit } if edit.at_turn() => {
+            // "Ordered by hand: a works (brickworks) at 31, 40, in Melbourne's district, ..."
+            let what = sim_words(&game.sim, edit);
+            format!("Ordered by hand: {}, at the year's turn, in January {}.", what.trim_start_matches("By hand: "), year + 1)
+        }
         Order::ByHand { .. } => "Done by hand.".to_string(),
     }
 }
@@ -686,8 +792,8 @@ fn carried_words(s: &iso::Sim, o: &Outcome, what: &str) -> (bool, String) {
 
 /// Start a game: the island is made and its first year simulated here (and
 /// `advance` more, to start later), then the simulation moves to its own
-/// thread. With a save to go on from (one named, or the island's autosave when
-/// nothing else was asked for) its years are played again first, with the
+/// thread. With a save to go on from (one named, or the island's autosave or a
+/// sandbox's session when nothing else was asked for) its years are played again first, with the
 /// orders in it. A new game is played under the game's rules (`game_params`,
 /// `game_content`), not the port's; a saved one under the rules it names.
 pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
@@ -720,8 +826,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let from = match named {
         Some(found) => Some(found),
         None if o.plain() => {
-            // (its autosave is named for the families it has)
-            saves::read_latest(&saves::autosave(o.seed, o.families)).map(|(save, file, passed)| {
+            // (its autosave, or a sandbox's session, is named for the families it has)
+            let place = if o.sandbox { saves::session(o.seed, o.families) } else { saves::autosave(o.seed, o.families) };
+            saves::read_latest(&place).map(|(save, file, passed)| {
                 for e in &passed {
                     eprintln!("the latest save could not be read ({e}); going back to the one before it");
                 }
@@ -737,15 +844,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let mut game = match &from {
         Some((save, file)) => {
             let years = (save.year - save.played_under().content().start_year + 1).max(0);
-            eprintln!(
-                "going on with the {} family's game on island {} ({}), saved {} in {}: {}",
-                save.family,
-                save.seed,
-                crate::families_words(save.families),
-                save.saved,
-                save.year,
-                file.display()
-            );
+            // (a sandbox's session has a family 0 that nobody plays: it is not named)
+            let whose = if o.sandbox { "the session".to_string() } else { format!("the {} family's game", save.family) };
+            eprintln!("going on with {whose} on island {} ({}), saved {} in {}: {}", save.seed, crate::families_words(save.families), save.saved, save.year, file.display());
             if save.land {
                 eprintln!("  it was begun on the new land, and is played again there");
             }
@@ -783,6 +884,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
                 refused: loaded.refused.len(),
                 drifted: loaded.drifted,
                 passed_over,
+                by_hand: loaded.game.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).count(),
             });
             loaded.game
         }
@@ -828,6 +930,17 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     }
     // a game saved in the middle of a year is gone on with there: the months played of it
     board.months(&game.sim, game.month);
+    // and the news since the last year's end (an edit by hand given again in those months, or at the
+    // turn), which a game played through the window has had with each month and which the next month
+    // would otherwise bring: the Hand tab and the timeline list a session's edits when it opens
+    if from.is_some() && game.sim.t > 0 {
+        let s = &game.sim;
+        let since = iso::live_month(&mut board.cursor, &s.st, &s.content, &s.params, &s.events, s.t - 1).events;
+        if !since.is_empty() {
+            add_news(&mut board.r, &since);
+            board.r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
+        }
+    }
     // and each town's prices and wages in those months and in the last year's, as the books kept
     // them, so the price and wage maps show the months nobody watched as they show the ones that
     // come; a game played through the window holds the same (`Months`)
@@ -855,8 +968,16 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     if let Some(s) = saver.as_ref().filter(|s| s.path.exists()) {
         match saves::read(&s.path) {
             Ok(there) if there.started != game.started || there.seed != game.sim.params.seed || there.families != game.sim.params.n_families => {
-                let whose = format!("the {} family's, which had reached {} with {} order{}", there.family, there.year, there.orders.len() + there.waiting.len(), if there.orders.len() + there.waiting.len() == 1 { "" } else { "s" });
-                if saves::holds_orders(&there) {
+                let n = there.orders.len() + there.waiting.len();
+                let whose = format!("the {} family's, which had reached {} with {n} order{}", there.family, there.year, if n == 1 { "" } else { "s" });
+                if o.keeping() == Keeping::Session {
+                    // (a session's orders are its edits, and its family 0 is nobody's)
+                    if saves::holds_orders(&there) {
+                        eprintln!("another session is kept there, which had reached {} with {n} edit{} by hand: it is not written over, but set aside whole as {} (--load FILE goes on with it)", there.year, if n == 1 { "" } else { "s" }, saves::previous(&s.path).display());
+                    } else {
+                        eprintln!("another session is kept there, which had reached {}: nothing was done by hand in it, so it is written over, and the same island makes it again", there.year);
+                    }
+                } else if saves::holds_orders(&there) {
                     eprintln!(
                         "another game is kept there ({whose}): it is not written over, but set aside whole as {} when this game is first saved (--load FILE goes on with it)",
                         saves::previous(&s.path).display()
@@ -882,6 +1003,18 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         }
         // the autosave is first written when something happens in the game
         (Some(s), Keeping::Autosave) => eprintln!("the game is kept in {}", s.path.display()),
+        // a sandbox's session gone on with is too; a new one is written at once, so that the island made
+        // anew (Begin again, --new, --advance) is the session a plain start goes on with from now, even if
+        // nothing is done in it, and the one that was there is set aside now (`Saver::write`)
+        (Some(s), Keeping::Session) => {
+            if from.is_none() {
+                if let Err(e) = s.write(&game.save(saves::now()), true) {
+                    // (the thread says so on the screen if the next save fails too)
+                    eprintln!("the session could not be saved: {e}");
+                }
+            }
+            eprintln!("the session is kept in {}", s.path.display());
+        }
         // (a trial has said where it is kept, and a game that is not kept that it is not)
         _ => {}
     }
@@ -1086,10 +1219,19 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                                 }
                                 year_end = true;
                                 let year = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
+                                let news = game.sim.events.len();
                                 let done = game.turn();
-                                begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| if let Order::Found { cell, .. } = &o.order { Some(*cell) } else { None }).collect();
+                                begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| works_square(&o.order)).collect();
                                 let s = &game.sim;
-                                let carried = done.iter().map(|o| carried_words(s, o, &order_line(&game, &o.order))).collect();
+                                // an edit carried out at the turn is told in the line it wrote in the news
+                                let mut by_hand = s.events.get(news..).unwrap_or_default().iter().filter(|e| e.kind == "hand").map(|e| e.title.clone());
+                                let carried = done
+                                    .iter()
+                                    .map(|o| match (&o.order, &o.result) {
+                                        (Order::ByHand { .. }, Ok(_)) => (true, by_hand.next().unwrap_or_else(|| format!("{}: done", order_line(&game, &o.order)))),
+                                        _ => carried_words(s, o, &order_line(&game, &o.order)),
+                                    })
+                                    .collect();
                                 let family = if done.is_empty() { None } else { family_now(&game) };
                                 Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun) }))
                             }
@@ -1109,6 +1251,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                     owner_name: owner.and_then(|o| s.st.families.get(o)).map(|f| f.surname.clone()),
                     land_allowed: families::may_buy_land(&s.st, PLAYER, cell),
                     options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
+                    // (it only reads; 7a timed it at a tenth of a millisecond at the slowest)
+                    hand: iso::edits::works_offered(s, cell),
                 })
             }
             // (it only reads: a game asked about a thousand times runs as one never asked)
@@ -1129,8 +1273,9 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
             order => {
                 // carried out, and kept in the log if it was; or kept to wait for the year's end
                 let r = order_of(&game.sim, order).and_then(|o| game.give(o.clone()).map(|d| (o, d)));
-                if let Ok((Order::Found { cell, .. }, Done::Founded(_))) = &r {
-                    begun.push(*cell);
+                // (a works ordered at a turn is begun at once; one ordered later waits, and is pegged there)
+                if let Ok((o, Done::Founded(_) | Done::Done)) = &r {
+                    begun.extend(works_square(o));
                 }
                 let s = &game.sim;
                 let text = r.map(|(o, d)| match d {
@@ -1187,7 +1332,7 @@ fn order_line(game: &Game, order: &Order) -> String {
         },
         Order::Stance { group, town: t, .. } => format!("The word to {} at {}", crate::family::short_group(*group).to_lowercase(), town(*t)),
         Order::MoveSeat { town: t } => format!("The seat's move to {}", town(*t)),
-        Order::ByHand { edit } => edit_words(edit, &town),
+        Order::ByHand { edit } => sim_words(s, edit),
     }
 }
 

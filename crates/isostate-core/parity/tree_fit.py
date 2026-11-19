@@ -1,6 +1,6 @@
 """Fit the discovery thresholds of the production tree to a sweep.
 
-    python crates/isostate-core/parity/tree_fit.py SWEEP_DIR [--overlay data/game.toml] [--damp 0.7] [--write]
+    python crates/isostate-core/parity/tree_fit.py SWEEP_DIR [--overlay data/game.toml] [--damp 0.7] [--only A,B] [--write]
 
 docs/rules/tree.md, "The fitter". Every invention of the overlay carries
 `target`, the year it is aimed at, and `discover`, what the island must have
@@ -26,7 +26,9 @@ for. Moving one discovery moves the output the others are counted in, so fit,
 sweep and fit again: `--damp` moves each threshold only that share of the way
 (in logs) so that two or three passes settle. `--write` rewrites the
 `discover = { ... }` lines of the overlay in place; without it nothing is
-changed.
+changed. `--only` fits and writes the inventions named and leaves every other
+threshold as it is written (a later stage's inventions are fitted so, without
+touching the island before them).
 
 The hazard spreads a discovery over about twelve years either side of its
 mean, so with eight seeds a mean within four or five years of the aim is as
@@ -39,6 +41,8 @@ import sys
 import tomllib
 
 DISCOVERY_RATE = 0.18  # params.rs
+# The last year counted is the sweep's own last year (1900 for a played century; a sweep run on to 2050
+# fits the inventions aimed after 1900), set when the sweep is read.
 START, END = 1750, 1900
 
 # invention: [(good, share of what the island has made by year Y, or "keep")]. The first is the clock.
@@ -63,15 +67,25 @@ SPEC = {
     "sheet_glass": [("glass", 1.0), ("chemicals", 0.8), ("iron", 0.85)],
     "tank_furnace": [("glass", 1.0), ("steel", 0.85)],
     "machine_paper": [("paper", 1.0), ("machinery", 0.85)],
+    # stage 6, the content after 1900 (docs/rules/tree.md, "After 1900: electricity")
+    "electrical_works": [("steel", 1.0), ("machinery", 0.85)],
+    "coal_power_station": [("electricals", 1.0), ("coal", 0.85)],
+    # stage 6, the land's twentieth century (docs/rules/tree.md, "Oil, nitrogen and the land"): clocks
+    # that every island runs at much the same pace (coal and chemicals), with electricity kept as a guard
+    "nitrogen_works": [("chemicals", 1.0), ("electricity", "keep")],
+    "oil_from_coal": [("coal", 1.0), ("electricity", "keep")],
+    "breeding": [("chemicals", 1.0)],
 }
 
 
 def load(sweep):
     """seed -> good -> list over years of cumulative output at the end of the year."""
+    global END
     rows = {}
     with open(sweep + "/annual.csv", newline="") as f:
         for r in csv.DictReader(f):
             rows.setdefault(int(r["seed"]), {})[int(r["year"])] = r
+    END = min(max(years) for years in rows.values())
     cum, first = {}, {}
     for seed, years in rows.items():
         goods = [c[4:] for c in years[START] if c.startswith("out_")]
@@ -178,13 +192,15 @@ def main():
     args = sys.argv[1:]
     if not args or args[0].startswith("--"):
         sys.exit(__doc__)
-    sweep, overlay, damp, write = args[0], "data/game.toml", 0.7, False
+    sweep, overlay, damp, write, only = args[0], "data/game.toml", 0.7, False, None
     k = 1
     while k < len(args):
         if args[k] == "--overlay":
             overlay, k = args[k + 1], k + 2
         elif args[k] == "--damp":
             damp, k = float(args[k + 1]), k + 2
+        elif args[k] == "--only":
+            only, k = set(args[k + 1].split(",")), k + 2
         elif args[k] == "--write":
             write, k = True, k + 1
         else:
@@ -197,7 +213,7 @@ def main():
     print("%-20s %5s %12s %9s   %s" % ("invention", "aim", "sweep found", "reckoned", "thresholds now -> fitted"))
     for m in over.get("method", []) + over.get("tech", []):
         name, target, now = m["name"], m.get("target"), m.get("discover")
-        if not target or not now or name not in SPEC:
+        if not target or not now or name not in SPEC or (only is not None and name not in only):
             continue
         reckoned = expected(now, cum, first)
         new = fit(name, now, target, cum, first)

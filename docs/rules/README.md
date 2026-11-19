@@ -65,8 +65,9 @@ rules, invisible in a port run's files.
    it: what it does and why, its numbers, what a sweep showed before and
    after, and what worries you. Add a line to the list at the end of this
    page.
-7. **Check it.** `cargo test -p isostate-core --release` must pass with the
-   port's golden constants untouched. Then run a sweep under the game's rules
+7. **Check it.** The core's tests must pass with the port's golden constants
+   untouched (`python crates/isostate-core/run_tests.py` runs them all at
+   once; "Running the tests", below). Then run a sweep under the game's rules
    against the port's baseline (below) and read what moved. Switching the
    mechanism on in `game_params()` moves the game's golden hashes, which are
    anchored again when it lands ("The game's golden test", below).
@@ -149,9 +150,9 @@ for the better is the sweep's question.
 
 The port's golden test cannot see the game: under `default_params()` nearly
 every hook of the game's rules returns on its first line. `tests/golden_game.rs`
-holds the game in the same way. It runs seed 7 to 1900 under `game_params()`
-and `game_content()` with six families, as the viewer plays it, and hashes
-four things apart (64-bit FNV-1a), so that a failure says which moved:
+holds the game in the same way. It runs seed 7 under `game_params()` and
+`game_content()` with six families, as the viewer plays it, and hashes four
+things apart (64-bit FNV-1a), so that a failure says which moved:
 
 | name | what is hashed |
 |---|---|
@@ -160,30 +161,52 @@ four things apart (64-bit FNV-1a), so that a failure says which moved:
 | `news` | `events.json` |
 | `run.bin` | the record the viewer draws, with the date it was written set to `0000-00-00` |
 
-The four hashes are kept in `tests/golden_game.txt`, beside the test, not in
-its code. The island is run twice, side by side on two threads, and the two
-runs must agree before they are set against the file. So a failure is one of
-two things, and the message says which:
+It hashes them in two eras, so that a failure also says which century moved:
 
-- **The run is not repeatable.** The two runs disagree. Something in the run
-  reads what is not the rules and the island (a clock, a thread, an
+| era | from | what |
+|---|---|---|
+| `1750-1900` | the island run to 1900, as the game has always ended | all four, whole |
+| `1901-2050` | the same island run on to 2050 | the months and the news from 1901 on, and the whole `run.bin` |
+
+A change that acts only after 1900 (electricity, offices, the machines for
+tasks, which find nothing before 1901) moves the second era alone, and the
+message says that the played century held. The second era's `run.bin` holds
+the years before 1901 too, so it moves with either era.
+
+The eight hashes are kept in `tests/golden_game.txt`, beside the test, not in
+its code. Three runs go side by side on three threads: the run to 1900 and
+the run to 2050 twice. Before anything is set against the file, the two runs
+to 2050 must agree, and the run to 2050 must pass through the run to 1900. So
+a failure is one of three things, and the message says which:
+
+- **The run is not repeatable.** The two runs to 2050 disagree. Something in
+  the run reads what is not the rules and the island (a clock, a thread, an
   environment variable, a hash map walked in its own order). That is a fault
   whatever the file says, and no hash may be taken until it is found.
-- **The game moved.** The two runs agree with each other and not with the
-  file. The message names which of the four moved.
+- **The run to 2050 does not pass through the run to 1900.** Its months or its
+  news up to 1900 are not those of the run that ends in 1900: something reads
+  the year the run will end before that year comes. The game is played on to
+  2050, so the played century must not depend on how far the run goes. (The
+  news is set side by side without the chronicle's marks of what a history
+  would keep, `Event::kept`: those are made with the whole run in view, decade
+  by decade, and the year 1900 goes with the 1890s in a run that ends there and
+  with the 1900s in one that goes on, so one item of 1900 is kept in one run
+  and not the other. That is the history's reading of the news, not the news.)
+- **The game moved.** The runs agree with each other and not with the file.
+  The message names which of the eight moved.
 
 Unlike the port's, these hashes are meant to move. The game's rules are
-changed on purpose often (every stage of the rules pass, a rule mended or
-retuned, a new rule switched on), and the economy, the news and `run.bin`
-move with them. That is what the test is for: a change that says it moves
-nothing must leave all four as they were, and a change that moves the game
-says so and anchors them again. A change to the books alone moves `books`,
-`run.bin` (which carries the books' tables) or both, and never `economy` or
-`news`: the economy moving when only the books were touched means the books
-touched the economy. (Moving the books' note of the works' dividends below
-the families' take of theirs moves `run.bin` alone, since those tables are
-not among the monthly `acct_` columns.) Like the port's, these hashes are this machine's (see
-"What worries me").
+changed on purpose often (every stage of the rules pass and of the run to
+2050, a rule mended or retuned, a new rule switched on), and the economy, the
+news and `run.bin` move with them. That is what the test is for: a change
+that says it moves nothing must leave all eight as they were, and a change
+that moves the game says so and anchors them again. A change to the books
+alone moves `books`, `run.bin` (which carries the books' tables) or both, and
+never `economy` or `news`: the economy moving when only the books were touched
+means the books touched the economy. (Moving the books' note of the works'
+dividends below the families' take of theirs moves `run.bin` alone, since
+those tables are not among the monthly `acct_` columns.) Like the port's,
+these hashes are this machine's (see "What worries me").
 
 **Anchoring them again.** On the tree that will land: the branch with the
 newest main merged into it as its last step, or the merge into main itself.
@@ -193,48 +216,49 @@ the branch, so that its commits pass their tests; whoever merges main into it
 afterwards (its checker, or whoever lands it if main has moved again) takes
 them once more after the merge, and that is the commit that counts. When
 two such branches have both changed `golden_game.txt`, the merge conflicts on
-its four lines: keep neither side's, but settle the conflict with either and
-then paste in what the command prints on the merged tree. The command,
+its lines: settle the conflict with either side and then take them again on
+the merged tree. Taking them again is one command:
 
 ```bash
-ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
+ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --test golden_game -- --nocapture
 ```
 
-checks nothing and stops with the four lines to paste into
-`tests/golden_game.txt`, after checking that the two runs agree. Who may do
-it: whoever builds, checks or lands a change that moves the game's rules on
+It runs the three runs, checks that they are repeatable and that the run to
+2050 passes through the run to 1900, writes the eight hashes into
+`tests/golden_game.txt` with the reason as its `# Taken:` lines (the comment
+above them is kept), prints which moved, old and new, and passes. It never
+writes when either check fails. (`ISOSTATE_GOLDEN_PRINT=1` instead checks
+nothing and stops with the eight lines, for pasting by hand.) Who may do it:
+whoever builds, checks or lands a change that moves the game's rules on
 purpose, or what `run.bin` records for the viewer (the works' site planner
 moved `run.bin` alone by writing each good's price into its header), as
-above, and only after the sweep under the game's rules has been
-read and what moved is what was meant. A stage behind its own switch can
-show that nothing else moved: with the switch turned off in `game_params()`
-for one run (and not committed so), the test must pass on the old four. Who
-may not: a change that claims to move nothing. If the test fails on such a
-change, the change is wrong, not the file. The commit that anchors them says, in its message, which of the four
-moved and why ("economy, news and run.bin: stage 2 of the rules pass, the
-ration"), and the line `# Taken:` in the file is changed to say the same in
-a few words.
+above, and only after the sweep under the game's rules has been read and
+what moved is what was meant. A stage behind its own switch can show that
+nothing else moved: with the switch turned off in `game_params()` for one run
+(and not committed so), the test must pass on the old eight. Who may not: a
+change that claims to move nothing. If the test fails on such a change, the
+change is wrong, not the file. The commit that anchors them says, in its
+message, which of the eight moved and why ("1901-2050 economy, news and
+run.bin: electricity, which comes after 1900"), as the `# Taken:` lines do.
 
 To see what moved,
 
 ```bash
-ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --release --test golden_game
+ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --test golden_game
 ```
 
-writes `game6/` under that directory with the three files of the run, before
-and after, for a diff.
+writes `game6/` (the run to 1900) and `game6-2050/` (the run to 2050) under
+that directory, each with the three files of its run, before and after, for a
+diff.
 
-The test makes two runs of the game at once, which costs about one run's
-time on a machine with a core to spare. On 12 November 2026, with other
-helpers' builds running beside it, it took 52 seconds within `cargo test -p
-isostate-core --release` (the port's two golden runs took 49 beside it), 70
-seconds alone, and 174 seconds at the busiest hour; its check that evening
-saw 71 seconds within the suite and 24 to 128 alone. It is in the default run,
-like the port's, and not behind `#[ignore]`: the gate is the release run, and
-a guard that is skipped by default guards nothing. A debug build gives the same
-four hashes in about the same time (76 seconds, `cargo test -p isostate-core
---test golden_game`), since the core is optimised in the debug profile too
-(`Cargo.toml`).
+The test makes three runs of the game at once, two of them to 2050, which
+costs about one run to 2050's time on a machine with cores to spare: 83 to 86
+seconds in the dev profile on 19 November 2026, with another helper's tests
+running beside it (a run to 1900 alone took 52 to 76 seconds before the second
+era was added). It is in the default run, like the port's, and not behind
+`#[ignore]`: a guard that is skipped by default guards nothing. The dev
+profile and the release one give the same eight hashes, since the core is
+optimised in the dev profile too (`Cargo.toml`).
 
 What it cannot see: another seed, another number of families, a player's
 orders (`tests/families.rs` and the viewer's `live_tests.rs` hold those), and
@@ -243,6 +267,34 @@ explain is the order of the month: a hook moved across a read or a write of
 another fails it without saying why. That order is written down in the
 comment above `econ::step_month`: what is read from last month, the order the
 four takers of hands come in, and where chance enters.
+
+## Running the tests
+
+```bash
+python crates/isostate-core/run_tests.py
+```
+
+runs the core's tests: the same programs `cargo test -p isostate-core` builds
+(the library's own tests, the command's, one for each file in `tests/`, and
+the doc tests), built by cargo in the same way, but all at the same time, each
+in the package's folder as cargo runs it. It prints a line for each program as
+it finishes, the whole output of any that failed, and a last line counting the
+tests; it ends with a non-zero exit code when the build or any program failed.
+Anything after `--` is handed to every program (`-- --nocapture`, or a test's
+name to run only the tests whose names contain it).
+
+It builds in the dev profile, which optimises the core as the release one
+does (`Cargo.toml`) and adds debug assertions and overflow checks: more
+checking, not less, and the same golden hashes. Its build is the one the
+viewer's build makes anyway, so after a change to the core it is seconds, not
+the release profile's five to seven minutes of one-core link-time
+optimisation. `--release` builds as before. On 19 November 2026, on the same
+shared machine, `cargo test -p isostate-core --release` took 19 minutes 30
+seconds (7 minutes 28 seconds of build, then about twelve of the programs one
+after another), and this took 5 minutes 6 seconds (95 seconds of build,
+including the core's few dependencies, then 210 seconds, about as long as the
+longest program, `tests/edits.rs`), with every test passing in both. One file
+alone is `cargo test -p isostate-core --test money`.
 
 ## The sweep
 
@@ -467,6 +519,64 @@ OUTSIDE says so in its page's first paragraph, and waits if the move was not
 meant. `last_town_founded` is shown beneath the twelve, as "also", and not
 counted: it leans with anything that changes what carriage costs. The check
 changes no run. `src/standing.rs`.
+
+**The check is a gate.** When any of the twelve is not inside, the sweep ends
+with an error (exit code 2) after it has written and printed everything, and
+its last lines name each such fact: the setting, its mean, the band (the
+reference's least and greatest across its islands) and each island that lies
+outside the band, with its value:
+
+```text
+the standing check failed: 3 of the twelve not inside
+  pop_1850, transition.z_half=2: mean 336,572 is outside the band [347,461 .. 387,834] of game rules, 6 families across its 8 islands (OUTSIDE: the islands overlap the reference's); outside the band: island 1 at 341,554, island 2 at 325,388, ...
+  pop_1900, transition.z_half=2: mean 422,312 is outside the band [637,660 .. 710,550] of game rules, 6 families across its 8 islands (moved: every island apart from the reference's); outside the band: island 1 at 390,776, ...
+  urban_share_1900, transition.z_half=2: mean 0.501 is outside the band [0.457 .. 0.489] of game rules, 6 families across its 8 islands (OUTSIDE: the islands overlap the reference's); outside the band: island 1 at 0.509, island 4 at 0.517, ...
+```
+
+(That is the gate below with `--set transition.z_half=2`, half the demographic
+transition's income, set against main's sweep on 19 November 2026; it ended
+with exit code 2.)
+
+A fact with no value on either side fails too, since it cannot be set against
+its band. Run on to 2050 against main's sweep, the check guards the played
+century at every landing, and the run to 2050 is checked by the same command
+(no run may fail, and money is checked every month to 2050):
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --standing --compare MAIN_SWEEP --out DIR --quiet
+```
+
+The eight islands to 2050 took 88 seconds on 19 November 2026. Main's sweep
+may end in 1900 or in 2050: the twelve are facts of 1900 and before, which a
+run to 2050 has under the same names and with the same values (the game's
+golden test holds, for seed 7, that the run to 2050 passes through the run to
+1900). `last_town_founded`, shown beneath them and not counted, is not like
+for like between a run to 2050 and one to 1900, and reads OUTSIDE there.
+
+**Growth after 1900.** Beside the twelve the check reports what the design
+asks of the century after 1900, from facts every run to 2050 has, island by
+island, and then their mean across the islands:
+
+| what is asked | read as | met when the mean is |
+|---|---|---|
+| the chained real wage grows 1 per cent a year or more from 1900 to 1970 | `(real_wage_chained_1970 / real_wage_chained_1900)^(1/70) - 1`, per cent a year | 1.00 or more |
+| and is no lower in 2050 than in 1970 | `real_wage_chained_2050 / real_wage_chained_1970` | 1.00 or more |
+| the share of hands on the land is lower in 2050 than in 1900 | `farm_share_2050 - farm_share_1900` | below 0 |
+
+The first two rows are one fact, the wage's; the third is the land's. The
+chained real wage is `real_wage_chained` ([engel.md](engel.md)): the mean wage
+over the chained Fisher cost of living, both kept by the month, each month's
+link pricing what households bought in that month and the one before, so that
+the basket follows what is bought; its facts `real_wage_chained_Y_vs_1750` are
+the year's mean against 1750's, and a run to 2050 has them every ten years
+after 1900 (`facts::marks`). The share of hands on the land is `farm_share_Y`,
+the land's share of employment.
+
+They are known to be missed today, so by default they are printed with their
+values and do not fail the sweep, whatever the twelve do. `--growth` makes a
+miss fail it, for the stage that mends them; with `--growth` a run that ends
+before 2050, and so has no value, fails too. `--growth` needs `--standing`.
+
 
 ### The facts
 
@@ -693,8 +803,11 @@ One line each as they arrive: the name, its page, its switch.
   `data/game.toml` up to a stage. Stage 1 is the building trades, sawn timber,
   lime, beer, pottery, town gas, soap, glass and paper, with the later
   generations of iron, tools, machinery and bricks; where a market is short,
-  plant on order waits behind the day's trade. [tree.md](tree.md),
-  `tree.stage` (0 is none of it).
+  plant on order waits behind the day's trade. Stage 6, the game's, adds the
+  first content after 1900: electricity, which is made in each town that
+  wants it and does not keep, and electrical goods, with their two works.
+  [tree.md](tree.md), `tree.stage` (0 is none of it; 1 is the island before
+  the content after 1900).
 - **accounts**: books that say who makes, moves, buys and earns what: a
   year's books for every town and every works, and the island's income
   account (work's share, the owners' shares, ownership in years of wages).

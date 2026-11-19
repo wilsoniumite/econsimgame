@@ -1086,8 +1086,9 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     }
 
     // ---- households, landlords and families; the markets
-    // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree)
-    let decay = crate::tree::decay(C, P);
+    // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree,
+    // and all that is left of a good that does not keep, which is then spoiled)
+    let decay = crate::tree::month_loss(C, P);
     for t in (0..T).filter(|&t| st.town_active[t]) {
         // families spend through their seat's landlords: their part of what the
         // landlords bought is their part of the budget (`families::pay_spending`)
@@ -1175,6 +1176,13 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     st.acct = b;
 }
 
+/// The worse of two balances, where a value that is not a finite number is the
+/// worst of all. `f64::max` passes over a NaN, so a check kept with it would read
+/// a NaN as balanced; here it counts as infinite, and stays so.
+fn worse(a: f64, b: f64) -> f64 {
+    if !(a.is_finite() && b.is_finite()) { f64::INFINITY } else { a.max(b) }
+}
+
 /// Every works' dividend, before the families take theirs out of the list.
 pub fn note_dividends(b: &mut Books, div: &[f64]) {
     if b.on {
@@ -1236,7 +1244,7 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
             sum += v;
         }
         // the kinds must add up to what the households are about to be paid
-        err = err.max((sum - hh_inc[t]).abs() / hh_inc[t].abs().max(1.0));
+        err = worse(err, (sum - hh_inc[t]).abs() / hh_inc[t].abs().max(1.0));
         a.hh_in += hh_inc[t];
         a.towns[t * KT + T_MERCH_NET] += merch[t];
         // the month's closing price, of every slot: one with no town yet stands at
@@ -1283,12 +1291,12 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
         a.lords_div += d;
         lords - d
     };
-    err = err.max((m_rents - m_fam_rents - lords_rent - fund_in).abs() / m_rents.abs().max(1.0));
+    err = worse(err, (m_rents - m_fam_rents - lords_rent - fund_in).abs() / m_rents.abs().max(1.0));
     if families::active(st) {
         let got: f64 = st.families.iter().map(|f| f.month_acc).sum();
-        err = err.max((fam_div + m_fam_rents - got).abs() / got.abs().max(1.0));
+        err = worse(err, (fam_div + m_fam_rents - got).abs() / got.abs().max(1.0));
     }
-    a.income_err = a.income_err.max(err);
+    a.income_err = worse(a.income_err, err);
     a.month += 1;
     b.seconds += t0.elapsed().as_secs_f64();
     st.acct = b;
@@ -1329,7 +1337,13 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
             oversold += r[G_OVERSOLD] * r[G_PRICE];
             all_bought += bought * r[G_PRICE];
             let through = r[G_OPEN] + r[G_MADE] + r[G_RECV];
-            if through > 1e-6 && left.abs() / through > worst {
+            if !(left.is_finite() && through.is_finite()) {
+                // not a number, or infinite: the worst there can be, and the first
+                // such place is the one kept (see `worse`)
+                if worst.is_finite() {
+                    (worst, worst_at, worst_units) = (f64::INFINITY, (t, g), left);
+                }
+            } else if through > 1e-6 && left.abs() / through > worst {
                 (worst, worst_at, worst_units) = (left.abs() / through, (t, g), left);
             }
         }
@@ -1434,7 +1448,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     y.balance_goods_at = worst_at;
     y.balance_goods_units = worst_units;
     y.balance_income = a.income_err;
-    y.balance_spending = (y.income - y.spending).abs() / y.spending.abs().max(1.0);
+    y.balance_spending = worse(0.0, (y.income - y.spending).abs() / y.spending.abs().max(1.0));
     y.oversold_share = oversold / if all_bought > 0.0 { all_bought } else { f64::NAN };
 
     // ---- the headline series: the year's figure in each of its twelve months
@@ -1599,9 +1613,9 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             out.push((format!("income_{name}_{y}"), kind, at(&format!("acct_{name}"), y)));
         }
     }
-    let worst = |f: fn(&IslandYear) -> f64| st.acct.years.iter().map(f).fold(0.0, f64::max);
+    let worst = |f: fn(&IslandYear) -> f64| st.acct.years.iter().map(f).fold(0.0, worse);
     out.push(("books_goods_worst".into(), Kind::Real, worst(|y| y.balance_goods)));
-    out.push(("books_income_worst".into(), Kind::Real, worst(|y| y.balance_income.max(y.balance_spending))));
+    out.push(("books_income_worst".into(), Kind::Real, worst(|y| worse(y.balance_income, y.balance_spending))));
     out
 }
 
