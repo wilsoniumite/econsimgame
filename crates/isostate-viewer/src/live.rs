@@ -192,6 +192,8 @@ pub struct Resumed {
     pub drifted: bool,
     /// newer saves that could not be read, so that this is an earlier one
     pub passed_over: usize,
+    /// of the orders given again, the edits by hand: what a sandbox's card counts
+    pub by_hand: usize,
 }
 
 impl Resumed {
@@ -334,7 +336,8 @@ pub struct Opening {
     pub new_land: bool,
     /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
     /// family in, changed by hand. It never goes on with the island's autosave
-    /// nor writes it: with somebody at it, it is kept among the trials
+    /// nor writes it: it has a session of its own (`saves::session`), which a
+    /// plain start goes on with and which keeps it while somebody is at it
     pub sandbox: bool,
     /// the last year a new game is played to (`--to`; docs/rules/longrun.md,
     /// "A game past 1900"); None: the content's, 1900. The command line asks
@@ -350,33 +353,42 @@ pub enum Keeping {
     Named(std::path::PathBuf),
     /// in its island's autosave: a game somebody is playing
     Autosave,
-    /// in its island's trial file, apart from the game played there: somebody
-    /// is at it, but the start was not plain play. With the option that says so.
+    /// in its island's trial file, apart from the game played there: a family
+    /// game somebody is at, whose start was not plain play. With the option
+    /// that says so.
     Trial(&'static str),
+    /// in its island's sandbox session (`saves::session`): a sandbox somebody
+    /// is at, whatever its start, or one nobody is at that `--keep` asked for
+    Session,
     /// nowhere: nobody is at it
     Nowhere,
 }
 
 impl Opening {
-    /// Nothing was asked for but the game: the island's autosave, if there is
-    /// one, is gone on with. Screenshots, and the switches that ask for a game
-    /// of a certain shape or kept in a certain place, get a new one.
+    /// Nothing was asked for but the game: the island's autosave, or in a
+    /// sandbox its session, is gone on with if there is one. Screenshots, and
+    /// the switches that ask for a game of a certain shape or kept in a certain
+    /// place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.new_land && !self.shots && !self.demo && !self.sandbox && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.new_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
-    /// a start that nobody is at (pictures, a script) keeps nothing, and one
-    /// that is not plain play (years played before it opens, the demo's
-    /// orders) keeps its game among the trials, so that neither can set a
-    /// played game aside. A place that was named is the place, whatever the
-    /// start, and so is the autosave when it was asked for by name (`keep`).
+    /// a start that nobody is at (pictures, a script) keeps nothing, and a
+    /// family game's start that is not plain play (years played before it
+    /// opens, the demo's orders) keeps its game among the trials, so that
+    /// neither can set a played game aside. A sandbox somebody is at is kept in
+    /// its session whatever its start: any start but a plain one makes the
+    /// island anew, and the session there is set aside by the new one's first
+    /// save, as a new family game sets the autosave aside. A place that was
+    /// named is the place, whatever the start, and so is the autosave or the
+    /// session when it was asked for by name (`keep`).
     pub fn keeping(&self) -> Keeping {
         match &self.save {
             Some(file) => Keeping::Named(file.into()),
             // a sandbox never touches the family's saved game, whatever else was asked
-            None if self.sandbox && (self.shots || self.unattended) => Keeping::Nowhere,
-            None if self.sandbox => Keeping::Trial("--sandbox"),
+            None if self.sandbox && (self.shots || self.unattended) && !self.keep => Keeping::Nowhere,
+            None if self.sandbox => Keeping::Session,
             None if self.keep => Keeping::Autosave,
             None if self.shots || self.unattended => Keeping::Nowhere,
             None if self.advance > 0 => Keeping::Trial("--advance"),
@@ -388,8 +400,9 @@ impl Opening {
 
 impl Opening {
     /// Why `--keep` is refused, if it is: with nobody at the game it writes
-    /// an autosave only in a folder that was named for it (`ISOSTATE_SAVES`),
-    /// never in the player's own, where the games somebody played are kept.
+    /// an autosave (or a sandbox's session) only in a folder that was named
+    /// for it (`ISOSTATE_SAVES`), never in the player's own, where the games
+    /// somebody played are kept.
     pub fn keep_refused(&self, folder_named: bool) -> Option<String> {
         (self.keep && self.save.is_none() && (self.shots || self.unattended) && !folder_named).then(|| {
             "--keep with nobody at the game (a script, pictures) writes an autosave only in a folder named for it, so set ISOSTATE_SAVES to that folder or name a file with --save".to_string()
@@ -435,8 +448,9 @@ fn take_place(o: &Opening, seed: u64, families: usize, on_new_land: bool) -> Res
             Err(saves::Held::ByAnother) => Err(second(&path)),
             Err(saves::Held::Unwritable(why)) => Err(format!("a game cannot be kept in {} ({why}): name a file in a folder that can be written", path.display())),
         },
-        Keeping::Autosave => {
-            let path = saves::autosave(seed, families);
+        // (a sandbox's session is kept as the autosave is, in its own place)
+        kept @ (Keeping::Autosave | Keeping::Session) => {
+            let path = if kept == Keeping::Session { saves::session(seed, families) } else { saves::autosave(seed, families) };
             match claim(path.clone()) {
                 Ok(saver) => Ok((Some(saver), None)),
                 Err(saves::Held::ByAnother) => Err(second(&path)),
@@ -686,8 +700,8 @@ fn carried_words(s: &iso::Sim, o: &Outcome, what: &str) -> (bool, String) {
 
 /// Start a game: the island is made and its first year simulated here (and
 /// `advance` more, to start later), then the simulation moves to its own
-/// thread. With a save to go on from (one named, or the island's autosave when
-/// nothing else was asked for) its years are played again first, with the
+/// thread. With a save to go on from (one named, or the island's autosave or a
+/// sandbox's session when nothing else was asked for) its years are played again first, with the
 /// orders in it. A new game is played under the game's rules (`game_params`,
 /// `game_content`), not the port's; a saved one under the rules it names.
 pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
@@ -720,8 +734,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let from = match named {
         Some(found) => Some(found),
         None if o.plain() => {
-            // (its autosave is named for the families it has)
-            saves::read_latest(&saves::autosave(o.seed, o.families)).map(|(save, file, passed)| {
+            // (its autosave, or a sandbox's session, is named for the families it has)
+            let place = if o.sandbox { saves::session(o.seed, o.families) } else { saves::autosave(o.seed, o.families) };
+            saves::read_latest(&place).map(|(save, file, passed)| {
                 for e in &passed {
                     eprintln!("the latest save could not be read ({e}); going back to the one before it");
                 }
@@ -737,15 +752,9 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let mut game = match &from {
         Some((save, file)) => {
             let years = (save.year - save.played_under().content().start_year + 1).max(0);
-            eprintln!(
-                "going on with the {} family's game on island {} ({}), saved {} in {}: {}",
-                save.family,
-                save.seed,
-                crate::families_words(save.families),
-                save.saved,
-                save.year,
-                file.display()
-            );
+            // (a sandbox's session has a family 0 that nobody plays: it is not named)
+            let whose = if o.sandbox { "the session".to_string() } else { format!("the {} family's game", save.family) };
+            eprintln!("going on with {whose} on island {} ({}), saved {} in {}: {}", save.seed, crate::families_words(save.families), save.saved, save.year, file.display());
             if save.land {
                 eprintln!("  it was begun on the new land, and is played again there");
             }
@@ -783,6 +792,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
                 refused: loaded.refused.len(),
                 drifted: loaded.drifted,
                 passed_over,
+                by_hand: loaded.game.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).count(),
             });
             loaded.game
         }
@@ -882,6 +892,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         }
         // the autosave is first written when something happens in the game
         (Some(s), Keeping::Autosave) => eprintln!("the game is kept in {}", s.path.display()),
+        // and so is a sandbox's session
+        (Some(s), Keeping::Session) => eprintln!("the session is kept in {}", s.path.display()),
         // (a trial has said where it is kept, and a game that is not kept that it is not)
         _ => {}
     }
