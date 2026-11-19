@@ -447,19 +447,21 @@ island 7 to 1949 to the digit).
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set tasks.yield_cap=null,2 --out DIR
 ```
 
+Run again on 19 November 2026 once machines worked only when they stood:
+
 | | unset | 2 |
 |---|---|---|
-| the land's output at the ceiling, by value, 1960, 2000, 2020, 2050 | | .001, .013, .043, .142 |
-| the land's share of income, 1960, 2000, 2020, 2050 | .171, .163, .161, .184 | .171, .157, .171, .307 |
-| the wage over the price of the land's goods (the gauges' fork), 1960, 2000, 2020, 2050 | 6.68, 5.58, 4.73, 3.83 | 6.67, 5.54, 4.44, 2.61 |
-| work's share, gross, 2000, 2020, 2050 | .587, .559, .577 | .581, .534, .434 |
-| hands on the land, 2000, 2050 | .355, .465 | .336, .346 |
-| what a wage buys (chained), 2000, 2050 | 5.72, 3.45 | 5.65, 2.57 |
+| the land's output at the ceiling, by value, 1960, 2000, 2020, 2050 | | .0002, .009, .044, .143 |
+| the land's share of income, 1960, 2000, 2020, 2050 | .173, .163, .158, .183 | .174, .160, .174, .307 |
+| the wage over the price of the land's goods (the gauges' fork), 1960, 2000, 2020, 2050 | 6.68, 5.61, 4.72, 3.84 | 6.68, 5.59, 4.45, 2.61 |
+| work's share, gross, 2000, 2020, 2050 | .586, .549, .578 | .595, .537, .431 |
+| hands on the land, 2000, 2050 | .355, .465 | .351, .345 |
+| what a wage buys (chained), 2000, 2050 | 5.77, 3.45 | 5.74, 2.55 |
 
 The island's yields grow slowly after 1950 (no machine reaches the fields,
 and nothing new makes ground yield more), so twice the best year before
 1950 is far off for decades: a
-thousandth of the land's output stands at it in 1960 and a hundredth in
+five-thousandth of the land's output stands at it in 1960 and a hundredth in
 2000. It bites as the people double after 2000: by 2050 a seventh of the
 land's output is at the ceiling, the land takes 0.31 of income where it
 took 0.18, work 0.43 where it took 0.58, and the wage buys two thirds of the
@@ -477,22 +479,24 @@ further than the prices of 1950 would take them.
 isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 1980 --set tasks.freeze_from=null,1950 --out DIR
 ```
 
+Run again on 19 November 2026 once machines worked only when they stood:
+
 | | growing | held from 1950 |
 |---|---|---|
-| the works' hauling done by machine, 1950, 1960, 1970, 1980 | .441, .492, .540, .574 | .441, .464, .461, .456 |
-| the pits' hauling done by machine, 1950, 1980 | .454, .596 | .454, .479 |
-| work's share, net of wear, 1950, 1960, 1970, 1980 | .675, .672, .666, .668 | .675, .672, .669, .664 |
-| work's share, gross, 1950, 1980 | .650, .632 | .650, .629 |
-| investment's share of spending, 1950, 1960, 1970, 1980 | .048, .044, .064, .057 | .048, .039, .060, .058 |
+| the works' hauling done by machine, 1950, 1960, 1970, 1980 | .439, .488, .539, .570 | .439, .462, .460, .451 |
+| the pits' hauling done by machine, 1950, 1980 | .451, .591 | .451, .472 |
+| work's share, net of wear, 1950, 1960, 1970, 1980 | .677, .675, .672, .665 | .677, .674, .670, .665 |
+| work's share, gross, 1950, 1980 | .654, .628 | .654, .631 |
+| investment's share of spending, 1950, 1960, 1970, 1980 | .041, .043, .050, .061 | .041, .042, .042, .056 |
 
 From 1950 to 1980 the machines' share of hauling rises by 0.13 in the works
-and 0.14 at the pits in one arm and stays put in the other, and work's share
-net of wear falls by 0.006 in the first and 0.010 in the second. The frozen
-arm's share does not come back: whatever lowered it from 1950 was not the
-machine. Investment's share of spending rose by about a point in both arms,
-which on the long run's own measure (a point of investment takes about a
-point off work's measured share) is about the size of the fall; so it was
-investment, and the island going on, not the margin.
+and 0.14 at the pits in one arm and slips a little in the other, and work's
+share net of wear falls by 0.012 in both. The frozen arm's share falls as
+far: whatever lowered it from 1950 was not the machine. Investment's share
+of spending rose by two points in the growing arm and one and a half in the
+frozen one, which on the long run's own measure (a point of investment
+takes about a point off work's measured share) is about the size of the
+fall; so it was investment, and the island going on, not the margin.
 
 ## The numbers
 
