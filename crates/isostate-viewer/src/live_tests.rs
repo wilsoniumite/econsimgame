@@ -475,6 +475,53 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
 }
 
 #[test]
+fn an_edit_by_hand_goes_through_the_thread_and_comes_back_from_the_save() {
+    // The sandbox (docs/designs/sandbox.md, section 6.1): an edit is sent to the
+    // game's thread as the tray sends it, is answered with the line it wrote in
+    // the island's news, and is kept in the save like any order. Played under
+    // the game's rules with six families, nobody at the first.
+    let dir = saves::test_dir("by-hand-test");
+    let file = dir.join("game.json");
+    let name = file.to_string_lossy().into_owned();
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, save: Some(name.clone()), ..default() });
+    a.step();
+    a.step();
+    for _ in 0..4 {
+        assert!(!a.month());
+    }
+    // April 1753: the rest of the year's crop on the whole island is cut by three tenths
+    assert!(a.order("by_hand", Cmd::ByHand(isostate_core::edits::Edit::Harvest { town: None, factor: 0.7 })), "{}", a.said);
+    assert!(a.said.starts_with("By hand: the rest of 1753's harvest on the whole island"), "{}", a.said);
+    // and the households' money of the first town doubled
+    let town = (0..a.r.n_towns).find(|&t| a.r.town_active[(a.r.filled - 1) * a.r.n_towns + t] != 0).unwrap();
+    assert!(a.order("by_hand", Cmd::ByHand(isostate_core::edits::Edit::Money { purse: isostate_core::edits::Purse::Households, town: Some(town), factor: 2.0 })));
+    assert!(a.said.starts_with(&format!("By hand: households' money in {}", a.r.header.towns[town].name)), "{}", a.said);
+    // a factor out of bounds is refused, and nothing is kept of it
+    assert!(!a.order("by_hand", Cmd::ByHand(isostate_core::edits::Edit::People { town, factor: 50.0 })));
+    // the edits are kept at once, dated in the month they were made
+    let saved = saves::read(&file).unwrap();
+    let edits: Vec<&isostate_core::save::Given> = saved.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).collect();
+    assert_eq!(edits.len(), 2);
+    assert!(edits.iter().all(|g| (g.year, g.month) == (1752, 4)), "{:?}", edits.iter().map(|g| (g.year, g.month)).collect::<Vec<_>>());
+    // a year on, the save holds both and loads with no drift, the same island
+    a.step();
+    a.step();
+    assert_eq!(a.year(), 1754);
+    // (the thread writes the year's save after it has sent the year)
+    let kept = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| s.year == 1754));
+    assert!(kept, "{}", saves::gave_up(120.0, "the year was to be saved"));
+    let saved = saves::read(&file).unwrap();
+    assert_eq!(saved.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).count(), 2);
+    let b = Table::open(&Opening { load: Some(name), shots: true, ..default() });
+    let back = b.live.resumed.as_ref().expect("the game is gone on with");
+    assert!(!back.drifted && back.refused == 0, "{back:?}");
+    same(&a, &b, "a year after two edits by hand");
+    drop(a);
+    drop(b);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
     // The books' series (the shares of income, ownership in years of wages)
     // have one figure for a year, known when the year's books close: after

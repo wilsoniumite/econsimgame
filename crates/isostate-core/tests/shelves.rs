@@ -311,7 +311,8 @@ fn a_district_that_goes_and_comes_back() {
 /// true total, docs/rules/money.md, gives the island another history, in which
 /// Penfell's winter does not come, so both runs are played with that rule off,
 /// and for the same reason with the works' two mends off, docs/rules/works.md,
-/// parts G and H.)
+/// parts G and H, and with the production tree off, docs/rules/tree.md, under
+/// which no town goes short after taking a district on this island even without the rule.)
 #[test]
 fn no_hungry_january_after_a_town_takes_a_district() {
     let run = |shelves: bool| {
@@ -322,6 +323,7 @@ fn no_hungry_january_after_a_town_takes_a_district() {
         P.money.true_total = false;
         P.works.spread_first = false;
         P.works.keep_order = false;
+        P.tree = Default::default();
         P.people.shelves_go = shelves;
         let mut s = sim::start(&P, game_content());
         let T = s.st.T_max;

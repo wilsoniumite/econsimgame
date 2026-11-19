@@ -534,4 +534,9 @@ pub struct State {
     // ---------------- roads (a probe, docs/probes/dx-roads.md; empty while `roads` is off)
     /// Who pays for the roads: the trusts, the bridges built, the menders.
     pub rd: crate::roads::RoadState,
+
+    // ---------------- the hand (docs/designs/sandbox.md; nothing while no edit is made)
+    /// What edits by hand have made and unmade: the money in it is added to
+    /// the right side of the monthly money check (`sim::run_month`).
+    pub by_hand: crate::edits::Ledger,
 }

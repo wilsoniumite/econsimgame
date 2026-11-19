@@ -26,7 +26,7 @@ use isostate_core::save::{Done, Game, Order, Outcome};
 use isostate_core::{self as iso, FamilyReport, LiveCursor, LiveMonth, LiveStatic, LiveYear, Prospect, SiteOption};
 
 use crate::family::FamilyView;
-use crate::replay::{self, Firm, Good, Header, Meta, Method, Replay, Town};
+use crate::replay::{self, Firm, Good, GoodKind, Header, Meta, Method, Replay, Town};
 use crate::saves::{self, Saver};
 
 /// The player's family is always the first.
@@ -51,6 +51,9 @@ pub enum Cmd {
     Cancel(usize),
     /// the clock has stopped: write the save now if months have gone by since the last
     Keep,
+    /// an edit by hand (the sandbox, docs/designs/sandbox.md): carried out at
+    /// once in any month, and answered with the line it wrote in the news
+    ByHand(isostate_core::edits::Edit),
 }
 
 /// What waits for the year's end, as the interface shows it.
@@ -306,6 +309,10 @@ pub struct Opening {
     /// the game's rules do not switch on yet: a preview, kept only in a file
     /// that is named
     pub new_land: bool,
+    /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
+    /// family in, changed by hand. It never goes on with the island's autosave
+    /// nor writes it: with somebody at it, it is kept among the trials
+    pub sandbox: bool,
 }
 
 /// Where a game is kept as it is played.
@@ -327,7 +334,7 @@ impl Opening {
     /// one, is gone on with. Screenshots, and the switches that ask for a game
     /// of a certain shape or kept in a certain place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.new_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.new_land && !self.shots && !self.demo && !self.sandbox && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
@@ -339,6 +346,9 @@ impl Opening {
     pub fn keeping(&self) -> Keeping {
         match &self.save {
             Some(file) => Keeping::Named(file.into()),
+            // a sandbox never touches the family's saved game, whatever else was asked
+            None if self.sandbox && (self.shots || self.unattended) => Keeping::Nowhere,
+            None if self.sandbox => Keeping::Trial("--sandbox"),
             None if self.keep => Keeping::Autosave,
             None if self.shots || self.unattended => Keeping::Nowhere,
             None if self.advance > 0 => Keeping::Trial("--advance"),
@@ -436,6 +446,45 @@ fn take_place(o: &Opening, seed: u64, families: usize, on_new_land: bool) -> Res
     }
 }
 
+/// What kind each good is, as the content has it, for the three heads the
+/// Markets panel lists the goods under. From the land: the good of a land
+/// sector (grain, coal). For the household: made in a works, worth to a
+/// household a full unit or more of some need (the content rates a makeshift
+/// below one: iron for an implement, raw stone for shelter), and the plant of
+/// no works (which leaves tools, steel and machinery with the works). For the
+/// works: every other good.
+pub fn good_kinds(c: &iso::content::Content) -> Vec<GoodKind> {
+    (0..c.G)
+        .map(|g| {
+            if c.sector_good.contains(&g) {
+                GoodKind::Land
+            } else if (0..c.S).any(|s| c.props[(g, s)] >= 1.0) && !(0..c.M).any(|m| c.m_cap[(m, g)] > 0.0) {
+                GoodKind::Household
+            } else {
+                GoodKind::Works
+            }
+        })
+        .collect()
+}
+
+/// The goods each family trade yields, by `Group::index`: what the works of
+/// its methods make and what the land sectors it runs give, in the content's
+/// order. A trade's name alone no longer says it: brewing is with the
+/// estates, and soap and gas with coal.
+pub fn trade_goods(c: &iso::content::Content) -> Vec<Vec<usize>> {
+    Group::ALL
+        .iter()
+        .map(|&group| {
+            let of_method = (0..c.M).filter(|&m| Group::of_method(c, m) == Some(group)).map(|m| c.method_out[m]);
+            let of_sector = (0..c.NS).filter(|&s| Group::of_sector(c, s) == Some(group)).map(|s| c.sector_good[s]);
+            let mut goods: Vec<usize> = of_sector.chain(of_method).collect();
+            goods.sort_unstable();
+            goods.dedup();
+            goods
+        })
+        .collect()
+}
+
 /// The island as the viewer holds it, filled in year by year.
 struct Board {
     cursor: LiveCursor,
@@ -447,7 +496,12 @@ impl Board {
     fn new(sim: &iso::Sim) -> Board {
         let stat = iso::live_static(&sim.st, &sim.content);
         let method_group: Vec<Option<Group>> = stat.methods.iter().map(|m| m.group).collect();
-        Board { cursor: LiveCursor::new(&sim.content), r: shell(&stat, &sim.content, sim.params.seed), view: FamilyView { method_group, ..default() } }
+        // what the content says of its goods and its trades, for the Markets panel and the decisions
+        let mut r = shell(&stat, &sim.content, sim.params.seed);
+        for (g, kind) in r.header.goods.iter_mut().zip(good_kinds(&sim.content)) {
+            g.kind = Some(kind);
+        }
+        Board { cursor: LiveCursor::new(&sim.content), r, view: FamilyView { method_group, trade_goods: trade_goods(&sim.content), ..default() } }
     }
 
     /// Take in the year the simulation has just played, with its twelve months.
@@ -549,6 +603,26 @@ pub fn order_words(order: &Order, r: &Replay, rep: Option<&FamilyReport>) -> Str
             format!("{} at {} {does}", crate::family::short_group(*group), town(*t))
         }
         Order::MoveSeat { town: t } => format!("Move the seat to {}", town(*t)),
+        // (an edit never waits; this is for a list that might hold one)
+        Order::ByHand { edit } => edit_words(edit, &town),
+    }
+}
+
+/// An edit by hand in a few words, for a list.
+fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String) -> String {
+    use isostate_core::edits::{Edit, Purse};
+    let place = |t: Option<usize>, all: &str| t.map_or_else(|| all.to_string(), |t| town(t));
+    match edit {
+        Edit::Money { purse, town: t, factor } => {
+            let whose = match purse {
+                Purse::Households => "households'",
+                Purse::Landlords => "landlords'",
+                Purse::Merchants => "merchants'",
+            };
+            format!("By hand: the {whose} money in {}, times {factor}", place(*t, "every town"))
+        }
+        Edit::People { town: t, factor } => format!("By hand: {}'s people, times {factor}", town(*t)),
+        Edit::Harvest { town: t, factor } => format!("By hand: the harvest round {}, times {factor}", place(*t, "the whole island")),
     }
 }
 
@@ -564,6 +638,8 @@ fn waits_words(game: &Game, order: &Order) -> String {
         Order::Post { .. } => format!("Told. It takes effect at the end of {year}."),
         Order::Stance { .. } => format!("Told. The branch goes by it from the end of {year}."),
         Order::MoveSeat { .. } => format!("Told. The seat moves at the end of {year}."),
+        // (never: an edit is carried out at once)
+        Order::ByHand { .. } => "Done by hand.".to_string(),
     }
 }
 
@@ -927,6 +1003,7 @@ fn order_of(sim: &iso::Sim, cmd: Cmd) -> Result<Order, String> {
         Cmd::Post { member, posting } => Ok(Order::Post { member, posting }),
         Cmd::Stance { group, town, stance } => Ok(Order::Stance { group, town, stance }),
         Cmd::MoveSeat(town) => Ok(Order::MoveSeat { town }),
+        Cmd::ByHand(edit) => Ok(Order::ByHand { edit }),
     }
 }
 
@@ -1020,6 +1097,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                 let text = r.map(|(o, d)| match d {
                     Done::Founded(f) => format!("{} will open in {}.", s.st.f_name[f], s.year),
                     Done::Bought(price) => format!("The land is yours, for {}.", crate::ui::money(price as f32)),
+                    // an edit by hand is answered with the line it wrote in the island's news
+                    Done::Done if matches!(o, Order::ByHand { .. }) => s.events.last().map(|e| e.title.clone()).unwrap_or_default(),
                     Done::Done => String::new(),
                     Done::Waits => waits_words(&game, &o),
                 });
@@ -1069,6 +1148,7 @@ fn order_line(game: &Game, order: &Order) -> String {
         },
         Order::Stance { group, town: t, .. } => format!("The word to {} at {}", crate::family::short_group(*group).to_lowercase(), town(*t)),
         Order::MoveSeat { town: t } => format!("The seat's move to {}", town(*t)),
+        Order::ByHand { edit } => edit_words(edit, &town),
     }
 }
 
@@ -1089,8 +1169,8 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
     let header = Header {
         meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny },
         // (each good's bulk and price and each method's process are the run's own content's:
-        // the works' site planner lays a works out from them)
-        goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32) }).collect(),
+        // the works' site planner lays a works out from them; each good's kind is set by the caller)
+        goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), kind: None, weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32) }).collect(),
         methods: stat
             .methods
             .iter()

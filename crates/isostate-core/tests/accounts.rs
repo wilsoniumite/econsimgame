@@ -210,11 +210,13 @@ fn the_books_balance_under_the_game() {
 
 #[test]
 fn the_books_keep_up_with_the_mines_and_the_canals() {
-    // the game as it is played, to 1800 on seed 7, where canals are dug
+    // the game as it is played, to 1797 on seed 7, where canals are dug
     // (tests/canals.rs) and workings are sunk: the sinkers' pay, a working's
     // royalty split among the cells of its lease, and navvies paid two shillings
-    // on every shilling of materials all pass through the books
-    const END: i64 = 1800;
+    // on every shilling of materials all pass through the books. (It ran to 1800
+    // before the production tree; with the tree no working is begun in 1799 on
+    // this island, and one is in 1796.)
+    const END: i64 = 1797;
     let r = run(Rules::Game, &params(Rules::Game, 7, 6, END, true));
     let (st, C) = (&r.state, &r.content);
     assert!(r.params.mines.enabled && r.params.canals.enabled && r.params.canals.wages > 0.3);
@@ -742,9 +744,11 @@ fn a_copy_of_the_island_shares_the_years_put_away() {
     let before = room(&g.sim);
     assert!(before.1 >= 151 * g.sim.st.T_max * g.sim.content.G * KG, "room for every year of the run");
     // what does go with a copy is the year in progress, whose works' rows are for the works there are
-    // (a few hundred here), not for the twenty thousand there is room for, which were 11 MB of nothing
+    // (a few hundred here), not for the twenty thousand there is room for, which were 11 MB of nothing;
+    // with the production tree's 25 goods and 44 methods the year in progress is 4.3 MB on this island
+    // (it was under 3 with the port's 16 goods), so the bound is 5 MB
     let copied = g.sim.st.acct.copied_bytes();
-    assert!(copied < 3_000_000, "a copy takes {copied} bytes of the books");
+    assert!(copied < 5_000_000, "a copy takes {copied} bytes of the books");
 
     // the copies an order makes come and go, and the game's history is where it was
     let seat = g.sim.st.families[0].seat;

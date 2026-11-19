@@ -23,11 +23,19 @@
 # order paid for before a dividend); with both switches off the four of
 # stage 5b held. Held again on its check with stage 5 merged in, which
 # moves nothing.
+# Then on night/g-tree-land with main merged in (19 November 2026): all four
+# moved by the production tree's first stage, switched on under the game's
+# rules (tree.stage = 1, docs/rules/tree.md), with its thresholds fitted again
+# on the island stage 5 leaves: nine more goods, so another economy, other
+# books, other news and another run.bin. With the tree off in game_params()
+# the four before held.
 # Then on night/g-to2050-3-gauges (19 November 2026): books and run.bin
 # moved, economy and news held. The gauges (docs/rules/gauges.md) add their
 # series beside the books' and their years to the run file's header; with
 # the gauges switched off the four above held.
-economy  0xf10bff35a0766927
-books    0xeb3fc2fcc2302be8
-news     0x6de2e12697026f85
-run.bin  0x649dc44451d2c4ee
+# Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
+# the hashes are taken again on the merged tree, below.
+economy  0xa0b778ca0b962b19
+books    0x364288124d7f0e20
+news     0xdfaf581760b17c8f
+run.bin  0x1327718d82104e0c

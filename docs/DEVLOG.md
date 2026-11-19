@@ -2,6 +2,12 @@
 
 Working notes, newest first. The plan lives in PLAN.md; this is what happened and what is in flight.
 
+## 2026-11-19: what landed
+
+**The sandbox, stage 1: the hand and Run on.** `--sandbox` opens a game where nobody plays a family. There is no welcome, no decision card and no end card. A tray under the clock holds Look, Money, People and Harvest, and each tool lists its choices on chips with one line saying what a click will do. With a tool in hand, a click on the map in the present changes the island between two months. It is a saved order like any other, booked in a ledger that the money check reads, and the line it writes in the news goes up as a toast. Cutting the 1791 harvest to 71% brought a grain shortage and output down 7.9%. Run on plays 1, 10 or 25 years and stops at January, at about three years a second. Both golden tests pass unchanged, and the sweep moves nothing.
+
+**The production tree lands, on under the game's rules.** Stage 1 of the tree (25 goods, 44 methods) and its panels were merged with main after stage 5. One mend: the merchants' markup now reads each good's decay from the tree. Two passes of the fitter retuned the thresholds by a tenth or less, and the four game golden hashes were anchored again. On eight islands in 1900, against main: 24 of 25 goods are made; the towns' share is 0.457 for 0.412; the real wage is 3.23 for 2.57; there are 1,128 works for 735; population is 691,385 for 735,871; 13 card aims are met for 10. Under the port's rules the tree stays off, and with tree.stage=0 no fact differs from main. A short dated paragraph in production-tree.md section 17.1 records how it lands.
+
 ## 2026-11-12: landing what the day before left
 
 The usage limit ran out twice on the 11th: at about five in the afternoon for three helpers, and before seven for all sixteen. Each had been told to commit as it went, so little was lost. Four trees held uncommitted work, which was saved as commits on their branches; two merges caught half-way were dropped, to be begun again; and where a reviewer had been cut off, its commits were folded into the branch it was reviewing so that a fresh reviewer sees all of it. Stella reset the limit in the morning. The order since is to land what was finished before starting anything new, each piece proved on a trial merge, merged, and pushed in the same step.
