@@ -1056,6 +1056,7 @@ fn main() {
         .add_plugins(sandbox::plugin)
         .add_plugins(hand_tab::plugin)
         .add_plugins(inspector::plugin)
+        .add_plugins(rulebook::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)

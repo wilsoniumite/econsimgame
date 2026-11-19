@@ -46,6 +46,9 @@
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
 //!     shot:PATH       save a picture
+//!     rule:NAME=WORD  in a sandbox, press the chip WORD on the Rules tab's row
+//!                     NAME (rule:money.growth=None), opening the tab and the
+//!                     rule first if it must: many rows share None and Double
 //!
 //! and for the map views and the Markets panel:
 //!
@@ -108,6 +111,8 @@ enum Step {
     Row(String),
     Half(MarketsShow),
     Map(String),
+    /// the Rules tab's chip: a name and the word on its chip
+    Rule(String, String),
 }
 
 /// Frames a `map` step lets pass, so that a panel rebuilt after a press is there to be read.
@@ -263,6 +268,10 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
                 _ => return Err(format!("{part}: half:island or half:goods")),
             },
             "map" => Step::Map(arg.to_string()),
+            "rule" => match arg.split_once('=').map(|(n, w)| (n.trim(), w.trim())) {
+                Some((name, word)) if !name.is_empty() && !word.is_empty() => Step::Rule(name.to_string(), word.to_string()),
+                _ => return Err(format!("{part}: rule takes a name and a chip's word, as rule:money.growth=None")),
+            },
             _ => return Err(format!("{part}: not a step (see the top of script.rs)")),
         });
     }
@@ -491,6 +500,11 @@ fn print_state(world: &mut World, note: &str) {
         }
         let ticks = crate::ui::hand_ticks(world);
         println!("script:   the timeline has {ticks} tick{} of the hand", if ticks == 1 { "" } else { "s" });
+        if world.resource::<UiState>().tab == Some(ui::Tab::Rules) {
+            if let Some(line) = crate::rulebook::said(world) {
+                println!("script:   {line}");
+            }
+        }
     }
 }
 
@@ -505,6 +519,46 @@ fn said_in_one_line(texts: &[String], most: usize) -> String {
         format!("{}\u{2026}", joined.chars().take(most).collect::<String>())
     } else {
         joined
+    }
+}
+
+/// The `rule:NAME=WORD` step: the chip to press, None while the tab, the rules
+/// or the rule's numbers are still to come (the tab and the rule are opened
+/// here when they must be), or why nothing will be pressed.
+fn rule_chip(world: &mut World, name: &str, word: &str) -> Result<Option<Entity>, String> {
+    if !world.contains_resource::<crate::sandbox::Sandbox>() {
+        return Err("the Rules tab is a sandbox's".to_string());
+    }
+    if world.resource::<UiState>().tab != Some(ui::Tab::Rules) {
+        world.resource_mut::<UiState>().tab = Some(ui::Tab::Rules);
+        return Ok(None);
+    }
+    let known = world.resource::<crate::rulebook::Known>();
+    if known.entries().is_empty() {
+        return Ok(None);
+    }
+    let Some(e) = known.entry(name) else { return Err(format!("there is no rule called {name}")) };
+    let Some(o) = e.offers.iter().find(|o| o.word.eq_ignore_ascii_case(word)) else {
+        let words: Vec<&str> = e.offers.iter().map(|o| o.word.as_str()).collect();
+        return Err(if words.is_empty() { format!("{name} offers nothing{}", e.fixed.as_ref().map_or(String::new(), |f| format!(": {f}"))) } else { format!("{name} offers {}", words.join(", ")) });
+    };
+    if crate::rulebook::same(&o.value, &e.value) {
+        return Err(format!("{name} is at {} already", o.word));
+    }
+    if let Some(why) = &o.refused {
+        return Err(format!("not drawn, since an edit would be refused: {why}"));
+    }
+    let (rule, open) = (e.rule.clone(), known.open().map(str::to_string));
+    match find_marked::<crate::rulebook::RuleChip>(world, &format!("rule:{name}={word}"), |c| c.name == name && c.word.eq_ignore_ascii_case(word)) {
+        Ok(chip) => Ok(Some(chip)),
+        Err(_) => {
+            // its rule is not open: open it, and the chip comes when the tab is drawn again
+            if open.as_deref() != Some(rule.as_str()) {
+                world.resource_mut::<crate::rulebook::Known>().open_rule(&rule);
+                world.resource_mut::<UiState>().dirty += 1;
+            }
+            Ok(None)
+        }
     }
 }
 
@@ -928,6 +982,29 @@ fn step(world: &mut World, sc: &mut Script) {
                     println!("script:   trees: {shown} of {all} meshes showing");
                 }
             }
+            Step::Rule(name, word) => {
+                if !sc.begun {
+                    sc.begun = true;
+                    sc.until = now + 10.0;
+                }
+                match rule_chip(world, &name, &word) {
+                    Ok(Some(e)) => {
+                        press(world, sc, e);
+                        frame = true;
+                    }
+                    // the tab, the rules or the rule's numbers are still to come
+                    Ok(None) => {
+                        done = now >= sc.until;
+                        if done {
+                            println!("script: no click: rule:{name}={word}: the chip did not come in ten seconds");
+                        }
+                    }
+                    Err(why) => {
+                        println!("script: no click: rule:{name}={word}: {why}");
+                        frame = true;
+                    }
+                }
+            }
             Step::Shot(path) => {
                 if !sc.begun {
                     sc.begun = true;
@@ -1008,5 +1085,14 @@ mod tests {
         }
         assert!(check("wait:6;goto:1800;settle").is_ok());
         assert!(check("goto:next").is_err());
+    }
+
+    #[test]
+    fn rule_takes_a_name_and_a_chips_word() {
+        assert_eq!(parse("rule:money.growth=None;rule: hurdle = Half again").unwrap(), [Step::Rule("money.growth".into(), "None".into()), Step::Rule("hurdle".into(), "Half again".into())]);
+        for bad in ["rule", "rule:", "rule:money.growth", "rule:=None", "rule:money.growth="] {
+            assert_eq!(parse(bad).err().unwrap(), format!("{bad}: rule takes a name and a chip's word, as rule:money.growth=None"));
+        }
+        assert!(check("tab:rules;rule:money.growth=None;settle").is_ok());
     }
 }

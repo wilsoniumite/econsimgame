@@ -121,6 +121,15 @@ impl Table {
         }
     }
 
+    /// The rules as they stand, asked as the sandbox's Rules tab asks.
+    fn rules(&self) -> RulesNow {
+        self.live.send(Cmd::Rules);
+        match self.wait() {
+            Msg::Rules(now) => *now,
+            _ => panic!("the rules were asked for"),
+        }
+    }
+
     fn me(&self) -> FamilyRow {
         self.view.player().expect("there is a player").clone()
     }
@@ -594,6 +603,41 @@ fn the_thread_tells_of_a_thing_what_a_game_played_to_the_same_month_tells() {
         assert_eq!(row(&before, "Money and prices", purse), row(&after, "Money and prices", purse));
     }
     assert_eq!(row(&a.ask(Thing::Island).unwrap(), "By hand", "edits carried out"), "1");
+}
+
+#[test]
+fn the_thread_tells_the_rules_and_a_rule_set_by_hand_is_in_its_next_answer() {
+    // The sandbox's Rules tab (docs/designs/sandbox.md, 4.6 and 6.6): the
+    // rules are asked for over the channel and come back walked
+    // (`isostate_core::rulebook`), with an entry for every pinned name; after
+    // money.growth is set to nothing by hand, the next answer has it at
+    // nothing, differing from the game's. On island 7 with six families under
+    // the game's rules as they stand: it asks for no history beyond the rule
+    // of money's issue being there to set (`money.growth`, whose game value
+    // it reads from the game's rules rather than writing down).
+    use isostate_core::edits::Edit;
+    use isostate_core::rulebook::PINNED;
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 3, ..default() });
+    assert!(!a.month());
+    let before = a.rules();
+    for name in PINNED {
+        assert!(before.entries.iter().any(|e| e.name == name), "{name} is pinned and not in the answer");
+    }
+    assert!(!before.unfound.is_empty());
+    let growth = |now: &RulesNow| now.entries.iter().find(|e| e.name == "money.growth").cloned().unwrap();
+    let game = isostate_core::params::game_params().money.growth;
+    assert_eq!(growth(&before).value.as_f64(), Some(game));
+    assert!(a.order("by_hand", Cmd::ByHand(Edit::Rule { name: "money.growth".into(), value: serde_json::json!(0) })), "{}", a.said);
+    assert!(a.said.starts_with("By hand"), "{}", a.said);
+    let after = growth(&a.rules());
+    assert_eq!(after.value.as_f64(), Some(0.0));
+    assert_eq!(after.game.as_f64(), Some(game));
+    assert_ne!(after.value.as_f64(), after.game.as_f64(), "money.growth differs from the game's");
+    // (and the walk offers it back: As set, the game's figure, is not refused)
+    assert!(after.offers.iter().any(|o| o.word == "As set" && o.refused.is_none()));
+    // a month on it still stands
+    assert!(!a.month());
+    assert_eq!(growth(&a.rules()).value.as_f64(), Some(0.0));
 }
 
 #[test]
