@@ -911,9 +911,9 @@ One line each as they arrive: the name, its page, its switch.
   `tasks.enabled`, `tasks.land`.
 - **computing** (a thin slice of the run to 2050): office computing, machines
   that reckon, take clerks' tasks in the works from the easiest, found from
-  1955 on the electrical goods the island has made, made of electrical goods
-  and run on electricity, a twentieth better each year. No computing good
-  stands behind it yet. [computing.md](computing.md), `tasks.computing`.
+  1960 on an island that has made 5.4 electrical goods a head, made of
+  electrical goods and run on electricity, a twentieth better each year. No
+  computing good stands behind it yet. [computing.md](computing.md), `tasks.computing`.
 - **woods**: managed woodland, an invention of the tree's stage 6 found from
   1895 and spreading as every invention does, grows the woods back three times
   as fast where it is known, so that the island no longer runs out of timber

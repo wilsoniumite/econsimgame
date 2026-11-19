@@ -16,7 +16,9 @@
 # game's golden test").
 #
 # Taken: 1901-2050: office computing (tasks.computing), machines that reckon
-# taking clerks' tasks in the works from 1955; the played century held
+# taking clerks' tasks in the works (found in 1960 on this island); the played
+# century held. Held again when its find became a floor read per head: island
+# 7 still finds it in 1960, so nothing moved
 1750-1900 economy  0x7a0154d970baabc5
 1750-1900 books    0x6eb41e73d1a3bad0
 1750-1900 news     0xdd7f28bb38e5f1c9

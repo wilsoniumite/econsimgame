@@ -349,7 +349,9 @@ scale = 0.96
 # (0.93 to 1.15 million people in 1959) but came to electrical goods 35 years apart (island 5 first made
 # them in 1868, island 14 in 1904), so a high threshold on their own making, by head or in all, found it
 # from 1960 to 1992 (at 10.5 million made) or to 1996 (at island 7's 10.90 a head). At 5.4 a head, islands
-# 1 and 3 find it about 1967, island 8 about 1961 and the other five of the first eight in 1960.
+# 1 and 3 find it in 1967 and the other six of the first eight in 1960 (islands 9 to 16: 11 in 1967, 14
+# in 1965, the rest in 1960). The refit below was read with the earlier, later finds; at 1.10 the towns'
+# target in the year found is now 0.249 on the mean of islands 1 to 8 (0.242 to 0.255).
 [[use]]
 name = "office_computing"
 class = "clerk"
