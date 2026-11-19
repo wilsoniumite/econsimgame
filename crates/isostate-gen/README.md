@@ -526,9 +526,11 @@ and the tests take their processes from a table of their own
   louvres along its ridge, and the engine hall before it with tall arched
   windows, a great window in its gable, doors for a boiler and a lantern;
   one set to the standard size, three at four times it, seven at twenty; a
-  switch house by the gate, and the coal in heaps down the side. Founded from
-  1930 (`power::GREAT_FROM`) at five times the standard size or more
-  (`power::GREAT`), the great class: fewer, longer sets with a turbine hall of
+  switch house by the gate, and the coal in heaps down the side. Built from
+  1930 (`power::GREAT_FROM`) when the whole station stood at five times the
+  standard size or more (`power::GREAT`; on a plot, the size the station had
+  reached at the stage, `Ctx::whole`, not the smaller size its stage's
+  buildings are drawn at), the great class: fewer, longer sets with a turbine hall of
   concrete glazed to its eaves under a low roof, a tall boiler house, one
   very tall chimney (two from forty times the size), the cooling towers in a
   column or two at the right of the yard (one at five times the size, two at

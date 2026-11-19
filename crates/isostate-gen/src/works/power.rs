@@ -9,6 +9,8 @@ use crate::colour::shade;
 /// founded before it keeps the brick hall at any size (and a works on its
 /// plot is drawn stage by stage, each in the style of its own year, so a
 /// brick station of 1900 enlarged in 1950 has its towers beside the old hall).
+/// The size is the whole station's when the stage was built (`Ctx::whole`),
+/// not the size its stage's buildings are drawn at, which is much less.
 pub(super) const GREAT_FROM: i32 = 1930;
 pub(super) const GREAT: f32 = 5.0;
 
@@ -23,7 +25,7 @@ pub fn power_station(c: &mut Ctx) {
     let (g, pal) = (c.g, c.pal);
     c.ground(*pal.ground.yard_cinders, false);
     c.wall(c.yard_wall(), 0.008, 0.026 * g);
-    if c.w.founded >= GREAT_FROM && c.w.size >= GREAT {
+    if c.w.founded >= GREAT_FROM && c.whole >= GREAT {
         concrete(c);
     } else {
         brick(c);

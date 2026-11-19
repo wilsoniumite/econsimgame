@@ -152,6 +152,11 @@ pub(super) struct Ctx<'a, 's> {
     pub planned: bool,
     /// how weathered it is by its age, in steps from 0 (new) to 2 (two generations old)
     pub worn: f32,
+    /// the size the whole works had reached when this was built: its own size,
+    /// except in a part of a planned works, which is drawn at the size of the
+    /// ground its stage added (`site::stage_size`), and a kind whose look goes
+    /// by how big the works is as a whole (a great power station) reads this
+    pub whole: f32,
     /// the ground and the wall a kind asked for while it was a part of a plan
     pub asked_ground: Option<Rgba>,
     pub asked_wall: Option<(Rgba, f32)>,
@@ -166,7 +171,7 @@ pub(super) struct Ctx<'a, 's> {
 impl<'a, 's> Ctx<'a, 's> {
     pub fn new(solid: &'a mut MeshBuf, smoke: &'a mut MeshBuf, flat: &'a mut MeshBuf, site: &'a Site<'s>, w: &Works, pal: &'a Palette) -> Self {
         let (fw, fd) = super::footprint(w.kind, w.size);
-        Ctx { solid, smoke, flat, site, pal, w: *w, hw: fw * 0.5, hd: fd * 0.5, g: super::grain(w.size), peak: None, sheds: Vec::new(), lit: false, planned: false, worn: 0.0, asked_ground: None, asked_wall: None, stock_apart: false, pending: Vec::new(), count: 0 }
+        Ctx { solid, smoke, flat, site, pal, w: *w, hw: fw * 0.5, hd: fd * 0.5, g: super::grain(w.size), peak: None, sheds: Vec::new(), lit: false, planned: false, worn: 0.0, whole: w.size, asked_ground: None, asked_wall: None, stock_apart: false, pending: Vec::new(), count: 0 }
     }
 
     /// A part of a planned works (`site`): it stands on the ground the plan

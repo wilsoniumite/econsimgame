@@ -842,8 +842,9 @@ fn store_ground(kind: Kind, size: f32, share: f32) -> (f32, f32) {
 /// The ground the process buildings of a stage cover, in their own frame
 /// (x0, x1, z0, z1): they are built once as they will be drawn, and
 /// measured, so that they take of the plot what they stand on and no more.
+/// `whole` is the size the works had reached at the stage.
 #[allow(clippy::too_many_arguments)]
-fn core_cover(kind: Kind, process: &Process, size: f32, year: i32, water: bool, seed: Seed, pal: &Palette) -> (f32, f32, f32, f32) {
+fn core_cover(kind: Kind, process: &Process, size: f32, whole: f32, year: i32, water: bool, seed: Seed, pal: &Palette) -> (f32, f32, f32, f32) {
     let (mut solid, mut smoke, mut flat) = (MeshBuf::default(), MeshBuf::default(), MeshBuf::default());
     let site = Site::level(Vec3::ZERO, 0.0);
     let (fw, fd) = footprint(kind, size);
@@ -851,6 +852,7 @@ fn core_cover(kind: Kind, process: &Process, size: f32, year: i32, water: bool, 
     let w = Works { kind, size, founded: year, state: State::Working, water, rail: false, detail: Detail::Play, seed };
     let mut c = Ctx::part(&mut solid, &mut smoke, &mut flat, &site, &w, pal, fw * 0.5, fd * 0.5, 0.0);
     c.stock_apart = true;
+    c.whole = whole;
     if kind == Kind::Other { super::plain::process(&mut c, process) } else { super::raise(&mut c) }
     c.finish();
     let mut cover: Option<(f32, f32, f32, f32)> = None;
@@ -991,7 +993,7 @@ pub fn plan(kind: Kind, process: &Process, stages: &[Stage], plot: &Plot, year: 
         // the best free place for a group of process buildings of a size, as the `n`th part of
         // the works, by the group before it: the part if there is room, and its ground in its own frame
         let try_core = |field: &Field, n: usize, size: f32, last_core: Option<(f32, f32)>| -> (Option<Part>, (f32, f32), (f32, f32)) {
-            let cover = core_cover(kind, process, size, st.year, by_water, part_seed(seed, n), pal);
+            let cover = core_cover(kind, process, size, st.size, st.year, by_water, part_seed(seed, n), pal);
             let (lw, ld) = (cover.1 - cover.0, cover.3 - cover.2);
             let off = ((cover.0 + cover.1) * 0.5, (cover.2 + cover.3) * 0.5);
             let mut best: Option<(f32, Part)> = None;
@@ -1417,8 +1419,10 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
         let mut c = Ctx::part(&mut *solid, &mut *smoke, &mut *flat, &psite, &w, pal, lw * 0.5, ld * 0.5, worn(st.year, now.year));
         match part.role {
             Role::Core => {
-                // (what lies loose about a planned works, its stock and its tip, is laid out by the plan)
+                // (what lies loose about a planned works, its stock and its tip, is laid out by the plan;
+                // and it knows how big the whole works was when the stage was built)
                 c.stock_apart = true;
+                c.whole = st.size;
                 if plan.kind == Kind::Other {
                     super::plain::process(&mut c, &plan.process);
                 } else {
