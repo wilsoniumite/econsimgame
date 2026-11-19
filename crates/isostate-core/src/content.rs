@@ -105,6 +105,10 @@ pub struct Content {
     /// The year an invention is aimed at (0: none). Read by nothing in the
     /// engine: it is there for whoever fits thresholds and reads a run.
     pub tech_target: Vec<i64>,
+    /// The first year an invention may be found (the overlay's `found_after`;
+    /// 0: any year). No number is drawn for it before then (`tech::discovery`).
+    /// Nothing in the port's content says it.
+    pub tech_after: Vec<i64>,
     /// TASKS (docs/rules/tasks.md): the classes of task and the machines for
     /// them (`data/tasks.toml`). Empty in the port's content; only
     /// `game_content` fills it.
@@ -223,6 +227,7 @@ pub(crate) struct RawMethod {
     #[serde(default)]
     pub(crate) seed: bool,
     pub(crate) target: Option<i64>,
+    pub(crate) found_after: Option<i64>,
 }
 
 /// Parse content from TOML text.
@@ -368,6 +373,7 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         method_group: methods.iter().map(|d| d.group.clone().unwrap_or_default()).collect(),
         method_seed: methods.iter().map(|d| d.seed).collect(),
         tech_target: tech_list.iter().map(|(d, _)| d.target.unwrap_or(0)).collect(),
+        tech_after: tech_list.iter().map(|(d, _)| d.found_after.unwrap_or(0)).collect(),
         tasks: Default::default(),
     };
     for s in sectors {

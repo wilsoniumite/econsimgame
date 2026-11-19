@@ -107,6 +107,7 @@ pub const SWITCHES: &[&str] = &[
     "gauges.enabled",
     "owners.enabled",
     "tasks.enabled",
+    "woods.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",
@@ -127,6 +128,8 @@ pub const SWITCHES: &[&str] = &[
 /// Its owners and tasks (`owners.enabled`, `tasks.enabled`) joined both on
 /// night/g-batch-2, where they met the Rules tab; both came through, tasks
 /// tried a third time from 1905, after island 7 finds its first machine.
+/// The woods' rule (`woods.enabled`, docs/rules/woods.md) joined both on
+/// night/g-woods-managed and came through as they did.
 pub const SWITCHABLE: &[&str] = &[
     "prices.enabled",
     "engel.enabled",
@@ -146,6 +149,7 @@ pub const SWITCHABLE: &[&str] = &[
     "gauges.enabled",
     "owners.enabled",
     "tasks.enabled",
+    "woods.enabled",
     "commons.carry_debt",
     "hands.ration",
     "money.true_total",

@@ -345,6 +345,11 @@ pub struct Params {
     /// the Python; see docs/rules/tasks.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub tasks: crate::tasks::TasksParams,
+    /// Managed woodland, an invention that grows the woods back faster where
+    /// it is known, and the woods' cover recorded (not in the Python; see
+    /// docs/rules/woods.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub woods: crate::woods::WoodsParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -559,6 +564,7 @@ pub fn default_params() -> Params {
         transition: crate::transition::TransitionParams::default(),
         owners: crate::owners::OwnersParams::default(),
         tasks: crate::tasks::TasksParams::default(),
+        woods: crate::woods::WoodsParams::default(),
     }
 }
 
@@ -605,6 +611,7 @@ pub fn game_params() -> Params {
     P.transition = crate::transition::TransitionParams::game();
     P.owners = crate::owners::OwnersParams::game();
     P.tasks = crate::tasks::TasksParams::game();
+    P.woods = crate::woods::WoodsParams::game();
     P
 }
 
