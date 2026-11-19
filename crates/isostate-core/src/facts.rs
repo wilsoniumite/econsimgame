@@ -324,14 +324,19 @@ pub fn gather_year(g: &mut Gathered, sim: &Sim) {
     g.mines.push(crate::mines::gather(st, &sim.content, P));
 }
 
-/// The years facts are taken in: the first, every fiftieth year after it, and the
-/// last. 1750, 1800, 1850 and 1900 for a whole run.
+/// The year from which `marks` are a decade apart instead of fifty years.
+pub const DECADES_FROM: i64 = 1900;
+
+/// The years facts are taken in: the first, every fiftieth year after it to
+/// 1900, every tenth after that, and the last. 1750, 1800, 1850 and 1900 for a
+/// whole game; a run on to 2050 adds 1910, 1920 and so on to 2050 (longrun,
+/// docs/rules/longrun.md: facts by the decade after 1900).
 pub fn marks(y0: i64, y1: i64) -> Vec<i64> {
     let mut v = vec![y0];
     let mut y = (y0.div_euclid(50) + 1) * 50;
     while y < y1 {
         v.push(y);
-        y += 50;
+        y += if y >= DECADES_FROM { 10 } else { 50 };
     }
     if y1 > y0 {
         v.push(y1);
@@ -1168,6 +1173,20 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_marks_are_fifty_years_apart_to_1900_and_ten_after() {
+        // a game to 1900 is marked as it always was
+        assert_eq!(marks(1750, 1900), vec![1750, 1800, 1850, 1900]);
+        assert_eq!(marks(1750, 1789), vec![1750, 1789]);
+        assert_eq!(marks(1750, 1750), vec![1750]);
+        // the run on to 2050, by the decade after 1900
+        let long = marks(1750, 2050);
+        assert_eq!(&long[..5], &[1750, 1800, 1850, 1900, 1910]);
+        assert_eq!(long.len(), 4 + 15);
+        assert_eq!(long.last(), Some(&2050));
+        assert_eq!(marks(1750, 1925), vec![1750, 1800, 1850, 1900, 1910, 1920, 1925]);
+    }
 
     #[test]
     fn the_spans_are_twenty_years_and_the_last_ends_with_the_run() {
