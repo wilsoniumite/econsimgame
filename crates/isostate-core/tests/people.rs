@@ -369,6 +369,11 @@ fn a_sailing_is_news_of_its_own_kind() {
     P.people.shelves_go = false;
     P.works.spread_first = false;
     P.works.keep_order = false;
+    // With the production tree laid nobody takes ship on any of islands 1 to 16 by 1900
+    // (a sweep of the sixteen: `emigration_years` 0 on every one). How a sailing is filed
+    // is the chronicle's rule and the tree does not touch it, so it is tried on the
+    // island as it was without the tree.
+    P.tree = Default::default();
     let r = sim::run_with(&P, rules.content(), false, false).expect("the run finishes");
     let sailed: Vec<&String> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| &e.title).collect();
     assert!(!sailed.is_empty(), "the case is gone: nobody took ship on island 26 by 1824");

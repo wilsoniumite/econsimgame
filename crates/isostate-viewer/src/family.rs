@@ -58,6 +58,8 @@ pub struct FamilyView {
     pub prospects: Vec<[Prospect; N_GROUPS]>,
     /// the trade of every method's works (none for shops and trades)
     pub method_group: Vec<Option<Group>>,
+    /// the goods each trade yields, by `Group::index` (`live::trade_goods`)
+    pub trade_goods: Vec<Vec<usize>>,
 }
 
 impl FamilyView {

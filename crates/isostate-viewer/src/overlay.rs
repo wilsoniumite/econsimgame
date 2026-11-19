@@ -311,6 +311,12 @@ fn reach_km(r: &Replay, k: usize, c: usize) -> Option<f32> {
     r.dist.get(k * r.n + c).filter(|&&b| b < 255).map(|&b| b as f32 * 0.5)
 }
 
+/// Whether any of a good has been made by the month a map shows, or by the
+/// end of the year it shows (`replay::made_by`).
+fn made(r: &Replay, k: usize, good: usize, month: Option<&Month>) -> bool {
+    r.header.goods.get(good).is_none_or(|g| replay::made_by(r, &g.name, month.map_or(k * 12 + 11, |m| m.t)))
+}
+
 /// The year's mean price of a good in a town, if any was sold there.
 fn price(r: &Replay, k: usize, t: usize, good: usize) -> Option<f32> {
     let ng = r.header.goods.len();
@@ -468,8 +474,10 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
             };
             let when = month.map_or(format!("{year}"), |m| m.label.clone());
             let title = if is_price { format!("The price of {label} in {when}") } else { format!("Wages in {when}") };
+            // a good no works has made yet has prices in the record that nothing was sold at: no map of those
+            let unmade = is_price && !made(r, k, good, month);
             // the cheapest and the dearest market are the ends of the scale
-            let towns: Vec<(usize, f32)> = markets(r, k).into_iter().filter_map(|t| value(t).map(|v| (t, v))).collect();
+            let towns: Vec<(usize, f32)> = if unmade { Vec::new() } else { markets(r, k).into_iter().filter_map(|t| value(t).map(|v| (t, v))).collect() };
             let lo = towns.iter().copied().min_by(|a, b| a.1.total_cmp(&b.1));
             let hi = towns.iter().copied().max_by(|a, b| a.1.total_cmp(&b.1));
             let (Some(lo), Some(hi)) = (lo, hi) else {
@@ -478,6 +486,8 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
                 }
                 let note = if !is_price {
                     "This record does not hold the towns' wages.".to_string()
+                } else if unmade {
+                    format!("No {label} has been made on the island by {when}, so no market has a price for it.")
                 } else if r.town_price.is_empty() {
                     "This record does not hold the towns' prices.".to_string()
                 } else {
@@ -585,6 +595,9 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: O
                 None => price(r, k, t, good),
             };
             let then = month.map_or(String::new(), |m| format!(" in {}", m.label));
+            if !made(r, k, good, month) {
+                return Some(format!("Price: no {} has been made on the island yet.", g.label.to_lowercase()));
+            }
             match town.map(|t| (t, of(t))) {
                 Some((t, Some(p))) => format!("Price: {} for {} at {}{then}, the market this square trades in.", coin(p), g.label.to_lowercase(), town_name(r, t)),
                 Some((t, None)) => format!("Price: {}'s market has no price for {} {}.", town_name(r, t), g.label.to_lowercase(), if month.is_some() { "this month" } else { "this year" }),
@@ -623,6 +636,9 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: O
 
 #[derive(Component)]
 struct LegendCard;
+
+/// Room for a good's name between Back and Next on the price map's card: a label of 24 characters.
+const GOOD_BOX_W: f32 = 172.0;
 
 /// Choose an overlay (or none).
 #[derive(Component, Clone, Copy)]
@@ -826,8 +842,9 @@ fn legend_card(
             // which good: one step back or on, never a list to scroll
             p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|row| {
                 ui::small_button(row, &f, "Back", GoodStep(-1));
-                row.spawn(Node { min_width: Val::Px(84.0), justify_content: JustifyContent::Center, ..default() }).with_children(|name| {
-                    name.spawn(text(&f, &good, 14.0, INK));
+                // as wide as the longest name there could be, so that Next stays under the pointer from good to good
+                row.spawn(Node { width: Val::Px(GOOD_BOX_W), justify_content: JustifyContent::Center, overflow: Overflow::clip_x(), ..default() }).with_children(|name| {
+                    name.spawn((text(&f, &good, 14.0, INK), TextLayout::default().with_no_wrap()));
                 });
                 ui::small_button(row, &f, "Next", GoodStep(1));
                 ui::keycap(row, &f, "G");
@@ -853,7 +870,7 @@ mod tests {
     /// Ashby (which stands on the first of them), then one that trades at Brill.
     fn strip() -> Replay {
         let town = |name: &str, node: usize| Town { name: name.into(), node, founded: 1700 };
-        let good = |name: &str, label: &str| Good { name: name.into(), label: label.into(), weight: None, price: None };
+        let good = |name: &str, label: &str| Good { name: name.into(), label: label.into(), kind: None, weight: None, price: None };
         let header = Header {
             meta: Meta { label: String::new(), lite: false, seed: 1, w: 4, h: 1, start_year: 1750, n_years: 1 },
             goods: vec![good("grain", "Grain"), good("coal", "Coal")],

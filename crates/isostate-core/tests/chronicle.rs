@@ -782,12 +782,16 @@ fn towns_and_districts_have_stories() {
     // that have the towns for one, and checks whatever digests there are.
     digests_of_new_towns(r);
     // So that the digest itself is still read by a test, a second island: the
-    // first fifty years of seed 8, which founds three towns in the 1750s and
-    // three in the 1790s with the mines as workings and kept town ground.
+    // first fifty years of seed 3, which founds three towns in the 1750s with
+    // the mines as workings, kept town ground and the production tree laid
+    // (docs/rules/tree.md; before the tree it was seed 8, which now founds two
+    // a decade at most). A decade later in the century moves whenever a
+    // threshold does; the 1750s of seeds 3, 6 and 12 held through the tree's
+    // tuning, and of sixteen seeds 1, 3, 6 and 12 have such a decade.
     let mut P = game(6, 1800);
-    P.seed = 8;
+    P.seed = 3;
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
-    assert!(digests_of_new_towns(&early) >= 1, "seed 8 has a decade of new towns before 1800");
+    assert!(digests_of_new_towns(&early) >= 1, "seed 3 has a decade of new towns before 1800");
 }
 
 /// A decade of new towns is one item, filed for exactly the decades of the

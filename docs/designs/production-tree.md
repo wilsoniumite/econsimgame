@@ -892,6 +892,8 @@ The shipyards are never found because nobody buys ships until fleets are built. 
 5. **Stage 3.** Foreign trade, with the world's prices swept beside clothing's width and raw cotton's landed price.
 6. **Stage 4**, then **stage 5**. Reservoirs, floods and town water when the water mechanism is built; canals are already on their own track.
 
+**Decided for the landing, 19 November 2026.** The devlog of 13 November left the tree's landing "waiting for a design". Nothing in the tree itself was wanting: it was reviewed and its panels checked. What no page said was how it should land once stage 5 of the rules pass was in. The smallest decision that lets it land is taken here. Stage 1 lands as it was reviewed, with its panels, switched on under the game's rules (`tree.stage = 1` in `game_params()`) and off under the port's, always. Nothing is redesigned. Its thresholds are fitted again by the fitter on the island stage 5 leaves (two passes on islands 1 to 8 with six families; `docs/rules/tree.md`, "On the island stage 5 leaves"), and the game's four golden hashes are taken again on the merged tree. A test that holds a case found on the island without the tree plays that case with the tree off and says so. Stages 6 to 10 of the rules pass are then read on the island with the tree, as that pass's section 5 asks. Electricity and the run on to 2050 build on this stage, which is why it is on now, before stage 2 of this design.
+
 ### 17.2 The numbers most likely to need tuning
 
 In the order to try them.
