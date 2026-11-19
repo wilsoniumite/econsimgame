@@ -601,6 +601,9 @@ struct Data {
     cen: Arc<Vec<(f32, f32)>>,
     /// the years are being simulated as we watch, not read from a file
     live: bool,
+    /// the year that came last on its way into the run off the main thread, with its works'
+    /// ground (`game::pump`): until it is in, no scenery is built and no next year is read
+    arriving: Option<bevy::tasks::Task<game::Arrived>>,
 }
 
 impl Data {
@@ -618,6 +621,8 @@ struct Handles {
     year_field: Handle<Image>,
     /// a year's meshes, one to each of the table's list (`year::list`)
     meshes: Vec<Handle<Mesh>>,
+    /// the entities that draw them, and their pieces (`handover::feed`)
+    drawers: handover::Drawers,
 }
 
 #[derive(Resource)]
@@ -704,14 +709,16 @@ struct Tilt(bool);
 
 /// The leaves of one group of the broadleaf trees, shown while that group is
 /// in leaf, and its bare limbs, shown while it is not.
-#[derive(Component)]
+// (each is Clone, so that an entity that draws a piece of a year's mesh is made as a twin of the
+// first: `handover::feed`)
+#[derive(Component, Clone)]
 struct Leaves(usize);
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 struct BareLimbs(usize);
 
 /// What is green all year of the trees and bushes: conifers, gorse, yews.
-#[derive(Component)]
+#[derive(Component, Clone)]
 struct Evergreen;
 
 /// Materials that change with the seasons.
@@ -1047,7 +1054,7 @@ fn main() {
     app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
     app.insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
-        .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some() })
+        .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some(), arriving: None })
         .init_resource::<Builds>()
         .init_resource::<Shown>()
         .insert_resource(Timeline { t: t0, built: None, playing: false, speed: speed0 })
@@ -1295,12 +1302,13 @@ fn setup_world(
     // between them where they always were: the trees (made first), then the houses and the
     // works (made second and third), then the rest
     let mats = year::Materials { built: built_mat.clone(), flat: yards_mat.clone(), smoke: smoke_mat.clone(), evergreen: evergreen_mat, leaves: tree_mat.clone(), bare: bare_mat };
-    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, ..1);
+    let mut drawers = handover::Drawers::default();
+    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, ..1, &mut drawers);
     commands.insert_resource(SeasonMats { terrain: terrain_mat, trees: tree_mat, rivers: river_mat, built: [built_mat.clone(), yards_mat.clone()], smoke: smoke_mat.clone(), forced: forced.0 });
-    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, 1..3);
+    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, 1..3, &mut drawers);
     commands.insert_resource(TrainAssets { mesh: meshes.add(meshkit::into_mesh(trains::train_mesh(lk))), mat: vc.clone() });
-    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, 3..);
-    commands.insert_resource(Handles { year_cells, year_field, meshes: meshes_of_year });
+    year::spawn(&mut commands, &meshes_of_year, year::MESHES, &mats, 3.., &mut drawers);
+    commands.insert_resource(Handles { year_cells, year_field, meshes: meshes_of_year, drawers });
 
     // a warm low sun from the south-west, and soft sky light; the seasons
     // move it from the first frame on, so this is only where it starts

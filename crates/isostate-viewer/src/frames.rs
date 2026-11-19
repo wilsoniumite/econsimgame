@@ -1372,6 +1372,7 @@ fn step(world: &mut World, plan: &mut Plan) {
                 let live = world.get_resource::<crate::live::Live>();
                 let quiet = !live.is_some_and(|l| l.stepping())
                     && !world.resource::<crate::game::Game>().busy
+                    && world.resource::<crate::game::Game>().marks_built()
                     && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>())
                     && world.resource::<Builds>().task.is_none()
                     && world.resource::<HandOver>().is_empty();
@@ -1486,7 +1487,7 @@ fn step(world: &mut World, plan: &mut Plan) {
                 let (n, bytes) = hand.waiting();
                 let of = hand.year().map_or("no year on its way".to_string(), |k| format!("{} on its way", y0 + k as i32));
                 let built = world.resource::<Timeline>().built.map_or("none".to_string(), |k| (y0 + k as i32).to_string());
-                eprintln!("frames: shot {path}: {of}, {n} of its meshes ({:.0} MB) still waiting ({}); the last year whole on screen is {built}", bytes as f32 / 1e6, hand.waiting_names(world.resource::<crate::Handles>()));
+                eprintln!("frames: shot {path}: {of}, {n} of its meshes ({:.0} MB) still waiting ({}); the last year whole on screen is {built}", bytes as f32 / 1e6, hand.waiting_names());
                 world.spawn(shot).observe(save_to_disk(path));
                 frame = true;
             }

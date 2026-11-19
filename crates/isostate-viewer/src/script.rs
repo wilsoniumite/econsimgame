@@ -887,7 +887,7 @@ fn step(world: &mut World, sc: &mut Script) {
                 let running = world.get_resource::<crate::sandbox::Sandbox>().is_some_and(|s| s.running());
                 // (and the Rules tab's question answered)
                 let asking = world.get_resource::<crate::rulebook::Known>().is_some_and(|k| k.out());
-                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
+                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && !asking && game.marks_built() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
                 if !quiet && now >= sc.until {
                     fail("the game did not settle in two minutes");
                 }
