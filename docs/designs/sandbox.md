@@ -1,0 +1,327 @@
+# The sandbox: the island as a thing to watch, to look into and to change by hand
+
+19 November 2026. Stella, that day: "So, in one of the previous sessions we decided that the "game" part of the game was going to take a big back seat. That means all rules and decisions relating to it are up for grabs. With that said, I still want a decent UI, and I think like worldbox adding ways to edit things will make it much easier for me to test and may be fun in and of itself."
+
+This page is the design that follows. The island becomes first a thing to watch, to look into and to change by hand. The family game (one family among six, its orders, the cards that stop the clock, the ranking in 1900) is no longer the way in and constrains nothing here; its pieces stay reachable where that costs nothing. It is a design that decides: nobody could be asked, so each choice is made and its reason given, and section 7 says which choices were least sure.
+
+Nothing is built. The page rests on three surveys of the same day (the interface, the simulation, the documents) and on the code wherever a decision turns on a detail; line numbers are those of main at `77fbdc1`. `core/` and `viewer/` stand for `crates/isostate-core/src/` and `crates/isostate-viewer/src/`. Section 6 is where each stage is to be recorded as it lands.
+
+Two standing rules give way, and it is better said than left to be found. `PLAN.md`, stage 3: "the player acts through the same prices and bids as everyone else, never by editing outcomes". That now binds the family game only: the sandbox is the editing of outcomes, with an account kept of every one. `docs/ART.md`: "The player does not draw". That one stands in a narrower sense: the hand changes what the simulation knows, and the generators draw what the simulation knows, as they always have. Nobody places a house, and there is no tool for anything the simulation does not hold (a drawn bridge, a hedge), which is "honest decoration" kept.
+
+WorldBox is named for a kind of play and nothing else: a tray of tools, pick one, touch the world, watch. The look stays this project's own, a paper-and-ink interface over a cosy diorama, and every choice is from a short list, never a slider.
+
+## 1. In one page
+
+A session in the sandbox is a live game with nobody playing a family. The simulation is the one the sweeps measure (the game's rules, six families, each left to its own devices), so what is provoked by hand is the island that is being tuned and not a cousin of it.
+
+**An edit** is one more kind of order in the game's log, dated by year and month and carried out between two months of the simulation. A saved session is still a log, and playing it again gives the same island to the last digit. Money made or unmade by hand is booked in a named account that the monthly money check reads. An edit draws no random number of its own. A session with no edits runs no new line of arithmetic, so the golden tests hold as they stand.
+
+**The tools** come in two families. The world's: money, people, the harvest, an idea found, a town founded, a works built or closed, a road or a railway laid. The rules': every switch and number of every rule, set from short lists, which is also the door the statutes and instruments of the run to 2050 will come through. They are ordered by what lets Stella provoke the simulation where it is suspect and by what is cheap in the code as it stands.
+
+**The screen** keeps its three cards across the top, the side panel, the inspector and the timeline. What is new is a tray of tools under the clock, a Hand tab (everything done by hand, in order) and a Rules tab in the side panel, and an inspector that asks the simulation what it knows of the thing clicked.
+
+| | decision | why |
+|---|---|---|
+| 1 | An edit is `Order::ByHand { edit }`, logged like any order. | `core/save.rs` already replays an order at any month of any year; nothing else is saved, so nothing else would come back. |
+| 2 | Money, people, the weather, an idea and a rule change between any two months. Whatever moves things on the map waits for the year's turn. | Market areas are made once a year and the books compare against last year's (`prev_catch`); the turn is the one safe moment. |
+| 3 | Money by hand goes in a ledger in the state, `by_hand.money`, added to the right side of the money check. | A named account is honest; hiding it in `issued` would call a gift an issue. |
+| 4 | No tool makes or unmakes goods, until the books have a column for the hand. | The books would file them under "moved", which balances under the wrong name. |
+| 5 | Six families stay, and family 0 takes its defaults. | It is the island the sweeps and the golden test hold. An island with no families is a different economy. |
+| 6 | The tools live in a tray under the clock; a click on the map with a tool in hand applies it. | It is the play she named, it is always in sight, and a script can drive it with the steps it has (`click:`, `pick:`). |
+| 7 | No drag and no brush. A road is two clicks: this town, then that one. | She prefers discrete choices; scripts have no drag; and the simulation's roads run between markets anyway. |
+| 8 | The sandbox is asked for with `--sandbox` in stage 1 and becomes the plain start in stage 4. Picture and script runs stay family games unless told. | Stage 1 must land beside the production tree without touching what it touches; the twelve standard pictures and the scripted tests then stand unchanged. |
+| 9 | Taking back comes late (stage 8). Until then an edit is undone by its opposite. | The viewer cannot yet forget a year; going back is truncation in a dozen places and wants a quiet tree. |
+| 10 | No sea made land, no new river, no town removed. | Days each in the code as it stands, and the last would break the rule that towns fill their slots without gaps (`core/peopling.rs:479`). |
+
+## 2. What an edit is
+
+### 2.1 One more order in the log
+
+A new module, `core/edits.rs` (not `hand.rs`: `hands.rs` is already the rule about hired hands). It holds the enum of edits, the ledger, and the one function that carries an edit out.
+
+```rust
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "what", rename_all = "snake_case")]
+pub enum Edit {
+    // stage 1
+    Money { purse: Purse, town: Option<usize>, factor: f64 },   // town None: every town
+    People { town: usize, factor: f64 },
+    Harvest { town: Option<usize>, factor: f64 },                // town None: the whole island
+    // stage 3
+    Discover { tech: String, town: usize },                      // by `Content::tech_name`
+    Rule { name: String, value: serde_json::Value },             // the dotted name `--set` takes
+    FoundTown { cell: usize },
+    // stage 7
+    BuildWorks { method: String, cell: usize },
+    CloseWorks { works: usize },
+    Road { from: usize, to: usize, level: u8 },                  // towns; 1 track, 2 road, 3 turnpike
+    Rail { from: usize, to: usize },
+}
+
+#[serde(rename_all = "snake_case")]
+pub enum Purse { Households, Landlords, Merchants }
+
+/// What the hand has made and unmade so far.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ledger { pub money: f64, pub people: f64, pub count: usize }
+
+/// Carry an edit out on the run itself. A refused edit changes nothing. Ok is the line that says what was done.
+pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String>
+```
+
+`save::Order` gets one variant, `ByHand { edit: edits::Edit }`, so a line of a saved session reads `{"year":1820,"month":3,"kind":"by_hand","edit":{"what":"people","town":4,"factor":0.5}}`. The edit is a field of the order and not the order itself, because two tagged enums flattened into one object is the kind of cleverness that fails in a merge. Old saves read as before, and a save with edits read by an older build is refused whole, which is finding 9 of the architecture review and is left to its change B3.
+
+### 2.2 When it is carried out
+
+The simulation's thread does nothing but what it is asked, one message at a time, so an edit always falls between two months. There are two kinds.
+
+| kind | which | when | how it is dated in the log |
+|---|---|---|---|
+| between months | `Money`, `People`, `Harvest`, `Discover`, `Rule`, `FoundTown` | at once, wherever the year stands | `Given { year: last_year, month: months played }`, which `save::load` already carries out before the next month (`core/save.rs:598`) |
+| at the turn | `BuildWorks`, `CloseWorks`, `Road`, `Rail`, and later the land | at once if given at a turn; otherwise it waits with the family's works and land and is carried out in January, after the books close | month 0 |
+
+In `core/save.rs` that is: `carry_out` hands a `ByHand` to `edits::carry_out`; `Game::give` carries a between-months edit out on the run itself (at a turn, after what waits has been carried out, as now) and logs it with `self.month`; `Order::for_year_end` names `ByHand` among those that wait for the turn itself, so the default in its `matches!` cannot take it for word to the family. An edit is never tried on a copy of the island: a family's order given in mid-year copies the whole state to try it (56 to 96 MB), and an edit instead is checked by a function that only reads (`edits::check`, stage 7). `FoundTown` sets the hook the rule already has (`State::pp_found_next`, consumed at the year's end by `core/peopling.rs:532`), so the town appears where the rule's own towns do.
+
+Two consequences are worth saying to whoever is at the window. An edit lands in the month the simulation has reached, which at speed is a month or two ahead of the clock; its line in the ledger carries its true date. And what is laid on the map in January carries from the next January: the paths are worked out at each year's end, the record is taken then, and the picture is drawn from the record. A road takes a year to build, which is no bad thing to read.
+
+### 2.3 The books stay whole
+
+**Money.** The only check that can stop a run is in `sim::run_month` (`core/sim.rs:657`): the island's money must equal what it began with plus what was issued. `State` gets one field, `by_hand: edits::Ledger`, and the check becomes `money_start + issued + by_hand.money`. `Money` multiplies a purse (`hh_cash`, `lord_cash` or `merch_cash` of a town) by its factor and adds the difference to `by_hand.money`; a purse at or below nothing is left alone, so a levy cannot take the island's money below zero. With no edits `by_hand.money` is 0.0 and the sum is the same bits.
+
+**People.** `People` multiplies `st.pop[town]` and adds the difference to `by_hand.people`. Hired hands and the town's own people are worked out from `pop` every month, and money is untouched, so cash a head moves the other way: people who arrive come with nothing, and those who are left inherit. That is said in the tool's line and is the honest reading.
+
+**The weather.** `Harvest` multiplies the rows of `st.harvest_mult` that feel the weather (farms wholly, pastures and woods by their shares in `harvest::feeling`) on the cells of one town's market area or of the island, and sets `harvest_now` and `harvest_town_now` by the weighted mean `harvest::draw` uses. `harvest::brought_in` reads the multiplier every month, so the rest of the year's crop is what the hand says, the year's own news tells it (a poor harvest, a dearth), and nothing is booked because nothing was made by hand: the crop is simply smaller.
+
+**Goods.** No tool in this design puts goods on a shelf or takes them off. The books would notice (`accounts::sync_stock`) and file the difference under "moved". A gift of grain or a fire in a warehouse waits for a column of its own in `core/accounts.rs`, after the gauges have landed beside it.
+
+**Works and ways** (stage 7). A works built by hand is paid for with new money, booked in `by_hand.money`, and owned by its partners as any works without a family is. One closed by hand goes through `firms::close_firm`, which already sends its cash to its owners. Roads and railways by hand cost nothing and are booked as nothing; the promoters' own books are kept in step so that they do not build the same line twice.
+
+### 2.4 Chance
+
+A session is decided by its seed, its rules and its log, as a game is. An edit is carried out at the same point of the same month when the log is played again, so the island comes back to the last digit; stage 1's test holds it to that by `save::check` and by the bits of every series.
+
+An edit draws nothing. Where it sets a rule's own machinery going, that rule draws from its own stream as it always does: a town founded by hand takes its name from the people's stream, as a town of the rule's would. From an edit onward the island's later chances (which sites a works tries, the year a method is found, names) are therefore another throw of the same dice. The weather is the exception: the harvest's stream gives the same numbers every year whatever the island does (`core/harvest.rs:174`), so the good and bad years after an edit are the years there would have been. What follows an edit is the edit and a re-throw together, and the rules pass's way of reading holds here too: a difference smaller than two histories that differ only by chance is not a finding.
+
+### 2.5 A session with no edits
+
+Nothing new is reached except through `Order::ByHand`. The state has one field more, whose default is nothing, read in one sum where it adds 0.0. `save::check` is not changed, so no existing save reads as drifted. The proof is the two golden tests (`crates/isostate-core/tests/golden.rs`, `golden_game.rs`) passing with their stored constants untouched, and the twelve standard pictures at 0 pixels, since a picture run is never a sandbox.
+
+### 2.6 What an edit leaves behind
+
+Each edit carried out pushes one item of news of kind `"hand"`, dated in the month it was made, weight 0.6, with its town and cell, whose title is the line `carry_out` returns: "By hand: Cardale's people, 12,400 to 6,200". So the island's own history tells what was done to it, a recorded run of a session says so too, and the viewer needs nothing new to list it. The ledger's `count` goes up by one.
+
+### 2.7 What is refused
+
+A factor that is not a finite number, or outside 0.1 to 10 (money, people) or 0.2 to 2 (harvest); a town that does not stand; a harvest under rules with no weather. For `Rule`: the names that size the run or are read only at its start (`seed`, `W`, `H`, `n_towns`, `pop0`, `T_max`, `F_max`, `warmup_years`, `decay`, `n_families`, `end_year`, `land`, `accounts`, `family_start_share`, `family_start_cash`), anything `Params::check` refuses, and a rule's `enabled` unless that rule is on the list `edits::SWITCHABLE`, which stage 3 fills by trying each (section 6.3). For `FoundTown`: sea, a cell in no market area, a cell that is a town already, no free slot among the 48, a founding already ordered this year, or rules without the game's founding rule. Each is refused in a sentence that names what was asked.
+
+## 3. The tools
+
+In the order they are built. "Cost" is in the code as it stands, from the survey of the simulation; the viewer's share is in section 6.
+
+| | tool | what a click does | the choices | cost | what it is good for |
+|---|---|---|---|---|---|
+| 1 | **Run on** | the simulation plays on as fast as it can and stops at a January | 1 year, 10 years, 25 years | an hour, viewer only | getting to the year where the trouble is; 25 years in a few seconds |
+| 2 | **Money** | a purse in the clicked town, or in every town, is multiplied | whose: households, landlords, merchants. Where: this town, every town. How much: a tenth more, half as much again, double, a tenth less, halved | an hour | whether the island is indifferent to how much money there is (`docs/probes/tr-money.md`): double every purse and see whether prices double and nothing else moves; who gains when new money reaches landlords first |
+| 3 | **People** | the clicked town's people are multiplied | a tenth more, half as many again, a tenth fewer, halved | an hour | a town that cannot hire hands it does not have (rules pass 4.1); wages and rents when a town fills or empties; the emigration and founding rules |
+| 4 | **Harvest** | the rest of this year's crop is multiplied, round one town or everywhere | where: this district, the whole island. What: a poor year (0.9), a failure (0.7), a bumper year (1.1) | an hour; no draw moves | dearth and its news, grain's price, the real wage, what the foreseen half does, the price of land after a bad year (`tr-rent.md`), hunger in the growth rule |
+| 5 | **Idea** | a method not yet found is found in the clicked town | the list of what is not yet found | an hour | dates of invention that wander by a generation (rules pass 4.8), the steel rail that never comes (rules pass 4.9), how fast knowledge spreads |
+| 6 | **Rules** (a tab, not a tool in the tray) | a rule's switch is thrown or one of its numbers set | on, off; none, half, as set, half again, double; landlords or commons for the rent | an hour, and a test that says which switches can be thrown mid-run | her economics: turn one thing and watch what follows. Later the statutes and instruments of the run to 2050 |
+| 7 | **Town** | a town is founded on the clicked square at the year's end | found a town here | an hour (the hook exists) | the founding rule's safeguards set aside: what a market in the wrong place does |
+| 8 | **Inspector** | the simulation says what it knows of the thing clicked | none: it only looks | half a day in the core, half a day in the viewer | seeing the purse before it is changed and after; the town's books of the year |
+| 9 | **Works** | a works is built on the clicked square, or the clicked works is closed | the methods known in the square's town, each with its cost and expected return; close it | half a day | works founded and lost (R114), the year's room and the building cycle (rules pass 4.10), how deep a market is |
+| 10 | **Road** | a road is made along today's path between two clicked towns | track, road, turnpike | an hour in the core | what cheap carriage does to prices and market areas; a road nobody uses fades in six quiet years, by the rule |
+| 11 | **Railway** | a line is opened along the path between two clicked towns | none | half a day to a day, to keep the promoters' books in step | whether a line nobody planned pays; towns founded along it |
+| 12 | **Take back** | the island returns to the moment before the hand last touched it | none | a day or more, mostly the viewer | undoing; and, run on again, the island without the edit |
+
+Not offered, and why. Land made from sea, new rivers and changed heights: `down`, `acc` and `river` come from the island's making and nothing works the water out again. A town removed: nothing in the code does it and the slots would have gaps. A square's fertility, woods and minerals are cheap in the core (an hour) and are left for after stage 8 only because nothing on screen shows them yet.
+
+## 4. The interface
+
+### 4.1 The screen
+
+```text
+ ┌ Island 7 ───────┐  ┌ March 1821 ▮▮▯  Pause Slow Steady Brisk Fast Fastest  Next month  To January ┐  ┌ Hand Rules Markets News Families ┐
+ │ 412,300 · 61 wks│  │ a month a second                                                              │  └──────────────────────────────────┘
+ └─────────────────┘  └───────────────────────────────────────────────────────────────────────────────┘
+ ┌ Hand ───────────┐        ┌ Look  Money  People [Harvest] Idea  Town  Works  Road  Rail ┐               ┌ By hand · March 1821 ───┐
+ │ By hand so far  │        │ Run on:  1 year   10 years   25 years                       │               │ The rest of 1821's      │
+ │ Mar 1821        │        ├─────────────────────────────────────────────────────────────┤               │ harvest round Cardale…  │
+ │  harvest round  │        │ This district · The whole island                            │               └─────────────────────────┘
+ │  Cardale, 0.7   │        │ A poor year · [A failure] · A bumper year                   │
+ │ Jan 1820        │        │ Click anywhere in a town's district: the rest of this       │
+ │  Garside's      │        │ year's crop there is cut by three tenths.                   │
+ │  people halved  │        └─────────────────────────────────────────────────────────────┘
+ │ ...             │                                                                                    ┌ Cardale ────────────────┐
+ │ Money by hand   │                              (the island)                                          │ founded 1763 …          │
+ │  +12,400        │                                                                                    │ As it stands, March 1821│
+ │ People −6,200   │     ┌ legend ┐                                                                     │  households' money …    │
+ └─────────────────┘     └────────┘                                                                     └─────────────────────────┘
+ ┌ H help  Space ──┐  ┌ 1750 ━━━━━━━━━━━━━━━━━━╋━╋●──────────────────────────────────────────────────────────────────────── 1900 ┐
+ └─────────────────┘  └───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Top left, the family's card becomes the island's: "Island 7", its people and its works. Top right, the tabs are Hand, Rules, Markets, News and Families, beside whatever the production tree brings. The family's colour, which is the accent everywhere today, gives way to the hand's ink, the blue-black of a pen: `Color::srgb(0.13, 0.24, 0.45)`. It marks the tool in hand, the month bar, the timeline's knob, and a tick on the timeline wherever the hand touched the island.
+
+### 4.2 Time
+
+Pause, the five speeds, Next month and To January stay as they are. **Run on** is new and is how one goes to a year: the clock stops, the simulation is asked for a whole year at a time as fast as it will give them (the stepping-on that To January already does, `game.follow`, armed again as each year arrives), and it stops at the January turn of the year asked for, where every edit is carried out at once. On the figures measured (the simulation's year, and the year's arrival in the viewer) that should be four to eight years a second; stage 1 says what it is. Space or Escape stops it at the next turn. From stage 4 a click on the timeline ahead of the present does the same to the year clicked. Looking back is the timeline as it is today. The hand works only in the present: with the clock on a year gone by, a click with a tool in hand changes nothing and says so.
+
+### 4.3 The tray: picking a tool and using it
+
+A paper card centred under the clock (top 80 px, at most 520 px wide, chips wrapping), where the badge for waiting decisions used to hang. Its first row is the tools, each a chip with a word (and from stage 4 a small icon drawn in code, as the tabs' are): Look first, which is no tool and is how the tray starts. The chip of the tool in hand is inked, white on the hand's ink. Under the tools, the Run on chips. When a tool is in hand a second card opens under the first with that tool's choices as rows of chips, one inked in each row, and one line in muted ink that says in a sentence what a click will now do.
+
+A click on the map with a tool in hand applies it and still opens the inspector on what was clicked. For a tool that works on a town, a click anywhere in the town's district is a click on the town: the square's market town is read from the record, as the inspector's own text reads it. The tool stays in hand, so three towns are three clicks. Escape puts it down; so does choosing Look. Works that are to be closed are the exception from stage 7: that tool is put down after each use.
+
+The words on the chips are part of the design, because scripts click by them: `Look`, `Money`, `People`, `Harvest`; `Households`, `Landlords`, `Merchants`; `This town`, `Every town`; `A tenth more`, `Half as much again`, `Double`, `A tenth less`, `Halved`; for people `A tenth more`, `Half as many again`, `A tenth fewer`, `Halved`; `This district`, `The whole island`; `A poor year`, `A failure`, `A bumper year`; `1 year`, `10 years`, `25 years`. Only the choices of the tool in hand are on screen, so the words two tools share are never there twice.
+
+### 4.4 How an edit shows, and how it is taken back
+
+At once: a toast with the edit's line, which gives the figure before and after; the same line under the inspector; from stage 4 a row at the head of the Hand tab and a tick on the timeline; from stage 5 the inspector's own figures, asked for again the moment the answer comes. Within months: the charts and the map views that go by the month (prices, wages) move as the months arrive, as they do today. At the year's turn: the map, the towns, the yearly charts and the books. An edit that waits for January shows as a peg on its square, as a works the family ordered does, and its row in the Hand tab has a Take back chip, which is the taking back of an order that waits (`Cmd::Cancel`).
+
+An edit that has been carried out is undone, until stage 8, by its opposite: halve what was doubled. That is not exact (months have passed) and the page does not pretend it is. Stage 8 keeps on the simulation's thread one copy of the game as it stood just before the hand last touched it. **Take back** returns the island to that moment, date and all, and strikes the edit and everything after it from the log. Run on from there and the island is the one there would have been without the edit, which is the comparison an economist wants, and it costs no second simulation.
+
+### 4.5 The inspector
+
+A click on a works, a town or a square opens the card bottom right, as now, with the record's lines as now. Under them, from stage 5, a second block headed "As it stands, March 1821": rows of a name and a figure that the simulation's thread makes on request (`inspect::tell`, section 6.2) and the viewer draws without understanding. A town: its people, in the town and at work on the land and in works; the month's wage; the households', landlords' and merchants' money; the price of grain; this year's weather for its farms; the methods it knows and those still arriving; its works; and the three lines of the year's trade from the books that `docs/probes/dx-inspector.md` designed (made here, came in, went out). A works: owner, plant and plant on order, cash, hands, how full it runs, its ground rent, the year's profit so far. A square: owner, price, market town and the cost of reaching it, what the land would bear, road, railway and water, the rent it paid, this year's weather on it.
+
+Under the rows, two small lines for a town: its wage and the price of its grain, month by month for the last sixty months, with a tick in the hand's ink where the island was touched. They are what "watch what follows" looks like at the scale of one town. The request is asked again when a month or a year arrives while the card is open and when an edit's answer comes; it costs the simulation's thread a few hundredths of a millisecond. The family's order buttons under the card are not shown in the sandbox: there is one way to do a thing, and it is the tray.
+
+### 4.6 The Hand tab and the Rules tab
+
+**Hand.** Everything done by hand, newest first: the date, the line, and a click that takes the view there. At the foot, the ledger: money made by hand, as a figure and as a share of the island's money, and people. It is the account she can read back after an afternoon's poking.
+
+**Rules.** One row a rule: the dozen numbers that matter most pinned at the top (`money.growth`, `rent_regime`, `hurdle`, `freight`, `discovery_rate`, `diffusion_rate`, `growth_cap`, `harvest.island_sd`, `harvest.foreseen`, `people.found_saving`, `rail_hurdle`), then each rule by name with On and Off where it may be switched, opening to its numbers. A number's choices are five chips, None, Half, As set, Half again and Double, which are 0, 0.5, 1, 1.5 and 2 times the game's value; a number that is none of them shows as a sixth, muted chip. A rule that differs from the game's has a dot in the hand's ink and the game's figure beside it. The panel is made by walking the rules as the sweep's `--set` does, so a rule added tomorrow is in it with no line written here. That is also how the statutes and instruments of the run to 2050 arrive (taxes, a public stake, a dividend, how capable machines are): each is a rule's number, and the one thing they add is a delay between the day a number is set and the day it bites, which belongs to that design's own stage and comes through this same door, so that there is one log and one way in.
+
+### 4.7 The view never waits
+
+An edit is one message to the simulation's thread and one toast. The inspector's request is a message and a few rows of text. Panels are drawn again only when what they show changes. Run on asks for years no faster than they come, and the hand-over already passes over scenery that arrives too fast to show. Nothing here adds work to a frame.
+
+## 5. What becomes of the family game
+
+| piece | where | in the sandbox |
+|---|---|---|
+| The six families in the simulation | `core/families.rs` | Kept as they are. Family 0 is nobody's: its decisions take their defaults at the end of the next year, as they already do when unanswered. |
+| The opening card | `game::welcome` | Off. From stage 8 a short card only when a session is gone on with: Go on, or Begin again. |
+| Decision cards, the badge under the clock, the clock stopped for them | `game::queue_new`, `decision_card`, `decision_badge` | Off: nothing is queued and nothing stops the clock. A child turning fourteen no longer pauses the island. |
+| The end card and the ranking in 1900 | `game::end_card` | Off. The run stops at its last year and the line under the date says so. |
+| The Family tab | `viewer/family.rs` | Kept as a place to look, renamed Families and moved last. Its buttons still work and speak for family 0, which costs nothing. |
+| The Holdings tab | `viewer/family.rs` | Off the bar; kept in the code and in the family game. |
+| The crest and fortune, top left | `ui::setup_hud` | The island's card. |
+| The family's colour as the accent | `ui.rs`, `game.rs` | The hand's ink. |
+| Buy land, Build, Move seat, postings under the inspector | `game::order_panel` | Not shown from stage 5. Build becomes the Works tool, which builds anywhere and is paid for by hand, and keeps the land agent's list of what could stand there with its cost and return. |
+| Order toasts | `main.rs`, `Toasts::say` | Kept, for edits. |
+| Seat flags, the first family's pennants and fences, stakes for works ordered | `game::owner_marks`, `fences.rs` | Kept. The stakes mark works the hand has ordered too. |
+| Next month, To January, `--advance`, `--demo`, `--families` | | Kept. |
+| The nineteen faults of the core loop | `docs/backlog/waiting-on-stella.md` | Parked with the game. None stands in the sandbox's way. |
+| The family game itself | | Reachable whole: `--family` from stage 4, and what every picture and script run starts unless told `--sandbox`. |
+
+## 6. The stages
+
+| | stage | crates | needs | beside | waits for the tree |
+|---|---|---|---|---|---|
+| 1 | The hand, first form: money, people, harvest, Run on | core and viewer | nothing | the tree, the long run, the gauges, stage 2 | no |
+| 2 | What the simulation knows of a thing | core | nothing | everything | no |
+| 3 | More of the hand in the core: an idea, a rule, a town, a run with a list of edits | core | 1 | the tree, stage 2 | no |
+| 4 | The way in | viewer | 1 | 3 | **yes** |
+| 5 | Looking into things | viewer | 2, 4 | 6 | **yes** |
+| 6 | The Rules tab, ideas and towns | viewer | 3, 4 | 5 | **yes** |
+| 7 | Works and ways | core and viewer | 4 | 5, 6 (two builders: works, ways) | **yes** |
+| 8 | Taking back, and a place of its own | viewer, a little core | 4 | 7 | **yes** |
+
+Stages 1 to 3 touch `viewer/ui.rs` nowhere and the viewer's other hot files only by a line here and there, which is what lets them go beside `night/g-tree-land` (477 lines of `ui.rs`, 310 of `game.rs`, 120 of `main.rs`). Stages 4 to 8 rewrite parts of those files and start from main once the tree is in. `night/g-to2050-1-longrun` works in the core's month, bounds and record and `night/g-to2050-3-gauges` beside `accounts.rs`; the sandbox meets them only where every branch meets (the list of modules in `lib.rs`, the end of `State`). When the live game runs past 1900 the sandbox follows without a change: it reads the run's own years.
+
+Every stage's check includes the gate as it is run: the core's tests with both golden tests unchanged, the viewer's tests, and the twelve standard pictures at 0 pixels.
+
+### 6.1 Stage 1: the hand, first form
+
+**Core.**
+
+- `core/edits.rs`, new: `Edit` with `Money`, `People` and `Harvest` only, `Purse`, `Ledger`, `carry_out`, as in section 2.1. Bounds and refusals as in 2.7. Each edit pushes its item of news (2.6) and returns its title.
+- `core/lib.rs`: the module.
+- `core/state.rs`: `pub by_hand: crate::edits::Ledger`, last in `State`. `crates/isostate-core/examples/save_state.rs` builds a `State` field by field and must carry the new one across exactly as it carries `rd` (two places).
+- `core/sim.rs:657`: `st.money_start + st.issued + st.by_hand.money`.
+- `core/harvest.rs`: `pub fn by_hand(st, C, P, town: Option<usize>, factor: f64) -> Result<(), String>`, which scales the multiplier's rows by `factor.powf(share)` for each sector in `feeling`, on the cells whose `catch` is the town or on all land, then sets `harvest_now` and `harvest_town_now` by the same weighted mean `draw` uses. `draw`'s own arithmetic is not to change by a bit; the golden test under the game's rules says whether it did.
+- `core/save.rs`: the variant; `carry_out` and `carry_out_on` (the copy never sees an edit: an `Err`); `for_year_end`; `Game::give` as in 2.2. Every other `match` on `Order` in the two crates gets an arm; the compiler names them.
+- `crates/isostate-core/tests/edits.rs`, new, on island 7 under the game's rules with six families: (a) a game played eight years, given a `Money` at a turn and a `People` and a `Harvest` five months into a year, played two years more, saved to text and loaded, is not drifted, refuses nothing, has the same `save::check` and the same bits in every series, and still has after two further years; (b) after every household purse is doubled, `econ::money_total` has risen by `by_hand.money` to one part in 10⁹ and two years pass the money check; (c) of two games alike to 1790, one given `Harvest { town: None, factor: 0.7 }` at the turn: its `harvest_year` for 1791 is 0.7 of the other's to one part in a million, its news of 1791 has an item of kind `harvest`, and the multiplier drawn for 1792 is the same bits in both on every cell; (d) each refusal of 2.7 leaves `save::check`, the ledger and the log as they were; (e) a `Given` with an edit writes the line of 2.1 and reads back equal.
+
+**Viewer.**
+
+- `viewer/main.rs`: `--sandbox` (the option, its line in `USAGE`, its name in the test that lists every option); with a recorded run it says that a recorded history has no simulation behind it and opens the recording. `mod sandbox`, `sandbox::plugin`, and the resource `sandbox::Sandbox` when the game is one. `Picked` gets `stamp: u32`, raised by one wherever a click sets `what` (`pick`, and `Step::Pick` in `viewer/script.rs`).
+- `viewer/live.rs`: `Cmd::ByHand(Edit)`; its arm in `order_of`; arms in `order_line`, `order_words` and `waits_words`; the answer's text for an edit is the title of the news it wrote. `Opening::sandbox`: such a game never goes on with the island's autosave (`plain` is false) and, when somebody is at it, is kept among the trials (`Keeping::Trial("--sandbox")`, below the arm for runs nobody is at), so the family's saved game is never touched; `--save FILE` and `--load FILE` work as they do.
+- `viewer/game.rs`, four guards and nothing else: in a sandbox `welcome` and `end_card` return where they return for a run that takes pictures (so the pegs of works already ordered are still set), `pump` does not call `queue_new` in either of its two places, and `decision_badge` keeps the badge hidden.
+- `viewer/sandbox.rs`, new: the tray of 4.3 with Look, Money, People and Harvest, the choices and the line of 4.3, the Run on chips of 4.2. Run on keeps a year to reach: it puts the clock at the present and stops it, and while the newest year is short of the one asked for it sets `game.follow` to the next turn each time it finds it empty; it lets go when the year is reached, when the run's last year is played, or at Space or Escape. It is built from `ui::card`, `ui::text` and `family::chip_button`, with the hand's ink as a constant of its own. The tool is applied when `Picked::stamp` changes with a tool in hand, the clock at the present and no order out; the town is found as 4.3 says. The answer goes up as a toast of kind `"hand"` (grey, and labelled "News", until stage 4 gives it its ink). Escape puts the tool down.
+- `viewer/live_tests.rs`: a test with no graphics adapter that sends `Cmd::ByHand` to a game's thread, gets `Msg::Done` with `ok` and the line, plays a year, and finds the save written holds the edit and loads without drift.
+
+**Shown to work by** the tests above, and by one scripted run that also makes the pictures: `--sandbox --seed 7 --advance 40 --script "tab:none;click:Harvest;click:The whole island;click:A failure;pick:X,Z;settle;shot:…/1-harvest.png;click:1 year;wait:5;settle;tab:markets;row:grain;shot:…/2-a-year-on.png;print"`, with X,Z a square of farmland. Three pictures for Stella: the tray at rest; the harvest tool in hand with its choices, its line and the toast; a year on with grain's price open in the Markets panel.
+
+**Not this stage's.** `viewer/ui.rs`, `family.rs`, `overlay.rs`, `replay.rs`; the top bar, the tabs and the family's card, which stand as they are until stage 4; any edit but the three.
+
+### 6.2 Stage 2: what the simulation knows of a thing
+
+Core only, and all of it new files but one line of `lib.rs`.
+
+- `core/inspect.rs`: `pub enum Thing { Town(usize), Works(usize), Cell(usize), Island }`; `pub struct Told { pub title: String, pub as_of: String, pub groups: Vec<Group> }` with `Group { name: String, rows: Vec<(String, String)> }`; `pub fn tell(sim: &Sim, thing: Thing) -> Result<Told, String>`. It only reads. Every figure is turned into words here, with the core's own `util::fmt_thousands_f0` and `fmt_pct`, so the viewer types no economics.
+- What it tells is the list of section 4.5, in these groups. A town: People; Money and prices; This year's weather (when the rule is on); What it knows (methods known, and those between 0.02 and 0.5 of known, with their share); Works (how many, and the three largest by plant, by name); The year's trade (the three lines of `docs/probes/dx-inspector.md`, "At a glance", summed from `accounts::town_books` for the last year closed as `examples/flows.rs` sums them, left out when the books are off). A works: Who and what; Plant and hands; Money (cash, ground rent, profit so far this year, and last year's from `accounts::works_books`). A square: Whose (owner, `families::land_price`); Market (its town, `dcatch`); Land (fertility, pasture, woods, coal, ore, clay and stone, each as a figure and as none, poor, fair or rich against the island's own quartiles); Ways (road as none, track, road or turnpike; railway; canal; water); Rent and weather. The island: people, towns, works standing, the island's money and how much of it was issued. (The ledger of section 2.3 is not there yet when this is built; stage 5 adds its rows.)
+- `crates/isostate-core/examples/tell.rs`: `--seed 7 --year 1800` and one of `--town NAME`, `--works N`, `--cell X,Y`, `--island`; prints the card as text and how long it took to make.
+- `crates/isostate-core/tests/inspect.rs`: on island 7 at 1760 and 1790, `tell` is `Ok` for every town that stands, forty works and two hundred squares; no figure is empty, "NaN" or "inf"; a town's people and its three purses read as the state's own figures put through the same function; a thing that is not there is refused in a sentence.
+
+**Shown to work by** the test, and by three printed cards (a town, a works, a square of island 7 in 1800) in the builder's report. **Not this stage's**: anything in the viewer; anything in `accounts.rs`.
+
+### 6.3 Stage 3: more of the hand in the core
+
+- `Discover`: what `tech::discovery` does once it has chosen (`core/tech.rs:52-62`) without its draws: `know` at least 0.25 in the town, `tech_year`, `tech_town`, the item of news. Refused if the method is known or found already.
+- `Rule`: `sweep::set_field` on the run's own `Params`, then `Params::check`, then the refusals of 2.7. The line says the old value and the new.
+- `SWITCHABLE`: a test plays island 7 to 1790 once, and for each rule's `enabled` in turn copies the game, throws the switch the other way, plays five years, throws it back and plays five more, catching a panic. The names that come through with no panic and no money error are the list; the test then holds the list to that, and the page records which were left out.
+- `FoundTown`, as 2.2 and 2.7.
+- `edits::run_with(P, content, &[Dated]) -> Result<RunResult, String>`, the plain loop of `sim::run_with` with each edit carried out before its month, and `--edits FILE` on the core's `run` command (`core/cli.rs`): a JSON list of `{"before": [1800, 1], "edit": {…}}`, meaning before January 1800 is played. With it a probe or a sweep's page can provoke the island with no window, and a run so made is watched in the viewer as any recording is.
+- Tests: each new edit saved and loaded as in stage 1; a discovery by hand spreads (the method's `know` in a second town is above nothing ten years on); `money.growth` set to 0 stops `issued` rising; a town founded by hand stands at the year's end with people in it; a run with an empty list of edits is the run without, by `save::check`.
+
+**Not this stage's**: the viewer.
+
+### 6.4 Stage 4: the way in (waits for the tree)
+
+- A start with somebody at the window and no run named opens a sandbox. `--family` opens the family game. Runs that take pictures or play a script are family games unless `--sandbox` is given.
+- `ui::setup_hud`: the island's card; the tabs of 4.1 with keys 1 to 5; the hand's ink for the accent in a sandbox. `Tab::Hand` and `Tab::Rules`, whose bodies are `sandbox::hand_panel` and `sandbox::rules_panel`, so that stages 5 and 6 fill a function each and do not meet in `ui.rs`. `--view` words and the script's `tab:` step learn `hand`, `rules` and `families`.
+- The Hand tab's list, from the news of kind `"hand"`. `kind_label` "By hand" and `kind_colour` the hand's ink; a tick on the timeline for each. A click on the timeline ahead of the present runs on to that year, and a script step `goto:YEAR` does the same.
+- The tray's chips get icons (`viewer/icons.rs`: an eye, a coin, people, a sheaf, a lamp, a market cross, a works, a road, a rail, scales).
+- The help card says what the tray is and names F3. The line under the date no longer speaks of orders.
+- **Shown to work by** a script that opens each tab and uses a tool, and four pictures: the screen at rest; a tool in hand; the Hand tab after three edits; the family game under `--family`, unchanged.
+
+### 6.5 Stage 5: looking into things (waits for the tree; needs 2 and 4)
+
+- `Cmd::Ask(inspect::Thing)` and `Msg::Told`, asked on a click, on a month or a year arriving while the card is open, and on an edit's answer.
+- The inspector's second block and the two small lines of 4.5 (`family::sparkline` or `chart::plot`, with ticks at the edits' dates). The family's order buttons are not drawn in a sandbox; the note of the last edit is.
+- The Hand tab's foot: the ledger, from `Thing::Island`, which gains the ledger's rows here.
+- A test in `live_tests.rs` that what the thread tells of a town is what `inspect::tell` says of a run to the same month. Pictures: a town, a works and a square inspected; a town before and after its people are halved.
+
+### 6.6 Stage 6: the Rules tab, ideas and towns (waits for the tree; needs 3 and 4)
+
+- `Cmd::Rules` and its answer: the rules as they stand, the game's, and `SWITCHABLE`. The tab of 4.6 in a file of its own, `viewer/rulebook.rs`.
+- The tray gains Idea (the choices are the methods not yet found, from the same answer) and Town.
+- Pictures: the tab with `money.growth` at None and the dot beside it; the island's money on the Markets chart flat from that year; a town founded by hand, a year on.
+
+### 6.7 Stage 7: works and ways (waits for the tree; needs 4; two builders side by side)
+
+- The at-the-turn kind of 2.2: `edits::check`, the waiting, `Cmd::Cancel`, pegs, the Take back chip in the Hand tab. A family's order tried on a copy of the island passes a waiting edit over.
+- **Works.** `BuildWorks`: a standard works (`m_K0` of plant) of a method known in the square's town, on a square with room (`works::room_on_cell`), sited and reasoned as `families::found_at` does it, named without a draw, funded as that function funds one and the sum booked in `by_hand.money`, owned by its partners. `CloseWorks`: `firms::close_firm`, then `sim::after_transport` and `firms::same_method_counts`. The tool's list is the land agent's (`Cmd::Site`), with its limits to the seat ignored.
+- **Ways.** `Road` along `transport::path_cells` between the two towns' nodes, raising `st.road` on land to the level asked and clearing `road_quiet`. `Rail` on the same path, opened as `rail::progress` opens a finished line but at no cost, with `rail_links`, `rail_opened` and the promoters' book kept in step.
+- Tests: a works built by hand stands a year on, the money check passes and the ledger holds its cost; one closed is gone and its cash is where `close_firm` sends it; a road by hand lowers the path cost between its towns at the next year's end; a line by hand is drawn and the promoters do not plan it again. Pictures of each, the January after.
+
+### 6.8 Stage 8: taking back, and a place of its own (waits for the tree; needs 4)
+
+- The thread copies the game (and its cursor) before carrying out an edit, and keeps the one copy. `Cmd::TakeBack` puts it back, cuts the log, and tells the viewer the year and month it has returned to; the viewer forgets what came after, which is truncation, since everything a year adds is appended (the years filled, the works, towns and news in the header, the months kept, the families' histories, the slots of new works).
+- A sandbox's sessions are kept in a folder of their own beside the autosaves, one to an island; a plain start goes on with the one there, behind the short card of section 5.
+- A test that a session taken back and run on to a year has the `save::check` of a session that never had the edit. A picture before, after, and taken back.
+
+### 6.9 Later, and not staged
+
+A square's fertility, woods and minerals, once the inspector shows them. Canals by hand. Who owns a square or a works. A column for the hand in the books, and with it gifts of goods. A second thread that runs the same island untouched, for a chart of the two side by side. A save that holds the island (`docs/probes/dx-save-state.md`), which makes going back to any year a matter of tenths of a second and is worth more now than when it was designed. The statutes and instruments of the run to 2050, through the Rules tab. And the move off the engine's deprecated click component (change C2 of the architecture review), which this design adds to and does not hurry.
+
+## 7. What I am least sure of
+
+- **Six families with nobody at the head of the first.** It keeps the sandbox on the island that is measured, but a family that takes every default ends fourth of six, and its marks on the map belong to nobody. If that reads oddly at the window, the cure is a start with the first family run as its rivals are, which is a change to the core's families and was not looked into.
+- **Edits to the map waiting a year.** Honest, and cheap. If the wait irks, the paths can be worked out again at the turn itself, where the year's end has just worked them out; the risk is in what the books and the people's rule hold over from the year before, and it wants a trial.
+- **Take back as one step only.** One copy of the game is 100 to 200 MB. More copies, or the save that holds the island, would give a history to walk back through.
+- **Throwing a rule's switch in the middle of a run.** Six of the rules stand in for the port's own arithmetic, and nobody has switched between the two in a running island. The test in stage 3 decides rule by rule; the list may be short.
+- **The tray under the clock.** It is always in sight and out of the way of the panels, but it covers a strip of map at the top, and in a window 1280 wide it has about 520 pixels. Nine tools with icons fit in two rows; twenty would not.
+- **The sizes on the chips.** They are a first try at saying sizes without numbers. The island's own weather is mild: a tenth off the crop is two of the rule's standard deviations, about a year in fifty, and "a failure", three tenths off, is something its weather never does. That is the point of a tool for provoking, but an island pushed that far may simply stop: the money check ends a run whose money goes below nothing.
