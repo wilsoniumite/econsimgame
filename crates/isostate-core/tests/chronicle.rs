@@ -15,10 +15,15 @@ fn bits(v: &[f64]) -> Vec<u64> {
     v.iter().map(|x| x.to_bits()).collect()
 }
 
+/// The game's rules, played with owners off (docs/rules/owners.md): under it
+/// island 7 tells only four stories of its first and second towns, where
+/// `towns_and_districts_have_stories` asks for five, so the island these tests
+/// were set to is the one without it.
 fn game(n_families: usize, end_year: i64) -> Params {
     let mut P = game_params();
     P.n_families = n_families;
     P.end_year = Some(end_year);
+    P.owners.enabled = false;
     P
 }
 

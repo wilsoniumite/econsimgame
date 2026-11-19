@@ -313,7 +313,8 @@ fn a_district_that_goes_and_comes_back() {
 /// and for the same reason with the works' two mends off, docs/rules/works.md,
 /// parts G and H, with longrun off, docs/rules/longrun.md, and with the
 /// production tree off, docs/rules/tree.md, under which no town goes short
-/// after taking a district on this island even without the rule.)
+/// after taking a district on this island even without the rule, and with
+/// owners off, docs/rules/owners.md, under which none does either.)
 #[test]
 fn no_hungry_january_after_a_town_takes_a_district() {
     let run = |shelves: bool| {
@@ -326,6 +327,7 @@ fn no_hungry_january_after_a_town_takes_a_district() {
         P.works.keep_order = false;
         P.longrun.enabled = false;
         P.tree = Default::default();
+        P.owners.enabled = false;
         P.people.shelves_go = shelves;
         let mut s = sim::start(&P, game_content());
         let T = s.st.T_max;

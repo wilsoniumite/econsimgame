@@ -53,7 +53,12 @@
 # Then on night/g-to2050-4-owners, merging the gauges into stage 2 (19
 # November 2026): books and run.bin moved by the gauges, economy and news
 # are stage 2's as they stood.
-economy  0x31f9be4ca4c2eee9
-books    0x7668c76a13f68b80
-news     0xcc48fe3dfff18c36
-run.bin  0x0443b91e78ee6c47
+# Then on night/g-to2050-4-owners (19 November 2026): all four moved by
+# step one of owners (owners.enabled, docs/rules/owners.md): the landlords
+# are paid their part of the dividends of the works they put money into, so
+# the households have less and the landlords more, which is another history.
+# With the switch off in game_params() the four above held.
+economy  0x9a6b3ba24a097bd1
+books    0x53d14f1e67f42dc0
+news     0x9f83de6e9e162ab1
+run.bin  0x9efa7a65e544e248

@@ -2168,7 +2168,15 @@ fn wind_down(st: &mut State, C: &Content, P: &Params, k: usize, g: Group, t: usi
     if firms::town_pool(st, P, t) < price {
         return;
     }
-    let got = firms::draw_pool(st, P, t, price);
+    let got = if P.owners.enabled {
+        // owners (docs/rules/owners.md): the works is then held as households
+        // and landlords paid for it
+        let (got, paid) = firms::draw_pool_parts(st, P, t, price);
+        crate::owners::founded(st, f, paid);
+        got
+    } else {
+        firms::draw_pool(st, P, t, price)
+    };
     st.families[k].cash += got;
     st.families[k].income.sales += got;
     st.f_owner[f] = -1;

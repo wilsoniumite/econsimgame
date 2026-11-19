@@ -53,6 +53,7 @@ pub mod money;
 pub mod names;
 pub mod ndimage;
 pub mod observer;
+pub mod owners;
 pub mod params;
 pub mod people;
 pub mod peopling;
