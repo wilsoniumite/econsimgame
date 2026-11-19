@@ -468,6 +468,9 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
     }
     for k in years {
         let t0 = std::time::Instant::now();
+        for line in network::water_check(r, g, cen, k) {
+            eprintln!("{line}");
+        }
         let c = check(r, g, cen, k);
         let at = |p: Vec2| format!("{:.2},{:.2}", p.x, p.y);
         eprintln!(

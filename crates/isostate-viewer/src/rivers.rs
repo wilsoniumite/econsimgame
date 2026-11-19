@@ -732,6 +732,28 @@ impl WaterIndex {
     }
 }
 
+/// The lengths of river whose line a road may meet in a box of the map (from
+/// `lo` to `hi`): each once, its two ends and its half width, leaving out the
+/// lengths out in the tide, as `crossing_points` does.
+pub fn lengths_in(rivers: &[River], index: &WaterIndex, lo: Vec2, hi: Vec2) -> Vec<(Vec2, Vec2, f32)> {
+    let cell = index.cell;
+    let (bx0, by0) = ((lo.x / cell).floor().max(0.0) as usize, (lo.y / cell).floor().max(0.0) as usize);
+    let (bx1, by1) = (((hi.x / cell).floor().max(0.0) as usize).min(index.w - 1), ((hi.y / cell).floor().max(0.0) as usize).min(index.h - 1));
+    let mut seen: std::collections::HashSet<(u32, u32)> = Default::default();
+    let mut out = Vec::new();
+    for by in by0..=by1 {
+        for bx in bx0..=bx1 {
+            for &(p, q, hw, ri, i) in &index.buckets[by * index.w + bx] {
+                if rivers[ri as usize].level[i as usize] < 0.0 || !seen.insert((ri, i)) {
+                    continue;
+                }
+                out.push((p, q, hw));
+            }
+        }
+    }
+    out
+}
+
 /// Where the straight line from a to b crosses a river: how far along the
 /// line (0 to 1), which river, which of its lengths and how far along that,
 /// in the line's order. The same points as `crossings`, by the same sums

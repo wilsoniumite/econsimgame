@@ -1599,7 +1599,7 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
         for ford in crate::network::road_fords(g, a, b, lv == 3, crossed, r.round()) {
             isostate_gen::bridge::road_ford(&mut works_b, &ford, lk);
         }
-        causeway(&mut works_b, lk, g, a, b, lv == 3);
+        causeway(&mut works_b, lk, g, &crate::network::route(g, a, b, r.round()), lv == 3);
     }
     let parishes = towns::landmarks(r, g, cen, k, lk, lod, &mut houses, &mut plots);
     // near a works or a market place, in a churchyard, or on the railway or its banks
@@ -1854,16 +1854,15 @@ impl TreeCensus {
 }
 
 /// A low causeway of stone wherever a road runs over water (the drowned mouth
-/// of a river, a creek), so the road does not lie on the sea. Where it runs
-/// is found in network.rs (`causeway_runs`).
-fn causeway(b: &mut Builder, lk: &Look, g: &Ground, a: bevy::math::Vec2, c: bevy::math::Vec2, main: bool) {
+/// of a river, a creek, and on the new land a lake or a tideway the road
+/// cannot get round), so the road does not lie on the water. Where it runs
+/// is found in network.rs (`causeways`).
+fn causeway(b: &mut Builder, lk: &Look, g: &Ground, way: &crate::network::Way, main: bool) {
     let stone = *lk.bridges.causeway;
     let width = if main { 0.046 } else { 0.034 };
-    let dir = (c - a).normalize_or(bevy::math::Vec2::X);
-    let side = Vec3::new(-dir.y, 0.0, dir.x) * (width * 0.5);
-    for (t0, t1) in crate::network::causeway_runs(g, a, c) {
-        let (p0, p1) = (a + (c - a) * t0, a + (c - a) * t1);
-        let top = crate::network::CAUSEWAY_TOP;
+    for (p0, p1, top) in crate::network::causeways(g, way) {
+        let dir = (p1 - p0).normalize_or(bevy::math::Vec2::X);
+        let side = Vec3::new(-dir.y, 0.0, dir.x) * (width * 0.5);
         let (q0, q1) = (Vec3::new(p0.x, top, p0.y), Vec3::new(p1.x, top, p1.y));
         let foot = Vec3::Y * (top + 0.03);
         b.quad(q0 + side, q1 + side, q1 - side, q0 - side, shade(stone, 1.06));
