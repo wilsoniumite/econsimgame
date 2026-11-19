@@ -291,6 +291,7 @@ pub(crate) fn pump(
     mut toasts: ResMut<crate::Toasts>,
     time: Res<Time>,
     shots: Option<Res<crate::ShotPlanArgs>>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Pump);
     // the months the books kept from before the window opened, ahead of any that come
@@ -378,7 +379,8 @@ pub(crate) fn pump(
                 game.note = end.carried.iter().rev().find(|c| !c.0).map(|c| (false, c.1.clone()));
                 game.version += 1;
                 ui.dirty += 1;
-                if shots.is_none() || cards_in_shots() {
+                // (a sandbox queues no decisions: nobody plays the family, and nothing stops the clock)
+                if (shots.is_none() || cards_in_shots()) && sandbox.is_none() {
                     queue_new(&mut game, &fam, &mut tl);
                     if game.open.is_some() {
                         // show the year the decision belongs to
@@ -404,7 +406,9 @@ pub(crate) fn pump(
                 if let Some(rep) = family {
                     player_family(&mut fam, &rep);
                     ui.dirty += 1;
-                    queue_new(&mut game, &fam, &mut tl);
+                    if sandbox.is_none() {
+                        queue_new(&mut game, &fam, &mut tl);
+                    }
                 }
                 // the order changed the square: ask again before offering more
                 game.asked = None;
@@ -521,7 +525,7 @@ fn present(tl: &Timeline, data: &Data) -> bool {
     tl.t.floor() as usize >= data.latest()
 }
 
-fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, mut game: ResMut<Game>) {
+pub(crate) fn ask_site(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, mut game: ResMut<Game>) {
     let Some(Pick::Cell(c)) = picked.what else {
         if game.asked.is_some() {
             game.asked = None;
@@ -1111,8 +1115,9 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
 
 // ------------------------------------------------------------------ decisions
 
-fn decision_badge(fam: Res<FamilyView>, mut q: Query<(&mut Node, &Children), With<DecisionBadge>>, mut texts: Query<&mut Text>) {
-    let n = fam.player().map(|m| m.rep.pending.len()).unwrap_or(0);
+fn decision_badge(fam: Res<FamilyView>, mut q: Query<(&mut Node, &Children), With<DecisionBadge>>, mut texts: Query<&mut Text>, sandbox: Option<Res<crate::sandbox::Sandbox>>) {
+    // (in a sandbox the tray hangs under the clock where the badge would)
+    let n = if sandbox.is_some() { 0 } else { fam.player().map(|m| m.rep.pending.len()).unwrap_or(0) };
     for (mut node, ch) in &mut q {
         let want = if n > 0 { Display::Flex } else { Display::None };
         if node.display != want {
@@ -1387,7 +1392,18 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
 
 /// When the last year has been played: where the families finished.
 #[allow(clippy::too_many_arguments)]
-fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, fam: Res<FamilyView>, font: Res<UiFont>, keys: Res<ButtonInput<KeyCode>>, cards: Query<Entity, With<EndCard>>, shots: Option<Res<crate::ShotPlanArgs>>) {
+fn end_card(
+    mut commands: Commands,
+    mut game: ResMut<Game>,
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    fam: Res<FamilyView>,
+    font: Res<UiFont>,
+    keys: Res<ButtonInput<KeyCode>>,
+    cards: Query<Entity, With<EndCard>>,
+    shots: Option<Res<crate::ShotPlanArgs>>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
+) {
     if keys.just_pressed(KeyCode::Escape) {
         for e in &cards {
             commands.entity(e).despawn();
@@ -1399,8 +1415,8 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
     if game.ended || game.welcoming || r.filled < r.ny || tl.t < (r.ny - 1) as f32 {
         return;
     }
-    // screenshots skip it, as they do the welcome, unless asked for
-    if shots.is_some() && !cards_in_shots() {
+    // screenshots skip it, as they do the welcome, unless asked for; a sandbox has no ranking
+    if (shots.is_some() && !cards_in_shots()) || sandbox.is_some() {
         return;
     }
     game.ended = true;
@@ -1445,11 +1461,12 @@ fn end_card(mut commands: Commands, mut game: ResMut<Game>, tl: Res<Timeline>, d
 /// A new game opens on a card saying who the player is and how to begin; the
 /// first decision waits behind it. A game gone on with from a save opens on
 /// the same card saying how the family stands, with Continue and New game.
-fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>) {
+#[allow(clippy::too_many_arguments)]
+fn welcome(mut commands: Commands, fam: Res<FamilyView>, data: Res<Data>, live: Res<Live>, font: Res<UiFont>, mut game: ResMut<Game>, shots: Option<Res<crate::ShotPlanArgs>>, sandbox: Option<Res<crate::sandbox::Sandbox>>) {
     // works ordered since the last year (in a game gone on with) keep their pegs
     game.pending = live.ordered.clone();
-    // screenshots skip it unless asked for
-    if shots.is_some() && !cards_in_shots() {
+    // screenshots skip it unless asked for, and a sandbox opens on the island itself
+    if (shots.is_some() && !cards_in_shots()) || sandbox.is_some() {
         return;
     }
     let Some(me) = fam.player() else { return };

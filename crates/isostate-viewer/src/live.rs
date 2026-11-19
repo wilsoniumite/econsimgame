@@ -51,6 +51,9 @@ pub enum Cmd {
     Cancel(usize),
     /// the clock has stopped: write the save now if months have gone by since the last
     Keep,
+    /// an edit by hand (the sandbox, docs/designs/sandbox.md): carried out at
+    /// once in any month, and answered with the line it wrote in the news
+    ByHand(isostate_core::edits::Edit),
 }
 
 /// What waits for the year's end, as the interface shows it.
@@ -306,6 +309,10 @@ pub struct Opening {
     /// the game's rules do not switch on yet: a preview, kept only in a file
     /// that is named
     pub new_land: bool,
+    /// a sandbox (`--sandbox`, docs/designs/sandbox.md): a game nobody plays a
+    /// family in, changed by hand. It never goes on with the island's autosave
+    /// nor writes it: with somebody at it, it is kept among the trials
+    pub sandbox: bool,
 }
 
 /// Where a game is kept as it is played.
@@ -327,7 +334,7 @@ impl Opening {
     /// one, is gone on with. Screenshots, and the switches that ask for a game
     /// of a certain shape or kept in a certain place, get a new one.
     pub fn plain(&self) -> bool {
-        !self.fresh && !self.new_land && !self.shots && !self.demo && self.advance == 0 && self.load.is_none() && self.save.is_none()
+        !self.fresh && !self.new_land && !self.shots && !self.demo && !self.sandbox && self.advance == 0 && self.load.is_none() && self.save.is_none()
     }
 
     /// Where the game is kept. Only play writes where a played game is kept:
@@ -339,6 +346,9 @@ impl Opening {
     pub fn keeping(&self) -> Keeping {
         match &self.save {
             Some(file) => Keeping::Named(file.into()),
+            // a sandbox never touches the family's saved game, whatever else was asked
+            None if self.sandbox && (self.shots || self.unattended) => Keeping::Nowhere,
+            None if self.sandbox => Keeping::Trial("--sandbox"),
             None if self.keep => Keeping::Autosave,
             None if self.shots || self.unattended => Keeping::Nowhere,
             None if self.advance > 0 => Keeping::Trial("--advance"),
@@ -549,6 +559,26 @@ pub fn order_words(order: &Order, r: &Replay, rep: Option<&FamilyReport>) -> Str
             format!("{} at {} {does}", crate::family::short_group(*group), town(*t))
         }
         Order::MoveSeat { town: t } => format!("Move the seat to {}", town(*t)),
+        // (an edit never waits; this is for a list that might hold one)
+        Order::ByHand { edit } => edit_words(edit, &town),
+    }
+}
+
+/// An edit by hand in a few words, for a list.
+fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String) -> String {
+    use isostate_core::edits::{Edit, Purse};
+    let place = |t: Option<usize>, all: &str| t.map_or_else(|| all.to_string(), |t| town(t));
+    match edit {
+        Edit::Money { purse, town: t, factor } => {
+            let whose = match purse {
+                Purse::Households => "households'",
+                Purse::Landlords => "landlords'",
+                Purse::Merchants => "merchants'",
+            };
+            format!("By hand: the {whose} money in {}, times {factor}", place(*t, "every town"))
+        }
+        Edit::People { town: t, factor } => format!("By hand: {}'s people, times {factor}", town(*t)),
+        Edit::Harvest { town: t, factor } => format!("By hand: the harvest round {}, times {factor}", place(*t, "the whole island")),
     }
 }
 
@@ -564,6 +594,8 @@ fn waits_words(game: &Game, order: &Order) -> String {
         Order::Post { .. } => format!("Told. It takes effect at the end of {year}."),
         Order::Stance { .. } => format!("Told. The branch goes by it from the end of {year}."),
         Order::MoveSeat { .. } => format!("Told. The seat moves at the end of {year}."),
+        // (never: an edit is carried out at once)
+        Order::ByHand { .. } => "Done by hand.".to_string(),
     }
 }
 
@@ -927,6 +959,7 @@ fn order_of(sim: &iso::Sim, cmd: Cmd) -> Result<Order, String> {
         Cmd::Post { member, posting } => Ok(Order::Post { member, posting }),
         Cmd::Stance { group, town, stance } => Ok(Order::Stance { group, town, stance }),
         Cmd::MoveSeat(town) => Ok(Order::MoveSeat { town }),
+        Cmd::ByHand(edit) => Ok(Order::ByHand { edit }),
     }
 }
 
@@ -1020,6 +1053,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                 let text = r.map(|(o, d)| match d {
                     Done::Founded(f) => format!("{} will open in {}.", s.st.f_name[f], s.year),
                     Done::Bought(price) => format!("The land is yours, for {}.", crate::ui::money(price as f32)),
+                    // an edit by hand is answered with the line it wrote in the island's news
+                    Done::Done if matches!(o, Order::ByHand { .. }) => s.events.last().map(|e| e.title.clone()).unwrap_or_default(),
                     Done::Done => String::new(),
                     Done::Waits => waits_words(&game, &o),
                 });
@@ -1069,6 +1104,7 @@ fn order_line(game: &Game, order: &Order) -> String {
         },
         Order::Stance { group, town: t, .. } => format!("The word to {} at {}", crate::family::short_group(*group).to_lowercase(), town(*t)),
         Order::MoveSeat { town: t } => format!("The seat's move to {}", town(*t)),
+        Order::ByHand { edit } => edit_words(edit, &town),
     }
 }
 

@@ -35,6 +35,7 @@ mod profile;
 mod rails;
 mod replay;
 mod rivers;
+mod sandbox;
 mod saves;
 mod scatter;
 mod script;
@@ -110,6 +111,8 @@ struct Args {
     save: Option<String>,
     /// keep the game in the island's autosave though the start is not plain play
     keep: bool,
+    /// a sandbox: nobody plays a family, and the island is changed by hand (sandbox.rs)
+    sandbox: bool,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -175,6 +178,10 @@ With no run named, a new game starts.
   --keep               keep the game in the island's autosave though the start is not plain
                        play (--advance, --demo, --script); with nobody at the game it needs
                        ISOSTATE_SAVES to name the folder
+  --sandbox            a sandbox: nobody plays a family, and a tray of tools under the clock
+                       changes the island by hand (money, people, the harvest) or runs it on
+                       a year, ten or twenty-five. Never the island's own saved game: it is
+                       kept among the trials
   --families N         how many great families (6; from 1 to 30)
   --advance N          play N years before the game opens (a trial: it is kept among the
                        trials, apart from the island's own saved game)
@@ -304,6 +311,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
         load: None,
         save: None,
         keep: false,
+        sandbox: false,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -356,6 +364,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--load" => { a.load = Some(named(opt, next(i)?, "the name of a saved game")?); i += 1; }
             "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
             "--keep" => a.keep = true,
+            "--sandbox" => a.sandbox = true,
             "--families" => {
                 a.families = number(opt, &next(i)?)?;
                 // refused here, before an island is made for a number no game can have
@@ -448,6 +457,9 @@ fn parse(v: &[String]) -> Result<Args, String> {
     }
     if !a.named_run || a.load.is_some() {
         a.new = true;
+    }
+    if a.sandbox && !a.new {
+        eprintln!("--sandbox changes a game by hand, and {} is a recorded history with no simulation behind it: it is opened as it was recorded", a.run);
     }
     // a saved game says itself which land it is played on; --new-land is for a game that is begun
     if let (true, Some(file)) = (a.new_land, &a.load) {
@@ -661,6 +673,9 @@ struct Picked {
     what: Option<Pick>,
     press: Option<Vec2>,
     moved: f32,
+    /// raised by one at every click that sets `what`, so that a tool in hand
+    /// (sandbox.rs) can tell a click from a pick that stays as it was
+    stamp: u32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -742,6 +757,7 @@ fn main() {
             restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
             keep: args.keep,
             new_land: args.new_land,
+            sandbox: args.sandbox,
         };
         // a check may write an autosave, but never among the player's own saved games
         if let Some(why) = opening.keep_refused(std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty())) {
@@ -955,6 +971,7 @@ fn main() {
         .init_resource::<Rails>()
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
+        .add_plugins(sandbox::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
@@ -967,6 +984,10 @@ fn main() {
     app.add_systems(Update, show_trees.after(seasons));
     if let Some(l) = live {
         app.insert_resource(l);
+        // a game changed by hand: the tray of tools, and the family game's cards kept away
+        if args.sandbox {
+            app.insert_resource(sandbox::Sandbox::default());
+        }
     }
     if let Some(f) = families {
         app.insert_resource(f);
@@ -1852,7 +1873,9 @@ fn toasts(
                 to - 1.0
             }
         };
-        let fresh = news_toasts(&r.header.events, from, to, st.known, now);
+        let mut fresh = news_toasts(&r.header.events, from, to, st.known, now);
+        // an edit by hand put its line up when it was answered, before its news came
+        fresh.retain(|t| !st.shown.iter().any(|s| s.title == t.title));
         changed |= !fresh.is_empty();
         st.shown.extend(fresh);
         (st.last, st.known) = (Some(to), known);
@@ -2135,6 +2158,7 @@ fn pick(
     let Some(hit) = ground_hit(&data.g, ray) else { return };
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     picked.what = choose(&data.r, &data.slots, &data.cen, hit, k);
+    picked.stamp = picked.stamp.wrapping_add(1);
 }
 
 /// The nearest works standing this year, then the nearest town, then the land itself.
@@ -2698,7 +2722,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--sandbox", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

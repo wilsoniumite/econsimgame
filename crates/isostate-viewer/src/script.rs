@@ -722,7 +722,9 @@ fn step(world: &mut World, sc: &mut Script) {
                     sc.until = now + 120.0;
                 }
                 let game = world.resource::<Game>();
-                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
+                // (a sandbox's run on lets go of the clock for a frame between one year and the next)
+                let running = world.get_resource::<crate::sandbox::Sandbox>().is_some_and(|s| s.running());
+                let quiet = !stepping(world) && !game.busy && game.follow.is_none() && !running && crate::scenery_ready(world.resource::<Timeline>(), world.resource::<Data>());
                 if !quiet && now >= sc.until {
                     fail("the game did not settle in two minutes");
                 }
@@ -774,7 +776,9 @@ fn step(world: &mut World, sc: &mut Script) {
                 let (k, _) = clock_year(world);
                 let data = world.resource::<Data>();
                 let what = crate::choose(&data.r, &data.slots, &data.cen, Vec3::new(x, world::height_at(&data.g, x, z), z), k);
-                world.resource_mut::<Picked>().what = what;
+                let mut picked = world.resource_mut::<Picked>();
+                picked.what = what;
+                picked.stamp = picked.stamp.wrapping_add(1);
                 frame = true;
             }
             Step::Look(x, z, d) => {
