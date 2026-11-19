@@ -15,16 +15,16 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: Taken again on night/g-new-land-switch (19 November 2026): the land
-# (docs/rules/land.md, "The switch") became the game's default, so seed 7 is
-# the new land's island 7 and all eight moved, in both eras; the crossings
-# (docs/rules/crossings.md), which act on the new land only, now act on it
-# too.
-1750-1900 economy  0x48f46c787bceb833
-1750-1900 books    0x5f038c97279585a0
-1750-1900 news     0xfae72bc44fa6b7a3
-1750-1900 run.bin  0xda7d76ac20dfdd37
-1901-2050 economy  0x18ffd33b614485d4
-1901-2050 books    0xf0661f33ba4c5cc5
-1901-2050 news     0x6dec82baddc7bca1
-1901-2050 run.bin  0xed68ed052f0ab93d
+# Taken: 1750-1900 and 1901-2050, all four in each: the merchants' crumb (a
+# stock under a hundredth of a works' month at capacity is no glut) acts in
+# the played century too, and from 1901 a works short of power idles its
+# machines and not itself, with the idling rule taken out
+# (docs/rules/tasks.md, A machine short of its run good)
+1750-1900 economy  0x32542d13a9d59398
+1750-1900 books    0x0d23676ac137c9ec
+1750-1900 news     0x16b5e31f3dcc95e3
+1750-1900 run.bin  0xfed3274ae91d1865
+1901-2050 economy  0x621d1e98662f7fec
+1901-2050 books    0xe914e863361a9419
+1901-2050 news     0x2b9e51573e612454
+1901-2050 run.bin  0x09d4883f3c57909d

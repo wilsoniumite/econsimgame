@@ -78,10 +78,44 @@ a third of orders go unfilled, and the price starts back up.
   fewer, makes less, buys less and pays less, and the town's wage sees that.
   Nobody is paid for iron that is not made, and no money moves that did not
   before. A stock nobody buys from at all counts as the worst glut; no stock
-  is no glut, so a new trade in a new place starts freely.
+  is no glut, so a new trade in a new place starts freely; and a crumb is no
+  glut either (below).
 
 The months are counted on `st.outflow`, the smoothed sales and shipments to
 other towns, so a town that makes for export is not taken for a glutted one.
+
+### A crumb is no glut
+
+A stock smaller than a hundredth of what the works asking would make in a
+month at full time (`prices.crumb`, 0.01 under the game's rules, against its
+capacity) is a crumb, and merchants take all of it (`prices::take_from`).
+Tests that hold one island's history from before it play with it at 0. Without that, a town whose sales had
+stopped stayed frozen: its stock decays by a share a month and so never
+reaches the nothing that is no glut, while its smoothed sales decay as fast,
+so the stock counted as many months of sales for ever, and every works of
+that good was turned away for ever. On island 8 under the game's rules (main
+of 19 November 2026), town 10's sixteen builders, with their plant, their
+materials and no hands, made nothing from 1950 to 2050: in 1962 the town
+held two hundredths of a unit of building work against sales of 1.5e-8 a
+month and a hundred a month of each builder's capacity. Nobody could build
+the town a station, since its plant is building work, so the town stayed
+without one. It is the same fault as the electric drive's old idling rule
+(tasks.md, "A machine short of its run good"): a test against exactly
+nothing on a quantity that falls by a factor.
+
+**It moves the played century.** Before 1900 it acts in about 1,100 works-
+months on eight islands, mostly works of 35 to 60 a month of capacity with a
+stock under a hundredth of that and sales smaller still, so the first era's
+golden hashes moved and every island's history after the first such month
+with them. The standing check stays 12 of 12 inside (`--compare` main's
+sweep to 1900, eight islands; and main's to 2050, sixteen). The chained wage
+of 1900 is 5.83 against 6.05 on the mean of sixteen islands (lower on 11),
+within the islands' spread [4.36 .. 7.58]. Fewer trades stand still: counted
+from a town probe of islands 1 to 8 from 1760 to 1900, spells in which a
+town's works of a good made under a hundredth of the town's best year of it
+went from 622 to 530. Without the crumb, with the soft run of tasks.md, one
+town (island 3, town 23) was without work for fifteen years (1926 to 1940);
+with it none was on sixteen islands.
 
 ## Its numbers
 
@@ -92,6 +126,7 @@ other towns, so a town that makes for export is not taken for a glutted one.
 | `glut_months` | 4 | merchants take everything under this many months of stock; 0: always |
 | `glut_stop_months` | 8 | at this many they take nothing of the works' make |
 | `no_spoil_markup` | true | a good that spoils carries no markup ("Goods that spoil", below); off under the port |
+| `crumb` | 0.01 | a stock under this share of a month of the works' make at full time is no glut ("A crumb is no glut", above); 0 under the port, and no stock is a crumb |
 
 The least share of capacity merchants go on taking in the worst glut was a
 setting, `glut_floor`, at 0, until stage 5 of the pass over the rules made it

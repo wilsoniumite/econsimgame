@@ -807,6 +807,9 @@ fn towns_and_districts_have_stories() {
     // (docs/rules/land.md, "The switch") seed 3 is another island, so this half is
     // played with the land off (seed 7's half above is played on the new land)
     P.land = Default::default();
+    // and with the merchants' crumb off (docs/rules/prices.md, "A crumb is no glut"),
+    // which came after it and moves the island's history from its first month
+    P.prices.crumb = 0.0;
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(digests_of_new_towns(&early) >= 1, "seed 3 has a decade of new towns before 1800");
 }

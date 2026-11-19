@@ -855,6 +855,11 @@ One line each as they arrive: the name, its page, its switch.
   the towns that bring services in no longer lose what rots on their shelves
   and the merchants no longer owe two fifths of the money by 1900.
   [prices.md](prices.md), "Goods that spoil", `prices.no_spoil_markup`.
+- **a crumb is no glut**: a stock under a hundredth of a month of the works'
+  make at full time does not turn the works away, so a town whose sales
+  stopped, its stock decaying for ever and never reaching nothing, is no
+  longer frozen as the worst glut. [prices.md](prices.md), "A crumb is no
+  glut", `prices.crumb`.
 - **the price of land**: land is priced on the rent it paid, not on an
   average year's rent worked out by adding back the crop the weather took,
   which put it a tenth too high after a bad harvest and a tenth too low

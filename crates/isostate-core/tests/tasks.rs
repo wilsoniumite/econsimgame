@@ -323,14 +323,21 @@ fn starts(s: &sim::Sim) -> Option<i64> {
 }
 
 /// The drive runs on electricity, which goes no further than a town's own
-/// wires. Island 7, played a month at a time to ten years past the drive's
-/// find, under the game's rules with `tasks.enabled`, `tasks.land` and
-/// `tree.stage` (6, which lays the drive) set by name: in every month, a works
-/// in a town with no electricity to sell (none made there the month before:
-/// no station, or one just closed) holds none of its hauling by machine,
-/// whatever plant it has in place; there the price of electricity climbs to
-/// its ceiling and the town's target gives the drive nothing. Works elsewhere
-/// do hold some.
+/// wires, and a works short of it idles its machines, not itself ("A machine
+/// short of its run good"). Island 7, played a month at a time to ten years
+/// past the drive's find, under the game's rules with `tasks.enabled`,
+/// `tasks.land` and `tree.stage` (6, which lays the drive) set by name. In
+/// every month:
+///
+/// - a works that holds hauling by the drive in a town with no electricity in
+///   stock as the month begins (no station, or one just closed) ran its
+///   machines on none of it (`f_run_fill` 0), and paid for none;
+/// - a works whose machines ran on none of it the month before hires hands
+///   for all its work, the machines' part with the rest: its hands a unit are
+///   at least those by hand (`f_factor` 1 or more, the minders on top);
+/// - every works' run fill lies between nothing and one.
+///
+/// Works whose town has electricity hold hauling by the drive and run on it.
 #[test]
 fn no_station_no_drive() {
     let mut P = params(true);
@@ -339,35 +346,40 @@ fn no_station_no_drive() {
     let d = use_of(&s.content, "electric_drive");
     let ge = s.content.good_index["electricity"];
     let found = |s: &sim::Sim| s.st.tasks.found.get(d).copied().filter(|&y| y >= 0);
-    let (mut dark, mut idle, mut lit) = (0, 0, 0);
+    let (mut dark, mut by_hand, mut lit) = (0, 0, 0);
     while s.year <= s.end_year && found(&s).is_none_or(|y| s.year <= y + 10) {
         let year = s.year;
         for month in 0..12 {
             let none: Vec<bool> = (0..s.st.T_max).map(|t| !(s.st.inv[(t, ge)] > 0.0)).collect();
+            let planned = s.st.tasks.f_run_fill.clone();
             sim::run_month(&mut s, month).expect("money is conserved every month");
             let st = &s.st;
             for f in 0..st.F_count.min(st.tasks.f_held.len()) {
                 if !st.f_alive[f] || found(&s).is_none() {
                     continue;
                 }
-                let (t, h) = (st.f_town[f], st.tasks.f_held[f][tasks::HAUL]);
-                if none[t] {
-                    assert_eq!(h, 0.0, "{year}-{month}: works {f} in town {t}, which has no electricity, holds {h} of its hauling");
+                let (t, h, fr) = (st.f_town[f], st.tasks.f_held[f][tasks::HAUL], st.tasks.f_run_fill[f]);
+                assert!((0.0..=1.0).contains(&fr), "{year}-{month}: works {f}'s run fill is {fr}");
+                if h > 0.0 && none[t] {
+                    assert_eq!(fr, 0.0, "{year}-{month}: works {f} in town {t}, which has no electricity, ran its drives on {fr} of what they need");
                     dark += 1;
-                    if st.tasks.f_plant[f].iter().any(|&v| v > 0.0) {
-                        idle += 1;
-                    }
-                } else if h > 0.0 {
+                } else if h > 0.0 && fr > 0.0 {
                     lit += 1;
+                }
+                if h > 0.0 && planned.get(f) == Some(&0.0) {
+                    let x = st.tasks.f_factor[f];
+                    assert!(x >= 1.0 - 1e-12, "{year}-{month}: works {f}'s drives ran on nothing last month, and it hired {x} of its hands by hand");
+                    by_hand += 1;
                 }
             }
         }
         sim::end_year(&mut s);
     }
     let y = found(&s).expect("island 7 finds the electric drive (if a later rule stops that, this test must be set again)");
-    assert!(dark > 0, "no works stood in a town without electricity in the ten years after {y}");
-    assert!(lit > 0, "no works came to hold any hauling by the drive in the ten years after {y}");
-    eprintln!("after {y}: {dark} works-months without electricity ({idle} of them with plant in place, idle), {lit} holding hauling by the drive");
+    assert!(dark > 0, "no works with drives stood in a town without electricity in the ten years after {y}");
+    assert!(by_hand > 0, "no works hired its hands for drives that ran on nothing in the ten years after {y}");
+    assert!(lit > 0, "no works came to run any hauling by the drive in the ten years after {y}");
+    eprintln!("after {y}: {dark} works-months with drives and no electricity, {by_hand} worked by hand after such a month, {lit} running their drives");
 }
 
 /// A machine works once it stands, on island 7 played a month at a time to
