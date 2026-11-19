@@ -301,6 +301,7 @@ pub(crate) fn pump(
     shots: Option<Res<crate::ShotPlanArgs>>,
     sandbox: Option<Res<crate::sandbox::Sandbox>>,
     mut told: Option<ResMut<crate::inspector::Answers>>,
+    mut rules: Option<ResMut<crate::rulebook::Known>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Pump);
     // the months the books kept from before the window opened, ahead of any that come
@@ -429,6 +430,12 @@ pub(crate) fn pump(
             Msg::Told { thing, told: answer } => {
                 if let Some(told) = told.as_mut() {
                     told.keep(thing, answer);
+                }
+            }
+            // the rules as they stand: the Rules tab keeps the newest
+            Msg::Rules(now) => {
+                if let Some(rules) = rules.as_mut() {
+                    rules.keep(*now);
                 }
             }
             Msg::Failed(e) => {

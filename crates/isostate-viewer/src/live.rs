@@ -58,6 +58,20 @@ pub enum Cmd {
     /// `inspect::tell`): a question, not an order, answered between months as
     /// a question about a square is
     Ask(iso::inspect::Thing),
+    /// the rules as they stand, for the sandbox's Rules tab (`rulebook`): a
+    /// question, not an order, answered between months
+    Rules,
+}
+
+/// The rules of the game on the thread as they stand, and the ideas not yet
+/// found (`isostate_core::rulebook`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct RulesNow {
+    /// every name the sweep can set, in the order of the parameters, with its
+    /// value in this game, its value under the game's rules and its offers
+    pub entries: Vec<iso::rulebook::Entry>,
+    /// the name and label of each method and technique not yet found
+    pub unfound: Vec<(String, String)>,
 }
 
 /// What waits for the year's end, as the interface shows it.
@@ -108,6 +122,8 @@ pub enum Msg {
     /// what the simulation knows of the thing asked about, as it stands
     /// before the month about to be played; or why it cannot say
     Told { thing: iso::inspect::Thing, told: Result<iso::inspect::Told, String> },
+    /// the rules as they stand before the month about to be played
+    Rules(Box<RulesNow>),
     Failed(String),
     /// the game could not be saved, and why; None once it can be again
     Unsaved(Option<String>),
@@ -1015,7 +1031,7 @@ fn all_prospects(s: &iso::Sim) -> Vec<[Prospect; N_GROUPS]> {
 /// A command as the order the log keeps. Asking for a month or about a square is not one.
 fn order_of(sim: &iso::Sim, cmd: Cmd) -> Result<Order, String> {
     match cmd {
-        Cmd::Step | Cmd::Site(_) | Cmd::Ask(_) | Cmd::Cancel(_) | Cmd::Keep => Err("that is not an order".to_string()),
+        Cmd::Step | Cmd::Site(_) | Cmd::Ask(_) | Cmd::Rules | Cmd::Cancel(_) | Cmd::Keep => Err("that is not an order".to_string()),
         Cmd::Found { method, cell } => Order::found(sim, method, cell),
         Cmd::BuyLand(cell) => Ok(Order::BuyLand { cell }),
         Cmd::Decide { id, option } => Order::decide(sim, id, option),
@@ -1097,6 +1113,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
             }
             // (it only reads: a game asked about a thousand times runs as one never asked)
             Cmd::Ask(thing) => Msg::Told { thing, told: iso::inspect::tell(&game.sim, thing) },
+            // (it only reads, as Ask does; the walk takes a few milliseconds)
+            Cmd::Rules => Msg::Rules(Box::new(RulesNow { entries: iso::rulebook::rulebook(&game.sim.params), unfound: iso::rulebook::unfound(&game.sim) })),
             Cmd::Keep => {
                 // the clock has stopped in the middle of a year: the months since the last save are kept
                 if std::mem::take(&mut unkept) && !write_save(&game, &mut saver, &mut saved, false, &tx) {
