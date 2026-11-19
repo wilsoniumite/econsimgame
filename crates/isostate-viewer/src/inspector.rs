@@ -125,17 +125,33 @@ pub(crate) fn news_key(ui: &UiState, data: &Data, game: &Game) -> (u64, usize, u
     (ui.months, data.r.filled, game.answered)
 }
 
+/// While the clock runs, how often at most the same thing is asked about
+/// again and its card drawn again, in seconds. At Fastest a month comes
+/// nearly every frame, and a town's card drawn afresh each time cost the
+/// frames 3 ms (in the middle of them all) that the view does not have; twice
+/// a second is as fast as the rows can be read. With the clock stopped every
+/// month, year and answer is asked about at once.
+pub(crate) const RUNNING_EVERY: f32 = 0.5;
+
+/// The clock runs and the same thing was asked about or drawn less than
+/// `RUNNING_EVERY` ago.
+pub(crate) fn too_soon(tl: &Timeline, last: Option<Instant>) -> bool {
+    tl.playing && last.is_some_and(|t| t.elapsed().as_secs_f32() < RUNNING_EVERY)
+}
+
 /// Ask about the thing picked when it is picked and whenever something has
 /// come since the last question; only with the clock at the present, and not
 /// while the year turns (the answer would be of the year about to end: it is
-/// asked once the year has come).
+/// asked once the year has come). While the clock runs, the same thing no
+/// more often than `RUNNING_EVERY`.
 #[allow(clippy::too_many_arguments)]
-fn ask(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, game: Res<Game>, ui: Res<UiState>, mut answers: ResMut<Answers>, mut seen: Local<Option<(Option<Thing>, (u64, usize, u64))>>) {
+fn ask(picked: Res<Picked>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, game: Res<Game>, ui: Res<UiState>, mut answers: ResMut<Answers>, mut seen: Local<Option<((Option<Thing>, (u64, usize, u64)), Instant)>>) {
     let key = (picked.what.map(thing_of), news_key(&ui, &data, &game));
-    if *seen == Some(key) || live.turning() || !at_present(&tl, &data, &live) {
+    let last = seen.as_ref().filter(|s| s.0 .0 == key.0).map(|s| s.1);
+    if seen.as_ref().is_some_and(|s| s.0 == key) || live.turning() || !at_present(&tl, &data, &live) || too_soon(&tl, last) {
         return;
     }
-    *seen = Some(key);
+    *seen = Some((key, Instant::now()));
     if let Some(thing) = key.0 {
         answers.ask(&live, thing);
     }
@@ -173,6 +189,8 @@ struct Drawn {
     /// what the last look was made from, so that a frame with nothing new looks no further
     key: Option<(Option<Thing>, u64, bool, u64, usize, u64)>,
     shown: Option<(Shown, Option<String>)>,
+    /// when it was last drawn
+    at: Option<Instant>,
     /// the orders answered when last looked, and the line of the last edit if the last answer was one
     answered: u64,
     edit: Option<String>,
@@ -238,7 +256,9 @@ fn draw(
     let thing = picked.what.map(thing_of);
     let present = at_present(&tl, &data, &live);
     let key = (thing, answers.version, present, ui.months, data.r.header.events.len(), drawn.answered);
-    if drawn.key == Some(key) {
+    // (while the clock runs, the same thing's card is drawn again no more often than RUNNING_EVERY;
+    // what came meanwhile is drawn when that time is up)
+    if drawn.key == Some(key) || (drawn.key.is_some_and(|k| k.0 == thing) && too_soon(&tl, drawn.at)) {
         return;
     }
     drawn.key = Some(key);
@@ -263,6 +283,7 @@ fn draw(
     let f = font.0.clone();
     commands.entity(e).with_children(|p| block(p, &f, &mut images, data.r.y0, &now.0, now.1.as_deref()));
     drawn.shown = Some(now);
+    drawn.at = Some(Instant::now());
 }
 
 fn rule(p: &mut ChildSpawnerCommands) {

@@ -81,7 +81,7 @@ fn ask_island(
     game: Res<Game>,
     mut answers: ResMut<crate::inspector::Answers>,
     mut ui: ResMut<UiState>,
-    mut seen: Local<Option<(u64, usize, u64)>>,
+    mut seen: Local<Option<((u64, usize, u64), std::time::Instant)>>,
     mut drawn: Local<Option<Result<Told, String>>>,
 ) {
     if ui.tab != Some(crate::ui::Tab::Hand) {
@@ -89,9 +89,10 @@ fn ask_island(
         *seen = None;
         return;
     }
+    // (while the clock runs, no more often than the inspector asks: inspector::RUNNING_EVERY)
     let key = crate::inspector::news_key(&ui, &data, &game);
-    if *seen != Some(key) && !live.turning() && crate::inspector::at_present(&tl, &data, &live) {
-        *seen = Some(key);
+    if seen.is_none_or(|s| s.0 != key) && !live.turning() && crate::inspector::at_present(&tl, &data, &live) && !crate::inspector::too_soon(&tl, seen.map(|s| s.1)) {
+        *seen = Some((key, std::time::Instant::now()));
         answers.ask(&live, Thing::Island);
     }
     let now = answers.get(Thing::Island);

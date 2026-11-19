@@ -210,9 +210,9 @@ fn x_at(w: usize, years: usize, i: usize) -> f32 {
 /// in `col`: the months the hand touched, under the sandbox's inspector.
 pub fn ticks(pl: &mut Plot, c: &Chart, at: &[usize], col: [u8; 3]) {
     let (w, h) = (pl.w, pl.h);
-    let half = 0.6 * SS;
-    // from the foot, two fifths of the way up
-    let (top, foot) = ((h as f32 * 0.6).round() as usize, h.saturating_sub((2.0 * SS) as usize));
+    let half = 0.9 * SS;
+    // from the foot, half of the way up
+    let (top, foot) = ((h as f32 * 0.5).round() as usize, h.saturating_sub((2.0 * SS) as usize));
     for &i in at.iter().filter(|&&i| i < c.years) {
         let x = x_at(w, c.years, i);
         for xi in (x - half - 1.0).floor().max(0.0) as usize..=((x + half + 1.0).ceil() as usize).min(w.saturating_sub(1)) {
