@@ -120,6 +120,8 @@ fn market(o: &Opts) {
         let C = sim.content.clone();
         let P = sim.params.clone();
         let g = C.gi(&good);
+        // each good's decay as the month's step takes it (the content's for a good of the production tree)
+        let decay = isostate_core::tree::decay(&C, &P);
         sim.st.watch_markets = true;
         println!("month     price   anchor  stock in  requests      sold   spoiled      made  came in (net)  stock out   merchants' cash   their change   cheapest source, landed");
         while sim.year <= sim.end_year.min(o.to) {
@@ -131,9 +133,9 @@ fn market(o: &Opts) {
                 let st = &sim.st;
                 if let (Some(t), Some((inv0, cash0, prod0)), true) = (t, before, year >= o.from) {
                     let sold = st.month_sold[(t, g)];
-                    let spoiled = (inv0 - sold).max(0.0) * P.decay[g];
+                    let spoiled = (inv0 - sold).max(0.0) * decay[g];
                     let made = st.town_prod[(t, g)] - prod0;
-                    let kept = ((inv0 - sold) * (1.0 - P.decay[g])).max(0.0) + made;
+                    let kept = ((inv0 - sold) * (1.0 - decay[g])).max(0.0) + made;
                     let came = st.inv[(t, g)] - kept;
                     // the cheapest town to buy from, with the carriage and handling the trade rule charges
                     let src = (0..st.T_max)
