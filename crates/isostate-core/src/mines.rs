@@ -31,7 +31,8 @@
 //!   who raise nothing, paid out of the royalty (the landowner's outlay). So
 //!   nobody opens a pit head for a few tons, and the workings stand apart.
 //! - D. a working is opened where the royalty it would have paid over the last
-//!   few years' prices would repay the sinking in `payback` years: the best
+//!   few years' prices comes to `open_at` wages a month (the sinking repaid
+//!   in four years at the game's numbers): the best
 //!   prospects first, and only so many in a year as the town's market has
 //!   room for. Once sunk it costs nothing to keep, so a slump lays its hands
 //!   off and leaves it standing; it is abandoned when it has stood idle for
@@ -72,9 +73,12 @@ pub struct MineParams {
     pub haul: f64,
     /// C. Hands it takes for a year to sink a working. 0: a pit head costs nothing.
     pub sink: f64,
-    /// D. A working is opened where the royalty promised would repay its
-    /// sinking in this many years (so: `sink / payback` wages a month or more).
-    pub payback: f64,
+    /// D. A working is opened where the royalty promised comes to this many of
+    /// the town's wages a month or more. 0: every site is a prospect. (Until
+    /// stage 5 of the pass over the rules this was `payback`, the years in
+    /// which the royalty had to repay the sinking, and a site opened at
+    /// `sink / payback` wages a month; 10 is 40 / 4.)
+    pub open_at: f64,
     /// D. A working is abandoned when it has stood idle (under one hand, on a
     /// year's average) this many years running. A year's review counts the
     /// year just ended before it asks, so 1 gives up a working at the end of
@@ -94,9 +98,12 @@ pub struct MineParams {
     pub reserve: f64,
     /// F. Hands that fill a cell with pit heads, yards and spoil.
     pub hands_per_cell: f64,
-    /// F. The most of a cell its workings' surface may take.
-    pub cell_limit: f64,
 }
+
+/// F. The most of a cell its workings' surface may take. A setting until
+/// stage 5 of the pass over the rules: at 0.375 and 0.667, and at 0.25 and
+/// 0.833, it moved nothing (docs/probes/sens-mines.md).
+pub const CELL_LIMIT: f64 = 0.5;
 
 impl Default for MineParams {
     /// Off: what the port runs with. The numbers are the game's, so that
@@ -107,13 +114,12 @@ impl Default for MineParams {
             reach: 2.0,
             haul: 0.05,
             sink: 40.0,
-            payback: 4.0,
+            open_at: 10.0,
             idle_years: 10,
             memory: 0.3,
             year_room: 0.15,
             reserve: 2.0e7,
             hands_per_cell: 8000.0,
-            cell_limit: 0.5,
         }
     }
 }
@@ -352,7 +358,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
     }
     let m = &P.mines;
     // the royalty, in wages a month, that makes a site a prospect
-    let worth = if m.payback > 0.0 { m.sink / m.payback } else { 0.0 };
+    let worth = m.open_at.max(0.0);
     let (R, T) = (st.mine_sectors.len(), st.T_max);
     let (H, W) = (st.world.H, st.world.W);
     close_books(st);
@@ -535,7 +541,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
             st.mine_surface[(r, c)] = v;
             tot += v;
         }
-        let room = m.cell_limit.min(1.0 - st.cell_K_share[c]).max(0.0);
+        let room = CELL_LIMIT.min(1.0 - st.cell_K_share[c]).max(0.0);
         if tot > room {
             for r in 0..R {
                 st.mine_surface[(r, c)] *= room / tot;

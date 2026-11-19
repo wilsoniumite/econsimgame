@@ -552,13 +552,18 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
         })
         .collect();
     let goods: Vec<Value> = (0..C.G)
-        .map(|g| json!({"name": C.good_name[g], "label": C.good_label[g], "color": C.good_color[g], "weight": C.weight[g]}))
+        .map(|g| json!({"name": C.good_name[g], "label": C.good_label[g], "color": C.good_color[g], "weight": C.weight[g], "price": C.base_price[g]}))
         .collect();
     let methods: Vec<Value> = (0..C.M)
         .map(|m| {
             let inputs: Vec<Value> = (0..C.G).filter(|&g| C.m_in[(m, g)] != 0.0).map(|g| json!([g, C.m_in[(m, g)]])).collect();
+            // (not in the Python's header: each good's starting price above and, here, what
+            // a unit of monthly capacity costs to build at those prices. With the inputs, the
+            // heat and the labour they are the method's process, from which the viewer lays
+            // a works out, so that a trade its art has never heard of gets a plan of its own)
+            let capital: f64 = (0..C.G).map(|g| C.base_price[g] * C.m_cap[(m, g)]).sum();
             json!({"name": C.method_name[m], "label": C.method_label[m], "out": C.method_out[m], "inputs": inputs,
-                   "heat": C.m_heat[m], "labor": C.m_labor[m], "K0": C.m_K0[m]})
+                   "heat": C.m_heat[m], "labor": C.m_labor[m], "K0": C.m_K0[m], "capital": capital})
         })
         .collect();
     let techs: Vec<Value> = (0..C.NT)

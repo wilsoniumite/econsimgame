@@ -328,12 +328,23 @@ fn a_bad_setting_is_refused_before_anything_runs() {
     assert!(e.contains("1700") && e.contains("before the start year"), "{e}");
     assert!(!dir.exists(), "nothing is written when the command line is wrong");
 
-    // a place that cannot be written to is found out before the runs, not after them
-    std::fs::write(&dir, "a file where the directory should go").unwrap();
+    // a place that cannot be written to is found out before the runs, not after them: the refusal,
+    // the quickest of three tries, takes less than a sweep of one island for one year, timed here in
+    // the same run so that a busy machine slows both alike (it used to be held to five seconds)
+    let one = scratch("bad-one");
     let t0 = std::time::Instant::now();
-    let e = sweep(&["--seeds", "1-8", "--out", out, "--quiet"]).unwrap_err();
-    assert!(e.contains("--out"), "{e}");
-    assert!(t0.elapsed().as_secs_f64() < 5.0, "eight whole runs were made before --out was found to be a file");
+    sweep(&["--seeds", "1", "--end-year", "1750", "--out", one.to_str().unwrap(), "--quiet"]).expect("a sweep of one year runs");
+    let one_year = t0.elapsed().as_secs_f64();
+    let _ = std::fs::remove_dir_all(&one);
+    std::fs::write(&dir, "a file where the directory should go").unwrap();
+    let mut quickest = f64::INFINITY;
+    for _ in 0..3 {
+        let t0 = std::time::Instant::now();
+        let e = sweep(&["--seeds", "1-8", "--out", out, "--quiet"]).unwrap_err();
+        quickest = quickest.min(t0.elapsed().as_secs_f64());
+        assert!(e.contains("--out"), "{e}");
+    }
+    assert!(quickest < one_year, "eight whole runs were made before --out was found to be a file: the refusal took {:.0} ms, and one island's year {:.0} ms", quickest * 1e3, one_year * 1e3);
     let _ = std::fs::remove_file(&dir);
 }
 
@@ -355,5 +366,32 @@ fn a_run_that_fails_does_not_stop_the_others() {
     assert!(facts_csv.lines().nth(2).unwrap().starts_with("1,1,2,failed,"), "{facts_csv}");
     let summary = std::fs::read_to_string(dir.join("summary.txt")).unwrap();
     assert!(summary.contains("FAILED run 1 (seed 1, T_max=2): panicked: "), "{summary}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn a_full_works_table_is_said_plainly() {
+    // A works' table with room for five more than the island starts with fills in
+    // the first years, and from then on nothing can be founded. The run goes on, and
+    // says so in a fact and a line of the summary; a table with room says nothing.
+    let mut P = default_params();
+    P.seed = 1;
+    let room = sim::start(&P, default_content()).st.F_count + 5;
+    let dir = scratch("full");
+    let out = dir.to_str().unwrap();
+    let set = format!("F_max=20000,{room}");
+    sweep(&["--seeds", "1", "--end-year", "1760", "--set", &set, "--out", out, "--quiet"]).expect("the sweep runs");
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("facts.json")).unwrap()).unwrap();
+    let runs = doc["runs"].as_array().unwrap();
+    assert_eq!(runs[0]["ok"], Value::Bool(true));
+    assert!(runs[0]["facts"].get("works_table_full").is_none(), "a table with room is not full");
+    assert_eq!(runs[1]["ok"], Value::Bool(true), "a full table does not stop the run");
+    let year = runs[1]["facts"]["works_table_full"].as_f64().expect("the full table is a fact") as i64;
+    assert!((1750..=1760).contains(&year), "{year}");
+    let summary = std::fs::read_to_string(dir.join("summary.txt")).unwrap();
+    let line = format!("FULL run 1 (seed 1, F_max={room}): {}", isostate_core::firms::table_full_message(year, room));
+    assert!(line.contains(&format!("the works' table was full in {year}: all ")) && line.contains("no works could be founded after"));
+    assert!(summary.contains(&line) && !summary.contains("FULL run 0"), "{summary}");
     let _ = std::fs::remove_dir_all(&dir);
 }

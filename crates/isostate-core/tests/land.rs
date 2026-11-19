@@ -84,6 +84,12 @@ fn the_world_is_whole() {
         let sum = |f: &[f64]| f.iter().sum::<f64>();
         assert!(sum(&w.fertility) > 2000.0 && sum(&w.coal) > 40.0 && sum(&w.ore) > 40.0, "seed {seed}: a poor island");
         assert!(w.navigable.iter().filter(|&&n| n).count() > 30, "seed {seed}: no navigable water");
+        // no wood above the tree line, 760 m
+        let tops: Vec<usize> = (0..N).filter(|&c| w.land[c] && w.h[c] * lf.h_ref >= 760.0).collect();
+        assert!(!tops.is_empty(), "seed {seed}: nothing 760 m up to look at");
+        for &c in &tops {
+            assert_eq!(w.forest_pot[c], 0.0, "seed {seed}: wood at {:.0} m in cell {c}", w.h[c] * lf.h_ref);
+        }
     }
 }
 
@@ -144,6 +150,69 @@ fn water_runs_downhill_to_the_sea() {
         let (jan, jul) = (lf.discharge_month(&w, 0), lf.discharge_month(&w, 6));
         let big = (0..N).filter(|&c| w.navigable[c]).max_by(|&a, &b| lf.discharge[a].total_cmp(&lf.discharge[b])).unwrap();
         assert!(jan[big] > 1.3 * jul[big], "seed {seed}: January {} against July {}", jan[big], jul[big]);
+    }
+}
+
+#[test]
+fn one_island_rivers_that_end_where_they_say_and_lakes_behind_their_lips() {
+    // what the page promises and the tests above do not hold: one island is
+    // kept; every river ends in the sea, a lake or a bigger river, and a chain
+    // of rivers joining rivers ends in the sea or a lake; and a lake's water
+    // stands behind its lip, its bed under the water everywhere and its shore
+    // no lower than the water but where it spills out
+    for seed in [2, 7, 11] {
+        let w = island(seed);
+        let lf = form(&w);
+        let (_, islands) = ndimage::label(&w.land, w.H, w.W);
+        assert_eq!(islands, 1, "seed {seed}: {islands} islands");
+
+        let (k, fw, fh) = (lf.fine as f32, lf.fw, lf.fh);
+        let node = |x: f32, y: f32| ((y * k) as usize).min(fh - 1) * fw + ((x * k) as usize).min(fw - 1);
+        for (r, river) in lf.rivers.iter().enumerate() {
+            let (x, y) = (*river.x.last().unwrap(), *river.y.last().unwrap());
+            match river.end {
+                RiverEnd::Sea => {
+                    let n = node(x, y);
+                    assert!(lf.height[n] <= 0.0 && lf.lake_id[n] == 0, "seed {seed}: river {r} ends on dry ground, not in the sea");
+                }
+                RiverEnd::Lake(l) => assert_eq!(lf.lake_id[node(x, y)] as usize, l + 1, "seed {seed}: river {r} ends beside its lake, not in it"),
+                RiverEnd::River(m) => {
+                    let on = lf.rivers[m].x.iter().zip(&lf.rivers[m].y).any(|(&a, &b)| (a - x).abs() < 1e-4 && (b - y).abs() < 1e-4);
+                    assert!(on, "seed {seed}: river {r} ends off the line of river {m}, which it joins");
+                }
+            }
+            let (mut cur, mut hops) = (r, 0);
+            while let RiverEnd::River(m) = lf.rivers[cur].end {
+                cur = m;
+                hops += 1;
+                assert!(hops <= lf.rivers.len(), "seed {seed}: the rivers below river {r} join in a ring");
+            }
+        }
+
+        assert!(!lf.lakes.is_empty(), "seed {seed}: no lake to look at");
+        for (l, lake) in lf.lakes.iter().enumerate() {
+            let id = l as u16 + 1;
+            let outlet = node(lake.outlet.0, lake.outlet.1);
+            let (mut nodes, mut low) = (0, f32::INFINITY);
+            for n in 0..fw * fh {
+                if lf.lake_id[n] != id {
+                    continue;
+                }
+                nodes += 1;
+                assert!(lf.height[n] < lake.level, "seed {seed}: lake {l}'s bed stands above its water at node {n}");
+                let (i, j) = ((n % fw) as isize, (n / fw) as isize);
+                for (di, dj) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
+                    let nb = (j + dj) as usize * fw + (i + di) as usize;
+                    if lf.lake_id[nb] != id && nb != outlet {
+                        low = low.min(lf.height[nb] - lake.level);
+                    }
+                }
+            }
+            assert!(nodes > 0, "seed {seed}: lake {l} has no water");
+            // a node a hand's breadth under the water is shallows, not lake
+            assert!(low >= -0.26, "seed {seed}: lake {l}'s shore is {:.2} m under its water away from its outlet", -low);
+            assert_ne!(lf.lake_id[outlet], id, "seed {seed}: lake {l}'s outlet is in the lake");
+        }
     }
 }
 

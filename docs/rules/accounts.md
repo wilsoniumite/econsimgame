@@ -145,7 +145,11 @@ months it worked), `cash` (at the year's end), `months` (it worked).
 
 For the last complete year only, each works' materials, fuel and their
 delivered cost by good are kept as well, and each town's twelve months of
-price, make, sales and closing stock for every good (`MONTH_FIELDS`).
+price, make, sales and closing stock for every good (`MONTH_FIELDS`), with
+each town's wage and each family's cash as every month ended. The months of
+the year in progress are kept the same way as they are played, and the
+month-end figures of both years are handed out (see "In a game played by the
+month").
 
 ### The island: `IslandYear`
 
@@ -234,10 +238,16 @@ accounts::town_books(&sim.st, &sim.content, town, Some(1850)) -> Option<TownBook
 accounts::works_books(&sim.st, &sim.content, firm) -> Option<WorksBooks>
 // the island's account of the last complete year
 accounts::island_year(&sim.st) -> Option<IslandYear>
+// how month t of the run ended (0 is the first January): each town's wage and
+// prices, each family's cash; for the last complete year and the year in progress
+accounts::month_ends(&sim.st) -> Range<usize>
+accounts::month_end(&sim.st, t) -> Option<MonthEnd>
+// the same months as the month's message carries them, for a viewer that was not watching
+live::months_kept(&sim.st, &sim.content) -> Vec<LiveMonth>
 ```
 
-All three are re-exported from the crate's root and all their types derive
-`Serialize`.
+The first three are re-exported from the crate's root, and all the types
+derive `Serialize`.
 
 `TownBooks` has `year`, `town`, `name`; `goods` (one `GoodBooks` per good, in
 the content's order: the columns above by name, plus `bought`, the eight
@@ -269,10 +279,12 @@ The live game steps a month at a time (`save::Game::month`: `sim::run_month`,
 and after December `sim::end_year`, which closes the books), and a save may
 be made in the middle of a year. What the books do then:
 
-- **Of the year in progress they say nothing.** Its sums are being added up
-  in tables nothing outside `accounts.rs` can read. `town_books(.., None)`,
-  `island_year` and the months kept are still the last complete year's, and
-  the eight series hold NaN for every month of the open year. That is so
+- **Of the year in progress they say nothing but how its months ended.** Its
+  sums are being added up in tables nothing outside `accounts.rs` can read.
+  `town_books(.., None)`, `island_year` and `TownBooks::months` are still the
+  last complete year's, and the eight series hold NaN for every month of the
+  open year. What is handed out of it is each month's end (`month_end`; see
+  "The months nobody watched" below). That is so
   however the game got to that month: played straight through, or loaded
   from a save and played again. A game saved in June and loaded has the
   books it had, running sums and all, and closes the year with the same
@@ -310,15 +322,58 @@ be made in the middle of a year. What the books do then:
   as it does with any parameter; that only prints a line when the game is
   loaded.)
 - **The books' months and the interface's months are the same months.**
-  The books keep, for the last complete year, each month's closing price,
-  make, sales and stock by town and good. The price is the one the month
-  ended at, after prices responded, which is what `LiveMonth::price` sends
-  and the Markets panel's month shows; the test above holds the two equal
-  for January to November. December's `LiveMonth` in a game is taken after
-  the year has ended, so its prices and wages are those the next January
-  opens at: where a district changed market at the year's end and took its
-  prices with it (`peopling::move_with_cells`) they differ from December's
-  close, in the fourth digit on island 3. The books' December is the close.
+  The books keep, for the last complete year and for the year in progress,
+  each month's closing price, make, sales and stock by town and good, each
+  town's wage and each family's cash. The price is the one the month ended
+  at, after prices responded, and the wage the one the month was paid at,
+  which is what `LiveMonth::price` and `LiveMonth::wage` send and the price
+  and wage maps show for a month; the cash is the families' as the month
+  ended, after its dividends and rents, which is `LiveMonth::cash`. (The
+  price is kept for every town slot, a slot with no town yet at the price it
+  will open at, as the message sends it; the wage of such a slot is 0.) The
+  tests hold them equal to the last bit, all twelve months.
+- **December is told as it ended.** A game's thread takes December's
+  `LiveMonth` after the year has ended (`save::Game::month` ends the year
+  inside December's call, and nothing here may change that), and the island
+  then stands as the next January opens: districts that changed market at
+  the year's end took their prices with them (`peopling::move_with_cells`),
+  which moved December's prices in the fourth digit on island 3; towns
+  founded at the year's end have a wage; the families have bought land and
+  built. Until now the price and wage maps' December, and the families' cash
+  for December, were those. `live_month` now reads a month whose year has
+  closed from the books (`month_end`), so December's prices, wages and cash
+  are the ones December ended at, the same as the books' December and as
+  `live::months_kept` gives a loaded game. On island 3 both Decembers of the
+  test moved in prices or wages and in cash, so the difference was real
+  every year, not only in the fourth digit. Over whole games of the eight
+  islands of the sweep, stepped as the game's thread steps them, the year's
+  end moved December's prices in 145 to 149 of the 151 years, and on every
+  island each of the 1,812 months, as the books handed it out in its own
+  year and in the year after, was the month sent, to the last bit (a check
+  made once by hand, not kept as a test: it takes six
+  minutes). Without the books (the port, or
+  `ISOSTATE_NO_BOOKS`) December is still read as the next January opens. The
+  Markets panel by the month was never touched by this: its months are the
+  island's own series, which are written as each month ends. Nothing else
+  moves: no series, no fact of the sweep, no picture, and a played game and
+  a loaded one still agree to the last bit (`live_tests.rs`, both save
+  tests, now with December in them).
+- **The months nobody watched.** A viewer keeps each town's prices and wages
+  by the month from the months it is sent, for the price and wage maps. A
+  game gone on with from a save plays its months over before there is a
+  window to send them to, so a game gone on with in June had nothing for
+  January to May (the island's own series, which the Markets panel's months
+  are drawn from, it always had). `live::months_kept` hands out the months
+  the books hold, the last complete year's twelve and the year in progress so
+  far, as `LiveMonth`s (each with its series as they stand and no news), and
+  the viewer starts its months with them (`Live::months_kept`, taken by
+  `game::pump`); it does so for a new game too, which opens with its first
+  year played. `tests/accounts.rs`
+  (`a_game_gone_on_with_has_the_months_it_did_not_watch`) holds them to the
+  months a played game sent, after every month of a game as it is played and
+  in the same game saved in June and loaded, saved at a turn and loaded, and
+  loaded twice; the viewer's `live_tests.rs` holds a game loaded in June to
+  the game that was watched, month by month, on the maps' figures.
 
 What it costs (island 7, six families, the game's rules, release build;
 `cargo run --release -p isostate-core --example books_by_month`, which plays
@@ -331,7 +386,7 @@ same island):
 | the year's end, after December | 70 to 71 ms | 71 to 72 ms | 0.21 to 0.24 ms |
 | the month's message (`live_month`) | 2 to 3 millionths of a second | the same | |
 | the year's message (`live_year`) | 0.8 ms | 0.8 ms | |
-| a copy of the island in 1900 | 3.6 to 4.6 ms | 5.5 to 5.7 ms (8.7 to 9.3 before the history was shared) | |
+| a copy of the island in 1900 | 3.6 to 4.6 ms | 5.5 to 5.7 ms (8.7 to 9.3 before the history was shared; see below for the year in progress, since made smaller) | |
 
 Stepping by the month costs the books nothing they did not cost before:
 their work is in the month's hooks, a fifteenth of a month's step, and
@@ -350,20 +405,38 @@ went with every copy, 33 MB of it by 1900, and doubled what the copy took:
 years put away, so they are now shared between the island and its copies
 (`Books::hist` is behind an `Arc`; only `close_year` writes to it, and a
 copy that closes a year while another still stands takes its own first).
-What goes with a copy is the year in progress, some thirteen megabytes in
-1775 as in 1900 (most of it the works' rows, which are sized for the twenty
-thousand works there is room for): a copy takes 5.5 to 5.7 ms in 1900
-against 3.6 to 4.6 without the books, and 4.5 against 2.1 to 3.7 in 1775;
-some 16 ms for an order in 1900 where it was 12, on the simulation's
-thread, once for each order. A game that is only stepped never
+What goes with a copy is the year in progress. Its works' rows were sized
+for the twenty thousand works there is room for, thirteen megabytes in 1775
+as in 1900, and a copy took 5.5 to 5.7 ms in 1900 against 3.6 to 4.6
+without the books; some 16 ms for an order in 1900 where it was 12. The
+rows are now for the works there are, and grow when works are founded
+(`fit_works`; at a year's end or its turn, never month by month), so what
+a copy takes of the books is 2.3 MB in 1775 (432 works) and 3.8 MB in 1900
+(2,320 works), against 13.1 and 13.5 MB with the rows as they were
+(`books_by_month`, island 7, which now prints it). Copying the books alone
+in 1900 took 4.7 and 5.3 ms with the old rows and 0.5 and 1.1 ms with the
+new, in two runs of each, turn about, on a machine so busy that a whole
+copy of the island took anywhere from 8 to 42 ms with or without the books;
+the whole copy's time could not be told apart in that noise, so the books'
+own is the figure to go by. (Timed again by the check, two more runs of
+each turn about on a machine as busy: 2.4 and 3.3 ms with the old rows,
+0.2 and 1.3 ms with the new; the sizes came out the same to the hundredth
+of a megabyte.) The books are the same to the last bit
+(`tests/accounts.rs` compares the whole of them however a game was reached,
+and the eight islands' facts do not move). What is left is mostly the
+year's tables by town slot, which are for the 48 slots there is room for
+(trade between every two of them is 0.9 MB alone); a table for the towns
+there are would be the next saving. A game that is only stepped never
 has a copy standing when a year closes, so putting the year away still asks
 the allocator for nothing (`tests/accounts.rs`,
 `a_copy_of_the_island_shares_the_years_put_away`).
 
 In the viewer itself (`--advance 119 --script
-"settle;key:Escape;frames:3;key:Space;run:25;key:Up;frames:2;key:Up;frames:2;run:25;print"`,
+"settle;key:Escape;frames:10;key:Space;run:25;key:Up;frames:2;key:Up;frames:2;run:25;print"`,
 with and without `ISOSTATE_NO_BOOKS=1`, which starts the same game with no
-books for this purpose) the frames' work shows no cost: at a month a second
+books for this purpose; the runs were made with `frames:3` after the
+Escape, which on a busy machine can leave the clock stopped, so ten frames
+are given here) the frames' work shows no cost: at a month a second
 the frames a month arrived in took 6.1 ms in the middle with the books and
 7.6 without in one pair of runs, 8.4 and 8.2 in the next; at a year a second
 7.3 against 4.5, and then 6.3 against 9.9. The machine was doing other
@@ -808,22 +881,15 @@ draw it): with it thrown the books balance and change nothing
 
 - **Only complete years can be read.** The year now running is being added
   up and has no books yet, so a player who founds a works in March sees its
-  books the next January. The last complete year's months are kept, for
-  prices, make, sales and stock only. Now that the game is played by the
-  month this is felt more: the months of the open year are in the books
-  (January to the month just played) and are not handed out, while the
-  viewer keeps each town's prices and wages by the month only for the months
-  it watched, so a game gone on with in June has no map of May's prices.
-  Handing out the open year's months (`town_books` with the months so far)
-  would give it one; it would have to say the same thing however the game
-  got to June, which the test of a game left in the middle of a year is
-  there to hold.
+  books the next January. Of its months only how each ended is handed out
+  (prices, wages and the families' cash, `month_end`); make, sales and stock
+  by the month are kept for it but handed out only once the year closes, in
+  `TownBooks::months`.
 - **An order in the middle of a year copies the books' year in progress**
-  (see "In a game played by the month"): the tables of the open year, a
-  third again on a copy that is made three times an order. The years put
-  away are shared and no longer go with it. The open year's tables are
-  sized for every works there is room for (`F_max`, twenty thousand); a
-  table that grew with the works there are would make that small too.
+  (see "In a game played by the month"): the tables of the open year, on a
+  copy that is made three times an order. The years put away are shared and
+  no longer go with it, and the works' rows are for the works there are; what
+  is left, 2 to 4 MB, is mostly tables by town slot sized for 48 towns.
 - **The merchants' share is cash, not profit.** It is what the merchants
   took in less what they paid out. In a year they build stock it is low, in
   a year they run it down it is high; `stock_value` is kept beside it so the

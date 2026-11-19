@@ -160,6 +160,14 @@ orchard_blossom = "#ecdcd6"
 # run together; and the same of a town in the hills, slate over grey stone
 town_roofs_far = "#b07f68"
 town_roofs_far_hills = "#8f8d96"
+# a setting, off as it stands: the grass of the closes of a town in the hills.
+# While it is the same as close_grass, a hill town's closes are as the
+# lowland's: that green, within hedges. Give it a tone of its own (the
+# rougher, greyer green of hill pasture, "#8fa468", is the one to try:
+# `--look looks/hill-closes.toml` has it) and the closes of the hill towns
+# take that tone and are bounded by walls of the hills' stone (field_wall)
+# where the lowland's are hedged
+close_grass_hills = "#7fb257"
 
 [sea]
 # The sea's surface, painted by its own shader (src/sea.wesl).

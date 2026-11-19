@@ -19,6 +19,7 @@ mod mills;
 mod pit;
 mod plain;
 mod plant;
+pub mod site;
 mod steel;
 mod textile;
 mod trades;
@@ -287,26 +288,38 @@ pub fn flag_point(site: &Site, w: &Works, pal: &Palette) -> Vec3 {
 /// of its own numbers it took (the same at every level of detail).
 fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Site, w: &Works, pal: &Palette) -> (Option<Vec3>, i32) {
     let mut c = kit::Ctx::new(solid, smoke, flat, site, w, pal);
-    match w.kind {
-        Kind::HandLoom => trades::hand_loom(&mut c),
-        Kind::Smithy => trades::smithy(&mut c),
-        Kind::Millwright => trades::millwright(&mut c),
-        Kind::Shops => trades::shops(&mut c),
-        Kind::CharcoalBurning => woodland::charcoal_burning(&mut c),
-        Kind::Bloomery => woodland::bloomery(&mut c),
-        Kind::CharcoalFurnace => furnaces::charcoal_furnace(&mut c),
-        Kind::CokeFurnace => furnaces::coke_furnace(&mut c),
-        Kind::ForgeRails => mills::forge(&mut c),
-        Kind::RollingMill => mills::rolling_mill(&mut c),
-        Kind::SteelRolling => mills::steel_rail_mill(&mut c),
-        Kind::CrucibleSteel => steel::crucible(&mut c),
-        Kind::Bessemer => steel::converter(&mut c),
-        Kind::EngineWorks => engine::engine_works(&mut c),
-        Kind::TextileMill => textile::mill(&mut c),
-        Kind::Brickworks => brick::brickworks(&mut c),
-        Kind::Other => plain::plain(&mut c),
+    raise(&mut c);
+    scaffolding(&mut c);
+    c.finish();
+    (c.peak, c.taken())
+}
+
+/// Place the buildings of a works' kind on the ground its context has.
+fn raise(c: &mut kit::Ctx) {
+    match c.w.kind {
+        Kind::HandLoom => trades::hand_loom(c),
+        Kind::Smithy => trades::smithy(c),
+        Kind::Millwright => trades::millwright(c),
+        Kind::Shops => trades::shops(c),
+        Kind::CharcoalBurning => woodland::charcoal_burning(c),
+        Kind::Bloomery => woodland::bloomery(c),
+        Kind::CharcoalFurnace => furnaces::charcoal_furnace(c),
+        Kind::CokeFurnace => furnaces::coke_furnace(c),
+        Kind::ForgeRails => mills::forge(c),
+        Kind::RollingMill => mills::rolling_mill(c),
+        Kind::SteelRolling => mills::steel_rail_mill(c),
+        Kind::CrucibleSteel => steel::crucible(c),
+        Kind::Bessemer => steel::converter(c),
+        Kind::EngineWorks => engine::engine_works(c),
+        Kind::TextileMill => textile::mill(c),
+        Kind::Brickworks => brick::brickworks(c),
+        Kind::Other => plain::plain(c),
     }
-    match w.state {
+}
+
+/// The scaffolding of a works that is going up or being enlarged, and what lies about it.
+fn scaffolding(c: &mut kit::Ctx) {
+    match c.w.state {
         State::GoingUp => {
             let n = c.sheds.len().min(3);
             for i in 0..n {
@@ -323,8 +336,6 @@ fn build(solid: &mut MeshBuf, smoke: &mut MeshBuf, flat: &mut MeshBuf, site: &Si
         }
         _ => {}
     }
-    c.finish();
-    (c.peak, c.taken())
 }
 
 #[cfg(test)]

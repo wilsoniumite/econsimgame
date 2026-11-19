@@ -53,6 +53,11 @@ struct PatchworkParams {
     // ground then reads as roofs from far off (0 leaves a town's ground
     // exactly as it was drawn before)
     town_kept: f32,
+    // 1 on the new land (newland/ground.rs): its shore is the first third of
+    // a metre above the tide, drawn far steeper than it lies, and a steep
+    // shore there is mud and sand, not shingle (0 leaves every shore exactly
+    // as it was drawn before)
+    soft_shore: f32,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(100) var<uniform> ground: PatchworkParams;
@@ -168,6 +173,7 @@ struct LandPaint {
     orchard_blossom: vec4<f32>,
     town_roofs_far: vec4<f32>,
     town_roofs_far_hills: vec4<f32>,
+    close_grass_hills: vec4<f32>,
 }
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(103) var<uniform> paint: LandPaint;
@@ -191,6 +197,9 @@ const BLOCK: f32 = 0.9;
 const TURN_C: f32 = 0.9460423;
 const TURN_S: f32 = 0.3240436;
 const PARCEL_LEVEL: u32 = 3u;
+// The cuts from this level on are the plots of a town's built-up ground
+// (`town`): deeper than any field or close is cut (fields::MAX_DEPTH).
+const PLOT_LEVEL: u32 = 7u;
 // half the width of a hedge, in cells
 const HEDGE: f32 = 0.0072;
 const TAU: f32 = 6.2831853;
@@ -347,7 +356,11 @@ fn cut(bl: Block, start: Cut, level: u32, depth: u32) -> Cut {
         let ey = (c.hi.y - c.lo.y) * lv;
         let k = hash3(bi, bj + c.id * 7919u, 160u + lvl);
         var along_u = ex >= ey;
-        if (strips && lvl >= PARCEL_LEVEL) {
+        if (lvl >= PLOT_LEVEL) {
+            // the plots a town's built-up ground is cut into: always across the
+            // longer side, so that a strip of a strip block is cut into plots
+            // along it and not into slivers
+        } else if (strips && lvl >= PARCEL_LEVEL) {
             along_u = strip_u;
         } else if (k < 0.12) {
             along_u = !along_u;
@@ -983,7 +996,15 @@ fn town_edge(sp: Spot) -> vec3<f32> {
     let key = field_key(sp.bl, close);
     let k = hash3(key, 95u, 0u);
     let k2 = hash3(key, 97u, 0u);
-    let grass = grass_season(paint.close_grass.rgb, sp.ph) * (0.95 + 0.1 * k2);
+    // (a setting of the look, off as it stands: once the hills' closes are given a
+    // tone of their own, a hill town's closes take it and are walled, not hedged)
+    let apart = paint.close_grass_hills.rgb - paint.close_grass.rgb;
+    let hills = sp.terr >= 2u && dot(apart, apart) > 1e-6;
+    var turf = paint.close_grass.rgb;
+    if (hills) {
+        turf = paint.close_grass_hills.rgb;
+    }
+    let grass = grass_season(turf, sp.ph) * (0.95 + 0.1 * k2);
     var crown = paint.orchard.rgb;
     crown = mix(crown, paint.orchard_blossom.rgb, 0.7 * bell(sp.ph, 0.31, 0.045));
     crown = mix(crown, paint.hedge_autumn.rgb, 0.55 * bell(sp.ph, 0.84, 0.1));
@@ -1021,11 +1042,16 @@ fn town_edge(sp: Spot) -> vec3<f32> {
     c = mix(c, paint.water_meadow.rgb, 0.4 * sp.flood);
     // its hedge, with a little shade either side
     let e = cut_edge(sp.bl, close);
-    let hw = HEDGE * 0.7;
+    var hw = HEDGE * 0.7;
     var hc = paint.hedge.rgb;
     hc = mix(hc, paint.hedge_autumn.rgb, 0.6 * bell(sp.ph, 0.84, 0.1));
     hc = mix(hc, paint.hedge_winter.rgb, 0.6 * winter(sp.ph));
     hc *= 1.0 + 0.14 * vnoise(sp.p.x * 60.0, sp.p.y * 60.0, 77) * detail(60.0, sp.foot);
+    if (hills) {
+        // a wall of the hills' stone, narrower than a hedge and the same all year
+        hw = HEDGE * 0.5;
+        hc = paint.field_wall.rgb * (1.0 + 0.1 * vnoise(sp.p.x * 80.0, sp.p.y * 80.0, 79) * detail(80.0, sp.foot));
+    }
     c *= 1.0 - 0.1 * band(e, hw * 2.4, sp.foot);
     c = mix(c, hc, 0.9 * band(e, hw, sp.foot) * hedged);
     // far away the closes blend into the town edge's own green: deeper than
@@ -1346,7 +1372,7 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     if (wetk < 1.0) {
         // dry sand, darker where the sea has just been; shingle and rock on a steep shore
         var top = mix(paint.beach_wet.rgb, paint.beach.rgb, smoothstep(0.0, 0.012, h));
-        top = mix(top, paint.shingle.rgb, smoothstep(0.5, 1.2, slope));
+        top = mix(top, paint.shingle.rgb, smoothstep(0.5, 1.2, slope) * (1.0 - ground.soft_shore));
         if (landk > 0.0) {
             let winter_k = winter(ph);
             var sp: Spot;

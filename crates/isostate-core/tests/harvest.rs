@@ -48,9 +48,11 @@ fn off_under_the_port_and_on_in_the_game() {
     let port = serde_json::to_value(default_params()).unwrap();
     assert!(port.get("harvest").is_none());
     assert_eq!(serde_json::to_value(game_params()).unwrap()["harvest"]["enabled"], true);
-    // switching it on alone gives the game's numbers
+    // switching it on alone gives the game's numbers; the price of land on the
+    // rent paid is a switch of its own, off under the port and on in the game
     let on = default_params().with_json_overrides(r#"{"harvest": {"enabled": true}}"#).unwrap();
-    assert_eq!(on.harvest, HarvestParams::game());
+    assert_eq!(on.harvest, HarvestParams { rent_as_paid: false, ..HarvestParams::game() });
+    assert!(!default_params().harvest.rent_as_paid && game_params().harvest.rent_as_paid);
 
     // off: nothing is drawn, kept, told or written
     let r = run(&params(3, 1752, None));
@@ -302,10 +304,12 @@ fn a_bad_year_is_dear_bread_and_a_lower_real_wage_and_the_news_says_so() {
     assert!(told("A poor harvest").contains(&worst) || told("Three lean years").contains(&worst), "the worst harvest, {} in {}, went untold", harvest[worst], y0 + worst as i64);
 }
 
+/// Played with `harvest.rent_as_paid` off, so that land is priced on an average
+/// year; then each cell is priced again with it on, on the rent it paid.
 #[test]
 #[allow(non_snake_case)]
 fn with_families_money_holds_and_land_is_priced_on_an_average_year() {
-    let mut P = params(5, 1764, Some(HarvestParams { district_sd: 0.12, ..HarvestParams::game() }));
+    let mut P = params(5, 1764, Some(HarvestParams { district_sd: 0.12, rent_as_paid: false, ..HarvestParams::game() }));
     P.n_families = 6;
     let mut s = sim::start(&P, default_content());
     let mut cursor = live::LiveCursor::new(&s.content);
@@ -333,4 +337,24 @@ fn with_families_money_holds_and_land_is_priced_on_an_average_year() {
         }
     }
     assert!(checked > 50, "only {checked} cells priced above the floor");
+    // under `rent_as_paid` the same cells are priced on the rent they paid, the
+    // weather's part left out, high or low (docs/rules/harvest.md, "The price of land")
+    let mut paid = P.clone();
+    paid.harvest.rent_as_paid = true;
+    let (mut checked, mut moved) = (0, 0);
+    for &c in &hit {
+        let t = st.catch[c];
+        let floor = if t >= 0 { 12.0 * P.land_rent_floor * st.wage[t as usize] } else { 0.0 };
+        let rent = st.cell_rent_year[c];
+        if rent > floor && rent + st.harvest_rent_gap_year[c] > floor {
+            let price = families::land_price(st, &paid, c);
+            assert!((price - P.years_purchase * rent).abs() <= 1e-9 * price.abs());
+            if (price - families::land_price(st, &P, c)).abs() > 1e-6 * price.abs() {
+                moved += 1;
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 50, "only {checked} cells priced above the floor on the rent paid");
+    assert!(moved > 50, "the switch moved the price of only {moved} cells of {checked}");
 }

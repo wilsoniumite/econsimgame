@@ -341,6 +341,13 @@ isostate-core sweep ... --set mines.sink=30,53 --set mines.payback=3,5.33 --out 
 isostate-core sweep --seeds 9-16 ...  --out base-16, m-null-16, m-null2-16, m-reach-16, m-haul-16, m-hands_per_cell-16
 ```
 
+*Since stage 5 of the pass over the rules* (`docs/designs/rules-pass.md`, section 4.5), `mines.payback`,
+`mines.cell_limit` and the chronicle's `at_least`, `fill_floor` and `base_years` are no longer settings, and
+a `--set` that names one is refused with a sentence saying what it became. The pair above is now `sink`
+with `open_at`, the threshold in wages a month that was `sink / payback`: its four runs were `sink` 30 and
+53 at `open_at` 10, 5.63, 17.67 and 9.94, which `--set` cannot cross as a grid, so they take one sweep each.
+The others cannot be swept at all: they are constants.
+
 The first said "of the 446 facts both have, the seconds aside, 0 differ" against today's main. The
 chronicle's, one island a process so that each island's counts can be set against its own:
 
@@ -372,6 +379,9 @@ isostate-core sweep ... --set mines.cell_limit=0.25,0.833 --out x-cell_limit    
 isostate-core sweep ... --set mines.memory=0.15,0.5 --out x-memory
 isostate-core sweep ... --set mines.year_room=0.075,0.25 --out x-year_room
 ```
+
+(The first two of these name settings that stage 5 of the pass over the rules retired, and are refused
+today: see the note under "How it was run".)
 
 `sink / payback` holds as one threshold on sixteen islands; `cell_limit` and `year_room` still do nothing
 twice as far out; `memory` begins to act there (10 and 12 facts beat the noise, against 6 and 3 at a third

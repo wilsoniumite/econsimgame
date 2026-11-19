@@ -1134,6 +1134,7 @@ pub fn kind_colour(kind: &str) -> Color {
         "harvest" => Color::srgb(0.62, 0.56, 0.24),
         "town" | "region" => Color::srgb(0.55, 0.40, 0.23),
         "family" => Color::srgb(0.62, 0.30, 0.45),
+        "emigration" => Color::srgb(0.30, 0.34, 0.56),
         // what became of the player's own orders at a year's turn (`Toasts::say`): done, or not
         "orders" => Color::srgb(0.62, 0.30, 0.45),
         "orders_refused" => Color::srgb(0.70, 0.25, 0.22),
@@ -1161,6 +1162,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "region" => "Town and country",
         "closure" => "Closure",
         "family" => "Families",
+        "emigration" => "Emigration",
         "orders" | "orders_refused" => "Your orders",
         _ => "News",
     }
@@ -1593,6 +1595,14 @@ fn investors_foot(kinds: usize) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sailing_is_news_of_its_own_kind() {
+        // the people's rule files "emigration" under the game's rules (core/peopling.rs);
+        // until 12 November 2026 it was listed as grey "News" here
+        assert_eq!(kind_label("emigration"), "Emigration");
+        assert_ne!(kind_colour("emigration"), kind_colour("no such kind"));
+    }
 
     #[test]
     fn the_news_says_how_much_it_lists() {

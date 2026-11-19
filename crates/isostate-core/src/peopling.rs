@@ -60,8 +60,6 @@ pub struct PeopleParams {
     /// Share of a town's people who leave the island in a complete dearth, if a
     /// port can be reached. Their cash is spent at that port on the passage.
     pub emigration: f64,
-    /// Births less deaths never fall below this (those who sail are counted besides).
-    pub growth_floor: f64,
 
     // ---- migration
     /// Migrants a town can take in a year, as a share of its own people.
@@ -81,6 +79,12 @@ pub struct PeopleParams {
     pub donor_max: f64,
     /// Years a town that gave people to a founding is left alone.
     pub donor_rest: i64,
+
+    // ---- the shelves (docs/rules/shelves.md)
+    /// When a district changes market, its merchants' stock, their cash above
+    /// nothing and their measure of sales go with it to whichever town takes it,
+    /// as its people do. Off, they go only to a town founded that year.
+    pub shelves_go: bool,
 }
 
 impl Default for PeopleParams {
@@ -97,7 +101,6 @@ impl Default for PeopleParams {
             dearth_full: 0.6,
             dearth: 0.03,
             emigration: 0.02,
-            growth_floor: -0.06,
             arrivals_max: 0.1,
             found_saving: 0.08,
             found_cells: 40,
@@ -105,6 +108,7 @@ impl Default for PeopleParams {
             found_spacing: 8.0,
             donor_max: 0.2,
             donor_rest: 8,
+            shelves_go: false,
         }
     }
 }
@@ -112,7 +116,7 @@ impl Default for PeopleParams {
 impl PeopleParams {
     /// The game's people.
     pub fn game() -> PeopleParams {
-        PeopleParams { enabled: true, ..PeopleParams::default() }
+        PeopleParams { enabled: true, shelves_go: true, ..PeopleParams::default() }
     }
 }
 
@@ -159,6 +163,13 @@ pub fn dearth_depth(pp: &PeopleParams, food_min: f64) -> f64 {
 /// together, however the numbers are set. The game's numbers stop at -0.08.
 const WORST_YEAR: f64 = -0.5;
 
+/// Births less deaths never fall below this (those who sail are counted
+/// besides). A guard: in no town of the sweeps does the rate come near it. A
+/// setting, `growth_floor`, until stage 5 of the pass over the rules
+/// (docs/probes/sens-people.md: at -0.03 and -0.12 every fact of every island
+/// is as it was).
+pub const GROWTH_FLOOR: f64 = -0.06;
+
 /// The year's rate of increase for every town, in place of the port's capped rule.
 /// Emigrants' cash is moved here; the caller applies the rate to `st.pop`.
 pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec<Event>) -> Vec<f64> {
@@ -178,7 +189,7 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         let depth = dearth_depth(pp, st.food_min_acc[t]);
         // whatever the numbers are set to, no town loses more than half its people in a
         // year (a town with nobody in it is not something the markets can price)
-        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(pp.growth_floor).max(WORST_YEAR);
+        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR);
         if depth > 0.0 && pp.emigration > 0.0 {
             let port = ports.iter().copied().filter(|&j| st.town_cost[(t, j)].is_finite()).min_by(|&a, &b| st.town_cost[(t, a)].total_cmp(&st.town_cost[(t, b)]));
             if let Some(j) = port {
@@ -603,7 +614,8 @@ pub fn found_towns(st: &mut State, C: &Content, P: &Params, year: i64, events: &
 /// After the catchments are worked out again: the households of every cell that
 /// now trades through another town go to that town, with their cash and their
 /// landlords' cash. A town founded this year gets its people this way, and with
-/// them a share of the old market's stocks and its merchants' cash.
+/// them a share of the old market's stocks, its merchants' cash and their
+/// measure of sales; under `shelves_go` so does any town that takes a district.
 ///
 /// The share of a town's people on a group of cells is the share of its labour at
 /// work there, so a town keeps the people whose cells it keeps.
@@ -674,8 +686,11 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                     st.carters[i] -= carters[i] * frac;
                     st.carters[j] += carters[i] * frac;
                 }
-                if st.town_new[j] {
-                    // a new market starts with its share of the old one's trade
+                if st.town_new[j] || P.people.shelves_go {
+                    // a new market starts with its share of the old one's trade; under
+                    // `shelves_go` an old market that takes a district takes its share
+                    // too, so that it opens January with bread for its new people and
+                    // orders for them after (docs/rules/shelves.md)
                     let cash = merch[i].max(0.0) * frac;
                     st.merch_cash[i] -= cash;
                     st.merch_cash[j] += cash;

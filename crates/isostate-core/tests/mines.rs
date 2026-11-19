@@ -95,13 +95,21 @@ fn under_the_commons_a_fund_in_debt_levies_nobody() {
     // share of the money counted before the wages reach the households), where
     // the monthly check allows a millionth of one unit and read the purses'
     // rounding as money lost: in January 1762 with six families, in 1764 with
-    // none. Both are played past that year here.
+    // none. Both are played past that year here. Under the game's rules a
+    // town can no longer hire hands it does not have (docs/rules/hands.md),
+    // which spares island 3 its bad year at the root, so the fund's rule is
+    // held here with that rule off, on the bad year it was written for. The
+    // works' two mends of the pass (works.md, parts G and H) give the island
+    // another history from the warm-up on, so they are off here too.
     for (families, end_year) in [(6, 1763), (0, 1765)] {
         // The production tree spares island 3 its bad year, and every other: with the
         // tree laid no common fund on islands 1 to 10 is in debt for a single month
         // to 1770, with six families or none. The rule is the commons' own and the
         // tree does not touch it, so it is tried on the island as it was without it.
         let mut P = commons(3, families, end_year);
+        P.hands.ration = false;
+        P.works.spread_first = false;
+        P.works.keep_order = false;
         P.tree = Default::default();
         let mut s = sim::start(&P, game_content());
         let money = s.st.money_start;
@@ -248,7 +256,7 @@ fn the_land_arithmetic_holds_every_year() {
             // a working's surface is what its row of the land shares says, and no more than its limit
             let surface: f64 = (0..st.mine_sectors.len()).map(|r| st.mine_surface[(r, c)]).sum();
             let rows: f64 = st.mine_sectors.iter().map(|&sec| st.lam[(sec, c)]).sum();
-            assert!((surface - rows).abs() < 1e-12 && surface <= P.mines.cell_limit + 1e-12);
+            assert!((surface - rows).abs() < 1e-12 && surface <= isostate_core::mines::CELL_LIMIT + 1e-12);
         }
         for (r, &sec) in st.mine_sectors.iter().enumerate() {
             for h in (0..N).filter(|&h| st.mine_opened[r * N + h] != 0) {

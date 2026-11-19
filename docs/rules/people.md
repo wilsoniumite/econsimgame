@@ -85,7 +85,10 @@ less deaths. What each part stands for:
   leave to `merch_cash` of the port), so `econ::money_total` is unchanged.
   When a thousandth of the island goes in one year the news says so.
 
-Births less deaths never fall below `growth_floor`. And whatever the numbers
+Births less deaths never fall below -6 per cent a year (`peopling::GROWTH_FLOOR`,
+-0.06, a setting called `growth_floor` until stage 5 of the pass over the
+rules): it is a guard, and in no town of the sweeps has the rate come near
+it. And whatever the numbers
 are set to, deaths and sailings together never take more than half a town in
 a year: with `dearth` and `emigration` both at 1 a town's people went below
 nothing and the money check failed, and a town with nobody in it is not
@@ -163,6 +166,14 @@ founded this year gets its people the same way, and with them
 the same share of the old market's stocks and its merchants' cash. Every one
 of these is a transfer from one town's purse to another's.
 
+Under the game's rules a town that already stood gets that share of the
+stocks too, with the merchants' cash and their measure of sales, whenever it
+takes a district: the merchants who served the district go on serving it.
+That has a switch of its own, `people.shelves_go`, and a page of its own,
+[shelves.md](shelves.md). Without it an old town that took a district opened
+January with the shelves of the town it had been, and most of the game's
+hungry months and its emigrants came from that January.
+
 This is what makes a small market area harmless. A town left with twenty
 cells has twenty cells' worth of people, not the crowd it had when it was
 large, and the arrivals limit keeps newcomers from pouring into it.
@@ -212,13 +223,13 @@ they go is the market's business.
 | `dearth_from`, `dearth_full` | 1.0, 0.6 | the worst month's food over need at which dearth begins and is complete |
 | `dearth` | 0.03 | deaths a year per head in a complete dearth |
 | `emigration` | 0.02 | share who leave the island in a complete dearth |
-| `growth_floor` | -0.06 | births less deaths never fall below this |
 | `arrivals_max` | 0.1 | migrants a town can take in a year, as a share of its people |
 | `found_saving` | 0.08 | carting saved in a year over the district's yearly wages |
 | `found_cells`, `found_people` | 40, 3,000 | the least district that can keep a market |
 | `found_spacing` | 8 | a new town stands more than this many cells from any other |
 | `donor_max` | 0.2 | the most of its people a town gives to one founding |
 | `donor_rest` | 8 | years a giving town, or a new one, is left alone |
+| `shelves_go` | off; on in the game | the merchants' stock, cash and measure of sales go with a district to a town that already stood, as to a new one ([shelves.md](shelves.md)) |
 
 `growth_top` was set so that the island grows about fivefold on the port's
 income path: on seeds 1 to 8 (with `found_saving` at 0.05, before the review's
@@ -239,7 +250,8 @@ anywhere, of any size, every year (`found_saving`, `found_people`,
 all 48 town slots by 1791 and ends with a real wage of 1.19, no run failing;
 `growth_top` doubled to 0.033 gives 2.2 million people and a real wage of
 0.63, which is Malthus and not a crash, no run failing; and the hardest
-dearth the numbers allow (`dearth` and `emigration` 1, `growth_floor` -1)
+dearth the numbers allow (`dearth` and `emigration` 1, `growth_floor` -1,
+while it was a setting)
 leaves 330,000 people in 1900, no run failing. One edge does break:
 `growth_top` 0.05 with `y_still` 0.5 and no limit on arrivals puts six to
 eight million people on the island, and three runs of four then fail the

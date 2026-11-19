@@ -5,7 +5,7 @@ use crate::hash::Seed;
 use crate::houses::cottage::back_door;
 use crate::kit::{Detail, End, Era, Kit, Open, Opening, Over, Range, RoofSpec, Side, FOOT};
 use crate::houses::roof::Roof;
-use crate::houses::{door_at, hearth_smoke, window_at, Fabric, BACK_ROOM};
+use crate::houses::{door_at, hearth_smoke, window_at, Fabric, Street, BACK_ROOM};
 use crate::colour::pick;
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
@@ -29,6 +29,9 @@ pub struct Terrace {
     pub era: Era,
     /// it stands in the hills: stone
     pub upland: bool,
+    /// the family its street's brick and slate run in: the rows of one
+    /// street were most of them built of the same brick
+    pub street: Street,
     /// how much of it to draw
     pub detail: Detail,
     /// the row's own numbers: its first plot's
@@ -43,7 +46,7 @@ impl Terrace {
 
     /// A brick row of the railway years in the lowland, drawn in full.
     pub fn new(houses: usize, length: f32, depth: f32, storeys: u8, roof: Roof, seed: Seed) -> Terrace {
-        Terrace { houses, length, depth, storeys, roof, era: Era::Brick, upland: false, detail: Detail::Near, seed }
+        Terrace { houses, length, depth, storeys, roof, era: Era::Brick, upland: false, street: Street::ALONE, detail: Detail::Near, seed }
     }
 }
 
@@ -129,10 +132,13 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
     let zb = zf - d;
     let n = t.storeys.clamp(2, 4) as usize;
     let h = STOREY * n as f32;
-    let fabric = Fabric::of(pal, t.era, t.upland, 1.0, 1.0, Seed::new(t.seed.v, t.seed.u));
+    let fabric = Fabric::of(pal, t.era, t.upland, 1.0, 1.0, Seed::new(t.seed.v, t.seed.u), &t.street);
     let wall = fabric.wall;
     let roof = t.roof.rebuilt();
-    let (colour, lie) = (roof.colour(pal, t.seed), roof.cover.lie());
+    let (colour, lie) = (roof.colour_in(pal, t.seed, &t.street), roof.cover.lie());
+    // in a street of a family one row in four is hipped at its own ends, taking the streets
+    // together (a row told nothing of its street is gabled, as every row once was)
+    let hipped = r(4) < t.street.habit(0.25, 13);
     let body = Range::rect(-hl, hl, zb, zf);
     let y0 = -k.drop(&body);
     let rise = d * lie.rise;
@@ -183,7 +189,11 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
     // an end wall is drawn at the row's own end and where it stands above the next run
     let end = |b: Beyond| if b == Beyond::Higher { Side::NONE } else { Side::PLAIN };
     k.walls(&body, y0, h, &wall, [Side::with(&front), end(run.right), Side::with(&back), end(run.left)], true, true);
-    let roof_end = |b: Beyond| if b == Beyond::Higher { End::Party } else { End::Gable };
+    let roof_end = |b: Beyond| match b {
+        Beyond::Higher => End::Party,
+        Beyond::Open if hipped => End::Hip,
+        _ => End::Gable,
+    };
     let verge = if run.left == Beyond::Open || run.right == Beyond::Open { 0.0016 } else { 0.0007 };
     k.roof(&body, &RoofSpec { h, rise, eaves: lie.eaves, verge, ends: [roof_end(run.right), roof_end(run.left)], col: colour, gable: wall.col, thick: lie.thick });
     if k.far() {
@@ -201,7 +211,9 @@ fn build_run(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Terrace,
         }
         let inner = b > 0 && b < t.houses;
         let x = (-hl + unit * (b - run.from) as f32).clamp(-hl + 0.0042, hl - 0.0042);
-        let top = k.stack(x, zf - d * 0.5, 0.0076, 0.0058, h + rise * 0.5, h + rise + 0.0055, *pal.brick.dark, if inner { 4 } else { 2 });
+        // (the stack at a hipped end stands up out of the hip)
+        let from = h + rise * if hipped && !inner { 0.1 } else { 0.5 };
+        let top = k.stack(x, zf - d * 0.5, 0.0076, 0.0058, from, h + rise + 0.0055, *pal.brick.dark, if inner { 4 } else { 2 });
         if b == t.houses / 2 && t.seed.u < 0.25 {
             hearth_smoke(smoke, top, t.seed, pal);
         }

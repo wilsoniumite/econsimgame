@@ -458,12 +458,25 @@ fn a_file_that_says_what_no_game_could_have_written_is_refused() {
     assert_eq!((unplayed.year, unplayed.sound()), (1749, Ok(())));
     assert_eq!(Save { year: 1900, ..good.clone() }.sound(), Ok(()));
 
-    // refused as text, before a year is played, and refused by `load` when it never was text
+    // refused as text, before a year is played, and refused by `load` when it never was text.
+    // Before the island is made, too: no refusal, the quickest of three tries, takes a quarter of
+    // what making the island takes, measured here in the same run (so that a busy machine slows
+    // both alike; it used to be held to five seconds, which a busy machine could run out)
+    let making = {
+        let t0 = std::time::Instant::now();
+        std::hint::black_box(Game::new(7, 3, 5));
+        t0.elapsed().as_secs_f64()
+    };
     let refused = |s: Save| {
         let as_text = Save::from_text(&s.to_text()).unwrap_err();
-        let t0 = std::time::Instant::now();
-        let loaded = save::load(&s, |_| panic!("a year of a save that is refused was played")).unwrap_err();
-        assert!(t0.elapsed().as_secs_f32() < 5.0, "the refusal came after the island was made: {loaded}");
+        let mut quickest = f64::INFINITY;
+        let mut loaded = String::new();
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            loaded = save::load(&s, |_| panic!("a year of a save that is refused was played")).unwrap_err();
+            quickest = quickest.min(t0.elapsed().as_secs_f64());
+        }
+        assert!(quickest < making / 4.0, "the refusal came after the island was made: it took {:.1} ms, and making the island {:.1} ms: {loaded}", quickest * 1e3, making * 1e3);
         assert_eq!(as_text, loaded);
         assert!(as_text.starts_with("not a saved game the game wrote: "), "{as_text}");
         as_text
@@ -570,6 +583,32 @@ fn a_game_with_as_many_families_as_there_are_names_starts_and_plays() {
     g.year().unwrap();
     let back = save::load(&Save::from_text(&g.save(0).to_text()).unwrap(), |_| {}).unwrap();
     assert!(!back.drifted);
+}
+
+#[test]
+fn a_game_started_on_the_new_land_is_saved_and_played_again_on_it() {
+    // the usual game is on the old island, and its save does not mention the land
+    let old = Game::new(7, 2, 0);
+    assert!(!old.on_land() && old.sim.st.world.landform.is_none());
+    assert!(!old.save(0).to_text().contains("\"land\""), "a game started in the usual way writes the save it always wrote");
+    // a game started on the new land has the land, under the same rules, and its save says so
+    let mut g = Game::on_new_land(params::Rules::Game, 7, 2, 0);
+    assert!(g.on_land() && g.sim.st.world.landform.is_some());
+    assert_eq!(g.rules, params::Rules::Game);
+    assert_ne!(g.sim.st.world.terrain, old.sim.st.world.terrain, "the new land is another island");
+    g.year().unwrap();
+    let saved = g.save(0);
+    assert!(saved.land && saved.same_rules());
+    let text = saved.to_text();
+    assert!(text.contains("\"land\": true"), "{text}");
+    // played again it is the same island to the last digit, not the old one
+    let back = save::load(&Save::from_text(&text).unwrap(), |_| {}).unwrap();
+    assert!(back.game.on_land() && !back.drifted && back.refused.is_empty());
+    assert_eq!(back.game.sim.st.world.terrain, g.sim.st.world.terrain);
+    assert_eq!(save::check(&back.game.sim), save::check(&g.sim));
+    // and the same save with the mark struck out would be the old island, which the check catches
+    let struck = Save { land: false, ..saved };
+    assert!(save::load(&struck, |_| {}).unwrap().drifted);
 }
 
 #[test]

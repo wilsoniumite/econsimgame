@@ -1094,6 +1094,43 @@ mod tests {
         }
     }
 
+    /// A town's built-up ground is cut two levels deeper than any field, into
+    /// plots, by the shader alone (`town`). In a block of strips the fields
+    /// below the parcels are cut across the strips every time; were the
+    /// plots cut so too, a strip's plots would be slivers a few metres wide.
+    #[test]
+    fn town_ground_in_strip_blocks_is_not_cut_into_sliver_plots() {
+        let p = shader();
+        assert_eq!(p.consts.get("PLOT_LEVEL"), Some(&V::U(fields::PLOT_LEVEL)));
+        assert!(fields::PLOT_LEVEL > fields::MAX_DEPTH);
+        let mut strips = 0;
+        for at in spots(1500) {
+            let bl = fields::locate(fields::to_block(at));
+            let (lu, lv) = (0.5 * ((bl.b - bl.a).length() + (bl.c - bl.d).length()), 0.5 * ((bl.d - bl.a).length() + (bl.c - bl.b).length()));
+            // how narrow a piece is for its length
+            let narrow = |c: &fields::Cut| {
+                let (ex, ey) = ((c.hi.x - c.lo.x) * lu, (c.hi.y - c.lo.y) * lv);
+                ex.min(ey) / ex.max(ey)
+            };
+            let whole = fields::Cut { lo: Vec2::ZERO, hi: Vec2::ONE, id: 1 };
+            // the smallest field the spot lies in, and the plot the shader cuts out of it
+            let leaf = fields::cut(&bl, whole, 0, fields::MAX_DEPTH);
+            let g = p.call("cut", vec![block(&bl), cut(&leaf), V::U(fields::PLOT_LEVEL), V::U(fields::PLOT_LEVEL + 2)]);
+            // the Rust cuts the same plot
+            let plot = fields::cut(&bl, leaf, fields::PLOT_LEVEL, fields::PLOT_LEVEL + 2);
+            assert_eq!(g, cut(&plot), "the plot at ({}, {})", at.x, at.y);
+            // two cuts across the longer side: a plot is never narrower for its length
+            // than half what its field was, and a field that was a strip gives plots
+            // nearer square than itself
+            assert!(narrow(&plot) >= narrow(&leaf).min(0.5) * 0.5, "the plot at ({}, {}) is {} as wide as long, of a field {}", at.x, at.y, narrow(&plot), narrow(&leaf));
+            if fields::hash3(bl.i as u32, bl.j as u32, 157) < 0.25 && narrow(&leaf) < 0.25 {
+                strips += 1;
+                assert!(narrow(&plot) > narrow(&leaf), "a strip at ({}, {}) cut into slivers", at.x, at.y);
+            }
+        }
+        assert!(strips > 40, "{strips} spots on strips");
+    }
+
     #[test]
     fn the_quads_are_inverted_alike() {
         let p = shader();

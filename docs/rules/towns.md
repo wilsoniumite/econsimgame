@@ -79,7 +79,7 @@ also the size at which a works that closes leaves its ground derelict
 derelict.
 
 **Decline.** A town gives up its newest cell, one a year, only after fifteen
-years in a row (`decline_years`) with under three fifths (`empty`) of the most
+years in a row (`towns::DECLINE_YEARS`) with under three fifths (`empty`) of the most
 town people it has had (`State::town_peak`), and goes on giving one up each
 year it stays so. Each cell given up takes its share off the peak (a town of
 ten cells that gives one up keeps nine tenths of it), so the ground that is
@@ -91,7 +91,8 @@ left and came back. Against the peak it is one or two.
 **Old ground in 1750.** While the first towns settle, before the first
 recorded year, they fit their people exactly (ground is let go as well as
 taken), and their cells are dated from the centre out: the centre a hundred
-years before the start, the newest cell sixty (`back_years`, `back_span`). So
+years before the start, the newest cell sixty (`back_years`, and
+`towns::BACK_SPAN` between them). So
 1750 opens on towns the size the port gives them (69 cells against 72 on
 eight seeds; 61 against 61 beside the game's other rules before the merge,
 and 64 in today's sweep of the game), on old ground. A
@@ -749,7 +750,13 @@ the merge's.
   sum; nobody has measured which of the two it is.
 - **Numbers not swept one at a time**: `smooth`, `empty`, `decline_years`,
   `back_years` and `back_span` are the probe's values or the first
-  builder's. The review tried their extremes for breakage only.
+  builder's. The review tried their extremes for breakage only. (Since then
+  `sens-people.md` has swept them: `decline_years` moved nothing at 11 and
+  20, nor at 7 and 30, and `back_span` nothing at 30 and 53, nor at 20 and
+  80; so stage
+  5 of the pass over the rules made them constants, `towns::DECLINE_YEARS`
+  (15) and `towns::BACK_SPAN` (40); a settings file or a `--set` that names
+  either is refused with a sentence that says so.)
 - **Residents are recorded to the nearest eight**, and the byte stops at
   2,040. The fullest cell on sixteen seeds held 1,275 (1,426 in company,
   eighteen seeds), and the ceiling of room passes 2,040 in 2002, so a run

@@ -244,7 +244,7 @@ fn a_short_hop_stays_on_the_road_and_a_long_one_takes_the_boat() {
 fn navvies_are_taken_on_and_let_go_by_degrees() {
     let mut P = params(true);
     P.end_year = Some(1800);
-    let k = P.canals.navvy_adjust;
+    let k = isostate_core::canals::NAVVY_ADJUST;
     assert!(k > 0.0 && k < 1.0);
     let mut sim = sim::start(&P, default_content());
     sim.check_money = true;
@@ -266,7 +266,7 @@ fn navvies_are_taken_on_and_let_go_by_degrees() {
                 let now = st.cn.navvies.get(t).copied().unwrap_or(0.0);
                 // never more than a quarter of a gang goes in a month (a gang of under
                 // a man aside, and a town at its cap of a fifth of its hands)
-                let capped = was[t] > 0.9 * P.canals.navvy_max_share * P.participation * st.pop[t];
+                let capped = was[t] > 0.9 * isostate_core::canals::NAVVY_MAX_SHARE * P.participation * st.pop[t];
                 assert!(now >= (1.0 - k) * was[t] - 1.0 || capped, "{year}-{:02} {}: {} navvies after {}", month + 1, st.town_name[t], now, was[t]);
                 most = most.max(now);
                 if last_pay[t] > 0.0 || pay[t] > 0.0 {

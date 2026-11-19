@@ -48,10 +48,12 @@ one-line hooks in `econ::step_month`, one in `sim::yearly`, one in
   is measured below.
 - **Nobody plans for it.** Land bids, works and investors go on expecting an
   average year: they read the year's prices, as they always did, and the
-  weather reaches them only through those. With families, a cell's price is
+  weather reaches them only through those. With families, a cell's price was
   twenty-five years of the rent it *would* have paid in an average year
-  (`harvest::average_rent`), so a failed crop does not put a district's land
-  on sale at half price.
+  (`harvest::average_rent`), so that a failed crop did not put a district's
+  land on sale at half price. Under `rent_as_paid`, on in the game since 13
+  November 2026, it is twenty-five years of the rent it did pay, which is
+  nearer an average year's ("The price of land", below).
 - **The rest is the markets that were already there.** Less grain comes to
   market, the merchants' stocks run down, the price rises, the real wage
   falls, and where the shelves empty `people::growth` finds a town short of
@@ -123,6 +125,7 @@ Only when the mechanism is on:
 | `news_z` | 1.8 | island deviations that make a poor or a bumper harvest news |
 | `news_local_z` | 2.3 | district deviations that make one town's failure news |
 | `dearth_rise` | 0.15 | how far above its trend the grain price is a dearth (0.12 until the merge; "In company") |
+| `rent_as_paid` | true | land is priced on the rent it paid, not on an average year's ("The price of land"); off under the port |
 
 With both parts at 0.05 the country's harvest has a standard deviation of
 0.051 (the district part nearly averages out over the island), and a town's is
@@ -486,6 +489,97 @@ The tests pass as they stood, the golden constants untouched, and the
 scripted players (`examples/bots.rs`, seeds 3 and 7) play all four strategies
 to 1900 under the four mechanisms together.
 
+## The price of land
+
+Added on 13 November 2026 as a mend of the pass over the rules
+(`docs/designs/rules-pass.md`, section 4.4 and section 5), behind
+`harvest.rent_as_paid`: on in the game's rules, off under the port.
+
+**The fault.** `average_rent` added to the rent a cell paid the crop the
+weather took from it, at that year's price less the carting, so that land
+would be priced on an average year. `docs/probes/tr-rent.md` (section 3)
+played every year three times, as it was, with the hands hired for an
+average year, and with no weather at all, and found the figure out by about
+twice the harvest's shortfall: after a harvest more than 6 per cent short it
+put the island's land 13.5 per cent above what an average year pays, and
+after one that much better 12 per cent under, while the rent actually paid
+was within 2 per cent both times. With half the weather foreseen a thin crop
+is brought in by fewer hands, and grain sells dearer; the wages saved and the
+dearer grain together make up nearly all of the rent the weather took, so
+adding the whole lost crop back at the dear price counts the loss twice.
+
+**The rule.** Land is priced on the rent it paid: `average_rent` returns the
+rent paid, and `families::land_price`, its one reader, is twenty-five years
+of it, never counted under `land_rent_floor` town wages a month, as before.
+Nothing else is touched: the years' purchase, the floor, which cells a family
+chooses to buy (that always read the rent as paid), and what anyone decides
+by. The rent the weather took is still kept cell by cell; nothing reads it
+while the switch is on.
+
+**Why in the core loop.** The critic took this out of the pass because the
+price it mends is the one the player pays for land and the land in a
+family's worth, which is the game's score. Stella has since said the core
+loop may be adjusted where it stands in the way, with little time spent on
+it; this is the one line section 4.4 asks for, and how land is priced
+otherwise (more years' purchase, a cap, prices that rise) is still the core
+loop's question.
+
+**What it did.** `examples/trace_rent.rs --seeds 1-16 --families 6 --part c`,
+each island-year played three times, pooled by the country's harvest (2,416
+island-years), with `--set '{"harvest":{"rent_as_paid":false}}'` for today's;
+under the switch the figure land is priced on (`est`) is the rent paid. The
+price error is what the families paid for the land they bought those years
+over twenty-five years of the rent an average year would really have paid,
+both never under the floor.
+
+| the country's harvest | island-years | the figure land is priced on, over an average year's rent: today | with the mend | the price paid for land, its error: today | with the mend |
+|---|---|---|---|---|---|
+| worse than 0.94 | 282 | +0.137 (+0.120 to +0.159 by island) | -0.022 (-0.035 to -0.016) | +0.094 | -0.007 |
+| 0.94 to 0.97 | 421 and 418 | +0.069 | -0.011 | +0.050 | +0.003 |
+| 0.97 to 1.03 | 1,044 and 1,048 | +0.000 | -0.000 | -0.004 | +0.015 |
+| 1.03 to 1.06 | 350 and 349 | -0.063 | +0.009 | -0.055 | +0.022 |
+| better than 1.06 | 319 | -0.120 (-0.160 to -0.096) | +0.016 (+0.010 to +0.023) | -0.113 | +0.028 |
+
+Over a run the error in what was paid, added up purchase by purchase, is half
+what it was (its absolute size 0.027 of 199 million of land bought, for
+0.054 of 194 million). It now leans the other way by a little in ordinary and
+good years (+1.5 and +2 to +3 per cent): cell by cell a district's own
+weather still varies when the country's does not, and a family buys the cells
+whose rent was high that year, so it pays for the district's luck where
+`average_rent` took most of it out (cell by cell, |paid| is 0.047 of an
+average year's rent in ordinary years, `average_rent` 0.041). Summed over a
+run the old figure's errors cancelled (-0.1 per cent of all land bought); the
+new one's come to +1.4 per cent. The swing after a bad or good year, which a
+player sees in a family's worth, is gone.
+
+On the island the mend moves nothing beyond chance: on sixteen islands,
+against today's game and three histories of it with a number moved by a
+millionth, it is outside the three by more than twice their spread on 19
+facts, which is what one history of today does against the other three (19
+to 43), and none of them moves the same way on thirteen islands of sixteen
+(`docs/rules/prices.md`, "Goods that spoil", has the sweeps). *The check*
+read it island by island on forty islands (seeds 1 to 40, the mend alone
+against today's and the same two null histories): one fact of 629 changes by
+a paired t over 3, where the null histories have none and one. (The sweep has
+no fact of the families' land; the table above is where that is measured.)
+The table came out again to the last digit
+(`trace_rent --seeds 1-16 --families 6 --part c`, run again on the checked
+build).
+
+**What could change it.** `tr-rent.md`: were `foreseen` set to 0, the rent
+as paid would be 8 per cent short after the worst harvests and a correction
+of about half the lost crop at its price would be right; and if grain's price
+is made to answer a short harvest more sharply (thirty per cent dearer for
+ten short is the historical figure), the rent as paid will rise in a bad
+year, and a correction will be wanted again with the other sign. Whoever
+moves either should look here.
+
+**The test.** `tests/harvest.rs`,
+`with_families_money_holds_and_land_is_priced_on_an_average_year`, plays an
+island with the switch named and off, checks the old price, then prices the
+same cells with it on: twenty-five years of the rent paid, and a different
+price on more than fifty of them.
+
 ## What worries me
 
 - **In company, famines double and the price saws.** Both are in the section
@@ -537,8 +631,10 @@ to 1900 under the four mechanisms together.
   would sharpen every bad year without touching this one.
 - **`foreseen` and the price of land.** `average_rent` puts back the crop the
   weather took from the hands that were hired; with `foreseen` above 0 the
-  hands hired were themselves fewer, which it does not undo. It is exact at 0
-  and near enough at a half for pricing land. The families' own choice of
+  hands hired were themselves fewer, which it does not undo. I thought it
+  exact at 0 and near enough at a half for pricing land; it was out by a
+  tenth either way, and is now off in the game ("The price of land", above,
+  which says what to look at again if `foreseen` moves). The families' own choice of
   which land to buy still reads the year's rent as paid, so after a failed
   harvest the poorest cells of a district are passed over for a year.
 - **Landlords can go below nothing.** In a bad year the rent of marginal land

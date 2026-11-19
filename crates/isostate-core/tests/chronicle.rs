@@ -46,7 +46,6 @@ fn decade(e: &Event) -> i64 {
 
 fn class(e: &Event) -> String {
     match e.kind.as_str() {
-        "alarm" | "verdict" => "cycle".to_string(),
         "railway" | "rail_plan" => "railway".to_string(),
         "harvest" | "dearth" => "harvest".to_string(),
         "family" if e.family == Some(0) => "own".to_string(),
@@ -159,13 +158,18 @@ fn a_decade_keeps_a_handful() {
     }
     assert_eq!(by_decade.len(), 15, "every decade has something");
     for (d, kept) in &by_decade {
-        assert!((Q.at_least..=Q.per_decade).contains(&kept.len()), "decade {d} keeps {}", kept.len());
+        assert!((isostate_core::chronicle::AT_LEAST..=Q.per_decade).contains(&kept.len()), "decade {d} keeps {}", kept.len());
         let mut of_class: BTreeMap<String, usize> = BTreeMap::new();
         for e in kept {
             *of_class.entry(class(e)).or_insert(0) += 1;
         }
         for (c, n) in of_class {
-            assert!(n <= if c == "discovery" { Q.inventions } else { Q.per_kind }, "decade {d} keeps {n} of {c}");
+            let cap = match c.as_str() {
+                "discovery" => Q.inventions,
+                "crossing" => Q.turning_points,
+                _ => Q.per_kind,
+            };
+            assert!(n <= cap, "decade {d} keeps {n} of {c}");
         }
     }
     let total: usize = by_decade.values().map(|v| v.len()).sum();
@@ -338,7 +342,8 @@ fn kept_titles(events: &[Event]) -> Vec<&str> {
 #[test]
 fn ranking_a_decade() {
     let P = game_params();
-    // caps: two inventions, one of any other kind, four in all; ties to the earlier
+    // caps: two inventions, two turning points, one of any other kind, four in
+    // all; ties to the earlier
     let mut ev = vec![
         item(1761.5, "discovery", 0.9, "invention a"),
         item(1762.5, "discovery", 0.9, "invention b"),
@@ -350,7 +355,7 @@ fn ranking_a_decade() {
         item(1768.8, "town", 0.6, "town"),
     ];
     chronicle::rank(&mut ev, &P, 1750, 1900, 1900);
-    assert_eq!(kept_titles(&ev), ["invention a", "invention b", "crossing a", "boom"]);
+    assert_eq!(kept_titles(&ev), ["invention a", "invention b", "crossing a", "crossing b"]);
     // the player's own great moment has a place, whatever else happened
     let mut own = item(1769.95, "family", 0.7, "the family takes up iron");
     own.family = Some(0);
@@ -395,6 +400,42 @@ fn ranking_a_decade() {
     let mut off = vec![item(1761.5, "discovery", 0.9, "a")];
     chronicle::rank(&mut off, &default_params(), 1750, 1900, 1900);
     assert_eq!(off[0].kept, None);
+}
+
+/// The player's place in the feed is kept for the family's own items at
+/// `floor` or above, and its great moments weigh `own_great`. So `floor` has
+/// to stay under `own_great`: above it the place is empty, and a full decade
+/// keeps none of the family's news (docs/designs/rules-pass.md, section 4.5,
+/// where both numbers are kept as settings on that condition). No run is
+/// played; the rules of the chronicle alone.
+#[test]
+fn the_floor_stays_under_the_players_great_moments() {
+    for P in [game_params(), default_params()] {
+        let Q = &P.chronicle;
+        assert!(Q.floor < Q.own_great, "chronicle.floor {} is not under own_great {}: the player's place in the feed would be empty", Q.floor, Q.own_great);
+    }
+    // what it guards: a full decade, and the family's great moment at own_great
+    let P = game_params();
+    let full = || {
+        let mut ev = vec![
+            item(1761.5, "discovery", 0.9, "invention a"),
+            item(1762.5, "discovery", 0.9, "invention b"),
+            item(1764.8, "crossing", 0.85, "crossing a"),
+            item(1765.8, "crossing", 0.85, "crossing b"),
+        ];
+        let mut own = item(1769.95, "family", P.chronicle.own_great, "the family takes up iron");
+        own.family = Some(0);
+        ev.push(own);
+        ev
+    };
+    let mut ev = full();
+    chronicle::rank(&mut ev, &P, 1750, 1900, 1900);
+    assert!(kept_titles(&ev).contains(&"the family takes up iron"), "{:?}", kept_titles(&ev));
+    let mut above = P.clone();
+    above.chronicle.floor = P.chronicle.own_great + 0.05;
+    let mut ev = full();
+    chronicle::rank(&mut ev, &above, 1750, 1900, 1900);
+    assert!(!kept_titles(&ev).contains(&"the family takes up iron"), "with the floor above own_great the place is lost: {:?}", kept_titles(&ev));
 }
 
 /// The succession is told from the facts the families hand over, not read back
@@ -467,9 +508,16 @@ fn a_run_from_1755_ranks_by_the_calendars_decades() {
 fn a_run_from_1755_tells_its_decades_by_the_calendar() {
     let mut C = game_content();
     C.start_year = 1755;
-    let r = sim::run_with(&game(0, 1790), C, false, true).expect("money is conserved every month");
+    // (to 1800: with the hands rationed, docs/rules/hands.md, seed 7 has no
+    // decade's item to tell before the 1790s; with the works' two mends,
+    // docs/rules/works.md, parts G and H, it has none to 1800 either, so the
+    // case is played with them off)
+    let mut P = game(0, 1800);
+    P.works.spread_first = false;
+    P.works.keep_order = false;
+    let r = sim::run_with(&P, C, false, true).expect("money is conserved every month");
     let of_decade: Vec<&Event> = r.events.iter().filter(|e| e.title.contains("fastest-growing town of the") || e.title.contains(" new towns in the ")).collect();
-    assert!(!of_decade.is_empty(), "no decade's end was told in 1755 to 1790");
+    assert!(!of_decade.is_empty(), "no decade's end was told in 1755 to 1800");
     for e in &of_decade {
         let year = e.year.floor() as i64;
         assert_eq!(year % 10, 9, "{} is told in {year}", e.title);
@@ -575,7 +623,7 @@ fn a_run_without_families_has_its_history_too() {
     }
     let Q = &r.params.chronicle;
     assert_eq!(by_decade.len(), 15);
-    assert!(by_decade.values().all(|n| (Q.at_least..=Q.per_decade).contains(n)), "{by_decade:?}");
+    assert!(by_decade.values().all(|n| (isostate_core::chronicle::AT_LEAST..=Q.per_decade).contains(n)), "{by_decade:?}");
 }
 
 #[test]
@@ -681,6 +729,31 @@ fn towns_and_districts_have_stories() {
         let peak_year: i64 = note.split("the peak of ").nth(1).and_then(|s| s.get(..4)).and_then(|y| y.parse().ok()).unwrap_or_else(|| panic!("a year in: {note}"));
         assert!(peak_year > r.state.town_founded[e.town.unwrap()], "{}: {}", e.title, e.text);
     }
+    // a town told as the island's first or second is truly in that place that
+    // year, and a town it is said to overtake is below it (docs/probes/news-read.md,
+    // fault 1: "Kelside overtakes Melbourne as the island's first town" was once
+    // told of a town in fourth place, as if it were second)
+    let mut places = 0;
+    for e in stories.iter().filter(|e| e.title.ends_with("the island's first town") || e.title.ends_with("the island's second town")) {
+        let k = (e.year.floor() as i64 - 1750) as usize;
+        let pop = &r.state.chron.pop[k];
+        let mut order: Vec<usize> = (0..pop.len()).filter(|&t| pop[t] > 0.0).collect();
+        order.sort_by(|&a, &b| pop[b].total_cmp(&pop[a]).then(a.cmp(&b)));
+        let place = if e.title.ends_with("first town") { 0 } else { 1 };
+        let t = e.town.unwrap();
+        assert_eq!(order[place], t, "{} in {}", e.title, e.year.floor());
+        if let Some(rest) = e.title.split(" overtakes ").nth(1) {
+            let other = rest.split(" as the island's").next().unwrap();
+            let o = r.state.town_name.iter().position(|n| n == other).expect("a town of that name");
+            assert!(pop[o] < pop[t], "{}: {} has {} to {}", e.title, other, pop[o], pop[t]);
+            // and if it is not just below, the story says where it now stands
+            // (Melbourne was fourth in 1754 and 1858, and the reader took it as second)
+            let rank = order.iter().position(|&x| x == o).unwrap();
+            assert!(rank == place + 1 || e.text.contains(&format!("{other} is now the island's ")), "{} in {}: {other} is {}th, unsaid", e.title, e.year.floor(), rank + 1);
+        }
+        places += 1;
+    }
+    assert!(places >= 5, "seed 7 tells its first and second places: {places} stories");
     // the same town is not said to decline twice within a few years
     let mut told: BTreeMap<&str, f64> = BTreeMap::new();
     for e in stories.iter().filter(|e| e.title.ends_with("in decline")) {

@@ -13,6 +13,8 @@ struct Table {
     r: Replay,
     live: Live,
     view: FamilyView,
+    /// each town's prices and wages by the month, for the price and wage maps
+    months: Months,
     /// orders the simulation carried out, by kind
     carried: std::collections::BTreeMap<&'static str, usize>,
     refused: usize,
@@ -24,8 +26,10 @@ struct Table {
 
 impl Table {
     fn open(o: &Opening) -> Table {
-        let (r, live, view) = start(o).expect("the game starts");
-        Table { r, live, view, carried: Default::default(), refused: 0, said: String::new(), turned: Vec::new() }
+        let (r, mut live, view) = start(o).expect("the game starts");
+        // (`game::pump` takes the months the books kept on its first call)
+        let months = live.months_kept.take().expect("the months the books kept, for the maps");
+        Table { r, live, view, months, carried: Default::default(), refused: 0, said: String::new(), turned: Vec::new() }
     }
 
     fn wait(&self) -> Msg {
@@ -46,6 +50,7 @@ impl Table {
         loop {
             match self.wait() {
                 Msg::Month(m) => {
+                    self.months.add(&m);
                     apply_month(&mut self.r, &m);
                     crate::game::month_cash(&mut self.view, &m.cash);
                     self.live.month_came();
@@ -175,6 +180,19 @@ fn bits(v: &[f32]) -> Vec<u32> {
     v.iter().map(|x| x.to_bits()).collect()
 }
 
+/// Both viewers hold months `ts` for the price and wage maps, with the same
+/// prices and wages to the last bit.
+fn same_months(a: &Table, b: &Table, ts: impl Iterator<Item = usize>, when: &str) {
+    let (x, y) = (&a.months, &b.months);
+    assert_eq!((x.nt, x.ng), (y.nt, y.ng), "{when}: towns and goods in a month");
+    let (nt, ng) = (x.nt, x.ng);
+    for t in ts {
+        let (Some(i), Some(j)) = (x.row(t), y.row(t)) else { panic!("{when}: month {t} is not held by both ({} from {}, {} from {})", x.wage.len() / nt.max(1), x.first, y.wage.len() / nt.max(1), y.first) };
+        assert_eq!(bits(&x.wage[i * nt..(i + 1) * nt]), bits(&y.wage[j * nt..(j + 1) * nt]), "{when}: the wages of month {t}");
+        assert_eq!(bits(&x.price[i * nt * ng..(i + 1) * nt * ng]), bits(&y.price[j * nt * ng..(j + 1) * nt * ng]), "{when}: the prices of month {t}");
+    }
+}
+
 /// Everything the viewer holds of two games is the same, to the last digit.
 fn same(a: &Table, b: &Table, when: &str) {
     let (ra, rb) = (&a.r, &b.r);
@@ -266,6 +284,9 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
     assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
     assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
+    // the last year's months for the maps, as the books kept them
+    assert_eq!(b.months.first, 29 * 12);
+    same_months(&a, &b, 29 * 12..30 * 12, "after loading");
     let on_order: Vec<usize> = saved.orders.iter().filter(|g| g.year == 1779).filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None }).collect();
     assert_eq!(b.live.ordered, on_order, "works ordered in the last year keep their pegs");
 
@@ -279,6 +300,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
         }
     }
     same(&a, &b, "three years on");
+    same_months(&a, &b, 30 * 12..33 * 12, "three years on");
     assert!(!b.carried.is_empty(), "orders were given after loading");
     assert_eq!(a.carried, b.carried, "the same orders were carried out in both");
     assert_eq!(saves::read(&file).unwrap().year, 1782);
@@ -405,7 +427,12 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     assert_eq!(b.live.resumed.as_ref().map(|r| (r.year, r.month, r.date(false))), Some((1753, 5, "June 1754".to_string())));
     assert_eq!((b.live.months, b.live.asked), (5, 5));
     assert_eq!(b.live.standing, stands);
+    // the price and wage maps have the months the loaded game played before it was opened, 1753's and
+    // 1754's (the books kept them), as the game that was watched has them; December as it ended in both
+    assert_eq!(b.months.first, 3 * 12);
+    same_months(&a, &b, 3 * 12..4 * 12 + 5, "loaded in June 1754");
     assert!(!b.month() && !b.month());
+    same_months(&a, &b, 4 * 12..4 * 12 + 7, "seven months into 1754");
     // (what each trade would earn is worked out when a year arrives or a game is opened: for the one in January, for the other in June)
     b.view.prospects = a.view.prospects.clone();
     same(&a, &b, "seven months into 1754");
@@ -422,6 +449,8 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
         assert_eq!(t.me().seat, other);
     }
     same(&a, &b, "at the turn of 1755");
+    // and the maps by the month, across the turn the orders waited for: 1753's and 1754's, December as it ended
+    same_months(&a, &b, 3 * 12..5 * 12, "at the turn of 1755");
     drop(b);
 
     // left with the clock in the middle of a year and nothing ordered since the turn: the months are kept all the same
@@ -429,11 +458,8 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     assert_eq!(saves::read(&file).unwrap().month, 0, "a month is not saved as it is played");
     // the clock stops: the interface asks for the months to be kept, and they are
     a.live.send(Cmd::Keep);
-    let kept = (0..500).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        saves::read(&file).is_ok_and(|s| (s.year, s.month) == (1754, 2))
-    });
-    assert!(kept, "the months were not saved when the clock stopped");
+    let kept = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| (s.year, s.month) == (1754, 2)));
+    assert!(kept, "{}", saves::gave_up(120.0, "the months were to be saved when the clock stopped"));
     // and one more month, saved by the thread on its way out
     assert!(!a.month());
     drop(a);
@@ -632,32 +658,45 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
     assert_eq!(std::fs::read(&file).unwrap(), played, "nothing is written until something happens in the game");
 
     // a second copy of the game on the island: refused before anything is played, whatever
-    // it was asked for, and the first copy's game is as it was
+    // it was asked for, and the first copy's game is as it was. "Before anything is played" is
+    // held against the starts just below, which make the island and play its first year: each
+    // refusal (the quickest of three tries) takes less than a quarter of the quickest of them,
+    // all timed in the same run so that a busy machine slows both alike. (It used to be held to a
+    // second, which a busy machine could run out.)
     let mut first = Table::open(&Opening { seed: 7, families: 3, ..default() });
+    let mut refusals = Vec::new();
     for o in [Opening { seed: 7, families: 3, ..default() }, Opening { seed: 7, families: 3, fresh: true, ..default() }, Opening { load: Some(file.to_string_lossy().into_owned()), ..default() }] {
-        let t0 = std::time::Instant::now();
-        let e = start(&o).err().expect("a second copy started");
-        assert!(e.starts_with("another copy of the game is open and is keeping its game in ") && e.contains("island-7-families-3.json: play on in that window"), "{e}");
-        assert!(t0.elapsed().as_secs_f32() < 1.0, "the second copy was refused only after {:?}", t0.elapsed());
+        let mut quickest = f32::INFINITY;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            let e = start(&o).err().expect("a second copy started");
+            quickest = quickest.min(t0.elapsed().as_secs_f32());
+            assert!(e.starts_with("another copy of the game is open and is keeping its game in ") && e.contains("island-7-families-3.json: play on in that window"), "{e}");
+        }
+        refusals.push(quickest);
     }
     assert_eq!(std::fs::read(&file).unwrap(), played);
     // what is not kept there is not in its way: pictures, a script, a trial, another island's game
+    let mut starts = Vec::new();
     for o in [
         Opening { seed: 7, families: 3, shots: true, ..default() },
         Opening { seed: 7, families: 3, unattended: true, ..default() },
         Opening { seed: 7, families: 3, advance: 1, ..default() },
         Opening { seed: 7, families: 2, ..default() },
     ] {
-        drop(Table::open(&o));
+        let t0 = std::time::Instant::now();
+        let t = Table::open(&o);
+        starts.push(t0.elapsed().as_secs_f32());
+        drop(t);
     }
+    let slowest = refusals.iter().copied().fold(0.0, f32::max);
+    let quickest = starts.iter().copied().fold(f32::INFINITY, f32::min);
+    assert!(slowest < quickest / 4.0, "a second copy was refused only after {:.0} ms, and a start that makes the island and plays its first year took {:.0} ms", slowest * 1e3, quickest * 1e3);
     // the first copy plays on and is saved as ever
     first.step();
     // (the thread hands the year over and then writes it)
-    let written = (0..500).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        saves::read(&file).is_ok_and(|s| s.year == 1753)
-    });
-    assert!(written, "the first copy's year was not saved");
+    let written = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| s.year == 1753));
+    assert!(written, "{}", saves::gave_up(120.0, "the first copy's year was to be saved"));
     // a copy started by one that is closing (New game) waits for it to let go
     let closing = std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(400));
@@ -765,4 +804,54 @@ fn a_month_leaves_what_scenery_is_built_from_as_it_was() {
     }
     assert!(months >= 11, "a year of months went by ({months})");
     assert_eq!(t.r.filled, before.0 + 1, "a year's turn adds a year to the run");
+}
+
+#[test]
+fn a_game_on_the_new_land_has_its_land_and_is_kept_only_where_a_file_is_named() {
+    // By the rule for any other game, a new game with somebody at it is the island's own, and
+    // one begun some years in is a trial. On the new land neither is kept: the place is not
+    // even looked at, so the game played there on the old island is never set aside for it.
+    for o in [
+        Opening { seed: 7, families: 2, fresh: true, new_land: true, ..default() },
+        Opening { seed: 7, families: 2, fresh: true, new_land: true, advance: 3, ..default() },
+        Opening { seed: 7, families: 2, fresh: true, new_land: true, keep: true, ..default() },
+    ] {
+        assert!(!o.plain(), "a game on the new land is a new game: {o:?}");
+        assert!(matches!(o.keeping(), Keeping::Autosave | Keeping::Trial(_)));
+        let (saver, why) = take_place(&o, 7, 2, true).unwrap();
+        assert!(saver.is_none() && why.is_none(), "{o:?}");
+    }
+
+    // A file that is named is the place. The game there has the land in an `Arc` of its own,
+    // which a year arriving does not copy, and the thread's save says which land it is on.
+    let dir = saves::test_dir("new-land-test");
+    let file = dir.join("game.json");
+    let name = file.to_string_lossy().into_owned();
+    let mut a = Table::open(&Opening { seed: 7, families: 2, fresh: true, shots: true, new_land: true, save: Some(name.clone()), ..default() });
+    let land = a.r.land.clone().expect("a game on the new land has its land");
+    assert_eq!((land.w, land.h, land.fw, land.fh), (a.r.w, a.r.h, a.r.w * land.fine, a.r.h * land.fine));
+    assert_eq!(land.height.len(), land.fw * land.fh);
+    assert!(land.lines.len() > 100 && land.lakes.len() >= 2, "{} lines and {} lakes", land.lines.len(), land.lakes.len());
+    assert!(land.lines.iter().all(|l| l.pts.len() >= 2 && l.pts.len() == l.width.len() && l.pts.len() == l.level.len() && l.pts.len() == l.flow.len()));
+    a.play_year();
+    a.step();
+    let copy = a.r.clone();
+    assert!(std::sync::Arc::ptr_eq(&land, a.r.land.as_ref().unwrap()) && std::sync::Arc::ptr_eq(&land, copy.land.as_ref().unwrap()), "a copy of the run copies a pointer to the land");
+    assert!(a.live.kept);
+    drop(a);
+    assert!(saves::read(&file).unwrap().land, "the save says the game is on the new land");
+
+    // gone on with as --load goes on with it, it is on the same land; with no file named for it, it is not kept
+    let b = Table::open(&Opening { load: Some(name), ..default() });
+    assert!(!b.live.kept);
+    let again = b.r.land.clone().expect("a game gone on with from a save on the new land has its land");
+    assert_eq!(bits(&again.height), bits(&land.height));
+    assert_eq!(b.r.terrain, copy.terrain);
+    drop(b);
+
+    // and a game started in the usual way has none
+    let c = Table::open(&Opening { seed: 7, families: 2, fresh: true, shots: true, ..default() });
+    assert!(c.r.land.is_none());
+    assert_ne!(c.r.terrain, copy.terrain, "the old island is another island");
+    let _ = std::fs::remove_dir_all(&dir);
 }

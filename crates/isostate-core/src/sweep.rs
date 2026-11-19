@@ -328,6 +328,11 @@ pub fn set_field<T: Serialize + DeserializeOwned>(base: &T, key: &str, value: &V
         // a mechanism left at its default is not written out: start it from there
         cur = obj.entry(part.to_string()).or_insert_with(|| json!({}));
     }
+    // a setting retired in stage 5 of the pass over the rules is refused by
+    // what it became, not as a name nobody has heard of
+    if let Some(why) = crate::params::retired(&doc) {
+        return Err(format!("--set {key}: {why}"));
+    }
     serde_json::from_value(doc).map_err(|e| explain(key, value, &e.to_string()))
 }
 
@@ -354,6 +359,8 @@ pub fn settings(o: &Options) -> Result<Vec<Setting>, String> {
         for ((key, _), v) in o.sets.iter().zip(&values) {
             P = set_field(&P, key, &parse_value(v))?;
         }
+        // what a --params file is refused for is refused when swept, before the first run
+        P.check()?;
         let label = if values.is_empty() {
             // nothing swept: name the column after what was run (the families may come from --params)
             let families = match base.n_families {
@@ -413,8 +420,8 @@ fn one_run(P: &Params, content: Content) -> Result<Done, String> {
     let mut s = sim::start(P, content);
     let mut gathered = facts::Gathered::default();
     while s.year <= s.end_year {
-        sim::run_year(&mut s)?;
-        facts::gather_year(&mut gathered, &s);
+        // sim::run_year, with the facts' notes taken after each month and the year's end
+        facts::run_year_noting(&mut s, &mut gathered)?;
     }
     let r = sim::finish(s);
     let seconds = t0.elapsed().as_secs_f64();
@@ -937,6 +944,12 @@ pub fn table(sw: &Sweep) -> String {
         let list: Vec<String> = missing.iter().map(|(m, n)| format!("{m} (in {n} of {})", count_runs(total))).collect();
         let _ = writeln!(out, "\nnever built, {}: {}", setting.label, if list.is_empty() { "nothing".to_string() } else { list.join(", ") });
     }
+    for run in &sw.runs {
+        if let Some(y) = run.outcome.as_ref().ok().and_then(|d| d.facts.get("works_table_full")) {
+            let (label, places) = (&sw.settings[run.setting].label, sw.settings[run.setting].params.F_max);
+            let _ = writeln!(out, "\nFULL run {} (seed {}, {label}): {}", run.id, run.seed, crate::firms::table_full_message(y as i64, places));
+        }
+    }
     for run in failed {
         let _ = writeln!(out, "\nFAILED run {} (seed {}, {}): {}", run.id, run.seed, sw.settings[run.setting].label, run.outcome.as_ref().err().unwrap());
     }
@@ -1227,6 +1240,17 @@ mod tests {
         six.rules = Rules::Game;
         six.families = Some(1);
         assert_eq!(settings(&six).unwrap()[0].label, "game rules, 1 family");
+    }
+
+    #[test]
+    fn a_swept_setting_is_checked_as_a_file_would_be() {
+        // a stock target of 100 months leaves the game's brake on a glut (8 months)
+        // easing off below it: refused from a --params file, and so from --set
+        let args: Vec<String> =
+            ["--out", "x", "--rules", "game", "--set", "price_target_months=3,100"].iter().map(|s| s.to_string()).collect();
+        let e = settings(&parse_args(&args).unwrap()).unwrap_err();
+        assert!(e.contains("prices.glut_stop_months") && e.contains("price_target_months (100)"), "{e}");
+        assert!(crate::game_params().with_json_overrides(r#"{"price_target_months": 100}"#).is_err());
     }
 
     /// A sweep written out by hand: two settings, four seeds, a few facts of each kind.

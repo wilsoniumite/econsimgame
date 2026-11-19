@@ -112,8 +112,8 @@ price of rails they reckon with is marked up by one plus the rails all lines
 still have on order, over a year's make of rails in the whole country. A
 crowd of schemes prices the next one out until the mills catch up. That, and
 the money the towns can raise, is what paces the rush; the cap on lines
-building at once (`max_projects`, 40) is a backstop (the most at once is 19
-to 37 across the sweeps below, and 40 in one run of 56).
+building at once (`railways::MAX_PROJECTS`, 40) is a backstop (the most at
+once is 19 to 37 across the sweeps below, and 40 in one run of 56).
 
 **News.** The first railway is the big item it was (the first trunk to
 open, weight 1). Every trunk and every town's first line is an item of its
@@ -142,15 +142,33 @@ with these.
 | `cost_mult` | 5 | rails, timber and stone per cell, times the port's 40, 30 and 30 |
 | `build_months` | 24 | months a line takes if every order is filled (the port: 10); under 1 is taken as 1 |
 | `order_book` | true | promoters mark rails up by what is on order |
-| `max_projects` | 40 | lines building at once: a backstop, not the pace |
 | `districts` | 8 | districts looked at each year |
 | `branch_gap` | 3 | a district is looked at only this many cells from track |
 | `district_spacing` | 6 | and this far from the year's other districts |
 | `cool_years` | 5 | years a refused branch is left alone |
 
+The cap on lines building at once was a setting, `max_projects`, until stage
+5 of the pass over the rules made it a constant, `railways::MAX_PROJECTS`
+(40): it never binds above 30, and at 80 every fact of eight islands is what
+it was at 40 (`sens-ways.md`). A settings file or a `--set` that names
+`railways.max_projects` is refused with a sentence that says so.
+
 The hurdle (`rail_hurdle`, 0.06), the induced traffic (`rail_induced`, 2.5),
 the know-how (`rail_know`) and the running cost of a cell of track
-(`transport::RAIL_COST`) are the port's and are shared with it.
+(`transport::RAIL_COST`) are the port's and are shared with it, so they stay
+settings, held by the port's golden test. Two things about them are worth
+knowing before either is turned. **`rail_hurdle` and `rail_induced` are one
+number.** The one decision either takes part in, in the port's promoters and
+the game's alike, is `rail_induced * saving / cost >= rail_hurdle`, so what
+decides is their ratio: a line goes ahead when today's saving in a year is at
+least 0.06 / 2.5 = 0.024 of its cost. (`rail_induced` also scales the return
+that the news quotes for a scheme and that is kept with a line, and nothing
+else.) `rail_hurdle` 0.08 is fact for fact `rail_induced` 1.875
+(`sens-ways.md`). Turn one of them, and read a sweep of the other as a sweep
+of the same dial. And **`rail_know` does
+nothing that shows**: at 0.19 and 0.33, and again at 0.125 and 0.5, it
+moves the first line on one or two islands of eight and the railway by less
+than an island wanders on its own.
 
 ## What the sweeps showed
 

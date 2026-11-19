@@ -373,10 +373,18 @@ fn chunk_report(data: &Data, look: &crate::look::Look, spec: &str) {
     let lod = crate::scatter::Lod::of_camera(home, crate::shots::PLAY_DIST);
     // each square's fingerprint and megabytes, for each kind of scenery and each size of square
     let cut = |k: usize| -> Vec<([Squares; 3], std::collections::HashSet<u64>)> {
-        let ym = crate::scatter::build_year(r, &data.g, &data.slots, &data.cen, k, look, &lod);
-        let nets = crate::network::year_nets(r, &data.g, &data.cen, k, look);
-        let trees: Vec<&crate::meshkit::Builder> = ym.trees.iter().flat_map(|t| t.parts()).collect();
-        let kinds: [Vec<&crate::meshkit::Builder>; 4] = [trees, vec![&ym.houses], vec![&ym.works], vec![&ym.lanes, &ym.smoke, &nets.roads, &nets.rails]];
+        let land = crate::world::year_land(r, &data.g, k);
+        let mut ym = crate::scatter::build_year_on(r, &data.g, &data.slots, &data.cen, k, look, &lod, &land);
+        let mut nets = crate::network::year_nets(r, &data.g, &data.cen, k, look);
+        // the year's meshes as the table of them has them (`year::MESHES`): the trees, the houses,
+        // the works, and the rest together
+        let table = crate::year::MESHES;
+        let built = crate::year::take(table, &mut ym, &mut nets, &crate::year::Inputs { r, g: &data.g, slots: &data.slots, cen: &data.cen, k, lk: look, lod: &lod, land: &land });
+        let mut kinds: [Vec<&crate::meshkit::Builder>; 4] = Default::default();
+        for (p, b) in crate::year::list(table).into_iter().zip(&built) {
+            let m = &table[p.row];
+            kinds[if m.word == "trees" { 0 } else if m.name == "houses" { 1 } else if m.name == "works" { 2 } else { 3 }].push(b);
+        }
         kinds
             .iter()
             .map(|bufs| {

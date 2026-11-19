@@ -28,6 +28,9 @@ struct Took {
     books_close: Vec<(i64, f64)>,
     /// A copy of the island, at a few years.
     copies: Vec<(i64, f64)>,
+    /// What the copy took of the books, in megabytes; the works there were; and
+    /// the time a copy of the books alone took.
+    copied: Vec<(i64, f64, usize, f64)>,
     /// What the books hold as the game ends, in megabytes.
     kept: f64,
     check: String,
@@ -74,6 +77,17 @@ fn play(seed: u64, families: usize, end_year: Option<i64>, books: bool) -> Took 
                 })
                 .fold(f64::INFINITY, f64::min);
             t.copies.push((year, quickest));
+            // and of the books alone
+            let books = (0..3)
+                .map(|_| {
+                    let t0 = Instant::now();
+                    let copy = s.st.acct.clone();
+                    let took = t0.elapsed().as_secs_f64();
+                    std::hint::black_box(copy);
+                    took
+                })
+                .fold(f64::INFINITY, f64::min);
+            t.copied.push((year, s.st.acct.copied_bytes() as f64 / 1e6, s.st.F_count, books));
         }
     }
     let h = &s.st.acct.hist;
@@ -136,6 +150,8 @@ fn main() {
         println!("the longest month: {:.1} ms with the books, {:.1} without", longest(&on), longest(&off));
         let copies: Vec<String> = on.copies.iter().zip(&off.copies).map(|(&(y, a), &(_, b))| format!("{y}: {:.1} with, {:.1} without", 1e3 * a, 1e3 * b)).collect();
         println!("a copy of the island, ms: {}", copies.join("; "));
+        let copied: Vec<String> = on.copied.iter().map(|&(y, mb, works, took)| format!("{y}: {mb:.2} MB ({works} works), {:.2} ms", 1e3 * took)).collect();
+        println!("of which the books, all but the years put away: {}", copied.join("; "));
         println!("the books hold {:.1} MB as the game ends", on.kept);
         checks.push((off.check, on.check));
     }

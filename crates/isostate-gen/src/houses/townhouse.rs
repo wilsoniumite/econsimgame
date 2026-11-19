@@ -1,9 +1,9 @@
 use crate::colour::{pick, shade};
 use crate::hash::Seed;
 use crate::houses::cottage::back_door;
-use crate::kit::{Detail, End, Era, Kit, Open, Opening, Range, RoofSpec, Side, FOOT};
+use crate::kit::{Detail, End, Era, Kit, Open, Opening, Range, RoofSpec, Side, Wall, FOOT};
 use crate::houses::roof::Roof;
-use crate::houses::{door, door_at, hearth_smoke, timber_frame, window, window_at, Fabric, BACK_ROOM};
+use crate::houses::{door, door_at, hearth_smoke, timber_frame, timber_hint, window, window_at, Fabric, Street, BACK_ROOM};
 use crate::mesh::MeshBuf;
 use crate::palette::Palette;
 use crate::kit::STOREY;
@@ -27,17 +27,31 @@ pub struct Townhouse {
     pub shop: bool,
     /// a house stands against it on its left (as seen from the street) and on its right
     pub neighbours: (bool, bool),
+    /// the family its street's walls and tiles run in (a townhouse stands
+    /// hard on its street, whatever the street's building line)
+    pub street: Street,
+    /// it was given a new front in this age. Where that is a later age
+    /// than its own, the front is the later age's (brick or stucco, sashes,
+    /// a parapet with a coping) and the old house shows behind it: its
+    /// sides, its back and its roof. None for a house as it was built
+    pub fronted: Option<Era>,
     /// how much of it to draw
     pub detail: Detail,
     pub seed: Seed,
 }
 
 impl Townhouse {
-    /// A townhouse of the middle years in the lowland, no shop, no neighbours, drawn in full.
+    /// A townhouse of the middle years in the lowland, no shop, no neighbours, told nothing of its street, drawn in full.
     pub fn new(plot_width: f32, plot_depth: f32, storeys: u8, roof: Roof, seed: Seed) -> Townhouse {
-        Townhouse { plot_width, plot_depth, storeys, roof, era: Era::Georgian, upland: false, shop: false, neighbours: (false, false), detail: Detail::Near, seed }
+        Townhouse { plot_width, plot_depth, storeys, roof, era: Era::Georgian, upland: false, shop: false, neighbours: (false, false), street: Street::ALONE, fronted: None, detail: Detail::Near, seed }
     }
 }
+
+/// In a street of a family a townhouse on a plot narrower than this has two
+/// bays: the narrow fronts of a town's back lanes, where the towns lay
+/// plots of 0.046. On a wider plot, and for a house told nothing of its
+/// street, two bays or three is the house's own choice.
+pub const NARROW_FRONT: f32 = 0.047;
 
 /// A townhouse has two storeys, and a third once its ground is dense enough.
 pub fn storeys(density: f32, seed: Seed) -> u8 {
@@ -55,6 +69,8 @@ enum Form {
     Parapet,
     /// two ridges over a deep house, a valley between
     Double,
+    /// a later front with its parapet, and the old house's roof behind it
+    Fronted,
 }
 
 /// A townhouse: the full width of its plot, hard on the street, two to four
@@ -80,13 +96,28 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
     let zb = zf - d;
     let n = t.storeys.clamp(2, 4) as usize;
     let h = STOREY * n as f32;
-    let fabric = Fabric::of(pal, t.era, t.upland, 0.25, 0.6, t.seed);
+    let fabric = Fabric::of(pal, t.era, t.upland, 0.25, 0.6, t.seed, &t.street);
     let wall = fabric.wall;
-    let colour = t.roof.rebuilt().colour(pal, t.seed);
+    // a later front: of brick more often than not, or else of stucco, which is never the old wall's wash
+    let later = t.fronted.filter(|e| *e > t.era);
+    let face = match later {
+        Some(e) => {
+            let f = Fabric::of(pal, e, t.upland, 0.45, 0.75, t.seed, &t.street);
+            if (f.brick || t.upland) && f.wall.col != wall.col {
+                f.wall
+            } else {
+                Wall { col: if wall.col == *pal.walls.cream { *pal.walls.limewash } else { *pal.walls.cream }, plinth: Some(*pal.stone.sill), ..wall }
+            }
+        }
+        None => wall,
+    };
+    let colour = t.roof.rebuilt().colour_in(pal, t.seed, &t.street);
     let lie = t.roof.rebuilt().cover.lie();
     let body = Range::rect(-hw, hw, zb, zf);
     let y0 = -k.drop(&body);
-    let form = if t.era == Era::Old && r(3) < 0.55 {
+    let form = if later.is_some() {
+        Form::Fronted
+    } else if t.era == Era::Old && r(3) < 0.55 {
         Form::FrontGable
     } else if t.era >= Era::Georgian && r(4) < if n >= 3 { 0.55 } else { 0.18 } {
         Form::Parapet
@@ -95,7 +126,7 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
     } else {
         Form::Eaves
     };
-    let jetty = fabric.timber && !k.far();
+    let jetty = fabric.timber && later.is_none() && !k.far();
     const JETTY: f32 = 0.0026;
 
     // the wing behind, a storey lower, on one side
@@ -105,9 +136,14 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
     let behind_wing = |x: f32| wing && x > wx0 && x < wx1;
 
     // openings by rule: two or three bays, a window in each on every floor, the door in an end bay
-    let bays = if r(8) < 0.55 { 3 } else { 2 };
+    // (in a street of a family the plot's width has its say: the narrow plots of the back
+    // lanes take two bays)
+    let told = t.street.family.is_some();
+    let bays = if told && pw < NARROW_FRONT { 2 } else if r(8) < 0.55 { 3 } else { 2 };
     let door_bay = if r(9) < 0.5 { 0 } else { bays - 1 };
     let glazing = window(t.era);
+    // the front's windows and its door are the later age's where it has a later front
+    let (front_era, front_glazing) = (later.unwrap_or(t.era), later.map_or(glazing, window));
     let ww = if bays == 3 { 0.0056 } else { 0.0066 };
     let mut front = Vec::new();
     let mut back = Vec::new();
@@ -122,18 +158,18 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
             let at = w * (b as f32 + 0.5) / bays as f32;
             if !t.shop {
                 if b == door_bay {
-                    front.push(door_at(at, door(pal, t.era, t.seed)));
+                    front.push(door_at(at, door(pal, front_era, t.seed)));
                 } else {
-                    front.push(window_at(at, 0, 0.0082, ww, if t.era == Era::Old { 0.0074 } else { 0.0092 }, glazing));
+                    front.push(window_at(at, 0, 0.0082, ww, if front_era == Era::Old { 0.0074 } else { 0.0092 }, front_glazing));
                 }
             }
             let x = hw - at;
             for s in 1..n {
                 // the first floor is the tallest, the top one the lowest, as the eighteenth century had it
-                let tall = if t.era == Era::Old { 0.0074 } else if s == n - 1 && n >= 3 { 0.0078 } else { 0.0098 };
-                front.push(window_at(at, s, 0.0068, ww, tall, glazing));
+                let tall = |era: Era| if era == Era::Old { 0.0074 } else if s == n - 1 && n >= 3 { 0.0078 } else { 0.0098 };
+                front.push(window_at(at, s, 0.0068, ww, tall(front_era), front_glazing));
                 if !(behind_wing(x) && s < n - 1) {
-                    back.push(window_at(at, s, 0.0068, ww, tall.min(0.0086), glazing));
+                    back.push(window_at(at, s, 0.0068, ww, tall(t.era).min(0.0086), glazing));
                 }
             }
             if !behind_wing(x) {
@@ -155,6 +191,10 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
         if k.near() {
             k.strip(&body, 0, 0.0, w, STOREY - 0.0014, STOREY + 0.0008, 0.0008, *pal.timber.house_frame);
         }
+    } else if later.is_some() {
+        // the later front before the old house
+        k.walls(&body, y0, h, &face, [Side::with(&front), Side::NONE, Side::NONE, Side::NONE], true, false);
+        k.walls(&body, y0, h, &wall, [Side::NONE, sides.0, Side::with(&back), sides.1], true, true);
     } else {
         k.walls(&body, y0, h, &wall, [Side::with(&front), sides.0, Side::with(&back), sides.1], true, form != Form::Parapet);
     }
@@ -163,7 +203,13 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
         if jetty {
             timber_frame(&mut k, &Range::rect(-hw, hw, zb, zf - JETTY), 0, FOOT, STOREY - 0.0014, &posts);
         }
-        timber_frame(&mut k, &body, 0, STOREY + 0.0008, h, &posts);
+        if later.is_none() {
+            timber_frame(&mut k, &body, 0, STOREY + 0.0008, h, &posts);
+            if told {
+                // from the play distance, a hint of it on the front
+                timber_hint(&mut k, &body, 0, FOOT, h, &posts);
+            }
+        }
         timber_frame(&mut k, &body, 2, FOOT, h, &posts);
     }
 
@@ -207,6 +253,21 @@ pub fn townhouse(solid: &mut MeshBuf, smoke: &mut MeshBuf, site: &Site, t: &Town
             let rise = rg.dep * 0.34;
             k.roof(&rg, &RoofSpec { h, rise, eaves: 0.0012, verge: vr.min(vl), ends: [End::Gable, End::Gable], col: colour, gable: wall.col, thick: lie.thick });
             (stack_z, stack_from, stack_top) = (rg.cz, h + rise * 0.5, h + rise + 0.007);
+        }
+        Form::Fronted => {
+            // the later front goes on up past the eaves, with a coping, and the old
+            // house's roof stands behind it at the pitch it always had
+            let (thick, up) = (0.0018, 0.0046);
+            if !k.far() {
+                k.boxy(-hw, hw, zf - thick, zf, h, h + up, face.col, Some(face.sill));
+                if k.near() {
+                    k.strip(&body, 0, 0.0, w, h - 0.0012, h, 0.0007, face.sill);
+                }
+            }
+            let rg = Range::rect(-hw, hw, zb, zf - thick);
+            let rise = rg.dep * (0.42 + 0.16 * u);
+            k.roof(&rg, &RoofSpec { h, rise, eaves: 0.0012, verge: vr.min(vl), ends: [End::Gable, End::Gable], col: colour, gable: wall.col, thick: lie.thick });
+            (stack_z, stack_from, stack_top) = (rg.cz, h + rise * 0.55, h + rise + 0.006);
         }
         Form::Double => {
             let rise = d * 0.5 * 0.56;

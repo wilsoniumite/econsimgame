@@ -37,7 +37,6 @@ struct Ran {
     out: String,
     /// what it told the terminal
     err: String,
-    secs: f32,
 }
 
 impl Ran {
@@ -47,8 +46,16 @@ impl Ran {
     }
 }
 
+/// How long a run may go on before it is taken to have hung, in seconds: ten
+/// minutes, which is many times what any run here needs on a quiet machine,
+/// times `ISOSTATE_TEST_PATIENCE` if that is set (2 doubles it). No test here is
+/// timed: the limit only stops a game that would never end.
+fn patience() -> f32 {
+    600.0 * std::env::var("ISOSTATE_TEST_PATIENCE").ok().and_then(|v| v.trim().parse::<f32>().ok()).filter(|t| t.is_finite() && *t > 0.0).unwrap_or(1.0)
+}
+
 /// Run the game with these arguments and these variables set, keeping its
-/// saved games in `dir`/saves, and wait for it to end (two minutes at most).
+/// saved games in `dir`/saves, and wait for it to end.
 fn game(dir: &Path, args: &[&str], vars: &[(&str, &str)]) -> Ran {
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -72,20 +79,29 @@ fn game(dir: &Path, args: &[&str], vars: &[(&str, &str)]) -> Ran {
     let code = loop {
         match child.try_wait().unwrap() {
             Some(status) => break status.code(),
-            None if began.elapsed().as_secs() > 120 => {
+            None if began.elapsed().as_secs_f32() > patience() => {
                 let _ = child.kill();
                 let _ = child.wait();
-                panic!("the game was still running after two minutes: {args:?}");
+                panic!(
+                    "timed out after {:.0} s waiting for the game to end: {args:?}. No wrong answer was seen; a machine busy enough can run a wait out, and ISOSTATE_TEST_PATIENCE=3 waits three times as long. The game had said:\n{}",
+                    patience(),
+                    String::from_utf8_lossy(&std::fs::read(&err).unwrap_or_default())
+                );
             }
             None => std::thread::sleep(Duration::from_millis(50)),
         }
     };
     let read = |p: &Path| String::from_utf8_lossy(&std::fs::read(p).unwrap_or_default()).into_owned();
-    Ran { code, out: read(&out), err: read(&err), secs: began.elapsed().as_secs_f32() }
+    Ran { code, out: read(&out), err: read(&err) }
 }
 
 /// A refusal: the game did not start, said why in one sentence that begins
-/// as given and ends as given, and made no island first.
+/// as given and ends as given, and made no island first. That the refusal is
+/// the first thing it said, and that nothing of an island made or a year
+/// played is said at all, is what shows it came before anything was made,
+/// since the game says that it is making an island, or playing years again,
+/// as it begins to. (It used to be timed as well, which a busy machine could
+/// fail.)
 fn refused(ran: &Ran, begins: &str, ends: &str) -> String {
     let said = ran.said();
     let first = said.first().copied().unwrap_or_default().to_string();
@@ -96,7 +112,6 @@ fn refused(ran: &Ran, begins: &str, ends: &str) -> String {
     for l in &said {
         assert!(!l.contains("making island") && !l.contains("playing ") && !l.contains("prepared the game"), "something was made or played before the refusal:\n{}", ran.err);
     }
-    assert!(ran.secs < 20.0, "refused after {} s", ran.secs);
     first
 }
 

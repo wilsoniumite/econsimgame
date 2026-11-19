@@ -1,0 +1,9 @@
+# A look to lay over the standard one (`--look looks/hill-closes.toml`, run
+# from crates/isostate-viewer, or with the path from where you are): the
+# closes of the towns in the hills in the rougher, greyer green of hill
+# pasture, within walls of the hills' stone where the lowland's closes are
+# hedged. The standard look has this off: there `close_grass_hills` is the
+# same as `close_grass`, and a hill town's closes are as the lowland's.
+
+[land]
+close_grass_hills = "#8fa468"

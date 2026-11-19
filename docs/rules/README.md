@@ -28,6 +28,7 @@ command line (`crates/isostate-core/FAMILIES.md`).
 | the viewer, a new game | game | (a replay shows whatever was recorded) |
 | `examples/bots.rs`, `examples/live.rs` | game | `--rules port` |
 | `tests/parity.rs`, `tests/golden.rs`, `tests/run.rs`, `tests/families.rs` | port | |
+| `tests/golden_game.rs` | game, with six families | |
 
 In code, `Rules::Port` and `Rules::Game` name the two; `rules.params()` and
 `rules.content()` give what a run needs. A `--params FILE` (TOML or JSON) is
@@ -65,8 +66,10 @@ rules, invisible in a port run's files.
    after, and what worries you. Add a line to the list at the end of this
    page.
 7. **Check it.** `cargo test -p isostate-core --release` must pass with the
-   golden constants untouched. Then run a sweep under the game's rules against
-   the port's baseline (below) and read what moved.
+   port's golden constants untouched. Then run a sweep under the game's rules
+   against the port's baseline (below) and read what moved. Switching the
+   mechanism on in `game_params()` moves the game's golden hashes, which are
+   anchored again when it lands ("The game's golden test", below).
 
 In code, for canals:
 
@@ -142,6 +145,105 @@ diff the two.
 The golden test watches one seed for any change at all. Whether a change is
 for the better is the sweep's question.
 
+## The game's golden test
+
+The port's golden test cannot see the game: under `default_params()` nearly
+every hook of the game's rules returns on its first line. `tests/golden_game.rs`
+holds the game in the same way. It runs seed 7 to 1900 under `game_params()`
+and `game_content()` with six families, as the viewer plays it, and hashes
+four things apart (64-bit FNV-1a), so that a failure says which moved:
+
+| name | what is hashed |
+|---|---|
+| `economy` | `series_monthly.csv` as `isostate-core run` writes it, less the books' own columns |
+| `books` | the books' own columns (`acct_`), with the year and month |
+| `news` | `events.json` |
+| `run.bin` | the record the viewer draws, with the date it was written set to `0000-00-00` |
+
+The four hashes are kept in `tests/golden_game.txt`, beside the test, not in
+its code. The island is run twice, side by side on two threads, and the two
+runs must agree before they are set against the file. So a failure is one of
+two things, and the message says which:
+
+- **The run is not repeatable.** The two runs disagree. Something in the run
+  reads what is not the rules and the island (a clock, a thread, an
+  environment variable, a hash map walked in its own order). That is a fault
+  whatever the file says, and no hash may be taken until it is found.
+- **The game moved.** The two runs agree with each other and not with the
+  file. The message names which of the four moved.
+
+Unlike the port's, these hashes are meant to move. The game's rules are
+changed on purpose often (every stage of the rules pass, a rule mended or
+retuned, a new rule switched on), and the economy, the news and `run.bin`
+move with them. That is what the test is for: a change that says it moves
+nothing must leave all four as they were, and a change that moves the game
+says so and anchors them again. A change to the books alone moves `books`,
+`run.bin` (which carries the books' tables) or both, and never `economy` or
+`news`: the economy moving when only the books were touched means the books
+touched the economy. (Moving the books' note of the works' dividends below
+the families' take of theirs moves `run.bin` alone, since those tables are
+not among the monthly `acct_` columns.) Like the port's, these hashes are this machine's (see
+"What worries me").
+
+**Anchoring them again.** On the tree that will land: the branch with the
+newest main merged into it as its last step, or the merge into main itself.
+Two branches that both move the game must meet here, and the hashes of
+either alone are nobody's. In practice the builder of a stage takes them on
+the branch, so that its commits pass their tests; whoever merges main into it
+afterwards (its checker, or whoever lands it if main has moved again) takes
+them once more after the merge, and that is the commit that counts. When
+two such branches have both changed `golden_game.txt`, the merge conflicts on
+its four lines: keep neither side's, but settle the conflict with either and
+then paste in what the command prints on the merged tree. The command,
+
+```bash
+ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
+```
+
+checks nothing and stops with the four lines to paste into
+`tests/golden_game.txt`, after checking that the two runs agree. Who may do
+it: whoever builds, checks or lands a change that moves the game's rules on
+purpose, or what `run.bin` records for the viewer (the works' site planner
+moved `run.bin` alone by writing each good's price into its header), as
+above, and only after the sweep under the game's rules has been
+read and what moved is what was meant. A stage behind its own switch can
+show that nothing else moved: with the switch turned off in `game_params()`
+for one run (and not committed so), the test must pass on the old four. Who
+may not: a change that claims to move nothing. If the test fails on such a
+change, the change is wrong, not the file. The commit that anchors them says, in its message, which of the four
+moved and why ("economy, news and run.bin: stage 2 of the rules pass, the
+ration"), and the line `# Taken:` in the file is changed to say the same in
+a few words.
+
+To see what moved,
+
+```bash
+ISOSTATE_GOLDEN_DUMP=some/dir cargo test -p isostate-core --release --test golden_game
+```
+
+writes `game6/` under that directory with the three files of the run, before
+and after, for a diff.
+
+The test makes two runs of the game at once, which costs about one run's
+time on a machine with a core to spare. On 12 November 2026, with other
+helpers' builds running beside it, it took 52 seconds within `cargo test -p
+isostate-core --release` (the port's two golden runs took 49 beside it), 70
+seconds alone, and 174 seconds at the busiest hour; its check that evening
+saw 71 seconds within the suite and 24 to 128 alone. It is in the default run,
+like the port's, and not behind `#[ignore]`: the gate is the release run, and
+a guard that is skipped by default guards nothing. A debug build gives the same
+four hashes in about the same time (76 seconds, `cargo test -p isostate-core
+--test golden_game`), since the core is optimised in the debug profile too
+(`Cargo.toml`).
+
+What it cannot see: another seed, another number of families, a player's
+orders (`tests/families.rs` and the viewer's `live_tests.rs` hold those), and
+the land, which is off in the game's rules for now. What it sees and cannot
+explain is the order of the month: a hook moved across a read or a write of
+another fails it without saying why. That order is written down in the
+comment above `econ::step_month`: what is read from last month, the order the
+four takers of hands come in, and where chance enters.
+
 ## The sweep
 
 ```bash
@@ -170,6 +272,21 @@ before the start, more than 10,000 seeds, a `DIR` that cannot be made.
 ```text
 --set land_thetta: there is no parameter "land_thetta". Did you mean land_theta?
 ```
+
+A setting that has been retired is refused by what it became, the same way
+from `--set`, from a `--params` file and from the readers in code
+(`params::RETIRED`; stage 5 of the pass over the rules made sixteen settings
+that moved nothing into constants, and folded two pairs that were one number):
+
+```text
+--set canals.max_projects: canals.max_projects is no longer a setting since stage 5 of the pass over the rules (docs/designs/rules-pass.md, section 4.5): it is the constant canals::MAX_PROJECTS, 12 canals digging at once
+```
+
+The `params.json` of a game's run made before stage 5 names them too (a
+mechanism that is on is written out whole), so given back with `--params` it
+is refused in the same words. Take out the lines it names (setting
+`canals.hurdle` or `mines.open_at` as the refusal says, where `induced` was not
+1 or `payback` was not 4) and the run is the one it was.
 
 It writes into `DIR`, replacing a sweep that is already there (so the same
 command makes a baseline again):
@@ -312,7 +429,9 @@ All of them are worked out after the run from what it already keeps (the
 observer's series, the yearly snapshots, the final state); the simulation's
 loop is not touched. Two things nobody keeps, the towns' growth against the
 cap and the land under each use, are noted between years by the sweep's own
-loop. The facts are computed from the content, so another content file works:
+loop, and a few that only a month shows (a town's wage against the middle
+town's, the hands at work against the people) between months
+(`facts::run_year_noting`). The facts are computed from the content, so another content file works:
 a method or good it lacks is skipped, and one it adds gets its rows.
 
 A fact taken from a series in a year is the mean of that year's twelve months,
@@ -346,7 +465,10 @@ added since (below the table) are in neither check.
 | News | `news_KIND`, the number of news items of each kind, and `news_total` |
 | Speed | `seconds` of wall time for the run, with the others running beside it |
 
-Those are the facts the sweep began with, which every run has. Each mechanism
+Those are the facts the sweep began with, which every run has. One more is
+there only when it happens: `works_table_full`, the year the works' table
+filled (all `F_max` of its places taken; no works can be founded after, and
+the summary says so in a line beginning `FULL run`). Each mechanism
 of the game's rules has since added facts of its own, under the same headings
 and one more, Canals; what each means is on the mechanism's page and at the
 top of `facts.rs`. Some have a value under the port too (the workings, the
@@ -362,6 +484,7 @@ some 280 facts and a sweep under the game's rules some 450. In brief:
 | Prices and cycles | `output_swing_grain`, `price_ac1_grain`, `output_ac1_grain`, `real_wage_worst_year`, `real_wage_swing`, `famine_years`, and how grain, its price and the wage answer to the harvest that year and the next (`harvest_sd`, `grain_output_on_harvest` and the rest) ([harvest.md](harvest.md), [prices.md](prices.md)) |
 | News | the news of the newer kinds: `news_canal`, `news_canal_plan`, `news_dearth`, `news_harvest`, `news_region` |
 | Canals | the coal's price spread between towns and its share of warmth and heat; when the first canal was begun and opened and how long before the railway; length, traffic and haul; what the canals carry; the lines by what they serve; what they cost and earned, and the most digging and navvies at once ([canals.md](canals.md)) |
+| (the pass over the rules) | the facts its card reads: `pop_Y_vs_1750`, the towns' gain at the end, spending a head over the chained cost of living by decade, the five worst years, timber's swing, the tools' dear years against the years about them, hungry months after a district, wild wages and overworked towns by the town-month, the diggings without the carters, the carters between towns and a unit of weight and path cost, closing by age, the works near their market ([scorecard.md](scorecard.md), "The facts added for the pass over the rules") |
 
 ### The baselines
 
@@ -432,7 +555,8 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   suspect this first.
 - **The golden test watches the economy, not the map.** It hashes the monthly
   series and the news. A change that only moves what `run.bin` records for
-  the viewer (a map layer, the works' table) passes it.
+  the viewer (a map layer, the works' table) passes it. The game's golden
+  test hashes `run.bin` as well, but only under the game's rules.
 - **Without the Python dumps the golden test stands alone.** `tests/parity.rs`
   compares each step with the Python, but only against fixtures made by
   `parity/dump_state.py`, which are not in the repository; with none there
@@ -455,9 +579,9 @@ Read against PLAN.md's list of what is off, on eight seeds instead of one:
   than about the code.
 - **Facts are named by year**, so sweeps to different end years have few
   names in common and compare poorly.
-- **The loss function and the search of PLAN.md 1.3 are not here.** The facts
-  have no tolerances yet; `facts.json` is the table a loss would be computed
-  from.
+- **The search of PLAN.md 1.3 is not here.** The scorecard
+  ([scorecard.md](scorecard.md)) gives the pass over the rules' twenty aims
+  with their tolerances and a loss over them; nothing searches it yet.
 
 ## Mechanisms under the game's rules
 
@@ -496,6 +620,11 @@ One line each as they arrive: the name, its page, its switch.
   households that go with their cells when a market's area changes, taking
   their wage and their prices with them. [people.md](people.md),
   `people.enabled`.
+- **shelves**: when a district changes town, its merchants' stock, their cash
+  and their measure of sales go with it to whichever town takes it, as its
+  people do, so that a town that took a district does not open January with
+  the shelves of the town it was. [shelves.md](shelves.md),
+  `people.shelves_go`.
 - **towns**: town ground that is kept. A town keeps the cells it builds on and
   grows outward from them along its roads, taking in the works beside it, so
   the island's town ground is some five times as wide in 1900 as in 1750 and
@@ -526,3 +655,39 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **commons**: under the commons the common fund in debt pays no dividend
+  until its rents repay it, and charges nobody, where the port shares out its
+  debt as a levy on every household. Under the landlords it does nothing.
+  [commons.md](commons.md), `commons.carry_debt`.
+- **roads** (off under both sets of rules: a probe's prototype): roads,
+  turnpikes and bridges that somebody pays for, a parish out of its rate and
+  a turnpike trust out of its tolls. [dx-roads.md](../probes/dx-roads.md),
+  `roads.enabled`.
+- **hands**: a town cannot hire hands it does not have. When even the
+  highest wage the month allows leaves more hands wanted than the town has
+  to spare, the wage stays there and every employer in the town is cut by
+  the same share to the hands there are, and carries forward what it got.
+  [hands.md](hands.md), `hands.ration`.
+- **money**: the month's new money is reckoned on all the money there is
+  when the month begins, at 0.0175 a year, so that it grows 1.764 per cent a
+  year on every island, the rate today's islands had, where the port's count
+  left the month's incomes out and the rate wandered. [money.md](money.md),
+  `money.true_total`.
+- **goods that spoil**: a good of which more than a tenth of a stock rots in
+  a month (services) carries no stock markup and is priced at its anchor, so
+  the towns that bring services in no longer lose what rots on their shelves
+  and the merchants no longer owe two fifths of the money by 1900.
+  [prices.md](prices.md), "Goods that spoil", `prices.no_spoil_markup`.
+- **the price of land**: land is priced on the rent it paid, not on an
+  average year's rent worked out by adding back the crop the weather took,
+  which put it a tenth too high after a bad harvest and a tenth too low
+  after a good one. [harvest.md](harvest.md), "The price of land",
+  `harvest.rent_as_paid`.
+- **the works of 1749 spread out**: the works a game starts with stand on
+  cells of their own, where the port put up to six of one trade on a town's
+  one best cell as twins with one history. [works.md](works.md), part G,
+  `works.spread_first`.
+- **orders paid for first**: a works keeps back what its order for plant
+  still costs before it pays a dividend, so the money for an extension is not
+  paid out to its owners while the plant is still to come and the works then
+  closed for the debt. [works.md](works.md), part H, `works.keep_order`.

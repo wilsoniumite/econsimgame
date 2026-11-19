@@ -19,6 +19,7 @@ use crate::trees::{bush, hedge_tree, tree, Species, Tree};
 use crate::hash::Seed;
 use crate::houses::roof::Roof;
 use crate::houses::{cottage, farmhouse, terrace, townhouse, villa, Cottage, Detail, Era, Farmhouse, Terrace, Townhouse, Villa, BACK_PLOT_WIDTH, PLOT};
+use crate::works::site::{self, Edge, Now, Plot};
 use crate::works::{pit, works, Kind, Pit, PitKind, Works};
 use crate::palette::Palette;
 use crate::rail;
@@ -174,6 +175,38 @@ fn works_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
         .collect()
 }
 
+/// Works laid out on their plots (`works::site`): the kinds whose plans differ
+/// most, small and great, by the gate alone, by a railway and on the water.
+fn works_sites(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let nav = Edge::Water { navigable: true };
+    let stream = Edge::Water { navigable: false };
+    [
+        (Kind::CokeFurnace, 1790, 12.0, 0u8),
+        (Kind::TextileMill, 1765, 20.0, 1),
+        (Kind::RollingMill, 1820, 10.0, 2),
+        (Kind::Brickworks, 1800, 6.0, 3),
+        (Kind::Smithy, 1770, 1.0, 0),
+        (Kind::Other, 1840, 8.0, 2),
+        (Kind::EngineWorks, 1830, 40.0, 3),
+        (Kind::HandLoom, 1760, 3.0, 1),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, (kind, founded, size, on))| {
+        let (w, d) = site::ground(kind, size);
+        let plot = match on {
+            0 => Plot::rect(w, d),
+            1 => Plot::rect(w, d).facing(1, stream),
+            2 => Plot::wedge(w * 1.15, d * 1.15, 0.25).facing_from(2, Edge::Rail, 1850),
+            _ => Plot::cut(w * 1.05, d * 1.05, 0.35).facing(1, nav),
+        };
+        let (plan, now) = site::specimen(kind, founded, 1890, size, &plot, Seed::of(40 + i as u32), pal);
+        let now = Now { detail, ..now };
+        specimen(format!("{} on its plot, size {size}, {founded}", kind.label()), |m, s| site::site(&mut m.solid, &mut m.smoke, &mut m.flat, s, &plan, &now, pal))
+    })
+    .collect()
+}
+
 fn farmsteads(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     let mut out = Vec::new();
     // a big arable farm in brick, a small one in tarred boards, a hill farm, a big farm of stock, and seeds at large
@@ -304,6 +337,7 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "works: powered mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<14>, levels: true },
     Entry { name: "works: brickworks", class: Class::Building, covers: &["works/mod::works"], build: works_of::<15>, levels: true },
     Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<16>, levels: true },
+    Entry { name: "works on its plot", class: Class::Building, covers: &["works/site::site"], build: works_sites, levels: true },
     Entry { name: "farmstead", class: Class::Building, covers: &["farm::farmstead"], build: farmsteads, levels: true },
     Entry { name: "church", class: Class::Building, covers: &["town/church::church"], build: churches, levels: true },
     Entry { name: "station", class: Class::Building, covers: &["town/station::station"], build: stations, levels: true },

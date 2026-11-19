@@ -78,6 +78,12 @@ pub struct HarvestParams {
     /// told only while `prices.enabled`: under the port's price rule grain's
     /// price swings by itself and would trip the line with no weather at all.
     pub dearth_rise: f64,
+    /// Land is priced on the rent it paid last year, as the weather left it
+    /// ([`average_rent`]). Off, the crop the weather took is added back at that
+    /// year's price, which with half the weather foreseen prices the island's
+    /// land a tenth too high after a bad harvest and a tenth too low after a
+    /// good one (docs/rules/harvest.md, "The price of land").
+    pub rent_as_paid: bool,
 }
 
 impl Default for HarvestParams {
@@ -95,6 +101,7 @@ impl Default for HarvestParams {
             news_z: 1.8,
             news_local_z: 2.3,
             dearth_rise: 0.15,
+            rent_as_paid: false,
         }
     }
 }
@@ -102,7 +109,7 @@ impl Default for HarvestParams {
 impl HarvestParams {
     /// The game's harvests.
     pub fn game() -> HarvestParams {
-        HarvestParams { enabled: true, ..HarvestParams::default() }
+        HarvestParams { enabled: true, rent_as_paid: true, ..HarvestParams::default() }
     }
 }
 
@@ -263,12 +270,24 @@ pub fn brought_in(st: &mut State, C: &Content, P: &Params, Y: Vec<f64>) -> Vec<f
     Y
 }
 
-/// The rent a cell would have paid last year had the hands it hired brought in
-/// an average crop, given the rent it did pay. Unchanged while the mechanism is
-/// off. (With `foreseen` above 0 the hands hired were themselves fewer or more
-/// than in an average year, which this does not undo: it is near enough for
-/// pricing land, and exact at 0.)
-pub fn average_rent(st: &State, cell: usize, paid: f64) -> f64 {
+/// The rent land is priced on (`families::land_price`), given the rent cell
+/// `cell` paid last year. Unchanged while the mechanism is off.
+///
+/// Under `rent_as_paid` it is the rent paid. Otherwise it is the rent the cell
+/// would have paid had the hands it hired brought in an average crop: the crop
+/// the weather took is added back at that year's price less the carting. That
+/// is out by about twice the harvest's shortfall (docs/probes/tr-rent.md,
+/// section 3): with half the weather foreseen a thin crop is brought in by
+/// fewer hands, and grain sells dearer, and the two together make up nearly all
+/// the rent the weather took, so adding the whole crop back at the dear price
+/// counts the loss twice. After a harvest more than 6 per cent short it priced
+/// the island's land 13.5 per cent above what an average year pays, while the
+/// rent as paid was 2 per cent under. Whoever moves `foreseen`, or makes grain's
+/// price answer a short crop more sharply, should look at this again.
+pub fn average_rent(st: &State, P: &Params, cell: usize, paid: f64) -> f64 {
+    if P.harvest.rent_as_paid {
+        return paid;
+    }
     match st.harvest_rent_gap_year.get(cell) {
         Some(gap) => paid + gap,
         None => paid,

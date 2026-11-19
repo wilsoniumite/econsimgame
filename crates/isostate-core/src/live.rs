@@ -334,6 +334,9 @@ pub fn month_series(st: &State, t: usize) -> Vec<f64> {
 /// The month just simulated. Call after `sim::run_month` (or `save::Game::month`)
 /// with `t` the month's place in the series, which is `Sim::t - 1` then; the
 /// year's last month may be left to `live_year`, which sends the news either way.
+/// December taken after its year has ended (as `save::Game::month` leaves it)
+/// carries the wages, prices and cash December ended at, which the books kept
+/// (`accounts::month_end`); without the books, those January opens at.
 pub fn live_month(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, events: &[Event], t: usize) -> LiveMonth {
     let (T, G) = (st.T_max, C.G);
     let new_events = events[cursor.events.min(events.len())..].to_vec();
@@ -342,16 +345,45 @@ pub fn live_month(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, 
         cursor.kept.extend(new_events.iter().map(|e| e.kept));
     }
     cursor.events = events.len();
-    LiveMonth {
-        year: C.start_year + (t / 12) as i64,
-        month: t % 12,
-        index: t,
-        series: month_series(st, t),
-        wage: (0..T).map(|i| if st.town_active[i] { st.wage[i] as f32 } else { 0.0 }).collect(),
-        price: (0..T * G).map(|k| st.price.data[k] as f32).collect(),
-        cash: st.families.iter().map(|f| f.cash).collect(),
-        events: new_events,
-    }
+    // accounts: a month whose year has closed (December, which a game takes once its year has
+    // ended) is told as it ended, from the books, and not as the next January opens: districts
+    // that changed market at the year's end took their prices with them, towns were founded, and
+    // the families bought and built. Without the books it is the island as it stands.
+    let (wage, price, cash) = match crate::accounts::month_end(st, t).filter(|_| t / 12 < st.acct.hist.n) {
+        Some(end) => (end.wage, end.price, end.cash),
+        None => (
+            (0..T).map(|i| if st.town_active[i] { st.wage[i] as f32 } else { 0.0 }).collect(),
+            (0..T * G).map(|k| st.price.data[k] as f32).collect(),
+            st.families.iter().map(|f| f.cash).collect(),
+        ),
+    };
+    LiveMonth { year: C.start_year + (t / 12) as i64, month: t % 12, index: t, series: month_series(st, t), wage, price, cash, events: new_events }
+}
+
+/// The months the books hold (`accounts::month_ends`: the last complete year's
+/// twelve, and the year in progress so far), as `live_month` sent them when
+/// they were played: for a viewer that was not watching then, such as one that
+/// goes on with a game from a save, which plays its months over before there is
+/// a window. Each has its series as they stand now (the books' own have the
+/// year's figure in a year that has closed, as `LiveYear::year_series` makes
+/// them in a viewer that watched) and no news (the next `live_month` or
+/// `live_year` brings it). Empty without the books.
+pub fn months_kept(st: &State, C: &Content) -> Vec<LiveMonth> {
+    crate::accounts::month_ends(st)
+        .filter_map(|t| {
+            let end = crate::accounts::month_end(st, t)?;
+            Some(LiveMonth {
+                year: C.start_year + (t / 12) as i64,
+                month: t % 12,
+                index: t,
+                series: month_series(st, t),
+                wage: end.wage,
+                price: end.price,
+                cash: end.cash,
+                events: Vec::new(),
+            })
+        })
+        .collect()
 }
 
 /// What the viewer has been sent so far.

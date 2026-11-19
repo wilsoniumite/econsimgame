@@ -18,7 +18,7 @@
 //!   ribbons along roads and shores;
 //! - works standing on a cell the town takes stay where they are, and the cell
 //!   has less room for people (`works_room`);
-//! - it gives up its newest cell, one a year, only after `decline_years` in a row
+//! - it gives up its newest cell, one a year, only after `DECLINE_YEARS` in a row
 //!   with under `empty` of the most people it has had;
 //! - the towns of the first year stand on old ground: their cells are dated
 //!   `back_years` and more before the start, the centre oldest;
@@ -65,15 +65,13 @@ pub struct TownsParams {
     pub works_room: f64,
     /// The town's people are smoothed: this share of last year's count, the rest this year's.
     pub smooth: f64,
-    /// A town gives up its newest cell after `decline_years` in a row with fewer
-    /// people than this share of the most it has had...
+    /// A town gives up its newest cell after `DECLINE_YEARS` in a row with fewer
+    /// people than this share of the most it has had, one cell a year for as
+    /// long as it stays so.
     pub empty: f64,
-    /// ...one cell a year for as long as it stays so.
-    pub decline_years: i64,
-    /// The newest ground of a first town was built this many years before the start...
+    /// The newest ground of a first town was built this many years before the
+    /// start, and its centre `BACK_SPAN` years before that.
     pub back_years: i64,
-    /// ...and its centre this many years before that, the cells between in order.
-    pub back_span: i64,
     /// The year's mean of works' hands, not December's, says how many of a town's
     /// people are town people.
     pub mean_hands: bool,
@@ -106,9 +104,7 @@ impl Default for TownsParams {
             works_room: 0.5,
             smooth: 0.5,
             empty: 0.6,
-            decline_years: 15,
             back_years: 60,
-            back_span: 40,
             mean_hands: true,
             donor_wage: true,
             rent_floor: true,
@@ -122,6 +118,16 @@ impl TownsParams {
         TownsParams { enabled: true, ..TownsParams::default() }
     }
 }
+
+// Two numbers that were settings until stage 5 of the pass over the rules:
+// at half and at double each moved nothing (docs/probes/sens-people.md).
+
+/// A town gives up its newest cell after this many years in a row with fewer
+/// people than `empty` of the most it has had.
+pub const DECLINE_YEARS: i64 = 15;
+/// The centre of a first town was built this many years before its newest
+/// ground (`back_years`), the cells between in order.
+pub const BACK_SPAN: i64 = 40;
 
 /// Whether this state keeps town ground (its tables are sized on the first yearly update).
 pub fn kept(st: &State) -> bool {
@@ -408,7 +414,7 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             } else {
                 st.town_low_years[i] = 0;
             }
-            if st.town_low_years[i] >= tp.decline_years && list.len() > 1 {
+            if st.town_low_years[i] >= DECLINE_YEARS && list.len() > 1 {
                 // the ground that is left held that much less of the town at its fullest
                 st.town_peak[i] *= (list.len() - 1) as f64 / list.len() as f64;
                 let c = list.pop().unwrap();
@@ -421,7 +427,7 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
             let n = list.len();
             for (k, &c) in list.iter().enumerate() {
                 let inward = if n > 1 { 1.0 - k as f64 / (n - 1) as f64 } else { 1.0 };
-                st.town_built[c] = C.start_year - tp.back_years - (tp.back_span as f64 * inward).round() as i64;
+                st.town_built[c] = C.start_year - tp.back_years - (BACK_SPAN as f64 * inward).round() as i64;
             }
         }
         // people are shared out by room; rent as the port's rule has it, highest at
