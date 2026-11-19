@@ -87,6 +87,15 @@ The island as a thing to watch, to look into and to change by hand, as WorldBox 
 
 Stages 4 to 8 also waited for the production tree to land, since they rewrite the parts of the viewer that the tree's panels work in; it landed at 04:43 on 19 November. The sandbox takes up the inspector (Ready next 7): stage 2 is the core's half of it and stage 5 draws it.
 
+**The atlas (her notes of 19 November, evening, at the foot; note 13).** She asked to see, and to change by hand, four things the sandbox does not yet show whole: where the deposits lie, when each idea is found, how goods are made from goods, and who trades with whom. Each has a seed in the game already. A square's card says what the square holds, the Idea tool gives an idea early, the Markets panel charts a good's price and how much of it is made, and a town's card gives the year's trade by good and counts the towns it came from. What is missing is the whole of each on one plate, and a hand on it. They are ranked as one design with four plates, in this order. None is built before the century after 1900 grows and the new land is the default, except the first plate's chart, which is a tool for that work.
+
+1. **The making.** The production tree as an island lives it: goods and works, with a works' plant drawn as well as its inputs, each line as wide as what flows along it in a decade and coloured by the good's price against the wage, the kinds of works nobody runs greyed, and the things that moved most named. The plant is there because the wood famine of 19 November sat in the plant of mills and breweries, where a chart of inputs alone would not have shown it. First a page that a command writes from a sweep, eight islands by decade; then a panel of the game. By hand: a kind of works forbidden from a date; later a recipe's numbers, kept with the session as the hand's other edits are. The stage that lets a works build its plant another way (note 8, third item) makes each way a named thing that can be switched, so that this has something to hold.
+2. **The moving.** What each way carries, by good, added up from the carting. The record that reaches the picture carries no traffic today, and the look of 1900 to 2050 (cars and lorries) and the ways (who builds a bypass) wait on the same figures: one record, three uses. Then ribbons along the ways as wide as what they carry, and a town's card naming its largest partners. By hand: a way closed, or tolled.
+3. **The ideas.** A chart of when each idea was found and how it spread from town to town, with a tick where our own history had it. Drawn for eight islands at once it is the picture of how the run to 2050 keeps its dates. By hand: an idea pinned to a year, or held back. The laboratory needs the same, since an experiment that moves one finding can reshuffle the dates of the others.
+4. **The ground.** A map view of what the land holds and what is left of it: the deposits, the standing timber, the soil, with what has been worked marked. By hand: a brush that lays a deposit down or takes it away. It answers note 2 in part.
+
+One thing more is worth having once the plates exist: the island played twice from the month of an edit, with it and without, and the plates showing the difference. The laboratory does this today from the command line ([lab.md](lab.md)).
+
 ### 3. The look of 1900 to 2050 (her note of 19 November, on the look of 2050)
 
 She had been told that the island of 2050 looks like the island of 1900 with more houses, and answered that medium-density housing, highways and skyscrapers will have to be in for 2050 to look at all right, and probably more (the note is at the foot). On 19 November three designers each took one direction and drew it with the game's own viewer, in its lab, with new generators built from the houses' kit. Every picture shows a stand-in town on flat ground, laid out from a made-up record; none is the real island. Their board and its nine best pictures are kept with the night's reports on her machine, out of the repository. The three directions:
@@ -380,3 +389,21 @@ Answered by the stage before the ways' first on the same line (`night/g-rivers-g
 > the meandering looks better on the new land (btw, why isn't that default yet?) but still in some spots I think it meanders too much
 
 It is the default since the evening of 19 November (`night/g-new-land-switch`; [rules/land.md](rules/land.md), "The switch"): every new game is on it, `--old-land` starts one on the old island, and a game saved before is played on the old island it was saved on.
+
+**19 November 2026, evening.**
+
+> small notes for the backlog, if not done already:
+>
+> Can I see where resource deposits are? Can I edit them?
+>
+> Can I see a tech timeline? Move things around in it?
+>
+> Can I see a production flowchart? See recipe usage, edit recipes and enable or disable them?
+>
+> Can I see town markets, largest trading partners or flows or things like that?
+>
+> All of these are just ideas, ponder them, and they don't need to be done now at all.
+>
+> Can I see the backlog somewhere?
+
+They are "The atlas", under the sandbox in the order of work: four plates (the making, the moving, the ideas, the ground), ranked there with note 13, which first asked for flowcharts. The last line was answered by pointing to this file.
