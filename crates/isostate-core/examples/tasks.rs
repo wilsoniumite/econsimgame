@@ -4,8 +4,9 @@
 //!         [--families 6] [--off] [--json '{"hurdle": 0.15}'] [--from 1895] [--csv FILE]
 //!
 //! Each island is played under the game's rules on a thread of its own. For
-//! every year from `--from` it prints, and writes to `--csv`: the hoist's
-//! quality (nothing until found), the share of the works' hauling machines
+//! every year from `--from` it prints, and writes to `--csv`: the quality of
+//! the works' machine (the electric drive where the tree lays it, else the
+//! hoist; nothing until found), the share of the works' hauling machines
 //! in place do, the same at the pits and quarries (`tasks.land`), the share
 //! of each the works and pits mean them to do ("A machine works once it
 //! stands"), the towns' target for it, the wage over a unit's cost (the
@@ -65,7 +66,7 @@ fn main() {
             })
         })
         .collect();
-    let head = "seed,year,quality,auto_haul,auto_haul_pits,aim_haul,aim_haul_pits,target_haul,waterline,margin_gap,machines_years,land_share,works_share,urban_share,wage,price_machinery,price_coal";
+    let head = "seed,year,quality,auto_haul,auto_haul_pits,aim_haul,aim_haul_pits,target_haul,waterline,margin_gap,machines_years,land_share,works_share,urban_share,wage,price_machinery,price_coal,elec_to_machines";
     let mut out = vec![head.to_string()];
     for h in handles {
         let rs = h.join().expect("a run");
@@ -87,15 +88,24 @@ fn rows(r: &RunResult, seed: u64, from: i64) -> Vec<String> {
     let mut out = Vec::new();
     for t in st.tasks.years.iter().filter(|t| t.year >= from) {
         let y = t.year;
-        let q = match st.tasks.found.first() {
-            Some(&f) if f >= 0 && f <= y => (1.0 + C.tasks.uses[0].pace).powf((y - f) as f64).min(C.tasks.uses[0].cap),
+        // the works' machine: the electric drive where it is laid, else the hoist
+        let w = C.tasks.uses.iter().position(|u| u.on_works).unwrap_or(0);
+        let q = match st.tasks.found.get(w) {
+            Some(&f) if f >= 0 && f <= y => (1.0 + C.tasks.uses[w].pace).powf((y - f) as f64).min(C.tasks.uses[w].cap),
             _ => f64::NAN,
         };
         let bill = st.acct.years.iter().find(|a| a.year == y).map_or(f64::NAN, |a| a.wage_bill);
+        // of the electricity made in the year, the share machines ran on (nothing without electricity)
+        let elec = C.good_index.get("electricity").map_or(f64::NAN, |&g| {
+            let col = accounts::GOODS_FIELDS.iter().position(|&n| n == "made").unwrap();
+            let book = st.acct.years.iter().position(|b| b.year == y).and_then(|k| st.acct.year(k));
+            let made: f64 = book.map_or(f64::NAN, |b| (0..st.T_max).map(|t| b.goods[(t * C.G + g) * accounts::KG + col] as f64).sum());
+            ratio(t.run_used.get(g).copied().unwrap_or(0.0), made)
+        });
         let pits = (0..C.NS.min(t.land_work.len())).filter(|&k| mines::is_extractive(&C.sector_name[k]));
         let (ph, pa, pw) = pits.fold((0.0, 0.0, 0.0), |(h, a, w), k| (h + t.land_held[k][0], a + t.land_aim.get(k).map_or(0.0, |r| r[0]), w + t.land_work[k][0]));
         out.push(format!(
-            "{seed},{y},{q:.3},{:.4},{:.4},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3}",
+            "{seed},{y},{q:.3},{:.4},{:.4},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3},{elec:.4}",
             ratio(t.held[0], t.work[0]),
             ratio(ph, pw),
             ratio(t.aim[0], t.work[0]),
