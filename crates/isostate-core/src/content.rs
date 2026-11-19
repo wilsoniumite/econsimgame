@@ -72,6 +72,29 @@ pub struct Content {
     pub tech_disc: Mat,
     pub tech_headline: Vec<String>,
     pub tech_story: Vec<String>,
+    // TREE (docs/rules/tree.md): what an overlay may say of a good, a need or a
+    // method beyond what the port's file says. All of it is empty or "not said"
+    // in the port's content, and then the port's own tables are read instead.
+    /// The stage of the game's overlay laid over this content (0: none).
+    pub stage: u32,
+    /// Monthly loss of stock, where the content says it; `None` is `P.decay`.
+    pub decay: Vec<Option<f64>>,
+    /// Opening stock a head (and the opening guess of a month's trade), where the
+    /// content says it; `None` is the port's table in `sim.rs`.
+    pub stock0: Vec<Option<f64>>,
+    /// Carried between towns. False for a good made where it is used (building
+    /// work, town gas): it is left out of the monthly trade.
+    pub traded: Vec<bool>,
+    /// The logit's width within each need; empty is `P.logit_theta` for all.
+    pub theta: Vec<f64>,
+    /// The family trade a method belongs to, by its name ("" where the content
+    /// does not say, and the families' own list of the port's methods is used).
+    pub method_group: Vec<String>,
+    /// Built in 1750 where its good is wanted (the overlay's `seed = true`).
+    pub method_seed: Vec<bool>,
+    /// The year an invention is aimed at (0: none). Read by nothing in the
+    /// engine: it is there for whoever fits thresholds and reads a run.
+    pub tech_target: Vec<i64>,
 }
 
 impl Content {
@@ -84,97 +107,116 @@ impl Content {
     }
 }
 
-#[derive(Deserialize)]
-struct RawContent {
-    meta: RawMeta,
-    services: RawServices,
-    heat: BTreeMap<String, f64>,
-    sector: Vec<RawSector>,
-    method: Vec<RawMethod>,
+// The file as it is written. The tree's overlay (`tree.rs`) is laid over these
+// by name, so they are open to the crate; the keys marked "tree" are the ones
+// the port's file never uses.
+#[derive(Clone, Deserialize)]
+pub(crate) struct RawContent {
+    pub(crate) meta: RawMeta,
+    pub(crate) services: RawServices,
+    pub(crate) heat: BTreeMap<String, f64>,
+    pub(crate) sector: Vec<RawSector>,
+    pub(crate) method: Vec<RawMethod>,
     #[serde(default)]
-    tech: Vec<RawMethod>,
+    pub(crate) tech: Vec<RawMethod>,
 }
 
-#[derive(Deserialize)]
-struct RawMeta {
-    start_year: i64,
-    end_year: i64,
-    goods: Vec<RawGood>,
+#[derive(Clone, Deserialize)]
+pub(crate) struct RawMeta {
+    pub(crate) start_year: i64,
+    pub(crate) end_year: i64,
+    pub(crate) goods: Vec<RawGood>,
 }
 
-#[derive(Deserialize)]
-struct RawGood {
-    name: String,
-    label: String,
-    weight: f64,
-    price: f64,
-    color: String,
+#[derive(Clone, Deserialize)]
+pub(crate) struct RawGood {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) weight: f64,
+    pub(crate) price: f64,
+    pub(crate) color: String,
+    // tree
+    pub(crate) decay: Option<f64>,
+    pub(crate) stock0: Option<f64>,
+    pub(crate) traded: Option<bool>,
 }
 
-#[derive(Deserialize)]
-struct RawServices {
-    names: Vec<String>,
-    labels: Vec<String>,
-    subsistence: Vec<f64>,
-    shares: Vec<f64>,
-    lord_shares: Option<Vec<f64>>,
-    shares_rich: Option<Vec<f64>>,
-    props: BTreeMap<String, BTreeMap<String, f64>>,
+#[derive(Clone, Deserialize)]
+pub(crate) struct RawServices {
+    pub(crate) names: Vec<String>,
+    pub(crate) labels: Vec<String>,
+    pub(crate) subsistence: Vec<f64>,
+    pub(crate) shares: Vec<f64>,
+    pub(crate) lord_shares: Option<Vec<f64>>,
+    pub(crate) shares_rich: Option<Vec<f64>>,
+    // tree
+    pub(crate) theta: Option<Vec<f64>>,
+    pub(crate) props: BTreeMap<String, BTreeMap<String, f64>>,
 }
 
-#[derive(Deserialize)]
-struct RawSector {
-    name: String,
-    label: String,
-    good: String,
-    alpha: f64,
+#[derive(Clone, Deserialize)]
+pub(crate) struct RawSector {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) good: String,
+    pub(crate) alpha: f64,
     #[serde(rename = "A")]
-    a: f64,
-    field: String,
+    pub(crate) a: f64,
+    pub(crate) field: String,
     #[serde(default)]
-    mine: bool,
+    pub(crate) mine: bool,
 }
 
 /// A threshold is either a number of units or "xN", N years of start-year output.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(untagged)]
-enum Threshold {
+pub(crate) enum Threshold {
     Num(f64),
     Text(String),
 }
 
 /// Methods and extra techs share this shape; techs leave the firm fields out.
-#[derive(Deserialize)]
-struct RawMethod {
-    name: String,
-    label: String,
-    output: Option<String>,
+#[derive(Clone, Default, Deserialize)]
+pub(crate) struct RawMethod {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) output: Option<String>,
     #[serde(default)]
-    inputs: BTreeMap<String, f64>,
-    heat: Option<f64>,
-    labor: Option<f64>,
+    pub(crate) inputs: BTreeMap<String, f64>,
+    pub(crate) heat: Option<f64>,
+    pub(crate) labor: Option<f64>,
     #[serde(default)]
-    capital: BTreeMap<String, f64>,
+    pub(crate) capital: BTreeMap<String, f64>,
     #[serde(rename = "K0")]
-    k0: Option<f64>,
+    pub(crate) k0: Option<f64>,
     #[serde(default)]
-    known: bool,
+    pub(crate) known: bool,
     #[serde(rename = "A0")]
-    a0: Option<f64>,
+    pub(crate) a0: Option<f64>,
     #[serde(rename = "Q0")]
-    q0: Option<f64>,
-    b: Option<f64>,
+    pub(crate) q0: Option<f64>,
+    pub(crate) b: Option<f64>,
     #[serde(default)]
-    discover: BTreeMap<String, Threshold>,
+    pub(crate) discover: BTreeMap<String, Threshold>,
     #[serde(default)]
-    headline: String,
+    pub(crate) headline: String,
     #[serde(default)]
-    story: String,
+    pub(crate) story: String,
+    // tree
+    pub(crate) group: Option<String>,
+    #[serde(default)]
+    pub(crate) seed: bool,
+    pub(crate) target: Option<i64>,
 }
 
 /// Parse content from TOML text.
 pub fn content_from_str(text: &str) -> Result<Content, String> {
     let raw: RawContent = toml::from_str(text).map_err(|e| format!("content: {e}"))?;
+    content_from_raw(&raw)
+}
+
+/// The flat tables from the file as written.
+pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
     let goods = &raw.meta.goods;
     let gname: Vec<String> = goods.iter().map(|g| g.name.clone()).collect();
     let gi: HashMap<String, usize> = gname.iter().enumerate().map(|(i, n)| (n.clone(), i)).collect();
@@ -299,6 +341,15 @@ pub fn content_from_str(text: &str) -> Result<Content, String> {
         tech_disc: t_disc,
         tech_headline: tech_list.iter().map(|(d, _)| d.headline.clone()).collect(),
         tech_story: tech_list.iter().map(|(d, _)| d.story.clone()).collect(),
+        // tree
+        stage: 0,
+        decay: goods.iter().map(|g| g.decay).collect(),
+        stock0: goods.iter().map(|g| g.stock0).collect(),
+        traded: goods.iter().map(|g| g.traded.unwrap_or(true)).collect(),
+        theta: svc.theta.clone().unwrap_or_default(),
+        method_group: methods.iter().map(|d| d.group.clone().unwrap_or_default()).collect(),
+        method_seed: methods.iter().map(|d| d.seed).collect(),
+        tech_target: tech_list.iter().map(|(d, _)| d.target.unwrap_or(0)).collect(),
     };
     for s in sectors {
         c.sector_good.push(good(&s.good)?);

@@ -240,12 +240,62 @@ pub struct MarketsChip(pub MarketsShow);
 pub struct RowHover {
     pub open: bool,
 }
+/// A list that scrolls inside its card (`scroll_list`): the wheel turns it
+/// while the pointer is over the card.
+#[derive(Component)]
+pub struct WheelList {
+    pub card: Entity,
+}
+/// The thumb at the right edge of a list that scrolls, shown while the list
+/// is longer than its room: how much of it shows, and where.
+#[derive(Component)]
+pub struct ScrollThumb(pub Entity);
 
 pub fn plugin(app: &mut App) {
     app.init_resource::<UiState>().add_systems(PostStartup, setup_hud).add_systems(
         Update,
-        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, tabs_fit, panel_visibility, panel_rebuild, panel_scroll, timeline_knob, timeline_ticks).chain(),
+        (button_colours, row_colours, hotkeys, tab_clicks, speed_clicks, news_filter_click, news_more_click, markets_clicks, timeline_drag, active_styles, topbar_text, month_bar, tabs_fit, panel_visibility, panel_rebuild, wheel_lists, scroll_thumbs, timeline_knob, timeline_ticks).chain(),
     );
+}
+
+/// A list that scrolls inside the card `card`, which must carry a
+/// `RelativeCursorPosition`: the wheel turns the list while the pointer is
+/// over the card, and a thumb stands at its right edge while there is more
+/// of it than shows, so that nothing a list holds is out of reach or out of
+/// mind. `frame` is the room the list is given in the card, `list` the list's
+/// own node (a column; it is made to scroll here) and `marker` what goes on
+/// the list, which is the entity that takes the rows; `rows` puts in any
+/// that are there from the start. The side panel and the note about what was
+/// clicked are both made of this.
+pub fn scroll_list<M: Bundle>(p: &mut ChildSpawnerCommands, card: Entity, frame: Node, list: Node, marker: M, rows: impl FnOnce(&mut ChildSpawnerCommands)) {
+    p.spawn(Node { flex_direction: FlexDirection::Column, min_height: Val::Px(0.0), ..frame }).with_children(|fr| {
+        let body = fr.spawn((Node { flex_direction: FlexDirection::Column, min_height: Val::Px(0.0), overflow: Overflow::scroll_y(), ..list }, ScrollPosition::default(), WheelList { card }, marker)).with_children(rows).id();
+        fr.spawn((
+            Node { position_type: PositionType::Absolute, right: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(THUMB_W), height: Val::Percent(100.0), border_radius: BorderRadius::all(Val::Px(THUMB_W / 2.0)), ..default() },
+            BackgroundColor(THUMB),
+            Visibility::Hidden,
+            ScrollThumb(body),
+        ));
+    });
+}
+
+/// The thumb of a list that scrolls: a thin bar of the ink the rules are drawn in, a little darker.
+const THUMB: Color = Color::srgb(0.80, 0.74, 0.64);
+const THUMB_W: f32 = 3.0;
+/// Room kept for it at the right of a list's rows.
+pub const THUMB_ROOM: f32 = 7.0;
+
+/// Where the thumb of a list stands: its top and its height as shares of the
+/// list's room, or None when the whole list shows. `room` is the height the
+/// list has, `content` how long its rows are and `at` how far it is scrolled.
+pub fn thumb_span(room: f32, content: f32, at: f32) -> Option<(f32, f32)> {
+    if !(room > 0.0) || content <= room + 0.5 {
+        return None;
+    }
+    // never so short that it cannot be seen
+    let h = (room / content).max(0.06);
+    let top = (at / (content - room)).clamp(0.0, 1.0) * (1.0 - h);
+    Some((top, h))
 }
 
 /// A key drawn as a little raised cap.
@@ -498,12 +548,9 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
             SidePanel,
         ))
         .with_children(|p| {
+            let card = p.target_entity();
             p.spawn((text(f, "News", 22.0, INK), PanelTitle, Node { margin: UiRect::bottom(Val::Px(8.0)), ..default() }));
-            p.spawn((
-                Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: Val::Px(0.0), overflow: Overflow::scroll_y(), row_gap: Val::Px(6.0), padding: UiRect::right(Val::Px(6.0)), ..default() },
-                ScrollPosition::default(),
-                PanelBody,
-            ));
+            scroll_list(p, card, Node { flex_grow: 1.0, ..default() }, Node { flex_grow: 1.0, row_gap: Val::Px(6.0), padding: UiRect::right(Val::Px(THUMB_ROOM)), ..default() }, PanelBody, |_| {});
         });
 
     // a reminder of the keys, under the panel
@@ -972,17 +1019,32 @@ pub fn scroll_panel(s: &mut ScrollPosition, c: &ComputedNode, dy: f32) {
     s.0.y = scroll_to(s.0.y, c.scroll_position.y * c.inverse_scale_factor, dy);
 }
 
-fn panel_scroll(ui: Res<UiState>, scroll: Res<AccumulatedMouseScroll>, panel: Query<&RelativeCursorPosition, With<SidePanel>>, mut body: Query<(&mut ScrollPosition, &ComputedNode), With<PanelBody>>) {
-    if ui.tab.is_none() || !panel.iter().any(|p| p.cursor_over()) {
-        return;
-    }
+/// The wheel turns a list while the pointer is over its card and the card shows.
+fn wheel_lists(scroll: Res<AccumulatedMouseScroll>, cards: Query<(&RelativeCursorPosition, &InheritedVisibility)>, mut lists: Query<(&WheelList, &mut ScrollPosition, &ComputedNode)>) {
     let dy = match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y * 36.0,
         MouseScrollUnit::Pixel => scroll.delta.y,
     };
-    if dy != 0.0 {
-        for (mut s, c) in &mut body {
+    if dy == 0.0 {
+        return;
+    }
+    for (list, mut s, c) in &mut lists {
+        if cards.get(list.card).is_ok_and(|(over, shown)| over.cursor_over() && shown.get()) {
             scroll_panel(&mut s, c, dy);
+        }
+    }
+}
+
+/// Each list's thumb stands where the list is scrolled to, and shows only while there is more of the list than its room.
+fn scroll_thumbs(lists: Query<&ComputedNode, With<WheelList>>, mut thumbs: Query<(&ScrollThumb, &mut Node, &mut Visibility)>) {
+    for (thumb, mut node, mut vis) in &mut thumbs {
+        let span = lists.get(thumb.0).ok().and_then(|c| thumb_span(c.size().y, c.content_size().y, c.scroll_position.y));
+        vis.set_if_neq(if span.is_some() { Visibility::Inherited } else { Visibility::Hidden });
+        if let Some((top, h)) = span {
+            let (top, h) = (Val::Percent(top * 100.0), Val::Percent(h * 100.0));
+            if node.top != top || node.height != h {
+                (node.top, node.height) = (top, h);
+            }
         }
     }
 }
@@ -1286,10 +1348,15 @@ impl MonthSpan {
 #[allow(clippy::too_many_arguments)]
 fn good_chart(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, by_month: Option<usize>, name: &str, accent: Color) {
     let span = by_month.map(|m| MonthSpan::of(r, m));
-    let (price, made, k, first_year) = match &span {
+    let (mut price, made, k, first_year) = match &span {
         Some(sp) => (sp.values(r, &format!("price_{name}")), sp.values(r, &format!("out_{name}")), sp.mark, sp.first_year),
         None => (replay::yearly(r, &format!("price_{name}")), replay::yearly(r, &format!("out_{name}")), k, r.y0),
     };
+    // the years before anyone made it have a price in the record that nothing was sold at (town gas
+    // before the first gasworks): the line begins where the making does
+    if span.is_none() {
+        unsold_until_made(&mut price, &made);
+    }
     let acc = accent.to_srgba().to_u8_array();
     let money = |v: f32| crate::overlay::coin(v);
     p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), padding: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(2.0), Val::Px(8.0)), margin: UiRect::bottom(Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() }, BorderColor::all(RULE))).with_children(|col| {
@@ -1304,6 +1371,19 @@ fn good_chart(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Asset
         let c = crate::chart::Chart { width: CHART_W, height: 88.0, line: &price, second: Some(&made), accent: [acc[0], acc[1], acc[2]], mark: k, years: price.len(), first_year, months: span.is_some() };
         crate::chart::spawn(col, f, images, &c, &money, &short_qty);
     });
+}
+
+/// Leave out the prices of the years before any of a good was made, year by
+/// year from the first: they are prices nothing was sold at. A run that does
+/// not hold what was made (`made` empty) keeps them all.
+fn unsold_until_made(price: &mut [f32], made: &[f32]) {
+    if made.is_empty() {
+        return;
+    }
+    let first = made.iter().position(|v| v.is_finite() && *v > 0.0).unwrap_or(price.len());
+    for p in price.iter_mut().take(first) {
+        *p = f32::NAN;
+    }
 }
 
 /// `by_month` is the marked month's place in the run when the panel goes month by month.
@@ -1328,47 +1408,72 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
         None => p.spawn(text(f, &format!("Prices against {first_year}, and the change over the last ten years. Click a good for its history."), 13.0, MUTED)),
     };
     let back = k.saturating_sub(10);
-    for (gi, g) in r.header.goods.iter().enumerate() {
-        let name = format!("price_{}", g.name);
-        // by the month: the month's price, and the price twelve months before it
-        let figures = match by_month {
-            Some(m) => (replay::month(r, &name, m), replay::annual(r, &name, 0), replay::month(r, &name, m.saturating_sub(12))),
-            None => (replay::annual(r, &name, k), replay::annual(r, &name, 0), replay::annual(r, &name, back)),
-        };
-        let (Some(now), Some(first), Some(then)) = figures else { continue };
-        if !(first > 0.0 && now > 0.0) {
-            continue;
+    // the month the figures stand at: the marked month, or the December of the year on the clock
+    let month_now = by_month.unwrap_or(k * 12 + 11);
+    // the goods priced against the year they were first made, and that year
+    let mut late_goods: Vec<(String, i32)> = Vec::new();
+    for group in good_groups(&r.header.goods) {
+        // a head over each kind of good, where the content says which a good is
+        if let Some(kind) = group.kind {
+            p.spawn((text(f, kind.heading(), 12.5, MUTED), Node { margin: UiRect::new(Val::Px(GOOD_PAD), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0)), ..default() }));
         }
-        let idx = now / first;
-        let ch = if then > 0.0 { now / then - 1.0 } else { 0.0 };
-        let is_open = open == Some(gi);
-        p.spawn((
-            Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() },
-            BackgroundColor(if is_open { PAPER_2 } else { Color::NONE }),
-            Interaction::default(),
-            FocusPolicy::Block,
-            RowHover { open: is_open },
-            GoodRow(gi),
-        ))
-        .with_children(|row| {
-            row.spawn((text(f, &g.label, 14.5, INK), Node { width: Val::Px(92.0), ..default() }));
-            // a bar on a log scale from the 1750 price in the middle: dearer to the right, cheaper to the left
-            row.spawn((Node { width: Val::Px(110.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(RULE))).with_children(|bar| {
-                let x = (idx.ln() / 3.0_f32.ln()).clamp(-1.0, 1.0);
-                let (l, w) = if x >= 0.0 { (50.0, 50.0 * x) } else { (50.0 + 50.0 * x, -50.0 * x) };
-                bar.spawn((
-                    Node { position_type: PositionType::Absolute, left: Val::Percent(l), width: Val::Percent(w.max(1.5)), top: Val::Px(0.0), bottom: Val::Px(0.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
-                    BackgroundColor(if x >= 0.0 { DEARER } else { CHEAPER }),
-                ));
-                bar.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(50.0), width: Val::Px(2.0), top: Val::Px(-3.0), bottom: Val::Px(-3.0), margin: UiRect::left(Val::Px(-1.0)), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() }, BackgroundColor(MUTED)));
-            });
-            row.spawn((text(f, &format!("{:.2}", idx), 13.5, INK), Node { width: Val::Px(40.0), ..default() }));
-            let s = if ch.abs() < 0.03 { "steady".to_string() } else if ch > 0.0 { format!("up {:.0}%", ch * 100.0) } else { format!("down {:.0}%", -ch * 100.0) };
-            row.spawn((text(f, &s, 13.0, MUTED), Node { width: Val::Px(64.0), ..default() }));
+        // (a column of their own, so that the rows stand closer than the panel's other lines)
+        p.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: Val::Px(GOOD_ROW_GAP), ..default() }).with_children(|p| {
+            for gi in group.goods {
+                let g = &r.header.goods[gi];
+                let name = format!("price_{}", g.name);
+                // a good first made after the first year is priced against the year (or the month) it was first
+                // made, not against a price nothing was sold at; and its change goes back no further than that
+                let since = replay::first_made(r, &g.name).unwrap_or(0);
+                let late = since >= 12;
+                // by the month: the month's price, and the price twelve months before it
+                let figures = match by_month {
+                    Some(m) => (replay::month(r, &name, m), if late { replay::month(r, &name, since) } else { replay::annual(r, &name, 0) }, replay::month(r, &name, m.saturating_sub(12).max(if late { since } else { 0 }))),
+                    None => (replay::annual(r, &name, k), replay::annual(r, &name, since / 12), replay::annual(r, &name, back.max(since / 12))),
+                };
+                let (Some(now), Some(first), Some(then)) = figures else { continue };
+                if !(first > 0.0 && now > 0.0) {
+                    continue;
+                }
+                // a good no works has made yet has a price in the record that nothing was sold at:
+                // it keeps its place in the list and says so, and has no history to open
+                if !replay::made_by(r, &g.name, month_now) {
+                    p.spawn(good_row_node()).with_children(|row| {
+                        good_name(row, f, &g.label, MUTED);
+                        row.spawn((text(f, "not made yet", 13.0, MUTED), TextLayout::default().with_no_wrap()));
+                    });
+                    continue;
+                }
+                if late {
+                    late_goods.push((g.label.clone(), r.y0 + (since / 12) as i32));
+                }
+                let idx = now / first;
+                let ch = if then > 0.0 { now / then - 1.0 } else { 0.0 };
+                let is_open = open == Some(gi);
+                p.spawn((good_row_node(), BackgroundColor(if is_open { PAPER_2 } else { Color::NONE }), Interaction::default(), FocusPolicy::Block, RowHover { open: is_open }, GoodRow(gi))).with_children(|row| {
+                    good_name(row, f, &g.label, INK);
+                    // a bar on a log scale from the 1750 price in the middle: dearer to the right, cheaper to the left
+                    row.spawn((Node { width: Val::Px(GOOD_BAR_W), height: Val::Px(8.0), flex_shrink: 0.0, border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(RULE))).with_children(|bar| {
+                        let x = (idx.ln() / 3.0_f32.ln()).clamp(-1.0, 1.0);
+                        let (l, w) = if x >= 0.0 { (50.0, 50.0 * x) } else { (50.0 + 50.0 * x, -50.0 * x) };
+                        bar.spawn((
+                            Node { position_type: PositionType::Absolute, left: Val::Percent(l), width: Val::Percent(w.max(3.0)), top: Val::Px(0.0), bottom: Val::Px(0.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+                            BackgroundColor(if x >= 0.0 { DEARER } else { CHEAPER }),
+                        ));
+                        bar.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(50.0), width: Val::Px(2.0), top: Val::Px(-3.0), bottom: Val::Px(-3.0), margin: UiRect::left(Val::Px(-1.0)), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() }, BackgroundColor(MUTED)));
+                    });
+                    row.spawn((text(f, &index_words(idx), 13.5, INK), TextLayout::default().with_no_wrap(), Node { width: Val::Px(GOOD_INDEX_W), flex_shrink: 0.0, ..default() }));
+                    let s = if ch.abs() < 0.03 { "steady".to_string() } else if ch > 0.0 { format!("up {:.0}%", ch * 100.0) } else { format!("down {:.0}%", -ch * 100.0) };
+                    row.spawn((text(f, &s, 13.0, MUTED), TextLayout::default().with_no_wrap(), Node { width: Val::Px(GOOD_CHANGE_W), flex_shrink: 0.0, ..default() }));
+                });
+                if is_open {
+                    good_chart(p, f, images, r, k, by_month, &g.name, accent);
+                }
+            }
         });
-        if is_open {
-            good_chart(p, f, images, r, k, by_month, &g.name, accent);
-        }
+    }
+    if let Some(note) = late_note(&late_goods) {
+        p.spawn((text(f, &note, 12.0, MUTED), Node { margin: UiRect::new(Val::Px(GOOD_PAD), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0)), ..default() }));
     }
     // what investors are building now
     let year = r.y0 + k as i32;
@@ -1388,13 +1493,103 @@ fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
     if rows.is_empty() {
         p.spawn(text(f, "No new works in the last five years.", 14.0, MUTED));
     }
-    for (m, n, roi) in rows.into_iter().take(10) {
-        let ml = &r.header.methods[m].label;
-        p.spawn(Node { justify_content: JustifyContent::SpaceBetween, padding: UiRect::vertical(Val::Px(2.0)), ..default() }).with_children(|row| {
-            row.spawn(text(f, &format!("{ml}  \u{00d7}{n}"), 14.0, INK));
-            row.spawn(text(f, &format!("{:.0}% a year", roi * 100.0), 14.0, INK));
-        });
+    let kinds = rows.len();
+    p.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() }).with_children(|p| {
+        for (m, n, roi) in rows.into_iter().take(INVESTOR_ROWS) {
+            let ml = &r.header.methods[m].label;
+            p.spawn(Node { justify_content: JustifyContent::SpaceBetween, column_gap: Val::Px(8.0), padding: UiRect::vertical(Val::Px(2.0)), ..default() }).with_children(|row| {
+                row.spawn((text(f, &format!("{ml}  \u{00d7}{n}"), 14.0, INK), TextLayout::default().with_no_wrap()));
+                row.spawn((text(f, &format!("{:.0}% a year", roi * 100.0), 14.0, INK), TextLayout::default().with_no_wrap(), Node { flex_shrink: 0.0, ..default() }));
+            });
+        }
+    });
+    // the list stops somewhere: say where
+    if let Some(foot) = investors_foot(kinds) {
+        p.spawn(text(f, &foot, 13.0, MUTED));
     }
+}
+
+/// The columns of a good's row in the Markets panel. They come to the width
+/// of the side panel's list (`GOODS_W`): the name has what the figures leave,
+/// 161 px, which holds a label of 24 letters at its size (about 150), so a long name
+/// ("Soap and chemicals", "Lime and cement") neither wraps its row into two
+/// nor pushes a figure out of its column; the tests measure both with the
+/// font itself.
+const GOOD_NAME_W: f32 = GOODS_W - 2.0 * GOOD_PAD - GOOD_BAR_W - GOOD_INDEX_W - GOOD_CHANGE_W - 3.0 * GOOD_GAP;
+const GOOD_NAME_SIZE: f32 = 14.0;
+const GOOD_BAR_W: f32 = 50.0;
+const GOOD_INDEX_W: f32 = 40.0;
+/// "down 99%" is 61 px at its size
+const GOOD_CHANGE_W: f32 = 66.0;
+const GOOD_GAP: f32 = 6.0;
+const GOOD_PAD: f32 = 6.0;
+/// The room between one good's row and the next.
+const GOOD_ROW_GAP: f32 = 1.0;
+/// The width the side panel's list gives its rows: the card, less its padding and the room kept for the thumb.
+const GOODS_W: f32 = 380.0 - 16.0 - 10.0 - THUMB_ROOM;
+
+/// How many kinds of new works "What investors are building" lists.
+const INVESTOR_ROWS: usize = 10;
+
+fn good_row_node() -> Node {
+    Node { align_items: AlignItems::Center, column_gap: Val::Px(GOOD_GAP), padding: UiRect::axes(Val::Px(GOOD_PAD), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() }
+}
+
+/// A good's name in its column: on one line whatever its length, cut at the column's edge if it is longer than the column.
+fn good_name(row: &mut ChildSpawnerCommands, f: &Handle<Font>, label: &str, colour: Color) {
+    row.spawn(Node { width: Val::Px(GOOD_NAME_W), flex_shrink: 0.0, overflow: Overflow::clip_x(), ..default() }).with_children(|col| {
+        col.spawn((text(f, label, GOOD_NAME_SIZE, colour), TextLayout::default().with_no_wrap()));
+    });
+}
+
+/// The goods in the groups the Markets panel lists them under.
+struct GoodGroup {
+    /// the head over the group; none for a list that is not grouped
+    kind: Option<replay::GoodKind>,
+    goods: Vec<usize>,
+}
+
+/// The goods under their three heads (from the land, for the works, for the
+/// household), each group in the content's order, where the content at hand
+/// says which every good is; otherwise one list in the content's order, as a
+/// recorded run gets.
+fn good_groups(goods: &[replay::Good]) -> Vec<GoodGroup> {
+    if goods.is_empty() || goods.iter().any(|g| g.kind.is_none()) {
+        return vec![GoodGroup { kind: None, goods: (0..goods.len()).collect() }];
+    }
+    replay::GoodKind::ALL
+        .into_iter()
+        .map(|kind| GoodGroup { kind: Some(kind), goods: (0..goods.len()).filter(|&g| goods[g].kind == Some(kind)).collect() })
+        .filter(|group| !group.goods.is_empty())
+        .collect()
+}
+
+/// A price against the first year's, in the few characters its column has:
+/// two places, and three for a price that has fallen to under a tenth, which
+/// two would round to nothing (steel in 1900 at 0.004 of its price of 1750).
+fn index_words(idx: f32) -> String {
+    if idx >= 0.095 { format!("{idx:.2}") } else { format!("{idx:.3}") }
+}
+
+/// The line under the goods for those first made after the first year, which
+/// are priced against that year: "Town gas is priced against 1818, the first
+/// year it was made." and "Steel and town gas are priced against the first
+/// year each was made: 1786 and 1818."
+fn late_note(late: &[(String, i32)]) -> Option<String> {
+    match late {
+        [] => None,
+        [(label, year)] => Some(format!("{label} is priced against {year}, the first year it was made.")),
+        _ => {
+            let labels: Vec<String> = late.iter().enumerate().map(|(i, (l, _))| if i == 0 { l.clone() } else { l.to_lowercase() }).collect();
+            let years: Vec<String> = late.iter().map(|(_, y)| y.to_string()).collect();
+            Some(format!("{} are priced against the first year each was made: {}.", family::join_words(&labels), family::join_words(&years)))
+        }
+    }
+}
+
+/// What the foot of "What investors are building" says when there are more kinds of new works than it lists.
+fn investors_foot(kinds: usize) -> Option<String> {
+    (kinds > INVESTOR_ROWS).then(|| format!("The {} kinds with the best returns, of {kinds} built.", family::number_word(INVESTOR_ROWS)))
 }
 
 #[cfg(test)]
@@ -1452,5 +1647,171 @@ mod tests {
         v.sort_by(|a, b| biggest_first(a.1, b.1));
         let order: Vec<usize> = v.iter().map(|x| x.0).collect();
         assert_eq!(order, [4, 2, 0, 3, 5, 1]);
+    }
+
+    #[test]
+    fn the_thumb_shows_how_much_of_a_list_shows_and_where() {
+        // all of it shows, or all but half a pixel: no thumb
+        assert_eq!(thumb_span(500.0, 400.0, 0.0), None);
+        assert_eq!(thumb_span(500.0, 500.4, 0.0), None);
+        // a list twice its room: a thumb half the room, at the top, then at the foot
+        assert_eq!(thumb_span(500.0, 1000.0, 0.0), Some((0.0, 0.5)));
+        assert_eq!(thumb_span(500.0, 1000.0, 500.0), Some((0.5, 0.5)));
+        // scrolled past the foot (the wheel can ask a step too far) it stays at the foot
+        assert_eq!(thumb_span(500.0, 1000.0, 900.0), Some((0.5, 0.5)));
+        // a very long list keeps a thumb that can be seen
+        let (top, h) = thumb_span(500.0, 100_000.0, 99_500.0).unwrap();
+        assert_eq!(h, 0.06);
+        assert!((top - 0.94).abs() < 1e-6);
+        // a list with no room yet (the first frame) has none
+        assert_eq!(thumb_span(0.0, 300.0, 0.0), None);
+    }
+
+    #[test]
+    fn a_price_index_keeps_three_places_only_when_two_would_round_it_away() {
+        assert_eq!(index_words(1.0), "1.00");
+        assert_eq!(index_words(12.345), "12.35");
+        assert_eq!(index_words(0.096), "0.10");
+        assert_eq!(index_words(0.094), "0.094");
+        // steel in 1900 against 1750
+        assert_eq!(index_words(0.0034), "0.003");
+    }
+
+    #[test]
+    fn a_goods_history_begins_where_its_making_does() {
+        let nan = f32::NAN;
+        // town gas: nothing made for two years, then some, then a year when every gasworks stood idle
+        let mut price = vec![2.4, 2.5, 3.1, 2.9, 3.0];
+        unsold_until_made(&mut price, &[0.0, nan, 4.0, 0.0, 5.0]);
+        assert!(price[0].is_nan() && price[1].is_nan());
+        assert_eq!(price[2..], [3.1, 2.9, 3.0]);
+        // never made: no line at all; a record without what was made: every price kept
+        let mut never = vec![1.0, 1.0];
+        unsold_until_made(&mut never, &[0.0, 0.0]);
+        assert!(never.iter().all(|p| p.is_nan()));
+        let mut kept = vec![1.0, 2.0];
+        unsold_until_made(&mut kept, &[]);
+        assert_eq!(kept, [1.0, 2.0]);
+    }
+
+    #[test]
+    fn a_good_first_made_late_says_what_its_price_is_against() {
+        assert_eq!(late_note(&[]), None);
+        assert_eq!(late_note(&[("Town gas".into(), 1818)]).as_deref(), Some("Town gas is priced against 1818, the first year it was made."));
+        assert_eq!(late_note(&[("Steel".into(), 1786), ("Town gas".into(), 1818)]).as_deref(), Some("Steel and town gas are priced against the first year each was made: 1786 and 1818."));
+    }
+
+    #[test]
+    fn the_investors_list_says_where_it_stops() {
+        assert_eq!(investors_foot(0), None);
+        assert_eq!(investors_foot(INVESTOR_ROWS), None);
+        assert_eq!(investors_foot(18).as_deref(), Some("The ten kinds with the best returns, of 18 built."));
+    }
+
+    fn goods(kinds: &[Option<replay::GoodKind>]) -> Vec<replay::Good> {
+        kinds.iter().enumerate().map(|(i, &kind)| replay::Good { name: format!("g{i}"), label: format!("Good {i}"), kind, weight: None, price: None }).collect()
+    }
+
+    #[test]
+    fn the_goods_go_under_three_heads_only_where_the_content_says_which_each_is() {
+        use replay::GoodKind::*;
+        // a played game: every good has its kind; each head keeps the content's order, and an empty head is left out
+        let g = goods(&[Some(Land), Some(Household), Some(Land), Some(Household), Some(Land)]);
+        let groups = good_groups(&g);
+        let heads: Vec<Option<replay::GoodKind>> = groups.iter().map(|x| x.kind).collect();
+        assert_eq!(heads, [Some(Land), Some(Household)]);
+        assert_eq!(groups[0].goods, [0, 2, 4]);
+        assert_eq!(groups[1].goods, [1, 3]);
+        // a recorded run, or any good without its kind: one list in the content's order, with no head
+        let g = goods(&[Some(Land), None, Some(Works)]);
+        let groups = good_groups(&g);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].kind, None);
+        assert_eq!(groups[0].goods, [0, 1, 2]);
+        assert_eq!(good_groups(&[]).len(), 1);
+    }
+
+    /// The width of a line of the interface's font at `size` pixels, from the
+    /// advances in the font file itself (kerning left out, which only narrows a
+    /// line of this font).
+    fn line_width(s: &str, size: f32) -> f32 {
+        let font = include_bytes!("../assets/fonts/Fredoka.ttf");
+        let u16_at = |o: usize| u16::from_be_bytes([font[o], font[o + 1]]) as usize;
+        let u32_at = |o: usize| u32::from_be_bytes([font[o], font[o + 1], font[o + 2], font[o + 3]]) as usize;
+        let table = |tag: &[u8; 4]| (0..u16_at(4)).map(|i| 12 + 16 * i).find(|&r| &font[r..r + 4] == tag).map(|r| u32_at(r + 8)).expect("a table the font must have");
+        let per_em = u16_at(table(b"head") + 18) as f32;
+        let n_metrics = u16_at(table(b"hhea") + 34);
+        let hmtx = table(b"hmtx");
+        let cmap = table(b"cmap");
+        // the Windows Unicode map, kept in segments (format 4)
+        let sub = (0..u16_at(cmap + 2)).map(|i| cmap + 4 + 8 * i).find(|&r| u16_at(r) == 3 && u16_at(r + 2) == 1).map(|r| cmap + u32_at(r + 4)).expect("a Unicode map");
+        assert_eq!(u16_at(sub), 4, "the map is kept in segments");
+        let segs = u16_at(sub + 6) / 2;
+        let (ends, starts) = (sub + 14, sub + 16 + 2 * segs);
+        let (deltas, ranges) = (starts + 2 * segs, starts + 4 * segs);
+        let glyph = |c: usize| -> usize {
+            let Some(i) = (0..segs).find(|&i| u16_at(ends + 2 * i) >= c) else { return 0 };
+            if u16_at(starts + 2 * i) > c {
+                return 0;
+            }
+            let delta = u16_at(deltas + 2 * i);
+            match u16_at(ranges + 2 * i) {
+                0 => (c + delta) & 0xFFFF,
+                r => match u16_at(ranges + 2 * i + r + 2 * (c - u16_at(starts + 2 * i))) {
+                    0 => 0,
+                    g => (g + delta) & 0xFFFF,
+                },
+            }
+        };
+        let advance = |g: usize| u16_at(hmtx + 4 * g.min(n_metrics - 1)) as f32;
+        s.chars().map(|c| advance(glyph(c as usize))).sum::<f32>() * size / per_em
+    }
+
+    #[test]
+    fn a_goods_row_fits_across_the_panel_with_a_name_of_twenty_four_letters() {
+        // the columns and the gaps between them come to no more than the panel's list gives a row
+        let row = 2.0 * GOOD_PAD + GOOD_NAME_W + GOOD_BAR_W + GOOD_INDEX_W + GOOD_CHANGE_W + 3.0 * GOOD_GAP;
+        assert!(row <= GOODS_W, "a good's row is {row} px across and the list gives it {GOODS_W}");
+        // a name of 24 letters, and the longest of the content's (the measure is checked on a plain word first)
+        assert!(line_width("Grain", GOOD_NAME_SIZE) > 25.0 && line_width("Grain", GOOD_NAME_SIZE) < 50.0, "{}", line_width("Grain", GOOD_NAME_SIZE));
+        for name in ["Chemicals and fertiliser", "Soap and chemicals", "Lime and cement", "Machinery"] {
+            let w = line_width(name, GOOD_NAME_SIZE);
+            assert!(w <= GOOD_NAME_W, "{name} is {w:.0} px at {GOOD_NAME_SIZE} px and the column is {GOOD_NAME_W}");
+        }
+        // the figures: a price index up to a hundred times the first year's, a rise of up to ten thousand per
+        // cent (rails in the 1750s, when nobody yet wanted any) and the widest fall
+        assert!(line_width("99.99", 13.5) <= GOOD_INDEX_W, "{}", line_width("99.99", 13.5));
+        assert!(line_width("up 9999%", 13.0) <= GOOD_CHANGE_W, "{}", line_width("up 9999%", 13.0));
+        assert!(line_width("down 99%", 13.0) <= GOOD_CHANGE_W, "{}", line_width("down 99%", 13.0));
+        assert!(line_width("not made yet", 13.0) <= GOOD_BAR_W + GOOD_GAP + GOOD_INDEX_W + GOOD_GAP + GOOD_CHANGE_W);
+    }
+
+    #[test]
+    fn a_list_of_up_to_forty_goods_is_reached_whole_at_both_window_sizes() {
+        use replay::GoodKind::*;
+        // a row is a line of the name's size and its padding, with the gap between rows; a head is a smaller line
+        let row = GOOD_NAME_SIZE * 1.2 + 4.0 + GOOD_ROW_GAP;
+        let head = 12.5 * 1.2 + 4.0;
+        // the side panel's list in a window 800 and 1000 high: the panel stands 86 from the top and 70 from the foot,
+        // less its padding, its title and the Markets panel's own lines above the goods (chips and a note, about 110)
+        for window in [800.0, 1000.0] {
+            let room = window - 86.0 - 70.0 - 24.0 - 35.0 - 110.0;
+            for n in 1..=40 {
+                let kinds: Vec<Option<replay::GoodKind>> = (0..n).map(|i| Some([Land, Works, Household][i * 7 % 3])).collect();
+                let groups = good_groups(&goods(&kinds));
+                // every good once, under at most three heads
+                let mut all: Vec<usize> = groups.iter().flat_map(|g| g.goods.iter().copied()).collect();
+                all.sort_unstable();
+                assert_eq!(all, (0..n).collect::<Vec<_>>());
+                assert!(groups.len() <= 3);
+                // with the investors' ten rows and their foot under them
+                let long = groups.len() as f32 * head + n as f32 * row + 30.0 + 10.0 * 20.0 + 20.0;
+                match thumb_span(room, long, long - room) {
+                    // what does not show is reached by the wheel, and the thumb says there is more and ends at the foot
+                    Some((top, h)) => assert!(long > room && (top + h - 1.0).abs() < 1e-4, "{n} goods at {window}"),
+                    None => assert!(long <= room + 0.5),
+                }
+            }
+        }
     }
 }

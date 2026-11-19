@@ -79,6 +79,10 @@ pub fn delta_fields(st: &mut State, C: &Content, P: &Params) {
     let d = &st.dcatch;
     let mut delta = Mat::zeros(G, N);
     let mut is_src = vec![false; N];
+    // tree: with the overlay laid, the pass is run only for the goods some works
+    // buys to work with (an input or a fuel). Nothing reads the others' fields,
+    // and they are left at the price of carting from the market
+    let read = crate::tree::delivered_goods(C);
     for g in 0..G {
         is_src.iter_mut().for_each(|x| *x = false);
         let mut any = false;
@@ -95,7 +99,7 @@ pub fn delta_fields(st: &mut State, C: &Content, P: &Params) {
             }
         }
         let mut base: Vec<f64> = d.iter().map(|&x| if x.is_finite() { x } else { 1e6 }).collect();
-        if any {
+        if any && read[g] {
             // np.unique: ascending cells; only cells with a market
             let s: Vec<usize> = (0..N).filter(|&c| is_src[c] && d[c].is_finite()).collect();
             if !s.is_empty() {

@@ -107,6 +107,11 @@ pub struct ObserverState {
     pub first_output: BTreeSet<usize>,
     /// `obs["annual"]["base"]`: the first year and value of each doubling series.
     pub base: BTreeMap<String, (i64, f64)>,
+    /// tree: the groups of shares kept and the crossings watched. Under the port
+    /// they are `SHARE_GROUPS` and `CROSSINGS`; with the tree laid, those and
+    /// the goods and methods the content adds (`tree::share_groups`).
+    pub groups: Vec<crate::tree::ShareGroup>,
+    pub crossings: Vec<(String, String, String, String)>,
 }
 
 fn label_of(C: &Content, kind: &str, mem: &str) -> String {
@@ -144,8 +149,10 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     for (m, name) in C.method_name.iter().enumerate() {
         add(&format!("mout_{name}"), &C.method_label[m], "methods", "units/month");
     }
-    for &(gname, kind, members) in SHARE_GROUPS {
-        for &mem in members {
+    // tree: the port's groups, and with the tree laid the content's own beside them
+    let groups = crate::tree::share_groups(C, SHARE_GROUPS);
+    for (gname, kind, members) in &groups {
+        for mem in members {
             add(&format!("share_{gname}_{mem}"), &label_of(C, kind, mem), &format!("share_{gname}"), "share");
         }
     }
@@ -160,6 +167,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     }
     st.series = reg;
     st.obs = ObserverState::default();
+    st.obs.crossings = crate::tree::crossings(C, &groups, CROSSINGS);
+    st.obs.groups = groups;
 }
 
 pub fn national_prices(st: &State) -> Vec<f64> {
@@ -234,16 +243,16 @@ pub fn record_month(st: &mut State, C: &Content, P: &Params, t: usize) {
     for g in 0..G {
         hh[g] += lord[g];
     }
-    for &(gname, kind, members) in SHARE_GROUPS {
-        let v: Vec<f64> = match kind {
-            "method" => members.iter().map(|&x| ms.method_out[crate::content::method_index(C, x)]).collect(),
+    for (gname, kind, members) in &st.obs.groups {
+        let v: Vec<f64> = match kind.as_str() {
+            "method" => members.iter().map(|x| ms.method_out[crate::content::method_index(C, x)]).collect(),
             "service" => {
                 let sidx = C.service_name.iter().position(|n| n == gname).unwrap();
-                members.iter().map(|&x| hh[C.gi(x)] * C.props[(C.gi(x), sidx)]).collect()
+                members.iter().map(|x| hh[C.gi(x)] * C.props[(C.gi(x), sidx)]).collect()
             }
             _ => members
                 .iter()
-                .map(|&x| {
+                .map(|x| {
                     let k = C.fuel_goods.iter().position(|&g| g == C.gi(x)).unwrap();
                     ms.heat_use[k]
                 })
@@ -285,7 +294,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
     let mut ob = std::mem::take(&mut st.obs);
 
     // ---- crossings, with hysteresis and a three-month confirmation
-    for &(group, mem, title, text) in CROSSINGS {
+    let crossings = std::mem::take(&mut ob.crossings); // tree: the port's, and the content's own
+    for (group, mem, title, text) in crossings.iter().map(|(g, m, t, x)| (g.as_str(), m.as_str(), t.as_str(), x.as_str())) {
         let name = format!("share_{group}_{mem}");
         let ser = s.get(&name);
         let i = (k * 12) as usize;
@@ -325,6 +335,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut V
             ob.cross_state.insert(key, "below".to_string());
         }
     }
+    ob.crossings = crossings;
 
     // structural crossings
     let ag = annual(s.get("ag_share"), y0, year);

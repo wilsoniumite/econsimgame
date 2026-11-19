@@ -11,7 +11,7 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use isostate_core::families::{Group, Post, Posting};
-use isostate_core::{Choice, Decision, FamilyReport};
+use isostate_core::{Choice, Decision, FamilyReport, SiteOption};
 
 use crate::clock;
 use crate::family::{self, short_group, trade, CancelButton, FamilyRow, FamilyView, GotoFirm, GotoTown, MemberRow, OpenDecision, PostButton, RivalRow, StanceButton};
@@ -118,6 +118,10 @@ struct WelcomeHint;
 /// The card for a decision.
 #[derive(Component)]
 struct DecisionCard;
+
+/// The options of a decision, which scroll when the window is too low for them all.
+#[derive(Component)]
+struct DecisionOptions;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Action {
@@ -965,6 +969,9 @@ fn town_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, fam: &FamilyView,
                 let pr = fam.prospect(t, g).map(|p| family::earnings(p, g, &name)).unwrap_or_else(|| "nothing new would pay here".into());
                 p.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|col| {
                     col.spawn(text(f, &format!("{} \u{00b7} {}", short_group(g), pr), 13.0, INK));
+                    if let Some(goods) = goods_of_trade(fam, &r.header.goods, g) {
+                        col.spawn(text(f, &goods, 12.0, MUTED));
+                    }
                     if !free.is_empty() {
                         col.spawn(Node { flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(4.0), row_gap: Val::Px(4.0), ..default() }).with_children(|chips| {
                             for m in &free {
@@ -1065,52 +1072,109 @@ fn cell_orders(p: &mut ChildSpawnerCommands, f: &Handle<Font>, me: &FamilyRow, r
                 p.spawn(text(f, &format!("Works are chosen directly only at the seat, {}. Elsewhere, post someone to run a trade in the town: a growing branch builds for itself.", rep.seat_name), 12.5, MUTED));
                 return;
             }
-            let thin = |s: &isostate_core::SiteSums| s.market_share > 0.25 || s.price_ratio > 3.0;
-            let mut good: Vec<(usize, &isostate_core::SiteSums)> = opts.iter().filter(|o| o.allowed.is_ok()).filter_map(|o| o.sums.as_ref().ok().map(|s| (o.method, s))).collect();
-            // deep markets first: a works that would flood its town's market, or sells
-            // at a scarcity price, earns its promised return only until it does
-            good.sort_by(|a, b| thin(a.1).cmp(&thin(b.1)).then(b.1.expected_return.total_cmp(&a.1.expected_return)));
+            let town = site.town.and_then(|t| r.header.towns.get(t)).map_or("this town", |t| t.name.as_str());
+            // (a kind of works is worked on the island once one of it has been founded: only those are named as not known here yet)
+            let list = build_list(opts, &rep.known, town, |m| r.header.firms.iter().any(|firm| firm.method == m));
             p.spawn(text(f, "Build here", 16.0, INK));
             if works_waits {
                 p.spawn(text(f, "A works is ordered here, and waits for the year's turn.", 13.0, accent));
             }
-            if good.is_empty() {
-                p.spawn(text(f, "Nothing in the family's trades would pay here.", 13.0, MUTED));
+            if list.offered.is_empty() {
+                p.spawn(text(f, "Nothing in the family's trades can be built here.", 13.0, MUTED));
             }
-            for (m, s) in good.iter().take(5) {
+            // every works the family could build here, the ones that matter first; the note's lines scroll when they are many
+            for &i in &list.offered {
+                let (o, Ok(s)) = (&opts[i], &opts[i].sums) else { continue };
                 let afford = in_hand >= s.capital_cost && can && !works_waits;
-                p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(3.0)), ..default() }).with_children(|row| {
+                let pays = s.expected_return > 0.0;
+                p.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(10.0), padding: UiRect::vertical(Val::Px(if pays { 3.0 } else { 1.0 })), ..default() }).with_children(|row| {
                     row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, row_gap: Val::Px(1.0), ..default() }).with_children(|col| {
                         col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).with_children(|head| {
-                            head.spawn(text(f, &r.header.methods[*m].label, 14.5, INK));
-                            if thin(s) {
-                                head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(Color::srgb(0.97, 0.89, 0.74))))
+                            head.spawn(text(f, &r.header.methods[o.method].label, 14.5, if pays { INK } else { MUTED }));
+                            if pays && thin_market(s) {
+                                head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::srgb(0.97, 0.89, 0.74))))
                                     .with_children(|tag| {
                                         tag.spawn(text(f, "thin market", 11.5, Color::srgb(0.55, 0.36, 0.12)));
                                     });
                             }
                         });
-                        let ret = if s.expected_return > 0.0 { format!("about {:.0}% a year at today's prices", 100.0 * s.expected_return) } else { "would lose money at today's prices".to_string() };
+                        if !pays {
+                            // a works that would lose money is offered in a line: it can still be built
+                            col.spawn(text(f, &format!("{} to build, would lose money at today's prices", money(s.capital_cost as f32)), 12.5, MUTED));
+                            return;
+                        }
                         let bonus = if s.bonus > 0.0 { format!(", {:.0}% cheaper run by the family", 100.0 * s.bonus) } else { String::new() };
-                        col.spawn(text(f, &format!("{} to build, {}{}", money(s.capital_cost as f32), ret, bonus), 12.5, MUTED));
+                        col.spawn(text(f, &format!("{} to build, about {:.0}% a year at today's prices{}", money(s.capital_cost as f32), 100.0 * s.expected_return, bonus), 12.5, MUTED));
                         let town = r.header.towns.get(s.town).map(|t| t.name.as_str()).unwrap_or("its town");
                         let share = if s.market_share >= 0.995 { format!("more than {town} buys") } else { format!("{:.0}% of what {town} buys", 100.0 * s.market_share.max(0.0)) };
                         let price = if s.price_ratio > 1.5 { format!(", selling at {:.1} times the usual price", s.price_ratio) } else { String::new() };
-                        col.spawn(text(f, &format!("Would make {share}{price}."), 12.5, if thin(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
+                        // a dear price where none is made may be one nothing was sold at (town gas before a town's first
+                        // gasworks), and the return above is worked out at it: say so, as a fact
+                        let none = if s.price_ratio > 1.5 && s.town_output <= 0.0 { format!(" None was made at {town} last year.") } else { String::new() };
+                        col.spawn(text(f, &format!("Would make {share}{price}.{none}"), 12.5, if thin_market(s) { Color::srgb(0.55, 0.36, 0.12) } else { MUTED }));
                     });
-                    button(row, f, "Build", afford.then_some(Action::Found { method: *m, cell: c }), accent);
+                    button(row, f, "Build", afford.then_some(Action::Found { method: o.method, cell: c }), accent);
                 });
             }
-            // what the family could build here if it knew the trade
-            let mut unknown: Vec<Group> = opts.iter().filter(|o| o.sums.is_ok() && o.allowed.is_err()).filter_map(|o| o.group).filter(|g| !rep.known.contains(g)).collect();
-            unknown.sort();
-            unknown.dedup();
-            if !unknown.is_empty() {
-                let names: Vec<String> = unknown.iter().map(|&g| trade(g)).collect();
-                p.spawn(text(f, &format!("Works in {} could be built here too, once the family knows the trade.", family::join_words(&names)), 12.0, MUTED));
+            // and why the rest of the island's works are not offered
+            for (i, note) in list.notes.iter().enumerate() {
+                p.spawn((text(f, note, 12.0, MUTED), Node { margin: UiRect::top(Val::Px(if i == 0 { 4.0 } else { 0.0 })), ..default() }));
             }
         }
     }
+}
+
+/// A works that would flood its town's market, or sells at a scarcity price:
+/// it earns its promised return only until it does.
+fn thin_market(s: &isostate_core::SiteSums) -> bool {
+    s.market_share > 0.25 || s.price_ratio > 3.0
+}
+
+/// The Build list of a square at the seat: the works that are offered, as
+/// places in the simulation's list of options, in the order they are shown,
+/// and a line for each reason the rest are not.
+#[derive(Debug, PartialEq)]
+pub struct BuildList {
+    pub offered: Vec<usize>,
+    pub notes: Vec<String>,
+}
+
+/// Every works the family could build on the square is offered, and the ones
+/// that matter come first: those that would pay in a deep market, by their
+/// return; then those that would pay in a thin one; then those that would
+/// lose money, the least first. The rest are not offered, and the notes say
+/// why in the words of the content's labels: no room for them on the square;
+/// worked elsewhere on the island (`worked`) but not known in this town yet;
+/// of a trade the family does not know. A kind of works nobody on the island
+/// has built yet is not named: it is news when it comes.
+pub fn build_list(opts: &[SiteOption], known: &[Group], town: &str, worked: impl Fn(usize) -> bool) -> BuildList {
+    let mut offered: Vec<(usize, &isostate_core::SiteSums)> = opts.iter().enumerate().filter(|(_, o)| o.allowed.is_ok()).filter_map(|(i, o)| o.sums.as_ref().ok().map(|s| (i, s))).collect();
+    let rank = |s: &isostate_core::SiteSums| if s.expected_return <= 0.0 { 2 } else if thin_market(s) { 1 } else { 0 };
+    offered.sort_by(|a, b| rank(a.1).cmp(&rank(b.1)).then(b.1.expected_return.total_cmp(&a.1.expected_return)));
+    let mine = |o: &&SiteOption| o.group.is_some_and(|g| known.contains(&g));
+    let labels = |v: Vec<&SiteOption>| v.iter().map(|o| o.label.clone()).collect::<Vec<_>>().join(", ");
+    let mut notes = Vec::new();
+    // of the family's trades and known here, and still refused: the square has no room, or whatever else the simulation says
+    let (full, other): (Vec<&SiteOption>, Vec<&SiteOption>) = opts.iter().filter(mine).filter(|o| o.sums.is_ok() && o.allowed.is_err()).partition(|o| o.allowed.as_ref().is_err_and(|why| why.contains("no room")));
+    if !full.is_empty() {
+        notes.push(format!("No room is left on this square for: {}.", labels(full)));
+    }
+    for o in other {
+        notes.push(format!("{}: {}.", o.label, o.allowed.as_ref().err().map_or("cannot be built here", |why| why.as_str())));
+    }
+    let far: Vec<&SiteOption> = opts.iter().filter(mine).filter(|o| o.sums.is_err() && worked(o.method)).collect();
+    if !far.is_empty() {
+        notes.push(format!("Worked elsewhere on the island, and not known at {town} yet: {}.", labels(far)));
+    }
+    // what the family could build here if it knew the trade
+    let mut unknown: Vec<Group> = opts.iter().filter(|o| o.sums.is_ok() && o.allowed.is_err()).filter_map(|o| o.group).filter(|g| !known.contains(g)).collect();
+    unknown.sort();
+    unknown.dedup();
+    if !unknown.is_empty() {
+        let names: Vec<String> = unknown.iter().map(|&g| trade(g)).collect();
+        notes.push(format!("Works in {} could be built here too, once the family knows the trade.", family::join_words(&names)));
+    }
+    BuildList { offered: offered.into_iter().map(|(i, _)| i).collect(), notes }
 }
 
 // ------------------------------------------------------------------ decisions
@@ -1132,6 +1196,23 @@ fn decision_badge(fam: Res<FamilyView>, mut q: Query<(&mut Node, &Children), Wit
             }
         }
     }
+}
+
+/// The trade an option of a decision is about, if it is about one.
+fn trade_of(choice: Choice) -> Option<Group> {
+    match choice {
+        Choice::Trade { group } | Choice::Apprentice { group, .. } => Some(group),
+        Choice::University | Choice::Head { .. } => None,
+    }
+}
+
+/// What a trade makes, by the content's labels: "Coal · Town gas · Soap and
+/// chemicals", from `all`, the run's goods. None where the game at hand does
+/// not say (a recorded run).
+fn goods_of_trade(fam: &FamilyView, all: &[crate::replay::Good], g: Group) -> Option<String> {
+    let goods = fam.trade_goods.get(g.index())?;
+    let labels: Vec<&str> = goods.iter().filter_map(|&i| all.get(i)).map(|good| good.label.as_str()).collect();
+    (!labels.is_empty()).then(|| labels.join(" \u{00b7} "))
 }
 
 /// What choosing an option would mean, in a line.
@@ -1197,14 +1278,25 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
             DecisionCard,
         ))
         .with_children(|wrap| {
+            // no taller than the window: in a low window the options scroll between the question and the foot
             wrap.spawn((
-                Node { flex_direction: FlexDirection::Column, width: Val::Px(500.0), padding: UiRect::axes(Val::Px(28.0), Val::Px(22.0)), row_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(20.0)), ..default() },
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    width: Val::Px(500.0),
+                    max_height: Val::Percent(96.0),
+                    padding: UiRect::new(Val::Px(28.0), Val::Px(28.0 - crate::ui::THUMB_ROOM), Val::Px(22.0), Val::Px(22.0)),
+                    row_gap: Val::Px(6.0),
+                    border_radius: BorderRadius::all(Val::Px(20.0)),
+                    ..default()
+                },
                 BackgroundColor(crate::ui::PAPER),
                 BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.28), Val::Px(0.0), Val::Px(6.0), Val::Px(0.0), Val::Px(22.0)),
                 Interaction::default(),
                 FocusPolicy::Block,
+                bevy::ui::RelativeCursorPosition::default(),
             ))
             .with_children(|c| {
+                let card = c.target_entity();
                 c.spawn(text(&f, &format!("{}  \u{00b7}  for the {} family", d.due - 1, rep.surname), 13.0, MUTED));
                 c.spawn(text(&f, &d.prompt, 23.0, INK));
                 // who and what it is about
@@ -1224,34 +1316,42 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
                     }
                     _ => {}
                 }
-                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), ..default() }, BackgroundColor(RULE)));
-                for (i, o) in d.options.iter().enumerate() {
-                    let note = option_note(d, o.choice, &fam, me, r);
-                    let mut option = c.spawn((
-                        Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
-                        BackgroundColor(BTN),
-                        Interaction::default(),
-                        FocusPolicy::Block,
-                    ));
-                    if !turning {
-                        option.insert((crate::ui::Hoverable, DecideButton { id: d.id, option: i }));
-                    }
-                    option.with_children(|b| {
-                        b.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|head| {
-                            head.spawn(text(&f, &o.label, 15.5, if turning { MUTED } else { INK }));
-                            if i == d.default {
-                                head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(accent.with_alpha(0.15))))
-                                    .with_children(|t| {
-                                        t.spawn(text(&f, "default", 11.5, accent));
-                                    });
+                c.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(6.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(RULE)));
+                let list = Node { row_gap: Val::Px(6.0), padding: UiRect::right(Val::Px(crate::ui::THUMB_ROOM)), ..default() };
+                // (the options give up the room when the card is too tall for the window, the question and the foot keep theirs)
+                crate::ui::scroll_list(c, card, Node { flex_shrink: 100.0, ..default() }, list, DecisionOptions, |c| {
+                    for (i, o) in d.options.iter().enumerate() {
+                        let note = option_note(d, o.choice, &fam, me, r);
+                        let mut option = c.spawn((
+                            Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, padding: UiRect::axes(Val::Px(12.0), Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(11.0)), ..default() },
+                            BackgroundColor(BTN),
+                            Interaction::default(),
+                            FocusPolicy::Block,
+                        ));
+                        if !turning {
+                            option.insert((crate::ui::Hoverable, DecideButton { id: d.id, option: i }));
+                        }
+                        option.with_children(|b| {
+                            b.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|head| {
+                                head.spawn(text(&f, &o.label, 15.5, if turning { MUTED } else { INK }));
+                                if i == d.default {
+                                    head.spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() }, BackgroundColor(accent.with_alpha(0.15))))
+                                        .with_children(|t| {
+                                            t.spawn(text(&f, "default", 11.5, accent));
+                                        });
+                                }
+                            });
+                            // a trade's name no longer says what it makes (soap and gas are with coal, beer with the estates)
+                            if let Some(goods) = trade_of(o.choice).and_then(|g| goods_of_trade(&fam, &r.header.goods, g)) {
+                                b.spawn(text(&f, &goods, 12.0, INK));
+                            }
+                            if !note.is_empty() {
+                                b.spawn(text(&f, &note, 12.5, MUTED));
                             }
                         });
-                        if !note.is_empty() {
-                            b.spawn(text(&f, &note, 12.5, MUTED));
-                        }
-                    });
-                }
-                c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).with_children(|row| {
+                    }
+                });
+                c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(12.0), margin: UiRect::top(Val::Px(8.0)), flex_shrink: 0.0, ..default() }).with_children(|row| {
                     let foot = if turning {
                         "The year is turning\u{2026}".to_string()
                     } else if live.at_turn() {
@@ -1838,5 +1938,113 @@ mod tests {
 
         // the newest year's end is 1783's: the year in progress is 1784
         assert_eq!(turn_words(1750, 33), ("the end of 1784".to_string(), "January 1785".to_string()));
+    }
+
+    /// The sums of a works that would return `ret` a year, with `share` of its
+    /// town's market at `ratio` times the usual price.
+    fn sums(ret: f64, share: f64, ratio: f64) -> isostate_core::SiteSums {
+        isostate_core::SiteSums {
+            town: 0,
+            K: 1.0,
+            gate_price: 1.0,
+            inputs: Vec::new(),
+            input_cost: 0.0,
+            heat: 0.0,
+            heat_price: 0.0,
+            heat_cost: 0.0,
+            labor: 0.0,
+            wage: 0.0,
+            labor_cost: 0.0,
+            margin: 0.0,
+            rent_bid: 0.0,
+            capital_cost: 100.0,
+            expected_return: ret,
+            bonus: 0.0,
+            agglo: 1.0,
+            output: 1.0,
+            town_demand: 1.0,
+            town_output: 1.0,
+            market_share: share,
+            price_ratio: ratio,
+        }
+    }
+
+    fn option(method: usize, label: &str, group: Group, sums: Result<isostate_core::SiteSums, &str>, allowed: Result<(), &str>) -> SiteOption {
+        SiteOption { method, name: label.to_lowercase(), label: label.into(), group: Some(group), sums: sums.map_err(String::from), allowed: allowed.map_err(String::from) }
+    }
+
+    #[test]
+    fn the_build_list_puts_what_pays_in_a_deep_market_first_and_says_why_the_rest_are_not_there() {
+        let room = "the cell has no room left for this of this size";
+        let opts = vec![
+            // offered: losing a little, losing a lot, thin and paying, deep and paying well, deep and paying less
+            option(0, "Brewhouse", Group::Estates, Ok(sums(-0.05, 0.1, 1.0)), Ok(())),
+            option(1, "Lime kiln", Group::Building, Ok(sums(-0.40, 0.1, 1.0)), Ok(())),
+            option(2, "Gasworks", Group::CoalMining, Ok(sums(14.0, 0.6, 1.0)), Ok(())),
+            option(3, "Forged rails", Group::Iron, Ok(sums(0.30, 0.1, 1.0)), Ok(())),
+            option(4, "Saw pit", Group::Building, Ok(sums(0.12, 0.1, 4.0)), Ok(())),
+            option(5, "Masons and carpenters", Group::Building, Ok(sums(0.20, 0.05, 1.2)), Ok(())),
+            // known trades, known here, but the square is full: one line for all of them
+            option(6, "Bricklayers", Group::Building, Ok(sums(0.5, 0.1, 1.0)), Err(room)),
+            option(7, "Brickworks", Group::Building, Ok(sums(0.5, 0.1, 1.0)), Err(room)),
+            // a known trade worked elsewhere on the island and not here; and one nobody has built
+            option(8, "Steam sawmill", Group::Building, Err("Steam sawmill is not known in Ashby yet"), Err("Steam sawmill is not known in Ashby yet")),
+            option(9, "Cement works", Group::Building, Err("Cement works is not known in Ashby yet"), Err("Cement works is not known in Ashby yet")),
+            // trades the family does not know: each trade named once, whatever it pays
+            option(10, "Spinning mill", Group::Textiles, Ok(sums(0.9, 0.1, 1.0)), Err("the Hartley family does not know textiles yet")),
+            option(11, "Hand looms", Group::Textiles, Ok(sums(0.1, 0.1, 1.0)), Err("the Hartley family does not know textiles yet")),
+            option(12, "Machine shop", Group::Engineering, Ok(sums(0.1, 0.1, 1.0)), Err("the Hartley family does not know engineering yet")),
+        ];
+        let known = [Group::Estates, Group::Building, Group::CoalMining, Group::Iron];
+        let list = build_list(&opts, &known, "Ashby", |m| m == 8);
+        // deep and paying by return, then thin (a flooded market or a scarcity price), then losing the least first
+        assert_eq!(list.offered, [3, 5, 2, 4, 0, 1]);
+        assert_eq!(
+            list.notes,
+            [
+                "No room is left on this square for: Bricklayers, Brickworks.",
+                "Worked elsewhere on the island, and not known at Ashby yet: Steam sawmill.",
+                "Works in textiles and engineering could be built here too, once the family knows the trade.",
+            ]
+        );
+        // with nothing refused there is nothing to say under the list
+        let list = build_list(&opts[..6], &known, "Ashby", |_| true);
+        assert_eq!(list.offered.len(), 6);
+        assert!(list.notes.is_empty());
+    }
+
+    #[test]
+    fn each_trade_names_the_goods_its_works_and_its_land_make_in_the_game_as_laid() {
+        // the content a new game is played on: the port's with the tree laid to the game's stage
+        let c = isostate_core::tree::game_content_at(isostate_core::game_params().tree.stage);
+        let goods = crate::live::trade_goods(&c);
+        let names = |g: Group| goods[g.index()].iter().map(|&i| c.good_name[i].as_str()).collect::<Vec<_>>();
+        // the trades whose names no longer say all they make: gas and soap are with coal, beer with the estates
+        assert_eq!(names(Group::CoalMining), ["iron_ore", "coal", "charcoal", "gas", "chemicals"]);
+        assert!(names(Group::Estates).contains(&"beer"), "{:?}", names(Group::Estates));
+        assert_eq!(names(Group::Iron), ["iron", "steel", "rails"]);
+        // every good is some one trade's, but what the shops sell, which no family trade makes
+        let mut owners = vec![0; c.G];
+        for list in &goods {
+            for &g in list {
+                owners[g] += 1;
+            }
+        }
+        let none: Vec<&str> = (0..c.G).filter(|&g| owners[g] == 0).map(|g| c.good_name[g].as_str()).collect();
+        assert_eq!(none, ["services"]);
+        assert!(owners.iter().all(|&n| n <= 1), "a good under two trades: {owners:?}");
+        // and the line a decision shows is the content's labels, in the content's order
+        let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None, weight: None, price: None }).collect();
+        let fam = FamilyView { trade_goods: goods.clone(), ..default() };
+        assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals"));
+        // a recorded run, which does not say what each trade makes, shows no line
+        assert_eq!(goods_of_trade(&FamilyView::default(), &all, Group::CoalMining), None);
+        // the Markets panel's three heads, where the content leaves no doubt (charcoal it does: see live::good_kinds)
+        use crate::replay::GoodKind::*;
+        let kinds = crate::live::good_kinds(&c);
+        let kind = |name: &str| kinds[c.good_index[name]];
+        assert_eq!([kind("grain"), kind("coal"), kind("stone")], [Land; 3]);
+        assert_eq!([kind("iron"), kind("tools"), kind("machinery"), kind("bricks")], [Works; 4]);
+        assert_eq!([kind("beer"), kind("cloth"), kind("gas")], [Household; 3]);
     }
 }
