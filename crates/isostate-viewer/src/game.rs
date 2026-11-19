@@ -51,12 +51,18 @@ pub struct Game {
     pending: Vec<usize>,
     /// months that have come and are not yet in the run's tables (`months_into_run`)
     held: Vec<Box<isostate_core::LiveMonth>>,
+    /// a year that came while the one before was still on its way into the run
+    /// (`Data::arriving`), with nothing after it read yet: it is read when that one is in
+    next_year: Option<Msg>,
     /// the end of the game has been shown
     ended: bool,
     /// the card that ends the game is up
     end_open: bool,
     drawn: Option<(Option<Pick>, usize, u64, Now, (bool, bool))>,
     marks: Option<(usize, usize, u64, u64)>,
+    /// the flags, pennants and fences being built off the main thread (`owner_marks`), with
+    /// the caches they are built with, given back when done, and whether the year was the present
+    marks_task: Option<bevy::tasks::Task<(Builder, scatter::Flags, crate::fences::Lines, bool)>>,
     /// decisions already put in front of the player, so each opens by itself only once
     seen: BTreeSet<u64>,
     /// decisions to show, one after another
@@ -71,6 +77,10 @@ pub struct Game {
 impl Game {
     /// A card that wants an answer is up: the welcome, a decision or the end
     /// of the game. The clock stands still under it.
+    pub fn marks_built(&self) -> bool {
+        self.marks_task.is_none()
+    }
+
     pub fn modal(&self) -> bool {
         self.welcoming || self.open.is_some() || self.end_open
     }
@@ -287,6 +297,44 @@ fn months_into_run(game: &mut Game, data: &mut Data, ui: &mut UiState) {
     }
 }
 
+/// A year written into a copy of the run off the main thread (`arrive`), with
+/// the works' ground laid out on it, and the rest of what came with the year.
+pub(crate) struct Arrived {
+    r: Replay,
+    slots: scatter::Slots,
+    end: Box<live::YearEnd>,
+    /// whether months were written in with it
+    months: bool,
+}
+
+/// Off the main thread: copy the run, write in the months that waited and the
+/// year, and lay out the works' ground on the island as it now stands.
+fn arrive(r: &Replay, g: &world::Ground, slots: &scatter::Slots, held: Vec<Box<isostate_core::LiveMonth>>, end: Box<live::YearEnd>) -> Arrived {
+    let t0 = std::time::Instant::now();
+    let mut r = r.clone();
+    let t1 = t0.elapsed().as_secs_f32();
+    let months = !held.is_empty();
+    for m in &held {
+        live::apply_month(&mut r, m);
+    }
+    live::apply_year(&mut r, &end.year);
+    let t2 = t0.elapsed().as_secs_f32();
+    let mut slots = slots.clone();
+    scatter::place_new_firms(&r, g, &mut slots);
+    if std::env::var_os("ISOSTATE_TIMING").is_some() {
+        eprintln!(
+            "year {} arrives, off the main thread: {:.0} ms ({:.0} copying the run, {:.0} writing in {} months and the year, {:.0} standing its new works)",
+            end.year.year,
+            t0.elapsed().as_secs_f32() * 1e3,
+            t1 * 1e3,
+            (t2 - t1) * 1e3,
+            held.len(),
+            (t0.elapsed().as_secs_f32() - t2) * 1e3
+        );
+    }
+    Arrived { r, slots, end, months }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pump(
     mut live: ResMut<Live>,
@@ -309,19 +357,49 @@ pub(crate) fn pump(
     if let Some(kept) = live.months_kept.take() {
         *months = kept;
     }
-    // months that waited for a scenery build to let go of the run
-    if !game.held.is_empty() && std::sync::Arc::strong_count(&data.r) == 1 {
+    // months that waited for a scenery build to let go of the run (or for a year on its way in)
+    if !game.held.is_empty() && std::sync::Arc::strong_count(&data.r) == 1 && data.arriving.is_none() {
         months_into_run(&mut game, &mut data, &mut ui);
     }
-    while let Some(msg) = live.try_recv() {
+    // a year written into a copy of the run off the main thread, its works' ground laid out:
+    // once done, the copy is the run, and the rest of the year's coming is done below. The old
+    // run and plots, which may be large, are let go of off the main thread.
+    let mut written = None;
+    if let Some(done) = data.arriving.as_mut().and_then(|t| bevy::tasks::futures::check_ready(t)) {
+        data.arriving = None;
+        let Arrived { r, slots, end, months } = done;
+        let old = (std::mem::replace(&mut data.r, std::sync::Arc::new(r)), std::mem::replace(&mut data.slots, std::sync::Arc::new(slots)));
+        bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { drop(old) }).detach();
+        // (a Markets panel that goes by the month has new figures to show)
+        if months && ui.tab == Some(crate::ui::Tab::Markets) && ui.by_month {
+            ui.dirty += 1;
+        }
+        written = Some(end);
+    }
+    loop {
+        // the year just written in goes first, then a year that waited for the one before
+        let (msg, in_run) = match written.take() {
+            Some(end) => (Msg::Year(end), true),
+            None => match game.next_year.take().or_else(|| live.try_recv()) {
+                Some(m) => (m, false),
+                None => break,
+            },
+        };
+        // a year waits, and nothing after it is read, while the year before is still on its way
+        // into the run: each year's works are laid out on the island as it stood that year
+        if matches!(msg, Msg::Year(_)) && !in_run && data.arriving.is_some() {
+            game.next_year = Some(msg);
+            break;
+        }
         match msg {
             Msg::Month(m) => {
                 months.add(&m);
                 month_cash(&mut fam, &m.cash);
                 // the month's series and news go into the run, which a scenery build may still
                 // hold: the whole run would be copied for it, so the month waits until it has let go
+                // (and while a year is on its way in, until it is in)
                 game.held.push(m);
-                if std::sync::Arc::strong_count(&data.r) == 1 {
+                if std::sync::Arc::strong_count(&data.r) == 1 && data.arriving.is_none() {
                     months_into_run(&mut game, &mut data, &mut ui);
                 }
                 live.month_came();
@@ -340,29 +418,28 @@ pub(crate) fn pump(
                 }
             }
             Msg::Year(end) => {
-                let y = &end.year;
-                // the year's months first, whoever holds the run
-                months_into_run(&mut game, &mut data, &mut ui);
-                // copy-on-write: a scenery build may still hold the old run
-                let Data { r, g, slots, .. } = &mut *data;
-                // (task D) what a new year costs the frame it arrives in, with ISOSTATE_TIMING
-                let (t0, held) = (std::time::Instant::now(), std::sync::Arc::strong_count(r) > 1);
-                let r = std::sync::Arc::make_mut(r);
-                let t1 = t0.elapsed().as_secs_f32();
-                live::apply_year(r, y);
-                let t2 = t0.elapsed().as_secs_f32();
-                scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
-                if std::env::var_os("ISOSTATE_TIMING").is_some() {
-                    eprintln!(
-                        "year {} arrives: {:.0} ms on the main thread ({:.0} taking the run{}, {:.0} writing the year in, {:.0} standing its new works)",
-                        y.year,
-                        t0.elapsed().as_secs_f32() * 1e3,
-                        t1 * 1e3,
-                        if held { ", copied because a scenery build holds it" } else { "" },
-                        (t2 - t1) * 1e3,
-                        (t0.elapsed().as_secs_f32() - t2) * 1e3
-                    );
+                // the year into the run: its months first, then the year, then the works' ground
+                // (new works are given it, and the cells where a works has outgrown its own are
+                // laid out again). With a scenery build holding the run, which in a game at speed
+                // is most of the time, the run is copied first. All of it took 20 to 660 ms of the
+                // frame the year came in, so in a game it is done off the main thread on a copy of
+                // the run, and the rest of this waits for it (above); the scenery waits for it, and
+                // so does the next year. Stills, which wait for nothing, do it here as always.
+                if !in_run {
+                    if shots.is_some() {
+                        months_into_run(&mut game, &mut data, &mut ui);
+                        let Data { r, g, slots, .. } = &mut *data;
+                        let r = std::sync::Arc::make_mut(r);
+                        live::apply_year(r, &end.year);
+                        scatter::place_new_firms(r, g, std::sync::Arc::make_mut(slots));
+                    } else {
+                        let (r, g, slots) = (data.r.clone(), data.g.clone(), data.slots.clone());
+                        let held = std::mem::take(&mut game.held);
+                        data.arriving = Some(bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { arrive(&r, &g, &slots, held, end) }));
+                        continue;
+                    }
                 }
+                let y = &end.year;
                 year_families(&mut fam, &y.families, y.year as i32);
                 // the turn's orders have been carried out since the year's picture was taken
                 if let Some(rep) = &end.family {
@@ -1429,7 +1506,9 @@ fn decision_card(mut commands: Commands, mut game: ResMut<Game>, fam: Res<Family
 fn setup_marks(mut commands: Commands, look: Res<TheLook>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let h = meshes.add(crate::placeholder_mesh());
     let mat = crate::vertex_coloured(&mut materials, &look, look.surfaces.boats_and_marks);
-    commands.spawn((Mesh3d(h.clone()), MeshMaterial3d(mat)));
+    // (the marks span the island, so they are never culled, and the engine need not read every
+    // corner of them for their box each time they are built)
+    commands.spawn((Mesh3d(h.clone()), MeshMaterial3d(mat), bevy::camera::visibility::NoFrustumCulling));
     commands.insert_resource(Marks(h));
     commands.insert_resource(crate::fences::Lines::default());
 }
@@ -1506,10 +1585,35 @@ fn stakes(b: &mut Builder, lk: &Look, g: &world::Ground, r: &Replay, cell: usize
     b.block(s + Vec3::Y * 0.05, 0.05, 0.006, 0.03, 0.3, colour, Some(colour), 0.0);
 }
 
+/// The flags, pennants and fences, built again when the year on the clock, the
+/// run, the stakes or the seats change: twice a year. Building them took 15 to
+/// 125 ms, in the frame a year arrives in and the one its clock turns in, so in
+/// a game they are built off the main thread and go on screen a frame or a few
+/// later; stills build them here, as they always did. Nothing is built while a
+/// year is on its way into the run (`Data::arriving`): the pennants stand on
+/// the works, whose ground comes with it.
 #[allow(clippy::too_many_arguments)]
-fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, lines: Option<ResMut<crate::fences::Lines>>, mut meshes: ResMut<Assets<Mesh>>, mut flags: Local<scatter::Flags>) {
+fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look: Res<TheLook>, fam: Res<FamilyView>, live: Res<Live>, marks: Option<Res<Marks>>, lines: Option<ResMut<crate::fences::Lines>>, mut meshes: ResMut<Assets<Mesh>>, mut flags: Local<scatter::Flags>, shots: Option<Res<crate::ShotPlanArgs>>) {
     let _frames = crate::frames::span(crate::frames::Sys::Marks);
     let (Some(marks), Some(mut lines)) = (marks, lines) else { return };
+    // a build off the main thread that has finished goes on screen, with the stakes, which are a few pegs
+    if let Some(task) = game.marks_task.as_mut() {
+        let Some((mut b, f, l, front)) = bevy::tasks::futures::check_ready(task) else { return };
+        game.marks_task = None;
+        (*flags, *lines) = (f, l);
+        if front {
+            for &c in &game.pending {
+                stakes(&mut b, &look, &data.g, &data.r, c, banner_rgba(PLAYER));
+            }
+        }
+        if let Some(mut m) = meshes.get_mut(&marks.0) {
+            // (kept by the renderer alone: nothing reads it back, and the extract need not copy it)
+            *m = crate::non_empty(b);
+        }
+    }
+    if data.arriving.is_some() {
+        return;
+    }
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // the seats are known for the present only, so they are drawn there (and
     // while the year turns, so the flags do not blink once a year)
@@ -1526,6 +1630,15 @@ fn owner_marks(mut game: ResMut<Game>, tl: Res<Timeline>, data: Res<Data>, look:
         return;
     }
     game.marks = Some(key);
+    if shots.is_none() {
+        let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
+        let (mut f, mut l) = (std::mem::take(&mut *flags), std::mem::take(&mut *lines));
+        game.marks_task = Some(bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+            let b = world::timed("year marks", || build_marks(&r, &g, &slots, &cen, &seats, k, &lk, &mut f, &mut l));
+            (b, f, l, front)
+        }));
+        return;
+    }
     let mut b = world::timed("year marks", || build_marks(&data.r, &data.g, &data.slots, &data.cen, &seats, k, &look, &mut flags, &mut lines));
     if front {
         for &c in &game.pending {
