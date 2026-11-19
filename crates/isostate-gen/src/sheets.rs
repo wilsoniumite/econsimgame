@@ -178,6 +178,12 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "site-brick", about: "Brickworks laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_brick },
     Sheet { name: "site-other", about: "A works of a kind the generators do not know laid out on their plots (works::site), as they stand in 1890: founded in 1760 on a square plot by a stream (top row), in 1820 on a plot with its back aslant along a railway, and in 1870 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_other },
     Sheet { name: "works-other", about: "A works of a kind the generators do not know: built in 1760 (top row) and in 1870; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Town, build: works_other },
+    Sheet { name: "works-power", about: "Power stations (coal_power_station), the brick hall to 1930 and, built at five times the standard size or more from 1930, the concrete hall and cooling towers: founded in 1890 at work (top row) and derelict, then founded in 1935 at work and derelict; sizes 0.4, 1, 4 and 20 across.", land: Land::Pasture, build: works_power },
+    Sheet { name: "site-power", about: "Power stations laid out on their plots (works::site), as they stand in 1960: founded in 1890 on a square plot (top row), in 1910 on a plot with its back aslant along a railway, and in 1935 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_power },
+    Sheet { name: "works-electrical", about: "Electrical works (electrical_works): founded in 1890 at work (top row) and derelict, then founded in 1935 at work and derelict; sizes 0.4, 1, 4 and 20 across.", land: Land::Pasture, build: works_electrical },
+    Sheet { name: "site-electrical", about: "Electrical works laid out on their plots (works::site), as they stand in 1960: founded in 1890 on a square plot (top row), in 1910 on a plot with its back aslant along a railway, and in 1935 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_electrical },
+    Sheet { name: "works-chemical", about: "Chemical plants (nitrogen_works, oil_from_coal, ammonia_soda): founded in 1890 at work (top row) and derelict, then founded in 1935 at work and derelict; sizes 0.4, 1, 4 and 20 across.", land: Land::Pasture, build: works_chemical },
+    Sheet { name: "site-chemical", about: "Chemical plants (the nitrogen works' process) laid out on their plots (works::site), as they stand in 1960: founded in 1890 on a square plot (top row), in 1910 on a plot with its back aslant along a railway, and in 1935 on a plot with a corner cut off; sizes 0.4, 1, 3, 10, 30 and 100 across.", land: Land::Pasture, build: site_chemical },
     Sheet { name: "pits", about: "Pits and their spoil heaps: coal, ironstone, stone and clay down the rows; a small, a middling and a large heap across.", land: Land::Heath, build: pits },
     Sheet { name: "farmsteads", about: "A farmstead seen from its yard: lowland and upland, arable and pasture down the rows; six seeds across.", land: Land::Pasture, build: farmsteads },
     Sheet { name: "trees", about: "Trees and bushes: broadleaf, conifer, hedgerow tree and heath bush down the rows; sizes across (a tree has no age yet). With --season 0 the broadleaves are bare; 0.8 is autumn.", land: Land::Pasture, build: trees },
@@ -914,6 +920,33 @@ pub(crate) const UNKNOWN: [Unknown; 8] = [
     ("masons", &[("stone", 2.2, 0.6, 1.1), ("lumber", 1.2, 2.2, 0.2), ("lime", 1.5, 2.0, 0.1)], 0.0, 0.25, 2.8, ("building", 12.0, 2.2)),
 ];
 
+/// The processes of the methods of the twentieth century that are drawn as
+/// kinds of their own (`Kind::PowerStation`, `ElectricalWorks`,
+/// `ChemicalPlant`), in the same form: they are the game's overlay's
+/// (data/game.toml), not the port's content that `Process::standard` reads,
+/// so the lab and the tests take them from here and draw them without a run.
+/// The station and the electrical works are stage 6's as data/game.toml has
+/// them on 19 November 2026; the nitrogen works and oil from coal are stage
+/// 7's, as its own branch had them that day. The plant is the `capital` line
+/// at the goods' base prices (building 2.2, steel 30, machinery 70). The game
+/// itself hands the planner each method's process as the run has it.
+pub(crate) const LATER: [Unknown; 4] = [
+    ("coal_power_station", &[("coal", 1.6, 0.9, 1.1)], 0.0, 0.1, 72.2, ("electricity", 20.0, 1.2)),
+    ("electrical_works", &[("steel", 1.0, 30.0, 0.25), ("chemicals", 0.9, 4.5, 0.1), ("glass", 1.0, 9.0, 0.05)], 1.0, 0.45, 100.5, ("electricals", 0.5, 7.0)),
+    ("nitrogen_works", &[("coal", 1.6, 0.9, 1.5), ("electricity", 20.0, 1.2, 1.2)], 0.0, 0.1, 135.2, ("chemicals", 0.9, 4.5)),
+    ("oil_from_coal", &[("coal", 1.6, 0.9, 4.0), ("electricity", 20.0, 1.2, 0.5)], 0.0, 0.05, 36.1, ("oil", 1.0, 1.0)),
+];
+
+/// A process of the table above, or of `UNKNOWN`, as the planner takes it.
+fn process_from(&(_, inputs, heat, labour, capital, out): &Unknown) -> site::Process {
+    site::Process { inputs: inputs.iter().map(|&(g, w, p, a)| (site::Good::new(g, w, p), a)).collect(), heat, labour, capital, output: site::Good::new(out.0, out.1, out.2) }
+}
+
+/// The process of a method of the twentieth century, from `LATER`, if it is one of them.
+pub fn later_process(method: &str) -> Option<site::Process> {
+    LATER.iter().find(|u| u.0 == method).map(process_from)
+}
+
 fn site_unknown(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     [(1.0f32, 1790, 1830), (8.0, 1800, 1885)]
         .into_iter()
@@ -921,8 +954,8 @@ fn site_unknown(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
             UNKNOWN
                 .iter()
                 .enumerate()
-                .map(|(n, &(name, inputs, heat, labour, capital, out))| {
-                    let process = site::Process { inputs: inputs.iter().map(|&(g, w, p, a)| (site::Good::new(g, w, p), a)).collect(), heat, labour, capital, output: site::Good::new(out.0, out.1, out.2) };
+                .map(|(n, u)| {
+                    let (name, process) = (u.0, process_from(u));
                     let (w, d) = site::ground(Kind::Other, size);
                     let record = site::history(founded, year, size);
                     let plan = site::plan(Kind::Other, &process, &site::stages(&record), &Plot::rect(w, d), year, Seed::of(n as u32 + 90), pal);
@@ -1074,6 +1107,72 @@ fn site_brick(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
 
 fn site_other(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
     site_sizes(Kind::Other, pal, detail)
+}
+
+/// A kind of the twentieth century at the sizes its first works stand at and
+/// grow to: founded in 1890 and in 1935, at work and derelict, down the rows.
+fn works_late(kind: Kind, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [(1890, State::Working), (1890, State::Derelict), (1935, State::Working), (1935, State::Derelict)]
+        .into_iter()
+        .map(|(founded, state)| {
+            [0.4f32, 1.0, 4.0, 20.0]
+                .iter()
+                .enumerate()
+                .map(|(i, &size)| {
+                    let w = Works { founded, state, rail: true, seed: Seed::of(kind as u32 * 16 + i as u32), ..Works::new(kind, size) };
+                    works_cell(format!("{}, {founded}, {}\nsize {size}", kind.label(), state.label()), w, detail, pal)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// A kind of the twentieth century laid out on its plot as it stands in 1960:
+/// founded in 1890 on a square plot, in 1910 on a plot with its back aslant
+/// along a railway, and in 1935 on a plot with a corner cut off.
+fn site_late(kind: Kind, pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    [1890, 1910, 1935]
+        .into_iter()
+        .map(|founded| {
+            SIZES
+                .iter()
+                .enumerate()
+                .map(|(i, &size)| {
+                    let (w, d) = site::ground(kind, size);
+                    let (plot, on) = match founded {
+                        1890 => (Plot::rect(w, d), "a square plot"),
+                        1910 => (Plot::wedge(w * 1.15, d * 1.15, 0.25).facing(2, Edge::Rail), "by a railway"),
+                        _ => (Plot::cut(w * 1.05, d * 1.05, 0.35), "a corner cut"),
+                    };
+                    site_of(format!("{}, {founded}, {on}\nsize {size} in 1960", kind.label()), kind, founded, 1960, size, plot, kind as u32 * 16 + i as u32, detail, pal)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn works_power(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_late(Kind::PowerStation, pal, detail)
+}
+
+fn site_power(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_late(Kind::PowerStation, pal, detail)
+}
+
+fn works_electrical(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_late(Kind::ElectricalWorks, pal, detail)
+}
+
+fn site_electrical(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_late(Kind::ElectricalWorks, pal, detail)
+}
+
+fn works_chemical(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    works_late(Kind::ChemicalPlant, pal, detail)
+}
+
+fn site_chemical(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {
+    site_late(Kind::ChemicalPlant, pal, detail)
 }
 
 fn pits(pal: &Palette, detail: Detail) -> Vec<Vec<Cell>> {

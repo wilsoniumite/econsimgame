@@ -12,6 +12,8 @@
 //! the mines, which are not firms.
 
 mod brick;
+mod chemical;
+mod electrical;
 mod engine;
 mod furnaces;
 mod kit;
@@ -19,6 +21,7 @@ mod mills;
 mod pit;
 mod plain;
 mod plant;
+mod power;
 pub mod site;
 mod steel;
 mod textile;
@@ -57,13 +60,22 @@ pub enum Kind {
     Bessemer,
     CrucibleSteel,
     Brickworks,
+    /// a coal power station: an engine hall, a boiler house and its chimneys
+    /// (and, built large from 1930, a concrete hall and cooling towers)
+    PowerStation,
+    /// a works making electrical goods: long workshops under north lights
+    ElectricalWorks,
+    /// iron columns, tanks and pipes: the nitrogen works, oil made from coal,
+    /// the ammonia-soda works
+    ChemicalPlant,
     /// a method the generators do not know: plain sheds in a yard
     Other,
 }
 
 impl Kind {
-    /// Every kind, in the order the lab shows them: the town trades, iron, steel, the rest.
-    pub const ALL: [Kind; 17] = [
+    /// Every kind, in the order the lab shows them: the town trades, iron, steel, the rest,
+    /// and last those of the twentieth century.
+    pub const ALL: [Kind; 20] = [
         Kind::HandLoom,
         Kind::Smithy,
         Kind::Millwright,
@@ -80,6 +92,9 @@ impl Kind {
         Kind::EngineWorks,
         Kind::TextileMill,
         Kind::Brickworks,
+        Kind::PowerStation,
+        Kind::ElectricalWorks,
+        Kind::ChemicalPlant,
         Kind::Other,
     ];
 
@@ -102,6 +117,11 @@ impl Kind {
             "bessemer" => Kind::Bessemer,
             "crucible_steel" => Kind::CrucibleSteel,
             "brickworks" => Kind::Brickworks,
+            "coal_power_station" => Kind::PowerStation,
+            "electrical_works" => Kind::ElectricalWorks,
+            // (the alkali works of 1815 roasts salt in furnaces and is planned from its process
+            // alone; the ammonia-soda works of 1872 pumps brine through towers, as these do)
+            "nitrogen_works" | "oil_from_coal" | "ammonia_soda" => Kind::ChemicalPlant,
             _ => Kind::Other,
         }
     }
@@ -125,6 +145,9 @@ impl Kind {
             Kind::Bessemer => "bessemer",
             Kind::CrucibleSteel => "crucible_steel",
             Kind::Brickworks => "brickworks",
+            Kind::PowerStation => "coal_power_station",
+            Kind::ElectricalWorks => "electrical_works",
+            Kind::ChemicalPlant => "nitrogen_works",
             Kind::Other => "other",
         }
     }
@@ -148,6 +171,9 @@ impl Kind {
             Kind::Bessemer => "converter",
             Kind::CrucibleSteel => "crucible steel",
             Kind::Brickworks => "brickworks",
+            Kind::PowerStation => "power station",
+            Kind::ElectricalWorks => "electrical works",
+            Kind::ChemicalPlant => "chemical plant",
             Kind::Other => "any other works",
         }
     }
@@ -172,6 +198,9 @@ impl Kind {
             Kind::Bessemer => (0.14, 0.10),
             Kind::CrucibleSteel => (0.10, 0.08),
             Kind::Brickworks => (0.13, 0.10),
+            Kind::PowerStation => (0.15, 0.11),
+            Kind::ElectricalWorks => (0.13, 0.10),
+            Kind::ChemicalPlant => (0.14, 0.10),
             Kind::Other => (0.10, 0.075),
         }
     }
@@ -313,6 +342,9 @@ fn raise(c: &mut kit::Ctx) {
         Kind::EngineWorks => engine::engine_works(c),
         Kind::TextileMill => textile::mill(c),
         Kind::Brickworks => brick::brickworks(c),
+        Kind::PowerStation => power::power_station(c),
+        Kind::ElectricalWorks => electrical::electrical_works(c),
+        Kind::ChemicalPlant => chemical::chemical_plant(c),
         Kind::Other => plain::plain(c),
     }
 }
@@ -352,10 +384,20 @@ mod tests {
         m
     }
 
+    /// The years a kind is founded in, in the tests: the old trades' three, and
+    /// for the kinds of the twentieth century those and their own, either side
+    /// of the year a great station takes its cooling towers.
+    fn years(kind: Kind) -> &'static [i32] {
+        match kind {
+            Kind::PowerStation | Kind::ElectricalWorks | Kind::ChemicalPlant => &[1760, 1870, 1890, 1910, 1935, 1960],
+            _ => &[1760, 1820, 1870],
+        }
+    }
+
     fn all(mut each: impl FnMut(Works)) {
         for kind in Kind::ALL {
             for size in SIZES {
-                for founded in [1760, 1820, 1870] {
+                for &founded in years(kind) {
                     for water in [false, true] {
                         each(Works { founded, water, seed: Seed::of(kind as u32 * 7 + founded as u32), ..Works::new(kind, size) });
                     }
@@ -443,7 +485,7 @@ mod tests {
     fn a_works_grows_with_its_size() {
         // more of it, and more ground under it, at each of the lab's sizes
         for kind in Kind::ALL {
-            for founded in [1760, 1820, 1870] {
+            for &founded in years(kind) {
                 let mut last = (0, 0.0);
                 for size in [0.4, 1.0, 3.0, 10.0, 30.0, 100.0] {
                     let m = build_at(&Works { founded, ..Works::new(kind, size) }, 0.0);
@@ -474,7 +516,7 @@ mod tests {
 
     #[test]
     fn a_bigger_works_makes_more_smoke() {
-        for kind in [Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Bessemer, Kind::CrucibleSteel, Kind::Brickworks] {
+        for kind in [Kind::CokeFurnace, Kind::TextileMill, Kind::RollingMill, Kind::Bessemer, Kind::CrucibleSteel, Kind::Brickworks, Kind::PowerStation, Kind::ChemicalPlant] {
             // more plumes, or a bigger one
             let smoke = |size: f32| {
                 let m = build_at(&Works::new(kind, size), 0.0);

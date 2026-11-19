@@ -132,14 +132,19 @@ fn draw(plan: &Plan, now: &Now, yaw: f32) -> Model {
 fn all(mut each: impl FnMut(&Plan, Now)) {
     let pal = Palette::standard();
     for kind in Kind::ALL {
+        // (the kinds of the twentieth century founded in their own years, and seen in 1960)
+        let (years, seen): (&[i32], i32) = match kind {
+            Kind::PowerStation | Kind::ElectricalWorks | Kind::ChemicalPlant => (&[1890, 1910, 1935], 1960),
+            _ => (&[1760, 1820, 1870], 1890),
+        };
         for (i, size) in SIZES.into_iter().enumerate() {
-            for founded in [1760, 1820, 1870] {
+            for &founded in years {
                 for (j, plot) in plots(kind, size).into_iter().enumerate() {
                     // (not every plot at every size and year, to keep the tests quick)
                     if (i + j + founded as usize / 10) % 2 == 0 && j > 0 {
                         continue;
                     }
-                    let (plan, now) = specimen(kind, founded, 1890, size, &plot, Seed::of(kind as u32 * 31 + i as u32 + j as u32), &pal);
+                    let (plan, now) = specimen(kind, founded, seen, size, &plot, Seed::of(kind as u32 * 31 + i as u32 + j as u32), &pal);
                     each(&plan, now);
                 }
             }
@@ -151,10 +156,18 @@ fn all(mut each: impl FnMut(&Plan, Now)) {
 fn the_shipped_content_gives_every_kind_its_process() {
     for kind in Kind::ALL {
         if kind != Kind::Other {
-            let p = Process::standard(kind.method()).unwrap_or_else(|| panic!("{kind:?} has no method in data/content.toml"));
+            // (the kinds of the twentieth century are the game's overlay's methods, which the lab keeps a table of)
+            let p = Process::standard(kind.method()).or_else(|| crate::sheets::later_process(kind.method())).unwrap_or_else(|| panic!("{kind:?} has no method in data/content.toml or sheets::LATER"));
             assert!(p.labour > 0.0 && p.capital > 0.0 && !p.output.name.is_empty(), "{kind:?}: {p:?}");
+            assert_eq!(Process::of(kind), p);
         }
     }
+    // the lab's table holds every method the twentieth century's kinds are drawn for, and the port has none of them
+    for u in crate::sheets::LATER {
+        assert!(Kind::of_method(u.0) != Kind::Other && Process::standard(u.0).is_none(), "{}", u.0);
+    }
+    let station = Process::of(Kind::PowerStation);
+    assert!(station.output.name == "electricity" && Keep::of(&station.output) == Keep::Nothing, "electricity is kept nowhere");
     let coke = Process::of(Kind::CokeFurnace);
     assert_eq!(coke.output.name, "iron");
     assert!(coke.inputs.iter().any(|(g, a)| g.name == "iron_ore" && *a == 2.0) && coke.inputs.iter().any(|(g, _)| g.name == "coal"));
@@ -679,4 +692,23 @@ fn trades_nobody_has_drawn_get_plans_of_their_own_from_what_the_run_says_of_them
         let (kilns, less) = (drawn(process), drawn(&Process { heat: 2.0, ..process.clone() }));
         assert!(kilns.0 < less.0 * 0.7 && kilns.1 > no_fire, "{name}: {kilns:?} with its kilns, {less:?} burning less");
     }
+}
+
+#[test]
+fn oil_is_kept_in_tanks_and_electricity_nowhere() {
+    let pal = Palette::standard();
+    // oil made from coal goes out to round tanks in a yard by the way out
+    let oil = crate::sheets::later_process("oil_from_coal").unwrap();
+    assert_eq!(Keep::of(&oil.output), Keep::Tank);
+    let (w, d) = ground(Kind::ChemicalPlant, 8.0);
+    let p = plan(Kind::ChemicalPlant, &oil, &stages(&history(1925, 1950, 8.0)), &Plot::rect(w, d), 1950, Seed::of(4), &pal);
+    assert!(p.yards.iter().any(|y| y.hold == Hold::Out), "no yard for the oil");
+    let m = draw(&p, &Now::working(&p, 1950), 0.3);
+    assert!(m.solid.is_sound() && !m.solid.is_empty());
+    // a station takes in coal, which lies in heaps, and keeps nothing of what it makes
+    let station = crate::sheets::later_process("coal_power_station").unwrap();
+    let (w, d) = ground(Kind::PowerStation, 8.0);
+    let q = plan(Kind::PowerStation, &station, &stages(&history(1900, 1950, 8.0)), &Plot::rect(w, d), 1950, Seed::of(4), &pal);
+    assert!(!q.yards.iter().any(|y| y.hold == Hold::Out) && !q.parts.iter().any(|x| x.role == Role::Warehouse), "electricity is kept nowhere");
+    assert!(q.yards.iter().any(|y| matches!(y.hold, Hold::In(i) if q.held[i].0.name == "coal")), "the station has no coal yard");
 }

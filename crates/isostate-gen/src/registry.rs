@@ -157,7 +157,10 @@ const fn slot(kind: Kind) -> usize {
         Kind::EngineWorks => 13,
         Kind::TextileMill => 14,
         Kind::Brickworks => 15,
-        Kind::Other => 16,
+        Kind::PowerStation => 16,
+        Kind::ElectricalWorks => 17,
+        Kind::ChemicalPlant => 18,
+        Kind::Other => 19,
     }
 }
 
@@ -170,6 +173,20 @@ fn works_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
         .into_iter()
         .map(|(size, founded, water)| {
             let w = Works { founded, water, detail, seed: Seed::of(K as u32 * 16 + founded as u32), ..Works::new(kind, size) };
+            specimen(format!("{}, size {size}, {founded}", kind.label()), |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
+        })
+        .collect()
+}
+
+/// A kind of works of the twentieth century at three times the standard size
+/// built in 1910, then small and great, founded in 1890, 1935 and 1960.
+fn works_late_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let kind = Kind::ALL[K];
+    debug_assert_eq!(slot(kind), K);
+    [(3.0, 1910), (0.4, 1890), (1.0, 1935), (10.0, 1890), (30.0, 1935), (100.0, 1960)]
+        .into_iter()
+        .map(|(size, founded)| {
+            let w = Works { founded, detail, seed: Seed::of(K as u32 * 16 + founded as u32), ..Works::new(kind, size) };
             specimen(format!("{}, size {size}, {founded}", kind.label()), |m, site| works(&mut m.solid, &mut m.smoke, &mut m.flat, site, &w, pal))
         })
         .collect()
@@ -336,7 +353,10 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "works: engine works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<13>, levels: true },
     Entry { name: "works: powered mill", class: Class::Building, covers: &["works/mod::works"], build: works_of::<14>, levels: true },
     Entry { name: "works: brickworks", class: Class::Building, covers: &["works/mod::works"], build: works_of::<15>, levels: true },
-    Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<16>, levels: true },
+    Entry { name: "works: power station", class: Class::Building, covers: &["works/mod::works"], build: works_late_of::<16>, levels: true },
+    Entry { name: "works: electrical works", class: Class::Building, covers: &["works/mod::works"], build: works_late_of::<17>, levels: true },
+    Entry { name: "works: chemical plant", class: Class::Building, covers: &["works/mod::works"], build: works_late_of::<18>, levels: true },
+    Entry { name: "works: any other works", class: Class::Building, covers: &["works/mod::works"], build: works_of::<19>, levels: true },
     Entry { name: "works on its plot", class: Class::Building, covers: &["works/site::site"], build: works_sites, levels: true },
     Entry { name: "farmstead", class: Class::Building, covers: &["farm::farmstead"], build: farmsteads, levels: true },
     Entry { name: "church", class: Class::Building, covers: &["town/church::church"], build: churches, levels: true },

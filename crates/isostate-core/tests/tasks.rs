@@ -9,7 +9,10 @@
 //! holds on any island's history (a run against another run, a new works
 //! against its town, shares within their bounds, money that adds up), so a
 //! later rule that changes island 7's history cannot break them; only one
-//! that stopped the hoist being found by 1925 would, and the test says so.
+//! that stopped the electric drive (in the works) or the hoist (at the pits)
+//! being found by 1925 would, and the test says so. The tree is laid as the
+//! game lays it (stage 6, with the drive); the one test of a town without a
+//! station sets `tree.stage` by name.
 #![allow(non_snake_case)]
 
 use isostate_core::tasks::{self, TasksParams};
@@ -48,14 +51,16 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
         assert!((s - 1.0).abs() < 1e-9, "{} has shares summing to {s}", C.method_name[m]);
     }
     assert_eq!(C.M, 48, "the 44 of the tree's stage 1 and the four of stage 6 (docs/rules/tree.md, \"After 1900: electricity\" and \"Oil, nitrogen and the land\")");
-    // the content after 1900 lays the tractor and the cutter; the cutter takes the
-    // pits from the hoist (`replaces`), which keeps the works
+    // the content after 1900 lays the electric drive, the tractor and the cutter;
+    // the drive takes the works from the hoist and the cutter the pits (`replaces`)
     let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
-    assert_eq!(names, ["hoist", "tractor", "cutter"]);
+    assert_eq!(names, ["hoist", "electric_drive", "tractor", "cutter"]);
     let sector = |n: &str| C.sector_name.iter().position(|x| x == n).unwrap();
-    let (hoist, tractor, cutter) = (&C.tasks.uses[0], &C.tasks.uses[1], &C.tasks.uses[2]);
-    assert!(hoist.on_works && hoist.on_sector.iter().all(|&b| !b), "the hoist keeps the works and leaves the pits");
+    let (hoist, drive, tractor, cutter) = (&C.tasks.uses[0], &C.tasks.uses[1], &C.tasks.uses[2], &C.tasks.uses[3]);
+    assert!(!hoist.on_works && hoist.on_sector.iter().all(|&b| !b), "the hoist leaves the works to the drive and the pits to the cutter");
+    assert_eq!(drive.replaces.as_deref(), Some("hoist"));
     assert_eq!(cutter.replaces.as_deref(), Some("hoist"));
+    assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
     for n in ["quarry", "claypit", "ironmine", "coalmine"] {
         assert!(cutter.on_sector[sector(n)] && !tractor.on_sector[sector(n)]);
     }
@@ -71,6 +76,51 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
     assert_eq!(C1.tasks.uses.len(), 1);
     assert_eq!(C1.tasks.uses[0].name, "hoist");
     assert!(C1.tasks.uses[0].on_works && C1.tasks.uses[0].on_sector.iter().filter(|&&b| b).count() == 4);
+}
+
+/// The electric drive is made of electrical goods and run on electricity, the
+/// goods of stage 6 of the tree: with the tree laid to stage 1 it is not in the
+/// table and the hoist hauls in the works and at the pits, as before it; at
+/// stage 6 it is, and it takes the works from the hoist (`replaces`), as the
+/// cutter of the same stage takes the quarries, the clay pits and the mines.
+#[test]
+fn the_drive_is_laid_only_with_its_goods() {
+    let at = |stage: u32| {
+        let mut P = game_params();
+        P.tree.stage = stage;
+        content(&P)
+    };
+    let (one, six) = (at(1), at(6));
+    let pits = |C: &Content, u: &tasks::Use| -> Vec<String> {
+        let mut v: Vec<String> = (0..C.NS).filter(|&s| u.on_sector[s]).map(|s| C.sector_name[s].clone()).collect();
+        v.sort();
+        v
+    };
+    // stage 1: the hoist alone, in the works and at the pits
+    assert!(!one.good_index.contains_key("electricals"));
+    assert_eq!(one.tasks.uses.len(), 1);
+    let hoist = &one.tasks.uses[0];
+    assert_eq!(hoist.name, "hoist");
+    assert!(hoist.on_works);
+    assert_eq!(pits(&one, hoist), ["claypit", "coalmine", "ironmine", "quarry"]);
+    assert_eq!(one.tasks.plant_goods, [one.good_index["machinery"]]);
+    // stage 6: the drive in the works, the cutter at the pits, the hoist nowhere
+    assert_eq!(six.tasks.uses.len(), 4);
+    let (hoist, drive, cutter) = (&six.tasks.uses[0], &six.tasks.uses[1], &six.tasks.uses[3]);
+    assert_eq!(drive.name, "electric_drive");
+    assert!(drive.on_works && drive.on_sector.iter().all(|&b| !b));
+    assert!(!hoist.on_works);
+    assert!(pits(&six, hoist).is_empty());
+    assert_eq!(pits(&six, cutter), ["claypit", "coalmine", "ironmine", "quarry"]);
+    assert_eq!(drive.run, [(six.good_index["electricity"], 1.01)]);
+    assert!(drive.plant.iter().any(|p| p.0 == six.good_index["electricals"]));
+    assert!(six.tasks.plant_goods.contains(&six.good_index["electricals"]));
+    // the hoist's own entry is as it was
+    let (h1, h6) = (&one.tasks.uses[0], hoist);
+    assert!(h1.plant == h6.plant && h1.run == h6.run && h1.minders == h6.minders && h1.discover == h6.discover && h1.scale == h6.scale);
+    // a replacement that names no other use is refused
+    let bad = tasks::TASKS_TOML.replace("replaces = \"hoist\"", "replaces = \"windlass\"");
+    assert!(tasks::table_from(&six, &bad).is_err());
 }
 
 /// `replaces`, and a use whose goods are missing, read from a file of their own.
@@ -131,24 +181,31 @@ fn the_schedule_adds_up() {
     assert!((tasks::rank_correlation(&[1.0, 2.0, 3.0, 4.0], &[10.0, 20.0, 15.0, 40.0]) - 0.8).abs() < 1e-12);
 }
 
+/// The place of the use named in the game's table.
+fn use_of(C: &Content, name: &str) -> usize {
+    C.tasks.uses.iter().position(|u| u.name == name).unwrap_or_else(|| panic!("no use {name:?} in the table"))
+}
+
 /// With the table of uses emptied in code, the game's run on island 7 to 1925
-/// is the run with the switch off, to the last digit; with the hoist it is
-/// not. And in the run with the hoist: it is found, a works built after that
-/// begins at its town's target, every works' share stays between the use's
-/// `from` and `reach`, and money is conserved every month (`run_year` checks).
+/// is the run with the switch off, to the last digit; with its machines it is
+/// not. And in the run with them: the works' machine, the electric drive, is
+/// found, a works built after that begins at its town's target, every works'
+/// share stays between the drive's `from` and `reach`, and money is conserved
+/// every month (`run_year` checks).
 #[test]
 fn island_7_to_1925() {
     let on = std::thread::spawn(|| {
         let P = params(true);
         let mut s = sim::start(&P, content(&P));
         let (mut at_target, mut found) = (0, None);
-        let us = s.content.tasks.uses[0].clone();
+        let d = use_of(&s.content, "electric_drive");
+        let us = s.content.tasks.uses[d].clone();
         while s.year <= s.end_year {
             let year = s.year;
             sim::run_year(&mut s).expect("money is conserved every month");
             let st = &s.st;
-            if found.is_none() && st.tasks.found[0] >= 0 {
-                found = Some(st.tasks.found[0]);
+            if found.is_none() && st.tasks.found[d] >= 0 {
+                found = Some(st.tasks.found[d]);
             }
             for &f in &st.new_firms_year {
                 if !st.f_alive[f] || st.tasks.target.is_empty() {
@@ -166,8 +223,8 @@ fn island_7_to_1925() {
                 assert!(st.tasks.f_auto[f].iter().enumerate().all(|(k, &v)| k == tasks::HAUL || v == 0.0));
             }
         }
-        let y = found.expect("island 7 finds the hoist by 1925 (if a later rule stops that, this test must be set again)");
-        assert!((1901..=1925).contains(&y));
+        let y = found.expect("island 7 finds the electric drive by 1925 (if a later rule stops that, this test must be set again)");
+        assert!((1890..=1925).contains(&y));
         assert!(at_target > 0, "no works was built with machines after {y}");
         let last = s.st.tasks.years.last().unwrap();
         assert!(last.held[tasks::HAUL] > 0.0 && last.book > 0.0, "{last:?}");
@@ -190,7 +247,7 @@ fn island_7_to_1925() {
     let off = check_of(params(false), content(&params(false)));
     let (on, none, off) = (on.join().unwrap(), none.join().unwrap(), off.join().unwrap());
     assert_eq!(none, off, "with no use the rule moved the run");
-    assert_ne!(on, off, "the hoist moved nothing");
+    assert_ne!(on, off, "the machines moved nothing");
 }
 
 /// Runs `P` on content `C` to its end, and gives `save::check` of it.
@@ -257,10 +314,60 @@ fn island_7_to_1925_on_the_land() {
     assert_ne!(on, off, "the hoist at the pits moved nothing");
 }
 
-/// The year island 7 finds the hoist under `params(true)`, as the tests below
+/// The year island 7 has found every use of the table (the drive for the
+/// works, the hoist for the pits) under `params(true)`, as the tests below
 /// lean on it: they stop ten years on.
 fn starts(s: &sim::Sim) -> Option<i64> {
-    s.st.tasks.found.first().copied().filter(|&y| y >= 0)
+    let f = &s.st.tasks.found;
+    if f.is_empty() || f.iter().any(|&y| y < 0) { None } else { f.iter().copied().max() }
+}
+
+/// The drive runs on electricity, which goes no further than a town's own
+/// wires. Island 7, played a month at a time to ten years past the drive's
+/// find, under the game's rules with `tasks.enabled`, `tasks.land` and
+/// `tree.stage` (6, which lays the drive) set by name: in every month, a works
+/// in a town with no electricity to sell (none made there the month before:
+/// no station, or one just closed) holds none of its hauling by machine,
+/// whatever plant it has in place; there the price of electricity climbs to
+/// its ceiling and the town's target gives the drive nothing. Works elsewhere
+/// do hold some.
+#[test]
+fn no_station_no_drive() {
+    let mut P = params(true);
+    P.tree.stage = 6;
+    let mut s = sim::start(&P, content(&P));
+    let d = use_of(&s.content, "electric_drive");
+    let ge = s.content.good_index["electricity"];
+    let found = |s: &sim::Sim| s.st.tasks.found.get(d).copied().filter(|&y| y >= 0);
+    let (mut dark, mut idle, mut lit) = (0, 0, 0);
+    while s.year <= s.end_year && found(&s).is_none_or(|y| s.year <= y + 10) {
+        let year = s.year;
+        for month in 0..12 {
+            let none: Vec<bool> = (0..s.st.T_max).map(|t| !(s.st.inv[(t, ge)] > 0.0)).collect();
+            sim::run_month(&mut s, month).expect("money is conserved every month");
+            let st = &s.st;
+            for f in 0..st.F_count.min(st.tasks.f_held.len()) {
+                if !st.f_alive[f] || found(&s).is_none() {
+                    continue;
+                }
+                let (t, h) = (st.f_town[f], st.tasks.f_held[f][tasks::HAUL]);
+                if none[t] {
+                    assert_eq!(h, 0.0, "{year}-{month}: works {f} in town {t}, which has no electricity, holds {h} of its hauling");
+                    dark += 1;
+                    if st.tasks.f_plant[f].iter().any(|&v| v > 0.0) {
+                        idle += 1;
+                    }
+                } else if h > 0.0 {
+                    lit += 1;
+                }
+            }
+        }
+        sim::end_year(&mut s);
+    }
+    let y = found(&s).expect("island 7 finds the electric drive (if a later rule stops that, this test must be set again)");
+    assert!(dark > 0, "no works stood in a town without electricity in the ten years after {y}");
+    assert!(lit > 0, "no works came to hold any hauling by the drive in the ten years after {y}");
+    eprintln!("after {y}: {dark} works-months without electricity ({idle} of them with plant in place, idle), {lit} holding hauling by the drive");
 }
 
 /// A machine works once it stands, on island 7 played a month at a time to
@@ -315,7 +422,7 @@ fn machines_work_once_they_stand() {
             }
         }
     }
-    let y = starts(&s).expect("island 7 finds the hoist (if a later rule stops that, this test must be set again)");
+    let y = starts(&s).expect("island 7 finds the drive and the hoist (if a later rule stops that, this test must be set again)");
     for &f in &seen {
         if s.st.f_alive[f] && s.st.tasks.f_held[f][tasks::HAUL] > 0.0 {
             came += 1;
@@ -357,7 +464,7 @@ fn starved_of_plant_nothing_is_held() {
         }
         sim::end_year(&mut s);
     }
-    let y = starts(&s).expect("island 7 finds the hoist (if a later rule stops that, this test must be set again)");
+    let y = starts(&s).expect("island 7 finds the drive and the hoist (if a later rule stops that, this test must be set again)");
     assert!(most_auto > 0.05 && most_land > 0.05, "in the ten years after {y} what was meant rose only to {most_auto} in the works and {most_land} on the land");
     let last = s.st.tasks.years.last().unwrap();
     assert_eq!(last.held[tasks::HAUL], 0.0);
