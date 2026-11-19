@@ -235,10 +235,19 @@ fn faint(col: [f32; 3], k: f32) -> [f32; 3] {
     [0, 1, 2].map(|i| GROUND[i] + (col[i] - GROUND[i]) * k)
 }
 
-/// Paint the plot of a chart.
-pub fn plot(c: &Chart) -> Plot {
-    let w = (c.plot_width() * SS).round().max(8.0) as usize;
-    let h = (c.height * SS).round().max(8.0) as usize;
+/// How far the lines keep from the plot's top and bottom edges, in image
+/// pixels: their own width and a little more.
+const PAD_Y: f32 = 7.0 * SS;
+
+/// Where a figure `v` stands up a plot `h` image pixels high, on the scale `(lo, hi)`.
+fn y_at(h: usize, v: f32, (lo, hi): (f32, f32)) -> f32 {
+    h as f32 - PAD_Y - (v - lo) / (hi - lo) * (h as f32 - 2.0 * PAD_Y)
+}
+
+/// The paper of a plot `w` by `h` image pixels, with rounded corners, the
+/// grid (the low and high levels, the quarters between and the round years)
+/// and the marker at figure `mark`.
+fn paper(w: usize, h: usize, years: usize, first_year: i32, months: bool, mark: usize) -> Canvas {
     let mut cv = Canvas { w, h, px: vec![[GROUND[0], GROUND[1], GROUND[2], 1.0]; w * h] };
     // the paper has rounded corners
     let rad = 7.0 * SS;
@@ -249,26 +258,73 @@ pub fn plot(c: &Chart) -> Plot {
             cv.px[y * w + x][3] = (0.5 - d).clamp(0.0, 1.0);
         }
     }
-    // the lines keep clear of the edge by their own width and a little more
-    let pad_y = 7.0 * SS;
-    let last = c.years.max(2) - 1;
-    let x_of = |i: usize| x_at(w, c.years, i);
-    let y_of = |v: f32, (lo, hi): (f32, f32)| h as f32 - pad_y - (v - lo) / (hi - lo) * (h as f32 - 2.0 * pad_y);
-
-    // the grid: the low and high levels, the quarters between, and the round years
+    let last = years.max(2) - 1;
     for j in 0..=4 {
-        cv.rule(false, pad_y + j as f32 / 4.0 * (h as f32 - 2.0 * pad_y), SS * 0.5, GRID, if j == 0 || j == 4 { 1.0 } else { 0.6 });
+        cv.rule(false, PAD_Y + j as f32 / 4.0 * (h as f32 - 2.0 * PAD_Y), SS * 0.5, GRID, if j == 0 || j == 4 { 1.0 } else { 0.6 });
     }
-    let every = if c.years > 60 { 25 } else if c.years > 20 { 10 } else { 5 };
-    for i in 0..c.years {
-        let round = if c.months { i % 12 == 0 } else { (c.first_year + i as i32) % every == 0 };
+    let every = if years > 60 { 25 } else if years > 20 { 10 } else { 5 };
+    for i in 0..years {
+        let round = if months { i % 12 == 0 } else { (first_year + i as i32) % every == 0 };
         if round && i > 0 && i < last {
-            cv.rule(true, x_of(i), SS * 0.5, GRID, 0.6);
+            cv.rule(true, x_at(w, years, i), SS * 0.5, GRID, 0.6);
         }
     }
-    let mark = c.mark.min(last);
-    cv.rule(true, x_of(mark), SS * 0.5, MARK, 0.75);
+    cv.rule(true, x_at(w, years, mark.min(last)), SS * 0.5, MARK, 0.75);
+    cv
+}
 
+/// One line on a plot's paper in `col`, `half` pixels either side: each
+/// unbroken run of figures, split at the marker (what is still to come is
+/// fainter), over a pale fill down to the foot when `filled`. The place of the
+/// dot at the marker, if the line has a figure there.
+#[allow(clippy::too_many_arguments)]
+fn draw_line(cv: &mut Canvas, vals: &[f32], rg: (f32, f32), col: [f32; 3], half: f32, filled: bool, years: usize, mark: usize) -> Option<(f32, f32)> {
+    let (w, h) = (cv.w, cv.h);
+    let mark = mark.min(years.max(2) - 1);
+    let x_of = |i: usize| x_at(w, years, i);
+    let n = vals.len().min(years);
+    let mut i = 0;
+    while i < n {
+        if !vals[i].is_finite() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < n && vals[i].is_finite() {
+            i += 1;
+        }
+        let pts: Vec<(f32, f32)> = (start..i).map(|j| (x_of(j), y_at(h, vals[j], rg))).collect();
+        let cut = (mark + 1).saturating_sub(start).min(pts.len());
+        if filled {
+            // the second series: a quantity, filled down to the foot of the plot
+            let floor = h as f32 - PAD_Y;
+            cv.fill_under(&pts[..cut], floor, col, 0.2);
+            cv.fill_under(&pts[cut.saturating_sub(1)..], floor, col, 0.09);
+        }
+        if cut < pts.len() {
+            cv.stroke(&pts[cut.saturating_sub(1)..], half, faint(col, 0.42));
+        }
+        if cut > 0 {
+            cv.stroke(&pts[..cut], half, col);
+        }
+    }
+    vals.get(mark).filter(|v| v.is_finite()).map(|v| (x_of(mark), y_at(h, *v, rg)))
+}
+
+/// The canvas as sRGB bytes with alpha.
+fn bytes(cv: &Canvas) -> Vec<u8> {
+    let mut px = Vec::with_capacity(cv.w * cv.h * 4);
+    for p in &cv.px {
+        px.extend_from_slice(&[p[0].round() as u8, p[1].round() as u8, p[2].round() as u8, (p[3] * 255.0).round() as u8]);
+    }
+    px
+}
+
+/// Paint the plot of a chart.
+pub fn plot(c: &Chart) -> Plot {
+    let w = (c.plot_width() * SS).round().max(8.0) as usize;
+    let h = (c.height * SS).round().max(8.0) as usize;
+    let mut cv = paper(w, h, c.years, c.first_year, c.months, c.mark);
     let accent = [c.accent[0] as f32, c.accent[1] as f32, c.accent[2] as f32];
     let range2 = c.second.and_then(range);
     let range1 = range(c.line);
@@ -276,46 +332,83 @@ pub fn plot(c: &Chart) -> Plot {
     // the second line first, so the ink lies over it where they cross
     for (vals, rg, col, half, filled) in [(c.second, range2, accent, 0.7 * SS, true), (Some(c.line), range1, INK, 0.9 * SS, false)] {
         let (Some(vals), Some(rg)) = (vals, rg) else { continue };
-        let n = vals.len().min(c.years);
-        // each unbroken run of figures, split at the marker: what is still to come is fainter
-        let mut i = 0;
-        while i < n {
-            if !vals[i].is_finite() {
-                i += 1;
-                continue;
-            }
-            let start = i;
-            while i < n && vals[i].is_finite() {
-                i += 1;
-            }
-            let pts: Vec<(f32, f32)> = (start..i).map(|j| (x_of(j), y_of(vals[j], rg))).collect();
-            let cut = (mark + 1).saturating_sub(start).min(pts.len());
-            if filled {
-                // the second series: a quantity, filled down to the foot of the plot
-                let floor = h as f32 - pad_y;
-                cv.fill_under(&pts[..cut], floor, col, 0.2);
-                cv.fill_under(&pts[cut.saturating_sub(1)..], floor, col, 0.09);
-            }
-            if cut < pts.len() {
-                cv.stroke(&pts[cut.saturating_sub(1)..], half, faint(col, 0.42));
-            }
-            if cut > 0 {
-                cv.stroke(&pts[..cut], half, col);
-            }
-        }
-        if let Some(v) = vals.get(mark).filter(|v| v.is_finite()) {
-            dots.push(((x_of(mark), y_of(*v, rg)), col));
+        if let Some(at) = draw_line(&mut cv, vals, rg, col, half, filled, c.years, c.mark) {
+            dots.push((at, col));
         }
     }
     for (at, col) in dots {
         cv.dot(at, 2.6 * SS, col);
     }
+    Plot { w, h, px: bytes(&cv), range: range1, range2 }
+}
 
-    let mut px = Vec::with_capacity(w * h * 4);
-    for p in &cv.px {
-        px.extend_from_slice(&[p[0].round() as u8, p[1].round() as u8, p[2].round() as u8, (p[3] * 255.0).round() as u8]);
+/// The ink of a chart's line, which is the first of several on one scale.
+pub const INK_U8: [u8; 3] = [51, 43, 36];
+
+/// Several lines on one scale, each in a colour of its own, with no fill:
+/// shares of one thing, or indices of one base, set side by side. The scale
+/// runs over every line's figures together, and from nothing when `from_zero`.
+pub struct Lines<'a> {
+    /// the room there is, in pixels of the interface: the plot and its gutter on the left
+    pub width: f32,
+    /// height of the plot
+    pub height: f32,
+    /// one value per year from the first (NaN where there is none), and the line's colour
+    pub lines: &'a [(&'a [f32], [u8; 3])],
+    /// the year on screen, counted from the first
+    pub mark: usize,
+    /// how many years lie along the bottom
+    pub years: usize,
+    /// the calendar year of the first
+    pub first_year: i32,
+    /// the foot of the scale is nothing, so that shares read against nought
+    pub from_zero: bool,
+}
+
+impl Lines<'_> {
+    /// The same room as a `Chart` of one line, for its gutter and its years underneath.
+    fn as_chart(&self) -> Chart<'_> {
+        Chart { width: self.width, height: self.height, line: self.lines.first().map_or(&[][..], |l| l.0), second: None, accent: INK_U8, mark: self.mark, years: self.years, first_year: self.first_year, months: false }
     }
-    Plot { w, h, px, range: range1, range2 }
+
+    /// The one scale: the range of every line's figures together, from nothing when asked.
+    fn scale(&self) -> Option<(f32, f32)> {
+        let all: Vec<f32> = self.lines.iter().flat_map(|l| l.0.iter().take(self.years).copied()).collect();
+        let (lo, hi) = range(&all)?;
+        if !self.from_zero {
+            return Some((lo, hi));
+        }
+        let lo = lo.min(0.0);
+        Some((lo, if hi > lo { hi } else { lo + 1.0 }))
+    }
+}
+
+/// Paint several lines on one scale (`Lines`). The first line lies over the
+/// others where they cross, and each has a dot at the marker.
+pub fn plot_lines(c: &Lines) -> Plot {
+    let w = (c.as_chart().plot_width() * SS).round().max(8.0) as usize;
+    let h = (c.height * SS).round().max(8.0) as usize;
+    let mut cv = paper(w, h, c.years, c.first_year, false, c.mark);
+    let rg = c.scale();
+    let mut dots = Vec::new();
+    if let Some(rg) = rg {
+        for &(vals, col) in c.lines.iter().rev() {
+            let col = col.map(|v| v as f32);
+            if let Some(at) = draw_line(&mut cv, vals, rg, col, 0.85 * SS, false, c.years, c.mark) {
+                dots.push((at, col));
+            }
+        }
+    }
+    for (at, col) in dots {
+        cv.dot(at, 2.4 * SS, col);
+    }
+    Plot { w, h, px: bytes(&cv), range: rg, range2: None }
+}
+
+/// Spawn several lines on one scale: the plot, the low and high figures of
+/// the scale beside it (written by `figure`) and the first and last years.
+pub fn spawn_lines(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, c: &Lines, figure: &dyn Fn(f32) -> String) {
+    spawn_painted(p, f, images, &c.as_chart(), plot_lines(c), figure, figure);
 }
 
 fn image(p: &Plot) -> Image {
@@ -450,6 +543,43 @@ mod tests {
         assert_eq!(light(&p, x, mid), light(&bare, x, mid));
         let x = 6.0 * SS + 10.0;
         assert!(light(&p, x, mid) < light(&bare, x, mid) - 40.0);
+    }
+
+    #[test]
+    fn several_lines_share_one_scale_each_in_its_own_colour() {
+        // three level lines at 0.2, 0.5 and 0.8 of one thing, in three colours
+        let (a, b, c) = ([0.2f32; 11], [0.5f32; 11], [0.8f32; 11]);
+        let cols = [INK_U8, [204, 120, 56], [61, 120, 168]];
+        let lines = [(&a[..], cols[0]), (&b[..], cols[1]), (&c[..], cols[2])];
+        let mut l = Lines { width: 248.0, height: 60.0, lines: &lines, mark: 5, years: 11, first_year: 1750, from_zero: false };
+        let p = plot_lines(&l);
+        // one scale over all three, no gutter on the right
+        assert_eq!(p.range, Some((0.2, 0.8)));
+        assert_eq!(p.range2, None);
+        assert_eq!(p.w, 400);
+        // each colour is found on its own line, a little left of the marker, and not on the others'
+        let x = p.w as f32 * 0.3;
+        let near = |px: &[u8], col: [u8; 3]| (0..3).map(|i| (px[i] as i32 - col[i] as i32).abs()).max().unwrap() < 30;
+        for (v, col) in [(0.2, cols[0]), (0.5, cols[1]), (0.8, cols[2])] {
+            let y = y_at(p.h, v, (0.2, 0.8));
+            let i = (y as usize * p.w + x as usize) * 4;
+            assert!(near(&p.px[i..i + 3], col), "at {v}: {:?} is not {col:?}", &p.px[i..i + 3]);
+            for other in cols.iter().filter(|&&o| o != col) {
+                assert!(!near(&p.px[i..i + 3], *other));
+            }
+        }
+        // from nothing: the foot of the scale is 0, and the lowest line stands off it
+        l.from_zero = true;
+        let p = plot_lines(&l);
+        assert_eq!(p.range, Some((0.0, 0.8)));
+        let foot = y_at(p.h, 0.0, (0.0, 0.8));
+        assert!((foot - (p.h as f32 - PAD_Y)).abs() < 1e-3);
+        let i = (y_at(p.h, 0.2, (0.0, 0.8)) as usize * p.w + x as usize) * 4;
+        assert!(near(&p.px[i..i + 3], cols[0]));
+        // nothing to draw: no scale
+        let none = [f32::NAN; 11];
+        let empty = [(&none[..], cols[0])];
+        assert_eq!(plot_lines(&Lines { lines: &empty, ..l }).range, None);
     }
 
     #[test]

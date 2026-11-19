@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 
 use isostate_core::edits::{self, Edit, SWITCHABLE, SWITCHES};
 use isostate_core::params::{default_params, game_params};
-use isostate_core::rulebook::{rulebook, unfound, Entry, Kind, FIXED, PINNED};
+use isostate_core::rulebook::{rulebook, unfound, Entry, Kind, FIXED, PINNED, WIDE, WIDE_OFFERS};
 use isostate_core::save::Game;
 use isostate_core::sweep::set_field;
 
@@ -174,6 +174,46 @@ fn what_the_walk_says_of_an_offer_is_what_the_edit_does_with_it() {
         let t = C.tech_name.iter().position(|n| n == name).unwrap();
         assert!(!C.tech_known[t] && g.sim.st.tech_year[t] < 0 && *label == C.tech_label[t]);
     }
+}
+
+#[test]
+fn the_dial_is_offered_in_multiples_and_set_by_hand_to_tenfold() {
+    // The machines' dial (docs/rules/tasks.md) is turned in multiples, a tenth to a
+    // hundredfold, and stands among the most asked. Under game_params(): the dial's
+    // offers are read from the rules, so the case leans on no island's history but
+    // the dial being 1 under them (it says so if not).
+    assert!(PINNED.contains(&"tasks.dial") && WIDE.contains(&"tasks.dial"));
+    let P = game_params();
+    assert_eq!(P.tasks.dial, 1.0, "the game's dial is no longer 1: the words below are of its multiples");
+    let book = rulebook(&P);
+    let dial = entry(&book, "tasks.dial").unwrap();
+    let offered: Vec<(&str, f64)> = dial.offers.iter().map(|o| (o.word.as_str(), o.value.as_f64().unwrap())).collect();
+    assert_eq!(offered, [("A tenth", 0.1), ("A third", 1.0 / 3.0), ("As set", 1.0), ("Threefold", 3.0), ("Tenfold", 10.0), ("Hundredfold", 100.0)]);
+    assert_eq!(WIDE_OFFERS.map(|o| o.0), offered.iter().map(|o| o.0).collect::<Vec<_>>()[..]);
+    // a number not wide keeps the halves
+    let hurdle = entry(&book, "hurdle").unwrap();
+    assert_eq!(hurdle.offers.iter().map(|o| o.word.as_str()).collect::<Vec<_>>(), ["None", "Half", "As set", "Half again", "Double"]);
+    // island 7 under the game's rules with six families, at the turn into 1790 (as the walk's
+    // case above): Tenfold is carried out by hand, and the next walk has the dial at 10, Tenfold
+    // inked (refused as the value it has already) and As set offered back
+    let mut g = Game::new(7, 6, 1_000);
+    for _ in 0..40 {
+        g.year().unwrap();
+        g.turn();
+    }
+    assert_eq!(g.last_year(), 1789);
+    let ten = rulebook(&g.sim.params).into_iter().find(|e| e.name == "tasks.dial").unwrap().offers.into_iter().find(|o| o.word == "Tenfold").unwrap();
+    assert_eq!(ten.refused, None);
+    let done = edits::carry_out(&mut g.sim, &Edit::Rule { name: "tasks.dial".into(), value: ten.value.clone() });
+    assert!(done.is_ok(), "{done:?}");
+    assert_eq!(g.sim.params.tasks.dial, 10.0);
+    let after = rulebook(&g.sim.params);
+    let dial = entry(&after, "tasks.dial").unwrap();
+    assert_eq!(dial.value.as_f64(), Some(10.0));
+    assert_eq!(dial.game.as_f64(), Some(1.0));
+    let inked: Vec<&str> = dial.offers.iter().filter(|o| o.refused.as_deref().is_some_and(|w| w.ends_with("already"))).map(|o| o.word.as_str()).collect();
+    assert_eq!(inked, ["Tenfold"]);
+    assert!(dial.offers.iter().any(|o| o.word == "As set" && o.refused.is_none()));
 }
 
 #[test]
