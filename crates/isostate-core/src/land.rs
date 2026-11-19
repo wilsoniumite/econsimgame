@@ -312,12 +312,15 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
     let mut c_new = vec![0.0; N];
     let mut cleared = vec![0.0; N];
     let mut wood_share = vec![0.0; N];
+    // woods (docs/rules/woods.md): where its market town knows managed woodland,
+    // the woods grow back faster; with the rule off the rate is the port's
+    let managed = crate::woods::managed(C, P);
     for c in 0..N {
         let pot = st.world.forest_pot[c];
         wood_share[c] = lam_new[(fi, c)] + lam_new[(NS, c)];
         let old_wood = if initial { wood_share[c] } else { lam[(fi, c)] + lam[(NS, c)] };
         let cv = st.cover[c];
-        let regrow = P.forest_regrow * cv * (1.0 - cv / pot.max(1e-6)) + 0.01 * (pot - cv);
+        let regrow = crate::woods::regrow(st, P, managed, c) * cv * (1.0 - cv / pot.max(1e-6)) + 0.01 * (pot - cv);
         c_new[c] = (cv + regrow * bool_f(wood_share[c] > 0.0)).max(0.0).min(pot);
         cleared[c] = (old_wood - wood_share[c]).max(0.0) * c_new[c];
     }

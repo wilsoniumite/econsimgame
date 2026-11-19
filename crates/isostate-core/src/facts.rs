@@ -961,6 +961,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::mines::facts(r, g) {
         b.num(name, kind, v);
     }
+    // woods (docs/rules/woods.md): the woods' cover and timber in months of the wage, by decade
+    for (name, kind, v) in crate::woods::facts(r) {
+        b.num(name, kind, v);
+    }
     // of the cells urban in a year, the share not urban ten years on
     let mut churn = Vec::new();
     for k in 0..n.saturating_sub(10) {

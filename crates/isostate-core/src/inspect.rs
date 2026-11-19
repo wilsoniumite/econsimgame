@@ -419,6 +419,16 @@ fn cell(sim: &Sim, c: usize) -> Result<(String, Vec<Group>), String> {
     for (field, word) in LAND {
         g.row(word, land_word(sim, field, c));
     }
+    // woods (docs/rules/woods.md): how thick its woods stand against what the
+    // ground could carry, and whether its market's foresters manage them
+    let pot = st.world.forest_pot[c];
+    if P.woods.record && pot > 0.0 {
+        let managed = match crate::woods::known_at(st, C, P, c) {
+            Some(k) if k >= 0.005 => format!(", managed by {} of its foresters", pct(k)),
+            _ => String::new(),
+        };
+        g.row("woods' cover", format!("{} of what the ground could carry{managed}", pct(st.cover[c] / pot)));
+    }
     if st.firm_at[c] >= 0 && st.f_alive.get(st.firm_at[c] as usize) == Some(&true) {
         let f = st.firm_at[c] as usize;
         g.row("works on it", format!("{}, {}", st.f_name[f], lower(&C.method_label[st.f_method[f]])));
