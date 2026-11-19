@@ -830,18 +830,23 @@ fn a_sandbox_is_kept_in_its_session_and_a_plain_start_goes_on_with_it() {
     assert_eq!(edits_carried_out(&c), "2");
     drop(c);
 
-    // a --new sandbox start makes the island anew, and does not touch the session until it is first saved,
-    // when the session is set aside whole
+    // a --new sandbox start makes the island anew and is saved at once, so that it is the session a plain
+    // start goes on with from now: the session that was there is set aside whole
     let mut d = Table::open(&sandbox(true));
     assert!(d.live.resumed.is_none());
-    assert_eq!(by_hand(&saves::read(&file).unwrap()), 2, "the session was touched before the new one was saved");
-    assert!(!saves::previous(&file).exists());
-    d.month();
-    drop(d);
     let aside = saves::read(&saves::previous(&file)).expect("the session before is set aside");
     assert_eq!((aside.year, aside.month, by_hand(&aside)), (year as i64, 5, 2));
     let now = saves::read(&file).unwrap();
-    assert!(now.orders.is_empty() && now.month == 1, "{} orders, {} months in", now.orders.len(), now.month);
+    assert!(now.orders.is_empty() && (now.year, now.month) == (1750, 0), "{} orders, {} {}", now.orders.len(), now.year, now.month);
+    // and kept as it is played
+    d.month();
+    drop(d);
+    assert_eq!(saves::read(&file).unwrap().month, 1);
+    assert_eq!(saves::read(&saves::previous(&file)).unwrap(), aside, "set aside once");
+    // a plain start now goes on with the new session, which nobody did anything in
+    let e = Table::open(&sandbox(false));
+    assert_eq!(e.live.resumed.as_ref().map(|r| (r.month, r.by_hand)), Some((1, 0)));
+    drop(e);
 
     // a sandbox nobody is at is kept nowhere, unless --keep asks for its session in a folder named for it
     assert_eq!(Opening { sandbox: true, unattended: true, ..default() }.keeping(), Keeping::Nowhere);

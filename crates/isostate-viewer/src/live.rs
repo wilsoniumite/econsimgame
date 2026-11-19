@@ -838,6 +838,17 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     }
     // a game saved in the middle of a year is gone on with there: the months played of it
     board.months(&game.sim, game.month);
+    // and the news since the last year's end (an edit by hand given again in those months, or at the
+    // turn), which a game played through the window has had with each month and which the next month
+    // would otherwise bring: the Hand tab and the timeline list a session's edits when it opens
+    if from.is_some() && game.sim.t > 0 {
+        let s = &game.sim;
+        let since = iso::live_month(&mut board.cursor, &s.st, &s.content, &s.params, &s.events, s.t - 1).events;
+        if !since.is_empty() {
+            add_news(&mut board.r, &since);
+            board.r.header.events.sort_by(|a, b| a.year.total_cmp(&b.year));
+        }
+    }
     // and each town's prices and wages in those months and in the last year's, as the books kept
     // them, so the price and wage maps show the months nobody watched as they show the ones that
     // come; a game played through the window holds the same (`Months`)
@@ -865,8 +876,16 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     if let Some(s) = saver.as_ref().filter(|s| s.path.exists()) {
         match saves::read(&s.path) {
             Ok(there) if there.started != game.started || there.seed != game.sim.params.seed || there.families != game.sim.params.n_families => {
-                let whose = format!("the {} family's, which had reached {} with {} order{}", there.family, there.year, there.orders.len() + there.waiting.len(), if there.orders.len() + there.waiting.len() == 1 { "" } else { "s" });
-                if saves::holds_orders(&there) {
+                let n = there.orders.len() + there.waiting.len();
+                let whose = format!("the {} family's, which had reached {} with {n} order{}", there.family, there.year, if n == 1 { "" } else { "s" });
+                if o.keeping() == Keeping::Session {
+                    // (a session's orders are its edits, and its family 0 is nobody's)
+                    if saves::holds_orders(&there) {
+                        eprintln!("another session is kept there, which had reached {} with {n} edit{} by hand: it is not written over, but set aside whole as {} (--load FILE goes on with it)", there.year, if n == 1 { "" } else { "s" }, saves::previous(&s.path).display());
+                    } else {
+                        eprintln!("another session is kept there, which had reached {}: nothing was done by hand in it, so it is written over, and the same island makes it again", there.year);
+                    }
+                } else if saves::holds_orders(&there) {
                     eprintln!(
                         "another game is kept there ({whose}): it is not written over, but set aside whole as {} when this game is first saved (--load FILE goes on with it)",
                         saves::previous(&s.path).display()
@@ -892,8 +911,18 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
         }
         // the autosave is first written when something happens in the game
         (Some(s), Keeping::Autosave) => eprintln!("the game is kept in {}", s.path.display()),
-        // and so is a sandbox's session
-        (Some(s), Keeping::Session) => eprintln!("the session is kept in {}", s.path.display()),
+        // a sandbox's session gone on with is too; a new one is written at once, so that the island made
+        // anew (Begin again, --new, --advance) is the session a plain start goes on with from now, even if
+        // nothing is done in it, and the one that was there is set aside now (`Saver::write`)
+        (Some(s), Keeping::Session) => {
+            if from.is_none() {
+                if let Err(e) = s.write(&game.save(saves::now()), true) {
+                    // (the thread says so on the screen if the next save fails too)
+                    eprintln!("the session could not be saved: {e}");
+                }
+            }
+            eprintln!("the session is kept in {}", s.path.display());
+        }
         // (a trial has said where it is kept, and a game that is not kept that it is not)
         _ => {}
     }
