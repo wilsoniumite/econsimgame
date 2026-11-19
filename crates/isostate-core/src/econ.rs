@@ -485,6 +485,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // (half of it in the game, nothing at `harvest.foreseen` 0)
     harvest::foreseen(st, P, &mut Cc);
     let lam = st.ex_lam.clone();
+    // tasks (docs/rules/tasks.md, "On the land" and "The ceiling on yield"):
+    // where machines hold part of a land sector's work, its units pay their
+    // share for work to a mixture of hands and machine units, at the cost of
+    // an hour's work `cL` in place of the wage; and while the ceiling is in
+    // force, a unit that stood at it last month hires only the work it needs.
+    // None, and the month as it was, while neither acts
+    let lt = crate::tasks::land_month(st, C, P, &pe, &ex, &sec, &et, &A, &f, &lam, &alpha);
 
     // ---------------- firms: unit economics at their own location
     let fi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_K[i] > 1e-9).collect();
@@ -582,9 +589,14 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut sum_l = vec![0.0; T];
     let sector_inv_alpha: Vec<f64> = C.sector_alpha.iter().map(|&x| 1.0 / x).collect();
     let mut town_units: Vec<Vec<usize>> = vec![Vec::new(); T];
+    // tasks: the hands the units at the ceiling want, which no wage moves, by town
+    let mut cap_l = vec![0.0; T];
     for u in 0..NE {
         x_pow[u] = lam[u] * Cc[u].powf(inv_alpha[u]);
-        sum_x[et[u] * NS + sec[u]] += x_pow[u];
+        match &lt {
+            Some(l) if l.capped[u] => cap_l[et[u]] += l.hands[u] * l.cap_work[u],
+            _ => sum_x[et[u] * NS + sec[u]] += x_pow[u],
+        }
         sum_l[et[u]] += Lprev_ex[u];
         if !aggregate {
             town_units[et[u]].push(u);
@@ -595,6 +607,26 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     for i in 0..NFI {
         town_firms[ft[i]].push(i);
     }
+    // tasks: the hands unit u wants at wage w where machines or the ceiling act,
+    // and the derivative of that in log w (less its sign). Work wanted is
+    // `lam * (Cc / cL)^(1/alpha)` at `cL = hands * w + cost`, and hands are
+    // that times `hands`; a unit at the ceiling wants what the ceiling needs
+    let land_want = |l: &crate::tasks::LandMonth, u: usize, w: f64| -> (f64, f64) {
+        if l.capped[u] {
+            return (l.hands[u] * l.cap_work[u], 0.0);
+        }
+        match l.mix_of(et[u], sec[u], NS) {
+            Some(m) => {
+                let cl = m.cost_of_work(w);
+                let v = m.hands * lam[u] * (Cc[u] / cl).powf(inv_alpha[u]);
+                (v, inv_alpha[u] * v * m.hands * w / cl)
+            }
+            None => {
+                let v = lam[u] * (Cc[u] / w).powf(inv_alpha[u]);
+                (v, inv_alpha[u] * v)
+            }
+        }
+    };
     // Labour demand of town t at log wage x, summed as one bisection step sums it,
     // and (with `slope`) its derivative in x for the Newton steps.
     let town_demand = |t: usize, x: f64, slope: bool| -> (f64, f64) {
@@ -605,14 +637,34 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             for s in 0..NS {
                 let sx = sum_x[t * NS + s];
                 if sx != 0.0 {
-                    let wp = wt.powf(-sector_inv_alpha[s]);
-                    s_tw += sx * wp;
-                    dd -= kx * sector_inv_alpha[s] * sx * wp;
+                    // tasks: at the cost of an hour's work, and hands an hour of it
+                    if let Some(m) = lt.as_ref().and_then(|l| l.mix_of(t, s, NS)) {
+                        let cl = m.cost_of_work(wt);
+                        let wp = cl.powf(-sector_inv_alpha[s]);
+                        s_tw += sx * m.hands * wp;
+                        dd -= kx * sector_inv_alpha[s] * sx * m.hands * wp * m.hands * wt / cl;
+                    } else {
+                        let wp = wt.powf(-sector_inv_alpha[s]);
+                        s_tw += sx * wp;
+                        dd -= kx * sector_inv_alpha[s] * sx * wp;
+                    }
                 }
+            }
+            if lt.is_some() {
+                s_tw += cap_l[t];
             }
             d = sum_l[t] + kx * (s_tw - sum_l[t]);
         } else {
             for &u in &town_units[t] {
+                if let Some(l) = &lt {
+                    let (want, dw) = land_want(l, u, wt);
+                    let Lx = Lprev_ex[u] + kx * (want - Lprev_ex[u]);
+                    d += Lx.max(0.0);
+                    if Lx > 0.0 {
+                        dd -= kx * dw;
+                    }
+                    continue;
+                }
                 let Lx = Lprev_ex[u] + kx * (lam[u] * (Cc[u] / wt).powf(inv_alpha[u]) - Lprev_ex[u]);
                 d += Lx.max(0.0);
                 if Lx > 0.0 {
@@ -671,6 +723,19 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mut Lex: Vec<f64> = (0..NE)
         .map(|u| (Lprev_ex[u] + kx * (x_pow[u] * wpow[et[u] * NS + sec[u]] - Lprev_ex[u])).max(0.0))
         .collect();
+    // tasks: where machines or the ceiling act, the hands at the cost of an hour's work
+    if let Some(l) = &lt {
+        for u in 0..NE {
+            let want = if l.capped[u] {
+                l.hands[u] * l.cap_work[u]
+            } else if let Some(m) = l.mix_of(et[u], sec[u], NS) {
+                x_pow[u] * m.hands * m.cost_of_work(wq[et[u]]).powf(-inv_alpha[u])
+            } else {
+                continue;
+            };
+            Lex[u] = (Lprev_ex[u] + kx * (want - Lprev_ex[u])).max(0.0);
+        }
+    }
     let mut Lf = vec![0.0; NFI];
     let mut ufirm = vec![0.0; NFI];
     for i in 0..NFI {
@@ -684,7 +749,38 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     st.ex_Lprev = Lex.clone();
     // Python: A * f * lam**alpha * Lex**(1 - alpha). lam > 0 on every unit, so
     // lam * (Lex / lam)**(1 - alpha) is the same number with one power instead of two.
-    let Y: Vec<f64> = (0..NE).map(|u| A[u] * f[u] * (lam[u] * (Lex[u] / lam[u]).powf(1.0 - alpha[u]))).collect();
+    // (tasks: of the hands, the work is the hands over hands an hour of work)
+    let mut Y: Vec<f64> = (0..NE)
+        .map(|u| {
+            let L = match &lt {
+                Some(l) => Lex[u] / l.hands[u],
+                None => Lex[u],
+            };
+            A[u] * f[u] * (lam[u] * (L / lam[u]).powf(1.0 - alpha[u]))
+        })
+        .collect();
+    // tasks: no unit raises more than its ceiling; it stands at it next month if
+    // the work it wants at this month's wage would take it there
+    let at_ceiling = lt.as_ref().filter(|l| l.ceiling.iter().any(|c| c.is_finite())).map(|l| {
+        let (mut flag, mut capped, mut all) = (vec![false; NE], 0.0, 0.0);
+        for u in 0..NE {
+            let c = l.ceiling[u];
+            let p = st.price[(et[u], g_s[u])];
+            if c.is_finite() {
+                let w = wq[et[u]];
+                let cl = l.mix_of(et[u], sec[u], NS).map_or(w, |m| m.cost_of_work(w));
+                let want = x_pow[u] * cl.powf(-inv_alpha[u]);
+                flag[u] = A[u] * f[u] * (lam[u] * (want / lam[u]).powf(1.0 - alpha[u])) >= c;
+                if Y[u] >= c {
+                    Y[u] = c;
+                    capped += p * c;
+                }
+            }
+            all += p * Y[u];
+        }
+        (flag, capped, all)
+    });
+    crate::tasks::note_yields(st, C, P, &ex, &sec, &Y, &lam);
     let q_des: Vec<f64> = (0..NFI)
         .map(|i| {
             let q = if l[i] > 0.0 { Lf[i] / (l[i] * phi_prev[i].max(0.05)).max(1e-12) } else { 0.0 };
@@ -714,10 +810,22 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mine_rail: Vec<f64> = (0..NE).map(|u| Y[u] * rail_unit[u]).collect();
     add_column(&mut R, gm, &bincount(&et, &mine_mach, T));
     add_column(&mut R, gr, &bincount(&et, &mine_rail, T));
+    // tasks: the land's machines ask for their run goods with the day's trade,
+    // and for their plant (below) beside the works' orders
+    let lbuy = lt.as_ref().and_then(|l| crate::tasks::land_orders(st, C, l, &et, &sec, &Lex));
+    if let Some(b) = &lbuy {
+        for t in 0..T {
+            for s in 0..NS {
+                for g in 0..G {
+                    R[(t, g)] += b.run[(t * NS + s, g)];
+                }
+            }
+        }
+    }
     // harvest: the year's weather is felt here, after the hands are hired and the
     // machines asked for on an average year's yield. From here on Y is the crop
     // actually brought in.
-    let Y = harvest::brought_in(st, C, P, Y);
+    let mut Y = harvest::brought_in(st, C, P, Y);
     let oi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
     let ot: Vec<usize> = oi.iter().map(|&i| st.f_town[i]).collect();
     let mut req_inv = Mat::zeros(oi.len(), G);
@@ -737,6 +845,15 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let mach_orders = crate::tasks::orders(st, C, P);
     if let Some(mo) = &mach_orders {
         add_by_town(&mut R, &mo.towns, &mo.req);
+    }
+    if let Some(b) = &lbuy {
+        for t in 0..T {
+            for s in 0..NS {
+                for g in 0..G {
+                    R[(t, g)] += b.plant[(t * NS + s, g)];
+                }
+            }
+        }
     }
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for pr in &st.projects {
@@ -775,6 +892,32 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         Some(now) => crate::tree::plant_waits(&st.inv, now, &R, &mut fill),
         None => fill.clone(),
     };
+    // tasks: what the land's machines got, run goods and plant by town and
+    // sector; and where their run goods were short, the machines stood idle
+    // for that part of their work, and the crop is the smaller for it
+    let land_got = lbuy.as_ref().map(|b| {
+        let (mut got, mut plant) = (Mat::zeros(T * NS, G), Mat::zeros(T * NS, G));
+        for t in 0..T {
+            for s in 0..NS {
+                let r = t * NS + s;
+                for g in 0..G {
+                    plant[(r, g)] = b.plant[(r, g)] * fill_plant[(t, g)];
+                    got[(r, g)] = b.run[(r, g)] * fill[(t, g)] + plant[(r, g)];
+                }
+            }
+        }
+        (got, plant)
+    });
+    if let (Some(l), Some(_)) = (&lt, &lbuy) {
+        for u in 0..NE {
+            if let Some(m) = l.mix_of(et[u], sec[u], NS) {
+                let fr = m.run.iter().map(|&(g, _)| fill[(et[u], g)]).fold(1.0, f64::min);
+                if fr < 1.0 {
+                    Y[u] *= (1.0 - m.machine_work * (1.0 - fr)).powf(1.0 - alpha[u]);
+                }
+            }
+        }
+    }
 
     // ---------------- execute: firms produce what their scarcest input allows
     let mut q = vec![0.0; NFI];
@@ -843,6 +986,15 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     });
     add_column(&mut sold, gm, &bincount(&et, &mach_got, T));
     add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
+    if let Some((got, _)) = &land_got {
+        for t in 0..T {
+            for s in 0..NS {
+                for g in 0..G {
+                    sold[(t, g)] += got[(t * NS + s, g)];
+                }
+            }
+        }
+    }
     let mut proj_got: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for (pr, rq) in st.projects.iter().zip(&proj_req) {
         let got: Vec<f64> = (0..G).map(|g| rq[g] * fill_plant[(pr.town, g)]).collect(); // tree: plant waits
@@ -901,7 +1053,18 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // land-based enterprises
     let p = &st.price;
     let value: Vec<f64> = (0..NE).map(|u| p[(et[u], g_s[u])] * Y[u]).collect();
-    let in_paid: Vec<f64> = (0..NE).map(|u| mach_got[u] * p[(et[u], gm)] + rail_got[u] * p[(et[u], gr)]).collect();
+    let mut in_paid: Vec<f64> = (0..NE).map(|u| mach_got[u] * p[(et[u], gm)] + rail_got[u] * p[(et[u], gr)]).collect();
+    // tasks: each unit pays for its sector's machines' goods by its part of the
+    // work; the return on their plant stays in the rent
+    if let (Some(b), Some((got, _))) = (&lbuy, &land_got) {
+        let paid: Vec<f64> = (0..T * NS).map(|r| pairwise_sum_by(G, |g| got[(r, g)] * p[(r / NS, g)])).collect();
+        for u in 0..NE {
+            let r = et[u] * NS + sec[u];
+            if b.work[r] > 0.0 && paid[r] != 0.0 {
+                in_paid[u] += paid[r] * (b.unit_work[u] / b.work[r]);
+            }
+        }
+    }
     let mut wage_ex: Vec<f64> = (0..NE).map(|u| w[et[u]] * Lex[u]).collect();
     crate::mines::pay_crews(st, P, &w, &mut wage_ex); // mines: the sinkers are paid before the royalty
     let cart_ex: Vec<f64> = (0..NE).map(|u| st.ex_tau[u] * Y[u]).collect();
@@ -980,6 +1143,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         add_to(&mut merch, &by_town);
         add_to(&mut sales_value, &by_town);
         st.m_invest += pairwise_sum(&pay);
+    }
+    // tasks: the land's plant goes into place as it arrives (paid above, in the rent)
+    if let (Some(b), Some((_, plant))) = (&lbuy, &land_got) {
+        crate::tasks::land_deliver(st, C, b, plant);
     }
 
     let mut proj_spend = 0.0;
@@ -1165,6 +1332,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
             q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
             oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got,
+            land_tasks: land_got.as_ref().map(|g| &g.0),
             R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
         });
     }
@@ -1314,6 +1482,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
     st.ex_labor = Lex.clone();
     crate::mines::add_crews(st, P); // mines: the sinkers are hands at their workings
+    // tasks: the land's work this month, and who stood at the ceiling
+    if lbuy.is_some() || at_ceiling.is_some() || st.tasks.land_work.iter().any(|&v| v != 0.0) {
+        let ceiling = at_ceiling.as_ref().map(|(flag, c, a)| (&ex[..], &sec[..], &flag[..], *c, *a));
+        crate::tasks::land_note(st, C, lbuy.as_ref().map(|b| &b.work[..]), ceiling);
+    }
     st.ex_out = Y.clone();
     st.f_labor.iter_mut().for_each(|v| *v = 0.0);
     for (k, &i) in fi.iter().enumerate() {

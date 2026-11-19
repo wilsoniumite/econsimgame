@@ -6,7 +6,7 @@
 //! Each island is played under the game's rules on a thread of its own. For
 //! every year from `--from` it prints, and writes to `--csv`: the hoist's
 //! quality (nothing until found), the share of the works' hauling machines
-//! do, the towns' target for it, the wage over a unit's cost (the
+//! do, the same at the pits and quarries (`tasks.land`), the towns' target for it, the wage over a unit's cost (the
 //! waterline), the margin's gap, the machines' book in years of the wage
 //! bill, the shares of hands on the land and in the works, the share living
 //! in towns, and the island's mean wage and price of machinery and coal.
@@ -63,7 +63,7 @@ fn main() {
             })
         })
         .collect();
-    let head = "seed,year,quality,auto_haul,target_haul,waterline,margin_gap,machines_years,land_share,works_share,urban_share,wage,price_machinery,price_coal";
+    let head = "seed,year,quality,auto_haul,auto_haul_pits,target_haul,waterline,margin_gap,machines_years,land_share,works_share,urban_share,wage,price_machinery,price_coal";
     let mut out = vec![head.to_string()];
     for h in handles {
         let rs = h.join().expect("a run");
@@ -90,9 +90,12 @@ fn rows(r: &RunResult, seed: u64, from: i64) -> Vec<String> {
             _ => f64::NAN,
         };
         let bill = st.acct.years.iter().find(|a| a.year == y).map_or(f64::NAN, |a| a.wage_bill);
+        let pits = (0..C.NS.min(t.land_work.len())).filter(|&k| mines::is_extractive(&C.sector_name[k]));
+        let (ph, pw) = pits.fold((0.0, 0.0), |(h, w), k| (h + t.land_held[k][0], w + t.land_work[k][0]));
         out.push(format!(
-            "{seed},{y},{q:.3},{:.4},{:.4},{:.3},{:.3},{:.3},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3}",
+            "{seed},{y},{q:.3},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3},{:.4},{:.4},{:.4},{:.3},{:.3},{:.3}",
             ratio(t.held[0], t.work[0]),
+            ratio(ph, pw),
             t.target[0],
             t.waterline[0],
             t.margin_gap[0],

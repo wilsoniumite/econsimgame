@@ -2,9 +2,10 @@
 //! With the switch off the golden test (tests/golden.rs) covers that the port
 //! did not move.
 //!
-//! The island runs here are played on island 7 to 1925 under the game's rules
-//! with six families, with the switch they lean on set by name
-//! (`tasks.enabled`) and every other rule as the game has it. What they check
+//! The island runs here are played on island 7 to 1925 (and to 1949 for the
+//! ceiling on yield) under the game's rules with six families, with the
+//! switches they lean on set by name (`tasks.enabled`, `tasks.land`,
+//! `tasks.yield_cap`) and every other rule as the game has it. What they check
 //! holds on any island's history (a run against another run, a new works
 //! against its town, shares within their bounds, money that adds up), so a
 //! later rule that changes island 7's history cannot break them; only one
@@ -144,4 +145,91 @@ fn island_7_to_1925() {
     let (on, none, off) = (on.join().unwrap(), none.join().unwrap(), off.join().unwrap());
     assert_eq!(none, off, "with no use the rule moved the run");
     assert_ne!(on, off, "the hoist moved nothing");
+}
+
+/// Runs `P` on content `C` to its end, and gives `save::check` of it.
+fn check_of(P: Params, C: Content) -> std::thread::JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut s = sim::start(&P, C);
+        while s.year <= s.end_year {
+            sim::run_year(&mut s).expect("money is conserved every month");
+        }
+        save::check(&s)
+    })
+}
+
+/// The land ("On the land"), on island 7 to 1925 with `tasks.enabled` on and
+/// `tasks.land` set by name. With no use reaching any land sector (every
+/// use's sectors cleared in code) the run is the run with `tasks.land` off,
+/// to the last digit; with the hoist at the pits it is not. In the run with
+/// the hoist: a sector no use reaches holds nothing in any town in any year,
+/// the pits' shares stay between the hoist's `from` and `reach`, and some
+/// pit comes to hold part of its hauling.
+#[test]
+fn island_7_to_1925_on_the_land() {
+    let land = |on: bool| {
+        let mut P = params(true);
+        P.tasks.land = on;
+        P
+    };
+    let on = std::thread::spawn(move || {
+        let P = land(true);
+        let mut s = sim::start(&P, content(&P));
+        let us = s.content.tasks.uses[0].clone();
+        let mut most: f64 = 0.0;
+        while s.year <= s.end_year {
+            let year = s.year;
+            sim::run_year(&mut s).expect("money is conserved every month");
+            let (st, C) = (&s.st, &s.content);
+            for row in &st.tasks.land_auto {
+                for (k, auto) in row.iter().enumerate() {
+                    if us.on_sector[k] {
+                        let x = auto[tasks::HAUL];
+                        assert!(x == 0.0 || (us.from..=us.reach).contains(&x), "{year}: {} holds {x}", C.sector_name[k]);
+                        assert!(auto.iter().enumerate().all(|(c, &v)| c == tasks::HAUL || v == 0.0));
+                        most = most.max(x);
+                    } else {
+                        assert_eq!(*auto, [0.0; tasks::K], "{year}: {}, which no use reaches, holds {auto:?}", C.sector_name[k]);
+                    }
+                }
+            }
+        }
+        assert!(most > 0.0, "no pit came to hold any of its hauling by {END}");
+        save::check(&s)
+    });
+    let P = land(true);
+    let mut none = content(&P);
+    none.tasks.uses.iter_mut().for_each(|u| u.on_sector.iter_mut().for_each(|b| *b = false));
+    let none = check_of(P, none);
+    let off = check_of(land(false), content(&land(false)));
+    let (on, none, off) = (on.join().unwrap(), none.join().unwrap(), off.join().unwrap());
+    assert_eq!(none, off, "with no use on the land the land's switch moved the run");
+    assert_ne!(on, off, "the hoist at the pits moved nothing");
+}
+
+/// The ceiling on yield is inert before 1950 by construction: island 7 to
+/// 1949, played under the game's rules with `tasks.yield_cap` set by name to
+/// 2, is the run with it unset to the last digit; and by then the ground
+/// worked has its best years kept.
+#[test]
+fn the_ceiling_waits_for_1950() {
+    let cap = |c: Option<f64>| {
+        let mut P = params(true);
+        P.end_year = Some(1949);
+        P.tasks.yield_cap = c;
+        P
+    };
+    let kept = std::thread::spawn(move || {
+        let P = cap(Some(2.0));
+        let mut s = sim::start(&P, content(&P));
+        while s.year <= s.end_year {
+            sim::run_year(&mut s).expect("money is conserved every month");
+        }
+        let kept = s.st.tasks.best.iter().filter(|&&b| b > 0.0).count();
+        assert!(kept > 100, "only {kept} grounds have a best year kept");
+        assert_eq!(s.st.tasks.year_now, 1950);
+        save::check(&s)
+    });
+    let unset = check_of(cap(None), content(&cap(None)));
+    assert_eq!(kept.join().unwrap(), unset.join().unwrap(), "the ceiling moved the run before 1950");
 }

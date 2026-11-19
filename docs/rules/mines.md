@@ -1144,6 +1144,21 @@ still stops at the top of its range; only the hands that do not exist are
 gone. A fuller mend would also let the wage rise further in a month when the
 town is short of hands, which moves more.
 
+## Machines for tasks at the pits
+
+Since the run to 2050's fifth stage, under `tasks.land` ([tasks.md](tasks.md),
+"On the land"), a machine for a task that names the quarries, the clay pits,
+the iron mines or the collieries (today the hoist, a stand-in found from
+1901) takes part of a working's hauling. A working is still a land unit of
+the month, so it hires its hands and machine units at the cost of an hour's
+work in place of the wage, and buys its machines' coal and plant out of what
+it raises, before the royalty; and the year's review prices a prospect's
+deposit at the same cost (`mines::review`), while a prospect's royalty is
+still counted in wages against `open_at`. Nothing of it acts before 1901.
+On eight islands to 2050 the share of all hands at the diggings is 0.124
+with it in 1950 against 0.140 with the hoist in works alone (0.131 with no
+machine for tasks), and 0.114 against 0.136 in 1980.
+
 ## What worries me
 
 - **Bad years.** Earlier builds of this mechanism had years in which a
