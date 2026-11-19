@@ -746,19 +746,23 @@ in 1900 and 0.178 in 2050, grain a farm hand 3.7 times 1900's in 1975 (5.71,
 and 1.05, with island 9 falling after 1990 to 0.93 of its 1970). Island 9
 now climbs to 13.6 by 2000 and stays there (13.3 to 13.8) to 2050, 1.07 times
 its 1970: the late century's stall is still there, as a plateau and not a
-fall. On the new land (`--set land.enabled=true`, islands 1 to 8): 1.12 per
-cent a year (0.71 to 1.53), 2050 over 1970 1.13, hands on the land 0.250 to
-0.174, against 0.63 per cent and 1.03 on main's new land; its island 7 grows
-0.71 and its island 4 0.94.
+fall. Every number above is of the old land (`land.enabled=false`), the
+game's default when they were measured. On the new land, the default since
+the same evening: on islands 1 to 8, 1.12 per cent a year (0.71 to 1.53),
+2050 over 1970 1.13, hands on the land 0.250 to 0.174 and grain a farm hand
+3.85 times 1900's in 1975, against 0.63 per cent and 1.03 on main's new land
+(its island 7 grows 0.71 and its island 4 0.94); on islands 9 to 16, 1.12
+(0.94 to 1.32) and 1.15, against 0.66 and 1.06.
 
 ```bash
 isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year 2050 --standing --growth --compare MAIN --out DIR
-isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --set land.enabled=true --standing --growth --compare MAIN_NEW_LAND --out DIR
+isostate-core sweep --seeds 1-16 --rules game --families 6 --end-year 2050 --set land.enabled=false --standing --growth --compare MAIN_OLD_LAND --out DIR
 ```
 
 Both end clean: the standing check 12 of 12 inside against main, and the
-three asks of growth after 1900 met (on islands 1 to 16, 1.12 per cent a
-year as the check reads it, the mean of the islands' own rates).
+three asks of growth after 1900 met (on islands 1 to 16, 1.13 per cent a
+year on the new land and 1.12 on the old as the check reads it, the mean of
+the islands' own rates).
 
 ## What worries me
 
