@@ -180,6 +180,9 @@ pub struct Use {
     /// Found at the first year's turn when the island has made this much of
     /// each good, counted from the start year.
     pub discover: Vec<(usize, f64)>,
+    /// `discover` is read per head (`discover_per_head`): what the island has
+    /// made of each good, over its people at the year's end.
+    pub discover_per_head: bool,
     /// Multiplies everything one machine takes.
     pub scale: f64,
     /// The use this one takes the place of (`replaces`): where this one is
@@ -276,6 +279,9 @@ struct RawUse {
     cap: f64,
     found_after: i64,
     discover: BTreeMap<String, f64>,
+    /// The thresholds of `discover` are per head of the island's people.
+    #[serde(default)]
+    discover_per_head: bool,
     scale: f64,
     /// Where this use is laid, the use of this name no longer reaches the
     /// places this one is `on`.
@@ -394,6 +400,7 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             cap: u.cap,
             found_after: u.found_after,
             discover,
+            discover_per_head: u.discover_per_head,
             scale: u.scale,
             replaces: u.replaces.clone(),
             switch: u.switch.clone(),
@@ -1747,11 +1754,14 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     }
     // found at this turn of the year, for the next
     let next = year + 1;
+    // the island's people at the year's end, for a threshold read per head
+    let people: f64 = st.pop.iter().sum::<f64>().max(1.0);
     for u in 0..nu {
         let us = &C.tasks.uses[u];
         if st.tasks.found[u] < 0 {
             // a use behind a switch that is off is never found
-            if us.allowed(P) && next >= us.found_after && us.discover.iter().all(|&(g, x)| st.cumprod[g] >= x) {
+            let made = |g: usize| if us.discover_per_head { st.cumprod[g] / people } else { st.cumprod[g] };
+            if us.allowed(P) && next >= us.found_after && us.discover.iter().all(|&(g, x)| made(g) >= x) {
                 st.tasks.found[u] = next;
                 st.tasks.quality[u] = 1.0;
             }

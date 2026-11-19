@@ -516,8 +516,10 @@ fn computing_stands_behind_its_switch() {
     assert_eq!((us.class, us.from, us.reach), (tasks::CLERK, 0.0, 1.0));
     assert!(us.on_works && us.on_sector.iter().all(|&b| !b), "office computing clerks in the works alone");
     assert!(us.allowed(&game) && !us.allowed(&off));
-    // every other use stands behind no switch
-    assert!(C.tasks.uses.iter().filter(|u| u.name != "office_computing").all(|u| u.switch.is_none() && u.allowed(&off)));
+    // its find is read per head; every other use stands behind no switch and
+    // reads its threshold in all
+    assert!(us.discover_per_head);
+    assert!(C.tasks.uses.iter().filter(|u| u.name != "office_computing").all(|u| u.switch.is_none() && u.allowed(&off) && !u.discover_per_head));
     // without the content after 1900 it is not laid
     let mut one = game.clone();
     one.tree.stage = 1;
@@ -533,14 +535,14 @@ fn computing_stands_behind_its_switch() {
 /// other rule as the game has it. Three runs side by side:
 ///
 /// - with the switch on: money is conserved every month, through the find
-///   (`run_year` checks); the use is found, from 1955 (nothing is found
+///   (`run_year` checks); the use is found, from 1960 (nothing is found
 ///   before); no works' clerking meant for machines is ever below nothing or
 ///   above the use's reach, and none held is above what is meant; a works
 ///   whose method has no clerking (the hand trades) holds none; the land,
 ///   which has no clerking, holds none; and some works comes to hold part of
 ///   its clerking;
 /// - with the switch off: the same run as the first to the end of 1940, by
-///   `save::check` (nothing is found before 1955);
+///   `save::check` (nothing is found before 1960);
 /// - with the switch on and the use taken out of the table in code: the same
 ///   run as with the switch off, to the end (the switch touches that use and
 ///   nothing else).
@@ -587,7 +589,16 @@ fn computing_off_is_off_and_on_stays_in_reach() {
             }
             let (st, C) = (&s.st, &s.content);
             let found = st.tasks.found[c];
-            assert!(found < 0 || found >= us.found_after.max(1955), "{year}: found in {found}");
+            assert!(found < 0 || found >= us.found_after.max(1960), "{year}: found in {found}");
+            // the threshold is read per head: electrical goods made over the
+            // island's people (a hundredth of slack, for the people counted
+            // after the turn of the year)
+            let per_head = |g: usize| st.cumprod[g] / st.pop.iter().sum::<f64>();
+            if found == year + 1 {
+                assert!(us.discover.iter().all(|&(g, x)| per_head(g) >= 0.99 * x), "{year}: found below its threshold a head");
+            } else if found < 0 && year + 1 >= us.found_after {
+                assert!(us.discover.iter().any(|&(g, x)| per_head(g) < 1.01 * x), "{year}: past its threshold a head and not found");
+            }
             for f in 0..st.F_count.min(st.tasks.f_auto.len()) {
                 let (x, h) = (st.tasks.f_auto[f][k], st.tasks.f_held[f][k]);
                 assert!((0.0..=us.reach).contains(&x), "{year}: works {f} means to hold {x} of its clerking");
@@ -605,7 +616,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
             assert!(st.tasks.land_auto.iter().flatten().all(|a| a[k] == 0.0), "{year}: the land holds clerking");
         }
         let y = s.st.tasks.found[c];
-        assert!(y >= 1955, "island 7 finds office computing by {TO} (if a later rule stops that, this test must be set again)");
+        assert!(y >= 1960, "island 7 finds office computing by {TO} (if a later rule stops that, this test must be set again)");
         assert!(most > 0.0, "no works came to hold any of its clerking by {TO}, found in {y}");
         eprintln!("office computing found in {y}; the most a works held of its clerking by {TO}: {most:.3}; {hand} works-years of hand trades held none");
         (at1940, save::check(&s))
@@ -624,7 +635,7 @@ fn computing_off_is_off_and_on_stays_in_reach() {
     out.tasks.plant_goods = pg;
     let out = played(P, out);
     let (on, off, out) = (on.join().unwrap(), off.join().unwrap(), out.join().unwrap());
-    assert_eq!(on.0, off.0, "the switch on moved the run before 1941, though nothing is found before 1955");
+    assert_eq!(on.0, off.0, "the switch on moved the run before 1941, though nothing is found before 1960");
     assert_eq!(out.1, off.1, "with the switch off the run to {TO} is not the run with office computing taken out of the table");
     assert_ne!(on.1, off.1, "office computing moved nothing by {TO}");
 }

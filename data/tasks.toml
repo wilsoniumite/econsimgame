@@ -136,7 +136,11 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #   found_after     nothing is found before this year
 #   discover        the island finds it at the first year's turn (from `found_after`) when it has made
 #                   at least this much of each good named, counted from 1750
-#   scale           one number, multiplying everything one machine takes (plant, run and minders),
+#   discover_per_head  (may be left out; false) true: `discover` is read per head, what the island has made
+#                   of each good over its people at the year's end, so that an island's size does not
+#                   decide its find (the tree's inventions reckon nothing per head; their "xN" counts years
+#                   of the island's own making in 1750, which is nothing for a good first made later)
+#   scale          one number, multiplying everything one machine takes (plant, run and minders),
 #                   refitted once in its first sweep so that it takes its first share when found
 #   replaces        (may be left out) the name of another use: where this one is laid, that one no
 #                   longer reaches the places this one is `on`
@@ -338,10 +342,14 @@ scale = 0.96
 # the office machines of the design, which are not built: when they come, the cheaper unit holds the class
 # from the bottom, as the computer took the typewriter's tasks.
 #
-# Found from 1955, on electrical goods made: island 7 has made 10.39 million by the end of 1958 and 10.58
-# million by the end of 1959 (the sweep's yearly output, summed), so at 10.5 million it finds it in 1960.
-# The other islands make electrical goods at very different rates, and find it from 1960 (island 5) to
-# 1986 (island 3) on islands 1 to 8.
+# Found from 1960, the year the machine is to be had, on an island that has made at least 5.4 electrical
+# goods a head since 1750: the floor is half of what island 7 had made a head when the year came (10.90
+# by the end of 1959; the sweep's yearly output summed, over its people). The floor is read per head so
+# that a small island is not made late by its size. It is low on purpose: the islands are near one size
+# (0.93 to 1.15 million people in 1959) but came to electrical goods 35 years apart (island 5 first made
+# them in 1868, island 14 in 1904), so a high threshold on their own making, by head or in all, found it
+# from 1960 to 1992 (at 10.5 million made) or to 1996 (at island 7's 10.90 a head). At 5.4 a head, islands
+# 1 and 3 find it about 1967, island 8 about 1961 and the other five of the first eight in 1960.
 [[use]]
 name = "office_computing"
 class = "clerk"
@@ -354,8 +362,9 @@ minders = 0.0135
 life = 8.0
 pace = 0.05
 cap = 100.0
-found_after = 1955
-discover = { electricals = 10500000.0 }
+found_after = 1960
+discover = { electricals = 5.4 }
+discover_per_head = true
 switch = "computing"
 # Refitted once (19 November 2026): at 1.0 the towns' target in the year found was 0.262 on the mean of
 # islands 1 to 8 (0.259 to 0.266; found 1960 on islands 5 and 7, 1965 on 2, 1975 on 4 and 6, 1982 on 8,
