@@ -78,6 +78,10 @@
 # books, news, run.bin) and the tasks (books, run.bin). The four are the
 # tasks' second half's own to the digit: the sandbox's pieces, and the
 # owners' and tasks' switches joining the Rules tab, move nothing.
+# Then on night/g-batch-sandbox-a (19 November 2026), the batch of the
+# sandbox's stages 8a, 7a and 7b (sessions; works built or closed by hand)
+# with main at d76f415 merged in: taken again on the merged tree, and none
+# of the four moved. Edits by hand are not rules, and none is given here.
 economy  0x9a6b3ba24a097bd1
 books    0xfa5dd1db28f62894
 news     0x9f83de6e9e162ab1
