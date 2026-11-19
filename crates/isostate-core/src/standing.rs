@@ -18,6 +18,22 @@
 //! setting set against it; or, with one setting and `--compare DIR`, the
 //! earlier sweep's setting of the same name (or its first). Beneath the twelve,
 //! `last_town_founded` is shown and not counted. The check changes no run.
+//!
+//! It is a gate: when any of the twelve is not inside, the sweep ends with an
+//! error after writing everything, and its last lines name each such fact, the
+//! arm, its mean, the band (the reference's [least .. greatest]) and the
+//! islands that lie outside the band. Run on to 2050 against main's sweep, it
+//! is the gate's guard on the played century:
+//!
+//! ```text
+//! isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050 --standing --compare MAIN_SWEEP --out DIR
+//! ```
+//!
+//! Beside the twelve it reports the growth the design asks of the century after
+//! 1900 (`GROWTH`): the chained real wage rising at least 1 per cent a year from
+//! 1900 to 1970 and no lower in 2050 than in 1970, and fewer hands on the land in
+//! 2050 than in 1900. Those are printed with their values, and fail the sweep
+//! only with `--growth`, for the stage that mends them.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -153,20 +169,176 @@ pub fn check(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>, w
     out
 }
 
+/// One line for each of the twelve that is not inside, in each later arm: the
+/// fact, the arm, its mean and word, the band, and the islands outside the band
+/// with their values. Empty when every fact of every arm is inside.
+pub fn outside(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>) -> Vec<String> {
+    let st = |arm: &Then, name: &str| arm.values.get(name).and_then(|v| stat(v));
+    let mut out = Vec::new();
+    for arm in later {
+        for &name in &FACTS {
+            let (r, l) = (st(reference, name), st(arm, name));
+            let v = verdict(r, l);
+            if v == Verdict::Inside {
+                continue;
+            }
+            let kind = kinds.get(name).copied().unwrap_or(Kind::Real);
+            let f = |x: f64| fmt_fact(kind, x);
+            let (Some(r), Some(l)) = (r, l) else {
+                let whose = if r.is_none() { format!("the reference ({})", reference.label) } else { arm.label.clone() };
+                out.push(format!("{name}, {}: no value in {whose}, so it cannot be set against its band", arm.label));
+                continue;
+            };
+            let mut islands: Vec<(u64, f64)> = arm.values[name].iter().copied().filter(|&(_, x)| x < r.min || x > r.max).collect();
+            islands.sort_by_key(|&(seed, _)| seed);
+            let list: Vec<String> = islands.iter().map(|&(seed, x)| format!("island {seed} at {}", f(x))).collect();
+            let how = if v == Verdict::Moved { "moved: every island apart from the reference's" } else { "OUTSIDE: the islands overlap the reference's" };
+            out.push(format!(
+                "{name}, {}: mean {} is outside the band [{} .. {}] of {} across its {} islands ({how}); outside the band: {}",
+                arm.label,
+                f(l.mean),
+                f(r.min),
+                f(r.max),
+                reference.label,
+                r.n,
+                if list.is_empty() { "no island alone (only the mean)".to_string() } else { list.join(", ") }
+            ));
+        }
+    }
+    out
+}
+
+/// What the design asks of the century after 1900, each read from facts every
+/// run to 2050 has, island by island: (what is asked, what is read, the rule).
+/// The chained real wage is `real_wage_chained`: the mean wage over the chained
+/// Fisher cost of living, both kept by the month (engel.rs, docs/rules/engel.md:
+/// each month's link prices what households bought in that month and the one
+/// before, so the basket follows what is bought), and its facts are the yearly
+/// mean against 1750's at each mark (the decades after 1900, `facts::marks`).
+pub const GROWTH: [(&str, &str); 3] = [
+    ("the chained real wage grows 1 per cent a year or more from 1900 to 1970", "per cent a year, 1900 to 1970"),
+    ("the chained real wage is no lower in 2050 than in 1970", "2050 over 1970"),
+    ("the share of hands on the land is lower in 2050 than in 1900", "2050 less 1900"),
+];
+
+/// The least growth a year, per cent, the design asks of the chained wage from 1900 to 1970.
+pub const WAGE_GROWTH_PCT: f64 = 1.0;
+
+/// Each island's value of each of `GROWTH`'s three, from its facts: the wage's
+/// growth from 1900 to 1970 in per cent a year, its level in 2050 over 1970, and
+/// the share of hands on the land (`farm_share`) in 2050 less 1900. An island
+/// lacking either of a pair's facts (a run that ends before 2050) is left out.
+pub fn growth_values(arm: &Then) -> [Vec<(u64, f64)>; 3] {
+    let pair = |a: &str, b: &str, f: &dyn Fn(f64, f64) -> f64| -> Vec<(u64, f64)> {
+        let (Some(a), Some(b)) = (arm.values.get(a), arm.values.get(b)) else { return Vec::new() };
+        let mut out: Vec<(u64, f64)> =
+            a.iter().filter_map(|&(seed, x)| b.iter().find(|&&(s, _)| s == seed).map(|&(_, y)| (seed, f(x, y)))).filter(|(_, v)| v.is_finite()).collect();
+        out.sort_by_key(|&(seed, _)| seed);
+        out
+    };
+    [
+        pair("real_wage_chained_1900_vs_1750", "real_wage_chained_1970_vs_1750", &|w00, w70| 100.0 * ((w70 / w00).powf(1.0 / 70.0) - 1.0)),
+        pair("real_wage_chained_1970_vs_1750", "real_wage_chained_2050_vs_1750", &|w70, w50| w50 / w70),
+        pair("farm_share_1900", "farm_share_2050", &|f00, f50| f50 - f00),
+    ]
+}
+
+/// Whether the mean of each of `GROWTH`'s three across the islands meets its
+/// rule; None where no island has a value.
+pub fn growth_met(values: &[Vec<(u64, f64)>; 3]) -> [Option<bool>; 3] {
+    std::array::from_fn(|k| {
+        stat(&values[k]).map(|s| match k {
+            0 => s.mean >= WAGE_GROWTH_PCT,
+            1 => s.mean >= 1.0,
+            _ => s.mean < 0.0,
+        })
+    })
+}
+
+/// The growth after 1900 for each arm: the text, and a line for each of the two
+/// growth facts an arm missed (the wage's two parts make one fact).
+pub fn growth(arms: &[&Then]) -> (String, Vec<String>) {
+    let mut text = String::new();
+    let mut missed = Vec::new();
+    for arm in arms {
+        let values = growth_values(arm);
+        let met = growth_met(&values);
+        // the two facts: the wage's two parts together, and the land's
+        let facts = [(met[0].zip(met[1]).map(|(a, b)| a && b), "the chained real wage grows 1 per cent a year or more from 1900 to 1970, and is no lower in 2050 than in 1970"),
+                     (met[2], "the share of hands on the land is lower in 2050 than in 1900")];
+        let word = |m: Option<bool>| match m {
+            Some(true) => "met",
+            Some(false) => "MISSED",
+            None => "-",
+        };
+        let _ = writeln!(
+            text,
+            "growth after 1900: {} of 2 met: {} (reported, not counted; with --growth a fact missed or without a value fails the sweep)",
+            facts.iter().filter(|(m, _)| *m == Some(true)).count(),
+            arm.label
+        );
+        let rules = ["1.00 or more", "1.00 or more", "below 0"];
+        for (k, (asked, read)) in GROWTH.iter().enumerate() {
+            let s = stat(&values[k]);
+            let shown = |x: f64| if k == 2 { format!("{x:+.3}") } else { format!("{x:.2}") };
+            let cells = match s {
+                Some(s) => format!("{:>7}  [{} .. {}]", shown(s.mean), shown(s.min), shown(s.max)),
+                None => format!("{:>7}  (no island has the facts: the runs must reach 2050)", "-"),
+            };
+            let islands = values[k].iter().map(|&(seed, x)| format!("{seed}: {}", shown(x))).collect::<Vec<_>>().join(", ");
+            let _ = writeln!(text, "  {asked}\n    {read:<30} {cells}   needs {:<13} {}{}", rules[k], word(met[k]), if islands.is_empty() { String::new() } else { format!("\n    island by island: {islands}") });
+        }
+        for (m, what) in facts {
+            if m != Some(true) {
+                let why = match m {
+                    Some(_) => "missed".to_string(),
+                    None => "no value: the runs do not reach 2050".to_string(),
+                };
+                missed.push(format!("{what}, {}: {why}", arm.label));
+            }
+        }
+        text.push('\n');
+    }
+    (text, missed)
+}
+
+/// What the check makes of a finished sweep: the text it prints and writes, the
+/// lines that fail the sweep (any of the twelve not inside), and the growth
+/// facts missed (which fail it only with `--growth`).
+#[derive(Clone, Debug, Default)]
+pub struct Report {
+    pub text: String,
+    pub outside: Vec<String>,
+    pub growth_missed: Vec<String>,
+}
+
 /// The check for a finished sweep: its first setting against each later one,
-/// or, with one setting, the earlier sweep `then` (read from `dir`) against it.
-/// None when there is nothing to set it against.
-pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>) -> Option<String> {
+/// or, with one setting, the earlier sweep `then` (read from `dir`) against it,
+/// and the growth after 1900 of each of its settings. None when there is
+/// nothing to set it against.
+pub fn for_sweep(sw: &Sweep, then: Option<(&[Then], &std::path::Path)>) -> Option<Report> {
     let kinds: HashMap<String, Kind> = sw.fact_index.iter().map(|(n, _, k)| (n.clone(), *k)).collect();
     let now = arms(sw);
-    if now.len() >= 2 {
-        let later: Vec<&Then> = now[1..].iter().collect();
-        return Some(check(&now[0], &later, &kinds, "this sweep's first setting"));
+    let (reference, later, whence): (&Then, Vec<&Then>, String) = if now.len() >= 2 {
+        (&now[0], now[1..].iter().collect(), "this sweep's first setting".to_string())
+    } else {
+        let (then, dir) = then?;
+        let arm = now.first()?;
+        let reference = then.iter().find(|t| t.label == arm.label).or(then.first())?;
+        (reference, vec![arm], format!("the earlier sweep in {}", dir.display()))
+    };
+    let mut text = check(reference, &later, &kinds, &whence);
+    let outside = outside(reference, &later, &kinds);
+    if !outside.is_empty() {
+        let _ = writeln!(text, "\nnot inside, so the sweep fails:");
+        for line in &outside {
+            let _ = writeln!(text, "  {line}");
+        }
     }
-    let (then, dir) = then?;
-    let arm = now.first()?;
-    let reference = then.iter().find(|t| t.label == arm.label).or(then.first())?;
-    Some(check(reference, &[arm], &kinds, &format!("the earlier sweep in {}", dir.display())))
+    let (growth_text, growth_missed) = growth(&now.iter().collect::<Vec<_>>());
+    text.push('\n');
+    text.push_str(&growth_text);
+    Some(Report { text, outside, growth_missed })
 }
 
 #[cfg(test)]
@@ -208,5 +380,54 @@ mod tests {
         assert!(line("towns_1900").ends_with("moved"));
         assert!(line("rail_km_1900").ends_with("OUTSIDE"));
         assert!(text.contains("also\n  last_town_founded"));
+        // what fails the sweep: the moved, the OUTSIDE and the nine without a value, each named
+        // with its arm, its mean, the band and the islands outside the band
+        let bad = outside(&reference, &[&later], &kinds);
+        println!("{}", bad.join("\n"));
+        assert_eq!(bad.len(), 11, "{bad:?}");
+        assert!(bad.iter().all(|l| !l.starts_with("pop_1900")));
+        let towns = bad.iter().find(|l| l.starts_with("towns_1900")).unwrap();
+        assert!(towns.contains("mean 22.8 is outside the band [14 .. 20] of off across its 4 islands (moved") && towns.contains("island 1 at 21, island 2 at 22"), "{towns}");
+        let rail = bad.iter().find(|l| l.starts_with("rail_km_1900")).unwrap();
+        assert!(rail.contains("outside the band [2,100 .. 2,500] of off across its 4 islands (OUTSIDE") && rail.ends_with("island 1 at 1,500, island 2 at 1,600, island 3 at 1,700"), "{rail}");
+        assert!(bad.iter().any(|l| l.starts_with("pop_1800, on: no value in the reference (off)")));
+        // with every fact inside, nothing fails
+        assert!(outside(&reference, &[&reference], &kinds).iter().all(|l| l.contains("no value")));
+    }
+
+    /// The growth after 1900, island by island, from the facts a run to 2050 has:
+    /// a wage that grows 1.5 per cent a year to 1970 and then halves, and the land's
+    /// share falling on one arm and rising on the other.
+    #[test]
+    fn growth_after_1900() {
+        let arm = |label: &str, farm_2050: f64| {
+            let mut t = Then { label: label.to_string(), seeds: vec![1, 2], ..Then::default() };
+            let mut put = |name: &str, v: [f64; 2]| {
+                t.values.insert(name.to_string(), vec![(1, v[0]), (2, v[1])]);
+            };
+            let w70 = 4.0 * 1.015f64.powi(70);
+            put("real_wage_chained_1900_vs_1750", [4.0, 4.0]);
+            put("real_wage_chained_1970_vs_1750", [w70, w70]);
+            put("real_wage_chained_2050_vs_1750", [w70 / 2.0, w70 / 2.0]);
+            put("farm_share_1900", [0.25, 0.25]);
+            put("farm_share_2050", [farm_2050, farm_2050]);
+            t
+        };
+        let (falls, rises) = (arm("falls", 0.10), arm("rises", 0.47));
+        let v = growth_values(&falls);
+        assert!((v[0][0].1 - 1.5).abs() < 1e-9 && (v[1][1].1 - 0.5).abs() < 1e-12 && (v[2][0].1 + 0.15).abs() < 1e-12, "{v:?}");
+        assert_eq!(growth_met(&v), [Some(true), Some(false), Some(true)]);
+        assert_eq!(growth_met(&growth_values(&rises)), [Some(true), Some(false), Some(false)]);
+        let (text, missed) = growth(&[&falls, &rises]);
+        println!("{text}");
+        assert!(text.starts_with("growth after 1900: 1 of 2 met: falls"), "{text}");
+        assert!(text.contains("growth after 1900: 0 of 2 met: rises"), "{text}");
+        assert_eq!(missed.len(), 3, "{missed:?}");
+        assert!(missed[0].starts_with("the chained real wage grows") && missed[0].ends_with("falls: missed"));
+        // an arm that ends before 2050 has no value, which --growth counts as a miss
+        let short = Then { label: "to 1900".to_string(), seeds: vec![1], ..Then::default() };
+        assert_eq!(growth_met(&growth_values(&short)), [None, None, None]);
+        let (_, missed) = growth(&[&short]);
+        assert!(missed.len() == 2 && missed.iter().all(|m| m.ends_with("no value: the runs do not reach 2050")), "{missed:?}");
     }
 }
