@@ -28,11 +28,16 @@
 //!                     is given its default and the clock is started again
 //!     until:PART      let the game run until the clock is this far through a
 //!                     year (until:0.95 is just before the year turns)
+//!     goto:YEAR       the clock to January of YEAR: at or behind the present
+//!                     as dragging the knob there does; ahead of it, in a
+//!                     sandbox, a run on to that January (settle waits for
+//!                     it), and in the family game nothing, with a line saying why
 //!     print[:NOTE]    print the clock and its date, the cards (the opening card
 //!                     in its own words), the orders that wait for the year's
 //!                     end, the order panel, what scenery is on screen and
 //!                     what putting it there cost, the side panel's title and
-//!                     text, and every text of the note about what was clicked
+//!                     text, every text of the note about what was clicked,
+//!                     and in a sandbox how wide the tray is laid out
 //!     scenery[:NOTE]  build the year on the clock afresh and say whether what
 //!                     is on screen is that; stops the run if it is not
 //!     tab:NAME        open a side panel (family, holdings, markets, news, none;
@@ -86,6 +91,8 @@ enum Step {
     Sample(f32, bool),
     /// how far through a year the clock must be
     Until(f32),
+    /// the clock to January of this year
+    Goto(i32),
     Print(String),
     Scenery(String),
     Tab(Option<ui::Tab>),
@@ -226,6 +233,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
                 part if (0.0..1.0).contains(&part) => Step::Until(part),
                 _ => return Err(format!("{part}: a part of a year runs from 0 to just under 1")),
             },
+            "goto" => Step::Goto(arg.trim().parse::<i32>().map_err(|_| format!("{part}: goto takes a year, as goto:1800"))?),
             "print" => Step::Print(arg.to_string()),
             "scenery" => Step::Scenery(arg.to_string()),
             // a panel that is none of these is refused, and not taken for closing the panel
@@ -476,6 +484,14 @@ fn print_state(world: &mut World, note: &str) {
     if note.iter().any(|s| !s.trim().is_empty()) {
         println!("script:   the inspector says: {}", said_in_one_line(&note, usize::MAX));
     }
+    // a sandbox's tray as it is laid out, and the hand's ticks on the timeline
+    if world.contains_resource::<crate::sandbox::Sandbox>() {
+        if let Some(line) = crate::sandbox::tray_measure(world) {
+            println!("script:   {line}");
+        }
+        let ticks = crate::ui::hand_ticks(world);
+        println!("script:   the timeline has {ticks} tick{} of the hand", if ticks == 1 { "" } else { "s" });
+    }
 }
 
 /// How much of the side panel's text `print` gives, in characters.
@@ -660,6 +676,42 @@ fn print_work(t: &Tally) {
     }
 }
 
+/// The `goto:YEAR` step: the clock to January of `year`. At or behind the
+/// present it goes there as the knob dragged there would; ahead of it a
+/// sandbox runs on to it, as a press on the timeline there does, and the
+/// family game, whose years ahead come only by playing them, does nothing.
+fn goto(world: &mut World, year: i32) {
+    let data = world.resource::<Data>();
+    let (y0, latest) = (data.r.y0, data.latest());
+    let k = crate::clock::january(y0, year);
+    let to = |k: usize| crate::clock::month_year(crate::clock::date(y0, k as f32));
+    if k <= latest {
+        let mut tl = world.resource_mut::<Timeline>();
+        tl.playing = false;
+        tl.t = k as f32;
+        println!("script: goto:{year}: the clock to {}", to(k));
+        return;
+    }
+    let present = world.get_resource::<Live>().map(|live| crate::sandbox::Present::of(world.resource::<Data>(), live));
+    match present {
+        Some(at) if world.contains_resource::<crate::sandbox::Sandbox>() => {
+            let now = world.resource::<Time>().elapsed_secs();
+            let going = world.resource_scope(|world, mut sb: Mut<crate::sandbox::Sandbox>| sb.run_to(&mut world.resource_mut::<Timeline>(), at, k, None, now));
+            if going {
+                let cut = if k > at.last { format!(" (the run's last year: January {year} is past it)") } else { String::new() };
+                println!("script: goto:{year}: running on to {}{cut}", to(k.min(at.last)));
+            } else {
+                println!("script: goto:{year}: nothing to run on to: the run's last year has been played");
+            }
+        }
+        Some(_) => println!(
+            "script: goto:{year}: nothing done: January {year} is ahead of the present ({}), and in the family game the years ahead come only by playing them (the clock, Next month, To January)",
+            to(latest)
+        ),
+        None => println!("script: goto:{year}: nothing done: January {year} is past the end of this recorded run"),
+    }
+}
+
 fn fail(why: &str) -> ! {
     eprintln!("script: stopped: {why}");
     std::process::exit(1);
@@ -790,6 +842,10 @@ fn step(world: &mut World, sc: &mut Script) {
                 if !done && now >= sc.until {
                     fail(&format!("until:{part}: the clock is {} and did not come to that part of a year in a minute", if tl.playing { "running" } else { "stopped" }));
                 }
+            }
+            Step::Goto(year) => {
+                goto(world, year);
+                frame = true;
             }
             Step::Print(note) => print_state(world, &note),
             Step::Scenery(note) => {
