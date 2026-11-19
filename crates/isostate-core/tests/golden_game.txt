@@ -43,6 +43,14 @@
 # other people and so another history. With the switch off in game_params()
 # the four of the merged tree held. (Its z_half is 4.5, raised from 4 so that
 # the towns' share of 1900 stays within the spread of seeds.)
+# Then on night/g-to2050-3-gauges (19 November 2026): books and run.bin
+# moved, economy and news held. The gauges (docs/rules/gauges.md) add their
+# series beside the books' and their years to the run file's header; with
+# the gauges switched off the four above held.
+# Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
+# books and run.bin moved again by the gauges, economy and news are the
+# tree's as they stood.
+# (hashes to be taken again on the batch night/g-batch-1)
 economy  0x31f9be4ca4c2eee9
 books    0xd60961a050d1589c
 news     0xcc48fe3dfff18c36

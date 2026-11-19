@@ -693,6 +693,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::accounts::facts(r) {
         b.num(name, kind, v);
     }
+    // gauges (docs/rules/gauges.md): read off the books, only of a run that kept them
+    for (name, kind, v) in crate::gauges::facts(r) {
+        b.num(name, kind, v);
+    }
     // twenty-year means (SPAN) of what a scorecard reads: what a wage buys and output per
     // head against the first year (real_wage_1881_1900_vs_1750), the shares of work, and
     // work's share of the island's income where the books are kept

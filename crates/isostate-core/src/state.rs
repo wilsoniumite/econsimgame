@@ -527,6 +527,9 @@ pub struct State {
     /// The books: the year now running, and every complete year's. Nothing in
     /// the economy reads them.
     pub acct: crate::accounts::Books,
+    /// The gauges read off the books (docs/rules/gauges.md; empty while
+    /// `gauges` is off). Nothing in the economy reads them either.
+    pub gauges: crate::gauges::Gauges,
 
     // ---------------- roads (a probe, docs/probes/dx-roads.md; empty while `roads` is off)
     /// Who pays for the roads: the trusts, the bridges built, the menders.
