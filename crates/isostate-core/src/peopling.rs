@@ -181,6 +181,9 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
     st.pp_income_term = vec![0.0; T];
     // who sailed this year: from each town, and through each port
     let (mut left, mut sailed) = (vec![0.0; T], vec![0.0; T]);
+    // transition (docs/rules/transition.md): each town's share of its income term kept
+    // and how far its drains have come, None while the rule is off
+    let fs = crate::transition::year(st, P, y, year);
     for t in 0..T {
         if !st.town_active[t] {
             continue;
@@ -189,7 +192,12 @@ pub fn growth(st: &mut State, P: &Params, y: &[f64], year: i64, events: &mut Vec
         let depth = dearth_depth(pp, st.food_min_acc[t]);
         // whatever the numbers are set to, no town loses more than half its people in a
         // year (a town with nobody in it is not something the markets can price)
-        let mut rate = (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR);
+        let mut rate = if let Some(fs) = &fs {
+            let (f, s) = fs[t];
+            (inc * f - crowding_term(pp, st.urban_pop[t], st.pop[t]) * (1.0 - s) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR)
+        } else {
+            (inc - crowding_term(pp, st.urban_pop[t], st.pop[t]) - pp.dearth * depth).max(GROWTH_FLOOR).max(WORST_YEAR)
+        };
         if depth > 0.0 && pp.emigration > 0.0 {
             let port = ports.iter().copied().filter(|&j| st.town_cost[(t, j)].is_finite()).min_by(|&a, &b| st.town_cost[(t, a)].total_cmp(&st.town_cost[(t, b)]));
             if let Some(j) = port {
@@ -285,7 +293,7 @@ fn work_by_cell(st: &State) -> Vec<f64> {
     for u in 0..st.ex_cell.len().min(st.ex_labor.len()) {
         work[st.ex_cell[u]] += st.ex_labor[u];
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             work[st.f_cell[f]] += st.f_labor[f];
         }
@@ -342,7 +350,7 @@ fn district_kind(st: &State, C: &Content, cells: &[bool]) -> &'static str {
         }
     }
     let services = C.gi("services");
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] && C.method_out[st.f_method[f]] != services {
             all[4] += st.f_labor[f];
             if cells[st.f_cell[f]] {
@@ -423,7 +431,7 @@ pub fn candidates(st: &State, C: &Content, P: &Params) -> Vec<Candidate> {
             if mine[k] {
                 let i = st.catch[k] as usize;
                 cells += 1;
-                saved += P.freight * st.cell_flow_year[k] * (st.dcatch[k] - d[k]);
+                saved += crate::longrun::freight(st, P) * st.cell_flow_year[k] * (st.dcatch[k] - d[k]);
                 wages += 12.0 * work[k] * st.wbar[i];
                 gone[i] += work[k];
             }
@@ -506,6 +514,8 @@ pub fn open_town(st: &mut State, C: &Content, P: &Params, cell: usize, donor: us
     }
     st.tools_mult[n] = st.tools_mult[donor];
     st.imp_pc[n] = st.imp_pc[donor];
+    // transition (docs/rules/transition.md): and its donor's measure of how well townsfolk live
+    crate::transition::open_town(st, P, n, donor);
     n
 }
 
@@ -705,6 +715,9 @@ pub fn move_with_cells(st: &mut State, C: &Content, P: &Params) {
                 }
             }
         }
+        // transition (docs/rules/transition.md): the newcomers bring their towns' measure
+        // of how well townsfolk live, as they bring their cash
+        crate::transition::move_with_cells(st, P, &pop, &share);
         // the town's wage starts the year as the average of what its old hands and its
         // new were paid (a new town has no old hands: it starts at the newcomers' wage)
         for j in 0..T {
@@ -758,7 +771,7 @@ fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
             continue;
         }
         let (i, j, g) = (i as usize, j as usize, C.sector_good[st.ex_sector[u]]);
-        let saved = P.freight * C.weight[g] * (st.pp_dcatch_was[c] - st.dcatch[c]);
+        let saved = crate::longrun::freight(st, P) * C.weight[g] * (st.pp_dcatch_was[c] - st.dcatch[c]);
         trade[(j, g)] += st.ex_out[u];
         worth[(j, g)] += st.ex_out[u] * (st.price[(i, g)] - saved);
         hoped[(j, g)] += st.ex_out[u] * (st.pexp[(i, g)] - saved);
@@ -771,7 +784,7 @@ fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
             for g in 0..G {
                 let asked = share[(i, j)] * st.requests[(i, g)];
                 // what `econ::step_month` charges a merchant to bring a unit from i to j
-                let fetch = P.freight * C.weight[g] * st.town_cost[(i, j)] + P.handling * st.price[(i, g)];
+                let fetch = crate::longrun::freight(st, P) * C.weight[g] * st.town_cost[(i, j)] + P.handling * st.price[(i, g)];
                 trade[(j, g)] += asked;
                 worth[(j, g)] += asked * (st.price[(i, g)] + fetch);
                 hoped[(j, g)] += asked * (st.pexp[(i, g)] + fetch);
@@ -782,7 +795,7 @@ fn prices_go_with_trade(st: &mut State, C: &Content, P: &Params, share: &Mat) {
         for g in 0..G {
             if trade[(j, g)] > 0.0 {
                 let own = st.outflow[(j, g)].max(0.0);
-                let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
+                let (lo, hi) = (crate::longrun::floor(st, P, C, g), crate::longrun::ceiling(st, P, C, g));
                 let was = st.price[(j, g)];
                 for (v, sum) in [(&mut st.price, &worth), (&mut st.pexp, &hoped)] {
                     v[(j, g)] = ((own * v[(j, g)] + sum[(j, g)]) / (own + trade[(j, g)])).clamp(lo, hi);

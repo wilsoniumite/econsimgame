@@ -22,14 +22,14 @@ use crate::util::{argmax, argsort, pairwise_sum, pairwise_sum_by, round_dp};
 use crate::works;
 
 pub fn learning(C: &Content, P: &Params, Q: &[f64]) -> Vec<f64> {
-    (0..C.M).map(|m| P.learn_cap.min(C.m_A0[m] * (1.0 + Q[m] / C.m_Q0[m]).powf(C.m_b[m]))).collect()
+    (0..C.M).map(|m| crate::longrun::learn_cap(P).min(C.m_A0[m] * (1.0 + Q[m] / C.m_Q0[m]).powf(C.m_b[m]))).collect()
 }
 
 /// Number of firms of each method within a 5x5 window of every cell.
 pub fn same_method_counts(st: &State, C: &Content) -> Mat {
     let (H, W) = (st.world.H, st.world.W);
     let mut counts = Mat::zeros(C.M, H * W);
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             counts[(st.f_method[f], st.f_cell[f])] += 1.0;
         }
@@ -52,7 +52,7 @@ pub fn update_productivity(st: &mut State, C: &Content, P: &Params) {
     // machines (docs/rules/machines.md): a new method inherits part of its predecessor's skill
     crate::machines::inherit_skill(st, C, P, &mut A);
     let counts = same_method_counts(st, C);
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             let (m, c, t) = (st.f_method[f], st.f_cell[f], st.f_town[f]);
             let k = st.know[(t, m)];
@@ -109,7 +109,7 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
         })
         .collect();
     let out = C.method_out[m];
-    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - P.freight * C.weight[out] * st.dcatch[c]).collect();
+    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - crate::longrun::freight(st, P) * C.weight[out] * st.dcatch[c]).collect();
     // works: the merchant's spread comes off the price, as it will off the works' revenue
     let spread = works::entry_spread(P, pbar[(i, out)]);
     if spread != 0.0 {
@@ -310,7 +310,7 @@ struct Proposal {
 pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, pbar: &Mat, wbar: &[f64], max_new: Option<usize>) -> usize {
     let mut proposals: Vec<Proposal> = Vec::new();
     let mut n_tm = Mat::zeros(st.T_max, C.M);
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             n_tm[(st.f_town[f], st.f_method[f])] += 1.0;
         }
@@ -385,7 +385,7 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
 
 /// Grow profitable firms, shrink idle ones, close the hopeless.
 pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, pbar: &Mat, wbar: &[f64]) -> Vec<usize> {
-    let mut alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
+    let mut alive: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f]).collect();
     let mut closed = Vec::new();
     works::new_year(st, C, P, pbar, &mut alive); // works: the year's room, the best earners served first
     for &fid in &alive {

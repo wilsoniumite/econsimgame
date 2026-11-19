@@ -29,7 +29,33 @@
 # on the island stage 5 leaves: nine more goods, so another economy, other
 # books, other news and another run.bin. With the tree off in game_params()
 # the four before held.
-economy  0xa0b778ca0b962b19
-books    0x364288124d7f0e20
-news     0xdfaf581760b17c8f
-run.bin  0x1327718d82104e0c
+# Then on night/g-to2050-1-longrun (19 November 2026): all four moved by
+# stage 1 of the run to 2050, the bounds on prices and the wage riding on
+# the island's own cost of living (longrun.enabled, docs/rules/longrun.md):
+# iron ore's price, which stood at its floor in a few town-months on most
+# islands, may now fall below 1750's floor, and that gives the island another
+# history. With the switch off the four above held. Taken again on
+# night/g-to2050-2-standing with main (the production tree) merged in.
+# Then on night/g-to2050-2-standing (19 November 2026): all four moved by
+# step one of the demographic transition (transition.enabled,
+# docs/rules/transition.md): births follow how well each town's townsfolk
+# live, and crowding falls as drains come with income, so the island has
+# other people and so another history. With the switch off in game_params()
+# the four of the merged tree held. (Its z_half is 4.5, raised from 4 so that
+# the towns' share of 1900 stays within the spread of seeds.)
+# Then on night/g-to2050-3-gauges (19 November 2026): books and run.bin
+# moved, economy and news held. The gauges (docs/rules/gauges.md) add their
+# series beside the books' and their years to the run file's header; with
+# the gauges switched off the four above held.
+# Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
+# books and run.bin moved again by the gauges, economy and news are the
+# tree's as they stood.
+# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
+# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
+# 4b and 5a together: against main all four moved, by longrun and the
+# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
+# economy and news are stage 2's own, and the sandbox's pieces move nothing.
+economy  0x31f9be4ca4c2eee9
+books    0x7668c76a13f68b80
+news     0xcc48fe3dfff18c36
+run.bin  0x0443b91e78ee6c47

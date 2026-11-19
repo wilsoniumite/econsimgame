@@ -4,7 +4,9 @@
 //! that stands, forty works and two hundred squares are told without a figure
 //! that is empty, NaN or infinite; a town's people and its three purses read as
 //! the state's own figures put through the same function; and a thing that is
-//! not there is refused in a sentence.
+//! not there is refused in a sentence. The island's "By hand" rows read the
+//! hand's ledger, "none yet" before any edit; and a question and its card can
+//! cross from one thread to another.
 //!
 //! Nothing here leans on what becomes of the island: whatever towns, works and
 //! squares there are, each is asked about. Which groups a card has follows the
@@ -12,10 +14,23 @@
 //! so a later rule that changes the island's history changes nothing here.
 #![allow(non_snake_case)]
 
+use isostate_core::econ;
+use isostate_core::edits::{Edit, Purse};
 use isostate_core::inspect::{Thing, Told, tell};
-use isostate_core::save::Game;
+use isostate_core::save::{Game, Order};
 use isostate_core::sim::Sim;
-use isostate_core::util::fmt_thousands_f0;
+use isostate_core::util::{fmt_pct, fmt_thousands_f0};
+
+// The viewer asks on its own thread and the simulation answers on another: a
+// question and its card must both be `Send`, and a question must serve as a
+// key (`Copy`, `Eq`, `Hash`). This does not compile if either is lost.
+const _: () = {
+    const fn sendable<T: Send>() {}
+    const fn key<T: Copy + Eq + std::hash::Hash>() {}
+    sendable::<Thing>();
+    sendable::<Told>();
+    key::<Thing>();
+};
 
 /// Every row has a name and a figure, and no figure is NaN or infinite.
 fn sound(told: &Told, what: &str) {
@@ -164,4 +179,49 @@ fn telling_changes_nothing() {
     }
     let bits = |g: &Game| g.sim.st.series.data.iter().map(|d| d.iter().map(|x| x.to_bits()).collect::<Vec<u64>>()).collect::<Vec<_>>();
     assert!(bits(&a) == bits(&b), "a game that was told of things went on differently");
+}
+
+#[test]
+fn the_island_tells_what_the_hand_has_done() {
+    // island 7, six families, the game's rules as `Game::new` sets them; the
+    // ledger is kept under every rule, so nothing here leans on which rules are
+    // on or on what becomes of the island: whatever its money and its towns,
+    // the rows must read the ledger's own figures
+    let mut g = Game::new(7, 6, 0);
+    while g.sim.year < 1760 {
+        g.year().unwrap();
+        g.turn();
+    }
+    let told = tell(&g.sim, Thing::Island).unwrap();
+    for name in ["edits carried out", "money made by hand", "people made by hand"] {
+        assert_eq!(row(&told, "By hand", name), "none yet");
+    }
+
+    // at the turn into 1760: every household purse doubled, and the largest
+    // town's people halved
+    let st = &g.sim.st;
+    let town = (0..st.T_max).filter(|&t| st.town_active[t]).max_by(|&a, &b| st.pop[a].total_cmp(&st.pop[b])).unwrap();
+    g.give(Order::ByHand { edit: Edit::Money { purse: Purse::Households, town: None, factor: 2.0 } }).unwrap();
+    g.give(Order::ByHand { edit: Edit::People { town, factor: 0.5 } }).unwrap();
+    let st = &g.sim.st;
+    assert_eq!(st.by_hand.count, 2);
+    assert!(st.by_hand.money > 0.0 && st.by_hand.people < 0.0);
+
+    let told = tell(&g.sim, Thing::Island).unwrap();
+    sound(&told, "the island after two edits");
+    assert_eq!(row(&told, "By hand", "edits carried out"), "2");
+    let share = fmt_pct(st.by_hand.money / econ::money_total(st), 0);
+    assert_eq!(row(&told, "By hand", "money made by hand"), format!("+{}, {share} of the island's money", fmt_thousands_f0(st.by_hand.money)));
+    assert_eq!(row(&told, "By hand", "people made by hand"), fmt_thousands_f0(st.by_hand.people));
+    for name in ["edits carried out", "money made by hand", "people made by hand"] {
+        println!("{name}: {}", row(&told, "By hand", name));
+    }
+
+    // a question is a key, and a card made on one thread is read on another
+    let mut asked = std::collections::HashSet::new();
+    asked.insert(Thing::Island);
+    asked.insert(Thing::Town(town));
+    assert!(asked.contains(&Thing::Island));
+    let card = std::thread::spawn(move || told).join().unwrap();
+    assert_eq!(card.title, "The island");
 }

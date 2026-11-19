@@ -302,6 +302,12 @@ pub struct Params {
     /// see docs/rules/accounts.md). An observer: the economy never reads them.
     #[serde(default, skip_serializing_if = "is_default")]
     pub accounts: crate::accounts::AccountsParams,
+    /// Gauges read off the books: work's share of income and of spending, the
+    /// labour inside a machine, who owns what (not in the Python; see
+    /// docs/rules/gauges.md). An observer, and it needs the books. (Beside the
+    /// books and not at the end, since it belongs with them.)
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub gauges: crate::gauges::GaugesParams,
     /// Roads and bridges that somebody pays for (a probe, not in the Python; see
     /// docs/probes/dx-roads.md). Off under both sets of rules.
     #[serde(default, skip_serializing_if = "is_default")]
@@ -319,6 +325,16 @@ pub struct Params {
     /// in the Python; see docs/rules/money.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub money: crate::money::MoneyParams,
+    /// An island that can last three centuries: the bounds on prices and the
+    /// wage, and the freight, ride on a cost of living the simulation keeps (not
+    /// in the Python; see docs/rules/longrun.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub longrun: crate::longrun::LongrunParams,
+    /// Fewer children as a town's own people live better, and less crowding
+    /// once drains come with income (not in the Python; see
+    /// docs/rules/transition.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub transition: crate::transition::TransitionParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -524,10 +540,13 @@ pub fn default_params() -> Params {
         land: crate::landform::LandParams::default(),
         tree: crate::tree::TreeParams::default(),
         accounts: crate::accounts::AccountsParams::default(),
+        gauges: crate::gauges::GaugesParams::default(),
         roads: crate::roads::RoadParams::default(),
         commons: crate::commons::CommonsParams::default(),
         hands: crate::hands::HandsParams::default(),
         money: crate::money::MoneyParams::default(),
+        longrun: crate::longrun::LongrunParams::default(),
+        transition: crate::transition::TransitionParams::default(),
     }
 }
 
@@ -562,9 +581,16 @@ pub fn game_params() -> Params {
     // the line is `P.land = crate::landform::LandParams::game();`.
     P.tree = crate::tree::TreeParams::game();
     P.accounts = crate::accounts::AccountsParams::game();
+    P.gauges = crate::gauges::GaugesParams::game();
     P.commons = crate::commons::CommonsParams::game();
     P.hands = crate::hands::HandsParams::game();
     P.money = crate::money::MoneyParams::game();
+    P.longrun = crate::longrun::LongrunParams::game();
+    // longrun (docs/rules/longrun.md, "The works' table"): room for three
+    // centuries of works. A place is never given to a second works, so the
+    // table only fills; the months run over the places taken, not the room.
+    P.F_max = 60_000;
+    P.transition = crate::transition::TransitionParams::game();
     P
 }
 

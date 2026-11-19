@@ -104,6 +104,9 @@ pub fn migration(st: &mut State, _C: &Content, P: &Params) {
     if P.people.enabled {
         crate::peopling::limit_arrivals(st, P, &act, &mut flow);
     }
+    // transition (docs/rules/transition.md): migrants carry their towns' measure of how
+    // well townsfolk live, as they carry their cash (nothing while the rule is off)
+    crate::transition::migrate(st, P, &act, &flow);
     let cash_pc: Vec<f64> = act.iter().map(|&t| st.hh_cash[t].max(0.0) / st.pop[t].max(1.0)).collect();
     // flow.sum(axis=0) runs down the columns one by one; flow.sum(axis=1) is pairwise
     let mut inflow = vec![0.0; n];
@@ -134,7 +137,7 @@ pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year
     for u in 0..st.ex_cell.len() {
         work[st.ex_cell[u]] += st.ex_labor[u];
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             work[st.f_cell[f]] += st.f_labor[f];
         }
@@ -229,7 +232,7 @@ pub fn resettle_new_towns(st: &mut State, _C: &Content, _P: &Params) {
     for u in 0..st.ex_cell.len() {
         work[st.ex_cell[u]] += st.ex_labor[u];
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             work[st.f_cell[f]] += st.f_labor[f];
         }
@@ -267,7 +270,7 @@ pub fn resettle_new_towns(st: &mut State, _C: &Content, _P: &Params) {
         }
         // firms in the new catchment now trade through the new town
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] && st.catch[st.f_cell[f]] >= 0 {
             st.f_town[f] = st.catch[st.f_cell[f]] as usize;
         }

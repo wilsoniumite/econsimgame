@@ -358,7 +358,8 @@ fn in_company_no_wage_runs_away_or_flips() {
 /// money was issued on its true total, docs/rules/money.md. The shelves going
 /// with the district, docs/rules/shelves.md, end that sailing too, as they ended
 /// island 2's, so the case is played with that rule off. The works' two mends,
-/// docs/rules/works.md, parts G and H, end it as well, and are off here too.)
+/// docs/rules/works.md, parts G and H, end it as well, and are off here too, as
+/// is longrun, docs/rules/longrun.md, whose anchors end it too.)
 #[test]
 fn a_sailing_is_news_of_its_own_kind() {
     let rules = isostate_core::params::Rules::Game;
@@ -369,6 +370,7 @@ fn a_sailing_is_news_of_its_own_kind() {
     P.people.shelves_go = false;
     P.works.spread_first = false;
     P.works.keep_order = false;
+    P.longrun.enabled = false;
     // With the production tree laid nobody takes ship on any of islands 1 to 16 by 1900
     // (a sweep of the sixteen: `emigration_years` 0 on every one). How a sailing is filed
     // is the chronicle's rule and the tree does not touch it, so it is tried on the

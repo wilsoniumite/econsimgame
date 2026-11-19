@@ -10,6 +10,8 @@
 //! it (1 is January, nothing of the year played; 7 is July, six months played).
 //! `--list` names the towns and the ten largest works, with their numbers, to
 //! choose from. Several of the four may be given; each card is printed in turn.
+//! The island's card ends with what the hand has done ("By hand"), which in a
+//! game played here with no edits reads "none yet".
 #![allow(non_snake_case)]
 use isostate_core::families;
 use isostate_core::inspect::{self, Thing, Told};

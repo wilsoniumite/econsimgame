@@ -790,6 +790,9 @@ fn towns_and_districts_have_stories() {
     // tuning, and of sixteen seeds 1, 3, 6 and 12 have such a decade.
     let mut P = game(6, 1800);
     P.seed = 3;
+    // played with longrun off (docs/rules/longrun.md), as the seed was chosen
+    // without it: its anchors give an island another history
+    P.longrun.enabled = false;
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(digests_of_new_towns(&early) >= 1, "seed 3 has a decade of new towns before 1800");
 }

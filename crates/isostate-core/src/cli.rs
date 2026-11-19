@@ -11,6 +11,10 @@
 //! `--rules port` (the default) runs the port of the Python; `--rules game` runs
 //! the rules a live game is played under (`params::game_params`).
 //!
+//! `--edits FILE` plays the run with a list of edits by hand, each carried out
+//! before its month (`edits::run_with`; docs/designs/sandbox.md, section 6.3),
+//! and writes the list beside the run as `edits.json`.
+//!
 //! `isostate-core sweep` runs many seeds against many settings and tabulates
 //! their stylised facts; see `sweep.rs`. `isostate-core scorecard DIR` reads a
 //! sweep against the aims the documents state; see `scorecard.rs`.
@@ -89,7 +93,24 @@ pub fn run_scenario(P: &Params, content: Content, out: &Path, progress: bool, li
 }
 
 const USAGE: &str = "usage: isostate-core run --out DIR [--seed N] [--rules port|game] [--regime landlords|commons] [--end-year Y]
-                         [--lite] [--families N] [--params FILE.toml|FILE.json] [--content content.toml] [--quiet]";
+                         [--lite] [--families N] [--params FILE.toml|FILE.json] [--content content.toml] [--quiet]
+                         [--edits FILE.json]   (a list of edits by hand, [{\"before\": [1800, 1], \"edit\": {\"what\": \"rule\", ...}}])";
+
+/// A run with a list of edits by hand (`edits::run_with`), written as any run
+/// is, with the list beside it as `edits.json`.
+pub fn run_edited(P: &Params, content: Content, edits: &[crate::edits::Dated], out: &Path, lite: bool) -> Result<RunResult, String> {
+    let result = crate::edits::run_with(P, content, edits)?;
+    save_run(&result, out, lite).map_err(|e| format!("{}: {e}", out.display()))?;
+    let list = serde_json::to_string_pretty(edits).map_err(|e| e.to_string())?;
+    std::fs::write(out.join("edits.json"), list + "\n").map_err(|e| format!("{}: {e}", out.display()))?;
+    Ok(result)
+}
+
+/// The list of edits in a file given to `--edits`.
+pub fn read_edits(path: &Path) -> Result<Vec<crate::edits::Dated>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("--edits {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("--edits {}: not a list of edits: {e}", path.display()))
+}
 
 /// `--rules port|game`.
 pub fn parse_rules(v: &str) -> Result<Rules, String> {
@@ -128,6 +149,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
     let mut quiet = false;
     let mut params_file: Option<PathBuf> = None;
     let mut content_file: Option<PathBuf> = None;
+    let mut edits_file: Option<PathBuf> = None;
     while let Some(a) = it.next() {
         let mut value = |name: &str| it.next().cloned().ok_or_else(|| format!("{name} needs a value"));
         match a.as_str() {
@@ -144,6 +166,7 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
             "--quiet" => quiet = true,
             "--params" => params_file = Some(PathBuf::from(value("--params")?)),
             "--content" => content_file = Some(PathBuf::from(value("--content")?)),
+            "--edits" => edits_file = Some(PathBuf::from(value("--edits")?)),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return Ok(());
@@ -172,8 +195,13 @@ pub fn main_with_args(args: &[String]) -> Result<(), String> {
         None => rules.content(),
     };
     check_end_year(&P, &content)?;
+    // read before the run, so that a wrong file is refused at once
+    let edits = edits_file.as_deref().map(read_edits).transpose()?;
     let t0 = std::time::Instant::now();
-    let result = run_scenario(&P, content, &out, !quiet, lite)?;
+    let result = match &edits {
+        Some(list) => run_edited(&P, content, list, &out, lite)?,
+        None => run_scenario(&P, content, &out, !quiet, lite)?,
+    };
     if let Some(y) = crate::firms::table_full(&result.state) {
         eprintln!("{}", crate::firms::table_full_message(y, result.state.f_alive.len()));
     }

@@ -14,6 +14,9 @@
 //! Under the tools, Run on: 1 year, 10 years or 25 years, played as fast as
 //! the simulation gives them and stopped at the January turn of the year
 //! asked for. It is To January (`game.follow`) armed again as each year comes.
+//! From stage 4 a press on the timeline ahead of the present, and a script's
+//! `goto:YEAR`, run on in the same way to the January of that year (`run_to`),
+//! and the tools' chips carry an icon before the word (`tool_chip`).
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
@@ -22,10 +25,13 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 use isostate_core::edits::{Edit, Purse};
 
+use bevy::ui::FocusPolicy;
+
 use crate::family::chip_button;
 use crate::game::Game;
+use crate::icons::{icon, Icons};
 use crate::live::{Cmd, Live};
-use crate::ui::{card, text, MUTED};
+use crate::ui::{card, text, BTN, INK, MUTED};
 use crate::{clock, Data, Pick, Picked, Timeline, Toasts, UiFont};
 
 /// The hand's ink, the blue-black of a pen (section 4.1).
@@ -66,6 +72,17 @@ impl Tool {
     fn index(self) -> usize {
         Tool::ALL.iter().position(|&t| t == self).unwrap_or(0)
     }
+
+    /// The icon before the word, and whether it is drawn in its own colours
+    /// (the coin keeps its gold) rather than in the chip's ink.
+    fn icon(self, icons: &Icons) -> (&Handle<Image>, bool) {
+        match self {
+            Tool::Look => (&icons.eye, false),
+            Tool::Money => (&icons.coin, true),
+            Tool::People => (&icons.people, false),
+            Tool::Harvest => (&icons.sheaf, false),
+        }
+    }
 }
 
 /// What each size chip multiplies by.
@@ -84,10 +101,15 @@ const RUN_ON: [usize; 3] = [1, 10, 25];
 /// A run on to a year: where it began and where it stops.
 #[derive(Clone, Copy, Debug)]
 struct RunOn {
-    years: usize,
-    /// the newest year (as an index) when it began, and the one it stops at
+    /// the Run on chip that began it (its years), which stays inked while it
+    /// lasts; none when the timeline or a script began it, or moved its year
+    chip: Option<usize>,
+    /// the newest year (as an index) when it began, and the one it stops at:
+    /// the clock's whole number at the January it is to reach
     from: usize,
     to: usize,
+    /// the clock when it began, for its line
+    since: f32,
     /// the newest year when `game.follow` was last set: a step that is let go
     /// with no year come (a failed month) lets the run on go too
     armed: Option<usize>,
@@ -111,10 +133,67 @@ pub struct Sandbox {
     drawn: Option<u64>,
 }
 
+/// Where the island stands when a run on is asked for.
+#[derive(Clone, Copy, Debug)]
+pub struct Present {
+    /// the newest year worked out, as an index (`Data::latest`)
+    pub latest: usize,
+    /// the months of the year after it that have come
+    pub months: usize,
+    /// the run's last year, as an index
+    pub last: usize,
+}
+
+impl Present {
+    pub fn of(data: &Data, live: &Live) -> Present {
+        Present { latest: data.latest(), months: live.months.min(11), last: data.r.ny.max(1) - 1 }
+    }
+
+    /// The clock at the present.
+    pub fn clock(self) -> f32 {
+        clock::at(self.latest, self.months)
+    }
+}
+
 impl Sandbox {
     /// Running on to a year.
     pub fn running(&self) -> bool {
         self.run.is_some()
+    }
+
+    /// The clock's whole number at the January a run on under way is to reach.
+    pub fn target(&self) -> Option<usize> {
+        self.run.map(|r| r.to)
+    }
+
+    /// Run on to the January whose clock is `to` (a year's end, as the clock
+    /// counts: `clock::january`), as Run on's chips, a press on the timeline
+    /// ahead of the present and a script's `goto:YEAR` all ask. The year is cut
+    /// to the run's last; one at or behind the present starts nothing (false).
+    /// A run on that has not begun puts the clock at the present and stops
+    /// it; one under way has its year moved and its chip (`chip`, a chip's
+    /// years, or none) changed, and goes on from where it was.
+    pub fn run_to(&mut self, tl: &mut Timeline, at: Present, to: usize, chip: Option<usize>, now: f32) -> bool {
+        let to = to.min(at.last);
+        if to <= at.latest {
+            return false;
+        }
+        match &mut self.run {
+            Some(run) => {
+                if (run.to, run.chip) == (to, chip) {
+                    return true;
+                }
+                (run.to, run.chip) = (to, chip);
+            }
+            None => {
+                // the clock goes to the present and stops: the years are asked for one after another
+                tl.playing = false;
+                tl.t = at.clock();
+                self.run = Some(RunOn { chip, from: at.latest, to, since: tl.t, armed: None, began: now });
+            }
+        }
+        self.version += 1;
+        true
     }
 
     fn chosen(&self, tool: Tool, row: usize) -> usize {
@@ -164,9 +243,15 @@ impl Sandbox {
     }
 }
 
+/// The widest the tray's cards may be (section 4.3): wider than this, the chips wrap.
+const TRAY_WIDEST: f32 = 520.0;
+
 /// Where the tray is drawn.
 #[derive(Component)]
 struct TrayRoot;
+/// The tray's first card, the tools and Run on.
+#[derive(Component)]
+struct TrayCard;
 #[derive(Component)]
 struct ToolChip(Tool);
 #[derive(Component)]
@@ -244,16 +329,13 @@ fn tray_clicks(
             continue;
         }
         // the chip of a run on under way stops it at the next turn
-        if sb.run.is_some_and(|run| run.years == r.0) {
+        if sb.run.is_some_and(|run| run.chip == Some(r.0)) {
             sb.run = None;
-        } else if data.r.filled < data.r.ny {
-            // the clock goes to the present and stops: the years are asked for one after another
-            let latest = data.latest();
-            tl.playing = false;
-            tl.t = clock::at(latest, live.months.min(11));
-            sb.run = Some(RunOn { years: r.0, from: latest, to: (latest + r.0).min(data.r.ny - 1), armed: None, began: time.elapsed_secs() });
+            sb.version += 1;
+        } else {
+            let at = Present::of(&data, &live);
+            sb.run_to(&mut tl, at, at.latest + r.0, Some(r.0), time.elapsed_secs());
         }
-        sb.version += 1;
     }
     // Escape puts the tool down (and stops a run on, in `run_on`)
     if keys.just_pressed(KeyCode::Escape) && sb.tool != Tool::Look {
@@ -319,7 +401,7 @@ fn answers(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: Res<
     sb.waiting = false;
     let when = clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11))));
     if let Some((ok, line)) = &game.note {
-        // (grey and labelled News until the tray's own colour comes, in stage 4)
+        // (in the hand's ink and labelled "By hand", from stage 4)
         toasts.say(if *ok { "hand" } else { "orders_refused" }, line, &when, time.elapsed_secs());
         println!("sandbox: {} {when}: {line}", if *ok { "by hand," } else { "refused," });
     }
@@ -344,8 +426,9 @@ fn run_on(mut sb: ResMut<Sandbox>, mut game: ResMut<Game>, mut tl: ResMut<Timeli
         let secs = time.elapsed_secs() - run.began;
         let years = latest.saturating_sub(run.from);
         let line = format!(
-            "Ran on {years} year{} to January {} in {secs:.1} s: {:.1} years a second{}",
+            "Ran on {years} year{} from {} to January {} in {secs:.1} s: {:.1} years a second{}",
             if years == 1 { "" } else { "s" },
+            clock::month_year(clock::date(data.r.y0, run.since)),
             data.r.y0 + latest as i32 + 1,
             years as f32 / secs.max(1e-3),
             if reached { "" } else { ", stopped short" }
@@ -365,7 +448,7 @@ fn run_on(mut sb: ResMut<Sandbox>, mut game: ResMut<Game>, mut tl: ResMut<Timeli
 }
 
 /// The tray, drawn again when a tool or a choice changes or a run on begins or ends.
-fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>, q: Query<(Entity, Option<&Children>), With<TrayRoot>>) {
+fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>, icons: Res<Icons>, q: Query<(Entity, Option<&Children>), With<TrayRoot>>) {
     if sb.drawn == Some(sb.version) {
         return;
     }
@@ -379,37 +462,86 @@ fn draw_tray(mut commands: Commands, mut sb: ResMut<Sandbox>, font: Res<UiFont>,
     let f = font.0.clone();
     let sb = &*sb;
     commands.entity(root).with_children(|p| {
-        tray(p, &f, sb);
+        tray(p, &f, &icons, sb);
         if sb.tool != Tool::Look {
             choices(p, &f, sb);
         }
     });
 }
 
+/// How many chips `width` pixels wide go in one row of a tray card at its widest.
+fn chips_a_row(width: f32) -> usize {
+    // the card's padding is 12 px a side and the chips stand 6 px apart
+    ((TRAY_WIDEST - 24.0 + 6.0) / (width + 6.0)).floor().max(0.0) as usize
+}
+
+/// The tray as it is laid out, for a script's `print`: the first card's width,
+/// each tool's chip, and how many chips of their mean width go in two rows.
+pub fn tray_measure(world: &mut World) -> Option<String> {
+    let mut q = world.query_filtered::<&ComputedNode, With<TrayCard>>();
+    let card = q.iter(world).next().map(|c| c.size().x * c.inverse_scale_factor)?;
+    let mut q = world.query::<(&ComputedNode, &ToolChip)>();
+    let mut chips: Vec<(usize, &str, f32)> = q.iter(world).map(|(c, t)| (t.0.index(), t.0.word(), c.size().x * c.inverse_scale_factor)).collect();
+    chips.sort_by_key(|c| c.0);
+    let mean = chips.iter().map(|c| c.2).sum::<f32>() / chips.len().max(1) as f32;
+    let each: Vec<String> = chips.iter().map(|c| format!("{} {:.0}", c.1, c.2)).collect();
+    Some(format!(
+        "the tray's card is {card:.0} px wide (at most {TRAY_WIDEST:.0}); the tools' chips {} px; chips of their mean width ({mean:.0} px) go {} to a row, {} in two rows",
+        each.join(", "),
+        chips_a_row(mean),
+        2 * chips_a_row(mean)
+    ))
+}
+
 fn chip_row(p: &mut ChildSpawnerCommands, build: impl FnOnce(&mut ChildSpawnerCommands)) {
     p.spawn(Node { flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: Val::Px(6.0), row_gap: Val::Px(4.0), ..default() }).with_children(build);
 }
 
+/// A tool's chip: its icon before its word, built as `family::chip_button`
+/// builds a chip, white on the hand's ink while the tool is in hand. The word
+/// is what a script clicks by.
+fn tool_chip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, tool: Tool, on: bool) {
+    let mut e = p.spawn((
+        Node { padding: UiRect::new(Val::Px(7.0), Val::Px(9.0), Val::Px(3.0), Val::Px(3.0)), column_gap: Val::Px(4.0), align_items: AlignItems::Center, border_radius: BorderRadius::all(Val::Px(10.0)), ..default() },
+        BackgroundColor(if on { HAND_INK } else { BTN }),
+        Interaction::default(),
+        FocusPolicy::Block,
+        ToolChip(tool),
+    ));
+    if !on {
+        e.insert(crate::ui::Hoverable);
+    }
+    let (ic, own) = tool.icon(icons);
+    let ink = if on { Color::WHITE } else { INK };
+    e.with_children(|c| {
+        c.spawn(icon(ic, 16.0, if own { Color::WHITE } else { ink }));
+        c.spawn(text(f, tool.word(), 12.5, ink));
+    });
+}
+
 /// The first card: the tools, and Run on.
-fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
-    p.spawn(card(Node {
-        flex_direction: FlexDirection::Column,
-        row_gap: Val::Px(6.0),
-        padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-        max_width: Val::Px(520.0),
-        border_radius: BorderRadius::all(Val::Px(12.0)),
-        ..default()
-    }))
+fn tray(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, sb: &Sandbox) {
+    p.spawn((
+        card(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+            max_width: Val::Px(TRAY_WIDEST),
+            border_radius: BorderRadius::all(Val::Px(12.0)),
+            ..default()
+        }),
+        TrayCard,
+    ))
     .with_children(|c| {
         chip_row(c, |row| {
             for t in Tool::ALL {
-                chip_button(row, f, t.word(), sb.tool == t, HAND_INK, ToolChip(t));
+                tool_chip(row, f, icons, t, sb.tool == t);
             }
         });
         chip_row(c, |row| {
             row.spawn(text(f, "Run on:", 12.5, MUTED));
             for n in RUN_ON {
-                let on = sb.run.is_some_and(|r| r.years == n);
+                let on = sb.run.is_some_and(|r| r.chip == Some(n));
                 chip_button(row, f, if n == 1 { "1 year".to_string() } else { format!("{n} years") }.as_str(), on, HAND_INK, RunOnChip(n));
             }
         });
@@ -422,7 +554,7 @@ fn choices(p: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
         flex_direction: FlexDirection::Column,
         row_gap: Val::Px(6.0),
         padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
-        max_width: Val::Px(520.0),
+        max_width: Val::Px(TRAY_WIDEST),
         border_radius: BorderRadius::all(Val::Px(12.0)),
         ..default()
     }))
@@ -465,5 +597,75 @@ mod tests {
         assert_eq!(Tool::Money.rows()[2].len(), MONEY_FACTORS.len());
         assert_eq!(Tool::People.rows()[0].len(), PEOPLE_FACTORS.len());
         assert_eq!(Tool::Harvest.rows()[1].len(), HARVEST_FACTORS.len());
+    }
+
+    fn stopped_clock() -> Timeline {
+        Timeline { t: 37.5, built: None, playing: true, speed: 1.0 }
+    }
+
+    #[test]
+    fn a_run_on_from_a_chip_from_the_timeline_or_from_a_script_goes_to_the_same_january() {
+        // an island begun in 1750, at January 1791 (the clock at 40), playing on to 2050
+        let at = Present { latest: 40, months: 0, last: 299 };
+        // the chip of ten years
+        let (mut by_chip, mut tl) = (Sandbox::default(), stopped_clock());
+        assert!(by_chip.run_to(&mut tl, at, at.latest + 10, Some(10), 1.0));
+        // the clock went to the present and stopped
+        assert_eq!((tl.t, tl.playing), (40.0, false));
+        // the timeline pressed where January 1801 stands on it
+        let x = 50.0 / 299.0 - 0.5;
+        let (mut by_press, mut tl) = (Sandbox::default(), stopped_clock());
+        assert!(by_press.run_to(&mut tl, at, crate::ui::timeline_year(x, 299), None, 1.0));
+        // and goto:1801
+        let (mut by_script, mut tl) = (Sandbox::default(), stopped_clock());
+        assert!(by_script.run_to(&mut tl, at, clock::january(1750, 1801), None, 1.0));
+        assert_eq!((by_chip.target(), by_press.target(), by_script.target()), (Some(50), Some(50), Some(50)));
+        // the chip stays inked while its run on lasts; the others ink none
+        assert_eq!((by_chip.run.unwrap().chip, by_press.run.unwrap().chip), (Some(10), None));
+        // a press ahead while the run on is under way moves its year and lets go of the chip,
+        // and the run on goes on from where it was, the clock where the years have brought it
+        let mut tl = Timeline { t: 43.0, built: None, playing: false, speed: 1.0 };
+        let v = by_chip.version;
+        assert!(by_chip.run_to(&mut tl, Present { latest: 43, ..at }, 70, None, 2.0));
+        let run = by_chip.run.unwrap();
+        assert_eq!((run.to, run.chip, run.from, run.began, tl.t), (70, None, 40, 1.0, 43.0));
+        assert_eq!(by_chip.version, v + 1);
+        // the same press held for another frame changes nothing, and the tray is not drawn again
+        assert!(by_chip.run_to(&mut tl, Present { latest: 43, ..at }, 70, None, 2.1));
+        assert_eq!(by_chip.version, v + 1);
+    }
+
+    #[test]
+    fn a_run_on_to_the_present_or_behind_it_starts_nothing_and_one_past_the_end_stops_there() {
+        // in April 1791: January 1791 is behind the clock, and so is 1785
+        let at = Present { latest: 40, months: 3, last: 299 };
+        for to in [40, 34, 0] {
+            let (mut sb, mut tl) = (Sandbox::default(), stopped_clock());
+            assert!(!sb.run_to(&mut tl, at, to, None, 1.0), "{to}");
+            assert!(sb.target().is_none() && sb.version == 0);
+            // and the clock is left alone
+            assert_eq!((tl.t, tl.playing), (37.5, true));
+        }
+        // January 1792 is ahead
+        let (mut sb, mut tl) = (Sandbox::default(), stopped_clock());
+        assert!(sb.run_to(&mut tl, at, 41, None, 1.0));
+        assert!((tl.t - clock::at(40, 3)).abs() < 1e-6, "the clock goes to April 1791, the present: {}", tl.t);
+        // twenty-five years from 2041 stop at the run's last year
+        let near_the_end = Present { latest: 290, months: 0, last: 299 };
+        let (mut sb, mut tl) = (Sandbox::default(), stopped_clock());
+        assert!(sb.run_to(&mut tl, near_the_end, 290 + 25, Some(25), 1.0));
+        assert_eq!(sb.target(), Some(299));
+        // and with the last year played there is nothing to run on to
+        let over = Present { latest: 299, months: 0, last: 299 };
+        let (mut sb, mut tl) = (Sandbox::default(), stopped_clock());
+        assert!(!sb.run_to(&mut tl, over, 310, Some(10), 1.0));
+    }
+
+    #[test]
+    fn the_tray_holds_a_dozen_tools_in_two_rows() {
+        // the tools' chips with their icons were laid out 64 to 81 px wide, 74 on the mean
+        // (a scripted run's print): six of the mean to a row of the widest card, five of the widest
+        assert_eq!((chips_a_row(74.0), chips_a_row(81.0)), (6, 5));
+        assert_eq!(chips_a_row(500.0), 0);
     }
 }

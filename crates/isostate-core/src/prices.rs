@@ -221,8 +221,8 @@ pub fn found_town(st: &mut State, C: &Content, P: &Params, n: usize, donor: usiz
     let far = if st.dcatch[site].is_finite() { st.dcatch[site] } else { 0.0 };
     for g in 0..st.price.cols {
         st.price_anchor[(n, g)] = st.price_anchor[(donor, g)];
-        let carriage = P.freight * C.weight[g] * far;
-        st.pexp[(n, g)] = (st.pexp[(donor, g)] - carriage).max(P.price_floor * C.base_price[g]);
+        let carriage = crate::longrun::freight(st, P) * C.weight[g] * far;
+        st.pexp[(n, g)] = (st.pexp[(donor, g)] - carriage).max(crate::longrun::floor(st, P, C, g));
     }
 }
 
@@ -243,7 +243,7 @@ pub fn anchor_follows(st: &mut State, C: &Content, P: &Params, t: usize, g: usiz
         return;
     }
     ensure_anchor(st);
-    let (lo, hi) = (P.price_floor * C.base_price[g], P.price_ceiling * C.base_price[g]);
+    let (lo, hi) = (crate::longrun::floor(st, P, C, g), crate::longrun::ceiling(st, P, C, g));
     st.price_anchor[(t, g)] = (st.price_anchor[(t, g)] * st.price[(t, g)] / was).clamp(lo, hi);
 }
 

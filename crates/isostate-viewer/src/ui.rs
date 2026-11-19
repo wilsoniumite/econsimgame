@@ -1,6 +1,8 @@
 //! The game interface: a top bar with the family, the date and the speed; a
 //! tabbed side panel (family, holdings, markets, news); and a timeline along
-//! the bottom with the year's news marked on it.
+//! the bottom with the year's news marked on it. In a sandbox the family's card
+//! is the island's, the tabs are hand, rules, markets, news and families, and
+//! the hand's ink is the accent (docs/designs/sandbox.md, 4.1).
 //!
 //! Everything is drawn in the same paper-and-ink style as the labels: warm
 //! cards with rounded corners and soft shadows, Fredoka for type.
@@ -39,28 +41,59 @@ pub enum Tab {
     Holdings,
     Markets,
     News,
+    /// a sandbox's: everything done by hand (hand_tab.rs)
+    Hand,
+    /// a sandbox's: the island's rules (rulebook.rs)
+    Rules,
 }
 
 impl Tab {
     /// For the command line: "markets", "news", ... or anything else for no panel.
+    /// "families" is the Family tab, which is what a sandbox calls it.
     pub fn parse(s: &str) -> Option<Tab> {
         match s.to_ascii_lowercase().as_str() {
-            "family" => Some(Tab::Family),
+            "family" | "families" => Some(Tab::Family),
             "holdings" => Some(Tab::Holdings),
             "markets" => Some(Tab::Markets),
             "news" => Some(Tab::News),
+            "hand" => Some(Tab::Hand),
+            "rules" => Some(Tab::Rules),
             _ => None,
         }
     }
 
-    fn label(self) -> &'static str {
+    /// The tab's word; in a sandbox the Family tab is the Families, a place to
+    /// look at the six of them and no longer the player's own.
+    fn label(self, sandbox: bool) -> &'static str {
         match self {
+            Tab::Family if sandbox => "Families",
             Tab::Family => "Family",
             Tab::Holdings => "Holdings",
             Tab::Markets => "Markets",
             Tab::News => "News",
+            Tab::Hand => "Hand",
+            Tab::Rules => "Rules",
         }
     }
+
+    /// The tabs on the bar, in order, which are also the keys 1 to 5:
+    /// a sandbox's (docs/designs/sandbox.md, 4.1) or the family game's.
+    pub fn bar(sandbox: bool) -> &'static [Tab] {
+        if sandbox {
+            &[Tab::Hand, Tab::Rules, Tab::Markets, Tab::News, Tab::Family]
+        } else {
+            &[Tab::Family, Tab::Holdings, Tab::Markets, Tab::News]
+        }
+    }
+}
+
+/// The accent of the interface: the hand's ink in a sandbox, the player's
+/// family's colour in the family game, a warm brown in a recorded history.
+pub fn accent(fam: Option<&FamilyView>, sandbox: bool) -> Color {
+    if sandbox {
+        return crate::sandbox::HAND_INK;
+    }
+    fam.and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30))
 }
 
 /// Which news the News panel lists.
@@ -214,6 +247,10 @@ pub struct TickLayer;
 /// The part of the timeline that has happened.
 #[derive(Component)]
 pub struct TimelineFill;
+/// A pin in the hand's ink on the timeline at the year a sandbox's run on is
+/// going to, shown while it goes.
+#[derive(Component)]
+pub struct RunOnMark;
 /// Clicking this opens a tab (the family card opens the family).
 #[derive(Component)]
 pub struct OpenTab(pub Tab);
@@ -379,10 +416,15 @@ fn tabs_fit(parts: Query<(&ComputedNode, &TopPart)>, mut labels: Query<&mut Node
     }
 }
 
-pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam: Option<Res<FamilyView>>, icons: Res<crate::icons::Icons>) {
+pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam: Option<Res<FamilyView>>, icons: Res<crate::icons::Icons>, sandbox: Option<Res<crate::sandbox::Sandbox>>) {
     let f = &font.0;
-    let crest_col = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.47, 0.38));
+    let sandbox = sandbox.is_some();
+    // in a sandbox the hand's ink takes the family colour's place (docs/designs/sandbox.md, 4.1)
+    let crest_col = if sandbox { crate::sandbox::HAND_INK } else { fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.47, 0.38)) };
     let family_name = fam.as_ref().and_then(|v| v.player()).map(|p| format!("The {} family", p.name)).unwrap_or_else(|| "A recorded history".into());
+    // a sandbox's card is the island's: its number on the crest, its name beside it
+    let seed = data.r.header.meta.seed;
+    let card_name = if sandbox { island_name(seed) } else { family_name.clone() };
 
     // three cards across the top: the family, the date and the clock, the tabs
     commands
@@ -403,10 +445,10 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         border_radius: BorderRadius::all(Val::Px(16.0)),
                         ..default()
                     }),
-                    OpenTab(Tab::Family),
+                    OpenTab(if sandbox { Tab::Hand } else { Tab::Family }),
                 ))
                 .with_children(|left| {
-                    // a little shield with the family's initial
+                    // a little shield with the family's initial, or in a sandbox the island's number
                     left.spawn((
                         Node {
                             width: Val::Px(32.0),
@@ -422,16 +464,27 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                         Crest,
                     ))
                     .with_children(|c| {
-                        let letter = family_name.trim_start_matches("The ").chars().next().unwrap_or('A').to_string();
-                        c.spawn((text(f, &letter, 19.0, Color::WHITE), CrestLetter));
+                        if sandbox {
+                            let number = seed.to_string();
+                            c.spawn((text(f, &number, crest_number_size(&number), Color::WHITE), TextLayout::default().with_no_wrap(), CrestLetter));
+                        } else {
+                            let letter = family_name.trim_start_matches("The ").chars().next().unwrap_or('A').to_string();
+                            c.spawn((text(f, &letter, 19.0, Color::WHITE), CrestLetter));
+                        }
                     });
                     left.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|col| {
-                        col.spawn((text(f, &family_name, 19.0, INK), FamilyNameText));
+                        col.spawn((text(f, &card_name, 19.0, INK), FamilyNameText));
                         col.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() }).with_children(|row| {
                             let slot = |row: &mut ChildSpawnerCommands, i: usize, gap: bool| {
                                 row.spawn((text(f, "", 13.5, MUTED), FortuneSlot(i), Node { margin: UiRect::right(Val::Px(if gap { 8.0 } else { 0.0 })), ..default() }));
                             };
-                            if fam.is_some() {
+                            if sandbox {
+                                // the island's people and its works standing, for the year on the clock
+                                row.spawn(crate::icons::icon(&icons.people, 15.0, MUTED));
+                                slot(row, 0, true);
+                                row.spawn(crate::icons::icon(&icons.works, 15.0, MUTED));
+                                slot(row, 1, false);
+                            } else if fam.is_some() {
                                 slot(row, 0, true);
                                 row.spawn(crate::icons::icon(&icons.coin, 15.0, Color::WHITE));
                                 slot(row, 1, true);
@@ -514,16 +567,18 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ..default()
                 }))
                 .with_children(|right| {
-                    for t in [Tab::Family, Tab::Holdings, Tab::Markets, Tab::News] {
+                    for &t in Tab::bar(sandbox) {
                         let ic = match t {
                             Tab::Family => &icons.family,
                             Tab::Holdings => &icons.holdings,
                             Tab::Markets => &icons.markets,
                             Tab::News => &icons.news,
+                            Tab::Hand => &icons.pen,
+                            Tab::Rules => &icons.scales,
                         };
                         right.spawn((Node { column_gap: Val::Px(6.0), ..button_node(11.0, 7.0) }, BackgroundColor(BTN), Interaction::default(), FocusPolicy::Block, Hoverable, TabButton(t))).with_children(|bt| {
                             bt.spawn(crate::icons::icon(ic, 16.0, INK));
-                            bt.spawn((text(f, t.label(), 15.0, INK), TabLabel));
+                            bt.spawn((text(f, t.label(sandbox), 15.0, INK), TabLabel));
                         });
                     }
                 });
@@ -586,9 +641,22 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
             HelpCard,
         ))
         .with_children(|wrap| {
-            wrap.spawn(card(Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(26.0), Val::Px(20.0)), row_gap: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() })).with_children(|c| {
+            // (a card is on layer 10 of its own, which would put it under the sandbox's tray and the
+            // toasts beside it; the help card is above them all)
+            wrap.spawn(card(Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(26.0), Val::Px(20.0)), row_gap: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() })).insert(GlobalZIndex(30)).with_children(|c| {
                 c.spawn((text(f, "How to look around", 22.0, INK), Node { margin: UiRect::bottom(Val::Px(6.0)), ..default() }));
-                for (key, what) in [
+                if sandbox {
+                    // what the tray is, in a few lines, before the keys
+                    for line in [
+                        "The tray under the clock holds the hand's tools. Take one (Money, People, Harvest),",
+                        "choose from its chips, then click the map: a town, or anywhere in its district.",
+                        "Escape puts the tool down. Run on plays 1, 10 or 25 years and stops in January.",
+                    ] {
+                        c.spawn(text(f, line, 14.5, MUTED));
+                    }
+                    c.spawn(Node { height: Val::Px(4.0), ..default() });
+                }
+                let keys: &[(&str, &str)] = &[
                     ("Drag", "move across the island"),
                     ("Right-drag", "turn and tilt the view"),
                     ("Scroll", "come closer or stand back"),
@@ -599,13 +667,17 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                     ("Page Up", "on to the year's turn, in January"),
                     ("Left", "back a year (Page Down: ten)"),
                     ("Up, Down", "faster or slower"),
-                    ("1 2 3 4", "family, holdings, markets, news"),
+                ];
+                let tabs: (&str, &str) = if sandbox { ("1 2 3 4 5", "hand, rules, markets, news, families") } else { ("1 2 3 4", "family, holdings, markets, news") };
+                let more: &[(&str, &str)] = &[
                     // (task A) two more: when town ground joined its town, and who lives on it
                     ("M", "map views: rent, markets, reach, prices, wages, town growth, residents"),
                     ("G", "the next good, when prices are mapped"),
                     ("T", "miniature focus on or off"),
-                    ("Esc", "close the note about what you clicked"),
-                ] {
+                    ("Esc", if sandbox { "put the tool down, or close the note about what you clicked" } else { "close the note about what you clicked" }),
+                ];
+                let f3: &[(&str, &str)] = if sandbox { &[("F3", "how long each frame takes to draw, as a strip")] } else { &[] };
+                for &(key, what) in keys.iter().chain(std::iter::once(&tabs)).chain(more).chain(f3) {
                     c.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(12.0), ..default() }).with_children(|row| {
                         row.spawn(Node { width: Val::Px(120.0), justify_content: JustifyContent::End, ..default() }).with_children(|kc| keycap(kc, f, key));
                         row.spawn(text(f, what, 15.0, INK));
@@ -647,11 +719,27 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 // the years there are so far (all of them in a replay)
                 track.spawn((
                     Node { position_type: PositionType::Absolute, left: Val::Px(0.0), width: Val::Percent(100.0), top: Val::Px(17.0), height: Val::Px(3.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() },
-                    BackgroundColor(Color::srgb(0.80, 0.74, 0.64)),
+                    // (in a sandbox the hand's ink, paler than the knob)
+                    BackgroundColor(if sandbox { crate::sandbox::HAND_INK.with_alpha(0.45) } else { Color::srgb(0.80, 0.74, 0.64) }),
                     TimelineFill,
                 ));
                 // a tick for each major piece of news, filled in by timeline_ticks
                 track.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), ..default() }, TickLayer));
+                // (a sandbox) the year a run on is going to: a thin stem through the rail with a
+                // round head, in the hand's ink, hidden until a run on is under way
+                if sandbox {
+                    let ink = crate::sandbox::HAND_INK;
+                    track
+                        .spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(0.0), top: Val::Px(0.0), width: Val::Px(9.0), height: Val::Px(26.0), margin: UiRect::left(Val::Px(-4.5)), display: Display::None, ..default() }, RunOnMark))
+                        .with_children(|pin| {
+                            pin.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(3.5), top: Val::Px(6.0), width: Val::Px(2.0), height: Val::Px(19.0), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() }, BackgroundColor(ink)));
+                            pin.spawn((
+                                Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(9.0), height: Val::Px(9.0), border: UiRect::all(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(4.5)), ..default() },
+                                BackgroundColor(Color::WHITE),
+                                BorderColor::all(ink),
+                            ));
+                        });
+                }
                 // the knob with the year above it
                 track.spawn((
                     Node { position_type: PositionType::Absolute, left: Val::Percent(100.0), top: Val::Px(11.0), width: Val::Px(14.0), height: Val::Px(14.0), margin: UiRect::left(Val::Px(-7.0)), border_radius: BorderRadius::all(Val::Px(7.0)), border: UiRect::all(Val::Px(2.0)), ..default() },
@@ -676,12 +764,14 @@ fn toggle_tab(ui: &mut UiState, t: Tab) {
     ui.tab = if ui.tab == Some(t) { None } else { Some(t) };
 }
 
-fn hotkeys(keys: Res<ButtonInput<KeyCode>>, mut ui: ResMut<UiState>, mut help: Query<&mut Visibility, With<HelpCard>>, cards: Res<crate::game::CardOpen>) {
+fn hotkeys(keys: Res<ButtonInput<KeyCode>>, mut ui: ResMut<UiState>, mut help: Query<&mut Visibility, With<HelpCard>>, cards: Res<crate::game::CardOpen>, sandbox: Option<Res<crate::sandbox::Sandbox>>) {
     // the panels and the help wait while a card wants an answer
     if cards.0 {
         return;
     }
-    for (k, t) in [(KeyCode::Digit1, Tab::Family), (KeyCode::Digit2, Tab::Holdings), (KeyCode::Digit3, Tab::Markets), (KeyCode::Digit4, Tab::News)] {
+    // the keys 1 to 5 are the tabs on the bar, in its order
+    let digits = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5];
+    for (&k, &t) in digits.iter().zip(Tab::bar(sandbox.is_some())) {
         if keys.just_pressed(k) {
             toggle_tab(&mut ui, t);
         }
@@ -754,18 +844,20 @@ fn button_colours(mut q: Query<(&Interaction, &mut BackgroundColor), (Changed<In
     }
 }
 
-/// Selected tabs and the current speed are shown in the family's colour.
+/// Selected tabs and the current speed are shown in the family's colour (the hand's ink in a sandbox).
+#[allow(clippy::too_many_arguments)]
 fn active_styles(
     ui: Res<UiState>,
     tl: Res<Timeline>,
     fam: Option<Res<FamilyView>>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
     tabs: Query<(&TabButton, &Interaction, &Children, Entity), Without<SpeedButton>>,
     speeds: Query<(&SpeedButton, &Interaction, &Children, Entity), Without<TabButton>>,
     mut bgs: Query<&mut BackgroundColor>,
     mut cols: Query<&mut TextColor>,
     mut imgs: Query<&mut ImageNode>,
 ) {
-    let accent = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
+    let accent = accent(fam.as_deref(), sandbox.is_some());
     let mut paint = |e: Entity, children: &Children, on: bool, inter: &Interaction| {
         if let Ok(mut bg) = bgs.get_mut(e) {
             bg.0 = if on { accent } else { match inter { Interaction::Pressed => BTN_DOWN, Interaction::Hovered => BTN_HOVER, Interaction::None => BTN } };
@@ -866,21 +958,50 @@ fn month_bar(
     }
 }
 
-fn timeline_drag(mut tl: ResMut<Timeline>, data: Res<Data>, q: Query<(&Interaction, &RelativeCursorPosition), With<TimelineTrack>>) {
+/// The year's end a press on the timeline stands for, from where the pointer
+/// is across the track (`RelativeCursorPosition::normalized`, -0.5 to 0.5).
+pub fn timeline_year(x: f32, last: usize) -> usize {
+    ((x + 0.5).clamp(0.0, 1.0) * last as f32).round() as usize
+}
+
+/// A press on the timeline puts the clock at the year pressed. In a sandbox a
+/// press ahead of the present runs on to the January of that year
+/// (`Sandbox::run_to`), and one while a run on is under way moves its year;
+/// elsewhere the clock goes no further than the present.
+fn timeline_drag(
+    mut tl: ResMut<Timeline>,
+    data: Res<Data>,
+    q: Query<(&Interaction, &RelativeCursorPosition), With<TimelineTrack>>,
+    mut sandbox: Option<ResMut<crate::sandbox::Sandbox>>,
+    live: Option<Res<crate::live::Live>>,
+    time: Res<Time>,
+) {
     for (i, rel) in &q {
         if *i != Interaction::Pressed {
             continue;
         }
         if let Some(n) = rel.normalized {
-            let last = data.r.ny.max(1) - 1;
-            let x = (n.x + 0.5).clamp(0.0, 1.0);
+            let k = timeline_year(n.x, data.r.ny.max(1) - 1);
+            if let (Some(sb), Some(live)) = (sandbox.as_mut(), live.as_ref()) {
+                if k > data.latest() {
+                    sb.run_to(&mut tl, crate::sandbox::Present::of(&data, live), k, None, time.elapsed_secs());
+                    continue;
+                }
+            }
             tl.playing = false;
-            tl.t = (x * last as f32).round().min(data.latest() as f32);
+            tl.t = (k as f32).min(data.latest() as f32);
         }
     }
 }
 
-fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (With<TimelineKnob>, Without<TimelineFill>)>, mut fill: Query<&mut Node, (With<TimelineFill>, Without<TimelineKnob>)>) {
+fn timeline_knob(
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
+    mut q: Query<&mut Node, (With<TimelineKnob>, Without<TimelineFill>, Without<RunOnMark>)>,
+    mut fill: Query<&mut Node, (With<TimelineFill>, Without<TimelineKnob>, Without<RunOnMark>)>,
+    mut mark: Query<&mut Node, (With<RunOnMark>, Without<TimelineKnob>, Without<TimelineFill>)>,
+) {
     let last = (data.r.ny.max(2) - 1) as f32;
     for mut n in &mut q {
         n.left = Val::Percent((tl.t / last * 100.0).clamp(0.0, 100.0));
@@ -891,10 +1012,36 @@ fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (Wi
             n.width = w;
         }
     }
+    // the year a run on is going to, while it goes
+    let to = sandbox.and_then(|s| s.target());
+    for mut n in &mut mark {
+        let (display, left) = match to {
+            Some(k) => (Display::Flex, Val::Percent((k as f32 / last * 100.0).clamp(0.0, 100.0))),
+            None => (Display::None, n.left),
+        };
+        if n.display != display || n.left != left {
+            n.display = display;
+            n.left = left;
+        }
+    }
 }
 
-/// News ticks along the timeline, redrawn as a live game adds news.
-fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<(usize, usize)>>) {
+/// How tall the tallest tick of the news stands on the timeline, in pixels.
+const NEWS_TICK_TALLEST: f32 = 16.0;
+
+/// A tick on the timeline for a thing done by hand.
+#[derive(Component)]
+pub struct HandTick;
+
+/// How many ticks of the hand the timeline holds, for a script's `print`.
+pub fn hand_ticks(world: &mut World) -> usize {
+    world.query_filtered::<(), With<HandTick>>().iter(world).count()
+}
+
+/// News ticks along the timeline, redrawn as a live game adds news. In a
+/// sandbox each thing done by hand has a tick of its own in the hand's ink,
+/// half as tall again as the tallest of the news and drawn over them.
+fn timeline_ticks(mut commands: Commands, data: Res<Data>, sandbox: Option<Res<crate::sandbox::Sandbox>>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<(usize, usize)>>) {
     let _frames = crate::frames::span(crate::frames::Sys::Hud);
     let r = &data.r;
     // chronicle: the marks of news already drawn can change, so the count of major items is part of the key
@@ -910,14 +1057,25 @@ fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity,
         }
     }
     let span = (r.ny.max(2) - 1) as f32;
+    // where the knob stands when the clock is on the item's date (`clock::news_time`)
+    let at = |year: f32| ((year - r.y0 as f32 - 1.0) / span * 100.0).clamp(0.0, 100.0);
+    // (a recording or a family game has no hand: what it has of kind "hand" is news like any other)
+    let by_hand = |e: &&crate::replay::Event| sandbox.is_some() && e.kind == "hand";
     commands.entity(e).with_children(|track| {
-        for e in r.header.events.iter().filter(|e| e.major()) {
-            // where the knob stands when the clock is on the item's date (`clock::news_time`)
-            let x = ((e.year - r.y0 as f32 - 1.0) / span * 100.0).clamp(0.0, 100.0);
-            let h = 6.0 + 10.0 * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
+        for e in r.header.events.iter().filter(|e| e.major() && !by_hand(e)) {
+            let h = 6.0 + (NEWS_TICK_TALLEST - 6.0) * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
             track.spawn((
-                Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
+                Node { position_type: PositionType::Absolute, left: Val::Percent(at(e.year)), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
                 BackgroundColor(kind_colour(&e.kind).with_alpha(0.8)),
+            ));
+        }
+        // the hand's, after the news so that they stand over it
+        let h = NEWS_TICK_TALLEST * 1.5;
+        for e in r.header.events.iter().filter(by_hand) {
+            track.spawn((
+                HandTick,
+                Node { position_type: PositionType::Absolute, left: Val::Percent(at(e.year)), top: Val::Px(16.0 - h), width: Val::Px(3.0), height: Val::Px(h), margin: UiRect::left(Val::Px(-0.5)), border_radius: BorderRadius::all(Val::Px(1.5)), ..default() },
+                BackgroundColor(crate::sandbox::HAND_INK),
             ));
         }
     });
@@ -941,6 +1099,7 @@ fn topbar_text(
     fam: Option<Res<FamilyView>>,
     live: Option<Res<crate::live::Live>>,
     stills: Option<Res<crate::ShotPlanArgs>>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
     mut date: Query<&mut Text, (With<DateText>, Without<FortuneSlot>, Without<FamilyNameText>)>,
     mut slots: Query<(&mut Text, &FortuneSlot), (Without<DateText>, Without<FamilyNameText>)>,
     mut name: Query<&mut Text, (With<FamilyNameText>, Without<DateText>, Without<FortuneSlot>)>,
@@ -964,6 +1123,8 @@ fn topbar_text(
         }
     }
     let vals: Vec<String> = match fam.as_ref().and_then(|v| v.player()) {
+        // the island's card: its name stays, its figures are those of the year on the clock
+        _ if sandbox.is_some() => island_figures(r, k).to_vec(),
         Some(p) => {
             // the family is known as it stands today: beside an earlier date
             // its card says which year its figures are of (in the name, the
@@ -989,6 +1150,31 @@ fn topbar_text(
             }
         }
     }
+}
+
+/// The name on a sandbox's card: "Island 7".
+pub fn island_name(seed: u64) -> String {
+    format!("Island {seed}")
+}
+
+/// How large the island's number is written on the crest, which is 32 pixels
+/// across: one or two figures as large as a family's initial, more smaller.
+fn crest_number_size(number: &str) -> f32 {
+    match number.chars().count() {
+        0..=2 => 19.0,
+        3 => 14.0,
+        4 => 11.0,
+        _ => 8.5,
+    }
+}
+
+/// The figures on the island's card for year `k`, from the record: its
+/// people, and its works standing (the record's yearly count of works).
+pub fn island_figures(r: &Replay, k: usize) -> [String; 2] {
+    let people = replay::annual(r, "pop", k).unwrap_or(0.0);
+    let works = replay::annual(r, "firms", k).unwrap_or(0.0);
+    // bare numbers beside their icons, as the family's card has them
+    [crate::fmt_pop(people), thousands(works.round())]
 }
 
 /// For sorting the biggest first. A number that is not a number goes last
@@ -1065,14 +1251,19 @@ fn panel_rebuild(
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut last_list: Local<Option<(Tab, NewsShow)>>,
     time: Res<Time>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
+    // what the Hand and Rules tabs read, in their own files (stages 5 and 6 add to them there)
+    hand: crate::hand_tab::HandParams,
+    rules: crate::rulebook::RulesParams,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Panel);
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     // what in the panel goes by the month: the Markets panel month by month follows the
-    // clock's month, and the news is listed again when more of it has come
+    // clock's month, and the news is listed again when more of it has come (the Hand
+    // tab's list is made from the news, so it too)
     let month = match ui.tab {
         Some(Tab::Markets) if ui.by_month => clock::series_month(tl.t),
-        Some(Tab::News) => data.r.header.events.len(),
+        Some(Tab::News) | Some(Tab::Hand) => data.r.header.events.len(),
         _ => 0,
     };
     let key = (ui.tab, k, ui.news, ui.dirty, month);
@@ -1088,7 +1279,7 @@ fn panel_rebuild(
     ui.built = Some(key);
     let Some(tab) = ui.tab else { return };
     for mut t in &mut title {
-        t.0 = tab.label().to_string();
+        t.0 = tab.label(sandbox.is_some()).to_string();
     }
     let Ok((be, children, mut scroll)) = body.single_mut() else { return };
     if let Some(ch) = children {
@@ -1106,7 +1297,7 @@ fn panel_rebuild(
     let fam = fam.as_deref();
     // the family is known as it stands today: its panels say so when the clock has been taken back
     let past = live.as_ref().is_some_and(|l| crate::game::now_of(k, data.latest(), l.seen) == crate::game::Now::Past);
-    let accent = fam.and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
+    let accent = accent(fam, sandbox.is_some());
     // the news of the year in progress is listed as it comes
     let in_progress = live.is_some() && k >= data.latest() && r.filled < r.ny;
     let news_to = r.y0 + k as i32 + in_progress as i32;
@@ -1115,10 +1306,13 @@ fn panel_rebuild(
     let by_month = ui.by_month.then(|| replay::month_reached(r, clock::series_month(tl.t).saturating_sub(1)));
     let stands = live.as_ref().map(|l| &l.standing).filter(|_| !past);
     commands.entity(be).with_children(|p| match tab {
-        Tab::News => news_panel(p, &f, r, news_to, ui.news, ui.news_rows, fam.and_then(|v| v.player)),
+        // (in a sandbox nobody's family is "Your family")
+        Tab::News => news_panel(p, &f, r, news_to, ui.news, ui.news_rows, fam.and_then(|v| v.player).filter(|_| sandbox.is_none())),
         Tab::Markets => markets_panel(p, &f, &mut images, r, k, ui.markets, ui.good, by_month, accent),
         Tab::Family => family::family_panel(p, &f, fam, r, k, past, ui.expanded, ui.rival, stands),
         Tab::Holdings => family::holdings_panel(p, &f, fam, r, k, past),
+        Tab::Hand => crate::hand_tab::panel(p, &f, r, k, &hand),
+        Tab::Rules => crate::rulebook::panel(p, &f, &rules),
     });
 }
 
@@ -1135,6 +1329,8 @@ pub fn kind_colour(kind: &str) -> Color {
         "town" | "region" => Color::srgb(0.55, 0.40, 0.23),
         "family" => Color::srgb(0.62, 0.30, 0.45),
         "emigration" => Color::srgb(0.30, 0.34, 0.56),
+        // what the hand did in a sandbox, in its ink
+        "hand" => crate::sandbox::HAND_INK,
         // what became of the player's own orders at a year's turn (`Toasts::say`): done, or not
         "orders" => Color::srgb(0.62, 0.30, 0.45),
         "orders_refused" => Color::srgb(0.70, 0.25, 0.22),
@@ -1164,6 +1360,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "family" => "Families",
         "emigration" => "Emigration",
         "orders" | "orders_refused" => "Your orders",
+        "hand" => "By hand",
         _ => "News",
     }
 }

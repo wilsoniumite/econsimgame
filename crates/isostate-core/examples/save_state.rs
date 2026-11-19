@@ -53,7 +53,7 @@ use isostate_core::mat::Mat;
 use isostate_core::mines::Working;
 use isostate_core::observer::{ObserverState, Series, SeriesMeta};
 use isostate_core::peopling::Founding;
-use isostate_core::record::{ProjectSnap, Record};
+use isostate_core::record::{ProjectSnap, Record, TownBytes};
 use isostate_core::rng::{self, Rng, Rngs};
 use isostate_core::save::{self, Game};
 use isostate_core::state::{MonthStats, Project, RailOpened, Reason};
@@ -313,7 +313,8 @@ bin_struct!(CanalState { book, links, traffic, pair_cells, trade_acc, years, nav
 bin_struct!(Founding { town, year, kind, port, rail, cells, people, saving });
 bin_struct!(Working { cell, sector, opened, left, hands, out, heap, surface, royalty, cells });
 bin_struct!(ProjectSnap { a, b, done });
-bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings });
+bin_struct!(TownBytes { version });
+bin_struct!(Record { n_years, N, T, layers, town_active, town_pop, town_urban, town_wage, town_y, town_price, town_know, firm_K, projects, town_harvest, harvest, town_layers, workings, town_bytes, rent_scale });
 
 /// The series: names, labels and every month so far. The index by name is a
 /// `HashMap`, whose order is not the same twice; it is made again from the names.
@@ -479,11 +480,18 @@ macro_rules! state_parts {
                 cn: { set_stream(9); Bin::get(r) },
                 families: Vec::new(),
                 acct: Default::default(),
+                // gauges (docs/rules/gauges.md): carried across as the books are
+                gauges: Default::default(),
                 // roads (a probe, docs/probes/dx-roads.md; empty while it is off):
                 // carried across as the books are
                 rd: Default::default(),
+                // longrun (docs/rules/longrun.md): carried across as the roads are
+                longrun: Default::default(),
+
                 // the hand's ledger (docs/designs/sandbox.md): carried across as the roads are
                 by_hand: Default::default(),
+                // transition (docs/rules/transition.md): carried across as the roads are
+                transition: Default::default(),
             }
         }
 
@@ -601,8 +609,12 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     let mut st = get_state(&mut r);
     st.families = carry.families.clone();
     st.acct = carry.acct.clone();
+    st.gauges = carry.gauges.clone();
     st.rd = carry.rd.clone();
+    st.longrun = carry.longrun.clone();
+
     st.by_hand = carry.by_hand.clone();
+    st.transition = carry.transition.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

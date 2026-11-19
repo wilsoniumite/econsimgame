@@ -313,6 +313,11 @@ pub struct Opening {
     /// family in, changed by hand. It never goes on with the island's autosave
     /// nor writes it: with somebody at it, it is kept among the trials
     pub sandbox: bool,
+    /// the last year a new game is played to (`--to`; docs/rules/longrun.md,
+    /// "A game past 1900"); None: the content's, 1900. The command line asks
+    /// for 2050 unless it says otherwise, and the standard pictures for 1900.
+    /// A game gone on with from a save is played to the save's own last year.
+    pub to: Option<i64>,
 }
 
 /// Where a game is kept as it is played.
@@ -623,6 +628,9 @@ fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String)
         }
         Edit::People { town: t, factor } => format!("By hand: {}'s people, times {factor}", town(*t)),
         Edit::Harvest { town: t, factor } => format!("By hand: the harvest round {}, times {factor}", place(*t, "the whole island")),
+        Edit::Discover { tech, town: t } => format!("By hand: {tech} found in {}", town(*t)),
+        Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
+        Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
     }
 }
 
@@ -718,6 +726,8 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             if save.land {
                 eprintln!("  it was begun on the new land, and is played again there");
             }
+            // (its last year is its own, whatever --to says: it was chosen when the game was begun)
+            eprintln!("  it is played to {}", save.last_year_of_game());
             if !save.same_rules() {
                 eprintln!("  it was saved under other rules (version {}), so the years may play out differently", save.version);
             }
@@ -754,10 +764,12 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
             loaded.game
         }
         None => {
-            eprintln!("making island {} with {}{}\u{2026}", o.seed, crate::families_words(o.families), if o.new_land { ", on the new land" } else { "" });
+            let rules = iso::params::Rules::Game;
+            let to = o.to.unwrap_or_else(|| iso::save::content_last_year(rules));
+            eprintln!("making island {} with {}{}, to be played to {to}\u{2026}", o.seed, crate::families_words(o.families), if o.new_land { ", on the new land" } else { "" });
             // the new land is switched off under the game's rules until the viewer can draw
             // all of it (docs/rules/land.md): `--new-land` starts a game on it all the same
-            let mut game = if o.new_land { Game::on_new_land(iso::params::Rules::Game, o.seed, o.families, saves::now()) } else { Game::new(o.seed, o.families, saves::now()) };
+            let mut game = if o.new_land { Game::on_new_land_to(rules, o.seed, o.families, saves::now(), to)? } else { Game::under_to(rules, o.seed, o.families, saves::now(), to)? };
             // For measuring what the books of account cost a game (docs/rules/accounts.md):
             // the same game without them. They only watch, so it is the same island
             // month for month, and a save of it is one the game with books goes on with.
@@ -1167,7 +1179,7 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
     let n = w * h;
     let ny = (stat.end_year - stat.start_year + 1).max(1) as usize;
     let header = Header {
-        meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny },
+        meta: Meta { label: "a new game".into(), lite: false, seed, w, h, start_year: stat.start_year as i32, n_years: ny, town_bytes: 0 },
         // (each good's bulk and price and each method's process are the run's own content's:
         // the works' site planner lays a works out from them; each good's kind is set by the caller)
         goods: stat.goods.iter().enumerate().map(|(g, good)| Good { name: good.name.clone(), label: good.label.clone(), kind: None, weight: Some(good.weight as f32), price: content.base_price.get(g).map(|p| *p as f32) }).collect(),
@@ -1237,6 +1249,7 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         res: Vec::new(),
         works: Vec::new(),
         workings: Vec::new(),
+        rent_scale: Vec::new(),
         // the second island generator's land, in a game played on it (newland.rs)
         land: stat.land.as_deref().map(|lf| std::sync::Arc::new(crate::newland::NewLand::from_core(lf, w, h))),
     }
@@ -1354,6 +1367,15 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
         (&mut r.mix_s, &l.mix_s),
     ] {
         dst[k * n..(k + 1) * n].copy_from_slice(&src[..n]);
+    }
+
+    // a game past 1900 packs its towns and rent as a record past 1900 does (the core's longrun)
+    r.header.meta.town_bytes = l.town_bytes;
+    if l.town_bytes >= 2 {
+        if r.rent_scale.len() < ny {
+            r.rent_scale.resize(ny, 1.0);
+        }
+        r.rent_scale[k] = l.rent_scale;
     }
 
     // town ground that is kept: three more layers, in a game whose towns keep their ground

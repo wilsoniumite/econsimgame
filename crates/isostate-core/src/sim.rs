@@ -238,7 +238,7 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
 /// Bookkeeping that depends on catchments.
 pub fn after_transport(st: &mut State, C: &Content, P: &Params) {
     let (N, T) = (st.N, st.T_max);
-    let alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
+    let alive: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f]).collect();
     for &f in &alive {
         let ct = st.catch[st.f_cell[f]];
         if ct >= 0 {
@@ -622,6 +622,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     let w: Vec<f64> = (0..T).map(|t| st.wage[t] * st.pop[t] * if st.town_active[t] { 1.0 } else { 0.0 }).collect();
     let pa: Vec<f64> = (0..T).map(|t| if st.town_active[t] { st.pop[t] } else { 0.0 }).collect();
     st.wage_base = pairwise_sum(&w) / pairwise_sum(&pa).max(1.0);
+    // longrun: the chain and the wage scale start here, at 1
+    crate::longrun::start(&mut st, P, y0);
     let n_years = (y1 - y0 + 1) as usize;
     observer::init(&mut st, &C, P, n_years * 12);
     let rec = record::init(&st, &C, P, n_years);
@@ -631,6 +633,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     crate::chronicle::init(&mut st, &C, P);
     // accounts: the books open on the warmed-up economy
     crate::accounts::init(&mut st, &C, P);
+    // gauges: read off the books at each year's end (docs/rules/gauges.md)
+    crate::gauges::init(&mut st, P);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
@@ -640,6 +644,9 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
 pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
     let Sim { st, content: C, params: P, events, .. } = sim;
     econ::step_month(st, C, P);
+    // longrun (docs/rules/longrun.md): the month goes into the year's link of the
+    // chain, and December's closes it and sets next year's anchor
+    crate::longrun::note_month(st, C, P);
     rail::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
     // canals (docs/rules/canals.md): canals that are dug open
     crate::canals::progress(st, C, P, sim.year as f64 + (month as f64 + 0.5) / 12.0, events);
@@ -690,6 +697,8 @@ pub fn end_year(sim: &mut Sim) {
     yearly(st, C, P, rngs, year, events, false);
     // accounts: the year's books close on the year's prices, works and owners
     crate::accounts::close_year(st, C, P, year);
+    // gauges: read off the books just closed
+    crate::gauges::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);

@@ -163,7 +163,8 @@ fn a_good_a_game_lacks_is_refused_before_its_island_is_made() {
     // a good the game has, by its name in any case, goes through to the island
     let ran = game(&dir, &["--families", "1", "--overlay", "price:COAL", "--describe", "30,30"], &[]);
     assert_eq!(ran.code, Some(0), "{}", ran.err);
-    assert!(ran.err.contains("making island 7 with 1 family\u{2026}"), "{}", ran.err);
+    // (a new game is played to 2050 unless --to says otherwise)
+    assert!(ran.err.contains("making island 7 with 1 family, to be played to 2050\u{2026}"), "{}", ran.err);
     assert!(!ran.out.is_empty(), "nothing was described");
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -300,7 +300,7 @@ fn pay_cell_rents(st: &mut State, P: &Params, town: &[usize], cell: &[usize], re
 /// Last month's numbers. These are read before this month writes them, and are
 /// meant to be last month's:
 /// - `st.wage`, until it is replaced near the end. The labour market's bracket
-///   for each town's wage is half to twice it (kept within 0.02 and 500), and
+///   for each town's wage is half to twice it (kept within 0.02 and 500, which `longrun` moves with its anchor), and
 ///   the carters, the navvies and the menders are last month's money divided
 ///   by it, each only where it is above nothing (`carting::take_carters`,
 ///   `canals::take_navvies`, `roads::take_menders`).
@@ -391,6 +391,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // money (docs/rules/money.md): the month's issue is reckoned on the money
     // there is now, before any of it is between purses
     let money_base = crate::money::month_base(st, P);
+    // longrun (docs/rules/longrun.md): the freight, and below the bounds on the
+    // wage and on prices, ride on the year's anchor (the constants while it is off)
+    let freight = crate::longrun::freight(st, P);
 
     // ---------------- households: what they want to buy
     // tree: a width for each need where the content gives one, else the port's one
@@ -484,7 +487,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let lam = st.ex_lam.clone();
 
     // ---------------- firms: unit economics at their own location
-    let fi: Vec<usize> = (0..st.f_alive.len()).filter(|&i| st.f_alive[i] && st.f_K[i] > 1e-9).collect();
+    let fi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_K[i] > 1e-9).collect();
     let NFI = fi.len();
     let ft: Vec<usize> = fi.iter().map(|&i| st.f_town[i]).collect();
     let fm: Vec<usize> = fi.iter().map(|&i| st.f_method[i]).collect();
@@ -514,7 +517,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         hunit[i] = heat_mix(&fuel_price, &heat_f, P.heat_theta, hshare.row_mut(i));
     }
     let pout: Vec<f64> =
-        (0..NFI).map(|i| p[(ft[i], out[i])] - P.freight * C.weight[out[i]] * st.dcatch[fc[i]]).collect();
+        (0..NFI).map(|i| p[(ft[i], out[i])] - freight * C.weight[out[i]] * st.dcatch[fc[i]]).collect();
     let nonlabor: Vec<f64> =
         (0..NFI).map(|i| pairwise_sum_by(G, |g| a[(i, g)] * pin[(i, g)]) + h[i] * hunit[i]).collect();
     let phi_prev: Vec<f64> = fi.iter().map(|&i| st.f_fill[i]).collect();
@@ -537,11 +540,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let prev_w = st.wage.clone();
     let mut lo = vec![0.0; T];
     let mut hi = vec![0.0; T];
+    let (w_lo, w_hi) = crate::longrun::wage_bounds(st, P);
     for t in 0..T {
         let has = prev_w[t] > 0.0;
         let safe_w = if has { prev_w[t] } else { 1.0 };
-        lo[t] = if has { (safe_w / 2.0).max(0.02).ln() } else { 0.02f64.ln() };
-        hi[t] = if has { (safe_w * 2.0).min(500.0).ln() } else { 500.0f64.ln() };
+        lo[t] = if has { (safe_w / 2.0).max(w_lo).ln() } else { w_lo.ln() };
+        hi[t] = if has { (safe_w * 2.0).min(w_hi).ln() } else { w_hi.ln() };
     }
     let inv_alpha: Vec<f64> = alpha.iter().map(|&x| 1.0 / x).collect();
     let (kx, kf) = (P.labor_adjust_ex, P.labor_adjust_firm);
@@ -710,7 +714,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // machines asked for on an average year's yield. From here on Y is the crop
     // actually brought in.
     let Y = harvest::brought_in(st, C, P, Y);
-    let oi: Vec<usize> = (0..st.f_alive.len()).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
+    let oi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
     let ot: Vec<usize> = oi.iter().map(|&i| st.f_town[i]).collect();
     let mut req_inv = Mat::zeros(oi.len(), G);
     for (r, &i) in oi.iter().enumerate() {
@@ -1016,7 +1020,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
                 let c = if c0.is_finite() { c0 } else { 1e9 };
                 for &g in &tg {
                     let k = (i * na + j) * G + g;
-                    tau[k] = P.freight * C.weight[g] * c + P.handling * p[(ti, g)];
+                    tau[k] = freight * C.weight[g] * c + P.handling * p[(ti, g)];
                     let gap = p[(tj, g)] - p[(ti, g)] - tau[k];
                     let frac = if i == j { 0.0 } else { (gap / p[(tj, g)].max(1e-9)).clamp(0.0, 0.5) * P.trade_k };
                     want[k] = frac * st.inv[(ti, g)];
@@ -1132,8 +1136,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             let r = R[(t, g)];
             let imbalance = if r + arriving > 1e-9 { (r - arriving) / (r + arriving).max(1e-9) } else { 0.0 };
             if st.town_active[t] {
-                let lo_p = P.price_floor * C.base_price[g];
-                let hi_p = P.price_ceiling * C.base_price[g];
+                let lo_p = crate::longrun::floor(st, P, C, g);
+                let hi_p = crate::longrun::ceiling(st, P, C, g);
                 if P.prices.enabled {
                     // prices: the rule below moves a slow anchor, and the price
                     // stands above or below it with the merchants' stock (none

@@ -522,6 +522,46 @@ fn an_edit_by_hand_goes_through_the_thread_and_comes_back_from_the_save() {
 }
 
 #[test]
+fn a_game_begun_to_1910_plays_past_1900_through_the_thread_and_its_save_says_so() {
+    // A game past 1900 (docs/rules/longrun.md, "A game past 1900"): begun with
+    // a last year of 1910, played to 1899 before it opens and on through the
+    // thread, as the interface plays it, into 1901; its save says it is played
+    // to 1910, and loads again to the same island and the same last year; and
+    // the thread says no more when 1910 is played. Under the game's rules as
+    // they stand, three families: it leans on no one island's history.
+    let dir = saves::test_dir("to-1910-test");
+    let file = dir.join("game.json");
+    let name = file.to_string_lossy().into_owned();
+    let mut a = Table::open(&Opening { seed: 7, families: 3, fresh: true, shots: true, advance: 149, to: Some(1910), save: Some(name.clone()), ..default() });
+    assert_eq!((a.year(), a.r.ny, a.r.y0 + a.r.ny as i32 - 1), (1899, 161, 1910));
+    a.step();
+    a.step();
+    assert_eq!(a.year(), 1901);
+    // (the thread writes the year's save after it has sent the year)
+    let kept = saves::waited_for(120.0, || saves::read(&file).is_ok_and(|s| s.year == 1901));
+    assert!(kept, "{}", saves::gave_up(120.0, "the year was to be saved"));
+    let saved = saves::read(&file).unwrap();
+    assert_eq!((saved.year, saved.to, saved.last_year_of_game()), (1901, Some(1910), 1910));
+    let b = Table::open(&Opening { load: Some(name), shots: true, ..default() });
+    let back = b.live.resumed.as_ref().expect("the game is gone on with");
+    assert!(!back.drifted && back.refused == 0, "{back:?}");
+    assert_eq!((b.year(), b.r.ny), (1901, 161));
+    same(&a, &b, "a game to 1910, two years past 1900");
+    drop(b);
+    // played to its last year, and no further
+    while a.year() < 1910 {
+        a.step();
+    }
+    a.live.step();
+    match a.wait() {
+        Msg::Failed(why) => assert_eq!(why, "1910 was the last year."),
+        _ => panic!("a month past the game's last year was played"),
+    }
+    drop(a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
     // The books' series (the shares of income, ownership in years of wages)
     // have one figure for a year, known when the year's books close: after
@@ -547,7 +587,8 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
     }
     let st = &g.sim.st;
     let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n)).collect();
-    assert_eq!(own.len(), 8);
+    // the books' eight, and the gauges' read off them (docs/rules/gauges.md), which come the same way
+    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
     for name in own {
         let held = replay::monthly(&a.r, name, 0, 48);
         let there = st.series.get(name);
@@ -556,7 +597,8 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
             assert_eq!(held[t].to_bits(), (there[t] as f32).to_bits(), "{name} in month {t}");
         }
         assert!(held[36..].iter().all(|v| v.is_nan()) && there[36..48].iter().all(|v| v.is_nan()), "{name}: the year in progress has no figure yet");
-        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && held[11] != held[12], "{name}: a year's figure, the same in its twelve months");
+        // (a gauge can read the same two years running, new work at nothing before anything is found)
+        assert!(held[..12].windows(2).all(|w| w[0] == w[1]) && (held[11] != held[12] || name.starts_with("gauge_")), "{name}: a year's figure, the same in its twelve months");
     }
     // which is the island's account of the year, and what a chart by the year shows
     let shares: Vec<f32> = st.acct.years.iter().map(|y| y.share_work as f32).collect();

@@ -575,7 +575,7 @@ impl Net {
         for &c in new_cells {
             self.laid[c] = false;
         }
-        (P.freight * local, P.freight * trade)
+        (crate::longrun::freight(st, P) * local, crate::longrun::freight(st, P) * trade)
     }
 }
 
@@ -808,7 +808,7 @@ fn note_year(st: &State, P: &Params, way: &Way, book: &mut WayBook, year: i64) {
     book.years.push(YearNote {
         year,
         km: 2.0 * layer.iter().filter(|&&r| r > 0).count() as f64,
-        fares: P.freight * way.run_cost * on,
+        fares: crate::longrun::freight(st, P) * way.run_cost * on,
         capital: book.lines.iter().map(|l| l.spent).sum(),
         building: st.projects.iter().filter(|pr| pr.way == way.id).count(),
     });
