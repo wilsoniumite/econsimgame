@@ -3,7 +3,7 @@
 //! ```text
 //! isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
 //!                     [--set key=v1[,v2...]]... [--params FILE] [--content FILE] [--jobs N]
-//!                     [--compare OTHER_DIR] [--standing] [--quiet]
+//!                     [--compare OTHER_DIR] [--standing [--growth]] [--quiet]
 //! ```
 //!
 //! One island proves little: a claim about the model should hold in most seeds.
@@ -29,7 +29,10 @@
 //! seed ranges do not overlap. `--standing` adds the standing check
 //! (`standing.rs`): twelve facts of the played century, each later setting (or,
 //! with one setting, this sweep against `--compare`'s) set against the first's
-//! spread across seeds, printed last and written to `standing.txt`.
+//! spread across seeds, printed last and written to `standing.txt`. A fact of
+//! the twelve that is not inside makes the sweep end with an error, after it
+//! has written everything; `--growth` makes the growth the design asks of the
+//! years after 1900, which the check reports beside the twelve, fail it too.
 //!
 //! Whatever is wrong with the command line is refused before the first run and
 //! before anything is written. A sweep already in `DIR` is replaced; `--compare`
@@ -58,7 +61,7 @@ use crate::util::{fmt_g6, fmt_thousands_f0};
 
 pub const USAGE: &str = "usage: isostate-core sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game] [--families N] [--end-year Y]
                            [--set key=v1[,v2...]]... [--params FILE.toml|FILE.json] [--content content.toml]
-                           [--jobs N] [--compare OTHER_DIR] [--standing] [--quiet]";
+                           [--jobs N] [--compare OTHER_DIR] [--standing [--growth]] [--quiet]";
 
 /// What the command line asked for.
 #[derive(Clone, Debug)]
@@ -76,6 +79,8 @@ pub struct Options {
     pub compare: Option<PathBuf>,
     /// The standing check (`standing.rs`) after the runs.
     pub standing: bool,
+    /// With the standing check: a growth fact missed fails the sweep too.
+    pub growth: bool,
     pub quiet: bool,
     /// The command line, for README.txt.
     pub command: String,
@@ -201,6 +206,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         jobs: None,
         compare: None,
         standing: false,
+        growth: false,
         quiet: false,
         command: format!("isostate-core sweep {}", args.join(" ")),
     };
@@ -241,11 +247,15 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             }
             "--compare" => o.compare = Some(PathBuf::from(value("--compare")?)),
             "--standing" => o.standing = true,
+            "--growth" => o.growth = true,
             "--quiet" => o.quiet = true,
             other => return Err(format!("unknown option {other:?}\n{USAGE}")),
         }
     }
     o.out = out.ok_or_else(|| format!("--out is required\n{USAGE}"))?;
+    if o.growth && !o.standing {
+        return Err(format!("--growth is part of the standing check: give --standing as well\n{USAGE}"));
+    }
     if o.seeds.is_empty() {
         return Err("--seeds: no seeds".to_string());
     }
@@ -712,7 +722,7 @@ fn readme(sw: &Sweep, o: &Options, code: Option<&str>) -> String {
          scorecard.txt  the aims the documents state, each against its fact's mean, with a tolerance from\n\
          \x20            the spread across seeds and a loss (isostate-core scorecard DIR prints it again)\n\
          standing.txt  with --standing: the standing check, twelve facts of the played century against\n\
-         \x20            the first setting's spread across seeds (docs/rules/README.md)\n\
+         \x20            the first setting's spread across seeds, and the growth after 1900 (docs/rules/README.md)\n\
          \nSpeed: seconds is each run's time on the clock, with the others of the sweep running beside it and\n\
          whatever else the machine was doing, so it says as much about the machine that day as about the\n\
          code. cpu_seconds is the time the processor spent on the run's own thread, which other work\n\
@@ -1141,18 +1151,32 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
     // the standing check (standing.rs): printed last, and written beside summary.txt
     let standing = if o.standing { crate::standing::for_sweep(&sw, then.as_deref().zip(o.compare.as_deref())) } else { None };
     if let Some(s) = &standing {
-        std::fs::write(o.out.join("standing.txt"), s).map_err(|e| format!("{}: {e}", o.out.join("standing.txt").display()))?;
+        std::fs::write(o.out.join("standing.txt"), &s.text).map_err(|e| format!("{}: {e}", o.out.join("standing.txt").display()))?;
     }
     if print {
         // not print!, which panics when the reader has gone (sweep ... | head)
         let _ = std::io::Write::write_all(&mut std::io::stdout(), text.as_bytes());
         if let Some(s) = &standing {
-            let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("\n{s}").as_bytes());
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), format!("\n{}", s.text).as_bytes());
         }
     }
+    // what fails the sweep, after everything is written: a run that failed, a fact of the
+    // standing check that is not inside, and with --growth a growth fact missed
+    let mut why = Vec::new();
     let failed = sw.runs.iter().filter(|r| r.outcome.is_err()).count();
     if failed > 0 {
-        return Err(format!("{failed} of {} runs failed; the rest are in {}", sw.runs.len(), o.out.display()));
+        why.push(format!("{failed} of {} runs failed; the rest are in {}", sw.runs.len(), o.out.display()));
+    }
+    if let Some(s) = &standing {
+        if !s.outside.is_empty() {
+            why.push(format!("the standing check failed: {} of the twelve not inside\n  {}", s.outside.len(), s.outside.join("\n  ")));
+        }
+        if o.growth && !s.growth_missed.is_empty() {
+            why.push(format!("the growth after 1900 failed (--growth): {} not met\n  {}", s.growth_missed.len(), s.growth_missed.join("\n  ")));
+        }
+    }
+    if !why.is_empty() {
+        return Err(why.join("\n"));
     }
     Ok(())
 }
