@@ -427,13 +427,20 @@ pub fn river_width(q: f64) -> f64 {
     11.0 * q.max(0.0).sqrt()
 }
 
+/// How freely a reach of mean flow `q` and fall `sl` can wander: not at all
+/// for a stream under 1 cubic metre a second or a fall of 4 in 1,000, freely
+/// on the level, and in proportion between.
+fn mobile(q: f64, sl: f64) -> f64 {
+    if q < 1.0 { 0.0 } else { (1.0 - sl / 0.004).clamp(0.0, 1.0) }
+}
+
 /// Meander migration on one course (Howard and Knutson, 1984): each point's bank
 /// erodes at a rate set by the curvature there and, more strongly, by the
 /// curvature upstream of it, so bends grow, travel downstream, and at last touch
 /// and cut themselves off. Steep reaches and small streams are left alone, and a
 /// bend cannot climb the valley side: the ground must lie near the water's level.
-fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &mut Vec<Oxbow>) {
-    let mobile = |q: f64, sl: f64| -> f64 { if q < 1.0 { 0.0 } else { (1.0 - sl / 0.004).clamp(0.0, 1.0) } };
+fn meander(c: &mut Course, g: Grid, z: &[f64], P: &LandParams, ds: f64, oxbows: &mut Vec<Oxbow>) {
+    let steps = P.meander_steps;
     let (mut r0, mut w, mut mob, mut fade) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     // the stretch of the course that can move, found again whenever the points are re-laid
     let (mut lo, mut hi, mut fresh) = (0usize, 0usize, true);
@@ -498,11 +505,15 @@ fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &m
             let room = 1.0 - ((bank - 3.0) / 5.0).clamp(0.0, 1.0);
             c.p[i] = (old[i].0 + (cand.0 - old[i].0) * room, old[i].1 + (cand.1 - old[i].1) * room);
         }
+        // a bend may grow longer and wider, but not tighter than `bend_radius` widths
+        if P.bend_radius > 0.0 {
+            ease_bends(&mut c.p, &w, &mob, lo, hi, P.bend_radius, 1.5 * ds, 1);
+        }
         if step % 3 == 2 {
             // necks: two parts of the course that have met
             let mut i = lo.saturating_sub(1);
             while i + 8 < c.p.len() && i < hi {
-                let reach = (1.4 * w[i.min(w.len() - 1)]).max(0.9 * ds);
+                let reach = (P.neck * w[i.min(w.len() - 1)]).max(0.9 * ds);
                 let mut cut = None;
                 for j in (i + 6..(i + 130).min(c.p.len())).rev() {
                     if (c.p[i].0 - c.p[j].0).hypot(c.p[i].1 - c.p[j].1) < reach {
@@ -533,6 +544,85 @@ fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &m
         }
     }
     c.smooth(1);
+    if P.bend_radius <= 0.0 {
+        return;
+    }
+    // and last, any bend still too tight is opened out wherever it is, steep
+    // reaches and short steps in the fall among them; the points are laid
+    // evenly again between rounds, so that a bend is read over the same
+    // length all along it and easing one does not crowd its points together
+    for _ in 0..40 {
+        c.resample(ds);
+        let n = c.p.len();
+        if n < 3 {
+            break;
+        }
+        let w: Vec<f64> = (0..n).map(|i| river_width(lerp_at(&c.q, c.u[i]))).collect();
+        ease_bends(&mut c.p, &w, &vec![1.0; n], 1, n - 1, P.bend_radius, 1.5 * ds, 4);
+    }
+    c.resample(ds);
+}
+
+/// Open out the bends on `p[lo..hi]` tighter than `radius` widths (`w` at
+/// each point) where the course can move (`mob`): a point on such a bend is
+/// moved half the way to the middle of the chord between the points a width
+/// (and at least `span` metres) either side of it along the line, up to
+/// `passes` times over. The ends stay put. It is the same reading of a bend
+/// as `river_shape` makes.
+fn ease_bends(p: &mut [(f64, f64)], w: &[f64], mob: &[f64], lo: usize, hi: usize, radius: f64, span: f64, passes: usize) {
+    let n = p.len();
+    let hi = hi.min(n.saturating_sub(1)).min(w.len());
+    for _ in 0..passes {
+        let mut moved = false;
+        for i in lo.max(1)..hi {
+            if mob[i] <= 0.0 {
+                continue;
+            }
+            // the points exactly a width (or `span`) either side, along the line
+            let d = w[i].max(span);
+            let (mut a, mut run) = (i, 0.0);
+            let mut pa = None;
+            while a > 0 {
+                let seg = (p[a].0 - p[a - 1].0).hypot(p[a].1 - p[a - 1].1);
+                if run + seg >= d {
+                    let t = (d - run) / seg.max(1e-9);
+                    pa = Some((p[a].0 + (p[a - 1].0 - p[a].0) * t, p[a].1 + (p[a - 1].1 - p[a].1) * t));
+                    break;
+                }
+                run += seg;
+                a -= 1;
+            }
+            let (mut b, mut run) = (i, 0.0);
+            let mut pb = None;
+            while b + 1 < n {
+                let seg = (p[b + 1].0 - p[b].0).hypot(p[b + 1].1 - p[b].1);
+                if run + seg >= d {
+                    let t = (d - run) / seg.max(1e-9);
+                    pb = Some((p[b].0 + (p[b + 1].0 - p[b].0) * t, p[b].1 + (p[b + 1].1 - p[b].1) * t));
+                    break;
+                }
+                run += seg;
+                b += 1;
+            }
+            let (Some(pa), Some(pb)) = (pa, pb) else { continue };
+            let (u, v) = ((p[i].0 - pa.0, p[i].1 - pa.1), (pb.0 - p[i].0, pb.1 - p[i].1));
+            let den = u.0.hypot(u.1) * v.0.hypot(v.1) * (pb.0 - pa.0).hypot(pb.1 - pa.1);
+            let cross = (u.0 * v.1 - u.1 * v.0).abs();
+            if den <= 0.0 || cross <= 0.0 {
+                continue;
+            }
+            let r = den / (2.0 * cross);
+            if r < radius * w[i] {
+                let mid = (0.5 * (pa.0 + pb.0), 0.5 * (pa.1 + pb.1));
+                let f = 0.5;
+                p[i] = (p[i].0 + (mid.0 - p[i].0) * f, p[i].1 + (mid.1 - p[i].1) * f);
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
 }
 
 /// Every node's height above the water it drains to (a lake, the sea, or the
@@ -849,7 +939,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
             let wob = 0.3 * river_width(lerp_at(&c.q, c.u[i])) * (hash01(i as i64, id as i64, d.seeds[1] ^ 0x3EA) - 0.5);
             c.p[i] = (c.p[i].0 - ty / tl * wob, c.p[i].1 + tx / tl * wob);
         }
-        meander(&mut c, g, &z, P.meander_steps, ds, &mut oxbows);
+        meander(&mut c, g, &z, P, ds, &mut oxbows);
         let r = &mut rivers[id];
         r.end = *end;
         for i in 0..c.p.len() {
@@ -883,6 +973,183 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
     }
 
     Water { k: g.k, w: g.w, h: g.h, z, sea, rt, lake_id, lakes, flow, hand, wet, owner, rivers, oxbows, rain, runoff, drowned }
+}
+
+/// The shape of a river's bends, for measuring: what `river_shape` finds on the
+/// stretches of a line it is asked about, added up over as many lines as are
+/// given it. Every length is in widths of the river where it is measured.
+#[derive(Clone, Debug, Default)]
+pub struct Shape {
+    /// Length along the channel, and along the valley (the sum of straight
+    /// chords over pieces of the channel 30 widths long).
+    pub channel: f64,
+    pub valley: f64,
+    /// Each bend between two inflections: its tightest radius of curvature,
+    /// and where that is.
+    pub radius: Vec<f64>,
+    pub apex: Vec<(f64, f64)>,
+    /// Each pair of bends: the straight distance from the first's start to the second's end.
+    pub wavelength: Vec<f64>,
+    /// Places where the channel comes back within two widths of itself after
+    /// running at least eight widths away: loops near cutting themselves off.
+    pub necks: usize,
+}
+
+impl Shape {
+    pub fn sinuosity(&self) -> f64 {
+        if self.valley > 0.0 { self.channel / self.valley } else { 0.0 }
+    }
+
+    pub fn add(&mut self, o: &Shape) {
+        self.channel += o.channel;
+        self.valley += o.valley;
+        self.radius.extend_from_slice(&o.radius);
+        self.apex.extend_from_slice(&o.apex);
+        self.wavelength.extend_from_slice(&o.wavelength);
+        self.necks += o.necks;
+    }
+}
+
+/// Measure the bends of one line (`pts` and `width` in the same units, a
+/// river's points from the source down) over the stretches where `keep` is
+/// true. Curvature is read through three points a width apart along the
+/// channel (a segment and a half of the line, where its points lie further
+/// apart than a width), so a wiggle smaller than the river is not a bend; a
+/// bend begins where the curvature changes side and grows to a radius of 25
+/// widths or less.
+pub fn river_shape(pts: &[(f64, f64)], width: &[f64], keep: &[bool]) -> Shape {
+    let mut out = Shape::default();
+    let n = pts.len();
+    let mut i = 0;
+    while i < n {
+        if !keep[i] {
+            i += 1;
+            continue;
+        }
+        let a = i;
+        while i < n && keep[i] {
+            i += 1;
+        }
+        if i - a >= 3 {
+            out.add(&stretch_shape(&pts[a..i], &width[a..i]));
+        }
+    }
+    out
+}
+
+fn stretch_shape(pts: &[(f64, f64)], width: &[f64]) -> Shape {
+    let mut s = Shape::default();
+    // the stretch resampled every quarter of its narrowest width
+    let wmin = width.iter().cloned().fold(f64::INFINITY, f64::min).max(1e-9);
+    let h = 0.25 * wmin;
+    let (mut p, mut w) = (vec![pts[0]], vec![width[0]]);
+    let mut need = h;
+    for k in 1..pts.len() {
+        let (a, b) = (pts[k - 1], pts[k]);
+        let seg = (b.0 - a.0).hypot(b.1 - a.1);
+        let mut at = 0.0;
+        while seg - at >= need {
+            at += need;
+            let t = at / seg;
+            p.push((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+            w.push(width[k - 1] + (width[k] - width[k - 1]) * t);
+            need = h;
+        }
+        need -= seg - at;
+    }
+    let m = p.len();
+    let wmean = w.iter().sum::<f64>() / m as f64;
+    if (m as f64) * h < 4.0 * wmean {
+        return s;
+    }
+    // sinuosity: channel over chords, pieces of 30 widths (a last piece under 10 left out)
+    let mut start = 0;
+    let mut run = 0.0;
+    for k in 1..m {
+        run += h / w[k];
+        if run >= 30.0 || k == m - 1 {
+            if run >= 10.0 {
+                let chord = (p[k].0 - p[start].0).hypot(p[k].1 - p[start].1);
+                let wm = w[start..=k].iter().sum::<f64>() / (k - start + 1) as f64;
+                s.channel += run;
+                s.valley += chord / wm;
+            }
+            start = k;
+            run = 0.0;
+        }
+    }
+    // signed curvature times width, through points a width either side, or a
+    // segment and a half of the line where its points lie further apart than
+    // that (a corner of the line is not a bend)
+    let mut segs: Vec<f64> = pts.windows(2).map(|q| (q[1].0 - q[0].0).hypot(q[1].1 - q[0].1)).collect();
+    segs.sort_by(|a, b| a.total_cmp(b));
+    let seg = segs[segs.len() / 2];
+    let mut kw = vec![0.0f64; m];
+    for k in 0..m {
+        let off = ((w[k].max(1.5 * seg) / h).round() as usize).max(1);
+        if k < off || k + off >= m {
+            continue;
+        }
+        let (a, b, c) = (p[k - off], p[k], p[k + off]);
+        let (ux, uy, vx, vy) = (b.0 - a.0, b.1 - a.1, c.0 - b.0, c.1 - b.1);
+        let (la, lb, lc) = (ux.hypot(uy), vx.hypot(vy), (c.0 - a.0).hypot(c.1 - a.1));
+        if la * lb * lc > 0.0 {
+            kw[k] = 2.0 * (ux * vy - uy * vx) / (la * lb * lc) * w[k];
+        }
+    }
+    // bends: a change of side counts once the new side's curvature reaches 1/25
+    let mut infl: Vec<usize> = Vec::new();
+    let (mut side, mut zero) = (0.0f64, 0usize);
+    for k in 1..m {
+        if kw[k] * kw[k - 1] <= 0.0 {
+            zero = k;
+        }
+        if kw[k].abs() >= 0.04 && kw[k].signum() != side {
+            if side != 0.0 {
+                infl.push(zero);
+            }
+            side = kw[k].signum();
+        }
+    }
+    for j in 1..infl.len() {
+        let at = (infl[j - 1]..infl[j]).max_by(|&a, &b| kw[a].abs().total_cmp(&kw[b].abs())).unwrap_or(infl[j]);
+        s.radius.push(1.0 / kw[at].abs().max(1e-9));
+        s.apex.push(p[at]);
+        if j >= 2 {
+            let (a, b) = (p[infl[j - 2]], p[infl[j]]);
+            let wm = w[infl[j - 2]..=infl[j]].iter().sum::<f64>() / (infl[j] - infl[j - 2] + 1) as f64;
+            s.wavelength.push((b.0 - a.0).hypot(b.1 - a.1) / wm);
+        }
+    }
+    // necks: a point that has run 8 widths or more along the channel and is back within 2 of an earlier one
+    let mut along = vec![0.0f64; m];
+    for k in 1..m {
+        along[k] = along[k - 1] + h / w[k];
+    }
+    let mut k = 0;
+    while k < m {
+        let mut found = None;
+        for j in (k + 1)..m {
+            if along[j] - along[k] < 8.0 {
+                continue;
+            }
+            if along[j] - along[k] > 200.0 {
+                break;
+            }
+            if (p[j].0 - p[k].0).hypot(p[j].1 - p[k].1) < 2.0 * w[k] {
+                found = Some(j);
+                break;
+            }
+        }
+        match found {
+            Some(j) => {
+                s.necks += 1;
+                k = j;
+            }
+            None => k += 1,
+        }
+    }
+    s
 }
 
 #[cfg(test)]

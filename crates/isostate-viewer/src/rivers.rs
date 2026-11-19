@@ -36,6 +36,13 @@ pub struct River {
     pub coast: f32,
 }
 
+/// The tightest bend a river's meanders may make, as a radius in widths of
+/// its ribbon of water. Real meanders bend no tighter than two or three
+/// widths at the apex; the ribbon is drawn wider than a real river would be on
+/// 2 km of map, so the bends are judged against the ribbon, with a little to
+/// spare over two and a half.
+const BEND_RADIUS: f32 = 2.8;
+
 /// Width of the water for the simulation's river size (110 small, 200 great).
 fn half_width(strength: f32) -> f32 {
     let s = ((strength - 105.0) / 100.0).clamp(0.0, 1.0);
@@ -131,6 +138,50 @@ fn nearest_on(pts: &[Vec2], p: Vec2) -> (usize, Vec2) {
         }
     }
     (best.1, best.2)
+}
+
+/// Open out what bends are still tighter than `BEND_RADIUS` widths, where the
+/// course's own turn, a river widening below a confluence and the meander's
+/// swing come together: a point on such a bend is moved part of the way to
+/// the middle of the chord between the points a width either side of it, a
+/// few times over. The ends stay where they are.
+fn ease_bends(pts: &mut [Vec2], half: &[f32]) {
+    let n = pts.len();
+    for _ in 0..24 {
+        let mut moved = false;
+        for i in 1..n.saturating_sub(1) {
+            let w = 2.0 * half[i];
+            // the points a width either side, along the line
+            let (mut a, mut run) = (i, 0.0);
+            while a > 0 && run < w {
+                run += pts[a].distance(pts[a - 1]);
+                a -= 1;
+            }
+            let (mut b, mut run) = (i, 0.0);
+            while b + 1 < n && run < w {
+                run += pts[b].distance(pts[b + 1]);
+                b += 1;
+            }
+            if a == i || b == i {
+                continue;
+            }
+            let (p, q, r) = (pts[a], pts[i], pts[b]);
+            let (u, v) = (q - p, r - q);
+            let den = u.length() * v.length() * (r - p).length();
+            if den <= 0.0 {
+                continue;
+            }
+            let radius = den / (2.0 * u.perp_dot(v).abs()).max(1e-12);
+            if radius < BEND_RADIUS * w {
+                let mid = (p + r) * 0.5;
+                pts[i] = q + (mid - q) * (0.5 * (1.0 - radius / (BEND_RADIUS * w)));
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
 }
 
 /// Build the rivers over the heightfield `hg` (before any valley is cut).
@@ -305,6 +356,16 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
             let d = (b - a).normalize_or(Vec2::X);
             Vec2::new(-d.y, d.x)
         };
+        // how fast the course itself turns, radians a cell, over a tenth of a cell
+        let turn_at = |t: f32| -> f32 {
+            if blen < 0.1 {
+                return 0.0;
+            }
+            let t = t.clamp(0.05, blen - 0.05);
+            let (a, m, b) = (sample(&bs, &base, (t - 0.05).max(0.0)), sample(&bs, &base, t), sample(&bs, &base, (t + 0.05).min(blen)));
+            let (u, v) = ((m - a).normalize_or(Vec2::X), (b - m).normalize_or(Vec2::X));
+            u.perp_dot(v).atan2(u.dot(v)).abs() / 0.05
+        };
         // meanders: a sine-generated curve about the course
         let ds = 0.008;
         let seed = ci as i32;
@@ -318,10 +379,13 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
             steps += 1;
             let st = cfrac(sig);
             let hw = half_width(st);
-            // loops on the scale of the map, like the houses and the hedges
-            let lam = (60.0 * hw).clamp(0.75, 2.4) * (1.0 + 0.4 * vnoise(sig * 0.45, seed as f32, 213));
+            // loops on the scale of the map, like the houses and the hedges: a
+            // bend's length along the channel is some 35 widths of the ribbon
+            let lam = (70.0 * hw).clamp(0.9, 3.4) * (1.0 + 0.3 * vnoise(sig * 0.45, seed as f32, 213));
             let steep = smoothstep(0.012, 0.09, slope_at(sig));
-            let mut omega = 1.55 * (1.0 - steep) + 0.2 * steep;
+            // the greatest angle the channel makes with its course, in radians:
+            // about 66 degrees on the plains (a sinuosity of about 1.3), 7 in the hills
+            let mut omega = 1.15 * (1.0 - steep) + 0.12 * steep;
             // calm near the ends that join other rivers or start at a source
             omega *= smoothstep(0.0, 0.5, sig);
             if join_main.is_some() {
@@ -329,8 +393,14 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
             }
             // irregular loops: their size wanders, and they lean up or down the
             // valley for a stretch (the skew of a Kinoshita curve)
-            omega *= 0.4 + 0.8 * (0.5 + 0.5 * vnoise(sig * 0.7, seed as f32 * 3.1, 215));
-            let skew = 0.3 * vnoise(sig * 0.2, seed as f32 * 1.7, 217);
+            omega *= 0.6 + 0.6 * (0.5 + 0.5 * vnoise(sig * 0.7, seed as f32 * 3.1, 215));
+            let skew = 0.2 * vnoise(sig * 0.2, seed as f32 * 1.7, 217);
+            // and no bend is tighter than BEND_RADIUS widths of the ribbon: the
+            // channel turns at most (TAU omega (1 + 3 skew) + 1.1) / lam a cell
+            // along it, the 1.1 for the pull back to the course below, on top
+            // of the course's own turning
+            let room = 1.0 / (BEND_RADIUS * 2.0 * hw) - turn_at(sig);
+            omega = omega.min(((lam * room - 1.1) / (std::f32::consts::TAU * (1.0 + 3.0 * skew.abs()))).max(0.0));
             let phi = omega * phase.sin() + skew * omega * (3.0 * phase).cos() - 1.1 * y / lam;
             sig += ds * phi.cos();
             y += ds * phi.sin();
@@ -350,6 +420,7 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
             half.push(*half.last().unwrap_or(&0.015));
             swing.push(0.0);
         }
+        ease_bends(&mut pts, &half);
         // water level: the ground under the river, smoothed, never rising downstream
         let raw: Vec<f32> = pts.iter().map(|&p| hg.at(p)).collect();
         let s = arclen(&pts);
@@ -398,6 +469,114 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
         rivers[ci] = River { pts, half, level, swing, mouth: ch.mouth, coast };
     }
     rivers.into_iter().filter(|rv| rv.pts.len() >= 2).collect()
+}
+
+/// `ISOSTATE_RIVER_REPORT=1`: measure the bends of the old island's rivers as
+/// drawn (`isostate_core::landwater::river_shape`, in widths of the ribbon of
+/// water), and stop. True if it was asked for. The plains are where the water
+/// falls less than 0.012 a cell of its valley (read between the points half a
+/// cell up and down the channel), below which the bends are given their full
+/// swing, the steep reaches where it falls more than 0.09, where they are
+/// given their least; the plains are split at a ribbon 0.05 of a cell wide
+/// (100 m). The last 0.3 of a cell of a river that joins another is left out:
+/// that is the confluence's turn, not a bend. It lists where the bends under
+/// 2.5 widths are, and the longest stretches of big river on the plains, for
+/// pointing a camera. The new land's rivers are the core's lines, measured by
+/// the core's `river_shape` example.
+pub fn maybe_report(r: &Replay, rivers: &[River]) -> bool {
+    use isostate_core::landwater::{Shape, river_shape};
+    if std::env::var_os("ISOSTATE_RIVER_REPORT").is_none_or(|v| v.is_empty()) {
+        return false;
+    }
+    if r.land.is_some() {
+        println!("river report: this run is on the new land, whose rivers are the core's lines: cargo run --release -p isostate-core --example river_shape");
+        return true;
+    }
+    let mut by = [Shape::default(), Shape::default(), Shape::default(), Shape::default()];
+    let mut long: Vec<(f32, Vec2, Vec2, Vec2)> = Vec::new();
+    for rv in rivers {
+        let n = rv.pts.len();
+        let s = arclen(&rv.pts);
+        let pts: Vec<(f64, f64)> = rv.pts.iter().map(|p| (p.x as f64, p.y as f64)).collect();
+        let width: Vec<f64> = rv.half.iter().map(|&h| 2.0 * h as f64).collect();
+        let class: Vec<usize> = (0..n)
+            .map(|k| {
+                // the sea, and the estuary's flare before it, are not river
+                if rv.level[k] <= 0.004 || (rv.mouth && s[k] > rv.coast - 0.5) {
+                    return 9;
+                }
+                // nor is the turn a tributary makes into the river it joins
+                if !rv.mouth && s[n - 1] - s[k] < 0.3 {
+                    return 9;
+                }
+                let a = (0..=k).rev().find(|&j| s[k] - s[j] >= 0.5).unwrap_or(0);
+                let b = (k..n).find(|&j| s[j] - s[k] >= 0.5).unwrap_or(n - 1);
+                // down the valley, not along the channel, as the meanders' own steepness is read
+                let fall = if b > a { (rv.level[a] - rv.level[b]) / rv.pts[a].distance(rv.pts[b]).max(1e-6) } else { 0.0 };
+                if fall > 0.09 {
+                    3
+                } else if fall >= 0.012 {
+                    2
+                } else if width[k] >= 0.05 {
+                    1
+                } else {
+                    0
+                }
+            })
+            .collect();
+        for (c, sh) in by.iter_mut().enumerate() {
+            let keep: Vec<bool> = class.iter().map(|&k| k == c).collect();
+            sh.add(&river_shape(&pts, &width, &keep));
+        }
+        // the big rivers' stretches on the plains, for pointing a camera at
+        let mut k = 0;
+        while k < n {
+            if class[k] != 1 {
+                k += 1;
+                continue;
+            }
+            let a = k;
+            while k < n && class[k] == 1 {
+                k += 1;
+            }
+            long.push((s[k - 1] - s[a], rv.pts[a], rv.pts[(a + k - 1) / 2], rv.pts[k - 1]));
+        }
+    }
+    for (c, name) in ["small", "big", "middle", "steep"].iter().enumerate() {
+        for (r, at) in by[c].radius.iter().zip(by[c].apex.iter()) {
+            if *r < 2.5 {
+                println!("a tight bend ({name}): {r:.1} widths at {:.2},{:.2}", at.0, at.1);
+            }
+        }
+    }
+    long.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (len, a, m, b) in long.iter().take(6) {
+        println!("a big river on the plains: {len:.1} cells along it, from {:.1},{:.1} by {:.1},{:.1} to {:.1},{:.1}", a.x, a.y, m.x, m.y, b.x, b.y);
+    }
+    let pct = |v: &[f64], q: f64| -> f64 {
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.total_cmp(b));
+        if s.is_empty() { f64::NAN } else { s[((s.len() - 1) as f64 * q).round() as usize] }
+    };
+    println!("river report: {} rivers; lengths in widths of the ribbon; radius: the tightest bend, the 5th percentile, the median; tight: bends under 2.5 widths", rivers.len());
+    println!("reach   channel  sinu.  wavel.  r.min  r.p5 r.med  bends tight  necks");
+    for (c, name) in ["small", "big", "middle", "steep"].iter().enumerate() {
+        let sh = &by[c];
+        let tight = sh.radius.iter().filter(|&&v| v < 2.5).count();
+        println!(
+            "{name:>6}  {:>7.0}  {:>5.2}  {:>6.1}  {:>5.1} {:>5.1} {:>5.1}  {:>5} {:>5.1}%  {:>5}",
+            sh.channel,
+            sh.sinuosity(),
+            pct(&sh.wavelength, 0.5),
+            pct(&sh.radius, 0.0),
+            pct(&sh.radius, 0.05),
+            pct(&sh.radius, 0.5),
+            sh.radius.len(),
+            100.0 * tight as f64 / sh.radius.len().max(1) as f64,
+            sh.necks
+        );
+    }
+    true
 }
 
 /// Cut the valleys into the heightfield, and say for every vertex how much it
