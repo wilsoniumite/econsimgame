@@ -141,11 +141,13 @@ impl Default for UiState {
     }
 }
 
-/// The Markets panel has two halves: the goods and their prices, and the island as a whole.
+/// The Markets panel has three halves: the goods and their prices, the island
+/// as a whole, and its work and owners (work_charts.rs).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MarketsShow {
     Prices,
     Island,
+    Work,
 }
 
 /// Whether a word of a `--view` says what the Markets panel shows: "island",
@@ -1262,7 +1264,8 @@ fn panel_rebuild(
     // clock's month, and the news is listed again when more of it has come (the Hand
     // tab's list is made from the news, so it too)
     let month = match ui.tab {
-        Some(Tab::Markets) if ui.by_month => clock::series_month(tl.t),
+        // (the Work half goes by the year only)
+        Some(Tab::Markets) if ui.by_month && ui.markets != MarketsShow::Work => clock::series_month(tl.t),
         Some(Tab::News) | Some(Tab::Hand) => data.r.header.events.len(),
         _ => 0,
     };
@@ -1493,10 +1496,18 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
         // (the island's money: a rule of money set by hand shows here first, docs/designs/sandbox.md 6.6)
         ("money", "The island's money", &pounds, &pounds),
     ];
+    // what a wage buys is the chained wage over its 1750 figure; a run without it (the port's
+    // rules) keeps the fixed basket of 1750, and says so
+    let chained = crate::work_charts::true_wage(r, span.as_ref().map(|sp| (sp.first, sp.n)));
     for (name, label, now, side) in rows {
         let (vals, mark, first_year) = match &span {
             Some(sp) => (sp.values(r, name), sp.mark, sp.first_year),
             None => (replay::yearly(r, name), k, r.y0),
+        };
+        let (vals, label) = match (name, &chained) {
+            ("real_wage", Some(c)) => (c.clone(), label),
+            ("real_wage", None) => (vals, "What a wage buys of 1750's basket"),
+            _ => (vals, label),
         };
         if !vals.iter().any(|v| v.is_finite()) {
             continue;
@@ -1589,18 +1600,23 @@ fn unsold_until_made(price: &mut [f32], made: &[f32]) {
 /// `by_month` is the marked month's place in the run when the panel goes month by month.
 #[allow(clippy::too_many_arguments)]
 fn markets_panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, show: MarketsShow, open: Option<usize>, by_month: Option<usize>, accent: Color) {
-    // two halves, chosen by a chip: the goods, or the island as a whole; and either by the year or by the month
+    // three halves, chosen by a chip: the goods, the island as a whole, or its work; and the
+    // first two either by the year or by the month (the Work half's figures are whole years')
     p.spawn(Node { column_gap: Val::Px(5.0), margin: UiRect::bottom(Val::Px(2.0)), align_items: AlignItems::Center, ..default() }).with_children(|row| {
-        for (label, s) in [("Goods", MarketsShow::Prices), ("The island", MarketsShow::Island)] {
+        for (label, s) in [("Goods", MarketsShow::Prices), ("The island", MarketsShow::Island), ("Work", MarketsShow::Work)] {
             family::chip_button(row, f, label, s == show, accent, MarketsChip(s));
         }
         row.spawn(Node { flex_grow: 1.0, ..default() });
-        for (label, months) in [("By year", false), ("By month", true)] {
-            family::chip_button(row, f, label, months == by_month.is_some(), accent, MonthsChip(months));
+        if show != MarketsShow::Work {
+            for (label, months) in [("By year", false), ("By month", true)] {
+                family::chip_button(row, f, label, months == by_month.is_some(), accent, MonthsChip(months));
+            }
         }
     });
-    if show == MarketsShow::Island {
-        return island_charts(p, f, images, r, k, by_month, accent);
+    match show {
+        MarketsShow::Island => return island_charts(p, f, images, r, k, by_month, accent),
+        MarketsShow::Work => return crate::work_charts::panel(p, f, images, r, k),
+        MarketsShow::Prices => {}
     }
     let first_year = r.y0;
     match by_month {

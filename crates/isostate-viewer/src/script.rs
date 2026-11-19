@@ -59,7 +59,9 @@
 //!     good:back       mapped
 //!     row:GOOD        click a good's row in the Markets panel (row:coal)
 //!     half:island     click a chip of the Markets panel: the island's charts,
-//!     half:goods      or the goods
+//!     half:goods      the goods, or the island's work and owners (print on
+//!     half:work       that half gives its figures, a line for each fifty
+//!                     years and one for the year on the clock)
 //!     map[:NOTE]      let the panels catch up, then print in one line what
 //!                     the map and the Markets panel show
 //!
@@ -265,7 +267,8 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             "half" => match arg.to_ascii_lowercase().as_str() {
                 "island" => Step::Half(MarketsShow::Island),
                 "goods" => Step::Half(MarketsShow::Prices),
-                _ => return Err(format!("{part}: half:island or half:goods")),
+                "work" => Step::Half(MarketsShow::Work),
+                _ => return Err(format!("{part}: half:island, half:goods or half:work")),
             },
             "map" => Step::Map(arg.to_string()),
             "rule" => match arg.split_once('=').map(|(n, w)| (n.trim(), w.trim())) {
@@ -482,6 +485,12 @@ fn print_state(world: &mut World, note: &str) {
         let mut q = world.query_filtered::<&Text, With<ui::PanelTitle>>();
         let title = q.iter(world).next().map(|t| t.0.clone()).unwrap_or_default();
         println!("script:   the panel says: {title}: {}", said_in_one_line(&t, PANEL_SAID));
+        // the Work half's figures, from the very vectors its charts draw
+        if tab == ui::Tab::Markets && world.resource::<UiState>().markets == MarketsShow::Work {
+            for line in crate::work_charts::said(&world.resource::<Data>().r, k) {
+                println!("script:   {line}");
+            }
+        }
     }
     // the note about what was clicked, every text of it, while it shows
     let mut q = world.query_filtered::<Entity, With<crate::InspectPanel>>();
@@ -578,7 +587,11 @@ fn print_map(world: &World, note: &str) {
     let (ov, ui, data) = (world.resource::<MapOverlay>(), world.resource::<UiState>(), world.resource::<Data>());
     let good = |i: usize| data.r.header.goods.get(i).map_or("?", |g| g.name.as_str());
     let map = ov.kind.map_or("plain".to_string(), |k| format!("{k:?}").to_lowercase());
-    let half = if ui.markets == MarketsShow::Island { "island" } else { "goods" };
+    let half = match ui.markets {
+        MarketsShow::Island => "island",
+        MarketsShow::Prices => "goods",
+        MarketsShow::Work => "work",
+    };
     let panel = ui.tab.map_or("none".to_string(), |t| format!("{t:?}").to_lowercase());
     println!(
         "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}",
@@ -975,7 +988,12 @@ fn step(world: &mut World, sc: &mut Script) {
                 frame = true;
             }
             Step::Half(half) => {
-                match find_marked::<MarketsChip>(world, if half == MarketsShow::Island { "half:island" } else { "half:goods" }, |c| c.0 == half) {
+                let what = match half {
+                    MarketsShow::Island => "half:island",
+                    MarketsShow::Prices => "half:goods",
+                    MarketsShow::Work => "half:work",
+                };
+                match find_marked::<MarketsChip>(world, what, |c| c.0 == half) {
                     Ok(e) => press(world, sc, e),
                     Err(why) => println!("script: no click: {why}"),
                 }
@@ -1058,7 +1076,9 @@ mod tests {
         assert_eq!((&steps[6], &steps[7]), (&Step::Sample(5.0, false), &Step::Sample(10.0, true)));
         assert_eq!(steps[10], Step::Pick(31.5, 27.5));
         // the map views and the Markets panel
-        let steps = parse("key:M;key:Shift+M;key:shift+g;chip:rent;chip:Plain;chip:pill;good:next;good:back;row:coal;half:island;half:goods;map;map:after").unwrap();
+        let steps = parse("key:M;key:Shift+M;key:shift+g;chip:rent;chip:Plain;chip:pill;good:next;good:back;row:coal;half:island;half:goods;map;map:after;half:Work").unwrap();
+        assert_eq!(steps.last(), Some(&Step::Half(MarketsShow::Work)));
+        let steps = &steps[..steps.len() - 1];
         assert_eq!(steps[..3], [Step::Key(KeyCode::KeyM, false), Step::Key(KeyCode::KeyM, true), Step::Key(KeyCode::KeyG, true)]);
         assert_eq!(steps[3..6], [Step::Chip("rent".into()), Step::Chip("plain".into()), Step::Chip("pill".into())]);
         assert_eq!(steps[6..9], [Step::Good(1), Step::Good(-1), Step::Row("coal".into())]);
@@ -1075,7 +1095,7 @@ mod tests {
         assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
         assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
-        assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island or half:goods");
+        assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island, half:goods or half:work");
         // a panel that is no panel was once taken for closing the panel
         assert_eq!(parse("tab:famly").err().unwrap(), "tab:famly: the panels are family, holdings, markets, news, hand, rules, families and none");
         assert_eq!(parse("tab").err().unwrap(), "tab: the panels are family, holdings, markets, news, hand, rules, families and none");
