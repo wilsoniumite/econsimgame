@@ -11,6 +11,10 @@
 //! `--rules port` (the default) runs the port of the Python; `--rules game` runs
 //! the rules a live game is played under (`params::game_params`).
 //!
+//! `--edits FILE` plays the run with a list of edits by hand, each carried out
+//! before its month (`edits::run_with`; docs/designs/sandbox.md, section 6.3),
+//! and writes the list beside the run as `edits.json`.
+//!
 //! `isostate-core sweep` runs many seeds against many settings and tabulates
 //! their stylised facts; see `sweep.rs`. `isostate-core scorecard DIR` reads a
 //! sweep against the aims the documents state; see `scorecard.rs`.
