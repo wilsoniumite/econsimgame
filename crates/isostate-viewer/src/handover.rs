@@ -30,12 +30,45 @@
 //! it was, to set beside the cure), `strict` keeps the rate's rule as it was
 //! first written, and `step:SECONDS` hands over one mesh every so many
 //! seconds, slowly enough to take pictures of a year half arrived.
+//!
+//! A mesh in pieces (19 November 2026). A mesh goes to the card whole: the
+//! renderer packs and sends every byte of it in the frame it is handed over,
+//! 0.4 to 0.7 ms a megabyte on this machine. The trees' meshes are 40 to 63 MB
+//! each, so the frame one went in took 26 to 43 ms of the renderer's work
+//! whatever the rate said, and on the new land, whose meshes are a little
+//! larger, 27 to 58 such frames in fourteen seconds of play ran over 33 ms. So
+//! in a game the trees, the houses and the works are cut, off the main thread,
+//! into pieces of about `PIECE` bytes, each a run of whole things
+//! (`year::cut`), and each piece is a mesh of its own under a handle of its
+//! own (`How::Banked`). No more than `FRAME` bytes go in one frame: the budget
+//! of time, at the slowest rate measured, about ten milliseconds of the
+//! renderer's. The pieces of a mesh go one after another while the old year's
+//! mesh stays on screen whole; when the last piece has gone, the mesh's
+//! entities take the new pieces all in the next frame (`feed`), and the old
+//! ones are let go of. So a kind of scenery changes from one year to the next
+//! in one frame, as it did, and never shows half of each. What lies flat and
+//! the smoke are a few megabytes and go whole, as before (`How::InPlace`):
+//! where a lane meets a road the two lie at one height, and which is drawn
+//! over the other hangs on the order their meshes were made in.
+//!
+//! A mesh that is the same as the one on screen, to the bit, is not sent
+//! again (`HandOver::sums`).
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::*;
 
 use crate::Timeline;
+
+/// About how large a piece of a mesh is, in bytes on the card: a piece ends
+/// at the first whole thing past this.
+pub const PIECE: usize = 6_000_000;
+/// The most that goes in one frame, in bytes on the card: about ten
+/// milliseconds of the renderer's packing (0.5 ms a megabyte as measured with
+/// the pieces, 0.67 at the slowest measured whole, on a busy machine). A piece
+/// larger than this on its own (a single thing of more than `PIECE` bytes)
+/// still goes, alone.
+pub const FRAME: usize = 20_000_000;
 
 /// Where the rate begins, in bytes a second: a mesh of 47 MB then goes every
 /// ninth frame at 120 Hz and a year is on screen in three quarters of a second.
@@ -128,8 +161,10 @@ impl Budget {
     /// A frame of `dt` seconds has gone by, and these sizes in bytes are
     /// waiting, the first to go first: how many of them go in this frame.
     /// One goes when the allowance covers it, or when nothing has gone for
-    /// a tenth of a second; the allowance never grows past the largest
-    /// that waits, so a quiet while is not saved up and spent in one frame.
+    /// a tenth of a second; the allowance never grows past a frame's budget
+    /// (`FRAME`), or the largest that waits where that is more, so a quiet
+    /// while is not saved up and spent in one frame; and no more than a
+    /// frame's budget goes in one frame, but for one piece larger than it.
     /// `hold` lets nothing go in this frame, which has work enough of its
     /// own; the allowance keeps.
     ///
@@ -177,12 +212,20 @@ impl Budget {
                 1
             }
             Pace::Budget | Pace::Strict => {
-                self.allowance = (self.allowance + self.rate as f64 * dt as f64).min(largest as f64);
+                // (a frame's budget may be spent on several pieces, so the allowance keeps up to
+                // that much, or the largest that waits where that is more)
+                self.allowance = (self.allowance + self.rate as f64 * dt as f64).min(largest.max(FRAME) as f64);
                 if hold {
                     return 0;
                 }
-                let mut go = 0;
+                let (mut go, mut this_frame) = (0, 0);
                 for &size in waiting {
+                    // no more than a frame's budget of time goes in one frame, whatever the rate
+                    // allows: one piece at least, if it is let go at all
+                    if go > 0 && this_frame + size > FRAME {
+                        break;
+                    }
+                    this_frame += size;
                     if size as f64 <= self.allowance {
                         self.allowance -= size as f64;
                     } else if self.idle >= HURRY {
@@ -199,14 +242,30 @@ impl Budget {
     }
 }
 
-/// One mesh waiting to go on screen.
+/// How a mesh, or a piece of one, goes on screen.
+pub enum How {
+    /// assigned under the handle its entity draws, in the frame it goes: a
+    /// mesh that goes whole (what lies flat, the smoke, and everything in stills)
+    InPlace(Handle<Mesh>),
+    /// added under a handle of its own; when the last piece of its mesh has
+    /// gone, the mesh's entities take the new pieces in the next frame
+    Banked,
+}
+
+/// One mesh, or one piece of a mesh, waiting to go on screen.
 pub struct Piece {
-    pub handle: Handle<Mesh>,
+    /// the year's mesh it is of, as a place in the table's list (`year::list`)
+    pub part: usize,
+    pub how: How,
     pub mesh: Mesh,
     /// what it will cost the card: its corners and its indices
     pub bytes: usize,
-    /// its corners and a fingerprint of them, where a scripted run asked for one
-    /// (`scenery`): kept as the record of what is on screen under that handle
+    /// whether it is the last piece of its mesh, and if so the whole mesh's
+    /// fingerprint (`year::quick_sum`), kept as what is on screen of that mesh
+    pub last: Option<u64>,
+    /// on the last piece: the whole mesh's corners and a fingerprint of them,
+    /// where a scripted run asked for one (`scenery`), kept as the record of
+    /// what is on screen of that mesh
     pub print: Option<(usize, u64)>,
 }
 
@@ -214,6 +273,18 @@ pub struct Piece {
 #[derive(Resource)]
 pub struct HandOver {
     queue: VecDeque<Piece>,
+    /// pieces that have gone to the renderer under handles of their own, by
+    /// mesh, waiting for the last of their mesh
+    arriving: HashMap<usize, Vec<Handle<Mesh>>>,
+    /// meshes whose last piece went in an earlier frame: their entities take
+    /// the new pieces in this one (the mesh, its fingerprint, its print)
+    ready: Vec<(usize, u64, Option<(usize, u64)>)>,
+    /// the pieces each mesh that goes in pieces is drawn from on screen, by
+    /// mesh; held here, so that they are let go of when the next take their place
+    pieces: HashMap<usize, Vec<Handle<Mesh>>>,
+    /// each mesh's fingerprint on screen (`year::quick_sum`), by mesh: a year's
+    /// mesh that is the same is not sent again
+    pub sums: HashMap<usize, u64>,
     /// the year the queue is of
     year: Option<usize>,
     /// the state of the run its build was made from (`Shown::run`: how many
@@ -224,20 +295,42 @@ pub struct HandOver {
     pub budget: Budget,
     /// when the queue was filled, how many meshes it held and of how many bytes
     began: Option<(std::time::Instant, usize, usize)>,
-    /// how many meshes have been handed over since the game began, and of how many bytes
+    /// how many meshes (or pieces) have been handed over since the game began, and of how many bytes
     pub sent: (u64, u64),
-    /// what was last handed over under each handle, by its fingerprint (`Piece::print`)
-    pub on_screen: std::collections::HashMap<AssetId<Mesh>, (usize, u64)>,
+    /// how many of a year's meshes were not sent, being the same as on screen, and of how many bytes
+    pub same: (u64, u64),
+    /// what was last put on screen of each mesh, by the handle the table's list gives it, by its
+    /// fingerprint (`Piece::print`)
+    pub on_screen: HashMap<AssetId<Mesh>, (usize, u64)>,
 }
 
 impl HandOver {
     pub fn new(pace: Pace) -> HandOver {
-        HandOver { queue: VecDeque::new(), year: None, run: 0, held: false, budget: Budget::new(pace), began: None, sent: (0, 0), on_screen: default() }
+        HandOver {
+            queue: VecDeque::new(),
+            arriving: default(),
+            ready: Vec::new(),
+            pieces: default(),
+            sums: default(),
+            year: None,
+            run: 0,
+            held: false,
+            budget: Budget::new(pace),
+            began: None,
+            sent: (0, 0),
+            same: (0, 0),
+            on_screen: default(),
+        }
     }
 
     /// Nothing is waiting: the year last queued is on screen whole.
     pub fn is_empty(&self) -> bool {
-        self.queue.is_empty()
+        self.queue.is_empty() && self.ready.is_empty()
+    }
+
+    /// Whether a mesh goes in pieces of its own (not in stills, which take a year whole).
+    pub fn in_pieces(&self) -> bool {
+        self.budget.pace != Pace::Whole
     }
 
     /// How many meshes wait, and of how many bytes.
@@ -250,20 +343,38 @@ impl HandOver {
         self.year
     }
 
-    /// What still waits, by name and in the order it will go, for a picture's caption.
-    pub fn waiting_names(&self, handles: &crate::Handles) -> String {
-        self.queue.iter().map(|p| crate::year::named(crate::year::MESHES, &handles.meshes, &p.handle)).collect::<Vec<_>>().join(", ")
+    /// What still waits, by name and in the order it will go, for a picture's caption
+    /// (a mesh in pieces is named once, with how many of its pieces wait).
+    pub fn waiting_names(&self) -> String {
+        let parts = crate::year::list(crate::year::MESHES);
+        let mut names: Vec<(usize, usize)> = Vec::new();
+        for p in &self.queue {
+            match names.last_mut() {
+                Some((part, n)) if *part == p.part => *n += 1,
+                _ => names.push((p.part, 1)),
+            }
+        }
+        names.iter().map(|&(part, n)| {
+            let name = crate::year::name(crate::year::MESHES, parts[part]);
+            if n > 1 { format!("{name} ({n} pieces)") } else { name }
+        }).collect::<Vec<_>>().join(", ")
     }
 
     /// Queue a finished build's meshes for year `k`, built from the run as it
     /// stood at `run` (how many years it held), in the order they are to go.
     pub fn fill(&mut self, k: usize, run: u32, pieces: Vec<Piece>) {
-        debug_assert!(self.queue.is_empty(), "a build was begun while the last was still going out");
+        debug_assert!(self.is_empty(), "a build was begun while the last was still going out");
         let bytes = pieces.iter().map(|p| p.bytes).sum();
         self.began = Some((std::time::Instant::now(), pieces.len(), bytes));
         self.queue.extend(pieces);
         self.year = Some(k);
         self.run = run;
+    }
+
+    /// A year's mesh was the same as the one on screen and is not sent: counted.
+    pub fn same_as_on_screen(&mut self, bytes: usize) {
+        self.same.0 += 1;
+        self.same.1 += bytes as u64;
     }
 
     /// The last of the queue has gone: the year it was of, if it may be called
@@ -290,29 +401,93 @@ impl HandOver {
     }
 }
 
+/// The entities that draw each of a year's meshes, by its place in the
+/// table's list (`year::list`): one at the start (`year::spawn`), and one to
+/// each piece once the mesh goes in pieces.
+/// (Kept in `Handles`, beside the meshes' handles.)
+#[derive(Default)]
+pub struct Drawers(pub Vec<Vec<Entity>>);
+
 /// Hand over what the budget lets go this frame; when the last of a year has
 /// gone, that year is the one on screen.
-pub fn feed(mut hand: ResMut<HandOver>, mut tl: ResMut<Timeline>, data: Res<crate::Data>, real: Res<Time<Real>>, mut meshes: ResMut<Assets<Mesh>>) {
+#[allow(clippy::too_many_arguments)]
+pub fn feed(
+    mut hand: ResMut<HandOver>,
+    mut tl: ResMut<Timeline>,
+    data: Res<crate::Data>,
+    real: Res<Time<Real>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut handles: ResMut<crate::Handles>,
+    mut drawn: Query<&mut Mesh3d>,
+    mut commands: Commands,
+) {
     let _frames = crate::frames::span(crate::frames::Sys::HandOver);
     // (not marked changed in a frame nothing goes in: the budget only counts)
     let hand = hand.bypass_change_detection();
+    // the meshes whose last piece went in an earlier frame (so that the renderer has taken every
+    // piece in before anything draws them): their entities take the new pieces all in this frame,
+    // a piece to an entity, the first entity's twins made or let go of to match, and the pieces
+    // drawn until now are let go of
+    for (part, sum, print) in std::mem::take(&mut hand.ready) {
+        let new = hand.arriving.remove(&part).unwrap_or_default();
+        if let Some(list) = handles.drawers.0.get_mut(part).filter(|l| !l.is_empty()) {
+            for (j, h) in new.iter().enumerate() {
+                match list.get(j) {
+                    Some(&e) => {
+                        if let Ok(mut m) = drawn.get_mut(e) {
+                            m.0 = h.clone();
+                        }
+                    }
+                    None => {
+                        let twin = commands.entity(list[0]).clone_and_spawn().insert(Mesh3d(h.clone())).id();
+                        list.push(twin);
+                    }
+                }
+            }
+            for e in list.drain(new.len().max(1)..) {
+                commands.entity(e).despawn();
+            }
+        }
+        hand.pieces.insert(part, new);
+        hand.sums.insert(part, sum);
+        if let (Some(print), Some(h)) = (print, handles.meshes.get(part)) {
+            hand.on_screen.insert(h.id(), print);
+        }
+    }
     let sizes: Vec<usize> = hand.queue.iter().map(|p| p.bytes).collect();
     let held = std::mem::take(&mut hand.held);
     let go = hand.budget.frame(real.delta_secs(), &sizes, held);
     for _ in 0..go {
         let Some(piece) = hand.queue.pop_front() else { break };
-        // (a mesh assigned under the handle it had: the card frees the old one's place before
-        // it finds the new one's, so its buffers do not grow from year to year)
-        if let Some(mut on_screen) = meshes.get_mut(&piece.handle) {
-            *on_screen = piece.mesh;
-            hand.sent.0 += 1;
-            hand.sent.1 += piece.bytes as u64;
-            if let Some(print) = piece.print {
-                hand.on_screen.insert(piece.handle.id(), print);
+        hand.sent.0 += 1;
+        hand.sent.1 += piece.bytes as u64;
+        match piece.how {
+            How::InPlace(handle) => {
+                // (a mesh assigned under the handle it had: the card frees the old one's place
+                // before it finds the new one's, so its buffers do not grow from year to year)
+                if let Some(mut on_screen) = meshes.get_mut(&handle) {
+                    *on_screen = piece.mesh;
+                }
+                if let Some(sum) = piece.last {
+                    hand.sums.insert(piece.part, sum);
+                }
+                if let Some(print) = piece.print {
+                    hand.on_screen.insert(handle.id(), print);
+                }
+            }
+            How::Banked => {
+                // (under a handle of its own, so the card holds the old mesh and the new pieces
+                // side by side until the switch: the most it grows by is one mesh)
+                let h = meshes.add(piece.mesh);
+                hand.arriving.entry(piece.part).or_default().push(h);
+                if let Some(sum) = piece.last {
+                    hand.ready.push((piece.part, sum, piece.print));
+                }
             }
         }
     }
-    if go > 0 && hand.queue.is_empty() {
+    // (a year all of whose meshes were the same as on screen is queued empty, and done here at once)
+    if hand.year.is_some() && hand.is_empty() {
         let k = hand.year;
         match hand.finished(data.r.filled as u32, data.latest()) {
             Some(k) => tl.built = Some(k),
@@ -320,7 +495,7 @@ pub fn feed(mut hand: ResMut<HandOver>, mut tl: ResMut<Timeline>, data: Res<crat
             None => {}
         }
         if let (Some(k), Some((began, n, bytes)), true) = (k, hand.began.take(), crate::timing()) {
-            eprintln!("  year {} on screen: its {n} meshes ({:.0} MB) went to the renderer over {:.0} ms, at {:.0} MB a second by the end", data.r.y0 + k as i32, bytes as f32 / 1e6, began.elapsed().as_secs_f32() * 1e3, hand.budget.rate / 1e6);
+            eprintln!("  year {} on screen: its {n} meshes and pieces ({:.0} MB) went to the renderer over {:.0} ms, at {:.0} MB a second by the end; {} meshes ({:.0} MB) not sent since the start, being the same as on screen", data.r.y0 + k as i32, bytes as f32 / 1e6, began.elapsed().as_secs_f32() * 1e3, hand.budget.rate / 1e6, hand.same.0, hand.same.1 as f32 / 1e6);
         }
     }
 }
@@ -444,6 +619,91 @@ mod tests {
     }
 
     #[test]
+    fn no_more_than_a_frames_budget_goes_in_one_frame() {
+        // a year in pieces of 6 MB, at the highest rate and thirty frames a second (40 MB a frame
+        // by the rate): a frame takes three pieces at most, 18 MB, within the frame's budget
+        let year: Vec<usize> = vec![6 * MB; 80];
+        let mut b = Budget::new(Pace::Budget);
+        b.rate = RATE_CEILING;
+        let frames = run(&mut b, year.clone(), 30.0, 120);
+        assert!(frames.iter().all(|f| f.iter().sum::<usize>() <= FRAME), "{frames:?}");
+        assert_eq!(frames.iter().flatten().count(), year.len());
+        assert!(frames.iter().filter(|f| f.len() == 3).count() > 20, "the budget is spent, not left over: {frames:?}");
+        // a piece larger than the budget still goes, alone
+        let mut b = Budget::new(Pace::Budget);
+        let frames = run(&mut b, vec![MB, 30 * MB, MB], 30.0, 20);
+        assert!(frames.iter().any(|f| f == &vec![30 * MB]), "{frames:?}");
+    }
+
+    /// A world with one of a year's meshes drawn by one entity, as `setup_world` leaves it, and
+    /// a run of island 0 to build nothing from: for `feed`.
+    fn world_with_one_mesh(pace: Pace) -> (World, Handle<Mesh>, Entity) {
+        let mut world = World::new();
+        let mut meshes = Assets::<Mesh>::default();
+        let h = meshes.add(crate::placeholder_mesh());
+        let e = world.spawn((Mesh3d(h.clone()), crate::Leaves(2))).id();
+        let r = crate::world::tests::island();
+        let g = crate::world::build_ground(&r);
+        let (slots, cen) = (crate::scatter::make_slots(&r, &g), crate::network::centres(&r));
+        world.insert_resource(crate::Data { r: std::sync::Arc::new(r), g: std::sync::Arc::new(g), slots: std::sync::Arc::new(slots), cen: std::sync::Arc::new(cen), live: false });
+        world.insert_resource(meshes);
+        world.insert_resource(crate::Handles { year_cells: Handle::default(), year_field: Handle::default(), meshes: vec![h.clone()], drawers: Drawers(vec![vec![e]]) });
+        world.insert_resource(crate::Timeline { t: 0.0, built: None, playing: false, speed: 1.0 });
+        world.insert_resource(Time::<Real>::default());
+        world.insert_resource(HandOver::new(pace));
+        (world, h, e)
+    }
+
+    fn one_piece(part: usize, x: f32, last: Option<u64>) -> Piece {
+        let mut b = crate::meshkit::Builder::default();
+        b.tri(Vec3::new(x, 0.0, 0.0), Vec3::new(x, 0.0, 0.1), Vec3::new(x + 0.1, 0.0, 0.0), [0.5, 0.5, 0.5, 1.0]);
+        Piece { part, how: How::Banked, mesh: crate::meshkit::into_mesh(b), bytes: 132, last, print: None }
+    }
+
+    #[test]
+    fn a_mesh_in_pieces_changes_on_screen_in_one_frame_and_its_old_pieces_are_let_go_of() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut world, first, e) = world_with_one_mesh(Pace::Budget);
+        let run = world.resource::<crate::Data>().r.filled as u32;
+        world.resource_mut::<HandOver>().fill(0, run, vec![one_piece(0, 0.0, None), one_piece(0, 1.0, None), one_piece(0, 2.0, Some(7))]);
+        // the first frame hands the three pieces to the renderer; the old mesh is still drawn whole
+        world.run_system_once(feed).unwrap();
+        assert_eq!(world.resource::<HandOver>().waiting().0, 0);
+        assert_eq!(world.get::<Mesh3d>(e).unwrap().0, first);
+        assert_eq!(world.resource::<crate::Timeline>().built, None, "not on screen until it is drawn");
+        // the next, the three are drawn, by the entity and two twins of it, which are trees of
+        // the same group; and the year is on screen
+        world.run_system_once(feed).unwrap();
+        let drawers = world.resource::<crate::Handles>().drawers.0[0].clone();
+        assert_eq!(drawers.len(), 3);
+        assert_eq!(drawers[0], e);
+        let drawn: Vec<Handle<Mesh>> = drawers.iter().map(|&d| world.get::<Mesh3d>(d).unwrap().0.clone()).collect();
+        assert!(drawn.iter().all(|h| *h != first));
+        assert!(drawers.iter().all(|&d| world.get::<crate::Leaves>(d).is_some_and(|l| l.0 == 2)));
+        assert_eq!(world.resource::<crate::Timeline>().built, Some(0));
+        assert_eq!(world.resource::<HandOver>().sums.get(&0), Some(&7));
+        // a year of one piece: the twins are let go of, and so are the three pieces
+        let held = drawn.clone();
+        world.resource_mut::<HandOver>().fill(0, run, vec![one_piece(0, 5.0, Some(8))]);
+        world.run_system_once(feed).unwrap();
+        world.run_system_once(feed).unwrap();
+        let drawers = world.resource::<crate::Handles>().drawers.0[0].clone();
+        assert_eq!(drawers, vec![e]);
+        assert_eq!(world.resource::<HandOver>().pieces[&0].len(), 1);
+        assert!(!held.contains(&world.get::<Mesh3d>(e).unwrap().0));
+    }
+
+    #[test]
+    fn a_year_the_same_as_the_one_on_screen_is_on_screen_at_once() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut world, _, _) = world_with_one_mesh(Pace::Budget);
+        let run = world.resource::<crate::Data>().r.filled as u32;
+        world.resource_mut::<HandOver>().fill(0, run, Vec::new());
+        world.run_system_once(feed).unwrap();
+        assert_eq!(world.resource::<crate::Timeline>().built, Some(0));
+    }
+
+    #[test]
     fn the_rule_as_first_written_cuts_the_rate_for_every_whole_mesh() {
         // what `Pace::Strict` keeps: at 120 Hz a mesh of 50 MB makes its frame three frames
         // long, which is "late", so a year of them holds the rate near its floor
@@ -479,7 +739,7 @@ mod tests {
 
     #[test]
     fn a_year_whose_own_year_arrived_after_its_build_began_is_not_counted_built() {
-        let piece = || Piece { handle: Handle::default(), mesh: Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, bevy::asset::RenderAssetUsages::RENDER_WORLD), bytes: 120, print: None };
+        let piece = || Piece { part: 0, how: How::InPlace(Handle::default()), mesh: Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, bevy::asset::RenderAssetUsages::RENDER_WORLD), bytes: 120, last: Some(0), print: None };
         let mut hand = HandOver::new(Pace::Budget);
         // a year queued and let go (as `feed` does), then asked about with the run as it then is
         let mut out = |k: usize, built_from: u32, run: u32, latest: usize| {

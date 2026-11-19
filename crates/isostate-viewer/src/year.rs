@@ -259,8 +259,9 @@ pub fn handles(meshes: &mut Assets<Mesh>, table: &[YearMesh]) -> Vec<Handle<Mesh
 /// always were: in this Bevy a resource is an entity of its own, and the
 /// stores the entities are kept in are made in the order the commands are
 /// carried out.)
-pub fn spawn(commands: &mut Commands, handles: &[Handle<Mesh>], table: &[YearMesh], mats: &Materials, made: impl std::ops::RangeBounds<u8>) {
+pub fn spawn(commands: &mut Commands, handles: &[Handle<Mesh>], table: &[YearMesh], mats: &Materials, made: impl std::ops::RangeBounds<u8>, drawers: &mut handover::Drawers) {
     let parts = list(table);
+    drawers.0.resize(parts.len(), Vec::new());
     // (the year's meshes span the island and are never out of view, so none is ever culled,
     // and the engine need not read every corner of one to find its box in the frame it
     // goes on screen: `bevy_camera::visibility::calculate_bounds` passes these by)
@@ -268,15 +269,87 @@ pub fn spawn(commands: &mut Commands, handles: &[Handle<Mesh>], table: &[YearMes
     use bevy::light::NotShadowCaster;
     for i in made_order(table).into_iter().filter(|&i| made.contains(&table[parts[i].row].made)) {
         let (h, group) = (handles[i].clone(), parts[i].group);
-        match table[parts[i].row].drawn {
+        let e = match table[parts[i].row].drawn {
             Drawn::Evergreen => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.evergreen.clone()), Evergreen, Whole)),
             Drawn::Leaves => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.leaves.clone()), Leaves(group), Whole)),
             Drawn::Bare => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.bare.clone()), BareLimbs(group), Visibility::Hidden, Whole)),
             Drawn::Built => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.built.clone()), Whole)),
             Drawn::Smoke => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.smoke.clone()), NotShadowCaster, Whole)),
             Drawn::Flat => commands.spawn((Mesh3d(h), MeshMaterial3d(mats.flat.clone()), NotShadowCaster, Whole)),
-        };
+        }
+        .id();
+        // (the entity that draws the mesh, and the first of those that draw its pieces)
+        drawers.0[i] = vec![e];
     }
+}
+
+/// Whether a year's mesh drawn so goes to the card in pieces in a game
+/// (`handover::How::Banked`). What lies flat and the smoke go whole: they are a
+/// few megabytes, and which of a lane and a road lying at one height is drawn
+/// over the other hangs on the order their meshes were made in.
+pub fn in_pieces(drawn: Drawn) -> bool {
+    matches!(drawn, Drawn::Built | Drawn::Evergreen | Drawn::Leaves | Drawn::Bare)
+}
+
+/// Cut a mesh buffer into pieces of about `about` bytes on the card, each a
+/// run of whole things: a piece ends at the first place past `about` where no
+/// triangle after it shares a corner with one before it, so nothing is split
+/// between two pieces. Each piece counts its corners from its own first. A
+/// buffer no larger than `about`, or with no such place, is one piece, itself.
+/// Drawn together the pieces are the buffer: the same triangles, in the same
+/// order. (Run off the main thread, by the year's build.)
+pub fn cut(b: Builder, about: usize) -> Vec<Builder> {
+    let bytes = |corners: usize, indices: usize| corners * 40 + indices * 4;
+    let n = b.idx.len() / 3;
+    if b.is_empty() || bytes(b.pos.len(), b.idx.len()) <= about {
+        return vec![b];
+    }
+    // the lowest corner any triangle from each on reaches
+    let mut low = vec![u32::MAX; n + 1];
+    for t in (0..n).rev() {
+        low[t] = low[t + 1].min(b.idx[3 * t]).min(b.idx[3 * t + 1]).min(b.idx[3 * t + 2]);
+    }
+    let mut pieces = Vec::new();
+    let take = |t0: usize, t1: usize, v0: u32, v1: u32| {
+        let (a, z) = (v0 as usize, v1 as usize + 1);
+        Builder { pos: b.pos[a..z].to_vec(), nrm: b.nrm[a..z].to_vec(), col: b.col[a..z].to_vec(), idx: b.idx[3 * t0..3 * t1].iter().map(|i| i - v0).collect() }
+    };
+    let (mut t0, mut v0, mut high) = (0, low[0], 0u32);
+    for t in 0..n {
+        high = high.max(b.idx[3 * t]).max(b.idx[3 * t + 1]).max(b.idx[3 * t + 2]);
+        let next = t + 1;
+        // a place to cut: every triangle after reaches only corners past every one before
+        if next < n && low[next] > high && bytes((high - v0) as usize + 1, 3 * (next - t0)) >= about {
+            pieces.push(take(t0, next, v0, high));
+            (t0, v0) = (next, low[next]);
+        }
+    }
+    if pieces.is_empty() {
+        return vec![b];
+    }
+    pieces.push(take(t0, n, v0, high));
+    pieces
+}
+
+/// A quick fingerprint of a mesh buffer, every bit of it, eight bytes at a
+/// step: whether a year's mesh is the same as the one on screen. (`mesh_sum`
+/// is the slower one the scripted checks keep, a byte at a step.)
+pub fn quick_sum(b: &Builder) -> u64 {
+    let mut h = (b.pos.len() as u64) << 32 ^ b.idx.len() as u64 ^ 0x9E37_79B9_7F4A_7C15;
+    let mut eat = |a: u32, z: u32| h = (h ^ ((a as u64) << 32 | z as u64)).wrapping_mul(0x0000_0100_0000_01b3).rotate_left(23);
+    for (p, n) in b.pos.iter().zip(&b.nrm) {
+        eat(p[0].to_bits(), p[1].to_bits());
+        eat(p[2].to_bits(), n[0].to_bits());
+        eat(n[1].to_bits(), n[2].to_bits());
+    }
+    for c in &b.col {
+        eat(c[0].to_bits(), c[1].to_bits());
+        eat(c[2].to_bits(), c[3].to_bits());
+    }
+    for i in b.idx.chunks(2) {
+        eat(i[0], i.get(1).copied().unwrap_or(u32::MAX));
+    }
+    h
 }
 
 /// A finished build's meshes (in the order of the list), made ready for the
@@ -285,21 +358,59 @@ pub fn spawn(commands: &mut Commands, handles: &[Handle<Mesh>], table: &[YearMes
 /// built again for the camera alone (`whole` false) sends only the meshes
 /// whose row says so, and gives back the others to be let go of; and how many
 /// corners are sent.
-pub fn queue(table: &[YearMesh], meshes: Vec<Builder>, handles: &[Handle<Mesh>], prints: Option<&[(usize, u64)]>, whole: bool, phase: f32) -> (Vec<crate::handover::Piece>, Vec<Builder>, usize) {
+///
+/// Each mesh comes as its pieces (one, itself, where it was not cut), with
+/// its quick fingerprint (`sums`). A mesh whose fingerprint is the one on
+/// screen (`on_screen`) is not sent again, and is given back with the rest,
+/// with how many bytes it would have cost. `banked` says the pieces of a mesh
+/// that goes in pieces (`in_pieces`) go under handles of their own; otherwise
+/// every mesh goes whole under its handle, as it always did.
+#[allow(clippy::too_many_arguments)]
+pub fn queue(
+    table: &[YearMesh],
+    meshes: Vec<Vec<Builder>>,
+    handles: &[Handle<Mesh>],
+    prints: Option<&[(usize, u64)]>,
+    sums: &[u64],
+    on_screen: &std::collections::HashMap<usize, u64>,
+    whole: bool,
+    phase: f32,
+    banked: bool,
+) -> (Vec<crate::handover::Piece>, Vec<Builder>, usize, usize) {
     let parts = list(table);
-    let sends = |i: usize| whole || table[parts[i].row].camera;
-    let corners = meshes.iter().enumerate().filter(|&(i, _)| sends(i)).map(|(_, b)| b.pos.len()).sum();
-    let (mut going, mut rest) = (Vec::new(), Vec::new());
-    for (i, b) in meshes.into_iter().enumerate() {
+    let size = |of: &[Builder]| of.iter().map(|b| if b.is_empty() { 3 * 40 } else { b.pos.len() * 40 + b.idx.len() * 4 }).sum::<usize>();
+    let same = |i: usize| on_screen.get(&i) == sums.get(i);
+    let sends = |i: usize| (whole || table[parts[i].row].camera) && !same(i);
+    let corners = meshes.iter().enumerate().filter(|&(i, _)| sends(i)).map(|(_, of)| of.iter().map(|b| b.pos.len()).sum::<usize>()).sum();
+    let (mut going, mut rest, mut kept) = (Vec::new(), Vec::new(), 0);
+    for (i, of) in meshes.into_iter().enumerate() {
         if sends(i) {
-            going.push(Some(piece(&handles[i], b, prints.map(|p| p[i]))));
+            let sum = sums.get(i).copied().unwrap_or(0);
+            let on = if banked && in_pieces(table[parts[i].row].drawn) { None } else { Some(&handles[i]) };
+            // (a mesh that goes whole in place is one piece: what a build cut is put together again)
+            let of = match (on, of.len()) {
+                (Some(_), n) if n > 1 => vec![of.iter().fold(Builder::default(), |mut all, b| {
+                    all.merge(b);
+                    all
+                })],
+                _ => of,
+            };
+            let n = of.len();
+            let pieces: Vec<handover::Piece> = of.into_iter().enumerate().map(|(j, b)| {
+                let last = j + 1 == n;
+                piece(i, on, b, last.then_some(sum), if last { prints.map(|p| p[i]) } else { None })
+            }).collect();
+            going.push(Some(pieces));
         } else {
+            if (whole || table[parts[i].row].camera) && same(i) {
+                kept += size(&of);
+            }
             going.push(None);
-            rest.push(b);
+            rest.extend(of);
         }
     }
-    let pieces = hand_over(table, phase, whole).into_iter().filter_map(|i| going[i].take()).collect();
-    (pieces, rest, corners)
+    let pieces = hand_over(table, phase, whole).into_iter().filter_map(|i| going[i].take()).flatten().collect();
+    (pieces, rest, corners, kept)
 }
 
 /// Set a year built afresh (its meshes in the order of the list) against what
@@ -320,7 +431,9 @@ pub fn compare(table: &[YearMesh], fresh: &[Builder], handles: &[Handle<Mesh>], 
     (corners, wrong)
 }
 
-/// The name of the year's mesh under `handle`, for a picture's caption.
+/// The name of the year's mesh under `handle`. (A picture's caption names what
+/// waits by the piece's mesh, `HandOver::waiting_names`; this is the tests'.)
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn named(table: &[YearMesh], handles: &[Handle<Mesh>], handle: &Handle<Mesh>) -> String {
     match handles.iter().position(|h| h.id() == handle.id()) {
         Some(i) => name(table, list(table)[i]),
@@ -420,12 +533,17 @@ pub fn camera_names(table: &[YearMesh]) -> String {
 /// are taken off the main thread, by the build, and cost a frame nothing.
 pub static PRINT_YEAR_MESHES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// A year's mesh of one kind on its way to the renderer under `handle`.
-fn piece(handle: &Handle<Mesh>, b: meshkit::Builder, print: Option<(usize, u64)>) -> handover::Piece {
+/// A year's mesh of one kind, or a piece of one, on its way to the renderer:
+/// under `handle` where it goes whole in place, under one of its own otherwise.
+fn piece(part: usize, handle: Option<&Handle<Mesh>>, b: meshkit::Builder, last: Option<u64>, print: Option<(usize, u64)>) -> handover::Piece {
     // what the card will hold of it: a corner is its place, its normal and its colour
     // (40 bytes), and each index four more; nothing at all is the stand-in's one triangle
     let bytes = if b.is_empty() { 3 * 40 } else { b.pos.len() * 40 + b.idx.len() * 4 };
-    handover::Piece { handle: handle.clone(), mesh: non_empty(b), bytes, print }
+    let how = match handle {
+        Some(h) => handover::How::InPlace(h.clone()),
+        None => handover::How::Banked,
+    };
+    handover::Piece { part, how, mesh: non_empty(b), bytes, last, print }
 }
 
 /// A mesh buffer's corners and its fingerprint, as `non_empty` would put it on screen.
@@ -452,6 +570,32 @@ pub struct Scenery {
     /// each mesh's corners and fingerprint in the order of the list, where a
     /// scripted run checks what is on screen (`PRINT_YEAR_MESHES`)
     prints: Option<Vec<(usize, u64)>>,
+    /// (after `cut_up`) each mesh's quick fingerprint (`quick_sum`), and the
+    /// mesh in its pieces, both in the order of the list; `meshes` is then empty
+    sums: Vec<u64>,
+    pieces: Vec<Vec<meshkit::Builder>>,
+}
+
+impl Scenery {
+    /// Made ready for the hand-over, off the main thread: each mesh's quick
+    /// fingerprint taken, and each mesh that goes in pieces in a game cut
+    /// into them (`in_pieces`, `cut`); with `pieces` false (stills) every mesh
+    /// is one piece, itself.
+    fn cut_up(mut self, table: &[YearMesh], pieces: bool) -> Scenery {
+        use rayon::prelude::*;
+        let parts = list(table);
+        let meshes = std::mem::take(&mut self.meshes);
+        let done: Vec<(u64, Vec<meshkit::Builder>)> = meshes
+            .into_par_iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let sum = quick_sum(&b);
+                (sum, if pieces && in_pieces(table[parts[i].row].drawn) { cut(b, handover::PIECE) } else { vec![b] })
+            })
+            .collect();
+        (self.sums, self.pieces) = done.into_iter().unzip();
+        self
+    }
 }
 
 /// The year's scenery being built off the main thread, so a new year never
@@ -518,7 +662,7 @@ fn build_scenery(table: &[YearMesh], r: &Replay, g: &Ground, slots: &scatter::Sl
     // (a scripted run that checks what is on screen: each mesh's fingerprint, taken here,
     // off the main thread, and kept as the record of what the renderer was handed)
     let prints = PRINT_YEAR_MESHES.load(std::sync::atomic::Ordering::Relaxed).then(|| meshes.iter().map(print_of).collect());
-    Scenery { k, lod, cells, field: land.field, meshes, rails, prints }
+    Scenery { k, lod, cells, field: land.field, meshes, rails, prints, sums: Vec::new(), pieces: Vec::new() }
 }
 
 /// A fingerprint of a mesh buffer: every bit of every corner, normal, colour and index.
@@ -603,13 +747,21 @@ pub fn rebuild_year(
         // green all year and whichever of its leaves and its bare limbs the season has out
         // show, and the other is hidden until the season turns
         let phase = season_phase(&season, forced.0);
-        let (pieces, rest, corners) = queue(MESHES, sc.meshes, &handles.meshes, sc.prints.as_deref(), !for_camera, phase);
+        let banked = hand.in_pieces();
+        let (pieces, rest, corners, kept) = queue(MESHES, sc.pieces, &handles.meshes, sc.prints.as_deref(), &sc.sums, &hand.sums, !for_camera, phase, banked);
+        if kept > 0 {
+            hand.same_as_on_screen(kept);
+        }
         if for_camera {
             // the rest of what was built is not wanted. It is 300 MB of trees and more, and
             // letting go of it here cost the frame 10 ms: it is let go of off the main thread
             let rest = (rest, sc.cells, sc.field, sc.rails);
             AsyncComputeTaskPool::get().spawn(async move { drop(rest) }).detach();
         } else {
+            // (what is not sent, being the same as on screen, is let go of off the main thread too)
+            if !rest.is_empty() {
+                AsyncComputeTaskPool::get().spawn(async move { drop(rest) }).detach();
+            }
             // the ground's patchwork changes with the first mesh
             if let Some(mut img) = images.get_mut(&handles.year_cells) {
                 img.data = Some(sc.cells);
@@ -662,7 +814,8 @@ pub fn rebuild_year(
     // the years come faster than they can be shown some are skipped and none is left half sent
     if tl.built != Some(k) && builds.task.is_none() && hand.is_empty() {
         let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
-        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(MESHES, &r, &g, &slots, &cen, k, &lk, lod) });
+        let pieces = hand.in_pieces();
+        let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(MESHES, &r, &g, &slots, &cen, k, &lk, lod).cut_up(MESHES, pieces) });
         builds.task = Some((k, shown.run, task));
     }
 }
@@ -772,8 +925,16 @@ mod tests {
     }
 
     /// What a queue holds, by name.
-    fn queued(table: &[YearMesh], handles: &[Handle<Mesh>], pieces: &[crate::handover::Piece]) -> Vec<String> {
-        pieces.iter().map(|p| named(table, handles, &p.handle)).collect()
+    fn queued(table: &[YearMesh], _handles: &[Handle<Mesh>], pieces: &[crate::handover::Piece]) -> Vec<String> {
+        let parts = list(table);
+        pieces.iter().map(|p| name(table, parts[p.part])).collect()
+    }
+
+    /// A year's meshes queued whole, none of them on screen yet, as stills queue them.
+    fn queue_whole(table: &[YearMesh], meshes: Vec<Builder>, handles: &[Handle<Mesh>], prints: Option<&[(usize, u64)]>, whole: bool, phase: f32) -> (Vec<crate::handover::Piece>, Vec<Builder>, usize) {
+        let sums: Vec<u64> = meshes.iter().map(quick_sum).collect();
+        let (pieces, rest, corners, _) = queue(table, meshes.into_iter().map(|b| vec![b]).collect(), handles, prints, &sums, &Default::default(), whole, phase, false);
+        (pieces, rest, corners)
     }
 
     /// Meshes with something in them: one triangle each, told apart by where it stands.
@@ -809,13 +970,13 @@ mod tests {
         for i in 0..96 {
             let phase = i as f32 / 96.0;
             assert_eq!(names(&hand_over(MESHES, phase, true)), todays_hand_over(phase), "phase {phase}");
-            let (pieces, rest, corners) = queue(MESHES, meshes_of(MESHES), &handles, None, true, phase);
+            let (pieces, rest, corners) = queue_whole(MESHES, meshes_of(MESHES), &handles, None, true, phase);
             assert_eq!(queued(MESHES, &handles, &pieces), todays_hand_over(phase), "phase {phase}");
             assert_eq!((rest.len(), corners), (0, 3 * handles.len()));
             // and a year built again for the camera sends its houses, works and smoke, in that
             // order, and gives back the rest to be let go of
             assert_eq!(names(&hand_over(MESHES, phase, false)), ["houses", "works", "smoke"]);
-            let (pieces, rest, corners) = queue(MESHES, meshes_of(MESHES), &handles, None, false, phase);
+            let (pieces, rest, corners) = queue_whole(MESHES, meshes_of(MESHES), &handles, None, false, phase);
             assert_eq!(queued(MESHES, &handles, &pieces), ["houses", "works", "smoke"]);
             assert_eq!((rest.len(), corners), (handles.len() - 3, 9));
         }
@@ -856,7 +1017,7 @@ mod tests {
         };
         let mut queue = CommandQueue::default();
         let handles = super::handles(&mut meshes, table);
-        spawn(&mut Commands::new(&mut queue, &world), &handles, table, &mats, ..);
+        spawn(&mut Commands::new(&mut queue, &world), &handles, table, &mats, .., &mut handover::Drawers::default());
         queue.apply(&mut world);
         let parts = list(table);
         let mut q = world.query::<(Entity, &Mesh3d, Option<&MeshMaterial3d<StandardMaterial>>, Option<&MeshMaterial3d<BuiltMaterial>>, Has<bevy::light::NotShadowCaster>, Has<Evergreen>, Option<&Leaves>, Option<&BareLimbs>, Option<&Visibility>)>();
@@ -948,21 +1109,111 @@ mod tests {
         // queued for the card under its handle after the railway, and kept back from a build
         // for the camera, to be let go of with the trees
         let prints: Vec<(usize, u64)> = sc.meshes.iter().map(print_of).collect();
-        let (pieces, _, corners) = queue(table, sc.meshes.clone(), &handles, Some(&prints), true, 0.5);
+        let (pieces, _, corners) = queue_whole(table, sc.meshes.clone(), &handles, Some(&prints), true, 0.5);
         let mut want = todays_hand_over(0.5);
         want.insert(6, "canals".to_string());
         assert_eq!(queued(table, &handles, &pieces), want);
         assert_eq!(corners, sc.meshes.iter().map(|b| b.pos.len()).sum::<usize>());
-        let (camera, rest, _) = queue(table, sc.meshes.clone(), &handles, None, false, 0.5);
+        let (camera, rest, _) = queue_whole(table, sc.meshes.clone(), &handles, None, false, 0.5);
         assert_eq!(queued(table, &handles, &camera), ["houses", "works", "smoke"]);
         assert_eq!(rest.last(), Some(&sc.meshes[at]));
         // the scripted check finds it on screen as it was handed over, and names it when it is not
-        let mut on_screen: std::collections::HashMap<_, _> = pieces.iter().map(|p| (p.handle.id(), p.print.unwrap())).collect();
+        let mut on_screen: std::collections::HashMap<_, _> = pieces.iter().map(|p| (handles[p.part].id(), p.print.unwrap())).collect();
         assert_eq!(compare(table, &sc.meshes, &handles, &on_screen), (prints.iter().map(|p| p.0).sum(), vec![]));
         on_screen.insert(handles[at].id(), (3, 0));
         assert_eq!(compare(table, &sc.meshes, &handles, &on_screen).1, ["canals (3 corners on screen, 3 in the year's own)"]);
         // and a picture of a year half arrived names it in its caption
         assert_eq!(named(table, &handles, &handles[at]), "canals");
+    }
+
+    /// A buffer of `n` things, each a little box of its own corners (8 corners, 12 triangles),
+    /// and one long strip whose triangles all share corners with their neighbours.
+    fn things(n: usize) -> Builder {
+        let mut b = Builder::default();
+        for i in 0..n {
+            b.block(Vec3::new(i as f32 * 0.1, 0.0, 0.0), 0.02, 0.02, 0.02, 0.0, [0.5, 0.4, 0.3, 1.0], None, 0.0);
+        }
+        b
+    }
+
+    #[test]
+    fn a_mesh_is_cut_into_pieces_of_whole_things_that_draw_as_it_did() {
+        let b = things(400);
+        let bytes = |b: &Builder| b.pos.len() * 40 + b.idx.len() * 4;
+        let thing = bytes(&b) / 400;
+        let about = 30 * thing + thing / 2;
+        let pieces = cut(b.clone(), about);
+        assert!(pieces.len() > 5, "{} pieces", pieces.len());
+        // each piece about the size asked, none past it by more than one thing, the last no larger
+        assert!(pieces.iter().all(|p| bytes(p) <= about + thing), "{:?}", pieces.iter().map(bytes).collect::<Vec<_>>());
+        assert!(pieces[..pieces.len() - 1].iter().all(|p| bytes(p) >= about));
+        // put back together, the same triangles in the same order, corner for corner
+        let mut again = Builder::default();
+        for p in &pieces {
+            assert!(p.idx.iter().all(|&i| (i as usize) < p.pos.len()));
+            again.merge(p);
+        }
+        let tri = |b: &Builder| b.idx.iter().map(|&i| (b.pos[i as usize].map(f32::to_bits), b.nrm[i as usize].map(f32::to_bits), b.col[i as usize].map(f32::to_bits))).collect::<Vec<_>>();
+        assert_eq!(tri(&again), tri(&b));
+        // a mesh smaller than a piece, an empty one and one long strip with no place to cut are one piece, themselves
+        assert_eq!(cut(things(3), about), vec![things(3)]);
+        assert_eq!(cut(Builder::default(), about), vec![Builder::default()]);
+        let mut strip = Builder::default();
+        for i in 0..400u32 {
+            strip.pos.push([i as f32, 0.0, (i % 2) as f32]);
+            strip.nrm.push([0.0, 1.0, 0.0]);
+            strip.col.push([0.5, 0.5, 0.5, 1.0]);
+            if i >= 2 {
+                strip.idx.extend([i - 2, i - 1, i]);
+            }
+        }
+        assert_eq!(cut(strip.clone(), 100), vec![strip]);
+    }
+
+    #[test]
+    fn the_quick_fingerprint_tells_any_change() {
+        let b = things(20);
+        assert_eq!(quick_sum(&b), quick_sum(&b.clone()));
+        let mut moved = b.clone();
+        moved.pos[17][1] += 1e-6;
+        assert_ne!(quick_sum(&moved), quick_sum(&b));
+        let mut coloured = b.clone();
+        coloured.col[3][2] = 0.31;
+        assert_ne!(quick_sum(&coloured), quick_sum(&b));
+        let mut turned = b.clone();
+        turned.idx.swap(0, 1);
+        assert_ne!(quick_sum(&turned), quick_sum(&b));
+        assert_ne!(quick_sum(&things(19)), quick_sum(&b));
+    }
+
+    #[test]
+    fn a_mesh_the_same_as_on_screen_is_not_sent_and_the_trees_go_in_pieces() {
+        let mut assets = Assets::<Mesh>::default();
+        let handles: Vec<_> = list(MESHES).iter().map(|_| assets.add(crate::placeholder_mesh())).collect();
+        let meshes: Vec<Vec<Builder>> = meshes_of(MESHES).into_iter().map(|b| vec![b.clone(), b]).collect();
+        let sums: Vec<u64> = (0..meshes.len() as u64).collect();
+        // the houses (one of a kind) on screen as they are built: not sent
+        let houses = list(MESHES).iter().position(|p| MESHES[p.row].name == "houses").unwrap();
+        let on_screen: std::collections::HashMap<usize, u64> = [(houses, houses as u64)].into();
+        let (pieces, rest, _, kept) = queue(MESHES, meshes, &handles, None, &sums, &on_screen, true, 0.5, true);
+        assert!(pieces.iter().all(|p| p.part != houses));
+        assert_eq!((rest.len(), kept), (2, 2 * 3 * 40 + 2 * 3 * 4));
+        // the trees and the works go in their pieces, each under a handle of its own, the last of
+        // each carrying the mesh's fingerprint; what lies flat and the smoke go whole in place
+        for p in &pieces {
+            let row = &MESHES[list(MESHES)[p.part].row];
+            match &p.how {
+                handover::How::Banked => assert!(in_pieces(row.drawn), "{}", row.name),
+                handover::How::InPlace(h) => {
+                    assert!(!in_pieces(row.drawn), "{}", row.name);
+                    assert_eq!(*h, handles[p.part]);
+                    assert_eq!(p.last, Some(p.part as u64));
+                }
+            }
+        }
+        let works = list(MESHES).iter().position(|p| MESHES[p.row].name == "works").unwrap();
+        let of_works: Vec<&handover::Piece> = pieces.iter().filter(|p| p.part == works).collect();
+        assert_eq!(of_works.iter().map(|p| p.last).collect::<Vec<_>>(), [None, Some(works as u64)]);
     }
 
     #[test]
