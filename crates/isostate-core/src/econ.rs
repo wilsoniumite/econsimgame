@@ -515,8 +515,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     }
     // tasks (docs/rules/tasks.md): where a works' machines hold part of a class,
     // fewer hands a unit, the machines' run goods among its inputs, and its
-    // order for their plant (nothing while no works holds any)
-    crate::tasks::works_month(st, C, P, &fi, &K, &mut a, &mut l);
+    // order for their plant (nothing while no works holds any); and what its
+    // machines ask of the month, for the soft run below (empty while none do)
+    let running = crate::tasks::works_month(st, C, P, &fi, &K, &mut a, &mut l);
     let out: Vec<usize> = fm.iter().map(|&m| C.method_out[m]).collect();
     let p = &st.price;
     let mut pin = Mat::zeros(NFI, G);
@@ -574,7 +575,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // less than 1 only where their stock of its good is long (all ones while the
     // mechanism is off). It is fixed before the wage is sought and does not depend
     // on it, so demand still falls as the wage rises.
-    let take = prices::merchants_take(st, P, &ft, &out);
+    let take = prices::merchants_take(st, P, &ft, &out, &K);
 
     // Firm demand at its town's wage w: utilisation follows the margin through a sigmoid.
     let firm_demand = |w: f64, i: usize| -> (f64, f64) {
@@ -955,14 +956,38 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     for i in 0..NFI {
         let t = ft[i];
         let mut fill_in = f64::INFINITY;
-        for g in 0..G {
-            fill_in = fill_in.min(if a[(i, g)] > 0.0 { fill[(t, g)] } else { 1.0 });
+        // tasks (docs/rules/tasks.md, "A machine short of its run good"): the
+        // recipe is held to its own inputs; where the machines' run goods are
+        // short, the machines stand idle in that measure, and nothing else does
+        let run = running.get(i).filter(|r| !r.run.is_empty());
+        let mut fr = 1.0f64;
+        match run {
+            None => {
+                for g in 0..G {
+                    fill_in = fill_in.min(if a[(i, g)] > 0.0 { fill[(t, g)] } else { 1.0 });
+                }
+            }
+            Some(r) => {
+                for g in 0..G {
+                    fill_in = fill_in.min(if a[(i, g)] - r.of(g) > 0.0 { fill[(t, g)] } else { 1.0 });
+                }
+                fr = r.run.iter().map(|&(g, _)| fill[(t, g)]).fold(1.0, f64::min);
+            }
         }
         let fill_heat = if h[i] > 0.0 { pairwise_sum_by(NF, |k| hshare[(i, k)] * fill[(t, fuels[k])]) } else { 1.0 };
-        let phi = fill_in.min(fill_heat);
+        let phi = fill_in.min(fill_heat) * run.map_or(1.0, |r| r.output(fr));
         q[i] = q_des[i] * phi;
         for g in 0..G {
             use_f[(i, g)] = q[i] * a[(i, g)];
+        }
+        // the run goods are charged for what the machines used
+        if let Some(r) = run {
+            for &(g, v) in &r.run {
+                use_f[(i, g)] -= q[i] * v * (1.0 - fr);
+            }
+        }
+        if !running.is_empty() {
+            st.tasks.f_run_fill[fi[i]] = fr;
         }
         for (k, &g) in fuels.iter().enumerate() {
             use_f[(i, g)] += q[i] * h[i] * hshare[(i, k)] / heat_f[k];

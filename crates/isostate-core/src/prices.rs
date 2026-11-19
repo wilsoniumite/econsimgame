@@ -65,12 +65,16 @@ pub struct PriceParams {
     /// on every good, services among them, and the towns that bring services in
     /// lose what rots on their shelves (docs/rules/prices.md, "Goods that spoil").
     pub no_spoil_markup: bool,
+    /// A stock smaller than this share of a month of the works' make at full
+    /// time is a crumb, and no glut ([`take_from`]; docs/rules/prices.md, "A
+    /// crumb is no glut"). 0: no stock is a crumb, as before it.
+    pub crumb: f64,
 }
 
 impl Default for PriceParams {
     /// Off: what the port runs with.
     fn default() -> PriceParams {
-        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false }
+        PriceParams { enabled: false, markup: 0.5, glut_months: 4.0, glut_stop_months: 8.0, no_spoil_markup: false, crumb: 0.0 }
     }
 }
 
@@ -83,7 +87,7 @@ pub const GLUT_FLOOR: f64 = 0.0;
 impl PriceParams {
     /// The game's merchants.
     pub fn game() -> PriceParams {
-        PriceParams { enabled: true, no_spoil_markup: true, ..PriceParams::default() }
+        PriceParams { enabled: true, no_spoil_markup: true, crumb: CRUMB, ..PriceParams::default() }
     }
 }
 
@@ -97,12 +101,13 @@ pub struct PriceSettings {
     glut_months: f64,
     glut_stop_months: f64,
     no_spoil_markup: bool,
+    crumb: f64,
 }
 
 impl Default for PriceSettings {
     fn default() -> PriceSettings {
-        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup } = PriceParams::default();
-        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup }
+        let PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb } = PriceParams::default();
+        PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb }
     }
 }
 
@@ -113,8 +118,8 @@ impl TryFrom<PriceSettings> for PriceParams {
     /// sentence that names it. Whether the switch is on does not matter: a
     /// file that says a nonsense number has a mistake in it either way.
     fn try_from(s: PriceSettings) -> Result<PriceParams, String> {
-        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup } = s;
-        for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months)] {
+        let PriceSettings { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb } = s;
+        for (name, x) in [("markup", markup), ("glut_months", glut_months), ("glut_stop_months", glut_stop_months), ("crumb", crumb)] {
             if !x.is_finite() {
                 return Err(format!("prices.{name} is {x}, and it has to be an ordinary number"));
             }
@@ -128,7 +133,10 @@ impl TryFrom<PriceSettings> for PriceParams {
         if glut_months > 0.0 && glut_stop_months < glut_months {
             return Err(format!("prices.glut_stop_months is {glut_stop_months}, under glut_months ({glut_months}), and merchants cannot stop taking before they start to take less: give it glut_months or more (the same is a brake that drops from all to nothing at once)"));
         }
-        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup })
+        if !(0.0..1.0).contains(&crumb) {
+            return Err(format!("prices.crumb is {crumb}, and it has to be a share of a month of a works' make, from 0 (no stock is a crumb) up to but not reaching 1"));
+        }
+        Ok(PriceParams { enabled, markup, glut_months, glut_stop_months, no_spoil_markup, crumb })
     }
 }
 
@@ -316,12 +324,38 @@ pub fn take_at(pp: &PriceParams, stock: f64, outflow: f64) -> f64 {
 /// labour demand. It is read from last month's stock and sales, so within the
 /// month it is a fixed number between 0 and 1 for each works: labour demand
 /// still falls as the wage rises, which is what the wage's root-finder needs.
-pub fn merchants_take(st: &State, P: &Params, ft: &[usize], out: &[usize]) -> Vec<f64> {
+///
+/// `cap` is each works' capacity, what it makes in a month at full time. A
+/// stock under `crumb` of that is a crumb, and a crumb is no glut, however
+/// little sells ([`take_from`]).
+pub fn merchants_take(st: &State, P: &Params, ft: &[usize], out: &[usize], cap: &[f64]) -> Vec<f64> {
     let pp = &P.prices;
     if !pp.enabled || pp.glut_months <= 0.0 {
         return vec![1.0; ft.len()];
     }
-    ft.iter().zip(out).map(|(&t, &g)| take_at(pp, st.inv[(t, g)], st.outflow[(t, g)])).collect()
+    ft.iter().zip(out).zip(cap).map(|((&t, &g), &k)| take_from(pp, st.inv[(t, g)], st.outflow[(t, g)], k)).collect()
+}
+
+/// The game's crumb (`PriceParams::crumb`): a stock smaller than a hundredth of
+/// a month of the works' make at full time is no glut.
+pub const CRUMB: f64 = 0.01;
+
+/// [`take_at`], for a works that makes `month` in a month at full time: a
+/// stock under `pp.crumb` of that is a crumb, and merchants take all.
+///
+/// Without it a town whose sales stopped stays frozen. Its stock decays by a
+/// share a month and so never reaches the nothing that is no glut, while its
+/// smoothed sales decay as fast, so the stock counts as many months of sales
+/// for ever and its works are turned away for ever: on island 8 under the
+/// game's rules a town's builders, with their plant and their materials, made
+/// nothing from 1950 to 2050 on two hundredths of a unit of building work
+/// against a hundred a month of capacity (docs/rules/prices.md, "A crumb is no
+/// glut").
+pub fn take_from(pp: &PriceParams, stock: f64, outflow: f64, month: f64) -> f64 {
+    if stock < pp.crumb * month {
+        return 1.0;
+    }
+    take_at(pp, stock, outflow)
 }
 
 #[cfg(test)]
@@ -345,6 +379,22 @@ mod tests {
             assert!(v <= last && (0.0..=1.0).contains(&v));
             last = v;
         }
+    }
+
+    /// The frozen town's numbers (island 8, town 10, 1962, before the crumb):
+    /// two hundredths of a unit of building work on the shelves, sales of
+    /// 1.5e-8 a month, against a builder that makes a hundred a month. A crumb,
+    /// and no glut; a stock of a month's make that nobody buys is still one.
+    #[test]
+    fn a_crumb_is_no_glut() {
+        let pp = PriceParams::game();
+        assert_eq!(take_at(&pp, 2.3e-2, 1.5e-8), GLUT_FLOOR, "without the crumb the decayed stock is the worst glut");
+        assert_eq!(take_from(&pp, 2.3e-2, 1.5e-8, 100.0), 1.0);
+        assert_eq!(take_from(&pp, 100.0, 1.5e-8, 100.0), GLUT_FLOOR);
+        assert_eq!(take_from(&pp, 0.99, 1e-3, 100.0), 1.0);
+        assert_eq!(take_from(&pp, 1.01, 1e-3, 100.0), GLUT_FLOOR);
+        // where the stock is no crumb, the take is take_at's
+        assert!((take_from(&pp, 600.0, 100.0, 100.0) - 0.5).abs() < 1e-12);
     }
 
     #[test]

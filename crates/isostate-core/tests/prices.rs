@@ -280,7 +280,8 @@ fn the_wage_shortcut_agrees_with_the_plain_bisection() {
                 let fi: Vec<usize> = (0..s.st.F_count).filter(|&f| s.st.f_alive[f] && s.st.f_K[f] > 1e-9).collect();
                 let ft: Vec<usize> = fi.iter().map(|&f| s.st.f_town[f]).collect();
                 let out: Vec<usize> = fi.iter().map(|&f| C.method_out[s.st.f_method[f]]).collect();
-                let take = prices::merchants_take(&s.st, &P, &ft, &out);
+                let cap: Vec<f64> = fi.iter().map(|&f| s.st.f_K[f]).collect();
+                let take = prices::merchants_take(&s.st, &P, &ft, &out, &cap);
                 biting += take.iter().filter(|&&v| v < 1.0).count();
                 let mut plain = s.st.clone();
                 plain.plain_bisection = true;

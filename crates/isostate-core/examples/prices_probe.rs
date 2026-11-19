@@ -206,7 +206,8 @@ fn one_run(P: &Params, content: Content, shock: bool) -> Result<OneRun, String> 
             let works: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f] && st.f_K[f] > 1e-9).collect();
             let ft: Vec<usize> = works.iter().map(|&f| st.f_town[f]).collect();
             let out: Vec<usize> = works.iter().map(|&f| C.method_out[st.f_method[f]]).collect();
-            let take = prices::merchants_take(st, &s.params, &ft, &out);
+            let cap: Vec<f64> = works.iter().map(|&f| st.f_K[f]).collect();
+            let take = prices::merchants_take(st, &s.params, &ft, &out, &cap);
             for (i, &f) in works.iter().enumerate() {
                 let Some(k) = goods.iter().position(|&g| g == out[i]) else { continue };
                 let (K, away) = (st.f_K[f], st.f_K[f] * (1.0 - take[i]));
