@@ -922,6 +922,8 @@ pub struct Table {
     pub shown: String,
     /// When the table was read again (`--again`): the day and the code it was read with.
     pub again: Option<(String, Option<String>)>,
+    /// Rules this code finds on that the table, played earlier, did not ask.
+    pub since: Vec<String>,
 }
 
 /// The command line as the page shows it: `--out`'s directory as DIR and an
@@ -1319,6 +1321,14 @@ pub fn page(t: &Table, date: &str, code: Option<&str>) -> String {
     if t.readings.len() < t.found {
         let _ = writeln!(p, "- {} of the {} rules found on were not asked this time (`--only`).", t.found - t.readings.len(), t.found);
     }
+    if !t.since.is_empty() {
+        let _ = writeln!(
+            p,
+            "- {}: switched on under the game's rules since this table was played, so not in it; the next table asks {}.",
+            t.since.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", "),
+            if t.since.len() == 1 { "it" } else { "them" }
+        );
+    }
     p.push('\n');
 
     let _ = writeln!(p, "## How to read it\n");
@@ -1520,6 +1530,11 @@ pub fn again(o: &Options, print: bool) -> Result<(), String> {
         command: played.command.clone(),
         shown: shown(&played_args),
         again: Some((crate::record::today(), git_describe())),
+        since: {
+            let played_names: Vec<&str> = rules.iter().filter_map(|r| r["label"].as_str()).collect();
+            let now = asked(&game_params(), &default_params()).0;
+            if played.only.is_some() { Vec::new() } else { now.into_iter().filter(|n| !played_names.contains(&n.as_str())).collect() }
+        },
     };
     let txt = text(&table);
     let md = page(&table, doc["date"].as_str().unwrap_or("an unknown day"), doc["code"].as_str());
@@ -1627,6 +1642,7 @@ pub fn command(args: &[String], print: bool) -> Result<(), String> {
         command: o.command.clone(),
         shown: shown(args),
         again: None,
+        since: Vec::new(),
     };
     let txt = text(&table);
     let md = page(&table, &date, code.as_deref());
