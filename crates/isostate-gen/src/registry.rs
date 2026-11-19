@@ -12,7 +12,7 @@
 
 use glam::{Vec2, Vec3};
 
-use crate::bridge::{road_bridge, RoadBridge};
+use crate::bridge::{road_bridge, road_ford, RoadBridge, RoadFord};
 use crate::farm::{farmstead, Farmstead};
 use crate::fence::fence;
 use crate::trees::{bush, hedge_tree, tree, Species, Tree};
@@ -262,6 +262,16 @@ fn lighthouses(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     vec![specimen("lighthouse", |m, site| town::lighthouse(&mut m.solid, site, detail, pal))]
 }
 
+fn fords(_detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let mut out = Vec::new();
+    for (main, ferry) in [(true, false), (false, false), (false, true)] {
+        let f = RoadFord { at: Vec2::ZERO, along: Vec2::X, reach: 0.03, surface: 0.002, main, ferry };
+        let what = if ferry { "a ferry's landings and its boat" } else if main { "a main road's ford" } else { "a lane's ford" };
+        out.push(specimen(what, move |m, _| road_ford(&mut m.solid, &f, pal)));
+    }
+    out
+}
+
 fn bridges(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     let mut out = Vec::new();
     for main in [true, false] {
@@ -366,6 +376,7 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "lighthouse", class: Class::Structure, covers: &["town/lighthouse::lighthouse"], build: lighthouses, levels: true },
     Entry { name: "pit", class: Class::Structure, covers: &["works/pit::pit"], build: pits, levels: true },
     Entry { name: "road bridge", class: Class::Structure, covers: &["bridge::road_bridge"], build: bridges, levels: true },
+    Entry { name: "road ford", class: Class::Structure, covers: &["bridge::road_ford"], build: fords, levels: false },
     Entry { name: "winding engine house", class: Class::Building, covers: &["rail::winding_house"], build: winding_houses, levels: true },
     Entry { name: "banking engine's shed", class: Class::Building, covers: &["rail::banker_shed"], build: banker_sheds, levels: true },
     Entry { name: "buffer stop", class: Class::Structure, covers: &["rail::buffer_stop"], build: buffer_stops, levels: true },

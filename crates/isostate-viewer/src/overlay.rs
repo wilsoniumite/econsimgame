@@ -883,6 +883,7 @@ mod tests {
             arrays: Vec::new(),
             series: Default::default(),
             land: None,
+            crossings: Vec::new(),
         };
         Replay {
             header,

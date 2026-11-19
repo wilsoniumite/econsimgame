@@ -9,12 +9,12 @@
 //! which is whichever of those is on top (`driven`).
 
 use bevy::math::{Vec2, Vec3};
-use isostate_gen::bridge::RoadBridge;
+use isostate_gen::bridge::{RoadBridge, RoadFord};
 use isostate_gen::houses::Detail;
 
 use crate::look::Look;
 use crate::meshkit::Builder;
-use crate::replay::Replay;
+use crate::replay::{Crossed, Replay};
 use crate::world::{self, Ground};
 
 /// Cell centres with a little jitter, shared by every line on the map: where
@@ -94,20 +94,174 @@ pub fn road_line(g: &Ground, a: (f32, f32), b: (f32, f32)) -> Vec<Vec3> {
     drape(g, &[a, b], ROAD_LIFT)
 }
 
+/// How far from a river's water a road going round a meander keeps, in
+/// cells (some 20 m), beyond half its own width.
+const BANK_GAP: f32 = 0.01;
+
+/// A road's way between two cells' middles, as it is drawn (`route`).
+#[derive(Clone, Debug)]
+pub struct Way {
+    /// the way in plan, from the one middle to the other
+    pub pts: Vec<Vec2>,
+    /// where it crosses water: the point on the river's middle line, the
+    /// river's direction there, its half width, its water level, and the way
+    /// the road runs across it
+    pub crossings: Vec<(Vec2, Vec2, f32, f32, Vec2)>,
+}
+
+impl Way {
+    /// Whether the way is the straight line between the two middles.
+    pub fn straight(&self) -> bool {
+        self.pts.len() == 2
+    }
+}
+
+/// The way of the road from `a` to `b` (two cells' middles). Straight, as
+/// every road was drawn before the crossings; and so on a run that keeps no
+/// crossings (`round` false: the old island, or the rule off). With `round`,
+/// where its straight line cuts the same river an even number of times, it
+/// keeps to its bank and goes round the meander, along the water's edge;
+/// where it cuts it an odd number of times, it goes round to the middle of
+/// those points, crosses there once, straight over, and goes round on the
+/// far bank. This is the core's way (`crossings::links_for`, "going round"),
+/// which finds the same points: a drawn road crosses a drawn river only where
+/// the simulation has a bridge or a ford.
+pub fn route(g: &Ground, a: Vec2, b: Vec2, round: bool) -> Way {
+    use crate::rivers::River;
+    let straight = || {
+        let along = (b - a).normalize_or(Vec2::X);
+        let crossings = crate::rivers::crossings(&g.rivers, &g.water, a, b).into_iter().map(|(at, river, half, level)| (at, river, half, level, along)).collect();
+        Way { pts: vec![a, b], crossings }
+    };
+    if !round {
+        return straight();
+    }
+    let found = crate::rivers::crossing_points(&g.rivers, &g.water, a, b);
+    // by river, in order along the road
+    let mut groups: Vec<(u32, Vec<(f32, u32, f32)>)> = Vec::new();
+    for &(t, ri, i, u) in &found {
+        match groups.iter_mut().find(|gr| gr.0 == ri) {
+            Some(gr) => gr.1.push((t, i, u)),
+            None => groups.push((ri, vec![(t, i, u)])),
+        }
+    }
+    if groups.iter().all(|gr| gr.1.len() < 2) {
+        return straight();
+    }
+    // a river's points along the road must not run among another's (then it is drawn straight)
+    for (x, gx) in groups.iter().enumerate() {
+        for gy in &groups[x + 1..] {
+            let (x0, x1, y0, y1) = (gx.1[0].0, gx.1[gx.1.len() - 1].0, gy.1[0].0, gy.1[gy.1.len() - 1].0);
+            if x0 <= y1 && y0 <= x1 {
+                return straight();
+            }
+        }
+    }
+    let at = |rv: &River, s: f32| {
+        let i = (s.floor() as usize).min(rv.pts.len() - 2);
+        let u = s - i as f32;
+        (rv.pts[i].lerp(rv.pts[i + 1], u), (rv.pts[i + 1] - rv.pts[i]).normalize_or(Vec2::X), rv.half[i] + (rv.half[i + 1] - rv.half[i]) * u, rv.level[i] + (rv.level[i + 1] - rv.level[i]) * u)
+    };
+    // the water's edge on one side (`side` 1 is the left of the way the river runs, -1 the right), and a little back
+    let edge = |rv: &River, s: f32, side: f32| {
+        let (p, dir, half, _) = at(rv, s);
+        p + dir.perp() * side * (half + BANK_GAP)
+    };
+    // along the edge from s0 to s1, past every point of the river between
+    let bank = |rv: &River, s0: f32, s1: f32, side: f32, out: &mut Vec<Vec2>| {
+        out.push(edge(rv, s0, side));
+        let (lo, hi) = (s0.min(s1), s0.max(s1));
+        let mut inner: Vec<usize> = ((lo.floor() as usize + 1)..=(hi.ceil() as usize).min(rv.pts.len() - 1)).filter(|&i| (i as f32) > lo && (i as f32) < hi).collect();
+        if s1 < s0 {
+            inner.reverse();
+        }
+        for i in inner {
+            let dir = (rv.pts[(i + 1).min(rv.pts.len() - 1)] - rv.pts[i.saturating_sub(1)]).normalize_or(Vec2::X);
+            out.push(rv.pts[i] + dir.perp() * side * (rv.half[i] + BANK_GAP));
+        }
+        out.push(edge(rv, s1, side));
+    };
+    groups.sort_by(|x, y| x.1[0].0.total_cmp(&y.1[0].0));
+    let mut pts = vec![a];
+    let mut crossings = Vec::new();
+    let line_along = (b - a).normalize_or(Vec2::X);
+    for (ri, list) in &groups {
+        let rv = &g.rivers[*ri as usize];
+        let s: Vec<f32> = list.iter().map(|&(_, i, u)| i as f32 + u).collect();
+        if list.len() == 1 {
+            let (p, dir, half, level) = at(rv, s[0]);
+            crossings.push((p, dir, half, level, line_along));
+            continue;
+        }
+        // the bank the road comes from
+        let (p, dir, _, _) = at(rv, s[0]);
+        let from = *pts.last().unwrap();
+        let near = if dir.perp_dot(from - p) >= 0.0 { 1.0 } else { -1.0 };
+        let k = list.len();
+        if k % 2 == 0 {
+            bank(rv, s[0], s[k - 1], near, &mut pts);
+        } else {
+            let m = k / 2;
+            bank(rv, s[0], s[m], near, &mut pts);
+            let (p, dir, half, level) = at(rv, s[m]);
+            let (here, there) = (edge(rv, s[m], near), edge(rv, s[m], -near));
+            crossings.push((p, dir, half, level, (there - here).normalize_or(line_along)));
+            bank(rv, s[m], s[k - 1], -near, &mut pts);
+        }
+    }
+    pts.push(b);
+    Way { pts, crossings }
+}
+
+/// The middle line of the ribbon of the road along `way`, as `road_line` drapes a straight one.
+pub fn way_line(g: &Ground, way: &Way) -> Vec<Vec3> {
+    let pts: Vec<(f32, f32)> = way.pts.iter().map(|p| (p.x, p.y)).collect();
+    drape(g, &pts, ROAD_LIFT)
+}
+
 /// The bridges on the road from `a` to `b`: one wherever it crosses a
 /// river's middle line, as long as the river is wide where the road crosses
-/// it, each built at the level of detail `detail` gives for its place.
-pub fn road_bridges(g: &Ground, a: Vec2, b: Vec2, main: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
-    if !link_shown(g, a, b) {
+/// it, each built at the level of detail `detail` gives for its place. None
+/// where the run says the road crosses its water by a ford or a ferry
+/// (`crossed`, from `Replay::crossed`: the core's docs/rules/crossings.md);
+/// with `round`, only where its way crosses (`route`).
+pub fn road_bridges(g: &Ground, a: Vec2, b: Vec2, main: bool, crossed: Crossed, round: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
+    if crossed != Crossed::Bridge || !link_shown(g, a, b) {
         return Vec::new();
     }
-    let along = (b - a).normalize_or(Vec2::X);
-    crate::rivers::crossings(&g.rivers, &g.water, a, b)
-        .into_iter()
-        .map(|(at, river, half, level)| {
+    bridges_on(&route(g, a, b, round), main, detail)
+}
+
+/// The bridges where a way crosses water.
+fn bridges_on(way: &Way, main: bool, detail: impl Fn(Vec2) -> Detail) -> Vec<RoadBridge> {
+    way.crossings
+        .iter()
+        .map(|&(at, river, half, level, along)| {
             // a road that crosses aslant has further to go from bank to bank (up to three times as far)
             let half = half / along.perp_dot(river).abs().max(0.34);
             RoadBridge { at, along, half, level, main, detail: detail(at) }
+        })
+        .collect()
+}
+
+/// The fords (or a ferry's landings) on the road from `a` to `b`, where the
+/// run says it crosses its water with no bridge: one wherever its way
+/// crosses a river's middle line, reaching along the road as far as the water does.
+pub fn road_fords(g: &Ground, a: Vec2, b: Vec2, main: bool, crossed: Crossed, round: bool) -> Vec<RoadFord> {
+    if crossed == Crossed::Bridge || !link_shown(g, a, b) {
+        return Vec::new();
+    }
+    fords_on(&route(g, a, b, round), main, crossed)
+}
+
+/// The fords or ferries where a way crosses water.
+fn fords_on(way: &Way, main: bool, crossed: Crossed) -> Vec<RoadFord> {
+    way.crossings
+        .iter()
+        .map(|&(at, river, half, level, along)| {
+            // a road that crosses aslant has further to go from bank to bank (up to three times as far)
+            let reach = half / along.perp_dot(river).abs().max(0.34) + 0.004;
+            RoadFord { at, along, reach, surface: level.max(0.0) + 0.009, main, ferry: crossed == Crossed::Ferry }
         })
         .collect()
 }
@@ -151,9 +305,17 @@ pub fn causeway_runs(g: &Ground, a: Vec2, c: Vec2) -> Vec<(f32, f32)> {
 /// rises above another. The bridges are read at the play distance's detail,
 /// whose roadway is the same as the near one's; from far off a bridge's
 /// roadway is drawn in fewer lengths, and the cart rides a shade above it.
-pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool) -> Vec<Vec3> {
-    let ribbon = road_line(g, a, b);
+pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool, crossed: Crossed, round: bool) -> Vec<Vec3> {
     let (pa, pb) = (Vec2::new(a.0, a.1), Vec2::new(b.0, b.1));
+    let shown = link_shown(g, pa, pb);
+    let way = route(g, pa, pb, round);
+    let height = |x: f32, z: f32| world::height_at(g, x, z);
+    let bridges = if crossed == Crossed::Bridge && shown { bridges_on(&way, main, |_| Detail::Play) } else { Vec::new() };
+    let fords = if crossed != Crossed::Bridge && shown { fords_on(&way, main, crossed) } else { Vec::new() };
+    if !way.straight() {
+        return driven_round(g, &way, &bridges, &fords);
+    }
+    let ribbon = road_line(g, a, b);
     let len = pa.distance(pb);
     if len < 1e-6 {
         return ribbon;
@@ -161,15 +323,67 @@ pub fn driven(g: &Ground, a: (f32, f32), b: (f32, f32), main: bool) -> Vec<Vec3>
     let dir = (pb - pa) / len;
     let t_of = |p: Vec2| (p - pa).dot(dir) / len;
     let mut layers: Vec<Vec<(f32, f32)>> = vec![ribbon.iter().map(|p| (t_of(Vec2::new(p.x, p.z)), p.y)).collect()];
-    let height = |x: f32, z: f32| world::height_at(g, x, z);
-    for br in road_bridges(g, pa, pb, main, |_| Detail::Play) {
+    for br in &bridges {
         layers.push(br.roadway(&height).into_iter().map(|(t, h)| (t_of(br.point(t)), h)).collect());
+    }
+    // (a cart wades a ford a hair over the water, on its bar of gravel; a ferry carries it at the same height)
+    for f in &fords {
+        layers.push(vec![(t_of(f.point(0.0)), f.wade()), (t_of(f.point(1.0)), f.wade())]);
     }
     for (t0, t1) in causeway_runs(g, pa, pb) {
         layers.push(vec![(t0, CAUSEWAY_TOP), (t1, CAUSEWAY_TOP)]);
     }
     envelope(&layers).into_iter().map(|(t, h)| {
         let p = pa + dir * (len * t);
+        Vec3::new(p.x, h, p.y)
+    }).collect()
+}
+
+/// `driven` for a way that goes round a meander: the same layers, read along
+/// the way by how far along it they lie (no causeway: a way that goes round
+/// is inland).
+fn driven_round(g: &Ground, way: &Way, bridges: &[RoadBridge], fords: &[RoadFord]) -> Vec<Vec3> {
+    let pts = &way.pts;
+    let mut cum = vec![0.0f32];
+    for w in pts.windows(2) {
+        cum.push(cum[cum.len() - 1] + w[0].distance(w[1]));
+    }
+    let total = cum[cum.len() - 1].max(1e-6);
+    // how far along the way a point of the map lies, by the nearest of its lengths
+    let t_of = |p: Vec2| {
+        let mut best = (f32::MAX, 0.0f32);
+        for i in 0..pts.len() - 1 {
+            let (q, r) = (pts[i], pts[i + 1]);
+            let len2 = q.distance_squared(r).max(1e-12);
+            let u = ((p - q).dot(r - q) / len2).clamp(0.0, 1.0);
+            let d = p.distance_squared(q.lerp(r, u));
+            if d < best.0 {
+                best = (d, cum[i] + u * (cum[i + 1] - cum[i]));
+            }
+        }
+        best.1 / total
+    };
+    let at = |t: f32| {
+        let s = t * total;
+        let i = cum.partition_point(|&c| c < s).clamp(1, pts.len() - 1);
+        let u = ((s - cum[i - 1]) / (cum[i] - cum[i - 1]).max(1e-9)).clamp(0.0, 1.0);
+        pts[i - 1].lerp(pts[i], u)
+    };
+    let height = |x: f32, z: f32| world::height_at(g, x, z);
+    let ribbon = way_line(g, way);
+    let mut layers: Vec<Vec<(f32, f32)>> = vec![ribbon.iter().map(|p| (t_of(Vec2::new(p.x, p.z)), p.y)).collect()];
+    for br in bridges {
+        layers.push(br.roadway(&height).into_iter().map(|(t, h)| (t_of(br.point(t)), h)).collect());
+    }
+    for f in fords {
+        let (t0, t1) = (t_of(f.point(0.0)), t_of(f.point(1.0)));
+        layers.push(vec![(t0.min(t1), f.wade()), (t0.max(t1), f.wade())]);
+    }
+    for l in layers.iter_mut() {
+        l.sort_by(|x, y| x.0.total_cmp(&y.0));
+    }
+    envelope(&layers).into_iter().map(|(t, h)| {
+        let p = at(t);
         Vec3::new(p.x, h, p.y)
     }).collect()
 }
@@ -309,6 +523,20 @@ impl Waters {
     /// a cart 0.0009 under the water at 94.05,28.53 in 1850 otherwise).
     pub fn drowns(&self, g: &Ground, pts: &[Vec3]) -> bool {
         let (a, b) = (Vec2::new(pts[0].x, pts[0].z), Vec2::new(pts[pts.len() - 1].x, pts[pts.len() - 1].z));
+        // crossings: a way that goes round a meander is read along its own lengths
+        let off = |p: &Vec3| (Vec2::new(p.x, p.z) - a).perp_dot((b - a).normalize_or(Vec2::X)).abs();
+        if pts.iter().any(|p| off(p) > 1e-3) {
+            return pts.windows(2).any(|w| {
+                let (p, q) = (Vec2::new(w[0].x, w[0].z), Vec2::new(w[1].x, w[1].z));
+                let across = (q - p).normalize_or(Vec2::X).perp() * crate::carts::SIDE;
+                let n = ((p.distance(q) / 0.01).ceil() as usize).max(1);
+                (0..=n).any(|i| {
+                    let t = i as f32 / n as f32;
+                    let (s, h) = (p.lerp(q, t), w[0].y + (w[1].y - w[0].y) * t);
+                    [s, s + across, s - across].into_iter().any(|x| self.at(g, x).is_some_and(|(top, _)| h < top))
+                })
+            });
+        }
         if !self.near(a, b) {
             return false;
         }
@@ -407,8 +635,10 @@ fn year_nets_inner(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, lk: &Lo
     let (lane, main) = (*lk.ground.lane_dust, *lk.ground.road_gravel);
     for (c, m, lv) in road_segments(r, k) {
         // (on the new land a road that would lie under a lake or along tidewater is left out)
-        if link_shown(g, Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1)) {
-            roads.ribbon(&road_line(g, cen[c], cen[m]), road_width(lv), if lv == 3 { main } else { lane });
+        let (a, b) = (Vec2::new(cen[c].0, cen[c].1), Vec2::new(cen[m].0, cen[m].1));
+        if link_shown(g, a, b) {
+            // (crossings: round the meanders its straight line cuts, where the run keeps its crossings)
+            roads.ribbon(&way_line(g, &route(g, a, b, r.round())), road_width(lv), if lv == 3 { main } else { lane });
         }
     }
     Nets { roads, rails }

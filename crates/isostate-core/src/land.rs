@@ -48,6 +48,8 @@ pub fn update_transport(st: &mut State, _C: &Content, _P: &Params) {
     crate::canals::float(st, _P, &mut graph);
     // roads (docs/probes/dx-roads.md): a trust's road costs its toll to pass
     crate::roads::tolls(st, _P, &mut graph);
+    // crossings (docs/rules/crossings.md): a way over water with no bridge costs a ford or a ferry
+    crate::crossings::charges(st, _P, &mut graph);
     let first = (0..T).find(|&i| st.town_active[i]).expect("no active town");
     let nodes: Vec<usize> = (0..T).map(|i| if st.town_active[i] { st.town_node[i] } else { st.town_node[first] }).collect();
     let (dist, pred, settle) = tr::town_paths(&graph, &nodes, &st.town_active);

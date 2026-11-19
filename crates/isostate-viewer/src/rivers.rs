@@ -732,6 +732,46 @@ impl WaterIndex {
     }
 }
 
+/// Where the straight line from a to b crosses a river: how far along the
+/// line (0 to 1), which river, which of its lengths and how far along that,
+/// in the line's order. The same points as `crossings`, by the same sums
+/// (and the core's `crossings::links_for`, which finds the same points).
+pub fn crossing_points(rivers: &[River], index: &WaterIndex, a: Vec2, b: Vec2) -> Vec<(f32, u32, u32, f32)> {
+    let mut out: Vec<(f32, u32, u32, f32)> = Vec::new();
+    let (lo, hi) = (a.min(b), a.max(b));
+    let cell = index.cell;
+    let (bx0, by0) = ((lo.x / cell).floor().max(0.0) as usize, (lo.y / cell).floor().max(0.0) as usize);
+    let (bx1, by1) = (((hi.x / cell).floor().max(0.0) as usize).min(index.w - 1), ((hi.y / cell).floor().max(0.0) as usize).min(index.h - 1));
+    let d = b - a;
+    let mut seen: Vec<(u32, u32)> = Vec::new();
+    for by in by0..=by1 {
+        for bx in bx0..=bx1 {
+            for &(p, q, _, ri, i) in &index.buckets[by * index.w + bx] {
+                if seen.contains(&(ri, i)) {
+                    continue;
+                }
+                seen.push((ri, i));
+                if rivers[ri as usize].level[i as usize] < 0.0 {
+                    continue;
+                }
+                let e = q - p;
+                let den = d.x * e.y - d.y * e.x;
+                if den.abs() < 1e-9 {
+                    continue;
+                }
+                let w = p - a;
+                let t = (w.x * e.y - w.y * e.x) / den;
+                let u = (w.x * d.y - w.y * d.x) / den;
+                if (0.0..=1.0).contains(&t) && (0.0..1.0).contains(&u) {
+                    out.push((t, ri, i, u));
+                }
+            }
+        }
+    }
+    out.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)).then(x.2.cmp(&y.2)));
+    out
+}
+
 /// Where the straight line from a to b crosses a river: the point, the river's
 /// direction there, its half width and its water level.
 pub fn crossings(rivers: &[River], index: &WaterIndex, a: Vec2, b: Vec2) -> Vec<(Vec2, Vec2, f32, f32)> {

@@ -30,6 +30,7 @@ pub mod chronicle;
 pub mod cli;
 pub mod commons;
 pub mod content;
+pub mod crossings;
 pub mod econ;
 pub mod edits;
 pub mod engel;

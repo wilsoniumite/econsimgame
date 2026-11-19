@@ -252,7 +252,9 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
     let mut main: Vec<(Vec2, Vec2, Vec<Vec3>, Vec<isostate_gen::bridge::RoadBridge>, Vec<(f32, f32)>)> = Vec::new();
     for &(a, b, lv) in &segs {
         let (pa, pb) = (v2(cen[a]), v2(cen[b]));
-        let bridges = network::road_bridges(g, pa, pb, lv == 3, |_| isostate_gen::houses::Detail::Play);
+        // (this check reads every road as the straight line between its middles: a way that
+        // goes round a meander, where the run keeps its crossings, is checked as if straight)
+        let bridges = network::road_bridges(g, pa, pb, lv == 3, r.crossed(a, b, k), false, |_| isostate_gen::houses::Detail::Play);
         let runs = network::causeway_runs(g, pa, pb);
         let ribbon = network::road_line(g, cen[a], cen[b]);
         // the foot of a ramp that stands above the road it comes down to, where the river's level is
@@ -319,7 +321,7 @@ pub fn check(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize) -> RoadCheck 
         at_cell[b].push((a, b, lv));
     }
     let mut found = Default::default();
-    c.closed = (0..r.n).filter(|&cell| at_cell[cell].iter().any(|l| l.2 == 3) && trains::middle_under_bridge(g, cen, &at_cell[cell], cell, &mut found)).map(|cell| v2(cen[cell])).collect();
+    c.closed = (0..r.n).filter(|&cell| at_cell[cell].iter().any(|l| l.2 == 3) && trains::middle_under_bridge(r, k, g, cen, &at_cell[cell], cell, &mut found)).map(|cell| v2(cen[cell])).collect();
     // every cart's path, both ways, every 0.005 cells
     let routes = trains::road_routes(r, g, cen, k, &mut trains::RoadMemo::new(r, g));
     c.rounds = routes.len();

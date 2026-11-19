@@ -1379,6 +1379,8 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         series: Default::default(),
         // (a recorded run's word of its land; a live game has the land itself, below)
         land: None,
+        // (crossings: each year brings them, `take_year`)
+        crossings: Vec::new(),
     };
     let series_len = ny * 12;
     Replay {
@@ -1670,6 +1672,11 @@ pub fn apply_year(r: &mut Replay, y: &LiveYear) {
                 surface: w.surface,
             })
             .collect();
+    }
+    // crossings (the core's docs/rules/crossings.md): every way over water as the
+    // year ends, with the year of each bridge, which serves every year before it too
+    if !y.crossings.is_empty() {
+        r.header.crossings = y.crossings.iter().map(|l| replay::CrossLink { a: l.a, b: l.b, bridged: l.bridged, ferry: l.ferry }).collect();
     }
     if !y.cell_owner.is_empty() {
         if r.owner.is_empty() {

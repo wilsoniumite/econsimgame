@@ -270,6 +270,78 @@ pub fn road_bridge(solid: &mut MeshBuf, b: &RoadBridge, ground: &dyn Fn(f32, f32
     }
 }
 
+/// Where a road with no bridge meets a river: a ford, or the landings of a
+/// ferry where the river is too wide to ford.
+#[derive(Clone, Copy, Debug)]
+pub struct RoadFord {
+    /// where the road meets the middle of the river, on the map (x, z)
+    pub at: Vec2,
+    /// the way the road runs, a unit vector on the map
+    pub along: Vec2,
+    /// how far the water reaches along the road either side of `at`
+    pub reach: f32,
+    /// the height of the water's surface
+    pub surface: f32,
+    /// a main road, which is wider, rather than a lane
+    pub main: bool,
+    /// too wide to ford: crossed by a ferry
+    pub ferry: bool,
+}
+
+impl RoadFord {
+    /// How high a cart wading the ford rides: a hair over the water, on the
+    /// gravel of the ford's bar (none for a ferry, which carries it).
+    pub fn wade(&self) -> f32 {
+        self.surface + 0.0016
+    }
+
+    /// The point of the map `t` of the way across, 0 at one bank and 1 at the other.
+    pub fn point(&self, t: f32) -> Vec2 {
+        self.at + self.along * (self.reach * (2.0 * t - 1.0))
+    }
+}
+
+/// A ford: the road's gravel laid as a bar across the water at the road's
+/// width, just over the surface where the stream runs thin over it, with a
+/// line of stepping stones beside it for whoever is on foot; or, for a
+/// ferry, a landing of timber on each bank and the ferry's flat boat moored
+/// at one.
+pub fn road_ford(solid: &mut MeshBuf, f: &RoadFord, pal: &Palette) {
+    let side = Vec3::new(-f.along.y, 0.0, f.along.x);
+    let at = |t: f32, out: f32, y: f32| {
+        let p = f.point(t);
+        Vec3::new(p.x, y, p.y) + side * out
+    };
+    let half = if f.main { 0.017 } else { 0.011 };
+    if f.ferry {
+        // a landing stage of planks on each bank, out into the water, and the boat at the first
+        let deck = *pal.timber.planks;
+        let top = f.surface + 0.0025;
+        for (t0, t1) in [(-0.02, 0.12), (0.88, 1.02)] {
+            solid.quad(at(t0, half, top), at(t1, half, top), at(t1, -half, top), at(t0, -half, top), deck);
+            solid.quad(at(t0, half, f.surface - 0.004), at(t1, half, f.surface - 0.004), at(t1, half, top), at(t0, half, top), shade(deck, 0.8));
+            solid.quad(at(t1, -half, f.surface - 0.004), at(t0, -half, f.surface - 0.004), at(t0, -half, top), at(t1, -half, top), shade(deck, 0.7));
+        }
+        let hull = *pal.vehicles.boat_hull;
+        let mid = at(0.2, 0.0, f.surface - 0.001);
+        let yaw = -f.along.y.atan2(f.along.x);
+        solid.block(mid, 0.024, 2.0 * half, 0.004, yaw, hull, Some(shade(*pal.timber.planks, 0.9)), 0.0);
+        return;
+    }
+    // the bar of gravel, a shade paler than the road where the water has washed it
+    let gravel = shade(if f.main { *pal.ground.road_gravel } else { *pal.ground.lane_dust }, 1.08);
+    let y = f.wade() - 0.0003;
+    solid.quad(at(0.0, half, y), at(1.0, half, y), at(1.0, -half, y), at(0.0, -half, y), gravel);
+    // the stepping stones, one every so far along its downstream side
+    let stone = *pal.bridges.lane_stone;
+    let n = ((2.0 * f.reach / 0.007).round() as usize).max(2);
+    let yaw = -f.along.y.atan2(f.along.x);
+    for i in 0..n {
+        let t = (i as f32 + 0.5) / n as f32;
+        solid.block(at(t, half + 0.004, f.surface - 0.002), 0.0035, 0.003, 0.0035, yaw, stone, Some(shade(stone, 1.1)), 0.0);
+    }
+}
+
 /// An upright face low0-low1-high1-high0 that may have no height at one
 /// end, as the inner side of a parapet has at the foot of a ramp. A quad
 /// takes its facing from its first corner, so the corners are given from the
@@ -442,5 +514,21 @@ mod tests {
         assert!(high.is_sound() && high.bounds().unwrap().1.y > ha.y + 0.05);
         let top_at = |x: f32| high.pos.iter().filter(|p| (p[0] - x).abs() < 1e-4).map(|p| p[1]).fold(f32::MIN, f32::max);
         assert!(top_at(3.0 - 0.0475) < 0.15 && top_at(3.0 + 0.0475) > 0.21);
+    }
+
+    #[test]
+    fn a_ford_lies_on_the_water_and_a_ferry_has_its_landings_and_its_boat() {
+        let pal = Palette::standard();
+        let f = RoadFord { at: Vec2::new(3.0, 4.0), along: Vec2::X, reach: 0.02, surface: 0.1, main: false, ferry: false };
+        let mut m = MeshBuf::default();
+        road_ford(&mut m, &f, &pal);
+        let (lo, hi) = m.bounds().unwrap();
+        // the bar of gravel a hair over the water, the stepping stones standing out of it
+        assert!(m.is_sound() && lo.y >= 0.097 && hi.y < 0.103, "{lo} {hi}");
+        assert!((hi.x - lo.x - 0.04).abs() < 0.004, "it reaches as far as the water does: {lo} {hi}");
+        assert!((f.wade() - 0.1016).abs() < 1e-6);
+        let mut ferry = MeshBuf::default();
+        road_ford(&mut ferry, &RoadFord { ferry: true, ..f }, &pal);
+        assert!(ferry.is_sound() && ferry.triangles() > m.triangles() / 4 && ferry.triangles() > 10);
     }
 }
