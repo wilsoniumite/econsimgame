@@ -192,11 +192,11 @@ pub fn outside(reference: &Then, later: &[&Then], kinds: &HashMap<String, Kind>)
             let mut islands: Vec<(u64, f64)> = arm.values[name].iter().copied().filter(|&(_, x)| x < r.min || x > r.max).collect();
             islands.sort_by_key(|&(seed, _)| seed);
             let list: Vec<String> = islands.iter().map(|&(seed, x)| format!("island {seed} at {}", f(x))).collect();
+            let how = if v == Verdict::Moved { "moved: every island apart from the reference's" } else { "OUTSIDE: the islands overlap the reference's" };
             out.push(format!(
-                "{name}, {}: mean {} is {} the band [{} .. {}] of {} across its {} islands; outside the band: {}",
+                "{name}, {}: mean {} is outside the band [{} .. {}] of {} across its {} islands ({how}); outside the band: {}",
                 arm.label,
                 f(l.mean),
-                v.as_str(),
                 f(r.min),
                 f(r.max),
                 reference.label,
@@ -387,9 +387,9 @@ mod tests {
         assert_eq!(bad.len(), 11, "{bad:?}");
         assert!(bad.iter().all(|l| !l.starts_with("pop_1900")));
         let towns = bad.iter().find(|l| l.starts_with("towns_1900")).unwrap();
-        assert!(towns.contains("mean 22.8 is moved the band [14 .. 20] of off across its 4 islands") && towns.contains("island 1 at 21, island 2 at 22"), "{towns}");
+        assert!(towns.contains("mean 22.8 is outside the band [14 .. 20] of off across its 4 islands (moved") && towns.contains("island 1 at 21, island 2 at 22"), "{towns}");
         let rail = bad.iter().find(|l| l.starts_with("rail_km_1900")).unwrap();
-        assert!(rail.contains("OUTSIDE the band [2,100 .. 2,500]") && rail.ends_with("island 1 at 1,500, island 2 at 1,600, island 3 at 1,700"), "{rail}");
+        assert!(rail.contains("outside the band [2,100 .. 2,500] of off across its 4 islands (OUTSIDE") && rail.ends_with("island 1 at 1,500, island 2 at 1,600, island 3 at 1,700"), "{rail}");
         assert!(bad.iter().any(|l| l.starts_with("pop_1800, on: no value in the reference (off)")));
         // with every fact inside, nothing fails
         assert!(outside(&reference, &[&reference], &kinds).iter().all(|l| l.contains("no value")));
