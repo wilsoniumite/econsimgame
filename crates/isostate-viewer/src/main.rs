@@ -21,6 +21,7 @@ mod fences;
 mod fields;
 mod frames;
 mod game;
+mod hand_tab;
 mod handover;
 mod icons;
 mod lab;
@@ -35,6 +36,7 @@ mod profile;
 mod rails;
 mod replay;
 mod rivers;
+mod rulebook;
 mod sandbox;
 mod saves;
 mod scatter;
@@ -111,8 +113,14 @@ struct Args {
     save: Option<String>,
     /// keep the game in the island's autosave though the start is not plain play
     keep: bool,
-    /// a sandbox: nobody plays a family, and the island is changed by hand (sandbox.rs)
+    /// a sandbox: nobody plays a family, and the island is changed by hand (sandbox.rs). Asked
+    /// for with `--sandbox`; at the end of `parse` it is what opens (`sandbox_wanted`)
     sandbox: bool,
+    /// the family game was asked for (`--family`): a start with somebody at the window is
+    /// otherwise a sandbox
+    family: bool,
+    /// the last year of a new game (`--to`); None: `isostate_core::save::LATEST_YEAR`
+    to: Option<i64>,
     /// start with this spot clicked
     pick: Option<(f32, f32)>,
     ground_debug: bool,
@@ -165,10 +173,14 @@ const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
 
   isostate-viewer [RUN.bin] [options]
 
-With no run named, a new game starts.
+With no run named, a new game starts, and it is a sandbox: nobody plays a family, and the
+island is watched and changed by hand. --family plays the family game instead.
 
-  --new                a new game, whatever is saved (with no run named and nothing else
-                       asked for, the island's saved game is gone on with)
+  --family             the family game: one family among six, its orders, its cards, the
+                       ranking at the end. With nothing else asked for, the island's saved
+                       family game is gone on with
+  --new                a new game, whatever is saved (with --family and nothing else asked
+                       for, the island's saved game is gone on with)
   --seed N             which island (7); a new game
   --new-land           a new game on the new land: the second island generator's, with rivers
                        that run downhill, lakes and tideways, which the game's rules do not
@@ -178,11 +190,16 @@ With no run named, a new game starts.
   --keep               keep the game in the island's autosave though the start is not plain
                        play (--advance, --demo, --script); with nobody at the game it needs
                        ISOSTATE_SAVES to name the folder
-  --sandbox            a sandbox: nobody plays a family, and a tray of tools under the clock
-                       changes the island by hand (money, people, the harvest) or runs it on
-                       a year, ten or twenty-five. Never the island's own saved game: it is
-                       kept among the trials
+  --sandbox            a sandbox where the family game would open: pictures, a script and
+                       --demo play the family game unless this is given. In a sandbox a tray
+                       of tools under the clock changes the island by hand (money, people,
+                       the harvest) or runs it on a year, ten or twenty-five. Each plain start
+                       is a new one, kept among the trials and never in the island's own
+                       saved game
   --families N         how many great families (6; from 1 to 30)
+  --to YEAR            the last year a new game is played to (2050; from 1900 to 2050). Kept in
+                       its save: a game gone on with is played to its own. Past 1900 the island
+                       is hungry until the content after 1900 is written
   --advance N          play N years before the game opens (a trial: it is kept among the
                        trials, apart from the island's own saved game)
   --demo               the family builds a works and buys land in its first year (a trial too)
@@ -205,7 +222,8 @@ Pictures and checks with no window:
   --view PATH,YEAR,X,Z,YAW,PITCH,DIST[,SEASON][,WORDS]
                        a picture; give it once for each. Empty values fall back to
                        the opening view. WORDS, in any order: a panel (family, holdings,
-                       markets, news or none), a map view as for --overlay, and island
+                       markets, news, hand, rules, families or none), a map view as for
+                       --overlay, and island
                        or open:GOOD for what the Markets panel shows (island:months and
                        open:GOOD:months for its charts month by month)
   --shot PATH          a picture of the opening view
@@ -312,6 +330,8 @@ fn parse(v: &[String]) -> Result<Args, String> {
         save: None,
         keep: false,
         sandbox: false,
+        family: false,
+        to: None,
         pick: None,
         ground_debug: false,
         class_map: false,
@@ -365,6 +385,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--save" => { a.save = Some(named(opt, next(i)?, "the name of a file to keep the game in")?); i += 1; }
             "--keep" => a.keep = true,
             "--sandbox" => a.sandbox = true,
+            "--family" => a.family = true,
             "--families" => {
                 a.families = number(opt, &next(i)?)?;
                 // refused here, before an island is made for a number no game can have
@@ -372,6 +393,13 @@ fn parse(v: &[String]) -> Result<Args, String> {
                 i += 1;
             }
             "--advance" => { a.advance = number(opt, &next(i)?)?; i += 1; }
+            "--to" => {
+                let to = number(opt, &next(i)?)?;
+                // refused here, before an island is made, as --families is (a new game is under the game's rules)
+                isostate_core::save::last_year_allowed(isostate_core::params::Rules::Game, to).map_err(|why| format!("{opt}: {why}; give a year in that range"))?;
+                a.to = Some(to);
+                i += 1;
+            }
             "--demo" => a.demo = true,
             "--pick" => { a.pick = Some(pair(opt, &next(i)?, ',')?); i += 1; }
             "--ground-debug" => a.ground_debug = true,
@@ -433,7 +461,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
                 // view would otherwise be taken of the plain map
                 let known = |s: &str| overlay::is_word(s) || ui::markets_word(s) || ui::Tab::parse(s).is_some() || s.eq_ignore_ascii_case("none");
                 if let Some(w) = words.iter().find(|s| !known(s)) {
-                    return Err(format!("{opt}: {w} is not a word a view takes: use a panel (family, holdings, markets, news or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"));
+                    return Err(format!("{opt}: {w} is not a word a view takes: use a panel (family, holdings, markets, news, hand, rules, families or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"));
                 }
                 a.views.push(ShotSpec {
                     path: p.first().cloned().unwrap_or_else(|| "shot.png".into()),
@@ -458,8 +486,14 @@ fn parse(v: &[String]) -> Result<Args, String> {
     if !a.named_run || a.load.is_some() {
         a.new = true;
     }
+    if a.family && a.sandbox {
+        return Err("--family plays the family game and --sandbox opens a game nobody plays a family in: give one of them, not both".into());
+    }
     if a.sandbox && !a.new {
         eprintln!("--sandbox changes a game by hand, and {} is a recorded history with no simulation behind it: it is opened as it was recorded", a.run);
+    }
+    if a.family && !a.new {
+        eprintln!("--family plays a game, and {} is a recorded history with no simulation behind it: it is opened as it was recorded", a.run);
     }
     // a saved game says itself which land it is played on; --new-land is for a game that is begun
     if let (true, Some(file)) = (a.new_land, &a.load) {
@@ -480,8 +514,67 @@ fn parse(v: &[String]) -> Result<Args, String> {
     if a.shots.is_some() {
         // the standard shots run from the first year to the last, so play the whole game first
         a.advance = usize::MAX - 1;
+        // and that game ends in 1900, so that the standard pictures and their time are as they were
+        if a.to.is_some_and(|y| y != isostate_core::save::content_last_year(isostate_core::params::Rules::Game)) {
+            eprintln!("--shots plays a game to 1900 for the standard pictures: --to is passed over beside it");
+        }
+        a.to = Some(isostate_core::save::content_last_year(isostate_core::params::Rules::Game));
     }
+    // a last year is chosen when a game is begun: a save keeps its own, and a recorded run is what it is
+    if a.to.is_some() && a.shots.is_none() && (a.load.is_some() || !a.new) {
+        eprintln!("--to is for a new game: {} keeps the last year it has", a.load.as_deref().unwrap_or(&a.run));
+    }
+    // what was asked for is settled: from here `a.sandbox` is what opens
+    a.sandbox = sandbox_wanted(&a);
     Ok(a)
+}
+
+/// Which kind of game opens (docs/designs/sandbox.md, section 6.4). A live
+/// game with somebody at the window is a sandbox unless `--family` asks for
+/// the family game. One that nobody is at (it takes pictures, describes a
+/// spot, writes a class map or plays a script) and one that plays the demo's
+/// orders, which are the family's, are the family game unless `--sandbox`
+/// asks for a sandbox: the standard pictures and the scripted checks stand as
+/// they were. A recorded run is neither.
+fn sandbox_wanted(a: &Args) -> bool {
+    if !a.new {
+        return false;
+    }
+    if a.sandbox || a.family {
+        return a.sandbox;
+    }
+    let nobody_at_it = a.shots.is_some() || a.shot.is_some() || !a.views.is_empty() || a.describe.is_some() || a.class_map || a.script.is_some();
+    !nobody_at_it && !a.demo
+}
+
+/// The game the command line asks for, as `live::start` is to begin it or go
+/// on with it. Whether a sandbox opens is `a.sandbox`, settled in `parse`; the
+/// Opening then says the rest (`plain`, `keeping`): a plain start is a new
+/// sandbox each time, kept among the trials, and `--family` alone goes on with
+/// the island's autosave.
+fn opening(a: &Args) -> live::Opening {
+    // the standard shots are pictures too
+    let pictures = !a.views.is_empty() || a.shot.is_some() || a.describe.is_some() || a.class_map || a.shots.is_some();
+    live::Opening {
+        seed: a.seed,
+        families: a.families,
+        advance: a.advance,
+        demo: a.demo,
+        load: a.load.clone(),
+        save: a.save.clone(),
+        fresh: a.fresh,
+        // a scripted run is a check, not the player's game: it goes on with an autosave only
+        // when ISOSTATE_SAVES names the folder to look in
+        shots: pictures || (a.script.is_some() && std::env::var_os("ISOSTATE_SAVES").is_none_or(|v| v.is_empty())),
+        // and, like a run that takes pictures, it writes no game unless --save names the place
+        unattended: pictures || a.script.is_some(),
+        restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
+        keep: a.keep,
+        new_land: a.new_land,
+        sandbox: a.sandbox,
+        // every new game runs to 2050 unless --to says otherwise (and --shots plays to 1900)
+        to: Some(a.to.unwrap_or(isostate_core::save::LATEST_YEAR)),
+    }
 }
 
 // ------------------------------------------------------------------ resources and markers
@@ -743,26 +836,7 @@ fn main() {
     }
     let t0 = std::time::Instant::now();
     let (r, live, families) = if args.new {
-        // the standard shots are pictures too
-        let pictures = !args.views.is_empty() || args.shot.is_some() || args.describe.is_some() || args.class_map || args.shots.is_some();
-        let opening = live::Opening {
-            seed: args.seed,
-            families: args.families,
-            advance: args.advance,
-            demo: args.demo,
-            load: args.load.clone(),
-            save: args.save.clone(),
-            fresh: args.fresh,
-            // a scripted run is a check, not the player's game: it goes on with an autosave only
-            // when ISOSTATE_SAVES names the folder to look in
-            shots: pictures || (args.script.is_some() && std::env::var_os("ISOSTATE_SAVES").is_none_or(|v| v.is_empty())),
-            // and, like a run that takes pictures, it writes no game unless --save names the place
-            unattended: pictures || args.script.is_some(),
-            restarted: std::env::var_os("ISOSTATE_RESTARTED").is_some_and(|v| !v.is_empty()),
-            keep: args.keep,
-            new_land: args.new_land,
-            sandbox: args.sandbox,
-        };
+        let opening = opening(&args);
         // a check may write an autosave, but never among the player's own saved games
         if let Some(why) = opening.keep_refused(std::env::var_os("ISOSTATE_SAVES").is_some_and(|v| !v.is_empty())) {
             eprintln!("the game could not start: {why}");
@@ -979,6 +1053,7 @@ fn main() {
         .add_plugins(ui::plugin)
         .add_plugins(game::plugin)
         .add_plugins(sandbox::plugin)
+        .add_plugins(hand_tab::plugin)
         .add_plugins(overlay::plugin)
         .add_plugins(cursor::plugin)
         .add_plugins(boats::plugin)
@@ -2701,6 +2776,53 @@ mod tests {
     }
 
     #[test]
+    fn a_plain_start_is_a_sandbox_and_the_family_game_is_asked_for() {
+        use live::Keeping;
+        // what opens, whether it is a plain start (which goes on with the island's autosave), and where it is kept
+        let opens = |line: &str| {
+            let a = args(line).unwrap();
+            let o = opening(&a);
+            (a.new, a.sandbox, o.plain(), o.keeping())
+        };
+        // nobody asked for anything: a new sandbox each time, among the trials
+        assert_eq!(opens(""), (true, true, false, Keeping::Trial("--sandbox")));
+        assert_eq!(opens("--seed 7"), (true, true, false, Keeping::Trial("--sandbox")));
+        // the family game: a plain start, going on with the island's autosave as a plain start did before
+        assert_eq!(opens("--family"), (true, false, true, Keeping::Autosave));
+        // nobody at it: the family game unless a sandbox is asked for, and kept nowhere either way
+        // (a script goes on with an autosave where ISOSTATE_SAVES names a folder, which other tests in this
+        // program set, so whether it is a plain start is not asked here)
+        let script = |line: &str| {
+            let (new, sandbox, _, kept) = opens(line);
+            (new, sandbox, kept)
+        };
+        assert_eq!(script("--script print"), (true, false, Keeping::Nowhere));
+        assert_eq!(script("--script print --sandbox"), (true, true, Keeping::Nowhere));
+        assert!(!opens("--script print --sandbox").2, "a sandbox is never a plain start");
+        for line in ["--shots out/shots", "--land-shots out/land", "--shot a.png", "--view a.png,1800", "--describe 30,30", "--class-map --view a.png"] {
+            assert_eq!(opens(line), (true, false, false, Keeping::Nowhere), "{line}");
+        }
+        assert_eq!(opens("--describe 30,30 --sandbox"), (true, true, false, Keeping::Nowhere));
+        // the demo is the family's orders
+        assert_eq!(opens("--demo"), (true, false, false, Keeping::Trial("--demo")));
+        assert_eq!(opens("--demo --sandbox"), (true, true, false, Keeping::Trial("--sandbox")));
+        // a saved game opens in whichever kind of game was asked for
+        assert_eq!(opens("--load mine.json"), (true, true, false, Keeping::Trial("--sandbox")));
+        assert_eq!(opens("--load mine.json --family"), (true, false, false, Keeping::Autosave));
+        // years played first: a sandbox still, as --advance asks nothing of who plays
+        assert_eq!(opens("--advance 40"), (true, true, false, Keeping::Trial("--sandbox")));
+        assert_eq!(opens("--family --advance 40"), (true, false, false, Keeping::Trial("--advance")));
+        // both at once is refused in a sentence
+        assert_eq!(args("--family --sandbox").err().unwrap(), "--family plays the family game and --sandbox opens a game nobody plays a family in: give one of them, not both");
+        // a recorded run is neither
+        let a = args("RUN.bin").unwrap();
+        assert!(!a.new && !a.sandbox && !a.family);
+        assert!(!args("RUN.bin --sandbox").unwrap().sandbox);
+        // and a new game runs to 2050 whichever it is
+        assert_eq!((opening(&args("").unwrap()).to, opening(&args("--family").unwrap()).to), (Some(2050), Some(2050)));
+    }
+
+    #[test]
     fn an_option_that_is_not_one_is_refused() {
         assert_eq!(args("--sesaon 0.5").err().unwrap(), "--sesaon is not an option");
         assert_eq!(args("--advance 30 --veiw x.png").err().unwrap(), "--veiw is not an option");
@@ -2767,6 +2889,13 @@ mod tests {
         assert_eq!(args("--families 31").err().unwrap(), "--families: a game has from 1 to 30 families, not 31; give a number in that range");
         assert_eq!(args("--families 4000000000").err().unwrap(), "--families: a game has from 1 to 30 families, not 4000000000; give a number in that range");
         assert_eq!((args("--families 1").unwrap().families, args("--families 30").unwrap().families), (1, 30));
+        // and so is a last year no game can be played to; with none asked for, a new game runs to 2050
+        // (the default is the Opening's), and the standard pictures always play a game to 1900
+        assert_eq!(args("--to 2051").err().unwrap(), "--to: a game is played to a year from 1900 to 2050, not 2051; give a year in that range");
+        assert_eq!(args("--to 1899").err().unwrap(), "--to: a game is played to a year from 1900 to 2050, not 1899; give a year in that range");
+        assert_eq!(args("--to").err().unwrap(), "--to needs a value after it");
+        assert_eq!((args("--to 1950").unwrap().to, args("--new").unwrap().to), (Some(1950), None));
+        assert_eq!((args("--shots out --to 2050").unwrap().to, args("--shots out").unwrap().to), (Some(1900), Some(1900)));
         assert_eq!(args("--seed seven").err().unwrap(), "--seed: seven is not a number it can take");
         assert_eq!(args("--size 800").err().unwrap(), "--size: 800 should be two numbers with an x between them");
         assert_eq!(args("--size 0x600").err().unwrap(), "--size: a picture needs a width and a height");
@@ -2778,7 +2907,7 @@ mod tests {
         // refused: "rents" was once read as no panel, and the picture taken of the plain map
         assert_eq!(
             args("--view a.png,1850,,,,,,rents").err().unwrap(),
-            "--view: rents is not a word a view takes: use a panel (family, holdings, markets, news or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"
+            "--view: rents is not a word a view takes: use a panel (family, holdings, markets, news, hand, rules, families or none), a map view as for --overlay, or island or open:GOOD for the Markets panel"
         );
         assert!(args("--view a.png,1850,,,,,,wages,famly").err().unwrap().starts_with("--view: famly is not a word a view takes"));
         assert!(args("--view a.png,1850,,,,,,open:months").err().unwrap().starts_with("--view: open:months is not a word a view takes"));
@@ -2788,7 +2917,7 @@ mod tests {
         // asking for the list
         assert_eq!(args("--help").err().unwrap(), "");
         // the list names every option the reader knows
-        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--sandbox", "--families", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
+        for opt in ["--new", "--seed", "--new-land", "--load", "--save", "--keep", "--sandbox", "--family", "--families", "--to", "--advance", "--demo", "--year", "--size", "--at", "--look", "--yaw", "--pitch", "--dist", "--no-tilt", "--season", "--pick", "--overlay", "--describe", "--view", "--shot", "--wait", "--frames", "--ground-debug", "--class-map", "--script", "--shots", "--land-shots", "--shots-compare", "--shots-note", "--compare-shots", "--lab", "--out", "--tilt", "--loupe", "--turn", "--help"] {
             assert!(USAGE.contains(opt), "the usage text leaves out {opt}");
         }
     }

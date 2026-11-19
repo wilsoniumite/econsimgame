@@ -269,7 +269,9 @@ fn a_file_that_is_wrong_is_refused_before_anything_is_played() {
     };
     // a save doctored to the year 5000 was once accepted and announced as 3,251 years to play
     let said = try_file("year-5000.json", Some(whole.replace("\"year\": 1750,", "\"year\": 5000,")));
-    assert!(said.contains("not a saved game the game wrote: it says the game had reached the year 5000, and the island's years are 1750 to 1900"), "{said}");
+    // (a new game is played to 2050 and its save says so, so its years are 1750 to 2050)
+    assert!(whole.contains("\"to\": 2050,"), "{whole}");
+    assert!(said.contains("not a saved game the game wrote: it says the game had reached the year 5000, and the island's years are 1750 to 2050"), "{said}");
     let said = try_file("year-1066.json", Some(whole.replace("\"year\": 1750,", "\"year\": 1066,")));
     assert!(said.contains("the year 1066"), "{said}");
     // a number of families no game has
@@ -533,7 +535,9 @@ fn a_whole_game_saved_left_and_loaded_again_lands_on_the_same_month_with_the_sam
     // 1750 to 1898 with the demo's works and land, then five months of 1899 through the clock, and
     // an order given in June that waits for the year's end; and the game is left
     let play = format!("{clear};{month};{month};{month};{month};{month};tab:holdings;click:Hold;settle;tab:none;print:left");
-    let first = game(&saves, &["--new", "--demo", "--advance", "148", "--save", &text(&a), "--script", &play]);
+    // (a game to 1900, as every game was before a new one ran to 2050: its save keeps the year, and the
+    // loads below go on with it to its end in 1900)
+    let first = game(&saves, &["--new", "--demo", "--advance", "148", "--to", "1900", "--save", &text(&a), "--script", &play]);
     assert_eq!(first.code, Some(0), "{}\n{}", first.out, first.err);
     let left = standing(&first, "left");
     assert_eq!(left.0, "June 1899");

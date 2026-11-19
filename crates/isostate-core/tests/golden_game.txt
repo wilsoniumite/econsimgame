@@ -66,6 +66,15 @@
 # classes of task, where the emporium holds a tenth as the services do (its
 # series is among the books' columns), and in run.bin the gauges' list of
 # presence and the params, which now carry the switch.
+# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
+# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
+# 4b and 5a together: against main all four moved, by longrun and the
+# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
+# economy and news are stage 2's own, and the sandbox's pieces move nothing.
+# Then on night/g-to2050-5c-plant with that main merged in (19 November
+# 2026): all four as the tasks stage left them. The batch's stages are this
+# line's own, and machines that work once they stand cannot act before the
+# first machine is found in 1901.
 economy  0x9a6b3ba24a097bd1
 books    0xfa5dd1db28f62894
 news     0x9f83de6e9e162ab1
