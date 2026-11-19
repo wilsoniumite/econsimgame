@@ -163,8 +163,8 @@ early in the run, or for one island at a time.
 Played on 19 November 2026 with the code of this page's first commit, eight
 islands to 2050 under the game's rules with six families, sixteen runs at a
 time. The machine was busy with other builds, so each took four to five
-minutes where a quiet machine would take about three (one sweep of eight
-islands to 2050 took 88 s on a quiet machine). Read every number after 1950
+minutes; on a quiet machine one sweep of eight islands to 2050 takes about
+88 s, and an experiment of sixteen runs should take a little over twice that. Read every number after 1950
 knowing that the island as it stands grows poorer after 1950: its chained
 wage halves from there to 2050 and its hands go back to the fields, with the
 land's machines not yet built. A change in 2050 is a change on that island.
@@ -241,8 +241,9 @@ in the treated arm after 1900.
   pop_2050                          2,787,989                       2,721,401  -66,588 (-2.4%)  [-104,351 .. -29,111]      0/8
 ```
 
-The households' real income is about half a subsistence higher from the first
-year on, on all eight islands, through 1950 and to 2050. The chained wage and
+The households' real income is higher from the first year on, on all eight
+islands: by 0.48 of a subsistence in 1900 and in 1950, 0.81 in 2000 and 0.37
+in 2050. The chained wage and
 work's share, gross and net, move by less than the islands differ, and in no
 steady direction. Machines haul a little more by 1950 on all eight (0.006),
 and by 2050 there are 2.4 per cent fewer people, fewer on all eight.
@@ -281,9 +282,36 @@ have reached 17.6 million by 1850 and 42.2 million by 1900. Read from the arms'
 0.97), and real output (`gdp_real`) is 12.5 per cent lower by 1900, both on
 all eight islands. The chained wage is lower on all eight from 1850, by 1.56
 in 1950 and by 0.99 in 2050. Work's share gross is a little higher (0.015 by
-1950, inside the spread; 0.019 by 2050, on all eight), the families hold an
-eighth less of the works and the landlords and households more, machines haul
-less, and there are a sixth more people by 1950, fewer of them in towns.
+1950, inside the spread; 0.019 by 2050, on all eight). The families' share of
+the works falls from 0.49 to 0.37 by 1950 and the landlords' and households'
+rise, machines haul less (0.36 of the works' hauling against 0.44 in 1950),
+and there are a sixth more people by 1950, fewer of them in towns.
+
+### The dial at three, ten and a hundredfold from 1950
+
+One `--rule` with three values gives three treated arms against one control:
+
+```text
+isostate-core lab --out L4 --rule tasks.dial=3,10,100@1950    (812 s, 24 at a time, on a busy machine)
+```
+
+```text
+arm 1: tasks.dial=3 from 1950
+arm 2: tasks.dial=10 from 1950
+arm 3: tasks.dial=100 from 1950
+
+                                      control   arm 1   change  up/down   arm 2   change  up/down   arm 3   change  up/down
+  real_wage_chained_2000_vs_1750         5.72    5.69    -0.03      4/4    5.81    +0.08      5/3    6.11    +0.39      8/0
+  real_wage_chained_2050_vs_1750         3.45    3.54    +0.09      8/0    3.72    +0.27      8/0    3.98    +0.53      8/0
+  gauge_work_net_2050                   0.601   0.603   +0.003      6/2   0.607   +0.007      6/2   0.620   +0.020      8/0
+  auto_haul_works_2000                  0.574   0.780   +0.206      8/0   0.979   +0.405      8/0   0.999   +0.425      8/0
+  auto_haul_works_2050                  0.537   0.741   +0.204      8/0   0.951   +0.413      8/0   1.000   +0.463      8/0
+```
+
+(the least and greatest change left out here to fit the page). The more the
+dial is turned, the more machines haul, until at a hundredfold they do it
+all; the wage in 2050 is higher by 0.09, 0.27 and 0.53, on all eight islands
+each time, on an island that is growing poorer.
 
 ## The picture
 
