@@ -163,23 +163,11 @@ impl NewLand {
     }
 
     /// The level of a lake that has a node beside node `n` (on any of its
-    /// eight sides), in metres: the highest, if there are two.
+    /// eight sides), in metres: the highest, if there are two. (The meeting
+    /// places read it in the core now, `isostate_core::crossings::lake_beside`.)
+    #[cfg(test)]
     pub fn lake_beside(&self, n: usize) -> Option<f32> {
-        let (i, j) = ((n % self.fw) as isize, (n / self.fw) as isize);
-        let mut level: Option<f32> = None;
-        for dj in -1..=1 {
-            for di in -1..=1 {
-                let (mi, mj) = (i + di, j + dj);
-                if (di, dj) == (0, 0) || mi < 0 || mj < 0 || mi as usize >= self.fw || mj as usize >= self.fh {
-                    continue;
-                }
-                let id = self.lake[mj as usize * self.fw + mi as usize];
-                if id > 0 {
-                    level = Some(level.map_or(self.lake_level(id), |l| l.max(self.lake_level(id))));
-                }
-            }
-        }
-        level
+        isostate_core::crossings::lake_beside(self, n)
     }
 }
 

@@ -496,6 +496,8 @@ macro_rules! state_parts {
                 owners: Default::default(),
                 // tasks (docs/rules/tasks.md): carried across as the roads are
                 tasks: Default::default(),
+                // crossings (docs/rules/crossings.md): carried across as the roads are
+                xs: Default::default(),
             }
         }
 
@@ -621,6 +623,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.transition = carry.transition.clone();
     st.owners = carry.owners.clone();
     st.tasks = carry.tasks.clone();
+    st.xs = carry.xs.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

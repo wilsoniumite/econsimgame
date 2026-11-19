@@ -891,3 +891,10 @@ One line each as they arrive: the name, its page, its switch.
   as fast where it is known, so that the island no longer runs out of timber
   after 1950; and the woods' cover and timber's price in months of the wage
   recorded (`woods.record`). [woods.md](woods.md), `woods.enabled`.
+- **crossings** (acts on the new land only, and does nothing on the old
+  island): crossing water costs a ford's charge by its width, or a ferry's
+  over 25 m, and a parish builds a bridge out of its rate, with its own men,
+  where the carting it saves pays for it; the cells of a valley meet on one
+  bank, a way goes round the meanders its straight line cuts, and the
+  picture draws a bridge, a ford or a ferry only where the simulation has
+  one. [crossings.md](crossings.md), `crossings.enabled`.

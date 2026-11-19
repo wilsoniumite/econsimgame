@@ -135,7 +135,14 @@ stream of less than 1 cubic metre a second, stays where the erosion put it,
 and a reach moves the slower the nearer its fall is to that;
 a bend cannot climb the valley side (it moves freely where the ground is
 within 3 m of the water and not at all where it is 8 m above); a reach on
-gravel too steep to hold one channel is marked braided. The biggest rivers
+gravel too steep to hold one channel is marked braided. A bend may grow
+longer and wider but not tighter than `bend_radius` (3) widths at its apex:
+a point on a tighter one is moved half the way to the chord between the
+points a width either side of it, at every step of the migration and, at the
+end, on every reach, steep ones and short steps in the fall among them. Two
+parts of a course that come within `neck` (2.5) widths of each other cut off
+the loop between them, so no loop is left nearly touching itself. "The
+bends", below, has what these do. The biggest rivers
 are moved first, and a tributary is led to where its river now runs. Each
 point of a line has a width, a flow and a water level that never rises on
 the way down. A river's width is 11 times the square root of its flow in
@@ -274,7 +281,9 @@ with the switch on):
 | `river_flow` | 5 | cubic metres a second from which a cell has a river |
 | `nav_flow`, `nav_slope` | 12, 0.0015 | flow from which boats use it, and the steepest fall they bear |
 | `stream_flow` | 0.3 | smallest stream kept as a line |
-| `meander_steps` | 230 | steps of meander migration |
+| `meander_steps` | 260 | steps of meander migration (230 before 19 November) |
+| `bend_radius` | 3.0 | tightest bend kept, as a radius in widths as drawn (0 lets bends grow as tight as they will, as before 19 November) |
+| `neck` | 2.5 | widths apart at which two parts of a course meet and cut off a loop (1.4 before 19 November) |
 | `h_ref` | 1500 | metres that are 1 in the world's `h` |
 
 The terrain thresholds, the fields' formulas and the rock hardnesses are in
@@ -454,6 +463,58 @@ lowland lake has about as many fewer land cells as it has lake cells (seed
 to 5,861), which the test's point and a half of the map easily holds. And the first towns stand on
 the water: nearly all on a navigable river or tideway and most of them
 ports, where the port's island has two or three of each.
+
+## The bends
+
+Tuned on 19 November, when the designer said the rivers meander too much and
+their curves are a tad too tight. Real lowland rivers wind 1.2 to 1.8 times
+the length of their valley, bend every 10 to 14 widths, and bend no tighter
+than two or three widths at the apex. Ours are drawn two and a half times
+their true width, so a bend in true proportion looks pinched; the bends are
+judged against the width as drawn, and aimed at a sinuosity of 1.2 to 1.5 on
+the plains and no bend under two and a half widths.
+
+`--example river_shape` measures them (`landwater::river_shape`): sinuosity
+as the length along the channel over the sum of straight chords of pieces 30
+widths long; a bend from one change of side of the curvature to the next,
+the curvature read through the points a width (or a segment and a half of
+the line, if more) either side; its tightest radius; the wavelength as the
+straight distance over two bends; and necks, where a channel comes back
+within two widths of itself after eight. The plains are where the water
+falls less than 2 in 1,000 down its valley, and their big rivers are those
+of 5 cubic metres a second and more, a cell's river. Seeds 1 to 8, the big
+rivers on the plains, before (230 steps, no least radius, a neck of 1.4) and
+after:
+
+| seed | sinuosity | tightest bend, widths | bends under 2.5 widths | necks |
+|---|---|---|---|---|
+| 1 | 1.36, 1.25 | 0.9, 3.0 | 5.7%, none | 4, 0 |
+| 2 | 1.39, 1.32 | 1.0, 3.0 | 4.1%, none | 0, 0 |
+| 3 | 1.42, 1.32 | 0.9, 3.0 | 3.7%, none | 2, 0 |
+| 4 | 1.44, 1.34 | 1.0, 3.0 | 3.3%, none | 3, 0 |
+| 5 | 1.44, 1.24 | 1.1, 3.0 | 5.1%, none | 7, 0 |
+| 6 | 1.42, 1.35 | 0.9, 3.0 | 4.3%, none | 4, 0 |
+| 7 | 1.52, 1.35 | 1.0, 2.8 | 6.1%, none | 7, 0 |
+| 8 | 1.54, 1.34 | 0.8, 3.0 | 7.8%, none | 8, 0 |
+
+The median bend stays at a radius of 4 widths and the wavelength at 18; it
+is the pinched bends and the loops about to cut off that are gone, and a
+tenth of the bends with them (9,218 to 8,264 on the eight islands). The
+small streams on the plains wind 1.03 to 1.04 and the middling and steep
+reaches 1.00, before and after.
+
+The rivers run where they ran: no river ends in anything else and no mouth
+into the sea or a lake moves; of the points of the big rivers on the plains,
+95 in 100 lie within 127 to 189 m (three or four widths) of the same river's
+old course, and none further than 738 m (`river_shape -- 1-8 --against`).
+What the economy is given moves only through the ground cut down under each
+course: on 1,121 to 1,314 land cells an island the mean height moves, by 6 m
+at most (8 on seed 2); terrain changes on 0 to 3 cells; fertility, pasture,
+stone and clay move on 600 to 1,000 cells, fertility by 0.04 at most; land,
+rivers, navigable water, coast and drainage do not move at all, and the
+first towns stand where they did. The land is off under both sets of rules,
+so no sweep moves; a game on the new land (`--new-land`) plays a slightly
+different history.
 
 ## What the sweeps showed
 
@@ -969,8 +1030,11 @@ one; the passive player and the founder first to fourth, as on the port's.
   raised where the land is worn down to the seam, but at 2 km a cell
   averages valley side and hilltop together, and the picture is still four
   patches.
-- **Width is exaggerated** two and a half times, and with it the meanders'
-  wavelength (about 11 widths): honest in form, not in scale.
+- **Width is exaggerated** two and a half times, and the bends are judged
+  against the width as drawn: a wavelength of about 18 widths as drawn is 44
+  true widths, three times a real river's, and a tightest radius of 3 widths
+  as drawn is 7 true ones. Honest in form at the scale of the map, not in
+  the river's own proportions.
 - **Deltas are not built.** Mouths are estuaries, which suits an island that
   has just had its sea level rise, but a river with a heavy load into a
   sheltered bay would build one.

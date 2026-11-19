@@ -103,6 +103,10 @@ Four things hold whichever is chosen. **She chooses by looking:** the board asks
 
 **What the simulation must come to know first.** For each square and each year, a figure for how densely it is built and a rank for its rent; the year it was built on, running on past 1900, where the record's byte for the year a square joined its town stops today; and a count of its people that does not stop at 2,040, where the record's byte for its residents stops today. It needs the traffic each way carries, which means adding up the carting flows along each route; the record carries no traffic today. Later it needs the number of cars a household keeps. And if the stone heart of a town is to be kept, it needs some notion of a listed building. Most of this belongs with what the record carries for the viewer (Ready next 6), and the power stations with the run to 2050's stage 6, electricity.
 
+### Ways, beside the look of 1900 to 2050 (her notes of 19 November, on roads and rivers)
+
+What governs a road, and how to make the island's roads honest, natural and emergent (her note is at the foot). Its first stage is built: one bank, one bridge. On the new land a crossing of water costs a ford or a ferry, a parish builds a bridge where the carting it saves pays for it, the meeting places of a valley's cells keep to one bank, a way goes round the meanders its straight line cuts, and the picture draws a bridge, a ford or a ferry only where the simulation has one ([rules/crossings.md](rules/crossings.md)). A design page for the rest follows: what a way carries; who builds it and when; bypasses and motorways as new works rather than worn tracks; streets inside towns laid out from the fields they were built over; who owns a way and in which era; and the rules a hand can turn in the sandbox. It waits on the new land becoming the default, which is being measured.
+
 ### 4. The production tree (note 8, in part; F21)
 
 Its first stage (25 goods, the building trades and the household goods) and the panels for it were held on their branches from 12 November until the pass's stage 5 had landed, which it did on 13 November. They were brought to `main` on `night/g-tree-land`: the tree's thresholds fitted again on the island stage 5 leaves, the tree switched on under the game's rules, and the game's golden hashes anchored again. Landed on 19 November at 04:43 (3a663aa; [rules/tree.md](rules/tree.md)), so what waited on it below may now begin. Its later stages ([designs/production-tree.md](designs/production-tree.md), section 1), in their order: 2, sites on methods from the new island's fields (water power, wind, a harbour); 3, foreign trade at the ports; 4, improvements as data; 5, fleets and the railways' upkeep. The tree's first stage is what the run to 2050's stage 6, the sandbox's stages 4 to 8, the pass's stages 6 to 10 (Ready next 10) and combined works (Ready next 11) wait on.
@@ -358,3 +362,21 @@ These two are two points of one longer note about how we work. They are "How we 
 > Well, it feels like medium density housing, highways, skyscrapers all of that sort of stuff will have to be in for 2050 to look at least somewhat right. Probably more
 
 Three directions were drawn the same day, and the look of 1900 to 2050 is third in the order of work, just below the run to 2050 and the sandbox.
+
+**19 November 2026, on roads.**
+
+> I think roads will need some work? Like, not every city has ringroads, and they aren't perfect rings. A while ago, we talked about how roads crossing meandering rivers 4 times in a row doesn't make much sense, nobody would build that many bridges. I feel like the roads system will need some work. What governs roads in the countryside, a city, a highway, grids, terrain, year they were built, policy, that sort of thing? How can we make the most honest, natural, emergent road system?
+
+It is "Ways", beside the look of 1900 to 2050 in the order of work; its first stage, one bank and one bridge, is built ([rules/crossings.md](rules/crossings.md)).
+
+**19 November 2026, the same afternoon.**
+
+> Oh and perhaps just a thing to tune to make that easier: I think rivers meander too much, the curves are a tad too tight
+
+Answered by the stage before the ways' first on the same line (`night/g-rivers-gentler`): the old island's and the new land's rivers wind less, and no bend is tighter than about three widths ([rules/land.md](rules/land.md)).
+
+**19 November 2026, a few minutes later.**
+
+> the meandering looks better on the new land (btw, why isn't that default yet?) but still in some spots I think it meanders too much
+
+What making the new land the default would take is being measured, and it is ranked beside "Ways", whose rules act on the new land only.
