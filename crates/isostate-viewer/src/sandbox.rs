@@ -26,6 +26,17 @@
 //! orders a town on the square clicked, founded at the year's end
 //! (`Edit::FoundTown`), and is put down once the order is taken, since one
 //! founding waits for each year's end.
+//!
+//! From stage 7 (7b) Works (the works' icon), with one row: Build a works and
+//! Close a works. With Build a click on a square makes no edit: it takes the
+//! square (`Sandbox::site`), and the choices card lists what could stand on
+//! it as the game's thread tells it with its answer about the square
+//! (`SiteInfo::hand`, `edits::works_offered`): the methods allowed by their
+//! labels, the best expected return first, the cost and return of the one
+//! chosen, and Build it here, which sends `Edit::BuildWorks`. In the middle
+//! of a year it waits for the turn, with a stake on its square and a row with
+//! Take back in the Hand tab. With Close a click on a works sends
+//! `Edit::CloseWorks`, and the tool is put down after each use.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
@@ -62,10 +73,11 @@ pub enum Tool {
     Harvest,
     Idea,
     Town,
+    Works,
 }
 
 impl Tool {
-    const ALL: [Tool; 6] = [Tool::Look, Tool::Money, Tool::People, Tool::Harvest, Tool::Idea, Tool::Town];
+    const ALL: [Tool; 7] = [Tool::Look, Tool::Money, Tool::People, Tool::Harvest, Tool::Idea, Tool::Town, Tool::Works];
 
     fn word(self) -> &'static str {
         match self {
@@ -75,6 +87,7 @@ impl Tool {
             Tool::Harvest => "Harvest",
             Tool::Idea => "Idea",
             Tool::Town => "Town",
+            Tool::Works => "Works",
         }
     }
 
@@ -87,6 +100,7 @@ impl Tool {
             Tool::People => &[&["A tenth more", "Half as many again", "A tenth fewer", "Halved"]],
             Tool::Harvest => &[&["This district", "The whole island"], &["A poor year", "A failure", "A bumper year"]],
             Tool::Town => &[&["Found a town here"]],
+            Tool::Works => &[&["Build a works", "Close a works"]],
         }
     }
 
@@ -104,8 +118,59 @@ impl Tool {
             Tool::Harvest => (&icons.sheaf, false),
             Tool::Idea => (&icons.lamp, false),
             Tool::Town => (&icons.cross, false),
+            Tool::Works => (&icons.works, false),
         }
     }
+}
+
+/// With Build a works in hand, what could stand on the square taken, as the
+/// game's thread told it (`SiteInfo::hand`, `edits::works_offered`).
+#[derive(Clone, Debug, PartialEq)]
+struct Offers {
+    /// "31, 40, in Melbourne's district"
+    place: String,
+    /// the methods a works by hand may be built of here, the best expected return first
+    list: Vec<Offer>,
+    /// how many more the square's town knows, refused for want of room or of a market
+    more: usize,
+}
+
+/// A works that may be built on the square: its method's name and label,
+/// what it costs and what it should return a year (a fraction).
+#[derive(Clone, Debug, PartialEq)]
+struct Offer {
+    name: String,
+    label: String,
+    cost: f64,
+    ret: f64,
+}
+
+impl Offers {
+    /// The list as the thread's answer gives it, or its sentence when no works
+    /// can stand on the square. `place` says where the square is.
+    fn of(hand: &Result<Vec<isostate_core::SiteOption>, String>, place: String) -> Result<Offers, String> {
+        let options = hand.as_ref().map_err(|why| capital(why))?;
+        let mut list: Vec<Offer> = options
+            .iter()
+            .filter(|o| o.allowed.is_ok())
+            .filter_map(|o| o.sums.as_ref().ok().map(|s| Offer { name: o.name.clone(), label: o.label.clone(), cost: s.capital_cost, ret: s.expected_return }))
+            .collect();
+        list.sort_by(|a, b| b.ret.total_cmp(&a.ret));
+        // (a method the town does not know has no sums, and is not counted)
+        let more = options.iter().filter(|o| o.allowed.is_err() && o.sums.is_ok()).count();
+        Ok(Offers { place, list, more })
+    }
+}
+
+/// A sentence begun with a capital.
+fn capital(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or_else(String::new, |first| first.to_uppercase().chain(c).collect())
+}
+
+/// A sum of money as the core writes it, "12,400".
+fn sum(x: f64) -> String {
+    isostate_core::util::fmt_thousands_f0(x)
 }
 
 /// What each size chip multiplies by.
@@ -145,7 +210,7 @@ struct RunOn {
 pub struct Sandbox {
     pub tool: Tool,
     /// the chip chosen in each row of each tool's choices
-    choice: [[usize; 3]; 6],
+    choice: [[usize; 3]; 7],
     run: Option<RunOn>,
     /// the last click seen (`Picked::stamp`)
     stamp: Option<u32>,
@@ -161,6 +226,16 @@ pub struct Sandbox {
     ideas_at: Option<usize>,
     /// the ideas are asked for, and the answer has not come
     asking: bool,
+    /// with Build a works in hand: the square taken (`Sandbox::click`), and
+    /// what could stand on it once the game's thread has said (none while it
+    /// is asked about, an Err the sentence that no works can stand there)
+    site: Option<usize>,
+    offers: Option<Result<Offers, String>>,
+    /// the method chosen among the offers, by its name (`Content::method_name`)
+    method: Option<String>,
+    /// the January the works would be built in, while the year is in progress
+    /// (none at a turn, where it is built at once)
+    turn: Option<i32>,
     /// raised whenever the tray is to be drawn again
     version: u64,
     drawn: Option<u64>,
@@ -259,7 +334,83 @@ impl Sandbox {
                 Some(Pick::Firm(_)) => Err("Click open land, not a works."),
                 None => Err("Click a square of land in a town's district."),
             },
+            // (a square is taken by `click`, and the works is built from its chip, `build`)
+            Tool::Works => Err("Click a square of land, then choose a works and Build it here."),
         }
+    }
+
+    /// A click on `what` with the tool in hand: the edit it makes (Some), or
+    /// none when it only takes a square, with Build a works in hand, whose list
+    /// is then asked for (`game::ask_site` asks about any square clicked); or
+    /// why nothing is done. Close a works is put down once used.
+    fn click(&mut self, town: Option<usize>, what: Option<Pick>) -> Result<Option<Edit>, &'static str> {
+        if self.tool != Tool::Works {
+            return self.edit(town, what).map(Some);
+        }
+        let close = self.chosen(Tool::Works, 0) == 1;
+        match (close, what) {
+            (false, Some(Pick::Cell(cell))) => {
+                if self.site != Some(cell) {
+                    (self.site, self.offers) = (Some(cell), None);
+                }
+                self.version += 1;
+                Ok(None)
+            }
+            (false, other) => {
+                (self.site, self.offers) = (None, None);
+                self.version += 1;
+                Err(match other {
+                    Some(Pick::Town(_)) => "Click a square of land, not a town.",
+                    Some(Pick::Firm(_)) => "Click a square of land, not a works.",
+                    _ => "Click a square of land.",
+                })
+            }
+            (true, Some(Pick::Firm(works))) => {
+                // works that are to be closed are put down after each use (section 4.3)
+                self.tool = Tool::Look;
+                self.version += 1;
+                Ok(Some(Edit::CloseWorks { works }))
+            }
+            (true, _) => Err("Click a works."),
+        }
+    }
+
+    /// The edit Build it here makes: the method chosen, on the square taken.
+    fn build(&self) -> Result<Edit, &'static str> {
+        let Some(cell) = self.site else { return Err("Click a square of land first.") };
+        let Some(Ok(offers)) = &self.offers else { return Err("What could stand on the square is still being asked for: nothing was changed. Try again in a moment.") };
+        match &self.method {
+            Some(m) if offers.list.iter().any(|o| &o.name == m) => Ok(Edit::BuildWorks { method: m.clone(), cell }),
+            _ => Err("Choose a works first: the chips are those that may stand on the square."),
+        }
+    }
+
+    /// Keep what the game's thread said could stand on the square taken: the
+    /// method chosen stays while it is offered, else the best is chosen, and
+    /// the tray is drawn again when anything differs. True when it did.
+    fn keep_offers(&mut self, offers: Result<Offers, String>) -> bool {
+        if self.offers.as_ref() == Some(&offers) {
+            return false;
+        }
+        if let Ok(o) = &offers {
+            if !self.method.as_ref().is_some_and(|m| o.list.iter().any(|x| &x.name == m)) {
+                self.method = o.list.first().map(|x| x.name.clone());
+            }
+        }
+        self.offers = Some(offers);
+        self.version += 1;
+        true
+    }
+
+    /// The line for the works chosen: what it costs and should return, and when it is built.
+    fn offer_line(&self) -> Option<String> {
+        let Some(Ok(offers)) = &self.offers else { return None };
+        let o = offers.list.iter().find(|o| Some(&o.name) == self.method.as_ref())?;
+        let when = match self.turn {
+            Some(year) => format!("It is built at the year's turn, in January {year}."),
+            None => "It is built at the year's turn.".to_string(),
+        };
+        Some(format!("{} here: it costs {}, paid by hand, and should return {} a year. {when}", o.label, sum(o.cost), isostate_core::util::fmt_pct(o.ret, 0)))
     }
 
     /// The label of the idea chosen, while it is among those not yet found.
@@ -311,6 +462,8 @@ impl Sandbox {
                 _ => "Choose an idea, then click a town, or anywhere in its district: it is found there, and spreads from it as any idea does.".to_string(),
             },
             Tool::Town => "Click a square of land in a town's district: a town is founded on it at the year's end, if the founding rule allows it there.".to_string(),
+            Tool::Works if c[0] == 1 => "Click a works: it is closed at the year's turn, and its cash goes to its owners. The tool is put down after.".to_string(),
+            Tool::Works => "Click a square of land: the works that could stand on it are listed here, each with what it costs and should return.".to_string(),
         }
     }
 }
@@ -336,6 +489,12 @@ struct RunOnChip(usize);
 /// An idea's chip: its name (`Content::tech_name`); the chip carries its label.
 #[derive(Component)]
 struct IdeaChip(String);
+/// A method's chip in the Works tool's list: its name; the chip carries its label.
+#[derive(Component)]
+struct MethodChip(String);
+/// The chip that builds the works chosen on the square taken.
+#[derive(Component)]
+struct BuildHere;
 
 pub fn plugin(app: &mut App) {
     app.add_systems(PostStartup, setup.run_if(resource_exists::<Sandbox>)).add_systems(
@@ -343,6 +502,8 @@ pub fn plugin(app: &mut App) {
         (
             tray_clicks,
             use_tool,
+            build_here,
+            works_list.after(crate::game::pump),
             // (the answer is read in the frame it comes, before a question about the clicked
             // square, asked again after any order, puts the note of it away)
             answers.after(crate::game::pump).before(crate::game::ask_site),
@@ -380,6 +541,7 @@ fn tray_clicks(
     tools: Query<(&Interaction, &ToolChip), Changed<Interaction>>,
     choices: Query<(&Interaction, &ChoiceChip), Changed<Interaction>>,
     idea_chips: Query<(&Interaction, &IdeaChip), Changed<Interaction>>,
+    method_chips: Query<(&Interaction, &MethodChip), Changed<Interaction>>,
     runs: Query<(&Interaction, &RunOnChip), Changed<Interaction>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut sb: ResMut<Sandbox>,
@@ -394,7 +556,17 @@ fn tray_clicks(
                 // taken up: the ideas are asked for afresh, and the row waits for them
                 (sb.ideas, sb.ideas_at) = (None, None);
             }
+            if t.0 == Tool::Works && sb.tool != Tool::Works {
+                // taken up: no square is taken yet
+                (sb.site, sb.offers) = (None, None);
+            }
             sb.tool = t.0;
+            sb.version += 1;
+        }
+    }
+    for (i, c) in &method_chips {
+        if *i == Interaction::Pressed {
+            sb.method = Some(c.0.clone());
             sb.version += 1;
         }
     }
@@ -455,19 +627,16 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
         return;
     }
     let now = time.elapsed_secs();
-    let latest = data.latest();
     let say = |toasts: &mut Toasts, line: &str| toasts.say("orders_refused", line, "By hand", now);
-    // the hand works only in the present, and one thing at a time
-    if (tl.t.floor() as usize) < latest || data.r.filled >= data.r.ny {
-        say(&mut toasts, PAST);
+    if let Err(why) = may_act(&sb, &tl, &data, &live, &game) {
+        say(&mut toasts, why);
         return;
     }
-    if game.busy || live.turning() || sb.run.is_some() {
-        say(&mut toasts, BUSY);
-        return;
-    }
-    let edit = match sb.edit(town_of(&data, picked.what, latest), picked.what) {
-        Ok(e) => e,
+    let tool = sb.tool;
+    let edit = match sb.click(town_of(&data, picked.what, data.latest()), picked.what) {
+        Ok(Some(e)) => e,
+        // a square taken, with Build a works in hand: its list is asked for
+        Ok(None) => return,
         Err(why) => {
             say(&mut toasts, why);
             return;
@@ -476,7 +645,73 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
     live.send(Cmd::ByHand(edit));
     game.busy = true;
     game.note = None;
-    sb.sent = Some(sb.tool);
+    sb.sent = Some(tool);
+}
+
+/// The hand works only in the present, and one thing at a time: the tray's
+/// two refusals before anything is sent, or Ok.
+fn may_act(sb: &Sandbox, tl: &Timeline, data: &Data, live: &Live, game: &Game) -> Result<(), &'static str> {
+    if (tl.t.floor() as usize) < data.latest() || data.r.filled >= data.r.ny {
+        return Err(PAST);
+    }
+    if game.busy || live.turning() || sb.run.is_some() {
+        return Err(BUSY);
+    }
+    Ok(())
+}
+
+/// Build it here: the works chosen is built on the square taken, under the
+/// tray's guards; the tool stays in hand.
+#[allow(clippy::too_many_arguments)]
+fn build_here(q: Query<&Interaction, (Changed<Interaction>, With<BuildHere>)>, mut sb: ResMut<Sandbox>, tl: Res<Timeline>, data: Res<Data>, live: Res<Live>, mut game: ResMut<Game>, mut toasts: ResMut<Toasts>, time: Res<Time>) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    match may_act(&sb, &tl, &data, &live, &game).and_then(|()| sb.build()) {
+        Ok(edit) => {
+            live.send(Cmd::ByHand(edit));
+            game.busy = true;
+            game.note = None;
+            sb.sent = Some(Tool::Works);
+        }
+        Err(why) => toasts.say("orders_refused", why, "By hand", time.elapsed_secs()),
+    }
+}
+
+/// With Build a works in hand and a square taken, the list of what could
+/// stand there is taken from the game's answer about the square
+/// (`game.site`, which `game::ask_site` asks for after every click and again
+/// after every order and every year), kept, and printed once as it comes:
+/// `sandbox: on 31, 40: brickworks 622 42%, ...`. The January the works
+/// would be built in is kept too, so the tray says it as the months go by.
+fn works_list(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: Res<Live>) {
+    if sb.tool != Tool::Works {
+        return;
+    }
+    // (the year in progress is the one after the newest worked out, and its turn the January after that)
+    let turn = (live.months > 0).then(|| data.r.y0 + data.latest() as i32 + 2);
+    if sb.turn != turn {
+        sb.turn = turn;
+        sb.version += 1;
+    }
+    let Some(cell) = sb.site else { return };
+    let Some(site) = game.site.as_ref().filter(|s| s.cell == cell) else { return };
+    let r = &data.r;
+    let at = format!("{}, {}", cell % r.w.max(1), cell / r.w.max(1));
+    let place = match site.town.and_then(|t| r.header.towns.get(t)) {
+        Some(t) => format!("{at}, in {}'s district", t.name),
+        None => at.clone(),
+    };
+    let offers = Offers::of(&site.hand, place);
+    if sb.keep_offers(offers.clone()) {
+        match offers {
+            Ok(o) => {
+                let each: Vec<String> = o.list.iter().map(|x| format!("{} {} {}", x.label.to_lowercase(), sum(x.cost), isostate_core::util::fmt_pct(x.ret, 0))).collect();
+                println!("sandbox: on {at}: {}{}", if each.is_empty() { "nothing may be built".to_string() } else { each.join(", ") }, if o.more > 0 { format!("; {} more known, with no room or no market", o.more) } else { String::new() });
+            }
+            Err(why) => println!("sandbox: on {at}: {why}"),
+        }
+    }
 }
 
 /// The edit's answer goes up as a toast: the line it wrote in the island's
@@ -716,8 +951,54 @@ fn choices(p: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
                 }
             });
         }
-        c.spawn(text(f, &sb.hint(), 12.5, MUTED));
+        if sb.tool == Tool::Works && sb.chosen(Tool::Works, 0) == 0 && sb.site.is_some() {
+            works_offered(c, f, sb);
+        } else {
+            c.spawn(text(f, &sb.hint(), 12.5, MUTED));
+        }
     });
+}
+
+/// With Build a works in hand and a square taken: where it is, the works that
+/// may stand there by their labels (the best expected return first, one
+/// chosen), how many more are known and refused, the line for the one chosen,
+/// and Build it here. "asking..." until the game's thread has said.
+fn works_offered(c: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
+    match &sb.offers {
+        None => {
+            chip_row(c, |row| {
+                row.spawn(text(f, "asking...", 12.5, MUTED));
+            });
+        }
+        Some(Err(why)) => {
+            c.spawn(text(f, why, 12.5, INK));
+        }
+        Some(Ok(o)) => {
+            c.spawn(text(f, &format!("On the square at {}:", o.place), 12.5, MUTED));
+            if o.list.is_empty() {
+                c.spawn(text(f, "No works the town knows may stand here.", 12.5, INK));
+            } else {
+                chip_row(c, |row| {
+                    for x in &o.list {
+                        chip_button(row, f, &x.label, sb.method.as_ref() == Some(&x.name), HAND_INK, MethodChip(x.name.clone()));
+                    }
+                });
+            }
+            match o.more {
+                0 => {}
+                1 => {
+                    c.spawn(text(f, "1 more is known here, with no room or no market for it.", 12.5, MUTED));
+                }
+                n => {
+                    c.spawn(text(f, &format!("{n} more are known here, with no room or no market for them."), 12.5, MUTED));
+                }
+            }
+            if let Some(line) = sb.offer_line() {
+                c.spawn(text(f, &line, 12.5, INK));
+                chip_row(c, |row| chip_button(row, f, "Build it here", false, HAND_INK, BuildHere));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -769,12 +1050,73 @@ mod tests {
         assert_eq!(Tool::Town.rows(), &[&["Found a town here"]]);
         assert_eq!(stands_from("By hand: a town to be founded at 31, 40, in Melbourne's district, at the end of 1791"), Some(1792));
         assert_eq!(stands_from("a town is already to be founded this year, at 31, 40"), None);
+        // works (stage 7b). Build a works: a square takes the site and makes no edit, and the
+        // list asked about it is "asking..." until it comes
+        sb.tool = Tool::Works;
+        sb.choice[Tool::Works.index()] = [0, 0, 0];
+        assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Ok(None));
+        assert_eq!((sb.site, sb.offers.clone()), (Some(2950), None));
+        assert!(sb.build().is_err(), "nothing to build until the list has come");
+        // the list comes: the allowed methods, best return first and chosen at the start; the
+        // refused ones the town knows are counted; one it does not know is not
+        let option = |name: &str, cost: f64, ret: f64, allowed: Result<(), String>, known: bool| isostate_core::SiteOption {
+            method: 0,
+            name: name.into(),
+            label: format!("{}{}", name[..1].to_uppercase(), &name[1..]),
+            group: None,
+            sums: if known { Ok(sums(cost, ret)) } else { Err("not known".into()) },
+            allowed,
+        };
+        let hand = Ok(vec![
+            option("brickworks", 622.0, 0.42, Ok(()), true),
+            option("brewery", 16999.0, 0.19, Ok(()), true),
+            option("ironworks", 9000.0, 0.30, Err("no room".into()), true),
+            option("dynamo", 1.0, 0.9, Err("not known in Melbourne yet".into()), false),
+        ]);
+        assert!(sb.keep_offers(Offers::of(&hand, "31, 40, in Melbourne's district".into())));
+        assert!(!sb.keep_offers(Offers::of(&hand, "31, 40, in Melbourne's district".into())), "the same list is not drawn again");
+        let o = sb.offers.clone().unwrap().unwrap();
+        assert_eq!((o.list.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), o.more), (vec!["brickworks", "brewery"], 1));
+        assert_eq!(sb.method.as_deref(), Some("brickworks"));
+        sb.turn = Some(1792);
+        assert_eq!(sb.offer_line().unwrap(), "Brickworks here: it costs 622, paid by hand, and should return 42% a year. It is built at the year's turn, in January 1792.");
+        // Build it here makes BuildWorks with the method chosen, on the square taken
+        assert_eq!(sb.build(), Ok(Edit::BuildWorks { method: "brickworks".into(), cell: 2950 }));
+        sb.method = Some("brewery".into());
+        assert_eq!(sb.build(), Ok(Edit::BuildWorks { method: "brewery".into(), cell: 2950 }));
+        // a method no longer offered is not built
+        sb.method = Some("ironworks".into());
+        assert!(sb.build().is_err());
+        // no works can stand on the square: its sentence
+        sb.keep_offers(Offers::of(&Err("no works can stand on the square at 0, 0: it is sea".into()), "0, 0".into()));
+        assert_eq!(sb.offers, Some(Err("No works can stand on the square at 0, 0: it is sea".into())));
+        // a town and a works are refused with Build, before anything is sent, and the square is let go
+        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click a square of land, not a town."));
+        assert_eq!(sb.click(Some(1), Some(Pick::Firm(12))), Err("Click a square of land, not a works."));
+        assert_eq!((sb.site, sb.tool), (None, Tool::Works));
+        // Close a works: a square is refused, a works is closed, and the tool is put down
+        sb.choice[Tool::Works.index()] = [1, 0, 0];
+        assert!(sb.hint().starts_with("Click a works"), "{}", sb.hint());
+        assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Err("Click a works."));
+        assert_eq!(sb.click(Some(1), Some(Pick::Town(1))), Err("Click a works."));
+        assert_eq!(sb.tool, Tool::Works);
+        assert_eq!(sb.click(Some(1), Some(Pick::Firm(12))), Ok(Some(Edit::CloseWorks { works: 12 })));
+        assert_eq!(sb.tool, Tool::Look);
+        assert_eq!(Tool::Works.rows(), &[&["Build a works", "Close a works"]]);
         // the words scripts click by
-        assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town"]);
+        assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town", "Works"]);
         // every row's chips have a factor and a word
         assert_eq!(Tool::Money.rows()[2].len(), MONEY_FACTORS.len());
         assert_eq!(Tool::People.rows()[0].len(), PEOPLE_FACTORS.len());
         assert_eq!(Tool::Harvest.rows()[1].len(), HARVEST_FACTORS.len());
+    }
+
+    /// A site's sums with nothing in them but a cost and an expected return.
+    fn sums(capital_cost: f64, expected_return: f64) -> isostate_core::SiteSums {
+        isostate_core::SiteSums {
+            town: 0, K: 1.0, gate_price: 0.0, inputs: Vec::new(), input_cost: 0.0, heat: 0.0, heat_price: 0.0, heat_cost: 0.0, labor: 0.0, wage: 0.0, labor_cost: 0.0,
+            margin: 0.0, rent_bid: 0.0, capital_cost, expected_return, bonus: 0.0, agglo: 0.0, output: 0.0, town_demand: 0.0, town_output: 0.0, market_share: 0.0, price_ratio: 0.0,
+        }
     }
 
     fn stopped_clock() -> Timeline {

@@ -302,6 +302,7 @@ pub(crate) fn pump(
     sandbox: Option<Res<crate::sandbox::Sandbox>>,
     mut told: Option<ResMut<crate::inspector::Answers>>,
     mut rules: Option<ResMut<crate::rulebook::Known>>,
+    mut hand_rows: Option<ResMut<crate::hand_tab::Pending>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Pump);
     // the months the books kept from before the window opened, ahead of any that come
@@ -381,7 +382,25 @@ pub(crate) fn pump(
                 // carried out as the year ended and works and land as the next began, so the line
                 // over each says the turn, which is both
                 for (ok, line) in &end.carried {
-                    toasts.say(if *ok { "orders" } else { "orders_refused" }, line, "the year's turn", time.elapsed_secs());
+                    // an edit by hand that waited goes up in the hand's ink, done or refused (sandbox 7b)
+                    let hand = sandbox.is_some() && line.starts_with("By hand");
+                    let kind = match (hand, *ok) {
+                        (true, _) => "hand",
+                        (false, true) => "orders",
+                        (false, false) => "orders_refused",
+                    };
+                    toasts.say(kind, line, "the year's turn", time.elapsed_secs());
+                    if hand {
+                        println!("sandbox: at the year's turn, {} {line}", if *ok { "done:" } else { "refused:" });
+                    }
+                }
+                // and its row heads the Hand tab until its news comes with the next month
+                if let Some(pending) = hand_rows.as_mut() {
+                    let when = clock::news_time(data.r.y0, clock::at(data.latest(), 0)) + 0.5 / 12.0;
+                    let in_news = crate::hand_tab::done_by_hand(&data.r).count();
+                    for (_, line) in end.carried.iter().filter(|c| c.0 && sandbox.is_some() && c.1.starts_with("By hand")) {
+                        pending.add(when, line, in_news);
+                    }
                 }
                 // the world has moved on: ask about the picked square again
                 game.asked = None;

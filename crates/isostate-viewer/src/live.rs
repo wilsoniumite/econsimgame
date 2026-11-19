@@ -109,6 +109,10 @@ pub struct SiteInfo {
     /// whether the player may buy it (cash aside), or why not
     pub land_allowed: Result<(), String>,
     pub options: Result<Vec<SiteOption>, String>,
+    /// what the hand could build on it (the sandbox's Works tool,
+    /// `edits::works_offered`): every method at the size and cost a works by
+    /// hand would have, each with the refusal a `BuildWorks` of it would meet
+    pub hand: Result<Vec<SiteOption>, String>,
 }
 
 pub enum Msg {
@@ -571,8 +575,17 @@ fn standing(game: &Game, begun: &[usize]) -> Standing {
         (Some(seen), Ok(now)) => (now.cash - seen.cash).max(0.0),
         _ => 0.0,
     };
-    let waiting_works = game.waiting.iter().filter_map(|o| if let Order::Found { cell, .. } = o { Some(*cell) } else { None });
+    let waiting_works = game.waiting.iter().filter_map(works_square);
     Standing { waiting: game.waiting.clone(), promised, pegs: begun.iter().copied().chain(waiting_works).collect() }
+}
+
+/// The square a works is to stand on by this order: a family's works, or one
+/// built by hand (the sandbox's Works tool), whose stakes stand alike.
+fn works_square(order: &Order) -> Option<usize> {
+    match order {
+        Order::Found { cell, .. } | Order::ByHand { edit: isostate_core::edits::Edit::BuildWorks { cell, .. } } => Some(*cell),
+        _ => None,
+    }
 }
 
 /// The player's family for the panels: as it stands, and in what the family
@@ -598,13 +611,10 @@ fn family_now(game: &Game) -> Option<FamilyReport> {
 }
 
 /// The squares where works were begun at the last year's turn: by an order
-/// carried out there, which the year's own picture does not show yet.
+/// carried out there (a family's, or a works built by hand), which the year's
+/// own picture does not show yet.
 fn begun_at_turn(game: &Game) -> Vec<usize> {
-    game.orders
-        .iter()
-        .filter(|g| g.year == game.last_year() && g.month == 0)
-        .filter_map(|g| if let Order::Found { cell, .. } = &g.order { Some(*cell) } else { None })
-        .collect()
+    game.orders.iter().filter(|g| g.year == game.last_year() && g.month == 0).filter_map(|g| works_square(&g.order)).collect()
 }
 
 /// What an order is, in a few words, for the list of those that wait.
@@ -645,15 +655,65 @@ pub fn order_words(order: &Order, r: &Replay, rep: Option<&FamilyReport>) -> Str
             format!("{} at {} {does}", crate::family::short_group(*group), town(*t))
         }
         Order::MoveSeat { town: t } => format!("Move the seat to {}", town(*t)),
-        // (an edit never waits; this is for a list that might hold one)
-        Order::ByHand { edit } => edit_words(edit, &town),
+        // (a works built or closed by hand waits; the other edits are carried out at once)
+        Order::ByHand { edit } => {
+            let method = |m: &str| r.header.methods.iter().find(|x| x.name == m).map_or(m.to_string(), |x| x.label.to_lowercase());
+            let works = |f: usize| r.header.firms.get(f).map_or_else(|| format!("works {f}"), |x| x.name.clone());
+            let near = |c: usize| r.filled.checked_sub(1).and_then(|k| r.catch.get(k * r.n + c)).and_then(|&t| (t as usize).checked_sub(1)).map(town);
+            edit_words(edit, &Names { town: &town, method: &method, works: &works, near: &near, width: r.w })
+        }
+    }
+}
+
+/// The names an edit's words need, as the thread's simulation or the
+/// viewer's record has them.
+struct Names<'a> {
+    town: &'a dyn Fn(usize) -> String,
+    /// a method's label by its name, in small letters
+    method: &'a dyn Fn(&str) -> String,
+    /// a works' name by its slot
+    works: &'a dyn Fn(usize) -> String,
+    /// the town whose district a square is in, if any
+    near: &'a dyn Fn(usize) -> Option<String>,
+    /// the island's width in squares, to give a square as "31, 40"
+    width: usize,
+}
+
+/// The names of the simulation on the thread.
+fn sim_words(s: &iso::Sim, edit: &isostate_core::edits::Edit) -> String {
+    let town = |t: usize| s.st.town_name.get(t).cloned().unwrap_or_else(|| format!("town {t}"));
+    let method = |m: &str| s.content.method_name.iter().position(|n| n == m).map_or(m.to_string(), |i| s.content.method_label[i].to_lowercase());
+    let works = |f: usize| s.st.f_name.get(f).cloned().unwrap_or_else(|| format!("works {f}"));
+    let near = |c: usize| s.st.catch.get(c).and_then(|&t| (t >= 0).then(|| town(t as usize)));
+    edit_words(edit, &Names { town: &town, method: &method, works: &works, near: &near, width: s.st.world.W })
+}
+
+/// A works built or closed by hand, in a few words with no "By hand" before
+/// them: "a works (brickworks) at 31, 40, in Melbourne's district", "Fairfax
+/// Mill closed". Other edits are not of the kind that waits, and have none.
+fn waiting_what(edit: &isostate_core::edits::Edit, n: &Names) -> Option<String> {
+    use isostate_core::edits::Edit;
+    match edit {
+        Edit::BuildWorks { method, cell } => {
+            let at = format!("{}, {}", cell % n.width.max(1), cell / n.width.max(1));
+            Some(match (n.near)(*cell) {
+                Some(town) => format!("a works ({}) at {at}, in {town}'s district", (n.method)(method)),
+                None => format!("a works ({}) at {at}", (n.method)(method)),
+            })
+        }
+        Edit::CloseWorks { works } => Some(format!("{} closed", (n.works)(*works))),
+        _ => None,
     }
 }
 
 /// An edit by hand in a few words, for a list.
-fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String) -> String {
+fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
     use isostate_core::edits::{Edit, Purse};
+    let town = n.town;
     let place = |t: Option<usize>, all: &str| t.map_or_else(|| all.to_string(), |t| town(t));
+    if let Some(what) = waiting_what(edit, n) {
+        return format!("By hand: {what}");
+    }
     match edit {
         Edit::Money { purse, town: t, factor } => {
             let whose = match purse {
@@ -668,8 +728,8 @@ fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String)
         Edit::Discover { tech, town: t } => format!("By hand: {tech} found in {}", town(*t)),
         Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
-        Edit::BuildWorks { method, cell } => format!("By hand: a works ({method}) built on square {cell}"),
-        Edit::CloseWorks { works } => format!("By hand: works {works} closed"),
+        // (said by `waiting_what`)
+        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } => String::new(),
     }
 }
 
@@ -688,23 +748,9 @@ fn waits_words(game: &Game, order: &Order) -> String {
         // an edit that waits (a works built or closed); one carried out at once never waits.
         // (not "By hand", which the Hand tab takes for an edit carried out)
         Order::ByHand { edit } if edit.at_turn() => {
-            let s = &game.sim;
-            let what = match edit {
-                isostate_core::edits::Edit::BuildWorks { method, cell } => {
-                    let label = s.content.method_name.iter().position(|n| n == method).map_or(method.clone(), |m| s.content.method_label[m].to_lowercase());
-                    let at = s.st.catch.get(*cell).and_then(|&t| (t >= 0).then(|| s.st.town_name[t as usize].clone()));
-                    match at {
-                        Some(town) => format!("a works ({label}) built by {town}"),
-                        None => format!("a works ({label}) built on square {cell}"),
-                    }
-                }
-                isostate_core::edits::Edit::CloseWorks { works } => {
-                    let name = s.st.f_name.get(*works).cloned().unwrap_or_else(|| format!("works {works}"));
-                    format!("{name} closed")
-                }
-                other => edit_words(other, &|t| s.st.town_name.get(t).cloned().unwrap_or_default()),
-            };
-            format!("Ordered by hand: {what}, at the year's turn, in January {}.", year + 1)
+            // "Ordered by hand: a works (brickworks) at 31, 40, in Melbourne's district, ..."
+            let what = sim_words(&game.sim, edit);
+            format!("Ordered by hand: {}, at the year's turn, in January {}.", what.trim_start_matches("By hand: "), year + 1)
         }
         Order::ByHand { .. } => "Done by hand.".to_string(),
     }
@@ -1149,10 +1195,19 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                                 }
                                 year_end = true;
                                 let year = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
+                                let news = game.sim.events.len();
                                 let done = game.turn();
-                                begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| if let Order::Found { cell, .. } = &o.order { Some(*cell) } else { None }).collect();
+                                begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| works_square(&o.order)).collect();
                                 let s = &game.sim;
-                                let carried = done.iter().map(|o| carried_words(s, o, &order_line(&game, &o.order))).collect();
+                                // an edit carried out at the turn is told in the line it wrote in the news
+                                let mut by_hand = s.events.get(news..).unwrap_or_default().iter().filter(|e| e.kind == "hand").map(|e| e.title.clone());
+                                let carried = done
+                                    .iter()
+                                    .map(|o| match (&o.order, &o.result) {
+                                        (Order::ByHand { .. }, Ok(_)) => (true, by_hand.next().unwrap_or_else(|| format!("{}: done", order_line(&game, &o.order)))),
+                                        _ => carried_words(s, o, &order_line(&game, &o.order)),
+                                    })
+                                    .collect();
                                 let family = if done.is_empty() { None } else { family_now(&game) };
                                 Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun) }))
                             }
@@ -1172,6 +1227,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                     owner_name: owner.and_then(|o| s.st.families.get(o)).map(|f| f.surname.clone()),
                     land_allowed: families::may_buy_land(&s.st, PLAYER, cell),
                     options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
+                    // (it only reads; 7a timed it at a tenth of a millisecond at the slowest)
+                    hand: iso::edits::works_offered(s, cell),
                 })
             }
             // (it only reads: a game asked about a thousand times runs as one never asked)
@@ -1192,8 +1249,9 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
             order => {
                 // carried out, and kept in the log if it was; or kept to wait for the year's end
                 let r = order_of(&game.sim, order).and_then(|o| game.give(o.clone()).map(|d| (o, d)));
-                if let Ok((Order::Found { cell, .. }, Done::Founded(_))) = &r {
-                    begun.push(*cell);
+                // (a works ordered at a turn is begun at once; one ordered later waits, and is pegged there)
+                if let Ok((o, Done::Founded(_) | Done::Done)) = &r {
+                    begun.extend(works_square(o));
                 }
                 let s = &game.sim;
                 let text = r.map(|(o, d)| match d {
@@ -1250,7 +1308,7 @@ fn order_line(game: &Game, order: &Order) -> String {
         },
         Order::Stance { group, town: t, .. } => format!("The word to {} at {}", crate::family::short_group(*group).to_lowercase(), town(*t)),
         Order::MoveSeat { town: t } => format!("The seat's move to {}", town(*t)),
-        Order::ByHand { edit } => edit_words(edit, &town),
+        Order::ByHand { edit } => sim_words(s, edit),
     }
 }
 

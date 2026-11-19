@@ -20,9 +20,11 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use isostate_core::inspect::{Thing, Told};
+use isostate_core::save::Order;
 
+use crate::family::chip_button;
 use crate::game::Game;
-use crate::live::Live;
+use crate::live::{Cmd, Live};
 use crate::replay::{Event, Replay};
 use crate::sandbox::HAND_INK;
 use crate::ui::{text, UiState, INK, MUTED, PAPER_2, RULE};
@@ -38,7 +40,20 @@ pub struct HandParams<'w> {
     /// what the simulation has said of things, among them the island, whose
     /// group "By hand" is the tab's foot (`inspect`, the hand's ledger)
     pub told: Option<Res<'w, crate::inspector::Answers>>,
+    /// what waits for the year's turn (`Live::standing`), whose edits head the tab
+    pub live: Option<Res<'w, Live>>,
 }
+
+/// An edit that waits taken back from the Hand tab: the words of its row,
+/// and how many answers the game had had when it was sent (`Game::answered`),
+/// until its answer comes.
+#[derive(Resource, Default)]
+pub struct TakingBack(Option<(String, u64)>);
+
+/// The Take back chip of a waiting edit: its place among everything that
+/// waits, the family's orders included (`Cmd::Cancel` takes that place).
+#[derive(Component)]
+pub struct TakeBack(pub usize);
 
 /// Edits the simulation has carried out whose news has not come yet. An
 /// edit's item of news reaches the viewer with the next month or year, but
@@ -55,19 +70,106 @@ pub struct Pending {
     last: Option<String>,
 }
 
+impl Pending {
+    /// An edit's line, dated `when`, listed until its news is among the
+    /// `in_news` items of the hand's news there are now and one more.
+    pub fn add(&mut self, when: f32, line: &str, in_news: usize) {
+        let n = in_news + self.rows.len() + 1;
+        self.rows.push((when, line.to_string(), n));
+    }
+}
+
 /// A row of the Hand tab about a place: the square the news is about.
 #[derive(Component)]
 pub struct HandRow(pub usize);
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<Pending>().add_systems(Update, hand_clicks).add_systems(
+    app.init_resource::<Pending>().init_resource::<TakingBack>().add_systems(Update, hand_clicks).add_systems(
         Update,
         // (in the frame the answer comes, as the tray reads it, before a question about the
         // clicked square puts the note away)
-        (order_out.before(crate::game::pump), catch_answers.after(crate::game::pump).before(crate::game::ask_site), ask_island.after(crate::game::pump))
+        (
+            order_out.before(crate::game::pump),
+            catch_answers.after(crate::game::pump).before(crate::game::ask_site),
+            ask_island.after(crate::game::pump),
+            (take_back, taken_back, waiting_changed).chain().after(crate::game::pump).before(crate::game::ask_site),
+        )
             .run_if(resource_exists::<crate::sandbox::Sandbox>)
             .run_if(resource_exists::<Live>),
     );
+}
+
+/// The words of a waiting edit: what `live::order_words` says of it, with no
+/// "By hand" before it ("a works (brickworks) at 31, 40, in Melbourne's
+/// district", "Fairfax Mill closed"). Its row has them with a capital.
+pub fn waiting_words(order: &Order, r: &Replay) -> String {
+    crate::live::order_words(order, r, None).trim_start_matches("By hand: ").to_string()
+}
+
+/// A line begun with a capital.
+fn capital(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map_or_else(String::new, |first| first.to_uppercase().chain(c).collect())
+}
+
+/// The Take back chip of a waiting edit: under the tray's guards (it works
+/// only in the present, one thing at a time), the edit is taken back by its
+/// place among everything that waits.
+#[allow(clippy::too_many_arguments)]
+fn take_back(
+    q: Query<(&Interaction, &TakeBack), Changed<Interaction>>,
+    live: Res<Live>,
+    mut game: ResMut<Game>,
+    sb: Res<crate::sandbox::Sandbox>,
+    tl: Res<crate::Timeline>,
+    data: Res<Data>,
+    mut taking: ResMut<TakingBack>,
+    mut toasts: ResMut<crate::Toasts>,
+    time: Res<Time>,
+) {
+    for (i, chip) in &q {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        let say = |toasts: &mut crate::Toasts, line: &str| toasts.say("orders_refused", line, "By hand", time.elapsed_secs());
+        if (tl.t.floor() as usize) < data.latest() || data.r.filled >= data.r.ny {
+            say(&mut toasts, crate::sandbox::PAST);
+            continue;
+        }
+        if game.busy || live.turning() || sb.running() {
+            say(&mut toasts, crate::sandbox::BUSY);
+            continue;
+        }
+        let Some(order) = live.standing.waiting.get(chip.0) else { continue };
+        taking.0 = Some((waiting_words(order, &data.r), game.answered));
+        live.send(Cmd::Cancel(chip.0));
+        game.busy = true;
+        game.note = None;
+    }
+}
+
+/// The answer to a Take back: "Taken back: ..." in the hand's ink, or why not.
+fn taken_back(mut taking: ResMut<TakingBack>, game: Res<Game>, data: Res<Data>, live: Res<Live>, mut toasts: ResMut<crate::Toasts>, time: Res<Time>) {
+    let Some((words, sent_at)) = &taking.0 else { return };
+    if game.busy || game.answered <= *sent_at {
+        return;
+    }
+    let when = clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11))));
+    let (kind, line) = match &game.note {
+        Some((false, why)) => ("orders_refused", why.clone()),
+        _ => ("hand", format!("Taken back: {words}")),
+    };
+    toasts.say(kind, &line, &when, time.elapsed_secs());
+    println!("sandbox: {when}: {line}");
+    taking.0 = None;
+}
+
+/// The tab is drawn again when what waits for the year's turn changes.
+fn waiting_changed(live: Res<Live>, mut ui: ResMut<UiState>, mut seen: Local<Vec<Order>>) {
+    if *seen != live.standing.waiting {
+        *seen = live.standing.waiting.clone();
+        ui.dirty += 1;
+    }
 }
 
 /// The foot's ledger is the island's group "By hand", asked of the simulation
@@ -125,8 +227,7 @@ fn catch_answers(mut pending: ResMut<Pending>, game: Res<Game>, data: Res<Data>,
             pending.last = Some(line.clone());
             // dated as the core dates it: the middle of the month the simulation has reached
             let when = clock::news_time(data.r.y0, clock::at(data.latest(), live.months.min(11))) + 0.5 / 12.0;
-            let n = in_news + pending.rows.len() + 1;
-            pending.rows.push((when, line.clone(), n));
+            pending.add(when, line, in_news);
             changed = true;
         }
         // (taken once)
@@ -150,6 +251,32 @@ const NO_HAND: &str = "Nothing is done by hand in the family game: a sandbox, wh
 /// The Hand tab's body.
 pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, _k: usize, hand: &HandParams) {
     let mut shown = 0;
+    // at its head, the edits that wait for the year's turn, each with its Take back chip
+    // (`i` is its place among everything that waits, the family's orders included)
+    let waiting: Vec<(usize, &Order)> = match (&hand.live, &hand.sandbox) {
+        (Some(live), Some(_)) => live.standing.waiting.iter().enumerate().filter(|(_, o)| matches!(o, Order::ByHand { .. })).collect(),
+        _ => Vec::new(),
+    };
+    if !waiting.is_empty() {
+        let (_, turn) = crate::game::turn_words(r.y0, r.filled.max(1) - 1);
+        p.spawn(text(f, "Waits for the year's turn", 15.0, HAND_INK));
+        for (i, order) in waiting {
+            shown += 1;
+            p.spawn((
+                Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), margin: UiRect::vertical(Val::Px(2.0)), border: UiRect::left(Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(8.0)), ..default() },
+                BackgroundColor(PAPER_2),
+                BorderColor::all(HAND_INK),
+            ))
+            .with_children(|row| {
+                row.spawn(Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, ..default() }).with_children(|col| {
+                    col.spawn(text(f, &capital(&waiting_words(order, r)), 14.0, INK));
+                    col.spawn(text(f, &format!("In {turn}"), 12.0, MUTED));
+                });
+                chip_button(row, f, "Take back", false, HAND_INK, TakeBack(i));
+            });
+        }
+        p.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }, BackgroundColor(RULE)));
+    }
     // edits done whose news is still to come, the newest first (they are newer than any news)
     for (when, line, _) in hand.pending.iter().flat_map(|p| p.rows.iter().rev()) {
         shown += 1;
