@@ -1591,8 +1591,13 @@ fn build_year_inner(r: &Replay, g: &Ground, slots: &Slots, cen: &[(f32, f32)], k
     // (both found in network.rs, where a cart on the road reads them too)
     for (c, m, lv) in crate::network::road_segments(r, k) {
         let (a, b) = (bevy::math::Vec2::new(cen[c].0, cen[c].1), bevy::math::Vec2::new(cen[m].0, cen[m].1));
-        for bridge in crate::network::road_bridges(g, a, b, lv == 3, |at| lod.at(at.x, at.y)) {
+        // crossings (the core's docs/rules/crossings.md): a bridge only where the run built one, else a ford or a ferry
+        let crossed = r.crossed(c, m, k);
+        for bridge in crate::network::road_bridges(g, a, b, lv == 3, crossed, r.round(), |at| lod.at(at.x, at.y)) {
             road_bridge(&mut works_b, &bridge, &height, lk);
+        }
+        for ford in crate::network::road_fords(g, a, b, lv == 3, crossed, r.round()) {
+            isostate_gen::bridge::road_ford(&mut works_b, &ford, lk);
         }
         causeway(&mut works_b, lk, g, a, b, lv == 3);
     }

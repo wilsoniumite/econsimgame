@@ -202,6 +202,37 @@ pub struct Header {
     /// (newland.rs); a run made on the old island has none
     #[serde(default)]
     pub land: Option<crate::newland::LandHeader>,
+    /// crossings (the core's docs/rules/crossings.md): every link between two
+    /// neighbouring cells whose way crosses water, as the run ended (a live
+    /// game's as its last year ended), lowest cell first. Empty for a run that
+    /// did not keep them, whose roads are bridged wherever they cross a river.
+    #[serde(default)]
+    pub crossings: Vec<CrossLink>,
+}
+
+/// A link between two neighbouring cells whose way crosses water, and how it
+/// is crossed (the core's `crossings::LinkOut`).
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct CrossLink {
+    pub a: usize,
+    pub b: usize,
+    /// the year its bridge was built, if it has one
+    #[serde(default)]
+    pub bridged: Option<i64>,
+    /// the river is too wide to ford, and it is crossed by a ferry
+    #[serde(default)]
+    pub ferry: bool,
+}
+
+/// How a road between two cells crosses its water in a year.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Crossed {
+    /// on a bridge: the run built one, or did not keep its crossings (then
+    /// every road is bridged wherever it meets a river, as before)
+    Bridge,
+    /// through a ford, or by a ferry where the river is too wide to ford
+    Ford,
+    Ferry,
 }
 
 /// Everything the viewer needs from one run, copied into plain vectors.
@@ -280,6 +311,32 @@ pub const BUILT_YEAR0: i32 = 1645;
 pub const RES_UNIT: f32 = 8.0;
 
 impl Replay {
+    /// Whether the run keeps its crossings (the core's docs/rules/crossings.md):
+    /// then a road goes round the meanders its straight line cuts, and crosses
+    /// a river once, where the run says (`network::route`).
+    pub fn round(&self) -> bool {
+        !self.header.crossings.is_empty()
+    }
+
+    /// How the road between cells `c` and `m` crosses water in year `k`: on
+    /// a bridge where the run built one, or where it kept no crossings at all.
+    pub fn crossed(&self, c: usize, m: usize, k: usize) -> Crossed {
+        let list = &self.header.crossings;
+        if list.is_empty() {
+            return Crossed::Bridge;
+        }
+        let (a, b) = (c.min(m), c.max(m));
+        let year = self.y0 as i64 + k as i64;
+        let from = list.partition_point(|l| l.a < a);
+        match list[from..].iter().take_while(|l| l.a == a).find(|l| l.b == b) {
+            Some(l) if l.bridged.is_some_and(|y| y <= year) => Crossed::Bridge,
+            Some(l) if l.ferry => Crossed::Ferry,
+            Some(_) => Crossed::Ford,
+            // (a way the core found no water on; whatever the picture finds there is bridged)
+            None => Crossed::Bridge,
+        }
+    }
+
     /// Whether the run's towns keep their ground, and the record says when
     /// each cell joined its town, who lives on it and how much of it is works.
     pub fn kept(&self) -> bool {
