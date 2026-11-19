@@ -93,6 +93,13 @@ pub fn at(k: usize, month: usize) -> f32 {
     k as f32 + month as f32 / 12.0
 }
 
+/// The clock's whole number at January of `year`, in a run whose first year is
+/// `y0`: the year's end before it. A year before the clock's first January is
+/// that January.
+pub fn january(y0: i32, year: i32) -> usize {
+    (year - y0 - 1).max(0) as usize
+}
+
 /// Whether the clock stands on a year's turn: at it, not a moment before it
 /// (a clock waiting for a year stands at the very end of its December).
 pub fn on_turn(t: f32) -> bool {
@@ -206,6 +213,9 @@ mod tests {
         }
         let d = date(1750, 33.0 + 2.5 / 12.0);
         assert!((d.part - 0.5).abs() < 0.01, "half way through March, got {}", d.part);
+        // January of a year is where the clock reads it, and none comes before the first
+        assert_eq!(month_year(date(1750, january(1750, 1800) as f32)), "January 1800");
+        assert_eq!((january(1750, 1751), january(1750, 1750), january(1750, 1600)), (0, 0, 0));
     }
 
     #[test]
