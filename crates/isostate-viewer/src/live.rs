@@ -579,6 +579,9 @@ fn edit_words(edit: &isostate_core::edits::Edit, town: &dyn Fn(usize) -> String)
         }
         Edit::People { town: t, factor } => format!("By hand: {}'s people, times {factor}", town(*t)),
         Edit::Harvest { town: t, factor } => format!("By hand: the harvest round {}, times {factor}", place(*t, "the whole island")),
+        Edit::Discover { tech, town: t } => format!("By hand: {tech} found in {}", town(*t)),
+        Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
+        Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
     }
 }
 
