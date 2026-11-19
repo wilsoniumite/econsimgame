@@ -88,6 +88,9 @@ pub fn firm_patterns(method_name: &str) -> &'static [&'static str] {
         "tank_furnace" => &["{T} Glass Co.", "{S} Glassworks"],
         "paper_mill" => &["{S}'s Paper Mill", "{T} Paper Mill"],
         "machine_paper" => &["{T} Paper Co.", "{S} & Sons Paper"],
+        // the content after 1900 (stage 6)
+        "coal_power_station" => &["{T} Electric Light Co.", "{T} Electricity Works", "{S} Electric Supply Co."],
+        "electrical_works" => &["{S} Electrical Co.", "{S} & {S2}, Electrical Engineers", "{T} Lamp Works"],
         _ => &["{S} & Co."],
     }
 }

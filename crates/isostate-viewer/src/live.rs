@@ -531,6 +531,30 @@ pub fn trade_goods(c: &iso::content::Content) -> Vec<Vec<usize>> {
         .collect()
 }
 
+/// For a test that holds one island's history: a new game of island `seed` with
+/// `families`, played under the game's rules with `tree.stage` set as given,
+/// its first year and `advance` more, as `start` fills the board of a new game
+/// (as `ISOSTATE_NO_BOOKS` does, the game's own simulation is started again on
+/// the changed rules). Docs/rules/tree.md, "After 1900: electricity".
+#[cfg(test)]
+pub(crate) fn played_at_stage(seed: u64, families: usize, advance: usize, stage: u32) -> Result<Replay, String> {
+    let rules = iso::params::Rules::Game;
+    let mut game = Game::under_to(rules, seed, families, 0, iso::save::content_last_year(rules))?;
+    let mut P = game.sim.params.clone();
+    P.tree.stage = stage;
+    game.sim = iso::sim::start(&P, game.rules.content());
+    let mut board = Board::new(&game.sim);
+    for _ in 0..advance + 1 {
+        if game.over() {
+            break;
+        }
+        game.year()?;
+        board.year(&game.sim);
+        game.turn();
+    }
+    Ok(board.r)
+}
+
 /// The island as the viewer holds it, filled in year by year.
 struct Board {
     cursor: LiveCursor,

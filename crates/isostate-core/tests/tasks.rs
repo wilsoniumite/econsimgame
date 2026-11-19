@@ -47,7 +47,7 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
         let s: f64 = C.tasks.method[m].iter().sum();
         assert!((s - 1.0).abs() < 1e-9, "{} has shares summing to {s}", C.method_name[m]);
     }
-    assert_eq!(C.M, 44);
+    assert_eq!(C.M, 46, "the 44 of the tree's stage 1 and the two of stage 6 (docs/rules/tree.md, \"After 1900: electricity\")");
     assert_eq!(C.tasks.uses.len(), 1);
     assert_eq!(C.tasks.uses[0].name, "hoist");
 }

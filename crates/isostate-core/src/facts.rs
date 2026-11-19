@@ -705,6 +705,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::tasks::facts(r) {
         b.num(name, kind, v);
     }
+    // tree (docs/rules/tree.md, "After 1900: electricity"): electricity and electrical goods
+    for (name, kind, v) in crate::tree::facts(r) {
+        b.num(name, kind, v);
+    }
     // twenty-year means (SPAN) of what a scorecard reads: what a wage buys and output per
     // head against the first year (real_wage_1881_1900_vs_1750), the shares of work, and
     // work's share of the island's income where the books are kept

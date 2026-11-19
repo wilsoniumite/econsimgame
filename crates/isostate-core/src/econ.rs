@@ -1181,11 +1181,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         *x += y;
     }
     let decay = crate::tree::decay(C, P); // tree: the content's rate for a good the port's table does not have
+    // tree: and all that is left of a good that does not keep (electricity)
+    let loss = crate::tree::month_loss(C, P);
     for t in 0..T {
         for g in 0..G {
             let v = &mut st.inv[(t, g)];
             *v -= sold[(t, g)];
-            *v *= 1.0 - decay[g];
+            *v *= 1.0 - loss[g];
             *v += prod_TG[(t, g)];
             *v = v.max(0.0);
         }
@@ -1344,11 +1346,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             let outflow = sold[(t, g)] + exports[(t, g)];
             let of = 0.8 * st.outflow[(t, g)] + 0.2 * outflow;
             st.outflow[(t, g)] = of;
-            let target = P.price_target_months * of;
-            let iv = st.inv[(t, g)];
-            let gap = (target - iv) / target.max(iv).max(1e-9);
-            let arriving = prod_TG[(t, g)] + imports[(t, g)];
             let r = R[(t, g)];
+            // tree: the stock's gap from the months of sales held, or, for a good
+            // that does not keep, the month's asking against its making
+            let gap = crate::tree::price_gap(C, P, g, st.inv[(t, g)], of, r, prod_TG[(t, g)]);
+            let arriving = prod_TG[(t, g)] + imports[(t, g)];
             let imbalance = if r + arriving > 1e-9 { (r - arriving) / (r + arriving).max(1e-9) } else { 0.0 };
             if st.town_active[t] {
                 let lo_p = crate::longrun::floor(st, P, C, g);

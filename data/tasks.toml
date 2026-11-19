@@ -31,7 +31,7 @@ judge = [[0.0, 10.0], [1.0, 30000.0]]
 
 # ----------------------------------------------------------------------------------------------------
 # The works: each method's labour as shares of the five classes (haul, tend, clerk, judge, presence),
-# by kind. Every one of the game's 44 methods is in one kind. A method this file does not name has
+# by kind. Every one of the game's 46 methods is in one kind. A method this file does not name has
 # no classes, and no machine for a task ever touches it.
 # ----------------------------------------------------------------------------------------------------
 
@@ -73,6 +73,17 @@ methods = ["smithy", "hand_loom", "saw_pit", "charcoal_burning"]
 name = "builders"
 tasks = [0.40, 0.40, 0.02, 0.18, 0.0]
 methods = ["masons", "carpenters", "bricklayers", "contract_builders"]
+
+# The content after 1900 (stage 6 of the tree's overlay), each method in a row of its own.
+[[kind]]
+name = "power stations"
+tasks = [0.30, 0.50, 0.05, 0.15, 0.0]
+methods = ["coal_power_station"]
+
+[[kind]]
+name = "electrical works"
+tasks = [0.15, 0.55, 0.05, 0.25, 0.0]
+methods = ["electrical_works"]
 
 [[kind]]
 name = "shops and trades"
