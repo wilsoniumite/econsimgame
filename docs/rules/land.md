@@ -7,12 +7,14 @@ erosion), `landwater.rs` (rain, lakes, flow, river courses) and
 viewer). It draws from a random stream of its own (`rng::land_stream`,
 stream 11); the port's `generate_world` is not touched.
 
-It is **not yet switched on in the game's rules**. The economy stands on the
-new land (the sweeps below, and "On the integration branch" for how it
-stands beside the mines and the canals), and the viewer draws its ground,
-its rivers and its lakes (`isostate-viewer --new-land` starts a game on it to
-look at), but not yet its roads, railways and harbours as the real ground
-wants them. "Why it is off" says what is needed.
+It is **switched on under the game's rules since 19 November 2026**: every
+new game, and every run and sweep under `--rules game`, is on the new land.
+The old island, the port's, is a setting away: `--set land.enabled=false`
+for a sweep or the laboratory, `land = { enabled = false }` in the
+parameters file of a run, and `isostate-viewer --old-land` for a game. A saved game says which land it is on and is played again there
+("The switch", below, has what was done and what it moved). The viewer
+draws the ground, the rivers and the lakes, and not yet everything the real
+ground asks of the roads, railways and harbours.
 
 ## What was wrong
 
@@ -352,9 +354,12 @@ The old arrays (`elev`, `terrain`, `river`, `nav`, `down`) are filled as ever.
 The viewer reads the land's arrays where a run has them (its
 `src/newland.rs`), and draws the ground, the rivers and the lakes from them
 and no longer from `elev` and `river`; `terrain` and `down` it reads as
-before. A game is started on the new land before the switch is thrown with
-`save::Game::on_new_land`, which the viewer's `--new-land` calls; a save of
-such a game says `"land": true` and is played again on the same land.
+before. A game under the game's rules is on the new land;
+`save::Game::on_old_land` (the viewer's `--old-land`) starts one on the old
+island, and `save::Game::on_new_land` one on the new land whatever the rules
+say. Every save says `"land": true` or `"land": false` and is played again on
+the same land; one made before the switch has no such line and is the old
+island's.
 
 ## Seeing it
 
@@ -512,16 +517,17 @@ course: on 1,121 to 1,314 land cells an island the mean height moves, by 6 m
 at most (8 on seed 2); terrain changes on 0 to 3 cells; fertility, pasture,
 stone and clay move on 600 to 1,000 cells, fertility by 0.04 at most; land,
 rivers, navigable water, coast and drainage do not move at all, and the
-first towns stand where they did. The land is off under both sets of rules,
-so no sweep moves; a game on the new land (`--new-land`) plays a slightly
-different history.
+first towns stand where they did. The land was then off under both sets of
+rules, so no sweep moved; a game on the new land plays a slightly different
+history.
 
 ## What the sweeps showed
 
 *Measured under older rules.* Everything in this section and the next was
-measured on the game's rules of the day it was written, and none of it can
-be read from today's sweeps: with the switch off under both sets of rules,
-their eight islands are the port's. The rules round the land have moved
+measured on the game's rules of the day it was written, and none of it could
+be read from the sweeps of the days after: until the switch of 19 November
+the land was off under both sets of rules, and their eight islands were the
+port's. "The switch" has the new land against the old under today's rules. The rules round the land have moved
 since. For scale only, today's sweep of seeds 1 to 8 with six families
 (`merged-game-f6-l`, 12 November, the land off) has 732 thousand people in
 1900, 17.8 towns, a real wage 2.60 times 1750's and 2,248 km of railway,
@@ -604,88 +610,131 @@ The sweeps are in `.claude/night/reports/`: `sweep-landrev-base`,
 `sweep-landrev`, and the same with `-f6`, `-s9` and `-f6-s9`, and
 `sweep-landrev-port-base`, `sweep-landrev-port`.
 
-## Why it is off
+## The switch
 
-`game_params()` does not set it. What is missing:
+The land was switched on under the game's rules on 19 November 2026, when
+the designer asked why it was not the default yet. Until then it had been
+off for three reasons: the viewer could not draw it, a dozen tests of other
+rules were written to particulars of the old island's history, and it had
+not been run beside the mines and the canals. By then the economy stood on
+it (no run failed, and a run took as long), the viewer drew its ground,
+rivers and lakes, and the crossings acted on it alone; what stood in the way
+was plumbing. That was done with the switch:
 
-1. **The viewer cannot draw all of it.** Since 12 November it reads the
-   land's arrays and draws the ground from `land_height` at three times
-   relief, the rivers from the river lines at their own widths and levels,
-   a sheet of water on each lake and the tideways as arms of the sea, with
-   each cell's roads meeting on dry and level ground, so that a town at an
-   estuary's head stands on the bank of its tideway
-   (`docs/probes/dx-land-view.md`, "What was built: stages 0 and 1", and the
-   viewer's README, "The new land"). What it cannot do yet is what keeps
-   the switch off: its railways keep to the cells' middles and so stand on
-   viaducts over the real relief; its roads run straight between the
-   meeting places, over tideways and lakes on causeways and across a river
-   wherever they meet it; a tideway one node wide breaks into pools; a
-   harbour is still a town beside a sea cell, so a port on a tideway has no
-   quay and a town on a lake has the sea's lighthouse; and the heights its
-   rules are written in are still its own units, not metres. Those are the
-   design's later stages.
-2. **Tests of other mechanisms are written to the port's island under the
-   game's rules.** With the switch thrown for a trial on the island as it
-   now is, one fails and the rest pass: `tests/chronicle.rs`
-   `towns_and_districts_have_stories`, which asserts particulars of seed
-   7's history. On the island as it first was, two more failed, and a
-   change to the land may bring them back, since each depends on what
-   happens to happen: `tests/chronicle.rs`
-   `a_founding_redraws_only_the_districts_it_was_cut_from`, and
-   `tests/machines.rs`
-   `money_is_conserved_and_runs_are_deterministic_with_machines_on`, which
-   found an active town whose machine table was still -1 (a town founded in
-   the run's last year: an edge worth its owner's look whatever island is
-   used). On the integration branch, beside the towns' ground, the mines and
-   the canals, the same trial passes every test (183 of them): the
-   chronicle's test had been given fifty years to find its five foundings
-   in place of forty when the canals came, and on the new land it finds
-   them. That is luck as much as soundness, and the next change to the land
-   may undo it. The trial was made again on 12 November, after the saved
-   games, the mines under the commons and the books of account had come in
-   (the switch thrown in `game_params()` for the trial only, `cargo test -p
-   isostate-core --release --no-fail-fast`): 208 tests of 210 pass, the
-   chronicle's among them, and two fail, each because it is written to a
-   particular history of the port's island and that history does not happen
-   on the new one. `tests/accounts.rs`
-   `the_books_keep_up_with_the_mines_and_the_canals` wants a working being
-   sunk on seed 7 in 1799 ("no working was being sunk in 1800"; the books
-   balance in every year before that line is reached), and `tests/mines.rs`
-   `under_the_commons_a_fund_in_debt_levies_nobody` wants island 3's bad
-   mining year, which put the common fund in debt ("0 months in debt"); its
-   own comment says to find another island when a rule spares island 3. So
-   the comment above the switch in `params.rs`, that every test passes, was
-   two tests out. Neither is a fault of the land's code; each wants
-   re-anchoring when the switch is thrown. The same day, eight islands under
-   the game's rules with six families, under landlords and under the commons
-   with the land on, gave sixteen runs, none failed, every month's money
-   counted.
+- `game_params()` sets `P.land = LandParams::game()`. The port's rules do not
+  change, and the port's golden test is untouched.
+- **Saves say their land, always.** The save's layout is 3, and every save
+  writes `"land": true` or `"land": false`. A save without the line was made
+  before the switch, in layout 1 or 2, on the old island, and is played
+  there again (`save::load` begins it with `Game::on_old_land_to`). One such
+  save, made by main's build of that day, is kept beside the tests
+  (`tests/data/old_island_1775.json`: island 7 to May 1775, with two edits by
+  hand), and `tests/save.rs` holds it to the island it reached then, to the
+  last digit, for as long as the game's history to 1900 is that day's (the
+  test's comment says how it knows).
+- **The way back.** `isostate-viewer --old-land` starts a game on the old
+  island (`Game::on_old_land`), kept where any new game is; `--new-land` is
+  still taken and does nothing. A sweep or the laboratory reaches the old
+  island with `--set land.enabled=false`, and a run with a parameters file
+  that says `land = { enabled = false }`.
+- **Tests.** Of the core's test programs, fourteen failed with the land on.
+  Two were the switch itself (the save's layout, and the game's golden
+  hashes, taken again). Four tests of the sandbox's works by hand were
+  written to Melbourne on old island 7 and now take the biggest town of the
+  new one. The rest are each a case of one island's history that does not
+  happen on the new land (a working sunk in 1796, a decade of towns before
+  1800 on seed 3, Brambank's January, island 3's bad mining year, the port's
+  count of money below nothing in 1845, a sailing on island 26, Penfell's
+  hungry January, island 7's drive and hoist found by the test's last year,
+  the builders' share of shelter in 1759, a fingerprint of island 7 at the
+  tree's first stage); each is played with the land off and says so. The
+  roads' probe's "switched off, nothing is kept" is played with the
+  crossings off too, since on the new land the crossings' bridges are built
+  by the roads' menders. None failed for a fault of the land. The check in
+  `tests/inspect.rs` that no figure reads "nan" reads words now, since the
+  new island 7 has a works called "Tennant, Carpenter and Builder". In the
+  viewer, the land's test and the rulebook's were the switch itself.
 
-   Made once more after the mends of that night ("Mended on 12 November")
-   and with the tests main had gained since: 232 of 236 pass, and four
-   fail, the two above and two more of the same kind. `tests/chronicle.rs`
-   `towns_and_districts_have_stories` wants seed 8 to found a decade of
-   towns before 1800 ("seed 8 has a decade of new towns before 1800"); it
-   did on the new land before the mends, and the mends move seed 8's island
-   enough that it no longer does. `tests/people.rs`
-   `a_sailing_is_news_of_its_own_kind` wants somebody to take ship on island
-   2 by 1827 ("the case is gone"), which nobody does on the new land, mends
-   or none. The sixteen runs, made again, all passed the money check.
-3. **It had not been run beside the mines and the canals**, which were tuned
-   on the old island. It has now ("On the integration branch"): it stands,
-   and what it does to each is written there. The water industry and the
-   logging are still to come.
+**What it moved.** Eight islands, six families, to 2050, the old island
+against the new: the mean, and the least and greatest of the eight
+(`isostate-core sweep --seeds 1-8 --rules game --families 6 --end-year 2050
+--set land.enabled=false,true --standing`; no run failed):
 
-The scripted players are not in the way. `examples/bots.rs` plays the game's
-rules, so it plays the old island until the switch is thrown; with it thrown
-for a trial, all sixteen games (four strategies on seeds 1, 2, 3 and 7) play
-to 1900 on the new land, and the player's fortunes are of the same order as
-on the old (the thoughtful player ends first of six on all four seeds on
-either island, with 57 to 127 million against 40 to 105).
+| | old island | new land |
+|---|---|---|
+| people, 1900 | 663,600 [637,600 .. 684,900] | 675,600 [645,800 .. 720,900] |
+| people, 2050 | 1.94 million [1.64 .. 2.08] | 2.29 million [1.91 .. 2.75] |
+| what a wage buys (chained, 1750 = 1), 1900 | 6.27 [5.31 .. 7.16] | 5.92 [4.92 .. 6.75] |
+| the same, 2050 | 7.21 [4.17 .. 10.06] | 6.14 [3.20 .. 8.49] |
+| towns, 1900 | 18.2 [15 .. 23] | 21.5 [15 .. 28] |
+| towns, 2050 | 23.1 [17 .. 30] | 28.0 [21 .. 32] |
+| road, km, 1900 | 5,830 | 6,223 |
+| road, km, 2050 | 8,216 | 9,296 |
+| railway, km, 1900 | 2,505 [2,336 .. 2,690] | 2,541 [2,163 .. 2,892] |
+| railway, km, 2050 | 2,818 | 2,889 |
+| canal, km, 1890 | 729 [494 .. 914] | 716 [544 .. 822] |
+| canal, km, 2050 | 730 | 720 |
+| farm land, cells, 1900 | 1,427 | 1,557 |
+| share of hands in quarries, clay pits and mines, 1900 | 0.125 | 0.132 |
+| share of people in towns, 1900 | 0.465 [0.452 .. 0.473] | 0.451 [0.430 .. 0.466] |
 
-To switch it on: `P.land = crate::landform::LandParams::game();` in
-`game_params()`, run the tests (re-anchor the four above, and any of the
-others named that fails again), and run the sweeps again.
+The standing check sets the new land against the old: eleven of its twelve
+facts lie inside the old island's spread. The twelfth is the share of people
+in towns in 1900, 0.451 against a band of 0.452 to 0.473, below it on
+islands 1, 2, 5 and 8, with the islands of the two arms overlapping. It is
+the land that moves it, and no rule. Of the two things the new land has
+more of, it is not the towns (a fifth more of them, and island by island
+more towns go with a larger share, not a smaller: a correlation of +0.71 on
+the new land) nor the farmland (a tenth more of it, but the share of hands
+on the land is 0.248 against 0.245). It is the diggings: the new land's
+stone and clay lie in fewer, richer places away from the first towns, which
+stand on the water, so more hands work in quarries, clay pits and mines and
+cart their output, and they live in the country. Island by island on the
+new land the share in towns falls as the share of hands in the diggings and
+carting rises, with a correlation of -0.97 (`mine_share_1900`, which counts
+the diggings with the carters; -0.94 for the diggings alone).
+
+**The century after 1900**, on the same sweep, against the design's three
+asks (docs/rules/README.md, "The standing check"): what a wage buys grows
+0.31 per cent a year from 1900 to 1970 on the old island and 0.43 on the new
+(1 or more is asked for); its 2050 over its 1970 is 0.92 and 0.77 (no lower
+than 1 is asked); and the share of hands on the land is 0.245 in 1900 and
+0.247 in 2050 on the old island, 0.248 and 0.261 on the new (fewer in 2050
+is asked). Neither land meets any of the three; the new land does a little
+better on the first and worse on the other two. The century's cures had
+been measured on the old island only.
+
+**The railway age comes later on the new land, not thinner.** The first
+railway is in 1840 on the new land and 1829 on the old (1830 on the new
+land with the crossings off), and there is half as much railway in 1850
+(679 km against 1,267), but as much by 1890 and a little more from 1900.
+Towns with track in 1860: 0.97 against 0.99. The late start is in the
+railway's invention: a line follows it within ten years on every island,
+and on islands 6, 7 and 8 with the crossings on it is found 20 to 28 years
+later than with them off. It is found by a draw each year
+(`tech::discovery`), likelier the more rails and machinery the island has
+made, and island 7 had made as much of both by 1820 in either arm; with the
+crossings it simply drew no find until 1847, a wait of about one chance in
+twenty. The draws of two runs part as soon as any one invention is found in
+another year, so on eight islands this is mostly chance, with slower
+machinery on island 6 (its engine works found in 1793 against 1776). The
+crossings' page's "stations in 6.4 towns against 10.2" is a count of coal
+power stations (`stations_towns_1900`), not of railway stations. None of it
+is a fault a few lines mend; it is set down beside the railways' second
+pass in the backlog.
+
+**What is left** is in the backlog: the railways' second pass (a link
+priced by the ground between its cells and the water it crosses; a viaduct
+crosses a lake today), the year's mesh hand-over on the new land, and water
+and the inspector (lakes as flat stepped sheets, a lighthouse on a lake, the
+inspector calling a lake "sea").
+
+The scripted players (`examples/bots.rs`) play the game's rules, and so the
+new land since the switch. With the switch thrown for a trial before it, all
+sixteen games (four strategies on seeds 1, 2, 3 and 7) played to 1900 on the
+new land, and the player's fortunes were of the same order as on the old
+(the thoughtful player ended first of six on all four seeds on either
+island, with 57 to 127 million against 40 to 105).
 
 ## How it was checked
 

@@ -655,10 +655,12 @@ fn which_switches_can_be_thrown_in_a_running_island() {
 
 // ---------------------------------------------------------------- stage 7a (section 6.7)
 
-/// A town by its name.
-fn town_called(g: &Game, name: &str) -> usize {
-    let st = &g.sim.st;
-    (0..st.T_max).find(|&t| st.town_active[t] && st.town_name[t] == name).unwrap_or_else(|| panic!("a town called {name}"))
+/// The town the cases of this stage are played in: the biggest in 1790. (They
+/// were written to Melbourne on the old island; since the game's rules took the
+/// new land, 19 November 2026, island 7's towns have other names, and the
+/// biggest town is the one with the most squares and methods to try.)
+fn the_town(g: &Game) -> usize {
+    biggest_towns(g)[0]
 }
 
 /// The allowed works of highest expected return on a square, as the tool
@@ -698,15 +700,15 @@ fn at_1790() -> Game {
 
 #[test]
 fn a_works_built_by_hand_at_a_turn_stands_and_its_cost_is_booked() {
-    // (a) at the turn into 1790, on a farm square of Melbourne's district
+    // (a) at the turn into 1790, on a farm square of the biggest town's district
     let mut g = at_1790();
-    let town = town_called(&g, "Melbourne");
+    let town = the_town(&g);
     let (cell, method, cost, roi) = farm_square(&g, town);
     let options = edits::works_offered(&g.sim, cell).unwrap();
     assert_eq!(options.len(), g.sim.content.M, "every method is listed");
     let allowed = options.iter().filter(|o| o.allowed.is_ok()).count();
     let known = options.iter().filter(|o| o.sums.is_ok()).count();
-    eprintln!("square {cell}: {} methods, {known} known in Melbourne, {allowed} allowed; the best {method}, {cost:.0}, {:.0}% a year", options.len(), 100.0 * roi);
+    eprintln!("square {cell}: {} methods, {known} known in the town, {allowed} allowed; the best {method}, {cost:.0}, {:.0}% a year", options.len(), 100.0 * roi);
     for o in options.iter().filter(|o| o.sums.is_ok()) {
         let said = match (&o.sums, &o.allowed) {
             (Ok(s), Ok(())) => format!("K {:.1}, cost {:.0}, return {:.0}%", s.K, s.capital_cost, 100.0 * s.expected_return),
@@ -753,7 +755,7 @@ fn a_works_built_by_hand_at_a_turn_stands_and_its_cost_is_booked() {
 fn a_works_ordered_by_hand_in_mid_year_waits_for_the_turn() {
     // (b) the same given five months into 1790
     let mut g = at_1790();
-    let town = town_called(&g, "Melbourne");
+    let town = the_town(&g);
     let (cell, method, _, _) = farm_square(&g, town);
     for _ in 0..5 {
         g.month().unwrap();
@@ -858,9 +860,9 @@ fn a_works_by_hand_refused_leaves_no_trace() {
     let mut g = at_1790();
     let st = &g.sim.st;
     let C = &g.sim.content;
-    let town = town_called(&g, "Melbourne");
+    let town = the_town(&g);
     let (cell, method, _, _) = farm_square(&g, town);
-    let unknown = (0..C.M).find(|&m| !(st.know[(town, m)] > 0.02)).map(|m| C.method_name[m].clone()).expect("a method Melbourne does not know");
+    let unknown = (0..C.M).find(|&m| !(st.know[(town, m)] > 0.02)).map(|m| C.method_name[m].clone()).expect("a method the town does not know");
     let sea = (0..st.N).find(|&c| !st.world.land[c]).unwrap();
     let built = (0..st.N).find(|&c| st.world.land[c] && st.catch[c] >= 0 && st.cell_K_share[c] >= 0.9).expect("a built-up square");
     let closed = (0..st.F_count).find(|&f| !st.f_alive[f]).expect("a works closed");
@@ -881,7 +883,7 @@ fn a_works_by_hand_refused_leaves_no_trace() {
     ];
     match no_room {
         Some((c, m)) => refused.push(Edit::BuildWorks { method: m, cell: c }),
-        None => eprintln!("(no square of Melbourne's district is too small for a works it knows)"),
+        None => eprintln!("(no square of the town's district is too small for a works it knows)"),
     }
     for at in ["the turn", "March"] {
         if at == "March" {
@@ -941,7 +943,7 @@ fn a_familys_order_with_an_edit_waiting_is_tried_as_before() {
     // (f) five months into 1790, a works ordered by hand waits; a family's
     // order is then tried on a copy of the island that passes it over
     let mut g = at_1790();
-    let town = town_called(&g, "Melbourne");
+    let town = the_town(&g);
     let (cell, method, _, _) = farm_square(&g, town);
     for _ in 0..5 {
         g.month().unwrap();

@@ -182,11 +182,19 @@ fn a_decade_keeps_a_handful() {
     // what a history keeps: the inventions, the first railway, the dated slumps
     assert!(r.events.iter().any(|e| e.kept == Some(true) && e.kind == "discovery"));
     assert!(r.events.iter().any(|e| e.kept == Some(true) && e.title.starts_with("The first railway opens")));
-    assert!(r.events.iter().any(|e| e.kept == Some(true) && e.kind == "verdict"));
+    // The dated slump is played with the merchants' crumb off (docs/rules/prices.md, "A crumb is
+    // no glut"): it and the new land (docs/rules/land.md, "The switch") came after the case, and
+    // on the new land with the crumb island 7 keeps no verdict by 1900, where either alone keeps one
+    let mut P = game(6, 1900);
+    P.prices.crumb = 0.0;
+    let r_slump = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
+    assert!(r_slump.events.iter().any(|e| e.kept == Some(true) && e.kind == "verdict"));
     // an alarm that a verdict has since dated is never kept beside it
-    for v in r.events.iter().filter(|e| e.kind == "verdict") {
-        let span = v.span.unwrap();
-        assert!(r.events.iter().filter(|e| e.kind == "alarm" && e.year >= span[0].floor() && e.year <= v.year).all(|e| e.kept == Some(false)), "{}", v.title);
+    for run in [r, &r_slump] {
+        for v in run.events.iter().filter(|e| e.kind == "verdict") {
+            let span = v.span.unwrap();
+            assert!(run.events.iter().filter(|e| e.kind == "alarm" && e.year >= span[0].floor() && e.year <= v.year).all(|e| e.kept == Some(false)), "{}", v.title);
+        }
     }
     // the mark is a harder test than the weight: of the items at 0.6 or more
     // (themselves far fewer than the port's, whose feed in this game was over
@@ -803,6 +811,10 @@ fn towns_and_districts_have_stories() {
     // inventions are sought every year from 1750, and each draw of the dice moves
     // every draw after it
     P.tree.stage = 1;
+    // and on the old island: since the game's rules took the new land
+    // (docs/rules/land.md, "The switch") seed 3 is another island, so this half is
+    // played with the land off (seed 7's half above is played on the new land)
+    P.land = Default::default();
     // and with the merchants' crumb off (docs/rules/prices.md, "A crumb is no glut"),
     // which came after it and moves the island's history from its first month
     P.prices.crumb = 0.0;

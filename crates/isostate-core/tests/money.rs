@@ -151,7 +151,9 @@ fn the_issue_is_never_below_nothing() {
     // "The price of land"), and the works' two mends (docs/rules/works.md, parts
     // G and H), which give it other histories again, and the production tree,
     // docs/rules/tree.md, under which the port's count no longer takes the money
-    // below nothing by 1846.)
+    // below nothing by 1846. The case is the old island's: since the game's
+    // rules took the new land, docs/rules/land.md, "The switch", island 7 is
+    // another island, so it is played with the land off.)
     fn extreme(true_total: bool) -> Params {
         let mut P = params(7, true_total, 6);
         P.machines.quality_b = 2.0;
@@ -163,6 +165,7 @@ fn the_issue_is_never_below_nothing() {
         P.works.spread_first = false;
         P.works.keep_order = false;
         P.tree = Default::default();
+        P.land = Default::default();
         P.end_year = Some(1846);
         P
     }

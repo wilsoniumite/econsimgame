@@ -48,7 +48,13 @@ fn paid_roads_conserve_money_and_pay_their_way() {
 
 #[test]
 fn switched_off_nothing_is_kept() {
-    let off = run(false);
+    // with the crossings off too: on the new land, the game's since 19 November 2026
+    // (docs/rules/land.md, "The switch"), the parishes' bridges of the crossings
+    // (docs/rules/crossings.md) are built by the roads' menders as road works, which
+    // is the crossings' doing and not this probe's
+    let mut P = params(false);
+    P.crossings.enabled = false;
+    let off = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     let st = &off.state;
     assert!(st.rd == roads::RoadState::default());
     assert!(st.projects.iter().all(|pr| pr.way != ways::ROAD));
