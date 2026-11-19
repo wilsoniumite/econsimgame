@@ -43,9 +43,9 @@
 //! into pieces of about `PIECE` bytes, each a run of whole things
 //! (`year::cut`), and each piece is a mesh of its own under a handle of its
 //! own (`How::Banked`). No more than `FRAME` bytes go in one frame: the budget
-//! of time, about six and a half milliseconds of the renderer's. The pieces of a mesh
-//! go one after another while the old year's
-//! mesh stays on screen whole; when the last piece has gone, the mesh's
+//! of time, about six and a half milliseconds of the renderer's. The pieces of
+//! a mesh go one after another while the old year's mesh stays on screen
+//! whole; when the last piece has gone, the mesh's
 //! entities take the new pieces all in the next frame (`feed`), and the old
 //! ones are let go of. So a kind of scenery changes from one year to the next
 //! in one frame, as it did, and never shows half of each. What lies flat and
@@ -58,9 +58,10 @@
 //! is only ever a mesh with nothing in it.)
 //!
 //! Pieces at no more than 13 MB a frame take longer to go than whole meshes
-//! did with no window, at thirty frames a second (about a second a year, where
-//! it was half), so the next year's build may begin while a year is still
-//! going out (`year::rebuild_year`), and the island keeps up with the clock.
+//! did with no window, at thirty frames a second (a year in about one and a
+//! half seconds, where it was half a second), so the next year's build may
+//! begin while a year is still going out (`year::rebuild_year`), and the
+//! island keeps up with the clock.
 
 use std::collections::{HashMap, VecDeque};
 
