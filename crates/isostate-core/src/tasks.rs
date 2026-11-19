@@ -76,6 +76,7 @@ pub const TASKS_TOML: &str = include_str!("../../../data/tasks.toml");
 pub const K: usize = 5;
 pub const CLASSES: [&str; K] = ["haul", "tend", "clerk", "judge", "presence"];
 pub const HAUL: usize = 0;
+pub const TEND: usize = 1;
 pub const PRESENCE: usize = 4;
 
 /// The land's sectors as the port's content names them: a use may name one
@@ -596,6 +597,10 @@ pub struct TasksState {
     /// that was delivered.
     pub land_plant: Vec<Vec<Vec<f64>>>,
     pub land_fill: Vec<Vec<f64>>,
+    /// By town and land sector: how well the machines' run goods were filled
+    /// last month (1 where they have none), which the month's hands are hired
+    /// on ("A machine short of its run good").
+    pub land_run_fill: Vec<Vec<f64>>,
     /// This month's work (worker-months a month, by hand or by machine) by
     /// town and sector (`t * NS + s`), for the year's sums.
     pub land_work: Vec<f64>,
@@ -1028,9 +1033,24 @@ pub struct Mix {
     pub plant: Vec<(usize, f64)>,
     /// The part of an hour's work the machines do.
     pub machine_work: f64,
+    /// The fill of the machines' run goods the hands were hired for (last
+    /// month's), whose shortfall `hands` already counts as work by hand (1
+    /// outside the month's hiring).
+    pub planned: f64,
 }
 
 impl Mix {
+    /// The share of the work hired that is done when the machines' run goods
+    /// are filled `fr` (`Running::output`, for the land): the machines stand
+    /// idle in the measure their run goods are short and the hands do their
+    /// part, so the work hired is all done where the fill is no worse than the
+    /// one the hands were hired for, and what those hands can do where it is
+    /// worse.
+    pub fn done(&self, fr: f64) -> f64 {
+        let now = self.hands + self.machine_work * (self.planned - fr);
+        if now > 0.0 { (self.hands / now).min(1.0) } else { 1.0 }
+    }
+
     /// The cost of an hour's work done the cheapest way at wage `w`: the
     /// hands' and the minders' pay, and the machine units' cost.
     pub fn cost_of_work(&self, w: f64) -> f64 {
@@ -1070,7 +1090,7 @@ fn mix_with(st: &State, C: &Content, P: &Params, t: usize, s: usize, auto: &[f64
             *plant.entry(g).or_default() += n * v;
         }
     }
-    Some(Mix { hands, cost, run: run.into_iter().collect(), plant: plant.into_iter().collect(), machine_work })
+    Some(Mix { hands, cost, run: run.into_iter().collect(), plant: plant.into_iter().collect(), machine_work, planned: 1.0 })
 }
 
 /// The cost of an hour of sector `s`'s work in town `t` at wage `w` and
@@ -1146,7 +1166,16 @@ pub fn land_month(st: &mut State, C: &Content, P: &Params, price: &Mat, ex: &[us
                     aim[t * NS + s] = Some(m.plant);
                     any = true;
                 }
-                mix[t * NS + s] = mix_with(st, C, P, t, s, &held, &|g| price[(t, g)]);
+                // the hands are hired for last month's fill of the machines' run
+                // goods: the part of the machines' work it left idle is done by
+                // hand, at the labour it took before them ("A machine short of
+                // its run good", as in the works)
+                let planned = st.tasks.land_run_fill.get(t).and_then(|r| r.get(s)).copied().unwrap_or(1.0);
+                mix[t * NS + s] = mix_with(st, C, P, t, s, &held, &|g| price[(t, g)]).map(|mut m| {
+                    m.planned = planned;
+                    m.hands += m.machine_work * (1.0 - planned);
+                    m
+                });
             }
         }
     }
@@ -1493,6 +1522,9 @@ fn fit_land(st: &mut State, C: &Content) {
     }
     if s.land_held.len() != T {
         s.land_held = vec![vec![[0.0; K]; NS]; T];
+    }
+    if s.land_run_fill.len() != T {
+        s.land_run_fill = vec![vec![1.0; NS]; T];
     }
 }
 
@@ -1857,6 +1889,14 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             for &y in &marks {
                 let v = at(y).filter(|t| s < t.land_work.len()).map_or(f64::NAN, |t| ratio(t.land_held[s][HAUL], t.land_work[s][HAUL]));
                 out.push((format!("auto_haul_{name}_{y}"), Kind::Share, v));
+            }
+        }
+        // the combine: the farms' and pastures' tending done by the machines in place
+        for name in ["farm", "pasture"] {
+            let Some(s) = C.sector_name.iter().position(|n| n == name) else { continue };
+            for &y in &marks {
+                let v = at(y).filter(|t| s < t.land_work.len()).map_or(f64::NAN, |t| ratio(t.land_held[s][TEND], t.land_work[s][TEND]));
+                out.push((format!("auto_tend_{name}_{y}"), Kind::Share, v));
             }
         }
         let books = |y: i64| st.acct.years.iter().find(|a| a.year == y);

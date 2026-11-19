@@ -384,6 +384,10 @@ pub struct State {
     /// what it makes with no machine), one column per use (`machines::uses`);
     /// -1 in a town not yet founded.
     pub machine_stock: Mat,
+    /// The ramp on the ceiling of the land machines' quality (`machines.ramp`,
+    /// a stand-in): what it adds to `machines.quality_cap` in the year now
+    /// running, set at each year's turn from 1901. Nothing while the ramp is off.
+    pub machine_cap_lift: f64,
 
     // ---------------- harvest (not in the Python; all empty while `harvest.enabled` is off)
     /// (NS, N): what each sector's land in each cell yields in the year now

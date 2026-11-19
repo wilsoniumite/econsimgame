@@ -12,6 +12,7 @@ Last gone through: the afternoon of 19 November 2026, after the first step back 
 - **What is mended at once:** anything that breaks the build or the tests on `main`, unbalances the books, makes a run fail, or stops the game being played. Every other fault is written down in one line and waits for a later round of mending. The landing tool files each piece's faults in [backlog/for-the-bugfix-round.md](backlog/for-the-bugfix-round.md) as it lands.
 - **The big features first.** The features that may be decisive come first, the run to 2050 above all (The order of work, below). Whether a piece works is judged by measuring the island, not by reading its code, and each builder reports the numbers that show it.
 - **A step back, every now and then:** a review of the design, the architecture, speed, the goals and how we work, between pieces. The first was taken on 19 November (below).
+- **The simple core** (her note of 19 November, at the foot): which rules the island still needs, found by turning each off. `isostate-core ablate` is its tool and [core.md](core.md) the page it writes. It is run again after the cures of the decline land, after the new land is the default, and at each step back. A rule found idle there is then switched off under the game's rules and kept, with a line in its page saying since when and why.
 - **The managing session** holds the plan and the decisions and stays out of the details. The earlier pages call it the director.
 
 ## How it is kept
@@ -412,3 +413,9 @@ It is the default since the evening of 19 November (`night/g-new-land-switch`; [
 > Can I see the backlog somewhere?
 
 They are "The atlas", under the sandbox in the order of work: four plates (the making, the moving, the ideas, the ground), ranked there with note 13, which first asked for flowcharts. The last line was answered by pointing to this file.
+
+**19 November 2026, on the simple core.**
+
+> When we were doing the modelling for the calibration for the paper, we would every so often go through the model and cut things. We'd do that because things we thought we added to fix some behaviour may be fixed by some later addition and knowing what the simple core of the model is is very important. I'd like if we can do something similar here, but rather than cutting things maybe just turning them off. I don't want you to worry about it too much, this doesn't need to be as simple as the papers model, but it might be good.
+
+It is "The simple core", beside the step backs at the top: `isostate-core ablate` turns each rule off in turn and writes [core.md](core.md).

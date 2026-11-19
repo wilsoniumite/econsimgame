@@ -938,14 +938,34 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         (got, plant)
     });
+    // (docs/rules/tasks.md, "A machine short of its run good"): the hands do the
+    // idle machines' part at the labour it took before them, so the work done is
+    // all that was hired where the fill is no worse than the one the hands were
+    // hired for, and what those hands can do where it is worse; and the fill is
+    // kept for next month's hiring
     if let (Some(l), Some(_)) = (&lt, &lbuy) {
+        let mut run_fill: Vec<(usize, usize, f64)> = Vec::new();
+        for t in 0..T {
+            for s in 0..NS {
+                if let Some(m) = l.mix_of(t, s, NS) {
+                    run_fill.push((t, s, m.run.iter().map(|&(g, _)| fill[(t, g)]).fold(1.0, f64::min)));
+                }
+            }
+        }
         for u in 0..NE {
             if let Some(m) = l.mix_of(et[u], sec[u], NS) {
                 let fr = m.run.iter().map(|&(g, _)| fill[(et[u], g)]).fold(1.0, f64::min);
-                if fr < 1.0 {
-                    Y[u] *= (1.0 - m.machine_work * (1.0 - fr)).powf(1.0 - alpha[u]);
+                let done = m.done(fr);
+                if done < 1.0 {
+                    Y[u] *= done.powf(1.0 - alpha[u]);
                 }
             }
+        }
+        for row in st.tasks.land_run_fill.iter_mut() {
+            row.iter_mut().for_each(|v| *v = 1.0);
+        }
+        for (t, s, fr) in run_fill {
+            st.tasks.land_run_fill[t][s] = fr;
         }
     }
 

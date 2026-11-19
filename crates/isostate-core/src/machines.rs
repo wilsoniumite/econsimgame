@@ -70,6 +70,12 @@ pub struct MachineParams {
     /// A learned method starts from this share of the skill of an earlier
     /// learned method of making the same good (0 = from its own A0 only).
     pub inherit: f64,
+    /// A STAND-IN (docs/rules/machines.md, "The ceiling's ramp"): from 1901
+    /// the ceiling on quality rises by this much a year over `quality_cap`, to
+    /// `ramp_top`, standing for the generations of farm and pit machinery the
+    /// content does not have. 0 is no ramp; it never acts before 1901.
+    pub ramp: f64,
+    pub ramp_top: f64,
 }
 
 impl Default for MachineParams {
@@ -87,14 +93,33 @@ impl Default for MachineParams {
             quarry_reach: 1.0,
             quarry_input: 0.001,
             inherit: 0.5,
+            ramp: 0.0,
+            ramp_top: 9.0,
         }
     }
 }
 
+/// The first year the ceiling's ramp acts in: the played century stands as it was.
+pub const RAMP_FROM: i64 = 1901;
+
+/// The ceiling's ramp at the turn into `next` (`sim::end_year`): what it adds
+/// to `quality_cap` in that year, `ramp` a year from `RAMP_FROM` (so `ramp`
+/// in 1901 itself), up to `ramp_top` in all. Nothing while the ramp or the
+/// machines are off, and nothing before 1901.
+pub fn close_year(st: &mut State, P: &Params, next: i64) {
+    let M = &P.machines;
+    if !M.enabled || M.ramp <= 0.0 {
+        return;
+    }
+    let years = (next - RAMP_FROM + 1).max(0) as f64;
+    st.machine_cap_lift = (M.ramp * years).min((M.ramp_top - M.quality_cap).max(0.0));
+}
+
 impl MachineParams {
-    /// The game's machines.
+    /// The game's machines, with the ceiling's ramp (a stand-in): a tenth a
+    /// year from 1901, to 9 in 1950.
     pub fn game() -> MachineParams {
-        MachineParams { enabled: true, ..MachineParams::default() }
+        MachineParams { enabled: true, ramp: 0.1, ..MachineParams::default() }
     }
 }
 
@@ -128,7 +153,9 @@ pub fn quality(st: &State, C: &Content, P: &Params) -> f64 {
     }
     let Some(&steel) = C.good_index.get("steel") else { return 1.0 };
     let Q: f64 = (0..C.M).filter(|&m| C.method_out[m] == steel).map(|m| st.method_Q[m]).sum();
-    (1.0 + Q / M.quality_Q0.max(1e-9)).powf(M.quality_b).min(crate::longrun::quality_cap(P).max(1.0))
+    // the ceiling, and the stand-in's ramp over it from 1901 (`close_year`)
+    let cap = crate::longrun::quality_cap(P) + if M.ramp > 0.0 { st.machine_cap_lift } else { 0.0 };
+    (1.0 + Q / M.quality_Q0.max(1e-9)).powf(M.quality_b).min(cap.max(1.0))
 }
 
 /// One way a land sector can use machines in one town, at given prices.
@@ -175,6 +202,10 @@ pub const SLOTS: usize = 3;
 /// grain it takes (docs/rules/machines.md, "Nitrogen and breeding").
 pub const NITROGEN: (&str, f64, f64) = ("nitrogen_works", 0.6, 0.03);
 
+/// What the farms that keep nitrogen buy: the nitrogen works' own good (soap
+/// and chemicals stand for breeding's sprays).
+pub const NITROGEN_GOOD: &str = "fertiliser";
+
 /// Breeding and sprays: found as the invention `breeding` is known; what it
 /// adds to the farm's and the pasture's output, and the chemicals a unit.
 pub const BREEDING: (&str, f64, f64, f64) = ("breeding", 0.5, 0.4, 0.02);
@@ -214,7 +245,7 @@ pub fn uses(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price:
     };
     // nitrogen and breeding: only where the content has what they are found by
     // (the tree's stage 6), so that without it the table is as it was
-    let found = |what: &str| C.tech_name.iter().position(|n| n == what).zip(C.good_index.get("chemicals").copied());
+    let found = |what: &str| C.tech_name.iter().position(|n| n == what).zip(C.good_index.get(if what == NITROGEN.0 { NITROGEN_GOOD } else { "chemicals" }).copied());
     // one kind of sector or another, so that no two uses share a slot
     if C.sector_mine[sec] {
         add("pump", 0, gm, P.pump_boost * q, P.pump_input, kp, M.adopt_pumps, false);

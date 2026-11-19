@@ -15,17 +15,16 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: on the batch night/g-batch-new-land-a, all four in both eras: the
-# new land (docs/rules/land.md, "The switch") became the game's default, so
-# seed 7 is the new land's island 7, and it is played with the merchants'
-# crumb and the machines idling short of their run good, which landed just
-# before (docs/rules/prices.md, docs/rules/tasks.md); ways-2-water is the
-# viewer's alone and moves none
-1750-1900 economy  0x6fc8102954909b73
+# Taken: merge of main (the new land the game's default) into the land's
+# century: 1750-1900 economy and run.bin by the new good fertiliser's columns,
+# on main's new land; 1901-2050 all four by the combine, the land's machines
+# idling as the works' do, the nitrogen works making fertiliser, breeding's
+# threshold and the ceiling's ramp
+1750-1900 economy  0x7a0154d970baabc5
 1750-1900 books    0x6eb41e73d1a3bad0
 1750-1900 news     0xdd7f28bb38e5f1c9
-1750-1900 run.bin  0x0a48fc9ffc8aaaef
-1901-2050 economy  0x6ee3c8927aaf4fc6
-1901-2050 books    0xcd264912df91b9c9
-1901-2050 news     0xccd01a15c6de0fbc
-1901-2050 run.bin  0xce62f15c135a9021
+1750-1900 run.bin  0xc0623d56d855884f
+1901-2050 economy  0x2abb686adffdc469
+1901-2050 books    0x9503862b14aebc15
+1901-2050 news     0x75f3f4a2de614ea9
+1901-2050 run.bin  0xd01eb31e49d3d40d
