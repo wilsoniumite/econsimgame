@@ -18,10 +18,12 @@
 //! (`Budget::frame`). No mesh goes in a frame that has a year's own work in
 //! it (`HandOver::hold`).
 //!
-//! No build is begun while the queue holds anything (`rebuild_year`), and the
+//! No build is queued while the queue holds anything (`rebuild_year`), and the
 //! year counts as built when the queue has emptied: a year is shown whole or
 //! not at all, and when years come faster than they can be shown some are
-//! skipped and none is left half sent.
+//! skipped and none is left half sent. A year that arrives while the last is
+//! going out waits for it to finish; it is not dropped, since at the fastest
+//! speed every year would be dropped by the next and none would ever arrive.
 //!
 //! Where the run is there to take stills (`--view`, `--shots`), the whole
 //! queue goes in the frame it was filled in, as it always did: nobody is
@@ -41,8 +43,8 @@
 //! into pieces of about `PIECE` bytes, each a run of whole things
 //! (`year::cut`), and each piece is a mesh of its own under a handle of its
 //! own (`How::Banked`). No more than `FRAME` bytes go in one frame: the budget
-//! of time, at the slowest rate measured, about ten milliseconds of the
-//! renderer's. The pieces of a mesh go one after another while the old year's
+//! of time, about six and a half milliseconds of the renderer's. The pieces of a mesh
+//! go one after another while the old year's
 //! mesh stays on screen whole; when the last piece has gone, the mesh's
 //! entities take the new pieces all in the next frame (`feed`), and the old
 //! ones are let go of. So a kind of scenery changes from one year to the next
@@ -52,7 +54,13 @@
 //! over the other hangs on the order their meshes were made in.
 //!
 //! A mesh that is the same as the one on screen, to the bit, is not sent
-//! again (`HandOver::sums`).
+//! again (`HandOver::sums`). (The trees grow every year, so in practice that
+//! is only ever a mesh with nothing in it.)
+//!
+//! Pieces at no more than 13 MB a frame take longer to go than whole meshes
+//! did with no window, at thirty frames a second (about a second a year, where
+//! it was half), so the next year's build may begin while a year is still
+//! going out (`year::rebuild_year`), and the island keeps up with the clock.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -63,12 +71,13 @@ use crate::Timeline;
 /// About how large a piece of a mesh is, in bytes on the card: a piece ends
 /// at the first whole thing past this.
 pub const PIECE: usize = 6_000_000;
-/// The most that goes in one frame, in bytes on the card: about ten
-/// milliseconds of the renderer's packing (0.5 ms a megabyte as measured with
-/// the pieces, 0.67 at the slowest measured whole, on a busy machine). A piece
-/// larger than this on its own (a single thing of more than `PIECE` bytes)
-/// still goes, alone.
-pub const FRAME: usize = 20_000_000;
+/// The most that goes in one frame, in bytes on the card: the budget of time,
+/// about six and a half milliseconds of the renderer's packing at the 0.5 ms a
+/// megabyte measured with the pieces (nine at the 0.67 measured for whole
+/// meshes on a busy machine), so that with a frame's own five or so it keeps
+/// to sixty frames a second: in practice two pieces. A piece larger than this on
+/// its own (a single thing of more than `PIECE` bytes) still goes, alone.
+pub const FRAME: usize = 13_000_000;
 
 /// Where the rate begins, in bytes a second: a mesh of 47 MB then goes every
 /// ninth frame at 120 Hz and a year is on screen in three quarters of a second.
@@ -219,10 +228,11 @@ impl Budget {
                     return 0;
                 }
                 let (mut go, mut this_frame) = (0, 0);
+                let budget = FRAME;
                 for &size in waiting {
                     // no more than a frame's budget of time goes in one frame, whatever the rate
                     // allows: one piece at least, if it is let go at all
-                    if go > 0 && this_frame + size > FRAME {
+                    if go > 0 && this_frame + size > budget {
                         break;
                     }
                     this_frame += size;
@@ -621,14 +631,14 @@ mod tests {
     #[test]
     fn no_more_than_a_frames_budget_goes_in_one_frame() {
         // a year in pieces of 6 MB, at the highest rate and thirty frames a second (40 MB a frame
-        // by the rate): a frame takes three pieces at most, 18 MB, within the frame's budget
+        // by the rate): a frame takes two pieces at most, 12 MB, within the frame's budget
         let year: Vec<usize> = vec![6 * MB; 80];
         let mut b = Budget::new(Pace::Budget);
         b.rate = RATE_CEILING;
         let frames = run(&mut b, year.clone(), 30.0, 120);
         assert!(frames.iter().all(|f| f.iter().sum::<usize>() <= FRAME), "{frames:?}");
         assert_eq!(frames.iter().flatten().count(), year.len());
-        assert!(frames.iter().filter(|f| f.len() == 3).count() > 20, "the budget is spent, not left over: {frames:?}");
+        assert!(frames.iter().filter(|f| f.len() == 2).count() > 20, "the budget is spent, not left over: {frames:?}");
         // a piece larger than the budget still goes, alone
         let mut b = Budget::new(Pace::Budget);
         let frames = run(&mut b, vec![MB, 30 * MB, MB], 30.0, 20);

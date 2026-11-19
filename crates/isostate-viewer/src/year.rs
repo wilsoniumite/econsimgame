@@ -728,8 +728,9 @@ pub fn rebuild_year(
         tl.built = None;
     }
     // a finished build is queued for the renderer, which is handed it a mesh at a time
-    // (handover.rs): the year is on screen, and `tl.built` says so, when the last has gone
-    if let Some((run, sc)) = builds.task.as_mut().and_then(|(_, run, t)| check_ready(t).map(|sc| (*run, sc))) {
+    // (handover.rs): the year is on screen, and `tl.built` says so, when the last has gone.
+    // A build that finishes while the year before is still going out waits for it to be gone
+    if let Some((run, sc)) = builds.task.as_mut().filter(|_| hand.is_empty()).and_then(|(_, run, t)| check_ready(t).map(|sc| (*run, sc))) {
         builds.task = None;
         let began = std::time::Instant::now();
         shown.lod = Some(sc.lod);
@@ -809,11 +810,15 @@ pub fn rebuild_year(
         }
     }
     // the year on screen, if it is neither shown nor being built; a build for another year
-    // (the clock moved on) finishes first and is shown on the way. And none is begun while
-    // the last is still going to the renderer: a year is shown whole or not at all, so when
-    // the years come faster than they can be shown some are skipped and none is left half sent
-    // (nor while the year that came last is on its way into the run: `game::pump`)
-    if tl.built != Some(k) && builds.task.is_none() && hand.is_empty() && data.arriving.is_none() {
+    // (the clock moved on) finishes first and is shown on the way. One build at a time, and one
+    // year going to the renderer: a build may begin while the year before is still going out,
+    // for another year than that one, and waits to go out until it has gone (above). A year is
+    // shown whole or not at all, so when the years come faster than they can be shown some are
+    // skipped and none is left half sent. (Before the hand-over went in pieces a build waited for
+    // the queue to empty; the pieces take longer to go at thirty frames a second, and building
+    // the next year meanwhile keeps the island up with the clock.) None is begun while the year
+    // that came last is on its way into the run (`game::pump`).
+    if tl.built != Some(k) && builds.task.is_none() && hand.year() != Some(k) && data.arriving.is_none() {
         let (r, g, slots, cen, lk) = (data.r.clone(), data.g.clone(), data.slots.clone(), data.cen.clone(), look.0.clone());
         let pieces = hand.in_pieces();
         let task = AsyncComputeTaskPool::get().spawn(async move { build_scenery(MESHES, &r, &g, &slots, &cen, k, &lk, lod).cut_up(MESHES, pieces) });
