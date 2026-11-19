@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use isostate_core::params::{default_params, game_params};
 use isostate_core::{ablate, facts, sweep};
 use serde_json::Value;
 
@@ -79,8 +80,13 @@ fn an_arm_is_the_sweep_with_the_same_set() {
     // the page keeps no path of the machine it was made on
     assert!(md.contains("This one was made by `isostate-core ablate --seeds 1,2 --families 6 --end-year 1800 --quiet --out DIR --only works.keep_order --page FILE`."), "{md}");
     assert!(!md.contains(ad.to_str().unwrap()) && !md.contains(&ad.to_str().unwrap().replace('\\', "/")));
-    for part in ["## Every rule, by kind", "## The idle rules, and the second pass", "## What was left out, and why", "`tree.stage`", "`land.enabled`"] {
+    for part in ["## Every rule, by kind", "## The idle rules, and the second pass", "## What was left out, and why"] {
         assert!(md.contains(part), "the page has no {part}");
+    }
+    // every name left out is named on the page, whichever the rules leave out today
+    let (_, left_out) = ablate::asked(&game_params(), &default_params());
+    for l in &left_out {
+        assert!(md.contains(&format!("`{}`", l.name)), "the page does not name {}, which is left out", l.name);
     }
     assert!(page.with_file_name("core.svg").exists() && std::fs::read_to_string(ad.join("core.svg")).unwrap().starts_with("<svg"));
     let doc: Value = serde_json::from_str(&std::fs::read_to_string(ad.join("ablate.json")).unwrap()).unwrap();
@@ -104,8 +110,12 @@ fn what_is_wrong_is_refused_before_anything_runs() {
         args.extend(strings(extra));
         ablate::command(&args, false).err().unwrap_or_default()
     };
-    let e = try_(&["--only", "land.enabled"]);
-    assert!(e.contains("left out") && e.contains("off under the game's rules already"), "{e}");
+    // a name left out is refused with why, whichever the rules leave out today
+    let (_, left_out) = ablate::asked(&game_params(), &default_params());
+    if let Some(l) = left_out.first() {
+        let e = try_(&["--only", &l.name]);
+        assert!(e.contains("left out") && e.contains(&l.why), "{e}");
+    }
     let e = try_(&["--only", "no_such.rule"]);
     assert!(e.contains("not a rule switched on under the game's rules"), "{e}");
     let e = try_(&["--rules", "port"]);

@@ -1512,12 +1512,20 @@ pub fn again(o: &Options, print: bool) -> Result<(), String> {
         failed += r.failed.len();
     }
     let found = if played.only.is_some() { asked(&game_params(), &default_params()).0.len() } else { all.len() };
+    // the rules switched on since the table was played: named, and no longer listed as left out
+    let since: Vec<String> = {
+        let played_names: Vec<&str> = rules.iter().filter_map(|r| r["label"].as_str()).collect();
+        let now = asked(&game_params(), &default_params()).0;
+        if played.only.is_some() { Vec::new() } else { now.into_iter().filter(|n| !played_names.contains(&n.as_str())).collect() }
+    };
+    let mut left_out: Vec<LeftOut> = doc["left_out"].as_array().into_iter().flatten().map(|l| LeftOut { name: l["name"].as_str().unwrap_or("").to_string(), why: l["why"].as_str().unwrap_or("").to_string() }).collect();
+    left_out.retain(|l| !since.contains(&l.name));
     let table = Table {
         control,
         readings: all,
         second,
         second_readings,
-        left_out: doc["left_out"].as_array().into_iter().flatten().map(|l| LeftOut { name: l["name"].as_str().unwrap_or("").to_string(), why: l["why"].as_str().unwrap_or("").to_string() }).collect(),
+        left_out,
         found,
         seeds: played.seeds.clone(),
         families: played.families,
@@ -1530,11 +1538,7 @@ pub fn again(o: &Options, print: bool) -> Result<(), String> {
         command: played.command.clone(),
         shown: shown(&played_args),
         again: Some((crate::record::today(), git_describe())),
-        since: {
-            let played_names: Vec<&str> = rules.iter().filter_map(|r| r["label"].as_str()).collect();
-            let now = asked(&game_params(), &default_params()).0;
-            if played.only.is_some() { Vec::new() } else { now.into_iter().filter(|n| !played_names.contains(&n.as_str())).collect() }
-        },
+        since,
     };
     let txt = text(&table);
     let md = page(&table, doc["date"].as_str().unwrap_or("an unknown day"), doc["code"].as_str());
