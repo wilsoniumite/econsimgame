@@ -40,6 +40,7 @@ pub mod gauges;
 pub mod hands;
 pub mod harvest;
 pub mod inspect;
+pub mod lab;
 pub mod land;
 pub mod landcells;
 pub mod landform;
