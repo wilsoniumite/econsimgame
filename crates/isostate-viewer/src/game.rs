@@ -2017,7 +2017,7 @@ mod tests {
         assert_eq!(none, ["services"]);
         assert!(owners.iter().all(|&n| n <= 1), "a good under two trades: {owners:?}");
         // and the line a decision shows is the content's labels, in the content's order
-        let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None }).collect();
+        let all: Vec<crate::replay::Good> = (0..c.G).map(|g| crate::replay::Good { name: c.good_name[g].clone(), label: c.good_label[g].clone(), kind: None, weight: None, price: None }).collect();
         let fam = FamilyView { trade_goods: goods.clone(), ..default() };
         assert_eq!(goods_of_trade(&fam, &all, Group::CoalMining).as_deref(), Some("Iron ore \u{00b7} Coal \u{00b7} Charcoal \u{00b7} Town gas \u{00b7} Soap and chemicals"));
         // a recorded run, which does not say what each trade makes, shows no line

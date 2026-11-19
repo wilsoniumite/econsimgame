@@ -1709,7 +1709,7 @@ mod tests {
     }
 
     fn goods(kinds: &[Option<replay::GoodKind>]) -> Vec<replay::Good> {
-        kinds.iter().enumerate().map(|(i, &kind)| replay::Good { name: format!("g{i}"), label: format!("Good {i}"), kind }).collect()
+        kinds.iter().enumerate().map(|(i, &kind)| replay::Good { name: format!("g{i}"), label: format!("Good {i}"), kind, weight: None, price: None }).collect()
     }
 
     #[test]
