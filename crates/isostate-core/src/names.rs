@@ -91,6 +91,8 @@ pub fn firm_patterns(method_name: &str) -> &'static [&'static str] {
         // the content after 1900 (stage 6)
         "coal_power_station" => &["{T} Electric Light Co.", "{T} Electricity Works", "{S} Electric Supply Co."],
         "electrical_works" => &["{S} Electrical Co.", "{S} & {S2}, Electrical Engineers", "{T} Lamp Works"],
+        "oil_from_coal" => &["{T} Coal Oil Co.", "{S} Synthetic Oil Works", "{T} Hydrogenation Works"],
+        "nitrogen_works" => &["{T} Nitrogen Co.", "{S} Fertiliser Works", "{T} Ammonia Works"],
         _ => &["{S} & Co."],
     }
 }

@@ -92,7 +92,14 @@
 # Taken again on night/g-to2050-6a-power with main (the batch above) merged
 # in: the batch's four were this stage's base to the digit, and the four
 # below are this stage's own to the digit.
-economy  0x9839b2f80cf499f8
-books    0x4b7fb5d04cf3832c
-news     0x4c2849958e4ccf72
-run.bin  0xa8ab1b5637706a1a
+# Then on night/g-to2050-7a-land (19 November 2026): all four moved by the
+# land's twentieth century, laid with stage 6 of the overlay (docs/rules/
+# tree.md, "Oil, nitrogen and the land"): a good and two methods and an
+# invention more are sought from 1750, so every later draw of the discovery's
+# dice moves, and so another economy, other books, other news and another
+# run.bin. With the tree's ceiling at 1 the island is the stage before this one
+# to the digit (tests/power.rs, and a sweep: 0 of 888 facts differ).
+economy  0xdebd478051ee16be
+books    0x3cc8889c1caf36c4
+news     0x2427b8a15d4c901e
+run.bin  0x57f3dcbc5c19828d

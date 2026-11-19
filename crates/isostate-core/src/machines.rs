@@ -134,14 +134,21 @@ pub fn quality(st: &State, C: &Content, P: &Params) -> f64 {
 /// One way a land sector can use machines in one town, at given prices.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Use {
-    /// "pump", "wagonway", "farm machinery" or "quarry machinery".
+    /// "pump", "wagonway", "farm machinery", "quarry machinery", "nitrogen"
+    /// or "breeding".
     pub kind: &'static str,
-    /// Its column among the sector's uses in `State::machine_stock` (0 or 1).
+    /// Its column among the sector's uses in `State::machine_stock` (0 to 2).
     pub slot: usize,
-    /// The good bought: machinery or rails.
+    /// The good bought: machinery or rails for a machine, chemicals for an
+    /// improvement of the ground.
     pub good: usize,
     /// What the machine adds to the output of those who have it, as a share.
     pub boost: f64,
+    /// An improvement of the ground (nitrogen, breeding): its boost multiplies
+    /// the output the farm makes with its machines, `1 + boost` times, where a
+    /// machine's adds to the others' ("Nitrogen and breeding" in
+    /// docs/rules/machines.md).
+    pub improves: bool,
     /// Units of the good bought per unit of their own output by those who keep
     /// it up.
     pub input: f64,
@@ -161,7 +168,20 @@ pub struct Use {
 }
 
 /// At most this many machines per land sector.
-pub const SLOTS: usize = 2;
+pub const SLOTS: usize = 3;
+
+/// Nitrogen on the farms: found in a town as the nitrogen works is known
+/// there; what it adds to the farm's output, and the chemicals a unit of
+/// grain it takes (docs/rules/machines.md, "Nitrogen and breeding").
+pub const NITROGEN: (&str, f64, f64) = ("nitrogen_works", 0.6, 0.03);
+
+/// Breeding and sprays: found as the invention `breeding` is known; what it
+/// adds to the farm's and the pasture's output, and the chemicals a unit.
+pub const BREEDING: (&str, f64, f64, f64) = ("breeding", 0.5, 0.4, 0.02);
+
+/// The farm's columns among its uses: machinery, nitrogen, breeding.
+pub const FARM_NITROGEN_SLOT: usize = 1;
+pub const FARM_BREEDING_SLOT: usize = 2;
 
 impl Use {
     /// Share of the sector that keeps the machine up.
@@ -187,26 +207,40 @@ pub fn uses(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price:
     let (kp, kw, kf) = (k[(town, st.t_pump)], k[(town, st.t_wagon)], k[(town, st.t_fmach)]);
     let q = quality(st, C, P);
     let mut out: Vec<Use> = Vec::with_capacity(SLOTS);
-    let mut add = |kind: &'static str, slot: usize, good: usize, boost: f64, input: f64, know: f64, priced: bool| {
+    let mut add = |kind: &'static str, slot: usize, good: usize, boost: f64, input: f64, know: f64, priced: bool, improves: bool| {
         if know > 0.05 && boost > 0.0 {
-            out.push(Use { kind, slot, good, boost, input, know, gain: 0.0, cost: 0.0, share: 1.0, priced });
+            out.push(Use { kind, slot, good, boost, improves, input, know, gain: 0.0, cost: 0.0, share: 1.0, priced });
         }
     };
+    // nitrogen and breeding: only where the content has what they are found by
+    // (the tree's stage 6), so that without it the table is as it was
+    let found = |what: &str| C.tech_name.iter().position(|n| n == what).zip(C.good_index.get("chemicals").copied());
     // one kind of sector or another, so that no two uses share a slot
     if C.sector_mine[sec] {
-        add("pump", 0, gm, P.pump_boost * q, P.pump_input, kp, M.adopt_pumps);
-        add("wagonway", 1, gr, P.wagon_boost * q, P.wagon_input, kw, M.adopt_wagonways);
+        add("pump", 0, gm, P.pump_boost * q, P.pump_input, kp, M.adopt_pumps, false);
+        add("wagonway", 1, gr, P.wagon_boost * q, P.wagon_input, kw, M.adopt_wagonways, false);
     } else if name == "farm" {
-        add("farm machinery", 0, gm, P.farm_mach_boost * q, P.farm_mach_input, kf, true);
+        add("farm machinery", 0, gm, P.farm_mach_boost * q, P.farm_mach_input, kf, true, false);
+        if let Some((t, gc)) = found(NITROGEN.0) {
+            add("nitrogen", FARM_NITROGEN_SLOT, gc, NITROGEN.1, NITROGEN.2, k[(town, t)], true, true);
+        }
+        if let Some((t, gc)) = found(BREEDING.0) {
+            add("breeding", FARM_BREEDING_SLOT, gc, BREEDING.1, BREEDING.3, k[(town, t)], true, true);
+        }
+    } else if name == "pasture" {
+        if let Some((t, gc)) = found(BREEDING.0) {
+            add("breeding", 0, gc, BREEDING.2, BREEDING.3, k[(town, t)], true, true);
+        }
     } else if name == "quarry" || name == "claypit" {
         // the steam engine is what a quarry's cranes and a pit's pug mills run on
-        add("quarry machinery", 0, gm, M.quarry_reach * (q - 1.0), M.quarry_input, kp, true);
+        add("quarry machinery", 0, gm, M.quarry_reach * (q - 1.0), M.quarry_input, kp, true, false);
     }
-    // a pit or farm with every machine it knows: what each one is owed of its output
-    let all = 1.0 + out.iter().map(|u| u.boost).sum::<f64>();
+    // a pit or farm with every machine it knows: what each one is owed of its
+    // output; an improvement of the ground is owed what it multiplies
+    let all = 1.0 + out.iter().filter(|u| !u.improves).map(|u| u.boost).sum::<f64>();
     let p_out = price[(town, C.sector_good[sec])];
     for u in out.iter_mut().filter(|u| u.priced) {
-        u.gain = p_out * u.boost / all;
+        u.gain = if u.improves { p_out * u.boost / (1.0 + u.boost) } else { p_out * u.boost / all };
         u.cost = u.input * price[(town, u.good)];
         u.share = if u.cost > 0.0 { ((u.gain / u.cost - 1.0) / M.adopt_span.max(1e-9)).clamp(0.0, 1.0) } else { 1.0 };
     }
@@ -222,15 +256,37 @@ pub fn uses(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price:
 /// Returns what `sector_tfp` returns: (mult, machinery per unit, rails per unit,
 /// input cost per unit), each "per unit" being a unit of the whole sector's output.
 pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price: &Mat, mult: f64) -> (f64, f64, f64, f64) {
+    let (m, mach, rails, unit_cost, _) = sector_buys(st, C, P, sec, town, price, mult);
+    (m, mach, rails, unit_cost)
+}
+
+/// What the land's sector `sec` in `town` buys a unit of its output beside
+/// machinery and rails (the chemicals of nitrogen and breeding), good by
+/// good; empty where it buys nothing else (`econ::step_month` buys it with
+/// the machinery and rails).
+pub fn bought_more(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price: &Mat) -> Vec<(usize, f64)> {
+    sector_buys(st, C, P, sec, town, price, 1.0).4
+}
+
+/// `sector_tfp`, with what is bought of goods other than machinery and rails.
+fn sector_buys(st: &State, C: &Content, P: &Params, sec: usize, town: usize, price: &Mat, mult: f64) -> (f64, f64, f64, f64, Vec<(usize, f64)>) {
     let (gm, gr) = (C.gi("machinery"), C.gi("rails"));
     let us = uses(st, C, P, sec, town, price);
-    let mut boost = 0.0;
+    let improved = us.iter().any(|u| u.improves);
+    // the machines add to each other; an improvement of the ground multiplies
+    // (`lift`, and `lift_all` with every one of them it knows)
+    let (mut boost, mut lift, mut lift_all) = (0.0, 1.0, 1.0);
     for u in &us {
         // before the first month has been counted, and in a town not yet
         // founded (marked below zero): the machines they would keep
         let stock = if st.machine_stock.rows > 0 { st.machine_stock[(town, sec * SLOTS + u.slot)] } else { -1.0 };
         let standing = if stock >= 0.0 { stock } else { u.kept() };
-        boost += u.boost * standing;
+        if u.improves {
+            lift *= 1.0 + u.boost * standing;
+            lift_all *= 1.0 + u.boost;
+        } else {
+            boost += u.boost * standing;
+        }
     }
     // A farm that keeps its machines up buys for its own output, which is that
     // of a farm with every machine it knows (the `all` its gain was reckoned
@@ -242,18 +298,31 @@ pub fn sector_tfp(st: &State, C: &Content, P: &Params, sec: usize, town: usize, 
     // comes to `input` a unit for every farm that keeps them up, whether its
     // machines stand yet or not. A use the port charges in full is charged on
     // every unit, whatever the know-how.
-    let own = (1.0 + us.iter().map(|u| u.boost).sum::<f64>()) / (1.0 + boost);
+    let mut own = (1.0 + us.iter().filter(|u| !u.improves).map(|u| u.boost).sum::<f64>()) / (1.0 + boost);
+    if improved {
+        own *= lift_all / lift;
+    }
     let (mut mach, mut rails) = (0.0, 0.0);
+    let mut more: Vec<(usize, f64)> = Vec::new();
     for u in &us {
         let asked = if u.priced { u.input * u.kept() * own } else { u.input };
         if u.good == gm {
             mach += asked;
-        } else {
+        } else if u.good == gr {
             rails += asked;
+        } else {
+            match more.iter_mut().find(|m| m.0 == u.good) {
+                Some(m) => m.1 += asked,
+                None => more.push((u.good, asked)),
+            }
         }
     }
-    let unit_cost = mach * price[(town, gm)] + rails * price[(town, gr)];
-    (mult * (1.0 + boost), mach, rails, unit_cost)
+    let mut unit_cost = mach * price[(town, gm)] + rails * price[(town, gr)];
+    for &(g, x) in &more {
+        unit_cost += x * price[(town, g)];
+    }
+    let m = mult * (1.0 + boost);
+    (if improved { m * lift } else { m }, mach, rails, unit_cost, more)
 }
 
 /// The machines standing, moved a month on: in every town and land sector the

@@ -156,6 +156,9 @@ pub struct Use {
     pub discover: Vec<(usize, f64)>,
     /// Multiplies everything one machine takes.
     pub scale: f64,
+    /// The use this one takes the place of (`replaces`): where this one is
+    /// laid, the use named no longer reaches the places this one is used.
+    pub replaces: Option<String>,
 }
 
 /// The classes of task of a content (`Content::tasks`): empty in the port's.
@@ -236,11 +239,16 @@ struct RawUse {
     found_after: i64,
     discover: BTreeMap<String, f64>,
     scale: f64,
+    #[serde(default)]
+    replaces: Option<String>,
 }
 
 /// The table of `text` for content `C`: methods and sectors by name (a name the
 /// content lacks, as a method of a later stage of the tree, is passed over),
-/// and the uses' goods by name (one the content lacks is an error).
+/// and the uses by their goods: a use naming a good the content lacks (one of
+/// a later stage of the tree's overlay) is not laid, as the overlay drops an
+/// input of a later stage. A use laid that `replaces` another takes the
+/// places it is used from the one it names.
 pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
     let raw: RawFile = toml::from_str(text).map_err(|e| format!("tasks: {e}"))?;
     if raw.tasks.classes != CLASSES {
@@ -296,6 +304,10 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
     let good = |n: &str| C.good_index.get(n).copied().ok_or_else(|| format!("tasks: no good {n:?}"));
     let goods = |m: &BTreeMap<String, f64>| -> Result<Vec<(usize, f64)>, String> { m.iter().map(|(n, &v)| Ok((good(n)?, v))).collect() };
     for u in &raw.uses {
+        // laid only where its goods exist (the tree's stage: docs/rules/tasks.md)
+        if u.plant.keys().chain(u.run.keys()).chain(u.discover.keys()).any(|n| !C.good_index.contains_key(n)) {
+            continue;
+        }
         let k = class(&u.class)?;
         if t.closed[k] {
             return Err(format!("tasks: {:?} works in {:?}, which is closed to machines", u.name, u.class));
@@ -330,7 +342,22 @@ pub fn table_from(C: &Content, text: &str) -> Result<TaskTable, String> {
             found_after: u.found_after,
             discover: goods(&u.discover)?,
             scale: u.scale,
+            replaces: u.replaces.clone(),
         });
+    }
+    // a use laid takes the places it is used from the use it replaces
+    for i in 0..t.uses.len() {
+        let Some(n) = t.uses[i].replaces.clone() else { continue };
+        if !raw.uses.iter().any(|r| r.name == n) || n == t.uses[i].name {
+            return Err(format!("tasks: {:?} replaces {n:?}, which is no other use", t.uses[i].name));
+        }
+        let Some(j) = t.uses.iter().position(|x| x.name == n) else { continue };
+        let (works, sectors) = (t.uses[i].on_works, t.uses[i].on_sector.clone());
+        let r = &mut t.uses[j];
+        r.on_works &= !works;
+        for (b, &here) in r.on_sector.iter_mut().zip(&sectors) {
+            *b &= !here;
+        }
     }
     let mut pg: Vec<usize> = t.uses.iter().flat_map(|u| u.plant.iter().map(|&(g, _)| g)).collect();
     pg.sort_unstable();
@@ -455,6 +482,15 @@ pub struct TasksYear {
     /// towns' prices (while `yield_cap` is set).
     pub capped_value: f64,
     pub land_value: f64,
+    /// The farms over the year, for the facts of the land's twentieth century
+    /// (docs/rules/machines.md, "Nitrogen and breeding"): their output and
+    /// hands a month, and the output of the farms that keep nitrogen and
+    /// breeding (each unit's output times the share of its town's farms whose
+    /// improvement stands).
+    pub farm_out: f64,
+    pub farm_hands: f64,
+    pub nitrogen_out: f64,
+    pub breeding_out: f64,
 }
 
 /// The year so far.
@@ -479,6 +515,8 @@ struct Acc {
     land_return: f64,
     capped_value: f64,
     land_value: f64,
+    /// The farms: output, hands, and output with nitrogen and with breeding.
+    farm: [f64; 4],
 }
 
 /// What the rule keeps (`st.tasks`). Empty while it is off.
@@ -542,6 +580,10 @@ pub struct TasksState {
     pub at_ceiling: Vec<bool>,
     /// The year now running, set at each year's turn (0 before the first).
     pub year_now: i64,
+    /// By use, for a use of the land alone: the share of its class the towns
+    /// would give it at the end of the year it was found, each town weighted
+    /// by the work of the sectors it reaches (NaN until then).
+    pub land_share_found: Vec<f64>,
     /// Every year's record.
     pub years: Vec<TasksYear>,
     acc: Acc,
@@ -1244,6 +1286,21 @@ pub fn end_month(st: &mut State, C: &Content, P: &Params) {
     for t in 0..T {
         acc.town_wage[t] += st.wage[t];
     }
+    // the farms' month, for the facts: output, hands, and the output of those
+    // whose nitrogen and breeding stand (machines.rs's stock, by town)
+    if let Some(farm) = C.sector_name.iter().position(|n| n == "farm") {
+        let stock = |t: usize, slot: usize| {
+            let ms = &st.machine_stock;
+            if ms.cols == NS * crate::machines::SLOTS && t < ms.rows { ms[(t, farm * crate::machines::SLOTS + slot)].max(0.0) } else { 0.0 }
+        };
+        for u in (0..st.ex_sector.len().min(st.ex_out.len())).filter(|&u| st.ex_sector[u] == farm) {
+            let (t, y) = (st.ex_town[u], st.ex_out[u]);
+            acc.farm[0] += y;
+            acc.farm[1] += st.ex_labor.get(u).copied().unwrap_or(0.0);
+            acc.farm[2] += y * stock(t, crate::machines::FARM_NITROGEN_SLOT);
+            acc.farm[3] += y * stock(t, crate::machines::FARM_BREEDING_SLOT);
+        }
+    }
     for f in 0..st.F_count {
         if !st.f_alive[f] {
             continue;
@@ -1470,7 +1527,32 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         land_book: land_book(st, C),
         capped_value: acc.capped_value,
         land_value: acc.land_value,
+        farm_out: acc.farm[0] / n,
+        farm_hands: acc.farm[1] / n,
+        nitrogen_out: acc.farm[2] / n,
+        breeding_out: acc.farm[3] / n,
     });
+    // a use of the land alone, in the year it was found: the towns' share for it
+    if st.tasks.land_share_found.len() != nu {
+        st.tasks.land_share_found = vec![f64::NAN; nu];
+    }
+    let NS = C.NS;
+    for u in 0..nu {
+        let us = &C.tasks.uses[u];
+        if st.tasks.found[u] != year || us.on_works || st.tasks.share.len() < st.T_max {
+            continue;
+        }
+        let (mut a, mut b) = (0.0, 0.0);
+        for t in (0..st.T_max).filter(|&t| st.town_active[t]) {
+            let work: f64 = (0..NS).filter(|&s| us.on_sector[s]).map(|s| st.tasks.land_work.get(t * NS + s).copied().unwrap_or(0.0)).sum();
+            let x = st.tasks.share[t][u];
+            if work > 0.0 && x.is_finite() {
+                a += work * x;
+                b += work;
+            }
+        }
+        st.tasks.land_share_found[u] = ratio(a, b);
+    }
     // found at this turn of the year, for the next
     let next = year + 1;
     for u in 0..nu {
@@ -1633,6 +1715,15 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             });
             out.push((format!("waiting_haul_pits_{y}"), Kind::Share, v));
         }
+        // the fields and the woods (the tractor): each one's hauling done by
+        // the machines in place, over its hauling
+        for name in ["farm", "pasture", "forestry"] {
+            let Some(s) = C.sector_name.iter().position(|n| n == name) else { continue };
+            for &y in &marks {
+                let v = at(y).filter(|t| s < t.land_work.len()).map_or(f64::NAN, |t| ratio(t.land_held[s][HAUL], t.land_work[s][HAUL]));
+                out.push((format!("auto_haul_{name}_{y}"), Kind::Share, v));
+            }
+        }
         let books = |y: i64| st.acct.years.iter().find(|a| a.year == y);
         for &y in &marks {
             let v = match (at(y), books(y)) {
@@ -1662,7 +1753,9 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         out.push((format!("{name}_found_year"), Kind::Year, found.map_or(f64::NAN, |y| y as f64)));
         let half = st.tasks.years.iter().find(|t| ratio(t.held[k], t.work[k]) >= 0.5).map(|t| t.year);
         out.push((format!("{name}_half_year"), Kind::Year, half.map_or(f64::NAN, |y| y as f64)));
-        let share = found.and_then(at).map_or(f64::NAN, |t| t.target[k]);
+        // the towns' target in the year found: the works' for a use of the works,
+        // the land's sectors' for a use of the land alone
+        let share = if us.on_works { found.and_then(at).map_or(f64::NAN, |t| t.target[k]) } else { st.tasks.land_share_found.get(u).copied().unwrap_or(f64::NAN) };
         out.push((format!("{name}_share_found"), Kind::Share, share));
         let auto10 = found.and_then(|y| at(y + 10)).map_or(f64::NAN, |t| ratio(t.held[k], t.work[k]));
         out.push((format!("{name}_auto_after10"), Kind::Share, auto10));
@@ -1683,6 +1776,57 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
             _ => f64::NAN,
         };
         out.push((format!("{name}_dearer_first"), Kind::Real, dearer));
+    }
+    out.extend(land_century_facts(r, &marks));
+    out
+}
+
+/// The land's twentieth century (docs/rules/machines.md, "Nitrogen and
+/// breeding"; docs/rules/tree.md, "Oil, nitrogen and the land"), at the marks
+/// from 1900; nothing for a content without oil. `nitrogen_share_Y` and
+/// `breeding_share_Y`: of the farms' output, the share from farms whose
+/// improvement stands; `grain_a_hand_Y`: the farms' output over their hands,
+/// against 1900's; `oil_made_Y`: oil made in the year; `oil_over_coal_heat_Y`:
+/// oil's price over coal's for a unit of heat, each the year's mean price in
+/// the towns that bought oil, weighted by what they bought of it.
+fn land_century_facts(r: &RunResult, marks: &[i64]) -> Vec<(String, Kind, f64)> {
+    use crate::accounts::{GOODS_FIELDS, KG};
+    let (st, C) = (&r.state, &r.content);
+    let mut out = Vec::new();
+    let (Some(&go), Some(&gc)) = (C.good_index.get("oil"), C.good_index.get("coal")) else { return out };
+    let years: Vec<i64> = marks.iter().copied().filter(|&y| y >= 1900).collect();
+    let at = |y: i64| st.tasks.years.iter().find(|t| t.year == y);
+    for (name, f) in [("nitrogen_share", 0), ("breeding_share", 1)] {
+        for &y in &years {
+            let v = at(y).map_or(f64::NAN, |t| ratio(if f == 0 { t.nitrogen_out } else { t.breeding_out }, t.farm_out));
+            out.push((format!("{name}_{y}"), Kind::Share, v));
+        }
+    }
+    let a_hand = |y: i64| at(y).map_or(f64::NAN, |t| ratio(t.farm_out, t.farm_hands));
+    for &y in &years {
+        out.push((format!("grain_a_hand_{y}"), Kind::Ratio, ratio(a_hand(y), a_hand(1900))));
+    }
+    let col = |name: &str| GOODS_FIELDS.iter().position(|&n| n == name).expect("a goods column");
+    let (c_made, c_price) = (col("made"), col("price"));
+    let c_use = [col("households"), col("landlords"), col("families"), col("building"), col("land"), col("projects"), col("works_inputs"), col("works_fuel")];
+    let (T, G) = (st.T_max, C.G);
+    for &y in &years {
+        let book = st.acct.years.iter().position(|b| b.year == y).and_then(|k| st.acct.year(k));
+        let (mut made, mut bought, mut po, mut pc) = (0.0, 0.0, 0.0, 0.0);
+        if let Some(b) = &book {
+            let v = |t: usize, g: usize, c: usize| b.goods[(t * G + g) * KG + c] as f64;
+            for t in 0..T {
+                made += v(t, go, c_made);
+                let x: f64 = c_use.iter().map(|&c| v(t, go, c)).sum();
+                bought += x;
+                po += x * v(t, go, c_price);
+                pc += x * v(t, gc, c_price);
+            }
+        }
+        let n = book.is_some();
+        out.push((format!("oil_made_{y}"), Kind::Count, if n { made } else { f64::NAN }));
+        let per_heat = ratio(ratio(po, bought) / C.heat[go], ratio(pc, bought) / C.heat[gc]);
+        out.push((format!("oil_over_coal_heat_{y}"), Kind::Ratio, if n { per_heat } else { f64::NAN }));
     }
     out
 }

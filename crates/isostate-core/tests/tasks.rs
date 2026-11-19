@@ -47,9 +47,55 @@ fn the_switch_is_off_under_the_port_and_on_in_the_game() {
         let s: f64 = C.tasks.method[m].iter().sum();
         assert!((s - 1.0).abs() < 1e-9, "{} has shares summing to {s}", C.method_name[m]);
     }
-    assert_eq!(C.M, 46, "the 44 of the tree's stage 1 and the two of stage 6 (docs/rules/tree.md, \"After 1900: electricity\")");
-    assert_eq!(C.tasks.uses.len(), 1);
-    assert_eq!(C.tasks.uses[0].name, "hoist");
+    assert_eq!(C.M, 48, "the 44 of the tree's stage 1 and the four of stage 6 (docs/rules/tree.md, \"After 1900: electricity\" and \"Oil, nitrogen and the land\")");
+    // the content after 1900 lays the tractor and the cutter; the cutter takes the
+    // pits from the hoist (`replaces`), which keeps the works
+    let names: Vec<&str> = C.tasks.uses.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(names, ["hoist", "tractor", "cutter"]);
+    let sector = |n: &str| C.sector_name.iter().position(|x| x == n).unwrap();
+    let (hoist, tractor, cutter) = (&C.tasks.uses[0], &C.tasks.uses[1], &C.tasks.uses[2]);
+    assert!(hoist.on_works && hoist.on_sector.iter().all(|&b| !b), "the hoist keeps the works and leaves the pits");
+    assert_eq!(cutter.replaces.as_deref(), Some("hoist"));
+    for n in ["quarry", "claypit", "ironmine", "coalmine"] {
+        assert!(cutter.on_sector[sector(n)] && !tractor.on_sector[sector(n)]);
+    }
+    for n in ["farm", "pasture", "forestry"] {
+        assert!(tractor.on_sector[sector(n)] && !cutter.on_sector[sector(n)]);
+    }
+    assert!(!tractor.on_works && !cutter.on_works);
+    // without the content after 1900 (tree.stage = 1) a use naming its goods is not
+    // laid, and the hoist reaches the works and the pits as it did
+    let mut one = game.clone();
+    one.tree.stage = 1;
+    let C1 = content(&one);
+    assert_eq!(C1.tasks.uses.len(), 1);
+    assert_eq!(C1.tasks.uses[0].name, "hoist");
+    assert!(C1.tasks.uses[0].on_works && C1.tasks.uses[0].on_sector.iter().filter(|&&b| b).count() == 4);
+}
+
+/// `replaces`, and a use whose goods are missing, read from a file of their own.
+#[test]
+fn a_use_replaces_another_where_it_is_laid() {
+    let C = content(&game_params());
+    let head = "[tasks]\nclasses = [\"haul\", \"tend\", \"clerk\", \"judge\", \"presence\"]\nclosed = [\"presence\"]\n[tasks.spread]\nhaul = [[0.0, 0.3], [1.0, 100.0]]\n";
+    let one = |name: &str, on: &str, good: &str, replaces: &str| {
+        format!(
+            "[[use]]\nname = \"{name}\"\nclass = \"haul\"\non = [{on}]\nfrom = 0.0\nreach = 1.0\nplant = {{ {good} = 1.0 }}\nrun = {{}}\nminders = 0.1\nlife = 10.0\npace = 0.0\ncap = 1.0\nfound_after = 1900\ndiscover = {{}}\nscale = 1.0\n{replaces}\n"
+        )
+    };
+    let old = one("old", "\"works\", \"farm\", \"quarry\"", "machinery", "");
+    let farm = C.sector_name.iter().position(|x| x == "farm").unwrap();
+    let quarry = C.sector_name.iter().position(|x| x == "quarry").unwrap();
+    // laid: the old use loses the places the new one is used, and keeps the rest
+    let t = tasks::table_from(&C, &format!("{head}{old}{}", one("new", "\"quarry\"", "machinery", "replaces = \"old\""))).unwrap();
+    assert!(t.uses[0].on_works && t.uses[0].on_sector[farm] && !t.uses[0].on_sector[quarry]);
+    assert!(t.uses[1].on_sector[quarry]);
+    // not laid (a good the content lacks): nothing is replaced
+    let t = tasks::table_from(&C, &format!("{head}{old}{}", one("new", "\"quarry\"", "unobtainium", "replaces = \"old\""))).unwrap();
+    assert_eq!(t.uses.len(), 1);
+    assert!(t.uses[0].on_sector[quarry]);
+    // a name that is no use of the file is an error
+    assert!(tasks::table_from(&C, &format!("{head}{old}{}", one("new", "\"quarry\"", "machinery", "replaces = \"nothing\""))).is_err());
 }
 
 #[test]
@@ -164,12 +210,16 @@ fn check_of(P: Params, C: Content) -> std::thread::JoinHandle<String> {
 /// to the last digit; with the hoist at the pits it is not. In the run with
 /// the hoist: a sector no use reaches holds nothing in any town in any year,
 /// the pits' shares stay between the hoist's `from` and `reach`, and some
-/// pit comes to hold part of its hauling.
+/// pit comes to hold part of its hauling. Played with `tree.stage = 1`, the
+/// island without the content after 1900, where the hoist is the land's only
+/// machine (with the content after 1900 the cutter takes the pits from it in
+/// the 1920s and the tractor the fields: tests/land_century.rs).
 #[test]
 fn island_7_to_1925_on_the_land() {
     let land = |on: bool| {
         let mut P = params(true);
         P.tasks.land = on;
+        P.tree.stage = 1;
         P
     };
     let on = std::thread::spawn(move || {
@@ -279,10 +329,13 @@ fn machines_work_once_they_stand() {
 /// taken away again before the next month, in code), no works and no town's
 /// sector holds any part of any class in the ten years after the find, while
 /// what they mean to hold rises. Island 7, played under the game's rules with
-/// `tasks.enabled` and `tasks.land` set by name.
+/// `tasks.enabled` and `tasks.land` set by name, and `tree.stage = 1`: the
+/// ten years after the hoist's find are years its pits mean to hold machines
+/// only without the content after 1900, whose cutter comes later.
 #[test]
 fn starved_of_plant_nothing_is_held() {
-    let P = params(true);
+    let mut P = params(true);
+    P.tree.stage = 1;
     let mut s = sim::start(&P, content(&P));
     let (mut most_auto, mut most_land): (f64, f64) = (0.0, 0.0);
     while s.year <= s.end_year && starts(&s).is_none_or(|y| s.year <= y + 10) {
