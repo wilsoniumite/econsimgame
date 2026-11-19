@@ -488,6 +488,8 @@ macro_rules! state_parts {
 
                 // the hand's ledger (docs/designs/sandbox.md): carried across as the roads are
                 by_hand: Default::default(),
+                // transition (docs/rules/transition.md): carried across as the roads are
+                transition: Default::default(),
             }
         }
 
@@ -609,6 +611,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.longrun = carry.longrun.clone();
 
     st.by_hand = carry.by_hand.clone();
+    st.transition = carry.transition.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

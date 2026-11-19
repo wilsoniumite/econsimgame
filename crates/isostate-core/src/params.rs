@@ -324,6 +324,11 @@ pub struct Params {
     /// in the Python; see docs/rules/longrun.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub longrun: crate::longrun::LongrunParams,
+    /// Fewer children as a town's own people live better, and less crowding
+    /// once drains come with income (not in the Python; see
+    /// docs/rules/transition.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub transition: crate::transition::TransitionParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -534,6 +539,7 @@ pub fn default_params() -> Params {
         hands: crate::hands::HandsParams::default(),
         money: crate::money::MoneyParams::default(),
         longrun: crate::longrun::LongrunParams::default(),
+        transition: crate::transition::TransitionParams::default(),
     }
 }
 
@@ -576,6 +582,7 @@ pub fn game_params() -> Params {
     // centuries of works. A place is never given to a second works, so the
     // table only fills; the months run over the places taken, not the room.
     P.F_max = 60_000;
+    P.transition = crate::transition::TransitionParams::game();
     P
 }
 

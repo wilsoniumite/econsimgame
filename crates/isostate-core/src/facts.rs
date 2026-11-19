@@ -632,6 +632,17 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
         b.num("late_town_people_largest".into(), Kind::Count, size.last().copied().unwrap_or(f64::NAN));
         b.num("emigrants".into(), Kind::Count, st.pp_emigrants);
     }
+    // the most people the island had in a year (the yearly mean), and the year: the
+    // last year if people never fell (docs/rules/transition.md)
+    let pop = series("pop");
+    let top = (0..pop.len()).filter(|&k| pop[k].is_finite()).max_by(|&i, &j| pop[i].total_cmp(&pop[j]));
+    b.num("people_peak".into(), Kind::Count, top.map(|k| pop[k]).unwrap_or(f64::NAN));
+    b.year("people_peak_year".into(), top.map(|k| years[k]));
+    // transition (docs/rules/transition.md): how much of the income term the towns keep,
+    // and how well their townsfolk live, at the marks
+    for (name, kind, v) in crate::transition::facts(r) {
+        b.num(name, kind, v);
+    }
 
     // ---- work and wages
     b.group = GROUPS[1];

@@ -249,7 +249,7 @@ four takers of hands come in, and where chance enters.
 ```bash
 cargo run --release -p isostate-core -- sweep --out DIR [--seeds 1-8 | 1,2,5] [--rules port|game]
     [--families N] [--end-year Y] [--set key=v1[,v2...]]... [--params FILE] [--content FILE]
-    [--jobs N] [--compare OTHER_DIR] [--quiet]
+    [--jobs N] [--compare OTHER_DIR] [--standing] [--quiet]
 ```
 
 Every seed is run against every combination of the `--set` values, a few runs
@@ -298,6 +298,7 @@ command makes a baseline again):
   (below). An empty cell or a null is a fact with no value, as when a railway
   was never built.
 - `summary.txt`: the table it prints.
+- `standing.txt`: with `--standing`, the standing check (below).
 - `README.txt`: the command line, the rules, `git describe`, how long it took.
 
 The table gives every fact's mean across the seeds in a column of its own,
@@ -422,6 +423,50 @@ itself: the sweep that was there is read before the first run and replaced
 after the last, which is the quick way to ask whether a change to the code
 moved anything. A sweep set beside its own earlier self shows `=` in every
 row but the seconds, since a run is the same run every time.
+
+### The standing check
+
+Every stage of the run to 2050 changes rules that the played century, 1750
+to 1900, runs under too. The standing check asks whether that century still
+stands where it stood. It is twelve facts of the island to 1900, each set
+against the spread a reference has across eight islands:
+
+| | |
+|---|---|
+| people | `pop_1800`, `pop_1850`, `pop_1900` |
+| what a wage buys | `real_wage_chained_1850_vs_1750`, `real_wage_chained_1900_vs_1750` |
+| towns | `towns_1900`, `urban_share_1900` |
+| the railway | `rail_km_1900`, `rail_first_year` |
+| who is paid | `income_share_work_1850`, `income_share_work_1900`, `income_share_land_1900` |
+
+Every stage runs it, with its own switch off and on, and prints the table at
+the top of its page:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --set STAGE.enabled=false,true --standing --out DIR
+```
+
+(A change that has no switch of its own runs the game once with `--standing
+--compare` an earlier sweep made the same way, which is then the reference.)
+After the runs and the usual tables it prints, and writes to `standing.txt`
+beside `summary.txt`, a first line for each later setting, `standing check: N
+of 12 inside`, and a table: each fact's mean under the reference (the first
+setting) with its [least .. greatest] across seeds, then each later setting's
+mean and one word.
+
+- **inside**: the mean lies within the reference's least and greatest.
+- **moved**: every seed of one arm lies on one side of every seed of the
+  other, as the comparison's star has it (four runs or more a side). The rule
+  moved this fact on every island; the stage's page must say that it meant
+  to.
+- **OUTSIDE**: the mean has left the spread, though the seeds have not stood
+  apart.
+
+Only inside passes, and 12 of 12 is the pass. A stage with a fact moved or
+OUTSIDE says so in its page's first paragraph, and waits if the move was not
+meant. `last_town_founded` is shown beneath the twelve, as "also", and not
+counted: it leans with anything that changes what carriage costs. The check
+changes no run. `src/standing.rs`.
 
 ### The facts
 
@@ -697,3 +742,8 @@ One line each as they arrive: the name, its page, its switch.
   island can be run on to 2050 with no price held at a bound fixed in 1750's
   money. It does not make the island live well after 1900.
   [longrun.md](longrun.md), `longrun.enabled`.
+- **fewer children as towns live better**: each town's income term is cut
+  as its townsfolk come to live well (a generation behind), and crowding
+  costs fewer lives as drains come with income. It slows the people on an
+  island that stops growing richer, and does not level them off.
+  [transition.md](transition.md), `transition.enabled`.
