@@ -531,4 +531,8 @@ pub struct State {
     // ---------------- roads (a probe, docs/probes/dx-roads.md; empty while `roads` is off)
     /// Who pays for the roads: the trusts, the bridges built, the menders.
     pub rd: crate::roads::RoadState,
+
+    // ---------------- longrun (docs/rules/longrun.md; empty while `longrun.enabled` is off)
+    /// The chained cost of living and the wage scale the bounds and the freight ride on.
+    pub longrun: crate::longrun::LongrunState,
 }

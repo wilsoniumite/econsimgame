@@ -441,8 +441,9 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, even
     ways::plan(st, C, P, &way, year, pbar, events);
     // the book's fares are reckoned for a way on the ground; a canal's are what
     // its boats carried, and the wharves
+    let freight = crate::longrun::freight(st, P);
     if let (Some(note), Some(y)) = (st.cn.book.years.last_mut(), st.cn.years.last()) {
-        note.fares = if y.year == year { P.freight * (P.canals.cost * y.ton_cells + 2.0 * P.canals.wharf * y.boarded) } else { 0.0 };
+        note.fares = if y.year == year { freight * (P.canals.cost * y.ton_cells + 2.0 * P.canals.wharf * y.boarded) } else { 0.0 };
     }
     st.cn.pair_cells = pair_cells(st);
 }

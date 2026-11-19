@@ -685,3 +685,9 @@ One line each as they arrive: the name, its page, its switch.
   still costs before it pays a dividend, so the money for an extension is not
   paid out to its owners while the plant is still to come and the works then
   closed for the debt. [works.md](works.md), part H, `works.keep_order`.
+- **longrun**: the bounds on every price and on the wage ride on a chained
+  cost of living the simulation keeps for itself (the ceilings on the higher
+  of it and the wage), and from 1900 the freight does too, so that the
+  island can be run on to 2050 with no price held at a bound fixed in 1750's
+  money. It does not make the island live well after 1900.
+  [longrun.md](longrun.md), `longrun.enabled`.

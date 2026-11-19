@@ -213,6 +213,9 @@ pub struct MonthNotes {
     /// January and February town-months under the famine line in a town that took
     /// cells at the year's end (aim 12; docs/probes/tr-carriage.md, (d)).
     pub hungry_after_new_cells: usize,
+    /// longrun (docs/rules/longrun.md): town-months from 1801 on with a price or
+    /// the wage at a bound.
+    pub bounds: crate::longrun::BoundNotes,
 }
 
 /// Twelve months, each noted, then the year's end, noted: `sim::run_year` with the
@@ -255,6 +258,7 @@ pub fn gather_month(g: &mut Gathered, sim: &Sim, month: usize) {
         }
     }
     n.last_wage = st.wage.clone();
+    crate::longrun::gather_month(&mut n.bounds, st, &sim.content, P, sim.year);
     // the observer's land is the first three sectors (farm, pasture, woods); the rest dig
     let all: f64 = ms.employment.iter().sum();
     let dig: f64 = ms.ex_labor_by_sector.iter().skip(3).sum();
@@ -884,6 +888,8 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     if let Some(y) = crate::firms::table_full(st) {
         b.year("works_table_full".into(), Some(y));
     }
+    // longrun (docs/rules/longrun.md): the places in the works' table taken, of `F_max`
+    b.num("works_slots_used".into(), Kind::Count, st.F_count as f64);
     // by their place in the run (R7)
     for name in ["works", "works_ex_services", "works_per_1000_people", "works_size_median", "works_size_p90", "works_size_largest"] {
         b.again(&format!("{name}_{y1}"), &format!("{name}_last"));
@@ -1141,6 +1147,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     // another town's market at the year's end, when the shelves stay behind
     // (docs/probes/tr-carriage.md, (d)); no value for a run stepped a year at a time
     b.num("hungry_months_after_new_cells".into(), Kind::Count, if g.months.town_months > 0 { g.months.hungry_after_new_cells as f64 } else { f64::NAN });
+    // longrun (docs/rules/longrun.md): prices and the wage at a bound, and the anchors
+    for (name, kind, v) in crate::longrun::facts(r, g) {
+        b.num(name, kind, v);
+    }
 
     // ---- news: the sweep adds one fact per kind, once it knows every kind any run had
     let mut news = BTreeMap::new();

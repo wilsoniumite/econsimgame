@@ -101,7 +101,7 @@ pub fn plan(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year: i64, 
         let length = path_length(&path, W);
         let cost_now = st.town_cost[(a_, b_)];
         let cost_rail = tr::RAIL_COST * length + 1.0;
-        let saving_per_w = P.freight * (cost_now - cost_rail).max(0.0);
+        let saving_per_w = crate::longrun::freight(st, P) * (cost_now - cost_rail).max(0.0);
         let benefit = P.rail_induced * flow * saving_per_w;
         let need = materials(C, P, n_new);
         let buy_town = if pbar[(a_, gr)] <= pbar[(b_, gr)] { a_ } else { b_ };
@@ -220,7 +220,7 @@ pub fn plan_spurs(st: &mut State, C: &Content, P: &Params, _rng: &mut Rng, year:
             continue;
         }
         let length = path_length(&path, W);
-        let saving = P.freight * (st.dcatch[c] - (tr::RAIL_COST * length + 0.5)).max(0.0);
+        let saving = crate::longrun::freight(st, P) * (st.dcatch[c] - (tr::RAIL_COST * length + 0.5)).max(0.0);
         let benefit = P.rail_induced * flow[c] * saving;
         let need = materials(C, P, new_cells.len());
         let cost = pairwise_sum_by(C.G, |g| need[g] * pbar[(i, g)]) * 1.3;

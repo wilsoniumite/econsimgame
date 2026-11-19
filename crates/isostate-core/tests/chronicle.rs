@@ -786,6 +786,9 @@ fn towns_and_districts_have_stories() {
     // three in the 1790s with the mines as workings and kept town ground.
     let mut P = game(6, 1800);
     P.seed = 8;
+    // played with longrun off (docs/rules/longrun.md): its anchors give seed 8
+    // another history, with no decade of new towns before 1800 to file
+    P.longrun.enabled = false;
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(digests_of_new_towns(&early) >= 1, "seed 8 has a decade of new towns before 1800");
 }

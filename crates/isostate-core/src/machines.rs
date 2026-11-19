@@ -128,7 +128,7 @@ pub fn quality(st: &State, C: &Content, P: &Params) -> f64 {
     }
     let Some(&steel) = C.good_index.get("steel") else { return 1.0 };
     let Q: f64 = (0..C.M).filter(|&m| C.method_out[m] == steel).map(|m| st.method_Q[m]).sum();
-    (1.0 + Q / M.quality_Q0.max(1e-9)).powf(M.quality_b).min(M.quality_cap.max(1.0))
+    (1.0 + Q / M.quality_Q0.max(1e-9)).powf(M.quality_b).min(crate::longrun::quality_cap(P).max(1.0))
 }
 
 /// One way a land sector can use machines in one town, at given prices.

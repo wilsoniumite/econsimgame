@@ -221,6 +221,9 @@ pub fn params(rules: Rules, seed: u64, families: usize) -> Params {
     let mut P = rules.params();
     P.seed = seed;
     P.n_families = families.max(1);
+    // longrun (docs/rules/longrun.md): the stand-in for growth is for sweeps,
+    // and a game is never played under it
+    P.longrun.standin_growth = false;
     P
 }
 

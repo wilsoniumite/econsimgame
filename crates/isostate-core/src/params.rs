@@ -315,6 +315,11 @@ pub struct Params {
     /// in the Python; see docs/rules/money.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub money: crate::money::MoneyParams,
+    /// An island that can last three centuries: the bounds on prices and the
+    /// wage, and the freight, ride on a cost of living the simulation keeps (not
+    /// in the Python; see docs/rules/longrun.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub longrun: crate::longrun::LongrunParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -523,6 +528,7 @@ pub fn default_params() -> Params {
         commons: crate::commons::CommonsParams::default(),
         hands: crate::hands::HandsParams::default(),
         money: crate::money::MoneyParams::default(),
+        longrun: crate::longrun::LongrunParams::default(),
     }
 }
 
@@ -559,6 +565,7 @@ pub fn game_params() -> Params {
     P.commons = crate::commons::CommonsParams::game();
     P.hands = crate::hands::HandsParams::game();
     P.money = crate::money::MoneyParams::game();
+    P.longrun = crate::longrun::LongrunParams::game();
     P
 }
 

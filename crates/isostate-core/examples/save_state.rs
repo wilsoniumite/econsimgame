@@ -466,6 +466,8 @@ macro_rules! state_parts {
                 // roads (a probe, docs/probes/dx-roads.md; empty while it is off):
                 // carried across as the books are
                 rd: Default::default(),
+                // longrun (docs/rules/longrun.md): carried across as the roads are
+                longrun: Default::default(),
             }
         }
 
@@ -584,6 +586,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.families = carry.families.clone();
     st.acct = carry.acct.clone();
     st.rd = carry.rd.clone();
+    st.longrun = carry.longrun.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

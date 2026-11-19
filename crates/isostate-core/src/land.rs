@@ -107,7 +107,7 @@ pub fn delta_fields(st: &mut State, C: &Content, P: &Params) {
                 }
             }
         }
-        let k = P.freight * C.weight[g];
+        let k = crate::longrun::freight(st, P) * C.weight[g];
         for c in 0..N {
             delta[(g, c)] = k * base[c];
         }
@@ -148,7 +148,7 @@ pub fn sector_bids(st: &State, C: &Content, P: &Params, pbar: &Mat, wbar: &[f64]
                 }
             };
             let dd = if ok { d[c] } else { 1e9 };
-            let npr = pbar[(t, g)] - P.freight * C.weight[g] * dd - in_unit;
+            let npr = pbar[(t, g)] - crate::longrun::freight(st, P) * C.weight[g] * dd - in_unit;
             let good = ok && npr > 0.0 && f[c] > 0.0;
             if good {
                 let base = A * f[c] * npr;
@@ -378,7 +378,7 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
                 ex_lam.push(l);
                 ex_town.push(st.catch[c] as usize);
                 ex_field.push(crate::mines::unit_field(st, P, s, c, fields[s][c]));
-                ex_tau.push(P.freight * C.weight[C.sector_good[s]] * st.dcatch[c]);
+                ex_tau.push(crate::longrun::freight(st, P) * C.weight[C.sector_good[s]] * st.dcatch[c]);
                 let prev = old_lprev[s * N + c];
                 carried.push(if prev.is_nan() { 0.0 } else { prev });
             }

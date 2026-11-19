@@ -446,7 +446,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, year: i64, warm: bool) {
                 if !st.rd.bridged[c] {
                     s += R.bridge_stone * width[c];
                 }
-                let net = R.toll * P.freight * st.traffic[c] - R.upkeep_stone * k * p;
+                let net = R.toll * crate::longrun::freight(st, P) * st.traffic[c] - R.upkeep_stone * k * p;
                 if net >= R.hurdle * s * p {
                     cand.push((c, s, net / (s * p)));
                 }
@@ -529,7 +529,7 @@ pub fn month(st: &mut State, C: &Content, P: &Params, year_float: f64, events: &
             continue;
         }
         let payer = st.catch[c] as usize;
-        let got = (R.toll * P.freight * st.traffic[c] / 12.0).min(st.hh_cash[payer].max(0.0));
+        let got = (R.toll * crate::longrun::freight(st, P) * st.traffic[c] / 12.0).min(st.hh_cash[payer].max(0.0));
         if got <= 0.0 {
             continue;
         }

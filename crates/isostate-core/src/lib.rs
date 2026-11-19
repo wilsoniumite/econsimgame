@@ -42,6 +42,7 @@ pub mod landcells;
 pub mod landform;
 pub mod landwater;
 pub mod live;
+pub mod longrun;
 pub mod machines;
 pub mod mat;
 pub mod mines;

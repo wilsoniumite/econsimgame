@@ -22,7 +22,7 @@ use crate::util::{argmax, argsort, pairwise_sum, pairwise_sum_by, round_dp};
 use crate::works;
 
 pub fn learning(C: &Content, P: &Params, Q: &[f64]) -> Vec<f64> {
-    (0..C.M).map(|m| P.learn_cap.min(C.m_A0[m] * (1.0 + Q[m] / C.m_Q0[m]).powf(C.m_b[m]))).collect()
+    (0..C.M).map(|m| crate::longrun::learn_cap(P).min(C.m_A0[m] * (1.0 + Q[m] / C.m_Q0[m]).powf(C.m_b[m]))).collect()
 }
 
 /// Number of firms of each method within a 5x5 window of every cell.
@@ -109,7 +109,7 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
         })
         .collect();
     let out = C.method_out[m];
-    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - P.freight * C.weight[out] * st.dcatch[c]).collect();
+    let mut pout: Vec<f64> = cells.iter().map(|&c| pbar[(i, out)] - crate::longrun::freight(st, P) * C.weight[out] * st.dcatch[c]).collect();
     // works: the merchant's spread comes off the price, as it will off the works' revenue
     let spread = works::entry_spread(P, pbar[(i, out)]);
     if spread != 0.0 {
