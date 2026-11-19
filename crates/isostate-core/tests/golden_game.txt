@@ -80,8 +80,9 @@
 # docs/rules/tree.md, "After 1900: electricity"): two more goods, both opening
 # at their ceiling price, and the electrical works and the station found in
 # the played century, so another economy, other books, other news and another
-# run.bin. With GAME_STAGE at 1 the four above held.
-economy  0x1fd1584d7a5979ad
-books    0x2241060ae2dd5d30
-news     0xfab75068b40febc6
-run.bin  0x5e7678da476f8d38
+# run.bin. With GAME_STAGE at 1 the four above held. Taken again, all four,
+# when electricity's warmth was refitted from 9 to 11.
+economy  0x9839b2f80cf499f8
+books    0x4b7fb5d04cf3832c
+news     0x4c2849958e4ccf72
+run.bin  0xa8ab1b5637706a1a

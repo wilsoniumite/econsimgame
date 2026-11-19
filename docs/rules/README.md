@@ -693,8 +693,11 @@ One line each as they arrive: the name, its page, its switch.
   `data/game.toml` up to a stage. Stage 1 is the building trades, sawn timber,
   lime, beer, pottery, town gas, soap, glass and paper, with the later
   generations of iron, tools, machinery and bricks; where a market is short,
-  plant on order waits behind the day's trade. [tree.md](tree.md),
-  `tree.stage` (0 is none of it).
+  plant on order waits behind the day's trade. Stage 6, the game's, adds the
+  first content after 1900: electricity, which is made in each town that
+  wants it and does not keep, and electrical goods, with their two works.
+  [tree.md](tree.md), `tree.stage` (0 is none of it; 1 is the island before
+  the content after 1900).
 - **accounts**: books that say who makes, moves, buys and earns what: a
   year's books for every town and every works, and the island's income
   account (work's share, the owners' shares, ownership in years of wages).

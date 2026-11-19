@@ -46,7 +46,7 @@ fn the_overlay_at_stage_six_parses_and_every_name_resolves() {
     assert!(six.opens_dear[e] && six.opens_dear[x] && (0..one.G).all(|g| !six.opens_dear[g]));
     assert_eq!((six.base_price[e], six.weight[e], six.base_price[x], six.weight[x]), (1.2, 20.0, 7.0, 0.5));
     let need = |n: &str| six.service_name.iter().position(|s| s == n).unwrap();
-    assert_eq!((six.props[(e, need("warmth"))], six.props[(x, need("wares"))]), (9.0, 5.0));
+    assert_eq!((six.props[(e, need("warmth"))], six.props[(x, need("wares"))]), (11.0, 5.0));
     assert_eq!(six.heat[e], 5.0);
     assert!(six.fuel_goods.contains(&e) && !one.fuel_goods.iter().any(|&g| one.good_name[g] == "electricity"));
     // the two works: what they make, whose trade they are, their classes of task and their names
