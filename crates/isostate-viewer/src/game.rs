@@ -35,6 +35,10 @@ pub struct Game {
     pub note: Option<(bool, String)>,
     /// an order is out
     pub busy: bool,
+    /// how many orders have been answered, done or refused: raised by one for
+    /// each answer, so that what reads it (the sandbox's inspector) sees every
+    /// one, even one sent and answered within a frame
+    pub answered: u64,
     /// the player stepped forward: where the clock is to stand once the
     /// months up to there have come (the start of a month, or the year's turn)
     pub follow: Option<f32>,
@@ -296,6 +300,8 @@ pub(crate) fn pump(
     time: Res<Time>,
     shots: Option<Res<crate::ShotPlanArgs>>,
     sandbox: Option<Res<crate::sandbox::Sandbox>>,
+    mut told: Option<ResMut<crate::inspector::Answers>>,
+    mut rules: Option<ResMut<crate::rulebook::Known>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Pump);
     // the months the books kept from before the window opened, ahead of any that come
@@ -401,6 +407,7 @@ pub(crate) fn pump(
             }
             Msg::Done { ok, text, family, standing } => {
                 game.busy = false;
+                game.answered += 1;
                 game.pending = standing.pegs.clone();
                 live.standing = standing;
                 game.last_order = None;
@@ -418,6 +425,18 @@ pub(crate) fn pump(
                 game.asked = None;
                 game.site_stale = true;
                 game.version += 1;
+            }
+            // what the simulation knows of a thing: the inspector keeps the newest for each
+            Msg::Told { thing, told: answer } => {
+                if let Some(told) = told.as_mut() {
+                    told.keep(thing, answer);
+                }
+            }
+            // the rules as they stand: the Rules tab keeps the newest
+            Msg::Rules(now) => {
+                if let Some(rules) = rules.as_mut() {
+                    rules.keep(*now);
+                }
             }
             Msg::Failed(e) => {
                 live.failed();
@@ -818,8 +837,14 @@ fn order_panel(
     live: Res<Live>,
     font: Res<UiFont>,
     q: Query<(Entity, Option<&Children>), With<InspectActions>>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
 ) {
     let _frames = crate::frames::span(crate::frames::Sys::Orders);
+    // a sandbox offers none of the family's orders: the tray is the one way to do a thing
+    // (docs/designs/sandbox.md, 4.5), and the inspector's own block says what the last edit did
+    if sandbox.is_some() {
+        return;
+    }
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
     let when = now(&tl, &data, &live);
     // (while the year turns the buttons go unlit, since a press would not be taken: the panel is drawn again for that)

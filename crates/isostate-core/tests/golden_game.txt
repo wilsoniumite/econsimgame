@@ -50,6 +50,11 @@
 # Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
 # books and run.bin moved again by the gauges, economy and news are the
 # tree's as they stood.
+# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
+# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
+# 4b and 5a together: against main all four moved, by longrun and the
+# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
+# economy and news are stage 2's own, and the sandbox's pieces move nothing.
 # Then on night/g-to2050-4-owners, merging the gauges into stage 2 (19
 # November 2026): books and run.bin moved by the gauges, economy and news
 # are stage 2's as they stood.
@@ -66,11 +71,13 @@
 # classes of task, where the emporium holds a tenth as the services do (its
 # series is among the books' columns), and in run.bin the gauges' list of
 # presence and the params, which now carry the switch.
-# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
-# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
-# 4b and 5a together: against main all four moved, by longrun and the
-# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
-# economy and news are stage 2's own, and the sandbox's pieces move nothing.
+# Then on night/g-batch-2 (19 November 2026), the batch that lands the run
+# to 2050's stages 4 and 5 (owners; tasks in the works, on the land and in
+# the pits) with the sandbox's stages 5b, 6a and 6b: taken again on the
+# merged tree, and against main all four moved, by the owners (economy,
+# books, news, run.bin) and the tasks (books, run.bin). The four are the
+# tasks' second half's own to the digit: the sandbox's pieces, and the
+# owners' and tasks' switches joining the Rules tab, move nothing.
 # Then on night/g-to2050-5c-plant with that main merged in (19 November
 # 2026): all four as the tasks stage left them. The batch's stages are this
 # line's own, and machines that work once they stand cannot act before the
@@ -82,6 +89,9 @@
 # the played century, so another economy, other books, other news and another
 # run.bin. With GAME_STAGE at 1 the four above held. Taken again, all four,
 # when electricity's warmth was refitted from 9 to 11.
+# Taken again on night/g-to2050-6a-power with main (the batch above) merged
+# in: the batch's four were this stage's base to the digit, and the four
+# below are this stage's own to the digit.
 economy  0x9839b2f80cf499f8
 books    0x4b7fb5d04cf3832c
 news     0x4c2849958e4ccf72

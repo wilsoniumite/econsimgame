@@ -109,6 +109,27 @@ impl Table {
         }
     }
 
+    /// What the simulation knows of a thing, asked as the sandbox's inspector asks it.
+    fn ask(&self, thing: isostate_core::inspect::Thing) -> Result<isostate_core::inspect::Told, String> {
+        self.live.send(Cmd::Ask(thing));
+        match self.wait() {
+            Msg::Told { thing: about, told } => {
+                assert_eq!(about, thing, "the answer is about what was asked");
+                told
+            }
+            _ => panic!("a thing was asked about"),
+        }
+    }
+
+    /// The rules as they stand, asked as the sandbox's Rules tab asks.
+    fn rules(&self) -> RulesNow {
+        self.live.send(Cmd::Rules);
+        match self.wait() {
+            Msg::Rules(now) => *now,
+            _ => panic!("the rules were asked for"),
+        }
+    }
+
     fn me(&self) -> FamilyRow {
         self.view.player().expect("there is a player").clone()
     }
@@ -519,6 +540,104 @@ fn an_edit_by_hand_goes_through_the_thread_and_comes_back_from_the_save() {
     drop(a);
     drop(b);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_thread_tells_of_a_thing_what_a_game_played_to_the_same_month_tells() {
+    // The sandbox's inspector (docs/designs/sandbox.md, 4.5 and 6.5): a
+    // question goes to the game's thread between months and comes back as
+    // `inspect::tell` makes it. On island 7 with six families, a sandbox
+    // played to June 1760 tells of each of its towns what a game played to
+    // June 1760 without a thread tells; a works is asked for by its slot in
+    // the record's list; and an edit is seen in the next answer. Both games
+    // are played under the game's rules as they stand, side by side, so the
+    // case leans on no one island's history and sets no rule by name.
+    use isostate_core::edits::Edit;
+    use isostate_core::inspect::{tell, Thing, Told};
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 9, ..default() });
+    assert_eq!(a.year(), 1759);
+    for _ in 0..5 {
+        assert!(!a.month());
+    }
+    let rules = isostate_core::params::Rules::Game;
+    let mut b = isostate_core::save::Game::under_to(rules, 7, 6, 0, isostate_core::save::content_last_year(rules)).unwrap();
+    for _ in 0..10 {
+        b.year().unwrap();
+        b.turn();
+    }
+    for _ in 0..5 {
+        assert!(!b.month().unwrap());
+    }
+    let k = a.r.filled - 1;
+    let towns: Vec<usize> = (0..a.r.n_towns).filter(|&t| a.r.town_active[k * a.r.n_towns + t] != 0).collect();
+    assert!(towns.len() > 5, "{} towns", towns.len());
+    for &t in &towns {
+        let told = a.ask(Thing::Town(t)).expect("a town that stands is told of");
+        assert_eq!(told.as_of, "June 1760");
+        assert_eq!(Ok(told), tell(&b.sim, Thing::Town(t)), "{}", a.r.header.towns[t].name);
+    }
+    // five works that stand, each asked for by its place in the record's list
+    let mut works = 0;
+    for f in 0..a.r.header.firms.len() {
+        if let Ok(told) = a.ask(Thing::Works(f)) {
+            assert_eq!(told.title, a.r.header.firms[f].name);
+            works += 1;
+            if works == 5 {
+                break;
+            }
+        }
+    }
+    assert_eq!(works, 5);
+    // the most populous town's people halved by hand: the next answer has them at half
+    let row = |told: &Told, group: &str, name: &str| told.groups.iter().find(|g| g.name == group).and_then(|g| g.rows.iter().find(|r| r.0 == name)).map(|r| r.1.clone()).unwrap_or_else(|| panic!("no row {name} in {group}"));
+    let figure = |s: String| s.replace(',', "").parse::<f64>().unwrap_or_else(|_| panic!("not a figure: {s}"));
+    let town = *towns.iter().max_by_key(|&&t| a.r.town_pop[k * a.r.n_towns + t] as u64).unwrap();
+    let before = a.ask(Thing::Town(town)).unwrap();
+    assert_eq!(row(&a.ask(Thing::Island).unwrap(), "By hand", "edits carried out"), "none yet");
+    assert!(a.order("by_hand", Cmd::ByHand(Edit::People { town, factor: 0.5 })), "{}", a.said);
+    let after = a.ask(Thing::Town(town)).unwrap();
+    let (was, now) = (figure(row(&before, "People", "people in its market area")), figure(row(&after, "People", "people in its market area")));
+    assert!((now - 0.5 * was).abs() <= 1.0, "{was} halved is {now}");
+    // (the purses are as they were: those who are left inherit)
+    for purse in ["the households' money", "the landlords' money", "the merchants' money"] {
+        assert_eq!(row(&before, "Money and prices", purse), row(&after, "Money and prices", purse));
+    }
+    assert_eq!(row(&a.ask(Thing::Island).unwrap(), "By hand", "edits carried out"), "1");
+}
+
+#[test]
+fn the_thread_tells_the_rules_and_a_rule_set_by_hand_is_in_its_next_answer() {
+    // The sandbox's Rules tab (docs/designs/sandbox.md, 4.6 and 6.6): the
+    // rules are asked for over the channel and come back walked
+    // (`isostate_core::rulebook`), with an entry for every pinned name; after
+    // money.growth is set to nothing by hand, the next answer has it at
+    // nothing, differing from the game's. On island 7 with six families under
+    // the game's rules as they stand: it asks for no history beyond the rule
+    // of money's issue being there to set (`money.growth`, whose game value
+    // it reads from the game's rules rather than writing down).
+    use isostate_core::edits::Edit;
+    use isostate_core::rulebook::PINNED;
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 3, ..default() });
+    assert!(!a.month());
+    let before = a.rules();
+    for name in PINNED {
+        assert!(before.entries.iter().any(|e| e.name == name), "{name} is pinned and not in the answer");
+    }
+    assert!(!before.unfound.is_empty());
+    let growth = |now: &RulesNow| now.entries.iter().find(|e| e.name == "money.growth").cloned().unwrap();
+    let game = isostate_core::params::game_params().money.growth;
+    assert_eq!(growth(&before).value.as_f64(), Some(game));
+    assert!(a.order("by_hand", Cmd::ByHand(Edit::Rule { name: "money.growth".into(), value: serde_json::json!(0) })), "{}", a.said);
+    assert!(a.said.starts_with("By hand"), "{}", a.said);
+    let after = growth(&a.rules());
+    assert_eq!(after.value.as_f64(), Some(0.0));
+    assert_eq!(after.game.as_f64(), Some(game));
+    assert_ne!(after.value.as_f64(), after.game.as_f64(), "money.growth differs from the game's");
+    // (and the walk offers it back: As set, the game's figure, is not refused)
+    assert!(after.offers.iter().any(|o| o.word == "As set" && o.refused.is_none()));
+    // a month on it still stands
+    assert!(!a.month());
+    assert_eq!(growth(&a.rules()).value.as_f64(), Some(0.0));
 }
 
 #[test]

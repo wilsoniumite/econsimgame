@@ -63,6 +63,7 @@ pub mod railways;
 pub mod record;
 pub mod rng;
 pub mod roads;
+pub mod rulebook;
 pub mod save;
 pub mod scorecard;
 pub mod sim;
