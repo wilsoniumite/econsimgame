@@ -118,8 +118,97 @@ rule) is drawn as before.
 
 ## What it does to the island
 
-(numbers below)
+Islands 1 to 8 on the new land under the game's rules with six families, the
+rule off and on, side by side
+(`cargo run --release -p isostate-core --example probe_crossings -- --seeds 1-8`;
+with the rule off the probe reads the meeting places and the straight ways
+the picture drew before it). Mean over the islands, and the least and the
+greatest.
+
+**The measure Stella would recognise.** A road here is a chain of links from
+one junction to the next; a crossing counts when the same road crosses the
+same river again within 10 km along it, and a place is a road and a river
+where that happens.
+
+| | every way, crossings crossed again | places | the ways drawn (made roads and turnpikes), crossings crossed again | places |
+|---|---|---|---|---|
+| 1750, off | 116 [95 .. 130] | 41.9 | 97.9 [81 .. 117] | 31.5 |
+| 1750, on | 21.4 [9 .. 41] | 10.1 | 30.5 [21 .. 49] | 12.6 |
+| 1850, off | 107 | 39.1 | 86.4 | 30.8 |
+| 1850, on | 16.0 | 7.8 | 29.4 | 13.1 |
+| 1900, off | 90.9 [76 .. 119] | 32.8 | 86.6 [60 .. 104] | 31.8 |
+| 1900, on | 12.1 [6 .. 26] | 6.0 | 20.8 [12 .. 29] | 9.5 |
+
+So by 1900 an eighth of the repeated crossings are left on all the ways, and
+a quarter on the ways the viewer draws; and every crossing left is a bridge,
+a ford or a ferry. Most of what is left is a made road down a valley whose
+cells' meeting places could not all be put on one bank (a river through the
+very middle of a cell, or a cell whose only dry ground is on the far bank)
+crossing a stream under 14 m twice, which at 0.4 a ford is cheaper than two
+diagonal steps round (0.83 of a cell). A fixed charge of 0.3 a ford on top
+moved nothing (island 7: 22 against 23 in 1900), so `ford_base` is 0.
+
+**Crossings of water, and how they are crossed.** On the ways drawn:
+
+| | crossings | bridges | fords | ferries |
+|---|---|---|---|---|
+| 1750, off | 225 [196 .. 244] | (every one drawn as a bridge, none paid for) | | |
+| 1750, on | 142 [133 .. 157] | 71 | 56 | 15 |
+| 1800, on | 166 | 102 | 52 | 12 |
+| 1850, on | 252 | 148 | 92 | 12 |
+| 1900, off | 473 [425 .. 505] | | | |
+| 1900, on | 415 [375 .. 472] | 229 | 172 | 14 |
+
+Every way, tracks too: 535 crossings in 1750 off and 413 on (53 bridges, 336
+fords, 24 ferries), 799 and 716 in 1900 (325 bridges, 374 fords, 17 ferries).
+
+**Bridges built, what they cost and who paid.** 100 an island stand in 1750
+[85 .. 111]; the parishes build 560 more by 1900 [494 .. 638]: 70 in the
+1750s, as the first rate meets the busiest fords, 15 to 18 a decade until
+the 1810s, then 33 to 80 a decade from the 1820s to the 1860s as traffic
+grows and the railways' feeder roads come, and 25 to 45 a decade after. They
+span some 4,900 m of river an island in all. Every one was paid out of the
+landlords' rate (the households' never had to: no parish's landlords were in
+debt when it built). What they cost is small: 2.1 parts in 10,000 of the
+1750s' output, 0.2 to 0.5 parts in the decades after, 0.23 in 10,000 of the
+whole period's output.
+
+**The economy** (`sweep --seeds 1-8 --rules game --families 6 --set
+land.enabled=true --set crossings.enabled=false,true --standing`; 16 runs,
+none failed). The standing check stays twelve of twelve inside. The carting
+bill over output: 0.080 off and 0.082 on in 1750, 0.072 and 0.074 in 1800,
+0.048 and 0.059 in 1850, 0.057 and 0.057 in 1900; carters 7.7 against 9.4
+per cent of hands in 1850. What a wage buys, against 1750: 1.63 and 1.64 in
+1800, 1.96 and 2.13 in 1850, 3.07 and 3.14 in 1900. The 1850 carting bill
+moves most: the railway age comes later and thinner with the rule on
+(stations in 6.4 towns in 1900 against 10.2), and that is the islands'
+history moving, not a cost the rule adds, since in 1900 the bill is the same.
+Under the game's rules on the old island, where the rule does nothing, a
+sweep against main's gives 0 of 942 facts different.
 
 ## What worries me
 
-(below)
+- **The rule changes where the roads meet, not only what crossing costs.**
+  The banks and the going round are geometry, and they do most of the work
+  (island 7, 1900, ways drawn, crossings crossed again: 104 with the rule
+  off; the price alone 105, the price with the banks 80, all three 22). Both are on whenever the rule is,
+  and the viewer always uses the banks on the new land.
+- **Small streams are still forded twice where going round is far.** That is
+  honest at 0.4 a ford, but it is most of what is left of Stella's complaint.
+- **A bridge is cheap.** 8 stone a metre, the prototype's number, makes the
+  whole period's bridges 0.23 in 10,000 of output, and a parish bridges
+  nearly every ford with a road's traffic. Dearer bridges would leave more
+  fords, and more reason to keep to one bank.
+- **The parish is the town of the link's first cell**, and one bridge works
+  a parish at a time. A bridge between two districts is paid by one.
+- **A ferry is drawn but not run**: its landings and its boat stand there
+  from 1750 to the year a bridge replaces it, and no boat crosses.
+- **The picture's other users read straight lines.** The ribbon, bridges,
+  fords, and the carts follow the way round a meander; the houses and fields
+  that keep off roads, the lanes, the carts' check (`carts::check`) and the
+  railway's level crossings still read the straight line between the two
+  middles. Some 5 per cent of the ways over water go round (74 to 99 an
+  island of 22,600 ways between neighbouring cells, on islands 2, 3 and 7).
+- **Saves.** A saved game replays its orders from the start, so the bridges
+  are rebuilt on load; but a game saved before this rule replays on new
+  meeting places and a new history.
