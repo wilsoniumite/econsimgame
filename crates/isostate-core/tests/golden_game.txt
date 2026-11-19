@@ -34,8 +34,9 @@
 # series beside the books' and their years to the run file's header; with
 # the gauges switched off the four above held.
 # Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
-# the hashes are taken again on the merged tree, below.
+# books and run.bin moved again by the gauges, economy and news are the
+# tree's as they stood.
 economy  0xa0b778ca0b962b19
-books    0x364288124d7f0e20
+books    0xc1c046a69ed7fd10
 news     0xdfaf581760b17c8f
-run.bin  0x1327718d82104e0c
+run.bin  0x48bdd784ee5fbcd4
