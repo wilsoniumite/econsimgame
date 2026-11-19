@@ -1,15 +1,19 @@
-# The game's golden hashes (tests/golden_game.rs): seed 7 to 1900 under
-# game_params() and game_content(), six families. 64-bit FNV-1a of
+# The game's golden hashes (tests/golden_game.rs): seed 7 under game_params()
+# and game_content(), six families, in two eras. 64-bit FNV-1a of
 #   economy  series_monthly.csv less the books' own columns
 #   books    the books' own columns (acct_), with the year and month
 #   news     events.json
 #   run.bin  run.bin, its date set to 0000-00-00
+# 1750-1900 is the run that ends in 1900, hashed whole, as before 2050 was
+# added. 1901-2050 is the same island run on to 2050: its months and news
+# from 1901 on, and its whole run.bin. A change that acts only after 1900
+# moves the second era alone.
 #
 # These move whenever the game's rules are changed on purpose. Take them again
-# on the merged tree with
-#   ISOSTATE_GOLDEN_PRINT=1 cargo test -p isostate-core --release --test golden_game
-# paste the four lines it gives below, and say in the commit which moved and why
-# (docs/rules/README.md, "The game's golden test").
+# on the merged tree with one command, which writes them here itself:
+#   ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --test golden_game -- --nocapture
+# and say in the commit which moved and why (docs/rules/README.md, "The
+# game's golden test").
 #
 # Taken: on the branch of stage 5b of the rules pass, two mends on the
 # merchants' side, cut from main after stages 4 and 3 (13 November 2026). All
@@ -92,7 +96,23 @@
 # Taken again on night/g-to2050-6a-power with main (the batch above) merged
 # in: the batch's four were this stage's base to the digit, and the four
 # below are this stage's own to the digit.
-economy  0x9839b2f80cf499f8
-books    0x4b7fb5d04cf3832c
-news     0x4c2849958e4ccf72
-run.bin  0xa8ab1b5637706a1a
+# Then on main, night/g-guard-2050 (19 November 2026), the guard on the century
+# after 1900: the test runs on to 2050 and hashes two eras. The first era's
+# four are main's to the digit (the run to 1900 is untouched); the second
+# era's four are new. Taken again on night/g-batch-mends-1 (guard-2050 and
+# small-mends-1 merged on main at 00ebc6d): none of the eight moved; the
+# money check and the books' checks only read.
+# Then on night/g-to2050-6c-drawn (19 November 2026), the stations, the
+# electrical works and the chemical plants drawn, with main (the guard on
+# the century after 1900) merged into stage 6: all eight moved against
+# main's, by stage 6 (6a and 6b, the electricity and its drive), which main
+# has not yet; the first era's four are 6a's above to the digit. The
+# drawing is the generators' and moves none of them.
+1750-1900 economy  0x9839b2f80cf499f8
+1750-1900 books    0x4b7fb5d04cf3832c
+1750-1900 news     0x4c2849958e4ccf72
+1750-1900 run.bin  0xa8ab1b5637706a1a
+1901-2050 economy  0x99b6bda75e09bb5c
+1901-2050 books    0xc680a7d1a138657d
+1901-2050 news     0x81d52619131f4366
+1901-2050 run.bin  0x92750cc87777a34a
