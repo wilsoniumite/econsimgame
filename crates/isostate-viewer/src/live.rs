@@ -54,6 +54,10 @@ pub enum Cmd {
     /// an edit by hand (the sandbox, docs/designs/sandbox.md): carried out at
     /// once in any month, and answered with the line it wrote in the news
     ByHand(isostate_core::edits::Edit),
+    /// what the simulation knows of a thing (the sandbox's inspector,
+    /// `inspect::tell`): a question, not an order, answered between months as
+    /// a question about a square is
+    Ask(iso::inspect::Thing),
 }
 
 /// What waits for the year's end, as the interface shows it.
@@ -101,6 +105,9 @@ pub enum Msg {
     /// an order was carried out, or waits, or was refused; with the player's
     /// family as it stands (and as it has been told to stand), and what waits
     Done { ok: bool, text: String, family: Option<FamilyReport>, standing: Standing },
+    /// what the simulation knows of the thing asked about, as it stands
+    /// before the month about to be played; or why it cannot say
+    Told { thing: iso::inspect::Thing, told: Result<iso::inspect::Told, String> },
     Failed(String),
     /// the game could not be saved, and why; None once it can be again
     Unsaved(Option<String>),
@@ -1008,7 +1015,7 @@ fn all_prospects(s: &iso::Sim) -> Vec<[Prospect; N_GROUPS]> {
 /// A command as the order the log keeps. Asking for a month or about a square is not one.
 fn order_of(sim: &iso::Sim, cmd: Cmd) -> Result<Order, String> {
     match cmd {
-        Cmd::Step | Cmd::Site(_) | Cmd::Cancel(_) | Cmd::Keep => Err("that is not an order".to_string()),
+        Cmd::Step | Cmd::Site(_) | Cmd::Ask(_) | Cmd::Cancel(_) | Cmd::Keep => Err("that is not an order".to_string()),
         Cmd::Found { method, cell } => Order::found(sim, method, cell),
         Cmd::BuyLand(cell) => Ok(Order::BuyLand { cell }),
         Cmd::Decide { id, option } => Order::decide(sim, id, option),
@@ -1088,6 +1095,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                     options: iso::site_options(&s.st, &s.content, &s.params, PLAYER, cell),
                 })
             }
+            // (it only reads: a game asked about a thousand times runs as one never asked)
+            Cmd::Ask(thing) => Msg::Told { thing, told: iso::inspect::tell(&game.sim, thing) },
             Cmd::Keep => {
                 // the clock has stopped in the middle of a year: the months since the last save are kept
                 if std::mem::take(&mut unkept) && !write_save(&game, &mut saver, &mut saved, false, &tx) {
@@ -1344,6 +1353,17 @@ impl Months {
     pub fn price(&self, t: usize, town: usize, good: usize) -> Option<f32> {
         let i = self.row(t)?;
         (town < self.nt && good < self.ng).then(|| self.price[(i * self.nt + town) * self.ng + good])
+    }
+
+    /// One town's wage and one good's price in the last `n` months held (fewer
+    /// if fewer are held), oldest first, each with the month's place in the
+    /// run: for the inspector's two small lines.
+    pub fn town_tail(&self, town: usize, good: usize, n: usize) -> Vec<(usize, f32, f32)> {
+        if self.nt == 0 || town >= self.nt || good >= self.ng {
+            return Vec::new();
+        }
+        let held = self.wage.len() / self.nt;
+        (held.saturating_sub(n)..held).map(|i| (self.first + i, self.wage[i * self.nt + town], self.price[(i * self.nt + town) * self.ng + good])).collect()
     }
 }
 
