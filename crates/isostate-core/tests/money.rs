@@ -149,7 +149,9 @@ fn the_issue_is_never_below_nothing() {
     // of 13 November, no stock markup on services (docs/rules/prices.md, "Goods
     // that spoil") and land priced on the rent it paid (docs/rules/harvest.md,
     // "The price of land"), and the works' two mends (docs/rules/works.md, parts
-    // G and H), which give it other histories again.)
+    // G and H), which give it other histories again, and the production tree,
+    // docs/rules/tree.md, under which the port's count no longer takes the money
+    // below nothing by 1846.)
     fn extreme(true_total: bool) -> Params {
         let mut P = params(7, true_total, 6);
         P.machines.quality_b = 2.0;
@@ -160,6 +162,7 @@ fn the_issue_is_never_below_nothing() {
         P.harvest.rent_as_paid = false;
         P.works.spread_first = false;
         P.works.keep_order = false;
+        P.tree = Default::default();
         P.end_year = Some(1846);
         P
     }

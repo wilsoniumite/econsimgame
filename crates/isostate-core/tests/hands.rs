@@ -135,11 +135,15 @@ fn brambank_hires_no_more_than_it_has() {
     // That is island 3's history under the game's rules as they stood before the
     // works' two mends of the pass (works.md, parts G and H), which change it from
     // the warm-up on: the case is played with works.spread_first and
-    // works.keep_order off, and every other rule as the game has it.
+    // works.keep_order off, and every other rule as the game has it. The production
+    // tree (docs/rules/tree.md) gives the island another history again, in which
+    // Greybourne and not Brambank is the town that asks for the most hands, and no
+    // more than it has, so the tree is off here too.
     for ration in [false, true] {
         let mut P = params(ration, 6, 1751);
         P.works.spread_first = false;
         P.works.keep_order = false;
+        P.tree = Default::default();
         let mut s = started(&P);
         sim::run_year(&mut s).expect("money is conserved through 1750");
         let mut worst = (0.0f64, String::new());
