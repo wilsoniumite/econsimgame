@@ -18,7 +18,9 @@
 # Taken: on night/g-guard-2050 (19 November 2026), the guard on the century
 # after 1900: the test runs on to 2050 and hashes two eras. The first era's
 # four are main's to the digit (the run to 1900 is untouched); the second
-# era's four are new.
+# era's four are new. Taken again on night/g-batch-mends-1 (guard-2050 and
+# small-mends-1 merged on main at 00ebc6d): none of the eight moved; the
+# money check and the books' checks only read.
 1750-1900 economy  0x9a6b3ba24a097bd1
 1750-1900 books    0xfa5dd1db28f62894
 1750-1900 news     0x9f83de6e9e162ab1
