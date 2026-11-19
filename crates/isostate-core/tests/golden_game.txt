@@ -21,6 +21,10 @@
 # era's four are new. Taken again on night/g-batch-mends-1 (guard-2050 and
 # small-mends-1 merged on main at 00ebc6d): none of the eight moved; the
 # money check and the books' checks only read.
+# Taken again on night/g-batch-sandbox-a (19 November 2026), the batch of
+# the sandbox's stages 8a, 7a and 7b (sessions kept and gone on with; works
+# built or closed by hand) with main at 1085e2f merged in: none of the eight
+# moved. Edits by hand are not rules, and the game's run gives none.
 1750-1900 economy  0x9a6b3ba24a097bd1
 1750-1900 books    0xfa5dd1db28f62894
 1750-1900 news     0x9f83de6e9e162ab1

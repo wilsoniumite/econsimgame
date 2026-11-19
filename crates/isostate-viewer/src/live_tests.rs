@@ -302,7 +302,7 @@ fn a_game_saved_by_the_thread_comes_back_the_same() {
 
     // loaded as --load loads it; nothing is written, so the first game's file stays as it is
     let mut b = Table::open(&Opening { load: Some(name.clone()), shots: true, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0 }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1779, month: 0, orders: saved.orders.len(), refused: 0, drifted: false, passed_over: 0, by_hand: 0 }));
     assert!(a.live.kept && !b.live.kept, "the first is saved where it was told to be; the second only takes pictures");
     same(&a, &b, "after loading");
     // the last year's months for the maps, as the books kept them
@@ -489,7 +489,7 @@ fn a_game_left_in_the_middle_of_a_year_is_gone_on_with_there() {
     let c = Table::open(&Opening { load: Some(name), shots: true, ..default() });
     assert_eq!(c.live.resumed.as_ref().unwrap().date(false), "April 1755");
     // a game that is over has no January after its last year
-    assert_eq!(Resumed { year: 1900, month: 0, orders: 0, refused: 0, drifted: false, passed_over: 0 }.date(true), "1900");
+    assert_eq!(Resumed { year: 1900, month: 0, orders: 0, refused: 0, drifted: false, passed_over: 0, by_hand: 0 }.date(true), "1900");
     assert!(!c.live.resumed.as_ref().unwrap().drifted);
     drop(c);
     let _ = std::fs::remove_dir_all(&dir);
@@ -641,6 +641,68 @@ fn the_thread_tells_the_rules_and_a_rule_set_by_hand_is_in_its_next_answer() {
 }
 
 #[test]
+fn a_works_by_hand_is_offered_with_the_square_waits_with_its_stake_and_is_taken_back() {
+    // The sandbox's Works tool (docs/designs/sandbox.md, 4.4 and 6.7, stage 7b).
+    // On island 7 in January 1791, the answer about a farm square of
+    // Melbourne's district near the town holds the hand's list
+    // (`edits::works_offered`) with a method that may be built there; given
+    // five months on, it is answered "Ordered by hand", stands among what
+    // waits for the turn and pegs its square; `Cmd::Cancel(0)` takes it away.
+    // Given again, it is carried out at the turn, told in the line it wrote in
+    // the news, and its square stays pegged until the year's picture has it.
+    // Played under the game's rules as they stand, six families, nobody at the
+    // first: it asks of the island's history only that Melbourne stands and
+    // that some square near it takes a works, and it looks for that square
+    // rather than naming one.
+    use isostate_core::edits::Edit;
+    let mut a = Table::open(&Opening { seed: 7, families: 6, fresh: true, shots: true, sandbox: true, advance: 40, ..default() });
+    assert_eq!(a.year(), 1790);
+    let (k, w, n) = (a.r.filled - 1, a.r.w as i64, a.r.n);
+    let town = a.r.header.towns.iter().position(|t| t.name == "Melbourne").expect("Melbourne stands on island 7");
+    let node = a.r.header.towns[town].node as i64;
+    // the squares of its district round the town, the nearest first
+    let mut near: Vec<usize> = (-5..=5i64)
+        .flat_map(|dz| (-5..=5i64).map(move |dx| node + dz * w + dx))
+        .filter(|&c| c >= 0 && (c as usize) < n && c != node)
+        .map(|c| c as usize)
+        .filter(|&c| a.r.catch[k * n + c] as usize == town + 1)
+        .collect();
+    near.sort_by_key(|&c| ((c as i64 % w - node % w).pow(2) + (c as i64 / w - node / w).pow(2), c));
+    let (cell, method, cost) = near
+        .iter()
+        .find_map(|&c| {
+            let hand = a.site(c).hand.ok()?;
+            let best = hand.into_iter().filter(|o| o.allowed.is_ok()).filter_map(|o| o.sums.ok().map(|s| (o.name, s.capital_cost, s.expected_return))).max_by(|x, y| x.2.total_cmp(&y.2))?;
+            Some((c, best.0, best.1))
+        })
+        .expect("a square near Melbourne takes a works");
+    assert!(cost > 0.0);
+    // five months on, it is ordered, and waits with its stake
+    for _ in 0..5 {
+        assert!(!a.month());
+    }
+    let build = Edit::BuildWorks { method: method.clone(), cell };
+    assert!(a.order("by_hand", Cmd::ByHand(build.clone())), "{}", a.said);
+    assert!(a.said.starts_with("Ordered by hand: a works ("), "{}", a.said);
+    assert!(a.said.contains("in Melbourne's district") && a.said.ends_with("at the year's turn, in January 1792."), "{}", a.said);
+    assert_eq!(a.live.standing.waiting, vec![Order::ByHand { edit: build.clone() }]);
+    assert!(a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing.pegs);
+    // the Hand tab's row: its words, with no "By hand" before them
+    let row = crate::hand_tab::waiting_words(&a.live.standing.waiting[0], &a.r);
+    assert!(row.starts_with("a works (") && row.contains(&format!("at {}, {}", cell % a.r.w, cell / a.r.w)), "{row}");
+    // taken back: nothing waits, and the stake is gone
+    assert!(a.order("cancel", Cmd::Cancel(0)), "{}", a.said);
+    assert!(a.live.standing.waiting.is_empty() && !a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing);
+    // given again, it is carried out at the turn, in the line it wrote in the news
+    assert!(a.order("by_hand", Cmd::ByHand(build)), "{}", a.said);
+    a.step();
+    assert_eq!(a.year(), 1791);
+    let line = a.turned.iter().find(|t| t.1.starts_with("By hand")).unwrap_or_else(|| panic!("{:?}", a.turned));
+    assert!(line.0 && line.1.contains("built for"), "{line:?}");
+    assert!(a.live.standing.waiting.is_empty() && a.live.standing.pegs.contains(&cell), "{:?}", a.live.standing);
+}
+
+#[test]
 fn a_game_begun_to_1910_plays_past_1900_through_the_thread_and_its_save_says_so() {
     // A game past 1900 (docs/rules/longrun.md, "A game past 1900"): begun with
     // a last year of 1910, played to 1899 before it opens and on through the
@@ -733,7 +795,7 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
 
 #[test]
 fn the_card_says_what_could_not_be_brought_back() {
-    let back = |refused, drifted| Resumed { year: 1779, month: 0, orders: 41 - refused, refused, drifted, passed_over: 0 };
+    let back = |refused, drifted| Resumed { year: 1779, month: 0, orders: 41 - refused, refused, drifted, passed_over: 0, by_hand: 0 };
     assert_eq!(crate::game::resumed_note(&back(0, false)), None);
     assert_eq!(
         crate::game::resumed_note(&back(0, true)).unwrap(),
@@ -743,8 +805,8 @@ fn the_card_says_what_could_not_be_brought_back() {
         crate::game::resumed_note(&back(3, true)).unwrap(),
         "The island's rules have changed since this game was saved. Three of your 41 orders could not be given again, so some things stand differently. The save as it was is kept."
     );
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 1, drifted: false, passed_over: 0 }).unwrap().contains(" Your one order could not"));
-    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 4, drifted: true, passed_over: 0 }).unwrap().contains(" All four of your orders could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 1, drifted: false, passed_over: 0, by_hand: 0 }).unwrap().contains(" Your one order could not"));
+    assert!(crate::game::resumed_note(&Resumed { year: 1751, month: 0, orders: 0, refused: 4, drifted: true, passed_over: 0, by_hand: 0 }).unwrap().contains(" All four of your orders could not"));
     // an earlier save than the last, with or without the rules having changed
     assert_eq!(
         crate::game::resumed_note(&Resumed { passed_over: 1, ..back(0, false) }).unwrap(),
@@ -755,11 +817,117 @@ fn the_card_says_what_could_not_be_brought_back() {
     assert_eq!(crate::game::new_game_hint(1750, false), "A new game begins again in 1750. No order was given in this one, so it is not kept beside the new game: the same island makes it again.");
     let both = crate::game::resumed_note(&Resumed { passed_over: 2, ..back(0, true) }).unwrap();
     assert!(both.starts_with("The last save could not be read, so this is an earlier one, from 1779. The island's rules have changed"), "{both}");
+    // a sandbox's short card: where the session was left and what was done by hand in it, and what Begin again leaves
+    let session = |month, by_hand| Resumed { year: 1790, month, orders: by_hand, refused: 0, drifted: false, passed_over: 0, by_hand };
+    assert_eq!(crate::game::session_left_words(&session(2, 2), false), "As you left it in March 1791, with two edits by hand.");
+    assert_eq!(crate::game::session_left_words(&session(0, 1), false), "As you left it in January 1791, with one edit by hand.");
+    assert_eq!(crate::game::session_left_words(&session(0, 0), false), "As you left it in January 1791, with nothing done by hand.");
+    assert_eq!(crate::game::session_left_words(&session(5, 23), false), "As you left it in June 1791, with 23 edits by hand.");
+    assert_eq!(crate::game::begin_again_hint(7, 1750, true), "Begin again makes island 7 anew in 1750 and keeps this session beside it.");
+    assert_eq!(
+        crate::game::begin_again_hint(7, 1750, false),
+        "Begin again makes island 7 anew in 1750. Nothing was done by hand in this session, so it is not kept beside the new one: the same island makes it again."
+    );
+}
+
+/// `ISOSTATE_SAVES` names one folder for the whole program, so the tests that
+/// set it take turns: each holds this while it does.
+static SAVES_FOLDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn saves_folder_held() -> std::sync::MutexGuard<'static, ()> {
+    // (a test that failed while holding it has let it go all the same)
+    SAVES_FOLDER.lock().unwrap_or_else(|held| held.into_inner())
+}
+
+#[test]
+fn a_sandbox_is_kept_in_its_session_and_a_plain_start_goes_on_with_it() {
+    // The sandbox's sessions folder (docs/designs/sandbox.md, 6.8, 8a). Island 7 with six families
+    // under the game's rules as they stand; the case holds what is kept and gone on with, not what
+    // the island does, so it leans on no one island's history and sets no rule by name.
+    use isostate_core::edits::{Edit, Purse};
+    use isostate_core::inspect::{Thing, Told};
+    let _held = saves_folder_held();
+    let dir = saves::test_dir("session-test");
+    unsafe { std::env::set_var("ISOSTATE_SAVES", &dir) };
+    let file = saves::session(7, 6);
+    assert_eq!(file, dir.join("sandbox").join("island-7-families-6.json"));
+    let sandbox = |fresh| Opening { seed: 7, families: 6, sandbox: true, fresh, ..default() };
+    assert!(sandbox(false).plain() && !sandbox(true).plain());
+    assert_eq!((sandbox(false).keeping(), sandbox(true).keeping()), (Keeping::Session, Keeping::Session));
+    let edits_carried_out = |t: &Table| {
+        let told: Told = t.ask(Thing::Island).expect("the island is told of");
+        told.groups.iter().find(|g| g.name == "By hand").and_then(|g| g.rows.iter().find(|r| r.0 == "edits carried out")).map(|r| r.1.clone()).expect("the ledger's row")
+    };
+    let by_hand = |s: &isostate_core::save::Save| s.orders.iter().filter(|g| matches!(g.order, Order::ByHand { .. })).count();
+
+    // a new session, kept in its session: its largest town's people halved, a year played, and let go
+    let mut a = Table::open(&sandbox(true));
+    assert!(a.live.resumed.is_none() && a.live.kept);
+    let k = a.r.filled - 1;
+    let town = (0..a.r.n_towns).filter(|&t| a.r.town_active[k * a.r.n_towns + t] != 0).max_by_key(|&t| a.r.town_pop[k * a.r.n_towns + t] as u64).unwrap();
+    assert!(a.order("by_hand", Cmd::ByHand(Edit::People { town, factor: 0.5 })), "{}", a.said);
+    a.step();
+    let year = a.year();
+    drop(a);
+    let saved = saves::read(&file).unwrap();
+    assert_eq!((saved.year, saved.month, by_hand(&saved)), (year as i64, 0, 1));
+    // and nothing in the family's place, nor among the trials
+    assert!(!saves::autosave(7, 6).exists() && !dir.join("trials").exists());
+
+    // a plain sandbox start goes on with it, the edit in its log
+    let mut b = Table::open(&sandbox(false));
+    let back = b.live.resumed.clone().expect("the session is gone on with");
+    assert_eq!((back.year, back.month, back.by_hand, back.refused, back.drifted), (year, 0, 1, 0, false));
+    assert!(b.live.kept);
+    assert_eq!(edits_carried_out(&b), "1");
+    // stopped five months into the year with an edit made that month: kept, and gone on with in that month
+    for _ in 0..5 {
+        assert!(!b.month());
+    }
+    assert!(b.order("by_hand", Cmd::ByHand(Edit::Money { purse: Purse::Households, town: None, factor: 2.0 })), "{}", b.said);
+    drop(b);
+    let c = Table::open(&sandbox(false));
+    let back = c.live.resumed.clone().expect("the session is gone on with");
+    assert_eq!((back.year, back.month, back.by_hand), (year, 5, 2));
+    assert_eq!(edits_carried_out(&c), "2");
+    drop(c);
+
+    // a --new sandbox start makes the island anew and is saved at once, so that it is the session a plain
+    // start goes on with from now: the session that was there is set aside whole
+    let mut d = Table::open(&sandbox(true));
+    assert!(d.live.resumed.is_none());
+    let aside = saves::read(&saves::previous(&file)).expect("the session before is set aside");
+    assert_eq!((aside.year, aside.month, by_hand(&aside)), (year as i64, 5, 2));
+    let now = saves::read(&file).unwrap();
+    assert!(now.orders.is_empty() && (now.year, now.month) == (1750, 0), "{} orders, {} {}", now.orders.len(), now.year, now.month);
+    // and kept as it is played
+    d.month();
+    drop(d);
+    assert_eq!(saves::read(&file).unwrap().month, 1);
+    assert_eq!(saves::read(&saves::previous(&file)).unwrap(), aside, "set aside once");
+    // a plain start now goes on with the new session, which nobody did anything in
+    let e = Table::open(&sandbox(false));
+    assert_eq!(e.live.resumed.as_ref().map(|r| (r.month, r.by_hand)), Some((1, 0)));
+    drop(e);
+
+    // a sandbox nobody is at is kept nowhere, unless --keep asks for its session in a folder named for it
+    assert_eq!(Opening { sandbox: true, unattended: true, ..default() }.keeping(), Keeping::Nowhere);
+    assert_eq!(Opening { sandbox: true, shots: true, unattended: true, ..default() }.keeping(), Keeping::Nowhere);
+    let check = Opening { sandbox: true, unattended: true, keep: true, ..default() };
+    assert_eq!(check.keeping(), Keeping::Session);
+    assert!(check.keep_refused(false).unwrap().starts_with("--keep with nobody at the game"));
+    assert_eq!(check.keep_refused(true), None);
+    // and a place that was named is the place
+    assert_eq!(Opening { sandbox: true, save: Some("x.json".into()), ..default() }.keeping(), Keeping::Named("x.json".into()));
+
+    unsafe { std::env::remove_var("ISOSTATE_SAVES") };
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn only_a_plain_start_goes_on_with_the_autosave() {
-    // ISOSTATE_SAVES is this test's alone: the other test names its file
+    // ISOSTATE_SAVES is this test's while it holds the folder: the other tests name their files
+    let _held = saves_folder_held();
     let dir = saves::test_dir("autosave-test");
     unsafe { std::env::set_var("ISOSTATE_SAVES", &dir) };
     let file = saves::autosave(7, 3);
@@ -778,7 +946,7 @@ fn only_a_plain_start_goes_on_with_the_autosave() {
 
     // a plain start goes on with it
     let b = Table::open(&Opening { seed: 7, families: 3, ..default() });
-    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, month: 0, orders, refused: 0, drifted: false, passed_over: 0 }));
+    assert_eq!(b.live.resumed, Some(Resumed { year: 1752, month: 0, orders, refused: 0, drifted: false, passed_over: 0, by_hand: 0 }));
     assert!(b.live.kept);
     assert_eq!(b.year(), 1752);
     drop(b);

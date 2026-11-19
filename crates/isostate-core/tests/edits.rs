@@ -652,3 +652,408 @@ fn which_switches_can_be_thrown_in_a_running_island() {
         }
     }
 }
+
+// ---------------------------------------------------------------- stage 7a (section 6.7)
+
+/// A town by its name.
+fn town_called(g: &Game, name: &str) -> usize {
+    let st = &g.sim.st;
+    (0..st.T_max).find(|&t| st.town_active[t] && st.town_name[t] == name).unwrap_or_else(|| panic!("a town called {name}"))
+}
+
+/// The allowed works of highest expected return on a square, as the tool
+/// lists it: (method's name, its cost, its expected return).
+fn best_offered(g: &Game, cell: usize) -> Option<(String, f64, f64)> {
+    let options = edits::works_offered(&g.sim, cell).ok()?;
+    options
+        .iter()
+        .filter(|o| o.allowed.is_ok())
+        .filter_map(|o| o.sums.as_ref().ok().map(|s| (o.name.clone(), s.capital_cost, s.expected_return)))
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+}
+
+/// The first farm square of a town's district, by number, on which some works
+/// may be built by hand, with the best of them.
+fn farm_square(g: &Game, town: usize) -> (usize, String, f64, f64) {
+    let st = &g.sim.st;
+    st.town_cells[town]
+        .iter()
+        .filter(|&&c| st.land_use[c] == isostate_core::land::USE_SECTOR0)
+        .find_map(|&c| best_offered(g, c).map(|(m, cost, r)| (c, m, cost, r)))
+        .expect("a farm square on which a works may be built")
+}
+
+/// Island 7 at the turn into 1790, under the game's rules with six families.
+/// The cases of this stage lean on two of its rules beside the hand: the works
+/// rule (`works.enabled`), which sizes a works by hand and says whether a
+/// square has room, and the owners' rule (`owners.enabled`), which says who
+/// holds it and where a closed works' cash goes; `at_1790` asserts that both
+/// are on.
+fn at_1790() -> Game {
+    let g = played(40);
+    assert_eq!(g.sim.year, 1790);
+    assert!(g.sim.params.works.enabled && g.sim.params.owners.enabled, "played under the works and owners rules");
+    g
+}
+
+#[test]
+fn a_works_built_by_hand_at_a_turn_stands_and_its_cost_is_booked() {
+    // (a) at the turn into 1790, on a farm square of Melbourne's district
+    let mut g = at_1790();
+    let town = town_called(&g, "Melbourne");
+    let (cell, method, cost, roi) = farm_square(&g, town);
+    let options = edits::works_offered(&g.sim, cell).unwrap();
+    assert_eq!(options.len(), g.sim.content.M, "every method is listed");
+    let allowed = options.iter().filter(|o| o.allowed.is_ok()).count();
+    let known = options.iter().filter(|o| o.sums.is_ok()).count();
+    eprintln!("square {cell}: {} methods, {known} known in Melbourne, {allowed} allowed; the best {method}, {cost:.0}, {:.0}% a year", options.len(), 100.0 * roi);
+    for o in options.iter().filter(|o| o.sums.is_ok()) {
+        let said = match (&o.sums, &o.allowed) {
+            (Ok(s), Ok(())) => format!("K {:.1}, cost {:.0}, return {:.0}%", s.K, s.capital_cost, 100.0 * s.expected_return),
+            (Ok(s), Err(why)) => format!("K {:.1}, refused: {why}", s.K),
+            _ => unreachable!(),
+        };
+        eprintln!("  {:28} {said}", o.label);
+    }
+    let (works, money, ledger, news) = (g.sim.st.F_count, econ::money_total(&g.sim.st), g.sim.st.by_hand.clone(), g.sim.events.len());
+    assert_eq!(g.give(by_hand(Edit::BuildWorks { method: method.clone(), cell })).unwrap(), save::Done::Done);
+    let st = &g.sim.st;
+    let f = works;
+    assert_eq!(st.F_count, works + 1, "one works more");
+    assert!(st.f_alive[f] && st.f_cell[f] == cell && st.f_town[f] == town);
+    assert_eq!(st.f_cash[f], cost, "its cash is its cost");
+    assert_eq!(st.by_hand.money, ledger.money + cost, "the ledger holds its cost");
+    assert_eq!((st.by_hand.count, st.by_hand.people), (ledger.count + 1, ledger.people));
+    let now = econ::money_total(st);
+    assert!(((now - money) - cost).abs() <= 1e-9 * now, "the island's money rose by {} for a cost of {cost}", now - money);
+    // no family owns it, its reason is the hand's, and it was born in the year it was built for
+    assert!(st.f_owner[f] < 0);
+    assert_eq!((st.f_reason[f].kind.as_str(), st.f_born[f]), ("hand", 1790));
+    // owners: held as a works the town's savers founded that day is, by the pool ratio
+    assert_eq!(st.owners.stake[f], isostate_core::owners::pool_ratio(st, &g.sim.params, town));
+    let ev = g.sim.events.last().unwrap();
+    assert_eq!(g.sim.events.len(), news + 1);
+    assert_eq!((ev.kind.as_str(), ev.cell, ev.firm, ev.town), ("hand", Some(cell), Some(f), Some(town)));
+    assert!(ev.title.starts_with("By hand: ") && ev.title.contains(&st.f_name[f]) && ev.title.contains("built for"), "{}", ev.title);
+    eprintln!("{}\n  {}", ev.title, ev.text);
+    assert_eq!(g.orders.last().map(|o| (o.year, o.month)), Some((1789, 0)));
+    // a year on it has plant, and two years pass the money check
+    g.year().unwrap();
+    g.turn();
+    let st = &g.sim.st;
+    eprintln!("a year on: plant {:.1}, on order {:.1}, cash {:.0}", st.f_K[f], st.f_order_K[f], st.f_cash[f]);
+    assert!(st.f_alive[f] && st.f_K[f] > 0.0, "a year on the works has plant");
+    g.year().unwrap();
+    g.turn();
+    assert!(drift(&g) < 1e-6);
+    assert_eq!(g.sim.st.by_hand.money, ledger.money + cost);
+}
+
+#[test]
+fn a_works_ordered_by_hand_in_mid_year_waits_for_the_turn() {
+    // (b) the same given five months into 1790
+    let mut g = at_1790();
+    let town = town_called(&g, "Melbourne");
+    let (cell, method, _, _) = farm_square(&g, town);
+    for _ in 0..5 {
+        g.month().unwrap();
+    }
+    let (works, ledger, log, news) = (g.sim.st.F_count, g.sim.st.by_hand.clone(), g.orders.clone(), g.sim.events.len());
+    let order = by_hand(Edit::BuildWorks { method: method.clone(), cell });
+    assert_eq!(g.give(order.clone()).unwrap(), save::Done::Waits);
+    assert_eq!(g.waiting, vec![order.clone()]);
+    assert_eq!((g.sim.st.F_count, &g.sim.st.by_hand, &g.orders, g.sim.events.len()), (works, &ledger, &log, news), "nothing is done yet");
+    // saved in the middle of the year, and loaded
+    let text = g.save(2_000).to_text();
+    let mid = save::load(&Save::from_text(&text).unwrap(), |_| {}).unwrap();
+    assert!(!mid.drifted && mid.refused.is_empty(), "{:?}", mid.refused);
+    assert_eq!(save::check(&mid.game.sim), save::check(&g.sim));
+    assert_eq!(mid.game.waiting, g.waiting);
+    // nothing changes to December: it is not word to the family
+    while !g.month().unwrap() {
+        assert_eq!((g.sim.st.F_count, g.sim.st.by_hand.count), (works, ledger.count));
+    }
+    assert_eq!(g.waiting, vec![order.clone()], "it waits past December for the turn");
+    assert_eq!(g.sim.st.by_hand, ledger);
+    // saved at the turn before it is carried out, and loaded
+    let text = g.save(3_000).to_text();
+    let mut turn = save::load(&Save::from_text(&text).unwrap(), |_| {}).unwrap();
+    assert!(!turn.drifted && turn.refused.is_empty(), "{:?}", turn.refused);
+    assert_eq!(turn.game.waiting, g.waiting);
+    let outcomes = g.turn();
+    eprintln!("{outcomes:?}");
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(outcomes[0].result, Ok(save::Done::Done));
+    let built = g.sim.st.F_count - 1;
+    assert_eq!(g.sim.st.f_reason[built].kind, "hand");
+    assert_eq!((g.sim.st.f_born[built], g.sim.st.f_cell[built]), (1791, cell));
+    assert!(g.sim.st.by_hand.money > ledger.money);
+    // logged at month 0 of the turn
+    assert_eq!(g.orders.last().unwrap(), &Given { year: 1790, month: 0, order: order.clone() });
+    let ev = g.sim.events.last().unwrap();
+    assert!(ev.kind == "hand" && (ev.year - (1791.0 + 0.5 / 12.0)).abs() < 1e-9, "{} at {}", ev.title, ev.year);
+    eprintln!("{}", ev.title);
+    // the save at the turn does the same when it is carried on
+    turn.game.turn();
+    assert_eq!(save::check(&turn.game.sim), save::check(&g.sim));
+    assert_eq!(turn.game.orders, g.orders);
+    // and saved after it, loaded, played on: the same
+    g.year().unwrap();
+    g.turn();
+    let after = save::load(&Save::from_text(&g.save(4_000).to_text()).unwrap(), |_| {}).unwrap();
+    assert!(!after.drifted && after.refused.is_empty(), "{:?}", after.refused);
+    assert_eq!(save::check(&after.game.sim), save::check(&g.sim));
+    assert_eq!(series_bits(&after.game), series_bits(&g));
+    assert!(drift(&g) < 1e-6);
+}
+
+#[test]
+fn a_works_closed_by_hand_sends_its_cash_where_close_firm_does() {
+    // (c) the largest works, closed at the turn into 1790
+    let mut g = at_1790();
+    let st = &g.sim.st;
+    let C = &g.sim.content;
+    let value = |f: usize| isostate_core::families::works_value(st, C, f);
+    let f = (0..st.F_count).filter(|&f| st.f_alive[f]).max_by(|&a, &b| value(a).total_cmp(&value(b))).unwrap();
+    let (i, cash, cell) = (st.f_town[f], st.f_cash[f], st.f_cell[f]);
+    let owner = isostate_core::families::owner_of_firm(st, f);
+    let shares = isostate_core::owners::peek(st, &g.sim.params, f);
+    let (hh, lords, merch) = (st.hh_cash[i], st.lord_cash[i], st.merch_cash[i]);
+    let family = owner.map(|k| st.families[k].cash);
+    let (money, ledger) = (econ::money_total(st), st.by_hand.clone());
+    eprintln!("{} ({}), in {}: cash {cash:.0}, owner {owner:?}, shares {shares:?}", st.f_name[f], C.method_label[st.f_method[f]], st.town_name[i]);
+    assert_eq!(g.give(by_hand(Edit::CloseWorks { works: f })).unwrap(), save::Done::Done);
+    let st = &g.sim.st;
+    assert!(!st.f_alive[f]);
+    assert_eq!(st.f_died[f], 1790, "closed in the year it was closed for");
+    assert!(st.closed_year.contains(&f));
+    assert_ne!(st.firm_at[cell], f as i64, "the square no longer names it");
+    let near = |a: f64, b: f64| (a - b).abs() <= 1e-9 * a.abs().max(b.abs()).max(1.0);
+    match (cash >= 0.0, owner) {
+        (false, _) => assert!(near(st.merch_cash[i], merch + cash)),
+        (true, Some(k)) => assert!(near(st.families[k].cash, family.unwrap() + cash)),
+        // owners: by its shares, to the town it stands in
+        (true, None) => {
+            let to_lords = isostate_core::owners::lords_part(&shares, cash);
+            assert!(near(st.lord_cash[i], lords + to_lords) && near(st.hh_cash[i], hh + cash - to_lords));
+        }
+    }
+    assert_eq!(st.by_hand.money, ledger.money, "nothing is booked by hand");
+    assert!(near(econ::money_total(st), money));
+    let ev = g.sim.events.last().unwrap();
+    assert_eq!((ev.kind.as_str(), ev.firm, ev.cell), ("hand", Some(f), Some(cell)));
+    eprintln!("{}\n  {}", ev.title, ev.text);
+    assert!(ev.title.starts_with("By hand: ") && ev.title.contains("closed"));
+    for _ in 0..2 {
+        g.year().unwrap();
+        g.turn();
+    }
+    assert!(drift(&g) < 1e-6);
+    assert!(!g.sim.st.f_alive[f]);
+}
+
+#[test]
+fn a_works_by_hand_refused_leaves_no_trace() {
+    // (d) every refusal of the two edits, at the turn into 1790 and in March
+    let mut g = at_1790();
+    let st = &g.sim.st;
+    let C = &g.sim.content;
+    let town = town_called(&g, "Melbourne");
+    let (cell, method, _, _) = farm_square(&g, town);
+    let unknown = (0..C.M).find(|&m| !(st.know[(town, m)] > 0.02)).map(|m| C.method_name[m].clone()).expect("a method Melbourne does not know");
+    let sea = (0..st.N).find(|&c| !st.world.land[c]).unwrap();
+    let built = (0..st.N).find(|&c| st.world.land[c] && st.catch[c] >= 0 && st.cell_K_share[c] >= 0.9).expect("a built-up square");
+    let closed = (0..st.F_count).find(|&f| !st.f_alive[f]).expect("a works closed");
+    // a square with some room, and a method too large for what is left of it
+    let no_room = st.town_cells[town].iter().find_map(|&c| {
+        let options = edits::works_offered(&g.sim, c).ok()?;
+        options.iter().find(|o| matches!(&o.allowed, Err(why) if why.contains("no room"))).map(|o| (c, o.name.clone()))
+    });
+    let mut refused = vec![
+        Edit::BuildWorks { method: unknown, cell },
+        Edit::BuildWorks { method: "no such works".into(), cell },
+        Edit::BuildWorks { method: method.clone(), cell: sea },
+        Edit::BuildWorks { method: method.clone(), cell: st.N + 5 },
+        Edit::BuildWorks { method: method.clone(), cell: built },
+        Edit::CloseWorks { works: closed },
+        Edit::CloseWorks { works: st.F_count },
+        Edit::CloseWorks { works: st.f_alive.len() + 10 },
+    ];
+    match no_room {
+        Some((c, m)) => refused.push(Edit::BuildWorks { method: m, cell: c }),
+        None => eprintln!("(no square of Melbourne's district is too small for a works it knows)"),
+    }
+    for at in ["the turn", "March"] {
+        if at == "March" {
+            for _ in 0..3 {
+                g.month().unwrap();
+            }
+        }
+        for edit in &refused {
+            let (check, ledger, log, news, waiting) = (save::check(&g.sim), g.sim.st.by_hand.clone(), g.orders.clone(), g.sim.events.len(), g.waiting.clone());
+            let why = g.give(by_hand(edit.clone())).expect_err(&format!("{edit:?} at {at}"));
+            eprintln!("{edit:?} at {at}: {why}");
+            // the sentence the edit is refused with is the one the check gives
+            assert_eq!(edits::check(&g.sim, edit), Err(why));
+            assert_eq!(save::check(&g.sim), check);
+            assert_eq!(g.sim.st.by_hand, ledger);
+            assert_eq!(g.orders, log);
+            assert_eq!(g.sim.events.len(), news);
+            assert_eq!(g.waiting, waiting);
+        }
+    }
+    // a full table, on a copy made to look full (only the count of works is read)
+    let mut full = at_1790();
+    full.sim.st.F_count = full.sim.st.f_alive.len();
+    let (check, ledger, log) = (save::check(&full.sim), full.sim.st.by_hand.clone(), full.orders.clone());
+    let why = full.give(by_hand(Edit::BuildWorks { method, cell })).unwrap_err();
+    eprintln!("a full table: {why}");
+    assert!(why.contains("table is full"));
+    assert_eq!((save::check(&full.sim), &full.sim.st.by_hand, &full.orders), (check, &ledger, &log));
+    // and carried out by itself in the middle of a year, the kind that waits is refused
+    let why = edits::carry_out(&mut g.sim, &Edit::CloseWorks { works: 0 }).unwrap_err();
+    eprintln!("in March, by itself: {why}");
+    assert!(why.contains("waits for the year's turn"));
+}
+
+#[test]
+fn the_edits_that_wait_are_written_in_the_log_and_read_back() {
+    // (e)
+    let given = Given { year: 1799, month: 0, order: by_hand(Edit::BuildWorks { method: "brickfield".into(), cell: 1234 }) };
+    let line = serde_json::to_string(&given).unwrap();
+    assert_eq!(line, r#"{"year":1799,"kind":"by_hand","edit":{"what":"build_works","method":"brickfield","cell":1234}}"#);
+    assert_eq!(serde_json::from_str::<Given>(&line).unwrap(), given);
+    let given = Given { year: 1820, month: 0, order: by_hand(Edit::CloseWorks { works: 77 }) };
+    let line = serde_json::to_string(&given).unwrap();
+    assert_eq!(line, r#"{"year":1820,"kind":"by_hand","edit":{"what":"close_works","works":77}}"#);
+    assert_eq!(serde_json::from_str::<Given>(&line).unwrap(), given);
+    for edit in [Edit::BuildWorks { method: "x".into(), cell: 1 }, Edit::CloseWorks { works: 2 }] {
+        assert!(edit.at_turn());
+        assert!(!by_hand(edit).for_year_end(), "it waits for the turn, not for December's end");
+    }
+    for edit in [Edit::People { town: 1, factor: 0.5 }, Edit::FoundTown { cell: 1 }, Edit::Discover { tech: "x".into(), town: 1 }] {
+        assert!(!edit.at_turn());
+    }
+}
+
+#[test]
+fn a_familys_order_with_an_edit_waiting_is_tried_as_before() {
+    // (f) five months into 1790, a works ordered by hand waits; a family's
+    // order is then tried on a copy of the island that passes it over
+    let mut g = at_1790();
+    let town = town_called(&g, "Melbourne");
+    let (cell, method, _, _) = farm_square(&g, town);
+    for _ in 0..5 {
+        g.month().unwrap();
+    }
+    let mut plain = g.clone();
+    assert_eq!(g.give(by_hand(Edit::BuildWorks { method, cell })).unwrap(), save::Done::Waits);
+    let seat = g.sim.st.families[save::PLAYER].seat;
+    let elsewhere = biggest_towns(&g).into_iter().find(|&t| t != seat).unwrap();
+    for order in [Order::MoveSeat { town: elsewhere }, Order::MoveSeat { town: g.sim.st.T_max + 2 }] {
+        let (a, b) = (g.give(order.clone()), plain.give(order.clone()));
+        eprintln!("{order:?}: {a:?} with the edit waiting, {b:?} without");
+        assert_eq!(a, b);
+    }
+    assert_eq!(g.waiting.len(), plain.waiting.len() + 1);
+    assert_eq!(g.foreseen().map(|r| r.seat), plain.foreseen().map(|r| r.seat));
+}
+
+#[test]
+fn a_list_with_a_works_by_hand_is_played_before_january_and_refused_after() {
+    // (g) under the game's rules with six families, to 1800
+    let mut P = save::params(Rules::Game, 7, 6);
+    P.end_year = Some(1799);
+    let before = edits::play(&P, Rules::Game.content(), &[]).unwrap();
+    assert_eq!(before.year, 1800);
+    let st = &before.st;
+    let town = (0..st.T_max).filter(|&t| st.town_active[t]).max_by(|&a, &b| st.pop[a].total_cmp(&st.pop[b])).unwrap();
+    let (cell, method) = st.town_cells[town]
+        .iter()
+        .find_map(|&c| {
+            let options = edits::works_offered(&before, c).ok()?;
+            options.iter().find(|o| o.allowed.is_ok()).map(|o| (c, o.name.clone()))
+        })
+        .expect("a works that may be built");
+    P.end_year = Some(1800);
+    let list = vec![Dated { before: (1800, 1), edit: Edit::BuildWorks { method: method.clone(), cell } }];
+    let played = edits::play(&P, Rules::Game.content(), &list).unwrap();
+    let hand: Vec<&str> = played.events.iter().filter(|e| e.kind == "hand").map(|e| e.title.as_str()).collect();
+    eprintln!("{hand:?}");
+    assert_eq!(hand.len(), 1);
+    assert!(hand[0].starts_with("By hand: ") && hand[0].contains("built for"));
+    // dated before March, it is refused before anything is played
+    let late = vec![Dated { before: (1800, 3), edit: Edit::BuildWorks { method, cell } }];
+    let why = edits::play(&P, Rules::Game.content(), &late).unwrap_err();
+    eprintln!("{why}");
+    assert!(why.contains("before March 1800") && why.contains("build_works") && why.contains("date it before January"), "{why}");
+}
+
+/// The measure of section 3, row 9 ("works founded and lost", R114): on island
+/// 7 at the turn into 1800 under the game's rules, in each of the ten largest
+/// towns, the best works the tool offers among the first forty squares of its
+/// district on which a works may stand, built by hand; played to the end of
+/// 1810. Beside them, the share of the works the island founded itself that
+/// still stand. Run with `--ignored --nocapture`.
+#[test]
+#[ignore]
+fn ten_works_by_hand() {
+    let mut g = played(50);
+    assert_eq!(g.sim.year, 1800);
+    let towns: Vec<usize> = biggest_towns(&g).into_iter().take(10).collect();
+    // the tool's list, timed on a hundred squares
+    let squares: Vec<usize> = towns.iter().flat_map(|&t| g.sim.st.town_cells[t].iter().copied().take(10)).collect();
+    let mut times = Vec::new();
+    for &c in &squares {
+        let t0 = std::time::Instant::now();
+        std::hint::black_box(edits::works_offered(&g.sim, c).ok());
+        times.push(t0.elapsed().as_secs_f64() * 1000.0);
+    }
+    let mean = times.iter().sum::<f64>() / times.len() as f64;
+    let slowest = times.iter().cloned().fold(0.0, f64::max);
+    println!("works_offered on {} squares of the ten largest towns' districts, island 7 in January 1800: mean {mean:.3} ms, slowest {slowest:.3} ms", times.len());
+    let mut built = Vec::new();
+    for &t in &towns {
+        let best = g.sim.st.town_cells[t]
+            .iter()
+            .filter(|&&c| edits::works_offered(&g.sim, c).is_ok())
+            .take(40)
+            .filter_map(|&c| best_offered(&g, c).map(|b| (c, b)))
+            .max_by(|a, b| a.1 .2.total_cmp(&b.1 .2));
+        let Some((cell, (method, cost, roi))) = best else {
+            println!("{}: nothing may be built on its first forty squares", g.sim.st.town_name[t]);
+            continue;
+        };
+        g.give(by_hand(Edit::BuildWorks { method: method.clone(), cell })).unwrap();
+        println!("{}", g.sim.events.last().unwrap().title);
+        built.push((t, g.sim.st.F_count - 1, cost, roi));
+    }
+    for _ in 0..11 {
+        g.year().unwrap();
+        g.turn();
+    }
+    assert_eq!(g.last_year(), 1810);
+    let (st, C) = (&g.sim.st, &g.sim.content);
+    println!("\n{:<12} {:<26} {:>9} {:>8}  {:<15} {:>8} {:>11}", "town", "method", "cost", "return", "in 1810", "plant", "profit 1809");
+    for &(t, f, cost, roi) in &built {
+        let profit = isostate_core::works_books(st, C, f).and_then(|b| b.years.into_iter().find(|y| y.year == 1809)).map(|y| y.profit);
+        println!(
+            "{:<12} {:<26} {:>9.0} {:>7.0}%  {:<15} {:>8.1} {:>11}",
+            st.town_name[t],
+            C.method_label[st.f_method[f]],
+            cost,
+            100.0 * roi,
+            if st.f_alive[f] { "standing".to_string() } else { format!("closed {}", st.f_died[f]) },
+            st.f_K[f],
+            profit.map_or("-".to_string(), |p| format!("{p:.0}"))
+        );
+    }
+    let standing = built.iter().filter(|&&(_, f, _, _)| st.f_alive[f]).count();
+    println!("\nby hand: {standing} of {} standing at the end of 1810", built.len());
+    for year in [1799, 1800] {
+        let own: Vec<usize> = (0..st.F_count).filter(|&f| st.f_born[f] == year && st.f_reason[f].kind != "hand").collect();
+        let alive = own.iter().filter(|&&f| st.f_alive[f]).count();
+        println!("the island's own, founded at the end of {year}: {alive} of {} standing at the end of 1810 ({:.0}%)", own.len(), 100.0 * alive as f64 / own.len().max(1) as f64);
+    }
+    assert!(drift(&g) < 1e-6);
+}

@@ -23,14 +23,27 @@
 //! ordered on a square (`FoundTown`). It also adds a run with no window that
 //! carries out a list of dated edits (`run_with`), which the core's `run`
 //! command reads with `--edits FILE`.
+//!
+//! Stage 7a (section 6.7) adds the kind of edit that waits for the year's
+//! turn (`Edit::at_turn`): a works built by hand (`BuildWorks`), paid for with
+//! money booked in the ledger, and a works closed by hand (`CloseWorks`).
+//! Given in the middle of a year such an edit is checked as the island stands
+//! (`check`), waits with the family's works and land, and is carried out in
+//! January after the books are closed. `works_offered` is the list the Works
+//! tool shows on a square, judged by the same function as the edit.
 
 use serde::{Deserialize, Serialize};
 
 use crate::content::Content;
+use crate::families::{self, Group, SiteOption, SiteSums};
+use crate::firms::{self, SiteEval};
+use crate::names;
 use crate::params::Params;
+use crate::rng::Rng;
 use crate::sim::{self, RunResult, Sim};
-use crate::state::Event;
-use crate::util::{fmt_pct, fmt_thousands_f0};
+use crate::state::{Event, State};
+use crate::util::{fmt_pct, fmt_thousands, fmt_thousands_f0};
+use crate::works;
 
 /// The weight of an edit's item of news: above the island's ordinary news, so
 /// that a history of the decade keeps what the hand did.
@@ -167,6 +180,22 @@ pub enum Edit {
     /// A town founded on a square at the year's end, by the hook the founding
     /// rule already has (`State::pp_found_next`).
     FoundTown { cell: usize },
+    /// A works of a method (by `Content::method_name`) built on a square, paid
+    /// for with money made by hand. It waits for the year's turn.
+    BuildWorks { method: String, cell: usize },
+    /// A works closed, by its slot (the record's list of works, as
+    /// `inspect::Thing::Works` takes it). It waits for the year's turn.
+    CloseWorks { works: usize },
+}
+
+impl Edit {
+    /// Whether the edit is of the kind that waits for the year's turn (section
+    /// 2.2 of the design): given in the middle of a year it is checked
+    /// (`check`), kept with the orders that wait, and carried out in January,
+    /// after the books are closed. The others are carried out at once.
+    pub fn at_turn(&self) -> bool {
+        matches!(self, Edit::BuildWorks { .. } | Edit::CloseWorks { .. })
+    }
 }
 
 /// An edit and when it is carried out in a run with no window: before the
@@ -237,7 +266,14 @@ fn months_played(sim: &Sim) -> usize {
 /// the line that says what was done, which is also the title of the item of
 /// news (kind "hand") the edit leaves in the island's history.
 pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
-    let (mut cell, mut tech) = (None, None);
+    let (mut cell, mut tech, mut firm) = (None, None, None);
+    if edit.at_turn() {
+        // the kind that waits is carried out only at a turn, and is checked first
+        if months_played(sim) != 0 {
+            return Err(format!("{} waits for the year's turn, and {} months of {} have been played", what_waits(edit), months_played(sim), sim.year));
+        }
+        check(sim, edit)?;
+    }
     let (title, text, town) = match edit {
         Edit::Money { purse, town, factor } => money(sim, *purse, *town, *factor)?,
         Edit::People { town, factor } => people(sim, *town, *factor)?,
@@ -252,6 +288,16 @@ pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
             cell = Some(*c);
             found_town(sim, *c)?
         }
+        Edit::BuildWorks { method, cell: c } => {
+            let (said, f) = build_works(sim, method, *c)?;
+            (cell, firm) = (Some(*c), Some(f));
+            said
+        }
+        Edit::CloseWorks { works } => {
+            cell = sim.st.f_cell.get(*works).copied();
+            firm = Some(*works);
+            close_works(sim, *works)?
+        }
     };
     let when = sim.year as f64 + (months_played(sim) as f64 + 0.5) / 12.0;
     let mut ev = Event::new(when, "hand", NEWS_WEIGHT, title.clone(), text);
@@ -263,6 +309,7 @@ pub fn carry_out(sim: &mut Sim, edit: &Edit) -> Result<String, String> {
         ev.cell = cell;
     }
     ev.tech = tech;
+    ev.firm = firm;
     sim.events.push(ev);
     sim.st.by_hand.count += 1;
     Ok(title)
@@ -480,7 +527,259 @@ fn found_town(sim: &mut Sim, cell: usize) -> Result<(String, String, Option<usiz
     Ok((title, text, Some(donor)))
 }
 
-const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+// ---------------------------------------------------------------- the kind that waits (stage 7a)
+
+/// What an edit that waits is, in a few words, for the sentence that says so.
+fn what_waits(edit: &Edit) -> &'static str {
+    match edit {
+        Edit::BuildWorks { .. } => "a works built by hand",
+        Edit::CloseWorks { .. } => "a works closed by hand",
+        _ => "this edit",
+    }
+}
+
+/// Every refusal an edit of the kind that waits (`Edit::at_turn`) would meet
+/// if it were carried out now, as the island stands. It only reads.
+/// `carry_out` goes through it first, and `save::Game::give` asks it of such
+/// an edit given in the middle of a year, on the run itself and never on a
+/// copy of the island (section 2.2 of the design), before keeping the edit to
+/// wait. The island moves on before the turn, so an edit checked in March can
+/// still be refused in January, in the same words. An edit carried out at
+/// once is checked as it is carried out, and of it this says Ok.
+pub fn check(sim: &Sim, edit: &Edit) -> Result<(), String> {
+    match edit {
+        Edit::BuildWorks { method, cell } => build_plan(sim, method, *cell).map(|_| ()),
+        Edit::CloseWorks { works } => closable(sim, *works),
+        _ => Ok(()),
+    }
+}
+
+/// A square's place, "31, 40".
+fn square_at(st: &State, cell: usize) -> String {
+    format!("{}, {}", cell % st.world.W, cell / st.world.W)
+}
+
+/// The town whose district a works built by hand on `cell` would trade in,
+/// or the square's own sentence saying why no works can stand there, as the
+/// families judge a square (`families::buildable`).
+fn hand_square(st: &State, cell: usize) -> Result<usize, String> {
+    if cell >= st.N {
+        return Err(format!("there is no square {cell} on the island, which has {}", st.N));
+    }
+    families::buildable(st, cell).map_err(|why| format!("no works can stand on the square at {}: {}", square_at(st, cell), why.replacen("the cell", "it", 1)))
+}
+
+/// A works as the hand would build it: its capacity, its site's sums and
+/// what it costs.
+struct HandWorks {
+    K: f64,
+    ev: SiteEval,
+    cost: f64,
+}
+
+/// What a works of method m built by hand on `cell`, a square of town i's
+/// district, would be (if the town knows the method), and whether it may be
+/// built, or the refusal it would meet. It is the one function behind both
+/// the edit (`build_plan`) and the list the tool shows (`works_offered`), so
+/// that the two cannot disagree.
+///
+/// Its size is what the island's own entrants build in that town under the
+/// works rule (`works::entry_K`), so that the room on the square and the depth
+/// of the market are judged as for any works. Its cost is what a family pays
+/// (`families::found_at`): the site's sums on the one square
+/// (`firms::evaluate_sites`), the plant and any machines at the town's
+/// capital-goods prices, plus 15 per cent, with no family's bonus.
+fn hand_works(sim: &Sim, m: usize, cell: usize, i: usize) -> (Option<HandWorks>, Result<(), String>) {
+    let (st, C, P) = (&sim.st, &sim.content, &sim.params);
+    if !(st.know[(i, m)] > 0.02) {
+        return (None, Err(format!("{} is not known in {} yet", C.method_label[m], st.town_name[i])));
+    }
+    let K = works::entry_K(st, C, P, i, m);
+    let ev = firms::evaluate_sites(st, C, P, i, m, &[cell], K, families::prices(st), families::wages(st));
+    let cost = ev.cap_cost * 1.15;
+    let allowed = if st.F_count >= st.f_alive.len() {
+        Err(format!("the works' table is full: all {} of its places are taken", fmt_thousands(st.f_alive.len() as i64)))
+    } else if !(cost.is_finite() && cost > 0.0) {
+        Err(format!("{} cannot be priced in {} as things stand", C.method_label[m], st.town_name[i]))
+    } else {
+        works::room_on_cell(st, C, P, cell, m, K).map_err(|why| why.replacen("the cell", "the square", 1))
+    };
+    (Some(HandWorks { K, ev, cost }), allowed)
+}
+
+/// The method's index, the town and the works a `BuildWorks` would build, or
+/// the first refusal it meets.
+fn build_plan(sim: &Sim, method: &str, cell: usize) -> Result<(usize, usize, HandWorks), String> {
+    let Some(m) = sim.content.method_name.iter().position(|n| n == method) else {
+        return Err(format!("there is no method called {method:?}"));
+    };
+    let i = hand_square(&sim.st, cell)?;
+    let (works, allowed) = hand_works(sim, m, cell, i);
+    allowed?;
+    Ok((m, i, works.expect("a works that may be built is of a method known in the town")))
+}
+
+/// The sums of a works by hand, laid out as the land agent's list lays out a
+/// family's (`families::site_options`), with no bonus.
+fn hand_sums(sim: &Sim, m: usize, i: usize, w: &HandWorks) -> SiteSums {
+    let (st, C, ev) = (&sim.st, &sim.content, &w.ev);
+    let (output, town_demand, town_output, market_share, price_ratio) = families::market_depth(st, C, i, m, w.K);
+    SiteSums {
+        town: i,
+        K: w.K,
+        gate_price: ev.pout[0],
+        inputs: (0..C.G).filter(|&g| ev.a[(0, g)] > 0.0).map(|g| (g, ev.a[(0, g)], ev.pin[(0, g)])).collect(),
+        input_cost: ev.in_cost[0],
+        heat: ev.h[0],
+        heat_price: ev.hunit[0],
+        heat_cost: ev.heat_cost[0],
+        labor: ev.l[0],
+        wage: families::wages(st)[i],
+        labor_cost: ev.labor_cost[0],
+        margin: ev.margin[0],
+        rent_bid: ev.rent_bid[0],
+        capital_cost: w.cost,
+        expected_return: ev.roi[0],
+        bonus: 0.0,
+        agglo: ev.agglo[0],
+        output,
+        town_demand,
+        town_output,
+        market_share,
+        price_ratio,
+    }
+}
+
+/// What the Works tool offers on a square: every method, with its sums at the
+/// size and cost a works by hand would have, and `allowed` the very refusal a
+/// `BuildWorks` of it would meet now (`hand_works` says both). Err with the
+/// square's own sentence when no works can stand there. It only reads, and is
+/// asked on the simulation's thread between months after each click.
+pub fn works_offered(sim: &Sim, cell: usize) -> Result<Vec<SiteOption>, String> {
+    let C = &sim.content;
+    let i = hand_square(&sim.st, cell)?;
+    Ok((0..C.M)
+        .map(|m| {
+            let (works, allowed) = hand_works(sim, m, cell, i);
+            let sums = match &works {
+                Some(w) => Ok(hand_sums(sim, m, i, w)),
+                // (only a method the town does not know has none, and it is refused)
+                None => Err(allowed.clone().err().unwrap_or_default()),
+            };
+            SiteOption { method: m, name: C.method_name[m].clone(), label: C.method_label[m].clone(), group: Group::of_method(C, m), sums, allowed }
+        })
+        .collect())
+}
+
+/// A works by hand is named as a family's would be, with the town's name
+/// where the family's surname goes ("Melbourne Brickworks"), and numbered on
+/// from the works of that very name: no draw.
+fn hand_works_name(st: &State, C: &Content, m: usize, i: usize) -> String {
+    let town = &st.town_name[i];
+    let base = names::family_firm_name(&C.method_name[m], town, town);
+    match names::works_of_name(&st.f_name, &base) {
+        0 => base,
+        n => format!("{base} No. {}", n + 1),
+    }
+}
+
+/// A works built by hand at the turn: `create_firm` with its cost as its cash
+/// (as a family's works has), the cost booked as money made by hand, its
+/// reason kept with kind "hand". No family owns it; under the owners' rule
+/// (docs/rules/owners.md) it is held as a works the town's savers found that
+/// day is held, by the town's pool ratio (`owners::shares` sets it so). The
+/// title, text and town of the news, and the new works' slot.
+fn build_works(sim: &mut Sim, method: &str, cell: usize) -> Result<((String, String, Option<usize>), usize), String> {
+    let (m, i, w) = build_plan(sim, method, cell)?;
+    let year = sim.year;
+    let Sim { st, content: C, params: P, .. } = sim;
+    let name = hand_works_name(st, C, m, i);
+    let reason = firms::reason_record(st, i, m, cell, &w.ev, 0, w.K, year, "hand");
+    // the name is given, so create_firm draws nothing from this stream
+    let mut unused = Rng::from_seed([0; 32]);
+    let fid = firms::create_firm(st, C, P, &mut unused, i, m, cell, w.K, w.ev.rent_bid[0], reason, year, w.cost, Some(name), None)
+        .expect("checked that the works' table has room");
+    st.by_hand.money += w.cost;
+    if P.owners.enabled {
+        crate::owners::shares(st, P, fid);
+    }
+    st.new_firms_year.push(fid);
+    let what = C.method_label[m].to_lowercase();
+    let (place, good) = (st.town_name[i].clone(), C.good_label[C.method_out[m]].to_lowercase());
+    // (the method's label is a trade or a product, "Brickworks", "Crucible steel", so it goes in brackets)
+    let title = format!("By hand: {} ({what}) at {}, in {place}'s district, built for {}", st.f_name[fid], square_at(st, cell), fmt_thousands_f0(w.cost));
+    let held = if P.owners.enabled {
+        let s = crate::owners::peek(st, P, fid);
+        format!("{place}'s landlords and households, {} and {}, as they would hold a works they had founded that day", fmt_pct(s[crate::owners::LANDLORDS], 0), fmt_pct(s[crate::owners::HOUSEHOLDS], 0))
+    } else {
+        format!("{place}'s households, as any works no family owns is")
+    };
+    let text = format!(
+        "{} was built by hand, sized as the town's own new works are, to make up to {} {good} a month, and expecting to return {} a year at last year's prices. It cost {}, paid with money made by hand and booked as such; the works holds it as cash and buys its plant with it. No family owns it: it is held by {held}.",
+        st.f_name[fid],
+        fmt_thousands_f0(w.K),
+        fmt_pct(w.ev.roi[0], 0),
+        fmt_thousands_f0(w.cost)
+    );
+    Ok(((title, text, Some(i)), fid))
+}
+
+/// Whether there is a works `works` standing to be closed, or why not.
+fn closable(sim: &Sim, works: usize) -> Result<(), String> {
+    let st = &sim.st;
+    if works >= st.F_count {
+        return Err(format!("there is no works {works}: the island has had {} works, numbered from 0", fmt_thousands(st.F_count as i64)));
+    }
+    if !st.f_alive[works] {
+        return Err(format!("{} closed already, in {}", st.f_name[works], st.f_died[works]));
+    }
+    Ok(())
+}
+
+/// A works closed by hand at the turn: `firms::close_firm` with the year,
+/// which sends its cash where it always does, and then what the year's end
+/// does after its own closings (`sim::yearly`), which is `sim::after_transport`
+/// and nothing else: the works' squares, counts and towns made again from the
+/// works that stand. (`st.same_counts` is made in `firms::update_productivity`
+/// before the year's closings, so the year's end does not make it again after
+/// them, and neither does this.) Nothing is booked by hand.
+fn close_works(sim: &mut Sim, works: usize) -> Result<(String, String, Option<usize>), String> {
+    closable(sim, works)?;
+    let year = sim.year;
+    let Sim { st, content: C, params: P, .. } = sim;
+    let (i, cash, cell, born) = (st.f_town[works], st.f_cash[works], st.f_cell[works], st.f_born[works]);
+    let name = st.f_name[works].clone();
+    let owner = families::owner_of_firm(st, works);
+    let shares = (owner.is_none() && P.owners.enabled).then(|| crate::owners::peek(st, P, works));
+    firms::close_firm(st, C, P, works, year);
+    sim::after_transport(st, C, P);
+    let place = st.town_name[i].clone();
+    let went = if cash < 0.0 {
+        format!("its debt of {} fell on {place}'s merchants, as a creditor's loss", fmt_thousands_f0(-cash))
+    } else {
+        match (owner, shares) {
+            (Some(k), _) => format!("its cash of {} went to the {} family", fmt_thousands_f0(cash), st.families[k].surname),
+            (None, Some(s)) => {
+                let lords = crate::owners::lords_part(&s, cash);
+                format!(
+                    "its cash of {} went to {place}'s landlords ({}) and households ({}) by their shares",
+                    fmt_thousands_f0(cash),
+                    fmt_thousands_f0(lords),
+                    fmt_thousands_f0(cash - lords)
+                )
+            }
+            (None, None) => format!("its cash of {} went to {place}'s households", fmt_thousands_f0(cash)),
+        }
+    };
+    let what = C.method_label[st.f_method[works]].to_lowercase();
+    let title = format!("By hand: {name} ({what}) at {}, in {place}'s district, closed; {went}", square_at(st, cell));
+    let text = format!(
+        "{name}, open since {born}, was closed by hand at the turn of {year}. It buys no more plant and gives up its ground. Nothing is booked by hand: its money goes where any closing works' money goes, and {went}."
+    );
+    Ok((title, text, Some(i)))
+}
+
+const MONTHS: [&str; 12] =["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /// A run with no window and a list of edits: the plain loop of
 /// `sim::run_with`, with each edit carried out before its month is played,
@@ -506,6 +805,10 @@ pub fn play_noting(P: &Params, content: Content, edits: &[Dated], mut note: impl
         }
         if d.before < first || year > sim.end_year {
             return Err(format!("an edit is dated before {} {year}, outside the run's years, {} to {}", MONTHS[month - 1], sim.year, sim.end_year));
+        }
+        if d.edit.at_turn() && month != 1 {
+            let edit = serde_json::to_string(&d.edit).unwrap_or_default();
+            return Err(format!("the edit before {} {year}, {edit}, waits for the year's turn: date it before January", MONTHS[month - 1]));
         }
     }
     let mut next = 0;
