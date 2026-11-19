@@ -427,13 +427,20 @@ pub fn river_width(q: f64) -> f64 {
     11.0 * q.max(0.0).sqrt()
 }
 
+/// How freely a reach of mean flow `q` and fall `sl` can wander: not at all
+/// for a stream under 1 cubic metre a second or a fall of 4 in 1,000, freely
+/// on the level, and in proportion between.
+fn mobile(q: f64, sl: f64) -> f64 {
+    if q < 1.0 { 0.0 } else { (1.0 - sl / 0.004).clamp(0.0, 1.0) }
+}
+
 /// Meander migration on one course (Howard and Knutson, 1984): each point's bank
 /// erodes at a rate set by the curvature there and, more strongly, by the
 /// curvature upstream of it, so bends grow, travel downstream, and at last touch
 /// and cut themselves off. Steep reaches and small streams are left alone, and a
 /// bend cannot climb the valley side: the ground must lie near the water's level.
-fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &mut Vec<Oxbow>) {
-    let mobile = |q: f64, sl: f64| -> f64 { if q < 1.0 { 0.0 } else { (1.0 - sl / 0.004).clamp(0.0, 1.0) } };
+fn meander(c: &mut Course, g: Grid, z: &[f64], P: &LandParams, ds: f64, oxbows: &mut Vec<Oxbow>) {
+    let steps = P.meander_steps;
     let (mut r0, mut w, mut mob, mut fade) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     // the stretch of the course that can move, found again whenever the points are re-laid
     let (mut lo, mut hi, mut fresh) = (0usize, 0usize, true);
@@ -498,11 +505,15 @@ fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &m
             let room = 1.0 - ((bank - 3.0) / 5.0).clamp(0.0, 1.0);
             c.p[i] = (old[i].0 + (cand.0 - old[i].0) * room, old[i].1 + (cand.1 - old[i].1) * room);
         }
+        // a bend may grow longer and wider, but not tighter than `bend_radius` widths
+        if P.bend_radius > 0.0 {
+            ease_bends(&mut c.p, &w, &mob, lo, hi, P.bend_radius, 1.5 * ds, 1);
+        }
         if step % 3 == 2 {
             // necks: two parts of the course that have met
             let mut i = lo.saturating_sub(1);
             while i + 8 < c.p.len() && i < hi {
-                let reach = (1.4 * w[i.min(w.len() - 1)]).max(0.9 * ds);
+                let reach = (P.neck * w[i.min(w.len() - 1)]).max(0.9 * ds);
                 let mut cut = None;
                 for j in (i + 6..(i + 130).min(c.p.len())).rev() {
                     if (c.p[i].0 - c.p[j].0).hypot(c.p[i].1 - c.p[j].1) < reach {
@@ -533,6 +544,85 @@ fn meander(c: &mut Course, g: Grid, z: &[f64], steps: usize, ds: f64, oxbows: &m
         }
     }
     c.smooth(1);
+    if P.bend_radius <= 0.0 {
+        return;
+    }
+    // and last, any bend still too tight is opened out wherever it is, steep
+    // reaches and short steps in the fall among them; the points are laid
+    // evenly again between rounds, so that a bend is read over the same
+    // length all along it and easing one does not crowd its points together
+    for _ in 0..40 {
+        c.resample(ds);
+        let n = c.p.len();
+        if n < 3 {
+            break;
+        }
+        let w: Vec<f64> = (0..n).map(|i| river_width(lerp_at(&c.q, c.u[i]))).collect();
+        ease_bends(&mut c.p, &w, &vec![1.0; n], 1, n - 1, P.bend_radius, 1.5 * ds, 4);
+    }
+    c.resample(ds);
+}
+
+/// Open out the bends on `p[lo..hi]` tighter than `radius` widths (`w` at
+/// each point) where the course can move (`mob`): a point on such a bend is
+/// moved half the way to the middle of the chord between the points a width
+/// (and at least `span` metres) either side of it along the line, up to
+/// `passes` times over. The ends stay put. It is the same reading of a bend
+/// as `river_shape` makes.
+fn ease_bends(p: &mut [(f64, f64)], w: &[f64], mob: &[f64], lo: usize, hi: usize, radius: f64, span: f64, passes: usize) {
+    let n = p.len();
+    let hi = hi.min(n.saturating_sub(1)).min(w.len());
+    for _ in 0..passes {
+        let mut moved = false;
+        for i in lo.max(1)..hi {
+            if mob[i] <= 0.0 {
+                continue;
+            }
+            // the points exactly a width (or `span`) either side, along the line
+            let d = w[i].max(span);
+            let (mut a, mut run) = (i, 0.0);
+            let mut pa = None;
+            while a > 0 {
+                let seg = (p[a].0 - p[a - 1].0).hypot(p[a].1 - p[a - 1].1);
+                if run + seg >= d {
+                    let t = (d - run) / seg.max(1e-9);
+                    pa = Some((p[a].0 + (p[a - 1].0 - p[a].0) * t, p[a].1 + (p[a - 1].1 - p[a].1) * t));
+                    break;
+                }
+                run += seg;
+                a -= 1;
+            }
+            let (mut b, mut run) = (i, 0.0);
+            let mut pb = None;
+            while b + 1 < n {
+                let seg = (p[b + 1].0 - p[b].0).hypot(p[b + 1].1 - p[b].1);
+                if run + seg >= d {
+                    let t = (d - run) / seg.max(1e-9);
+                    pb = Some((p[b].0 + (p[b + 1].0 - p[b].0) * t, p[b].1 + (p[b + 1].1 - p[b].1) * t));
+                    break;
+                }
+                run += seg;
+                b += 1;
+            }
+            let (Some(pa), Some(pb)) = (pa, pb) else { continue };
+            let (u, v) = ((p[i].0 - pa.0, p[i].1 - pa.1), (pb.0 - p[i].0, pb.1 - p[i].1));
+            let den = u.0.hypot(u.1) * v.0.hypot(v.1) * (pb.0 - pa.0).hypot(pb.1 - pa.1);
+            let cross = (u.0 * v.1 - u.1 * v.0).abs();
+            if den <= 0.0 || cross <= 0.0 {
+                continue;
+            }
+            let r = den / (2.0 * cross);
+            if r < radius * w[i] {
+                let mid = (0.5 * (pa.0 + pb.0), 0.5 * (pa.1 + pb.1));
+                let f = 0.5;
+                p[i] = (p[i].0 + (mid.0 - p[i].0) * f, p[i].1 + (mid.1 - p[i].1) * f);
+                moved = true;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
 }
 
 /// Every node's height above the water it drains to (a lake, the sea, or the
@@ -849,7 +939,7 @@ pub fn make_water(d: &Design, P: &LandParams, relief: &Relief, rng: &mut Rng) ->
             let wob = 0.3 * river_width(lerp_at(&c.q, c.u[i])) * (hash01(i as i64, id as i64, d.seeds[1] ^ 0x3EA) - 0.5);
             c.p[i] = (c.p[i].0 - ty / tl * wob, c.p[i].1 + tx / tl * wob);
         }
-        meander(&mut c, g, &z, P.meander_steps, ds, &mut oxbows);
+        meander(&mut c, g, &z, P, ds, &mut oxbows);
         let r = &mut rivers[id];
         r.end = *end;
         for i in 0..c.p.len() {
@@ -923,8 +1013,10 @@ impl Shape {
 /// Measure the bends of one line (`pts` and `width` in the same units, a
 /// river's points from the source down) over the stretches where `keep` is
 /// true. Curvature is read through three points a width apart along the
-/// channel, so a wiggle smaller than the river is not a bend; a bend begins
-/// where the curvature changes side and grows to a radius of 25 widths or less.
+/// channel (a segment and a half of the line, where its points lie further
+/// apart than a width), so a wiggle smaller than the river is not a bend; a
+/// bend begins where the curvature changes side and grows to a radius of 25
+/// widths or less.
 pub fn river_shape(pts: &[(f64, f64)], width: &[f64], keep: &[bool]) -> Shape {
     let mut out = Shape::default();
     let n = pts.len();
@@ -986,10 +1078,15 @@ fn stretch_shape(pts: &[(f64, f64)], width: &[f64]) -> Shape {
             run = 0.0;
         }
     }
-    // signed curvature times width, through points a width either side
+    // signed curvature times width, through points a width either side, or a
+    // segment and a half of the line where its points lie further apart than
+    // that (a corner of the line is not a bend)
+    let mut segs: Vec<f64> = pts.windows(2).map(|q| (q[1].0 - q[0].0).hypot(q[1].1 - q[0].1)).collect();
+    segs.sort_by(|a, b| a.total_cmp(b));
+    let seg = segs[segs.len() / 2];
     let mut kw = vec![0.0f64; m];
     for k in 0..m {
-        let off = ((w[k] / h).round() as usize).max(1);
+        let off = ((w[k].max(1.5 * seg) / h).round() as usize).max(1);
         if k < off || k + off >= m {
             continue;
         }

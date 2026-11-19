@@ -474,11 +474,15 @@ pub fn build(r: &Replay, cen: &[(f32, f32)], hg: &HeightGrid) -> Vec<River> {
 /// `ISOSTATE_RIVER_REPORT=1`: measure the bends of the old island's rivers as
 /// drawn (`isostate_core::landwater::river_shape`, in widths of the ribbon of
 /// water), and stop. True if it was asked for. The plains are where the water
-/// falls less than 0.012 a cell, below which the bends are given their full
+/// falls less than 0.012 a cell of its valley (read between the points half a
+/// cell up and down the channel), below which the bends are given their full
 /// swing, the steep reaches where it falls more than 0.09, where they are
 /// given their least; the plains are split at a ribbon 0.05 of a cell wide
-/// (100 m). The new land's rivers are the core's lines, measured by the core's
-/// `river_shape` example.
+/// (100 m). The last 0.3 of a cell of a river that joins another is left out:
+/// that is the confluence's turn, not a bend. It lists where the bends under
+/// 2.5 widths are, and the longest stretches of big river on the plains, for
+/// pointing a camera. The new land's rivers are the core's lines, measured by
+/// the core's `river_shape` example.
 pub fn maybe_report(r: &Replay, rivers: &[River]) -> bool {
     use isostate_core::landwater::{Shape, river_shape};
     if std::env::var_os("ISOSTATE_RIVER_REPORT").is_none_or(|v| v.is_empty()) {
@@ -507,7 +511,8 @@ pub fn maybe_report(r: &Replay, rivers: &[River]) -> bool {
                 }
                 let a = (0..=k).rev().find(|&j| s[k] - s[j] >= 0.5).unwrap_or(0);
                 let b = (k..n).find(|&j| s[j] - s[k] >= 0.5).unwrap_or(n - 1);
-                let fall = if b > a { (rv.level[a] - rv.level[b]) / (s[b] - s[a]) } else { 0.0 };
+                // down the valley, not along the channel, as the meanders' own steepness is read
+                let fall = if b > a { (rv.level[a] - rv.level[b]) / rv.pts[a].distance(rv.pts[b]).max(1e-6) } else { 0.0 };
                 if fall > 0.09 {
                     3
                 } else if fall >= 0.012 {
