@@ -110,9 +110,9 @@ fn nitrogen_multiplies_the_crop_and_is_paid_for_in_chemicals() {
 fn the_land_waits_for_its_machines() {
     let P = game(6, 7, 1935);
     let mut s = sim::start(&P, tree::content(&P, game_content()).unwrap());
-    let (tractor, cutter) = (1, 2);
-    assert_eq!(s.content.tasks.uses[tractor].name, "tractor");
-    assert_eq!(s.content.tasks.uses[cutter].name, "cutter");
+    // by name: the electric drive of stage 6 stands before them in the file
+    let by = |n: &str| s.content.tasks.uses.iter().position(|u| u.name == n).expect("a use of stage 6");
+    let (tractor, cutter) = (by("tractor"), by("cutter"));
     let (mut farm_most, mut pit_most): (f64, f64) = (0.0, 0.0);
     while s.year <= s.end_year {
         let year = s.year;

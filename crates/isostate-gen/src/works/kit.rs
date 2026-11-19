@@ -152,6 +152,11 @@ pub(super) struct Ctx<'a, 's> {
     pub planned: bool,
     /// how weathered it is by its age, in steps from 0 (new) to 2 (two generations old)
     pub worn: f32,
+    /// the size the whole works had reached when this was built: its own size,
+    /// except in a part of a planned works, which is drawn at the size of the
+    /// ground its stage added (`site::stage_size`), and a kind whose look goes
+    /// by how big the works is as a whole (a great power station) reads this
+    pub whole: f32,
     /// the ground and the wall a kind asked for while it was a part of a plan
     pub asked_ground: Option<Rgba>,
     pub asked_wall: Option<(Rgba, f32)>,
@@ -166,7 +171,7 @@ pub(super) struct Ctx<'a, 's> {
 impl<'a, 's> Ctx<'a, 's> {
     pub fn new(solid: &'a mut MeshBuf, smoke: &'a mut MeshBuf, flat: &'a mut MeshBuf, site: &'a Site<'s>, w: &Works, pal: &'a Palette) -> Self {
         let (fw, fd) = super::footprint(w.kind, w.size);
-        Ctx { solid, smoke, flat, site, pal, w: *w, hw: fw * 0.5, hd: fd * 0.5, g: super::grain(w.size), peak: None, sheds: Vec::new(), lit: false, planned: false, worn: 0.0, asked_ground: None, asked_wall: None, stock_apart: false, pending: Vec::new(), count: 0 }
+        Ctx { solid, smoke, flat, site, pal, w: *w, hw: fw * 0.5, hd: fd * 0.5, g: super::grain(w.size), peak: None, sheds: Vec::new(), lit: false, planned: false, worn: 0.0, whole: w.size, asked_ground: None, asked_wall: None, stock_apart: false, pending: Vec::new(), count: 0 }
     }
 
     /// A part of a planned works (`site`): it stands on the ground the plan
@@ -930,6 +935,16 @@ impl<'a, 's> Ctx<'a, 's> {
         plume(self.smoke, top, scale, phase, *self.pal.smoke.puff);
     }
 
+    /// Steam from a cooling tower's rim at `top`: a white plume, shaped as
+    /// smoke is. Only a works that is working steams.
+    pub fn steam(&mut self, top: Vec3, scale: f32) {
+        if !self.busy() || scale <= 0.0 {
+            return;
+        }
+        let phase = self.rnd() * std::f32::consts::TAU;
+        plume(self.smoke, top, scale, phase, *self.pal.smoke.steam);
+    }
+
     /// The colour of a furnace's open throat: fire while it is in blast, soot otherwise.
     pub fn throat(&self) -> Rgba {
         if self.busy() { shade(*self.pal.iron.glow, 1.6) } else { *self.pal.smoke.soot }
@@ -997,6 +1012,32 @@ impl<'a, 's> Ctx<'a, 's> {
                 let (px, pz) = (x - w * 0.5 + pw * (i as f32 + 0.5), z - d * 0.5 + pd * (j as f32 + 0.5));
                 let hh = h * (0.6 + 0.4 * self.rnd());
                 self.pile(px, pz, pw * 0.78, pd * 0.72, hh, false, col);
+            }
+        }
+    }
+
+    /// Drums standing on end in rows over a patch of the yard, `w` along the
+    /// front and `d` deep, while there is stock: oil, acid, varnish. Not drawn
+    /// from far off; from the play distance as plain blocks, close to round
+    /// with a lid.
+    pub fn drums(&mut self, x: f32, z: f32, w: f32, d: f32, col: Rgba) {
+        if !self.stocked() || self.far() {
+            return;
+        }
+        const PITCH: f32 = 0.0052;
+        let (r, h) = (0.0019, 0.0044);
+        let (cols, rows) = (((w / PITCH).floor() as usize).clamp(1, 14), ((d / PITCH).floor() as usize).clamp(1, 6));
+        let col = self.tone(col);
+        let lid = shade(col, 1.12);
+        for j in 0..rows {
+            for i in 0..cols {
+                let (px, pz) = (x + (i as f32 - (cols as f32 - 1.0) * 0.5) * PITCH, z + (j as f32 - (rows as f32 - 1.0) * 0.5) * PITCH);
+                let p = self.at(px, pz) + Vec3::Y * LIFT;
+                if self.near() {
+                    self.solid.frustum_turned(p, r, r, h, 8, 0.0, SINK * 0.5 + LIFT, col, Some(lid));
+                } else {
+                    self.solid.block(p, 2.0 * r, 2.0 * r, h, self.site.yaw, col, Some(lid), SINK * 0.5 + LIFT);
+                }
             }
         }
     }
