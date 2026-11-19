@@ -25,17 +25,15 @@ Until the evening of 11 November her notes were taken up as they arrived, usuall
 
 ## In flight
 
-What is out at 04:50 on 19 November 2026, from `git log main`, the `night/g-*` branches and the landing tool's logs. `main` stands at 7fc63b9, the production tree's landing.
+What is out at about 08:10 on 19 November 2026, when the landing tool was mended and the pieces built while it was closed went onto `main` together as one batch (`night/g-batch-1`), from `git log main` and the `night/g-*` branches.
 
 | Piece | Order of work | Branch | State |
 |---|---|---|---|
-| The sandbox, stage 2: what the simulation knows of a thing | 2, stage 2 | `night/g-sandbox-2-tell` | in the landing tool's gate (the core's tests) since 04:44 |
-| The run to 2050, the gauges | 1, stage 3 | `night/g-to2050-3-gauges` | its landing stopped at 04:44 on a conflict in the game's golden hashes once the tree had landed; `main` merged into it at 04:46, to be anchored again and sent back. It reads off the books each year, and moved no fact |
-| The run to 2050, stage 1: the long run and its anchors | 1, stage 1 | `night/g-to2050-1-longrun` | built: its mechanism and the three pieces of plumbing committed and its acceptance runs measured; sent to the landing tool at 04:45 and stopped while it waited, so not yet queued |
-| The sandbox, stage 3: more of the hand in the core | 2, stage 3 | `night/g-sandbox-3-more-edits` | being built; nothing committed yet |
-| The backlog brought up to 19 November | | `night/g-backlog-refresh` | this going-through; documents only |
+| The sandbox, stage 5b: the inspector drawn | 2, stage 5 | `night/g-sandbox-5b-inspector` | built on stage 5a; to land after the batch |
+| The sandbox, stage 6a: the Rules tab | 2, stage 6 | `night/g-sandbox-6a-rules-tab` | being built |
+| The run to 2050, stages 4 and 5 | 1, stages 4 and 5 | | built on branches and held back from `main` for now |
 
-Landed on 19 November: the sandbox's design (c0d82b5, 03:13), its stage 1 (e4ddcda, 04:07), and the production tree's first stage with its panels (3a663aa, 04:43).
+Landed on 19 November: the sandbox's design (c0d82b5, 03:13), its stage 1 (e4ddcda, 04:07), the production tree's first stage with its panels (3a663aa, 04:43), the sandbox's stage 2 (9640f87). Then, in the batch: the run to 2050's stages 1 to 3 (the long run and its anchors, the standing check and the first step of the demographic transition, the gauges), the viewer playing on to 2050, the sandbox's stages 3, 4a, 4b and 5a, and this backlog's going-through.
 
 Also on branches and not for merging as they stand: the prototypes of the harvest month (`night/o-dx-harvest-month-check`) and of new towns (`night/o-dx-new-towns-check`), whose pages landed on 12 November, and the first probes' branches (`night/dx-...`). The production tree's branches of 12 November (`night/int-tree`, `night/o-finish-tree-ui-check`) are carried by `night/g-tree-land`.
 
@@ -47,9 +45,9 @@ Since 19 November three pieces come first, in this order. What is ranked under "
 
 Its design was written on 12 November by a panel, and the backlog said that nothing of it would be built until its designer had read it and answered its questions. That gate was lifted on 19 November under her notes of that day (at the foot), and building has begun. The design's open questions were decided on the design's own recommendations. The record of those decisions is kept with the design, which stays out of the repository for now, since it draws on work of hers that is not published. Its stages, in their order, and what each waits on:
 
-1. **The long run and its anchors.** Waits on nothing. Being built (`night/g-to2050-1-longrun`).
-2. **The standing check and the demographic transition.** Waits on stage 1.
-3. **The gauges.** Waited only on the books of account, which landed on 12 November, so it was built beside stage 1; queued for landing (`night/g-to2050-3-gauges`).
+1. **The long run and its anchors.** Waits on nothing. Landed on 19 November in the batch, with the viewer playing on to 2050.
+2. **The standing check and the demographic transition.** Waits on stage 1. Its first step landed on 19 November in the batch.
+3. **The gauges.** Waited only on the books of account, which landed on 12 November, so it was built beside stage 1; landed on 19 November in the batch.
 4. **Owners.** Waits on the gauges.
 5. **Tasks.** Waits on the gauges.
 6. **Electricity, and what follows it.** Waited on the production tree's first stage (3, below), which landed on 19 November. The design's later stages each wait on the one before.
@@ -61,10 +59,10 @@ What the backlog had gathered for it before 19 November, when it was Ready next 
 The island as a thing to watch, to look into and to change by hand, as WorldBox lets one, which she asked for to make testing easier and because it may be fun in itself. Designed on 19 November ([designs/sandbox.md](designs/sandbox.md); section 6 has the stages). Its stages, and what each needs:
 
 1. **The hand, first form:** money, people, the harvest, and Run on. Needs nothing. Landed on 19 November (e4ddcda): `--sandbox`.
-2. **What the simulation knows of a thing.** Needs nothing. Queued for landing (`night/g-sandbox-2-tell`).
-3. **More of the hand in the core:** an idea, a rule, a town, a run with a list of edits. Needs stage 1. Being built (`night/g-sandbox-3-more-edits`).
-4. **The way in,** where the sandbox becomes the plain start and the family game is reached with `--family`. Needs stage 1.
-5. **Looking into things.** Needs stages 2 and 4.
+2. **What the simulation knows of a thing.** Needs nothing. Landed on 19 November (9640f87).
+3. **More of the hand in the core:** an idea, a rule, a town, a run with a list of edits. Needs stage 1. Landed on 19 November in the batch.
+4. **The way in,** where the sandbox becomes the plain start and the family game is reached with `--family`. Needs stage 1. Landed on 19 November in the batch (4a and 4b: the timeline and the tray's icons).
+5. **Looking into things.** Needs stages 2 and 4. Its core half (5a, the hand's ledger on the island's card) landed in the batch; the drawing (5b) is built.
 6. **The Rules tab, ideas and towns.** Needs stages 3 and 4.
 7. **Works and ways,** two builders side by side. Needs stage 4.
 8. **Taking back, and a place of its own.** Needs stage 4.
