@@ -307,6 +307,15 @@ pub struct LiveYear {
     /// gauges: the year's gauges (docs/rules/gauges.md; None unless they are
     /// kept). Their series are among `year_series`.
     pub gauges: Option<crate::gauges::GaugeYear>,
+    /// tasks: the year's machines for tasks, in the works and on the land
+    /// (docs/rules/tasks.md; None while the rule is off, or before any
+    /// machine for a task is found). Not made into series, which would move
+    /// the game's golden hashes: the viewer makes its own rows of it.
+    pub tasks: Option<crate::tasks::TasksYear>,
+    /// owners: the year's holdings of the works and their dividends
+    /// (docs/rules/owners.md; None while the rule is off), handed over as
+    /// `tasks` is.
+    pub owners: Option<crate::owners::OwnersYear>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -523,5 +532,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
         year_series: crate::accounts::year_series(st, year).into_iter().chain(crate::gauges::year_series(st, year)).collect(),
         gauges: crate::gauges::gauge_year(st).filter(|y| y.year == year),
+        tasks: st.tasks.years.last().filter(|y| y.year == year).cloned(),
+        owners: st.owners.years.last().filter(|y| y.year == year).cloned(),
     }
 }

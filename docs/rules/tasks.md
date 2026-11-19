@@ -722,7 +722,9 @@ fall; so it was investment, and the island going on, not the margin.
 `TasksParams`, in `tasks.rs`: `enabled`, false by default and true under
 `game()`; `land`, likewise; `adopt_years`, 8; `dial`, 1, which multiplies
 every machine's quality; `yield_cap` and `freeze_from`, unset under both
-(for sweeps). `land`, `yield_cap` and `freeze_from` are left out of a run's
+(for sweeps). A sandbox's Rules tab offers the dial among its most asked, in
+multiples from a tenth to a hundredfold (`rulebook::WIDE_OFFERS`), and the
+Markets panel's Work half draws the part of each class machines do. `land`, `yield_cap` and `freeze_from` are left out of a run's
 `params.json` while off or unset, so a run with them so writes the first
 half's file. The classes, the spreads, the shares and the machines are content,
 in `data/tasks.toml`, and only the game's content has them
