@@ -642,6 +642,9 @@ struct ToastBox;
 struct TownLabel(usize);
 #[derive(Component)]
 struct InspectPanel;
+/// The lines of the inspector under its title, which scroll when they are more than its room.
+#[derive(Component)]
+pub struct InspectBody;
 
 #[derive(Resource)]
 struct TrainAssets {
@@ -733,8 +736,9 @@ fn main() {
     // run's goods are known once it is read, which is quick, and are checked then.
     if args.new {
         let rules = args.load.as_ref().and_then(|p| isostate_core::save::Save::from_text(&std::fs::read_to_string(p).ok()?).ok()).map_or(isostate_core::params::Rules::Game, |s| s.played_under());
-        let c = rules.content();
-        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone(), weight: None, price: None }).collect();
+        // (with the production tree laid as the rules lay it: town gas and beer are the tree's goods)
+        let c = isostate_core::tree::content(&rules.params(), rules.content()).unwrap_or_else(|_| rules.content());
+        let goods: Vec<replay::Good> = c.good_name.iter().zip(&c.good_label).map(|(name, label)| replay::Good { name: name.clone(), label: label.clone(), kind: None, weight: None, price: None }).collect();
         refuse_map_views(&args, |w| overlay::complaint_among(w, &goods));
     }
     let t0 = std::time::Instant::now();
@@ -829,7 +833,7 @@ fn main() {
         let hit = Vec3::new(x, world::height_at(&g, x, z), z);
         match choose(&r, &slots, &cen, hit, k0) {
             Some(p) => {
-                println!("{}", describe(&r, p, k0));
+                println!("{}", describe(&r, p, k0, families.as_ref().map_or(&[][..], |f| f.method_group.as_slice())));
                 // with --overlay, what that overlay says of the spot, as the inspector would
                 if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
                     if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0), None) {
@@ -944,6 +948,9 @@ fn main() {
             primary_window: Some(Window {
                 title: "Isolated State".into(),
                 resolution: WindowResolution::new(args.size.0, args.size.1),
+                // the narrowest window the panels are laid out for: under 1280 the bar across the top has
+                // no room for its tabs, and under 720 the side panel and a decision's options grow short
+                resize_constraints: bevy::window::WindowResizeConstraints { min_width: MIN_WINDOW.0, min_height: MIN_WINDOW.1, ..default() },
                 ..default()
             }),
             ..default()
@@ -1699,6 +1706,14 @@ fn apply_camera(
 
 // ------------------------------------------------------------------ interface
 
+/// The smallest window the game opens, in logical pixels (pictures with no window may be any size).
+const MIN_WINDOW: (f32, f32) = (1280.0, 720.0);
+
+/// How far the news as it happens and the note on what was clicked stand from the window's right edge.
+const TOAST_RIGHT: f32 = 14.0;
+/// The width of the note on what was clicked.
+const INSPECT_W: f32 = 380.0;
+
 // Interaction is deprecated in Bevy 0.20; see the note at the top of ui.rs
 #[allow(deprecated)]
 fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
@@ -1707,7 +1722,7 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            right: Val::Px(14.0),
+            right: Val::Px(TOAST_RIGHT),
             top: Val::Px(86.0),
             width: Val::Px(340.0),
             flex_direction: FlexDirection::Column,
@@ -1717,32 +1732,50 @@ fn setup_ui(mut commands: Commands, font: Res<UiFont>, data: Res<Data>) {
         GlobalZIndex(5),
         ToastBox,
     ));
-    // the inspector, bottom right above the timeline
+    // the inspector, bottom right above the timeline. It stands on the timeline's card and grows
+    // upward with what it has to say, as far as the bar across the top and no further: its
+    // room is the column between the two, and past that its lines scroll under its title
+    // (a square at the seat can list every works the family could build there)
     commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                right: Val::Px(14.0),
+                right: Val::Px(TOAST_RIGHT),
+                top: Val::Px(86.0),
                 bottom: Val::Px(70.0),
-                width: Val::Px(380.0),
-                padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(12.0), Val::Px(14.0)),
+                width: Val::Px(INSPECT_W),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
-                border_radius: BorderRadius::all(Val::Px(16.0)),
+                justify_content: JustifyContent::End,
                 ..default()
             },
-            BackgroundColor(PAPER),
-            BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.18), Val::Px(0.0), Val::Px(3.0), Val::Px(0.0), Val::Px(10.0)),
-            Interaction::default(),
-            bevy::ui::FocusPolicy::Block,
             GlobalZIndex(10),
             Visibility::Hidden,
             InspectPanel,
         ))
-        .with_children(|p| {
-            p.spawn((text(f, "", 20.0, INK), InspectTitle));
-            p.spawn((text(f, "", 14.0, MUTED), InspectText));
-            p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
+        .with_children(|room| {
+            room.spawn((
+                Node {
+                    max_height: Val::Percent(100.0),
+                    padding: UiRect::new(Val::Px(16.0), Val::Px(16.0 - ui::THUMB_ROOM), Val::Px(12.0), Val::Px(14.0)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(4.0),
+                    border_radius: BorderRadius::all(Val::Px(16.0)),
+                    ..default()
+                },
+                BackgroundColor(PAPER),
+                BoxShadow::new(Color::srgba(0.25, 0.18, 0.10, 0.18), Val::Px(0.0), Val::Px(3.0), Val::Px(0.0), Val::Px(10.0)),
+                Interaction::default(),
+                bevy::ui::FocusPolicy::Block,
+                bevy::ui::RelativeCursorPosition::default(),
+            ))
+            .with_children(|p| {
+                let card = p.target_entity();
+                p.spawn((text(f, "", 20.0, INK), InspectTitle));
+                ui::scroll_list(p, card, Node::default(), Node { row_gap: Val::Px(4.0), padding: UiRect::right(Val::Px(ui::THUMB_ROOM)), ..default() }, InspectBody, |p| {
+                    p.spawn((text(f, "", 14.0, MUTED), InspectText));
+                    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, InspectActions));
+                });
+            });
         });
     // town labels
     for t in 0..data.r.header.towns.len().min(data.r.n_towns) {
@@ -1850,12 +1883,19 @@ fn toasts(
     font: Res<UiFont>,
     ui: Res<UiState>,
     sheet: Option<Res<shots::Sheet>>,
-    mut boxq: Query<(Entity, Option<&Children>, &mut Visibility), With<ToastBox>>,
+    picked: Res<Picked>,
+    mut boxq: Query<(Entity, Option<&Children>, &mut Visibility, &mut Node), With<ToastBox>>,
 ) {
     let _frames = frames::span(frames::Sys::Hud);
     // with the news open the panel says it all; the standard shots are of the island, not the news
-    for (_, _, mut v) in &mut boxq {
+    for (_, _, mut v, mut node) in &mut boxq {
         v.set_if_neq(if ui.tab == Some(ui::Tab::News) || sheet.is_some() { Visibility::Hidden } else { Visibility::Inherited });
+        // the note on what was clicked stands at the right and can grow to the top (a long Build list):
+        // while it is open the news stands to the left of it rather than under it
+        let right = Val::Px(if picked.what.is_some() { TOAST_RIGHT + INSPECT_W + 12.0 } else { TOAST_RIGHT });
+        if node.right != right {
+            node.right = right;
+        }
     }
     let r = &data.r;
     let now = time.elapsed_secs();
@@ -1889,7 +1929,7 @@ fn toasts(
     if !changed {
         return;
     }
-    let Ok((boxe, children, _)) = boxq.single() else { return };
+    let Ok((boxe, children, _, _)) = boxq.single() else { return };
     if let Some(ch) = children {
         for c in ch.iter() {
             commands.entity(c).despawn();
@@ -2202,9 +2242,17 @@ fn pick_cell(r: &Replay, what: Pick) -> usize {
     }
 }
 
+/// How many sites a works' founders priced before they built: "The best of 14 sites priced", or the one.
+fn best_of(sites: i64) -> String {
+    if sites == 1 { "The one site priced".to_string() } else { format!("The best of {sites} sites priced") }
+}
+
 const DISP_NAMES: [&str; 12] = ["sea", "farmland", "pasture", "woodland", "heath", "quarry", "clay pit", "iron mine", "colliery", "works", "town", "derelict ground"];
 
-fn describe(r: &Replay, what: Pick, k: usize) -> String {
+/// What a click on a works, a town or a square shows. `trades` is the family
+/// trade of every method, where the game at hand says (a played game's
+/// `FamilyView::method_group`; empty for a recorded run).
+fn describe(r: &Replay, what: Pick, k: usize, trades: &[Option<isostate_core::families::Group>]) -> String {
     let year = r.y0 + k as i32;
     match what {
         Pick::Firm(f) => {
@@ -2214,7 +2262,9 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
             let kk = replay::firm_k(r, f, k);
             let size = kk / m.k0.max(1e-6);
             let since = if firm.born < r.y0 { format!("working before {}", r.y0) } else { format!("since {}", firm.born) };
-            let mut s = format!("{}\n{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, since, kk, good, size);
+            // the family trade it belongs to, which its name does not always say (a brewery is the estates')
+            let trade = trades.get(firm.method).copied().flatten().map_or(String::new(), |g| format!(" ({})", family::trade(g)));
+            let mut s = format!("{}\n{}{}, {}\nMakes up to {:.0} {} a month, {:.1} times a standard works.", firm.name, m.label, trade, since, kk, good, size);
             if let Some(rs) = &firm.reason {
                 let num = |key: &str| rs.get(key).and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
                 let town = rs.get("town").and_then(|v| v.as_i64()).and_then(|t| r.header.towns.get(t as usize)).map(|t| t.name.clone()).unwrap_or_else(|| "a nearby town".into());
@@ -2222,7 +2272,7 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
                 let lead = match kind {
                     "old" => format!("Already at work in {}; built new, it would return about {:.0}% a year.", r.y0, num("roi") * 100.0),
                     "expansion" => format!("A second site, opened in {} when the first ran out of room; about {:.0}% a year expected.", num("year") as i64, num("roi") * 100.0),
-                    _ => format!("Built in {} with money from {}. The best of {} sites priced: about {:.0}% a year on the capital.", num("year") as i64, town, num("n_cand") as i64, num("roi") * 100.0),
+                    _ => format!("Built in {} with money from {}. {}: about {:.0}% a year on the capital.", num("year") as i64, town, best_of(num("n_cand") as i64), num("roi") * 100.0),
                 };
                 s.push_str(&format!("\n\nWhy here?  {}\nPer unit of {}: sells at {:.2}", lead, good, num("pout")));
                 if let Some(ins) = rs.get("inputs").and_then(|v| v.as_array()) {
@@ -2232,6 +2282,14 @@ fn describe(r: &Replay, what: Pick, k: usize) -> String {
                         let p = q.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0);
                         let label = r.header.goods.get(g).map(|g| g.label.to_lowercase()).unwrap_or_default();
                         s.push_str(&format!(", {:.2} {} at {:.2}", a, label, p));
+                    }
+                }
+                // the fuel its kilns, furnaces and coppers burn, which for a lime kiln, a pottery or
+                // a glass cone is the largest of its costs: without it the sums do not come to what is left
+                if let Some(h) = rs.get("heat").and_then(|v| v.as_array()) {
+                    let (a, p) = (h.first().and_then(|v| v.as_f64()).unwrap_or(0.0), h.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0));
+                    if a > 0.0 {
+                        s.push_str(&format!(", {:.2} of heat at {:.2}", a, p));
                     }
                 }
                 if let Some(l) = rs.get("labor").and_then(|v| v.as_array()) {
@@ -2279,9 +2337,11 @@ fn inspect_panel(
     data: Res<Data>,
     ov: Res<overlay::MapOverlay>,
     months: Res<live::Months>,
+    fam: Option<Res<family::FamilyView>>,
     mut panel: Query<&mut Visibility, With<InspectPanel>>,
     mut txt: Query<&mut Text, (With<InspectText>, Without<InspectTitle>)>,
     mut title: Query<&mut Text, (With<InspectTitle>, Without<InspectText>)>,
+    mut body: Query<&mut bevy::ui::ScrollPosition, With<InspectBody>>,
     mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
@@ -2289,12 +2349,18 @@ fn inspect_panel(
     if *last == Some(key) {
         return;
     }
+    // another thing clicked is read from its top
+    if last.map(|l| l.0) != Some(picked.what) {
+        for mut s in &mut body {
+            s.0.y = 0.0;
+        }
+    }
     *last = Some(key);
     for mut v in &mut panel {
         *v = if picked.what.is_some() { Visibility::Inherited } else { Visibility::Hidden };
     }
     if let Some(w) = picked.what {
-        let mut s = describe(&data.r, w, k);
+        let mut s = describe(&data.r, w, k, fam.as_ref().map_or(&[][..], |f| f.method_group.as_slice()));
         // with a map overlay on, what it says of this square
         if let Some(line) = ov.said(&data.r, &months, k, pick_cell(&data.r, w)) {
             s.push_str("\n\n");
@@ -2794,9 +2860,9 @@ mod tests {
     fn a_town_older_than_the_run_is_dated_by_the_run_s_first_year() {
         // Ashby was founded in 1700; a run that begins in 1800 says so, and not 1750
         let r = replay::tiny(1800);
-        let said = describe(&r, Pick::Town(0), 0);
+        let said = describe(&r, Pick::Town(0), 0, &[]);
         assert!(said.starts_with("Ashby\na market town before 1800\n"), "{said}");
-        assert!(describe(&replay::tiny(1750), Pick::Town(0), 0).contains("a market town before 1750"));
+        assert!(describe(&replay::tiny(1750), Pick::Town(0), 0, &[]).contains("a market town before 1750"));
     }
 
     #[test]
