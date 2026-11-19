@@ -1086,8 +1086,9 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
     }
 
     // ---- households, landlords and families; the markets
-    // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree)
-    let decay = crate::tree::decay(C, P);
+    // (each good's decay as econ::step_month takes it: the port's table, or the content's for a good of the tree,
+    // and all that is left of a good that does not keep, which is then spoiled)
+    let decay = crate::tree::month_loss(C, P);
     for t in (0..T).filter(|&t| st.town_active[t]) {
         // families spend through their seat's landlords: their part of what the
         // landlords bought is their part of the budget (`families::pay_spending`)

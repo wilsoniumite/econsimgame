@@ -75,7 +75,13 @@
 # 2026): all four as the tasks stage left them. The batch's stages are this
 # line's own, and machines that work once they stand cannot act before the
 # first machine is found in 1901.
-economy  0x9a6b3ba24a097bd1
-books    0xfa5dd1db28f62894
-news     0x9f83de6e9e162ab1
-run.bin  0xdb99a5e2a2c197f3
+# Then on night/g-to2050-6a-power (19 November 2026): all four moved by stage
+# 6 of the tree's overlay, the first content after 1900 (GAME_STAGE 6,
+# docs/rules/tree.md, "After 1900: electricity"): two more goods, both opening
+# at their ceiling price, and the electrical works and the station found in
+# the played century, so another economy, other books, other news and another
+# run.bin. With GAME_STAGE at 1 the four above held.
+economy  0x1fd1584d7a5979ad
+books    0x2241060ae2dd5d30
+news     0xfab75068b40febc6
+run.bin  0x5e7678da476f8d38

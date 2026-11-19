@@ -85,6 +85,16 @@ pub struct Content {
     /// Carried between towns. False for a good made where it is used (building
     /// work, town gas): it is left out of the monthly trade.
     pub traded: Vec<bool>,
+    /// Months of sales the merchants mean to hold, where the content says it;
+    /// `None` is `P.price_target_months`. 0 is a good that does not keep
+    /// (electricity): what is not sold in a month is lost at its end, and its
+    /// price moves on the month's asking against its making (docs/rules/tree.md,
+    /// "After 1900: electricity").
+    pub stock_months: Vec<Option<f64>>,
+    /// Opens at its ceiling price in every town (the overlay's `opens_dear`): a
+    /// good nobody has in 1750 that households and works would otherwise buy
+    /// at its base price as if they could get it (`tree::opening_price`).
+    pub opens_dear: Vec<bool>,
     /// The logit's width within each need; empty is `P.logit_theta` for all.
     pub theta: Vec<f64>,
     /// The family trade a method belongs to, by its name ("" where the content
@@ -143,6 +153,8 @@ pub(crate) struct RawGood {
     pub(crate) decay: Option<f64>,
     pub(crate) stock0: Option<f64>,
     pub(crate) traded: Option<bool>,
+    pub(crate) stock_months: Option<f64>,
+    pub(crate) opens_dear: Option<bool>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -350,6 +362,8 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         decay: goods.iter().map(|g| g.decay).collect(),
         stock0: goods.iter().map(|g| g.stock0).collect(),
         traded: goods.iter().map(|g| g.traded.unwrap_or(true)).collect(),
+        stock_months: goods.iter().map(|g| g.stock_months).collect(),
+        opens_dear: goods.iter().map(|g| g.opens_dear.unwrap_or(false)).collect(),
         theta: svc.theta.clone().unwrap_or_default(),
         method_group: methods.iter().map(|d| d.group.clone().unwrap_or_default()).collect(),
         method_seed: methods.iter().map(|d| d.seed).collect(),

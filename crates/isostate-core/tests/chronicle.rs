@@ -798,6 +798,11 @@ fn towns_and_districts_have_stories() {
     // played with longrun off (docs/rules/longrun.md), as the seed was chosen
     // without it: its anchors give an island another history
     P.longrun.enabled = false;
+    // and with the tree's overlay at its stage 1, as the seed was chosen before the
+    // content after 1900 (docs/rules/tree.md, "After 1900: electricity"): its two
+    // inventions are sought every year from 1750, and each draw of the dice moves
+    // every draw after it
+    P.tree.stage = 1;
     let early = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(digests_of_new_towns(&early) >= 1, "seed 3 has a decade of new towns before 1800");
 }
