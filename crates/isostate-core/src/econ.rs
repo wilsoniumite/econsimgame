@@ -499,6 +499,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     if families::active(st) {
         families::scale_firm_inputs(st, C, P, &fi, &mut a, &mut h, &mut l);
     }
+    // tasks (docs/rules/tasks.md): where a works' machines hold part of a class,
+    // fewer hands a unit, the machines' run goods among its inputs, and its
+    // order for their plant (nothing while no works holds any)
+    crate::tasks::works_month(st, C, P, &fi, &K, &mut a, &mut l);
     let out: Vec<usize> = fm.iter().map(|&m| C.method_out[m]).collect();
     let p = &st.price;
     let mut pin = Mat::zeros(NFI, G);
@@ -728,6 +732,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // is built of is a works' daily input, and the rule measured as no gain
     let R_now = (P.tree.plant_waits && C.stage > 0).then(|| R.clone());
     add_by_town(&mut R, &ot, &req_inv);
+    // tasks: the works' orders for their machines' plant, a quarter of each a
+    // month, beside the orders for capacity (and like them, waiting under the tree)
+    let mach_orders = crate::tasks::orders(st, C, P);
+    if let Some(mo) = &mach_orders {
+        add_by_town(&mut R, &mo.towns, &mo.req);
+    }
     let mut proj_req: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
     for pr in &st.projects {
         // railways (docs/rules/railways.md): the game's lines say how long they take,
@@ -817,6 +827,20 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         sold.data[k] += by_firm.data[k];
         sold.data[k] += by_order.data[k];
     }
+    // tasks: the machine orders are served as the plant orders are
+    let mo_got = mach_orders.as_ref().map(|mo| {
+        let mut got = Mat::zeros(mo.works.len(), G);
+        for (r, &t) in mo.towns.iter().enumerate() {
+            for g in 0..G {
+                got[(r, g)] = mo.req[(r, g)] * fill_plant[(t, g)];
+            }
+        }
+        let by = sum_by_town(T, &mo.towns, &got);
+        for k in 0..T * G {
+            sold.data[k] += by.data[k];
+        }
+        got
+    });
     add_column(&mut sold, gm, &bincount(&et, &mach_got, T));
     add_column(&mut sold, gr, &bincount(&et, &rail_got, T));
     let mut proj_got: Vec<Vec<f64>> = Vec::with_capacity(st.projects.len());
@@ -948,6 +972,14 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         st.m_invest = pairwise_sum(&inv_pay);
     } else {
         st.m_invest = 0.0;
+    }
+    // tasks: the works pay for the plant of their machines as it arrives
+    if let (Some(mo), Some(got)) = (&mach_orders, &mo_got) {
+        let pay = crate::tasks::deliver(st, C, mo, got);
+        let by_town = bincount(&mo.towns, &pay, T);
+        add_to(&mut merch, &by_town);
+        add_to(&mut sales_value, &by_town);
+        st.m_invest += pairwise_sum(&pay);
     }
 
     let mut proj_spend = 0.0;
@@ -1104,6 +1136,21 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // accounts: the month's goods and payments go into the books before prices
     // move. Everything handed over is a local of this function; nothing comes back.
     if st.acct.on {
+        // tasks: the machines' plant is building, as a works' capacity is
+        let joined = match (&mach_orders, &mo_got) {
+            (Some(mo), Some(got)) => {
+                let (n0, n1) = (oi.len(), mo.works.len());
+                let mut all = Mat::zeros(n0 + n1, G);
+                all.data[..n0 * G].copy_from_slice(&inv_got.data);
+                all.data[n0 * G..].copy_from_slice(&got.data);
+                Some(([&oi[..], &mo.works[..]].concat(), [&ot[..], &mo.towns[..]].concat(), all))
+            }
+            _ => None,
+        };
+        let inv_rows = match &joined {
+            Some((a, b, c)) => (&a[..], &b[..], c),
+            None => (&oi[..], &ot[..], &inv_got),
+        };
         #[rustfmt::skip]
         crate::accounts::note_month(st, C, P, &crate::accounts::Month {
             et: &et, sec: &sec, Y: &Y, Lex: &Lex, cart_ex: &cart_ex, mach_got: &mach_got, rail_got: &rail_got,
@@ -1117,7 +1164,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
             q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
-            oi: &oi, ot: &ot, inv_got: &inv_got, proj_got: &proj_got,
+            oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got,
             R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
         });
     }
@@ -1315,6 +1362,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     };
     // machines (docs/rules/machines.md): the machines standing move towards what was bought
     crate::machines::end_month(st, C, P);
+    // tasks (docs/rules/tasks.md): each town's target at the month's wage and
+    // prices, and each works' machines moved toward it and worn
+    crate::tasks::end_month(st, C, P);
 }
 
 /// For each good, `np.bincount(town, weights=rows[:, g], minlength=T)`, in one pass

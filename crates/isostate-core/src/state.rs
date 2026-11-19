@@ -552,4 +552,9 @@ pub struct State {
     /// Each works' shares held by its town's households, its landlords, the
     /// savers' fund and the public; and each year's holdings, for the facts.
     pub owners: crate::owners::OwnersState,
+
+    // ---------------- tasks (docs/rules/tasks.md; empty while `tasks.enabled` is off)
+    /// The machines for tasks found, each town's target, and each works'
+    /// share of each class its machines hold, their book and their orders.
+    pub tasks: crate::tasks::TasksState,
 }

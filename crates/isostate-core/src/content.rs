@@ -95,6 +95,10 @@ pub struct Content {
     /// The year an invention is aimed at (0: none). Read by nothing in the
     /// engine: it is there for whoever fits thresholds and reads a run.
     pub tech_target: Vec<i64>,
+    /// TASKS (docs/rules/tasks.md): the classes of task and the machines for
+    /// them (`data/tasks.toml`). Empty in the port's content; only
+    /// `game_content` fills it.
+    pub tasks: crate::tasks::TaskTable,
 }
 
 impl Content {
@@ -350,6 +354,7 @@ pub(crate) fn content_from_raw(raw: &RawContent) -> Result<Content, String> {
         method_group: methods.iter().map(|d| d.group.clone().unwrap_or_default()).collect(),
         method_seed: methods.iter().map(|d| d.seed).collect(),
         tech_target: tech_list.iter().map(|(d, _)| d.target.unwrap_or(0)).collect(),
+        tasks: Default::default(),
     };
     for s in sectors {
         c.sector_good.push(good(&s.good)?);
@@ -379,6 +384,8 @@ pub fn default_content() -> Content {
 pub fn game_content() -> Content {
     let mut c = default_content();
     machines_content(&mut c);
+    // tasks (docs/rules/tasks.md): the classes of task and their machines
+    crate::tasks::fill(&mut c);
     c
 }
 

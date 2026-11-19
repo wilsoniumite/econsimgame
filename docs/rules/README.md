@@ -759,3 +759,10 @@ One line each as they arrive: the name, its page, its switch.
   town's pool pays for, are paid their part of its dividends and of its cash
   when it closes, where under the port every penny went to the households.
   [owners.md](owners.md), `owners.enabled`.
+- **tasks**: every hour of a works' labour is of one of five classes of task,
+  and a machine for a class takes the tasks at which a hand is worth fewer
+  machine units than the town's wage buys; works are built with the town's
+  machines and move toward them as their orders for plant are filled. Proved
+  with one stand-in, a coal-fired hoist found from 1901, so nothing in the
+  played century moves; the land is out of the machines' reach in this first
+  half. [tasks.md](tasks.md), `tasks.enabled`.

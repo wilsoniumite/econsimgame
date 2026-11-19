@@ -340,6 +340,11 @@ pub struct Params {
     /// docs/rules/owners.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub owners: crate::owners::OwnersParams,
+    /// Hands and machines in the works: classes of task, and machines that
+    /// take the tasks where a unit costs less than a hand is worth (not in
+    /// the Python; see docs/rules/tasks.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub tasks: crate::tasks::TasksParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -553,6 +558,7 @@ pub fn default_params() -> Params {
         longrun: crate::longrun::LongrunParams::default(),
         transition: crate::transition::TransitionParams::default(),
         owners: crate::owners::OwnersParams::default(),
+        tasks: crate::tasks::TasksParams::default(),
     }
 }
 
@@ -598,6 +604,7 @@ pub fn game_params() -> Params {
     P.F_max = 60_000;
     P.transition = crate::transition::TransitionParams::game();
     P.owners = crate::owners::OwnersParams::game();
+    P.tasks = crate::tasks::TasksParams::game();
     P
 }
 

@@ -81,6 +81,9 @@ pub struct SiteEval {
     pub in_cost: Vec<f64>,
     pub heat_cost: Vec<f64>,
     pub labor_cost: Vec<f64>,
+    /// tasks (docs/rules/tasks.md): the plant of the machines a unit of
+    /// capacity takes at the town's target, at the town's prices (in `cap_cost`).
+    pub machines: f64,
 }
 
 /// Return ROI and the accounting behind it for method m on candidate cells.
@@ -91,8 +94,23 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
     let n = cells.len();
     let agglo: Vec<f64> = cells.iter().map(|&c| 1.0 + P.agglo_same * st.same_counts[(m, c)].ln_1p()).collect();
     let prod: Vec<f64> = agglo.iter().map(|&g| A * (0.5 + 0.5 * k) * g).collect();
-    let (a, h, mut l) = firm_coefficients(C, &vec![m; n], &vec![K; n], &prod);
+    let (mut a, h, mut l) = firm_coefficients(C, &vec![m; n], &vec![K; n], &prod);
     works::walk_to_work(st, P, cells, &mut l); // works: hands walk out from the town
+    // tasks (docs/rules/tasks.md): a works built here has the town's machines:
+    // fewer hands a unit and their minders, their run goods among its inputs,
+    // and their plant in what its capacity costs (at the sites' mean hands)
+    let mut machines = 0.0;
+    if let Some(adj) = crate::tasks::at_target(st, C, P, i, m) {
+        let mean = l.iter().sum::<f64>() / n.max(1) as f64;
+        machines = crate::tasks::plant_cost(&adj, mean, &|g| pbar[(i, g)]);
+        for j in 0..n {
+            let base = l[j];
+            l[j] = base * adj.factor;
+            for &(g, v) in &adj.run {
+                a[(j, g)] += base * v;
+            }
+        }
+    }
     let mut pin = Mat::zeros(n, G);
     for (j, &c) in cells.iter().enumerate() {
         for g in 0..G {
@@ -121,9 +139,12 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
     let margin: Vec<f64> = (0..n).map(|j| pout[j] - in_cost[j] - heat_cost[j] - labor_cost[j]).collect();
     let foot = works::land_take(C, P, m, K);
     let rent_bid: Vec<f64> = cells.iter().map(|&c| 0.01f64.max(1.25 * st.land_rent_only[c] * foot)).collect();
-    let cap_cost = K * pairwise_sum_by(G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
+    let mut cap_cost = K * pairwise_sum_by(G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
+    if machines > 0.0 {
+        cap_cost += K * machines;
+    }
     let roi: Vec<f64> = (0..n).map(|j| site_roi(K, margin[j], rent_bid[j], cap_cost)).collect();
-    SiteEval { roi, margin, pout, pin, a, h, hunit, l, rent_bid, cap_cost, agglo, in_cost, heat_cost, labor_cost }
+    SiteEval { roi, margin, pout, pin, a, h, hunit, l, rent_bid, cap_cost, agglo, in_cost, heat_cost, labor_cost, machines }
 }
 
 /// The yearly return entry expects from a site: twelve months of output at 85 per
@@ -236,6 +257,7 @@ pub fn create_firm(
     }
     st.cell_K_share[cell] += works::land_take(C, P, m, K);
     works::opened(st, C, P, fid, K); // works: the year's room and the lease
+    crate::tasks::opened(st, C, P, fid); // tasks: built at its town's target
     Some(fid)
 }
 
@@ -384,7 +406,10 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
         if used_cells.contains(&(cell, m)) || st.cell_K_share[cell] >= 0.9 || !works::cell_fits(st, C, P, cell, m, K) {
             continue;
         }
-        let cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+        let mut cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+        if ev.machines > 0.0 {
+            cost += K * ev.machines * 1.15; // tasks: and its machines' plant
+        }
         if town_pool(st, P, i) < cost || st.F_count >= st.f_alive.len() {
             continue;
         }
@@ -418,7 +443,11 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
         let (i, m) = (st.f_town[fid], st.f_method[fid]);
         let K = st.f_K[fid];
         let unit_cap = pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]);
-        let capval = K.max(1e-9) * unit_cap;
+        // tasks (docs/rules/tasks.md): and the plant of the machines a unit
+        // of capacity takes at the town's target
+        let machines = machines_a_unit(st, C, P, fid, pbar);
+        let unit_cap_all = if machines > 0.0 { unit_cap + machines } else { unit_cap };
+        let capval = K.max(1e-9) * unit_cap_all;
         let roi = st.f_profit_acc[fid] / capval.max(1e-9);
         let u = st.f_u[fid];
         let building = works::building(P, K, st.f_order_K[fid]);
@@ -455,7 +484,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
                     spawn_sister(st, C, P, rng, fid, year, pbar, wbar, dK);
                 }
             } else {
-                let cost = dK * unit_cap;
+                let cost = dK * unit_cap_all;
                 let short = cost * 1.1 - st.f_cash[fid];
                 if short > 0.0 {
                     st.f_cash[fid] += back_firm(st, C, P, fid, short);
@@ -478,6 +507,17 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
         st.f_out_acc[f] = 0.0;
     }
     closed
+}
+
+/// tasks (docs/rules/tasks.md): the plant of the machines a unit of works
+/// `fid`'s capacity takes at its town's target, at prices `pbar`; nothing
+/// while no machine would be held there.
+fn machines_a_unit(st: &State, C: &Content, P: &Params, fid: usize, pbar: &Mat) -> f64 {
+    let (i, m) = (st.f_town[fid], st.f_method[fid]);
+    let Some(adj) = crate::tasks::at_target(st, C, P, i, m) else { return 0.0 };
+    let (_, _, mut l) = firm_coefficients(C, &[m], &[st.f_K[fid]], &[st.f_prod[fid]]);
+    works::walk_to_work(st, P, &[st.f_cell[fid]], &mut l);
+    crate::tasks::plant_cost(&adj, l[0], &|g| pbar[(i, g)])
 }
 
 /// A works at full size grows by opening a new site next door. `dK` is the
@@ -514,7 +554,10 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
     if ev.roi[j] < P.hurdle {
         return None;
     }
-    let cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+    let mut cost = K * pairwise_sum_by(C.G, |g| C.m_cap[(m, g)] * pbar[(i, g)]) * 1.15;
+    if ev.machines > 0.0 {
+        cost += K * ev.machines * 1.15; // tasks: and its machines' plant
+    }
     let owner = families::owner_of_firm(st, parent);
     let mut fund = (st.f_cash[parent].max(0.0) * 0.8).min(cost);
     st.f_cash[parent] -= fund;

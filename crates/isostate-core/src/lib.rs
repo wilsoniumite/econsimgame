@@ -70,6 +70,7 @@ pub mod sim;
 pub mod standing;
 pub mod state;
 pub mod sweep;
+pub mod tasks;
 pub mod tech;
 pub mod towns;
 pub mod transition;

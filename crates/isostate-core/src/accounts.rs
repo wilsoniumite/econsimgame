@@ -756,7 +756,11 @@ pub fn init(st: &mut State, C: &Content, P: &Params) {
         stock: st.inv.clone(),
         mk: vec![0.0; st.T_max * HH_KINDS.clone().count()],
         ml: vec![0.0; st.T_max * C.NS * 5],
-        mgoods: (0..C.M).map(|m| (0..C.G).filter(|&g| C.m_in[(m, g)] > 0.0 || (C.m_heat[m] > 0.0 && C.fuel_goods.contains(&g))).collect()).collect(),
+        // (tasks, docs/rules/tasks.md: and what the machines for tasks run on,
+        // which a works holding them takes among its inputs)
+        mgoods: (0..C.M)
+            .map(|m| (0..C.G).filter(|&g| C.m_in[(m, g)] > 0.0 || (C.m_heat[m] > 0.0 && C.fuel_goods.contains(&g)) || C.tasks.uses.iter().any(|u| u.run.iter().any(|r| r.0 == g))).collect())
+            .collect(),
         // (not the content's `mine` flag, which marks the two that take machinery and rails)
         digs: C.sector_name.iter().map(|n| crate::mines::is_extractive(n)).collect(),
         ..Books::default()

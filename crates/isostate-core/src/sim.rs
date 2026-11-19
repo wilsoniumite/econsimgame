@@ -699,6 +699,9 @@ pub fn end_year(sim: &mut Sim) {
     yearly(st, C, P, rngs, year, events, false);
     // accounts: the year's books close on the year's prices, works and owners
     crate::accounts::close_year(st, C, P, year);
+    // tasks (docs/rules/tasks.md): the year's machines, before the gauges read
+    // their book; and what is found for the next year
+    crate::tasks::close_year(st, C, P, year);
     // gauges: read off the books just closed
     crate::gauges::close_year(st, C, P, year);
     // owners: who holds the works and who was paid by them (docs/rules/owners.md)
