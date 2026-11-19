@@ -139,7 +139,20 @@ cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --familie
     --set longrun.enabled=false,true --out runs/longrun-1900
 ```
 
-STANDING-CHECK-TABLE
+| in 1900, islands 1 to 8 | switch off | switch on |
+|---|---|---|
+| people | 735,871 [716,484 .. 761,260] | 740,453 [715,166 .. 778,768] |
+| real wage, chained, 1750 = 1 | 4.09 [3.80 .. 4.46] | 4.17 [3.93 .. 4.34] |
+| towns | 17.6 [14 .. 20] | 18.4 [16 .. 21] |
+| railway | 2,312 km [2,156 .. 2,569] | 2,409 km [2,197 .. 2,584] |
+| the towns' share of people | 0.412 [0.401 .. 0.434] | 0.408 [0.394 .. 0.429] |
+| work's share of income | 0.691 [0.647 .. 0.715] | 0.698 [0.679 .. 0.719] |
+| land's share of income | 0.173 [0.165 .. 0.180] | 0.172 [0.168 .. 0.182] |
+| the last town founded | 1853 [1788 .. 1895] | 1847 [1810 .. 1877] |
+| the anchor; the wage scale | | 0.47 [0.42 .. 0.54]; 2.01 [1.78 .. 2.20] |
+
+Every mean with the switch on is inside the spread of the islands with it
+off. The founding of towns ends six years sooner, as the design expected.
 
 **3. The long run: no price at a bound.**
 
@@ -148,13 +161,95 @@ cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --familie
     --set longrun.enabled=false,true --out runs/longrun-2050
 ```
 
-LONG-RUN-TABLE
+| islands 1 to 8, to 2050 | switch off | switch on |
+|---|---|---|
+| timber: town-months at a bound after 1800 | 0.193 [0.163 .. 0.216] | 0.094 [0.077 .. 0.114] |
+| tools | 0.011 [0.000 .. 0.030] | 0.001 [0.000 .. 0.006] |
+| charcoal | 0.001 [0.000 .. 0.005] | 0.000 |
+| every other good, and the wage | 0.000 | 0.000 |
+| people in 2050 | 4,284,966 | 4,367,598 |
+| real wage, chained, 2050 | 2.04 [1.87 .. 2.24] | 1.86 [1.47 .. 2.10] |
+| real wage on 1750's basket, 2050 | 0.61 [0.51 .. 0.67] | 0.26 [0.22 .. 0.30] |
+| the anchor; the wage scale, 2050 | | 1.79 [1.61 .. 2.01]; 3.54 [3.05 .. 4.05] |
+| railway in 2050 | 2,688 km | 2,714 km |
+| places taken in the works' table | 6,382 [6,139 .. 6,852] | 6,077 [5,747 .. 6,410] |
+
+No good but timber stands at a bound in more than one town-month in a
+hundred, and the wage never does. The real wage on 1750's basket falls much
+further with the switch on, and that is the switch working: the basket
+holds timber at 1750's weight, and timber's price, free of the old ceiling,
+climbs from 32 to 112 by 2050 (means of the eight islands), so the
+basket's cost goes from 4.9 to 13.1 times 1750's. What households actually
+buy, the chained wage, moves far less.
 
 **4. The rich island.** With the stand-in on and fewer births
 (`--set longrun.standin_growth=true --set people.growth_top=0.006`), the
 island's money wage passes thirteen times 1750's by 1950 and fifty by 2050.
 
-RICH-TABLE
+```bash
+cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --end-year 2050     --set longrun.standin_growth=true --set people.growth_top=0.006 --set longrun.enabled=false,true --out runs/longrun-rich
+cargo run --release -p isostate-core -- sweep --seeds 1-8 --rules game --families 6 --end-year 2050     --set longrun.standin_growth=true --set people.growth_top=0.006 --set longrun.enabled=false --set price_ceiling=400     --out runs/longrun-ceiling400
+```
+
+| islands 1 to 8, to 2050, the stand-in on | switch off | switch on | switch off, ceiling 400 |
+|---|---|---|---|
+| services made a month, mean of 2001 to 2050 | 84,958 | 92,122 | 95,065 |
+| services: town-months at a bound | 0.110 | 0.000 | 0.000 |
+| tools | 0.256 | 0.004 | |
+| the wage scale, 1950; 2050 | | 13.2; 57.4 | |
+
+With the switch on, services made after 2000 are 3 per cent below the run
+with the ceiling lifted by hand; with it off, 11 per cent below.
+
+## The record past 1900
+
+A run's record (`run.bin`, and the live view's years) keeps one byte a cell
+and year for when the cell joined its town, for its residents and for its
+rent. Those bytes were laid out for a game that ends in 1900: the year in
+single steps from 1645 stops at 1900, residents in eights stop at 2,040 to a
+cell, and the rent byte runs from a thousandth to a thousand a month in
+1750's money. A run on to 2050 dated every cell built after 1900 as built in
+1900, and the rent of a town's middle stood at the top of the scale.
+
+So a record has two layouts, chosen by the year its run ends
+(`record::TownBytes`):
+
+| | a run that ends by 1900 (every game) | a run past 1900 |
+|---|---|---|
+| the year a cell joined its town | single years from 1645, to 1900 | steps of two years from 1645, to 2155 |
+| residents | in eights, to 2,040 a cell | in sixteens, to 4,080 a cell |
+| rent | in 1750's money | over the year's anchor |
+
+A record of the second layout says so in its header (`meta.town_bytes` = 2)
+and keeps the anchor each year's rent was taken over (`rent_scale`), so that
+the viewer gives the rent in that year's money. A record of the first says
+nothing and is the very file it was before this stage, so the game's golden
+test does not move, and a record made before there were two layouts reads
+as the first. A cell that joined in an odd year of the second layout is
+dated to the even year before it.
+
+    cargo run --release -p isostate-core -- run --seed 7 --rules game --families 6 --end-year 2050 --out runs/to2050-7
+    cargo run -p isostate-viewer -- runs/to2050-7/run.bin --year 2050
+
+## The works' table
+
+Every works the island has ever had keeps its place in the table (its slot)
+for good: the record, the books, the chronicle and the families all name
+works by their slot, so a slot is never given to a second works. The table
+only fills. It had room for 20,000, which the port keeps; the game has room
+for 60,000 (`F_max`). The months now run over the places taken
+(`F_count`), not over the whole room, so the room costs some memory and no
+time. An island run on to 2050 takes about 6,000 places (5,747 to 6,410
+on islands 1 to 8; the fact `works_slots_used`); a table that fills founds nothing more and says so
+(`works_table_full`).
+
+## Facts by the decade after 1900
+
+The sweep's facts at marks (`pop_Y`, `urban_share_Y`, `towns_Y`, the
+railway, wages, the books, the carting, the mines and this stage's own) are
+taken every fifty years to 1900 and every ten years after it, so a run on to
+2050 has them for 1910, 1920 and so on (`facts::marks`). A game to 1900 has
+the same marks as before.
 
 ## Facts added to the sweep
 
@@ -180,7 +275,23 @@ anchor the mean of its last five levels; the freight is the constant until
 its year and the anchor's ratio after; the facts are there under either
 setting; and a short run with the stand-in conserves its money.
 
+The plumbing has its own: `tests/towns.rs`,
+`a_record_past_1900_packs_its_towns_in_two_year_steps` (the second layout's
+arithmetic, and the first's is the old arithmetic to the byte) and a run to
+1900 writes no `rent_scale`; the viewer's
+`a_run_past_1900_reads_its_towns_in_two_year_steps_and_its_rent_in_its_own_money`;
+and `facts::tests::the_marks_are_fifty_years_apart_to_1900_and_ten_after`.
+The port's and the game's golden tests hold the rest: the works' passes that
+now stop at the places taken give the same island to the byte.
+
 ## What worries me
+
+- **The rent byte still reaches its top.** Taken over the anchor, a cell's
+  rent past 1900 is in the year's own money, but rent grows with the people
+  on the land far more than prices do: on island 7 in 2050, 2,226 cells
+  have their rent at the top of the byte's scale (3,672 before this stage,
+  and 328 in 1900). The record's scale of a thousandth to a thousand a
+  month is too narrow for a long run, and a later stage should widen it.
 
 - **The anchor halves over the played century**, and the floors with it. A
   good whose price used to stand at its floor (iron ore, in a few
