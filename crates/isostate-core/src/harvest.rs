@@ -214,6 +214,54 @@ fn draw(st: &mut State, C: &Content, P: &Params, rng: &mut Rng) {
     st.harvest_town_now = town;
 }
 
+/// The rest of the year's crop multiplied by hand (`edits::Edit::Harvest`,
+/// docs/designs/sandbox.md): on the land of one town's market area (the cells
+/// whose `catch` is the town) or (`town` None) on all the island's land, each
+/// sector that feels the weather has its multiplier scaled by `factor` to the
+/// power of its share in `feeling`, so farms take all of it and pastures their
+/// share. The town's and the country's harvest of the year are then worked out
+/// again by the weighted mean `draw` uses. Nothing is drawn, and `draw` is not
+/// touched: it is the same arithmetic written out a second time, so that the
+/// draw cannot change by a bit. `brought_in` reads the multiplier every month,
+/// so the months still to be played bring in what the hand says.
+pub fn by_hand(st: &mut State, C: &Content, P: &Params, town: Option<usize>, factor: f64) -> Result<(), String> {
+    if !P.harvest.enabled {
+        return Err("the island's rules have no weather, so there is no harvest to change by hand".to_string());
+    }
+    if st.harvest_mult.data.is_empty() {
+        return Err("no year's weather has been drawn yet, so there is no harvest to change by hand".to_string());
+    }
+    let (N, T) = (st.N, st.T_max);
+    let cells: Vec<usize> = (0..N).filter(|&c| st.world.land[c] && town.is_none_or(|t| st.catch[c] == t as i64)).collect();
+    for (s, share) in feeling(st, C, P) {
+        let k = factor.powf(share);
+        for &c in &cells {
+            st.harvest_mult[(s, c)] *= k;
+        }
+    }
+    let Some(fs) = farm_sector(C) else { return Ok(()) };
+    let mult = &st.harvest_mult;
+    let (mut acc, mut wsum) = (vec![0.0; T], vec![0.0; T]);
+    for u in 0..st.ex_cell.len() {
+        if st.ex_sector[u] == fs {
+            let w = st.ex_lam[u] * st.ex_field[u];
+            acc[st.ex_town[u]] += w * mult[(fs, st.ex_cell[u])];
+            wsum[st.ex_town[u]] += w;
+        }
+    }
+    let mut now = vec![1.0; T];
+    for t in 0..T {
+        if st.town_active[t] {
+            now[t] = if wsum[t] > 0.0 { acc[t] / wsum[t] } else { mult[(fs, st.town_node[t])] };
+        }
+    }
+    let (a, w): (f64, f64) = (acc.iter().sum(), wsum.iter().sum());
+    // an island with no farmland keeps the country's figure, scaled when the whole island was
+    st.harvest_now = if w > 0.0 { a / w } else { st.harvest_now * if town.is_none() { factor } else { 1.0 } };
+    st.harvest_town_now = now;
+    Ok(())
+}
+
 /// What the land's masters can see of the year when they hire: each unit's
 /// worth of a hand (`Cc` in `econ::step_month`) is scaled by its cell's
 /// multiplier to the power `foreseen`. Nothing at 0, the pure surprise.

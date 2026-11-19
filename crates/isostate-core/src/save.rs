@@ -81,6 +81,11 @@ pub enum Order {
     Post { member: usize, posting: Posting },
     Stance { group: Group, town: usize, stance: Stance },
     MoveSeat { town: usize },
+    /// An edit by hand (docs/designs/sandbox.md): not word to the family but a
+    /// change to the island, carried out at once in any month and logged with
+    /// the month it was made in. The edit is a field of its own, so a line of
+    /// the log reads `{"year":1820,"month":3,"kind":"by_hand","edit":{"what":"people","town":4,"factor":0.5}}`.
+    ByHand { edit: crate::edits::Edit },
 }
 
 impl Order {
@@ -110,9 +115,11 @@ impl Order {
     /// which the core gives its effect at the year's end. Given in the middle
     /// of a year, such an order is carried out when December has been played,
     /// before the books are closed. The others (a works to build, land to buy)
-    /// change the island at once, and wait for the turn itself.
+    /// change the island at once, and wait for the turn itself. An edit by
+    /// hand never waits (`Game::give` carries it out at once), and is named
+    /// here so that it is never taken for word to the family.
     pub fn for_year_end(&self) -> bool {
-        !matches!(self, Order::Found { .. } | Order::BuyLand { .. })
+        !matches!(self, Order::Found { .. } | Order::BuyLand { .. } | Order::ByHand { .. })
     }
 }
 
@@ -131,6 +138,11 @@ pub enum Done {
 
 /// Carry out an order for the player's family. A refused order changes nothing.
 pub fn carry_out(sim: &mut Sim, order: &Order) -> Result<Done, String> {
+    // an edit by hand is carried out on the run itself; its line is the title
+    // of the news it leaves (`edits::carry_out`)
+    if let Order::ByHand { edit } = order {
+        return crate::edits::carry_out(sim, edit).map(|_| Done::Done);
+    }
     let Sim { st, content: C, params: P, events, year, .. } = sim;
     carry_out_on(st, C, P, *year, events, order)
 }
@@ -160,6 +172,8 @@ fn carry_out_on(st: &mut State, C: &Content, P: &Params, year: i64, events: &mut
         Order::Post { member, posting } => families::post_member(st, PLAYER, *member, *posting).map(|()| Done::Done),
         Order::Stance { group, town, stance } => families::set_stance(st, PLAYER, *group, *town, *stance).map(|()| Done::Done),
         Order::MoveSeat { town } => families::move_seat(st, PLAYER, *town).map(|()| Done::Done),
+        // the copy of the island never sees an edit: it is carried out on the run itself
+        Order::ByHand { .. } => Err("an edit by hand is carried out on the island itself, never tried on a copy".to_string()),
     }
 }
 
@@ -382,12 +396,15 @@ impl Game {
     /// in the log. In the middle of a year it is tried on a copy of the island
     /// with the orders already waiting, and if it could be carried out today
     /// it waits with them for the year's end (`Done::Waits`). A refused order
-    /// is not kept, and changes nothing.
+    /// is not kept, and changes nothing. An edit by hand (`Order::ByHand`) is
+    /// carried out at once in any month, after whatever waited for a turn it
+    /// is given at, and logged with the months played so far, so that `load`
+    /// carries it out again before the same month.
     pub fn give(&mut self, order: Order) -> Result<Done, String> {
-        if self.month == 0 {
+        if self.month == 0 || matches!(order, Order::ByHand { .. }) {
             self.settle();
             let done = carry_out(&mut self.sim, &order)?;
-            self.orders.push(Given { year: self.last_year(), month: 0, order });
+            self.orders.push(Given { year: self.last_year(), month: self.month, order });
             return Ok(done);
         }
         let mut st = self.with_waiting();
