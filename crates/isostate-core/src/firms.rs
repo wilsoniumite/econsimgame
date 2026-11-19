@@ -29,7 +29,7 @@ pub fn learning(C: &Content, P: &Params, Q: &[f64]) -> Vec<f64> {
 pub fn same_method_counts(st: &State, C: &Content) -> Mat {
     let (H, W) = (st.world.H, st.world.W);
     let mut counts = Mat::zeros(C.M, H * W);
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             counts[(st.f_method[f], st.f_cell[f])] += 1.0;
         }
@@ -52,7 +52,7 @@ pub fn update_productivity(st: &mut State, C: &Content, P: &Params) {
     // machines (docs/rules/machines.md): a new method inherits part of its predecessor's skill
     crate::machines::inherit_skill(st, C, P, &mut A);
     let counts = same_method_counts(st, C);
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             let (m, c, t) = (st.f_method[f], st.f_cell[f], st.f_town[f]);
             let k = st.know[(t, m)];
@@ -310,7 +310,7 @@ struct Proposal {
 pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, pbar: &Mat, wbar: &[f64], max_new: Option<usize>) -> usize {
     let mut proposals: Vec<Proposal> = Vec::new();
     let mut n_tm = Mat::zeros(st.T_max, C.M);
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             n_tm[(st.f_town[f], st.f_method[f])] += 1.0;
         }
@@ -385,7 +385,7 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
 
 /// Grow profitable firms, shrink idle ones, close the hopeless.
 pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, pbar: &Mat, wbar: &[f64]) -> Vec<usize> {
-    let mut alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
+    let mut alive: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f]).collect();
     let mut closed = Vec::new();
     works::new_year(st, C, P, pbar, &mut alive); // works: the year's room, the best earners served first
     for &fid in &alive {

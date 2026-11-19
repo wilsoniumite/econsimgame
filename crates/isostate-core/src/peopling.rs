@@ -285,7 +285,7 @@ fn work_by_cell(st: &State) -> Vec<f64> {
     for u in 0..st.ex_cell.len().min(st.ex_labor.len()) {
         work[st.ex_cell[u]] += st.ex_labor[u];
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             work[st.f_cell[f]] += st.f_labor[f];
         }
@@ -342,7 +342,7 @@ fn district_kind(st: &State, C: &Content, cells: &[bool]) -> &'static str {
         }
     }
     let services = C.gi("services");
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] && C.method_out[st.f_method[f]] != services {
             all[4] += st.f_labor[f];
             if cells[st.f_cell[f]] {

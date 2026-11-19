@@ -88,7 +88,7 @@ pub fn delta_fields(st: &mut State, C: &Content, P: &Params) {
                 any = true;
             }
         }
-        for f in 0..st.f_alive.len() {
+        for f in 0..st.F_count {
             if st.f_alive[f] && C.method_out[st.f_method[f]] == g && st.f_K[f] > 0.0 {
                 is_src[st.f_cell[f]] = true;
                 any = true;
@@ -403,7 +403,7 @@ pub fn update_land_use(st: &mut State, C: &Content, P: &Params, year: i64, pbar:
     }
     st.land_rent_only = rent.clone();
     crate::mines::add_royalties(st, P, &mut rent); // mines: the map's rent counts the royalties
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             rent[st.f_cell[f]] += st.f_rent[f];
         }

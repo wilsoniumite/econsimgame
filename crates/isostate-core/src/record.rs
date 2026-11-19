@@ -382,7 +382,7 @@ pub fn snapshot(rec: &mut Record, st: &State, C: &Content, P: &Params, k: usize)
             rec.town_know[(k * T + t) * NT + j] = know_byte(st.know[(t, j)]);
         }
     }
-    let alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
+    let alive: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f]).collect();
     let K: Vec<f32> = alive.iter().map(|&f| st.f_K[f] as f32).collect();
     rec.firm_K.push((alive, K));
     rec.projects.push(

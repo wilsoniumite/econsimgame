@@ -134,7 +134,7 @@ pub fn found_towns(st: &mut State, _C: &Content, P: &Params, rng: &mut Rng, year
     for u in 0..st.ex_cell.len() {
         work[st.ex_cell[u]] += st.ex_labor[u];
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             work[st.f_cell[f]] += st.f_labor[f];
         }
@@ -229,7 +229,7 @@ pub fn resettle_new_towns(st: &mut State, _C: &Content, _P: &Params) {
     for u in 0..st.ex_cell.len() {
         work[st.ex_cell[u]] += st.ex_labor[u];
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] {
             work[st.f_cell[f]] += st.f_labor[f];
         }
@@ -267,7 +267,7 @@ pub fn resettle_new_towns(st: &mut State, _C: &Content, _P: &Params) {
         }
         // firms in the new catchment now trade through the new town
     }
-    for f in 0..st.f_alive.len() {
+    for f in 0..st.F_count {
         if st.f_alive[f] && st.catch[st.f_cell[f]] >= 0 {
             st.f_town[f] = st.catch[st.f_cell[f]] as usize;
         }

@@ -479,7 +479,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     let lam = st.ex_lam.clone();
 
     // ---------------- firms: unit economics at their own location
-    let fi: Vec<usize> = (0..st.f_alive.len()).filter(|&i| st.f_alive[i] && st.f_K[i] > 1e-9).collect();
+    let fi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_K[i] > 1e-9).collect();
     let NFI = fi.len();
     let ft: Vec<usize> = fi.iter().map(|&i| st.f_town[i]).collect();
     let fm: Vec<usize> = fi.iter().map(|&i| st.f_method[i]).collect();
@@ -706,7 +706,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // machines asked for on an average year's yield. From here on Y is the crop
     // actually brought in.
     let Y = harvest::brought_in(st, C, P, Y);
-    let oi: Vec<usize> = (0..st.f_alive.len()).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
+    let oi: Vec<usize> = (0..st.F_count).filter(|&i| st.f_alive[i] && st.f_order_K[i] > 0.0).collect();
     let ot: Vec<usize> = oi.iter().map(|&i| st.f_town[i]).collect();
     let mut req_inv = Mat::zeros(oi.len(), G);
     for (r, &i) in oi.iter().enumerate() {

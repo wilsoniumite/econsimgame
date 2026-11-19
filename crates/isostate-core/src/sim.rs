@@ -236,7 +236,7 @@ pub fn init_before_firms(P: &Params, C: &Content, world: World, rng: &mut Rngs) 
 /// Bookkeeping that depends on catchments.
 pub fn after_transport(st: &mut State, C: &Content, P: &Params) {
     let (N, T) = (st.N, st.T_max);
-    let alive: Vec<usize> = (0..st.f_alive.len()).filter(|&f| st.f_alive[f]).collect();
+    let alive: Vec<usize> = (0..st.F_count).filter(|&f| st.f_alive[f]).collect();
     for &f in &alive {
         let ct = st.catch[st.f_cell[f]];
         if ct >= 0 {

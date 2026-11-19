@@ -566,6 +566,10 @@ pub fn game_params() -> Params {
     P.hands = crate::hands::HandsParams::game();
     P.money = crate::money::MoneyParams::game();
     P.longrun = crate::longrun::LongrunParams::game();
+    // longrun (docs/rules/longrun.md, "The works' table"): room for three
+    // centuries of works. A place is never given to a second works, so the
+    // table only fills; the months run over the places taken, not the room.
+    P.F_max = 60_000;
     P
 }
 
