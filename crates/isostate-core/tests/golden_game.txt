@@ -29,6 +29,13 @@
 # on the island stage 5 leaves: nine more goods, so another economy, other
 # books, other news and another run.bin. With the tree off in game_params()
 # the four before held.
+# Then on night/g-to2050-1-longrun (19 November 2026): all four moved by
+# stage 1 of the run to 2050, the bounds on prices and the wage riding on
+# the island's own cost of living (longrun.enabled, docs/rules/longrun.md):
+# iron ore's price, which stood at its floor in a few town-months on most
+# islands, may now fall below 1750's floor, and that gives the island another
+# history. With the switch off the four above held.
+# (hashes to be taken again on the batch night/g-batch-1)
 economy  0xa0b778ca0b962b19
 books    0x364288124d7f0e20
 news     0xdfaf581760b17c8f

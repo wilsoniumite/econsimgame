@@ -67,7 +67,7 @@ fn off_is_the_port_and_on_is_the_game() {
     assert!(st.town_built.is_empty() && st.town_room.is_empty() && st.town_ground.is_empty());
     assert!(st.town_peak.is_empty() && st.town_low_years.is_empty() && st.town_ground_rent.is_empty() && st.town_hands_acc.is_empty());
     assert!(r.rec.town_layers.is_empty() && r.rec.town_layer("built").is_none());
-    assert!(record::town_layers(st).is_none());
+    assert!(record::town_layers(st, record::TownBytes::FIRST).is_none());
     let blob = record::pack(st, &r.content, &r.params, &r.events, &r.rec, "port", false);
     let names: Vec<String> = arrays(&blob).into_iter().map(|(n, _)| n).collect();
     assert!(TOWN_LAYERS.iter().all(|l| !names.iter().any(|n| n == l)), "{names:?}");
@@ -193,7 +193,7 @@ fn a_town_with_nowhere_to_grow_crowds_the_ground_it_has() {
     assert!(st.urban_pop[i] > 4.0 * room, "{} people in room for {room}", st.urban_pop[i]);
     assert!((res - st.urban_pop[i]).abs() < 1e-6 * res, "they all live somewhere");
     // the record's byte for residents stops at its top and does not wrap
-    let layers = record::town_layers(st).expect("kept ground");
+    let layers = record::town_layers(st, record::TownBytes::FIRST).expect("kept ground");
     let top = st.town_ground[i].iter().map(|&c| layers[1][c]).max().unwrap();
     assert_eq!(top, 255);
     assert!(st.town_ground[i].iter().all(|&c| st.urban_res[c] / RES_UNIT < 255.0 || layers[1][c] == 255));
@@ -437,6 +437,7 @@ fn the_record_and_the_live_view_carry_the_three_layers() {
             assert_eq!(built[c] > 0, st.urban[c]);
             if st.urban[c] {
                 assert_eq!(built[c] as i64 + BUILT_YEAR0, st.town_built[c], "{}: cell {c}", y.year);
+                // (a run to 1900 keeps the first layout: single years and eights)
                 assert!((res[c] as f64 * RES_UNIT - st.urban_res[c]).abs() <= RES_UNIT / 2.0 + 1e-9);
             } else {
                 assert_eq!(res[c], 0);
@@ -459,6 +460,45 @@ fn the_record_and_the_live_view_carry_the_three_layers() {
     // the comparison scenario shown in charts only keeps no map layers, these included
     let lite = record::pack(&r.state, &r.content, &r.params, &r.events, &r.rec, "towns", true);
     assert!(arrays(&lite).iter().all(|(n, _)| !TOWN_LAYERS.contains(&n.as_str())));
+    // a run to 1900 keeps the first layout, and its file says nothing of it
+    assert_eq!(r.rec.town_bytes, record::TownBytes::FIRST);
+    assert!(r.rec.rent_scale.is_empty() && arrs.iter().all(|(n, _)| n != "rent_scale"));
+}
+
+/// longrun (docs/rules/longrun.md, "The record past 1900"): a record that runs
+/// past 1900 packs `built` in steps of two years and `res` in sixteens, and one
+/// to 1900 packs them as it always has.
+#[test]
+fn a_record_past_1900_packs_its_towns_in_two_year_steps() {
+    use record::TownBytes;
+    assert_eq!(TownBytes::of(1900), TownBytes::FIRST);
+    assert_eq!(TownBytes::of(BUILT_YEAR0 + 255), TownBytes::FIRST);
+    assert_eq!(TownBytes::of(1901), TownBytes::SECOND);
+    assert_eq!(TownBytes::of(2050), TownBytes::SECOND);
+    // a record made before the layout had a number reads as the first
+    assert_eq!(TownBytes::default().built_step(), 1);
+    assert_eq!(TownBytes::default().res_unit(), RES_UNIT);
+    for year in 1750..=1900 {
+        // the first layout is the old arithmetic, to the byte
+        let first = TownBytes::FIRST;
+        assert_eq!(first.built_byte(year), (year - BUILT_YEAR0).clamp(1, 255) as u8);
+        assert_eq!(first.built_year(first.built_byte(year)), Some(year));
+    }
+    let second = TownBytes::SECOND;
+    let mut last = 0;
+    for year in 1750..=2155 {
+        let b = second.built_byte(year);
+        let back = second.built_year(b).unwrap();
+        assert!(back <= year && year - back < 2, "{year} read back as {back}");
+        assert!(b >= last, "the bytes keep the years' order");
+        last = b;
+    }
+    assert_eq!(second.built_year(0), None);
+    assert_eq!(second.res_unit(), 16.0);
+    assert_eq!(second.res_byte(4_080.0), 255);
+    assert_eq!(second.res_byte(10_000.0), 255);
+    assert_eq!(second.res_byte(2_040.0), 128);
+    assert_eq!(TownBytes::FIRST.res_byte(2_040.0), 255);
 }
 
 #[test]

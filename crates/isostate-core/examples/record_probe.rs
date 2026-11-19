@@ -368,8 +368,8 @@ fn one(seed: u64, end_year: Option<i64>, keep: bool) -> Run {
             + serde_json::to_string(&ly.accounts).map_or(0, |t| t.len());
         cl.firm_k_bytes = ly.firm_K.len() * 4;
         let t0 = Instant::now();
-        black_box(record::layers(st, &C));
-        black_box(record::town_layers(st));
+        black_box(record::layers(st, &C, 1.0));
+        black_box(record::town_layers(st, record::TownBytes::FIRST));
         cl.layers_ns = t0.elapsed().as_nanos() as u64;
         cl.news = s.events.len();
         cl.news_with_cell = s.events.iter().filter(|e| e.cell.is_some()).count();

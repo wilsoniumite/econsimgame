@@ -301,7 +301,7 @@ fn town_name(r: &Replay, t: usize) -> &str {
 
 /// The rent a square's ground earns in a year (the record holds a month's).
 fn rent_year(r: &Replay, k: usize, c: usize) -> Option<f32> {
-    r.rent.get(k * r.n + c).map(|&b| 12.0 * replay::rent_of(b))
+    r.rent.get(k * r.n + c).map(|&b| 12.0 * replay::rent_of(b) * r.rent_scale(k))
 }
 
 /// How far a square is from its market, in kilometres of flat open country:
@@ -872,7 +872,7 @@ mod tests {
         let town = |name: &str, node: usize| Town { name: name.into(), node, founded: 1700 };
         let good = |name: &str, label: &str| Good { name: name.into(), label: label.into(), kind: None, weight: None, price: None };
         let header = Header {
-            meta: Meta { label: String::new(), lite: false, seed: 1, w: 4, h: 1, start_year: 1750, n_years: 1 },
+            meta: Meta { label: String::new(), lite: false, seed: 1, w: 4, h: 1, start_year: 1750, n_years: 1, town_bytes: 0 },
             goods: vec![good("grain", "Grain"), good("coal", "Coal")],
             methods: Vec::new(),
             towns: vec![town("Ashby", 1), town("Brill", 3)],
@@ -926,6 +926,7 @@ mod tests {
             res: Vec::new(),
             works: Vec::new(),
             workings: Vec::new(),
+            rent_scale: Vec::new(),
             land: None,
         }
     }

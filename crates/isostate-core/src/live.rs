@@ -178,8 +178,14 @@ pub struct LiveLayers {
     pub land_use: Vec<u8>,
     /// How intensively the cell is used, 0 to 255.
     pub inten: Vec<u8>,
-    /// Rent, log scale: 0 for none, else 255 * (log10(rent) + 3) / 6.
+    /// Rent, log scale: 0 for none, else 255 * (log10(rent / rent_scale) + 3) / 6.
     pub rent: Vec<u8>,
+    /// What the rent byte was taken over: 1 in a game to 1900, the year's
+    /// anchor in one past it (`record::TownBytes`).
+    pub rent_scale: f32,
+    /// How the towns' layers and the rent are packed: `record::TownBytes::version`,
+    /// 1 in a game to 1900 and 2 in one past it.
+    pub town_bytes: u8,
     /// Road level 0 to 3, plus 4 for a railway, plus 8 for a railway being built.
     pub trans: Vec<u8>,
     /// Catchment: town index plus 1 (0 for none).
@@ -192,10 +198,11 @@ pub struct LiveLayers {
     pub mix_s: Vec<u8>,
     // towns: three more, only in a game whose towns keep their ground
     // (`record::TOWN_LAYERS`, the same bytes as in `run.bin`)
-    /// The year the cell joined its town less `record::BUILT_YEAR0` (1 to 255); 0: not town ground.
+    /// The year the cell joined its town less `record::BUILT_YEAR0`, in steps of
+    /// `record::TownBytes::of(end_year).built_step()` years (1 to 255); 0: not town ground.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub built: Option<Vec<u8>>,
-    /// The cell's residents, in units of `record::RES_UNIT` people.
+    /// The cell's residents, in units of `record::TownBytes::of(end_year).res_unit()` people.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub res: Option<Vec<u8>>,
     /// The share of the cell under works, 0 to 255, on every cell.
@@ -413,10 +420,15 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
     cursor.next_year += 1;
     let (T, G, NT) = (st.T_max, C.G, C.NT);
 
-    let mut l = record::layers(st, C).into_iter();
+    // longrun: a game that runs past 1900 packs its towns and rent as a record past 1900 does
+    let tb = record::TownBytes::of(C.end_year);
+    let rent_scale = record::rent_scale(tb, st, P);
+    let mut l = record::layers(st, C, rent_scale).into_iter();
     let mut next = || l.next().expect("nine layers");
-    let mut tl = record::town_layers(st).unwrap_or_default().into_iter();
+    let mut tl = record::town_layers(st, tb).unwrap_or_default().into_iter();
     let layers = LiveLayers {
+        rent_scale: rent_scale as f32,
+        town_bytes: tb.version,
         land_use: next(),
         inten: next(),
         rent: next(),

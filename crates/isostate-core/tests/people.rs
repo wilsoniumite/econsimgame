@@ -358,7 +358,8 @@ fn in_company_no_wage_runs_away_or_flips() {
 /// money was issued on its true total, docs/rules/money.md. The shelves going
 /// with the district, docs/rules/shelves.md, end that sailing too, as they ended
 /// island 2's, so the case is played with that rule off. The works' two mends,
-/// docs/rules/works.md, parts G and H, end it as well, and are off here too.)
+/// docs/rules/works.md, parts G and H, end it as well, and are off here too, as
+/// is longrun, docs/rules/longrun.md, whose anchors end it too.)
 #[test]
 fn a_sailing_is_news_of_its_own_kind() {
     let rules = isostate_core::params::Rules::Game;
@@ -374,6 +375,8 @@ fn a_sailing_is_news_of_its_own_kind() {
     // is the chronicle's rule and the tree does not touch it, so it is tried on the
     // island as it was without the tree.
     P.tree = Default::default();
+    // and likewise with longrun off (docs/rules/longrun.md), whose anchors give it another history
+    P.longrun.enabled = false;
     let r = sim::run_with(&P, rules.content(), false, false).expect("the run finishes");
     let sailed: Vec<&String> = r.events.iter().filter(|e| e.kind == "emigration").map(|e| &e.title).collect();
     assert!(!sailed.is_empty(), "the case is gone: nobody took ship on island 26 by 1824");
