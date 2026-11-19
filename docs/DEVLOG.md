@@ -2,6 +2,10 @@
 
 Working notes, newest first. The plan lives in PLAN.md; this is what happened and what is in flight.
 
+## 2026-11-19: what landed
+
+**The sandbox, stage 1: the hand and Run on.** `--sandbox` opens a game where nobody plays a family. There is no welcome, no decision card and no end card. A tray under the clock holds Look, Money, People and Harvest, and each tool lists its choices on chips with one line saying what a click will do. With a tool in hand, a click on the map in the present changes the island between two months. It is a saved order like any other, booked in a ledger that the money check reads, and the line it writes in the news goes up as a toast. Cutting the 1791 harvest to 71% brought a grain shortage and output down 7.9%. Run on plays 1, 10 or 25 years and stops at January, at about three years a second. Both golden tests pass unchanged, and the sweep moves nothing.
+
 ## 2026-11-12: landing what the day before left
 
 The usage limit ran out twice on the 11th: at about five in the afternoon for three helpers, and before seven for all sixteen. Each had been told to commit as it went, so little was lost. Four trees held uncommitted work, which was saved as commits on their branches; two merges caught half-way were dropped, to be begun again; and where a reviewer had been cut off, its commits were folded into the branch it was reviewing so that a fresh reviewer sees all of it. Stella reset the limit in the morning. The order since is to land what was finished before starting anything new, each piece proved on a trial merge, merged, and pushed in the same step.
