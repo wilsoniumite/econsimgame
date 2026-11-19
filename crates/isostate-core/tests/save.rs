@@ -611,6 +611,81 @@ fn a_game_started_on_the_new_land_is_saved_and_played_again_on_it() {
     assert!(save::load(&struck, |_| {}).unwrap().drifted);
 }
 
+/// A game past 1900 (docs/rules/longrun.md, "A game past 1900"): begun to 2050
+/// on island 7, played to 1905 and saved six months into 1906, it is played
+/// again from its save to the same island, to the last digit, and to the same
+/// last year. Played under the game's rules as they stand, with the long run on;
+/// it leans on no one island's history, only on the game being the same twice.
+#[test]
+fn a_game_to_2050_saved_after_1900_loads_again_to_the_same_island() {
+    let mut g = Game::under_to(params::Rules::Game, 7, 3, 5, 2050).expect("the game's rules may be played to 2050");
+    assert_eq!((g.to(), g.sim.end_year, g.sim.content.end_year), (2050, 2050, 2050));
+    assert!(!g.over());
+    while g.last_year() < 1905 {
+        g.year().unwrap();
+        g.turn();
+    }
+    months(&mut g, 6);
+    assert_eq!((g.last_year(), g.month), (1905, 6));
+    let saved = g.save(0);
+    assert_eq!((saved.year, saved.month, saved.to), (1905, 6, Some(2050)));
+    let text = saved.to_text();
+    assert!(text.contains("\"to\": 2050"), "{text}");
+    let back = save::load(&Save::from_text(&text).expect("a save made in 1906 is sound"), |_| {}).unwrap();
+    assert!(!back.drifted && back.refused.is_empty(), "{:?}", back.refused);
+    assert_eq!((back.game.last_year(), back.game.month, back.game.to()), (1905, 6, 2050));
+    assert_eq!(save::check(&back.game.sim), save::check(&g.sim));
+    // and both go on alike past the point the save was made
+    months(&mut g, 5);
+    let mut again = back.game;
+    months(&mut again, 5);
+    assert_eq!(save::check(&again.sim), save::check(&g.sim));
+}
+
+/// A save that does not say how far its game is played is a game to 1900, as
+/// every save before the run to 2050 was; a save's year is checked against its
+/// own last year; and a last year the rules do not allow is refused, in a
+/// sentence, whether a game is begun with it or a save says it.
+#[test]
+fn a_games_last_year_is_kept_in_its_save_and_checked() {
+    let mut g = Game::new(7, 3, 5);
+    play(&mut g, 2);
+    assert_eq!(g.to(), 1900);
+    let good = g.save(0);
+    assert_eq!(good.to, None);
+    assert!(!good.to_text().contains("\"to\""), "a game to 1900 writes the save it always wrote");
+    let back = save::load(&Save::from_text(&good.to_text()).unwrap(), |_| {}).unwrap();
+    assert!(!back.drifted);
+    assert_eq!(back.game.to(), 1900);
+    // a game to 1900 begun with its year has the very parameters of one begun without it
+    let g1900 = Game::under_to(params::Rules::Game, 7, 3, 5, 1900).unwrap();
+    assert_eq!(g1900.sim.params, Game::new(7, 3, 5).sim.params);
+    assert_eq!(g1900.save(0).to, None);
+
+    // a save of 1950 that does not say it is played past 1900 is refused as it always was; one that says 2050 is sound
+    let late = Save { year: 1950, ..good.clone() };
+    assert!(late.sound().unwrap_err().ends_with("it says the game had reached the year 1950, and the island's years are 1750 to 1900"));
+    assert_eq!(Save { to: Some(2050), ..late.clone() }.sound(), Ok(()));
+    assert_eq!(Save { year: 2050, to: Some(2050), ..good.clone() }.sound(), Ok(()));
+    assert!(Save { year: 1951, to: Some(1950), ..good.clone() }.sound().unwrap_err().ends_with("the island's years are 1750 to 1950"));
+    // a last year outside 1900 to 2050, or past 1900 under the port's rules, is refused
+    let said = |to: i64, rules: &str| {
+        let mut s = Save { to: Some(to), ..good.clone() };
+        s.rules.name = rules.to_string();
+        s.sound().unwrap_err()
+    };
+    assert_eq!(said(2051, "game"), "not a saved game the game wrote: it says it is played to 2051, and a game is played to a year from 1900 to 2050, not 2051");
+    assert!(said(1899, "game").ends_with("not 1899"));
+    assert!(said(1950, "port").contains("a game under the port rules ends in 1900"), "{}", said(1950, "port"));
+    assert_eq!(Save { to: Some(1900), ..good.clone() }.sound(), Ok(()));
+    // and so is a game begun with one
+    assert!(Game::under_to(params::Rules::Port, 7, 3, 5, 2050).unwrap_err().starts_with("a game under the port rules ends in 1900"));
+    assert!(Game::under_to(params::Rules::Game, 7, 3, 5, 2100).is_err());
+    assert!(Game::on_new_land_to(params::Rules::Port, 7, 3, 5, 1901).is_err());
+    assert_eq!(save::last_year_allowed(params::Rules::Port, 1900), Ok(()));
+    assert_eq!(save::LATEST_YEAR, 2050);
+}
+
 #[test]
 fn dates_are_written_in_utc() {
     assert_eq!(save::utc(0), "1970-01-01 00:00 UTC");
