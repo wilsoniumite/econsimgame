@@ -127,12 +127,21 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #                   at least this much of each good named, counted from 1750
 #   scale           one number, multiplying everything one machine takes (plant, run and minders),
 #                   refitted once in its first sweep so that it takes its first share when found
+#   replaces        (may be left out) the name of another use: where this one is laid, that one no
+#                   longer reaches the places this one is `on`
+#
+# A use that names a good the content lacks (a good of a later stage of the tree's overlay) is not laid,
+# as the overlay drops an input of a later stage; so the electric drive, made of electrical goods and
+# run on electricity, is in the table only with `tree.stage` at 6 or more, and where it is not the hoist
+# keeps the works.
 # ----------------------------------------------------------------------------------------------------
 
-# The hoist: a STAND-IN, poor history and a fair test. It is made of machinery and burns coal, so it can
-# be proved on the island as it stands, with nothing after 1900 in the content. It is to be replaced by
-# the electric drive when the content after 1900 lands. It hauls in the works and, under `tasks.land`,
-# at the quarries, the clay pits and the mines: winding, hauling underground, lifting stone and clay.
+# The hoist: a STAND-IN, poor history and a fair test. It is made of machinery and burns coal, so it could
+# be proved on the island before there was anything after 1900 in the content. Where the electric drive
+# is laid (stage 6 of the tree, the game's own) the drive takes the works from it, and the hoist hauls only
+# at the quarries, the clay pits and the mines, under `tasks.land`: winding, hauling underground, lifting
+# stone and clay. It is to go from there too when the cutter and conveyor of the next stage comes. With
+# the tree laid only to stage 1 it hauls in the works as well, as it did before the drive.
 #
 # Sized from island 7's prices and wage of 1900 under the game's rules with six families (wage 8.18 a
 # month, machinery 4.40, coal 0.494): when found, a unit costs 1.04 of a month's wage, of which six
@@ -162,3 +171,53 @@ discover = { machinery = 4100000.0 }
 # islands 1 to 8 (0.196 to 0.244; found 1901 on five islands, 1903 on island 7, 1907 on islands 3 and 4),
 # so the unit was made exp(ln(100 / 0.3) * (0.223 - 0.2)) = 1.14 times as dear, to bring the mean to 0.20.
 scale = 1.14
+
+# The electric drive: the first machine of the design itself, no longer a stand-in. Motors on the line
+# shafts and the cranes, made of machinery and electrical goods and run on electricity; it hauls in the
+# works. Electricity goes no further than a town's own wires, so a works in a town with no station sees it
+# at its ceiling price, and there the drive holds nothing.
+#
+# Sized from island 7 in 1894, the year it finds the drive at the threshold below, in town 7, the only
+# town on the island with a station working that year (the island's mean price of electricity, 73.3, is
+# the ceiling in every other town): a wage of 8.41 a month, machinery 3.25, electrical goods 30.1 and
+# electricity 2.59, the year's means. When found a unit costs 1.04 of a month's wage (8.75), of which six
+# tenths is the return a works must see and the wear on its plant ((0.12 + 1/20) / 12 a month on 370 of
+# plant, 44 months' wages: six tenths of it machinery, 68.5, and four tenths electrical goods, 4.92), a
+# tenth its minders (0.104 of a hand) and the rest electricity (1.01 a month). At that cost a hand is
+# worth 0.96 units, which takes ln(0.96 / 0.3) / ln(100 / 0.3) = 0.20 of hauling.
+#
+# The threshold: island 7 has made 13,172 electrical goods by the end of 1892 and 20,189 by the end of
+# 1893, so at 15,000 it finds the drive in 1894. On the islands of stage 6 as they were before the drive,
+# islands 1 and 5 have made that much by 1889, island 6 by 1890, island 7 by 1893, islands 2 and 8 by
+# 1896, island 3 by 1898, and island 4, whose first electrical works comes late, about 1921.
+#
+# Found from 1901, not 1890 (docs/rules/tasks.md, "The standing check"): from 1890 the drive was found on
+# seven islands before 1900 and moved the played century, so that two of the twelve facts of the standing
+# check left the spread of seeds (the towns' share and land's share of income in 1900). So no island
+# finds it before 1901: islands 1, 2, 3, 5, 6, 7 and 8 find it in 1901, island 4 about 1922.
+[[use]]
+name = "electric_drive"
+class = "haul"
+on = ["works"]
+from = 0.0
+reach = 1.0
+plant = { machinery = 68.5, electricals = 4.92 }
+run = { electricity = 1.01 }
+minders = 0.104
+life = 20.0
+pace = 0.03
+cap = 8.0
+found_after = 1901
+discover = { electricals = 15000.0 }
+# Refitted (19 November 2026). The towns' target in the year found reads nothing on an island with no
+# station that year (half the islands find the drive before their first), so the refit reads what the
+# towns that can run it give it: from the first year in which those towns do three quarters of the works'
+# hauling, the mean of the five years after, each taken back to a quality of one
+# (`use_share_run_electric_drive`). Found from 1890, at 1.0 that was 0.161 on the mean of islands 1 to 8
+# (0.146 to 0.172): the stations' electricity, at 3 to 4.5 a unit once they are settled, is dearer than
+# town 7's in 1894; so 0.80. Found from 1901, at 0.80 it was 0.194 (0.134 to 0.222), so the unit was made
+# exp(ln(100 / 0.3) * (0.194 - 0.2)) = 0.97 times as dear again, 0.77 in all, to bring the mean to 0.20.
+# On the three islands with a station working in the year found (1, 5 and 7) the towns' target that year
+# was 0.220, 0.201 and 0.204 at 0.80.
+scale = 0.77
+replaces = "hoist"

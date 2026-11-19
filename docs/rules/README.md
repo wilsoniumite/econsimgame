@@ -875,11 +875,14 @@ One line each as they arrive: the name, its page, its switch.
 - **tasks**: every hour of a works' labour is of one of five classes of task,
   and a machine for a class takes the tasks at which a hand is worth fewer
   machine units than the town's wage buys; works are built with the town's
-  machines and move toward them as their orders for plant are filled. Proved
-  with one stand-in, a coal-fired hoist found from 1901, so nothing in the
-  played century moves. Under `tasks.land` the land's units pay their share
-  for work to hands and machine units alike, so the hoist hauls at the pits
-  and quarries too; the fields wait for a tractor. A ceiling on yield
+  machines and move toward them as their orders for plant are filled. The
+  works' machine is the electric drive, made of machinery and electrical
+  goods and run on electricity, laid with stage 6 of the tree and found from
+  1901, so nothing in the played century moves; it holds nothing in a town
+  without a station. Under `tasks.land` the land's units pay their share for
+  work to hands and machine units alike, and a stand-in, a coal-fired hoist,
+  hauls at the pits and quarries (in the works too with the tree at stage
+  1); the fields wait for a tractor. A ceiling on yield
   (`tasks.yield_cap`) and a control that holds the machine still
   (`tasks.freeze_from`) are for sweeps. [tasks.md](tasks.md),
   `tasks.enabled`, `tasks.land`.
