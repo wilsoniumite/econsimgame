@@ -9,11 +9,19 @@
 //! the few before that (`.previous.2.json` and on). A file found in the
 //! autosave's place that cannot be read is set aside as `.unread.json`.
 //!
+//! A sandbox's session (docs/designs/sandbox.md, 6.8) is kept the same way in
+//! a folder of its own, `sandbox`, beside the autosaves: one session to an
+//! island and number of families, `sandbox/island-7-families-6.json`, with its
+//! earlier years, the sessions before it and any file that could not be read
+//! beside it under the same names. A plain start of the sandbox goes on with
+//! the session there, as `--family` alone goes on with the autosave.
+//!
 //! Four things keep a game somebody is playing from being lost:
 //!
-//! - Only play writes there. A start that is not plain play keeps its game
-//!   in the `trials` folder beside the autosaves, or nowhere if nobody is at
-//!   it (`live::Opening::keeping`).
+//! - Only play writes there. A family game whose start is not plain play
+//!   keeps its game in the `trials` folder beside the autosaves, or nowhere if
+//!   nobody is at it; a sandbox only ever writes its session
+//!   (`live::Opening::keeping`).
 //! - One copy of the game at a time keeps a game in one place: a `Saver` holds
 //!   a lock on `island-7-families-6.json.lock` for as long as it lives. The
 //!   lock is the system's, on the open file, so a game that crashes lets go
@@ -82,8 +90,17 @@ pub fn autosave(seed: u64, families: usize) -> PathBuf {
     folder().join(format!("island-{seed}-families-{families}.json"))
 }
 
-/// Where a trial on this island is kept: a game from a start that is not
-/// plain play (`--advance`, `--demo`) but has somebody at it. It is apart
+/// Where a sandbox's session on this island is kept: one to an island and
+/// number of families, in a folder of its own beside the autosaves, so that a
+/// session never sets a family game aside nor a family game a session. What
+/// is kept beside it (its earlier years, the sessions before it, a file that
+/// could not be read) is named as for the autosave, by the same functions.
+pub fn session(seed: u64, families: usize) -> PathBuf {
+    folder().join("sandbox").join(format!("island-{seed}-families-{families}.json"))
+}
+
+/// Where a trial on this island is kept: a family game from a start that is
+/// not plain play (`--advance`, `--demo`) but has somebody at it. It is apart
 /// from the island's own game, in a folder of its own, so that trying a thing
 /// never sets a played game aside; `--load` goes on with one.
 pub fn trial(seed: u64, families: usize) -> PathBuf {
@@ -449,8 +466,11 @@ pub fn now() -> u64 {
 /// was played to (an old save's game to 1900 does not hold the new one there).
 /// New game is on the family game's card, so the new game is the family game
 /// again: `--family` is added where the arguments lack it, as a scripted family
-/// game's do (a start with nobody asking would otherwise open a sandbox).
-pub fn new_game_args(args: &[String], seed: u64, families: usize) -> Vec<String> {
+/// game's do (a start with nobody asking would otherwise open a sandbox). Begin
+/// again is on a sandbox's card (`sandbox`), and the new game is a sandbox
+/// again: the arguments end `--new --sandbox` (a scripted run is otherwise the
+/// family game).
+pub fn new_game_args(args: &[String], seed: u64, families: usize, sandbox: bool) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < args.len() {
@@ -463,7 +483,8 @@ pub fn new_game_args(args: &[String], seed: u64, families: usize) -> Vec<String>
         }
         i += 1;
     }
-    out.extend(["--seed".to_string(), seed.to_string(), "--families".to_string(), families.to_string(), "--new".to_string(), "--family".to_string()]);
+    let kind = if sandbox { "--sandbox" } else { "--family" };
+    out.extend(["--seed".to_string(), seed.to_string(), "--families".to_string(), families.to_string(), "--new".to_string(), kind.to_string()]);
     out
 }
 
@@ -581,6 +602,16 @@ mod tests {
         assert_eq!(autosave(7, 6).file_name().unwrap(), "island-7-families-6.json");
         // a trial has the island's name in a folder of its own beside the autosaves
         assert!(trial(7, 6).ends_with(Path::new("trials").join("island-7-families-6.json")));
+        // and a sandbox's session in a folder of its own too, with its neighbours named as the autosave's are
+        let s = session(7, 6);
+        assert!(s.ends_with(Path::new("sandbox").join("island-7-families-6.json")));
+        assert_ne!(session(7, 6), session(7, 5));
+        let dir = s.parent().unwrap().to_path_buf();
+        assert_eq!(earlier(&s, 1), dir.join("island-7-families-6.1.json"));
+        assert_eq!(previous(&s), dir.join("island-7-families-6.previous.json"));
+        assert_eq!(game_before(&s, 9), dir.join("island-7-families-6.previous.9.json"));
+        assert_eq!(unread(&s), dir.join("island-7-families-6.unread.json"));
+        assert_eq!(lock_file(&s), dir.join("island-7-families-6.json.lock"));
         assert_eq!(unread_before(&p, 1), unread(&p));
         assert_eq!(unread_before(&p, 2), Path::new("x").join("island-7-families-6.unread.2.json"));
         assert_eq!(lock_file(&p), Path::new("x").join("island-7-families-6.json.lock"));
@@ -1234,19 +1265,26 @@ mod tests {
     fn a_new_game_starts_the_program_again_without_the_save() {
         // the save that was loaded is of island 11 with three families, whatever the arguments said
         let args: Vec<String> = ["--families", "4", "--load", "a b.json", "--size", "1280x800", "--advance", "5"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(new_game_args(&args, 11, 3), ["--size", "1280x800", "--seed", "11", "--families", "3", "--new", "--family"]);
-        assert_eq!(new_game_args(&["--new".to_string()], 7, 6), ["--seed", "7", "--families", "6", "--new", "--family"]);
+        assert_eq!(new_game_args(&args, 11, 3, false), ["--size", "1280x800", "--seed", "11", "--families", "3", "--new", "--family"]);
+        assert_eq!(new_game_args(&["--new".to_string()], 7, 6, false), ["--seed", "7", "--families", "6", "--new", "--family"]);
         // a scripted family game has no --family, and the new game is the family game all the same
         let args: Vec<String> = ["--script", "click:New game", "--size", "900x600"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(new_game_args(&args, 7, 6), ["--size", "900x600", "--seed", "7", "--families", "6", "--new", "--family"]);
+        assert_eq!(new_game_args(&args, 7, 6, false), ["--size", "900x600", "--seed", "7", "--families", "6", "--new", "--family"]);
         // a family game asked for by name is asked for once
         let args: Vec<String> = ["--family", "--size", "900x600"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(new_game_args(&args, 7, 6), ["--size", "900x600", "--seed", "7", "--families", "6", "--new", "--family"]);
+        assert_eq!(new_game_args(&args, 7, 6, false), ["--size", "900x600", "--seed", "7", "--families", "6", "--new", "--family"]);
         // a place that was named goes on being the place
         let args: Vec<String> = ["--save", "mine.json", "--seed", "9"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(new_game_args(&args, 9, 6), ["--save", "mine.json", "--seed", "9", "--families", "6", "--new", "--family"]);
+        assert_eq!(new_game_args(&args, 9, 6, false), ["--save", "mine.json", "--seed", "9", "--families", "6", "--new", "--family"]);
         // and the last year that was asked for goes on being asked for (with none, a new game runs to 2050)
         let args: Vec<String> = ["--to", "1950", "--load", "old.json"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(new_game_args(&args, 7, 6), ["--to", "1950", "--seed", "7", "--families", "6", "--new", "--family"]);
+        assert_eq!(new_game_args(&args, 7, 6, false), ["--to", "1950", "--seed", "7", "--families", "6", "--new", "--family"]);
+        // Begin again on a sandbox's card: a sandbox again, whether it was asked for by name or opened
+        // by a plain start, and a scripted one too; --keep goes on being asked for
+        let args: Vec<String> = ["--sandbox", "--keep", "--script", "click:Begin again"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(new_game_args(&args, 7, 6, true), ["--keep", "--seed", "7", "--families", "6", "--new", "--sandbox"]);
+        assert_eq!(new_game_args(&[], 7, 6, true), ["--seed", "7", "--families", "6", "--new", "--sandbox"]);
+        let args: Vec<String> = ["--load", "s.json", "--advance", "40", "--size", "900x600"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(new_game_args(&args, 11, 3, true), ["--size", "900x600", "--seed", "11", "--families", "3", "--new", "--sandbox"]);
     }
 }

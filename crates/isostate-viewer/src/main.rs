@@ -174,35 +174,38 @@ const USAGE: &str = "Isolated State: the game, and a viewer for recorded runs.
 
   isostate-viewer [RUN.bin] [options]
 
-With no run named, a new game starts, and it is a sandbox: nobody plays a family, and the
-island is watched and changed by hand. --family plays the family game instead.
+With no run named, the game is a sandbox: nobody plays a family, and the island is watched
+and changed by hand. With nothing else asked for, the island's session is gone on with where
+it was left, behind a short card (Go on, or Begin again). --family plays the family game instead.
 
   --family             the family game: one family among six, its orders, its cards, the
                        ranking at the end. With nothing else asked for, the island's saved
                        family game is gone on with
-  --new                a new game, whatever is saved (with --family and nothing else asked
-                       for, the island's saved game is gone on with)
+  --new                a new game, whatever is saved (with nothing else asked for, the island's
+                       session, or with --family its saved game, is gone on with)
   --seed N             which island (7); a new game
   --new-land           a new game on the new land: the second island generator's, with rivers
                        that run downhill, lakes and tideways, which the game's rules do not
                        switch on yet. A preview: it is kept only where --save names a file
   --load FILE          go on with this saved game
   --save FILE          keep the game in FILE instead of the island's autosave
-  --keep               keep the game in the island's autosave though the start is not plain
-                       play (--advance, --demo, --script); with nobody at the game it needs
-                       ISOSTATE_SAVES to name the folder
+  --keep               keep the game in the island's autosave (a sandbox in its session) though
+                       the start is not plain play (--advance, --demo, --script); with nobody
+                       at the game it needs ISOSTATE_SAVES to name the folder
   --sandbox            a sandbox where the family game would open: pictures, a script and
                        --demo play the family game unless this is given. In a sandbox a tray
                        of tools under the clock changes the island by hand (money, people,
-                       the harvest) or runs it on a year, ten or twenty-five. Each plain start
-                       is a new one, kept among the trials and never in the island's own
-                       saved game
+                       the harvest) or runs it on a year, ten or twenty-five. A sandbox is
+                       kept in its island's session (sandbox/island-7-families-6.json in the
+                       saved games' folder), never in the family's saved game; a plain start
+                       goes on with it, and any other start makes the island anew and sets
+                       the session before it aside (.previous.json)
   --families N         how many great families (6; from 1 to 30)
   --to YEAR            the last year a new game is played to (2050; from 1900 to 2050). Kept in
                        its save: a game gone on with is played to its own. Past 1900 the island
                        is hungry until the content after 1900 is written
-  --advance N          play N years before the game opens (a trial: it is kept among the
-                       trials, apart from the island's own saved game)
+  --advance N          play N years before the game opens (in the family game a trial: it is
+                       kept among the trials, apart from the island's own saved game)
   --demo               the family builds a works and buys land in its first year (a trial too)
   --year Y             open on this year
   --size WxH           the size of the window or the pictures (1600x1000)
@@ -550,8 +553,9 @@ fn sandbox_wanted(a: &Args) -> bool {
 
 /// The game the command line asks for, as `live::start` is to begin it or go
 /// on with it. Whether a sandbox opens is `a.sandbox`, settled in `parse`; the
-/// Opening then says the rest (`plain`, `keeping`): a plain start is a new
-/// sandbox each time, kept among the trials, and `--family` alone goes on with
+/// Opening then says the rest (`plain`, `keeping`): a plain start goes on with
+/// the island's sandbox session (`saves::session`), any other sandbox start
+/// makes the island anew and keeps it there, and `--family` alone goes on with
 /// the island's autosave.
 fn opening(a: &Args) -> live::Opening {
     // the standard shots are pictures too
@@ -2798,15 +2802,18 @@ mod tests {
     #[test]
     fn a_plain_start_is_a_sandbox_and_the_family_game_is_asked_for() {
         use live::Keeping;
-        // what opens, whether it is a plain start (which goes on with the island's autosave), and where it is kept
+        // what opens, whether it is a plain start (which goes on with the island's session or autosave), and where it is kept
         let opens = |line: &str| {
             let a = args(line).unwrap();
             let o = opening(&a);
             (a.new, a.sandbox, o.plain(), o.keeping())
         };
-        // nobody asked for anything: a new sandbox each time, among the trials
-        assert_eq!(opens(""), (true, true, false, Keeping::Trial("--sandbox")));
-        assert_eq!(opens("--seed 7"), (true, true, false, Keeping::Trial("--sandbox")));
+        // nobody asked for anything: a sandbox, gone on with from the island's session and kept there
+        assert_eq!(opens(""), (true, true, true, Keeping::Session));
+        // any other sandbox start makes the island anew, and keeps it in the session all the same
+        for line in ["--seed 7", "--advance 40", "--new", "--sandbox --new"] {
+            assert_eq!(opens(line), (true, true, false, Keeping::Session), "{line}");
+        }
         // the family game: a plain start, going on with the island's autosave as a plain start did before
         assert_eq!(opens("--family"), (true, false, true, Keeping::Autosave));
         // nobody at it: the family game unless a sandbox is asked for, and kept nowhere either way
@@ -2818,20 +2825,24 @@ mod tests {
         };
         assert_eq!(script("--script print"), (true, false, Keeping::Nowhere));
         assert_eq!(script("--script print --sandbox"), (true, true, Keeping::Nowhere));
-        assert!(!opens("--script print --sandbox").2, "a sandbox is never a plain start");
+        // unless --keep asks for the session (refused where ISOSTATE_SAVES names no folder: `keep_refused`)
+        assert_eq!(script("--script print --sandbox --keep"), (true, true, Keeping::Session));
+        assert_eq!(script("--script print --keep"), (true, false, Keeping::Autosave));
+        assert!(!opens("--script print --sandbox --advance 40").2, "years played first are never a plain start");
         for line in ["--shots out/shots", "--land-shots out/land", "--shot a.png", "--view a.png,1800", "--describe 30,30", "--class-map --view a.png"] {
             assert_eq!(opens(line), (true, false, false, Keeping::Nowhere), "{line}");
         }
         assert_eq!(opens("--describe 30,30 --sandbox"), (true, true, false, Keeping::Nowhere));
         // the demo is the family's orders
         assert_eq!(opens("--demo"), (true, false, false, Keeping::Trial("--demo")));
-        assert_eq!(opens("--demo --sandbox"), (true, true, false, Keeping::Trial("--sandbox")));
-        // a saved game opens in whichever kind of game was asked for
-        assert_eq!(opens("--load mine.json"), (true, true, false, Keeping::Trial("--sandbox")));
+        assert_eq!(opens("--demo --sandbox"), (true, true, false, Keeping::Session));
+        // a saved game opens in whichever kind of game was asked for, and is kept as that kind is
+        assert_eq!(opens("--load mine.json"), (true, true, false, Keeping::Session));
         assert_eq!(opens("--load mine.json --family"), (true, false, false, Keeping::Autosave));
-        // years played first: a sandbox still, as --advance asks nothing of who plays
-        assert_eq!(opens("--advance 40"), (true, true, false, Keeping::Trial("--sandbox")));
+        // years played first: a sandbox still, as --advance asks nothing of who plays; the family game's is a trial
         assert_eq!(opens("--family --advance 40"), (true, false, false, Keeping::Trial("--advance")));
+        // a place that was named is the place, either way
+        assert_eq!(opens("--save s.json"), (true, true, false, Keeping::Named("s.json".into())));
         // both at once is refused in a sentence
         assert_eq!(args("--family --sandbox").err().unwrap(), "--family plays the family game and --sandbox opens a game nobody plays a family in: give one of them, not both");
         // a recorded run is neither
