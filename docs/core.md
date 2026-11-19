@@ -1,6 +1,6 @@
 # The core of the island
 
-Written by `isostate-core ablate`, played on 2026-11-19 (UTC) from the code at `a0bc253`, and read again from its files on 2026-11-19 with the code at `537145d` (`--again`, which plays nothing). Nothing on this page is written by hand: to make it again, run
+Written by `isostate-core ablate`, played on 2026-11-19 (UTC) from the code at `a0bc253`, and read again from its files on 2026-11-19 with the code at `365dd8a-dirty` (`--again`, which plays nothing). Nothing on this page is written by hand: to make it again, run
 
 ```text
 isostate-core ablate --out DIR --page docs/core.md
@@ -209,11 +209,10 @@ What the design asks of the years after 1900, as the standing check reports it (
 ## What was left out, and why
 
 - `F_max`: 60000 under the game's rules and 20000 under the port's; fixed when the island is made, and not a switch: its off is not one value.
-- `land.enabled`: off under the game's rules already: there is nothing to turn off.
 - `tree.stage`: 6 under the game's rules and 0 under the port's; fixed when the island is made, and not a switch: its off is not one value.
 - `tree.canal_stone`: 0.35 under the game's rules and 1.0 under the port's: a number or a choice, not a switch, so its off is not one value.
 - `roads.enabled`: off under the game's rules already: there is nothing to turn off.
-- `woods.enabled`, `woods.record`, `crossings.enabled`: switched on under the game's rules since this table was played, so not in it; the next table asks them.
+- `land.enabled`, `woods.enabled`, `woods.record`, `crossings.enabled`: switched on under the game's rules since this table was played, so not in it; the next table asks them.
 
 ## How to read it
 
