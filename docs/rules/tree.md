@@ -597,6 +597,59 @@ canals move the tree's clocks very little, and nothing was refitted. Never
 built by 1900, in seeds of sixteen: the engineering works in four, the
 steel rail mill in four, the new shops in three, the engine works in two.
 
+## On the island stage 5 leaves (19 November 2026)
+
+The tree was held on its branch until stages 2 to 5 of the pass over the
+rules had landed (`docs/designs/rules-pass.md`, section 5), and then brought
+up to main with them, the books and the new land beside it. Merged and not
+yet fitted, the fitter reckoned every invention within four years of its aim,
+as the pass expected (its stages 2 to 5 move no output in the mean); in the
+sweep itself the furthest were the machine-tool works, found in 1831 for
+1838, and the engineering works, 1864 for 1870. Two passes of the fitter
+(`tree_fit.py --write` on a sweep of islands 1 to 8 with six families, a new
+sweep, and again) moved the thresholds by a tenth or less: steel for the
+converter 3.3 to 3.8 million, machinery for the machine-tool works 150,000
+to 170,000 and steel 1.7 to 2.0 million, steel for the engineering works 5.8
+to 5.4 million and machinery 1.3 to 1.1 million, services for the new shops
+20 to 18 million, soap and chemicals for the ammonia-soda works 5.6 to 6.2
+million; the rest by a few per cent (`data/game.toml` has them all). On the
+second sweep the fitter reckons every invention it fits within two years of
+its aim; the two it is told to keep are the shops, four years late, and the
+edge-tool works, four. In the sweep itself every invention is found within
+eight years of its aim: the converter in 1864 (aimed at 1856), the
+engineering works in 1865 (1870), the paper machine in 1811 (1815), the
+common brewery in 1780 (1785).
+
+The island with the tree, against main as it stood on 13 November (islands 1
+to 8, six families; `isostate-core sweep ... --compare` against main's
+reference sweep):
+
+| | main, without the tree | with the tree, fitted | islands up/down |
+|---|---|---|---|
+| runs failed | 0 | 0 | |
+| people in 1900 | 735,871 | 691,385 | 0/8 |
+| towns in 1850; in 1900 | 16.9; 17.6 | 14.6; 19.2 | 0/6; 6/1 |
+| living in towns, 1900; 1881 to 1900 | 0.412; 0.410 | 0.457; 0.459 | 8/0 each |
+| real wage in 1900 (1750 = 1); chained | 2.57; 4.09 | 3.23; 5.92 | 8/0 each |
+| output per head in 1900 | 2.63 | 3.49 | 8/0 |
+| works standing in 1900 | 735 | 1,128 | 8/0 |
+| diggings' share of hands in 1900 | 0.200 | 0.127 | 0/8 |
+| railway in 1900; canal in 1800 and 1900 | 2,312 km; 712, 895 km | 2,550 km; 523, 736 km | 8/0; 0/8, 2/6 |
+| timber's yearly price swing | 0.164 | 0.186 | 7/1 |
+| goods made on every island in 1900 | 15 of 16 | 24 of 25 | |
+| the card: aims met, loss | 10 of 20, 27.5 | 13 of 20, 21.6 | |
+
+The good not made is charcoal on both sides. Never built by 1900: the steel
+rail mill in four islands of eight, the engineering works and the
+ammonia-soda works in two each. On the card the tree meets aims 6, 11, 18
+and 19 that main misses and misses aim 4, which main meets; the towns' share
+(aim 3) is closer.
+
+The tests that hold a case found on main's island (`tests/hands.rs`,
+`money.rs`, `shelves.rs`, `card.rs`, `mines.rs`, `people.rs`) play it with the
+tree off and say so, as the pass's own tests do with the rules that came
+after them.
+
 ## What worries me
 
 - **Timber still rings.** The cycle above is the base game's and is not

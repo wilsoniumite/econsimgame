@@ -323,6 +323,7 @@ fn no_hungry_january_after_a_town_takes_a_district() {
         P.money.true_total = false;
         P.works.spread_first = false;
         P.works.keep_order = false;
+        P.tree = Default::default();
         P.people.shelves_go = shelves;
         let mut s = sim::start(&P, game_content());
         let T = s.st.T_max;

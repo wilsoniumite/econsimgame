@@ -35,8 +35,10 @@
 # island and one set of rules, and they are not set by hand. crates/isostate-core/parity/tree_fit.py
 # fits them to a sweep so that each invention is found, on average, in the year its `target` says
 # (docs/rules/tree.md, "The fitter"). These were fitted in three passes after the mines were merged,
-# which made ore a third cheaper and brought everything on iron and steel some ten years early. When
-# the island or the rules change again (canals, another generator), fit them again.
+# which made ore a third cheaper and brought everything on iron and steel some ten years early, and
+# fitted again in two passes on 19 November 2026, on the island stages 2 to 5 of the pass over the
+# rules leave (docs/rules/tree.md, "On the island stage 5 leaves"). When the island or the rules
+# change again (the freight by the wage, another generator), fit them again.
 #
 # Steel stays at 3.0 as an implement: at 1.6 no steel is ever sold under the game's rules, the
 # converter is never found and the land's machines never improve. Raw shelter IS re-rated here, for
@@ -138,7 +140,7 @@ stage = 1
 [[method]]
 name = "bessemer"
 capital = { bricks = 45, machinery = 0.6 }
-discover = { steel = 3300000.0, machinery = 410000.0, iron = "x220" }
+discover = { steel = 3800000.0, machinery = 430000.0, iron = "x220" }
 target = 1856
 stage = 1
 
@@ -152,7 +154,7 @@ stage = 1
 name = "steel_rolling"
 inputs = { steel = 0.35 }
 capital = { bricks = 36, machinery = 0.45 }
-discover = { steel = 4500000.0, rails = 580000.0, machinery = 880000.0 }
+discover = { steel = 4800000.0, rails = 630000.0, machinery = 840000.0 }
 target = 1866
 stage = 1
 
@@ -244,7 +246,7 @@ known = false
 A0 = 1.0
 Q0 = 2000000.0
 b = 0.2
-discover = { building = 55000000.0, machinery = 660000.0 }
+discover = { building = 57000000.0, machinery = 650000.0 }
 target = 1862
 group = "building"
 stage = 1
@@ -288,7 +290,7 @@ known = false
 A0 = 0.85
 Q0 = 300000.0
 b = 0.2
-discover = { lumber = 7400000.0, machinery = 69000.0 }
+discover = { lumber = 7700000.0, machinery = 77000.0 }
 target = 1825
 group = "building"
 stage = 1
@@ -332,7 +334,7 @@ known = false
 A0 = 0.6
 Q0 = 1000000.0
 b = 0.2
-discover = { lime = 3800000.0, machinery = 270000.0 }
+discover = { lime = 4000000.0, machinery = 290000.0 }
 target = 1850
 group = "building"
 stage = 1
@@ -449,7 +451,7 @@ known = false
 A0 = 0.85
 Q0 = 150000.0
 b = 0.15
-discover = { iron = 1600000.0, coal = 64000000.0 }
+discover = { iron = 1700000.0, coal = 67000000.0 }
 target = 1815
 group = "coal"
 stage = 1
@@ -505,7 +507,7 @@ known = false
 A0 = 1.0
 Q0 = 300000.0
 b = 0.15
-discover = { steel = 4200000.0, machinery = 760000.0 }
+discover = { steel = 4500000.0, machinery = 730000.0 }
 target = 1864
 group = "engineering"
 stage = 1
@@ -534,7 +536,7 @@ known = false
 A0 = 1.0
 Q0 = 400000.0
 b = 0.3
-discover = { iron = 2500000.0, coal = 95000000.0, machinery = 94000.0 }
+discover = { iron = 2700000.0, coal = 100000000.0, machinery = 100000.0 }
 target = 1830
 group = "iron"
 stage = 1
@@ -562,7 +564,7 @@ known = false
 A0 = 1.0
 Q0 = 20000.0
 b = 0.2
-discover = { machinery = 150000.0, steel = 1700000.0 }
+discover = { machinery = 170000.0, steel = 2000000.0 }
 target = 1838
 group = "engineering"
 stage = 1
@@ -590,7 +592,7 @@ known = false
 A0 = 1.0
 Q0 = 200000.0
 b = 0.15
-discover = { steel = 5800000.0, machinery = 1300000.0 }
+discover = { steel = 5400000.0, machinery = 1100000.0 }
 # RUN: the design aims it at 1876. A new works needs more than the going price until its know-how has
 # spread, so its first works comes ten years after it is found: aimed at 1876 it was never built in four
 # seeds of eight, aimed at 1870 in two (those that found it after 1880).
@@ -622,7 +624,7 @@ known = false
 A0 = 1.0
 Q0 = 2000000.0
 b = 0.15
-discover = { bricks = "x300", machinery = 460000.0 }
+discover = { bricks = "x300", machinery = 470000.0 }
 target = 1856
 group = "building"
 stage = 1
@@ -650,7 +652,7 @@ known = false
 A0 = 1.0
 Q0 = 5000000.0
 b = 0.1
-discover = { gas = 1000000.0, services = 20000000.0 }
+discover = { gas = 1000000.0, services = 18000000.0 }
 target = 1860
 stage = 1
 headline = "Plate-glass shopfronts at {town}"
@@ -693,7 +695,7 @@ known = false
 A0 = 0.7
 Q0 = 60000.0
 b = 0.25
-discover = { chemicals = 450000.0, iron = 1400000.0 }
+discover = { chemicals = 470000.0, iron = 1400000.0 }
 target = 1815
 group = "coal"
 stage = 1
@@ -726,7 +728,7 @@ known = false
 A0 = 1.0
 Q0 = 800000.0
 b = 0.25
-discover = { chemicals = 5600000.0, steel = 5300000.0 }
+discover = { chemicals = 6200000.0, steel = 5300000.0 }
 target = 1872
 group = "coal"
 stage = 1
@@ -770,7 +772,7 @@ known = false
 A0 = 0.6
 Q0 = 40000.0
 b = 0.3
-discover = { glass = 330000.0, chemicals = 890000.0, iron = 2700000.0 }
+discover = { glass = 350000.0, chemicals = 940000.0, iron = 2800000.0 }
 target = 1835
 group = "building"
 stage = 1
@@ -800,7 +802,7 @@ known = false
 A0 = 1.0
 Q0 = 800000.0
 b = 0.2
-discover = { glass = 1500000.0, steel = 4900000.0 }
+discover = { glass = 1600000.0, steel = 4600000.0 }
 # RUN: the design aims it at 1874; aimed there it was never built in two seeds of eight, at 1870 in one.
 target = 1870
 group = "building"
@@ -847,7 +849,7 @@ known = false
 A0 = 0.6
 Q0 = 30000.0
 b = 0.3
-discover = { paper = 260000.0, machinery = 42000.0 }
+discover = { paper = 270000.0, machinery = 46000.0 }
 target = 1815
 group = "building"
 stage = 1

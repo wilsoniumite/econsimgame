@@ -162,6 +162,7 @@ fn the_issue_is_never_below_nothing() {
         P.harvest.rent_as_paid = false;
         P.works.spread_first = false;
         P.works.keep_order = false;
+        P.tree = Default::default();
         P.end_year = Some(1846);
         P
     }

@@ -23,7 +23,13 @@
 # order paid for before a dividend); with both switches off the four of
 # stage 5b held. Held again on its check with stage 5 merged in, which
 # moves nothing.
-economy  0xf10bff35a0766927
-books    0x72b059f24108b664
-news     0x6de2e12697026f85
-run.bin  0x5c488515dd413b02
+# Then on night/g-tree-land with main merged in (19 November 2026): all four
+# moved by the production tree's first stage, switched on under the game's
+# rules (tree.stage = 1, docs/rules/tree.md), with its thresholds fitted again
+# on the island stage 5 leaves: nine more goods, so another economy, other
+# books, other news and another run.bin. With the tree off in game_params()
+# the four before held.
+economy  0xa0b778ca0b962b19
+books    0x364288124d7f0e20
+news     0xdfaf581760b17c8f
+run.bin  0x1327718d82104e0c
