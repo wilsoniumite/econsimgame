@@ -335,6 +335,11 @@ pub struct Params {
     /// docs/rules/transition.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub transition: crate::transition::TransitionParams,
+    /// Whoever put money into a works holds a share of it and is paid by it:
+    /// the landlords as well as the households (not in the Python; see
+    /// docs/rules/owners.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub owners: crate::owners::OwnersParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -547,6 +552,7 @@ pub fn default_params() -> Params {
         money: crate::money::MoneyParams::default(),
         longrun: crate::longrun::LongrunParams::default(),
         transition: crate::transition::TransitionParams::default(),
+        owners: crate::owners::OwnersParams::default(),
     }
 }
 
@@ -591,6 +597,7 @@ pub fn game_params() -> Params {
     // table only fills; the months run over the places taken, not the room.
     P.F_max = 60_000;
     P.transition = crate::transition::TransitionParams::game();
+    P.owners = crate::owners::OwnersParams::game();
     P
 }
 

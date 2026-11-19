@@ -1162,6 +1162,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     // ---------------- dividends, common fund, issuance
     add_to(&mut st.merch_cash, &merch);
     let mut fdiv = vec![0.0; T];
+    // owners (docs/rules/owners.md): the landlords' part of the works' dividends, by town
+    let mut lord_div = Vec::new();
     if NFI > 0 {
         let mut div = vec![0.0; NFI];
         for (k, &i) in fi.iter().enumerate() {
@@ -1172,9 +1174,13 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         // accounts: every works' dividend, before the families take theirs out of the list
         crate::accounts::note_dividends(&mut st.acct, &div);
+        let all = if P.owners.enabled { div.iter().sum() } else { 0.0 };
         if families::active(st) {
             families::take_dividends(st, C, &fi, &mut div);
         }
+        // owners: a works no family holds pays its landlords their part, and
+        // what is left in `div` is the households'
+        lord_div = crate::owners::dividends(st, P, &fi, &mut div, all);
         fdiv = bincount(&ft, &div, T);
     }
     let mut mdiv = vec![0.0; T];
@@ -1199,8 +1205,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         let popshare = st.pop[t] / pop_total;
         hh_inc[t] += fdiv[t] + mdiv[t] + (fund_div + issue) * popshare;
     }
+    // owners: the landlords' dividends go into their income beside the month's
+    // rents (after the port's count of the money, which they would otherwise enter)
+    crate::owners::credit(st, &lord_div);
     // accounts: the month's incomes, before the purses are credited
-    crate::accounts::close_month(st, &fi, &ft, &fm, &merch, &hh_inc, &fdiv, &mdiv, fund_div, issue, pop_total);
+    crate::accounts::close_month(st, &fi, &ft, &fm, &merch, &hh_inc, &fdiv, &mdiv, &lord_div, fund_div, issue, pop_total);
 
     for t in 0..T {
         st.hh_income[t] += hh_inc[t];

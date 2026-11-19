@@ -273,10 +273,16 @@ pub fn town_pool(st: &State, P: &Params, i: usize) -> f64 {
 }
 
 /// Money for an existing firm: from the family that owns it (`families`), or else
-/// from its town's savers (`draw_pool`).
-pub fn back_firm(st: &mut State, P: &Params, fid: usize, amount: f64) -> f64 {
+/// from its town's savers (`draw_pool`). Under `owners` the savers' shares of
+/// the works move with what each of them paid (docs/rules/owners.md).
+pub fn back_firm(st: &mut State, C: &Content, P: &Params, fid: usize, amount: f64) -> f64 {
     match families::owner_of_firm(st, fid) {
         Some(k) => families::draw_cash(st, k, amount),
+        None if P.owners.enabled => {
+            let (got, paid) = draw_pool_parts(st, P, st.f_town[fid], amount);
+            crate::owners::paid_in(st, C, P, fid, paid);
+            got
+        }
         None => draw_pool(st, P, st.f_town[fid], amount),
     }
 }
@@ -293,6 +299,22 @@ pub fn draw_pool(st: &mut State, P: &Params, i: usize, amount: f64) -> f64 {
     st.hh_cash[i] -= amount * hh / tot;
     st.lord_cash[i] -= amount * lo / tot;
     amount
+}
+
+/// `draw_pool`, saying also how much came from each purse: the households',
+/// the landlords', the savers' fund's and the public's (owners, docs/rules/owners.md).
+pub fn draw_pool_parts(st: &mut State, P: &Params, i: usize, amount: f64) -> (f64, [f64; 4]) {
+    let hh = P.invest_frac_hh * st.hh_cash[i].max(0.0);
+    let lo = P.invest_frac_lord * st.lord_cash[i].max(0.0);
+    let tot = hh + lo;
+    if tot <= 0.0 {
+        return (0.0, [0.0; 4]);
+    }
+    let amount = amount.min(tot);
+    let (from_hh, from_lords) = (amount * hh / tot, amount * lo / tot);
+    st.hh_cash[i] -= from_hh;
+    st.lord_cash[i] -= from_lords;
+    (amount, [from_hh, from_lords, 0.0, 0.0])
 }
 
 struct Proposal {
@@ -366,12 +388,16 @@ pub fn entry(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64, 
         if town_pool(st, P, i) < cost || st.F_count >= st.f_alive.len() {
             continue;
         }
-        let got = draw_pool(st, P, i, cost);
+        // owners: what each purse paid is what it holds of the new works
+        let (got, paid) = if P.owners.enabled { draw_pool_parts(st, P, i, cost) } else { (draw_pool(st, P, i, cost), [0.0; 4]) };
         let rent_bid_one = ev.rent_bid[j];
         let reason = reason_record(st, i, m, cell, &ev, j, K, year, "new");
         let Some(fid) = create_firm(st, C, P, rng, i, m, cell, K, rent_bid_one, reason, year, got, None, None) else {
             break;
         };
+        if P.owners.enabled {
+            crate::owners::founded(st, fid, paid);
+        }
         used_cells.insert((cell, m));
         *per_tm.entry((i, m)).or_insert(0) += 1;
         made += 1;
@@ -398,7 +424,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
         let building = works::building(P, K, st.f_order_K[fid]);
         if st.f_cash[fid] < 0.0 && year - st.f_born[fid] <= 3 {
             let need = -st.f_cash[fid];
-            st.f_cash[fid] += back_firm(st, P, fid, need);
+            st.f_cash[fid] += back_firm(st, C, P, fid, need);
         }
         if K > 0.0 {
             st.f_K[fid] = K * (1.0 - P.depreciation);
@@ -432,7 +458,7 @@ pub fn review(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, year: i64,
                 let cost = dK * unit_cap;
                 let short = cost * 1.1 - st.f_cash[fid];
                 if short > 0.0 {
-                    st.f_cash[fid] += back_firm(st, P, fid, short);
+                    st.f_cash[fid] += back_firm(st, C, P, fid, short);
                 }
                 if st.f_cash[fid] > 0.5 * cost {
                     for g in 0..C.G {
@@ -492,14 +518,29 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
     let owner = families::owner_of_firm(st, parent);
     let mut fund = (st.f_cash[parent].max(0.0) * 0.8).min(cost);
     st.f_cash[parent] -= fund;
-    if fund < cost {
-        fund += back_firm(st, P, parent, cost - fund);
+    // owners (docs/rules/owners.md): who paid for the sister works, purse by
+    // purse: the part from the parent's cash as the parent is held, the rest
+    // from the pool. The parent's own shares do not move.
+    let mut paid = None;
+    if P.owners.enabled && owner.is_none() {
+        let s = crate::owners::shares(st, P, parent);
+        let mut x = s.map(|v| v * fund);
+        if fund < cost {
+            let (got, y) = draw_pool_parts(st, P, i, cost - fund);
+            fund += got;
+            (0..4).for_each(|h| x[h] += y[h]);
+        }
+        paid = Some(x);
+    } else if fund < cost {
+        fund += back_firm(st, C, P, parent, cost - fund);
     }
     if fund < 0.6 * cost || st.F_count >= st.f_alive.len() {
-        // Python sends the money to the town's households; a family keeps its own
-        match owner {
-            Some(k) => st.families[k].cash += fund,
-            None => st.hh_cash[i] += fund,
+        // Python sends the money to the town's households; a family keeps its
+        // own; under `owners` it goes back as the sister works would have been held
+        match (owner, paid) {
+            (Some(k), _) => st.families[k].cash += fund,
+            (None, Some(x)) => crate::owners::pay_by(st, i, &x, fund),
+            (None, None) => st.hh_cash[i] += fund,
         }
         return None;
     }
@@ -517,6 +558,9 @@ pub fn spawn_sister(st: &mut State, C: &Content, P: &Params, rng: &mut Rng, pare
         if let Some(k) = owner {
             st.f_owner[f] = k as i64; // a family's works grow into the family's sister works
         }
+        if let Some(x) = paid {
+            crate::owners::founded(st, f, x);
+        }
     }
     fid
 }
@@ -530,6 +574,8 @@ pub fn close_firm(st: &mut State, C: &Content, P: &Params, fid: usize, year: i64
                 st.families[k].cash += cash;
                 st.f_paid[fid] += cash;
             }
+            // owners: paid out by its shares to the town it stands in
+            None if P.owners.enabled => crate::owners::pay_out(st, P, fid, cash),
             None => st.hh_cash[i] += cash,
         }
     } else {

@@ -299,6 +299,10 @@ pub const KMO: usize = MONTH_FIELDS.len();
 
 // ---------------------------------------------------------------- what is kept
 
+fn is_nothing(v: &f64) -> bool {
+    *v == 0.0
+}
+
 /// What one family received in a year.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct FamilyIncome {
@@ -332,9 +336,15 @@ pub struct IslandYear {
     /// Hired managers of family works with no branch over them.
     pub managers: f64,
     // ---- to the owners of works
-    /// Dividends of works no family owns, which go to their town's households.
+    /// Dividends of works no family owns, which go to their town's households
+    /// (under `owners`, the households' part of them).
     pub div_households: f64,
     pub div_families: f64,
+    /// Under `owners` (docs/rules/owners.md), the landlords' part of the
+    /// dividends of works no family owns: income from works, not rent. Left
+    /// out of the run file while it is nothing.
+    #[serde(skip_serializing_if = "is_nothing")]
+    pub div_landlords: f64,
     /// Profit the works kept (negative in a year of losses).
     pub works_kept: f64,
     // ---- to merchants
@@ -527,6 +537,8 @@ struct Acc {
     rent_sector: Vec<f64>,
     fund_in: f64,
     lords_in: f64,
+    /// Works' dividends paid to landlords (owners, docs/rules/owners.md).
+    lords_div: f64,
     hh_in: f64,
     fund_div: f64,
     issue: f64,
@@ -770,6 +782,7 @@ fn reset(a: &mut Acc, dims: (usize, usize, usize, usize, usize), F: usize, n_fam
     a.cash.resize(12 * n_fam, 0.0);
     a.month = 0;
     (a.fund_in, a.lords_in, a.hh_in, a.fund_div, a.issue, a.income_err) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    a.lords_div = 0.0;
 }
 
 /// The works' tables of the year in progress hold a row for each of the `F`
@@ -1157,8 +1170,12 @@ pub fn note_dividends(b: &mut Books, div: &[f64]) {
 /// before the purses are credited: `merch` is each town's merchants' takings
 /// less what they paid out, `hh_inc` everything its households are about to
 /// receive.
+///
+/// `lord_div` is the landlords' part of the works' dividends by town, under
+/// `owners` (empty without it): it is in the landlords' income already, and is
+/// counted as dividends, not as rent.
 #[allow(clippy::too_many_arguments)]
-pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], merch: &[f64], hh_inc: &[f64], fdiv: &[f64], mdiv: &[f64], fund_div: f64, issue: f64, pop_total: f64) {
+pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], merch: &[f64], hh_inc: &[f64], fdiv: &[f64], mdiv: &[f64], lord_div: &[f64], fund_div: f64, issue: f64, pop_total: f64) {
     if !st.acct.on {
         return;
     }
@@ -1240,7 +1257,15 @@ pub fn close_month(st: &mut State, fi: &[usize], ft: &[usize], fm: &[usize], mer
     let fund_in = st.fund_cash - b.fund_open + fund_div;
     a.lords_in += lords;
     a.fund_in += fund_in;
-    err = err.max((m_rents - m_fam_rents - lords - fund_in).abs() / m_rents.abs().max(1.0));
+    // owners: what the landlords had of the works' dividends is not rent
+    let lords_rent = if lord_div.is_empty() {
+        lords
+    } else {
+        let d: f64 = lord_div.iter().sum();
+        a.lords_div += d;
+        lords - d
+    };
+    err = err.max((m_rents - m_fam_rents - lords_rent - fund_in).abs() / m_rents.abs().max(1.0));
     if families::active(st) {
         let got: f64 = st.families.iter().map(|f| f.month_acc).sum();
         err = err.max((fam_div + m_fam_rents - got).abs() / got.abs().max(1.0));
@@ -1330,7 +1355,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         y.projects += r[T_PROJECTS];
     }
     let profit: f64 = (0..T * M).map(|k| a.methods[k * KM + M_PROFIT]).sum();
-    y.works_kept = profit - y.div_households - y.div_families;
+    y.div_landlords = a.lords_div;
+    y.works_kept = profit - y.div_households - y.div_families - y.div_landlords;
     for s in 0..NS {
         if b.digs[s] {
             y.rent_pits += a.rent_sector[s];
