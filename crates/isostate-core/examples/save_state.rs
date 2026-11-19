@@ -480,6 +480,8 @@ macro_rules! state_parts {
                 cn: { set_stream(9); Bin::get(r) },
                 families: Vec::new(),
                 acct: Default::default(),
+                // gauges (docs/rules/gauges.md): carried across as the books are
+                gauges: Default::default(),
                 // roads (a probe, docs/probes/dx-roads.md; empty while it is off):
                 // carried across as the books are
                 rd: Default::default(),
@@ -607,6 +609,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     let mut st = get_state(&mut r);
     st.families = carry.families.clone();
     st.acct = carry.acct.clone();
+    st.gauges = carry.gauges.clone();
     st.rd = carry.rd.clone();
     st.longrun = carry.longrun.clone();
 
