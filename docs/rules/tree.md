@@ -828,6 +828,75 @@ month, and a town with no station that has none to buy.
   with coal's falling, because nothing else after 1900 competes; oil and gas,
   and the grid, are later parts.
 
+## Oil, nitrogen and the land
+
+The second part of stage 6 is the land's twentieth century: oil, two methods
+and an invention in `data/game.toml`, all with `stage = 6`; the tractor and
+the cutter that run on oil and electricity, in `data/tasks.toml`
+([tasks.md](tasks.md), "The tractor and the cutter"); and nitrogen and
+breeding in the land machines' table ([machines.md](machines.md), "Nitrogen
+and breeding"). The switch is the overlay's stage, as for electricity:
+`--set tree.stage=1` is the island before this part to the byte (islands 1 to
+4 against the build it was cut from: "of the 888 facts both have, the
+seconds aside, 0 differ").
+
+| | |
+|---|---|
+| `oil`, Oil | weight 1, base price 1, decay 0.002 a month, no opening stock, keeps; fuel and light at 3.5 a unit, and a fuel a works may burn at 3.5 a unit of heat. Opens at its ceiling price (`opens_dear`), as electricity does: at its base price it would be the island's cheapest warmth in 1750, and nobody has any until it is made |
+| `oil_from_coal`, Oil from coal | coal 4 and electricity 0.5 a unit, labour 0.05, no heat of its own; plant 3 years of its output, kind M; usual size 400; the coal trade; aimed at 1925 |
+| `nitrogen_works`, Nitrogen works | makes soap and chemicals from coal 1.5 and electricity 1.2, labour 0.1; plant 2.5 years of its output, kind M; usual size 150; the coal trade, as the alkali works; aimed at 1915 |
+| `breeding`, Breeding and sprays | an invention, not a works; aimed at 1950 |
+
+Each method has its row of classes of task in `data/tasks.toml` (oil from
+coal .25 .50 .05 .20 0, the nitrogen works .10 .50 .05 .35 0) and names
+of its own ("Melbourne Coal Oil Co.", "Glenbrook Nitrogen Co."). **There is no
+oilfield**: the design's oilfield wants the second land generator, which the
+game's rules do not use. So the island's oil is made from coal, and it is
+dear: on the eight islands a unit of heat from oil costs six to eight times
+one from coal (`oil_over_coal_heat_Y`: 7.5 in 1930, 8.6 in 1950, 6.0 in
+1970), where the design reckoned three. Four of coal for 3.5 of heat is 2.7
+times coal's heat on its own; the half unit of electricity, at about three a
+unit where it is sold, costs as much again as the coal. So oil warms nobody
+and fires no works: it is made for the tractors.
+
+**The thresholds** were fitted with `parity/tree_fit.py`, which now reads the
+sweep's own last year (it stopped at 1900, which counted every island that
+had not found an invention by then as finding it in 1905): oil from coal on
+coal made, with electricity kept as a guard; the nitrogen works and breeding
+on chemicals made, the nitrogen works with electricity kept as a guard.
+Electricity is a poor clock: island 4 makes none until the 1920s. On a sweep
+to 2050 (`isostate-core sweep --seeds 1-8 --rules game --families 6
+--end-year 2050`, then `python crates/isostate-core/parity/tree_fit.py DIR
+--only oil_from_coal,nitrogen_works,breeding`):
+
+| | aimed at | found, mean of 8 | least .. greatest |
+|---|---|---|---|
+| nitrogen works | 1915 | 1916 | 1901 .. 1943 |
+| oil from coal | 1925 | 1926 | 1899 .. 1949 |
+| breeding and sprays | 1950 | 1945 | 1928 .. 1974 |
+
+Island 8 finds oil from coal in 1899, by the hazard's long tail; the standing
+check holds all the same (twelve of twelve inside, `--set tree.stage=1,6
+--standing`). Nothing else of this part is found before 1901.
+
+**A tractor waits on oil, and oil waits on the tractor.** Nobody buys oil at
+its ceiling price, so an oil works is built where it is found, sells its
+first months' make into a market with no buyer, sees the price fall below
+its costs and closes (island 4, on a first build whose tractor waited for
+2,000 units: two works, 935 units made by 1923, and then none for a decade;
+on six islands of eight the tractor was not found by 1960). The tractor is found on oil made, not on a date: at the
+first year's turn from 1915 at which the island has made 300 units of oil,
+about what its first works make in their first months. Once it is found the
+farms ask for oil and the works stay: oil made is 2,700 a year on the mean
+island in 1920, 8,000 in 1930, 22,000 in 1950 and 49,000 in 1970. On island 1,
+the last to light a town (its first station in 1933), oil from coal is found
+in 1949 and the tractor in 1951. An island with no oil of its own mechanises
+its fields late.
+
+**What a run costs.** A run to 2050 took 110 seconds on the mean island (102
+to 120) with 28 goods, against 93 (89 to 97) for the base's 27, eight at a
+time on a machine shared with other builds.
+
 ## What worries me
 
 - **Timber still rings.** The cycle above is the base game's and is not
