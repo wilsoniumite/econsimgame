@@ -267,6 +267,16 @@ Core only, and all of it new files but one line of `lib.rs`.
 
 **Shown to work by** the test, and by three printed cards (a town, a works, a square of island 7 in 1800) in the builder's report. **Not this stage's**: anything in the viewer; anything in `accounts.rs`.
 
+**As built (19 November 2026).** All four pieces are as listed, and nothing that runs in a simulation changed: both golden tests stand as they were. A few choices the list left open:
+
+- A price, a wage or a rent is put in words by a small `amount` (whole units with thousands marked from a hundred up, two places from one, three below), because `fmt_thousands_f0` alone would make grain at 0.53 a unit read "1". Counts and sums of money go through `fmt_thousands_f0`, shares through `fmt_pct`.
+- A town's works are ranked by `families::works_value`, the plant at today's prices of capital goods, since output is in each good's own units and cannot rank a mill against a brickfield. Methods "known" are those at half or more of known, the share the record draws as known.
+- The year's trade gives each line its value, how many towns it came from or went to (a flow of a twentieth of a unit or less is counted in the sum but not as a partner), and the carting paid; "made here" names the three chief goods by value and how many more there are.
+- Land's words are against the quartiles of the island's squares that hold any of that thing at all, so that a little coal is not called rich on an island where coal is rare. Woods are the trees standing now (`State::cover`), as the woodland sector reads them. A square also says what it is used for, the shares its sectors work, the works on it if any, and the cost of carting a unit of grain to its market.
+- A square's weather is given for each sector that feels it and works at least half a per cent of the square, and not on a town's square.
+- The example takes `--month M` to stop part-way into a year and `--list` to name the towns and the ten largest works with their numbers. On island 7 in January 1800 a card took 0.04 to 0.13 ms the first time it was asked and 0.01 to 0.06 ms on the mean of a thousand.
+- `tests/inspect.rs` also plays two games alike for twelve years, one told of every town, every works and every thirty-seventh square each year, and finds every series the same to the bit.
+
 ### 6.3 Stage 3: more of the hand in the core
 
 - `Discover`: what `tech::discovery` does once it has chosen (`core/tech.rs:52-62`) without its draws: `know` at least 0.25 in the town, `tech_year`, `tech_town`, the item of news. Refused if the method is known or found already.
