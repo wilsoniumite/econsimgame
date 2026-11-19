@@ -299,7 +299,7 @@ function downstream(g, f) {
       const to = A.nodes[e[1]];
       if (e[2] === 3) needs.set(to.label, (needs.get(to.label) || 0) + f.edge[j]);
       if ((e[2] === 1 || e[2] === 2) && to.k === "works") {
-        if (depth === 0 && !works.some((w) => w.m === to.i)) works.push({ m: to.i, kind: e[2], v: f.edge[j] });
+        if (depth === 0 && !works.some((w) => w.m === to.i && w.kind === e[2])) works.push({ m: to.i, kind: e[2], v: f.edge[j] });
         if (depth === 1 && e[3] !== g) {
           const l = through.get(e[3]) || [];
           l.push({ m: to.i, kind: e[2], v: f.edge[j] });
