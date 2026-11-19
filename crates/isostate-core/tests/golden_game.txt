@@ -71,6 +71,13 @@
 # classes of task, where the emporium holds a tenth as the services do (its
 # series is among the books' columns), and in run.bin the gauges' list of
 # presence and the params, which now carry the switch.
+# Then on night/g-batch-2 (19 November 2026), the batch that lands the run
+# to 2050's stages 4 and 5 (owners; tasks in the works, on the land and in
+# the pits) with the sandbox's stages 5b, 6a and 6b: taken again on the
+# merged tree, and against main all four moved, by the owners (economy,
+# books, news, run.bin) and the tasks (books, run.bin). The four are the
+# tasks' second half's own to the digit: the sandbox's pieces, and the
+# owners' and tasks' switches joining the Rules tab, move nothing.
 economy  0x9a6b3ba24a097bd1
 books    0xfa5dd1db28f62894
 news     0x9f83de6e9e162ab1
