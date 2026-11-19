@@ -787,6 +787,12 @@ const MONTHS: [&str; 12] =["January", "February", "March", "April", "May", "June
 /// date). An edit refused, or dated outside the run, stops the run with a
 /// sentence that names it. The run's money is checked every month.
 pub fn play(P: &Params, content: Content, edits: &[Dated]) -> Result<Sim, String> {
+    play_noting(P, content, edits, |_, _| {})
+}
+
+/// `play`, with `note` called after each month (`Some(month)`, 0 to 11) and
+/// after each year's end (`None`), as the sweep notes its facts (`lab.rs`).
+pub fn play_noting(P: &Params, content: Content, edits: &[Dated], mut note: impl FnMut(&Sim, Option<usize>)) -> Result<Sim, String> {
     let mut list: Vec<&Dated> = edits.iter().collect();
     list.sort_by_key(|d| d.before);
     let mut sim = sim::start(P, content);
@@ -817,8 +823,10 @@ pub fn play(P: &Params, content: Content, edits: &[Dated]) -> Result<Sim, String
                 })?;
             }
             sim::run_month(&mut sim, month)?;
+            note(&sim, Some(month));
         }
         sim::end_year(&mut sim);
+        note(&sim, None);
     }
     Ok(sim)
 }

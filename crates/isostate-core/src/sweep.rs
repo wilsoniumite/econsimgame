@@ -522,10 +522,26 @@ pub fn run(o: &Options, plan: Plan) -> Sweep {
         }
     });
     let mut runs: Vec<Run> = slots.into_inner().unwrap().into_iter().map(|r| r.expect("every run reports")).collect();
+    let fact_index = index_runs(&mut runs);
+    Sweep {
+        rules: o.rules,
+        seeds: o.seeds.clone(),
+        keys: o.sets.iter().map(|(k, _)| k.clone()).collect(),
+        settings,
+        runs,
+        fact_index,
+        jobs,
+        seconds: t0.elapsed().as_secs_f64(),
+    }
+}
 
+/// The news facts added to every finished run, one per kind any run had, so
+/// that every run has the same columns; then every fact any run has, in
+/// printing order.
+pub fn index_runs(runs: &mut [Run]) -> Vec<(String, &'static str, Kind)> {
     // news: one fact per kind any run had, so every run has the same columns
     let kinds: BTreeSet<String> = runs.iter().filter_map(|r| r.outcome.as_ref().ok()).flat_map(|d| d.facts.news.keys().cloned()).collect();
-    for run in &mut runs {
+    for run in runs.iter_mut() {
         let Ok(done) = &mut run.outcome else { continue };
         let count = |k: &str| done.facts.news.get(k).copied().unwrap_or(0) as f64;
         let mut news: Vec<Fact> =
@@ -544,16 +560,7 @@ pub fn run(o: &Options, plan: Plan) -> Sweep {
         }
     }
     fact_index.sort_by_key(|(_, group, _)| GROUPS.iter().position(|g| g == group));
-    Sweep {
-        rules: o.rules,
-        seeds: o.seeds.clone(),
-        keys: o.sets.iter().map(|(k, _)| k.clone()).collect(),
-        settings,
-        runs,
-        fact_index,
-        jobs,
-        seconds: t0.elapsed().as_secs_f64(),
-    }
+    fact_index
 }
 
 // ---------------------------------------------------------------- the files
@@ -808,7 +815,7 @@ pub fn fmt_fact(kind: Kind, v: f64) -> String {
 
 /// The change from the mean then to the mean now, with its sign, to the
 /// precision the two are shown in; counts and plain numbers also in per cent.
-fn fmt_change(kind: Kind, now: f64, then: f64) -> String {
+pub(crate) fn fmt_change(kind: Kind, now: f64, then: f64) -> String {
     let d = now - then;
     let scale = now.abs().max(then.abs());
     let body = match kind {
