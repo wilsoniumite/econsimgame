@@ -20,12 +20,15 @@
 //! neck of 1.4 widths) and says how far the rivers now lie from where they
 //! lay then: of the points of the big rivers on the plains, the 95th
 //! percentile and the most of their distance from the old course of the same
-//! river, in metres and in widths, and how many rivers end in anything else
+//! river, in metres and in widths; on how many cells each field the economy
+//! is given differs, and whether the first towns stand where they did; and
+//! how many rivers end in anything else
 //! or reach the sea or a lake anywhere else (a tributary meets its river
 //! wherever that river now runs, so its last point may move with it).
 #![allow(non_snake_case)]
 use std::collections::HashMap;
 
+use isostate_core::landcells::make_world;
 use isostate_core::landform::{CELL_M, LandParams, build_relief, draw_design};
 use isostate_core::landwater::{River, RiverEnd, Shape, make_water, river_shape};
 use isostate_core::rng::land_stream;
@@ -166,13 +169,16 @@ fn main() {
     let mut all = [Shape::default(), Shape::default(), Shape::default(), Shape::default()];
     let mut moved_rows: Vec<String> = Vec::new();
     for &seed in &seeds {
-        let make = |P: &LandParams| {
+        // the water, and with --against the economy's cells made from it
+        let make = |P: &LandParams, cells: bool| {
             let mut rng = land_stream(seed);
             let d = draw_design(&mut rng, 120, 84, P);
             let relief = build_relief(&d, P);
-            make_water(&d, P, &relief, &mut rng)
+            let water = make_water(&d, P, &relief, &mut rng);
+            let world = if cells { Some(make_world(&d, P, &relief, &water, &mut rng, 6)) } else { None };
+            (water, world)
         };
-        let water = make(&P);
+        let (water, world) = make(&P, against);
         let mut by = [Shape::default(), Shape::default(), Shape::default(), Shape::default()];
         for r in &water.rivers {
             let pts = metres(r);
@@ -196,7 +202,7 @@ fn main() {
             all[c].add(&by[c]);
         }
         if against {
-            let old = make(&before);
+            let (old, old_world) = make(&before, true);
             let (mut m, mut wd, mut ends) = (Vec::new(), Vec::new(), 0);
             for (r, o) in water.rivers.iter().zip(old.rivers.iter()) {
                 let (pn, po) = (metres(r), metres(o));
@@ -214,6 +220,27 @@ fn main() {
                     }
                 }
             }
+            // what the economy is given: the cells' fields, and the first towns
+            let (a, b) = (world.as_ref().unwrap(), old_world.as_ref().unwrap());
+            let differ = |x: &[f64], y: &[f64]| x.iter().zip(y).filter(|(p, q)| p != q).count();
+            let land = (0..a.W * a.H).filter(|&c| a.land[c]).count();
+            moved_rows.push(format!(
+                "  {seed:>4}  of {land} land cells, height differs on {} (by {:.2} m at the most), terrain {}, land {}, river {}, navigable {}, coast {}, flow down {}, fertility {} (by {:.4} at the most), pasture {}, stone {}, clay {}; first towns {}",
+                differ(&a.h, &b.h),
+                a.h.iter().zip(&b.h).map(|(p, q)| (p - q).abs()).fold(0.0, f64::max) * P.h_ref,
+                a.terrain.iter().zip(&b.terrain).filter(|(p, q)| p != q).count(),
+                a.land.iter().zip(&b.land).filter(|(p, q)| p != q).count(),
+                a.river.iter().zip(&b.river).filter(|(p, q)| p != q).count(),
+                a.navigable.iter().zip(&b.navigable).filter(|(p, q)| p != q).count(),
+                a.coast.iter().zip(&b.coast).filter(|(p, q)| p != q).count(),
+                a.down.iter().zip(&b.down).filter(|(p, q)| p != q).count(),
+                differ(&a.fertility, &b.fertility),
+                a.fertility.iter().zip(&b.fertility).map(|(p, q)| (p - q).abs()).fold(0.0, f64::max),
+                differ(&a.pasture, &b.pasture),
+                differ(&a.rock, &b.rock),
+                differ(&a.clay, &b.clay),
+                if a.town_sites == b.town_sites { "the same".to_string() } else { format!("{:?} for {:?}", a.town_sites, b.town_sites) }
+            ));
             moved_rows.push(format!(
                 "  {seed:>4}  {:>6} rivers, {ends} ending elsewhere; big rivers on the plains lie from their old course: 95% within {:.0} m ({:.1} widths), the most {:.0} m ({:.1} widths)",
                 water.rivers.len(),
