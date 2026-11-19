@@ -11,7 +11,10 @@
 //! with its numbers. The order of `Params` is read from the reader's own list of
 //! its fields, so a number added to `Params` tomorrow is in the list with no
 //! line written here; a rule added tomorrow needs one line in [`skipped`], and
-//! the test `tests/rulebook.rs` says so if it is missing.
+//! the test `tests/rulebook.rs` says so if it is missing. A number inside a
+//! rule left out the same way is filled from its field ([`skipped_inside`]).
+//! One name is left out of the walk on purpose: the port's `money_growth` while
+//! the run issues money at `money.growth` instead ([`unread`]).
 //!
 //! What an offer would do is asked of one function, `edits::rule_refused`,
 //! which is what an edit by hand (`Edit::Rule`) is refused by too: the tab and
@@ -169,16 +172,41 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
     }
 }
 
+/// The numbers inside a rule that its own serialiser leaves out while they
+/// stand at their default, read from the fields themselves: the tasks stage's
+/// lesser switch for the land, and its ceiling on yield and its freeze year,
+/// which are nothing (`null`, "none" on the tab) unless a sweep sets them.
+fn skipped_inside(P: &Params, rule: &str) -> Vec<(&'static str, Value)> {
+    match rule {
+        "tasks" => vec![("land", json!(P.tasks.land)), ("yield_cap", json!(P.tasks.yield_cap)), ("freeze_from", json!(P.tasks.freeze_from))],
+        _ => Vec::new(),
+    }
+}
+
 /// Every field of the parameters, in their order, the ones the serialiser
 /// leaves out among them. A field that cannot be found is `null`.
 fn whole(P: &Params) -> Map<String, Value> {
     let written = serde_json::to_value(P).ok().and_then(|v| v.as_object().cloned()).unwrap_or_default();
     let mut out = Map::new();
     for name in top_names() {
-        let v = written.get(&name).cloned().or_else(|| skipped(P, &name)).unwrap_or(Value::Null);
+        let mut v = written.get(&name).cloned().or_else(|| skipped(P, &name)).unwrap_or(Value::Null);
+        if let Value::Object(m) = &mut v {
+            for (k, x) in skipped_inside(P, &name) {
+                m.entry(k).or_insert(x);
+            }
+        }
         out.insert(name, v);
     }
     out
+}
+
+/// A name the run does not read, and that the walk leaves out so that the tab
+/// offers nothing that does nothing: the port's rate of new money,
+/// `money_growth`, while `money.true_total` is on and `money.growth` is the rate
+/// the money is issued at (`money::rate`). With the rule off it is listed again,
+/// and `money.growth` stays listed as an off rule's number, as every rule's are.
+fn unread(run: &Params, name: &str) -> bool {
+    name == "money_growth" && run.money.true_total
 }
 
 /// Each dotted name and its value, in order: a rule's struct is opened to its
@@ -262,6 +290,7 @@ pub fn rulebook(run: &Params) -> Vec<Entry> {
     let game: HashMap<String, Value> = flat(&game_params()).into_iter().collect();
     flat(run)
         .into_iter()
+        .filter(|(name, _)| !unread(run, name))
         .map(|(name, value)| {
             let game = game.get(&name).cloned().unwrap_or(Value::Null);
             let rule = match name.split_once('.') {
