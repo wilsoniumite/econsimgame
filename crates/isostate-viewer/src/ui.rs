@@ -247,6 +247,10 @@ pub struct TickLayer;
 /// The part of the timeline that has happened.
 #[derive(Component)]
 pub struct TimelineFill;
+/// A pin in the hand's ink on the timeline at the year a sandbox's run on is
+/// going to, shown while it goes.
+#[derive(Component)]
+pub struct RunOnMark;
 /// Clicking this opens a tab (the family card opens the family).
 #[derive(Component)]
 pub struct OpenTab(pub Tab);
@@ -721,6 +725,21 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
                 ));
                 // a tick for each major piece of news, filled in by timeline_ticks
                 track.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), ..default() }, TickLayer));
+                // (a sandbox) the year a run on is going to: a thin stem through the rail with a
+                // round head, in the hand's ink, hidden until a run on is under way
+                if sandbox {
+                    let ink = crate::sandbox::HAND_INK;
+                    track
+                        .spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(0.0), top: Val::Px(0.0), width: Val::Px(9.0), height: Val::Px(26.0), margin: UiRect::left(Val::Px(-4.5)), display: Display::None, ..default() }, RunOnMark))
+                        .with_children(|pin| {
+                            pin.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(3.5), top: Val::Px(6.0), width: Val::Px(2.0), height: Val::Px(19.0), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() }, BackgroundColor(ink)));
+                            pin.spawn((
+                                Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Px(9.0), height: Val::Px(9.0), border: UiRect::all(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(4.5)), ..default() },
+                                BackgroundColor(Color::WHITE),
+                                BorderColor::all(ink),
+                            ));
+                        });
+                }
                 // the knob with the year above it
                 track.spawn((
                     Node { position_type: PositionType::Absolute, left: Val::Percent(100.0), top: Val::Px(11.0), width: Val::Px(14.0), height: Val::Px(14.0), margin: UiRect::left(Val::Px(-7.0)), border_radius: BorderRadius::all(Val::Px(7.0)), border: UiRect::all(Val::Px(2.0)), ..default() },
@@ -939,21 +958,50 @@ fn month_bar(
     }
 }
 
-fn timeline_drag(mut tl: ResMut<Timeline>, data: Res<Data>, q: Query<(&Interaction, &RelativeCursorPosition), With<TimelineTrack>>) {
+/// The year's end a press on the timeline stands for, from where the pointer
+/// is across the track (`RelativeCursorPosition::normalized`, -0.5 to 0.5).
+pub fn timeline_year(x: f32, last: usize) -> usize {
+    ((x + 0.5).clamp(0.0, 1.0) * last as f32).round() as usize
+}
+
+/// A press on the timeline puts the clock at the year pressed. In a sandbox a
+/// press ahead of the present runs on to the January of that year
+/// (`Sandbox::run_to`), and one while a run on is under way moves its year;
+/// elsewhere the clock goes no further than the present.
+fn timeline_drag(
+    mut tl: ResMut<Timeline>,
+    data: Res<Data>,
+    q: Query<(&Interaction, &RelativeCursorPosition), With<TimelineTrack>>,
+    mut sandbox: Option<ResMut<crate::sandbox::Sandbox>>,
+    live: Option<Res<crate::live::Live>>,
+    time: Res<Time>,
+) {
     for (i, rel) in &q {
         if *i != Interaction::Pressed {
             continue;
         }
         if let Some(n) = rel.normalized {
-            let last = data.r.ny.max(1) - 1;
-            let x = (n.x + 0.5).clamp(0.0, 1.0);
+            let k = timeline_year(n.x, data.r.ny.max(1) - 1);
+            if let (Some(sb), Some(live)) = (sandbox.as_mut(), live.as_ref()) {
+                if k > data.latest() {
+                    sb.run_to(&mut tl, crate::sandbox::Present::of(&data, live), k, None, time.elapsed_secs());
+                    continue;
+                }
+            }
             tl.playing = false;
-            tl.t = (x * last as f32).round().min(data.latest() as f32);
+            tl.t = (k as f32).min(data.latest() as f32);
         }
     }
 }
 
-fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (With<TimelineKnob>, Without<TimelineFill>)>, mut fill: Query<&mut Node, (With<TimelineFill>, Without<TimelineKnob>)>) {
+fn timeline_knob(
+    tl: Res<Timeline>,
+    data: Res<Data>,
+    sandbox: Option<Res<crate::sandbox::Sandbox>>,
+    mut q: Query<&mut Node, (With<TimelineKnob>, Without<TimelineFill>, Without<RunOnMark>)>,
+    mut fill: Query<&mut Node, (With<TimelineFill>, Without<TimelineKnob>, Without<RunOnMark>)>,
+    mut mark: Query<&mut Node, (With<RunOnMark>, Without<TimelineKnob>, Without<TimelineFill>)>,
+) {
     let last = (data.r.ny.max(2) - 1) as f32;
     for mut n in &mut q {
         n.left = Val::Percent((tl.t / last * 100.0).clamp(0.0, 100.0));
@@ -964,10 +1012,36 @@ fn timeline_knob(tl: Res<Timeline>, data: Res<Data>, mut q: Query<&mut Node, (Wi
             n.width = w;
         }
     }
+    // the year a run on is going to, while it goes
+    let to = sandbox.and_then(|s| s.target());
+    for mut n in &mut mark {
+        let (display, left) = match to {
+            Some(k) => (Display::Flex, Val::Percent((k as f32 / last * 100.0).clamp(0.0, 100.0))),
+            None => (Display::None, n.left),
+        };
+        if n.display != display || n.left != left {
+            n.display = display;
+            n.left = left;
+        }
+    }
 }
 
-/// News ticks along the timeline, redrawn as a live game adds news.
-fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<(usize, usize)>>) {
+/// How tall the tallest tick of the news stands on the timeline, in pixels.
+const NEWS_TICK_TALLEST: f32 = 16.0;
+
+/// A tick on the timeline for a thing done by hand.
+#[derive(Component)]
+pub struct HandTick;
+
+/// How many ticks of the hand the timeline holds, for a script's `print`.
+pub fn hand_ticks(world: &mut World) -> usize {
+    world.query_filtered::<(), With<HandTick>>().iter(world).count()
+}
+
+/// News ticks along the timeline, redrawn as a live game adds news. In a
+/// sandbox each thing done by hand has a tick of its own in the hand's ink,
+/// half as tall again as the tallest of the news and drawn over them.
+fn timeline_ticks(mut commands: Commands, data: Res<Data>, sandbox: Option<Res<crate::sandbox::Sandbox>>, layer: Query<(Entity, Option<&Children>), With<TickLayer>>, mut drawn: Local<Option<(usize, usize)>>) {
     let _frames = crate::frames::span(crate::frames::Sys::Hud);
     let r = &data.r;
     // chronicle: the marks of news already drawn can change, so the count of major items is part of the key
@@ -983,14 +1057,25 @@ fn timeline_ticks(mut commands: Commands, data: Res<Data>, layer: Query<(Entity,
         }
     }
     let span = (r.ny.max(2) - 1) as f32;
+    // where the knob stands when the clock is on the item's date (`clock::news_time`)
+    let at = |year: f32| ((year - r.y0 as f32 - 1.0) / span * 100.0).clamp(0.0, 100.0);
+    // (a recording or a family game has no hand: what it has of kind "hand" is news like any other)
+    let by_hand = |e: &&crate::replay::Event| sandbox.is_some() && e.kind == "hand";
     commands.entity(e).with_children(|track| {
-        for e in r.header.events.iter().filter(|e| e.major()) {
-            // where the knob stands when the clock is on the item's date (`clock::news_time`)
-            let x = ((e.year - r.y0 as f32 - 1.0) / span * 100.0).clamp(0.0, 100.0);
-            let h = 6.0 + 10.0 * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
+        for e in r.header.events.iter().filter(|e| e.major() && !by_hand(e)) {
+            let h = 6.0 + (NEWS_TICK_TALLEST - 6.0) * ((e.weight - 0.6) / 0.4).clamp(0.0, 1.0);
             track.spawn((
-                Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
+                Node { position_type: PositionType::Absolute, left: Val::Percent(at(e.year)), top: Val::Px(16.0 - h), width: Val::Px(2.0), height: Val::Px(h), border_radius: BorderRadius::all(Val::Px(1.0)), ..default() },
                 BackgroundColor(kind_colour(&e.kind).with_alpha(0.8)),
+            ));
+        }
+        // the hand's, after the news so that they stand over it
+        let h = NEWS_TICK_TALLEST * 1.5;
+        for e in r.header.events.iter().filter(by_hand) {
+            track.spawn((
+                HandTick,
+                Node { position_type: PositionType::Absolute, left: Val::Percent(at(e.year)), top: Val::Px(16.0 - h), width: Val::Px(3.0), height: Val::Px(h), margin: UiRect::left(Val::Px(-0.5)), border_radius: BorderRadius::all(Val::Px(1.5)), ..default() },
+                BackgroundColor(crate::sandbox::HAND_INK),
             ));
         }
     });
