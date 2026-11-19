@@ -1063,3 +1063,98 @@ fn a_game_on_the_new_land_has_its_land_and_is_kept_only_where_a_file_is_named() 
     assert_ne!(c.r.terrain, copy.terrain, "the old island is another island");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_work_charts_hold_what_the_core_kept() {
+    // The Markets panel's Work half (work_charts.rs) holds what the core kept, year by
+    // year: island 7, six families, a game to 2050 begun as a sandbox is (`Game::under_to`
+    // under the game's rules), its years taken in by a `Board` as a game gone on with from
+    // a save takes them in, to the end of the year after the hoist is found. In every
+    // year, each of the viewer's own rows and each series the charts read holds the core's
+    // figure from the game's own state, to the bit in every month, and the charts' year
+    // figures (an f32 mean of the months) to a millionth; hauling by machine is above
+    // nothing in the last year. Played under the game's rules with the books, the gauges,
+    // the owners and the machines for tasks (and their land) on, which it says by name.
+    use crate::work_charts::{charts, MACHINE_ROWS, OWNED_ROWS};
+    let t0 = std::time::Instant::now();
+    let mut game = Game::under_to(iso::params::Rules::Game, 7, 6, 0, 2050).unwrap();
+    let p = &game.sim.params;
+    assert!(p.accounts.enabled && p.gauges.enabled && p.owners.enabled && p.tasks.enabled && p.tasks.land, "the case is played with the books, gauges, owners and tasks on");
+    let hoist = game.sim.content.tasks.uses.iter().position(|u| u.name == "hoist").expect("the hoist is a machine for a task");
+    let mut board = Board::new(&game.sim);
+    let ratio = |a: f64, b: f64| if b.abs() > 1e-12 { a / b } else { f64::NAN };
+    let mut until = None;
+    let mut last_haul;
+    loop {
+        game.year().unwrap();
+        board.year(&game.sim);
+        game.turn();
+        let (st, y0) = (&game.sim.st, game.sim.content.start_year);
+        let y = game.last_year();
+        let k = (y - y0) as usize;
+        let r = &board.r;
+        // every month of the year holds the core's figure, as an f32, to the bit
+        let row = |name: &str, want: f64| {
+            let i = r.series_names.iter().position(|s| s == name).unwrap_or_else(|| panic!("{y}: no row {name}"));
+            for t in k * 12..(k + 1) * 12 {
+                let x = r.series[i * r.series_len + t];
+                assert_eq!(x.to_bits(), (want as f32).to_bits(), "{y}: {name} in month {t}: {x} against the core's {want}");
+            }
+        };
+        let t = st.tasks.years.iter().find(|x| x.year == y).expect("the year's machines");
+        let by_machine = |j: usize| ratio(t.held[j] + t.land_held.iter().map(|s| s[j]).sum::<f64>(), t.work[j] + t.land_work.iter().map(|s| s[j]).sum::<f64>());
+        for (j, name) in MACHINE_ROWS.iter().enumerate() {
+            row(name, by_machine(j));
+        }
+        last_haul = by_machine(0);
+        let o = st.owners.years.iter().find(|x| x.year == y).expect("the year's owners");
+        for (i, name) in OWNED_ROWS.iter().enumerate() {
+            row(name, ratio(o.book[i], o.book.iter().sum()));
+        }
+        let a = st.acct.years.iter().find(|x| x.year == y).expect("the year's books");
+        let g = st.gauges.years.iter().find(|x| x.year == y).expect("the year's gauges");
+        let read = [
+            ("acct_share_work", a.share_work),
+            ("gauge_work_net", g.work_net),
+            ("gauge_spend_work", g.spend_work),
+            ("acct_share_works", a.share_works),
+            ("acct_share_land", a.share_land),
+            ("acct_share_merchants", a.share_merchants),
+            ("gauge_fork_made", g.fork_made),
+            ("gauge_fork_raw", g.fork_raw),
+            ("gauge_fork_all", g.fork_all),
+        ];
+        for (name, v) in read {
+            row(name, v);
+        }
+        // the chained wage is a monthly series: each month as the core holds it
+        let s = st.series.index["real_wage_chained"];
+        let i = r.series_names.iter().position(|n| n == "real_wage_chained").unwrap();
+        for t in k * 12..(k + 1) * 12 {
+            assert_eq!(r.series[i * r.series_len + t].to_bits(), (st.series.data[s][t] as f32).to_bits(), "{y}: the chained wage in month {t}");
+        }
+        // and the charts' figures for the year are the core's
+        let plans = charts(r, k);
+        let wage = iso::observer::annual(&st.series.data[s], y0, y) / iso::observer::annual(&st.series.data[s], y0, y0);
+        let near = |x: f32, want: f64, tol: f64, what: &str| assert!((x.is_nan() && want.is_nan()) || (x as f64 - want).abs() <= tol * want.abs().max(1.0), "{y}: {what}: the chart has {x}, the core {want}");
+        near(plans[0].lines[0].vals[k], wage, 1e-5, "what a wage buys");
+        for (p, names) in [(1, [0, 1, 2]), (3, [3, 4, 5]), (5, [6, 7, 8])] {
+            for (l, &j) in names.iter().enumerate() {
+                near(plans[p].lines[l].vals[k], read[j].1, 1e-6, read[j].0);
+            }
+        }
+        for j in 0..4 {
+            near(plans[2].lines[j].vals[k], by_machine(j), 1e-6, MACHINE_ROWS[j]);
+        }
+        if until.is_none() && st.tasks.found[hoist] >= 0 {
+            until = Some(st.tasks.found[hoist] + 1);
+            eprintln!("the hoist was found in {}", st.tasks.found[hoist]);
+        }
+        if until == Some(y) || game.over() {
+            break;
+        }
+    }
+    assert!(until.is_some(), "the hoist was never found");
+    assert!(last_haul > 0.0, "hauling by machine in {}: {last_haul}", game.last_year());
+    eprintln!("the work charts held the core's figures to the end of {}, hauling by machine {:.4} then; {:.1} s", game.last_year(), last_haul, t0.elapsed().as_secs_f32());
+}
