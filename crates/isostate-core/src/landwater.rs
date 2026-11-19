@@ -894,8 +894,10 @@ pub struct Shape {
     /// chords over pieces of the channel 30 widths long).
     pub channel: f64,
     pub valley: f64,
-    /// Each bend between two inflections: its tightest radius of curvature.
+    /// Each bend between two inflections: its tightest radius of curvature,
+    /// and where that is.
     pub radius: Vec<f64>,
+    pub apex: Vec<(f64, f64)>,
     /// Each pair of bends: the straight distance from the first's start to the second's end.
     pub wavelength: Vec<f64>,
     /// Places where the channel comes back within two widths of itself after
@@ -912,6 +914,7 @@ impl Shape {
         self.channel += o.channel;
         self.valley += o.valley;
         self.radius.extend_from_slice(&o.radius);
+        self.apex.extend_from_slice(&o.apex);
         self.wavelength.extend_from_slice(&o.wavelength);
         self.necks += o.necks;
     }
@@ -1012,8 +1015,9 @@ fn stretch_shape(pts: &[(f64, f64)], width: &[f64]) -> Shape {
         }
     }
     for j in 1..infl.len() {
-        let tight = kw[infl[j - 1]..infl[j]].iter().map(|v| v.abs()).fold(0.0, f64::max);
-        s.radius.push(1.0 / tight.max(1e-9));
+        let at = (infl[j - 1]..infl[j]).max_by(|&a, &b| kw[a].abs().total_cmp(&kw[b].abs())).unwrap_or(infl[j]);
+        s.radius.push(1.0 / kw[at].abs().max(1e-9));
+        s.apex.push(p[at]);
         if j >= 2 {
             let (a, b) = (p[infl[j - 2]], p[infl[j]]);
             let wm = w[infl[j - 2]..=infl[j]].iter().sum::<f64>() / (infl[j] - infl[j - 2] + 1) as f64;
