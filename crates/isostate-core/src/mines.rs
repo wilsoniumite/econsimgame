@@ -393,27 +393,32 @@ pub fn review(st: &mut State, C: &Content, P: &Params, year: i64, pbar: &Mat, wb
             H,
             W,
         };
-        let mut per_town: Vec<Option<(f64, f64, f64, f64)>> = vec![None; T];
+        let mut per_town: Vec<Option<(f64, f64, f64, f64, f64)>> = vec![None; T];
         for h in 0..N {
             // nobody sinks on a taken cell; a pit head that stands on one is reckoned as any other
             if st.catch[h] < 0 || !st.world.land[h] || st.urban[h] || (taken[h] && st.mine_opened[r * N + h] == 0) {
                 continue;
             }
             let t = st.catch[h] as usize;
-            let (A, in_unit, p, w) = match per_town[t] {
+            let (A, in_unit, p, w, cl) = match per_town[t] {
                 Some(v) => v,
                 None => {
                     let (mult, _, _, in_unit) = sector_tfp(st, C, P, s, t, pbar, &st.fill);
                     let w = if wbar[t] > 0.0 { wbar[t] } else if st.wage[t] > 0.0 { st.wage[t] } else { w_mean };
+                    // tasks (docs/rules/tasks.md, "On the land"): a working hires its
+                    // hands and machine units at the cost of an hour's work, where
+                    // machines hold part of it (the wage itself where none does);
+                    // its royalty is still counted in wages
+                    let cl = crate::tasks::land_cost(st, C, P, t, s, w, &|g| pbar[(t, g)]);
                     let p = if pbar[(t, g)] > 0.0 { pbar[(t, g)] } else { st.price[(t, g)] };
-                    let v = (C.sector_A[s] * mult, in_unit, p, w);
+                    let v = (C.sector_A[s] * mult, in_unit, p, w, cl);
                     per_town[t] = Some(v);
                     v
                 }
             };
             let npr = p - crate::longrun::freight(st, P) * C.weight[g] * st.dcatch[h] - in_unit;
             if npr > 0.0 && w > 0.0 {
-                y.k[h] = a * ((1.0 - a) / w).powf((1.0 - a) / a) * (A * npr).powf(1.0 / a);
+                y.k[h] = a * ((1.0 - a) / cl).powf((1.0 - a) / a) * (A * npr).powf(1.0 / a);
                 y.npr[h] = npr;
                 y.p[h] = p;
                 y.w[h] = w;

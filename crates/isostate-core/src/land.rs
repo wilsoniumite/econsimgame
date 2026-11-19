@@ -145,7 +145,9 @@ pub fn sector_bids(st: &State, C: &Content, P: &Params, pbar: &Mat, wbar: &[f64]
                 Some(v) => v,
                 None => {
                     let (mult, _, _, in_unit) = sector_tfp(st, C, P, s, t, pbar, &st.fill);
-                    let w = wbar[t].max(1e-6);
+                    // tasks (docs/rules/tasks.md, "On the land"): the cost of an hour's
+                    // work, hands and machine units, where machines hold part of it
+                    let w = crate::tasks::land_cost(st, C, P, t, s, wbar[t], &|g| pbar[(t, g)]).max(1e-6);
                     let v = (C.sector_A[s] * mult, in_unit, a * ((1.0 - a) / w).powf((1.0 - a) / a));
                     per_town[t] = Some(v);
                     v

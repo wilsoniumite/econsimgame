@@ -603,6 +603,9 @@ pub struct Month<'a> {
     pub cart_ex: &'a [f64],
     pub mach_got: &'a [f64],
     pub rail_got: &'a [f64],
+    /// What the land's machines for tasks got, by town and sector (`t * NS +
+    /// s`) and good (`tasks`; None while none is in use).
+    pub land_tasks: Option<&'a Mat>,
     /// The land's rents as `econ::pay_cell_rents` was handed them: the town each
     /// was paid in, the cell it was paid to, the amount. Unit by unit (`et`,
     /// `ex`, `rent_ex`), or under `mines` with each working's royalty split
@@ -934,7 +937,18 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
             let (out, hands, cart) = (r[0], r[1], r[2]);
             let value = p[(t, C.sector_good[s])] * out;
             let wages = m.w[t] * hands;
-            let inputs = r[3] * p[(t, gm)] + r[4] * p[(t, gr)];
+            let mut inputs = r[3] * p[(t, gm)] + r[4] * p[(t, gr)];
+            // tasks (docs/rules/tasks.md, "On the land"): what the sector's machines
+            // for tasks got, run goods and plant alike, bought out of its revenue
+            if let Some(got) = m.land_tasks {
+                for g in 0..G {
+                    let x = got[(t * NS + s, g)];
+                    if x != 0.0 {
+                        inputs += x * p[(t, g)];
+                        a.goods[(t * G + g) * KG + G_LAND] += x;
+                    }
+                }
+            }
             let rent = value * (1.0 - spread) - cart - wages - inputs;
             let l = &mut a.land[(t * NS + s) * KL..][..KL];
             l[L_OUT] += out;
