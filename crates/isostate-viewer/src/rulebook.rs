@@ -38,7 +38,7 @@ use serde_json::Value;
 use crate::family::chip_button;
 use crate::game::Game;
 use crate::live::{Cmd, Live, RulesNow};
-use crate::sandbox::HAND_INK;
+use crate::sandbox::{BUSY, HAND_INK, PAST};
 use crate::ui::{text, UiState, BTN, INK, MUTED, RULE};
 use crate::{clock, Data, Timeline, Toasts};
 
@@ -82,9 +82,15 @@ impl Known {
     }
 
     /// The name and label of each method and technique not yet found, as of the last answer.
-    #[allow(dead_code)]
     pub fn unfound(&self) -> &[(String, String)] {
         self.now.as_ref().map_or(&[], |n| &n.unfound)
+    }
+
+    /// Ask the game's thread for the rules (the tray's Idea asks for its list
+    /// here, so that a script's `settle` waits for the answer as it does for the tab's).
+    pub fn ask(&mut self, live: &Live) {
+        live.send(Cmd::Rules);
+        self.out = true;
     }
 
     pub fn entry(&self, name: &str) -> Option<&Entry> {
@@ -146,19 +152,13 @@ fn ask(live: Res<Live>, game: Res<Game>, mut known: ResMut<Known>, mut ui: ResMu
     }
     if *asked != Some(game.answered) {
         *asked = Some(game.answered);
-        live.send(Cmd::Rules);
-        known.out = true;
+        known.ask(&live);
     }
     if *drawn != known.version {
         *drawn = known.version;
         ui.dirty += 1;
     }
 }
-
-/// The tray's refusals, in its own words (`sandbox::use_tool`): the hand works
-/// only in the present, and one thing at a time.
-pub const PAST: &str = "The hand works only in the present: this is a year gone by, and nothing was changed.";
-pub const BUSY: &str = "The simulation is busy (a year turning, a run on, or an edit still out): nothing was changed. Try again in a moment.";
 
 /// A rule's name pressed opens it (or closes it); a chip pressed sends its edit.
 #[allow(clippy::too_many_arguments)]

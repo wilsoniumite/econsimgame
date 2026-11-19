@@ -17,6 +17,15 @@
 //! From stage 4 a press on the timeline ahead of the present, and a script's
 //! `goto:YEAR`, run on in the same way to the January of that year (`run_to`),
 //! and the tools' chips carry an icon before the word (`tool_chip`).
+//!
+//! From stage 6 two tools more. Idea (the lamp) offers the methods and
+//! techniques not yet found on the island, asked of the game's thread with
+//! the rules (`Cmd::Rules`, kept in `rulebook::Known`) when the tool is taken
+//! up, after each of its edits and as each year comes; a click finds the one
+//! chosen in the town clicked (`Edit::Discover`). Town (the market cross)
+//! orders a town on the square clicked, founded at the year's end
+//! (`Edit::FoundTown`), and is put down once the order is taken, since one
+//! founding waits for each year's end.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
@@ -31,13 +40,19 @@ use crate::family::chip_button;
 use crate::game::Game;
 use crate::icons::{icon, Icons};
 use crate::live::{Cmd, Live};
+use crate::rulebook::Known;
 use crate::ui::{card, text, BTN, INK, MUTED};
 use crate::{clock, Data, Pick, Picked, Timeline, Toasts, UiFont};
 
 /// The hand's ink, the blue-black of a pen (section 4.1).
 pub const HAND_INK: Color = Color::srgb(0.13, 0.24, 0.45);
 
-/// The tools of stage 1, in the tray's order.
+/// The hand's two refusals before anything is sent, the tray's and the Rules
+/// tab's alike: it works only in the present, and one thing at a time.
+pub const PAST: &str = "The hand works only in the present: this is a year gone by, and nothing was changed.";
+pub const BUSY: &str = "The simulation is busy (a year turning, a run on, or an edit still out): nothing was changed. Try again in a moment.";
+
+/// The tools, in the tray's order.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Tool {
     #[default]
@@ -45,10 +60,12 @@ pub enum Tool {
     Money,
     People,
     Harvest,
+    Idea,
+    Town,
 }
 
 impl Tool {
-    const ALL: [Tool; 4] = [Tool::Look, Tool::Money, Tool::People, Tool::Harvest];
+    const ALL: [Tool; 6] = [Tool::Look, Tool::Money, Tool::People, Tool::Harvest, Tool::Idea, Tool::Town];
 
     fn word(self) -> &'static str {
         match self {
@@ -56,16 +73,20 @@ impl Tool {
             Tool::Money => "Money",
             Tool::People => "People",
             Tool::Harvest => "Harvest",
+            Tool::Idea => "Idea",
+            Tool::Town => "Town",
         }
     }
 
     /// The rows of choices, in the words of section 4.3: scripts click by them.
+    /// (Idea's one row is the ideas not yet found, as the game's thread tells them.)
     fn rows(self) -> &'static [&'static [&'static str]] {
         match self {
-            Tool::Look => &[],
+            Tool::Look | Tool::Idea => &[],
             Tool::Money => &[&["Households", "Landlords", "Merchants"], &["This town", "Every town"], &["A tenth more", "Half as much again", "Double", "A tenth less", "Halved"]],
             Tool::People => &[&["A tenth more", "Half as many again", "A tenth fewer", "Halved"]],
             Tool::Harvest => &[&["This district", "The whole island"], &["A poor year", "A failure", "A bumper year"]],
+            Tool::Town => &[&["Found a town here"]],
         }
     }
 
@@ -81,6 +102,8 @@ impl Tool {
             Tool::Money => (&icons.coin, true),
             Tool::People => (&icons.people, false),
             Tool::Harvest => (&icons.sheaf, false),
+            Tool::Idea => (&icons.lamp, false),
+            Tool::Town => (&icons.cross, false),
         }
     }
 }
@@ -122,12 +145,22 @@ struct RunOn {
 pub struct Sandbox {
     pub tool: Tool,
     /// the chip chosen in each row of each tool's choices
-    choice: [[usize; 3]; 4],
+    choice: [[usize; 3]; 6],
     run: Option<RunOn>,
     /// the last click seen (`Picked::stamp`)
     stamp: Option<u32>,
-    /// an edit is out, and its answer goes up as a toast when it comes
-    waiting: bool,
+    /// an edit is out, made with this tool, and its answer goes up as a toast when it comes
+    sent: Option<Tool>,
+    /// the ideas not yet found (name and label), as the game's thread last told
+    /// them; none while they are asked for afresh (the tool just taken up, or an
+    /// idea just found by hand)
+    ideas: Option<Vec<(String, String)>>,
+    /// the idea chosen, by its name (`Content::tech_name`)
+    idea: Option<String>,
+    /// the newest year when the ideas were last asked for; none when they are to be asked again
+    ideas_at: Option<usize>,
+    /// the ideas are asked for, and the answer has not come
+    asking: bool,
     /// raised whenever the tray is to be drawn again
     version: u64,
     drawn: Option<u64>,
@@ -200,8 +233,9 @@ impl Sandbox {
         self.choice[tool.index()][row]
     }
 
-    /// The edit a click on `town` makes with the tool in hand, or why there is none.
-    fn edit(&self, town: Option<usize>) -> Result<Edit, &'static str> {
+    /// The edit a click on `what` makes with the tool in hand, or why there is
+    /// none; `town` is the town the click is on (`town_of`).
+    fn edit(&self, town: Option<usize>, what: Option<Pick>) -> Result<Edit, &'static str> {
         let c = self.choice[self.tool.index()];
         let at = |every: bool| if every { Ok(None) } else { town.map(Some).ok_or("Click a town, or a square or works in a town's district.") };
         match self.tool {
@@ -212,6 +246,38 @@ impl Sandbox {
             }
             Tool::People => Ok(Edit::People { town: at(false)?.unwrap_or(0), factor: PEOPLE_FACTORS[c[0]] }),
             Tool::Harvest => Ok(Edit::Harvest { town: at(c[0] == 1)?, factor: HARVEST_FACTORS[c[1]] }),
+            Tool::Idea => {
+                if self.ideas.is_none() {
+                    return Err("The ideas not yet found are still being asked for: nothing was changed. Try again in a moment.");
+                }
+                let Some(tech) = self.idea.clone() else { return Err("Choose an idea first: the chips are the methods and techniques not yet found.") };
+                Ok(Edit::Discover { tech, town: at(false)?.unwrap_or(0) })
+            }
+            Tool::Town => match what {
+                Some(Pick::Cell(cell)) => Ok(Edit::FoundTown { cell }),
+                Some(Pick::Town(_)) => Err("Click open land, not a town."),
+                Some(Pick::Firm(_)) => Err("Click open land, not a works."),
+                None => Err("Click a square of land in a town's district."),
+            },
+        }
+    }
+
+    /// The label of the idea chosen, while it is among those not yet found.
+    fn idea_label(&self) -> Option<&str> {
+        let name = self.idea.as_deref()?;
+        self.ideas.as_ref()?.iter().find(|(n, _)| n == name).map(|(_, label)| label.as_str())
+    }
+
+    /// Keep the ideas not yet found, as the game's thread told them: the idea
+    /// chosen is let go when it is no longer among them (found by hand or by the
+    /// island), and the tray is drawn again when the list differs.
+    fn keep_ideas(&mut self, list: Vec<(String, String)>) {
+        if self.idea.as_ref().is_some_and(|i| !list.iter().any(|(n, _)| n == i)) {
+            self.idea = None;
+        }
+        if self.ideas.as_ref() != Some(&list) {
+            self.ideas = Some(list);
+            self.version += 1;
         }
     }
 
@@ -239,6 +305,12 @@ impl Sandbox {
                     format!("Click anywhere in a town's district: the rest of this year's crop there is {}.", HARVEST_WORDS[c[1]])
                 }
             }
+            Tool::Idea => match (self.idea_label(), &self.ideas) {
+                (Some(label), _) => format!("Click a town, or anywhere in its district: {label} is found there, and spreads from it as any idea does."),
+                (None, Some(list)) if list.is_empty() => "Every method and technique has been found on the island: there is nothing left to find by hand.".to_string(),
+                _ => "Choose an idea, then click a town, or anywhere in its district: it is found there, and spreads from it as any idea does.".to_string(),
+            },
+            Tool::Town => "Click a square of land in a town's district: a town is founded on it at the year's end, if the founding rule allows it there.".to_string(),
         }
     }
 }
@@ -261,6 +333,9 @@ struct ChoiceChip {
 }
 #[derive(Component)]
 struct RunOnChip(usize);
+/// An idea's chip: its name (`Content::tech_name`); the chip carries its label.
+#[derive(Component)]
+struct IdeaChip(String);
 
 pub fn plugin(app: &mut App) {
     app.add_systems(PostStartup, setup.run_if(resource_exists::<Sandbox>)).add_systems(
@@ -271,6 +346,7 @@ pub fn plugin(app: &mut App) {
             // (the answer is read in the frame it comes, before a question about the clicked
             // square, asked again after any order, puts the note of it away)
             answers.after(crate::game::pump).before(crate::game::ask_site),
+            ideas,
             run_on.after(crate::time_input),
             draw_tray,
         )
@@ -303,6 +379,7 @@ fn setup(mut commands: Commands) {
 fn tray_clicks(
     tools: Query<(&Interaction, &ToolChip), Changed<Interaction>>,
     choices: Query<(&Interaction, &ChoiceChip), Changed<Interaction>>,
+    idea_chips: Query<(&Interaction, &IdeaChip), Changed<Interaction>>,
     runs: Query<(&Interaction, &RunOnChip), Changed<Interaction>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut sb: ResMut<Sandbox>,
@@ -313,6 +390,10 @@ fn tray_clicks(
 ) {
     for (i, t) in &tools {
         if *i == Interaction::Pressed {
+            if t.0 == Tool::Idea && sb.tool != Tool::Idea {
+                // taken up: the ideas are asked for afresh, and the row waits for them
+                (sb.ideas, sb.ideas_at) = (None, None);
+            }
             sb.tool = t.0;
             sb.version += 1;
         }
@@ -321,6 +402,12 @@ fn tray_clicks(
         if *i == Interaction::Pressed {
             let tool = sb.tool.index();
             sb.choice[tool][c.row] = c.index;
+            sb.version += 1;
+        }
+    }
+    for (i, c) in &idea_chips {
+        if *i == Interaction::Pressed {
+            sb.idea = Some(c.0.clone());
             sb.version += 1;
         }
     }
@@ -372,14 +459,14 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
     let say = |toasts: &mut Toasts, line: &str| toasts.say("orders_refused", line, "By hand", now);
     // the hand works only in the present, and one thing at a time
     if (tl.t.floor() as usize) < latest || data.r.filled >= data.r.ny {
-        say(&mut toasts, "The hand works only in the present: this is a year gone by, and nothing was changed.");
+        say(&mut toasts, PAST);
         return;
     }
     if game.busy || live.turning() || sb.run.is_some() {
-        say(&mut toasts, "The simulation is busy (a year turning, a run on, or an edit still out): nothing was changed. Try again in a moment.");
+        say(&mut toasts, BUSY);
         return;
     }
-    let edit = match sb.edit(town_of(&data, picked.what, latest)) {
+    let edit = match sb.edit(town_of(&data, picked.what, latest), picked.what) {
         Ok(e) => e,
         Err(why) => {
             say(&mut toasts, why);
@@ -389,21 +476,71 @@ fn use_tool(mut sb: ResMut<Sandbox>, picked: Res<Picked>, tl: Res<Timeline>, dat
     live.send(Cmd::ByHand(edit));
     game.busy = true;
     game.note = None;
-    sb.waiting = true;
+    sb.sent = Some(sb.tool);
 }
 
 /// The edit's answer goes up as a toast: the line it wrote in the island's
-/// news, with the figure before and after, or why it was refused.
+/// news, with the figure before and after, or why it was refused. An idea's
+/// answer has the ideas asked for again; a town's puts the tool down.
 fn answers(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: Res<Live>, mut toasts: ResMut<Toasts>, time: Res<Time>) {
-    if !sb.waiting || game.busy {
+    let Some(tool) = sb.sent else { return };
+    if game.busy {
         return;
     }
-    sb.waiting = false;
+    sb.sent = None;
+    if tool == Tool::Idea {
+        (sb.ideas, sb.ideas_at) = (None, None);
+        sb.version += 1;
+    }
     let when = clock::month_year(clock::date(data.r.y0, clock::at(data.latest(), live.months.min(11))));
     if let Some((ok, line)) = &game.note {
+        let mut when = when;
+        if *ok && tool == Tool::Town {
+            // the order is taken: one founding waits for each year's end, so the tool is put down
+            if let Some(january) = stands_from(line) {
+                // (said beside the date: the line itself stays the news's title, which the toasts
+                // match so that the news of it does not go up a second time)
+                when = format!("{when}: the town stands from January {january}");
+            }
+            if sb.tool == Tool::Town {
+                sb.tool = Tool::Look;
+                sb.version += 1;
+            }
+        }
         // (in the hand's ink and labelled "By hand", from stage 4)
         toasts.say(if *ok { "hand" } else { "orders_refused" }, line, &when, time.elapsed_secs());
         println!("sandbox: {} {when}: {line}", if *ok { "by hand," } else { "refused," });
+    }
+}
+
+/// The January a town ordered by hand stands from: the year after the one its
+/// order names ("... at the end of 1791").
+fn stands_from(line: &str) -> Option<i32> {
+    line.rsplit_once("at the end of ").and_then(|(_, y)| y.trim().parse::<i32>().ok()).map(|y| y + 1)
+}
+
+/// With Idea in hand, the ideas not yet found are asked of the game's thread
+/// when the tool is taken up, after each of its edits and as each year comes
+/// (never during a run on, nor while the year turns); the answer is kept, and
+/// printed once as it comes: `sandbox: not yet found: label, label, ...`.
+fn ideas(mut sb: ResMut<Sandbox>, known: Option<ResMut<Known>>, live: Res<Live>, data: Res<Data>, game: Res<Game>) {
+    let Some(mut known) = known else { return };
+    if sb.asking {
+        if known.out() {
+            return;
+        }
+        sb.asking = false;
+        let list = known.unfound().to_vec();
+        let labels: Vec<&str> = list.iter().map(|(_, label)| label.as_str()).collect();
+        println!("sandbox: not yet found: {}", if labels.is_empty() { "nothing".to_string() } else { labels.join(", ") });
+        sb.keep_ideas(list);
+        return;
+    }
+    let latest = data.latest();
+    if sb.tool == Tool::Idea && sb.ideas_at != Some(latest) && sb.run.is_none() && !game.busy && !live.turning() {
+        sb.ideas_at = Some(latest);
+        sb.asking = true;
+        known.ask(&live);
     }
 }
 
@@ -559,6 +696,19 @@ fn choices(p: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
         ..default()
     }))
     .with_children(|c| {
+        if sb.tool == Tool::Idea {
+            // one row of the ideas not yet found, by their labels, wrapping; "asking..." until they come
+            chip_row(c, |row| match &sb.ideas {
+                None => {
+                    row.spawn(text(f, "asking...", 12.5, MUTED));
+                }
+                Some(list) => {
+                    for (name, label) in list {
+                        chip_button(row, f, label, sb.idea.as_deref() == Some(name.as_str()), HAND_INK, IdeaChip(name.clone()));
+                    }
+                }
+            });
+        }
         for (r, words) in sb.tool.rows().iter().enumerate() {
             chip_row(c, |row| {
                 for (i, w) in words.iter().enumerate() {
@@ -579,20 +729,48 @@ mod tests {
         let mut sb = Sandbox { tool: Tool::Harvest, ..default() };
         // this district, a failure: a click needs a town
         sb.choice[Tool::Harvest.index()] = [0, 1, 0];
-        assert_eq!(sb.edit(Some(4)), Ok(Edit::Harvest { town: Some(4), factor: 0.7 }));
-        assert!(sb.edit(None).is_err());
+        assert_eq!(sb.edit(Some(4), Some(Pick::Cell(900))), Ok(Edit::Harvest { town: Some(4), factor: 0.7 }));
+        assert!(sb.edit(None, None).is_err());
         assert!(sb.hint().contains("cut by three tenths"), "{}", sb.hint());
         // the whole island: any click will do
         sb.choice[Tool::Harvest.index()] = [1, 2, 0];
-        assert_eq!(sb.edit(None), Ok(Edit::Harvest { town: None, factor: 1.1 }));
+        assert_eq!(sb.edit(None, None), Ok(Edit::Harvest { town: None, factor: 1.1 }));
         sb.tool = Tool::Money;
         sb.choice[Tool::Money.index()] = [1, 1, 4];
-        assert_eq!(sb.edit(Some(2)), Ok(Edit::Money { purse: Purse::Landlords, town: None, factor: 0.5 }));
+        assert_eq!(sb.edit(Some(2), Some(Pick::Town(2))), Ok(Edit::Money { purse: Purse::Landlords, town: None, factor: 0.5 }));
         sb.tool = Tool::People;
         sb.choice[Tool::People.index()] = [3, 0, 0];
-        assert_eq!(sb.edit(Some(2)), Ok(Edit::People { town: 2, factor: 0.5 }));
-        assert!(sb.edit(None).is_err());
+        assert_eq!(sb.edit(Some(2), Some(Pick::Firm(7))), Ok(Edit::People { town: 2, factor: 0.5 }));
+        assert!(sb.edit(None, None).is_err());
         assert!(sb.hint().contains("inherit"));
+        // an idea: nothing while the list is asked for, nor before one is chosen
+        sb.tool = Tool::Idea;
+        assert!(sb.edit(Some(3), Some(Pick::Town(3))).is_err());
+        sb.keep_ideas(vec![("steel_rail".into(), "the steel rail".into()), ("dynamo".into(), "the dynamo".into())]);
+        assert!(sb.edit(Some(3), Some(Pick::Town(3))).unwrap_err().starts_with("Choose an idea"));
+        assert!(sb.hint().starts_with("Choose an idea"), "{}", sb.hint());
+        // the steel rail chosen: a click on a town, or a square or works in its district, finds it there
+        sb.idea = Some("steel_rail".into());
+        assert_eq!(sb.edit(Some(3), Some(Pick::Cell(4000))), Ok(Edit::Discover { tech: "steel_rail".into(), town: 3 }));
+        assert!(sb.edit(None, None).is_err());
+        assert_eq!(sb.hint(), "Click a town, or anywhere in its district: the steel rail is found there, and spreads from it as any idea does.");
+        // found, it leaves the list, and the choice is let go
+        let v = sb.version;
+        sb.keep_ideas(vec![("dynamo".into(), "the dynamo".into())]);
+        assert_eq!((sb.idea.clone(), sb.version), (None, v + 1));
+        sb.keep_ideas(vec![]);
+        assert!(sb.hint().contains("nothing left to find"), "{}", sb.hint());
+        // a town: a square makes the edit; a town and a works do not, and say so before anything is sent
+        sb.tool = Tool::Town;
+        assert_eq!(sb.edit(Some(1), Some(Pick::Cell(5123))), Ok(Edit::FoundTown { cell: 5123 }));
+        assert_eq!(sb.edit(Some(1), Some(Pick::Town(1))), Err("Click open land, not a town."));
+        assert_eq!(sb.edit(Some(1), Some(Pick::Firm(12))), Err("Click open land, not a works."));
+        assert!(sb.edit(None, None).is_err());
+        assert_eq!(Tool::Town.rows(), &[&["Found a town here"]]);
+        assert_eq!(stands_from("By hand: a town to be founded at 31, 40, in Melbourne's district, at the end of 1791"), Some(1792));
+        assert_eq!(stands_from("a town is already to be founded this year, at 31, 40"), None);
+        // the words scripts click by
+        assert_eq!(Tool::ALL.map(Tool::word), ["Look", "Money", "People", "Harvest", "Idea", "Town"]);
         // every row's chips have a factor and a word
         assert_eq!(Tool::Money.rows()[2].len(), MONEY_FACTORS.len());
         assert_eq!(Tool::People.rows()[0].len(), PEOPLE_FACTORS.len());
