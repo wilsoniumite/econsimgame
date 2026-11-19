@@ -390,10 +390,14 @@ fn no_station_no_drive() {
 /// when the month began; and a works founded after the find, which means to
 /// hold its town's target, works its first month by hand at its recipe and
 /// holds nothing then. Some of those come to hold part of their hauling once
-/// their plant is delivered.
+/// their plant is delivered. Played on the old island, with the land off: since
+/// the game's rules took the new land (docs/rules/land.md, "The switch") island 7
+/// is another island, which does not find both the drive and the hoist by the
+/// test's last year.
 #[test]
 fn machines_work_once_they_stand() {
-    let P = params(true);
+    let mut P = params(true);
+    P.land = Default::default();
     let mut s = sim::start(&P, content(&P));
     let mut fresh: Vec<usize> = Vec::new();
     let (mut first_months, mut came) = (0, 0);

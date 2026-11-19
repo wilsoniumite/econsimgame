@@ -468,6 +468,9 @@ pub fn maybe_check(r: &Replay, g: &Ground, cen: &[(f32, f32)]) -> bool {
     }
     for k in years {
         let t0 = std::time::Instant::now();
+        for line in network::water_check(r, g, cen, k) {
+            eprintln!("{line}");
+        }
         let c = check(r, g, cen, k);
         let at = |p: Vec2| format!("{:.2},{:.2}", p.x, p.y);
         eprintln!(
@@ -526,8 +529,12 @@ mod tests {
         // minute), with the tree's overlay at stage 1: the case was found on that island, and the
         // content after 1900 (docs/rules/tree.md, "After 1900: electricity") gives it another history,
         // on which in 1850 a cart rides 0.0011 off its road's surface at 53.46, 12.58 (a fault of the
-        // carts' drawing that history shows, listed for mending and not mended here)
-        let r = crate::live::played_at_stage(7, 6, 150, 1).expect("the game starts");
+        // carts' drawing that history shows, listed for mending and not mended here). And on the
+        // old island: since the game's rules took the new land (docs/rules/land.md, "The switch")
+        // island 7 is another island, on which in 1800 a cart rides 0.0024 off its road's surface at
+        // 60.99, 16.53 (a fault of the carts' drawing on the new land, in the faults' file for the
+        // round of mending, docs/backlog/for-the-bugfix-round.md, and not mended here)
+        let r = crate::live::played_at_stage(7, 6, 150, 1, true).expect("the game starts");
         let g = world::build_ground(&r);
         let cen = network::centres(&r);
         let mut crossed = 0;

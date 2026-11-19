@@ -110,6 +110,9 @@ fn at_stage_one_the_island_is_the_island_as_it_was() {
     // series of the woods' cover and timber's price are in the fingerprint, though they
     // touch nothing, and its invention is stage 6's
     P.woods = Default::default();
+    // and on the old island, which the fingerprint was taken on: since the game's rules
+    // took the new land (docs/rules/land.md, "The switch") island 7 is another island
+    P.land = Default::default();
     // and with the merchants' crumb off (docs/rules/prices.md, "A crumb is no glut"),
     // which came after and acts before 1900
     P.prices.crumb = 0.0;

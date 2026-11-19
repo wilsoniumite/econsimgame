@@ -43,8 +43,9 @@ fn sound(told: &Told, what: &str) {
         for (name, figure) in &g.rows {
             assert!(!name.trim().is_empty(), "{what}, {}: a row with no name ({figure})", g.name);
             assert!(!figure.trim().is_empty(), "{what}, {}: {name} has no figure", g.name);
-            for bad in ["NaN", "nan", "inf"] {
-                assert!(!figure.contains(bad), "{what}, {}: {name} reads {figure:?}", g.name);
+            // by words, not letters: a works may be "Tennant, Carpenter and Builder"
+            for word in figure.split(|c: char| !c.is_alphanumeric()) {
+                assert!(!["NaN", "nan", "inf"].contains(&word), "{what}, {}: {name} reads {figure:?}", g.name);
             }
         }
     }

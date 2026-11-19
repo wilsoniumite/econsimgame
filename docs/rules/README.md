@@ -35,6 +35,15 @@ In code, `Rules::Port` and `Rules::Game` name the two; `rules.params()` and
 laid over the chosen rules field by field, so a file that says only
 `canals = { cost = 0.2 }` keeps the rest of the game's canals.
 
+**Which island.** Under the port's rules a run is on the port's island.
+Under the game's rules it has been on the new land since 19 November 2026
+([land.md](land.md), "The switch"). The old island is reached by setting the
+land's switch off: `--set land.enabled=false` for `sweep` and `lab`, a
+parameters file that says `land = { enabled = false }` for `run`
+(`--params FILE`), `--old-land` for a
+new game in the viewer, and `save::Game::on_old_land` in code. A saved game
+says which land it is on.
+
 ## Adding a mechanism
 
 The pattern is the one the families set: off by default, on under the game's
@@ -262,7 +271,9 @@ optimised in the dev profile too (`Cargo.toml`).
 
 What it cannot see: another seed, another number of families, a player's
 orders (`tests/families.rs` and the viewer's `live_tests.rs` hold those), and
-the land, which is off in the game's rules for now. What it sees and cannot
+the old island, which the game's rules left on 19 November 2026 (seed 7 is
+on the new land since; `tests/save.rs` holds one saved game on the old
+island to the island it reached that day). What it sees and cannot
 explain is the order of the month: a hook moved across a read or a write of
 another fails it without saying why. That order is written down in the
 comment above `econ::step_month`: what is read from last month, the order the
@@ -794,7 +805,8 @@ One line each as they arrive: the name, its page, its switch.
   promoters dig where the carting saved pays: a layer of water over the map
   with wharves, locks that cost stone and navvies who are hands, until the
   railway takes the traffic. [canals.md](canals.md), `canals.enabled`.
-- **land** (off: the viewer cannot draw it yet): an island made by uplift
+- **land** (on since 19 November 2026; `land.enabled=false` for the old
+  island): an island made by uplift
   and erosion in place of the port's noise, with rain, lakes, the flow of
   every reach, river courses that meander and cut off, estuaries that carry
   boats to the sea, and resource fields that come from the land.

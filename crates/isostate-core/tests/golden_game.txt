@@ -15,16 +15,17 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: 1750-1900 and 1901-2050, all four in each: the merchants' crumb (a
-# stock under a hundredth of a works' month at capacity is no glut) acts in
-# the played century too, and from 1901 a works short of power idles its
-# machines and not itself, with the idling rule taken out
-# (docs/rules/tasks.md, A machine short of its run good)
-1750-1900 economy  0x32542d13a9d59398
-1750-1900 books    0x0d23676ac137c9ec
-1750-1900 news     0x16b5e31f3dcc95e3
-1750-1900 run.bin  0xfed3274ae91d1865
-1901-2050 economy  0x621d1e98662f7fec
-1901-2050 books    0xe914e863361a9419
-1901-2050 news     0x2b9e51573e612454
-1901-2050 run.bin  0x09d4883f3c57909d
+# Taken: on the batch night/g-batch-new-land-a, all four in both eras: the
+# new land (docs/rules/land.md, "The switch") became the game's default, so
+# seed 7 is the new land's island 7, and it is played with the merchants'
+# crumb and the machines idling short of their run good, which landed just
+# before (docs/rules/prices.md, docs/rules/tasks.md); ways-2-water is the
+# viewer's alone and moves none
+1750-1900 economy  0x6fc8102954909b73
+1750-1900 books    0x6eb41e73d1a3bad0
+1750-1900 news     0xdd7f28bb38e5f1c9
+1750-1900 run.bin  0x0a48fc9ffc8aaaef
+1901-2050 economy  0x6ee3c8927aaf4fc6
+1901-2050 books    0xcd264912df91b9c9
+1901-2050 news     0xccd01a15c6de0fbc
+1901-2050 run.bin  0xce62f15c135a9021

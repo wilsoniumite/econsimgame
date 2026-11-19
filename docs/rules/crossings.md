@@ -116,6 +116,67 @@ a ferry is a timber landing on each bank and the ferry's flat boat. A run
 that keeps no crossings (the old island, a recorded run made before this
 rule) is drawn as before.
 
+## Lakes and tideways
+
+The table of crossings knows rivers above the tide and nothing else: a
+river's line ends in its lake, and its lengths under the sea's level are
+left out. So where the way between two land cells runs over a lake that
+lies inside them (a ribbon lake is a share of its cells, not a cell of
+water) or over the tidewater of a drowned valley, the simulation carts over
+it at the cost of dry land, and holds no bridge, ford or ferry there. The
+picture used to leave such a road out altogether, and a town on a lake
+looked cut off from its neighbour. It now draws every road, and draws it
+honestly (the viewer's `network::route`, the second stage of "Ways"):
+
+- **Round by the shore.** Each stretch of a way over standing water is
+  replaced by the cheapest way between the dry ground before and after it,
+  over squares of 60 m covering the two cells and, for two cells side by
+  side, the cells beside them on either hand. A step costs its length,
+  thirty times that into water, four times on the beach or beside the
+  water, and a quarter more in a cell that is not one of the road's own
+  two; it may never cross a river's line, so the way round a lake crosses
+  no river the simulation has no crossing for. Then the way is drawn
+  straight wherever it can keep 40 m of dry ground either hand.
+- **Over on a causeway.** Where the cells hold no dry way round, the way
+  still crosses water, by the shortest crossing it can find, and a stone
+  causeway carries it at the water's surface, the lake's or the sea's.
+  These are a fault of the simulation, not of the picture: it carries a
+  road over water that no rule of its own has priced. They are counted,
+  and the worst named, below; a rule for them (a ferry, or a bridge at
+  the head of a tideway) is the core's to make.
+- **Nothing on open water.** Every point of every road stands on dry
+  ground, on a bridge or ford of the table, or on a causeway.
+
+`ISOSTATE_ROADS=1` prints, for 1800, 1850 and 1900, how many links the
+picture before left out, how many now go round and how much further, how
+many cross on a causeway and over what, and how many points of a road are
+left on standing water with nothing under them.
+
+Islands 1 to 8 on the new land under the game's rules with six families
+(`isostate-core run --rules game --families 6` with `land.enabled`, then
+`ISOSTATE_ROADS=1 isostate-viewer run.bin`), all eight added up:
+
+| | road links | left out before (main roads) | standing water on the way | go round (main) | on a causeway (main) | of those over a lake | on water with nothing under |
+|---|---|---|---|---|---|---|---|
+| 1800 | 10,778 | 367 (185) | 420 | 276 (124) | 144 (81) | 6 | 0 |
+| 1850 | 17,890 | 501 (245) | 572 | 392 (174) | 180 (99) | 10 | 0 |
+| 1900 | 38,205 | 936 (309) | 1,089 | 812 (255) | 277 (106) | 10 | 0 |
+
+(More links meet standing water than were left out: the picture before
+left a link out only where a tenth of a cell of it was under water, and
+drew the rest with a little causeway.) Three in four go round, on average
+half a cell (a kilometre) further, the longest 3.1 cells (island 4, by 11.4,38.9); one in four
+crosses on a causeway, nearly all of them over a tideway, the longest
+0.88 of a cell (1.8 km), across the waist of a lake on island 8 at
+39.6,58.7. A wider ground to go round on (every cell beside the two)
+turned 7 of island 7's 29 causeways of 1900 into ways round, and letting
+the way round cross rivers turned one; so it is the tideways' length, not
+the rivers, that leaves the causeways. Finding every way round takes 30 to
+70 ms a year (the eight islands' mean in 1800 and 1900), once: each is
+kept, and drawing the roads of a year takes as long as it did (island 7,
+`ISOSTATE_BENCH`: 145.0 ms before and 146.7 after for the fifteen years'
+networks).
+
 ## What it does to the island
 
 Islands 1 to 8 on the new land under the game's rules with six families, the
@@ -204,7 +265,8 @@ sweep against main's gives 0 of 942 facts different.
 - **A ferry is drawn but not run**: its landings and its boat stand there
   from 1750 to the year a bridge replaces it, and no boat crosses.
 - **The picture's other users read straight lines.** The ribbon, bridges,
-  fords, and the carts follow the way round a meander; the houses and fields
+  fords, causeways and the carts follow the way round a meander or a lake;
+  the houses and fields
   that keep off roads, the lanes, the carts' check (`carts::check`) and the
   railway's level crossings still read the straight line between the two
   middles. Some 5 per cent of the ways over water go round (74 to 99 an

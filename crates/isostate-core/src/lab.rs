@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
-//!                   [--seeds 1-8] [--rules port|game] [--families N] [--end-year Y]
+//!                   [--seeds 1-8] [--rules port|game] [--set NAME=VALUE]... [--families N] [--end-year Y]
 //!                   [--years 1850,1900,1950,2000,2050] [--facts NAME,...] [--jobs N] [--quiet]
 //! ```
 //!
@@ -21,6 +21,10 @@
 //!   given more than once. One of them may carry several values
 //!   (`tasks.dial=3,10,100@1950`), and then there is a treated arm for each.
 //!   A rule set from the very start is the sweep's (`sweep --set`), not the lab's.
+//! - `--set NAME=VALUE` sets one of the rules' numbers from the start, in
+//!   every arm, the control's too, as a sweep's `--set` with one value does:
+//!   `--set land.enabled=false` plays the islands on the port's island, which
+//!   the game's rules no longer do (docs/rules/land.md, "The switch").
 //! - `--edits FILE` reads a list of dated edits in the form `run --edits`
 //!   reads, and puts it in every treated arm, before the `--rule` edits.
 //! - The defaults are chosen for questions about work and machines: the game's
@@ -71,7 +75,7 @@ use crate::sim;
 use crate::sweep::{self, Done, Run, Setting, Side, Sweep};
 
 pub const USAGE: &str = "usage: isostate-core lab --out DIR [--rule NAME=V1[,V2...]@YEAR]... [--edits FILE.json]
-                         [--seeds 1-8] [--rules port|game] [--families N] [--end-year Y]
+                         [--seeds 1-8] [--rules port|game] [--set NAME=VALUE]... [--families N] [--end-year Y]
                          [--years 1850,1900,1950,2000,2050] [--facts NAME,...] [--jobs N] [--quiet]";
 
 /// The years the facts are read in, unless `--years` says otherwise (those of
@@ -112,6 +116,8 @@ pub struct Options {
     pub edits_file: Option<PathBuf>,
     pub seeds: Vec<u64>,
     pub rules: Rules,
+    /// `--set`: rules' numbers set from the start in every arm, as typed.
+    pub sets: Vec<(String, String)>,
     pub families: usize,
     pub end_year: i64,
     pub years: Option<Vec<i64>>,
@@ -217,6 +223,7 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
         edits_file: None,
         seeds: (1..=8).collect(),
         rules: Rules::Game,
+        sets: Vec::new(),
         families: 6,
         end_year: 2050,
         years: None,
@@ -235,6 +242,13 @@ pub fn parse_args(args: &[String]) -> Result<Options, String> {
             "--edits" => o.edits_file = Some(PathBuf::from(value("--edits")?)),
             "--seeds" => o.seeds = sweep::parse_seeds(&value("--seeds")?)?,
             "--rules" => o.rules = parse_rules(&value("--rules")?)?,
+            "--set" => {
+                let v = value("--set")?;
+                match v.split_once('=') {
+                    Some((key, one)) if !key.trim().is_empty() && !one.trim().is_empty() && !one.contains(',') => o.sets.push((key.trim().to_string(), one.trim().to_string())),
+                    _ => return Err(format!("--set {v:?}: write it as NAME=VALUE, one value (an arm for each of several values is --rule's)")),
+                }
+            }
             "--families" => o.families = value("--families")?.parse().map_err(|e| format!("--families: {e}"))?,
             "--end-year" => o.end_year = value("--end-year")?.parse().map_err(|e| format!("--end-year: {e}"))?,
             "--years" => o.years = Some(parse_years(&value("--years")?)?),
@@ -349,6 +363,9 @@ pub fn rows(asked: Option<&[String]>, years: &[i64]) -> Vec<Row> {
 /// command line. The edits file is read here.
 pub fn plan(o: &Options) -> Result<Plan, String> {
     let mut P = o.rules.params();
+    for (key, v) in &o.sets {
+        P = sweep::set_field(&P, key, &sweep::parse_value(v))?;
+    }
     P.n_families = o.families;
     P.end_year = Some(o.end_year);
     P.check()?;
@@ -720,6 +737,10 @@ fn readme(lab: &Lab, plan: &Plan, o: &Options, code: Option<&str>) -> String {
     let _ = writeln!(s, "A laboratory of Isolated State (isostate-core lab), {} (UTC).\n", crate::record::today());
     let _ = writeln!(s, "command:  {}", o.command);
     let _ = writeln!(s, "rules:    {}, {} families, {} to {}", o.rules.as_str(), o.families, plan.content.start_year, o.end_year);
+    if !o.sets.is_empty() {
+        let set: Vec<String> = o.sets.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        let _ = writeln!(s, "set:      {} (in every arm, from the start)", set.join(" "));
+    }
     let _ = writeln!(s, "code:     {}", code.map_or("unknown (git describe gave nothing)".to_string(), |c| format!("{c} (git describe where it was run)")));
     let _ = writeln!(s, "seeds:    {}", seeds.join(" "));
     let _ = writeln!(s, "runs:     {runs} ({failed} failed), {} at a time, {:.0} s in all", lab.jobs, lab.seconds);
