@@ -731,8 +731,8 @@ fn next_clicks(
 }
 
 /// The line under the date: what the clock is doing, and when an order given
-/// now would be carried out.
-fn step_note(live: Res<Live>, data: Res<Data>, tl: Res<Timeline>, mut q: Query<&mut Text, With<crate::ui::StepNote>>) {
+/// now would be carried out (in a sandbox, the month the hand acts in).
+fn step_note(live: Res<Live>, data: Res<Data>, tl: Res<Timeline>, sandbox: Option<Res<crate::sandbox::Sandbox>>, mut q: Query<&mut Text, With<crate::ui::StepNote>>) {
     let r = &data.r;
     let when = now(&tl, &data, &live);
     let s = if live.unsaved.is_some() {
@@ -750,6 +750,9 @@ fn step_note(live: Res<Live>, data: Res<Data>, tl: Res<Timeline>, mut q: Query<&
         "looking back".to_string()
     } else if live.at_turn() {
         "the year's turn".to_string()
+    } else if sandbox.is_some() {
+        // the month the simulation has reached, dated as an edit's answer is (sandbox.rs, `answers`)
+        format!("the hand acts in {}", clock::month_year(clock::date(r.y0, clock::at(data.latest(), live.months.min(11)))))
     } else {
         format!("orders wait for {}", turn_words(r.y0, data.latest()).1)
     };
