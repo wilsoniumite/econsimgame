@@ -3,7 +3,8 @@
 //! island's news of kind "hand". A row about a place is a button that takes
 //! the view there and opens the note about it, as a works in the holdings list
 //! does (`game::goto_clicks`), without counting as a click on the map, so that
-//! a tool in hand is not used by it.
+//! a tool in hand is not used by it. An edit's news comes with the next month
+//! or year; until then the line of its answer heads the list (`Pending`).
 //!
 //! `panel` is called by `ui::panel_rebuild` with `HandParams`, which this file
 //! owns: a later stage (the ledger at the foot, stage 5) adds what it needs to
@@ -17,9 +18,11 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
+use crate::game::Game;
+use crate::live::Live;
 use crate::replay::{Event, Replay};
 use crate::sandbox::HAND_INK;
-use crate::ui::{text, INK, MUTED, PAPER_2, RULE};
+use crate::ui::{text, UiState, INK, MUTED, PAPER_2, RULE};
 use crate::{clock, world, Data, Orbit, Pick, Picked};
 
 /// What the Hand tab reads beyond the run and the year on the clock.
@@ -27,6 +30,23 @@ use crate::{clock, world, Data, Orbit, Pick, Picked};
 pub struct HandParams<'w> {
     /// present in a sandbox; the tab is on the bar only there
     pub sandbox: Option<Res<'w, crate::sandbox::Sandbox>>,
+    /// edits done whose news has not come yet
+    pub pending: Option<Res<'w, Pending>>,
+}
+
+/// Edits the simulation has carried out whose news has not come yet. An
+/// edit's item of news reaches the viewer with the next month or year, but
+/// its row belongs at the head of the tab at once (section 4.4), so the line
+/// of its answer is listed until the news has it.
+#[derive(Resource, Default)]
+pub struct Pending {
+    /// the edit's date (as the news is dated), its line, and how many items of
+    /// the hand's news there will be once its own has come
+    rows: Vec<(f32, String, usize)>,
+    /// an order was out as the frame's messages were about to be read
+    out: bool,
+    /// the last answer taken
+    last: Option<String>,
 }
 
 /// A row of the Hand tab about a place: the square the news is about.
@@ -34,7 +54,47 @@ pub struct HandParams<'w> {
 pub struct HandRow(pub usize);
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Update, hand_clicks);
+    app.init_resource::<Pending>().add_systems(Update, hand_clicks).add_systems(
+        Update,
+        // (in the frame the answer comes, as the tray reads it, before a question about the
+        // clicked square puts the note away)
+        (order_out.before(crate::game::pump), catch_answers.after(crate::game::pump).before(crate::game::ask_site)).run_if(resource_exists::<crate::sandbox::Sandbox>).run_if(resource_exists::<Live>),
+    );
+}
+
+/// Whether an order is out before the frame's messages are read: an answer
+/// can come in the very next frame, so it is looked at on either side of them.
+fn order_out(mut pending: ResMut<Pending>, game: Res<Game>) {
+    pending.out = game.busy;
+}
+
+/// An edit's answer: its line is listed until its news comes, and the tab is
+/// drawn again either way. An answer is the game's note when an order that
+/// was out comes back done, and an edit's line begins "By hand".
+fn catch_answers(mut pending: ResMut<Pending>, game: Res<Game>, data: Res<Data>, live: Res<Live>, mut ui: ResMut<UiState>) {
+    let in_news = done_by_hand(&data.r).count();
+    let mut changed = false;
+    if pending.rows.iter().any(|row| in_news >= row.2) {
+        pending.rows.retain(|row| in_news < row.2);
+        changed = true;
+    }
+    // (an answer is taken when an order was out before the messages were read, or when its line
+    // is not the last one taken, which catches one sent and answered within a single frame)
+    if let (false, Some((true, line))) = (game.busy, &game.note) {
+        if line.starts_with("By hand") && (pending.out || pending.last.as_ref() != Some(line)) {
+            pending.last = Some(line.clone());
+            // dated as the core dates it: the middle of the month the simulation has reached
+            let when = clock::news_time(data.r.y0, clock::at(data.latest(), live.months.min(11))) + 0.5 / 12.0;
+            let n = in_news + pending.rows.len() + 1;
+            pending.rows.push((when, line.clone(), n));
+            changed = true;
+        }
+        // (taken once)
+        pending.out = false;
+    }
+    if changed {
+        ui.dirty += 1;
+    }
 }
 
 /// The news the hand left, newest first.
@@ -50,6 +110,14 @@ const NO_HAND: &str = "Nothing is done by hand in the family game: a sandbox, wh
 /// The Hand tab's body.
 pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, _k: usize, hand: &HandParams) {
     let mut shown = 0;
+    // edits done whose news is still to come, the newest first (they are newer than any news)
+    for (when, line, _) in hand.pending.iter().flat_map(|p| p.rows.iter().rev()) {
+        shown += 1;
+        p.spawn((Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() }, BorderColor::all(RULE))).with_children(|col| {
+            col.spawn(text(f, &clock::news_month(*when), 12.0, HAND_INK));
+            col.spawn(text(f, line, 15.0, INK));
+        });
+    }
     for e in done_by_hand(r) {
         shown += 1;
         let at = e.cell.and_then(|c| usize::try_from(c).ok()).filter(|&c| c < r.n);

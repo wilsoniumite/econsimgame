@@ -637,7 +637,9 @@ pub fn setup_hud(mut commands: Commands, font: Res<UiFont>, data: Res<Data>, fam
             HelpCard,
         ))
         .with_children(|wrap| {
-            wrap.spawn(card(Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(26.0), Val::Px(20.0)), row_gap: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() })).with_children(|c| {
+            // (a card is on layer 10 of its own, which would put it under the sandbox's tray and the
+            // toasts beside it; the help card is above them all)
+            wrap.spawn(card(Node { flex_direction: FlexDirection::Column, padding: UiRect::axes(Val::Px(26.0), Val::Px(20.0)), row_gap: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(18.0)), ..default() })).insert(GlobalZIndex(30)).with_children(|c| {
                 c.spawn((text(f, "How to look around", 22.0, INK), Node { margin: UiRect::bottom(Val::Px(6.0)), ..default() }));
                 if sandbox {
                     // what the tray is, in a few lines, before the keys
