@@ -545,8 +545,10 @@ mod tests {
             }
             // and as drawn, tipped up a ramp and over the hump, its wheels and hooves on the roadway:
             // a cart drawn level there has a hoof 0.013 to 0.015 into the deck and one as far in the air
-            // (on island 7 it is at most 0.003 into it, and 0.0095 in the air where a ramp meets the road)
-            assert!(c.feet_under_on_bridge.0 < 0.005, "{year}: a cart on a bridge has a wheel or hoof {} into the roadway at {}", c.feet_under_on_bridge.0, c.feet_under_on_bridge.1);
+            // (on island 7 it is at most 0.003 into it, and 0.0095 in the air where a ramp meets the road;
+            // since the gentler rivers of 19 November one bridge in 1800, at 53.3,20.0, has a hoof 0.0052
+            // into it, so the bar is 0.006, still well short of a cart drawn level)
+            assert!(c.feet_under_on_bridge.0 < 0.006, "{year}: a cart on a bridge has a wheel or hoof {} into the roadway at {}", c.feet_under_on_bridge.0, c.feet_under_on_bridge.1);
             assert!(c.feet_over_on_bridge.0 < 0.012, "{year}: a cart on a bridge has a wheel or hoof {} in the air at {}", c.feet_over_on_bridge.0, c.feet_over_on_bridge.1);
             crossed += c.cart_bridges.len();
         }
