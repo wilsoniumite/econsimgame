@@ -514,7 +514,7 @@ fn tool_chip(p: &mut ChildSpawnerCommands, f: &Handle<Font>, icons: &Icons, tool
     let (ic, own) = tool.icon(icons);
     let ink = if on { Color::WHITE } else { INK };
     e.with_children(|c| {
-        c.spawn(icon(ic, 14.0, if own { Color::WHITE } else { ink }));
+        c.spawn(icon(ic, 16.0, if own { Color::WHITE } else { ink }));
         c.spawn(text(f, tool.word(), 12.5, ink));
     });
 }
@@ -662,9 +662,10 @@ mod tests {
     }
 
     #[test]
-    fn four_tools_of_the_tray_go_in_one_row() {
-        // a chip of the tools is about 75 px wide with its icon: six to a row of the widest card
-        assert_eq!(chips_a_row(75.0), 6);
+    fn the_tray_holds_a_dozen_tools_in_two_rows() {
+        // the tools' chips with their icons were laid out 64 to 81 px wide, 74 on the mean
+        // (a scripted run's print): six of the mean to a row of the widest card, five of the widest
+        assert_eq!((chips_a_row(74.0), chips_a_row(81.0)), (6, 5));
         assert_eq!(chips_a_row(500.0), 0);
     }
 }

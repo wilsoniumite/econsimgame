@@ -202,28 +202,27 @@ fn almond(cx: f32, cy: f32, r: f32, off: f32) -> impl Fn(f32, f32) -> f32 {
 
 fn eye() -> Image {
     let mut c = Canvas::new();
-    // the lids as one line round an almond, the iris, and the pupil left open with a glint beside it
-    c.fill(&almond(0.5, 0.5, 0.56, 0.38), WHITE);
-    let inner = almond(0.5, 0.5, 0.56, 0.38);
-    c.erase(&move |x, y| inner(x, y) + 0.06);
-    c.fill(&circle(0.5, 0.5, 0.17), WHITE);
-    c.erase(&circle(0.5, 0.5, 0.065));
-    c.erase(&circle(0.43, 0.43, 0.03));
+    // an almond, solid so that it reads at the size of a chip's word, the white of the eye
+    // round the iris cut out of it, and the iris with a glint
+    c.fill(&almond(0.5, 0.5, 0.58, 0.4), WHITE);
+    c.erase(&circle(0.5, 0.5, 0.22));
+    c.fill(&circle(0.5, 0.5, 0.13), WHITE);
+    c.erase(&circle(0.455, 0.455, 0.04));
     c.image()
 }
 
 fn sheaf() -> Image {
     let mut c = Canvas::new();
     // a sheaf of corn: the stalks gathered at a band and spread above and below it, an ear on each
-    for i in -3..=3 {
+    for i in -2..=2 {
         let s = i as f32;
-        c.fill(&segment(0.5 + s * 0.02, 0.6, 0.5 + s * 0.065, 0.25, 0.018), WHITE);
-        c.fill(&segment(0.5 + s * 0.02, 0.6, 0.5 + s * 0.05, 0.93, 0.018), WHITE);
-        c.fill(&oval(0.5 + s * 0.07, 0.17, 0.032, 0.085), WHITE);
+        c.fill(&segment(0.5 + s * 0.03, 0.6, 0.5 + s * 0.09, 0.3, 0.035), WHITE);
+        c.fill(&segment(0.5 + s * 0.03, 0.6, 0.5 + s * 0.075, 0.93, 0.035), WHITE);
+        c.fill(&oval(0.5 + s * 0.1, 0.19, 0.05, 0.12), WHITE);
     }
     // the band, with a gap either side of it
-    c.erase(&rbox(0.5, 0.6, 0.2, 0.065, 0.03));
-    c.fill(&rbox(0.5, 0.6, 0.15, 0.035, 0.03), WHITE);
+    c.erase(&rbox(0.5, 0.6, 0.24, 0.075, 0.03));
+    c.fill(&rbox(0.5, 0.6, 0.19, 0.045, 0.03), WHITE);
     c.image()
 }
 

@@ -698,7 +698,7 @@ fn goto(world: &mut World, year: i32) {
             let now = world.resource::<Time>().elapsed_secs();
             let going = world.resource_scope(|world, mut sb: Mut<crate::sandbox::Sandbox>| sb.run_to(&mut world.resource_mut::<Timeline>(), at, k, None, now));
             if going {
-                let cut = if k > at.last { format!(" (the run's last year: January {year} is past it)") } else { String::new() };
+                let cut = if k > at.last { format!(" (January {year} is past the run's last year, {}, and the run on stops at its end)", y0 + at.last as i32) } else { String::new() };
                 println!("script: goto:{year}: running on to {}{cut}", to(k.min(at.last)));
             } else {
                 println!("script: goto:{year}: nothing to run on to: the run's last year has been played");
@@ -998,5 +998,15 @@ mod tests {
         assert_eq!(parse("tab:hand;tab:Rules;tab:families;key:5").unwrap(), [Step::Tab(Some(ui::Tab::Hand)), Step::Tab(Some(ui::Tab::Rules)), Step::Tab(Some(ui::Tab::Family)), Step::Key(KeyCode::Digit5, false)]);
         // steps are parted by semicolons: commas belong to pick and look
         assert!(parse("key:M,key:M").is_err());
+    }
+
+    #[test]
+    fn goto_takes_a_year_and_nothing_else() {
+        assert_eq!(parse("goto:1800;goto: 1795;settle").unwrap(), [Step::Goto(1800), Step::Goto(1795), Step::Settle]);
+        for bad in ["goto", "goto:", "goto:soon", "goto:1800.5", "goto:1800,1"] {
+            assert_eq!(parse(bad).err().unwrap(), format!("{bad}: goto takes a year, as goto:1800"));
+        }
+        assert!(check("wait:6;goto:1800;settle").is_ok());
+        assert!(check("goto:next").is_err());
     }
 }
