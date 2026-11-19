@@ -158,6 +158,8 @@ pub fn init(st: &mut State, C: &Content, P: &Params, n_months: usize) {
     if P.accounts.enabled {
         crate::accounts::add_series(&mut reg, n_months);
     }
+    // gauges: read off the books, after their series, only when both are on
+    crate::gauges::add_series(&mut reg, P, n_months);
     st.series = reg;
     st.obs = ObserverState::default();
 }

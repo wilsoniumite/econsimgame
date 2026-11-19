@@ -297,6 +297,9 @@ pub struct LiveYear {
     /// twelve months of the year, and then holds what one that read the
     /// series after the year closed holds. Empty unless the books are kept.
     pub year_series: Vec<(usize, f64)>,
+    /// gauges: the year's gauges (docs/rules/gauges.md; None unless they are
+    /// kept). Their series are among `year_series`.
+    pub gauges: Option<crate::gauges::GaugeYear>,
 }
 
 /// One finished month: what the economy changes month by month, kept small
@@ -506,6 +509,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         workings: crate::mines::workings(st),
         canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
         accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
-        year_series: crate::accounts::year_series(st, year),
+        year_series: crate::accounts::year_series(st, year).into_iter().chain(crate::gauges::year_series(st, year)).collect(),
+        gauges: crate::gauges::gauge_year(st).filter(|y| y.year == year),
     }
 }

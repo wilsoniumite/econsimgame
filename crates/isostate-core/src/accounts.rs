@@ -1510,7 +1510,8 @@ pub fn year_series(st: &State, year: i64) -> Vec<(usize, f64)> {
 /// (`save::check`) leaves them out: a game saved before there were books, or
 /// with them off, is the same game.
 pub fn own_series(name: &str) -> bool {
-    name.starts_with("acct_")
+    // (the gauges', read off the books, are theirs too: docs/rules/gauges.md)
+    name.starts_with("acct_") || name.starts_with("gauge_")
 }
 
 /// The headline series, added after everyone else's so those keep their places

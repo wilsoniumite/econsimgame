@@ -649,6 +649,13 @@ One line each as they arrive: the name, its page, its switch.
   account (work's share, the owners' shares, ownership in years of wages).
   They watch and never touch the economy. [accounts.md](accounts.md),
   `accounts.enabled`.
+- **gauges**: read off the books each year: of each good's price, what
+  comes to rest as wages, rent and the owners' part through its whole chain;
+  work's share of income net of the plant worn out, and of spending; a floor
+  under it; the labour inside a machine; what a wage buys of made goods and
+  of the land's; who owns the works and the land. They watch the books and
+  never touch the economy, and need the books on. [gauges.md](gauges.md),
+  `gauges.enabled`.
 - **commons**: under the commons the common fund in debt pays no dividend
   until its rents repay it, and charges nobody, where the port shares out its
   debt as a levy on every household. Under the landlords it does nothing.

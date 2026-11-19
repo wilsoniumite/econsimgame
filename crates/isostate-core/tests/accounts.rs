@@ -77,7 +77,9 @@ fn the_books_change_nothing() {
         for (k, name) in a.series.names.iter().enumerate() {
             assert_eq!(bits(&a.series.data[k]), bits(b.series.get(name)), "series {name} moved, seed {seed}");
         }
-        assert_eq!(b.series.names.len(), a.series.names.len() + 8, "the books add their eight series after everyone's");
+        // (and under the game's rules the gauges, which read the books, theirs: docs/rules/gauges.md)
+        let gauges = if on.params.gauges.enabled { isostate_core::gauges::SERIES.len() } else { 0 };
+        assert_eq!(b.series.names.len(), a.series.names.len() + 8 + gauges, "the books add their eight series after everyone's");
         assert_eq!(serde_json::to_string(&off.events).unwrap(), serde_json::to_string(&on.events).unwrap());
         for (what, x, y) in [
             ("people", &a.pop, &b.pop),
@@ -792,7 +794,8 @@ fn the_books_do_not_change_what_a_save_is_checked_by() {
         s
     };
     let (off, on) = (stand(false), stand(true));
-    assert_eq!(on.st.series.names.len(), off.st.series.names.len() + 8);
+    // (the gauges, on under the game's rules, read the books and add their own: docs/rules/gauges.md)
+    assert_eq!(on.st.series.names.len(), off.st.series.names.len() + 8 + isostate_core::gauges::SERIES.len());
     assert!(on.st.series.get("acct_share_work")[0].is_finite(), "the books' series are written");
     assert_eq!(save::check(&on), save::check(&off));
 }
@@ -809,7 +812,8 @@ fn a_viewer_that_takes_the_months_as_they_come_is_told_the_years_figures() {
     let (C, P) = (g.sim.content.clone(), g.sim.params.clone());
     let stat = live::live_static(&g.sim.st, &C);
     let own: Vec<usize> = (0..stat.series.len()).filter(|&i| accounts::own_series(&stat.series[i].name)).collect();
-    assert_eq!(own.len(), 8);
+    // the books' eight, and the gauges' that are read off them (docs/rules/gauges.md), which come the same way
+    assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
     let mut cursor = live::LiveCursor::new(&C);
     let mut held = vec![vec![f64::NAN; 36]; stat.series.len()];
     // the last year's month-end prices as they were sent, `[month][town * G + good]`
