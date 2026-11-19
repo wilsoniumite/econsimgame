@@ -150,14 +150,18 @@ impl Offers {
     /// can stand on the square. `place` says where the square is.
     fn of(hand: &Result<Vec<isostate_core::SiteOption>, String>, place: String) -> Result<Offers, String> {
         let options = hand.as_ref().map_err(|why| capital(why))?;
+        // those that may be built and should pay: a works expected to lose money at last year's
+        // prices may still be built by hand (the edit refuses it no more than the island's own
+        // entrants are refused it), but it is not offered, and is counted with the refused
         let mut list: Vec<Offer> = options
             .iter()
             .filter(|o| o.allowed.is_ok())
             .filter_map(|o| o.sums.as_ref().ok().map(|s| Offer { name: o.name.clone(), label: o.label.clone(), cost: s.capital_cost, ret: s.expected_return }))
+            .filter(|o| o.ret > 0.0)
             .collect();
         list.sort_by(|a, b| b.ret.total_cmp(&a.ret));
         // (a method the town does not know has no sums, and is not counted)
-        let more = options.iter().filter(|o| o.allowed.is_err() && o.sums.is_ok()).count();
+        let more = options.iter().filter(|o| o.sums.is_ok()).count() - list.len();
         Ok(Offers { place, list, more })
     }
 }
@@ -707,7 +711,7 @@ fn works_list(mut sb: ResMut<Sandbox>, game: Res<Game>, data: Res<Data>, live: R
         match offers {
             Ok(o) => {
                 let each: Vec<String> = o.list.iter().map(|x| format!("{} {} {}", x.label.to_lowercase(), sum(x.cost), isostate_core::util::fmt_pct(x.ret, 0))).collect();
-                println!("sandbox: on {at}: {}{}", if each.is_empty() { "nothing may be built".to_string() } else { each.join(", ") }, if o.more > 0 { format!("; {} more known, with no room or no market", o.more) } else { String::new() });
+                println!("sandbox: on {at}: {}{}", if each.is_empty() { "nothing offered".to_string() } else { each.join(", ") }, if o.more > 0 { format!("; {} more known, with no room, no market or no profit", o.more) } else { String::new() });
             }
             Err(why) => println!("sandbox: on {at}: {why}"),
         }
@@ -976,7 +980,7 @@ fn works_offered(c: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
         Some(Ok(o)) => {
             c.spawn(text(f, &format!("On the square at {}:", o.place), 12.5, MUTED));
             if o.list.is_empty() {
-                c.spawn(text(f, "No works the town knows may stand here.", 12.5, INK));
+                c.spawn(text(f, "No works the town knows has room and a market here, and should pay.", 12.5, INK));
             } else {
                 chip_row(c, |row| {
                     for x in &o.list {
@@ -987,10 +991,10 @@ fn works_offered(c: &mut ChildSpawnerCommands, f: &Handle<Font>, sb: &Sandbox) {
             match o.more {
                 0 => {}
                 1 => {
-                    c.spawn(text(f, "1 more is known here, with no room or no market for it.", 12.5, MUTED));
+                    c.spawn(text(f, "1 more is known here, with no room, no market or no profit for it.", 12.5, MUTED));
                 }
                 n => {
-                    c.spawn(text(f, &format!("{n} more are known here, with no room or no market for them."), 12.5, MUTED));
+                    c.spawn(text(f, &format!("{n} more are known here, with no room, no market or no profit for them."), 12.5, MUTED));
                 }
             }
             if let Some(line) = sb.offer_line() {
@@ -1057,8 +1061,9 @@ mod tests {
         assert_eq!(sb.click(Some(1), Some(Pick::Cell(2950))), Ok(None));
         assert_eq!((sb.site, sb.offers.clone()), (Some(2950), None));
         assert!(sb.build().is_err(), "nothing to build until the list has come");
-        // the list comes: the allowed methods, best return first and chosen at the start; the
-        // refused ones the town knows are counted; one it does not know is not
+        // the list comes: the allowed methods that should pay, best return first and chosen at
+        // the start; the refused ones the town knows, and one that should lose money, are
+        // counted; one it does not know is not
         let option = |name: &str, cost: f64, ret: f64, allowed: Result<(), String>, known: bool| isostate_core::SiteOption {
             method: 0,
             name: name.into(),
@@ -1071,12 +1076,13 @@ mod tests {
             option("brickworks", 622.0, 0.42, Ok(()), true),
             option("brewery", 16999.0, 0.19, Ok(()), true),
             option("ironworks", 9000.0, 0.30, Err("no room".into()), true),
+            option("smithy", 1472.0, -0.39, Ok(()), true),
             option("dynamo", 1.0, 0.9, Err("not known in Melbourne yet".into()), false),
         ]);
         assert!(sb.keep_offers(Offers::of(&hand, "31, 40, in Melbourne's district".into())));
         assert!(!sb.keep_offers(Offers::of(&hand, "31, 40, in Melbourne's district".into())), "the same list is not drawn again");
         let o = sb.offers.clone().unwrap().unwrap();
-        assert_eq!((o.list.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), o.more), (vec!["brickworks", "brewery"], 1));
+        assert_eq!((o.list.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), o.more), (vec!["brickworks", "brewery"], 2));
         assert_eq!(sb.method.as_deref(), Some("brickworks"));
         sb.turn = Some(1792);
         assert_eq!(sb.offer_line().unwrap(), "Brickworks here: it costs 622, paid by hand, and should return 42% a year. It is built at the year's turn, in January 1792.");

@@ -272,7 +272,8 @@ pub fn panel(p: &mut ChildSpawnerCommands, f: &Handle<Font>, r: &Replay, _k: usi
                     col.spawn(text(f, &capital(&waiting_words(order, r)), 14.0, INK));
                     col.spawn(text(f, &format!("In {turn}"), 12.0, MUTED));
                 });
-                chip_button(row, f, "Take back", false, HAND_INK, TakeBack(i));
+                // (the chip keeps its width: the words beside it wrap instead)
+                row.spawn(Node { flex_shrink: 0.0, ..default() }).with_children(|c| chip_button(c, f, "Take back", false, HAND_INK, TakeBack(i)));
             });
         }
         p.spawn((Node { height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }, BackgroundColor(RULE)));
