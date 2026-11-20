@@ -508,6 +508,10 @@ fn print_state(world: &mut World, note: &str) {
             if let Some(line) = crate::ages_chart::said(&world.resource::<Data>().r, k) {
                 println!("script:   {line}");
             }
+            // and the state's purse (docs/rules/state.md), as its chart draws it
+            if let Some(line) = crate::purse_chart::said(&world.resource::<Data>().r, k) {
+                println!("script:   {line}");
+            }
         }
     }
     // the note about what was clicked, every text of it, while it shows

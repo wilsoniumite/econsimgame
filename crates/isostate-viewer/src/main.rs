@@ -10,6 +10,7 @@
 //! sheets of the scenery's generators and stops (lab.rs).
 
 mod ages_chart;
+mod purse_chart;
 mod boats;
 mod built;
 mod carts;
