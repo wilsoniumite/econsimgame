@@ -969,6 +969,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::woods::facts(r) {
         b.num(name, kind, v);
     }
+    // ground (docs/rules/ground.md): the rent burden, town ground and its reach,
+    // the wage in goods and in room; dens and the tramway where the rule is on
+    for (name, kind, v) in crate::ground::facts(r) {
+        b.num(name, kind, v);
+    }
     // of the cells urban in a year, the share not urban ten years on
     let mut churn = Vec::new();
     for k in 0..n.saturating_sub(10) {

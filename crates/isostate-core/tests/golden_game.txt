@@ -15,18 +15,16 @@
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
-# Taken: 1901-2050 all four: offices, steel-frame builders and office
-# machines, none found before 1901 (found 1901, 1901 and 1901 on this island).
-# 1750-1900 economy, news and run.bin moved without the run moving: the series
-# gain four columns of the two new methods, all nothing to 1900; three items
-# of news name an invention of the port by its place in the content, which the
-# two new methods move on by two; run.bin carries the content's lists. Every
-# other column and item to 1900 is the same to the digit; books held
+# Taken: 1901-2050 all four: the ground (docs/rules/ground.md) takes over at
+# the end of 1900: house rent that clears the room a town has built, blended
+# in over 1901 to 1920, and a town's reach of five cells (eight with the
+# tramway, found 1901 on this island). 1750-1900 held, all four, since nothing
+# of the rule acts before 1901
 1750-1900 economy  0x320cce2de14a1967
 1750-1900 books    0x6eb41e73d1a3bad0
 1750-1900 news     0xe230618b76ca51fb
 1750-1900 run.bin  0x280c4a50f93cbf69
-1901-2050 economy  0x16498702f41dab5c
-1901-2050 books    0xf77dba4f7c3fd0e1
-1901-2050 news     0x0664cff5e10c6ce9
-1901-2050 run.bin  0xeee2c8eb5ad72f31
+1901-2050 economy  0xff6c05b80f54940f
+1901-2050 books    0x52feeb90e3d119a9
+1901-2050 news     0x977950db24cfbb20
+1901-2050 run.bin  0xabd1c7c7108c3697
