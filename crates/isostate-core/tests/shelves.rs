@@ -332,6 +332,9 @@ fn no_hungry_january_after_a_town_takes_a_district() {
         P.tree = Default::default();
         P.owners.enabled = false;
         P.land = Default::default();
+        // and with the year's mean of works' hands on, which the game's rules
+        // switched off after this case was written (docs/rules/towns.md, 20 November 2026)
+        P.towns.mean_hands = true;
         P.people.shelves_go = shelves;
         let mut s = sim::start(&P, game_content());
         let T = s.st.T_max;
