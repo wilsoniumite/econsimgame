@@ -95,10 +95,15 @@ household goods) and the railways and canals on the right.
   has every town an island ever had: a town's figures are its own, its
   colours set against the island's first period, so a town out of line with
   its island shows.
-- **Growth after 1900** gives the observer's chained wage and the share of
+- **Growth after 1900** gives the observer's real wage and the share of
   hands working the land, year by year, with the period shaded, and the three
   numbers the standing check reads: the wage's growth from 1900 to 1970, the
-  wage of 2050 over 1970's, and the hands on the land in 1900 and 2050. For
+  wage of 2050 over 1970's, and the hands on the land in 1900 and 2050. The
+  wage is the linked one (`real_wage_linked`, [rules/measures.md](rules/measures.md))
+  since 20 November 2026, and its three numbers are read on means of the nine
+  years round 1900, 1970 and 2050 (the last nine for 2050), as the check reads
+  them; a run without it shows the chained wage, single years. Pages drawn
+  before that day show the chained wage. For
   the middle they are the mean of the islands' own, as `sweep --standing`
   reads them, so the page can be checked against a sweep.
 - **Recipe usage**, under the drawing: every kind of works in the data, the

@@ -51,6 +51,7 @@ pub mod land;
 pub mod landcells;
 pub mod landform;
 pub mod landwater;
+pub mod linked;
 pub mod live;
 pub mod longrun;
 pub mod machines;

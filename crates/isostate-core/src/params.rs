@@ -361,6 +361,12 @@ pub struct Params {
     /// docs/rules/ground.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub ground: crate::ground::GroundParams,
+    /// A cost of living, the real wage on it and what is made, each linked
+    /// every five years on the means of the five years before; the news's slump
+    /// clock reads what is made (not in the Python; it only watches; see
+    /// docs/rules/measures.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub linked: crate::linked::LinkedParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -578,6 +584,7 @@ pub fn default_params() -> Params {
         woods: crate::woods::WoodsParams::default(),
         crossings: crate::crossings::CrossingParams::default(),
         ground: crate::ground::GroundParams::default(),
+        linked: crate::linked::LinkedParams::default(),
     }
 }
 
@@ -633,6 +640,8 @@ pub fn game_params() -> Params {
     P.crossings = crate::crossings::CrossingParams::game();
     // ground (docs/rules/ground.md): acts only from 1901, with no belt
     P.ground = crate::ground::GroundParams::game();
+    // linked (docs/rules/measures.md): watches only, and the news's slump clock reads it
+    P.linked = crate::linked::LinkedParams::game();
     P
 }
 

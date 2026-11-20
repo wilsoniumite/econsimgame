@@ -569,4 +569,9 @@ pub struct State {
     /// What is built up on each town cell, each town's room and its rent a
     /// unit of room, the tramway's year, and each year of the rule.
     pub ground: crate::ground::GroundState,
+
+    // ---------------- linked (docs/rules/measures.md; empty while `linked.enabled` is off)
+    /// The link in hand of the linked cost of living and of what is made, and
+    /// the years the next link's window is made from. The observer's alone.
+    pub linked: crate::linked::LinkedState,
 }

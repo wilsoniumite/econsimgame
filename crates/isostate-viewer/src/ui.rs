@@ -1471,8 +1471,8 @@ fn key_dot(p: &mut ChildSpawnerCommands, c: Color) {
     p.spawn((Node { width: Val::Px(8.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(c)));
 }
 
-/// The island as a whole, a chart each: its people, what a wage buys, how many
-/// live in towns, the railway and the works.
+/// The island as a whole, a chart each: its people, what a wage buys, what is
+/// made a head, how many live in towns, the railway and the works.
 fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut Assets<Image>, r: &Replay, k: usize, by_month: Option<usize>, accent: Color) {
     let year = r.y0 + k as i32;
     let span = by_month.map(|m| MonthSpan::of(r, m));
@@ -1487,18 +1487,21 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
     let people = |v: f32| thousands(v);
     type Fig<'a> = &'a dyn Fn(f32) -> String;
     let pounds = |v: f32| money(v);
-    let rows: [(&str, &str, Fig, Fig); 6] = [
+    let rows: [(&str, &str, Fig, Fig); 7] = [
         ("pop", "People", &people, &short_count),
         ("real_wage", "What a wage buys (1750 = 1)", &plain, &plain),
+        // what is made, linked, a head (docs/rules/measures.md): only in a run that keeps it
+        ("made_linked", "What is made a head (1750 = 1)", &plain, &plain),
         ("urban_share", "Living in towns", &pct, &pct),
         ("rail_km", "Railway", &km, &short_count),
         ("firms", "Works and shops", &people, &short_count),
         // (the island's money: a rule of money set by hand shows here first, docs/designs/sandbox.md 6.6)
         ("money", "The island's money", &pounds, &pounds),
     ];
-    // what a wage buys is the chained wage over its 1750 figure; a run without it (the port's
-    // rules) keeps the fixed basket of 1750, and says so
+    // what a wage buys is the linked wage over its 1750 figure (the chained one in a run without
+    // it); a run with neither (the port's rules) keeps the fixed basket of 1750, and says so
     let chained = crate::work_charts::true_wage(r, span.as_ref().map(|sp| (sp.first, sp.n)));
+    let made = crate::work_charts::made_a_head(r, span.as_ref().map(|sp| (sp.first, sp.n)));
     for (name, label, now, side) in rows {
         let (vals, mark, first_year) = match &span {
             Some(sp) => (sp.values(r, name), sp.mark, sp.first_year),
@@ -1507,6 +1510,7 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
         let (vals, label) = match (name, &chained) {
             ("real_wage", Some(c)) => (c.clone(), label),
             ("real_wage", None) => (vals, "What a wage buys of 1750's basket"),
+            ("made_linked", _) => (made.clone().unwrap_or_default(), label),
             _ => (vals, label),
         };
         if !vals.iter().any(|v| v.is_finite()) {

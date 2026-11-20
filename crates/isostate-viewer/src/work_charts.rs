@@ -37,6 +37,11 @@ pub const OWNED_ROWS: [&str; 3] = ["viewer_owned_families", "viewer_owned_landlo
 
 /// The core's series of the chained wage (engel.rs).
 const CHAINED: &str = "real_wage_chained";
+/// The core's series of the linked wage and of what is made, linked (linked.rs,
+/// docs/rules/measures.md), which a run under the game's rules keeps since
+/// 20 November 2026; the wage is read before the chained one where it is kept.
+const LINKED: &str = "real_wage_linked";
+const MADE: &str = "made_linked";
 
 /// Room for a chart inside the side panel, as the island's charts have (ui.rs).
 const CHART_W: f32 = 342.0;
@@ -105,16 +110,39 @@ pub fn over_first(vals: &[f32]) -> Vec<f32> {
     vals.iter().map(|v| v / base).collect()
 }
 
-/// What a wage buys against 1750: the chained wage (the year's mean of its
-/// months) over its own figure for the first year, year by year, or with
-/// `months` (the first month and how many) month by month over the same
-/// figure. None for a run without the chained wage (the port's rules), whose
-/// charts keep the fixed basket of 1750.
+/// The wage the charts read: the linked one where the replay keeps it, else
+/// the chained one; None for a run with neither (the port's rules).
+pub fn wage_row(r: &Replay) -> Option<&'static str> {
+    [LINKED, CHAINED].into_iter().find(|name| r.series_names.iter().any(|s| s == name))
+}
+
+/// What a wage buys against 1750: the linked wage, or the chained one in a run
+/// without it (`wage_row`; the year's mean of its months), over its own figure
+/// for the first year, year by year, or with `months` (the first month and how
+/// many) month by month over the same figure. None for a run with neither (the
+/// port's rules), whose charts keep the fixed basket of 1750.
 pub fn true_wage(r: &Replay, months: Option<(usize, usize)>) -> Option<Vec<f32>> {
-    let years = replay::yearly(r, CHAINED);
+    let row = wage_row(r)?;
+    let years = replay::yearly(r, row);
     let base = years.first().copied().filter(|b| b.is_finite() && *b > 0.0)?;
     Some(match months {
-        Some((first, n)) => replay::monthly(r, CHAINED, first, n).iter().map(|v| v / base).collect(),
+        Some((first, n)) => replay::monthly(r, row, first, n).iter().map(|v| v / base).collect(),
+        None => over_first(&years),
+    })
+}
+
+/// What is made a head against 1750: what is made, linked, over the people,
+/// over its own figure for the first year, year by year or with `months` month
+/// by month, as `true_wage`. None for a run that does not keep it.
+pub fn made_a_head(r: &Replay, months: Option<(usize, usize)>) -> Option<Vec<f32>> {
+    if !r.series_names.iter().any(|s| s == MADE) {
+        return None;
+    }
+    let per = |m: Vec<f32>, p: Vec<f32>| -> Vec<f32> { m.iter().zip(&p).map(|(m, p)| m / p).collect() };
+    let years = per(replay::yearly(r, MADE), replay::yearly(r, "pop"));
+    let base = years.first().copied().filter(|b| b.is_finite() && *b > 0.0)?;
+    Some(match months {
+        Some((first, n)) => per(replay::monthly(r, MADE, first, n), replay::monthly(r, "pop", first, n)).iter().map(|v| v / base).collect(),
         None => over_first(&years),
     })
 }
@@ -200,7 +228,7 @@ pub fn charts(r: &Replay, k: usize) -> Vec<Plan> {
     out.push(Plan {
         title: "What a wage buys (1750 = 1)",
         tag: "wage",
-        lines: vec![line("the chained wage", "", c[0], true_wage(r, None).unwrap_or_default())],
+        lines: vec![line(if wage_row(r) == Some(LINKED) { "the linked wage" } else { "the chained wage" }, "", c[0], true_wage(r, None).unwrap_or_default())],
         unit: Unit::Ratio,
         from_zero: false,
         notes: Vec::new(),
@@ -474,5 +502,26 @@ mod tests {
         let r2 = run(3, &names.iter().map(|s| s.as_str()).collect::<Vec<_>>(), |_, _| 1.0);
         assert_eq!(true_wage(&r2, None), None);
         assert_eq!(over_first(&[2.0, 3.0, f32::NAN]).iter().take(2).copied().collect::<Vec<_>>(), [1.0, 1.5]);
+    }
+
+    #[test]
+    fn the_linked_wage_is_read_before_the_chained_and_what_is_made_is_a_head() {
+        let r = run(3, &["pop", "real_wage_chained", "real_wage_linked", "made_linked"], |n, y| match n {
+            "pop" => 10.0 * (1 + y) as f32,
+            "real_wage_chained" => 1.0 + y as f32,
+            "real_wage_linked" => 2.0 + y as f32,
+            _ => 40.0 * (1 + y) as f32 * (1 + y) as f32,
+        });
+        assert_eq!(wage_row(&r), Some("real_wage_linked"));
+        assert_eq!(true_wage(&r, None).unwrap(), [1.0, 1.5, 2.0]);
+        assert_eq!(charts(&r, 2)[0].lines[0].words, "the linked wage");
+        // made over people: 4, 8, 12, over the first year's
+        assert_eq!(made_a_head(&r, None).unwrap(), [1.0, 2.0, 3.0]);
+        assert_eq!(made_a_head(&r, Some((12, 12))).unwrap(), [2.0; 12]);
+        // a run with the chained wage alone reads it, and has nothing made to show
+        let old = run(3, &["pop", "real_wage_chained"], |_, y| 1.0 + y as f32);
+        assert_eq!(wage_row(&old), Some("real_wage_chained"));
+        assert_eq!(charts(&old, 2)[0].lines[0].words, "the chained wage");
+        assert_eq!(made_a_head(&old, None), None);
     }
 }
