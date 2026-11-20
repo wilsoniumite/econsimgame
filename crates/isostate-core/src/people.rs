@@ -73,13 +73,18 @@ pub fn growth(st: &mut State, _C: &Content, P: &Params, year: i64, events: &mut 
     g
 }
 
-pub fn migration(st: &mut State, _C: &Content, P: &Params) {
+pub fn migration(st: &mut State, _C: &Content, P: &Params, year: i64) {
     let act: Vec<usize> = (0..st.T_max).filter(|&t| st.town_active[t]).collect();
+    // city (docs/rules/city.md): after 1900 people follow jobs, the wage and the works' new hands
+    let pull = crate::city::pull(st, P, year, &act);
     let n = act.len();
     if n < 2 {
         return;
     }
-    let y: Vec<f64> = act.iter().map(|&t| st.y_ratio[t].max(1e-3)).collect();
+    let y: Vec<f64> = match pull {
+        Some(p) => p,
+        None => act.iter().map(|&t| st.y_ratio[t].max(1e-3)).collect(),
+    };
     let mut wgt = Mat::zeros(n, n);
     for i in 0..n {
         for j in 0..n {

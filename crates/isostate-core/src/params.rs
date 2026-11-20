@@ -372,6 +372,11 @@ pub struct Params {
     /// docs/rules/pay.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub pay: crate::pay::PayParams,
+    /// After 1900, people who follow jobs, works more productive in larger
+    /// towns, and room wanted less than in proportion as it dears (not in the
+    /// Python; see docs/rules/city.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub city: crate::city::CityParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -591,6 +596,7 @@ pub fn default_params() -> Params {
         ground: crate::ground::GroundParams::default(),
         linked: crate::linked::LinkedParams::default(),
         pay: crate::pay::PayParams::default(),
+        city: crate::city::CityParams::default(),
     }
 }
 
