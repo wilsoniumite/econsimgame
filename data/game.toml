@@ -91,6 +91,11 @@ labels = ["Food", "Fuel and light", "Shelter", "Clothing", "Implements", "Comfor
 subsistence = [1.0, 0.25, 0.06, 0.03, 0.002, 0.0, 0.0, 0.0]   # per head per month; unchanged, none for the new needs
 shares = [0.25, 0.13, 0.2, 0.17, 0.07, 0.09, 0.06, 0.03]        # at subsistence and a bit (the port: 0.28, 0.14, 0.22, 0.19, 0.07, 0.10)
 shares_rich = [0.05, 0.06, 0.2, 0.17, 0.07, 0.28, 0.07, 0.1]   # far above it, for the Engel rule (its own six: 0.05, 0.06, 0.24, 0.22, 0.07, 0.36)
+# The Engel rule's lean after 1900 (docs/rules/engel.md, "After 1900: the lean toward services"): from
+# 1901 the richer set above moves a seventieth of the way each year to this one, which takes a tenth of a
+# further shilling from shelter and a tenth from clothing (bricks, stone, timber and wool) and gives both
+# to comfort (shops, trades and offices). The two experiments of 20 November 2026 moved the same 0.20 at once.
+shares_lean = [0.05, 0.06, 0.1, 0.07, 0.07, 0.48, 0.07, 0.1]
 lord_shares = [0.03, 0.07, 0.28, 0.19, 0.07, 0.24, 0.04, 0.08]   # (the port: 0.04, 0.08, 0.30, 0.22, 0.08, 0.28)
 theta = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 2.0]   # household goods are unlike each other: at 2.0 each keeps its share of the money
 

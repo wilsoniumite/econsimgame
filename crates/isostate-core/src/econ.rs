@@ -418,9 +418,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         pc[t] = if st.pop[t] > 0.0 { goods_budget / st.pop[t].max(1.0) } else { 0.0 };
     }
     // engel: past a reference income the households' marginal shares lean toward
-    // a richer set (docs/rules/engel.md); landlords, below, keep their own
+    // a richer set (docs/rules/engel.md); landlords, below, keep their own. After
+    // 1900 the richer set itself may lean toward comfort (engel's lean)
     let (q_hh, subcost) = if P.engel.enabled {
-        engel::les(&pc, &unit, &C.subsistence, &C.shares, &C.shares_rich, &P.engel)
+        let rich = engel::rich_now(C, &P.engel, st.engel.year_now);
+        engel::les(&pc, &unit, &C.subsistence, &C.shares, &rich, &P.engel)
     } else {
         les(&pc, &unit, &C.subsistence, &C.shares)
     };

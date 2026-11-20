@@ -24,6 +24,14 @@
 //! income; because every marginal share lies between the two sets, more income
 //! never buys less of anything.
 //!
+//! After 1900 the richer set itself may lean (`lean`, off but in the game): a
+//! step a year from `lean_from`, over `lean_years`, it moves toward a second
+//! set in the content (`C.shares_lean`), which takes from shelter and clothing,
+//! things of clay, stone, timber and wool, and gives to comfort, which is work
+//! in town. The island's income in bundles stops rising after 1950, so the
+//! lean is tied to the years and not to a second mark of income (engel.md,
+//! "After 1900: the lean toward services").
+//!
 //! Landlords keep their own shares (`C.lord_shares`), and families spend as
 //! landlords do. Nothing else changes hands differently: the households' orders
 //! go to the same town markets at the same prices as before.
@@ -57,12 +65,21 @@ pub struct EngelParams {
     /// income they are `1 - 0.5^strength` of the way to the richer set. 0 is a
     /// flat curve (the port's households, with the new series recorded).
     pub strength: f64,
+    /// The lean: after `lean_from` the richer set itself moves, a step a year,
+    /// toward the content's leaned set (`C.shares_lean`: less on shelter and
+    /// clothing, more on comfort). Read only with `enabled`.
+    pub lean: bool,
+    /// The last year of the richer set as the content gives it: the lean acts
+    /// from the months of the year after.
+    pub lean_from: i64,
+    /// Years from `lean_from` until the richer set is the leaned one.
+    pub lean_years: i64,
 }
 
 impl Default for EngelParams {
     /// Off: what the port runs with.
     fn default() -> EngelParams {
-        EngelParams { enabled: false, y_ref: 2.0, strength: 3.0 }
+        EngelParams { enabled: false, y_ref: 2.0, strength: 3.0, lean: false, lean_from: 1900, lean_years: 70 }
     }
 }
 
@@ -71,6 +88,28 @@ impl EngelParams {
     pub fn game() -> EngelParams {
         EngelParams { enabled: true, ..EngelParams::default() }
     }
+}
+
+/// How far the richer set has leaned in the months of `year_now`: 0 up to and
+/// including `lean_from`, then a `lean_years`-th more each year, to 1.
+pub fn lean_weight(E: &EngelParams, year_now: i64) -> f64 {
+    if !E.lean || year_now <= E.lean_from {
+        return 0.0;
+    }
+    ((year_now - E.lean_from) as f64 / E.lean_years.max(1) as f64).min(1.0)
+}
+
+/// The richer set the households lean toward in the months of `year_now`: the
+/// content's `shares_rich`, moved `lean_weight` of the way to `shares_lean`.
+/// Both add up to what `shares` adds up to and neither has a share under
+/// nothing, so neither does any mix of the two: the budget is still spent
+/// exactly, and more income still never buys less of anything.
+pub fn rich_now(C: &Content, E: &EngelParams, year_now: i64) -> Vec<f64> {
+    let w = lean_weight(E, year_now);
+    if w <= 0.0 {
+        return C.shares_rich.clone();
+    }
+    C.shares_rich.iter().zip(&C.shares_lean).map(|(&r, &l)| r + w * (l - r)).collect()
 }
 
 /// The richer set of marginal shares for the port's six needs, used when a
@@ -171,10 +210,15 @@ pub fn fisher(p0: &[f64], q0: &[f64], p1: &[f64], q1: &[f64]) -> f64 {
     }
 }
 
-/// What the mechanism keeps between months (`st.engel`). All of it is the
-/// observer's: the simulation never reads it. Empty while the mechanism is off.
+/// What the mechanism keeps between months (`st.engel`). All of it but
+/// `year_now` is the observer's: the simulation never reads it. Empty while the
+/// mechanism is off, but for `year_now`.
 #[derive(Clone, Debug, Default)]
 pub struct EngelState {
+    /// The year whose months are running, kept by `sim::end_year` whatever the
+    /// switches (so that the lean thrown on in a running island knows the date):
+    /// the lean reads it.
+    pub year_now: i64,
     /// (S): what households spent on each need last month, all towns together.
     pub need_spend: Vec<f64>,
     /// Households' goods budget over the cost of their subsistence last month, all towns together.
@@ -285,7 +329,7 @@ mod tests {
     use super::*;
 
     fn on(strength: f64) -> EngelParams {
-        EngelParams { enabled: true, y_ref: 2.0, strength }
+        EngelParams { enabled: true, y_ref: 2.0, strength, ..EngelParams::default() }
     }
 
     #[test]
