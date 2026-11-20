@@ -21,6 +21,17 @@
 //! is `Copy`, `Eq` and `Hash`, so a card can be kept by what it tells of, and
 //! both `Thing` and `Told` are `Send`, so the question goes to the simulation's
 //! thread and the card comes back (`tests/inspect.rs` holds both to that).
+//!
+//! A town's card also carries its ideas (`Told::ideas`, `town_ideas`): every
+//! idea of the data the run plays, the tree's methods and techniques and the
+//! uses of the tasks rule, each known here, known elsewhere on the island, or
+//! found nowhere yet, in groups as the tree groups them, each with a sentence
+//! on what it opened, where it is known or what it waits on, and whether the
+//! hand's edit for an idea would find it here. The state does not keep when
+//! each town came to know an idea, so whoever wants the years watches the
+//! island at each year's end (`Learnt`) and asks with what it has watched
+//! (`tell_with`); the viewer's thread does. A card asked without it dates only
+//! what the state holds: where and when each idea was found.
 
 use crate::accounts;
 use crate::econ;
