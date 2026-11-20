@@ -173,7 +173,17 @@ pub fn hands_from(st: &State, C: &Content, last: i64) -> Vec<[f64; 4]> {
     let mut out = Vec::new();
     for y in FROM..=last {
         match st.tasks.years.iter().rev().find(|t| t.year == y) {
-            Some(t) => out.push(hands_of(t, C)),
+            // (with the university's staff, who teach and clerk: docs/rules/state.md)
+            Some(t) => {
+                let mut h = hands_of(t, C);
+                let u = crate::university::hands_by_class(st, y);
+                if u.iter().any(|&v| v != 0.0) {
+                    for k in 0..4 {
+                        h[k] += u[k];
+                    }
+                }
+                out.push(h)
+            }
             None => break,
         }
     }

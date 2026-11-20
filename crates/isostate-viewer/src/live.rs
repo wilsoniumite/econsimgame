@@ -736,6 +736,11 @@ fn waiting_what(edit: &isostate_core::edits::Edit, n: &Names) -> Option<String> 
             })
         }
         Edit::CloseWorks { works } => Some(format!("{} closed", (n.works)(*works))),
+        Edit::FoundUniversity { cell } => Some(match (n.near)(*cell) {
+            Some(town) => format!("a university founded in {town}"),
+            None => format!("a university founded at square {cell}"),
+        }),
+        Edit::CloseUniversity { town } => Some(format!("the university of {} closed", (n.town)(*town))),
         _ => None,
     }
 }
@@ -764,7 +769,7 @@ fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
         Edit::Pin { idea, year, when } => format!("By hand: {idea} {} {year}", if *when == isostate_core::edits::PinWhen::In { "pinned to" } else { "held back until" }),
         // (said by `waiting_what`)
-        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } => String::new(),
+        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. } => String::new(),
     }
 }
 

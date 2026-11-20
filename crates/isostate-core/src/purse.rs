@@ -83,6 +83,18 @@ pub struct StateParams {
     pub pension_age: f64,
     /// The pension as a share of the wage, by hand; below nothing, the book's.
     pub pension_share: f64,
+    /// The university (docs/rules/state.md, "The university"): a programme of
+    /// the treasury with a place, founded in the island's seat.
+    pub university: bool,
+    /// The share of each cohort the university takes, by hand; below nothing,
+    /// the book's (history's, `university::book::SHARE`).
+    pub university_share: f64,
+    /// Years a student is taught.
+    pub university_years: f64,
+    /// Hands a student: its teachers (judging) and its clerks.
+    pub university_hands: f64,
+    /// Rooms a student: units of building work standing.
+    pub university_rooms: f64,
 }
 
 impl Default for StateParams {
@@ -98,6 +110,11 @@ impl Default for StateParams {
             school_years: -1.0,
             pension_age: -1.0,
             pension_share: -1.0,
+            university: false,
+            university_share: -1.0,
+            university_years: 3.0,
+            university_hands: 0.15,
+            university_rooms: 60.0,
         }
     }
 }
@@ -105,7 +122,7 @@ impl Default for StateParams {
 impl StateParams {
     /// The game's purse, on the default book.
     pub fn game() -> StateParams {
-        StateParams { enabled: true, ..StateParams::default() }
+        StateParams { enabled: true, university: true, ..StateParams::default() }
     }
 }
 
@@ -158,6 +175,8 @@ pub struct Month {
     pub pensioners: f64,
     /// pay the rate was taken on
     pub base: f64,
+    /// the university's staff's pay (docs/rules/state.md, "The university")
+    pub university: f64,
 }
 
 /// The year's sums, from January to the year's close.
@@ -167,8 +186,10 @@ pub struct YearSums {
     pub schools: f64,
     pub pensions: f64,
     pub base: f64,
-    /// teachers' pay within `base`
+    /// teachers' pay (and the university's staff's) within `base`
     pub base_schools: f64,
+    /// the university's staff's pay
+    pub university: f64,
     pub teachers: f64,
     pub teachers_want: f64,
     pub pensioners: f64,
@@ -213,6 +234,8 @@ pub struct PurseYear {
     /// the share of the programmes paid (1 unless the rate passed its cap)
     pub cut: f64,
     pub short_months: usize,
+    /// the university: its staff's pay and its rooms over the year
+    pub university: f64,
     /// the state's net flow (teachers' pay and pensions less the tax) over the
     /// households' income before it, in the towns holding the older half of
     /// the people and the younger half, and the half with more pupils and fewer
@@ -260,6 +283,8 @@ pub struct PurseState {
     /// force the next January (`announce`): weight, title and text
     pub news: Vec<(f64, String, String)>,
     pub years: Vec<PurseYear>,
+    /// the seat and the university (docs/rules/state.md, "The university")
+    pub uni: crate::university::UniState,
 }
 
 fn on(P: &Params) -> bool {
@@ -351,6 +376,8 @@ pub fn count_teachers(st: &mut State, P: &Params, employment: &mut [f64]) {
     for (e, n) in employment.iter_mut().zip(&st.purse.teachers) {
         *e += n;
     }
+    // and the university's staff (docs/rules/state.md, "The university")
+    crate::university::count_staff(st, P, employment);
     st.purse.now.hands += employment.iter().sum::<f64>();
 }
 
@@ -374,15 +401,20 @@ pub fn month(st: &mut State, P: &Params, w: &[f64], pay: &[f64], hh_inc: &mut [f
     // year's budget, whatever this year's rate
     let mut m = Month::default();
     let teach: Vec<f64> = (0..T).map(|t| p.teachers[t] * w[t].max(0.0)).collect();
+    // the university's staff, paid as the teachers are (nothing while it is off)
+    let uni = crate::university::staff_pay(st, P, w);
+    let p = &mut st.purse;
     let pens: Vec<f64> = (0..T)
         .map(|t| {
             let n = p.pensioners.get(t).copied().unwrap_or(0.0);
             if p.pension_share > 0.0 && n > 0.0 { n * p.pension_share * p.cut * w[t].max(0.0) } else { 0.0 }
         })
         .collect();
-    let base: Vec<f64> = (0..T).map(|t| pay[t].max(0.0) + teach[t]).collect();
+    let base: Vec<f64> = (0..T).map(|t| if uni[t] != 0.0 { pay[t].max(0.0) + teach[t] + uni[t] } else { pay[t].max(0.0) + teach[t] }).collect();
     let tax: Vec<f64> = base.iter().map(|b| p.rate * b).collect();
     let (all_teach, all_pens, all_tax): (f64, f64, f64) = (teach.iter().sum(), pens.iter().sum(), tax.iter().sum());
+    let all_uni: f64 = uni.iter().sum();
+    let all_teach = if all_uni != 0.0 { all_teach + all_uni } else { all_teach };
     // no debt: the treasury pays what it holds, the teachers first
     let cash = p.treasury + all_tax;
     let (kt, kp) = if all_teach + all_pens <= cash {
@@ -397,7 +429,7 @@ pub fn month(st: &mut State, P: &Params, w: &[f64], pay: &[f64], hh_inc: &mut [f
     }
     for t in 0..T {
         p.now.town_before[t] += hh_inc[t];
-        let net = kt * teach[t] - tax[t] + kp * pens[t];
+        let net = if uni[t] != 0.0 { kt * (teach[t] + uni[t]) - tax[t] + kp * pens[t] } else { kt * teach[t] - tax[t] + kp * pens[t] };
         // (nothing is added where nothing flows, so a purse with nothing in it
         // leaves every income as it was, to the bit)
         if net != 0.0 {
@@ -405,6 +437,7 @@ pub fn month(st: &mut State, P: &Params, w: &[f64], pay: &[f64], hh_inc: &mut [f
             hh_inc[t] += net;
         }
         m.schools += kt * teach[t];
+        m.university += kt * uni[t];
         m.pensions += kp * pens[t];
         m.tax += tax[t];
         m.base += base[t];
@@ -414,7 +447,7 @@ pub fn month(st: &mut State, P: &Params, w: &[f64], pay: &[f64], hh_inc: &mut [f
     if !(m.pensions > 0.0) {
         m.pensioners = 0.0;
     }
-    p.treasury += m.tax - m.schools - m.pensions;
+    p.treasury += m.tax - m.schools - m.pensions - m.university;
     if p.treasury < 0.0 && p.treasury > -1e-9 * cash.abs().max(1.0) {
         p.treasury = 0.0;
     }
@@ -424,21 +457,27 @@ pub fn month(st: &mut State, P: &Params, w: &[f64], pay: &[f64], hh_inc: &mut [f
     s.pensions += m.pensions;
     s.base += m.base;
     s.base_schools += all_teach;
+    s.university += m.university;
     s.teachers += m.teachers;
     s.teachers_want += p.teachers_want.iter().sum::<f64>();
     s.pensioners += m.pensioners;
     s.pupils += p.pupils.iter().sum::<f64>();
     s.months += 1;
     p.month = m;
+    let paid = st.purse.month.university;
+    crate::university::note_month(st, P, paid);
     // accounts (docs/rules/accounts.md): the teachers' pay among the wage bill
     // and the state's buying, the pensions and the tax among the transfers
     let (sch, pen, tx) = (st.purse.month.schools, st.purse.month.pensions, st.purse.month.tax);
+    let sch = if paid != 0.0 { sch + paid } else { sch };
     crate::accounts::note_state(st, sch, pen, tx);
 }
 
-/// What the state bought this month (the teachers), for the observer's output.
+/// What the state bought this month (the teachers, and the university's staff
+/// and rooms), for the observer's output.
 pub fn month_buying(st: &State) -> f64 {
-    st.purse.month.schools
+    let u = st.purse.month.university + st.purse.uni.month_rooms;
+    if u != 0.0 { st.purse.month.schools + u } else { st.purse.month.schools }
 }
 
 /// The purse's series, after the others: the rate on pay, tax, schools and
@@ -455,6 +494,10 @@ pub fn add_series(reg: &mut Series, P: &Params, n_months: usize) {
     reg.add("state_months_held", "The treasury, in months of its spending", "state", "months", n_months);
     reg.add("state_teachers", "Teachers", "state", "hands", n_months);
     reg.add("state_pensioners", "Pensioners", "state", "people", n_months);
+    if P.state.university {
+        reg.add("state_university_share", "The university over income", "state", "share", n_months);
+        reg.add("state_students", "Students at the university", "state", "people", n_months);
+    }
 }
 
 /// The month's figures (`observer::record_month`), with `gdp` the month's output.
@@ -469,10 +512,14 @@ pub fn record_month(st: &State, P: &Params, s: &mut Series, t: usize, gdp: f64) 
     s.set("state_tax_share", t, share(m.tax));
     s.set("state_schools_share", t, share(m.schools));
     s.set("state_pensions_share", t, share(m.pensions));
-    let spend = m.schools + m.pensions;
+    let spend = m.schools + m.pensions + m.university + p.uni.month_rooms;
     s.set("state_months_held", t, if spend > 0.0 { p.treasury / spend } else { 0.0 });
     s.set("state_teachers", t, m.teachers);
     s.set("state_pensioners", t, m.pensioners);
+    if P.state.university {
+        s.set("state_university_share", t, share(m.university + p.uni.month_rooms));
+        s.set("state_students", t, p.uni.students.iter().sum());
+    }
 }
 
 /// The island's people's share in towns, its share over 64 and its baskets a
@@ -509,7 +556,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         let first = ((year - C.start_year) * 12).max(0) as usize;
         st.series.data[s].iter().skip(first).take(12).sum::<f64>()
     });
-    let spend = sums.schools + sums.pensions;
+    // (and the university's staff and rooms)
+    let uni_year = sums.university + st.purse.uni.sum_rooms;
+    let spend = sums.schools + sums.pensions + uni_year;
     let halves = |key: &dyn Fn(usize) -> f64| -> (f64, f64) {
         // towns ranked by `key`, split where half the people are reached
         let mut ts: Vec<usize> = (0..T).filter(|&t| st.town_active[t] && st.pop[t] > 0.0 && t < sums.town_before.len()).collect();
@@ -569,6 +618,7 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         net_pupils_many: pupils_many,
         net_pupils_few: pupils_few,
         services_share,
+        university: uni_year,
     };
     st.purse.years.push(row);
     let base_now = sums.base - sums.base_schools;
@@ -580,7 +630,8 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     // what this year's programmes cost a month at December's wages, as they
     // were paid (cut and all): next year's are set against it, so that the
     // season's wage and the year's noise cancel
-    let wage = |t: usize| st.wage.get(t).copied().unwrap_or(0.0).max(0.0);
+    let wages: Vec<f64> = (0..T).map(|t| st.wage.get(t).copied().unwrap_or(0.0).max(0.0)).collect();
+    let wage = |t: usize| wages[t];
     let cost_now: f64 = {
         let p = &st.purse;
         (0..T)
@@ -667,6 +718,14 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
         p.pensioners[t] = pe;
     }
 
+    // ---- the seat, and the university (docs/rules/state.md, "The university"):
+    // the year put away, its foundings, the year's students moved, next year's staff
+    crate::university::choose_seat(st, year);
+    let mut uni_news = Vec::new();
+    let uc = crate::university::close_year(st, C, P, year, &mut uni_news);
+    let p = &mut st.purse;
+    p.news.extend(uni_news);
+
     // ---- the budget: next year's rate, so that its revenue covers the
     // programmes and brings the treasury to `reserve_months` of its spending
     // pay grows as it has grown over the last `GROWTH_YEARS` (a single year's
@@ -678,14 +737,20 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64) {
     };
     // next year's programmes at December's wages, at their whole law
     let teach_dec: f64 = (0..T).map(|t| p.pupils[t] * sp.school_hands * wage(t)).sum();
+    // (and the university's staff, as the teachers; nothing while it has none)
+    let teach_dec = if uc.staff_next != 0.0 { teach_dec + uc.staff_next } else { teach_dec };
+    let cost_now = if uc.staff_now != 0.0 { cost_now + uc.staff_now } else { cost_now };
     let pens_dec: f64 = (0..T).map(|t| p.pensioners[t] * p.pension_share * wage(t)).sum();
     // scaled to what this year's cost at December's wages was really paid over the
     // year; the first year of a programme has nothing to scale on, and takes twelve
     // months at December's wages
     let spent_now = sums.schools + sums.pensions;
+    let spent_now = if uc.paid != 0.0 { spent_now + uc.paid } else { spent_now };
     let scale = if cost_now > 0.0 && spent_now > 0.0 { spent_now / cost_now } else { 12.0 };
     let teach_next = teach_dec * scale * (1.0 + g);
     let spend_next = (teach_dec + pens_dec) * scale * (1.0 + g);
+    // the university's rooms, ordered at December's prices
+    let spend_next = if uc.rooms_next != 0.0 { spend_next + uc.rooms_next * (1.0 + g) } else { spend_next };
     let base_next = base_now * (1.0 + g) + teach_next;
     let keep = sp.reserve_months / 12.0;
     let (mut rate, mut cut) = (0.0, 1.0);

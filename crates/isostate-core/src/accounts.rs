@@ -667,6 +667,8 @@ pub struct Month<'a> {
     pub ot: &'a [usize],
     pub inv_got: &'a Mat,
     pub proj_got: &'a [Vec<f64>],
+    /// the university's rooms got, by town and good (docs/rules/state.md), booked as a project's materials
+    pub uni_got: &'a [(usize, usize, f64)],
     // markets
     pub R: &'a Mat,
     pub sold: &'a Mat,
@@ -1103,6 +1105,13 @@ pub fn note_month(st: &mut State, C: &Content, P: &Params, m: &Month) {
         let wages = pr.navvy_pay;
         a.towns[t * KT + T_PROJECTS] += pay + wages;
         mk[t * kinds + hk(T_PAY_PROJ)] += wages;
+    }
+    // ---- the university's rooms, bought by the treasury as a project's materials
+    for &(t, g, got) in m.uni_got {
+        if got != 0.0 {
+            a.goods[(t * G + g) * KG + G_PROJ] += got;
+            a.towns[t * KT + T_PROJECTS] += got * p[(t, g)];
+        }
     }
 
     // ---- households, landlords and families; the markets

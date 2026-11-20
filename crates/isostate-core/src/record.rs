@@ -702,6 +702,10 @@ pub fn pack(st: &State, C: &Content, P: &Params, events: &[Event], rec: &Record,
             "links": serde_json::to_value(crate::canals::links_out(st)).unwrap(),
         });
     }
+    // state (docs/rules/state.md, "The university"): the seat and the universities
+    if let Some(u) = crate::university::header(st, P) {
+        header["university"] = u;
+    }
     // land: the lakes, the sea outlets and the fine grid's size
     if let Some(lf) = &world.landform {
         header["land"] = crate::landcells::static_header(lf);

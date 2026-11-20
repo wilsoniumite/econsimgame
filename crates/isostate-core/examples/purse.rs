@@ -51,6 +51,25 @@ fn main() {
     for a in &st.purse.acts {
         println!("  {} {} {} {}", a.year, a.what, a.at, a.share);
     }
+    // the seat and the university (docs/rules/state.md, "The university")
+    let u = &st.purse.uni;
+    let name = |t: usize| st.town_name.get(t).cloned().unwrap_or_default();
+    match u.seat {
+        Some(s) => println!("
+seat: {} (town {s}), chosen {}", name(s), u.seat_year),
+        None => println!("
+seat: none"),
+    }
+    for v in &u.unis {
+        println!("  university of {} (town {}), founded {}{}{}", name(v.town), v.town, v.founded, if v.by_hand { " by hand" } else { "" }, v.closed.map_or(String::new(), |y| format!(", closed {y}")));
+    }
+    println!("year  share  students  staff   staff_pay   rooms_paid   rooms    been   intake   moved");
+    for v in u.years.iter().filter(|v| v.share > 0.0 || v.students > 0.0) {
+        if (v.year - 1900) % every != 0 && v.year != end {
+            continue;
+        }
+        println!("{} {:.3} {:9.0} {:6.0} {:11.0} {:12.0} {:8.0} {:.3} {:8.0} {:7.0}", v.year, v.share, v.students, v.staff, v.staff_pay, v.rooms_paid, v.rooms, v.been, v.intake, v.moved);
+    }
     if let Some(path) = arg("--csv") {
         std::fs::write(&path, csv).unwrap();
         println!("wrote {path}");

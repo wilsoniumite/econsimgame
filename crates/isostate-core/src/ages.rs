@@ -384,7 +384,8 @@ pub fn year(st: &mut State, P: &Params, y: &[f64], year: i64) {
         // a fifth of each group up; those turning fifteen take their schooling:
         // what their families bought, or what the treasury paid for while they
         // were at school (docs/rules/state.md), whichever is more
-        let sch = school_years(st.ages.ybar[t]).max(crate::purse::cohort_years(st));
+        // (and the years at the university this year's share of the cohort is offered)
+        let sch = school_years(st.ages.ybar[t]).max(crate::purse::cohort_years(st)) + crate::university::cohort_years(st, P);
         let (mut new, mut ns) = ([0.0; GROUPS], [0.0; GROUPS]);
         for a in 0..GROUPS {
             let stay = (r[a] - dead[a]).max(0.0);
@@ -510,6 +511,29 @@ pub fn migrate(st: &mut State, P: &Params, act: &[usize], flow: &Mat) {
             let came = shape[i].map(|v| v * m);
             arrive(st, act[j], &came, &was_school[i]);
         }
+    }
+}
+
+/// Students going to a university take their ages and schooling
+/// (`university::close_year`, after the rows are closed, as the people move):
+/// `n` of the fifteen-to-nineteen group from town `i` to town `j`, for each
+/// `(i, j, n)`.
+pub fn students(st: &mut State, P: &Params, moves: &[(usize, usize, f64)]) {
+    if !P.ages.watch || st.ages.rows.len() != st.T_max {
+        return;
+    }
+    let g = WORKING.start;
+    let was_school: Vec<f64> = st.ages.school.iter().map(|s| s[g]).collect();
+    for &(i, j, n) in moves {
+        let take = n.min(st.ages.rows[i][g]).max(0.0);
+        if !(take > 0.0) {
+            continue;
+        }
+        st.ages.rows[i][g] -= take;
+        let (mut came, mut came_school) = ([0.0; GROUPS], [0.0; GROUPS]);
+        came[g] = take;
+        came_school[g] = was_school[i];
+        arrive(st, j, &came, &came_school);
     }
 }
 

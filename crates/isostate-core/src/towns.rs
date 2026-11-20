@@ -342,6 +342,16 @@ pub fn update_urban(st: &mut State, C: &Content, P: &Params, year: i64, wbar: &[
         // the port's count of town people, smoothed
         let share = 0.04 + 0.8 * st.ind_labor[i] / (P.participation * st.pop[i]).max(1.0);
         let raw = st.pop[i] * share.clamp(0.06, 0.95);
+        // state (docs/rules/state.md, "The university"): its students are townsfolk
+        // whatever the town's works, and the rest are counted as the port counts them
+        let students = crate::university::living(st, P, i).min(st.pop[i]);
+        let raw = if students > 0.0 {
+            let rest = st.pop[i] - students;
+            let share = 0.04 + 0.8 * st.ind_labor[i] / (P.participation * rest).max(1.0);
+            rest * share.clamp(0.06, 0.95) + students
+        } else {
+            raw
+        };
         let U = if st.urban_pop[i] > 0.0 { tp.smooth * st.urban_pop[i] + (1.0 - tp.smooth) * raw } else { raw };
         let node = st.town_node[i];
         let old = settling && st.town_founded[i] < C.start_year;
