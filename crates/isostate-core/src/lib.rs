@@ -44,6 +44,7 @@ pub mod gauges;
 pub mod ground;
 pub mod hands;
 pub mod harvest;
+pub mod heaps;
 pub mod inspect;
 pub mod lab;
 pub mod land;

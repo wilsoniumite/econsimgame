@@ -37,6 +37,11 @@ use isostate_core::cli::{events_json, python_json_pretty, series_csv};
 use isostate_core::sim::{self, RunResult};
 use isostate_core::{default_content, default_params};
 
+/// A heap for each thread (`heaps.rs`), as the core's command has: the port's
+/// run must come out byte for byte whichever heap its memory comes from.
+#[global_allocator]
+static HEAPS: isostate_core::heaps::ThreadHeaps = isostate_core::heaps::ThreadHeaps;
+
 /// (series_monthly.csv, events.json) of seed 7 to 1900, no families.
 const PORT: (u64, u64) = (0x5a6d28c86afe7219, 0xa9fdb756ceaa30e5);
 /// The same with `n_families = 6`.

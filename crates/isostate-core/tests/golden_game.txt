@@ -4,26 +4,189 @@
 #   books    the books' own columns (acct_), with the year and month
 #   news     events.json
 #   run.bin  run.bin, its date set to 0000-00-00
-# 1750-1900 is the run that ends in 1900, hashed whole, as before 2050 was
-# added. 1901-2050 is the same island run on to 2050: its months and news
-# from 1901 on, and its whole run.bin. A change that acts only after 1900
-# moves the second era alone.
+# 1750-1900 is the run that ends in 1900, as before 2050 was added, hashed
+# blind to content added after 1900: its economy and books without the
+# columns that are nothing in every month to 1900, its news with each
+# invention named by its name, not its place in the content's list, and no
+# run.bin of its own (it carries the content's lists; the second era's holds
+# the years to 1900 too). 1901-2050 is the same island run on to 2050,
+# hashed strictly: its months and news from 1901 on, and its whole run.bin.
+# A change that acts only after 1900 moves the second era alone.
 #
 # These move whenever the game's rules are changed on purpose. Take them again
-# on the merged tree with one command, which writes them here itself:
+# on the merged tree with one command, which writes them here itself, adding
+# its reason below the history of the earlier ones:
 #   ISOSTATE_GOLDEN_WRITE="what moved them and why" cargo test -p isostate-core --test golden_game -- --nocapture
 # and say in the commit which moved and why (docs/rules/README.md, "The
 # game's golden test").
 #
+# The history, oldest first. Until 20 November 2026 the command above wiped
+# it, each time, down to its own line; what it wiped was put back from git,
+# each entry in its own words, in the order they landed on main.
+#
+# Taken: on the branch of stage 5b of the rules pass, two mends on the
+# merchants' side, cut from main after stages 4 and 3 (13 November 2026). All
+# four moved: no stock markup on a good that spoils (prices.no_spoil_markup,
+# docs/rules/prices.md) and land priced on the rent it paid
+# (harvest.rent_as_paid, docs/rules/harvest.md) each give the island another
+# history. With both switches off the hashes before them held.
+# Then on night/o-rules-5c-works with that main merged in (13 November
+# 2026): all four moved again by the works' two mends of the pass
+# (docs/rules/works.md, parts G and H: the works of 1749 spread out, and an
+# order paid for before a dividend); with both switches off the four of
+# stage 5b held. Held again on its check with stage 5 merged in, which
+# moves nothing.
+# Then on night/g-tree-land with main merged in (19 November 2026): all four
+# moved by the production tree's first stage, switched on under the game's
+# rules (tree.stage = 1, docs/rules/tree.md), with its thresholds fitted again
+# on the island stage 5 leaves: nine more goods, so another economy, other
+# books, other news and another run.bin. With the tree off in game_params()
+# the four before held.
+# Then on night/g-to2050-1-longrun (19 November 2026): all four moved by
+# stage 1 of the run to 2050, the bounds on prices and the wage riding on
+# the island's own cost of living (longrun.enabled, docs/rules/longrun.md):
+# iron ore's price, which stood at its floor in a few town-months on most
+# islands, may now fall below 1750's floor, and that gives the island another
+# history. With the switch off the four above held. Taken again on
+# night/g-to2050-2-standing with main (the production tree) merged in.
+# Then on night/g-to2050-2-standing (19 November 2026): all four moved by
+# step one of the demographic transition (transition.enabled,
+# docs/rules/transition.md): births follow how well each town's townsfolk
+# live, and crowding falls as drains come with income, so the island has
+# other people and so another history. With the switch off in game_params()
+# the four of the merged tree held. (Its z_half is 4.5, raised from 4 so that
+# the towns' share of 1900 stays within the spread of seeds.)
+# Then on night/g-to2050-3-gauges (19 November 2026): books and run.bin
+# moved, economy and news held. The gauges (docs/rules/gauges.md) add their
+# series beside the books' and their years to the run file's header; with
+# the gauges switched off the four above held.
+# Then night/g-to2050-3-gauges with that main merged in (19 November 2026):
+# books and run.bin moved again by the gauges, economy and news are the
+# tree's as they stood.
+# Then on night/g-to2050-4-owners, merging the gauges into stage 2 (19
+# November 2026): books and run.bin moved by the gauges, economy and news
+# are stage 2's as they stood.
+# Then on night/g-to2050-4-owners (19 November 2026): all four moved by
+# step one of owners (owners.enabled, docs/rules/owners.md): the landlords
+# are paid their part of the dividends of the works they put money into, so
+# the households have less and the landlords more, which is another history.
+# With the switch off in game_params() the four above held.
+# Then on night/g-to2050-5-tasks (19 November 2026): books and run.bin moved,
+# economy and news held. The machines for tasks (tasks.enabled,
+# docs/rules/tasks.md) are switched on, but nothing can be found before 1901,
+# so the economy to 1900 is the owners' to the byte. What moved is the
+# gauges' floor, which now reads the class of presence from the content's
+# classes of task, where the emporium holds a tenth as the services do (its
+# series is among the books' columns), and in run.bin the gauges' list of
+# presence and the params, which now carry the switch.
+# Then on night/g-batch-1 (19 November 2026), the batch that lands the run to
+# 2050's stages 1 to 3, the viewer past 1900 and the sandbox's stages 3, 4a,
+# 4b and 5a together: against main all four moved, by longrun and the
+# transition (economy, books, news, run.bin) and the gauges (books, run.bin);
+# economy and news are stage 2's own, and the sandbox's pieces move nothing.
+# Then on night/g-to2050-5c-plant with that main merged in (19 November
+# 2026): all four as the tasks stage left them. The batch's stages are this
+# line's own, and machines that work once they stand cannot act before the
+# first machine is found in 1901.
+# Then on night/g-to2050-6a-power (19 November 2026): all four moved by stage
+# 6 of the tree's overlay, the first content after 1900 (GAME_STAGE 6,
+# docs/rules/tree.md, "After 1900: electricity"): two more goods, both opening
+# at their ceiling price, and the electrical works and the station found in
+# the played century, so another economy, other books, other news and another
+# run.bin. With GAME_STAGE at 1 the four above held. Taken again, all four,
+# when electricity's warmth was refitted from 9 to 11.
+# Taken: on night/g-guard-2050 (19 November 2026), the guard on the century
+# after 1900: the test runs on to 2050 and hashes two eras. The first era's
+# four are main's to the digit (the run to 1900 is untouched); the second
+# era's four are new.
+# Taken again on night/g-batch-mends-1 (guard-2050 and small-mends-1 merged
+# on main at 00ebc6d): none of the eight moved; the money check and the
+# books' checks only read.
+# Taken again on night/g-batch-sandbox-a (19 November 2026), the batch of
+# the sandbox's stages 8a, 7a and 7b (sessions kept and gone on with; works
+# built or closed by hand) with main at 1085e2f merged in: none of the eight
+# moved. Edits by hand are not rules, and the game's run gives none.
+# Taken: Main's golden test now runs seed 7 on to 2050 in two eras, and this
+# branch's stage 6 content (oil from coal, nitrogen, breeding, the tractor and
+# the cutter) gives the island under the game's rules another history; the
+# hashes are taken again on the merged tree.
+# Taken again on night/g-batch-to2050-a (19 November 2026), the batch of the
+# run to 2050's stages 5c and 6 (machines that work once they stand; the
+# electric drive; the new works drawn) with main at 5348171 (stage 7a, the
+# land's twentieth century, on 5c and 6a) merged in: the first era's four
+# held, and the second era's four moved, by the electric drive, found from
+# 1901, which takes the works' hauling from the hoist; the drawing is the
+# generators' and moves none of them.
+# Taken again on night/g-woods-managed: the woods' rule (docs/rules/woods.md) on in
+# game_params: its two series (woods_cover, timber_in_wages) join
+# series_monthly.csv in both eras, managed woodland is in stage 6's content
+# and in run.bin, and from 1895 the woods grow back faster where it is known.
+# Taken again on night/g-batch-cures-a (19 November 2026), the batch of
+# the cures for the wage after 1950, with main at 94b35ea:
+# night/g-woods-managed's woods' rule on in game_params. The first era's
+# economy moved by the two new series' columns (woods_cover, timber_in_wages)
+# alone and its run.bin by managed woodland in the record (seed 7 finds it in
+# 1902, not before 1900: its books and news held); the second era's four
+# moved, the woods managed from 1902.
+# Taken: 1750-1900 and 1901-2050, all four in each: the merchants' crumb (a
+# stock under a hundredth of a works' month at capacity is no glut) acts in
+# the played century too, and from 1901 a works short of power idles its
+# machines and not itself, with the idling rule taken out
+# (docs/rules/tasks.md, A machine short of its run good)
+# Taken: Taken again on night/g-new-land-switch (19 November 2026): the land
+# (docs/rules/land.md, "The switch") became the game's default, so seed 7 is
+# the new land's island 7 and all eight moved, in both eras; the crossings
+# (docs/rules/crossings.md), which act on the new land only, now act on it
+# too.
+# Taken: on the batch night/g-batch-new-land-a, all four in both eras: the
+# new land (docs/rules/land.md, "The switch") became the game's default, so
+# seed 7 is the new land's island 7, and it is played with the merchants'
+# crumb and the machines idling short of their run good, which landed just
+# before (docs/rules/prices.md, docs/rules/tasks.md); ways-2-water is the
+# viewer's alone and moves none
+# Taken: the land's century: 1750-1900 economy and run.bin by the new good
+# fertiliser's columns alone (no fact of the played century moved on islands 1
+# to 16); 1901-2050 all four by the combine, the land's machines idling as the
+# works' do, the nitrogen works making fertiliser, breeding's threshold and
+# the ceiling's ramp
+# Taken: merge of main (the new land the game's default) into the land's
+# century: 1750-1900 economy and run.bin by the new good fertiliser's columns,
+# on main's new land; 1901-2050 all four by the combine, the land's machines
+# idling as the works' do, the nitrogen works making fertiliser, breeding's
+# threshold and the ceiling's ramp
+# Taken: 1901-2050: office computing (tasks.computing), machines that reckon
+# taking clerks' tasks in the works (found in 1960 on this island); the played
+# century held. Held again when its find became a floor read per head: island
+# 7 still finds it in 1960, so nothing moved
+# Taken: 1901-2050: models (tasks.models), rented machines taking judging
+# tasks in the works and on the land from 2022 (found in 2022 on this island);
+# the played century held
+# Taken: 1901-2050 all four: offices, steel-frame builders and office
+# machines, none found before 1901 (found 1901, 1901 and 1901 on this island).
+# 1750-1900 economy, news and run.bin moved without the run moving: the series
+# gain four columns of the two new methods, all nothing to 1900; three items
+# of news name an invention of the port by its place in the content, which the
+# two new methods move on by two; run.bin carries the content's lists. Every
+# other column and item to 1900 is the same to the digit; books held
 # Taken: 1901-2050 all four: the ground (docs/rules/ground.md) takes over at
 # the end of 1900: house rent that clears the room a town has built, blended
 # in over 1901 to 1920, and a town's reach of five cells (eight with the
 # tramway, found 1901 on this island). 1750-1900 held, all four, since nothing
 # of the rule acts before 1901
-1750-1900 economy  0x320cce2de14a1967
+# Taken: 1750-1900 economy and news, in a new form, and its run.bin line gone:
+# the first era is hashed blind to content added after 1900 (columns that are
+# nothing in every month to 1900 left out, inventions in the news named by
+# name, not by their place in the content's list, and no run.bin of its own),
+# so that a piece adding content after 1900 cannot move it. The run did not
+# move: 1750-1900 books, which has no such column, held, and the four of
+# 1901-2050, hashed strictly as before, held to the digit. The trees before
+# the offices (c8fee93) and after them (03e0dbb) give these same three
+# first-era hashes. Taken on night/g-speed-heap-golden (20 November 2026),
+# which also gives each thread of the core's command and of this test a heap
+# of its own; that moves nothing.
+1750-1900 economy  0x774ab436e64ce294
 1750-1900 books    0x6eb41e73d1a3bad0
-1750-1900 news     0xe230618b76ca51fb
-1750-1900 run.bin  0x280c4a50f93cbf69
+1750-1900 news     0x7cce4d40439547f4
 1901-2050 economy  0xff6c05b80f54940f
 1901-2050 books    0x52feeb90e3d119a9
 1901-2050 news     0x977950db24cfbb20
