@@ -203,6 +203,14 @@ find, when it comes, is told as a discovery "in the year it was pinned to".
 The game has no button for it yet; the hand on the atlas's timeline is a
 later piece.
 
+A pinned idea still takes the number its year's draw would have taken, and
+the pin decides only what comes of it, so both arms of an island draw the
+same numbers until the pin first changes a find. The experiment of pinning
+electricity to history's years on sixteen islands (`docs/atlas.md`, "The pin:
+electricity in history's year on every island") parts its arms in 1867 on
+the island that found the electrical works that year, and in 1885 on the
+seven that had not found it by then.
+
 ## Three experiments
 
 Played on 19 November 2026 with the code of this page's first commit, eight

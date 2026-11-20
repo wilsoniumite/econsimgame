@@ -25,7 +25,7 @@ select, input { font: inherit; font-size: 13px; }
 main { display: flex; align-items: flex-start; }
 #timeline { flex: 1 1 auto; overflow-x: auto; padding: 4px 0 0 8px; }
 #timeline svg { display: block; }
-aside { flex: 0 0 340px; padding: 10px 16px 20px; border-left: 1px solid var(--rule); background: var(--card); min-height: 100vh; font-size: 13px; position: sticky; top: 44px; }
+aside { flex: 0 0 340px; padding: 10px 16px 20px; border-left: 1px solid var(--rule); background: var(--card); font-size: 13px; position: sticky; top: 44px; max-height: calc(100vh - 50px); overflow-y: auto; }
 aside h3 { font-size: 14px; margin: 10px 0 4px; }
 #details table { border-collapse: collapse; font-size: 12px; }
 #details td { padding: 0 8px 0 0; font-variant-numeric: tabular-nums; }
@@ -85,7 +85,7 @@ function el(tag, attrs, parent) {
   return e;
 }
 function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]); }
-function fmt(v, d) { return v == null || !isFinite(v) ? "-" : v.toLocaleString("en-GB", { maximumFractionDigits: d == null ? 0 : d, minimumFractionDigits: d == null ? 0 : d }); }
+function fmt(v, d) { return v == null || !isFinite(v) ? "-" : v.toLocaleString("en-GB", { useGrouping: false, maximumFractionDigits: d == null ? 0 : d, minimumFractionDigits: d == null ? 0 : d }); }
 function key(r) { return r.kind + ":" + r.name; }
 function found(r) { return r.years.filter((y) => y != null).sort((a, b) => a - b); }
 function mean(v) { return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
@@ -217,7 +217,9 @@ function spreadDraw() {
   $("spreadNote").innerHTML = yr == null ? "Island " + isl.seed + " never found it." :
     "Found in " + yr + (here != null ? " in " + esc((isl.towns.find((x) => x.t === here) || {}).name || "town " + here) : "") +
     ". A town is drawn as knowing it from the first year's end at which its knowledge stood above " + A.knows + ", from which a works of it may be built there. " +
-    (known.length ? known.length + " of " + towns.length + " towns came to know it, the first in " + known[0] + " and the last in " + known[known.length - 1] + " (" + (known[known.length - 1] - known[0]) + " years)" : "No town came to know it") +
+    (known.length ? known.length + " of " + towns.length + " towns came to know it, the first in " + known[0] + " and the last in " + known[known.length - 1] : "No town came to know it") +
+    (() => { const old = towns.filter((x) => yr != null && x.tw.from <= yr), k = old.filter((x) => x.y != null).map((x) => x.y).sort((a, b) => a - b);
+      return old.length ? "; of the " + old.length + " towns standing when it was found, " + k.length + " came to know it, the last in " + (k.length ? k[k.length - 1] + ", " + (k[k.length - 1] - yr) + " years after the find" : "-") + ". A town founded later learns it from its neighbours, or from the town it was founded from" : ""; })() +
     ". Dark is early, pale is late; an open ring never knew it; the double ring is the town that found it.";
   // the map
   const s = Math.max(2, Math.min(5, Math.floor(560 / Math.max(1, +isl.land.split(",")[0]))));
