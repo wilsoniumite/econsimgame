@@ -97,6 +97,17 @@ pub struct YearEnd {
     /// the player's family once the turn's orders were carried out, if any were
     pub family: Option<FamilyReport>,
     pub standing: Standing,
+    /// what the ground holds and what each town made in the year (`holds_year`)
+    pub holds: replay::HoldsYear,
+}
+
+impl YearEnd {
+    /// Write the year into the run: its arrays (`apply_year`) and what the ground holds.
+    pub fn apply(&self, r: &mut Replay) {
+        apply_year(r, &self.year);
+        let (ny, n, ng) = (r.ny, r.n, r.header.goods.len());
+        r.holds.take_year(self.year.index, ny, n, ng, &self.holds);
+    }
 }
 
 pub struct SiteInfo {
@@ -576,6 +587,8 @@ impl Board {
         self.months(sim, 12);
         let y = iso::live_year(&mut self.cursor, &sim.st, &sim.content, &sim.params, &sim.events);
         apply_year(&mut self.r, &y);
+        let (ny, n, ng) = (self.r.ny, self.r.n, self.r.header.goods.len());
+        self.r.holds.take_year(y.index, ny, n, ng, &holds_year(sim));
         crate::game::year_families(&mut self.view, &y.families, y.year as i32);
     }
 
@@ -1215,6 +1228,7 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                                 }
                                 year_end = true;
                                 let year = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
+                                let holds = holds_year(s);
                                 let news = game.sim.events.len();
                                 let done = game.turn();
                                 begun = done.iter().filter(|o| o.result.is_ok()).filter_map(|o| works_square(&o.order)).collect();
@@ -1229,7 +1243,7 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                                     })
                                     .collect();
                                 let family = if done.is_empty() { None } else { family_now(&game) };
-                                Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun) }))
+                                Msg::Year(Box::new(YearEnd { year, prospects: all_prospects(s), carried, family, standing: standing(&game, &begun), holds }))
                             }
                         }
                         Err(e) => Msg::Failed(e),
@@ -1422,7 +1436,50 @@ fn shell(stat: &LiveStatic, content: &iso::content::Content, seed: u64) -> Repla
         rent_scale: Vec::new(),
         // the second island generator's land, in a game played on it (newland.rs)
         land: stat.land.as_deref().map(|lf| std::sync::Arc::new(crate::newland::NewLand::from_core(lf, w, h))),
+        // the ground's fields and the sectors' goods now; the rest by the year (`holds_year`)
+        holds: replay::Holds {
+            sectors: content.sector_name.iter().cloned().zip(content.sector_good.iter().copied()).collect(),
+            fields: stat.field_names.iter().cloned().zip(stat.fields.iter().cloned()).filter(|f| f.1.len() == n).collect(),
+            ..Default::default()
+        },
     }
+}
+
+/// What the ground holds and what each town made in the year the simulation
+/// has just closed, for the map views (`replay::Holds`): read off its state on
+/// the game's thread. It only reads, and costs a few milliseconds a year.
+pub fn holds_year(sim: &iso::Sim) -> replay::HoldsYear {
+    let (st, content, params) = (&sim.st, &sim.content, &sim.params);
+    let n = st.N;
+    // what each town made: the books' last closed year, for the towns there are
+    let mut made = Vec::new();
+    let h = &st.acct.hist;
+    let (ng, kg) = (content.G, iso::accounts::KG);
+    let col = iso::accounts::GOODS_FIELDS.iter().position(|&c| c == "made").unwrap_or(0);
+    if st.acct.on && h.n > 0 && ng > 0 && h.goods.len() % (h.n * ng * kg) == 0 {
+        let slots = h.goods.len() / (h.n * ng * kg);
+        let year = &h.goods[(h.n - 1) * slots * ng * kg..h.n * slots * ng * kg];
+        // every town slot, as a game's replay keeps its towns (`apply_year`)
+        made = (0..slots * ng).map(|i| year[i * kg + col]).collect();
+    }
+    // the timber standing, on the fields' scale
+    let cover = if st.cover.len() == n { iso::record::field_bytes(&st.cover) } else { Vec::new() };
+    // how much of each worked deposit's richness the hands still meet (mines.rs, E)
+    let mut left = Vec::new();
+    let reserve = params.mines.reserve;
+    for (row, &s) in st.mine_sectors.iter().enumerate() {
+        let field = content.sector_field[s].as_str();
+        let Some(kind) = replay::DEPOSIT_FIELDS.iter().position(|&f| f == field) else { continue };
+        let f = st.world.field(field);
+        for c in 0..n.min(st.mine_dug.cols) {
+            let dug = st.mine_dug[(row, c)];
+            if dug > 0.0 {
+                let share = if reserve > 0.0 && f[c] > 0.0 { 1.0 / (1.0 + dug / (reserve * f[c])) } else { 1.0 };
+                left.push((c as u32, kind as u8, (share * 255.0).round().clamp(0.0, 255.0) as u8));
+            }
+        }
+    }
+    replay::HoldsYear { made, cover, left }
 }
 
 /// Add news to the run's list, each item with its place in the simulation's list.

@@ -93,7 +93,7 @@ fn odd_curves_and_lopsided_sets_still_spend_the_budget() {
         let sub: f64 = (0..C.S).map(|s| C.subsistence[s] * unit[(0, s)]).sum();
         for y_ref in [-1.0, 0.0, 0.5, 1.0, 1.3, 7.5, 1e6] {
             for strength in [-2.0, 1e-3, 3.0, 500.0] {
-                let E = EngelParams { enabled: true, y_ref, strength };
+                let E = EngelParams { enabled: true, y_ref, strength, ..EngelParams::default() };
                 let mut last = vec![0.0; C.S];
                 let mut y = 0.05;
                 while y < 400.0 {
@@ -260,6 +260,61 @@ fn content_can_say_the_richer_set() {
     let light = with("shares_rich = [0.1, 0.1, 0.2, 0.2, 0.1, 0.2]").unwrap_err();
     assert!(light.contains("adds up to"), "{light}");
     assert!(with("shares_rich = [0.1, 0.1, 0.2, 0.2, -0.1, 0.5]").is_err());
+
+    // the lean's set (engel.md, "After 1900"): the richer set itself where the content has none,
+    // read and refused as the richer set is
+    assert_eq!(C.shares_lean, C.shares_rich);
+    let own = with("shares_lean = [0.05, 0.06, 0.12, 0.11, 0.07, 0.59]").expect("a leaned set is read");
+    assert_eq!(own.shares_lean, vec![0.05, 0.06, 0.12, 0.11, 0.07, 0.59]);
+    assert_eq!(own.shares_rich, C.shares_rich);
+    let short = with("shares_lean = [0.5, 0.5]").unwrap_err();
+    assert!(short.contains("shares_lean must be 6 shares"), "{short}");
+    assert!(with("shares_lean = [0.1, 0.1, 0.2, 0.2, 0.1, 0.2]").unwrap_err().contains("adds up to"));
+    assert!(with("shares_lean = [0.1, 0.1, 0.2, 0.2, -0.1, 0.5]").is_err());
+    // the game's (laid by the production tree, as a run lays it): 0.06 of a further shilling
+    // from shelter and 0.14 from clothing, to comfort, and every other need as it was
+    let G = isostate_core::tree::content(&game_params(), isostate_core::game_content()).unwrap();
+    let need = |name: &str| G.service_name.iter().position(|n| n == name).unwrap();
+    assert!((G.shares_rich[need("shelter")] - G.shares_lean[need("shelter")] - 0.06).abs() < 1e-12);
+    assert!((G.shares_rich[need("clothing")] - G.shares_lean[need("clothing")] - 0.14).abs() < 1e-12);
+    assert!((G.shares_lean[need("comfort")] - G.shares_rich[need("comfort")] - 0.2).abs() < 1e-12);
+    for name in ["food", "warmth", "implements", "table", "wares"] {
+        assert_eq!(G.shares_lean[need(name)], G.shares_rich[need(name)], "{name}");
+    }
+}
+
+#[test]
+fn the_lean_moves_the_richer_set_a_step_a_year_from_1901_to_1970() {
+    let C = isostate_core::tree::content(&game_params(), isostate_core::game_content()).unwrap();
+    assert_ne!(C.shares_lean, C.shares_rich);
+    let on = EngelParams { lean: true, ..EngelParams::game() };
+    // nothing up to and including 1900, nor ever with the switch off
+    for year in [1750, 1899, 1900] {
+        assert_eq!(engel::lean_weight(&on, year), 0.0);
+        assert_eq!(engel::rich_now(&C, &on, year), C.shares_rich);
+    }
+    for year in [1901, 1950, 2050] {
+        assert_eq!(engel::rich_now(&C, &EngelParams::game(), year), C.shares_rich);
+    }
+    // a seventieth a year, complete in 1970 and after
+    assert!((engel::lean_weight(&on, 1901) - 1.0 / 70.0).abs() < 1e-15);
+    assert!((engel::lean_weight(&on, 1935) - 0.5).abs() < 1e-15);
+    assert_eq!(engel::lean_weight(&on, 1970), 1.0);
+    assert_eq!(engel::rich_now(&C, &on, 2050), C.shares_lean);
+    // every year's set adds up to the content's and has no share under nothing, and no need
+    // moves more than a seventieth of its whole lean in a year (no household's budget jumps)
+    let want: f64 = C.shares.iter().sum();
+    let mut last = engel::rich_now(&C, &on, 1900);
+    for year in 1901..=2000 {
+        let now = engel::rich_now(&C, &on, year);
+        assert!((now.iter().sum::<f64>() - want).abs() < 1e-12, "{year}");
+        assert!(now.iter().all(|&v| v >= 0.0), "{year}");
+        for s in 0..C.S {
+            let step = (C.shares_lean[s] - C.shares_rich[s]).abs() / 70.0;
+            assert!((now[s] - last[s]).abs() <= step + 1e-15, "{year}, need {s}");
+        }
+        last = now;
+    }
 }
 
 fn run_to(P: &Params, end_year: i64) -> RunResult {
@@ -286,6 +341,9 @@ fn only_the_games_rules_have_the_curve() {
     // switching it on by name, as the sweep does, gives the game's curve
     let set = default_params().with_json_overrides(r#"{"engel": {"enabled": true}}"#).unwrap();
     assert_eq!(set.engel, EngelParams::game());
+    // and the game's rules lean after 1900 as well (game_params sets it, a stage of the run to 2050)
+    assert!(!default_params().engel.lean && !EngelParams::game().lean);
+    assert_eq!(game_params().engel, EngelParams { lean: true, ..EngelParams::game() });
 }
 
 #[test]

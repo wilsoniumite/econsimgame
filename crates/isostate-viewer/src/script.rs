@@ -53,10 +53,14 @@
 //! and for the map views and the Markets panel:
 //!
 //!     chip:NAME       click a chip of the legend card: rent, areas, reach,
-//!                     price, wages, plain, or pill for the Map views button
-//!                     that stands there while the map is plain
-//!     good:next       the legend's steps through the goods whose price is
-//!     good:back       mapped
+//!                     price, made, wages, growth, residents, deposits, plain,
+//!                     or pill for the Map views button that stands there
+//!                     while the map is plain
+//!     good:next       the legend's steps through the goods whose price or
+//!     good:back       making is mapped, or the kinds of ground
+//!     range:year      the legend's chip for how the colours' ends are taken:
+//!     range:30        this year, thirty years gliding, the whole run
+//!     range:all
 //!     row:GOOD        click a good's row in the Markets panel (row:coal)
 //!     half:island     click a chip of the Markets panel: the island's charts,
 //!     half:goods      the goods, or the island's work and owners (print on
@@ -109,6 +113,8 @@ enum Step {
     Chip(String),
     /// the legend's step through the goods: 1 on, -1 back
     Good(i32),
+    /// the legend's chip for how the colours' ends are taken
+    Range(crate::ranges::Range),
     /// a good's row in the Markets panel, by name
     Row(String),
     Half(MarketsShow),
@@ -256,8 +262,9 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
             },
             "scroll" => Step::Scroll(num("the pixels")?),
             "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
-            "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') => Step::Chip(arg.to_ascii_lowercase()),
-            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill")),
+            "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') && !arg.contains('+') => Step::Chip(arg.to_ascii_lowercase()),
+            "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill")),
+            "range" => Step::Range(crate::ranges::Range::parse(arg).ok_or_else(|| format!("{part}: range:year, range:30 or range:all"))?),
             "good" => match arg.to_ascii_lowercase().as_str() {
                 "next" => Step::Good(1),
                 "back" => Step::Good(-1),
@@ -496,6 +503,12 @@ fn print_state(world: &mut World, note: &str) {
                 println!("script:   {line}");
             }
         }
+        // the island half's people by age, reckoned (docs/rules/ages.md), as its chart draws them
+        if tab == ui::Tab::Markets && world.resource::<UiState>().markets == MarketsShow::Island {
+            if let Some(line) = crate::ages_chart::said(&world.resource::<Data>().r, k) {
+                println!("script:   {line}");
+            }
+        }
     }
     // the note about what was clicked, every text of it, while it shows
     let mut q = world.query_filtered::<Entity, With<crate::InspectPanel>>();
@@ -598,8 +611,11 @@ fn print_map(world: &World, note: &str) {
         MarketsShow::Work => "work",
     };
     let panel = ui.tab.map_or("none".to_string(), |t| format!("{t:?}").to_lowercase());
+    // a view that colours by a number adds its range, its ends and its round figures
+    let k = (world.resource::<Timeline>().t.floor() as usize).min(data.r.ny - 1);
+    let range = if ov.kind.is_some_and(|k| k.scaled()) { format!(" {}", ov.range_said(&data.r, k)) } else { String::new() };
     println!(
-        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}",
+        "script: {}map: {map:<6} price of: {:<9} panel: {panel:<8} markets half: {half:<6} open good: {}{range}",
         if note.is_empty() { String::new() } else { format!("[{note}] ") },
         good(ov.good),
         ui.good.map_or("none", good)
@@ -970,7 +986,7 @@ fn step(world: &mut World, sc: &mut Script) {
             }
             Step::Chip(name) => {
                 // Plain map and the pill are the same chip: the one that asks for no overlay
-                let want: Option<Overlay> = crate::overlay::parse(&name, &world.resource::<Data>().r).and_then(|p| p.0);
+                let want: Option<Overlay> = crate::overlay::parse(&name, &world.resource::<Data>().r).and_then(|p| p.kind);
                 match find_marked::<OverlayChip>(world, &format!("chip:{name}"), |c| c.0 == want) {
                     Ok(e) => press(world, sc, e),
                     Err(why) => println!("script: no click: {why}"),
@@ -979,6 +995,13 @@ fn step(world: &mut World, sc: &mut Script) {
             }
             Step::Good(turn) => {
                 match find_marked::<GoodStep>(world, if turn < 0 { "good:back" } else { "good:next" }, |s| s.0 == turn) {
+                    Ok(e) => press(world, sc, e),
+                    Err(why) => println!("script: no click: {why}"),
+                }
+                frame = true;
+            }
+            Step::Range(range) => {
+                match find_marked::<crate::overlay::RangeChip>(world, &format!("range:{}", range.word()), |c| c.0 == range) {
                     Ok(e) => press(world, sc, e),
                     Err(why) => println!("script: no click: {why}"),
                 }
@@ -1097,8 +1120,9 @@ mod tests {
         assert_eq!(parse("key:Nope").err().unwrap(), "key:Nope: no key called Nope");
         assert_eq!(parse("key:Shift+Nope").err().unwrap(), "key:Shift+Nope: no key called Nope");
         assert_eq!(parse("wait:long").err().unwrap(), "wait:long: the seconds must be a number");
-        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
-        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, wages, growth, residents, plain and pill");
+        assert_eq!(parse("chip:rents").err().unwrap(), "chip:rents: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill");
+        assert_eq!(parse("chip:price:coal").err().unwrap(), "chip:price:coal: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill");
+        assert_eq!(parse("range:ever").err().unwrap(), "range:ever: range:year, range:30 or range:all");
         assert_eq!(parse("good:up").err().unwrap(), "good:up: good:next or good:back");
         assert_eq!(parse("half:all").err().unwrap(), "half:all: half:island, half:goods or half:work");
         // a panel that is no panel was once taken for closing the panel

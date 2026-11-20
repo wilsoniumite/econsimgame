@@ -377,6 +377,11 @@ pub struct Params {
     /// Python; see docs/rules/city.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub city: crate::city::CityParams,
+    /// The people's ages, reckoned beneath the totals the island plays, with
+    /// schooling carried by cohort (not in the Python; it only watches; see
+    /// docs/rules/ages.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub ages: crate::ages::AgesParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -597,6 +602,7 @@ pub fn default_params() -> Params {
         linked: crate::linked::LinkedParams::default(),
         pay: crate::pay::PayParams::default(),
         city: crate::city::CityParams::default(),
+        ages: crate::ages::AgesParams::default(),
     }
 }
 
@@ -659,6 +665,11 @@ pub fn game_params() -> Params {
     // city (docs/rules/city.md): after 1900 people follow jobs, work gathers where
     // work is, and room is wanted less than in proportion as it dears; all three on
     P.city = crate::city::CityParams::game();
+    // engel's lean (docs/rules/engel.md, "After 1900"): from 1901 a well-off household's
+    // further shilling leans from shelter and clothing to comfort, complete in 1970
+    P.engel.lean = true;
+    // ages (docs/rules/ages.md): watches only, the people's ages beneath the played totals
+    P.ages = crate::ages::AgesParams::game();
     P
 }
 

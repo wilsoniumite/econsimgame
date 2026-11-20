@@ -167,6 +167,10 @@ The chained index stays as it is, since two of the standing facts read it.
 | `engel.y_ref` | 2.0 | real income up to which the content's shares hold. A value under 1 is taken as 1: subsistence is always bought by the subsistence rule |
 | `engel.strength` | 3.0 | how fast the shares turn: at twice `y_ref` they are `1 - 0.5^strength` of the way. 0 is a flat curve: the port's households, with the new series recorded |
 | `shares_rich` (content) | 0.05, 0.06, 0.24, 0.22, 0.07, 0.36 | the richer set |
+| `engel.lean` | off (port), on (game, set in `game_params`) | after `lean_from` the richer set moves toward `shares_lean` ("After 1900", below) |
+| `engel.lean_from` | 1900 | the last year of the richer set as the content gives it |
+| `engel.lean_years` | 70 | years until the richer set is the leaned one: complete in 1970 |
+| `shares_lean` (content) | the game's: 0.05, 0.06, 0.14, 0.03, 0.07, 0.48, 0.07, 0.10 | the richer set once leaned; `shares_rich` where the content has none |
 
 `y_ref` is 2 because that is where the island started when it was chosen: real
 income is 1.83 in 1750 on eight seeds (1.78 to 1.90) under the port, so 1750 is
@@ -580,6 +584,145 @@ between the two indices is wider than the port's: the cost of living in 1900
 is 1.20 on the 1750 basket and 0.73 chained, so the chained real wage is 4.24
 where the basket's is 2.60.
 
+## After 1900: the lean toward services
+
+`engel.lean`, with `engel.lean_from` and `engel.lean_years`, and the content's
+`shares_lean`. A stage of the run to 2050; it acts only from 1901.
+
+**What was wrong.** On the island of 2050 services had 0.28 of all hands, as
+in 1900, where a real country goes from about 0.3 to 0.8; the land and the pits
+kept a quarter of the hands; and the first city stood near the least size the
+gate asks. The step back of 20 November 2026 found why: of a rich household's
+next shilling, shelter takes 0.20 and clothing 0.17, and those are bricks,
+stone, timber and wool, things of the land and the pits. Two experiments that
+moved 0.20 of that shilling to comfort from 1900, at once, set the island right
+in several ways together.
+
+**What it does.** From the months of 1901 the richer set itself moves, a
+seventieth of the way each year, toward a second set the content gives:
+
+```text
+shares_rich now  =  shares_rich + lean(year) x (shares_lean - shares_rich)
+
+lean(year)  =  0                                         up to and in lean_from
+            =  min(1, (year - lean_from) / lean_years)   after it
+```
+
+The game's `shares_lean` (in `data/game.toml`, beside `shares_rich`) takes
+0.06 of a further shilling from shelter (0.20 to 0.14) and 0.14 from clothing
+(0.17 to 0.03), and gives the 0.20 to comfort (0.28 to 0.48). The experiments
+took 0.10 from each; that split was tried first and moved once (below). With `lean_from` 1900 and `lean_years` 70 the lean is
+complete in 1970. Everything else about the curve stands: a household's income
+still decides, through `weight(y)`, how much of its budget the richer set
+governs, so a poor town leans less than a rich one in the same year; both sets
+add up to the same total and have no share under nothing, so every mix of
+them does too, and the budget is still spent exactly and more income still
+buys more of everything. The lean moves no household's budget by more than a
+seventieth of a fifth of what the richer set governs in a year, so nothing
+jumps in 1901. Landlords and families keep their own shares, as before.
+
+A content file that has no `shares_lean` leans nowhere: the port's
+`data/content.toml` has none, so the switch does nothing there.
+
+**Why the years, and not a second mark of income.** The curve's form allows a
+second mark: a second tier of the same integral above a higher income, in
+closed form like the first. But the island's income in bundles does not carry
+it. Real income a head is 10.0 in 1900 (9.1 to 11.1 across islands 1 to 8),
+16.4 in 1950, and then flat: 17.0 in 1970, 16.6 in 2000, 15.8 in 2050 (the
+first city's sweep to 2050, `real_income`). A second mark at 1900's income,
+so that nothing moves before, with the curve's own strength of 3, governs only
+0.21 of the budget above subsistence at 2000's income; even giving the whole of
+shelter's and clothing's rich share to comfort that moves 0.08 of the budget,
+where the experiments moved about 0.17. A mark below 1900's income acts in the
+played century unless it is dated, and once dated it is the date that does the
+work. So the lean is tied to the years from 1900, as a change in what a
+well-off household wants as the world around it changes, and its date numbers
+are in `P.engel` and its shares in the content.
+
+**What the island does with it.** Measured on 20 November 2026 with a probe
+that plays each island once to the end of 1899 under the game's rules (the
+city's three rules on) and then each arm from that same state, so that both arms
+of an island are one island to 1900; a sweep from 1750 with the lean on gives
+the same numbers to the last digit. December's hands over all at work, the mean
+of the islands, lean off and then on, beside a real island country of one to
+three million (the step back's bands, from memory of six such countries):
+
+| islands 1 to 8 | 1900 | 1950 | 1970 | 2000 | 2050 | real 1900 / 1950 / 2000 / 2050 |
+|---|---|---|---|---|---|---|
+| the land (farms, pasture, woods) | 0.241 | 0.190, 0.142 | 0.173, 0.123 | 0.175, 0.112 | 0.197, 0.127 | 0.30-0.55 / 0.15-0.45 / 0.03-0.09 / 0.01-0.04 |
+| the pits (coal, clay, stone, iron) | 0.132 | 0.090, 0.083 | 0.096, 0.081 | 0.096, 0.078 | 0.109, 0.092 | 0.01-0.03 / 0.01-0.03 / under 0.01 / under 0.005 |
+| works that make | 0.177 | 0.240, 0.221 | 0.241, 0.222 | 0.243, 0.214 | 0.236, 0.229 | 0.15-0.25 / 0.20-0.30 / 0.13-0.20 / 0.08-0.14 |
+| building | 0.081 | 0.089, 0.073 | 0.072, 0.065 | 0.073, 0.060 | 0.054, 0.055 | 0.05-0.08 |
+| services (shops, emporia, offices) | 0.279 | 0.296, 0.400 | 0.323, 0.429 | 0.312, 0.453 | 0.293, 0.400 | 0.20-0.35 / 0.35-0.50 / 0.65-0.78 / 0.75-0.85 |
+| towns' share of people | 0.458 | 0.531, 0.578 | 0.537, 0.599 | 0.533, 0.604 | 0.498, 0.568 | 0.25-0.45 / 0.40-0.70 / 0.60-0.85 / 0.70-0.90 |
+
+Islands 9 to 16 read the same to the second place (services 0.278 and 0.401 in
+2050, the land 0.172 and 0.122, the towns 0.503 and 0.568). And in 2050:
+
+| 2050, lean off and on | islands 1 to 8 | islands 9 to 16 |
+|---|---|---|
+| the largest town, townsfolk | 129,000 [84k..176k], 155,000 [109k..227k] (6 islands up, 2 down) | 154,000, 171,000 (6 up, 2 down) |
+| its share of all townsfolk | 0.219, 0.246 | 0.255, 0.270 |
+| the second town over the first | 0.84, 0.87 | 0.83, 0.78 |
+| rent's burden, the largest town against the others | 0.220 / 0.191, 0.185 / 0.200 | 0.180 / 0.189, 0.203 / 0.193 |
+| `dens` in the largest town, mean and top | 1.78 / 2.08, 1.66 / 1.97 | 1.65 / 1.92, 1.85 / 2.17 |
+| people | 1.190 M, 1.108 M | 1.206 M, 1.109 M |
+| linked wage, per cent a year 1900-70 | 1.15, 1.25 | 1.20, 1.30 |
+| linked wage, 2050 over 1970 | 1.03, 1.13 | 1.02, 1.10 |
+| the land's share of hands, 2050 less 1900 | -0.049, -0.117 | -0.075, -0.117 |
+| made a head, 2050 against 1750 (linked) | 24.9, 25.5 (4 up, 4 down) | 23.5, 24.1 |
+| clerks' pay over the mean, 2050 (the pay gauge) | 0.690, 0.662 | 0.689, 0.679 |
+
+The lean does what the two experiments did, more slowly: services rise to 0.45
+of the hands by 2000 where they stood at 0.31, the land and the pits give up
+six points, the towns' share rises six or seven points, and the first city
+reaches 155,000 townsfolk and a quarter of all townsfolk on islands 1 to 8.
+The wage grows faster both before 1970 and after it, so the gate's second ask
+(2050 over 1970), which the city alone met at 1.03, is now met at 1.13 and
+1.10, on every island of the sixteen. What is made a head falls behind until
+1970 (21.0 for 22.3 times 1750's) and is level again by 2050: a shilling
+moved from cloth and bricks to shops buys fewer goods. Services still fall
+back after 2000 (0.45 to 0.40), and stay at half the real band; the land and
+the pits keep a fifth of the hands where a real country keeps a twentieth,
+which waits on the land's machines and on energy after coal, not on demand.
+Rent's burden in the city no longer stands above the other towns' on islands 1
+to 8 (it does on 9 to 16).
+
+**The fit.** The lean first took 0.10 from shelter and 0.10 from clothing, as
+the experiments did. On islands 1 to 8 that left building at 0.039 of the hands
+in 2050, under the real band of 0.05 to 0.08, and the works that make at 0.22,
+over theirs: the cut in shelter was the stronger of the two. Moved once, to
+0.06 from shelter and 0.14 from clothing: building 0.055 in 2050, the land
+0.127 for 0.147, services 0.400 for 0.408, the largest town 155,000 for
+151,000, and the wage's growth after 1970 1.13 for 1.08 (on islands 9 to 16:
+services 0.401 for 0.387, the wage 1.10 for 1.11). Nothing else was tried.
+
+**Why there are fewer people.** With the lean the island has 7 per cent fewer
+people in 2050 (1.11 million for 1.19 on islands 1 to 8, and for 1.21 on 9 to
+16; fewer on all sixteen), and the two
+experiments, which leaned all at once, had 11 per cent fewer. Traced year by
+year from 1901, when the arms part, through each district's rate of increase
+(`peopling::growth`'s own parts, people-weighted): the income part is the same
+in both arms to the third place every year (1.58 to 1.59 per cent a year),
+the town's own deaths are nothing after 1910 in both, nobody takes ship (500
+people in a century), and dearth is nothing. The whole gap is the share of the
+income part that the transition keeps (`transition.md`): in 1970 0.099 of it
+with the lean against 0.131 without, because `z`, the share of a district's
+people who are townsfolk times their income, is 11.2 against 9.3, three
+fifths of that from the towns' share (0.598 against 0.536) and two fifths from
+income (18.8 bundles a head against 17.5). So the island has fewer children because
+more of its people live in towns and live better there: the mechanism the
+transition was built to be, and what happened in every country that left the
+land. It is not a fault, and nothing was mended. One thing in it is the
+transition's own and not the lean's: births follow the townsfolk alone, so a
+country district under a growing town has its births cut as the town's are
+(`transition.md`, "What worries me").
+
+**The standing check and the gate.** With the lean on, the sweep of islands 1
+to 8 to 1900 differs from main's in none of its 1,097 facts; to 2050 the
+standing check is 12 of 12 inside, the growth asks 2 of 2 met (1.25 per cent a
+year, 2050 over 1970 1.13 [1.04 .. 1.24], the land -0.117), and no run fails.
+
 ## Facts added to the sweep
 
 Under "Work and wages": `mine_share_Y` and `grain_output_Y_vs_1750`, for every
@@ -647,6 +790,12 @@ time (it lists them as not checked).
   basket, not what was paid per unit bought. A good bought mostly in cheap towns
   is priced a little too high in both indices. (The linked cost of living,
   [measures.md](measures.md), weighs each town's price by what was bought there.)
+- **The lean after 1900 is tied to the years, not to income** ("After 1900").
+  An island that stopped growing richer in 1900 would lean all the same. It
+  is so because the island's income in bundles is flat after 1950; if a later
+  piece makes it rise, a second mark of income is the better form, and the
+  lean should move to it. And services still fall back after 2000 (0.45 to
+  0.40 of the hands) with nothing in the lean to say why: not traced.
 - **Landlords and families have no curve.** Their shares are fixed however rich
   they grow. For the gentry that is probably right; for a family that goes from
   a farm to an empire it may not be.

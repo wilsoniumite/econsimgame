@@ -800,7 +800,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
 - **engel**: past a reference income each further shilling of a household
   leans from the content's shares toward a richer set (less food and warmth,
   more comfort), and the observer keeps a chained cost of living and real
-  wage beside the fixed-basket ones. [engel.md](engel.md), `engel.enabled`.
+  wage beside the fixed-basket ones. From 1901 the richer set itself leans,
+  a seventieth a year to 1970, from shelter and clothing to comfort (a stage
+  of the run to 2050). [engel.md](engel.md), `engel.enabled`, `engel.lean`.
 - **machines**: farm and quarry machinery is bought where it pays, machines
   stand for years and get better with the steel poured, and a converter and
   a steel rail that pay. [machines.md](machines.md), `machines.enabled`.
@@ -996,3 +998,10 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   room is wanted less than in proportion as it dears, so a city's burden can
   rise. Three switches, all on. [city.md](city.md), `city.follow_jobs`,
   `city.gather`, `city.dear_room`.
+- **ages** (watches only): each town's people in seventeen five-year groups
+  that sum to its played people at every year's end, with deaths by age from
+  food and a stand-in for medicine, births the remainder, movers drawn three
+  times as heavily from 15 to 34, and each cohort's years of school carried
+  with it; births and deaths a thousand, life at birth and the shares by age
+  as series and facts, and a pyramid in the viewer's island charts.
+  [ages.md](ages.md), `ages.watch`.

@@ -639,6 +639,9 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     crate::longrun::start(&mut st, P, y0);
     // linked (docs/rules/measures.md): the first link is the warm-up's last month, as the basket is
     crate::linked::start(&mut st, &C, P);
+    // ages (docs/rules/ages.md): each town's row the stable shape of its first year
+    let y_start = st.y_ratio.clone();
+    crate::ages::start(&mut st, P, &y_start, y0);
     let n_years = (y1 - y0 + 1) as usize;
     observer::init(&mut st, &C, P, n_years * 12);
     let rec = record::init(&st, &C, P, n_years);
@@ -654,6 +657,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     crate::owners::start(&mut st);
     st.money_start = econ::money_total(&st);
     st.issued = 0.0;
+    // engel: the lean's date (the warm-up's months ran with none, and lean nowhere)
+    st.engel.year_now = y0;
     Sim { st, content: C, params: P.clone(), rngs, events: Vec::new(), rec, year: y0, end_year: y1, t: 0, check_money: true }
 }
 
@@ -783,7 +788,11 @@ pub fn end_year(sim: &mut Sim) {
     crate::owners::close_year(st, C, P, year);
     // pay (docs/rules/pay.md): each class's pay reckoned from the tasks' record, watched only
     crate::pay::close_year(st, C, P, year);
+    // ages (docs/rules/ages.md): every row held to its town's people, and the year's figures
+    crate::ages::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
+    // engel: the date the lean reads in next year's months, whatever the switches
+    st.engel.year_now = year + 1;
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);
     record::snapshot(rec, st, C, P, (year - C.start_year) as usize);

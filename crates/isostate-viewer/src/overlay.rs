@@ -1,28 +1,38 @@
 //! Map overlays: the numbers behind the picture, washed over the ground so the
 //! map can answer "why is that there". Land rent, each town's market area, how
 //! far every square is from its market, what a good costs across the island,
-//! and what a month's work pays.
+//! where a good is made, what a month's work pays, the towns' ground, and what
+//! the ground holds.
 //!
 //! Each is one tint per square of the simulation's grid, in a few muted inks,
 //! written to a texture the ground shader reads (terrain.wesl, `overlay_wash`).
-//! A legend card says what is shown, with the real numbers at the ends of the
-//! scale, and the inspector says the value in the square that was clicked.
-//! Nothing is shown that the simulation does not record: the scales are the
-//! year's own figures, never a guess. Where the clock stands in a month of a
-//! live game, the price and wage maps show that month's figures (the last
-//! month that is over), which the viewer has kept since the game was opened
-//! (`live::Months`); everywhere else they show the year's average, and the
-//! rest of the views are the year's, as the map is.
+//! A legend card says what is shown, with round figures along the scale, and
+//! the inspector says the value in the square that was clicked. Nothing is
+//! shown that the simulation does not record. Where the clock stands in a
+//! month of a live game, the price and wage maps show that month's figures
+//! (the last month that is over), which the viewer has kept since the game was
+//! opened (`live::Months`); everywhere else they show the year's average, and
+//! the rest of the views are the year's, as the map is.
+//!
+//! Where a view colours by a number, its palest and darkest tints stand at
+//! ends taken one of three ways, this year's, thirty years' gliding, or the
+//! whole run's (`ranges.rs`), chosen on the legend card for each view. A
+//! year's ends are reckoned once and kept (`EndsCache`), off the main thread
+//! when many years want them at once.
 
 // see the note at the top of ui.rs
 #![allow(deprecated)]
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
+use bevy::tasks::Task;
 use bevy::ui::FocusPolicy;
 
 use crate::family::{chip_button, FamilyView};
 use crate::live::Months;
+use crate::ranges::{self, Ends, Range};
 use crate::replay::{self, Replay};
 use crate::ui::{self, text, INK, MUTED, RULE};
 use crate::{terrain, Data, SeasonMats, Timeline, UiFont};
@@ -30,21 +40,25 @@ use crate::{terrain, Data, SeasonMats, Timeline, UiFont};
 /// How much of the ground's own colour the wash replaces.
 const STRENGTH: f32 = 0.88;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Overlay {
     Rent,
     Areas,
     Reach,
     Price,
+    /// how much of a good was made on each square or in each town
+    Made,
     Wages,
     /// (task A) when each square of town ground joined its town
     Growth,
     /// (task A) the people living on each square of town ground
     Residents,
+    /// what the ground holds: the deposits, the standing timber, the soil
+    Deposits,
 }
 
 impl Overlay {
-    pub const ALL: [Overlay; 7] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Wages, Overlay::Growth, Overlay::Residents];
+    pub const ALL: [Overlay; 9] = [Overlay::Rent, Overlay::Areas, Overlay::Reach, Overlay::Price, Overlay::Made, Overlay::Wages, Overlay::Growth, Overlay::Residents, Overlay::Deposits];
 
     /// The word on its chip.
     fn chip(self) -> &'static str {
@@ -53,32 +67,129 @@ impl Overlay {
             Overlay::Areas => "Markets",
             Overlay::Reach => "Reach",
             Overlay::Price => "Prices",
+            Overlay::Made => "Made here",
             Overlay::Wages => "Wages",
             Overlay::Growth => "Town growth",
             Overlay::Residents => "Residents",
+            Overlay::Deposits => "Deposits",
+        }
+    }
+
+    /// Its word on the command line and in scripts.
+    pub fn word(self) -> &'static str {
+        match self {
+            Overlay::Rent => "rent",
+            Overlay::Areas => "areas",
+            Overlay::Reach => "reach",
+            Overlay::Price => "price",
+            Overlay::Made => "made",
+            Overlay::Wages => "wages",
+            Overlay::Growth => "growth",
+            Overlay::Residents => "residents",
+            Overlay::Deposits => "deposits",
+        }
+    }
+
+    /// Whether it colours by a number, and so has a range to choose.
+    pub fn scaled(self) -> bool {
+        self != Overlay::Areas
+    }
+
+    /// The range it opens with: thirty years, except where the view has a
+    /// scale of its own nature (when town ground joined, the run's years; how
+    /// rich the ground is, from nothing to the richest there was).
+    fn default_range(self) -> Range {
+        match self {
+            Overlay::Growth | Overlay::Deposits => Range::Whole,
+            _ => Range::Thirty,
+        }
+    }
+
+    /// How its figures lie on its tints: by ratio (rent, residents, what is
+    /// made, which run over powers of ten) or evenly, and the low end where
+    /// the view's nature sets it.
+    fn spec(self) -> Spec {
+        match self {
+            Overlay::Rent | Overlay::Residents | Overlay::Made => Spec { log: true, pinned: None },
+            Overlay::Reach | Overlay::Deposits => Spec { log: false, pinned: Some(0.0) },
+            _ => Spec { log: false, pinned: None },
         }
     }
 }
 
+#[derive(Clone, Copy)]
+struct Spec {
+    log: bool,
+    pinned: Option<f32>,
+}
+
+/// A figure in its scale's measure (`ranges.rs`): its logarithm on a scale by ratio.
+fn measure(v: f32, log: bool) -> f32 {
+    if log { v.max(1e-9).ln() } else { v }
+}
+
+fn unmeasure(m: f32, log: bool) -> f32 {
+    if log { m.exp() } else { m }
+}
+
+// ------------------------------------------------------------------ what the ground holds
+
+/// One kind of thing the ground holds, as the deposits view steps through them.
+pub struct Kind {
+    pub word: &'static str,
+    pub label: &'static str,
+    /// the ground's field it reads (`replay::Holds::fields`), or "cover" for the standing timber
+    field: &'static str,
+    stops: [u32; 5],
+}
+
+/// Coal in soot, iron ore in rust, clay in terracotta, stone in slate grey,
+/// timber in pine (a blue-green, not the fields' green), the soil in umber and
+/// the grazing in straw.
+pub const KINDS: [Kind; 7] = [
+    Kind { word: "coal", label: "Coal", field: "coal", stops: [0xf0eee9, 0xcfc9c0, 0x9d958c, 0x64605c, 0x2e2c2c] },
+    Kind { word: "ore", label: "Iron ore", field: "ore", stops: [0xf5e9e0, 0xe7c3a8, 0xcc8f6a, 0xa5603f, 0x6e3a25] },
+    Kind { word: "clay", label: "Clay", field: "clay", stops: [0xf6ebe3, 0xecc7b0, 0xd99c7c, 0xb86f50, 0x834633] },
+    Kind { word: "stone", label: "Stone", field: "rock", stops: [0xeeeeea, 0xd3d6d6, 0xaeb4b8, 0x828b93, 0x545d68] },
+    Kind { word: "timber", label: "Standing timber", field: "cover", stops: [0xebf0ea, 0xc3d7cf, 0x8fb5aa, 0x5a8a80, 0x2f5c56] },
+    Kind { word: "soil", label: "Soil", field: "fertility", stops: [0xf4ecd8, 0xe2cfa2, 0xc7a56a, 0x9b773f, 0x664a24] },
+    Kind { word: "grazing", label: "Grazing", field: "pasture", stops: [0xf3f0dc, 0xe2ddae, 0xc7bf79, 0xa19a4f, 0x6d6a33] },
+];
+
+fn find_kind(t: &str) -> Option<usize> {
+    KINDS.iter().position(|k| k.word.eq_ignore_ascii_case(t) || k.label.eq_ignore_ascii_case(t) || k.field.eq_ignore_ascii_case(t))
+}
+
+// ------------------------------------------------------------------ naming a view
+
+/// A map view as the command line, a `--view` or a script names it: the view
+/// (None for the plain map), the good or the kind of ground it shows if one
+/// is named, and the range if one is named.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Choice {
+    pub kind: Option<Overlay>,
+    pub which: Option<usize>,
+    pub range: Option<Range>,
+}
+
 /// For the command line: "rent", "areas", "reach", "price", "price:coal",
-/// "wages", "growth", "residents", or "plain" for no overlay. The good is by name or label, and stays
-/// as it was if none is given. None if the word is not an overlay at all.
-pub fn parse(word: &str, r: &Replay) -> Option<(Option<Overlay>, Option<usize>)> {
+/// "made:grain", "wages", "growth", "residents", "deposits:coal", or "plain"
+/// for no overlay, each with "+year", "+30" or "+all" after it for its range.
+/// The good is by name or label, and stays as it was if none is given. None
+/// if the word is not an overlay at all.
+pub fn parse(word: &str, r: &Replay) -> Option<Choice> {
     let w = word.to_ascii_lowercase();
-    let (head, tail) = w.split_once(':').map_or((w.as_str(), None), |(a, b)| (a, Some(b)));
-    let kind = match head {
-        "plain" => None,
-        "rent" => Some(Overlay::Rent),
-        "areas" => Some(Overlay::Areas),
-        "reach" => Some(Overlay::Reach),
-        "price" => Some(Overlay::Price),
-        "wages" => Some(Overlay::Wages),
-        "growth" => Some(Overlay::Growth),
-        "residents" => Some(Overlay::Residents),
-        _ => return None,
+    let (w, range) = match w.split_once('+') {
+        Some((a, b)) => (a.to_string(), Some(Range::parse(b)?)),
+        None => (w, None),
     };
-    let good = tail.and_then(|t| find_good(&r.header.goods, t));
-    Some((kind, good))
+    let (head, tail) = w.split_once(':').map_or((w.as_str(), None), |(a, b)| (a, Some(b)));
+    let kind = if head == "plain" { None } else { Some(Overlay::ALL.into_iter().find(|o| o.word() == head)?) };
+    let which = match kind {
+        Some(Overlay::Deposits) => tail.and_then(find_kind),
+        _ => tail.and_then(|t| find_good(&r.header.goods, t)),
+    };
+    Some(Choice { kind, which, range })
 }
 
 /// The good a word names, by its name or its label, whatever its case.
@@ -97,48 +208,122 @@ pub fn complaint(word: &str, r: &Replay) -> Option<String> {
 /// rules it is played under before its island is made.
 pub fn complaint_among(word: &str, goods: &[replay::Good]) -> Option<String> {
     if !is_word(word) {
-        return Some(format!("\"{word}\" is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain"));
+        return Some(format!("\"{word}\" is not a map view: {}", VIEWS_WORDS));
     }
-    let good = word.split_once(':')?.1;
-    if find_good(goods, good).is_some() {
+    let w = word.split('+').next().unwrap_or("");
+    let (head, tail) = w.split_once(':')?;
+    if head.eq_ignore_ascii_case("deposits") {
+        if find_kind(tail).is_some() {
+            return None;
+        }
+        let names: Vec<&str> = KINDS.iter().map(|k| k.word).collect();
+        return Some(format!("\"{tail}\" is not a kind of ground: use one of {}", names.join(", ")));
+    }
+    if find_good(goods, tail).is_some() {
         return None;
     }
     let names: Vec<&str> = goods.iter().map(|g| g.name.as_str()).collect();
-    Some(format!("\"{good}\" is not a good of this run: use one of {}", names.join(", ")))
+    Some(format!("\"{tail}\" is not a good of this run: use one of {}", names.join(", ")))
 }
+
+/// The words a map view takes, for the messages that refuse one.
+pub const VIEWS_WORDS: &str = "use rent, areas, reach, price, price:GOOD, made, made:GOOD, wages, growth, residents, deposits, deposits:KIND or plain, each with +year, +30 or +all after it for its range if wanted";
 
 /// Whether a word of a `--view` names an overlay (before the run is loaded).
 pub fn is_word(word: &str) -> bool {
     let w = word.to_ascii_lowercase();
-    matches!(w.split(':').next().unwrap_or(""), "plain" | "rent" | "areas" | "reach" | "price" | "wages" | "growth" | "residents")
+    let (w, range) = match w.split_once('+') {
+        Some((a, b)) => (a.to_string(), Some(b.to_string())),
+        None => (w, None),
+    };
+    if range.is_some_and(|r| Range::parse(&r).is_none()) {
+        return false;
+    }
+    let head = w.split(':').next().unwrap_or("");
+    head == "plain" || Overlay::ALL.iter().any(|o| o.word() == head)
 }
+
+// ------------------------------------------------------------------ the resource
+
+/// Each year's own ends of each view, reckoned once (`ranges::year_ends`), and
+/// the reckoning of many years at once while it goes on off the main thread.
+#[derive(Default)]
+struct EndsCache {
+    /// by view and the good or kind it shows: for each year, its ends once reckoned
+    years: HashMap<(Overlay, usize), Vec<Option<Option<Ends>>>>,
+    /// the years being reckoned off the main thread, for one view
+    task: Option<((Overlay, usize), Task<Vec<(usize, Option<Ends>)>>)>,
+    /// raised when a reckoning off the main thread lands
+    version: u64,
+    /// how many years were reckoned on the main thread, and off it (for the notes)
+    pub inline: u64,
+    pub away: u64,
+}
+
+/// At most this many years' ends are reckoned in the frame; more go off the main thread.
+const INLINE_YEARS: usize = 3;
 
 /// What is washed over the map, if anything.
 #[derive(Resource)]
 pub struct MapOverlay {
     pub kind: Option<Overlay>,
-    /// the good whose price the price overlay shows
+    /// the good whose price, or where it is made, the overlay shows
     pub good: usize,
+    /// the kind of ground the deposits view shows (`KINDS`)
+    pub deposit: usize,
     /// the overlay the pill brings back
     last: Overlay,
-    /// what the texture holds: overlay, good, year index, years filled, and
-    /// the month whose prices or wages it shows in place of the year's
-    painted: Option<(Option<Overlay>, usize, usize, usize, Option<usize>)>,
+    /// the range chosen on each view's card, while the viewer is open
+    ranges: HashMap<Overlay, Range>,
+    /// what the texture holds: overlay, good or kind, year index, years filled,
+    /// the month whose prices or wages it shows in place of the year's, the
+    /// range, and the version of the ends it was painted with
+    painted: Option<(Option<Overlay>, usize, usize, usize, Option<usize>, Option<Range>, u64)>,
     legend: Option<Legend>,
     /// bumped when the legend card must be rebuilt
     version: u64,
     card: Option<u64>,
+    ends: EndsCache,
 }
 
 impl MapOverlay {
     pub fn new(kind: Option<Overlay>, good: usize) -> MapOverlay {
-        MapOverlay { kind, good, last: kind.unwrap_or(Overlay::Rent), painted: None, legend: None, version: 0, card: None }
+        MapOverlay { kind, good, deposit: 0, last: kind.unwrap_or(Overlay::Rent), ranges: HashMap::new(), painted: None, legend: None, version: 0, card: None, ends: EndsCache::default() }
+    }
+
+    /// The view a `Choice` names, with its good, kind of ground and range.
+    pub fn choose(&mut self, c: &Choice) {
+        self.set(c.kind);
+        if let (Some(kind), Some(w)) = (c.kind, c.which) {
+            if kind == Overlay::Deposits {
+                self.deposit = w.min(KINDS.len() - 1);
+            } else {
+                self.good = w;
+            }
+        }
+        if let (Some(kind), Some(range)) = (c.kind, c.range) {
+            self.ranges.insert(kind, range);
+        }
     }
 
     pub fn set(&mut self, kind: Option<Overlay>) {
         self.kind = kind;
         if let Some(k) = kind {
             self.last = k;
+        }
+    }
+
+    /// The range a view's colours are spread over now.
+    pub fn range(&self, kind: Overlay) -> Range {
+        self.ranges.get(&kind).copied().unwrap_or(kind.default_range())
+    }
+
+    /// The good or the kind of ground a view shows (nought for the others).
+    pub fn which(&self, kind: Overlay) -> usize {
+        match kind {
+            Overlay::Price | Overlay::Made => self.good,
+            Overlay::Deposits => self.deposit,
+            _ => 0,
         }
     }
 
@@ -152,7 +337,7 @@ impl MapOverlay {
 
     /// The overlay goes by market towns, so the map should name them all.
     pub fn names_towns(&self) -> bool {
-        matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Wages | Overlay::Growth | Overlay::Residents))
+        matches!(self.kind, Some(Overlay::Areas | Overlay::Price | Overlay::Made | Overlay::Wages | Overlay::Growth | Overlay::Residents))
     }
 
     /// The month whose prices or wages the map shows in place of the year's, if it shows one.
@@ -163,7 +348,21 @@ impl MapOverlay {
     /// What the overlay says of a square, for the inspector: of the month the map shows, if it shows one.
     pub fn said(&self, r: &Replay, months: &Months, k: usize, c: usize) -> Option<String> {
         let month = self.painted.and_then(|p| p.4).map(|t| Month::of(r, months, t));
-        said(r, k, c, self.kind?, self.good, month.as_ref())
+        let kind = self.kind?;
+        said(r, k, c, kind, self.which(kind), month.as_ref())
+    }
+
+    /// For a script's `map` step: the view's range and its ends as painted, in
+    /// words, with the least and the greatest of what year `k` shows.
+    pub fn range_said(&self, r: &Replay, k: usize) -> String {
+        match (self.kind, &self.legend) {
+            (Some(kind), Some(l)) if kind.scaled() && l.range.is_some() => {
+                let extremes = sample(r, k, kind, self.which(kind)).map(|v| v.iter().fold((f32::MAX, f32::MIN), |a, &x| (a.0.min(x), a.1.max(x))));
+                let ext = extremes.map_or(String::new(), |(a, b)| format!(" the year's least and greatest: {} to {}", tick_words(kind, a), tick_words(kind, b)));
+                format!("range: {} ({}){ext} ticks: {}", self.range(kind).word(), l.ends, l.ticks.iter().map(|t| t.1.as_str()).collect::<Vec<_>>().join(" "))
+            }
+            _ => "range: none".to_string(),
+        }
     }
 }
 
@@ -196,12 +395,14 @@ pub fn month_shown(months: &Months, t: f32, dated: bool) -> Option<usize> {
 // ------------------------------------------------------------------ the tints
 
 /// Five stops from low to high, in sRGB. Inks that sit on the paper: sepia for
-/// rent, slate for distance, madder for prices, mulberry for wages. None is
-/// the green of the fields, so a map view never reads as the land itself.
+/// rent, slate for distance, madder for prices, mulberry for wages, ochre for
+/// what is made. None is the green of the fields, so a map view never reads as
+/// the land itself.
 const SEPIA: [u32; 5] = [0xf4ead0, 0xe6cf9c, 0xd2aa6a, 0xb07e45, 0x80552e];
 const SLATE: [u32; 5] = [0xeeeee2, 0xc9d6d2, 0x9bb3ba, 0x6d8d9e, 0x45647a];
 const MADDER: [u32; 5] = [0xf5eadc, 0xe8cfbb, 0xd2aa96, 0xb28171, 0x86574d];
 const MULBERRY: [u32; 5] = [0xf2ebe6, 0xdccbd2, 0xbfa3b8, 0x9a7b9b, 0x6f557c];
+const OCHRE: [u32; 5] = [0xf7efd2, 0xf0d98f, 0xe0b34f, 0xb98227, 0x7d5417];
 /// (task A) Town ground by the year it joined, from the oldest (dark brick)
 /// to the newest (straw), and its residents from few (pale) to many (indigo).
 const BRICK: [u32; 5] = [0x5e2f2b, 0x9c4a3a, 0xcf7b4c, 0xe6ae5e, 0xf2d98a];
@@ -247,6 +448,10 @@ impl Scale {
         let t = if self.log { (v.max(1e-9) / self.lo).ln() / (self.hi / self.lo).ln() } else { (v - self.lo) / (self.hi - self.lo) };
         t.clamp(0.0, 1.0)
     }
+
+    fn of(e: Ends, log: bool) -> Scale {
+        Scale { lo: unmeasure(e.lo, log), hi: unmeasure(e.hi, log), log }
+    }
 }
 
 /// `v` to two significant figures.
@@ -256,14 +461,6 @@ pub fn round_sig(v: f32) -> f32 {
     }
     let mag = 10f32.powf(v.log10().floor() - 1.0);
     (v / mag).round() * mag
-}
-
-/// The value a share `q` of the way up a sorted list.
-fn quantile(sorted: &[f32], q: f32) -> f32 {
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    sorted[((sorted.len() - 1) as f32 * q).round() as usize]
 }
 
 /// Money, small sums to the penny: prices and wages are near one.
@@ -284,6 +481,39 @@ pub fn coin(v: f32) -> String {
 fn about(v: f32) -> String {
     let v = round_sig(v);
     if (9.995..99.95).contains(&v) { format!("\u{00a3}{v:.0}") } else { coin(v) }
+}
+
+/// An amount of a good, in its own units: 0.4, 12, 3,400, 1.2m.
+fn amount(v: f32) -> String {
+    if v >= 999_500.0 {
+        format!("{:.1}m", v / 1e6)
+    } else if v >= 99.5 {
+        ui::thousands(v)
+    } else if v >= 9.95 {
+        format!("{v:.0}")
+    } else if v >= 0.995 {
+        format!("{v:.1}").trim_end_matches(".0").to_string()
+    } else {
+        format!("{v:.2}")
+    }
+}
+
+/// A round figure on a legend's scale, as the view writes its figures.
+fn tick_words(kind: Overlay, v: f32) -> String {
+    match kind {
+        Overlay::Rent => about(v),
+        Overlay::Reach => format!("{v:.0} km"),
+        Overlay::Price | Overlay::Wages => if v.fract().abs() < 1e-3 && v >= 1.0 { format!("\u{00a3}{v:.0}") } else { coin(v) },
+        Overlay::Made => amount(v),
+        Overlay::Growth => format!("{v:.0}"),
+        Overlay::Residents => ui::thousands(v),
+        Overlay::Deposits => {
+            let s = format!("{v:.2}");
+            let s = s.trim_end_matches('0');
+            s.strip_suffix('.').map_or(s.to_string(), |w| w.to_string())
+        }
+        Overlay::Areas => String::new(),
+    }
 }
 
 fn land(r: &Replay, c: usize) -> bool {
@@ -367,6 +597,239 @@ fn area_tints(r: &Replay, k: usize) -> Vec<usize> {
     tint
 }
 
+/// Whether a square is a town's own ground in year `k`: kept town ground, or
+/// a square the record calls town or works.
+fn town_ground(r: &Replay, k: usize, c: usize) -> bool {
+    r.joined(k, c).is_some() || matches!(r.use_.get(k * r.n + c), Some(9 | 10))
+}
+
+/// The share of a square a display class takes, as the record keeps it: its
+/// two largest classes and the first's share.
+fn class_share(r: &Replay, k: usize, c: usize, class: u8) -> f32 {
+    let i = k * r.n + c;
+    let (a, b, s) = (r.mix_a[i], r.mix_b[i], r.mix_s[i] as f32 / 255.0);
+    (if a == class { s } else { 0.0 }) + (if b == class { 1.0 - s } else { 0.0 })
+}
+
+// ------------------------------------------------------------------ where a good is made
+
+/// What was made of one good in one year, square by square, as far as the run knows.
+pub struct MadeMap {
+    /// a figure for every square (nought where none was made, or none is known)
+    pub cells: Vec<f32>,
+    /// whether the figures are the land's, square by square (a crop, wool,
+    /// timber, the pits), or each town's, laid over its own ground (a works' good)
+    pub by_land: bool,
+    /// whether the land's figures are each working's own, as the record keeps them
+    pub from_workings: bool,
+    /// what each town made, and what the island made
+    pub towns: Vec<f32>,
+    pub total: f32,
+}
+
+/// Where good `g` was made in year `k`. None where the run keeps no books.
+///
+/// A good of the works is drawn as each town's figure over the town's own
+/// ground. A good of the land is drawn square by square: a pit's or a mine's
+/// from the workings, each with what it raised; a crop's, wool's or timber's
+/// by sharing each town's figure among the squares of its market by how much
+/// of each its class takes and how rich its ground is for it (the record keeps
+/// no figure of a farm square by square).
+pub fn made_map(r: &Replay, k: usize, g: usize) -> Option<MadeMap> {
+    let h = &r.holds;
+    let ng = r.header.goods.len();
+    if h.made.is_empty() || h.made_towns == 0 || k >= r.filled.min(r.ny) || g >= ng {
+        return None;
+    }
+    let nt = h.made_towns.min(r.header.towns.len());
+    let towns: Vec<f32> = (0..nt).map(|t| h.made(k, t, g, ng).unwrap_or(0.0).max(0.0)).collect();
+    let total: f32 = towns.iter().sum();
+    let mut cells = vec![0.0f32; r.n];
+    let sectors: Vec<&str> = h.sectors.iter().filter(|s| s.1 == g).map(|s| s.0.as_str()).collect();
+    let mut from_workings = false;
+    if !sectors.is_empty() {
+        let mut weight = vec![0.0f32; r.n];
+        for s in &sectors {
+            let Some(class) = replay::sector_class_named(s) else { continue };
+            let workings = r.workings.get(k).filter(|w| !w.is_empty() && class >= 5);
+            if let Some(ws) = workings {
+                // a pit's or a mine's figure is its own
+                for w in ws.iter().filter(|w| w.class == class && w.out > 0.0) {
+                    if let Some(c) = cells.get_mut(w.cell as usize) {
+                        *c += w.out;
+                    }
+                }
+                from_workings = true;
+                continue;
+            }
+            let timber = *s == "forestry" && h.cover.len() == r.ny * r.n;
+            let field = if timber { Some(&h.cover[k * r.n..(k + 1) * r.n]) } else { replay::sector_field(s).and_then(|f| h.field(f)) };
+            for c in (0..r.n).filter(|&c| land(r, c)) {
+                let rich = field.map_or(1.0, |f| f[c] as f32 / 255.0);
+                // a wood's figure is its standing timber already; the record's class share would count it twice
+                weight[c] += if timber { rich } else { class_share(r, k, c, class) * rich };
+            }
+        }
+        if !from_workings {
+            let mut sum = vec![0.0f32; nt];
+            for c in 0..r.n {
+                if let Some(t) = market(r, k, c).filter(|&t| t < nt) {
+                    sum[t] += weight[c];
+                }
+            }
+            for c in 0..r.n {
+                if let Some(t) = market(r, k, c).filter(|&t| t < nt && sum[t] > 0.0) {
+                    cells[c] = towns[t] * weight[c] / sum[t];
+                }
+            }
+            // a town whose market shows none of the ground its figure came from keeps it at its middle
+            for t in (0..nt).filter(|&t| sum[t] <= 0.0 && towns[t] > 0.0) {
+                if let Some(c) = r.header.towns.get(t).map(|tw| tw.node).filter(|&c| c < r.n) {
+                    cells[c] += towns[t];
+                }
+            }
+        }
+        return Some(MadeMap { cells, by_land: true, from_workings, towns, total });
+    }
+    for c in (0..r.n).filter(|&c| land(r, c)) {
+        if let Some(t) = market(r, k, c).filter(|&t| t < nt) {
+            if town_ground(r, k, c) || r.header.towns[t].node == c {
+                cells[c] = towns[t];
+            }
+        }
+    }
+    for t in 0..nt {
+        if let Some(c) = Some(r.header.towns[t].node).filter(|&c| c < r.n) {
+            cells[c] = cells[c].max(towns[t]);
+        }
+    }
+    Some(MadeMap { cells, by_land: false, from_workings: false, towns, total })
+}
+
+// ------------------------------------------------------------------ what the ground holds
+
+/// What the ground holds of one kind in one year, square by square.
+pub struct GroundMap {
+    /// a figure for every square, on the fields' scale of 0 to 1
+    pub cells: Vec<f32>,
+    /// the squares whose deposit of this kind has been worked
+    pub worked: Vec<bool>,
+    /// the share of the island's first deposit of this kind that is left, where known
+    pub share_left: Option<f32>,
+    /// for timber: whether the figure is the timber standing (a game) or a guess from the woods' share
+    pub standing: bool,
+}
+
+/// What the ground holds of kind `i` (`KINDS`) in year `k`. None where the
+/// run keeps nothing of it.
+pub fn ground_map(r: &Replay, k: usize, i: usize) -> Option<GroundMap> {
+    let kind = KINDS.get(i)?;
+    let h = &r.holds;
+    let mut cells = vec![0.0f32; r.n];
+    let mut worked = vec![false; r.n];
+    if kind.field == "cover" {
+        let standing = h.cover.len() == r.ny * r.n && k < r.filled;
+        let pot = h.field("forest_pot");
+        if !standing && pot.is_none() {
+            return None;
+        }
+        for c in (0..r.n).filter(|&c| land(r, c)) {
+            cells[c] = if standing { h.cover[k * r.n + c] as f32 / 255.0 } else { pot.map_or(0.0, |p| p[c] as f32 / 255.0) * class_share(r, k, c, 3) };
+        }
+        return Some(GroundMap { cells, worked, share_left: None, standing });
+    }
+    let field = h.field(kind.field)?;
+    let deposit = replay::DEPOSIT_FIELDS.iter().position(|&f| f == kind.field);
+    let left_known = deposit.is_some() && !h.left.is_empty();
+    let mut left = vec![1.0f32; r.n];
+    if let (Some(d), Some(year)) = (deposit, h.left.get(k)) {
+        for &(c, kd, b) in year {
+            if kd as usize == d && (c as usize) < r.n {
+                left[c as usize] = b as f32 / 255.0;
+                worked[c as usize] = true;
+            }
+        }
+    }
+    let (mut first, mut now) = (0.0f32, 0.0f32);
+    for c in (0..r.n).filter(|&c| land(r, c)) {
+        let f = field[c] as f32 / 255.0;
+        cells[c] = f * left[c];
+        first += f;
+        now += cells[c];
+    }
+    let share_left = (left_known && first > 0.0).then(|| now / first);
+    Some(GroundMap { cells, worked, share_left, standing: false })
+}
+
+// ------------------------------------------------------------------ one year's figures
+
+/// The figures of year `k` a view's ends are taken over (in the figures' own
+/// units): the towns' for prices, wages and a works' good, the squares' for
+/// the rest. None where the year shows nothing.
+fn sample(r: &Replay, k: usize, kind: Overlay, which: usize) -> Option<Vec<f32>> {
+    let lands = (0..r.n).filter(|&c| land(r, c));
+    let v: Vec<f32> = match kind {
+        Overlay::Areas => return None,
+        Overlay::Rent => lands.filter_map(|c| rent_year(r, k, c)).filter(|&v| v > 0.0).collect(),
+        Overlay::Reach => lands.filter_map(|c| reach_km(r, k, c)).collect(),
+        Overlay::Price => {
+            if !made(r, k, which, None) {
+                return None;
+            }
+            markets(r, k).into_iter().filter_map(|t| price(r, k, t, which)).collect()
+        }
+        Overlay::Wages => markets(r, k).into_iter().filter_map(|t| wage(r, k, t)).collect(),
+        Overlay::Made => {
+            let m = made_map(r, k, which)?;
+            if m.by_land { m.cells.into_iter().filter(|&v| v > 0.0).collect() } else { m.towns.into_iter().filter(|&v| v > 0.0).collect() }
+        }
+        Overlay::Growth => lands.filter_map(|c| r.joined(k, c)).map(|y| y as f32).collect(),
+        Overlay::Residents => lands.filter(|&c| r.joined(k, c).is_some()).map(|c| r.residents(k, c)).filter(|&v| v > 0.0).collect(),
+        Overlay::Deposits => ground_map(r, k, which)?.cells.into_iter().filter(|&v| v > 0.0).collect(),
+    };
+    (!v.is_empty()).then_some(v)
+}
+
+/// On a scale by ratio, figures under the year's greatest over this set no end.
+const TRACE: f32 = 1e4;
+
+/// Year `k`'s own ends for a view, in its scale's measure.
+pub fn year_ends(r: &Replay, k: usize, kind: Overlay, which: usize) -> Option<Ends> {
+    let spec = kind.spec();
+    let mut vals: Vec<f32> = sample(r, k, kind, which)?.into_iter().map(|v| measure(v, spec.log)).collect();
+    if spec.log {
+        // on a scale by ratio a trace (a town that made a ten-thousandth of what the most
+        // did) would stretch the scale over powers of ten nobody can see: it is drawn in
+        // the palest tint and sets no end
+        let top = vals.iter().copied().fold(f32::MIN, f32::max);
+        vals.retain(|&m| m >= top - TRACE.ln());
+    }
+    ranges::year_ends(vals, spec.pinned.map(|p| measure(p, spec.log)))
+}
+
+/// The ends a view is painted with: the range chosen, and the ends it gives,
+/// if any year has figures.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scaling {
+    pub range: Range,
+    pub ends: Option<Ends>,
+}
+
+impl Scaling {
+    /// The ends of a range reckoned from scratch, every year that wants them,
+    /// for the tests: the viewer keeps the years (`scaling_for`).
+    #[cfg(test)]
+    pub fn reckon(r: &Replay, k: usize, kind: Overlay, which: usize, range: Range) -> Scaling {
+        let upto = match range {
+            Range::Year => k + 1,
+            Range::Thirty => k + 1,
+            Range::Whole => r.filled.min(r.ny),
+        };
+        let years: Vec<Option<Ends>> = (0..upto).map(|j| if range == Range::Year && j != k { None } else { year_ends(r, j, kind, which) }).collect();
+        Scaling { range, ends: ranges::ends(range, &years, k) }
+    }
+}
+
 // ------------------------------------------------------------------ one year's overlay
 
 /// What the legend card says.
@@ -376,9 +839,16 @@ pub struct Legend {
     pub note: String,
     /// the tints from low to high; empty where there is no scale
     pub ramp: Vec<[u8; 3]>,
-    /// the figures at the two ends, in words
+    /// round figures along the scale: where each stands from 0 to 1, and its words
+    pub ticks: Vec<(f32, String)>,
+    /// what the two ends of the bar stand for: "and below" and "and above",
+    /// or the view's own word where its nature sets an end ("at the market")
     pub low: String,
     pub high: String,
+    /// the two ends in figures, for a script's `map` line
+    pub ends: String,
+    /// the range the colours are spread over, where the view has one to choose
+    pub range: Option<Range>,
 }
 
 pub struct Wash {
@@ -395,63 +865,64 @@ fn ramp_bar(stops: &[u32; 5]) -> Vec<[u8; 3]> {
     (0..24).map(|i| ramp(stops, i as f32 / 23.0)).collect()
 }
 
+/// The legend's figures for a scale: its round figures, where each stands,
+/// and the two ends in words.
+fn scale_words(kind: Overlay, sc: &Scale) -> (Vec<(f32, String)>, String) {
+    let values = ranges::ticks(sc.lo, sc.hi, sc.log);
+    // money is written alike along one scale: £2 among £1.80 and £2.20 is £2.00
+    let whole = values.iter().all(|v| v.fract().abs() < 1e-3);
+    let words = |v: f32| if matches!(kind, Overlay::Price | Overlay::Wages) && !whole { coin(v) } else { tick_words(kind, v) };
+    let ticks = values.iter().map(|&v| (sc.at(v), words(v))).collect();
+    (ticks, format!("{} to {}", tick_words(kind, sc.lo), tick_words(kind, sc.hi)))
+}
+
 /// The overlay for year index `k`: tints, and the legend that explains them.
 /// With `month`, prices and wages are that month's and not the year's.
-pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Month>) -> Wash {
+/// `which` is the good (prices, made) or the kind of ground (deposits), and
+/// `scaling` the range and its ends, for the views that colour by a number.
+pub fn wash(r: &Replay, k: usize, kind: Overlay, which: usize, month: Option<&Month>, scaling: Scaling) -> Wash {
     let year = r.y0 + k as i32;
     let mut cells = vec![0u8; r.n * 4];
     // every land cell carries its market as its region, so the shader can rule the boundaries
     let region = |c: usize| market(r, k, c).map_or(255, |t| (t + 1).min(254) as u8);
     let mut put = |c: usize, col: [u8; 3]| cells[c * 4..c * 4 + 4].copy_from_slice(&[col[0], col[1], col[2], region(c)]);
     let lands = (0..r.n).filter(|&c| land(r, c));
-    let none = |title: String, note: String| Legend { title, note, ramp: Vec::new(), low: String::new(), high: String::new() };
+    let none = |title: String, note: String| Legend { title, note, ramp: Vec::new(), ticks: Vec::new(), low: String::new(), high: String::new(), ends: String::new(), range: None };
+    let spec = kind.spec();
+    // the scale the range gives; a view with no figures at all says so before it is wanted
+    let scale = scaling.ends.map(|e| Scale::of(e, spec.log));
+    let words = |sc: &Scale, stops: &[u32; 5], pinned_word: Option<&str>| -> (Vec<[u8; 3]>, Vec<(f32, String)>, String, String, String) {
+        let (ticks, ends) = scale_words(kind, sc);
+        (ramp_bar(stops), ticks, pinned_word.unwrap_or("and below").to_string(), "and above".to_string(), ends)
+    };
+    let legend = |title: String, note: String, stops: &[u32; 5], sc: &Scale, pinned_word: Option<&str>| {
+        let (ramp, ticks, low, high, ends) = words(sc, stops, pinned_word);
+        Legend { title, note, ramp, ticks, low, high, ends, range: Some(scaling.range) }
+    };
     match kind {
         Overlay::Rent => {
-            let mut vals: Vec<f32> = lands.clone().filter_map(|c| rent_year(r, k, c)).filter(|&v| v > 0.0).collect();
-            vals.sort_by(f32::total_cmp);
             let title = format!("Land rent in {year}");
-            if vals.is_empty() {
+            let Some(sc) = scale else {
                 return Wash { cells, legend: none(title, "This record does not hold the rent of the land.".into()), soft: 0.5, lines: false };
-            }
-            // rents run over several powers of ten, so the scale goes by ratio;
-            // its ends leave out the poorest tenth and the dearest twentieth (the town
-            // centres, which would otherwise squeeze the farmland into two tints)
-            let sc = Scale { lo: round_sig(quantile(&vals, 0.10)), hi: round_sig(quantile(&vals, 0.95)), log: true };
+            };
             for c in lands {
                 let v = rent_year(r, k, c).unwrap_or(0.0);
                 put(c, ramp(&SEPIA, sc.at(v)));
             }
-            let legend = Legend {
-                title,
-                note: "What the ground of each square earns its owners in a year, from farms, mines, works and town houses.".into(),
-                ramp: ramp_bar(&SEPIA),
-                low: format!("{} or less", about(sc.lo)),
-                high: format!("{} or more", about(sc.hi)),
-            };
-            Wash { cells, legend, soft: 0.5, lines: false }
+            let note = "What the ground of each square earns its owners in a year, from farms, mines, works and town houses.".into();
+            Wash { cells, legend: legend(title, note, &SEPIA, &sc, None), soft: 0.5, lines: false }
         }
         Overlay::Reach => {
-            let mut vals: Vec<f32> = lands.clone().filter_map(|c| reach_km(r, k, c)).collect();
-            vals.sort_by(f32::total_cmp);
             let title = format!("The way to market in {year}");
-            if r.dist.is_empty() || vals.is_empty() {
+            let (Some(sc), false) = (scale, r.dist.is_empty()) else {
                 return Wash { cells, legend: none(title, "This record does not hold the way to market.".into()), soft: 0.5, lines: false };
-            }
-            // the far end is a round number of kilometres that nine tenths of the land is within
-            let hi = ((quantile(&vals, 0.90) / 5.0).ceil() * 5.0).max(5.0);
-            let sc = Scale { lo: 0.0, hi, log: false };
+            };
             for c in lands {
                 // land with no way to a market is as far as can be
                 put(c, ramp(&SLATE, reach_km(r, k, c).map_or(1.0, |v| sc.at(v))));
             }
-            let legend = Legend {
-                title,
-                note: "How far each square is from the market it trades in, counted as kilometres of flat open country. Roads, rivers, the sea and railways shorten the way; hills and woods lengthen it.".into(),
-                ramp: ramp_bar(&SLATE),
-                low: "at the market".into(),
-                high: format!("{hi:.0} km or more"),
-            };
-            Wash { cells, legend, soft: 0.5, lines: false }
+            let note = "How far each square is from the market it trades in, counted as kilometres of flat open country. Roads, rivers, the sea and railways shorten the way; hills and woods lengthen it.".into();
+            Wash { cells, legend: legend(title, note, &SLATE, &sc, Some("at the market")), soft: 0.5, lines: false }
         }
         Overlay::Areas => {
             let tint = area_tints(r, k);
@@ -466,6 +937,7 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
             Wash { cells, legend, soft: 0.06, lines: true }
         }
         Overlay::Price | Overlay::Wages => {
+            let good = which;
             let is_price = kind == Overlay::Price;
             let label = r.header.goods.get(good).map_or("goods".to_string(), |g| g.label.to_lowercase());
             let value = |t: usize| match month {
@@ -476,11 +948,11 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
             let title = if is_price { format!("The price of {label} in {when}") } else { format!("Wages in {when}") };
             // a good no works has made yet has prices in the record that nothing was sold at: no map of those
             let unmade = is_price && !made(r, k, good, month);
-            // the cheapest and the dearest market are the ends of the scale
+            // the cheapest and the dearest market, named in the note
             let towns: Vec<(usize, f32)> = if unmade { Vec::new() } else { markets(r, k).into_iter().filter_map(|t| value(t).map(|v| (t, v))).collect() };
             let lo = towns.iter().copied().min_by(|a, b| a.1.total_cmp(&b.1));
             let hi = towns.iter().copied().max_by(|a, b| a.1.total_cmp(&b.1));
-            let (Some(lo), Some(hi)) = (lo, hi) else {
+            let (Some(lo), Some(hi), Some(sc)) = (lo, hi, scale) else {
                 for c in lands {
                     put(c, rgb(BLANK));
                 }
@@ -495,24 +967,59 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
                 };
                 return Wash { cells, legend: none(title, note), soft: 0.06, lines: true };
             };
-            let sc = Scale { lo: lo.1, hi: hi.1, log: false };
             let stops = if is_price { &MADDER } else { &MULBERRY };
             for c in lands {
                 put(c, market(r, k, c).and_then(value).map_or(rgb(BLANK), |v| ramp(stops, sc.at(v))));
             }
-            let legend = Legend {
-                title,
-                note: match (is_price, month.is_some()) {
-                    (true, false) => "Each square takes the price in the market it trades in, the year's average. Carriage to and from the market is not counted.".into(),
-                    (true, true) => "Each square takes the price in the market it trades in, as it stood at the month's end. Carriage to and from the market is not counted.".into(),
-                    (false, false) => "What a month's work pays in each town, the year's average, shown across the town's market area.".into(),
-                    (false, true) => "What the month's work paid in each town, shown across the town's market area.".into(),
-                },
-                ramp: ramp_bar(stops),
-                low: format!("{} at {}", coin(lo.1), town_name(r, lo.0)),
-                high: format!("{} at {}", coin(hi.1), town_name(r, hi.0)),
+            let lead = match (is_price, month.is_some()) {
+                (true, false) => "Each square takes the price in the market it trades in, the year's average. Carriage to and from the market is not counted.",
+                (true, true) => "Each square takes the price in the market it trades in, as it stood at the month's end. Carriage to and from the market is not counted.",
+                (false, false) => "What a month's work pays in each town, the year's average, shown across the town's market area.",
+                (false, true) => "What the month's work paid in each town, shown across the town's market area.",
             };
-            Wash { cells, legend, soft: 0.06, lines: true }
+            let note = if lo.0 == hi.0 {
+                format!("{lead} {} at {}.", coin(lo.1), town_name(r, lo.0))
+            } else if is_price {
+                format!("{lead} The cheapest market is {} at {}, the dearest {} at {}.", town_name(r, lo.0), coin(lo.1), town_name(r, hi.0), coin(hi.1))
+            } else {
+                format!("{lead} The lowest pay is at {}, {}, the highest at {}, {}.", town_name(r, lo.0), coin(lo.1), town_name(r, hi.0), coin(hi.1))
+            };
+            Wash { cells, legend: legend(title, note, stops, &sc, None), soft: 0.06, lines: true }
+        }
+        Overlay::Made => {
+            let good = which;
+            let label = r.header.goods.get(good).map_or("goods".to_string(), |g| g.label.to_lowercase());
+            // (services, chemicals and electricals are many things)
+            let title = format!("Where {label} {} made in {year}", if label.ends_with('s') { "were" } else { "was" });
+            let blank = |cells: &mut Vec<u8>| {
+                for c in (0..r.n).filter(|&c| land(r, c)) {
+                    let reg = market(r, k, c).map_or(255, |t| (t + 1).min(254) as u8);
+                    cells[c * 4..c * 4 + 4].copy_from_slice(&[0xd9, 0xd3, 0xc4, reg]);
+                }
+            };
+            let Some(m) = made_map(r, k, good) else {
+                blank(&mut cells);
+                return Wash { cells, legend: none(title, "This record does not keep what each town makes: the books of account, which hold it, are kept under the game's rules.".into()), soft: 0.06, lines: true };
+            };
+            let (Some(sc), true) = (scale, m.total > 0.0) else {
+                blank(&mut cells);
+                return Wash { cells, legend: none(title, format!("Nobody made any {label} on the island in {year}.")), soft: 0.06, lines: true };
+            };
+            for c in lands {
+                let v = m.cells[c];
+                put(c, if v > 0.0 { ramp(&OCHRE, sc.at(v)) } else { rgb(BLANK) });
+            }
+            let top = (0..m.towns.len()).max_by(|&a, &b| m.towns[a].total_cmp(&m.towns[b]));
+            let most = top.map_or(String::new(), |t| format!(" Most was made at {}, {}.", town_name(r, t), amount(m.towns[t])));
+            let making = m.towns.iter().filter(|&&v| v > 0.0).count();
+            let note = if m.from_workings {
+                format!("What each working raised in the year, at its pit head, in the good's own units. {} made on the island, by {making} town{}.{most}", amount(m.total), if making == 1 { "" } else { "s" })
+            } else if m.by_land {
+                format!("What each square grew or felled in the year, in the good's own units: each town's figure shared among the squares of its market by how much of each is given to it and how rich its ground is. {} made on the island.{most}", amount(m.total))
+            } else {
+                format!("What each town's works made in the year, in the good's own units, laid over the town's own ground. {} made on the island, in {making} town{}.{most}", amount(m.total), if making == 1 { "" } else { "s" })
+            };
+            Wash { cells, legend: legend(title, note, &OCHRE, &sc, None), soft: 0.06, lines: true }
         }
         // (task A) the two views of town ground that is kept (docs/rules/towns.md)
         Overlay::Growth | Overlay::Residents => {
@@ -525,13 +1032,21 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
                 }
                 return Wash { cells, legend: none(title, "This record does not hold the towns' ground: under its rules a town does not keep the ground it builds on.".into()), soft: 0.06, lines: false };
             }
-            // both scales are the same in every year, so a square keeps its tint for as long
-            // as its figure stands: from the oldest ground the record dates to the run's last
-            // year, and from the people ground holds the year it joins to what the oldest
-            // ground of 1900 comes to hold (by ratio, as rent is: for most of the century
-            // the towns' ground holds 400 to 700, and on an even scale it was all one pale tint)
+            // the whole run of when ground joined is its own scale, the same in every year, so a
+            // square keeps its tint for as long as its figure stands: from the oldest ground the
+            // record dates to the run's last year. Residents go by ratio, as rent does: for most of
+            // the century the towns' ground holds 400 to 700, and on an even scale it was all one pale tint
             let last = r.y0 + r.ny as i32 - 1;
-            let sc = if growth { Scale { lo: OLDEST_GROUND, hi: last as f32, log: false } } else { Scale { lo: 300.0, hi: 1400.0, log: true } };
+            let sc = if growth && scaling.range == Range::Whole {
+                Scale { lo: OLDEST_GROUND, hi: last as f32, log: false }
+            } else if let Some(sc) = scale {
+                sc
+            } else {
+                for c in lands {
+                    put(c, rgb(BLANK));
+                }
+                return Wash { cells, legend: none(title, "No square is town ground this year.".into()), soft: 0.06, lines: false };
+            };
             let stops = if growth { &BRICK } else { &INDIGO };
             let (mut squares, mut people) = (0usize, 0.0f32);
             for c in lands {
@@ -543,29 +1058,72 @@ pub fn wash(r: &Replay, k: usize, kind: Overlay, good: usize, month: Option<&Mon
                 put(c, tint.unwrap_or(rgb(BLANK)));
             }
             let s = if squares == 1 { "" } else { "s" };
-            let legend = Legend {
-                title,
-                note: if growth {
-                    format!("When each square of town ground joined its town. A town keeps the ground it builds on and grows outward from it, so its oldest ground is its middle. {squares} square{s} of town ground.")
-                } else {
-                    format!("The people living on each square of town ground. Ground holds 300 people the year it joins its town and fills as it ages. {} people on {squares} square{s}.", ui::thousands(people))
-                },
-                ramp: ramp_bar(stops),
-                low: if growth { format!("{OLDEST_GROUND:.0} or before") } else { "300 people or fewer".into() },
-                high: if growth { format!("{last}") } else { "1,400 or more".into() },
+            let note = if growth {
+                format!("When each square of town ground joined its town. A town keeps the ground it builds on and grows outward from it, so its oldest ground is its middle. {squares} square{s} of town ground.")
+            } else {
+                format!("The people living on each square of town ground. Ground holds 300 people the year it joins its town and fills as it ages. {} people on {squares} square{s}.", ui::thousands(people))
             };
-            Wash { cells, legend, soft: 0.06, lines: false }
+            let pinned = (growth && scaling.range == Range::Whole).then_some("and before");
+            let mut l = legend(title, note, stops, &sc, pinned);
+            if growth && scaling.range == Range::Whole {
+                l.high = format!("{last}");
+            }
+            Wash { cells, legend: l, soft: 0.06, lines: false }
+        }
+        Overlay::Deposits => {
+            let i = which.min(KINDS.len() - 1);
+            let kd = &KINDS[i];
+            let title = match kd.word {
+                "timber" => format!("Standing timber in {year}"),
+                "soil" => format!("The soil in {year}"),
+                "grazing" => format!("The grazing in {year}"),
+                _ => format!("{} in the ground in {year}", kd.label),
+            };
+            let Some(g) = ground_map(r, k, i) else {
+                for c in lands {
+                    put(c, rgb(BLANK));
+                }
+                return Wash { cells, legend: none(title, "This record does not hold what the ground holds.".into()), soft: 0.5, lines: false };
+            };
+            let Some(sc) = scale else {
+                for c in lands {
+                    put(c, rgb(BLANK));
+                }
+                return Wash { cells, legend: none(title, format!("There is no {} anywhere on the island.", kd.label.to_lowercase())), soft: 0.5, lines: false };
+            };
+            let is_deposit = replay::DEPOSIT_FIELDS.contains(&kd.field);
+            for c in lands {
+                let v = g.cells[c];
+                let col = if v > 0.0 { ramp(&kd.stops, sc.at(v)) } else { rgb(BLANK) };
+                // the squares that have been worked are a region of their own, ruled round in ink
+                let reg = if is_deposit { if g.worked[c] { 2 } else { 1 } } else { market(r, k, c).map_or(255, |t| (t + 1).min(254) as u8) };
+                cells[c * 4..c * 4 + 4].copy_from_slice(&[col[0], col[1], col[2], reg]);
+            }
+            let lname = kd.label.to_lowercase();
+            let note = match (kd.word, is_deposit) {
+                ("timber", _) if g.standing => "The timber standing on each square as the year ends, on the scale the ground's richness is kept in: 1 is as thick a wood as the richest ground could carry.".to_string(),
+                ("timber", _) => "How much timber each square could carry, as much of it as is wood: this record does not keep the timber standing.".to_string(),
+                ("soil", _) => "How fertile each square's soil is, on the scale the ground's richness is kept in, 1 the richest there could be.".to_string(),
+                ("grazing", _) => "How good each square's grazing is, on the scale the ground's richness is kept in, 1 the best there could be.".to_string(),
+                (_, true) => match g.share_left {
+                    Some(s) => format!("How rich the {lname} under each square is now: the richness the hands would meet there, which falls as it is worked. The squares ruled round in ink have been worked. Of the {lname} the island began with, {:.0}% is left.", s * 100.0),
+                    None => format!("How rich the {lname} under each square was when the island was made: this record does not keep what has been worked out of it."),
+                },
+                _ => String::new(),
+            };
+            Wash { cells, legend: legend(title, note, &kd.stops, &sc, Some("none")), soft: 0.5, lines: is_deposit }
         }
     }
 }
 
 /// What the overlay says of square `c` in year index `k`, as a sentence for the
 /// inspector. None where it has nothing to say (the sea, or no record).
-pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: Option<&Month>) -> Option<String> {
+pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, which: usize, month: Option<&Month>) -> Option<String> {
     if c >= r.n || !land(r, c) {
         return None;
     }
     let town = market(r, k, c);
+    let good = which;
     Some(match kind {
         Overlay::Rent => match rent_year(r, k, c)? {
             // the record's scale stops at its top step, which the middle of a town reaches
@@ -604,6 +1162,17 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: O
                 None => "Price: it trades in no town's market.".to_string(),
             }
         }
+        Overlay::Made => {
+            let g = r.header.goods.get(good)?;
+            let label = g.label.to_lowercase();
+            let m = made_map(r, k, good)?;
+            match (m.by_land, town) {
+                (true, _) if m.cells[c] > 0.0 => format!("Made here: about {} of {label} {} this square in the year.", amount(m.cells[c]), if m.from_workings { "was raised at the pit head on" } else { "came off" }),
+                (true, Some(t)) => format!("Made here: none of {label} on this square; {} made {} in all.", town_name(r, t), amount(m.towns.get(t).copied().unwrap_or(0.0))),
+                (false, Some(t)) => format!("Made here: {} made {} of {label} in the year.", town_name(r, t), amount(m.towns.get(t).copied().unwrap_or(0.0))),
+                (_, None) => format!("Made here: none of {label}, and it trades in no town's market."),
+            }
+        }
         Overlay::Wages => {
             let of = |t: usize| match month {
                 Some(m) => m.months.wage(m.t, t).filter(|w| w.is_finite() && *w > 0.0),
@@ -629,6 +1198,19 @@ pub fn said(r: &Replay, k: usize, c: usize, kind: Overlay, good: usize, month: O
             Some(_) => format!("Residents: about {} people live on this square.", ui::thousands(r.residents(k, c))),
             None => "Residents: this square is not town ground.".to_string(),
         },
+        Overlay::Deposits => {
+            let i = which.min(KINDS.len() - 1);
+            let g = ground_map(r, k, i)?;
+            let first = r.holds.field(KINDS[i].field).map(|f| f[c] as f32 / 255.0);
+            let name = KINDS[i].label;
+            match KINDS[i].word {
+                "timber" if g.standing => format!("{name}: {:.2} on the scale of the richest ground.", g.cells[c]),
+                "timber" => format!("{name}: it could carry {:.2}; this record does not keep what stands.", g.cells[c]),
+                _ if g.cells[c] <= 0.0 && first.is_none_or(|f| f <= 0.0) => format!("{name}: none."),
+                _ if g.worked[c] => format!("{name}: {:.2} now, of {:.2} when the island was made; it has been worked.", g.cells[c], first.unwrap_or(0.0)),
+                _ => format!("{name}: {:.2}, on the scale of the richest ground.", g.cells[c]),
+            }
+        }
     })
 }
 
@@ -639,14 +1221,20 @@ struct LegendCard;
 
 /// Room for a good's name between Back and Next on the price map's card: a label of 24 characters.
 const GOOD_BOX_W: f32 = 172.0;
+/// The card's width inside its padding.
+const CARD_W: f32 = 396.0;
 
 /// Choose an overlay (or none).
 #[derive(Component, Clone, Copy)]
 pub struct OverlayChip(pub Option<Overlay>);
 
-/// The good before or after the one whose price is mapped.
+/// The good before or after the one whose price is mapped (or the kind of ground).
 #[derive(Component, Clone, Copy)]
 pub struct GoodStep(pub i32);
+
+/// Choose how the view's colours are spread.
+#[derive(Component, Clone, Copy)]
+pub struct RangeChip(pub Range);
 
 pub fn plugin(app: &mut App) {
     app.add_systems(PostStartup, setup).add_systems(Update, (input, paint, legend_card).chain());
@@ -670,13 +1258,16 @@ fn setup(mut commands: Commands) {
 }
 
 /// M steps through the overlays (with Shift, backwards) and G through the
-/// goods of the price overlay; the chips on the card do the same by hand.
+/// goods of the price and made maps, or the kinds of ground; the chips on the
+/// card do the same by hand, and choose the range.
+#[allow(clippy::too_many_arguments)]
 fn input(
     keys: Res<ButtonInput<KeyCode>>,
     data: Res<Data>,
     mut ov: ResMut<MapOverlay>,
     chips: Query<(&Interaction, &OverlayChip), Changed<Interaction>>,
     steps: Query<(&Interaction, &GoodStep), Changed<Interaction>>,
+    ranges: Query<(&Interaction, &RangeChip), Changed<Interaction>>,
     cards: Res<crate::game::CardOpen>,
 ) {
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
@@ -685,7 +1276,7 @@ fn input(
         ov.step(shift);
     }
     let mut turn = 0;
-    if keys.just_pressed(KeyCode::KeyG) && ov.kind == Some(Overlay::Price) && !cards.0 {
+    if keys.just_pressed(KeyCode::KeyG) && matches!(ov.kind, Some(Overlay::Price | Overlay::Made | Overlay::Deposits)) && !cards.0 {
         turn = if shift { -1 } else { 1 };
     }
     for (i, chip) in &chips {
@@ -700,10 +1291,94 @@ fn input(
             turn = s.0;
         }
     }
-    let n = data.r.header.goods.len() as i32;
-    if turn != 0 && n > 0 {
-        ov.good = (ov.good as i32 + turn).rem_euclid(n) as usize;
+    for (i, c) in &ranges {
+        if *i == Interaction::Pressed {
+            if let Some(kind) = ov.kind {
+                if ov.range(kind) != c.0 {
+                    ov.ranges.insert(kind, c.0);
+                }
+            }
+        }
     }
+    if turn != 0 {
+        if ov.kind == Some(Overlay::Deposits) {
+            ov.deposit = (ov.deposit as i32 + turn).rem_euclid(KINDS.len() as i32) as usize;
+        } else {
+            let n = data.r.header.goods.len() as i32;
+            if n > 0 {
+                ov.good = (ov.good as i32 + turn).rem_euclid(n) as usize;
+            }
+        }
+    }
+}
+
+/// The ends of a view in year `k` under its range, from the years' own ends
+/// kept in the cache: those the cache lacks are reckoned here when they are
+/// few (a year that has just arrived) or every year must be (a still), and
+/// otherwise off the main thread, the year's own ends standing in until they
+/// come. Returns the scaling, and whether it is the one asked for.
+fn scaling_for(ov: &mut MapOverlay, data: &Data, k: usize, kind: Overlay, which: usize, range: Range, stills: bool) -> Scaling {
+    let r = &data.r;
+    let key = (kind, which);
+    let filled = r.filled.min(r.ny);
+    // a reckoning that has come back: kept, and the map painted again
+    if let Some((_, task)) = ov.ends.task.as_mut() {
+        if let Some(done) = bevy::tasks::futures::check_ready(task) {
+            let (tkey, _) = ov.ends.task.take().unwrap();
+            let years = ov.ends.years.entry(tkey).or_default();
+            for (j, e) in done {
+                if years.len() <= j {
+                    years.resize(j + 1, None);
+                }
+                years[j] = Some(e);
+            }
+            ov.ends.version += 1;
+        }
+    }
+    // the town ground's whole run is its own scale, and needs no years
+    if kind == Overlay::Growth && range == Range::Whole {
+        return Scaling { range, ends: None };
+    }
+    let want = match range {
+        Range::Year => k..k + 1,
+        Range::Thirty => 0..k + 1,
+        Range::Whole => 0..filled.max(k + 1),
+    };
+    let have = |ov: &MapOverlay, j: usize| ov.ends.years.get(&key).and_then(|v| v.get(j)).is_some_and(|e| e.is_some());
+    let missing: Vec<usize> = want.clone().filter(|&j| !have(ov, j)).collect();
+    let keep = |ov: &mut MapOverlay, j: usize, e: Option<Ends>| {
+        let years = ov.ends.years.entry(key).or_default();
+        if years.len() <= j {
+            years.resize(j + 1, None);
+        }
+        years[j] = Some(e);
+    };
+    if missing.len() <= INLINE_YEARS || stills {
+        for &j in &missing {
+            let e = year_ends(r, j, kind, which);
+            keep(ov, j, e);
+            ov.ends.inline += 1;
+        }
+    } else {
+        // many years at once: off the main thread, on the run as it stands (a copy of a pointer)
+        let busy = ov.ends.task.as_ref().is_some_and(|t| t.0 == key);
+        if !busy && ov.ends.task.is_none() {
+            let run = data.r.clone();
+            let years = missing.clone();
+            ov.ends.away += years.len() as u64;
+            ov.ends.task = Some((key, bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { years.into_iter().map(|j| (j, year_ends(&run, j, kind, which))).collect() })));
+        }
+        // meanwhile this year's own ends stand in
+        if !have(ov, k) {
+            let e = year_ends(r, k, kind, which);
+            keep(ov, k, e);
+            ov.ends.inline += 1;
+        }
+        let own = ov.ends.years.get(&key).and_then(|v| v.get(k)).copied().flatten().flatten();
+        return Scaling { range, ends: own };
+    }
+    let years: Vec<Option<Ends>> = ov.ends.years.get(&key).map_or(Vec::new(), |v| v[..want.end.min(v.len())].iter().map(|e| e.flatten()).collect());
+    Scaling { range, ends: ranges::ends(range, &years, k) }
 }
 
 /// Write the chosen overlay for the year on the clock into the ground's
@@ -725,17 +1400,37 @@ fn paint(
     let r = &data.r;
     let k = (tl.t.floor() as usize).min(r.ny - 1);
     let good = ov.good.min(r.header.goods.len().saturating_sub(1));
+    if good != ov.good {
+        ov.good = good;
+    }
     // prices and wages go by the month where the clock shows one and the month is held
     let month = match ov.kind {
         Some(Overlay::Price | Overlay::Wages) => month_shown(&months, tl.t, crate::shown_date(&tl, &data, live.as_deref(), stills.is_some()).is_some()),
         _ => None,
     };
-    let key = (ov.kind, good, k, r.filled, month);
+    let which = ov.kind.map_or(0, |kind| ov.which(kind));
+    let range = ov.kind.filter(|k| k.scaled()).map(|k| ov.range(k));
+    // a reckoning off the main thread that has landed moves the version, and the map is painted again
+    if let Some((_, task)) = ov.ends.task.as_ref() {
+        if task.is_finished() {
+            if let (Some(kind), Some(range)) = (ov.kind, range) {
+                scaling_for(&mut ov, &data, k, kind, which, range, stills.is_some());
+            }
+        }
+    }
+    let key = (ov.kind, which, k, r.filled, month, range, ov.ends.version);
     if ov.painted == Some(key) {
         return;
     }
     let month = month.map(|t| Month::of(r, &months, t));
-    let w = ov.kind.map(|kind| wash(r, k, kind, good, month.as_ref()));
+    let w = match (ov.kind, range) {
+        (Some(kind), Some(range)) => {
+            let scaling = scaling_for(&mut ov, &data, k, kind, which, range, stills.is_some());
+            Some(wash(r, k, kind, which, month.as_ref(), scaling))
+        }
+        (Some(kind), None) => Some(wash(r, k, kind, which, month.as_ref(), Scaling { range: Range::Year, ends: None })),
+        _ => None,
+    };
     let handle = mats.get(&sm.terrain).map(|m| m.extension.overlay.clone());
     if let (Some(w), Some(h)) = (&w, &handle) {
         if let Some(mut img) = images.get_mut(h) {
@@ -759,7 +1454,9 @@ fn paint(
     // stand aside; towns, works, roads and railways stay, being what the figures follow.
     // Nothing is hidden here: `show_trees` in main.rs reads `kind` and settles what shows
     // of the trees together with the season, which used to put the leaves back
-    ov.painted = Some(key);
+    // (the key is taken again: the ends' version may have moved while they were reckoned)
+    let which = ov.kind.map_or(0, |kind| ov.which(kind));
+    ov.painted = Some((ov.kind, which, k, r.filled, month.as_ref().map(|m| m.t), range, ov.ends.version));
     let legend = w.map(|w| w.legend);
     if ov.legend != legend {
         ov.legend = legend;
@@ -798,7 +1495,10 @@ fn legend_card(
     let f = font.0.clone();
     let accent = fam.as_ref().and_then(|v| v.player()).map(|p| p.colour).unwrap_or(Color::srgb(0.55, 0.42, 0.30));
     let (kind, legend) = (ov.kind, ov.legend.clone());
-    let good = data.r.header.goods.get(ov.good).map(|g| g.label.clone()).unwrap_or_default();
+    let chosen = match kind {
+        Some(Overlay::Deposits) => KINDS.get(ov.deposit).map(|k| k.label.to_string()).unwrap_or_default(),
+        _ => data.r.header.goods.get(ov.good).map(|g| g.label.clone()).unwrap_or_default(),
+    };
     commands.entity(e).with_children(|p| {
         let (Some(kind), Some(l)) = (kind, legend) else {
             // the map is plain: a pill that brings the overlays back
@@ -817,41 +1517,60 @@ fn legend_card(
             });
             return;
         };
-        p.spawn(Node { width: Val::Px(396.0), align_items: AlignItems::Center, column_gap: Val::Px(7.0), ..default() }).with_children(|row| {
+        p.spawn(Node { width: Val::Px(CARD_W), align_items: AlignItems::Center, column_gap: Val::Px(7.0), ..default() }).with_children(|row| {
             row.spawn(crate::icons::icon(&icons.map, 17.0, INK));
             row.spawn(text(&f, &l.title, 17.0, INK));
         });
-        p.spawn((text(&f, &l.note, 12.5, MUTED), Node { width: Val::Px(396.0), ..default() }));
+        p.spawn((text(&f, &l.note, 12.5, MUTED), Node { width: Val::Px(CARD_W), ..default() }));
         if !l.ramp.is_empty() {
-            // the scale: the tints as they lie on the map, and the figures at its two ends
-            p.spawn(Node { width: Val::Px(396.0), height: Val::Px(12.0), margin: UiRect::top(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(6.0)), overflow: Overflow::clip(), ..default() }).with_children(|bar| {
+            // the scale: the tints as they lie on the map, a fine mark at each round figure,
+            // the figures under their marks, and what the two ends stand for
+            p.spawn(Node { width: Val::Px(CARD_W), height: Val::Px(12.0), margin: UiRect::top(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(6.0)), overflow: Overflow::clip(), ..default() }).with_children(|bar| {
                 for c in &l.ramp {
                     bar.spawn((Node { flex_grow: 1.0, ..default() }, BackgroundColor(Color::srgb_u8(c[0], c[1], c[2]))));
                 }
+                for (at, _) in &l.ticks {
+                    bar.spawn((Node { position_type: PositionType::Absolute, left: Val::Px((at * CARD_W - 0.5).clamp(0.0, CARD_W - 1.0)), top: Val::Px(0.0), width: Val::Px(1.0), height: Val::Px(12.0), ..default() }, BackgroundColor(INK.with_alpha(0.45))));
+                }
             });
-            p.spawn(Node { width: Val::Px(396.0), justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|ends| {
-                for (word, figure, end) in [("low", &l.low, AlignItems::Start), ("high", &l.high, AlignItems::End)] {
-                    ends.spawn(Node { flex_direction: FlexDirection::Column, align_items: end, ..default() }).with_children(|col| {
-                        col.spawn(text(&f, word, 11.5, MUTED));
-                        col.spawn(text(&f, figure, 13.0, INK));
+            p.spawn(Node { width: Val::Px(CARD_W), height: Val::Px(15.0), ..default() }).with_children(|row| {
+                for (at, words) in &l.ticks {
+                    // the words centred on their mark, kept inside the card (about 6.5 px a letter)
+                    let w = 6.5 * words.chars().count() as f32 + 4.0;
+                    let left = (at * CARD_W - w / 2.0).clamp(0.0, CARD_W - w);
+                    row.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(left), width: Val::Px(w), justify_content: JustifyContent::Center, ..default() },)).with_children(|t| {
+                        t.spawn((text(&f, words, 12.0, INK), TextLayout::default().with_no_wrap()));
                     });
                 }
             });
+            p.spawn(Node { width: Val::Px(CARD_W), justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|ends| {
+                ends.spawn(text(&f, &l.low, 11.5, MUTED));
+                ends.spawn(text(&f, &l.high, 11.5, MUTED));
+            });
         }
-        if kind == Overlay::Price {
+        if let Some(range) = l.range {
+            // how the ends are taken: three small chips, the one in use lit
+            p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }).with_children(|row| {
+                row.spawn(text(&f, "Colours from", 12.0, MUTED));
+                for r in Range::ALL {
+                    chip_button(row, &f, r.chip(), r == range, accent, RangeChip(r));
+                }
+            });
+        }
+        if matches!(kind, Overlay::Price | Overlay::Made | Overlay::Deposits) {
             // which good: one step back or on, never a list to scroll
             p.spawn(Node { align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).with_children(|row| {
                 ui::small_button(row, &f, "Back", GoodStep(-1));
                 // as wide as the longest name there could be, so that Next stays under the pointer from good to good
                 row.spawn(Node { width: Val::Px(GOOD_BOX_W), justify_content: JustifyContent::Center, overflow: Overflow::clip_x(), ..default() }).with_children(|name| {
-                    name.spawn((text(&f, &good, 14.0, INK), TextLayout::default().with_no_wrap()));
+                    name.spawn((text(&f, &chosen, 14.0, INK), TextLayout::default().with_no_wrap()));
                 });
                 ui::small_button(row, &f, "Next", GoodStep(1));
                 ui::keycap(row, &f, "G");
             });
         }
-        // (task A) seven views are more than one line of chips holds: they go on to a second
-        p.spawn((Node { width: Val::Px(396.0), column_gap: Val::Px(5.0), row_gap: Val::Px(5.0), flex_wrap: FlexWrap::Wrap, padding: UiRect::top(Val::Px(7.0)), margin: UiRect::top(Val::Px(1.0)), border: UiRect::top(Val::Px(1.0)), align_items: AlignItems::Center, ..default() }, BorderColor::all(RULE))).with_children(|row| {
+        // (task A) nine views are more than one line of chips holds: they go on to a second
+        p.spawn((Node { width: Val::Px(CARD_W), column_gap: Val::Px(5.0), row_gap: Val::Px(5.0), flex_wrap: FlexWrap::Wrap, padding: UiRect::top(Val::Px(7.0)), margin: UiRect::top(Val::Px(1.0)), border: UiRect::top(Val::Px(1.0)), align_items: AlignItems::Center, ..default() }, BorderColor::all(RULE))).with_children(|row| {
             for o in Overlay::ALL {
                 chip_button(row, &f, o.chip(), o == kind, accent, OverlayChip(Some(o)));
             }
@@ -862,238 +1581,5 @@ fn legend_card(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::replay::{Good, Header, Meta, Town};
-
-    /// A strip of four squares in one year: sea, then two squares that trade at
-    /// Ashby (which stands on the first of them), then one that trades at Brill.
-    fn strip() -> Replay {
-        let town = |name: &str, node: usize| Town { name: name.into(), node, founded: 1700 };
-        let good = |name: &str, label: &str| Good { name: name.into(), label: label.into(), kind: None, weight: None, price: None };
-        let header = Header {
-            meta: Meta { label: String::new(), lite: false, seed: 1, w: 4, h: 1, start_year: 1750, n_years: 1, town_bytes: 0 },
-            goods: vec![good("grain", "Grain"), good("coal", "Coal")],
-            methods: Vec::new(),
-            towns: vec![town("Ashby", 1), town("Brill", 3)],
-            firms: Vec::new(),
-            events: Vec::new(),
-            disp: Vec::new(),
-            uses: Vec::new(),
-            arrays: Vec::new(),
-            series: Default::default(),
-            land: None,
-            crossings: Vec::new(),
-        };
-        Replay {
-            header,
-            w: 4,
-            h: 1,
-            n: 4,
-            ny: 1,
-            y0: 1750,
-            n_towns: 2,
-            elev: vec![0; 4],
-            terrain: vec![0, 1, 1, 2],
-            river: vec![0; 4],
-            down: vec![-1; 4],
-            use_: vec![0; 4],
-            inten: vec![0; 4],
-            trans: vec![0; 4],
-            catch: vec![0, 1, 1, 2],
-            // a month's rent of 0.001, 1 and 1000 on the record's scale; none for the sea
-            rent: vec![0, 1, 128, 255],
-            // quarter units of path cost: at the market, 3 units away, and no way at all
-            dist: vec![0, 0, 12, 255],
-            mix_a: vec![0; 4],
-            mix_b: vec![0; 4],
-            mix_s: vec![255; 4],
-            town_active: vec![1, 1],
-            town_pop: vec![100.0, 50.0],
-            town_urban: vec![10.0, 5.0],
-            town_wage: vec![2.0, 3.0],
-            // grain in both towns; coal only at Brill
-            town_price: vec![1.0, 0.0, 1.5, 0.8],
-            firm_first: Vec::new(),
-            firm_len: Vec::new(),
-            firm_off: Vec::new(),
-            firm_k: Vec::new(),
-            series_names: Vec::new(),
-            series: Vec::new(),
-            series_len: 12,
-            filled: 1,
-            owner: Vec::new(),
-            built: Vec::new(),
-            res: Vec::new(),
-            works: Vec::new(),
-            workings: Vec::new(),
-            rent_scale: Vec::new(),
-            land: None,
-        }
-    }
-
-    fn tint(w: &Wash, c: usize) -> [u8; 4] {
-        [w.cells[c * 4], w.cells[c * 4 + 1], w.cells[c * 4 + 2], w.cells[c * 4 + 3]]
-    }
-
-    #[test]
-    fn the_sea_is_left_alone_and_land_carries_its_market() {
-        let r = strip();
-        for kind in Overlay::ALL {
-            let w = wash(&r, 0, kind, 0, None);
-            assert_eq!(tint(&w, 0), [0, 0, 0, 0], "{kind:?} tints the sea");
-            assert_eq!((tint(&w, 1)[3], tint(&w, 2)[3], tint(&w, 3)[3]), (1, 1, 2), "{kind:?} regions");
-        }
-    }
-
-    #[test]
-    fn prices_and_wages_run_from_the_cheapest_town_to_the_dearest() {
-        let r = strip();
-        let w = wash(&r, 0, Overlay::Price, 0, None);
-        assert_eq!(w.legend.low, "\u{00a3}1.00 at Ashby");
-        assert_eq!(w.legend.high, "\u{00a3}1.50 at Brill");
-        assert_eq!(&tint(&w, 1)[..3], &rgb(MADDER[0]));
-        assert_eq!(&tint(&w, 3)[..3], &rgb(MADDER[4]));
-        assert!(w.lines);
-        // coal has a price only at Brill: Ashby's squares are blank, and the inspector says so
-        let w = wash(&r, 0, Overlay::Price, 1, None);
-        assert_eq!(&tint(&w, 1)[..3], &rgb(BLANK));
-        assert_eq!(said(&r, 0, 2, Overlay::Price, 1, None).unwrap(), "Price: Ashby's market has no price for coal this year.");
-        assert_eq!(said(&r, 0, 3, Overlay::Price, 1, None).unwrap(), "Price: \u{00a3}0.80 for coal at Brill, the market this square trades in.");
-        // a square outside every market area has no price to take
-        let mut lone = strip();
-        lone.catch[3] = 0;
-        assert_eq!(said(&lone, 0, 3, Overlay::Price, 0, None).unwrap(), "Price: it trades in no town's market.");
-        let w = wash(&r, 0, Overlay::Wages, 0, None);
-        assert_eq!((w.legend.low.as_str(), w.legend.high.as_str()), ("\u{00a3}2.00 at Ashby", "\u{00a3}3.00 at Brill"));
-        assert_eq!(said(&r, 0, 2, Overlay::Wages, 0, None).unwrap(), "Wages: a month's work pays \u{00a3}2.00 at Ashby.");
-    }
-
-    #[test]
-    fn where_the_clock_shows_a_month_prices_and_wages_are_the_months() {
-        let r = strip();
-        let mut months = Months::default();
-        // January to March of the second year, as a live game sends them
-        for (m, grain) in [(0, 1.3), (1, 1.25), (2, 1.2)] {
-            months.add(&isostate_core::LiveMonth { year: 1751, month: m, index: 12 + m, series: Vec::new(), wage: vec![2.5, 2.8], price: vec![grain, 0.0, 1.1, 0.9], cash: Vec::new(), events: Vec::new() });
-        }
-        // the clock a little into April: March is the last month over
-        let t = crate::clock::at(0, 3) + 0.04;
-        assert_eq!(month_shown(&months, t, true), Some(14));
-        // at the turn the last month over is December of the year before, which is not held: the year's averages
-        assert_eq!(month_shown(&months, 0.0, true), None);
-        // where the bar shows no month, the year's
-        assert_eq!(month_shown(&months, t, false), None);
-        // a month that has not come: the newest of its year that has
-        assert_eq!(month_shown(&months, crate::clock::at(0, 8), true), Some(14));
-        // and a year the viewer holds nothing of
-        assert_eq!(month_shown(&months, crate::clock::at(4, 8), true), None);
-
-        let month = Month::of(&r, &months, 14);
-        assert_eq!(month.label, "March 1751");
-        let w = wash(&r, 0, Overlay::Price, 0, Some(&month));
-        assert_eq!(w.legend.title, "The price of grain in March 1751");
-        assert!(w.legend.note.contains("at the month's end"), "{}", w.legend.note);
-        // the month's prices, not the year's (which have Ashby the cheaper)
-        assert_eq!((w.legend.low.as_str(), w.legend.high.as_str()), ("\u{00a3}1.10 at Brill", "\u{00a3}1.20 at Ashby"));
-        assert_eq!(said(&r, 0, 2, Overlay::Price, 0, Some(&month)).unwrap(), "Price: \u{00a3}1.20 for grain at Ashby in March 1751, the market this square trades in.");
-        assert_eq!(said(&r, 0, 2, Overlay::Price, 1, Some(&month)).unwrap(), "Price: Ashby's market has no price for coal this month.");
-        let w = wash(&r, 0, Overlay::Wages, 0, Some(&month));
-        assert_eq!((w.legend.title.as_str(), w.legend.low.as_str()), ("Wages in March 1751", "\u{00a3}2.50 at Ashby"));
-        assert_eq!(said(&r, 0, 2, Overlay::Wages, 0, Some(&month)).unwrap(), "Wages: a month's work paid \u{00a3}2.50 at Ashby in March 1751.");
-        // the views that go by the year take no notice of a month
-        assert_eq!(wash(&r, 0, Overlay::Rent, 0, Some(&month)).legend.title, wash(&r, 0, Overlay::Rent, 0, None).legend.title);
-    }
-
-    #[test]
-    fn the_inspector_says_what_the_overlay_shows() {
-        let r = strip();
-        assert_eq!(said(&r, 0, 0, Overlay::Rent, 0, None), None);
-        // 12 months of the record's middle value: 10^(128/255*6 - 3) is about 1.03 a month
-        assert_eq!(said(&r, 0, 2, Overlay::Rent, 0, None).unwrap(), "Rent: the ground of this square earns about \u{00a3}12 a year.");
-        // the record's top step is a floor, not a figure
-        assert_eq!(said(&r, 0, 3, Overlay::Rent, 0, None).unwrap(), "Rent: the ground of this square earns \u{00a3}12k a year or more.");
-        assert_eq!(said(&r, 0, 2, Overlay::Areas, 0, None).unwrap(), "Market: it buys and sells at Ashby, one of 2 squares that do.");
-        assert_eq!(said(&r, 0, 1, Overlay::Reach, 0, None).unwrap(), "Way to market: Ashby's market is here.");
-        assert_eq!(said(&r, 0, 2, Overlay::Reach, 0, None).unwrap(), "Way to market: Ashby is as far as 6.0 km of flat open country.");
-        assert_eq!(said(&r, 0, 3, Overlay::Reach, 0, None).unwrap(), "Way to market: there is no way from here to any market.");
-    }
-
-    #[test]
-    fn neighbouring_markets_never_share_a_tint() {
-        let r = strip();
-        let t = area_tints(&r, 0);
-        assert_ne!(t[0], t[1]);
-        let w = wash(&r, 0, Overlay::Areas, 0, None);
-        assert_ne!(&tint(&w, 2)[..3], &tint(&w, 3)[..3]);
-        // the year is in the title, and is not said again
-        assert_eq!(w.legend.title, "Market areas in 1750");
-        assert!(w.legend.note.ends_with("gives way to the next. 2 markets."));
-    }
-
-    #[test]
-    fn the_key_steps_through_every_overlay_and_back_to_the_plain_map() {
-        let mut ov = MapOverlay::new(None, 0);
-        let mut seen = Vec::new();
-        for _ in 0..8 {
-            ov.step(false);
-            seen.push(ov.kind);
-        }
-        assert_eq!(seen, vec![Some(Overlay::Rent), Some(Overlay::Areas), Some(Overlay::Reach), Some(Overlay::Price), Some(Overlay::Wages), Some(Overlay::Growth), Some(Overlay::Residents), None]);
-        // backwards from the plain map is the last of them, and the pill remembers it
-        ov.step(true);
-        assert_eq!(ov.kind, Some(Overlay::Residents));
-        ov.set(None);
-        assert_eq!(ov.last, Overlay::Residents);
-    }
-
-    #[test]
-    fn overlays_are_named_on_the_command_line() {
-        let r = strip();
-        assert_eq!(parse("rent", &r), Some((Some(Overlay::Rent), None)));
-        assert_eq!(parse("price:Coal", &r), Some((Some(Overlay::Price), Some(1))));
-        assert_eq!(parse("plain", &r), Some((None, None)));
-        assert_eq!(parse("markets", &r), None);
-        assert!(is_word("price:coal") && is_word("areas") && !is_word("markets") && !is_word("island"));
-        // a word that would be passed over is complained of, a good one is not
-        assert_eq!(complaint("price:coal", &r), None);
-        assert_eq!(complaint("wages", &r), None);
-        assert!(complaint("rents", &r).unwrap().contains("not a map view"));
-        assert_eq!(complaint("price:gin", &r).unwrap(), "\"gin\" is not a good of this run: use one of grain, coal");
-    }
-
-    #[test]
-    fn scales_run_from_low_to_high() {
-        let even = Scale { lo: 2.0, hi: 6.0, log: false };
-        assert_eq!(even.at(1.0), 0.0);
-        assert_eq!(even.at(4.0), 0.5);
-        assert_eq!(even.at(9.0), 1.0);
-        let ratio = Scale { lo: 1.0, hi: 100.0, log: true };
-        assert!((ratio.at(10.0) - 0.5).abs() < 1e-6);
-        assert_eq!(ratio.at(0.0), 0.0);
-        // one town, or every town alike: the middle of the ramp, not a division by nothing
-        assert_eq!(Scale { lo: 3.0, hi: 3.0, log: false }.at(3.0), 0.5);
-    }
-
-    #[test]
-    fn figures_are_rounded_and_written_plainly() {
-        assert_eq!(round_sig(1234.0), 1200.0);
-        assert!((round_sig(0.0456) - 0.046).abs() < 1e-6);
-        assert_eq!(coin(1.2), "\u{00a3}1.20");
-        assert_eq!(coin(12.34), "\u{00a3}12.3");
-        assert_eq!(coin(480.0), "\u{00a3}480");
-        assert_eq!(coin(2600.0), "\u{00a3}2,600");
-        // a rough sum keeps its two figures and no more
-        assert_eq!(about(97.3), "\u{00a3}97");
-        assert_eq!(about(0.744), "\u{00a3}0.74");
-        assert_eq!(about(4.38), "\u{00a3}4.40");
-        assert_eq!(about(1234.0), "\u{00a3}1,200");
-    }
-
-    #[test]
-    fn the_ramp_ends_on_its_end_stops() {
-        assert_eq!(ramp(&SEPIA, 0.0), rgb(SEPIA[0]));
-        assert_eq!(ramp(&SEPIA, 1.0), rgb(SEPIA[4]));
-        assert_eq!(ramp(&SEPIA, 0.5), rgb(SEPIA[2]));
-    }
-}
+#[path = "overlay_tests.rs"]
+mod tests;

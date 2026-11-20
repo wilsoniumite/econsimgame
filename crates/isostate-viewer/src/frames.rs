@@ -782,7 +782,7 @@ fn end(world: &mut World) {
             leaf: std::array::from_fn(|g| isostate_gen::trees::in_leaf(phase, g)),
             tab: ui.tab,
             dirty: ui.dirty,
-            map: (ov.kind, ov.good),
+            map: (ov.kind, ov.kind.map_or(ov.good, |k| ov.which(k))),
             decision: world.resource::<crate::game::Game>().open,
             cam: (orbit.target, orbit.yaw, orbit.pitch, orbit.dist),
             entities: world.entities().count_spawned(),
@@ -1452,12 +1452,8 @@ fn step(world: &mut World, plan: &mut Plan) {
             }
             Step::Overlay(word) => {
                 let parsed = crate::overlay::parse(&word, &world.resource::<Data>().r);
-                if let Some((kind, good)) = parsed {
-                    let mut ov = world.resource_mut::<crate::overlay::MapOverlay>();
-                    ov.set(kind);
-                    if let Some(g) = good {
-                        ov.good = g;
-                    }
+                if let Some(c) = parsed {
+                    world.resource_mut::<crate::overlay::MapOverlay>().choose(&c);
                 }
                 frame = true;
             }

@@ -126,6 +126,7 @@ struct OverServices {
     subsistence: Option<Vec<f64>>,
     shares: Option<Vec<f64>>,
     shares_rich: Option<Vec<f64>>,
+    shares_lean: Option<Vec<f64>>,
     lord_shares: Option<Vec<f64>>,
     theta: Option<Vec<f64>>,
     stage: Option<u32>,
@@ -244,6 +245,9 @@ fn raw_of(C: &Content) -> RawContent {
             shares: C.shares.clone(),
             lord_shares: Some(C.lord_shares.clone()),
             shares_rich: Some(C.shares_rich.clone()),
+            // a lean that goes nowhere is left unwritten, so that an overlay that
+            // adds needs and a richer set for them need not write it too
+            shares_lean: (C.shares_lean != C.shares_rich).then(|| C.shares_lean.clone()),
             theta: (!C.theta.is_empty()).then(|| C.theta.clone()),
             props: (0..C.G)
                 .filter_map(|g| {
@@ -329,6 +333,7 @@ pub fn lay(base: &Content, over: &str, stage: u32) -> Result<Content, String> {
         ("subsistence", s.subsistence.len()),
         ("shares", s.shares.len()),
         ("shares_rich", s.shares_rich.as_ref().map_or(S, |v| v.len())),
+        ("shares_lean", s.shares_lean.as_ref().map_or(S, |v| v.len())),
         ("lord_shares", s.lord_shares.as_ref().map_or(S, |v| v.len())),
         ("theta", s.theta.as_ref().map_or(S, |v| v.len())),
     ] {
@@ -467,6 +472,9 @@ fn lay_needs(s: &mut RawServices, o: &OverServices, stage: u32, known: &dyn Fn(&
         }
         if let Some(v) = &o.shares_rich {
             s.shares_rich = Some(v.clone());
+        }
+        if let Some(v) = &o.shares_lean {
+            s.shares_lean = Some(v.clone());
         }
         if let Some(v) = &o.lord_shares {
             s.lord_shares = Some(v.clone());

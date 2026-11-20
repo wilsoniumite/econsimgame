@@ -68,6 +68,8 @@ pub fn growth(st: &mut State, _C: &Content, P: &Params, year: i64, events: &mut 
     for t in 0..T {
         st.pop[t] = if act[t] { st.pop[t] * (1.0 + g[t]) } else { 0.0 };
     }
+    // ages (docs/rules/ages.md): the year's ages reckoned beneath the played totals, watched only
+    crate::ages::year(st, P, &y, year);
     st.y_acc.iter_mut().for_each(|v| *v = 0.0);
     st.food_min_acc.iter_mut().for_each(|v| *v = 9.0);
     g
@@ -112,6 +114,8 @@ pub fn migration(st: &mut State, _C: &Content, P: &Params, year: i64) {
     // transition (docs/rules/transition.md): migrants carry their towns' measure of how
     // well townsfolk live, as they carry their cash (nothing while the rule is off)
     crate::transition::migrate(st, P, &act, &flow);
+    // ages (docs/rules/ages.md): and their ages and schooling (nothing while it is off)
+    crate::ages::migrate(st, P, &act, &flow);
     let cash_pc: Vec<f64> = act.iter().map(|&t| st.hh_cash[t].max(0.0) / st.pop[t].max(1.0)).collect();
     // flow.sum(axis=0) runs down the columns one by one; flow.sum(axis=1) is pairwise
     let mut inflow = vec![0.0; n];
