@@ -1362,6 +1362,7 @@ pub fn kind_label(kind: &str) -> &'static str {
         "closure" => "Closure",
         "family" => "Families",
         "emigration" => "Emigration",
+        "state" => "The state",
         "orders" | "orders_refused" => "Your orders",
         "hand" => "By hand",
         _ => "News",
@@ -1527,6 +1528,8 @@ fn island_charts(p: &mut ChildSpawnerCommands, f: &Handle<Font>, images: &mut As
     }
     // ages (docs/rules/ages.md): the people by age in the year on the clock, reckoned
     crate::ages_chart::spawn(p, f, images, r, k);
+    // state (docs/rules/state.md): the rate on pay, schools and pensions, from 1900
+    crate::purse_chart::spawn(p, f, images, r, k);
 }
 
 /// Five years of months along the bottom of a chart: the four calendar years

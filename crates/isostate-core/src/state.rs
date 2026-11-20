@@ -584,4 +584,9 @@ pub struct State {
     /// Each town's people in seventeen five-year groups and their schooling,
     /// reckoned beneath the played totals. The observer's alone.
     pub ages: crate::ages::AgesState,
+
+    // ---------------- state (docs/rules/state.md; empty while `state.enabled` is off)
+    /// The treasury, the rate on pay, the laws of the schools and the pension,
+    /// each town's pupils, teachers and pensioners, and each year of the purse.
+    pub purse: crate::purse::PurseState,
 }

@@ -85,6 +85,8 @@ pub const FIXED_AT_START: &[&str] = &[
     "pay.watch",
     // (the people's ages: their series are made with the record, and their rows at the start)
     "ages.watch",
+    // (the state's purse: its treasury and its book are kept from the start; its chips may be set)
+    "state.enabled",
 ];
 
 /// Every rule's own switch, by the dotted name `--set` takes: `enabled` where

@@ -123,6 +123,9 @@ fn at_stage_one_the_island_is_the_island_as_it_was() {
     // and with the linked measure off (docs/rules/measures.md), which came after: its three
     // series are in the fingerprint, though they touch nothing, and the news's slump clock reads it
     P.linked = Default::default();
+    // and with the state's purse off (docs/rules/state.md), which came after: its series
+    // are in the fingerprint, though they are nothing to 1900
+    P.state = Default::default();
     let mut s = sim::start(&P, game_content());
     while s.year <= 1900 {
         sim::run_year(&mut s).unwrap();

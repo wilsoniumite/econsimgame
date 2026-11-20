@@ -69,6 +69,7 @@ pub mod pay;
 pub mod people;
 pub mod peopling;
 pub mod prices;
+pub mod purse;
 pub mod rail;
 pub mod railways;
 pub mod record;

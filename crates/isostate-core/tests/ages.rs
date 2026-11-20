@@ -16,6 +16,10 @@ fn params(rules: Rules, seed: u64, end_year: i64, watch: bool) -> Params {
     P.n_families = 6;
     P.end_year = Some(end_year);
     P.ages.watch = watch;
+    // played with the state's purse off (docs/rules/state.md), which reads the
+    // ages for its pupils and pensioners and gives cohorts their schooling: the
+    // ages are a watcher only without it, and its series come after theirs
+    P.state.enabled = false;
     P
 }
 
