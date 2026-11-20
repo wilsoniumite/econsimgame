@@ -19,6 +19,7 @@ fn strip() -> Replay {
         series: Default::default(),
         land: None,
         crossings: Vec::new(),
+        techs: Vec::new(),
     };
     Replay {
         header,
@@ -63,6 +64,7 @@ fn strip() -> Replay {
         works: Vec::new(),
         workings: Vec::new(),
         rent_scale: Vec::new(),
+        builds: Default::default(),
         land: None,
         holds: Default::default(),
     }

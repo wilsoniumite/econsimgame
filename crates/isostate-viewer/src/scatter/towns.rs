@@ -19,6 +19,7 @@ use isostate_gen::town;
 use std::collections::HashMap;
 
 mod kept;
+pub(super) use kept::lots;
 pub use kept::Census;
 
 /// Where a road enters town and what lies along it, in world units.
@@ -1030,6 +1031,7 @@ mod tests {
             works: if kept { vec![0; ny * n] } else { Vec::new() },
             workings: Vec::new(),
             rent_scale: Vec::new(),
+            builds: Default::default(),
             land: None,
             holds: Default::default(),
         };

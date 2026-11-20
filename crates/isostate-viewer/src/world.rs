@@ -1305,7 +1305,8 @@ pub fn town_houses(r: &Replay, k: usize, c: usize) -> usize {
     if r.joined(k, c).is_none() {
         return 0;
     }
-    let of = |y: usize| r.residents(y, c) / PEOPLE_TO_A_HOUSE;
+    // (after 1900, the ground its houses take: a square built up holds more on the same plots, `lots.rs`)
+    let of = |y: usize| r.footprint(y, c) / PEOPLE_TO_A_HOUSE;
     let now = of(k);
     let mut peak = now;
     for y in (0..k).rev() {
@@ -1877,6 +1878,7 @@ pub(crate) mod tests {
             works: Vec::new(),
             workings: Vec::new(),
             rent_scale: Vec::new(),
+            builds: Default::default(),
             land: None,
             holds: Default::default(),
         };
