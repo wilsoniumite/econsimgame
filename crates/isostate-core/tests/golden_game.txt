@@ -213,6 +213,11 @@
 # Taken: the reckoning of the people's ages (ages.watch, docs/rules/ages.md):
 # its series are the books' own, so books and run.bin move in both eras and
 # economy and news hold
+# Taken: Demand's shape (engel.lean, on under the game's rules) moves the
+# second era alone, as meant: from 1901 a richer household's next shilling
+# leans from shelter and clothing to comfort. The people's ages (ages.watch, a
+# watcher on from 1750) add their series to the books, so books in both eras
+# and run.bin move with them, the economy and the news of the first era held.
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0xffb33bf59c64679f
 1750-1900 news     0x5d3a55a39961b3e2
