@@ -696,18 +696,18 @@ pub struct TownIdea {
 }
 
 /// What a technique of the tree changes, since it adds no works of its own
-/// (the data says it only in its news). One not named here is said plainly.
-fn technique_words(name: &str) -> &'static str {
-    match name {
-        "steam_pumping" => "steam engines draining the pits, so that the mines can go deeper",
-        "wagonway" => "iron wagonways at the pits, so that one horse hauls what four did",
-        "railway" => "the railway: lines may be laid between the towns, and goods go by rail",
-        "improved_husbandry" => "new rotations on the farms, turnips and clover in place of fallow and more stock kept through the winter, so that yields climb",
-        "farm_machinery" => "machines on the farms, so that fewer hands bring in the same harvest",
-        "breeding" => "bred seed and stock and sprays against blight, so that the same field gives more",
-        "managed_woodland" => "woods planted and felled in rotation, so that the woods of the town's market area grow back faster",
-        _ => "a way of working that changes how existing work is done rather than adding works",
-    }
+/// (the data says it only in its news); None for one not named here.
+fn technique_words(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "steam_pumping" => "steam engines drain the pits, so that the mines can go deeper",
+        "wagonway" => "iron wagonways are laid at the pits, so that one horse hauls what four did",
+        "railway" => "railways may be laid between the towns, and goods go by rail",
+        "improved_husbandry" => "the farms sow turnips and clover in place of fallow and keep more stock through the winter, so that yields climb",
+        "farm_machinery" => "machines come to the farms, so that fewer hands bring in the same harvest",
+        "breeding" => "bred seed and stock, and sprays against blight, make the same field give more",
+        "managed_woodland" => "woods are planted and felled in rotation, so that the woods of the town's market area grow back faster",
+        _ => return None,
+    })
 }
 
 /// A sentence's first letter in capitals.
@@ -757,7 +757,8 @@ pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas,
         who.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
         let opens = |here: bool| -> String {
             if !method {
-                return format!("It is {}.", technique_words(&C.tech_name[k]));
+                let what = technique_words(&C.tech_name[k]).map_or(String::new(), |w| format!(": {w}"));
+                return if here { format!("It adds no works of its own, and changes how work is done{what}.") } else { format!("Known here, it would change how work is done{what}.") };
             }
             let good = lower(&C.good_label[C.method_out[k]]);
             let trade = families::Group::of_method(C, k).map_or(String::new(), |g| format!(", in {}", lower(g.label())));
@@ -786,9 +787,13 @@ pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas,
             } else {
                 "learnt from the other towns along the island's trade".to_string()
             };
-            let when = year.filter(|&y| y > start || !C.tech_known[k]).map_or(String::new(), |y| format!(" since {y}"));
+            let head = if C.tech_known[k] && founded <= start {
+                format!("known here since before {start}")
+            } else {
+                format!("known here{}, {how}", year.map_or(String::new(), |y| format!(" since {y}")))
+            };
             let arriving = if share < 0.5 { ", and more is still arriving" } else { "" };
-            let said = format!("{}: known here{when}, {how}. {} of the town knows it{arriving}. {}", C.tech_label[k], capital(&pct(share)), opens(true));
+            let said = format!("{}: {head}. {} of the town knows it{arriving}. {}", C.tech_label[k], capital(&pct(share)), opens(true));
             TownIdea { name: C.tech_name[k].clone(), label: C.tech_label[k].clone(), kind, stands: Stands::Here, year, how, share, towns: who.len(), said, discover: false }
         } else if C.tech_known[k] || st.tech_year[k] >= 0 {
             let year = Some(if C.tech_known[k] { start } else { st.tech_year[k] });
@@ -803,8 +808,12 @@ pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas,
             if more > 0 {
                 most.push(if more == 1 { "1 more".to_string() } else { format!("{more} more") });
             }
-            let where_ = if who.is_empty() { "no town holds a fiftieth of it now".to_string() } else { format!("{} of the island's {} towns know it: {}", who.len(), active.len(), and_list(&most)) };
-            let reached = if share >= 0.0005 { format!(" ({} of the town knows it so far)", pct(share)) } else { String::new() };
+            let where_ = match who.len() {
+                0 => "no town holds a fiftieth of it now".to_string(),
+                1 => format!("1 of the island's {} towns knows it: {}", active.len(), most[0]),
+                n => format!("{n} of the island's {} towns know it: {}", active.len(), and_list(&most)),
+            };
+            let reached = if share >= 0.005 { format!(" ({} of the town knows it so far)", pct(share)) } else { String::new() };
             let said = format!(
                 "{}: {found}, and {where_}. It has not reached here yet{reached}: it comes along the island's trade as any idea does, and cannot be found here by hand, since it has been found already. {}",
                 C.tech_label[k],
@@ -853,13 +862,14 @@ pub fn town_ideas(sim: &Sim, t: usize, learnt: Option<&Learnt>) -> Result<Ideas,
         let class = crate::tasks::CLASSES.get(us.class).copied().unwrap_or("some");
         let mut on: Vec<String> = Vec::new();
         if us.on_works {
-            on.push("the works".to_string());
+            on.push("in the works".to_string());
         }
         let land: Vec<String> = us.on_sector.iter().enumerate().filter(|&(_, &b)| b).filter_map(|(s, _)| C.sector_label.get(s).map(|l| lower(l))).collect();
         if !land.is_empty() {
-            on.push(format!("on the land, {}", and_list(&land)));
+            on.push(format!("on the land ({})", and_list(&land)));
         }
-        let what = format!("Machines that take over tasks of the {class} kind, in {}.", and_list(&on));
+        let place = if on.is_empty() { String::new() } else { format!(", {}", on.join(" and ")) };
+        let what = format!("Machines that take over tasks of the {class} kind{place}.");
         let idea = if found >= 0 {
             let said = format!("{label}: found on the island in {found}, by the island as a whole, since a use of the tasks rule is not known town by town. {what} How much of the work machines do is on the Markets panel's Work half.");
             TownIdea { name: us.name.clone(), label, kind: "use", stands: Stands::Here, year: Some(found), how: "found by the island as a whole".to_string(), share: 1.0, towns: active.len(), said, discover: false }
@@ -947,7 +957,8 @@ fn tree_waits(sim: &Sim, k: usize) -> String {
         let p4 = p.powf(4.0);
         let hz = P.discovery_rate * p4 / (1.0 + p4);
         let met = if p >= 1.0 { ", every amount being met" } else { "" };
-        out.push_str(&format!(" As things stand a draw at the year's end finds it with a chance of {} a year{met}.", fmt_pct(hz, 1)));
+        let chance = if hz < 0.0005 { "less than one in a thousand".to_string() } else { fmt_pct(hz, 1) };
+        out.push_str(&format!(" As things stand a draw at the year's end finds it with a chance of {chance} a year{met}."));
     }
     out
 }
