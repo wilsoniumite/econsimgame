@@ -990,3 +990,9 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   one wage; with real pay on the linked wage and the schooled over the plain,
   and the two dials in the Rules tab and the Work panel. [pay.md](pay.md),
   `pay.watch`, `pay.bend`, `pay.follow_years`.
+- **city** (a stage of the run to 2050; acts only from 1901): people follow
+  jobs, the wage and the works' new hands rather than income a head; every
+  works is more productive in a larger town, a doubling worth 5 per cent; and
+  room is wanted less than in proportion as it dears, so a city's burden can
+  rise. Three switches, all on. [city.md](city.md), `city.follow_jobs`,
+  `city.gather`, `city.dear_room`.

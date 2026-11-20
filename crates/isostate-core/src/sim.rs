@@ -452,7 +452,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     let mut founded = Vec::new();
     if !warm {
         people::growth(st, C, P, year, events);
-        people::migration(st, C, P);
+        people::migration(st, C, P, year);
         tech::discovery(st, C, P, &mut rng.tech, year, events);
         // people (docs/rules/people.md): its own founding rule runs below, once the year's roads are known
         if !P.people.enabled {
@@ -495,6 +495,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         people::resettle_new_towns(st, C, P);
     }
     after_transport(st, C, P);
+    // city (docs/rules/city.md): after 1900, works are more productive in larger towns
+    crate::city::year_scale(st, P, year);
     firms::update_productivity(st, C, P);
     land::update_land_use(st, C, P, year, &pbar, &wbar, false);
     land::delta_fields(st, C, P);

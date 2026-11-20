@@ -58,6 +58,10 @@ pub fn update_productivity(st: &mut State, C: &Content, P: &Params) {
             let k = st.know[(t, m)];
             let agglo = 1.0 + P.agglo_same * (counts[(m, c)] - 1.0).max(0.0).ln_1p();
             st.f_prod[f] = A[m] * (0.5 + 0.5 * k) * agglo;
+            // city (docs/rules/city.md): after 1900, more productive in a larger town
+            if let Some(s) = crate::city::scale(st, t) {
+                st.f_prod[f] *= s;
+            }
         }
     }
     st.method_A = A;
@@ -93,7 +97,11 @@ pub fn evaluate_sites(st: &State, C: &Content, P: &Params, i: usize, m: usize, c
     let k = st.know[(i, m)];
     let n = cells.len();
     let agglo: Vec<f64> = cells.iter().map(|&c| 1.0 + P.agglo_same * st.same_counts[(m, c)].ln_1p()).collect();
-    let prod: Vec<f64> = agglo.iter().map(|&g| A * (0.5 + 0.5 * k) * g).collect();
+    let mut prod: Vec<f64> = agglo.iter().map(|&g| A * (0.5 + 0.5 * k) * g).collect();
+    // city (docs/rules/city.md): after 1900, more productive in a larger town
+    if let Some(s) = crate::city::scale(st, i) {
+        prod.iter_mut().for_each(|p| *p *= s);
+    }
     let (mut a, h, mut l) = firm_coefficients(C, &vec![m; n], &vec![K; n], &prod);
     works::walk_to_work(st, P, cells, &mut l); // works: hands walk out from the town
     // tasks (docs/rules/tasks.md): a works built here has the town's machines:

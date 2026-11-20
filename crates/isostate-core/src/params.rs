@@ -372,6 +372,11 @@ pub struct Params {
     /// docs/rules/pay.md).
     #[serde(default, skip_serializing_if = "is_default")]
     pub pay: crate::pay::PayParams,
+    /// After 1900, people who follow jobs, works more productive in larger
+    /// towns, and room wanted less than in proportion as it dears (not in the
+    /// Python; see docs/rules/city.md).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub city: crate::city::CityParams,
 }
 
 const FAMILY_BONUS: f64 = 0.08;
@@ -591,6 +596,7 @@ pub fn default_params() -> Params {
         ground: crate::ground::GroundParams::default(),
         linked: crate::linked::LinkedParams::default(),
         pay: crate::pay::PayParams::default(),
+        city: crate::city::CityParams::default(),
     }
 }
 
@@ -650,6 +656,9 @@ pub fn game_params() -> Params {
     P.linked = crate::linked::LinkedParams::game();
     // pay (docs/rules/pay.md): watches only, reckoning each class's pay from 1900
     P.pay = crate::pay::PayParams::game();
+    // city (docs/rules/city.md): after 1900 people follow jobs, work gathers where
+    // work is, and room is wanted less than in proportion as it dears; all three on
+    P.city = crate::city::CityParams::game();
     P
 }
 

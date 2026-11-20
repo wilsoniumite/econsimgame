@@ -983,6 +983,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     for (name, kind, v) in crate::ground::facts(r) {
         b.num(name, kind, v);
     }
+    // city (docs/rules/city.md): the largest town's townsfolk, its share and the second's over it
+    for (name, kind, v) in crate::city::facts(r) {
+        b.num(name, kind, v);
+    }
     // of the cells urban in a year, the share not urban ten years on
     let mut churn = Vec::new();
     for k in 0..n.saturating_sub(10) {

@@ -199,10 +199,13 @@
 # Taken: pay by class of task: the work settled over five years
 # (pay::SETTLE_YEARS) moves its series after 1900, so 1901-2050 books and
 # run.bin again; economy and news hold in both eras
+# Taken: 1901-2050: the first city's three rules (docs/rules/city.md), people
+# who follow jobs, work that gathers where work is and room that grows dear,
+# switched on; they act only after 1900
 1750-1900 economy  0x0d20ccc26eb3ba58
 1750-1900 books    0x04b0974e4e77f3f5
 1750-1900 news     0x5d3a55a39961b3e2
-1901-2050 economy  0x588a1bb84f1ae1fe
-1901-2050 books    0x59bdbf8ba19a8cee
-1901-2050 news     0xfd6b3077b36e5ca4
-1901-2050 run.bin  0xeff64f9b4820a4c1
+1901-2050 economy  0x0c177d543b66f886
+1901-2050 books    0x543e3d5f7774b69e
+1901-2050 news     0x7173b43d6f36f811
+1901-2050 run.bin  0x7f7e3db257c82652

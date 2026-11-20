@@ -502,6 +502,8 @@ macro_rules! state_parts {
                 ground: Default::default(),
                 // linked (docs/rules/measures.md): carried across as the roads are
                 linked: Default::default(),
+                // city (docs/rules/city.md): carried across as the roads are
+                city: Default::default(),
             }
         }
 
