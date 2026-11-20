@@ -415,7 +415,8 @@ fn people_growth_and_migration_match_python() {
         let (C, P) = setup(&set);
         let mut st = load_state(&set.join("migration_before"));
         let want = load_state(&set.join("migration_after"));
-        people::migration(&mut st, &C, &P);
+        // the year is read only by the game's rule that people follow jobs (docs/rules/city.md), off here
+        people::migration(&mut st, &C, &P, 1800);
         let mut ck = Checker::new(format!("{} people.migration", set.display()));
         ck.vec("pop", &st.pop, &want.pop);
         ck.vec("hh_cash", &st.hh_cash, &want.hh_cash);

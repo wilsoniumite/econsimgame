@@ -907,3 +907,12 @@ founded in a run. For the game as it is played (the last line; 12 November
 2026) expect 680 to 800 works in 1900, a median size of 5.6 to 6.3, 180 to
 240 industry cells and 1,650 to 2,250 works founded in a run (the least and
 greatest of the eight seeds, rounded outward).
+
+## After 1900: work gathers where work is
+
+Under the game's rules, from the yearly step of 1901, every works in a town
+of U townsfolk is `(U / 20,000)^0.07` as productive, ramped in over ten
+years: a doubling of a town is worth 5 per cent on every works in it, and the
+reckoning of a site reads the same factor. The switch is `city.gather`, on
+under the game's rules, with `city.power`, `city.size` and `city.ramp_years`;
+the rule and what it does to the island are in [city.md](city.md).

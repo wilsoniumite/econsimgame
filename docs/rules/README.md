@@ -592,18 +592,22 @@ island, and then their mean across the islands:
 
 | what is asked | read as | met when the mean is |
 |---|---|---|
-| the chained real wage grows 1 per cent a year or more from 1900 to 1970 | `(real_wage_chained_1970 / real_wage_chained_1900)^(1/70) - 1`, per cent a year | 1.00 or more |
-| and is no lower in 2050 than in 1970 | `real_wage_chained_2050 / real_wage_chained_1970` | 1.00 or more |
+| the real wage grows 1 per cent a year or more from 1900 to 1970 | `(real_wage_linked_1970 / real_wage_linked_1900)^(1/70) - 1`, per cent a year | 1.00 or more |
+| and is no lower in 2050 than in 1970 | `real_wage_linked_2050 / real_wage_linked_1970` | 1.00 or more |
 | the share of hands on the land is lower in 2050 than in 1900 | `farm_share_2050 - farm_share_1900` | below 0 |
 
 The first two rows are one fact, the wage's; the third is the land's. The
-chained real wage is `real_wage_chained` ([engel.md](engel.md)): the mean wage
-over the chained Fisher cost of living, both kept by the month, each month's
-link pricing what households bought in that month and the one before, so that
-the basket follows what is bought; its facts `real_wage_chained_Y_vs_1750` are
-the year's mean against 1750's, and a run to 2050 has them every ten years
-after 1900 (`facts::marks`). The share of hands on the land is `farm_share_Y`,
-the land's share of employment.
+wage is the linked real wage, `real_wage_linked` ([measures.md](measures.md)):
+the mean wage over a cost of living whose basket is held five years at a time,
+each link's basket and prices the means of the five years before it, and towns
+weighted by what was bought; its facts `real_wage_linked_Y_vs_1750` are each
+the mean of the nine years round the year (the last nine for 2050) against
+1750's. Until 20 November 2026 the rows read the chained real wage,
+`real_wage_chained` ([engel.md](engel.md)), single years; it is printed beneath
+them, not counted, and read in their place by a run that does not keep the
+linked one. The test that chose between them, and the three numbers under each
+on islands 1 to 8 and 9 to 16, are in [measures.md](measures.md). The share of
+hands on the land is `farm_share_Y`, the land's share of employment.
 
 They are known to be missed today, so by default they are printed with their
 values and do not fail the sweep, whatever the twelve do. `--growth` makes a
@@ -975,3 +979,20 @@ shows (`harvest.rent_as_paid`, `works.spread_first`, `works.keep_order`,
   is found and the town has 30,000 townsfolk. One kind of household, no car
   and no belt unless one is set. [ground.md](ground.md), `ground.enabled`,
   `ground.room`, `ground.reach`.
+- **linked** (watches only): a cost of living, the real wage on it and what is
+  made, each linked every five years on the means of the five years before, so
+  that they do not drift with timber's price; the news's slump clock reads what
+  is made, the viewer's charts and the growth after 1900 read the linked wage.
+  [measures.md](measures.md), `linked.enabled`, `linked.link`, `linked.window`.
+- **pay** (watches only; acts from 1900): each class of task's pay, reckoned
+  from the hands the island plays and not played: demand at one wage bends to
+  pay, hands follow the work, and pay is scaled so that the hands' mean is the
+  one wage; with real pay on the linked wage and the schooled over the plain,
+  and the two dials in the Rules tab and the Work panel. [pay.md](pay.md),
+  `pay.watch`, `pay.bend`, `pay.follow_years`.
+- **city** (a stage of the run to 2050; acts only from 1901): people follow
+  jobs, the wage and the works' new hands rather than income a head; every
+  works is more productive in a larger town, a doubling worth 5 per cent; and
+  room is wanted less than in proportion as it dears, so a city's burden can
+  rise. Three switches, all on. [city.md](city.md), `city.follow_jobs`,
+  `city.gather`, `city.dear_room`.

@@ -770,7 +770,8 @@ fn a_game_that_is_played_holds_the_books_figures_of_its_years() {
         g.month().unwrap();
     }
     let st = &g.sim.st;
-    let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n)).collect();
+    // (the reckoning of pay, counted among the books' own, has no figure before 1900: docs/rules/pay.md)
+    let own: Vec<&String> = a.r.series_names.iter().filter(|n| isostate_core::accounts::own_series(n) && !n.starts_with("pay_")).collect();
     // the books' eight, and the gauges' read off them (docs/rules/gauges.md), which come the same way
     assert_eq!(own.len(), 8 + isostate_core::gauges::SERIES.len());
     for name in own {
@@ -1308,14 +1309,18 @@ fn the_work_charts_hold_what_the_core_kept() {
         for (name, v) in read {
             row(name, v);
         }
-        // the chained wage is a monthly series: each month as the core holds it
-        let s = st.series.index["real_wage_chained"];
-        let i = r.series_names.iter().position(|n| n == "real_wage_chained").unwrap();
-        for t in k * 12..(k + 1) * 12 {
-            assert_eq!(r.series[i * r.series_len + t].to_bits(), (st.series.data[s][t] as f32).to_bits(), "{y}: the chained wage in month {t}");
+        // the chained and the linked wage are monthly series: each month as the core holds it
+        for name in ["real_wage_chained", "real_wage_linked"] {
+            let s = st.series.index[name];
+            let i = r.series_names.iter().position(|n| n == name).unwrap();
+            for t in k * 12..(k + 1) * 12 {
+                assert_eq!(r.series[i * r.series_len + t].to_bits(), (st.series.data[s][t] as f32).to_bits(), "{y}: {name} in month {t}");
+            }
         }
-        // and the charts' figures for the year are the core's
+        // and the charts' figures for the year are the core's: what a wage buys is the linked
+        // wage since 20 November 2026 (docs/rules/measures.md)
         let plans = charts(r, k);
+        let s = st.series.index["real_wage_linked"];
         let wage = iso::observer::annual(&st.series.data[s], y0, y) / iso::observer::annual(&st.series.data[s], y0, y0);
         let near = |x: f32, want: f64, tol: f64, what: &str| assert!((x.is_nan() && want.is_nan()) || (x as f64 - want).abs() <= tol * want.abs().max(1.0), "{y}: {what}: the chart has {x}, the core {want}");
         near(plans[0].lines[0].vals[k], wage, 1e-5, "what a wage buys");

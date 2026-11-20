@@ -90,7 +90,7 @@ pub const YEARS: [i64; 5] = [1850, 1900, 1950, 2000, 2050];
 /// `{Y}` stands for each of the years; `series:NAME` is the year's mean of an
 /// observer series, which has a value in every year.
 pub const ROWS: &[(&str, &[&str])] = &[
-    ("Wages", &["real_wage_chained_{Y}_vs_1750", "real_income_{Y}"]),
+    ("Wages", &["real_wage_linked_{Y}_vs_1750", "real_wage_chained_{Y}_vs_1750", "made_linked_pc_{Y}_vs_1750", "real_income_{Y}"]),
     ("Work's share and the rest of income", &["income_share_work_{Y}", "gauge_work_net_{Y}", "income_share_works_{Y}", "income_share_land_{Y}"]),
     ("Who owns the works", &["owners_works_families_{Y}", "owners_works_lords_{Y}", "owners_works_hh_{Y}"]),
     ("Which tasks machines take", &["auto_haul_works_{Y}", "auto_haul_pits_{Y}", "machines_years_{Y}", "gauge_plant_years_{Y}"]),

@@ -376,7 +376,7 @@ function chart(title, ys, fmtY, lo) {
 function growth() {
   const pl = place(), box = $("growth");
   box.innerHTML = "";
-  box.appendChild(chart("What a wage buys, chained (1750 = 1)", pl.chained, (v) => fmt(v, 1), 0));
+  box.appendChild(chart("What a wage buys (1750 = 1)", pl.chained, (v) => fmt(v, 1), 0));
   box.appendChild(chart("Share of hands working the land", pl.land, (v) => fmt(v, 2), 0));
   const g = pl.growth, d = document.createElement("div");
   d.className = "num";

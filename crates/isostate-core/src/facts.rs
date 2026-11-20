@@ -688,6 +688,11 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
             }
         }
     }
+    // linked (docs/rules/measures.md): the wage and what is made a head on long links,
+    // each a mean of nine years
+    for (name, kind, v) in crate::linked::facts(r) {
+        b.num(name, kind, v);
+    }
     // carting (docs/rules/carting.md): living standards in units that compare across
     // runs, and the carting bill
     for (name, kind, v) in crate::carting::facts(r) {
@@ -707,6 +712,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     }
     // tasks (docs/rules/tasks.md): the machines for tasks in the works
     for (name, kind, v) in crate::tasks::facts(r) {
+        b.num(name, kind, v);
+    }
+    // pay (docs/rules/pay.md): each class's pay, reckoned from the hands and not played
+    for (name, kind, v) in crate::pay::facts(r) {
         b.num(name, kind, v);
     }
     // tree (docs/rules/tree.md, "After 1900: electricity"): electricity and electrical goods
@@ -972,6 +981,10 @@ pub fn stylised_facts(r: &RunResult, g: &Gathered, seconds: f64) -> Facts {
     // ground (docs/rules/ground.md): the rent burden, town ground and its reach,
     // the wage in goods and in room; dens and the tramway where the rule is on
     for (name, kind, v) in crate::ground::facts(r) {
+        b.num(name, kind, v);
+    }
+    // city (docs/rules/city.md): the largest town's townsfolk, its share and the second's over it
+    for (name, kind, v) in crate::city::facts(r) {
         b.num(name, kind, v);
     }
     // of the cells urban in a year, the share not urban ten years on

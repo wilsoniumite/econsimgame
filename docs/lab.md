@@ -88,8 +88,19 @@ reported as failed with the edit's sentence, and the others carry on.
 `{Y}` is each of the years.
 
 Wages
+- `real_wage_linked_{Y}_vs_1750`: the real wage on a cost of living whose
+  basket is held five years at a time, each the mean of the five years
+  before, against 1750's; the fact is the mean of the nine years round `{Y}`
+  (the last nine for the run's last year), so that one dear-timber year cannot
+  stand for a decade. It is the wage to read after 1900, and the one the
+  standing check's growth reads ([rules/measures.md](rules/measures.md); since
+  20 November 2026, so the tables below, run before, do not have it).
 - `real_wage_chained_{Y}_vs_1750`: the real wage, chained year to year so
-  that new goods in the basket do not jump it, against 1750's.
+  that new goods in the basket do not jump it, against 1750's; that year's
+  mean alone.
+- `made_linked_pc_{Y}_vs_1750`: what is made a head, every good valued at
+  the prices of its five-year link, against 1750's; a nine-year mean as the
+  linked wage is.
 - `real_income_{Y}`: the households' budget over what bare subsistence
   costs (`docs/rules/engel.md`), 1 being just enough to eat.
 

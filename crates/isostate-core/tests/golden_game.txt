@@ -189,10 +189,28 @@
 # December's works' hands and every island goes down another path;
 # commons.carry_debt switched off too, which under the landlords changes
 # nothing
-1750-1900 economy  0x1192046c9b987ba3
-1750-1900 books    0x6c0cc4ef99e35938
-1750-1900 news     0x06b48ad5fcce2608
-1901-2050 economy  0x648e43988f2861da
-1901-2050 books    0xcc7a0b23e48bf4a5
-1901-2050 news     0x97b0a3336aba5a08
-1901-2050 run.bin  0x6da085f2c642d8c7
+# Taken: 1750-1900 economy and news, 1901-2050 economy, news and run.bin: the
+# linked measure (docs/rules/measures.md) adds three series under the game's
+# rules, and the news's slump clock reads what is made, linked, in place of
+# real output
+# Taken: pay by class of task, a watcher (docs/rules/pay.md): its series,
+# nothing before 1900 and counted with the books' own, move 1750-1900 books,
+# 1901-2050 books and run.bin; economy and news hold in both eras
+# Taken: pay by class of task: the work settled over five years
+# (pay::SETTLE_YEARS) moves its series after 1900, so 1901-2050 books and
+# run.bin again; economy and news hold in both eras
+# Taken: 1901-2050: the first city's three rules (docs/rules/city.md), people
+# who follow jobs, work that gathers where work is and room that grows dear,
+# switched on; they act only after 1900
+# Taken: on night/g-batch-measure-a, the three pieces merged on main 3c85e98
+# (20 November 2026): against main all seven moved, by the linked measure
+# (series not nothing before 1901, and the slump clock on what is made), the
+# pay watcher's series and the first city's three rules after 1900; on the
+# merged tree they are the first city's own, which was built on the other two
+1750-1900 economy  0x0d20ccc26eb3ba58
+1750-1900 books    0x04b0974e4e77f3f5
+1750-1900 news     0x5d3a55a39961b3e2
+1901-2050 economy  0x0c177d543b66f886
+1901-2050 books    0x543e3d5f7774b69e
+1901-2050 news     0x7173b43d6f36f811
+1901-2050 run.bin  0x7f7e3db257c82652

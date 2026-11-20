@@ -500,6 +500,10 @@ macro_rules! state_parts {
                 xs: Default::default(),
                 // ground (docs/rules/ground.md): carried across as the roads are
                 ground: Default::default(),
+                // linked (docs/rules/measures.md): carried across as the roads are
+                linked: Default::default(),
+                // city (docs/rules/city.md): carried across as the roads are
+                city: Default::default(),
             }
         }
 
@@ -627,6 +631,7 @@ fn get_sim(bytes: &[u8], rules: Rules, seed: u64, families: usize, carry: &State
     st.tasks = carry.tasks.clone();
     st.xs = carry.xs.clone();
     st.ground = carry.ground.clone();
+    st.linked = carry.linked.clone();
     let rngs = get_rngs(&mut r);
     let events = Bin::get(&mut r);
     let rec = Bin::get(&mut r);

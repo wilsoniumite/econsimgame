@@ -29,8 +29,10 @@ use crate::edits::{self, SWITCHABLE, SWITCHES};
 use crate::params::{game_params, Params};
 use crate::sim::Sim;
 
-/// The numbers that matter most, pinned at the head of the tab (section 4.6).
-pub const PINNED: [&str; 12] = [
+/// The numbers that matter most, pinned at the head of the tab (section 4.6),
+/// and last the two dials of the reckoning of pay by class (docs/rules/pay.md),
+/// which change nothing but the Work panel's chart of pay.
+pub const PINNED: [&str; 14] = [
     "money.growth",
     "rent_regime",
     "hurdle",
@@ -43,6 +45,19 @@ pub const PINNED: [&str; 12] = [
     "people.found_saving",
     "rail_hurdle",
     "tasks.dial",
+    "pay.bend",
+    "pay.follow_years",
+];
+
+/// Numbers offered at figures of their own rather than as shares of the game's:
+/// the reckoning of pay's two dials (docs/rules/pay.md), at the figures the
+/// argument over them is had at. How far demand bends: 0.3 is the island's
+/// machines at their margin, 2 what demand does where hands also take other
+/// tasks inside a job. Years for hands to follow the work: from a few to a
+/// working life's half.
+pub const FIGURES: [(&str, &[(&str, f64)]); 2] = [
+    ("pay.bend", &[("0.1", 0.1), ("0.3", 0.3), ("1", 1.0), ("2", 2.0)]),
+    ("pay.follow_years", &[("5 years", 5.0), ("10 years", 10.0), ("20 years", 20.0), ("30 years", 30.0)]),
 ];
 
 /// The word a name fixed when the island is made carries in place of offers.
@@ -171,6 +186,9 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "woods" => to_json(&P.woods),
         "crossings" => to_json(&P.crossings),
         "ground" => to_json(&P.ground),
+        "linked" => to_json(&P.linked),
+        "pay" => to_json(&P.pay),
+        "city" => to_json(&P.city),
         _ => None,
     }
 }
@@ -252,6 +270,11 @@ fn offers_of(run: &Params, name: &str, kind: Kind, game: &Value) -> Vec<Offer> {
     match kind {
         Kind::Switch { .. } | Kind::Flag => vec![offer("On", json!(true)), offer("Off", json!(false))],
         Kind::Choice => vec![offer("Landlords", json!("landlords")), offer("Commons", json!("commons"))],
+        Kind::Number if FIGURES.iter().any(|f| f.0 == name) => {
+            // figures of their own (the reckoning of pay's dials)
+            let table = FIGURES.iter().find(|f| f.0 == name).map_or(&[][..], |f| f.1);
+            table.iter().map(|&(word, x)| offer(word, json!(x))).collect()
+        }
         Kind::Number => {
             // 0, a half, as set, half as much again and double the game's figure (a wide
             // number's: a tenth to a hundredfold), rounded for a whole number; a figure two

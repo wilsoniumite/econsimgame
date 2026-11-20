@@ -452,7 +452,7 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
     let mut founded = Vec::new();
     if !warm {
         people::growth(st, C, P, year, events);
-        people::migration(st, C, P);
+        people::migration(st, C, P, year);
         tech::discovery(st, C, P, &mut rng.tech, year, events);
         // people (docs/rules/people.md): its own founding rule runs below, once the year's roads are known
         if !P.people.enabled {
@@ -495,6 +495,8 @@ pub fn yearly(st: &mut State, C: &Content, P: &Params, rng: &mut Rngs, year: i64
         people::resettle_new_towns(st, C, P);
     }
     after_transport(st, C, P);
+    // city (docs/rules/city.md): after 1900, works are more productive in larger towns
+    crate::city::year_scale(st, P, year);
     firms::update_productivity(st, C, P);
     land::update_land_use(st, C, P, year, &pbar, &wbar, false);
     land::delta_fields(st, C, P);
@@ -635,6 +637,8 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
     st.wage_base = pairwise_sum(&w) / pairwise_sum(&pa).max(1.0);
     // longrun: the chain and the wage scale start here, at 1
     crate::longrun::start(&mut st, P, y0);
+    // linked (docs/rules/measures.md): the first link is the warm-up's last month, as the basket is
+    crate::linked::start(&mut st, &C, P);
     let n_years = (y1 - y0 + 1) as usize;
     observer::init(&mut st, &C, P, n_years * 12);
     let rec = record::init(&st, &C, P, n_years);
@@ -777,6 +781,8 @@ pub fn end_year(sim: &mut Sim) {
     crate::gauges::close_year(st, C, P, year);
     // owners: who holds the works and who was paid by them (docs/rules/owners.md)
     crate::owners::close_year(st, C, P, year);
+    // pay (docs/rules/pay.md): each class's pay reckoned from the tasks' record, watched only
+    crate::pay::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // chronicle: the towns' stories, and the decades ranked with what the year added
     crate::chronicle::yearly(st, C, P, year, events);

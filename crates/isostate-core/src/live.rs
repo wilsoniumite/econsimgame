@@ -537,7 +537,7 @@ pub fn live_year(cursor: &mut LiveCursor, st: &State, C: &Content, P: &Params, e
         canals: if P.canals.enabled { crate::canals::links_out(st) } else { Vec::new() },
         crossings: if crate::crossings::active(st, P) { crate::crossings::links_out(st) } else { Vec::new() },
         accounts: crate::accounts::island_year(st).filter(|y| y.year == year),
-        year_series: crate::accounts::year_series(st, year).into_iter().chain(crate::gauges::year_series(st, year)).collect(),
+        year_series: crate::accounts::year_series(st, year).into_iter().chain(crate::gauges::year_series(st, year)).chain(crate::pay::year_series(st, C, year)).collect(),
         gauges: crate::gauges::gauge_year(st).filter(|y| y.year == year),
         tasks: st.tasks.years.last().filter(|y| y.year == year).cloned(),
         owners: st.owners.years.last().filter(|y| y.year == year).cloned(),

@@ -673,9 +673,12 @@ pub struct Island {
     /// Per method: first and last year any works of it worked, and its peak hands
     /// (the period's mean) with the period they peaked in.
     pub usage: Vec<Usage>,
-    /// The observer's chained real wage against the first year, and the share of hands
-    /// working the land, as each year's mean.
+    /// The observer's real wage against the first year, and the share of hands working
+    /// the land, as each year's mean. The wage is the linked one where the run keeps it
+    /// (`wage_linked`, docs/rules/measures.md), else the chained one; the field keeps its
+    /// old name.
     pub wage_chained: Vec<f64>,
+    pub wage_linked: bool,
     pub land_share: Vec<f64>,
     pub left_out: LeftOut,
     pub seconds: f64,
@@ -947,7 +950,9 @@ pub fn read_run(r: &RunResult, seed: u64, step: i64, towns: bool, seconds: f64) 
         let s = st.series.get(name);
         (C.start_year..=y1).map(|y| crate::observer::annual(s, C.start_year, y)).collect()
     };
-    let chained = yearly("real_wage_chained");
+    // linked (docs/rules/measures.md): the wage the standing check reads, where the run keeps it
+    let wage_linked = st.series.index.contains_key("real_wage_linked");
+    let chained = yearly(if wage_linked { "real_wage_linked" } else { "real_wage_chained" });
     let first = chained.first().copied().unwrap_or(f64::NAN);
     Ok(Island {
         seed,
@@ -956,6 +961,7 @@ pub fn read_run(r: &RunResult, seed: u64, step: i64, towns: bool, seconds: f64) 
         found,
         usage,
         wage_chained: chained.iter().map(|w| w / first).collect(),
+        wage_linked,
         land_share: yearly("ag_share"),
         left_out: left,
         seconds,
@@ -1054,12 +1060,25 @@ pub fn holders(L: &Layout, f: &Figures, g: usize, kind: EdgeKind) -> Vec<(usize,
     out
 }
 
-/// The growth after 1900 as the standing check reads it: the chained wage's growth from
-/// 1900 to 1970 in per cent a year, its level in 2050 over 1970's, and the share of
-/// hands on the land in 1900 and in 2050.
+/// The growth after 1900 as the standing check reads it: the wage's growth from 1900 to
+/// 1970 in per cent a year, its level in 2050 over 1970's, and the share of hands on the
+/// land in 1900 and in 2050. The linked wage is read as its facts are, each the mean of
+/// the nine years round the year (`linked::nine_years`); the chained one, single years.
 pub fn growth(isl: &Island, y0: i64) -> [Option<f64>; 4] {
     let at = |v: &Vec<f64>, y: i64| usize::try_from(y - y0).ok().and_then(|k| v.get(k).copied()).filter(|x| x.is_finite());
-    let (w00, w70, w50) = (at(&isl.wage_chained, 1900), at(&isl.wage_chained, 1970), at(&isl.wage_chained, 2050));
+    let y1 = y0 + isl.wage_chained.len() as i64 - 1;
+    let wage_at = |y: i64| -> Option<f64> {
+        if !isl.wage_linked {
+            return at(&isl.wage_chained, y);
+        }
+        if y > y1 {
+            return None;
+        }
+        let (a, z) = crate::linked::nine_years(y0, y1, y);
+        let v: Vec<f64> = (a..=z).filter_map(|t| at(&isl.wage_chained, t)).collect();
+        (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
+    };
+    let (w00, w70, w50) = (wage_at(1900), wage_at(1970), wage_at(2050));
     [
         w00.zip(w70).map(|(a, b)| 100.0 * ((b / a).powf(1.0 / 70.0) - 1.0)),
         w70.zip(w50).map(|(a, b)| b / a),

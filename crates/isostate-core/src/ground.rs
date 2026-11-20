@@ -255,6 +255,9 @@ pub fn month(st: &mut State, C: &Content, P: &Params, budget: &[f64], unit: &Mat
     let gp = &P.ground;
     let T = st.T_max;
     let w = ((st.ground.year_now - gp.from) as f64 / gp.blend_years.max(1) as f64).clamp(0.0, 1.0);
+    // city (docs/rules/city.md): room wanted less than in proportion as it dears
+    let bend = crate::city::room_elasticity(P, st.ground.year_now);
+    let anchor = if bend.is_some() { crate::longrun::anchor(st, P) } else { 1.0 };
     let g = &mut st.ground;
     if g.paid.len() != T {
         g.paid = vec![0.0; T];
@@ -278,14 +281,26 @@ pub fn month(st: &mut State, C: &Content, P: &Params, budget: &[f64], unit: &Mat
         // the rent a unit of room that clears the room there is; where the
         // townsfolk's least room fills it all, the rent at which they pay half
         // their budget
+        // city: the room above the least is beta spare / rent times (rent / the
+        // town's rent of `from` in today's money)^(1 - e), so that it clears at
+        // (n beta spare ref^(e - 1) / denom)^(1 / e), and the spending on it is
+        // beta spare (rent / ref)^(1 - e)
+        let rref = bend.map(|_| g.rent0[t] / g.anchor0[t] * anchor).filter(|r| r.is_finite() && *r > 0.0);
         let aim = if denom > 0.0 {
-            n * gp.beta * spare / denom
+            match (bend, rref) {
+                (Some(e), Some(r0)) => (n * gp.beta * spare * r0.powf(e - 1.0) / denom).powf(1.0 / e),
+                _ => n * gp.beta * spare / denom,
+            }
         } else {
             ((0.5 * b - gp.beta * spare) / (gp.room_min * (1.0 - gp.beta)).max(1e-12)).max(0.0)
         };
         g.rent[t] += (aim - g.rent[t]) / 3.0;
         // each head takes room_min (1 - beta) + beta spare / rent, and pays the rent of it
-        let bill = (n * (g.rent[t] * gp.room_min * (1.0 - gp.beta) + gp.beta * spare)).min(cap);
+        let above = match (bend, rref) {
+            (Some(e), Some(r0)) => gp.beta * spare * (g.rent[t].max(0.0) / r0).powf(1.0 - e),
+            _ => gp.beta * spare,
+        };
+        let bill = (n * (g.rent[t] * gp.room_min * (1.0 - gp.beta) + above)).min(cap);
         let charged = ((1.0 - w) * old + w * bill).min(cap).min(0.5 * budget[t]);
         pay[t] = charged;
         g.paid[t] += charged;

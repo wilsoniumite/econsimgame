@@ -184,9 +184,13 @@ fn a_decade_keeps_a_handful() {
     assert!(r.events.iter().any(|e| e.kept == Some(true) && e.title.starts_with("The first railway opens")));
     // The dated slump is played with the merchants' crumb off (docs/rules/prices.md, "A crumb is
     // no glut"): it and the new land (docs/rules/land.md, "The switch") came after the case, and
-    // on the new land with the crumb island 7 keeps no verdict by 1900, where either alone keeps one
+    // on the new land with the crumb island 7 keeps no verdict by 1900, where either alone keeps one.
+    // It is played with the slump clock on real output, as it was written: since 20 November 2026
+    // the clock reads what is made, linked (linked.enabled, docs/rules/measures.md), on which island
+    // 7 dates a few small slumps before 1785 and none after, and the history keeps none of them
     let mut P = game(6, 1900);
     P.prices.crumb = 0.0;
+    P.linked.enabled = false;
     let r_slump = sim::run_with(&P, game_content(), false, true).expect("money is conserved every month");
     assert!(r_slump.events.iter().any(|e| e.kept == Some(true) && e.kind == "verdict"));
     // an alarm that a verdict has since dated is never kept beside it
