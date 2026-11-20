@@ -745,6 +745,7 @@ fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
         Edit::Discover { tech, town: t } => format!("By hand: {tech} found in {}", town(*t)),
         Edit::Rule { name, value } => format!("By hand: the rule {name} set to {value}"),
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
+        Edit::Pin { idea, year, when } => format!("By hand: {idea} {} {year}", if *when == isostate_core::edits::PinWhen::In { "pinned to" } else { "held back until" }),
         // (said by `waiting_what`)
         Edit::BuildWorks { .. } | Edit::CloseWorks { .. } => String::new(),
     }

@@ -5,8 +5,10 @@ on 11 November ("flowcharts of industries within a region or market with
 prices and volumes and transport costs") and again on 19 November ("Can I see
 a production flowchart? See recipe usage"). Four plates are ranked in the
 backlog under "The atlas": the making, the moving, the ideas and the ground.
-The first is built, as a page that a command writes; the panel in the game
-and the hand on it come later.
+The first and the third are built, each as a page that a command writes; the
+panels in the game and the hand on them come later. The third came with a
+pin for the lab: an idea found in a year of one's choosing ("The pin",
+below, and `docs/lab.md`).
 
 The atlas is a tool, not a rule. It changes nothing a run does, so it has no
 switch and no page under `docs/rules/`. The code is
@@ -193,10 +195,198 @@ and 640 lines.
   cent on these runs: every plant purchase found a works that paid for
   plant, every purchase by the land a sector, every household's good a need.
 
+## The third plate: the ideas
+
+```text
+isostate-core atlas ideas --out DIR [--seeds 1-16] [--rules port|game] [--families N] [--end-year Y]
+                          [--set NAME=VALUE]... [--pin NAME@YEAR]... [--hold NAME@YEAR]... [--edits FILE.json]
+                          [--against DIR0] [--jobs N] [--quiet]
+isostate-core atlas ideas --from DIR [--out DIR2] [--against DIR0]
+```
+
+What the designer asked on 19 November: "Can I see a tech timeline? Move
+things around in it?" The command plays the islands (by default the game's
+rules, six families, islands 1 to 16, to 2050) and writes `DIR/ideas.html`, a
+page that opens with no network, beside `ideas.json` (its figures; `--from`
+draws the page again from them), `ideas.txt` (its tables in words) and
+`README.txt`. The code is `crates/isostate-core/src/atlas_ideas.rs`, with the
+page's drawing code in `atlas_ideas.html`; `tests/atlas_ideas.rs` holds it to
+what is said here.
+
+Each island is played as the lab plays an arm (`edits::play_noting`): with no
+`--pin`, `--hold` or `--edits` it is the sweep's own island to the bit, and
+with them every island is played with the same list (the pin, below). At each
+year's end the command notes, for every idea, the year each town's knowledge
+of it first stood above 0.02 (from which a works of it may be built there),
+the year each of its thresholds was met and the year all were, and the year
+the first works of each method stood. It costs what a sweep of the same
+islands does: sixteen islands to 2050 took 178 s on 20 November, eight at a time, on a machine
+shared with other builds.
+
+**Which ideas.** Every idea in the data the runs were played on, read when
+the command runs: the tree's methods and techniques (`data/content.toml` with
+`data/game.toml` laid over it) that are not known in 1750, and every use of
+the tasks rule (`data/tasks.toml`). Those known in 1750 are named under the
+tables, not drawn. An idea added to the data tomorrow is drawn tomorrow.
+
+**History's year** is the data's own `target`. The overlay's ideas have one;
+the port's own (the coke furnace, the powered mill, the engine works,
+crucible steel, the rolling mill, railways, improved husbandry, farm
+machinery) have none in the data, and their rows say "no year in the data".
+The uses carried their year only in comments; they now have a `target` key
+too, which nothing in a run reads: the electric drive 1901, the tractor 1915,
+the cutter 1920, the combine 1935, office computing 1960 and models 2022,
+each the year its comment gives as the year it is to be had. The hoist, a
+stand-in with "poor history", has none.
+
+## How to read the third plate
+
+- **A row for each idea**, in the order of history's year (an idea with none
+  stands at its median find). Uses of the tasks rule are in italic.
+- **On each row**: a dark red tick at history's year; a dot for the year each
+  island found it, filled for islands 1 to 8 and open for 9 to 16 (dots of
+  one year are stacked); a pale band from the first island to the last; and
+  at the right the band's length in years and "×n" for the islands that never
+  found it by the end of the run. A pinned idea carries ⌖ and a diamond at
+  its year.
+- **Under the pointer**, a row gives each island's year, the year every
+  threshold was met (the draw then begins in earnest: at its full height the
+  chance is 0.09 a year, a mean wait of eleven years), the year each good was
+  met, and for a method the year its first works stood.
+- **One island, town by town**: for the island and the idea chosen (a click
+  on a row chooses it), a map of the island with each town shaded by the year
+  it came to know the idea (dark early, pale late, an open ring never; the
+  double ring is the town that found it), and beside it the towns in the
+  order they came to know it. The uses of the tasks rule are found by the
+  island whole and have no towns.
+- **The tables**: the ten ideas found furthest apart, the ten furthest from
+  history on the mean, and for every idea one line on what it is found on
+  (each good's threshold, written as the data writes it, "xN" being N years
+  of the island's own 1750 making; the draw; the year it is sought from; for
+  a use, whether it is read a head, and the switch it stands behind).
+- **`--against DIR0`** lays another folder's spread under each row as a faint
+  grey line with its median, and adds a table of each idea of 1900 and after:
+  its spread there and here. That is how the pinned page below is read.
+- The page's address keeps the choice (`ideas.html#island=14&idea=electrical_works&show=1900`).
+
+## What the third page showed
+
+Made on `main` at c03d7f3 with the plate on top, on 20 November 2026: sixteen
+islands under the game's rules with six families, to 2050 (`isostate-core
+atlas ideas --out I1`, 178 s, eight at a time). It draws 41 rows: 34 of the
+tree's ideas and 7 uses; 21 ideas are known in 1750.
+
+**The islands find each idea decades apart, before 1900 as after it.** The
+years from the first island to the last: the powered mill 71 (1757 to 1828),
+shops, offices and warehouses 73, the engineering works 69, the hot-blast
+furnace 58, sheet glass 55, farm machinery 53; the electrical works 36 (1867
+to 1903) and the coal power station 56 (1872 to 1928). Of the 34 ideas of the
+tree, 26 are found more than 30 years apart. The uses that wait for a date
+(`found_after`) are close where every island has met their threshold by the
+date: office computing 7 years, models none, the electric drive 9; the
+tractor (on oil made) 29 and the combine 20.
+
+**Within an island the spread is short.** On island 14, the latest to the
+power station (1928, in Cragness), the 23 towns standing then all knew it by
+1931; the electrical works, found there in 1903, was known in every town
+standing by 1906. A town founded later learns an idea from the town it was
+founded from or its neighbours.
+
+**Two causes, both general.** Under the pointer each row gives the year all
+of an idea's thresholds were met (made since 1750) against the year it was
+found (`target/notes/why.py` in the report reads them for every row):
+
+1. *The thresholds.* They are amounts made since 1750, and the islands reach
+   them decades apart. The electrical works asks 9.8 million steel and 1.9
+   million machinery: the islands made that much steel between 1876 and 1910
+   and that much machinery between 1869 and 1905, so the works was ready
+   from 1876 (islands 9, 16) to 1910 (island 1), 34 years. The late islands
+   are late at the steel and the machine trades: island 1 made its steel by
+   1910, island 10 its machinery by 1905, island 14 by 1897.
+2. *The draw.* Each year a number is drawn at 0.18 p&#8308; / (1 + p&#8308;), p
+   the least of made over threshold: a chance of 0.09 a year when the
+   thresholds are just met, at most 0.18. It finds an idea early on some
+   islands (island 5 found the electrical works in 1867, 19 years before its
+   thresholds were met) and late on others (island 14's
+   power station was ready in 1906 and found in 1928). The draw alone spreads
+   sixteen islands that are all ready over some fifteen to twenty years:
+   managed woodland had its timber on every island by 1863, is sought only
+   from 1895, and was found from 1895 to 1917.
+
+## The pin: electricity in history's year on every island
+
+```text
+isostate-core atlas ideas --out I2 --pin electrical_works@1885 --pin coal_power_station@1888 --against I1
+```
+
+(186 s.) The two ideas that make electricity and electrical goods pinned to
+their own history's years on all sixteen islands. Up to 1885 the islands are
+the same as unpinned, idea for idea (a pinned idea still takes its yearly
+number, so the island's draws stay its own until the pin first changes a
+find). The years between the first island and the last, unpinned and pinned:
+
+| idea | history | unpinned | pinned |
+|---|---|---|---|
+| Electrical works | 1885 | 1867..1903, 36 | 1885, 0 |
+| Coal power station | 1888 | 1872..1928, 56 | 1888, 0 |
+| Electric drive (use) | 1901 | 1901..1910, 9 | 1901, 0 |
+| Managed woodland | 1902 | 1895..1917, 22 | 1895..1914, 19 |
+| Hoist (use) | none | 1901..1927, 26 | 1901..1916, 15 |
+| Nitrogen works | 1915 | 1904..1936, 32 | 1903..1957, 54 |
+| Tractor (use) | 1915 | 1915..1944, 29 | 1915..1939, 24 |
+| Cutter (use) | 1920 | 1920..1937, 17 | 1920..1921, 1 |
+| Oil from coal | 1925 | 1901..1942, 41 | 1902..1937, 35 |
+| Combine (use) | 1935 | 1935..1955, 20 | 1935..1950, 15 |
+| Breeding and sprays | 1950 | 1919..1961, 42 | 1917..1965, 48 |
+| Office computing (use) | 1960 | 1960..1967, 7 | 1960, 0 |
+| Models (use) | 2022 | 2022, 0 | 2022, 0 |
+
+The lab plays the same experiment and gives the same spreads to the year,
+from its facts (`discovered_NAME`, `use_found_year_NAME`):
+
+```text
+isostate-core lab --out L5 --seeds 1-16 --pin electrical_works@1885 --pin coal_power_station@1888   (474 s)
+```
+
+Its arms part on each island in the year the pin first changes a find: 1867
+on island 5 (where the island found the electrical works that year, and the
+pin holds it back), 1868 on island 7, and so on to 1885 on seven islands. The
+chained wage hardly moves: 11.08 against 10.97 of 1750's in 1950, 16.08
+against 15.86 in 2050, up on twelve islands and down on four, well inside
+the spread from island to island.
+
+What is found on electrical goods closes: the drive, the cutter and office
+computing come within a year. What is found on coal and chemicals does not:
+oil from coal stays 35 years apart, the nitrogen works 54, breeding 48, the
+tractor and the combine (on oil made) 24 and 15. So the 35 years of
+electrical goods are not one fault at the root. They are what every idea of
+the tree does, before 1900 as after: a threshold on what the island has made
+since 1750, which islands of different ground and trades reach decades
+apart, and a draw that adds or takes ten to twenty years more.
+
+**The smallest rule that would bring every idea after 1900 within about ten
+years** is a deadline beside `found_after`: an idea not yet found by its
+history's year plus a few is found then, as if learnt from abroad, in the
+town the pin would choose. Thresholds and the draw would still decide an
+early find, and before 1900 nothing would change. Its cost in honesty: today
+the first works of the electrical works and of the power station stands in
+the year it is found on fifteen islands of sixteen (on island 2 the station
+three years after), so lateness lives almost wholly in knowing, and a deadline would
+take away the honest lateness with the rest: an island with little coal
+would learn the power station in 1893 like the others. The lateness worth
+keeping would have to move from knowing to building, by a works that waits
+until its inputs are to be had at a price it can bear; the deadline alone
+does not do that.
+
 ## Not yet built
 
 - The panel in the game, and the hand on it: a kind of works forbidden from
   a date, then a recipe's numbers (the backlog's item).
+- The ideas in the game, and the hand on the timeline: an idea dragged to a
+  year is a pin (`docs/lab.md`), which the core already carries out; no
+  button gives one yet.
+- The uses of the tasks rule town by town: they are found by the island
+  whole, so the third plate draws them for the island only.
 - Prices and volumes of carting by way: that is the second plate, the moving.
 - Reading a sweep's folder. A sweep keeps by island only each good's price
   and output and each kind's output (`annual.csv`), which leaves out what the
