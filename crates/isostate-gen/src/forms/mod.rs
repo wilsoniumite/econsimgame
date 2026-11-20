@@ -29,6 +29,7 @@ pub(crate) mod mill;
 pub(crate) mod offices;
 pub(crate) mod semis;
 pub(crate) mod sheds;
+pub(crate) mod sheets;
 pub(crate) mod towers;
 
 use glam::Vec3;

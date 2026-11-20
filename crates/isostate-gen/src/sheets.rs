@@ -191,6 +191,10 @@ pub static SHEETS: &[Sheet] = &[
     Sheet { name: "heath", about: "Two patches of heath, fifteen slots each: gorse and broom at about one slot in six (and a tree at one in thirty: none here).", land: Land::Heath, build: heath },
     Sheet { name: "fences", about: "A family's fence round a field, in four colours a family might have (the banners themselves are the interface's): timber rails stained toward the colour, and post caps painted in it.", land: Land::Pasture, build: fences },
     Sheet { name: "bridges", about: "A road bridge: a lane's and a main road's down the rows; wider rivers across (water drawn flat and matt here).", land: Land::Pasture, build: bridges },
+    Sheet { name: "forms", about: "Every building form at one scale (forms::FORMS): the years across (today's houses, then the new forms built to 1918, 1919 to 1945, 1946 to 1969, 1970 to 1994, 1995 to 2050) and the storeys up (one or two at the front to 23 to 40 at the back); each form once, in the cell of the middle of its years and of its storeys.", land: Land::Town, build: crate::forms::sheets::every_form },
+    Sheet { name: "forms-dwellings", about: "The forms of dwellings after 1900 close to, a row each: at their fewest storeys in their first year, between, and at their most in their last; a cottage of 1840 first for the scale.", land: Land::Town, build: crate::forms::sheets::dwellings },
+    Sheet { name: "forms-offices", about: "The forms of offices close to, a row each: at their fewest storeys in their first year, between, and at their most in their last; a cottage of 1840 first for the scale.", land: Land::Town, build: crate::forms::sheets::offices },
+    Sheet { name: "forms-sheds", about: "The sheds and the car park close to, a row each: at their fewest storeys in their first year, between, and at their most in their last; a cottage of 1840 first for the scale.", land: Land::Town, build: crate::forms::sheets::sheds },
     Sheet { name: "scale", about: "One of every generator in the registry at each level of detail: far, play and near across. Under each: its triangles; its finest feature in thousandths of a unit; triangles to a bay of a storey of wall and to a bay by a bay of roof; its longest bare wall in bays.", land: Land::Pasture, build: scale },
 ];
 
@@ -1376,8 +1380,8 @@ mod tests {
                 for cell in row {
                     let (lo, hi) = cell.model.bounds().unwrap();
                     assert!(hi.x - lo.x <= 1.15, "{}: {} is {} wide", sheet.name, cell.label, hi.x - lo.x);
-                    // (a great works is deeper: the lab stands back until the whole of it shows)
-                    let room = if sheet.name.starts_with("works") || sheet.name.starts_with("site") { 1.0 } else { 0.8 };
+                    // (a great works is deeper, and a tower of forty storeys taller: the lab stands back until the whole of it shows)
+                    let room = if sheet.name.starts_with("works") || sheet.name.starts_with("site") || sheet.name.starts_with("forms") { 1.0 } else { 0.8 };
                     assert!((hi.z - lo.z) + (hi.y - lo.y) * 0.8 <= room, "{}: {} is {} deep and {} tall", sheet.name, cell.label, hi.z - lo.z, hi.y - lo.y);
                 }
             }
