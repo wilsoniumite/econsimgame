@@ -282,6 +282,61 @@ pub(super) fn drawn(r: &Replay, k: usize, standing: &[Stood]) -> Vec<Drawn> {
     out
 }
 
+/// `ISOSTATE_LOTS=NAME`: say of the town of that name in year `k` how many
+/// of its plots stand from each age (houses of 1900 or before, and forms by
+/// the decade they went up), how many groups of old plots were rebuilt and
+/// in which decade, and the storeys at its middle (its market place's square
+/// and those next to it) and at its edge (the squares furthest from it).
+/// `storeys` is what `what_stands` gives each house.
+pub(super) fn tell(r: &Replay, k: usize, standing: &[Stood], storeys: &[u8], drawn: &[Drawn]) {
+    let Ok(name) = std::env::var("ISOSTATE_LOTS") else { return };
+    let Some(t) = r.header.towns.iter().position(|t| t.name == name) else {
+        eprintln!("lots {}: no town called {name}", r.y0 + k as i32);
+        return;
+    };
+    let node = r.header.towns[t].node;
+    let off = |c: u32| ((c as usize % r.w) as f32 - (node % r.w) as f32).hypot((c as usize / r.w) as f32 - (node / r.w) as f32);
+    let ours = |c: u32| r.catch.get(k * r.n + c as usize).copied() == Some(t as u8 + 1);
+    let mut by_age: std::collections::BTreeMap<i32, usize> = Default::default();
+    let mut rebuilt: std::collections::BTreeMap<i32, usize> = Default::default();
+    // (storeys of each plot, and how far its square lies from the middle)
+    let mut tall: Vec<(f32, u8)> = Vec::new();
+    let mut form: Option<(Built, usize)> = None;
+    for (i, s) in standing.iter().enumerate() {
+        match drawn[i] {
+            Drawn::Form(b, plots) => {
+                form = Some((b, plots));
+                if s.year <= FROM && ours(s.lot.cell) {
+                    *rebuilt.entry(b.year / 10 * 10).or_default() += 1;
+                }
+            }
+            Drawn::House => form = None,
+            Drawn::Covered => {}
+        }
+        if !ours(s.lot.cell) {
+            continue;
+        }
+        let (age, st) = match (drawn[i], form) {
+            (Drawn::House, _) | (_, None) => (if s.year <= FROM { FROM } else { s.year / 10 * 10 }, storeys[i]),
+            (_, Some((b, _))) => (b.year / 10 * 10, b.storeys),
+        };
+        *by_age.entry(age).or_default() += 1;
+        tall.push((off(s.lot.cell), st));
+    }
+    let far = tall.iter().map(|t| t.0).fold(0.0, f32::max);
+    let mean = |pick: &dyn Fn(f32) -> bool| {
+        let v: Vec<u8> = tall.iter().filter(|t| pick(t.0)).map(|t| t.1).collect();
+        (v.iter().map(|&s| s as f32).sum::<f32>() / v.len().max(1) as f32, v.iter().copied().max().unwrap_or(0), v.len())
+    };
+    let (mid, edge) = (mean(&|d| d < 1.5), mean(&|d| d >= far - 1.5));
+    let ages: Vec<String> = by_age.iter().map(|(a, n)| if *a == FROM { format!("by 1900 {n}") } else { format!("{a}s {n}") }).collect();
+    let again: Vec<String> = rebuilt.iter().map(|(a, n)| format!("{a}s {n}")).collect();
+    eprintln!(
+        "lots {}: {name}: {} plots; standing from each age: {}; groups of old plots rebuilt, by decade: {} ({} in all); storeys at the middle (within 1.5 squares) mean {:.1} highest {} over {} plots, at the edge (within 1.5 squares of the farthest, {far:.1} out) mean {:.1} highest {} over {} plots",
+        r.y0 + k as i32, tall.len(), ages.join(", "), again.join(", "), rebuilt.values().sum::<usize>(), mid.0, mid.1, mid.2, edge.0, edge.1, edge.2
+    );
+}
+
 /// Cell `c` in year `k` as the walk reads it.
 fn square_year(r: &Replay, k: usize, c: usize) -> Year {
     let year = r.y0 + k as i32;

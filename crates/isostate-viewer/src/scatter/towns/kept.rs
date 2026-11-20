@@ -1487,6 +1487,9 @@ pub(super) fn houses_kept(r: &Replay, g: &Ground, cen: &[(f32, f32)], k: usize, 
     let height = |x: f32, z: f32| world::height_at(g, x, z);
     // after 1900: which plots are built as forms of their year (`lots.rs`)
     let drawn = lots::drawn(r, k, &standing);
+    if std::env::var_os("ISOSTATE_LOTS").is_some() {
+        lots::tell(r, k, &standing, &whats.iter().map(What::storeys).collect::<Vec<u8>>(), &drawn);
+    }
     for (i, (s, what)) in standing.iter().zip(&whats).enumerate() {
         let pl = &s.lot.pl;
         let seed = Seed::new(pl.u, pl.v);
