@@ -15,6 +15,7 @@ use glam::{Vec2, Vec3};
 use crate::bridge::{road_bridge, road_ford, RoadBridge, RoadFord};
 use crate::farm::{farmstead, Farmstead};
 use crate::fence::fence;
+use crate::forms;
 use crate::trees::{bush, hedge_tree, tree, Species, Tree};
 use crate::hash::Seed;
 use crate::houses::roof::Roof;
@@ -340,6 +341,22 @@ fn pits(detail: Detail, pal: &Palette) -> Vec<Specimen> {
     out
 }
 
+/// A building form of the catalogue (`forms::FORMS[K]`): at its fewest storeys in its first
+/// year, at its most in its last, and between, each of another seed.
+fn form_of<const K: usize>(detail: Detail, pal: &Palette) -> Vec<Specimen> {
+    let s = &forms::FORMS[K];
+    // (the first year its builders' knowledge stands for, where that is after its own first)
+    let first = s.needs.iter().map(|k| k.year()).fold(s.years.0, i32::max).min(s.years.1);
+    let mid = (s.storeys.0 + s.storeys.1) / 2;
+    [(first, s.storeys.0, 1), (s.years.1, s.storeys.1, 2), ((first + s.years.1) / 2, mid, 3)]
+        .into_iter()
+        .map(|(built, storeys, seed)| {
+            let f = forms::Form { detail, ..forms::Form::new(s.shape, storeys, built, Seed::of(K as u32 * 8 + seed)) };
+            specimen(format!("{}, {storeys} storeys, {built}", s.name), |m, site| forms::form(m, site, &f, pal))
+        })
+        .collect()
+}
+
 /// Every generator. To add one: write its specimens and add a line here.
 pub static REGISTRY: &[Entry] = &[
     Entry { name: "cottage", class: Class::Building, covers: &["houses/cottage::cottage"], build: cottages, levels: true },
@@ -384,6 +401,36 @@ pub static REGISTRY: &[Entry] = &[
     Entry { name: "tree", class: Class::Plant, covers: &["trees::tree"], build: trees, levels: false },
     Entry { name: "hedgerow tree", class: Class::Plant, covers: &["trees::hedge_tree"], build: hedge_trees, levels: false },
     Entry { name: "bush", class: Class::Plant, covers: &["trees::bush"], build: bushes, levels: false },
+    // the building forms after 1900 (forms::FORMS from its fifth line: the first four are the houses above)
+    Entry { name: "form: semis 1919", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<4>, levels: true },
+    Entry { name: "form: council pair", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<5>, levels: true },
+    Entry { name: "form: estate pair", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<6>, levels: true },
+    Entry { name: "form: detached 1919", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<7>, levels: true },
+    Entry { name: "form: bungalow", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<8>, levels: true },
+    Entry { name: "form: detached 1976", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<9>, levels: true },
+    Entry { name: "form: low flats", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<10>, levels: true },
+    Entry { name: "form: shop flats 1895", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<11>, levels: true },
+    Entry { name: "form: shop flats 1919", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<12>, levels: true },
+    Entry { name: "form: shop flats 1946", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<13>, levels: true },
+    Entry { name: "form: shop flats 1980", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<14>, levels: true },
+    Entry { name: "form: court block 1895", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<15>, levels: true },
+    Entry { name: "form: court block 1919", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<16>, levels: true },
+    Entry { name: "form: court block 1946", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<17>, levels: true },
+    Entry { name: "form: court block 1980", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<18>, levels: true },
+    Entry { name: "form: slab block", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<19>, levels: true },
+    Entry { name: "form: point block", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<20>, levels: true },
+    Entry { name: "form: flats tower", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<21>, levels: true },
+    Entry { name: "form: mill flats", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<22>, levels: true },
+    Entry { name: "form: bank chambers", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<23>, levels: true },
+    Entry { name: "form: office block", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<24>, levels: true },
+    Entry { name: "form: stepped tower", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<25>, levels: true },
+    Entry { name: "form: podium offices", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<26>, levels: true },
+    Entry { name: "form: stone tower", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<27>, levels: true },
+    Entry { name: "form: glass tower", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<28>, levels: true },
+    Entry { name: "form: terracotta offices", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<29>, levels: true },
+    Entry { name: "form: retail shed", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<30>, levels: true },
+    Entry { name: "form: distribution shed", class: Class::Building, covers: &["forms/mod::form"], build: form_of::<31>, levels: true },
+    Entry { name: "form: car park", class: Class::Structure, covers: &["forms/mod::form"], build: form_of::<32>, levels: true },
 ];
 
 /// The houses: the entries the scale was read off, which the others are held to.
@@ -460,6 +507,12 @@ mod tests {
         for name in REFERENCE {
             assert!(REGISTRY.iter().any(|e| e.name == name && e.class == Class::Building), "{name}");
         }
+        // and every building form after the houses has an entry, named for it and building it
+        for s in &forms::FORMS[4..] {
+            let e = REGISTRY.iter().find(|e| e.name == format!("form: {}", s.short)).unwrap_or_else(|| panic!("{} has no entry", s.name));
+            assert!((e.build)(Detail::Far, &Palette::standard())[0].label.starts_with(s.name), "{} builds another form", e.name);
+        }
+        assert!(forms::FORMS[..4].iter().all(|s| s.source == forms::Source::Today));
         for (i, e) in REGISTRY.iter().enumerate() {
             assert!(REGISTRY[..i].iter().all(|o| o.name != e.name), "two entries are called {}", e.name);
             assert!(!e.covers.is_empty(), "{} covers no generator", e.name);

@@ -16,6 +16,7 @@ pub mod bridge;
 pub mod colour;
 pub mod farm;
 pub mod fence;
+pub mod forms;
 pub mod hash;
 pub mod houses;
 mod kit;
