@@ -311,3 +311,14 @@ cell joins a town farther than five cells from its centre and no town takes
 two cells in a year, money is conserved every month (the run's own check),
 and the burden never passes a half in any town in any month. The port's
 golden test is untouched; the game's moved in its second era only.
+
+## After 1900: room that grows dear
+
+Under the game's rules the room a head takes above its least falls with the
+rent a unit of room as `(rent / its rent of 1900)^(-0.5)` times this page's,
+so that the share of the spare budget spent on room is `beta` in 1900 and
+rises as the town's room dears, where by this page's rule it is `beta`
+whatever the rent. The rent that clears is the closed form of that demand.
+The switch is `city.dear_room`, on under the game's rules, with
+`city.room_elasticity` (1 is this page's rule); the rule and what it does to
+the burden and to `dens` are in [city.md](city.md).

@@ -807,3 +807,13 @@ by a tenth of its people changing market as well as by a founding.
 - **The test hook.** `st.pp_found_next` orders a town at a cell whatever the
   rule thinks of it. It is there for the tiny-town test and for scenarios;
   nothing in a normal run sets it.
+
+## After 1900: people follow jobs
+
+Under the game's rules, from the yearly step of 1901, migration weighs each
+town by the wage a newcomer would earn there, raised where the town's works
+took on hands over the year, and no longer by income a head, which local
+prices keep level across towns. The rest of the port's migration and this
+page's limit on arrivals stand. The switch is `city.follow_jobs`, on under
+the game's rules; the rule and what it does to the island are in
+[city.md](city.md).
