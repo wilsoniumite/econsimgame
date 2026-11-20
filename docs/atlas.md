@@ -230,14 +230,17 @@ the tasks rule (`data/tasks.toml`). Those known in 1750 are named under the
 tables, not drawn. An idea added to the data tomorrow is drawn tomorrow.
 
 **History's year** is the data's own `target`. The overlay's ideas have one;
-the port's own (the coke furnace, the powered mill, the engine works,
-crucible steel, the rolling mill, railways, improved husbandry, farm
-machinery) have none in the data, and their rows say "no year in the data".
-The uses carried their year only in comments; they now have a `target` key
-too, which nothing in a run reads: the electric drive 1901, the tractor 1915,
-the cutter 1920, the combine 1935, office computing 1960 and models 2022,
-each the year its comment gives as the year it is to be had. The hoist, a
-stand-in with "poor history", has none.
+of the port's own, railways (1825) and farm machinery (1850) have theirs from
+the overlay since 20 November 2026 (`data/game.toml` says why each), and the
+rest (the coke furnace, the powered mill, the engine works, crucible steel,
+the rolling mill, improved husbandry) have none in the data, and their rows
+say "no year in the data". The uses carried their year only in comments; they
+now have a `target` key too, which nothing in a run reads: the electric drive
+1901, the tractor 1915, the cutter 1920, the combine 1935, office computing
+1960 and models 2022, each the year its comment gives as the year it is to be
+had. The hoist, a stand-in with "poor history", has 1850 since 20 November:
+steam winding and haulage were common by then, and the stand-in is found
+from 1901 by design, so its row stands half a century late.
 
 ## How to read the third plate
 
