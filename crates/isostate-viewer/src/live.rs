@@ -568,6 +568,8 @@ struct Board {
     cursor: LiveCursor,
     r: Replay,
     view: FamilyView,
+    /// the year each town came to know each idea, for a town's card (`inspect::Learnt`)
+    learnt: iso::inspect::Learnt,
 }
 
 impl Board {
@@ -579,11 +581,12 @@ impl Board {
         for (g, kind) in r.header.goods.iter_mut().zip(good_kinds(&sim.content)) {
             g.kind = Some(kind);
         }
-        Board { cursor: LiveCursor::new(&sim.content), r, view: FamilyView { method_group, trade_goods: trade_goods(&sim.content), ..default() } }
+        Board { cursor: LiveCursor::new(&sim.content), r, view: FamilyView { method_group, trade_goods: trade_goods(&sim.content), ..default() }, learnt: Default::default() }
     }
 
     /// Take in the year the simulation has just played, with its twelve months.
     fn year(&mut self, sim: &iso::Sim) {
+        self.learnt.year_end(sim);
         self.months(sim, 12);
         let y = iso::live_year(&mut self.cursor, &sim.st, &sim.content, &sim.params, &sim.events);
         apply_year(&mut self.r, &y);
@@ -736,6 +739,11 @@ fn waiting_what(edit: &isostate_core::edits::Edit, n: &Names) -> Option<String> 
             })
         }
         Edit::CloseWorks { works } => Some(format!("{} closed", (n.works)(*works))),
+        Edit::FoundUniversity { cell } => Some(match (n.near)(*cell) {
+            Some(town) => format!("a university founded in {town}"),
+            None => format!("a university founded at square {cell}"),
+        }),
+        Edit::CloseUniversity { town } => Some(format!("the university of {} closed", (n.town)(*town))),
         _ => None,
     }
 }
@@ -764,7 +772,7 @@ fn edit_words(edit: &isostate_core::edits::Edit, n: &Names) -> String {
         Edit::FoundTown { cell } => format!("By hand: a town ordered on square {cell}"),
         Edit::Pin { idea, year, when } => format!("By hand: {idea} {} {year}", if *when == isostate_core::edits::PinWhen::In { "pinned to" } else { "held back until" }),
         // (said by `waiting_what`)
-        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } => String::new(),
+        Edit::BuildWorks { .. } | Edit::CloseWorks { .. } | Edit::FoundUniversity { .. } | Edit::CloseUniversity { .. } => String::new(),
     }
 }
 
@@ -961,7 +969,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     if let Some(back) = &mut resumed {
         (back.year, back.month) = (game.last_year() as i32, game.month);
     }
-    let Board { cursor, r, mut view } = board;
+    let Board { cursor, r, mut view, learnt } = board;
     // orders given since the last year: the family as it stands now, and the works to come
     if let Some(rep) = family_now(&game) {
         crate::game::player_family(&mut view, &rep);
@@ -1037,7 +1045,7 @@ pub fn start(o: &Opening) -> Result<(Replay, Live, FamilyView), String> {
     let (tx_msg, rx_msg) = mpsc::channel::<Msg>();
     let thread = std::thread::Builder::new()
         .name("isostate-sim".into())
-        .spawn(move || run_thread(game, cursor, saver, saved, begun, rx_cmd, tx_msg))
+        .spawn(move || run_thread(game, cursor, learnt, saver, saved, begun, rx_cmd, tx_msg))
         .map_err(|e| format!("cannot start the simulation thread: {e}"))?;
     let live = Live {
         tx: Some(tx_cmd),
@@ -1201,8 +1209,10 @@ fn write_save(game: &Game, saver: &mut Option<Saver>, saved: &mut bool, year_end
 
 /// `saved`: whether the last save was written (or, at the start, whether the
 /// game's place could be written at all), so a failure is told once and not
-/// every year.
-fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, mut saved: bool, mut begun: Vec<usize>, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
+/// every year. `learnt` is what has been watched of the towns' knowledge,
+/// year by year, for a town's card (`inspect::Learnt`).
+#[allow(clippy::too_many_arguments)]
+fn run_thread(mut game: Game, mut cursor: LiveCursor, mut learnt: iso::inspect::Learnt, mut saver: Option<Saver>, mut saved: bool, mut begun: Vec<usize>, rx: mpsc::Receiver<Cmd>, tx: mpsc::Sender<Msg>) {
     // months have been played since the last save
     let mut unkept = false;
     while let Ok(cmd) = rx.recv() {
@@ -1227,6 +1237,7 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                                     return;
                                 }
                                 year_end = true;
+                                learnt.year_end(s);
                                 let year = iso::live_year(&mut cursor, &s.st, &s.content, &s.params, &s.events);
                                 let holds = holds_year(s);
                                 let news = game.sim.events.len();
@@ -1266,7 +1277,8 @@ fn run_thread(mut game: Game, mut cursor: LiveCursor, mut saver: Option<Saver>, 
                 })
             }
             // (it only reads: a game asked about a thousand times runs as one never asked)
-            Cmd::Ask(thing) => Msg::Told { thing, told: iso::inspect::tell(&game.sim, thing) },
+            // (a town's card dates its ideas by what the thread has watched: `inspect::Learnt`)
+            Cmd::Ask(thing) => Msg::Told { thing, told: iso::inspect::tell_with(&game.sim, thing, Some(&learnt)) },
             // (it only reads, as Ask does; the walk takes a few milliseconds)
             Cmd::Rules => Msg::Rules(Box::new(RulesNow { entries: iso::rulebook::rulebook(&game.sim.params), unfound: iso::rulebook::unfound(&game.sim) })),
             Cmd::Keep => {

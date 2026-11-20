@@ -664,7 +664,11 @@ pub fn start_from(P: &Params, content: Content, mut st: State, mut rngs: Rngs) -
 
 /// One month of the recorded run: the economy, railway construction, the money check, the observer.
 pub fn run_month(sim: &mut Sim, month: usize) -> Result<(), String> {
-    let Sim { st, content: C, params: P, events, .. } = sim;
+    let Sim { st, content: C, params: P, events, year, .. } = sim;
+    // state (docs/rules/state.md): last year's acts are news as they come into force
+    if month == 0 {
+        crate::purse::announce(st, P, *year, events);
+    }
     econ::step_month(st, C, P);
     // longrun (docs/rules/longrun.md): the month goes into the year's link of the
     // chain, and December's closes it and sets next year's anchor
@@ -790,6 +794,9 @@ pub fn end_year(sim: &mut Sim) {
     crate::pay::close_year(st, C, P, year);
     // ages (docs/rules/ages.md): every row held to its town's people, and the year's figures
     crate::ages::close_year(st, C, P, year);
+    // state (docs/rules/state.md): the year put away, the book read, and next
+    // year's laws, teachers, pensioners and rate on pay, on the ages just closed
+    crate::purse::close_year(st, C, P, year);
     observer::yearly(st, C, P, year, events);
     // engel: the date the lean reads in next year's months, whatever the switches
     st.engel.year_now = year + 1;

@@ -6,7 +6,9 @@
 //! the state's own figures put through the same function; and a thing that is
 //! not there is refused in a sentence. The island's "By hand" rows read the
 //! hand's ledger, "none yet" before any edit; and a question and its card can
-//! cross from one thread to another.
+//! cross from one thread to another. A town's card has every idea of the data
+//! once, in the state the town's knowledge gives it, in 1790 and in 1821, and
+//! one it says may be found there by hand is, by the hand's edit for an idea.
 //!
 //! Nothing here leans on what becomes of the island: whatever towns, works and
 //! squares there are, each is asked about. Which groups a card has follows the
@@ -16,7 +18,7 @@
 
 use isostate_core::econ;
 use isostate_core::edits::{Edit, Purse};
-use isostate_core::inspect::{Thing, Told, tell};
+use isostate_core::inspect::{KNOWS, Learnt, Stands, Thing, Told, tell, tell_with};
 use isostate_core::save::{Game, Order};
 use isostate_core::sim::Sim;
 use isostate_core::util::{fmt_pct, fmt_thousands_f0};
@@ -180,6 +182,85 @@ fn telling_changes_nothing() {
     }
     let bits = |g: &Game| g.sim.st.series.data.iter().map(|d| d.iter().map(|x| x.to_bits()).collect::<Vec<u64>>()).collect::<Vec<_>>();
     assert!(bits(&a) == bits(&b), "a game that was told of things went on differently");
+}
+
+/// Every idea of the data, once, in the one state the state's own figures
+/// give it, with the years in order.
+fn ideas_sound(g: &Game, learnt: &Learnt) {
+    let (sim, st, C) = (&g.sim, &g.sim.st, &g.sim.content);
+    let towns: Vec<usize> = (0..st.town_name.len()).filter(|&t| st.town_active[t]).collect();
+    for &t in &towns {
+        let told = tell_with(sim, Thing::Town(t), Some(learnt)).unwrap();
+        let ideas = told.ideas.as_ref().unwrap_or_else(|| panic!("{}: a town's card has its ideas", st.town_name[t]));
+        assert_eq!((ideas.town, ideas.from, ideas.to), (t, C.start_year, sim.year));
+        let mut names: Vec<&str> = ideas.all().map(|i| i.name.as_str()).collect();
+        names.sort_unstable();
+        let mut data: Vec<&str> = C.tech_name.iter().map(String::as_str).chain(C.tasks.uses.iter().map(|u| u.name.as_str())).collect();
+        data.sort_unstable();
+        assert_eq!(names, data, "{}: every idea of the data, once", st.town_name[t]);
+        for i in ideas.all() {
+            assert!(!i.said.is_empty() && !i.how.is_empty() && !i.said.contains("NaN") && !i.said.contains("inf "), "{}: {} says {:?}", st.town_name[t], i.name, i.said);
+            let want = match C.tech_name.iter().position(|n| *n == i.name) {
+                Some(k) if st.know[(t, k)] > KNOWS => Stands::Here,
+                Some(k) if C.tech_known[k] || st.tech_year[k] >= 0 => Stands::Elsewhere,
+                Some(_) => Stands::Nowhere,
+                None => {
+                    let u = C.tasks.uses.iter().position(|u| u.name == i.name).unwrap();
+                    if st.tasks.found.get(u).is_some_and(|&y| y >= 0) { Stands::Here } else { Stands::Nowhere }
+                }
+            };
+            assert_eq!(i.stands, want, "{}: {}", st.town_name[t], i.name);
+            // only an idea of the tree found nowhere may be found here by hand
+            assert_eq!(i.discover, want == Stands::Nowhere && i.kind != "use", "{}: {}", st.town_name[t], i.name);
+            match i.stands {
+                Stands::Here => assert!(i.year.is_some_and(|y| y >= C.start_year && y <= sim.year), "{}: {} known here in {:?}", st.town_name[t], i.name, i.year),
+                Stands::Elsewhere => assert!(i.year.is_some()),
+                Stands::Nowhere => assert_eq!(i.year, None),
+            }
+        }
+    }
+}
+
+#[test]
+fn a_towns_ideas_are_every_idea_in_one_of_three_states_and_one_found_by_hand_is_known_there() {
+    // island 7, six families, the game's rules as `Game::new` sets them (the
+    // tree's overlay and the tasks rule give the ideas); nothing here leans on
+    // which ideas the island finds when: each is checked against the state's
+    // own knowledge as it stands, in 1790 and in 1821
+    let mut g = Game::new(7, 6, 0);
+    let mut learnt = Learnt::default();
+    while g.sim.year < 1821 {
+        g.year().unwrap();
+        learnt.year_end(&g.sim);
+        g.turn();
+        if g.sim.year == 1790 {
+            ideas_sound(&g, &learnt);
+        }
+    }
+    ideas_sound(&g, &learnt);
+    // without what was watched, a town's ideas stand the same, and only the years (and so the
+    // order within a group) may be missing
+    let st = &g.sim.st;
+    let t = (0..st.T_max).filter(|&t| st.town_active[t]).max_by(|&a, &b| st.pop[a].total_cmp(&st.pop[b])).unwrap();
+    let (with, without) = (tell_with(&g.sim, Thing::Town(t), Some(&learnt)).unwrap(), tell(&g.sim, Thing::Town(t)).unwrap());
+    let states = |told: &Told| {
+        let mut s = told.ideas.as_ref().unwrap().all().map(|i| (i.name.clone(), i.stands, i.discover)).collect::<Vec<_>>();
+        s.sort_by(|a, b| a.0.cmp(&b.0));
+        s
+    };
+    assert_eq!(states(&with), states(&without));
+
+    // the hand's edit for an idea, on one the card says may be found here, is carried out, and the
+    // card then has it known here, found here by hand in the year in progress
+    let ideas = with.ideas.unwrap();
+    let idea = ideas.all().find(|i| i.discover).expect("in 1821 some idea of the tree is found nowhere yet").clone();
+    let line = g.give(Order::ByHand { edit: Edit::Discover { tech: idea.name.clone(), town: t } }).map(|_| g.sim.events.last().unwrap().title.clone()).unwrap();
+    println!("{line}");
+    let after = tell_with(&g.sim, Thing::Town(t), Some(&learnt)).unwrap().ideas.unwrap();
+    let now = after.all().find(|i| i.name == idea.name).unwrap();
+    assert_eq!((now.stands, now.year, now.discover), (Stands::Here, Some(1821), false));
+    assert!(now.how.starts_with("found here in 1821, by hand"), "{}", now.how);
+    println!("{}", now.said);
 }
 
 #[test]

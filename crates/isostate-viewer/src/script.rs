@@ -45,6 +45,8 @@
 //!     pick:X,Z        click the map at this spot
 //!     look:X,Z,DIST   point the camera
 //!     scroll:PIXELS   scroll the side panel down this far
+//!     card:PIXELS     scroll the card of what was clicked down this far (a
+//!                     town's ideas stand under its rows)
 //!     shot:PATH       save a picture
 //!     rule:NAME=WORD  in a sandbox, press the chip WORD on the Rules tab's row
 //!                     NAME (rule:money.growth=None), opening the tab and the
@@ -108,6 +110,8 @@ enum Step {
     Pick(f32, f32),
     Look(f32, f32, f32),
     Scroll(f32),
+    /// scroll the card of what was clicked down this far
+    Card(f32),
     Shot(String),
     /// a chip of the legend card: an overlay, or none for Plain map and the pill
     Chip(String),
@@ -261,6 +265,7 @@ fn parse(s: &str) -> Result<Vec<Step>, String> {
                 _ => return Err(format!("{part}: look takes x,z,distance")),
             },
             "scroll" => Step::Scroll(num("the pixels")?),
+            "card" => Step::Card(num("the pixels")?),
             "shot" if !arg.is_empty() => Step::Shot(arg.to_string()),
             "chip" if arg.eq_ignore_ascii_case("pill") || crate::overlay::is_word(arg) && !arg.contains(':') && !arg.contains('+') => Step::Chip(arg.to_ascii_lowercase()),
             "chip" => return Err(format!("{part}: the chips are rent, areas, reach, price, made, wages, growth, residents, deposits, plain and pill")),
@@ -506,6 +511,10 @@ fn print_state(world: &mut World, note: &str) {
         // the island half's people by age, reckoned (docs/rules/ages.md), as its chart draws them
         if tab == ui::Tab::Markets && world.resource::<UiState>().markets == MarketsShow::Island {
             if let Some(line) = crate::ages_chart::said(&world.resource::<Data>().r, k) {
+                println!("script:   {line}");
+            }
+            // and the state's purse (docs/rules/state.md), as its chart draws it
+            if let Some(line) = crate::purse_chart::said(&world.resource::<Data>().r, k) {
                 println!("script:   {line}");
             }
         }
@@ -979,6 +988,13 @@ fn step(world: &mut World, sc: &mut Script) {
             Step::Scroll(px) => {
                 // as the wheel would, a positive turn of the wheel being up
                 let mut q = world.query_filtered::<(&mut ScrollPosition, &ComputedNode), With<ui::PanelBody>>();
+                for (mut s, c) in q.iter_mut(world) {
+                    ui::scroll_panel(&mut s, c, -px);
+                }
+                frame = true;
+            }
+            Step::Card(px) => {
+                let mut q = world.query_filtered::<(&mut ScrollPosition, &ComputedNode), With<crate::InspectBody>>();
                 for (mut s, c) in q.iter_mut(world) {
                     ui::scroll_panel(&mut s, c, -px);
                 }

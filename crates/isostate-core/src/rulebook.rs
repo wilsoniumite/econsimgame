@@ -30,9 +30,11 @@ use crate::params::{game_params, Params};
 use crate::sim::Sim;
 
 /// The numbers that matter most, pinned at the head of the tab (section 4.6),
-/// and last the two dials of the reckoning of pay by class (docs/rules/pay.md),
-/// which change nothing but the Work panel's chart of pay.
-pub const PINNED: [&str; 14] = [
+/// then the two dials of the reckoning of pay by class (docs/rules/pay.md),
+/// which change nothing but the Work panel's chart of pay, and last the state's
+/// four chips (docs/rules/state.md), each overriding the book of acts from the
+/// year it is set.
+pub const PINNED: [&str; 18] = [
     "money.growth",
     "rent_regime",
     "hurdle",
@@ -47,6 +49,10 @@ pub const PINNED: [&str; 14] = [
     "tasks.dial",
     "pay.bend",
     "pay.follow_years",
+    "state.school_years",
+    "state.pension_age",
+    "state.pension_share",
+    "state.university_share",
 ];
 
 /// Numbers offered at figures of their own rather than as shares of the game's:
@@ -54,10 +60,16 @@ pub const PINNED: [&str; 14] = [
 /// argument over them is had at. How far demand bends: 0.3 is the island's
 /// machines at their margin, 2 what demand does where hands also take other
 /// tasks inside a job. Years for hands to follow the work: from a few to a
-/// working life's half.
-pub const FIGURES: [(&str, &[(&str, f64)]); 2] = [
+/// working life's half. And the state's four chips (docs/rules/state.md):
+/// "The book" (below nothing) leaves the law to the book of acts; any other
+/// figure overrides it from the year it is set.
+pub const FIGURES: [(&str, &[(&str, f64)]); 6] = [
     ("pay.bend", &[("0.1", 0.1), ("0.3", 0.3), ("1", 1.0), ("2", 2.0)]),
     ("pay.follow_years", &[("5 years", 5.0), ("10 years", 10.0), ("20 years", 20.0), ("30 years", 30.0)]),
+    ("state.school_years", &[("The book", -1.0), ("None", 0.0), ("6 years", 6.0), ("9 years", 9.0), ("11 years", 11.0), ("13 years", 13.0)]),
+    ("state.pension_age", &[("The book", -1.0), ("60", 60.0), ("65", 65.0), ("70", 70.0)]),
+    ("state.pension_share", &[("The book", -1.0), ("None", 0.0), ("A fifth", 0.2), ("A quarter", 0.25), ("Two fifths", 0.4)]),
+    ("state.university_share", &[("The book", -1.0), ("None", 0.0), ("A twentieth", 0.05), ("A sixth", 0.15), ("A third", 0.33), ("Half", 0.5)]),
 ];
 
 /// The word a name fixed when the island is made carries in place of offers.
@@ -69,8 +81,8 @@ pub const NUMBER_OFFERS: [(&str, f64); 5] = [("None", 0.0), ("Half", 0.5), ("As 
 
 /// The numbers turned in multiples rather than by halves: the dial on the
 /// machines for tasks (docs/rules/tasks.md), which the research turns a
-/// hundredfold. The rules hold no tax yet; a rate joins it in one line when
-/// the state's purse lands.
+/// hundredfold. The rate on pay is not a number to turn: the state's budget
+/// sets it each year (docs/rules/state.md).
 pub const WIDE: [&str; 1] = ["tasks.dial"];
 
 /// A wide number's offers, as `NUMBER_OFFERS` are a number's.
@@ -190,6 +202,7 @@ fn skipped(P: &Params, name: &str) -> Option<Value> {
         "pay" => to_json(&P.pay),
         "city" => to_json(&P.city),
         "ages" => to_json(&P.ages),
+        "state" => to_json(&P.state),
         _ => None,
     }
 }

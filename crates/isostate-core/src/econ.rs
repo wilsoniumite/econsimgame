@@ -273,6 +273,8 @@ pub fn money_total(st: &State) -> f64 {
         + projects
         + pairwise_sum(&st.hh_income)
         + pairwise_sum(&st.lord_income);
+    // state (docs/rules/state.md): the treasury, nothing while the purse is off
+    let total = if st.purse.treasury != 0.0 { total + st.purse.treasury } else { total };
     if families::active(st) { total + families::cash_total(st) } else { total }
 }
 
@@ -565,6 +567,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::canals::take_navvies(st, P, &mut supply);
     // roads (docs/probes/dx-roads.md): nor are the men making and mending roads
     crate::roads::take_menders(st, P, &mut supply);
+    // state (docs/rules/state.md): nor are the teachers the treasury hires
+    crate::purse::take_teachers(st, P, &mut supply);
+    // nor are the university's students and staff (docs/rules/state.md, "The university")
+    crate::university::take_hands(st, P, &mut supply);
     let supply = supply;
     // Short-run labour demand moves only part of the way to the long-run optimum,
     // so a price blip does not empty the fields in a month.
@@ -909,6 +915,12 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         proj_req.push(rq);
     }
+    // state (docs/rules/state.md, "The university"): the university's rooms,
+    // ordered of its town's builders as a railway orders its materials
+    let uni_rooms = crate::university::rooms_order(st, C, P);
+    for &(t, g, n) in &uni_rooms {
+        R[(t, g)] += n;
+    }
 
     // people (docs/rules/people.md) keeps it too: what a district's buyers asked for
     // goes with them when the district changes market
@@ -1102,6 +1114,10 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         }
         proj_got.push(got);
     }
+    let uni_got: Vec<(usize, usize, f64)> = uni_rooms.iter().map(|&(t, g, n)| (t, g, n * fill_plant[(t, g)])).collect(); // tree: plant waits
+    for &(t, g, n) in &uni_got {
+        sold[(t, g)] += n;
+    }
 
     // ---------------- money flows
     let mut merch = vec![0.0; T];
@@ -1274,6 +1290,11 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
         proj_spend += pay + wages;
     }
     st.m_invest += proj_spend;
+    // state: the university's rooms paid for out of the treasury
+    if !uni_got.is_empty() {
+        let got: Vec<f64> = uni_got.iter().map(|x| x.2).collect();
+        crate::university::rooms_got(st, P, &uni_rooms, &got, &mut merch, &mut sales_value);
+    }
 
     // ---------------- inventories: sales out, production in
     // Python adds one bincount per sector good, then one per method output
@@ -1453,7 +1474,7 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
             hh_got: &hh_got, lord_got: &lord_got, fam_by_town: &fam_by_town, lord_budget: &lord_budget,
             hh_spend: &hh_spend, lord_spend: &lord_spend, urban_pay: &urban_pay,
             q_hh: &q_hh, q_l: &q_l, share: &share, fill: &fill, lord_pop: &lord_pop,
-            oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got,
+            oi: inv_rows.0, ot: inv_rows.1, inv_got: inv_rows.2, proj_got: &proj_got, uni_got: &uni_got,
             land_tasks: land_books.as_ref().or(land_got.as_ref().map(|g| &g.0)),
             R: &R, sold: &sold, prod_TG: &prod_TG, exports: &exports, imports: &imports, w: &w, supply: &supply,
         });
@@ -1538,6 +1559,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     };
     let issue = crate::money::rate(P) / 12.0 * m_tot;
     st.issued += issue;
+    // state (docs/rules/state.md): the month's pay as it was banked, before the
+    // dividends, the fund and the new money join it; the rate on pay is taken on it
+    let pay_banked = if P.state.enabled { hh_inc.clone() } else { Vec::new() };
     for t in 0..T {
         let popshare = st.pop[t] / pop_total;
         hh_inc[t] += fdiv[t] + mdiv[t] + (fund_div + issue) * popshare;
@@ -1547,6 +1571,9 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::owners::credit(st, &lord_div);
     // accounts: the month's incomes, before the purses are credited
     crate::accounts::close_month(st, &fi, &ft, &fm, &merch, &hh_inc, &fdiv, &mdiv, &lord_div, fund_div, issue, pop_total);
+    // state (docs/rules/state.md): the teachers paid, the rate on pay taken and
+    // the pensions paid, between the treasury and the households' income
+    crate::purse::month(st, P, &w, &pay_banked, &mut hh_inc);
 
     for t in 0..T {
         st.hh_income[t] += hh_inc[t];
@@ -1634,6 +1661,8 @@ pub fn step_month(st: &mut State, C: &Content, P: &Params) {
     crate::canals::count_navvies(st, P, &mut employment);
     // roads: and so are the menders
     crate::roads::count_menders(st, P, &mut employment);
+    // state: and so are the teachers
+    crate::purse::count_teachers(st, P, &mut employment);
     let mut heat_use = vec![0.0; NF];
     for i in 0..NFI {
         for k in 0..NF {
