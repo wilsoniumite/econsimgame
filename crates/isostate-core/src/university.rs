@@ -195,11 +195,54 @@ pub fn choose_seat(st: &mut State, year: i64) {
     }
 }
 
+/// The square a university of town `t` stands on: the nearest to the town's
+/// centre (within three squares each way) that is of its district, on which a
+/// works could be built (`families::buildable`) and that has no water beside it
+/// or through it (the sea or a lake beside it, a tideway or a lake in it), the
+/// ground that is not yet the town's first, as a college takes a field at the
+/// town's edge, and then the least built on by works; failing all, the centre.
+fn site(st: &State, t: usize) -> usize {
+    let node = st.town_node[t];
+    let W = st.world.W as i64;
+    let H = (st.N as i64) / W.max(1);
+    let (x0, y0) = (node as i64 % W, node as i64 / W);
+    let lf = st.world.landform.as_ref();
+    // a square by water, or with water through it: the sea or a lake beside it, a lake or a tideway in it
+    let wet = |c: usize| {
+        let (x, y) = (c as i64 % W, c as i64 / W);
+        let by_sea = [(-1, 0), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dy)| {
+            let (a, b) = (x + dx, y + dy);
+            a < 0 || b < 0 || a >= W || b >= H || !st.world.land[(b * W + a) as usize]
+        });
+        by_sea || lf.is_some_and(|l| l.shore.get(c).copied().unwrap_or(false) || l.estuary.get(c).copied().unwrap_or(false) || l.lake_share.get(c).copied().unwrap_or(0.0) > 0.05)
+    };
+    let mut best: Option<(i64, i64, f64, usize)> = None;
+    for dy in -3..=3i64 {
+        for dx in -3..=3i64 {
+            let (x, y) = (x0 + dx, y0 + dy);
+            if x < 0 || y < 0 || x >= W || y >= H {
+                continue;
+            }
+            let c = (y * W + x) as usize;
+            if crate::families::buildable(st, c) != Ok(t) || wet(c) {
+                continue;
+            }
+            // ground not yet the town's first, as a college takes a field at the town's edge
+            let built = st.town_built.get(c).is_some_and(|&y| y != 0) as i64;
+            let key = (built, dx * dx + dy * dy, st.cell_K_share[c], c);
+            if best.is_none_or(|b| (key.0, key.1, key.2) < (b.0, b.1, b.2)) {
+                best = Some(key);
+            }
+        }
+    }
+    best.map_or(node, |b| b.3)
+}
+
 /// A university founded in town `t`: its place, and the title and text of its
 /// news. Founded by the book at a year's end, its first students come at once;
 /// by hand at the year's turn, at the year's end.
 pub fn found(st: &mut State, t: usize, year: i64, by_hand: bool) -> (String, String) {
-    let cell = st.town_node[t];
+    let cell = site(st, t);
     let name = st.town_name[t].clone();
     let n = st.purse.uni.unis.len();
     st.purse.uni.unis.push(Uni { town: t, cell, founded: year, closed: None, by_hand, intake: Vec::new(), history: Vec::new() });
@@ -385,7 +428,9 @@ pub fn close_year(st: &mut State, C: &Content, P: &Params, year: i64, news: &mut
         if let Some(t) = want {
             st.purse.uni.book_step += 1;
             let (title, text) = found(st, t, year, false);
-            news.push((0.8, title, text));
+            // the island's first university is among the heaviest news of its decade
+            // (docs/rules/chronicle.md, "Ranking"), the second a little lighter
+            news.push((if st.purse.uni.book_step == 1 { 0.95 } else { 0.85 }, title, text));
         } else if st.purse.uni.book_step == 0 && first_schools.is_some_and(|y| year >= y + book::FIRST_AFTER) && st.purse.uni.unis.iter().any(|v| Some(v.town) == st.purse.uni.seat) {
             // (the seat has one by hand already: the book's first is met by it)
             st.purse.uni.book_step = 1;
