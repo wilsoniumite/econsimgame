@@ -246,3 +246,7 @@ Faults found since 19 November 2026 that wait for a round of mending, one to a l
 - With models, about a hundredth of hands goes back to the land on islands 1-8 (farm share 0.183 against 0.171 in 2050); not traced (from night/g-to2050-thin-models, 2026-11-20)
 - chart kit's tick labels are unrounded (panel 4 reads 38.48 and -45.16): cosmetic, scripts in tmp/go/to2050-thin-models/scripts (from night/g-to2050-thin-models, 2026-11-20)
 - With facts only at decade marks, judging's start looks like 2020 in the charts; the find is in 2022 (from night/g-to2050-thin-models, 2026-11-20)
+- [atlas-ideas] The islands find 26 of the tree's 34 ideas more than 30 years apart before 1900 (powered mill 71, shops 73, engineering works 69): the yearly draw at 0.18 p^4/(1+p^4) alone spreads an idea over a decade or more once every threshold is met. (from night/g-batch-ground-a, 2026-11-20)
+- [atlas-ideas] Pinning what electrical goods hang on does not close the spread of ideas found on coal and chemicals (oil from coal 41 to 35, nitrogen works 32 to 54, breeding 42 to 48): there is no one fault at the root. (from night/g-batch-ground-a, 2026-11-20)
+- [atlas-ideas] The port's own ideas (data/content.toml) carry no history's year, so the timeline has no tick for them; the tasks rule's targets are labels taken from comments, and the hoist has none. (from night/g-batch-ground-a, 2026-11-20)
+- [atlas-ideas] Still to build: the panel of the third plate in the game, and the hand on the timeline. (from night/g-batch-ground-a, 2026-11-20)
