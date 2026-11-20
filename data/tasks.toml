@@ -146,8 +146,12 @@ tasks = [0.70, 0.20, 0.0, 0.10, 0.0]
 #                   longer reaches the places this one is `on`
 #   switch          (may be left out) a switch of the rule the use stands behind, by name: while it is
 #                   off the use is never found, and has no cost, no part, no order and no plant, so the
-#                   run is the run without it. Today the one name is "computing" (`tasks.computing`);
-#                   the file refuses any other
+#                   run is the run without it. Today the names are "computing" (`tasks.computing`) and
+#                   "models" (`tasks.models`); the file refuses any other
+#
+# A use whose `plant` is empty is rented: its whole cost is its run goods, bought each month. It has
+# nothing to wait for, so a works or a land sector holds what it means to from the first month; it orders
+# nothing and keeps no book; and it may be dropped at once. Its `life` is not read.
 #
 # A use that names a good the content lacks (a good of a later stage of the tree's overlay) is not laid,
 # as the overlay drops an input of a later stage, and replaces nothing; so the electric drive and the
@@ -373,3 +377,52 @@ switch = "computing"
 # 1983 on 1, 1986 on 3), so the unit was made exp(ln(3000) * (0.262 - 0.25)) = 1.10 times as dear, to
 # bring the mean to 0.25.
 scale = 1.10
+
+# Models: machines that see and decide, taking judging tasks (design, selling, managing, knowing when to
+# sow) from the easiest, in the works and on every land sector. A THIN SLICE: a model is RENTED, and
+# nothing stands behind the rent but goods. In the full stage a works rents it and its capital is the
+# model works that make computing; here neither exists, so it has no plant, no minders and no book, and its
+# whole cost is goods bought each month, seven tenths electricity and three tenths electrical goods by
+# value. The rent is paid to the power stations and the electrical works, and comes to rest as their
+# wages and their owners' return: where the model works' owners will stand when the full stage comes.
+# The carters are passed over, as for every use.
+#
+# Sized from island 7's prices and wage of 2022 under the game's rules with six families, on the new land,
+# with office computing on, the year it finds it (the year's island means: a wage of 44.49 a month,
+# electricity 8.562, electrical goods 26.58). When found, a unit costs 0.020 of a month's wage (0.890), all
+# of it goods: seven tenths electricity (0.623, which is 0.0727 a month) and three tenths electrical goods
+# (0.267, which is 0.0100 a month). At that cost a hand is worth 50 units, so models take
+# ln(50 / 10) / ln(30000 / 10) = 0.20 of judging. Its pace is eight per cent a year, with a cap of 1000
+# that is never in effect (1.08 a year for the 28 years to 2050 is 8.6).
+#
+# Two choices of the slice. First, rented with nothing behind the rent but goods (above). Second, judging
+# only: the design also gives models what is left of clerking, but by its own numbers that holds nothing
+# before 2050. When models are found a unit of office computing has had sixty years at five per cent a year
+# and is some three times cheaper than a unit of model; at eight against five per cent a year the gap
+# closes only about 2060, and cheapest first, models would hold none of clerking. So there is one entry,
+# for judging; the full stage adds the second.
+#
+# Found from 2022, the year the design gives, on an island that has made at least 11.6 electrical goods a
+# head since 1750 (read per head, as office computing's): the floor is half of what island 7 had made a
+# head when the year came (23.28 by the end of 2021, its yearly output summed over its people), rounded
+# down. Every island of sixteen had made 17.4 a head or more by then, so all find it in 2022.
+[[use]]
+name = "models"
+class = "judge"
+on = ["works", "farm", "pasture", "forestry", "quarry", "claypit", "ironmine", "coalmine"]
+from = 0.0
+reach = 1.0
+plant = {}
+run = { electricity = 0.0727, electricals = 0.0100 }
+minders = 0.0
+life = 1.0   # not read: a rented use has no plant to wear
+pace = 0.08
+cap = 1000.0
+found_after = 2022
+discover = { electricals = 11.6 }
+discover_per_head = true
+switch = "models"
+# Refitted once (20 November 2026): at 1.0 the towns' target for judging in the year found was 0.195 on
+# the mean of islands 1 to 8 (0.181 to 0.203; found 2022 on all eight), so the unit was made
+# exp(ln(3000) * (0.195 - 0.20)) = 0.96 times as dear, to bring the mean to 0.20.
+scale = 0.96

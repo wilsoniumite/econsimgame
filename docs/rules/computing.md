@@ -6,7 +6,9 @@ rules, on under the game's. It works through the rule for machines and tasks
 as it stands ([tasks.md](tasks.md)) and adds no good, no method and nothing
 drawn. It is a thin slice of the run to 2050, brought forward so that the
 whole run has its age of machines that reckon, however plainly, before the
-full stage is built.
+full stage is built. Its second half, models, which take judging tasks from
+2022 behind a switch of their own (`tasks.models`), is the last part of this
+page ("Models: machines that judge"), with what the two halves show together.
 
 **The standing check: 12 of 12 inside.** Nothing can be found before 1960,
 so the played century cannot move, and it does not:
@@ -240,3 +242,205 @@ Its plant wears at the life of the works' longest-lived machine (the electric
 drive's twenty years, not its own eight), since a works keeps one book for
 all its machines. And it is read on an island whose wage stands nearly still
 after about 1975: its pace is then all that cheapens it.
+
+# Models: machines that judge
+
+The second half of the thin slice. One more `[[use]]` of `data/tasks.toml`,
+`models`, standing behind a switch of its own, `tasks.models`: off under the
+port's rules (and left out of their parameters' file), on under the game's.
+Like office computing it adds no good, no method and nothing drawn.
+
+**The standing check: 12 of 12 inside**, with models on and off, and with
+both halves on against both off. Nothing can be found before 2022.
+
+## What it is
+
+**A machine for judging tasks.** Judging is design, selling, managing and
+knowing when to sow: from an eighth to a third of every works' labour, a
+quarter of the shops' and trades', and a tenth to a fifth of the land's
+([tasks.md](tasks.md), "What it does"). Models may hold the whole class, from
+the easiest task to the hardest, in the works and on all seven land sectors
+(the farms, the pastures, the woods, the quarries, the clay pits and the
+mines); the carters are passed over, as for every machine. Judging's tasks run
+from those at which a hand is worth 10 machine units to those at which a hand
+is worth 30,000, evenly in the logarithm between.
+
+**Rented, with nothing behind the rent but goods.** A model owns no plant. A
+use whose `plant` is empty is rented, and the rule treats it so: it has
+nothing to wait for, so a works or a land sector holds what it means to hold
+from the first month (a works founded after the find holds its town's
+target in its first month at work); it orders nothing and adds nothing to the
+works' book or the land's plant; and a works may drop it as fast as it likes
+(the rule that a works' share falls no faster than its machines wear out
+passes a rented use by, so a works whose town's target falls drops to it in
+the month). Its whole cost is goods bought each month: seven tenths
+electricity and three tenths electrical goods, by value. That rent is paid to
+the power stations and the electrical works and comes to rest as their wages
+and their owners' return.
+
+**Its numbers.** Sized from island 7 in 2022, the year it finds it, under the
+game's rules with six families and office computing on (a wage of 44.49 a
+month, electricity 8.56 and electrical goods 26.58, the year's means over the
+island). When found a unit costs 0.020 of a month's wage, 0.890: 0.0727
+electricity and 0.0100 electrical goods a month. At that cost a hand is worth
+50 units, so models take `ln(50 / 10) / ln 3000 = 0.20` of judging. Its quality
+grows eight per cent a year from the year found; its cap of 1000 is never in
+effect (1.08 a year for the 28 years to 2050 is 8.6). Its `life` is not read.
+Its one `scale` was refitted once: at 1 the towns' target for judging in the
+year found was 0.195 on the mean of islands 1 to 8, so a unit was made
+`exp(ln 3000 * (0.195 - 0.20)) = 0.96` times as dear. Every sum is in the
+file's comment.
+
+**When it is found.** From 2022, the year the design gives, on an island that
+has made at least 11.6 electrical goods a head since 1750 (`discover_per_head
+= true`, as for office computing): half of what island 7 had made a head when
+the year came, 23.28 by the end of 2021. Every island of sixteen had made 17.4
+a head or more by then, so all sixteen find it in 2022.
+
+**Judging only.** The design gives models what is left of clerking as well.
+By its own numbers that holds nothing before 2050, so it is left out. On
+island 7 in 2025 a unit of office computing costs 0.0054 of a month's wage and
+a unit of model 0.0154, nearly three times as much; in 2050, 0.0015 and
+0.0021. At eight per cent a year against five the gap closes only in the
+2060s, and cheapest first (`work_out_parts`) models would hold none of
+clerking.
+
+**The switch, and the command.** `switch = "models"` in the file; while
+`tasks.models` is off the use is never found and has no cost, part or order,
+which `tests/tasks.rs` holds: island 7 to 2030 with the switch off is, to the
+last digit, the run with models taken out of the table in code. Thrown off by
+hand, every works and land sector drops its judging in that month. The facts
+of the rule's loop come for it (`use_found_year_models`,
+`use_share_found_models`, `use_auto_after10_models`, `dearer_first_models`;
+`use_margin_gap_two_lives_models` is none, its life being unread), with two
+new facts for every use: `target_CLASS_works_Y`, the towns' target in the
+works, which the standing works move toward, and, for a use that reaches the
+land, `use_auto_land_after10_NAME`, its class on the sectors it reaches ten
+years after the find (0.174 to 0.188 for models on islands 1 to 8; a fact
+read past the run's end, as models' `use_margin_gap_after40_`, is none). The
+command that shows it:
+
+```bash
+isostate-core sweep --seeds 1-8 --rules game --families 6 --set tasks.computing=false,true --set tasks.models=false,true --end-year 2050 --jobs 8 --standing --out DIR
+```
+
+## What it leaves to the full stage
+
+- **The model works and the computing they make.** In the design a model's
+  capital is the model works and its power, owned works with years of output
+  in plant, so that the rent comes to rest with their owners. Here the rent
+  goes to the stations and the electrical works, which are not model works.
+- **The rest of clerking**, which models take from office computing only once
+  they are the cheaper unit (above).
+- **Robots in works and robots that walk.** Tending, the largest class in the
+  works, has no machine after the drive in either half (the combine tends on
+  the farms and pastures only), because neither the line nor robots are built.
+- **The dial turned along a curve**, from a year and over years, for sweeps.
+- **A statute that opens presence** to machines.
+
+## How the full stage deepens it
+
+Without throwing it away. The use keeps its name, its class, its switch and
+its place in the file. Its run moves to computing alone, made by the model
+works; it is sized again by the same rule (a unit costs 0.020 of a month's
+wage when found, rented, all of it run goods) and its `scale` is refitted
+once. A second entry gives it what is left of clerking from where office
+computing stops. Until those are built the sandbox's Rules tab can turn
+`tasks.dial` by hand once the viewer's charts are on main, which is the
+nearest the island has to the design's question of how far the dial has
+turned by 2050.
+
+## What the islands showed
+
+Islands 1 to 16 to 2050 under the game's rules with six families, the new
+land, on 20 November 2026, the command above with `--seeds 1-16`. Means over
+islands 1 to 8 with the least and greatest in brackets, office computing on in
+both columns; islands 9 to 16 say the same unless noted.
+
+| islands 1 to 8 | models off | models on |
+|---|---|---|
+| found | | 2022 on every island of sixteen |
+| the towns' target for judging in the year found | | 0.200 [0.186 .. 0.208] (9 to 16: 0.206) |
+| judging done by machine, 2030 / 2040 / 2050 | 0 | 0.162 / 0.291 / 0.399 [0.388 .. 0.408] |
+| in the works | | 0.165 / 0.293 / 0.401 |
+| on the land | | 0.156 / 0.284 / 0.393 |
+| the towns' target for judging in the works | | 0.276 / 0.377 / 0.476 |
+| clerking done by machine, 2050 | 0.748 | 0.755 (higher on 8 of 8) |
+| judges' hours in works, 2050 | 106,000 | 69,800 |
+| tending, presence, hauling and minding hours in works, 2050 | 253,000 | 275,900 |
+| work's share of income, gross, 2030 / 2040 / 2050 | 0.663 / 0.652 / 0.663 | 0.661 / 0.655 / 0.656 (lower on 7 of 8 in 2050) |
+| the same net of wear | 0.687 / 0.677 / 0.688 | 0.686 / 0.681 / 0.681 |
+| the works' owners' share of income, 2050 | 0.123 | 0.134 |
+| the chained real wage, 2040 / 2050, against 1750 | 14.30 / 14.82 | 15.08 / 15.37 (higher on 8 of 8) |
+| of the island's electricity, what machines for tasks run on, 2050 | 0.414 | 0.564 |
+| of its electrical goods, 2050 | 0 | 0.152 |
+| hands on the land, 2050 | 0.171 | 0.183 (higher on 6 of 8) |
+| hands in works, 2050 | 0.657 | 0.645 (lower on 8 of 8) |
+
+Against the bands: the towns' first share is 0.20 (met); every island finds
+models within ten years of every other (all in 2022: met); judging done by
+machine is above nothing from the mark after the find and rises at every mark
+to 2050, in the works and on the land, on every island of sixteen (met);
+dearer towns take it first, `dearer_first_models` positive on all sixteen
+(0.20 to 0.81). The design's "about half of judging by 2050" is not reached:
+0.40 on the mean island, every island between 0.39 and 0.41. The towns' target
+is near half by 2050 (0.476), and the works trail it by a tenth in 2030 and
+three quarters of a tenth in 2050, the lag of their eight years of adopting
+behind a target that rises with the pace. That shortfall is what the full
+stage is for: computing whose price falls, and the model works that make it.
+
+The design's three asks of the century after 1900, on the mean of islands 1 to
+8 (the chained real wage's growth a year from 1900 to 1970; its 2050 over its
+1970; the share of hands on the land in 2050 less in 1900):
+
+| | 1900 to 1970 | 2050 over 1970 | land |
+|---|---|---|---|
+| neither half | 1.14 % | 1.129 | -0.076 |
+| office computing alone | 1.15 % | 1.191 | -0.079 |
+| models alone | 1.14 % | 1.171 | -0.070 |
+| both | 1.15 % | 1.236 | -0.067 |
+
+Islands 9 to 16: 1.13 and 1.14 per cent a year; 1.147, 1.188, 1.188 and 1.264;
+-0.073, -0.070, -0.077 and -0.068. All met in every arm.
+
+## What the two halves show together
+
+On one island, the classes go to machines in turn: hauling from 1901 (the
+drive, then the tractor and the cutter), two thirds of it by 1990 and no more
+after; clerking from 1960 (office computing), 0.38 by 1990 and three quarters
+by 2050; judging from 2022 (models), two fifths by 2050. Tending stays near
+an eighth throughout, the combine's share of the farms', in both arms. Set
+against the island with neither half, work's share of income, gross, is
+lower by a point from 1990 (0.665 against 0.674 in 1990, 0.656 against 0.666
+in 2050 on islands 1 to 8; on islands 9 to 16, 0.660 against 0.679 in 2050,
+lower on all eight), and the same net of wear (0.681 against 0.690 in 2050).
+The machines' part went to the owners of works: their share of income is
+0.134 against 0.114 in 2050, higher on all eight islands, for office
+computing's plant and for the stations and electrical works that models'
+rent is paid to; the split of the works' book between families, landlords and
+households hardly moves. The hands freed (41,400 fewer clerks' hours a month
+and 22,300 fewer judges' in 2050) stay mostly in the works at their other
+tasks (34,700 more tending, 7,500 more presence, 5,100 more hauling, 1,800 more
+minding), and with models about a hundredth of the island's hands goes back
+onto the land on islands 1 to 8 (0.183 against 0.171 in 2050, higher on six of
+eight; on islands 9 to 16, 0.177 against 0.175). The wage ends a tenth higher (15.37 against 13.90
+times 1750's in 2050, higher on all eight islands), because the same hands make
+more and the machines that hold judging run on goods the island makes.
+
+## Where the two halves mislead
+
+Everything said above for office computing holds for both. Models' rent goes
+to makers who are not model works, so the owners who gain are the stations'
+and the electrical works', and the design's model works are nowhere. Models
+run on electricity and electrical goods at prices that did not move to meet
+them: by 2050 machines for tasks take more than half the island's electricity
+and a sixth of its electrical goods, where the full stage has a computing
+trade that grows to meet its own demand. Tending, the largest class in the
+works, has no machine after the drive in either half, because neither the line
+nor robots exist yet, so the order in which the classes go is not the
+history's: here clerking and judging go to machines while the works' tending
+stays by hand, and the freed hands find work in it. The island has one wage a
+town, so nothing here speaks of the gap between pay for judging and pay for
+anything else. And the levels are not calibrated: one island's prices in 2022
+and a first share of a fifth set them, and the pace of eight per cent a year
+is the design's, not tuned to reach half by 2050.

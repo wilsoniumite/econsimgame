@@ -78,6 +78,7 @@ pub const CLASSES: [&str; K] = ["haul", "tend", "clerk", "judge", "presence"];
 pub const HAUL: usize = 0;
 pub const TEND: usize = 1;
 pub const CLERK: usize = 2;
+pub const JUDGE: usize = 3;
 pub const PRESENCE: usize = 4;
 
 /// The land's sectors as the port's content names them: a use may name one
@@ -113,6 +114,11 @@ pub struct TasksParams {
     /// file it wrote before the switch was.
     #[serde(skip_serializing_if = "is_false")]
     pub computing: bool,
+    /// Models take judging tasks (`docs/rules/computing.md`, "Models"): the
+    /// uses of the file with `switch = "models"` may be found. Left out of the
+    /// params' file while off, as `computing` is.
+    #[serde(skip_serializing_if = "is_false")]
+    pub models: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -122,14 +128,14 @@ fn is_false(b: &bool) -> bool {
 impl Default for TasksParams {
     /// Off: what the port runs with.
     fn default() -> TasksParams {
-        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false }
+        TasksParams { enabled: false, adopt_years: 8.0, dial: 1.0, land: false, yield_cap: None, freeze_from: None, computing: false, models: false }
     }
 }
 
 impl TasksParams {
     /// The game's.
     pub fn game() -> TasksParams {
-        TasksParams { enabled: true, land: true, computing: true, ..TasksParams::default() }
+        TasksParams { enabled: true, land: true, computing: true, models: true, ..TasksParams::default() }
     }
 
     /// Whether the switch of this name, which a `[[use]]` may name (`switch`),
@@ -137,6 +143,7 @@ impl TasksParams {
     pub fn switch_on(&self, name: &str) -> bool {
         match name {
             "computing" => self.computing,
+            "models" => self.models,
             _ => false,
         }
     }
@@ -144,7 +151,7 @@ impl TasksParams {
 
 /// The switches of `TasksParams` a `[[use]]` of the file may stand behind
 /// (`switch = "computing"`): a use behind one that is off is never found.
-pub const USE_SWITCHES: [&str; 1] = ["computing"];
+pub const USE_SWITCHES: [&str; 2] = ["computing", "models"];
 
 /// The year from which the ceiling on yield is in force, and before which the
 /// best years it reads are kept.
@@ -199,6 +206,15 @@ impl Use {
     /// behind one that is on.
     pub fn allowed(&self, P: &Params) -> bool {
         self.switch.as_deref().is_none_or(|s| P.tasks.switch_on(s))
+    }
+
+    /// A use with no plant is rented (models, `docs/rules/computing.md`): its
+    /// whole cost is its run goods, bought each month. It has nothing to wait
+    /// for, so what is meant is held from the first month; it orders nothing,
+    /// adds nothing to a book, wears nothing (its `life` is not read), and may
+    /// be dropped as fast as a works likes.
+    pub fn rented(&self) -> bool {
+        self.plant.is_empty()
     }
 }
 
@@ -806,7 +822,9 @@ fn hold<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K],
 /// (`top_for_units`), and nothing above it. Never above `auto`; nothing at
 /// all where `auto` is nothing, so a run with no use found reads nothing.
 /// Machines whose run goods are short this month still stand, and are held;
-/// they idle in the execute step ("A machine short of its run good").
+/// they idle in the execute step ("A machine short of its run good"). A use
+/// with no plant (rented) takes none: the least over its empty set of plant
+/// goods is no limit, so its part is held whole from the first month.
 #[allow(clippy::too_many_arguments)]
 fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &[f64; K], hours: f64, plant: &[f64], ps_of: &dyn Fn(usize) -> &'a [(usize, f64, f64)]) -> [f64; K] {
     let mut out = [0.0; K];
@@ -834,6 +852,7 @@ fn held_by_plant<'a>(st: &State, C: &Content, P: &Params, sh: &[f64; K], auto: &
             // machines for one machine unit an hour of the class, and for the part
             let per = hours * sh[k] / qeff(st, C, P, u);
             let want = per * units(&tb.spread[k], a, e);
+            // the least over the plant goods it takes: infinite (no limit) where it takes none
             let have = us.plant.iter().filter(|p| p.1 > 0.0).filter_map(|&(g, v)| col(g).map(|c| left[c] / v)).fold(f64::INFINITY, f64::min);
             let got = have.min(want).max(0.0);
             for &(g, v) in &us.plant {
@@ -1040,7 +1059,9 @@ pub fn order_value(st: &State, C: &Content, f: usize) -> f64 {
 
 /// A works founded (`firms::create_firm`): it means to hold its town's target,
 /// and holds nothing until its machines' plant comes ("A machine works once it
-/// stands"): its first months are worked by hand at its recipe.
+/// stands"): its first months are worked by hand at its recipe, but for the
+/// part a rented use holds (one with no plant, as models), which it holds from
+/// its first month.
 pub fn opened(st: &mut State, C: &Content, P: &Params, f: usize) {
     if !active(st, P) {
         return;
@@ -1583,10 +1604,11 @@ fn land_parts(st: &State, t: usize, s: usize, k: usize) -> &[(usize, f64, f64)] 
     st.tasks.land_parts.get(t).and_then(|r| r.get(s)).map_or(&[], |p| &p[k][..])
 }
 
-/// The life of the machines on sector `s`: the longest of the uses that reach it.
+/// The life of the machines on sector `s`: the longest of the uses that reach
+/// it and have plant to wear.
 fn land_life(C: &Content, s: usize) -> f64 {
     let sh = C.tasks.sector.get(s).copied().unwrap_or([0.0; K]);
-    C.tasks.uses.iter().filter(|u| u.on_sector.get(s) == Some(&true) && sh[u.class] > 0.0).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
+    C.tasks.uses.iter().filter(|u| u.on_sector.get(s) == Some(&true) && sh[u.class] > 0.0 && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
 }
 
 /// The land's month's end (`end_month`): the year's sums at the part held this
@@ -1646,7 +1668,10 @@ fn land_end_month(st: &mut State, C: &Content, P: &Params, acc: &mut Acc, step: 
 /// The part of class `k` held a month on, from `x`, where the target is
 /// `target` and `ps` are the uses that would hold it: up by `step` of the gap
 /// times the fill of the last order for the machines; down no faster than the
-/// machines wear, to where a life's twelfth fewer units hold it.
+/// machines wear, to where a life's twelfth fewer units hold it. A rented use
+/// (no plant) has nothing to wear out, so where one holds the top of what is
+/// held its part may go at once: the share falls to the target, or to the
+/// foot of that part where a use with plant holds the tasks below it.
 fn toward(tb: &TaskTable, ps: &[(usize, f64, f64)], k: usize, x: f64, target: f64, step: f64, fill: f64) -> f64 {
     if target > x {
         x + step * (target - x) * fill
@@ -1654,6 +1679,8 @@ fn toward(tb: &TaskTable, ps: &[(usize, f64, f64)], k: usize, x: f64, target: f6
         let (u, a0) = ps.iter().rev().find(|p| p.1 < x).or(ps.last()).map_or((usize::MAX, 0.0), |p| (p.0, p.1));
         let floor = if u == usize::MAX {
             target
+        } else if tb.uses[u].rented() {
+            a0
         } else {
             let wear = 1.0 / (12.0 * tb.uses[u].life);
             top_for_units(&tb.spread[k], a0, units(&tb.spread[k], a0, x) * (1.0 - wear))
@@ -1665,10 +1692,10 @@ fn toward(tb: &TaskTable, ps: &[(usize, f64, f64)], k: usize, x: f64, target: f6
 }
 
 /// The life of a works' machines: the longest of the uses some class of its
-/// method could use in the works.
+/// method could use in the works and that have plant to wear.
 fn life_of(C: &Content, f: usize, st: &State) -> f64 {
     let sh = C.tasks.method.get(st.f_method[f]).copied().unwrap_or([0.0; K]);
-    C.tasks.uses.iter().filter(|u| u.on_works && sh[u.class] > 0.0).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
+    C.tasks.uses.iter().filter(|u| u.on_works && sh[u.class] > 0.0 && !u.rented()).map(|u| u.life).fold(f64::NAN, f64::max).max(1.0)
 }
 
 // ---------------------------------------------------------------- the year
@@ -1842,7 +1869,8 @@ pub fn rank_correlation(x: &[f64], y: &[f64]) -> f64 {
 /// The rule's facts. For each class a machine may enter (haul, tend, clerk,
 /// judge): `auto_CLASS_works_Y` (the share of the works' work in the class
 /// machines in place do), `aim_CLASS_works_Y` (the share the works mean them
-/// to do), `waterline_CLASS_Y`, `margin_gap_CLASS_Y`, under `land`
+/// to do), `target_CLASS_works_Y` (the towns' target, which the works move
+/// toward), `waterline_CLASS_Y`, `margin_gap_CLASS_Y`, under `land`
 /// `auto_CLASS_land_Y` (the land's sectors together), and
 /// `machine_share_CLASS_Y` (works and land together); `waiting_haul_works_Y`
 /// (hauling meant for machines not yet delivered), the same three for the
@@ -1863,7 +1891,10 @@ pub fn rank_correlation(x: &[f64], y: &[f64]) -> f64 {
 /// across towns of the wage in the year found and the part of the class their
 /// works' machines hold ten years on) and `local_run_first_NAME` (the same
 /// with whether the town made the use's run goods in the year found in place
-/// of the wage). None unless the rule was on.
+/// of the wage); and under `land`, for a use that reaches the land,
+/// `use_auto_land_after10_NAME` (its class on the sectors it reaches, done by
+/// the machines in place ten years after the find). A fact read past the
+/// run's end is none. None unless the rule was on.
 pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     let (st, C) = (&r.state, &r.content);
     let mut out = Vec::new();
@@ -1892,6 +1923,14 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
     for &k in &open {
         for &y in &marks {
             out.push((format!("aim_{}_works_{y}", CLASSES[k]), Kind::Share, at(y).map_or(f64::NAN, |t| ratio(t.aim[k], t.work[k]))));
+        }
+    }
+    // the towns' target in the works, weighted by each town's work in the
+    // class (what a new works would hold, and what the standing works move
+    // toward): none until a use of the class is found
+    for &k in &open {
+        for &y in &marks {
+            out.push((format!("target_{}_works_{y}", CLASSES[k]), Kind::Share, at(y).map_or(f64::NAN, |t| t.target[k])));
         }
     }
     // the hauling meant for machines not yet delivered
@@ -2079,9 +2118,20 @@ pub fn facts(r: &RunResult) -> Vec<(String, Kind, f64)> {
         let gap40 = found.and_then(|y| at(y + 40)).map_or(f64::NAN, |t| t.margin_gap[k]);
         out.push((format!("use_margin_gap_after40_{name}"), Kind::Ratio, works(gap40)));
         // the same two of its machines' lives after the find (the design's
-        // test: within a tenth of one), for a use whose life is not twenty years
-        let lives2 = found.and_then(|y| at(y + (2.0 * us.life).round() as i64)).map_or(f64::NAN, |t| t.margin_gap[k]);
+        // test: within a tenth of one), for a use whose life is not twenty years;
+        // none for a rented use, whose life is not read
+        let lives2 = found.filter(|_| !us.rented()).and_then(|y| at(y + (2.0 * us.life).round() as i64)).map_or(f64::NAN, |t| t.margin_gap[k]);
         out.push((format!("use_margin_gap_two_lives_{name}"), Kind::Ratio, works(lives2)));
+        // for a use that reaches the land: its class on the sectors it reaches,
+        // the share the machines in place do ten years after the find (none
+        // where the run ends before then)
+        if r.params.tasks.land && us.on_sector.iter().any(|&b| b) {
+            let v = found.and_then(|y| at(y + 10)).map_or(f64::NAN, |t| {
+                let (h, w) = (0..us.on_sector.len().min(t.land_work.len())).filter(|&s| us.on_sector[s]).fold((0.0, 0.0), |(h, w), s| (h + t.land_held[s][k], w + t.land_work[s][k]));
+                ratio(h, w)
+            });
+            out.push((format!("use_auto_land_after10_{name}"), Kind::Share, v));
+        }
         // dearer towns first: towns whose works do the class in both years, the
         // wage in the year found against the share held ten years on; and
         // beside it the same with, in place of the wage, whether a works making
