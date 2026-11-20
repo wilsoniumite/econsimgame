@@ -1452,12 +1452,8 @@ fn step(world: &mut World, plan: &mut Plan) {
             }
             Step::Overlay(word) => {
                 let parsed = crate::overlay::parse(&word, &world.resource::<Data>().r);
-                if let Some((kind, good)) = parsed {
-                    let mut ov = world.resource_mut::<crate::overlay::MapOverlay>();
-                    ov.set(kind);
-                    if let Some(g) = good {
-                        ov.good = g;
-                    }
+                if let Some(c) = parsed {
+                    world.resource_mut::<crate::overlay::MapOverlay>().choose(&c);
                 }
                 frame = true;
             }

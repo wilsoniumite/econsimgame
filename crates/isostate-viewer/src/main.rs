@@ -34,6 +34,7 @@ mod newland;
 mod overlay;
 mod plan;
 mod profile;
+mod ranges;
 mod rails;
 mod replay;
 mod rivers;
@@ -417,7 +418,7 @@ fn parse(v: &[String]) -> Result<Args, String> {
             "--overlay" => {
                 let w = next(i)?;
                 if !overlay::is_word(&w) {
-                    return Err(format!("{opt}: {w} is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain"));
+                    return Err(format!("{opt}: {w} is not a map view: {}", overlay::VIEWS_WORDS));
                 }
                 a.overlay = Some(w);
                 i += 1;
@@ -927,8 +928,8 @@ fn main() {
             Some(p) => {
                 println!("{}", describe(&r, p, k0, families.as_ref().map_or(&[][..], |f| f.method_group.as_slice())));
                 // with --overlay, what that overlay says of the spot, as the inspector would
-                if let Some((Some(kind), good)) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
-                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, good.unwrap_or(0), None) {
+                if let Some(overlay::Choice { kind: Some(kind), which, .. }) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
+                    if let Some(line) = overlay::said(&r, k0, pick_cell(&r, p), kind, which.unwrap_or(0), None) {
                         println!("\n{line}");
                     }
                 }
@@ -1050,8 +1051,11 @@ fn main() {
     }
     terrain::register(&mut app);
     built::register(&mut app);
-    let (start_overlay, start_good) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)).unwrap_or((None, None));
-    app.insert_resource(overlay::MapOverlay::new(start_overlay, start_good.unwrap_or(0)));
+    let mut start_overlay = overlay::MapOverlay::new(None, 0);
+    if let Some(c) = args.overlay.as_deref().and_then(|w| overlay::parse(w, &r)) {
+        start_overlay.choose(&c);
+    }
+    app.insert_resource(start_overlay);
     app.insert_resource(ClearColor(look.sky.background.color()))
         .insert_resource(GlobalAmbientLight { color: look.sky.light.color(), brightness: look.sky.brightness, ..default() })
         .insert_resource(Data { r: Arc::new(r), g: Arc::new(g), slots: Arc::new(slots), cen: Arc::new(cen), live: live.is_some(), arriving: None })
@@ -2119,12 +2123,8 @@ fn take_shot(
             ui.tab = tab;
         }
     }
-    if let Some((kind, good)) = v.overlay.as_deref().and_then(|w| overlay::parse(w, r)) {
-        let good = good.unwrap_or(ov.good);
-        if ov.kind != kind || ov.good != good {
-            ov.set(kind);
-            ov.good = good;
-        }
+    if let Some(c) = v.overlay.as_deref().and_then(|w| overlay::parse(w, r)) {
+        ov.choose(&c);
     }
     if let Some(w) = v.markets.as_deref() {
         ui.show_markets(w, r);
@@ -2458,7 +2458,7 @@ fn inspect_panel(
     mut last: Local<Option<(Option<Pick>, usize, Option<overlay::Overlay>, usize, Option<usize>)>>,
 ) {
     let k = (tl.t.floor() as usize).min(data.r.ny - 1);
-    let key = (picked.what, k, ov.kind, ov.good, ov.month());
+    let key = (picked.what, k, ov.kind, ov.kind.map_or(0, |kind| ov.which(kind)), ov.month());
     if *last == Some(key) {
         return;
     }
@@ -2900,7 +2900,8 @@ mod tests {
         assert_eq!(args("--compare-shots out/a").err().unwrap(), "--compare-shots needs two directories after it");
         assert_eq!(args("--lab").err().unwrap(), "--lab needs a value after it");
         // map views (a good the run does not have is refused before a game's island is made, or once a recorded run is read: tests/options.rs)
-        assert_eq!(args("--overlay rents").err().unwrap(), "--overlay: rents is not a map view: use rent, areas, reach, price, price:GOOD, wages, growth, residents or plain");
+        assert_eq!(args("--overlay rents").err().unwrap(), format!("--overlay: rents is not a map view: {}", overlay::VIEWS_WORDS));
+        assert!(args("--overlay rent+ever").is_err() && args("--overlay made:coal+30").is_ok() && args("--overlay deposits+all").is_ok());
         assert_eq!(args("--overlay").err().unwrap(), "--overlay needs a value after it");
         // a script's steps are read with the options
         assert_eq!(args("--script bogus").err().unwrap(), "--script: bogus: not a step (see the top of script.rs)");

@@ -59,7 +59,7 @@ impl Table {
                     }
                 }
                 Msg::Year(end) => {
-                    apply_year(&mut self.r, &end.year);
+                    end.apply(&mut self.r);
                     crate::game::year_families(&mut self.view, &end.year.families, end.year.year as i32);
                     if let Some(rep) = &end.family {
                         crate::game::player_family(&mut self.view, rep);

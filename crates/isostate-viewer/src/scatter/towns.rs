@@ -1031,6 +1031,7 @@ mod tests {
             workings: Vec::new(),
             rent_scale: Vec::new(),
             land: None,
+            holds: Default::default(),
         };
         for k in 0..ny {
             for c in (0..n).filter(|&c| land(c)) {
